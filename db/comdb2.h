@@ -402,6 +402,7 @@ enum RCODES {
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
     ERR_VERIFY_PI = 319,
+    ERR_INDEX_CONFLICT = 330,
     ERR_UNCOMMITABLE_TXN =
         404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
     ERR_INCOHERENT =
@@ -2027,6 +2028,7 @@ void backend_sync_stat(struct dbenv *dbenv);
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb);
 void init_fake_ireq(struct dbenv *, struct ireq *);
 int set_tran_lowpri(struct ireq *iq, tran_type *tran);
+void set_tran_verify_updateid(tran_type *tran);
 
 /* long transaction routines */
 

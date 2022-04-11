@@ -473,6 +473,8 @@ DEF_ATTR(SC_NO_REBUILD_THR_SLEEP, sc_no_rebuild_thr_sleep, QUANTITY, 10,
 DEF_ATTR(SC_FORCE_DELAY, sc_force_delay, BOOLEAN, 0,
          "Force schemachange to delay after every record inserted - to have sc "
          "backoff.")
+DEF_ATTR(SC_PAUSE_REDO, sc_pause_redo, BOOLEAN, 0,
+         "Pauses the newsc asychronous redo-thread for testing.")
 DEF_ATTR(SC_RESUME_AUTOCOMMIT, sc_resume_autocommit, BOOLEAN, 1,
          "Always resume autocommit schemachange if possible.")
 DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60,

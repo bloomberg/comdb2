@@ -295,7 +295,7 @@ int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
      * the luxury of letting ix_find* to protect the row from changing because
      * we may have released the page lock before getting the row lock. So the
      * row may have been changed in this gap and we need to verify here again */
-    int verify_updateid = (tran->logical_tran && dtafile == 0);
+    int verify_updateid = ((tran->verify_updateid || tran->logical_tran) && dtafile == 0);
 
     if (dta_out) {
         bzero(dta_out, sizeof(DBT));

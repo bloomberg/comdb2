@@ -267,6 +267,11 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
     return bdb_set_tran_lowpri(bdb_handle, tran);
 }
 
+void set_tran_verify_updateid(tran_type *tran)
+{
+    bdb_set_tran_verify_updateid(tran);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*        TRANSACTIONAL STUFF        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
