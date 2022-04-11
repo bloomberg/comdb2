@@ -340,6 +340,7 @@ function run {
         $0 setup
     fi
     start-cluster-jobs
+    start-physical-replicants
 }
 
 function do_docker {
@@ -580,6 +581,10 @@ function copy-to-physical-replicant {
     copycomdb2 -H $1$2 -y @$(hostname) $lrl $2:$dstdir $2:$dstdir
 }
 
+function start-physical-replicants {
+    add-replicant $(get add-repl-count)
+}
+
 function add-replicant {
     local db=$(get defaultdb)
     local n=$1
@@ -588,6 +593,8 @@ function add-replicant {
     [[ $n -lt 1 ]] && usage
 
     put add-repl-count $n
+
+    declare -a wait_pids
 
     # Run the physical replicant containers
     for ((i=0;i<$n;++i)); do
@@ -603,8 +610,19 @@ function add-replicant {
         docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
             -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
             --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+        wait_pids+=($!)
     done
-    wait
+    wait ${wait_pids[@]}
+
+    # Wait for cluster node to start
+    for i in `seq 1 60`; do
+        res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
+	if [[ -n ${res} ]]; then
+	    break
+	fi
+	echo "$i: cluster not ready, waiting.."
+	sleep 2
+    done
 
     # Copy data from m0
     for ((i=0;i<$n;++i)); do
