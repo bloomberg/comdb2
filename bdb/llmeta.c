@@ -171,6 +171,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS = 50,
     LLMETA_VIEW = 51,                 /* User defined views */
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
+    LLMETA_NEWSC_REDO_GENID = 55,  /* 55 + TABLENAME + GENID -> MAX-LSN */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -192,6 +193,8 @@ static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr);
 static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
                      void ***values, int *num, int *bdberr);
+static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v,
+                           size_t vlen, int *bdberr);
 
 static uint8_t *
 llmeta_file_type_key_put(const struct llmeta_file_type_key *p_file_type_key,
@@ -3650,6 +3653,156 @@ static unsigned long long get_epochms(void)
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 }
 
+typedef struct {
+    int file_type;
+    char tablename[LLMETA_TBLLEN + 1];
+    char padding[3];
+    uint64_t genid;
+} llmeta_newsc_redo_genid_key;
+
+enum { LLMETA_NEWSC_REDO_GENID_KEY_LEN = 4 + 32 + 1 + 3 + 8 };
+BB_COMPILE_TIME_ASSERT(llmeta_newsc_redo_genid_key_len,
+                       sizeof(llmeta_newsc_redo_genid_key) ==
+                       LLMETA_NEWSC_REDO_GENID_KEY_LEN);
+
+static uint8_t *llmeta_newsc_redo_genid_key_put(const llmeta_newsc_redo_genid_key *p_redo_genid,
+                                                uint8_t *p_buf,
+                                                const uint8_t *p_buf_end)
+{
+    p_buf = buf_put(&(p_redo_genid->file_type), sizeof(p_redo_genid->file_type),
+                    p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_redo_genid->tablename), sizeof(p_redo_genid->tablename),
+                    p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_redo_genid->padding), sizeof(p_redo_genid->padding),
+                    p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_redo_genid->genid), sizeof(p_redo_genid->genid),
+                    p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *llmeta_newsc_redo_genid_key_get(llmeta_newsc_redo_genid_key *p_redo_genid,
+                                                      const uint8_t *p_buf,
+                                                      const uint8_t *p_buf_end)
+{
+    p_buf = buf_get(&(p_redo_genid->file_type), sizeof(p_redo_genid->file_type),
+                    p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_redo_genid->tablename), sizeof(p_redo_genid->tablename),
+                    p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_redo_genid->padding), sizeof(p_redo_genid->padding),
+                    p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_redo_genid->genid), sizeof(p_redo_genid->genid),
+                    p_buf, p_buf_end);
+    return p_buf;
+}
+
+int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmeta_sc_redo_data **redo_out,
+                                      int *num, int *bdberr)
+{
+    void **data = NULL;
+    void **keys = NULL;
+    int nkey = 0, rc = 1;
+    llmeta_sc_redo_data *sc_redo = NULL;
+
+    *num = 0;
+    *redo_out = NULL;
+
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    int sz = offsetof(llmeta_newsc_redo_genid_key, padding);
+
+    rc = kv_get_kv(t, &u, sz, &keys, &data, &nkey, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
+        return -1;
+    }
+    if (nkey == 0)
+        return 0;
+    sc_redo = calloc(nkey, sizeof(llmeta_sc_redo_data) * nkey);
+    if (sc_redo == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
+        *bdberr = BDBERR_MALLOC;
+        return -1;
+    }
+
+    for (int i = 0; i < nkey; i++) {
+        llmeta_newsc_redo_genid_key k;
+        struct llmeta_db_lsn_data_type d;
+        llmeta_newsc_redo_genid_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(llmeta_newsc_redo_genid_key));
+        sc_redo[i].genid = k.genid;
+        llmeta_db_lsn_data_type_get(&d, data[i], (uint8_t *)(data[i]) + sizeof(struct llmeta_db_lsn_data_type));
+        sc_redo[i].file = d.lsn.file;
+        sc_redo[i].offset = d.lsn.offset;
+    }
+
+    for (int i = 0; i < nkey; i++) {
+        free(keys[i]);
+        free(data[i]);
+    }
+
+    free(data);
+    free(keys);
+    *num = nkey;
+    *redo_out = sc_redo;
+
+    return 0;
+}
+
+int bdb_newsc_del_redo_genid(tran_type *t, const char *tablename, uint64_t genid, int *bdberr)
+{
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    u.key.genid = genid;
+    *bdberr = BDBERR_NOERROR;
+    int rc = kv_del(t, &u, bdberr);
+    return rc;
+}
+
+int bdb_newsc_del_all_redo_genids(tran_type *t, const char *tablename, int *bdberr)
+{
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    int rc = kv_del_by_value(t, &u, offsetof(llmeta_newsc_redo_genid_key, padding), NULL, 0, bdberr);
+    return rc;
+}
+
+int bdb_newsc_set_redo_genid(tran_type *t, const char *tablename, uint64_t genid, unsigned int file,
+                             unsigned int offset, int *bdberr)
+{
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    u.key.genid = genid;
+    struct llmeta_db_lsn_data_type newsc_lsn = {.lsn.file = file, .lsn.offset = offset};
+
+    uint8_t *p_buf_start, *p_buf_end;
+    p_buf_start = alloca(sizeof(struct llmeta_db_lsn_data_type));
+    p_buf_end = p_buf_start + sizeof(struct llmeta_db_lsn_data_type);
+    llmeta_db_lsn_data_type_put(&newsc_lsn, p_buf_start, p_buf_end);
+
+    *bdberr = BDBERR_NOERROR;
+    int rc = kv_put(t, &u, p_buf_start, sizeof(struct llmeta_db_lsn_data_type), bdberr);
+    return rc;
+}
+
 static uint8_t *llmeta_sc_hist_data_put(const llmeta_sc_hist_data *p_sc_hist,
                                         uint8_t *p_buf,
                                         const uint8_t *p_buf_end)
@@ -6613,6 +6766,26 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                schema_change.dbname, sc_status_data.start,
                sc_status_data.status, sc_status_data.last,
                sc_status_data.errstr);
+    } break;
+
+    case LLMETA_NEWSC_REDO_GENID: {
+        if (keylen < sizeof(llmeta_newsc_redo_genid_key) ||
+            datalen < sizeof(struct llmeta_db_lsn_data_type)) {
+            logmsg(LOGMSG_USER,
+                   "%s:%d: wrong LLMETA_NEWSC_REDO_GENID entry\n", __FILE__,
+                   __LINE__);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        llmeta_newsc_redo_genid_key k;
+        struct llmeta_db_lsn_data_type newsc_lsn;
+        llmeta_newsc_redo_genid_key_get(&k, p_buf_key, p_buf_end_key);
+        llmeta_db_lsn_data_type_get(&newsc_lsn, p_buf_data, p_buf_end_data);
+
+        logmsg(LOGMSG_USER,
+               "LLMETA_NEWSC_REDO_GENID: table=\"%s\" genid=%0#16" PRIx64
+               " LSN: [%u:%u]\n", k.tablename, k.genid, newsc_lsn.lsn.file,
+               newsc_lsn.lsn.offset);
     } break;
 
     case LLMETA_SCHEMACHANGE_HISTORY: {
