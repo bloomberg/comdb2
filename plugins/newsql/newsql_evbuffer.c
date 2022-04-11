@@ -43,8 +43,6 @@
 extern int gbl_nid_dbname;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
-extern uint64_t gbl_ssl_num_full_handshakes;
-extern uint64_t gbl_ssl_num_partial_handshakes;
 
 struct ping_pong {
     int status;
@@ -547,12 +545,7 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
 
     int rc = SSL_do_handshake(ssl);
     if (rc == 1) {
-        /* keep track of number of full and partial handshakes */
-        if (SSL_session_reused(ssl))
-            ATOMIC_ADD64(gbl_ssl_num_partial_handshakes, 1);
-        else
-            ATOMIC_ADD64(gbl_ssl_num_full_handshakes, 1);
-
+        ssl_extend_session_lifetime(ssl);
         if (enable_ssl_evbuffer(appdata) == 0) {
             rd_hdr(-1, 0, appdata);
             return;

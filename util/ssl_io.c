@@ -248,8 +248,7 @@ re_accept_or_connect:
         case SSL_ERROR_SSL:
             errno = EIO;
             sb->protocolerr = 1;
-            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
-                              "A failure in SSL library occured");
+            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "A failure in SSL library occurred");
             break;
         default:
             errno = EIO;
@@ -363,8 +362,7 @@ reread:
         case SSL_ERROR_SSL:
             errno = EIO;
             sb->protocolerr = 1;
-            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
-                              "A failure in SSL library occured");
+            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "A failure in SSL library occurred");
             break;
         default:
             errno = EIO;
@@ -429,8 +427,7 @@ rewrite:
         case SSL_ERROR_SSL:
             errno = EIO;
             sb->protocolerr = 1;
-            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
-                              "A failure in SSL library occured");
+            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln, "A failure in SSL library occurred");
             break;
         default:
             errno = EIO;

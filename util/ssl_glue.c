@@ -19,6 +19,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <time.h>
 
 #include <openssl/asn1.h>
 #include <openssl/x509v3.h>
@@ -294,5 +295,17 @@ int ssl_whitelisted(const char *host)
         }
     }
     return 0;
+}
+
+void ssl_extend_session_lifetime(SSL *ssl)
+{
+    /* If a session is reused, extend its lifetime. OpenSSL internally has
+       a session TTL of 300 seconds. We modify the session's creation time
+       to the current time so that the session can stay around for another
+       300 seconds. Essentially, as long as a session is getting reused,
+       it'll never expire. Otherwise it'll age out after 300 seconds (or more,
+       depending on when OpenSSL checks for expired sessions) */
+    if (ssl != NULL && SSL_session_reused(ssl))
+        SSL_SESSION_set_time(SSL_get0_session(ssl), time(NULL));
 }
 #endif
