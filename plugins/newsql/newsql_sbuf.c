@@ -36,8 +36,6 @@ extern ssl_mode gbl_client_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_nid_dbname;
-extern unsigned long long gbl_ssl_num_full_handshakes;
-extern unsigned long long gbl_ssl_num_partial_handshakes;
 
 int gbl_protobuf_prealloc_buffer_size = 8192;
 
@@ -345,12 +343,7 @@ retry_read:
             logmsg(LOGMSG_ERROR, "%s\n", err);
             return NULL;
         }
-
-        /* keep track of number of full and partial handshakes */
-        if (SSL_session_reused(sslio_get_ssl(sb)))
-            ATOMIC_ADD64(gbl_ssl_num_partial_handshakes, 1);
-        else
-            ATOMIC_ADD64(gbl_ssl_num_full_handshakes, 1);
+        ssl_extend_session_lifetime(sslio_get_ssl(sb));
 
         /* Extract the user from the certificate. */
         ssl_set_clnt_user(clnt);

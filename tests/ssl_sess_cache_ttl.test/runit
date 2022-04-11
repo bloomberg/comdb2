@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+##############################
+# Test SSL session cache TTL #
+##############################
+
+dbnm=$1
+
+# set up users for charlie and sally brown
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+put password 'brown' for 'charlie'
+put password 'brown' for 'sally'
+grant op to charlie
+grant op to sally
+select * from comdb2_users
+set user charlie
+set password brown
+put authentication on
+EOF
+
+# gen keys for charlie brown
+openssl genrsa -out ${DBDIR}/charlie.key 4096
+openssl req -new -key ${DBDIR}/charlie.key -out ${DBDIR}/charlie.key.csr \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com/UID=charlie"
+openssl x509 -req -in ${DBDIR}/charlie.key.csr -CA ${TESTDIR}/root.crt -CAkey ${TESTDIR}/root.key \
+             -CAcreateserial -out ${DBDIR}/charlie.crt -days 10
+chmod 600 ${DBDIR}/charlie.key
+
+# set up charlie's data
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+SET SSL_CERT ${DBDIR}/charlie.crt
+SET SSL_KEY ${DBDIR}/charlie.key
+CREATE TABLE whoami (name CHAR(30))\$\$
+INSERT INTO whoami values ("Charlie Brown")
+EOF
+
+# gen keys for sally brown
+openssl genrsa -out ${DBDIR}/sally.key 4096
+openssl req -new -key ${DBDIR}/sally.key -out ${DBDIR}/sally.key.csr \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com/UID=sally"
+openssl x509 -req -in ${DBDIR}/sally.key.csr -CA ${TESTDIR}/root.crt -CAkey ${TESTDIR}/root.key \
+             -CAcreateserial -out ${DBDIR}/sally.crt -days 10
+chmod 600 ${DBDIR}/sally.key
+
+# set up sally's data
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default -
+SET SSL_CERT ${DBDIR}/sally.crt
+SET SSL_KEY ${DBDIR}/sally.key
+CREATE TABLE whoami (name CHAR(30))\$\$
+INSERT INTO whoami values ("Sally Brown")
+EOF
+
+# generate a config file for the browns
+cp $DBDIR/comdb2db.cfg $DBDIR/browns.cfg
+echo "comdb2_config:ssl_cert=$TESTDIR/brown.crt
+comdb2_config:ssl_key=$TESTDIR/brown.key
+comdb2_config:ssl_session_cache_ttl=5" >>$DBDIR/browns.cfg
+
+# This is the main body of the test:
+# We first point the certificate to charlie, and issue a read. We should see charlie's
+# data. We then point the certificate to sally, sleep 6 seconds to let charlie's
+# session age out, and issue another read. We should see sally's data at this point.
+cp $DBDIR/charlie.key $DBDIR/brown.key
+cp $DBDIR/charlie.crt $DBDIR/brown.crt
+
+cdb2sql --cdb2cfg $DBDIR/browns.cfg -f sql -s --tabs $dbnm default - >output.actual 2>&1 &
+
+sleep 2
+cp $DBDIR/sally.key $DBDIR/brown.key
+cp $DBDIR/sally.crt $DBDIR/brown.crt
+
+wait
+diff output.actual output.expected

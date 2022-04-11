@@ -27,6 +27,8 @@ int ssl_verify_hostname(X509 *, int);
 #if SBUF2_SERVER /* visible to server only */
 /* returns 1 if the connection is whitelisted */
 int ssl_whitelisted(const char *);
+/* extend the lifetime of the session this SSL struct uses */
+void ssl_extend_session_lifetime(SSL *);
 #endif
 
 #endif /* INCLUDED_SSL_GLUE_H */

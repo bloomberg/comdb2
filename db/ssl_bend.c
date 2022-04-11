@@ -70,11 +70,6 @@ double gbl_min_tls_ver = 0;
 /* (test-only) are connections from localhost always allowed? */
 int gbl_ssl_allow_localhost = 0;
 
-/* number of full ssl handshakes */
-uint64_t gbl_ssl_num_full_handshakes = 0;
-/* number of partial ssl handshakes (via session resumption) */
-uint64_t gbl_ssl_num_partial_handshakes = 0;
-
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
 SSL_CTX *gbl_ssl_ctx = NULL;
@@ -371,8 +366,8 @@ void ssl_stats(void)
                "Verify database name in client certificate: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_dbname));
 
-    logmsg(LOGMSG_USER, "  %" PRId64 " full handshakes, %" PRId64 " partial handshakes\n",
-           gbl_ssl_num_full_handshakes, gbl_ssl_num_partial_handshakes);
+    logmsg(LOGMSG_USER, "  %" PRId64 " full handshakes, %" PRId64 " partial handshakes\n", ssl_num_full_handshakes(),
+           ssl_num_partial_handshakes());
 
     logmsg(LOGMSG_USER, "Replicant SSL mode: %s\n",
            ssl_mode_to_string(gbl_rep_ssl_mode));
@@ -417,7 +412,16 @@ void ssl_stats(void)
     for (int ii = 0;
          ii != sizeof(ssl_no_protocols) / sizeof(ssl_no_protocols[0]); ++ii) {
         int enabled = (ssl_no_protocols[ii].tlsver >= gbl_min_tls_ver);
-        logmsg(LOGMSG_USER, "%s: %s\n", ssl_no_protocols[ii].name,
-               enabled ? "ENABLED" : "disabled");
+        logmsg(LOGMSG_USER, "  %s: %s\n", ssl_no_protocols[ii].name, enabled ? "ENABLED" : "disabled");
     }
+}
+
+long ssl_num_full_handshakes(void)
+{
+    return SSL_CTX_sess_accept_good(gbl_ssl_ctx) - SSL_CTX_sess_hits(gbl_ssl_ctx);
+}
+
+long ssl_num_partial_handshakes(void)
+{
+    return SSL_CTX_sess_hits(gbl_ssl_ctx);
 }

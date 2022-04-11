@@ -89,4 +89,9 @@ void ssl_set_clnt_user(struct sqlclntstate *clnt);
 
 /* Print SSL information. */
 void ssl_stats(void);
+
+/* Return number of full SSL handshakes */
+long ssl_num_full_handshakes(void);
+/* Return number of partial SSL handshakes via session reuse */
+long ssl_num_partial_handshakes(void);
 #endif

@@ -125,7 +125,11 @@ setup_db() {
     fi
 
     # Configure client SSL
+
     echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
+    if [[ $DBNAME == *"sslsesscache"* ]] ; then
+        echo "comdb2_config:ssl_session_cache=1" >>$CDB2_CONFIG
+    fi
     echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
     set +e
