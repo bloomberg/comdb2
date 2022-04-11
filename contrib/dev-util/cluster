@@ -176,6 +176,8 @@ function build {
     DIR=$(mktemp -d)
     local uid=$(id -u)
     local id=$(whoami)
+    local clusterpath=$(cd `dirname $0`; pwd -P) # Path to copy cluster script
+    local machprefix=$(get mach-prefix)
     pushd $DIR
     cat >> Dockerfile <<- EOF
         FROM $base
@@ -219,7 +221,7 @@ EOF
     create-or-copy $HOME/.gdbinit gdbinit
     create-or-copy $HOME/.bash_aliases bash_profile
     create-or-copy ${dir}/proxy.conf proxy.conf
-    create-or-copy $0 cluster
+    create-or-copy ${clusterpath}/cluster cluster
     mkdir comdb2-util
     cp ${dir}/config.sqlite ${dir}/proxy.conf comdb2-util
     cat >> bash_profile <<- EOF
@@ -234,7 +236,7 @@ EOF
     ssh-keygen -q -t rsa -N '' -f $PWD/id_rsa
     cat > config <<- EOF
         LogLevel=quiet
-        HOST m*
+        HOST ${machprefix}*
             StrictHostKeyChecking no
 EOF
 cat >> Dockerfile <<- EOF
@@ -358,9 +360,17 @@ function tmux {
 	sync_panes
 }
 
-function db {
-    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
+function is_container {
+    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | grep docker | head -1)
     if [[ "$isdocker" == "docker" ]]; then
+        echo "yes"
+    else
+        echo "no"
+    fi
+}
+
+function db {
+    if [[ $(is_container) == "yes" ]]; then
         echo "Please run this outside docker"
         exit 1
     fi
@@ -426,9 +436,7 @@ function cfg {
 }
 
 function setup {
-    local isdocker
-    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
-    if [[ "$isdocker" != "docker" ]]; then
+    if [[ $(is_container) == "no" ]]; then
         check-containers-ready || exit 1
         docker exec --user $(id -u) $(container-name 0) ${HOME}/bin/cluster setup $*
         return $?
