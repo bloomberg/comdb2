@@ -162,6 +162,17 @@ function interactive-init {
     [[ -z "$v" ]] && v=4
     put testjobs $v
 
+    printf "Physical replicant machine name prefix [r]: "
+    read v
+    [[ -z "$v" ]] && v=r
+    put repl-mach-prefix $v
+
+    printf "Number of physical replicants? [0]: "
+    read v
+    [[ -z "$v" ]] && v=0
+    put add-repl-count $v     # Total number of physical replicants to add
+    put current-repl-count 0  # Current number of physical replicants
+
     docker network ls | grep -qw "comdb2"
     [[ $? -ne 0 ]] && docker network create comdb2
 
@@ -178,6 +189,8 @@ function build {
     local id=$(whoami)
     local clusterpath=$(cd `dirname $0`; pwd -P) # Path to copy cluster script
     local machprefix=$(get mach-prefix)
+    local replmachprefix=$(get repl-mach-prefix)
+
     pushd $DIR
     cat >> Dockerfile <<- EOF
         FROM $base
@@ -237,6 +250,8 @@ EOF
     cat > config <<- EOF
         LogLevel=quiet
         HOST ${machprefix}*
+            StrictHostKeyChecking no
+        HOST ${replmachprefix}*
             StrictHostKeyChecking no
 EOF
 cat >> Dockerfile <<- EOF
@@ -322,7 +337,7 @@ function run {
 
     if [[ $(get auto-db) = 1 ]]; then
         echo "setting up databases"
-        cluster setup
+        $0 setup
     fi
     start-cluster-jobs
 }
@@ -333,6 +348,12 @@ function do_docker {
 	for ((i=0;i<=${n};++i)); do
 		names+=($(container-name $i))
 	done
+
+	n=$(get current-repl-count)
+	for ((i=0;i<=${n};++i)); do
+		names+=($(repl-container-name $i))
+	done
+
 	docker $1 ${names[@]}
 }
 
@@ -538,33 +559,109 @@ function clean-persist {
     sudo rm -fr ${dir}/persist
 }
 
-function usage {
-	cat >&2 <<- EOF
-		Usage: cluster <cmd> [arg]
+function repl-container-name {
+    echo "$(get repl-mach-prefix)$1"
+}
 
-		cmd list:
-		  db [dbname] ----------- Start database cluster-wide
-		  build ----------------- Build docker image
-		  clean ----------------- Kill and remove containers
-		  c|clnt [n] ------------ Get a shell on nth container
-		  copy [dbname] --------- Copy db cluster-wide
-		  setup [dbname] -------- Create db and copy it cluster-wide
-		  gdb [dbname] ---------- Start db under gdb cluster-wide
-		  info  ----------------- Dump settings
-		  init  ----------------- Wipe settings and start from scratch
-		  kill  ----------------- Kill containers
-		  pmux  ----------------- Start pmux cluster-wide
-		  ps    ----------------- List containers
-		  rm    ----------------- Remove containers
-		  run <cluster-size> ---- Initial run of containers
-		  status ---------------- Check container status
-		  start ----------------- Start containers
-		  stop  ----------------- Stop containers
-		  test [n] -------------- Run tests n at a time (default 1)
-		  tmux  ----------------- Container tmux panes
-		  vg    ----------------- Start database under valgrind
-	EOF
-	exit 1
+function repl-next-container-name {
+    local curcount=$(get current-repl-count)  # Current number of physical replicants
+    echo "$(get repl-mach-prefix)$(($curcount + $1))"
+}
+
+function copy-to-physical-replicant {
+    local srcdir="/opt/bb/var/cdb2/$1"
+    local dstdir="/opt/bb/var/cdb2/$1$2"
+    lrl="$srcdir/$1.lrl"
+    srccfg="/opt/bb/etc/cdb2/config.d/$1.cfg"
+    dstcfg="/opt/bb/etc/cdb2/config.d/$1$2.cfg"
+    ssh $2 rm -rf $dstdir
+    scp $srccfg $2:$dstcfg > /dev/null
+    # TODO: Pass a list of all the machines in the cluster
+    copycomdb2 -H $1$2 -y @$(hostname) $lrl $2:$dstdir $2:$dstdir
+}
+
+function add-replicant {
+    local db=$(get defaultdb)
+    local n=$1
+
+    [[ $n -lt 1 ]] && n=$(get add-repl-count)
+    [[ $n -lt 1 ]] && usage
+
+    put add-repl-count $n
+
+    # Run the physical replicant containers
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-next-container-name $i)
+
+        local dbfs=""
+        if [[ $persist -eq 1 ]]; then
+            dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
+        else
+            dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
+        fi
+
+        docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
+            -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+            --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+    done
+    wait
+
+    # Copy data from m0
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-next-container-name $i)
+        docker exec --user $(id -u) $(container-name 0) ${HOME}/bin/cluster copy-to-physical-replicant $db $name
+        echo "copy-to-physical-replicant rc: $?"
+    done
+
+    # Start pmux and comdb2
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-next-container-name $i)
+
+        echo "starting pmux on $name"
+        docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+        sleep 1
+
+        echo "starting db on $name"
+        docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 ${db}${name} > ${dir}/persist/logs/${name}.${db} 2>&1 &
+    done
+
+    # Have added all the requested number of physical replicants
+    put add-repl-count 0
+
+    # Update the current number of physical replicants
+    local curcount=$(get current-repl-count)
+    put current-repl-count $(($curcount + $n))
+}
+
+function usage {
+    cat >&2 <<- EOF
+        Usage: cluster <cmd> [arg]
+
+        cmd list:
+            add-replicant [n] ----- Add n physical replicants
+            db [dbname] ----------- Start database cluster-wide
+            build ----------------- Build docker image
+            clean ----------------- Kill and remove containers
+            c|clnt [n] ------------ Get a shell on nth container
+            copy [dbname] --------- Copy db cluster-wide
+            copy-to-physical-replicant [dbname] [container] Copy db to physical replicant container
+            setup [dbname] -------- Create db and copy it cluster-wide
+            gdb [dbname] ---------- Start db under gdb cluster-wide
+            info  ----------------- Dump settings
+            init  ----------------- Wipe settings and start from scratch
+            kill  ----------------- Kill containers
+            pmux  ----------------- Start pmux cluster-wide
+            ps    ----------------- List containers
+            rm    ----------------- Remove containers
+            run <cluster-size> ---- Initial run of containers
+            status ---------------- Check container status
+            start ----------------- Start containers
+            stop  ----------------- Stop containers
+            test [n] -------------- Run tests n at a time (default 1)
+            tmux  ----------------- Container tmux panes
+            vg    ----------------- Start database under valgrind
+EOF
+    exit 1
 }
 
 if [[ ! -d "${dir}" ]]; then 
@@ -588,6 +685,7 @@ elif [[ "$1" == "clean" ]]; then
     clean-persist
     do_docker "rm"
     create-persist
+    put current-repl-count 0
 elif [[ "$1" == "run" ]]; then
     run $2
 elif [[ "$1" == "rm" ]] || [[ "$1" == "stop" ]] || [[ "$1" == "kill" ]] || [[ "$1" == "start" ]]; then
@@ -640,6 +738,10 @@ elif [[ "$1" == "ps" ]]; then
     docker ps -a
 elif [[ "$1" == "status" ]]; then
     docker-status
+elif [[ "$1" == "add-replicant" ]]; then
+    add-replicant $2
+elif [[ "$1" == "copy-to-physical-replicant" ]]; then
+    copy-to-physical-replicant $2 $3
 else
     usage
 fi
