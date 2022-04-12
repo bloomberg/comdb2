@@ -592,11 +592,12 @@ function add-replicant {
     [[ $n -lt 1 ]] && n=$(get add-repl-count)
     [[ $n -lt 1 ]] && usage
 
+    echo "setting up $n physical replicants"
+
     put add-repl-count $n
 
-    declare -a wait_pids
-
     # Run the physical replicant containers
+    declare -a wait_pids
     for ((i=0;i<$n;++i)); do
         name=$(repl-next-container-name $i)
 
@@ -615,40 +616,46 @@ function add-replicant {
     wait ${wait_pids[@]}
 
     # Wait for cluster node to start
-    for i in `seq 1 60`; do
+    success=0
+    for i in `seq 1 10`; do
         res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
 	if [[ -n ${res} ]]; then
+            success=1
 	    break
 	fi
 	echo "$i: cluster not ready, waiting.."
 	sleep 2
     done
 
-    # Copy data from m0
+    if [[ $success -eq 0 ]]; then
+        echo "FATAL: cluster not up"
+	exit 1
+    fi
+
+    # Copy data from m0 to physical replicant containers
     for ((i=0;i<$n;++i)); do
-        name=$(repl-next-container-name $i)
+        name=$(repl-next-container-name 0)
+        echo -n "$name "
+
         docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster copy-to-physical-replicant $db $name
-        echo "copy-to-physical-replicant rc: $?"
+	rc=$?
+	if [[ $rc -eq 0 ]]; then
+
+            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+            sleep 1
+
+            docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 ${db}${name} > ${dir}/persist/logs/${name}.${db} 2>&1 &
+	else
+	    echo "FATAL: copycomdb2 failed (rc: $rc, src: $(container-name 0), dst: $name)"
+	    exit 1
+        fi
+
+        cnt=$(get add-repl-count)
+        put add-repl-count $((cnt-1))
+        cnt=$(get current-repl-count)
+        put current-repl-count $((cnt+1))
     done
-
-    # Start pmux and comdb2
-    for ((i=0;i<$n;++i)); do
-        name=$(repl-next-container-name $i)
-
-        echo "starting pmux on $name"
-        docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
-        sleep 1
-
-        echo "starting db on $name"
-        docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 ${db}${name} > ${dir}/persist/logs/${name}.${db} 2>&1 &
-    done
-
-    # Have added all the requested number of physical replicants
-    put add-repl-count 0
-
-    # Update the current number of physical replicants
-    local curcount=$(get current-repl-count)
-    put current-repl-count $(($curcount + $n))
+    echo ""
 }
 
 function usage {
