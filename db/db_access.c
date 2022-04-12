@@ -338,9 +338,23 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     return 0;
 }
 
+static int check_tag_access(struct ireq *iq) {
+    if ((gbl_uses_password || gbl_uses_externalauth) && !gbl_unauth_tag_access) {
+        reqerrstr(iq, ERR_ACCESS,
+                  "Tag access denied for table %s from %s\n",
+                  iq->usedb->tablename, iq->corigin);
+        return ERR_ACCESS;
+    }
+    return 0;
+}
+
 int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
 {
     int rc = 0;
+
+    rc = check_tag_access(iq);
+    if (rc)
+        return rc;
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(iq->dbenv->bdb_env, trans,
@@ -360,6 +374,10 @@ int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
 int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
 {
     int rc = 0;
+
+    rc = check_tag_access(iq);
+    if (rc)
+        return rc;
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(iq->dbenv->bdb_env, trans,
