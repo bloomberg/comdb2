@@ -3493,7 +3493,11 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     if (clnt->isselect || is_with_statement(clnt->sql)) {
         set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     }
-    clnt->has_recording |= v->recording;
+    if (clnt->in_client_trans) {
+        clnt->has_recording |= v->recording;
+    } else {
+        clnt->has_recording = v->recording;
+    }
     clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
