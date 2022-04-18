@@ -1346,6 +1346,9 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                clnt->ctrl_sqlengine, file, line);
     }
 
+    clnt->sqlengine_state_file = file;
+    clnt->sqlengine_state_line = line;
+    clnt->last_sqlengine_state = clnt->ctrl_sqlengine;
     clnt->ctrl_sqlengine = newstate;
 }
 
