@@ -24,6 +24,7 @@
 #include "fdb_fend.h"
 #include "views.h"
 #include "logmsg.h"
+#include "reqlog.h"
 
 int gbl_client_queued_slow_seconds = 0;
 int gbl_client_running_slow_seconds = 0;
@@ -369,8 +370,7 @@ static void *watchdog_thread(void *arg)
             }
         }
 
-        int log_long_running_sql_statements();
-        log_long_running_sql_statements();
+        reqlog_long_running_sql_statements();
 
         /* we use counter to downsample the run events for lower frequence
            tasks, like deadlock detector */

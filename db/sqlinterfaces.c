@@ -4283,6 +4283,45 @@ check_version:
     return rc;
 }
 
+int done_cb_evbuffer(struct sqlclntstate *clnt)
+{
+    if (clnt->query_rc == CDB2ERR_IO_ERROR) { /* dispatch timed out */
+        return -1;
+    }
+    if (clnt->osql.replay == OSQL_RETRY_DO) {
+        plugin_func *save_cb = clnt->done_cb;
+        clnt->done_cb = NULL;
+        int rc  = srs_tran_replay_inline(clnt);
+        if (rc && !clnt->query_rc) {
+            clnt->query_rc = rc;
+        }
+        clnt->done_cb = save_cb;
+    } else if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+        srs_tran_destroy(clnt);
+    }
+    Pthread_mutex_lock(&lru_evbuffers_mtx); /* protect log_long_running_stmts_evbuffer() */
+    clnt->sql = NULL;
+    clnt->done = 1;
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
+    if (!clnt->query_rc) {
+        return 0;
+    }
+    if (in_client_trans(clnt)) {
+        clnt->had_errors = 1;
+        return 0;
+    }
+#   if 0
+    /* sbuf2 clients drop connection here - connections are expensive */
+    if (appdata->want_query_effects) {
+        return 0;
+    }
+    return -1;
+#   else
+    reset_clnt_flags(clnt);
+    return 0;
+#   endif
+}
+
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
     if (clnt->done_cb) {
@@ -6538,6 +6577,38 @@ void free_connection_info(struct connection_info *info, int num_connections)
         /* state is static, don't free */
     }
     free(info);
+}
+
+static void log_long_running_stmts_evbuffer(void)
+{
+    struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
+        reqlog_long_running_clnt(clnt);
+    }
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
+}
+
+static void log_long_running_stmts_sbuf(void)
+{
+    /* FIXME: We traverse the list of clients while holding clnt_lk; clnt->done
+     * is set while holding clnt->wait_mutex and clnt->sql is cleared without
+     * holding any locks */
+    struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&clnt_lk);
+    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+        reqlog_long_running_clnt(clnt);
+    }
+    Pthread_mutex_unlock(&clnt_lk);
+}
+
+void log_long_running_sql_statements(void)
+{
+    if (gbl_libevent_appsock) {
+        log_long_running_stmts_evbuffer();
+    } else {
+        log_long_running_stmts_sbuf();
+    }
 }
 
 void add_sql_evbuffer(struct sqlclntstate *clnt)

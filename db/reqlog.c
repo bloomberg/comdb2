@@ -1881,20 +1881,16 @@ static int current_longest_long_request_ms = 0;
 static int current_shortest_long_request_ms = INT_MAX;
 static int last_current_long_request_epoch = 0;
 
-static void reqlog_log_longreq(struct reqlogger *logger, int rc, struct string_ref *sql)
+void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 {
-
+    if (clnt->done || !clnt->thd || !clnt->sql || !clnt->thd->logger) return;
+    struct reqlogger *logger = clnt->thd->logger;
+    struct string_ref *sql = clnt->sql_ref;
     static int long_request_logged_count = 0;
     static int last_long_request_logged_epoch = 0;
-
     int long_request_thresh;
 
-    if (!logger)
-        return;
-
-    logger->durationus =
-        (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
-
+    logger->durationus = (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
     int duration_ms = U2M(logger->durationus);
 
     if (logger->opcode == OP_SQL && !logger->iq) {
@@ -1936,7 +1932,7 @@ static void reqlog_log_longreq(struct reqlogger *logger, int rc, struct string_r
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
 
-    logger->rc = rc;
+    logger->rc = 0;
 
     reqlog_set_sql(logger, sql);
 
@@ -1992,24 +1988,14 @@ static void reqlog_log_longreq(struct reqlogger *logger, int rc, struct string_r
     put_ref(&logger->sql_ref);
 }
 
-extern pthread_mutex_t clnt_lk;
-extern LISTC_T(struct sqlclntstate) clntlist;
-
-void log_long_running_sql_statements()
+void reqlog_long_running_sql_statements(void)
 {
-    struct sqlclntstate *clnt;
     current_long_request_count = 0;
     current_long_request_duration_ms = 0;
     current_longest_long_request_ms = 0;
     current_shortest_long_request_ms = INT_MAX;
 
-    Pthread_mutex_lock(&clnt_lk);
-    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
-        if (!clnt->done && clnt->thd != NULL && clnt->sql) {
-            reqlog_log_longreq(clnt->thd->logger, 0, clnt->sql_ref);
-        }
-    }
-    Pthread_mutex_unlock(&clnt_lk);
+    log_long_running_sql_statements();
 
     if (((comdb2_time_epoch() - last_current_long_request_epoch) % gbl_longreq_log_freq_sec) == 0) {
         if ((current_long_request_count > 0) &&
