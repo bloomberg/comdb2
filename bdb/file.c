@@ -856,7 +856,7 @@ int bdb_rename_file_versioning_table(bdb_state_type *bdb_state,
     orig_name = bdb_state->name;
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                retries);
         return -1;

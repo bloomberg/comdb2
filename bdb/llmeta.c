@@ -1386,7 +1386,7 @@ int bdb_llmeta_set_tables(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         goto cleanup;
     }
@@ -1532,7 +1532,7 @@ retry:
     /* handle return codes */
     if (rc && *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -1678,7 +1678,7 @@ static int bdb_new_file_version(
 
 retry:
 
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_INFO, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -1894,7 +1894,7 @@ int bdb_chg_file_versions(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2089,7 +2089,7 @@ bdb_set_pagesize(tran_type *input_trans, /* if this is !NULL it will be used as
         buf_put(&pagesize, sizeof(pagesize), p_pgsz_buf, p_pgsz_buf_end);
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2253,7 +2253,7 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2425,7 +2425,7 @@ retry:
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -2655,7 +2655,7 @@ retry:
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK && !tran) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -2725,7 +2725,7 @@ int bdb_add_dummy_llmeta_wait(int wait_for_seqnum)
     tran_type *tran;
     int rc;
     int bdberr;
-    int retries = 500;
+    int retries = gbl_maxretries;
     uint8_t key[LLMETA_IXLEN] = {0};
 
     if (!bdb_have_llmeta()) {
@@ -2889,7 +2889,7 @@ int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
 /* csc2_vers added to key below */
 retry:
 
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -3053,7 +3053,7 @@ retry:
             if (trans)
                 return -1;
 
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
@@ -3205,7 +3205,7 @@ retry:
         rc = bdb_get_csc2_highest(tran, db_name, &csc2_vers, bdberr);
         if (rc || *bdberr != BDBERR_NOERROR) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                if (++retries < 500 /*gbl_maxretries*/)
+                if (++retries < gbl_maxretries)
                     goto retry;
 
                 logmsg(LOGMSG_ERROR, "%s:*ERROR* bdb_get_csc2_highest too much "
@@ -3238,7 +3238,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -3479,7 +3479,7 @@ int bdb_set_in_schema_change(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d "
                         "retries\n",
                 __func__, retries);
@@ -3618,7 +3618,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -3987,7 +3987,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                retries);
         return -1;
@@ -4288,7 +4288,7 @@ static int bdb_set_high_genid_int(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -4473,7 +4473,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -4629,7 +4629,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
@@ -4712,7 +4712,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
@@ -5529,7 +5529,7 @@ static int bdb_tbl_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -5651,7 +5651,7 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -5779,7 +5779,7 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -5870,7 +5870,7 @@ int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -6148,7 +6148,7 @@ static int bdb_tbl_access_delete(bdb_state_type *bdb_state,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -6295,7 +6295,7 @@ retry:
     /* check for errors */
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_list_exact_fetch too much "
@@ -6888,7 +6888,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -6974,7 +6974,7 @@ int bdb_set_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -7127,7 +7127,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -7192,7 +7192,7 @@ retry:
 
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -7262,7 +7262,7 @@ int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr)
     llmeta_rowlocks_state_data_type_put(&rowlocks_data, p_buf, p_buf_end);
 
 retry:
-    if (++retries >= 500) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -7379,7 +7379,7 @@ int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -7689,10 +7689,10 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
 
     retries = 0;
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         if (errstr)
-            *errstr = strdup("failed to commit transaction, tried 500 times");
+            *errstr = strdup("failed to commit transaction, hit max retries");
         return -1;
     }
 
@@ -7787,13 +7787,13 @@ retry:
                              LLMETA_TABLENAME_ALIAS_DATA_LEN, &fndlen, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                     retries);
             if (errstr)
-                *errstr = strdup("failed to read record, tried 500 times");
+                *errstr = strdup("failed to read record, hit max retries");
 
             free(data_buf);
             return NULL;
@@ -7837,11 +7837,11 @@ int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr)
 
     retries = 0;
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s:%d giving up after %d retries\n", __func__,
                 __LINE__, retries);
         if (errstr)
-            *errstr = strdup("failed to commit transaction, tried 500 times");
+            *errstr = strdup("failed to commit transaction, hit max retries");
         return -1;
     }
 
@@ -8233,7 +8233,7 @@ retry:
 
         /* errored case */
         if (tran == NULL && *bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
