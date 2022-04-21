@@ -4325,7 +4325,7 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
     if (clnt->done_cb) {
-        clnt->done_cb(clnt);
+        clnt->done_cb(clnt); /* newsql_done_cb */
     } else {
         Pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;

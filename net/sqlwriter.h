@@ -62,6 +62,7 @@ int sql_peer_check(struct sqlwriter *);
 struct event_base *sql_wrbase(struct sqlwriter *);
 struct evbuffer *sql_wrbuf(struct sqlwriter *);
 
+int done_cb_evbuffer(struct sqlclntstate *);
 int recover_deadlock_evbuffer(struct sqlclntstate *);
 
 void sql_enable_ssl(struct sqlwriter *, SSL *);

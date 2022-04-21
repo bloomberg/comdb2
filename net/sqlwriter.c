@@ -419,12 +419,19 @@ int sql_peer_check(struct sqlwriter *writer)
 
 int sql_done(struct sqlwriter *writer)
 {
+    struct sqlclntstate *clnt = writer->clnt;
+    if (done_cb_evbuffer(clnt) != 0) {
+        return -1;
+    }
     Pthread_mutex_lock(&writer->wr_lock);
     writer->done = 1;
     if (writer->bad) {
         Pthread_mutex_unlock(&writer->wr_lock);
         return -1;
-    } else if (evbuffer_get_length(writer->wr_buf)) {
+    }
+    sql_disable_heartbeat(writer);
+    sql_disable_timeout(writer);
+    if (evbuffer_get_length(writer->wr_buf)) {
         Pthread_mutex_unlock(&writer->wr_lock);
         return sql_flush(writer);
     }

@@ -97,27 +97,25 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     if (appdata->ping) {
         event_free(appdata->ping->ev);
         free(appdata->ping);
-        appdata->ping = NULL;
     }
     if (appdata->cleanup_ev) {
         event_free(appdata->cleanup_ev);
-        appdata->cleanup_ev = NULL;
     }
     if (appdata->rd_hdr_ev) {
         event_free(appdata->rd_hdr_ev);
-        appdata->rd_hdr_ev = NULL;
     }
     if (appdata->rd_payload_ev) {
         event_free(appdata->rd_payload_ev);
-        appdata->rd_payload_ev = NULL;
     }
     if (appdata->rd_buf) {
         evbuffer_free(appdata->rd_buf);
-        appdata->rd_buf = NULL;
     }
     if (appdata->ssl_data) {
         disable_ssl_evbuffer(appdata);
         free(appdata->ssl_data);
+    }
+    if (appdata->query) {
+        cdb2__query__free_unpacked(appdata->query, &pb_alloc);
     }
     free_newsql_appdata(clnt);
     sqlwriter_free(appdata->writer);
@@ -140,24 +138,6 @@ static int newsql_flush_evbuffer(struct sqlclntstate *clnt)
     return sql_flush(appdata->writer);
 }
 
-static void newsql_read_again(int dummyfd, short what, void *arg)
-{
-    struct newsql_appdata_evbuffer *appdata = arg;
-    sql_disable_heartbeat(appdata->writer);
-    sql_disable_timeout(appdata->writer);
-    struct sqlclntstate *clnt = &appdata->clnt;
-    if (clnt->query_rc) {
-        if (in_client_trans(clnt)) {
-            clnt->had_errors = 1;
-        } else {
-            /* newsql over sbuf and fastsql drop the connection in this
-             * situation - we can do better; connections are expensive */
-            reset_clnt_flags(clnt);
-        }
-    }
-    rd_hdr(-1, 0, appdata);
-}
-
 static void newsql_reset_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
     appdata->initial = 1;
@@ -167,24 +147,14 @@ static void newsql_reset_evbuffer(struct newsql_appdata_evbuffer *appdata)
 static int newsql_done_cb(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    if (clnt->query_rc == CDB2ERR_IO_ERROR) { /* dispatch timed out */
-        newsql_cleanup(appdata);
-        return 0;
-    }
-    if (clnt->osql.replay == OSQL_RETRY_DO) {
-        clnt->done_cb = NULL;
-        srs_tran_replay_inline(clnt);
-        clnt->done_cb = newsql_done_cb;
-    } else if (clnt->osql.history && clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        clnt->sql = NULL;
-        srs_tran_destroy(clnt);
-    } else if (appdata->query) {
-        clnt->sql = NULL;
-        cdb2__query__free_unpacked(appdata->query, &pb_alloc);
-        appdata->query = NULL;
-    }
     if (sql_done(appdata->writer) == 0) {
-        newsql_read_again(-1, 0, appdata);
+        if (clnt->added_to_hist) {
+            clnt->added_to_hist = 0;
+        } else if (appdata->query) {
+            cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+        }
+        appdata->query = NULL;
+        rd_hdr(-1, 0, appdata);
     } else {
         newsql_cleanup(appdata);
     }
@@ -463,8 +433,9 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
     }
 out:
     cdb2__query__free_unpacked(query, &pb_alloc);
+    appdata->query = NULL;
     if (do_read) {
-        evtimer_once(appdata->base, newsql_read_again, appdata);
+        evtimer_once(appdata->base, rd_hdr, appdata);
     } else {
         newsql_cleanup(appdata);
     }
@@ -733,6 +704,10 @@ hdr:
 static void *newsql_destroy_stmt_evbuffer(struct sqlclntstate *clnt, void *arg)
 {
     struct newsql_stmt *stmt = arg;
+    struct newsql_appdata_evbuffer *appdata = clnt->appdata;
+    if (appdata->query == stmt->query) {
+        appdata->query = NULL;
+    }
     cdb2__query__free_unpacked(stmt->query, &pb_alloc);
     free(stmt);
     return NULL;
