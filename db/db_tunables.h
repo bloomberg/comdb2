@@ -812,7 +812,8 @@ REGISTER_TUNABLE("no_null_blob_fix", "Disables 'null_blob_fix'",
                  TUNABLE_BOOLEAN, &gbl_disallow_null_blobs,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("norcache", "Disables 'rcache'", TUNABLE_BOOLEAN, &gbl_rcache,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | READONLY | NOARG | EXPERIMENTAL, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("noreallearly", "Disables 'reallearly'", TUNABLE_BOOLEAN,
                  &gbl_reallyearly, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -987,9 +988,9 @@ REGISTER_TUNABLE("random_lock_release_interval", NULL, TUNABLE_INTEGER,
                  NULL);
 REGISTER_TUNABLE("rangextlim", NULL, TUNABLE_INTEGER, &gbl_rangextunit,
                  READONLY | NOZERO, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE(
-    "rcache", "Keep a lookaside cache of root pages for B-trees. (Default: on)",
-    TUNABLE_BOOLEAN, &gbl_rcache, READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rcache", "Keep a lookaside cache of root pages for B-trees. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_rcache, READONLY | NOARG | EXPERIMENTAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reallearly",
                  "Acknowledge as soon as a commit record is seen by the "
                  "replicant (before it's applied). This effectively makes "

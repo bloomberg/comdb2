@@ -399,7 +399,6 @@ static char *legacy_options[] = {
     "nocrc32c",
     "nokeycompr",
     "no_null_blob_fix",
-    "norcache",
     "no_static_tag_blob_fix",
     "nullfkey off",
     "nullsort high",
