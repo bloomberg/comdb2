@@ -123,7 +123,7 @@ comdb2_metric gbl_metrics[] = {
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_timeouts, NULL},
     {"connection_to_sql_ratio", "Connection to SQL ratio", STATISTIC_DOUBLE,
-     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_to_sql_ratio, NULL},
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.connection_to_sql_ratio, NULL},
     {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cpu_percent, NULL},
     {"current_connections", "Number of current connections", STATISTIC_INTEGER,
