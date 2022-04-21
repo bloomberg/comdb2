@@ -639,12 +639,12 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (appdata->query) {
             /* cleanup if we did not add to history (single stmt or select inside a tran) */
             cdb2__query__free_unpacked(appdata->query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-            appdata->query = NULL;
             /* clnt.sql points into the protobuf unpacked buffer, which becomes
              * invalid after cdb2__query__free_unpacked. Reset the pointer here.
              */
             clnt.sql = NULL;
         }
+        appdata->query = NULL;
 
         query = read_newsql_query(dbenv, &clnt, sb);
     }
