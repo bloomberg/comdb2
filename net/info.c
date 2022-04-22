@@ -31,6 +31,9 @@
 #include "net_int.h"
 #include "util.h"
 
+#include "mem_net.h"
+#include "mem_override.h"
+
 struct timebuf {
     struct tm tm;
     char s[64];
