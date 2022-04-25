@@ -26,7 +26,7 @@
 #include "sc_csc2.h"
 
 extern int gbl_is_physical_replicant;
-
+extern int timepart_is_timepart(const char *name, int lock);
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
@@ -228,8 +228,17 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db;
     set_empty_options(s);
 
-    if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
+    if(!s->is_osql){
+        // from comdb2sc.tsk
+        if(timepart_is_timepart(s->tablename,0)){
+            // We have a time partition with the same table name
+            sc_errf(s, "A Time partition with the name %s already exists\n", s->tablename);
+            logmsg(LOGMSG_ERROR, "Time partition with the name %s already exists\n", s->tablename);
+            return SC_TABLE_ALREADY_EXIST;
+        }
+    }
 
+    if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
     if ((db = get_dbtable_by_name(s->tablename))) {
         sc_errf(s, "Table %s already exists\n", s->tablename);
         logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->tablename);
