@@ -632,6 +632,14 @@ function add-replicant {
 	exit 1
     fi
 
+    res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select * from comdb2_tables where tablename = 'comdb2_physreps'" 2> /dev/null)
+    if [[ -z ${res} ]]; then
+        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create table comdb2_physreps(dbname cstring(20), host cstring(100), tier int, lsn cstring(60), last_keepalive datetime, state cstring(10))"
+        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physreps(dbname, host, tier)"
+        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create table comdb2_physrep_connections(dbname cstring(20), host cstring(100), tier int, source_dbname cstring(20), source_host cstring(100), source_tier int)"
+        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physrep_connections(dbname, host, tier, source_dbname, source_host, source_tier)"
+    fi
+
     # Copy data from m0 to physical replicant containers
     for ((i=0;i<$n;++i)); do
         name=$(repl-next-container-name 0)
