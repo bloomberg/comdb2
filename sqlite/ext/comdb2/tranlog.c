@@ -231,8 +231,6 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                       sleepms = 10000;
               }
           } while ((rc = pCur->logc->get(pCur->logc, &pCur->curLsn, &pCur->data, DB_NEXT)));
-          rc = pCur->logc->get(pCur->logc, &pCur->curLsn,
-                  &pCur->data, DB_NEXT) != 0;
       } else {
           pCur->hitLast = 1;
       }
