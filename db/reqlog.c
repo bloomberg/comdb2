@@ -3041,6 +3041,7 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
 inline void reqlog_set_error(struct reqlogger *logger, const char *error,
                              int error_code)
 {
+    free(logger->error);
     logger->error = strdup(error);
     logger->error_code = error_code;
 }
