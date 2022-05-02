@@ -5024,8 +5024,6 @@ backout:
                                                      &(iq->arr->file),
                                                      &(iq->arr->offset), 0))) {
             numerrs = 1;
-            currangearr_free(iq->arr);
-            iq->arr = NULL;
             rc = ERR_NOTSERIAL;
             reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
         }
@@ -5035,9 +5033,6 @@ backout:
                                   &(iq->selectv_arr->file),
                                   &(iq->selectv_arr->offset), 0)) {
             numerrs = 1;
-            currangearr_free(iq->selectv_arr);
-            iq->selectv_arr = NULL;
-
             /* verify error */
             err.ixnum = -1; /* data */
             err.errcode = ERR_CONSTR;
@@ -5046,6 +5041,12 @@ backout:
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
         } 
     }
+
+    /* Cursor ranges need freeing on error, too. */
+    currangearr_free(iq->arr);
+    iq->arr = NULL;
+    currangearr_free(iq->selectv_arr);
+    iq->selectv_arr = NULL;
 
     /* starting writes, no more reads */
     iq->p_buf_in = NULL;
