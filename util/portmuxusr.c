@@ -1479,6 +1479,12 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                             clientfd = -1;
                         }
                     }
+                    socklen_t addrlen = sizeof(struct sockaddr_in);
+                    int rc = getpeername(clientfd, cliaddr, &addrlen);
+                    if (rc ) {
+                        close(clientfd);
+                        clientfd = -1;
+                    }
                 }
 
                 if (clientfd >= 0) {
