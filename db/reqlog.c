@@ -72,6 +72,7 @@
 
 #include "eventlog.h"
 #include "reqlog_int.h"
+#include "sp.h"
 
 #include <tohex.h>
 
@@ -1884,6 +1885,9 @@ static int current_shortest_long_request_ms;
 
 static void reqlog_log_longreq(struct sqlclntstate *clnt)
 {
+    if (has_consumer(clnt) == 1) {
+        return; /* Do not log consumers */
+    }
 
     struct reqlogger logger;
     memset(&logger, 0, sizeof(struct reqlogger));
