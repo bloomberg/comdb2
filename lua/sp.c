@@ -6931,3 +6931,7 @@ int is_pingpong(struct sqlclntstate *clnt)
 {
     return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
 }
+
+int has_consumer(struct sqlclntstate *clnt) {
+    return (clnt && clnt->sp && clnt->sp->have_consumer) ? 1 : 0;
+}
