@@ -1348,5 +1348,6 @@ int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
 int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
 
 void wait_for_transactions(void);
+char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen);
 
 #endif /* _SQL_H_ */
