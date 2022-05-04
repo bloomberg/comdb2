@@ -4682,9 +4682,9 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
 
     uuidstr_t us;
     char rqidinfo[40];
-    snprintf(rqidinfo, sizeof(rqidinfo), "rqid=%016llx %s appsock %u",
+    snprintf(rqidinfo, sizeof(rqidinfo), "rqid=%016llx %s appsock %" PRIxPTR,
              clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-             clnt->appsock_id);
+             (intptr_t)clnt->appsock_id);
     thrman_setid(thrman_self(), rqidinfo);
 
     return 0;

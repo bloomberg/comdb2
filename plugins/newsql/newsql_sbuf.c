@@ -522,8 +522,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
         dbenv->master != gbl_myhostname) {
         logmsg(LOGMSG_DEBUG,
-               "%s:%d td %u new query on replicant with sync none, dropping\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
+               "%s:%d td %" PRIxPTR "new query on replicant with sync none, dropping\n",
+               __func__, __LINE__, (intptr_t)pthread_self());
         return APPSOCK_RETURN_OK;
     }
 

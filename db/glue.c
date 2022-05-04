@@ -377,7 +377,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called\n", (intptr_t)pthread_self(), __func__);
     }
     out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
@@ -397,7 +397,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called\n", (intptr_t)pthread_self(), __func__);
     }
 
     out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
@@ -421,8 +421,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     iq->gluewhere = "bdb_tran_begin_snapisol";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
-               (int)pthread_self(), __func__, epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called with epoch=%d file=%d offset=%d\n",
+               (intptr_t)pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file,
                                         offset, is_ha_retry);
@@ -447,8 +447,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
     iq->gluewhere = "bdb_tran_begin";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
-               (int)pthread_self(), __func__, epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called with epoch=%d file=%d offset=%d\n",
+               (intptr_t)pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch,
                                             file, offset, is_ha_retry);
@@ -517,7 +517,7 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     else {
         bdb_tran_commit_logical_with_seqnum_size(
             bdb_handle, trans, blkseq, blklen, blkkey, blkkeylen,
-            (seqnum_type *)seqnum, &iq->txnsize, &bdberr);
+            (seqnum_type*)seqnum, &iq->txnsize, &bdberr);
     }
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size done";
     if (bdberr != 0) {

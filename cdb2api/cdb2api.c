@@ -34,6 +34,7 @@
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <inttypes.h>
 
 #include "cdb2api.h"
 
@@ -3591,7 +3592,7 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                              peer_ssl_mode *s_mode)
 {
     if (log_calls)
-        fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(), __func__,
+        fprintf(stderr, "td %" PRIxPTR "%s:%d\n", (intptr_t)pthread_self(), __func__,
                 __LINE__);
     int num_hosts = dbinfo_response->n_nodes;
     *num_valid_hosts = 0;
@@ -3638,8 +3639,8 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
             *master_node = *num_valid_hosts;
 
         if (log_calls)
-            fprintf(stderr, "td %d %s:%d, %d) host=%s(%d)%s\n",
-                    (uint32_t)pthread_self(), __func__, __LINE__,
+            fprintf(stderr, "td %" PRIxPTR "%s:%d, %d) host=%s(%d)%s\n",
+                    (intptr_t) pthread_self(), __func__, __LINE__,
                     *num_valid_hosts, valid_hosts[*num_valid_hosts],
                     valid_ports[*num_valid_hosts],
                     (*master_node == *num_valid_hosts) ? "*" : "");

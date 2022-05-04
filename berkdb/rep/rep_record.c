@@ -19,6 +19,7 @@ static const char revid[] =
 #include <strings.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <inttypes.h>
 #endif
 
 #include <stdlib.h>
@@ -153,8 +154,8 @@ int gbl_rep_process_msg_print_rc;
 		count++;															\
 		if (gbl_rep_process_msg_print_rc && ((now = time(NULL)) - lastpr)) {\
 			logmsg(LOGMSG_ERROR,											\
-				"td %u %s line %d from line %d returning %d, count=%u\n",	\
-				(uint32_t)pthread_self(), __func__, __LINE__, fromline,		\
+				"td %" PRIxPTR "%s line %d from line %d returning %d, count=%u\n",	\
+				(intptr_t)pthread_self(), __func__, __LINE__, fromline,		\
 				retrc, count);												\
 		}																	\
 		return retrc;														\
@@ -6737,9 +6738,9 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 													 &txn_rl_args)) != 0) {
 					if (gbl_extended_sql_debug_trace) {
 						logmsg(LOGMSG_USER,
-							   "td %u %s line %d lsn %d:%d "
+							   "td %" PRIxPTR "%s line %d lsn %d:%d "
 							   "txn_regop_rowlocks_read returns %d\n",
-							   (uint32_t)pthread_self(), __func__, __LINE__,
+							   (intptr_t)pthread_self(), __func__, __LINE__,
 							   lsn.file, lsn.offset, ret);
 					}
 					return (ret);
@@ -6747,10 +6748,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 
 				if (txn_rl_args->timestamp < epoch) {
 					if (gbl_extended_sql_debug_trace) {
-						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
+						logmsg(LOGMSG_USER, "td %" PRIxPTR "%s line %d lsn %d:%d "
 											"break-loop because timestamp "
 											"(%"PRIu64") < epoch (%d)\n",
-							   (uint32_t)pthread_self(), __func__, __LINE__,
+							   (intptr_t)pthread_self(), __func__, __LINE__,
 							   lsn.file, lsn.offset, txn_rl_args->timestamp,
 							   epoch);
 					}
@@ -6779,10 +6780,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					}
 
 					if (gbl_extended_sql_debug_trace) {
-						logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
+						logmsg(LOGMSG_USER, "td %" PRIxPTR "%s line %d lsn %d:%d "
 											"adding prev-lsn %d:%d at "
 											"index %d\n",
-							   (uint32_t)pthread_self(), __func__, __LINE__,
+							   (intptr_t)pthread_self(), __func__, __LINE__,
 							   lsn.file, lsn.offset, txn_rl_args->prev_lsn.file,
 							   txn_rl_args->prev_lsn.offset, *n_lsns);
 					}
@@ -6800,9 +6801,9 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 				if ((ret = __txn_regop_gen_read(dbenv, mylog.data,
 												&txn_gen_args)) != 0) {
 					if (gbl_extended_sql_debug_trace) {
-						fprintf(stderr, "td %u %s line %d lsn %d:%d"
+						fprintf(stderr, "td %" PRIxPTR "%s line %d lsn %d:%d"
 										"txn_regop_gen_read returns %d\n",
-								(uint32_t)pthread_self(), __func__, __LINE__,
+								(intptr_t)pthread_self(), __func__, __LINE__,
 								lsn.file, lsn.offset, ret);
 					}
 					return (ret);
@@ -6859,10 +6860,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 										if (gbl_extended_sql_debug_trace) {
 											logmsg(
 												LOGMSG_USER,
-												"td %u %s line %d lsn %d:%d "
+												"td %" PRIxPTR "%s line %d lsn %d:%d "
 												"adding prev-lsn %d:%d at "
 												"index %d\n",
-												(uint32_t)pthread_self(),
+												(intptr_t)pthread_self(),
 												__func__, __LINE__, lsn.file,
 												lsn.offset,
 												txn_gen_args->prev_lsn.file,
@@ -6880,9 +6881,9 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					if ((ret = __txn_regop_read(dbenv, mylog.data,
 												&txn_args)) != 0) {
 						if (gbl_extended_sql_debug_trace) {
-							logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d"
+							logmsg(LOGMSG_USER, "td %" PRIxPTR "%s line %d lsn %d:%d"
 												"txn_regop_read returns %d\n",
-								   (uint32_t)pthread_self(), __func__, __LINE__,
+								   (intptr_t)pthread_self(), __func__, __LINE__,
 								   lsn.file, lsn.offset, ret);
 						}
 						return (ret);
@@ -6896,10 +6897,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 						txn_args->timestamp, epoch);
 #endif
 						if (gbl_extended_sql_debug_trace) {
-							logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
+							logmsg(LOGMSG_USER, "td %" PRIxPTR "%s line %d lsn %d:%d "
 												"break-loop because timestamp "
 												"(%d) < epoch (%d)\n",
-								   (uint32_t)pthread_self(), __func__, __LINE__,
+								   (intptr_t)pthread_self(), __func__, __LINE__,
 								   lsn.file, lsn.offset, txn_args->timestamp,
 								   epoch);
 						}
@@ -6942,10 +6943,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 
 										if (gbl_extended_sql_debug_trace) {
 											logmsg(LOGMSG_USER,
-												   "td %u %s line %d lsn %d:%d "
+												   "td %" PRIxPTR "%s line %d lsn %d:%d "
 												   "adding prev-lsn %d:%d at "
 												   "index %d\n",
-												   (uint32_t)pthread_self(),
+												   (intptr_t)pthread_self(),
 												   __func__, __LINE__, lsn.file,
 												   lsn.offset,
 												   txn_args->prev_lsn.file,
@@ -6975,8 +6976,8 @@ err:
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0) {
 		ret = t_ret;
 		if (gbl_extended_sql_debug_trace) {
-			logmsg(LOGMSG_USER, "td %u %s line %d log_c_close error: %d\n",
-				   (uint32_t)pthread_self(), __func__, __LINE__, ret);
+			logmsg(LOGMSG_USER, "td %" PRIxPTR "%s line %d log_c_close error: %d\n",
+				   (intptr_t)pthread_self(), __func__, __LINE__, ret);
 		}
 	}
 

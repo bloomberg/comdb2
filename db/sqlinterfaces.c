@@ -4334,10 +4334,10 @@ void signal_clnt_as_done(struct sqlclntstate *clnt)
     }
 }
 
-void thr_set_user(const char *label, int id)
+void thr_set_user(const char *label, intptr_t id)
 {
     char thdinfo[40];
-    snprintf(thdinfo, sizeof(thdinfo), "appsock %u", id);
+    snprintf(thdinfo, sizeof(thdinfo), "appsock %" PRIxPTR, id);
     thrman_setid(thrman_self(), thdinfo);
 }
 
@@ -4363,7 +4363,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     if (!clnt->exec_lua_thread)
         abort();
 
-    thr_set_user("appsock", clnt->appsock_id);
+    thr_set_user("appsock", (intptr_t)clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
@@ -4621,7 +4621,7 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     sqlthd->clnt = clnt;
     clnt->thd = thd;
 
-    thr_set_user("appsock", clnt->appsock_id);
+    thr_set_user("appsock", (intptr_t)clnt->appsock_id);
 
     clnt->added_to_hist = clnt->isselect = 0;
     clnt_change_state(clnt, CONNECTION_RUNNING);

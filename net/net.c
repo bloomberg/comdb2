@@ -5379,8 +5379,8 @@ static void *accept_thread(void *arg)
 
     netinfo_ptr->accept_thread_arch_tid = getarchtid();
 
-    logmsg(LOGMSG_INFO, "%s: starting, tid=%d.\n", __func__,
-            netinfo_ptr->accept_thread_arch_tid);
+    logmsg(LOGMSG_INFO, "%s: starting, tid=%" PRIxPTR ".\n", __func__,
+           (intptr_t) netinfo_ptr->accept_thread_arch_tid);
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
@@ -5659,9 +5659,9 @@ static void *heartbeat_send_thread(void *arg)
     netinfo_ptr = (netinfo_type *)arg;
 
     netinfo_ptr->heartbeat_send_thread_arch_tid = getarchtid();
-    logmsg(LOGMSG_INFO, "heartbeat send thread starting.  time=%d.  tid=%d\n",
+    logmsg(LOGMSG_INFO, "heartbeat send thread starting.  time=%d.  tid=%" PRIxPTR "\n",
             netinfo_ptr->heartbeat_send_time,
-            netinfo_ptr->heartbeat_send_thread_arch_tid);
+           (intptr_t) netinfo_ptr->heartbeat_send_thread_arch_tid);
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
@@ -5875,9 +5875,9 @@ static void *heartbeat_check_thread(void *arg)
 
     netinfo_ptr = (netinfo_type *)arg;
     netinfo_ptr->heartbeat_check_thread_arch_tid = getarchtid();
-    logmsg(LOGMSG_INFO, "heartbeat check thread starting.  time=%d.  tid=%d\n",
+    logmsg(LOGMSG_INFO, "heartbeat check thread starting.  time=%d.  tid=%" PRIxPTR "\n",
             netinfo_ptr->heartbeat_check_time,
-            netinfo_ptr->heartbeat_check_thread_arch_tid);
+            (intptr_t)netinfo_ptr->heartbeat_check_thread_arch_tid);
 
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);

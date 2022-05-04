@@ -29,6 +29,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #if defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
 #  include <execinfo.h>
@@ -55,8 +56,8 @@ static void cheapstub(FILE *f)
     int n = backtrace(buf, size);
 
     logmsgf(LOGMSG_USER, f,
-            "tid=%p(%u) stack trace, run addr2line -f -e <exe> on: \n",
-            (void *)tid, (uint32_t)tid);
+            "tid=%p %" PRIxPTR " stack trace, run addr2line -f -e <exe> on: \n",
+            (void *)tid, (intptr_t)tid);
     for  (int i = 2; i < n; ++i) {
         logmsgf(LOGMSG_USER, f, "%p ", buf[i]);
     }
