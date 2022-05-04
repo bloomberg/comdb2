@@ -315,7 +315,7 @@ static int sleep_sec = 5;
 static int stop;
 static void *test_get_put(void *_mode)
 {
-    db_lockmode_t mode = (db_lockmode_t)_mode;
+    db_lockmode_t mode = (db_lockmode_t)(intptr_t)_mode;
     uint64_t start, end;
     u_int32_t locker;
     DB_LOCK lock;
@@ -824,7 +824,7 @@ static void stripe(void)
 #define shuffle(x)                                                                                                     \
     do {                                                                                                               \
         int i;                                                                                                         \
-        unsigned int seed = (int)pthread_self();                                                                       \
+        unsigned int seed = (int)(intptr_t) pthread_self();                                                            \
         for (i = 0; i < arraylen(x) - 1; ++i) {                                                                        \
             int j = i + (rand_r(&seed) % (arraylen(x) - i));                                                           \
             uint8_t tmp[sizeof(x[0])];                                                                                 \

@@ -375,7 +375,7 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
         int fd = thr->fd;
         int pos = 0;
 
-        SNPRINTF(buf, szbuf, pos, "tid %u:%s", thr->archtid,
+        SNPRINTF(buf, szbuf, pos, "tid %" PRIxPTR ":%s", (intptr_t)thr->archtid,
                  thrman_type2a(thr->type));
 
         if (fd >= 0) {

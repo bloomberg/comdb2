@@ -202,7 +202,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     struct sqlclntstate *clnt = (struct sqlclntstate *)work;
     int rc;
 
-    thr_set_user("shard thread", clnt->appsock_id);
+    thr_set_user("shard thread", (intptr_t) clnt->appsock_id);
 
     rdlock_schema_lk();
     sqlengine_prepare_engine(thd, clnt, 0);

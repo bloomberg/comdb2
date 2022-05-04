@@ -1480,7 +1480,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                         }
                     }
                     socklen_t addrlen = sizeof(struct sockaddr_in);
-                    int rc = getpeername(clientfd, cliaddr, &addrlen);
+                    int rc = getpeername(clientfd, (struct sockaddr*) cliaddr, &addrlen);
                     if (rc ) {
                         close(clientfd);
                         clientfd = -1;

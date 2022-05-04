@@ -5371,7 +5371,7 @@ static void run_once(void)
 static void deadlock_happened(struct berkdb_deadlock_info *deadlock_info)
 {
     if (debug_switch_verbose_deadlocks_log())
-        ctrace("deadlk %u %x\n", deadlock_info->lid, (unsigned)pthread_self());
+        ctrace("deadlk %u %" PRIxPTR "\n", deadlock_info->lid, (intptr_t)pthread_self());
 }
 
 /* clone clone_bdb_state and then copy over the data file pointers from
