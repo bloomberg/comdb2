@@ -23,6 +23,7 @@
 #include "views.h"
 
 int gbl_check_access_controls;
+extern ssl_mode gbl_client_ssl_mode;
 
 static void check_auth_enabled(struct dbenv *dbenv)
 {
@@ -343,6 +344,11 @@ static int check_tag_access(struct ireq *iq) {
         reqerrstr(iq, ERR_ACCESS,
                   "Tag access denied for table %s from %s\n",
                   iq->usedb->tablename, iq->corigin);
+        return ERR_ACCESS;
+    }
+
+    if (gbl_client_ssl_mode >= SSL_REQUIRE) {
+        reqerrstr(iq, ERR_ACCESS, "The database requires SSL connections\n");
         return ERR_ACCESS;
     }
     return 0;
