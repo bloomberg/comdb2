@@ -21,6 +21,68 @@ int populate_settings(struct sqlclntstate *clnt, char *set_cmd)
     return populating;
 }
 
+int set_spname(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+
+int set_want_stored_procedure_trace(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_bdb_osql_trak(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_verifyretry_off(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_statement_query_effects(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_get_cost(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_is_explain(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_osql_max_trans(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_group_concat_mem_limit(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_planner_effort(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_appdata(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_admin(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_is_readonly(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_is_expert(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+int set_is_fast_expert(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
+{
+    return 0;
+}
+
 int set_authgen(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
 {
     return 0;
