@@ -592,6 +592,19 @@ static int is_sqlite_db_init(BtCursor *pCur)
     return 0;
 }
 
+int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
+{
+    extern int gbl_epoch_time;
+    if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
+        clnt->last_check_time = gbl_epoch_time;
+        if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
+            logmsg(LOGMSG_INFO, "Peer dropped connection %s:%d\n", file, line);
+            clnt->stop_this_statement = 1;
+            return 1;
+        }
+    }
+    return 0;
+}
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
@@ -668,14 +681,9 @@ int sql_tick(struct sql_thread *thd)
         }
     }
 
-    if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
-        clnt->last_check_time = gbl_epoch_time;
-        if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
-            logmsg(LOGMSG_INFO, "Peer dropped connection\n");
-            rc = SQLITE_ABORT;
-            clnt->stop_this_statement = 1;
-            goto done;
-        }
+    if (check_sql_client_disconnect(clnt, __FILE__, __LINE__)) {
+        rc = SQLITE_ABORT;
+        goto done;
     }
 
     if (clnt->limits.maxcost && (thd->cost > clnt->limits.maxcost)) {

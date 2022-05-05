@@ -844,6 +844,13 @@ wait_for_others:
                 return rc;
             }
         }
+
+        /* did client disconnect? */
+        if (check_sql_client_disconnect(clnt, __FILE__, __LINE__)) {
+            _signal_children_master_is_done(conns);
+            return SQLITE_EARLYSTOP_DOHSQL;
+        }
+
         goto wait_for_others;
     }
 
@@ -1965,6 +1972,18 @@ retry_row:
                    __func__, rc);
             return rc;
         }
+    }
+
+    /* did client disconnect? */
+    if (check_sql_client_disconnect(clnt, __FILE__, __LINE__)) {
+        _signal_children_master_is_done(conns);
+        return SQLITE_EARLYSTOP_DOHSQL;
+    }
+
+    /* it is possible that the row the coordinator owns takes all
+     * capacity of the source shard, release it here */
+    if (rc == SQLITE_OK && conns->active > conns->filling) {
+        donate_current_row(conns, 0);
     }
 
     goto retry_row;

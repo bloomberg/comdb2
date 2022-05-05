@@ -51,13 +51,37 @@ fi
 echo "Testing single rows taking over whole quota"
 $r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 100')"
 ${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 1 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 2 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 3 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 4 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 5 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 6 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 7 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 8 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 9 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 10 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 11 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 12 1000000
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 13 1000000
+
+echo "Unsorted"
 $r << "EOF"
 select * from t union all select * from t
 EOF
 
 if (( $? != 0 )) ; then
-    echo "Failure to process single large rows"
-else
-    echo "Testcase passed."
+    echo "Failure to process single large rows unsorted"
+    exit 1
 fi
 
+echo "Sorted"
+$r << "EOF"
+select * from t union all select * from t order by a
+EOF
+
+if (( $? != 0 )) ; then
+    echo "Failure to process single large rows"
+    exit 1
+fi
+
+echo "Testcase passed."
