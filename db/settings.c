@@ -201,3 +201,60 @@ int register_settings(struct sqlclntstate *clnt)
 #include "db_clnt_settings.h"
     return 0;
 }
+
+/**
+
+enum { SET_STATE_SET=0, SET_STATE_TRANS = 1}.... and so on 
+
+typedef struct set_state_mach {
+    struct sqlclntstate *clnt,
+    int curr_state;
+    int rc;
+    char * err;
+} set_state_mach_t;
+
+
+int transition(set_state_mach_t * sm, char * key) {
+    if strncmp(key, "set") {
+        sm->state = SET_STATE_SET;
+    }
+
+    if sm->state = SET_STATE_SET; {
+        if strncmp(key, "transaction") {
+            sm->state = SET_STATE_TRANS;
+        } elif strncmp (key, ""){
+            ...and so on, the first level
+        }
+    } elif sm->state = SET_STATE_TRANSACTION {
+        if strncmp(key, "chunk") {
+            sm->state = SET_STATE_CHUNK;
+        } elif strncmp (key, "mode"){
+        }
+    }elif sm->state == SET_STATE_CHUNK {
+        // set chunk
+    } elif sm->state == SET_STATE_MODE {
+        // set mode
+    }
+    } else {
+        sm->rc = 1; 
+    }
+}
+
+int populate (clnt, ) {
+    init_state_machine(clnt);
+    int rc = 0;
+    for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
+        if (**ap != '\0') {
+            transition(sm, *ap);
+            if (sm->state == DEAD) {
+                rc = sm->rc;
+                log(sm->error);
+            }
+        }
+ 
+    destroy_state_machine();
+}
+ 
+
+ * 
+ */
