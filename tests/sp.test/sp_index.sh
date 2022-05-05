@@ -27,7 +27,7 @@ create procedure pending version 'sptest' {$(cat pending.lua)}\$\$
 create lua scalar function resolved
 EOF
 
-if ! cdb2sql $SP_OPTIONS -- "create table tickets {$(cat tickets.csc2)}\$\$"; then 
+if ! cdb2sql $SP_OPTIONS -- "create table tickets {$(cat tickets.csc2)}"; then
   true
 fi
 
