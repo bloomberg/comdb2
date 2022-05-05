@@ -5649,7 +5649,7 @@ int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, 
       return -1;
 }
 
-int gbl_do_inline_poll = 1;
+int gbl_do_inline_poll = 0;
 
 static void *accept_thread(void *arg)
 {
