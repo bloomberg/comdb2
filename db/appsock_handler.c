@@ -447,7 +447,7 @@ void cap_appsock_thds(void)
     extern int gbl_do_inline_poll;
     if (gbl_do_inline_poll) return;
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
-    int limit = max + (max * 0.333);
+    int limit = max + (max * 0.333) + 1;
     logmsg(LOGMSG_INFO, "%s: max:%d limit:%d\n", __func__, max, limit);
     thdpool_set_maxthds(gbl_appsock_thdpool, limit);
 }

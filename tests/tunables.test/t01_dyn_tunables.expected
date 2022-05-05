@@ -45,7 +45,7 @@
 (appsockpool tunables='appsockpool.maxt')
 (appsockpool tunables='appsockpool.mint')
 (appsockpool tunables='appsockpool.stacksz')
-(appsockpool.maxt=0)
+(appsockpool.maxt=1867)
 [PUT TUNABLE 'appsockpool.maxt' 'xxx'] failed with rc -3 Invalid tunable value
 (appsockpool.maxt=101)
 (out='Pool [appsockpool] max threads set to 0')
