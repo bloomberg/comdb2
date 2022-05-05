@@ -1424,4 +1424,6 @@ const char *sqlite3ErrStr(int);
 char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen);
 void ssl_set_clnt_user(struct sqlclntstate *);
 
+int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line);
+
 #endif /* _SQL_H_ */
