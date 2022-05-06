@@ -9290,13 +9290,15 @@ int bdb_llmeta_get_lua_sfuncs(void *sfuncs, int *bdberr)
     int rc = bdb_kv_get(LLMETA_LUA_SFUNC, &funcs, &num, bdberr);
 
     for (int i = 0; i < num; ++i) {
-        if ((rc = bdb_llmeta_get_lua_sfunc_flags(funcs[i], &flags, bdberr) != 0) || !flags) {
-            logmsg(LOGMSG_ERROR, "%s: failed fetching lua sfuncs %d\n", __func__, rc);
-            break;
-        }
         struct lua_func_t *sfunc = malloc(sizeof(struct lua_func_t));
         sfunc->name = funcs[i];
-        sfunc->flags = *flags;
+        sfunc->flags = 0;
+        /** Note: Can't fetch flags failure is being ignored to maintain backward compatibility. **/
+        if ((bdb_llmeta_get_lua_sfunc_flags(funcs[i], &flags, bdberr) != 0) || !flags) {
+            logmsg(LOGMSG_WARN, "%s: failed fetching flags for lua sfunc %d\n", __func__, rc);
+        } else {
+            sfunc->flags = *flags;
+        }
         listc_atl(sfuncs, sfunc);
     }
     return rc;
