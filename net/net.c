@@ -5827,6 +5827,7 @@ static void *accept_thread(void *arg)
         sbuf2setbufsize(sb, netinfo_ptr->bufsz);
         sbuf2setuserptr(sb, netinfo_ptr);
 
+        /* appsock_rtn -> bdb_appsock -> appsock_callback -> appsock_handler_start */
         if (gbl_do_inline_poll || !netinfo_ptr->appsock_rtn || (netinfo_ptr->appsock_rtn)(netinfo_ptr, sb, cliaddr, 0) == HANDLE_SOCKET_FAIL_DISPATCH) {
              int keepsocket = 1;
              int is_admin = 0;
