@@ -3169,9 +3169,6 @@ netinfo_type *create_netinfo_int(char myhostname[], int myportnum, int myfd,
     netinfo_ptr->conntime_dump_period = 10 * 60;
     netinfo_ptr->num_current_non_appsock_accepts = 0;
 
-    netinfo_ptr->num_accepts = 0;
-    netinfo_ptr->num_accept_timeouts = 0;
-
     return netinfo_ptr;
 
 fail:
@@ -5506,7 +5503,7 @@ int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, 
       pollstart = comdb2_time_epochms();
       rc = poll(&pol, 1, polltm);
       pollend = comdb2_time_epochms();
-      
+
       quantize(netinfo_ptr->conntime_all, pollend - pollstart);
       quantize(netinfo_ptr->conntime_periodic, pollend - pollstart);
       netinfo_ptr->num_accepts++;
