@@ -129,7 +129,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_timeouts, NULL},
-    {"connection_to_sql_ratio", "Connection to SQL ratio", STATISTIC_DOUBLE,
+    {"connection_to_sql_ratio", "Ratio of total number of connections to sql "
+     "(and nonsql) request counts", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.connection_to_sql_ratio, NULL},
     {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cpu_percent, NULL},
@@ -404,7 +405,7 @@ int refresh_metrics(void)
 
     stats.commits = n_commits;
     stats.fstraps = n_fstrap;
-    stats.nonsql = n_fstrap + n_qtrap - n_dbinfo; 
+    stats.nonsql = n_fstrap + n_qtrap - n_dbinfo;
     stats.retries = n_retries;
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;
@@ -435,8 +436,9 @@ int refresh_metrics(void)
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
     stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
-    stats.connection_to_sql_ratio =
-        (stats.sql_count) ? (stats.connections/(double) stats.sql_count) : 0;
+
+    int64_t total_reqs = stats.sql_count + stats.nonsql;
+    stats.connection_to_sql_ratio = (total_reqs > 0) ? (stats.connections/(double)total_reqs) : 0;
 
     /* cache hit rate */
     uint64_t hits, misses;
