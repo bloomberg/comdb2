@@ -37,7 +37,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 #include <epochlib.h>
 #include "logmsg.h"
 #include <locks_wrap.h>
-
+#include <comdb2_atomic.h>
 int gbl_rep_method_max_sleep_cnt = 0;
 
 static int __rep_abort_prepared __P((DB_ENV *));
@@ -63,6 +63,7 @@ static int __rep_unlock_recovery_lock __P((DB_ENV *));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
+static int __rep_deadlocks __P((DB_ENV *, u_int64_t *));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t, u_int32_t));
 
@@ -114,6 +115,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_process_message = __rep_process_message;
 		dbenv->rep_verify_will_recover = __rep_verify_will_recover;
 		dbenv->rep_start = __rep_start;
+		dbenv->rep_deadlocks = __rep_deadlocks;
 		dbenv->rep_stat = __rep_stat;
 		dbenv->get_rep_gen = __rep_get_gen;
 		dbenv->get_last_locked = __rep_get_last_locked;
@@ -1655,6 +1657,17 @@ __rep_get_master(dbenv, master_out, gen, egen)
 
 	*master_out = master;
 	return 0;
+}
+
+static int
+__rep_deadlocks(dbenv, deadlocks)
+    DB_ENV *dbenv;
+    u_int64_t *deadlocks;
+{
+	DB_REP *db_rep = dbenv->rep_handle;
+	REP *rep = db_rep->region;
+    *deadlocks = ATOMIC_LOAD64(rep->stat.retry);
+    return 0;
 }
 
 extern pthread_mutex_t gbl_durable_lsn_lk;

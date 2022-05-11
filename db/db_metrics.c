@@ -490,7 +490,7 @@ int refresh_metrics(void)
 
     refresh_queue_size(thedb);
 
-    bdb_rep_stats(thedb->bdb_env, &stats.rep_deadlocks);
+    bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
 
     stats.standing_queue_time = metrics_standing_queue_time();
 
