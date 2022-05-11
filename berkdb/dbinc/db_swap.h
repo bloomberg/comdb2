@@ -42,7 +42,7 @@
 extern "C" {
 #endif
 
-#if defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
 	#include <dbinc/db_swap.amd64.h>
 #elif defined(_IBM_SOURCE)
 	#include <dbinc/db_swap.big.h>

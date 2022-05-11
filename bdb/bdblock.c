@@ -886,7 +886,7 @@ void bdb_thread_start_rw(void)
 static void dump_int(thread_lock_info_type *lk, FILE *out)
 {
 
-#ifdef _LINUX_SOURCE
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
     logmsgf(LOGMSG_USER, out, "thr 0x%p  lk %9s %u", (void *)lk->threadid, locktype2str(lk->locktype), lk->lockref);
 #else
     logmsgf(LOGMSG_USER, out, "thr %u (0x%x)  lk %9s %u", (int)lk->threadid,

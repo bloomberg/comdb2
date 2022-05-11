@@ -475,7 +475,7 @@ static int is_sql_read(const char *sqlstr)
 }
 
 /* PASSFD CODE */
-#if defined(_IBM_SOURCE) || defined(_LINUX_SOURCE)
+#if defined(_IBM_SOURCE) || defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
 #define HAVE_MSGHDR_MSG_CONTROL
 #endif
 

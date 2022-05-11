@@ -37,7 +37,7 @@ enum thdpool_ioctl_op { THD_RUN, THD_FREE };
 
 /* Set some sane defaults for stacksize */
 enum {
-#if defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
 
     DEFAULT_THD_STACKSZ = 1048576
 

@@ -1,6 +1,6 @@
 #if defined _IBM_SOURCE
 #include "db_config_ibm.h"
-#elif defined _LINUX_SOURCE
+#elif defined _LINUX_SOURCE || defined _DARWIN_C_SOURCE
 #include "db_config_linux.h"
 #elif defined _SUN_SOURCE
 #include "db_config_sun.h"

@@ -43,7 +43,7 @@
 #define buf_no_net_put(s, l, d, e)                                             \
     (uint8_t *) buf_no_net_get_int((d), (l), (void *)(s), (void *)(e), (d))
 
-#if defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
 #include <endian_core.amd64.h>
 #elif defined(_IBM_SOURCE)
 #include <endian_core.powerpc.h>
