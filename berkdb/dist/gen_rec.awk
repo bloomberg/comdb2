@@ -426,7 +426,7 @@ function log_function() {
 	printf("\tDBT logrec;\n") >> CFILE;
 	if (has_dbp == 1) {
 		printf("\tDB_ENV *dbenv;\n") >> CFILE;
-		printf("\tint ufid_log = gbl_ufid_log || (gbl_ufid_dbreg_test ? rand() % 2 : 0);\n") >> CFILE;
+		printf("\tint ufid_log = gbl_ufid_log || (gbl_ufid_dbreg_test ? rand() %% 2 : 0);\n") >> CFILE;
 	}
 	if (dbprivate)
 		printf("\tDB_TXNLOGREC *lr;\n") >> CFILE;
