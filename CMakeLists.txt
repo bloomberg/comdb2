@@ -29,12 +29,18 @@ else()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+
+  execute_process(
+    COMMAND brew --prefix
+    OUTPUT_VARIABLE BREW_PREFIX_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
   # Homebrew will install here by default
   list(APPEND CMAKE_PREFIX_PATH
     ${CMAKE_PREFIX_PATH}
     "/usr/local"
-    "/usr/local/opt/openssl"
-    "/usr/local/opt/readline")
+    "${BREW_PREFIX_PATH}/opt/openssl@1.1"
+    "${BREW_PREFIX_PATH}/opt/readline")
 endif()
 
 if(COMDB2_BBCMAKE)
