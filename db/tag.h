@@ -195,7 +195,8 @@ enum {
     /* bad rcodes */
     SC_BAD_NEW_FIELD = -3,
     SC_BAD_INDEX_CHANGE = -4,
-    SC_BAD_INDEX_NAME = -5
+    SC_BAD_INDEX_NAME = -5,
+    SC_BAD_DBPAD = -6
 };
 
 extern hash_t *gbl_tag_hash;

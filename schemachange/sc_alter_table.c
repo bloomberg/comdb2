@@ -66,10 +66,11 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
 {
     int changed = ondisk_schema_changed(s->tablename, newdb, stderr, s);
 
-    if (changed == SC_BAD_NEW_FIELD) {
+    if (changed == SC_BAD_NEW_FIELD || changed == SC_BAD_DBPAD) {
         /* we want to capture cases when "alter" is used
            to add a field to a table that has no dbstore or
-           isnull specified
+           isnull specified,
+           or change the size of a byte array with no dbpad specified
            It is still possible to do so by using "fastinit"
            with the new schema instead of "alter"
          */
@@ -87,6 +88,8 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
             sc_client_error(s, "cannot add new field without dbstore or null");
         } else if (changed == SC_BAD_INDEX_CHANGE) {
             sc_client_error(s, "cannot change index referenced by other tables");
+        } else if (changed == SC_BAD_DBPAD) {
+            sc_client_error(s, "cannot change size of byte array without dbpad");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;
