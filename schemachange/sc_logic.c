@@ -1450,6 +1450,9 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
             sbuf2printf(s->sb,
                         ">Cannot change index referenced by other tables\n");
             return -1;
+        } else if (changed == SC_BAD_DBPAD) {
+            sbuf2printf(s->sb, ">Cannot change size of byte array without dbpad\n");
+            return -1;
         } else {
             sbuf2printf(s->sb, ">Failed to process schema!\n");
             return -1;

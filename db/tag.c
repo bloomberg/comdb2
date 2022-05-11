@@ -4524,6 +4524,7 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
  *   4. field size reduced
  *   5. field deleted
  * SC_BAD_NEW_FIELD: New field missing dbstore or null
+ * SC_BAD_DBPAD: Byte array size changed and missing dbpad
  * SC_COLUMN_ADDED: If new column is added
  * SC_DBSTORE_CHANGE: Only change is dbstore of an existing field */
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
@@ -4560,7 +4561,14 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                 } else if (fnew->len != fold->len) {
                     snprintf(buf, sizeof(buf), "field size was %d, now %d",
                              fold->len, fnew->len);
-                    if (fnew->len < fold->len) {
+                    if (fnew->type == SERVER_BYTEARRAY && !((&fnew->convopts)->flags & FLD_CONV_DBPAD)) {
+                        if (out) {
+                            logmsg(LOGMSG_INFO,
+                                   "tag %s field %s changed byte array size from %d to %d and requires dbpad\n",
+                                   old->tag, fold->name, fold->len, fnew->len);
+                        }
+                        return SC_BAD_DBPAD;
+                    } else if (fnew->len < fold->len) {
                         change = SC_TAG_CHANGE;
                     } else if (new->nmembers == old->nmembers) {
                         if ((fnew->type == SERVER_BLOB2) ||
