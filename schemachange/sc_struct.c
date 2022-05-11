@@ -848,7 +848,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         changed = ondisk_schema_changed(table, newdb, NULL, NULL);
         /* let this fly, which will be ok for fastinit;
            master will catch early non-fastinit cases */
-        if (changed < 0 && changed != SC_BAD_NEW_FIELD) {
+        if (changed < 0 && changed != SC_BAD_NEW_FIELD && changed != SC_BAD_DBPAD) {
             if (changed == -2) {
                 logmsg(LOGMSG_ERROR, "Error reloading schema!\n");
             }
