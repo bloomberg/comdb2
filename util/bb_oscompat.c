@@ -133,7 +133,6 @@ int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
     memcpy(buf, rv, rv->d_reclen);
     return 0;
 #else
-    int rc;
     return readdir_r(d, buf, dent);
 #endif
 }
