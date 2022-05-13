@@ -673,8 +673,31 @@ static void osql_genid48_commit_callback(struct ireq *iq)
     }
 }
 
-extern int gbl_readonly_sc;
+static scdone_t _get_sc_type(struct schema_change_type *s)
+{
+    scdone_t type = invalid;
 
+    if (s->is_trigger || s->is_sfunc || s->is_afunc) {
+        /* already sent scdone in finalize_schema_change_thd */
+        type = invalid;
+    } else if (s->fastinit && s->drop_table)
+        type = drop;
+    else if (s->fastinit)
+        type = fastinit;
+    else if (s->addonly)
+        type = add;
+    else if (s->rename)
+        type = (s->rename == SC_RENAME_LEGACY) ? rename_table
+            : rename_table_alias;
+    else if (s->type == DBTYPE_TAGGED_TABLE)
+        type = alter;
+    else if (s->add_view || s->drop_view)
+        type = user_view;
+
+    return type;
+}
+
+extern int gbl_readonly_sc;
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
     int bdberr = 0;
@@ -689,24 +712,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             sc_next = iq->sc->sc_next;
             if (write_scdone) {
                 struct schema_change_type *s = iq->sc;
-                scdone_t type = invalid;
-
-                if (s->is_trigger || s->is_sfunc || s->is_afunc) {
-                    /* already sent scdone in finalize_schema_change_thd */
-                    type = invalid;
-                } else if (s->fastinit && s->drop_table)
-                    type = drop;
-                else if (s->fastinit)
-                    type = fastinit;
-                else if (s->addonly)
-                    type = add;
-                else if (s->rename)
-                    type = (s->rename == SC_RENAME_LEGACY) ? rename_table
-                                                           : rename_table_alias;
-                else if (s->type == DBTYPE_TAGGED_TABLE)
-                    type = alter;
-                else if (s->add_view || s->drop_view)
-                    type = user_view;
+                scdone_t type = _get_sc_type(s);
 
                 if (type == invalid || (type != user_view && s->db == NULL)) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
