@@ -5777,6 +5777,40 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
 }
 
+static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
+                                    uuid_t uuid,  int *type)
+{
+    const uint8_t *p_buf;
+    const uint8_t *p_buf_end;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+        *type = rpl.type;
+        if (comdb2uuidcmp(rpl.uuid, uuid)) {
+            uuidstr_t us;
+            uuidstr_t passedus;
+            comdb2uuidstr(rpl.uuid, us);
+            comdb2uuidstr(uuid, passedus);
+            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
+                   passedus, us);
+            abort();
+        }
+    } else {
+        osql_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+        *type = rpl.type;
+        comdb2uuid_clear(uuid);
+    }
+
+    return p_buf;
+}
+
+
 /**
  * Handles each packet and start schema change
  *
@@ -5791,30 +5825,9 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     const uint8_t *p_buf_end;
     int rc = 0;
     int type;
-    uuidstr_t us;
     char *msg = *pmsg;
 
-    if (rqid == OSQL_RQID_USE_UUID) {
-        osql_uuid_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-        comdb2uuidstr(rpl.uuid, us);
-        if (comdb2uuidcmp(rpl.uuid, uuid)) {
-            uuidstr_t passedus;
-            comdb2uuidstr(uuid, passedus);
-            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
-                   passedus, us);
-            abort();
-        }
-    } else {
-        osql_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-    }
+    p_buf = _get_txn_info(msg, rqid, uuid, &type);
 
     if (type != OSQL_SCHEMACHANGE)
         return 0;
@@ -5835,6 +5848,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
            sc->tablename, sc->usedbtablevers);
 
     if (gbl_enable_osql_logging) {
+        uuidstr_t us;
         logmsg(LOGMSG_DEBUG, "[%llu %s] OSQL_SCHEMACHANGE %s\n", rqid,
                comdb2uuidstr(uuid, us), sc->tablename);
     }
@@ -6025,34 +6039,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
-    unsigned long long id;
     char *msg = *pmsg;
 
-    if (rqid == OSQL_RQID_USE_UUID) {
-        osql_uuid_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-        id = OSQL_RQID_USE_UUID;
-        if (comdb2uuidcmp(rpl.uuid, uuid)) {
-            uuidstr_t us;
-            uuidstr_t passedus;
-            comdb2uuidstr(rpl.uuid, us);
-            comdb2uuidstr(uuid, passedus);
-            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
-                    passedus, us);
-            abort();
-        }
-    } else {
-        osql_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-        id = rpl.sid;
-        comdb2uuid_clear(uuid);
-    }
+    p_buf = _get_txn_info(msg, rqid, uuid, &type);
 
     if (type >= 0 && type < MAX_OSQL_TYPES)
         db->blockosqltypcnt[type]++;
@@ -6450,7 +6439,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             logmsg(LOGMSG_DEBUG,
                    "[%llx %s] Startgen check failed, start_gen "
                    "%u, cur_gen %u\n",
-                   id, comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
+                   rqid, comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
             return ERR_VERIFY;
         }
     } break;
