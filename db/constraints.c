@@ -1224,16 +1224,6 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         }
         struct forward_ct *curop = &ctrq->ctop.fwdct;
         int flags = curop->flags;
-        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
-         * already been added to the indexes in add_record() to ensure
-         * we don't add duplicates in the data files. We still push them
-         * to ct_add_table to be able to perform cascade updates to the
-         * child tables.
-         */
-        if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
-            goto next_record;
-        }
-
         /* only do once per genid *after* processing all idxs from tmptbl 
          * (which are in sequence for the same genid): 
          * If a key is a dup violation then we don't want SC to fail,
@@ -1309,6 +1299,21 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 return ERR_INTERNAL;
             }
             cached_index_genid = genid;
+        }
+
+        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
+         * already been added to the indexes in add_record() to ensure
+         * we don't add duplicates in the data files. We still push them
+         * to ct_add_table to be able to perform cascade updates to the
+         * child tables.
+         *
+         * Do it only after we've retrieved the ondisk data (ie `od_dta') for the upserted genid.
+         * Otherwise we would use the ondisk data from the previous insert statement in the transaction
+         * (or NULL if there isn't any) for the last live_sc_delayed_key_adds() call, and hence would have
+         * wrong data in the new index.
+         */
+        if (flags & OSQL_IGNORE_FAILURE || flags & OSQL_ITEM_REORDERED) {
+            goto next_record;
         }
 
         if (ixnum == -1) {

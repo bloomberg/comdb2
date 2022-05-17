@@ -625,6 +625,9 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
     int no_wait_rowlock = 0;
 
+    if (debug_switch_convert_record_sleep())
+        sleep(5);
+
     if (data->s->sc_thd_failed) {
         if (!data->s->retry_bad_genids)
             sc_errf(data->s,
