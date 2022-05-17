@@ -4429,7 +4429,7 @@ static void *reader_thread(void *arg)
             logmsg(LOGMSG_ERROR, 
                    "reader thread: unknown wire_header.type: %d from host %s\n",
                    wire_header.type, host_node_ptr->host);
-            break;
+            goto done;
         }
 
         if (netinfo_ptr->trace && debug_switch_net_verbose())
