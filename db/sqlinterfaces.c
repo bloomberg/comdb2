@@ -3142,7 +3142,7 @@ static void _prepare_error(struct sqlthdstate *thd,
                     rc, errstr);
         errstat_set_rcstrf(err, ERR_PREPARE_RETRY, "%s", errstr);
 
-        srs_tran_del_last_query(clnt);
+        //srs_tran_del_last_query(clnt);
         return;
     }
 
