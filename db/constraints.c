@@ -1090,16 +1090,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         ins_keys = curop->ins_keys;
         flags = curop->flags;
 
-        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
-         * already been added to the indexes in add_record() to ensure
-         * we don't add duplicates in the data files. We still push them
-         * to ct_add_table to be able to perform cascade updates to the
-         * child tables.
-         */
-        if ((flags & OSQL_IGNORE_FAILURE) != 0) {
-            goto next_record;
-        }
-
         if (addrrn == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);
@@ -1159,6 +1149,21 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 return ERR_INTERNAL;
             }
             cached_index_genid = genid;
+        }
+
+        /* Keys for records from INSERT .. ON CONFLICT DO NOTHING have
+         * already been added to the indexes in add_record() to ensure
+         * we don't add duplicates in the data files. We still push them
+         * to ct_add_table to be able to perform cascade updates to the
+         * child tables.
+         *
+         * Do it only after we've retrieved the ondisk data (ie `od_dta') for the upserted genid.
+         * Otherwise we would use the ondisk data from the previous insert statement in the transaction
+         * (or NULL if there isn't any) for the last live_sc_delayed_key_adds() call, and hence would have
+         * wrong data in the new index.
+         */
+        if (flags & OSQL_IGNORE_FAILURE) {
+            goto next_record;
         }
 
         if (ixnum == -1) {

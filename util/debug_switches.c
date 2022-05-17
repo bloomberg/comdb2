@@ -77,6 +77,7 @@ static struct debug_switches {
     int test_delay_analyze_commit;
     int all_incoherent;
     int replicant_latency;
+    int convert_record_sleep;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -133,6 +134,7 @@ int init_debug_switches(void)
     debug_switches.test_delay_analyze_commit = 0;
     debug_switches.all_incoherent = 0;
     debug_switches.replicant_latency = 0;
+    debug_switches.convert_record_sleep = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -241,6 +243,8 @@ int init_debug_switches(void)
     register_int_switch("test_delay_analyze_commit", "Delay analyze commit", &debug_switches.test_delay_analyze_commit);
     register_int_switch("all_incoherent", "Master pretends nodes are incoherent.", &debug_switches.all_incoherent);
     register_int_switch("replicant_latency", "Replicant drops log records.", &debug_switches.replicant_latency);
+    register_int_switch("convert_record_sleep", "Force a 5-second delay in each convert_record() call",
+                        &debug_switches.convert_record_sleep);
     return 0;
 }
 
@@ -451,4 +455,8 @@ int debug_switch_all_incoherent(void)
 int debug_switch_replicant_latency(void)
 {
     return debug_switches.replicant_latency;
+}
+int debug_switch_convert_record_sleep(void)
+{
+    return debug_switches.convert_record_sleep;
 }
