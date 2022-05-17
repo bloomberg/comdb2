@@ -242,6 +242,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         arg.thr_self = thr_self;
         arg.dbenv = thedb;
         arg.sb = sb;
+        sbuf2setpeeraddr(sb, w->cliaddr);
         arg.cmdline = line;
         arg.keepsocket = keepsocket;
         arg.admin = w->admin;
