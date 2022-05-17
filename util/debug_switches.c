@@ -78,6 +78,7 @@ static struct debug_switches {
     int all_incoherent;
     int replicant_latency;
     int test_sync_osql_cancel;
+    int convert_record_sleep;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -135,6 +136,7 @@ int init_debug_switches(void)
     debug_switches.all_incoherent = 0;
     debug_switches.replicant_latency = 0;
     debug_switches.test_sync_osql_cancel = 0;
+    debug_switches.convert_record_sleep = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -245,6 +247,8 @@ int init_debug_switches(void)
     register_int_switch("replicant_latency", "Replicant drops log records.", &debug_switches.replicant_latency);
     register_int_switch("test_sync_osql_cancel", "Force a delay in osql_sess_rcvop test synchronous osql cancel",
                         &debug_switches.test_sync_osql_cancel);
+    register_int_switch("convert_record_sleep", "Force a 5-second delay in each convert_record() call",
+                        &debug_switches.convert_record_sleep);
     return 0;
 }
 
@@ -459,4 +463,8 @@ int debug_switch_replicant_latency(void)
 int debug_switch_test_sync_osql_cancel(void)
 {
     return debug_switches.test_sync_osql_cancel;
+}
+int debug_switch_convert_record_sleep(void)
+{
+    return debug_switches.convert_record_sleep;
 }
