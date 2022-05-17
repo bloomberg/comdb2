@@ -18,6 +18,7 @@
 #define INCLUDED_SBUF2
 
 #include <stddef.h> /* for size_t */
+#include <netinet/in.h> /* for sockaddr_in */
 
 /* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255 */
 
@@ -139,6 +140,10 @@ sbuf2readfn SBUF2_FUNC(sbuf2getr)(SBUF2 *sb);
 #define sbuf2getr SBUF2_FUNC(sbuf2getr)
 sbuf2writefn SBUF2_FUNC(sbuf2getw)(SBUF2 *sb);
 #define sbuf2getw SBUF2_FUNC(sbuf2getw)
+
+/* set up last known cliaddr*/
+void SBUF2_FUNC(sbuf2setpeeraddr)(SBUF2 *sb, struct sockaddr_in cliaddr);
+#define sbuf2setpeeraddr SBUF2_FUNC(sbuf2setpeeraddr)
 
 /* set up poll timeout on file descriptor*/
 void SBUF2_FUNC(sbuf2settimeout)(SBUF2 *sb, int readtimeout, int writetimeout);

@@ -89,6 +89,7 @@ struct sbuf2 {
 
     void *userptr;
 
+    struct sockaddr_in peeraddr;
 #if SBUF2_SERVER
     comdb2ma allocator;
     struct sqlclntstate *clnt;
@@ -740,6 +741,11 @@ ssl_downgrade:
     return n;
 }
 
+void SBUF2_FUNC(sbuf2setpeeraddr)(SBUF2 *sb, struct sockaddr_in peeraddr)
+{
+    sb->peeraddr = peeraddr;
+}
+
 void SBUF2_FUNC(sbuf2settimeout)(SBUF2 *sb, int readtimeout, int writetimeout)
 {
     sb->readtimeout = readtimeout;
@@ -958,8 +964,19 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     struct sockaddr_in peeraddr = {0};
     socklen_t len = sizeof(peeraddr);
     if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-        loge("%s:getpeername failed fd %d: %d %s\n", __func__, fd, errno,
-             strerror(errno));
+#if SBUF2_SERVER
+        char hnm[256] = {0};
+        if ((sb->peeraddr.sin_port > 0) &&
+            (getnameinfo((struct sockaddr *)&(sb->peeraddr), sizeof(sb->peeraddr),
+                         hnm, sizeof(hnm), NULL, 0, 0) == 0)) {
+            loge("%s:getpeername failed fd %d: %d %s Hostname:%s\n", __func__, fd, errno,
+                strerror(errno), hnm);
+        } else
+#endif
+        {
+            loge("%s:getpeername failed fd %d: %d %s\n", __func__, fd, errno,
+                strerror(errno));
+        }
         return "???";
     }
 
