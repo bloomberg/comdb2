@@ -706,9 +706,6 @@ typedef struct {
     pthread_cond_t cond;
     pthread_key_t key;
     wait_for_lsn_list **waitlist;
-    short *expected_udp_count;
-    short *incomming_udp_count;
-    short *udp_average_counter;
     int *filenum;
 
     pool_t *trackpool;

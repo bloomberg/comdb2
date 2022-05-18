@@ -1632,9 +1632,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state->seqnum_info->trackpool);
     free(bdb_state->seqnum_info->time_10seconds);
     free(bdb_state->seqnum_info->time_minute);
-    free(bdb_state->seqnum_info->expected_udp_count);
-    free(bdb_state->seqnum_info->incomming_udp_count);
-    free(bdb_state->seqnum_info->udp_average_counter);
     free(bdb_state->seqnum_info->filenum);
 
     free(bdb_state->repinfo->appseqnum);
@@ -5565,12 +5562,6 @@ static bdb_state_type *bdb_open_int(
             calloc(MAXNODES, sizeof(struct averager *));
         bdb_state->seqnum_info->time_minute =
             calloc(MAXNODES, sizeof(struct averager *));
-        bdb_state->seqnum_info->expected_udp_count =
-            calloc(MAXNODES, sizeof(short));
-        bdb_state->seqnum_info->incomming_udp_count =
-            calloc(MAXNODES, sizeof(short));
-        bdb_state->seqnum_info->udp_average_counter =
-            calloc(MAXNODES, sizeof(short));
 
         for (i = 0; i < 16; i++)
             bdb_state->stripe_pool[i] = 255;

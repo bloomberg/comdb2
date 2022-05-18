@@ -2151,40 +2151,6 @@ void bdb_disable_replication_time_tracking(bdb_state_type *bdb_state)
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
 
-/* when packet is udp, increase counter
- * when it is tcp, do work to find udp loss rate
- */
-inline static void update_node_acks(bdb_state_type *bdb_state, char *host,
-                                    int is_tcp)
-{
-    if (is_tcp == 0) {
-        bdb_state->seqnum_info->incomming_udp_count[nodeix(host)]++;
-        return;
-    }
-
-    if (++bdb_state->seqnum_info->udp_average_counter[nodeix(host)] <
-        bdb_state->attr->udp_average_over_epochs) {
-        return;
-    }
-
-    float delta = (bdb_state->seqnum_info->expected_udp_count[nodeix(host)] -
-                   bdb_state->seqnum_info->incomming_udp_count[nodeix(host)]);
-    float rate =
-        100 * delta / bdb_state->seqnum_info->expected_udp_count[nodeix(host)];
-
-    if (bdb_state->seqnum_info->expected_udp_count[nodeix(host)] > 1 &&
-        delta > bdb_state->attr->udp_drop_delta_threshold &&
-        rate > bdb_state->attr->udp_drop_warn_percent) {
-        logmsg(LOGMSG_USER, "update_node_acks: host %s, expected_udp_count = %d, delta = "
-               "%.1f, loss = %f percent\n",
-               host, bdb_state->seqnum_info->expected_udp_count[nodeix(host)],
-               delta, rate);
-    }
-    bdb_state->seqnum_info->incomming_udp_count[nodeix(host)] = 0;
-    bdb_state->seqnum_info->expected_udp_count[nodeix(host)] = 0;
-    bdb_state->seqnum_info->udp_average_counter[nodeix(host)] = 0;
-}
-
 static int lsncmp(const void *lsn1, const void *lsn2)
 {
     return (log_compare((DB_LSN *)lsn1, (DB_LSN *)lsn2));
@@ -2620,9 +2586,6 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
     }
 
-    if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
-        update_node_acks(bdb_state, host, is_tcp);
-
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
@@ -3026,9 +2989,6 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     }
 
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-
-    if (gbl_udp)
-        bdb_state->seqnum_info->expected_udp_count[nodeix(host)]++;
 
 again:
 
