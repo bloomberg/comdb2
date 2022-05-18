@@ -366,6 +366,7 @@
 (name='comdb2_constraints')
 (name='comdb2_cron_events')
 (name='comdb2_cron_schedulers')
+(name='comdb2_csc2')
 (name='comdb2_fdb_info')
 (name='comdb2_fingerprints')
 (name='comdb2_functions')
@@ -410,3 +411,19 @@
 (name='comdb2_users')
 (name='comdb2_views')
 [SELECT * FROM comdb2_systables ORDER BY name] rc 0
+(tablename='t1', schema='schema
+{
+    int uid
+    int value
+    int dup_value
+    int allowed_null_value null=yes
+}
+
+keys
+{
+    "UID"      = uid
+    "VALUE" = value
+dup "DUP_VALUE" = value
+}
+')
+[select * from comdb2_csc2 where tablename='t1'] rc 0

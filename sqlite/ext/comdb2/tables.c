@@ -334,6 +334,8 @@ int comdb2SystblInit(
     rc = sqlite3_carray_init(db, 0, 0);
   if (rc == SQLITE_OK)
     rc = systblMemstatsInit(db);
+  if (rc == SQLITE_OK)
+        rc = systblCsc2Init(db);
 #endif
   return rc;
 }

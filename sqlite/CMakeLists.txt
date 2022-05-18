@@ -127,7 +127,7 @@ add_library(sqlite
   src/wherecode.c
   src/whereexpr.c
   src/window.c
-)
+        ext/comdb2/csc2.c)
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(${SQLITE_FLAGS})
 target_compile_definitions(sqlite PRIVATE ${SQLITE_FLAGS})
