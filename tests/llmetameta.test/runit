@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -x
+sleep 30
+tmp=${TESTDIR}/$$.out
+dbnm=$1
+cdb2sql ${CDB2_OPTIONS} $dbnm default >${TESTDIR}/out << EOF
+@send llmeta list
+EOF
+grep LLMETA_META_FLAG ${TESTDIR}/out | sort > $tmp && mv $tmp ${TESTDIR}/out
+diff ${TESTDIR}/out expected
+[[ $? -ne 0 ]] && exit 1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default << EOF
+@send pushnext
+EOF
+sleep 30
+cdb2sql ${CDB2_OPTIONS} $dbnm default >${TESTDIR}/out << EOF
+@send llmeta convertmeta
+@send llmeta list
+EOF
+grep LLMETA_META_FLAG ${TESTDIR}/out | sort > $tmp && mv $tmp ${TESTDIR}/out
+diff ${TESTDIR}/out expected2
+[[ $? -ne 0 ]] && exit 1
+
+exit 0

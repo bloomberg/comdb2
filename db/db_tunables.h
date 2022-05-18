@@ -2176,4 +2176,14 @@ REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class
 REGISTER_TUNABLE("allow_unauthenticated_tag_access", NULL, TUNABLE_BOOLEAN, &gbl_unauth_tag_access, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("llmeta_meta_write_both", "For old meta variables write to both meta and llmeta files (Default: ON)", TUNABLE_BOOLEAN, &gbl_double_write_meta, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("convert_meta_to_llmeta", "On startup, write meta values to llmeta (Default: ON)", TUNABLE_BOOLEAN, &gbl_convert_meta_to_llmeta, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("llmeta_meta_read_from_llmeta", "Read old meta variables from llmeta instead of meta (Default: OFF)", TUNABLE_BOOLEAN, &gbl_read_meta_from_llmeta, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

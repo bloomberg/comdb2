@@ -387,17 +387,6 @@ enum RMTDB_TYPE {
 };
 
 enum DB_METADATA {
-    META_SCHEMA_RRN = 0, /* use this rrn in the meta table for schema info */
-    META_SCHEMA_VERSION = 1, /* this key holds the current ONDISK schema version
-                                as a 32 bit int */
-
-    META_CSC2_RRN = -1,     /* for the csc2 versioning */
-    META_CSC2_VERSION = -1, /* key for current version of csc2 file */
-
-    META_CSC2DATE_RRN = -2, /* in this rrn we store the date as a unix epoch)
-                               when a schema was loaded.  key is a schema
-                               version number. */
-
     META_BLOBSTRIPE_GENID_RRN = -3, /* in this rrn store the genid of table
                                        when it was converted to blobstripe */
 
@@ -407,8 +396,6 @@ enum DB_METADATA {
     META_COMPRESS_RRN = -6,       /* which compression algorithm to use for new
                                      records (if any) */
     META_COMPRESS_BLOBS_RRN = -7, /* and which to use for blobs. */
-    META_FILEVERS = -8,           /* 64 bit id for filenames */
-    META_FILE_LWM = -9,           /* int - lower deleteable log file */
     META_INSTANT_SCHEMA_CHANGE = -10,
     META_DATACOPY_ODH = -11,
     META_INPLACE_UPDATES = -12,
@@ -3625,5 +3612,10 @@ void csc2_free_all(void);
 void csc2_allow_bools(void);
 void csc2_disallow_bools(void);
 int csc2_used_bools(void);
+
+// migrate settings from meta to llmeta
+extern int gbl_convert_meta_to_llmeta;
+int convert_meta_to_llmeta(int *bdberr);
+int diff_meta_llmeta(int *bdberr);
 
 #endif /* !INCLUDED_COMDB2_H */

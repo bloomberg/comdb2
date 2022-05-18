@@ -2340,4 +2340,8 @@ void fill_dbinfo(struct _CDB2DBINFORESPONSE *, bdb_state_type *);
 void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
 #endif
 
+int bdb_put_meta(tran_type *tran, const char *tablename, int metakey, void *value, int valsize, int *bdberr);
+int bdb_get_meta(tran_type *tran, const char *tablename, int metakey, void *value, int valsize, int *found, int *bdberr);
+void bdb_clear_meta_to_llmeta(bdb_state_type *bdb_state);
+
 #endif

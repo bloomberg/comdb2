@@ -2635,6 +2635,17 @@ clipper_usage:
                         "%s:%d: failed to list all options rc=%d bdberr=%d\n",
                         __FILE__, __LINE__, rc, bdberr);
             }
+        } else if (tokcmp(tok, ltok, "clearmeta") == 0) {
+            bdb_clear_meta_to_llmeta(thedb->bdb_env);
+        } else if (tokcmp(tok, ltok, "convertmeta") == 0) {
+            rc = convert_meta_to_llmeta(&bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d: failed to convert meta to llmeta rc=%d bdberr=%d\n",
+                       __FILE__, __LINE__, rc, bdberr);
+            }
+        } else if (tokcmp(tok, ltok, "diffmeta") == 0) {
+            diff_meta_llmeta(&bdberr);
         } else {
             logmsg(LOGMSG_ERROR, "unknown option \"%.*s\"\n", ltok, tok);
         }

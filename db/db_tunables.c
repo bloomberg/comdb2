@@ -370,6 +370,9 @@ int gbl_file_permissions = 0660;
 
 extern int gbl_net_maxconn;
 
+extern int gbl_double_write_meta;
+extern int gbl_read_meta_from_llmeta;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
