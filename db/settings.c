@@ -4,6 +4,91 @@
 #include "sbuf2.h"
 #include <strings.h>
 
+enum set_state { SET_STATE_INIT = 0, SET_STATE_SET, SET_STATE_TRANS, SET_STATE_CHUNK, SET_STATE_MODE , SET_STATE_DEAD=999};
+
+typedef struct set_state_mach {
+    struct sqlclntstate *clnt;
+    enum set_state state;
+    int rc;
+    char *err;
+} set_state_mach_t;
+
+int transition(set_state_mach_t *sm, char *key)
+{
+    if (strncmp(key, "set", 3)) {
+        sm->state = SET_STATE_SET;
+    }
+
+    if (sm->state == SET_STATE_SET) {
+        if (strncmp(key, "transaction", 9)) {
+            sm->state = SET_STATE_TRANS;
+        } else if (strncmp(key, "", 4)) {
+        } else {
+            return 1;
+        }
+    } else if (sm->state == SET_STATE_TRANS) {
+        if (strncmp(key, "chunk", 5)) {
+            sm->state = SET_STATE_CHUNK;
+        } else if (strncmp(key, "mode", 4)) {
+
+        } else {
+            return 1;
+        }
+    } else if (sm->state == SET_STATE_CHUNK) {
+        // set chunk
+    } else if (sm->state == SET_STATE_MODE) {
+        // set mode
+    } else {
+        sm->rc = 1;
+        return 1;
+    }
+
+    return 0;
+}
+
+set_state_mach_t *init_state_machine(struct sqlclntstate *clnt)
+{
+    set_state_mach_t *sm = (set_state_mach_t *)malloc(sizeof(set_state_mach_t));
+    sm->clnt = clnt;
+    sm->state = SET_STATE_INIT;
+    sm->rc = 0;
+    sm->err = NULL;
+    return sm;
+}
+
+int destroy_state_machine(set_state_mach_t *sm)
+{
+    if (sm)
+        free(sm);
+    return 0;
+}
+
+int populate(struct sqlclntstate *clnt, char *sqlstr)
+{
+    set_state_mach_t * sm =  init_state_machine(clnt);
+
+    char *argv[SET_CMD_WORD_LEN];
+    char **ap, *temp = strdup(sqlstr);
+
+    for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
+        if (**ap != '\0') {
+        }
+    }
+
+    int rc = 0;
+    for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
+        if (**ap != '\0') {
+            transition(sm, *ap);
+            if (sm->state == SET_STATE_DEAD) {
+                rc = sm->rc;
+            }
+        }
+    }
+
+    destroy_state_machine(sm);
+    return rc;
+}
+
 /** Finds and populates clnt field with the appropriate set command.
 if succesful return 0, else 1
 **/
@@ -204,7 +289,7 @@ int register_settings(struct sqlclntstate *clnt)
 
 /**
 
-enum { SET_STATE_SET=0, SET_STATE_TRANS = 1}.... and so on 
+enum { SET_STATE_SET=0, SET_STATE_TRANS = 1}.... and so on
 
 typedef struct set_state_mach {
     struct sqlclntstate *clnt,
@@ -236,7 +321,7 @@ int transition(set_state_mach_t * sm, char * key) {
         // set mode
     }
     } else {
-        sm->rc = 1; 
+        sm->rc = 1;
     }
 }
 
@@ -251,10 +336,10 @@ int populate (clnt, ) {
                 log(sm->error);
             }
         }
- 
+
     destroy_state_machine();
 }
- 
 
- * 
+
+ *
  */
