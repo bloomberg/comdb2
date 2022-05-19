@@ -4,7 +4,14 @@
 #include "sbuf2.h"
 #include <strings.h>
 
-enum set_state { SET_STATE_INIT = 0, SET_STATE_SET, SET_STATE_TRANS, SET_STATE_CHUNK, SET_STATE_MODE , SET_STATE_DEAD=999};
+enum set_state {
+    SET_STATE_INIT = 0,
+    SET_STATE_SET,
+    SET_STATE_TRANS,
+    SET_STATE_CHUNK,
+    SET_STATE_MODE,
+    SET_STATE_DEAD = 999
+};
 
 typedef struct set_state_mach {
     struct sqlclntstate *clnt;
@@ -15,8 +22,11 @@ typedef struct set_state_mach {
 
 int transition(set_state_mach_t *sm, char *key)
 {
-    if (strncmp(key, "set", 3)) {
-        sm->state = SET_STATE_SET;
+    if (sm->state == SET_STATE_INIT) {
+        if (strncmp(key, "set", 3) == 0)
+            sm->state = SET_STATE_SET;
+        else
+            return 1;
     }
 
     if (sm->state == SET_STATE_SET) {
@@ -24,18 +34,22 @@ int transition(set_state_mach_t *sm, char *key)
             sm->state = SET_STATE_TRANS;
         } else if (strncmp(key, "", 4)) {
         } else {
-            return 1;
+            sm->rc = 2;
+            return 2;
         }
     } else if (sm->state == SET_STATE_TRANS) {
         if (strncmp(key, "chunk", 5)) {
             sm->state = SET_STATE_CHUNK;
         } else if (strncmp(key, "mode", 4)) {
-
+            sm->state = SET_STATE_MODE;
         } else {
-            return 1;
+            sm->rc = 3;
+            return 3;
         }
     } else if (sm->state == SET_STATE_CHUNK) {
         // set chunk
+        // get setter function from setting->set_func(setting, sm->clnt, char*value, char * err)
+        
     } else if (sm->state == SET_STATE_MODE) {
         // set mode
     } else {
@@ -63,9 +77,9 @@ int destroy_state_machine(set_state_mach_t *sm)
     return 0;
 }
 
-int populate(struct sqlclntstate *clnt, char *sqlstr)
+int populate_settings(struct sqlclntstate *clnt, char *sqlstr)
 {
-    set_state_mach_t * sm =  init_state_machine(clnt);
+    set_state_mach_t *sm = init_state_machine(clnt);
 
     char *argv[SET_CMD_WORD_LEN];
     char **ap, *temp = strdup(sqlstr);
@@ -89,21 +103,59 @@ int populate(struct sqlclntstate *clnt, char *sqlstr)
     return rc;
 }
 
-/** Finds and populates clnt field with the appropriate set command.
-if succesful return 0, else 1
-**/
-int populate_settings(struct sqlclntstate *clnt, char *set_cmd)
+int set_chunk(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value)
 {
-    int populating = 1;
-
-    db_clnt_setting_t *curr;
-    LISTC_FOR_EACH(&settings, curr, lnk)
-    {
-        // if curr->set_clnt returns not null, then
-        if ((curr->set_clnt) && ((populating &= curr->set_clnt(curr, clnt, set_cmd)) == 0))
-            break;
+    char sm_err[64] = {0};
+    int chunk_size = 0;
+    if (!value || ((chunk_size = atoi(value)) <= 0)) {
+        snprintf(sm_err, sizeof(sm_err),
+                 "set transaction chunk N: missing chunk size "
+                 "N \"%s\"",
+                 value);
+    } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
+        snprintf(sm_err, sizeof(sm_err), "transaction chunks require SOCKSQL transaction mode");
+    } else {
+        clnt->dbtran.maxchunksize = chunk_size;
+        /* in chunked mode, we disable verify retries */
+        clnt->verifyretry_off = 1;
     }
-    return populating;
+
+    return 0;
+}
+
+int set_mode(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value)
+{
+    char sm_err[64] = {0};
+ 
+    clnt->dbtran.mode = TRANLEVEL_INVALID;
+    clnt->high_availability_flag = 1;
+    if (strncasecmp(value, "read", 4) == 0) {
+        if (strncasecmp(value, "committed", 9) == 0) {
+            clnt->dbtran.mode = TRANLEVEL_RECOM;
+        }
+    } else if (strncasecmp(value, "serial", 6) == 0) {
+        clnt->dbtran.mode = TRANLEVEL_SERIAL;
+        if (clnt->hasql_on == 1) {
+            clnt->high_availability_flag = 1;
+        }
+    } else if (strncasecmp(value, "blocksql", 7) == 0) {
+        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+    } else if (strncasecmp(value, "snvalue", 4) == 0) {
+        value += 4;
+        clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
+        clnt->verify_retries = 0;
+        if (clnt->hasql_on == 1) {
+            clnt->high_availability_flag = 1;
+            logmsg(LOGMSG_ERROR, "Enabling snvalueshot isolation "
+                                 "high availability\n");
+        }
+    }
+    if (clnt->dbtran.mode == TRANLEVEL_INVALID) {
+    } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL && clnt->dbtran.maxchunksize) {
+        snprintf(sm_err, sizeof(sm_err), "transaction chunks require SOCKSQL transaction mode");
+    }
+
+    return 0;
 }
 
 int set_spname(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)

@@ -3,6 +3,7 @@
 
 // REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)
 REGISTER_ACC_SETTING(dbtran, "", SETTING_COMPOSITE, 0, gbl_setting_default_query_timeout);
+
 REGISTER_SETTING(dbtran.mode, "", SETTING_ENUM, SETFLAG_DERIVED, gbl_setting_default_query_timeout);
 
 REGISTER_SETTING(dbtran.maxchunksize, "", SETTING_ENUM, SETFLAG_DERIVED, gbl_setting_default_query_timeout);
