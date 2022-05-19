@@ -2258,8 +2258,11 @@ static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
         if (port != NULL)
             *port = addr.sin_port;
         hp = gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
-        strncpy(buf, hp->h_name, n - 1);
-        buf[n - 1] = '\0';
+        /* A misconfigured DNS server may return NULL here. Guard this. */
+        if (hp != NULL) {
+            strncpy(buf, hp->h_name, n - 1);
+            buf[n - 1] = '\0';
+        }
     }
 }
 
