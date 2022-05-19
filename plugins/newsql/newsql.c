@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include "settings.h"
 #include <pthread.h>
 #include <stdlib.h>
 
@@ -1454,6 +1455,10 @@ for each setting in global settings:
 **/
 int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
+
+    // Just for testing
+    register_settings(clnt);
+
     struct newsql_appdata *appdata = clnt->appdata;
     int num_commands = 0;
     char *sqlstr = NULL;
@@ -1463,6 +1468,9 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
         sqlstr = skipws(sqlstr);
+        
+        populate_settings(clnt, sqlstr);
+
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
             err[0] = '\0';

@@ -14,8 +14,6 @@ gbl_set_default_dbtrans
 
 **/
 
-int gbl_setting_default_query_timeout = 0;
-
 // TODO: If values for these already exists, remove
 #define SET_CMD_LEN 128
 // maximum number of words in the set command
@@ -62,7 +60,9 @@ struct db_clnt_setting_t {
     get_clnt_setting *get_clnt;
 };
 
-int register_settings(struct sqlclntstate *clnt);
+int init_client_settings();
+int register_settings(struct sqlclntstate *);
+int populate_settings(struct sqlclntstate *, char *);
 
 LISTC_T(struct db_clnt_setting_t) settings;
 hash_t *desc_settings;
@@ -99,6 +99,8 @@ SETTING_SET_FUNC(admin);
 SETTING_SET_FUNC(is_readonly);
 SETTING_SET_FUNC(is_expert);
 SETTING_SET_FUNC(is_fast_expert);
+SETTING_SET_FUNC(spversion);
+SETTING_SET_FUNC(mode);
 
 // TODO: can i add (int*) parse_fun(struct sqlclntstate *, char*cmd, db_clnt_setting_t*);
 // if command can be parsed, to the value as x, then we
@@ -123,10 +125,13 @@ SETTING_SET_FUNC(is_fast_expert);
 // return *((*clnt + offset)
 
 // TODO: format the composite different
-#define REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                              \
+int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int);
+
+#define REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT) temp_debug_register(#NAME, TYPE, FLAG, DEFAULT);
+
+/*
     do {                                                                                                               \
         db_clnt_setting_t s = {.name = #NAME,                                                                          \
-                               .desc = DESC,                                                                           \
                                .type = TYPE,                                                                           \
                                .flag = FLAG,                                                                           \
                                .offset = offsetof(struct sqlclntstate, NAME),                                          \
@@ -134,17 +139,22 @@ SETTING_SET_FUNC(is_fast_expert);
                                .def = &DEFAULT,                                                                        \
                                .lnk = {}};                                                                             \
         listc_abl(&settings, &s);                                                                                      \
-        if (strcmp(#DESC, "") != 0) {                                                                                  \
-            s->set_clnt = set_##NAME;                                                                                  \
-            hash_add(desc_settings, &s);                                                                               \
-        }                                                                                                              \
     } while (0)
+*/
+int temp_debug_set_clnt(char *);
 
 #define REGISTER_ACC_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                          \
-    REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT); /*                                                              \
-do {                                                                                                                   \
-db_clnt_setting_t *set = listc_rbl(&settings);                                                                         \
-set->get_clnt = get_##NAME;                                                                                            \
-listc_abl(&settings, set); \ } while (0)*/
-
+    REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT);                                                                       \
+    temp_debug_set_clnt(#DESC);
+/*
+    do {                                                                                                               \
+        db_clnt_setting_t *set = listc_rbl(&settings);                                                                 \
+        assert(set);                                                                                                   \
+        set->desc = #DESC;                                                                                             \
+        set->set_clnt = set_##DESC;                                                                                    \
+        listc_abl(&settings, set);                                                                                     \
+        if (strcmp(#DESC, "") != 0)                                                                                    \
+            temp_debug_set_clnt(set);                                                                                  \
+    } while (0)
+*/
 #endif

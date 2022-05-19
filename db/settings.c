@@ -4,6 +4,8 @@
 #include "sbuf2.h"
 #include <strings.h>
 
+int gbl_setting_default_query_timeout = 0;
+
 int init_client_settings()
 {
     desc_settings = hash_init_strcaseptr(offsetof(db_clnt_setting_t, desc));
@@ -71,11 +73,11 @@ int transition(set_state_mach_t *sm, char *key)
     } else if (sm->state == SET_STATE_CHUNK) {
         // set chunk
         // get setter function from setting->set_func(setting, sm->clnt, char*value, char * err)
-        db_clnt_setting_t * sett = hash_find(desc_settings, "chunk");
+        db_clnt_setting_t *sett = hash_find(desc_settings, "chunk");
         return sett->set_clnt(sett, sm->clnt, key);
     } else if (sm->state == SET_STATE_MODE) {
         // set mode
-        db_clnt_setting_t * sett = hash_find(desc_settings, "mode");
+        db_clnt_setting_t *sett = hash_find(desc_settings, "mode");
         return sett->set_clnt(sett, sm->clnt, key);
     } else {
         sm->rc = 1;
@@ -352,6 +354,22 @@ int set_dbtran(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char
 
     free(temp);
     return rc;
+}
+
+int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, int blah)
+{
+    db_clnt_setting_t s = {.name = name, .type = type, .flag = flag, .cmd = "default", .def = &blah, .lnk = {}};
+    listc_abl(&settings, &s);
+    return 0;
+}
+
+int temp_debug_set_clnt(char *desc)
+{
+    db_clnt_setting_t *set = listc_rbl(&settings);
+    set->desc = desc;
+    set = listc_abl(&settings, set);
+    hash_add(desc_settings, set);
+    return 0;
 }
 
 int register_settings(struct sqlclntstate *clnt)

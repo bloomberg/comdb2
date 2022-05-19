@@ -117,6 +117,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "debug_switches.h"
 #include "eventlog.h"
 #include "config.h"
+#include "settings.h"
 
 #include "views.h"
 
@@ -5488,6 +5489,8 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
+
+    init_client_settings();
 
     /* Initialize plugin tunables. */
     register_plugin_tunables();
