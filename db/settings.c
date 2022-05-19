@@ -4,12 +4,33 @@
 #include "sbuf2.h"
 #include <strings.h>
 
+int init_client_settings()
+{
+    desc_settings = hash_init_strcaseptr(offsetof(db_clnt_setting_t, desc));
+    hash_initsize(desc_settings, 1024);
+    logmsg(LOGMSG_DEBUG, "Settings hash initialized\n");
+    return 1;
+}
+
 enum set_state {
     SET_STATE_INIT = 0,
     SET_STATE_SET,
     SET_STATE_TRANS,
     SET_STATE_CHUNK,
     SET_STATE_MODE,
+    SET_STATE_TIMEOUT,
+    SET_STATE_MAXQUERYTIME,
+    SET_STATE_TIMEZONE,
+    SET_STATE_DATETIME,
+    SET_STATE_PRECISION,
+    SET_STATE_USER,
+    SET_STATE_PASSWORD,
+    SET_STATE_SPVERSION,
+    SET_STATE_PREPARE_ONLy,
+    SET_STATE_READONLY,
+    SET_STATE_EXPERT,
+    SET_STATE_SPTRACE,
+    SET_STATE_CURSORDEBUG,
     SET_STATE_DEAD = 999
 };
 
@@ -32,7 +53,8 @@ int transition(set_state_mach_t *sm, char *key)
     if (sm->state == SET_STATE_SET) {
         if (strncmp(key, "transaction", 9)) {
             sm->state = SET_STATE_TRANS;
-        } else if (strncmp(key, "", 4)) {
+        } else if (strncmp(key, "timeout", 7)) {
+            sm->state = SET_STATE_TIMEOUT;
         } else {
             sm->rc = 2;
             return 2;
@@ -49,9 +71,12 @@ int transition(set_state_mach_t *sm, char *key)
     } else if (sm->state == SET_STATE_CHUNK) {
         // set chunk
         // get setter function from setting->set_func(setting, sm->clnt, char*value, char * err)
-        
+        db_clnt_setting_t * sett = hash_find(desc_settings, "chunk");
+        return sett->set_clnt(sett, sm->clnt, key);
     } else if (sm->state == SET_STATE_MODE) {
         // set mode
+        db_clnt_setting_t * sett = hash_find(desc_settings, "mode");
+        return sett->set_clnt(sett, sm->clnt, key);
     } else {
         sm->rc = 1;
         return 1;
@@ -83,11 +108,6 @@ int populate_settings(struct sqlclntstate *clnt, char *sqlstr)
 
     char *argv[SET_CMD_WORD_LEN];
     char **ap, *temp = strdup(sqlstr);
-
-    for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
-        if (**ap != '\0') {
-        }
-    }
 
     int rc = 0;
     for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
@@ -126,7 +146,7 @@ int set_chunk(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char 
 int set_mode(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value)
 {
     char sm_err[64] = {0};
- 
+
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     clnt->high_availability_flag = 1;
     if (strncasecmp(value, "read", 4) == 0) {
@@ -250,6 +270,7 @@ int set_dtprec(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char
     return 0;
 }
 
+// Can probably multiplex it here based on mode or chunk
 int set_dbtran(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
 {
     char *argv[SET_CMD_WORD_LEN];

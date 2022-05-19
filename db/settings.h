@@ -65,6 +65,7 @@ struct db_clnt_setting_t {
 int register_settings(struct sqlclntstate *clnt);
 
 LISTC_T(struct db_clnt_setting_t) settings;
+hash_t *desc_settings;
 
 #define SETTING_SET_FUNC(SETTING)                                                                                      \
     int set_##SETTING(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
@@ -96,7 +97,7 @@ SETTING_SET_FUNC(planner_effort);
 SETTING_SET_FUNC(appdata);
 SETTING_SET_FUNC(admin);
 SETTING_SET_FUNC(is_readonly);
-SETTING_SET_FUNC(is_expert );
+SETTING_SET_FUNC(is_expert);
 SETTING_SET_FUNC(is_fast_expert);
 
 // TODO: can i add (int*) parse_fun(struct sqlclntstate *, char*cmd, db_clnt_setting_t*);
@@ -133,14 +134,17 @@ SETTING_SET_FUNC(is_fast_expert);
                                .def = &DEFAULT,                                                                        \
                                .lnk = {}};                                                                             \
         listc_abl(&settings, &s);                                                                                      \
+        if (strcmp(#DESC, "") != 0) {                                                                                  \
+            s->set_clnt = set_##NAME;                                                                                  \
+            hash_add(desc_settings, &s);                                                                               \
+        }                                                                                                              \
     } while (0)
 
 #define REGISTER_ACC_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                          \
-    REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT);                                                                 \
-    do {                                                                                                               \
-        db_clnt_setting_t *set = listc_rbl(&settings);                                                                 \
-        set->set_clnt = set_##NAME;                                                                                    \
-        listc_abl(&settings, set);                                                                                     \
-    } while (0)
+    REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT); /*                                                              \
+do {                                                                                                                   \
+db_clnt_setting_t *set = listc_rbl(&settings);                                                                         \
+set->get_clnt = get_##NAME;                                                                                            \
+listc_abl(&settings, set); \ } while (0)*/
 
 #endif
