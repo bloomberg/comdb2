@@ -28,7 +28,7 @@ int do_show_sp(struct schema_change_type *sc);
 int finalize_add_sp(struct schema_change_type *sc);
 int finalize_del_sp(struct schema_change_type *sc);
 int finalize_default_sp(struct schema_change_type *sc);
-int do_lua_sfunc(struct schema_change_type *);
+int do_lua_sfunc(struct schema_change_type *,  struct ireq * iq);
 int do_lua_afunc(struct schema_change_type *);
 
 int reload_lua_sfuncs();
