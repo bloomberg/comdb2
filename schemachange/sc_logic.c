@@ -648,7 +648,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     else if (s->is_trigger)
         rc = perform_trigger_update(s);
     else if (s->is_sfunc)
-        rc = do_lua_sfunc(s, iq);
+        rc = do_lua_sfunc(s);
     else if (s->is_afunc)
         rc = do_lua_afunc(s);
     else if (s->fastinit && s->drop_table)

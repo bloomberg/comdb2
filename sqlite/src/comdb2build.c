@@ -1214,10 +1214,6 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
         return;
     }
 
-    // Note: Even though we know that we can't drop the stored proce here
-    // , we let this go through and check the error in do_del_sp to have
-    // a homogenous rcode
-#ifdef SFUNC_USAGE_CHECK_WHEN_PARSE
     char *tbl = 0;
     if (lua_sfunc_used(spname, &tbl)) {
         char *errMsg = comdb2_asprintf("Can't drop. %s is in use by %s", spname, tbl);
@@ -1225,7 +1221,6 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
         free(errMsg);
         return;
     }
-#endif
 
     struct schema_change_type *sc = new_schemachange_type();
     if (sc == NULL) {

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -e
-
 # check lua scalar function usage in table indexes
 # 1. create procedures pending and resolved
 # 2. create corresponding scalar functions
@@ -29,7 +27,7 @@ create procedure pending version 'sptest' {$(cat pending.lua)}\$\$
 create lua scalar function resolved
 EOF
 
-if ! cdb2sql $SP_OPTIONS -- "create table tickets {$(cat tickets.csc2)}" 2>&1 1>/dev/null; then
+if ! cdb2sql $SP_OPTIONS -- "create table tickets {$(cat tickets.csc2)}"; then
   true
 fi
 

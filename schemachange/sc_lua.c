@@ -516,15 +516,8 @@ int do_del_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     char *tbl = 0;
     if (lua_sfunc_used(sc->tablename, &tbl)) {
-        char errmsg[64] = {0};
-        sprintf(errmsg, "Can't drop. %s is in use by %s", sc->tablename, tbl);
-
-        logmsg(LOGMSG_ERROR, "%s\n", errmsg);
-        sc_errf(sc, "%s\n", errmsg);
-
-        errstat_set_strf(&iq->errstat, "%s", errmsg);
-        errstat_set_rc(&iq->errstat, SC_FUNC_IN_USE);
-
+        logmsg(LOGMSG_ERROR, "Can't drop. %s is in use by %s\n", sc->tablename, tbl);
+        sc_errf(sc, "Can't drop. %s is in use by %s\n", sc->tablename, tbl);
         return SC_FUNC_IN_USE;
     }
     wrlock_schema_lk();
@@ -609,20 +602,13 @@ int finalize_lua_afunc()
             rc = SC_COMMIT_PENDING;                                                         \
     } while (0)
 
-int do_lua_sfunc(struct schema_change_type *sc, struct ireq * iq)
+int do_lua_sfunc(struct schema_change_type *sc)
 {
     int rc = 0;
     char *tbl = 0;
     if (!sc->addonly && (lua_sfunc_used(sc->spname, &tbl))) {
-        char errmsg[64] = {0};
-        sprintf(errmsg, "Can't drop. %s is in use by %s", sc->spname, tbl);
-
-        logmsg(LOGMSG_ERROR, "%s\n", errmsg);
-        sc_errf(sc, "%s\n", errmsg);
-
-        errstat_set_strf(&iq->errstat, "%s", errmsg);
-        errstat_set_rc(&iq->errstat, SC_FUNC_IN_USE);
-
+        logmsg(LOGMSG_ERROR, "Can't drop. %s is in use by %s\n", sc->spname, tbl);
+        sc_errf(sc, "Can't drop. %s is in use by %s\n", sc->tablename, tbl);
         return SC_FUNC_IN_USE;
     }
     wrlock_schema_lk();

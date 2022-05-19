@@ -389,16 +389,11 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
         return;
     }
 
-    // Even though we know that we can't drop the lua scalar function here
-    // , we let this go through and check the error in do_lua_sfunc to have
-    // a homogenous rcode
-#ifdef SFUNC_USAGE_CHECK_WHEN_PARSE
     char *tbl = 0;
     if (lua_sfunc_used(spname, &tbl)) {
         sqlite3ErrorMsg(parse, "Can't drop. %s is in use by %s", spname, tbl);
         return;
     }
-#endif
 
     comdb2DropFunc(parse, proc, s, scalar);
 }
