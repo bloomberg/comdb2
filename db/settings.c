@@ -50,21 +50,19 @@ int transition(set_state_mach_t *sm, char *key)
             sm->state = SET_STATE_SET;
         else
             return 1;
-    }
-
-    if (sm->state == SET_STATE_SET) {
-        if (strncmp(key, "transaction", 9)) {
+    } else if (sm->state == SET_STATE_SET) {
+        if (strncmp(key, "transaction", 11) == 0) {
             sm->state = SET_STATE_TRANS;
-        } else if (strncmp(key, "timeout", 7)) {
+        } else if (strncmp(key, "timeout", 7) == 0) {
             sm->state = SET_STATE_TIMEOUT;
         } else {
             sm->rc = 2;
             return 2;
         }
     } else if (sm->state == SET_STATE_TRANS) {
-        if (strncmp(key, "chunk", 5)) {
+        if (strncmp(key, "chunk", 5) == 0) {
             sm->state = SET_STATE_CHUNK;
-        } else if (strncmp(key, "mode", 4)) {
+        } else if (strncmp(key, "mode", 4) == 0) {
             sm->state = SET_STATE_MODE;
         } else {
             sm->rc = 3;
@@ -367,6 +365,7 @@ int temp_debug_set_clnt(char *desc)
 {
     db_clnt_setting_t *set = listc_rbl(&settings);
     set->desc = desc;
+    set->hash = hash_init_strcaseptr(offsetof(db_clnt_setting_t, desc));
     set = listc_abl(&settings, set);
     hash_add(desc_settings, set);
     return 0;

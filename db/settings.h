@@ -1,6 +1,7 @@
 #ifndef _SETTINGS_H
 #define _SETTINGS_H
 
+#include "hash.h"
 #include "list.h"
 #include "sbuf2.h"
 #include "sql.h"
@@ -43,6 +44,9 @@ typedef int set_clnt_setting(db_clnt_setting_t *, struct sqlclntstate *, const c
 typedef void *get_clnt_setting(struct sqlclntstate *, int);
 
 struct db_clnt_setting_t {
+    LINKC_T(struct db_clnt_setting_t) lnk;
+    hash_t * hash;
+
     char *name;
     char *desc;
     comdb2_setting_type type;
@@ -54,7 +58,6 @@ struct db_clnt_setting_t {
     // def = initial value
     // make it constant?
     void *def;
-    LINKC_T(struct db_clnt_setting_t) lnk;
 
     set_clnt_setting *set_clnt;
     get_clnt_setting *get_clnt;
