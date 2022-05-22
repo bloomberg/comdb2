@@ -97,5 +97,15 @@ for showeffectsfile in $showeffectsfiles; do
     verify $testname
 done
 
+# 5) Bug: Query effects when multiple transactions are executing in parallel
+./upsert_effects.sh ${CDB2_OPTIONS} $dbname > upsert_effects.output
+if [[  $? -eq 0 ]]; then
+    echo "passed upsert_effects.sh"
+else
+    echo "failed upsert_effects.sh"
+    cat upsert_effects.output
+    exit 1
+fi
+
 echo "Testcase passed."
 exit 0
