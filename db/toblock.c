@@ -2983,6 +2983,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     clear_constraints_tables();
 
+    // Reset query effects
+    memset(&iq->snap_info.effects, 0, sizeof(struct query_effects));
+
     /* THE BLOCK PROCESSOR FOR LOOP */
     for (opnum = 0; opnum < num_reqs;
          ++opnum, block_state_next(iq, p_blkstate)) {
