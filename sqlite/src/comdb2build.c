@@ -3793,6 +3793,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             goto err;
         }
         table = get_dbtable_by_name(viewname);
+        free(viewname);
     } else {
         Pthread_rwlock_unlock(&views_lk);
         views_lk_acquired = 0;
@@ -5823,6 +5824,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     char *idx_name;
     char *tbl_name = 0;
     int index_count = 0;
+    char *partition_table = NULL;
 
     assert(pParse->comdb2_ddl_ctx == 0);
 
@@ -5857,7 +5859,12 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         if (authenticateSC(sc->tablename, pParse))
             goto cleanup;
 
-        table = get_dbtable_by_name(tbl_name);
+        if ((partition_table = timepart_newest_shard(tbl_name, 0))) {
+            table = get_dbtable_by_name(partition_table);
+            free(partition_table);
+        } else {
+            table = get_dbtable_by_name(tbl_name);
+        }
         /* Already checked in chkAndCopyTable(). */
         assert(table);
 
