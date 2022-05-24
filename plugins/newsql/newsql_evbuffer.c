@@ -389,6 +389,10 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
             return 1;
         }
     }
+    if (ssl_whitelisted(appdata->clnt.origin)) {
+        /* allow plaintext local connections */
+        return 0;
+    }
     write_response(&appdata->clnt, RESPONSE_ERROR, "database requires SSL connections", CDB2ERR_CONNECT_ERROR);
     return -1;
 }
@@ -489,6 +493,10 @@ static int verify_hostname(struct newsql_appdata_evbuffer *appdata, X509 *cert)
 static int verify_ssl(struct newsql_appdata_evbuffer *appdata)
 {
     X509 *cert = appdata->ssl_data->cert = SSL_get_peer_certificate(appdata->ssl_data->ssl);
+    if (ssl_whitelisted(appdata->clnt.origin)) {
+        /* skip certificate check for local connections */
+        return 0;
+    }
     switch (gbl_client_ssl_mode) {
     case SSL_VERIFY_DBNAME: if (verify_dbname(cert) != 0) return -1; // fallthrough
     case SSL_VERIFY_HOSTNAME: if (verify_hostname(appdata, cert) != 0) return -1; // fallthrough

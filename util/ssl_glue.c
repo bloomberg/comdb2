@@ -281,3 +281,18 @@ int ssl_verify_hostname(X509 *cert, int fd)
 
     return rc;
 }
+
+#if SBUF2_SERVER
+extern int gbl_ssl_allow_localhost;
+int ssl_whitelisted(const char *host)
+{
+    if (gbl_ssl_allow_localhost) {
+        if (host != NULL) {
+            if (strcasecmp(host, "localhost") || strcasecmp(host, "localhost.localdomain")) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+#endif
