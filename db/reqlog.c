@@ -1929,10 +1929,8 @@ static void reqlog_log_longreq(struct sqlclntstate *clnt)
     if (gbl_fingerprint_queries) {
         unsigned char fp[FINGERPRINTSZ];
         size_t unused;
-        const char *normSql = (clnt->work.zNormSql) ? clnt->work.zNormSql :
-          clnt->work.zOrigNormSql;
-        if (normSql) {
-            calc_fingerprint(normSql, &unused, fp);
+        if (clnt->sql) {
+            calc_fingerprint(clnt->sql, &unused, fp);
             reqlog_set_fingerprint(&logger, (const char *)fp, FINGERPRINTSZ);
         }
     }
