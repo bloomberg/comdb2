@@ -22,6 +22,10 @@ create unique index idx1 on t1_tp(i);
 create index idx2 on t1_tp(i);
 select name, csc2 from sqlite_master where name not like 'sqlite%' and type = 'table' order by name;
 
+# Try removing an index
+drop index idx2 on t1_tp;
+select name, csc2 from sqlite_master where name not like 'sqlite%' and type = 'table' order by name;
+
 # Schema change the time partition, again
 alter table t1_tp drop column i$$
 select name, csc2 from sqlite_master where name not like 'sqlite%' and type = 'table' order by name;

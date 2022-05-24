@@ -42,6 +42,26 @@ keys
 ')
 (name='$1_7FC6B09', csc2='schema
 	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		uniqnulls "IDX1" = i 
+	}
+')
+(name='t1', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		uniqnulls "IDX1" = i 
+	}
+')
+(name='$1_7FC6B09', csc2='schema
+	{
 		int j null = yes 
 	}
 ')
