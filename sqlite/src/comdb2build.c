@@ -6355,13 +6355,17 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         sqlite3Dequote(tbl_name);
 
         if ((chkAndCopyTable(pParse, sc->tablename, tbl_name, strlen(tbl_name),
-                             ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)))
+                             ERROR_ON_TBL_NOT_FOUND, 1, 0, &ctx->partition_first_shardname)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
             goto cleanup;
 
-        table = get_dbtable_by_name(tbl_name);
+        if (ctx->partition_first_shardname) {
+            table = get_dbtable_by_name(ctx->partition_first_shardname);
+        } else {
+            table = get_dbtable_by_name(tbl_name);
+        }
         /* Already checked in chkAndCopyTable(). */
         assert(table);
 
@@ -6422,7 +6426,12 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
             goto cleanup;
     }
 
-    ctx->schema->name = table->tablename;
+    if (ctx->partition_first_shardname) {
+        assert(tbl_name);
+        ctx->schema->name = tbl_name;
+    } else {
+        ctx->schema->name = table->tablename;
+    }
 
     /*
       Add all the columns, indexes and constraints in the table to the
