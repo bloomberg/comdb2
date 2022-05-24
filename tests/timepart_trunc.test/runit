@@ -383,7 +383,39 @@ fi
 echo $cmd "select * from t11 order by a"
 $cmd "select * from t11 order by a" >> $OUT
 
+header 14 "Create partitioned table, add records, drop partitiong and check table"
+echo $cmd "CREATE TABLE t14(a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
+$cmd "CREATE TABLE t14(a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create partition t14"
+   exit 1
+fi
 
+echo $cmd "insert into t14 values (10,20), (30,40), (50,60)"
+$cmd "insert into t14 values (10,20), (30,40), (50,60)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t14"
+   exit 1
+fi
+
+echo $cmd "select * from t14 order by 1"
+echo $cmd "select * from t14 order by 1" >> $OUT
+$cmd "select * from t14 order by 1" >> $OUT
+
+timepart_stats 0
+
+echo $cmd "ALTER TABLE t14 PARTITIONED BY NONE"
+$cmd "ALTER TABLE t14 PARTITIONED BY NONE"
+if (( $? != 0 )) ; then
+   echo "FAILURE to remote partitioning for t14"
+   exit 1
+fi
+
+echo $cmd "select * from t14 order by 1"
+echo $cmd "select * from t14 order by 1" >> $OUT
+$cmd "select * from t14 order by 1" >> $OUT
+
+timepart_stats 0
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual

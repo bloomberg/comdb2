@@ -116,7 +116,7 @@ void comdb2CreatePartition(Parse* p, Token* table, Token* name,
 void comdb2DropPartition(Parse* p, Token* name);
 void comdb2CreateTimePartition(Parse* p, Token* period, Token* retention,
                                Token* start);
-void comdb2SaveMergeTable(Parse* p, Token* name, Token* database);
+void comdb2SaveMergeTable(Parse* p, Token* name, Token* database, int alter);
 
 void comdb2analyze(Parse*, int opt, Token*, Token*, int);
 

@@ -234,10 +234,16 @@ partitioned_by ::= PARTITIONED BY partition_options.
 partition_options ::= TIME PERIOD STRING(P) RETENTION INTEGER(R) START STRING(S). {
   comdb2CreateTimePartition(pParse, &P, &R, &S);
 }
+partition_options ::= NONE. {
+    comdb2SaveMergeTable(pParse, NULL, NULL, 1);
+}
 merge ::= .
 merge ::= merge_with.
 merge_with ::= MERGE nm(Y) dbnm(Z). {
-  comdb2SaveMergeTable(pParse, &Y, &Z);
+  comdb2SaveMergeTable(pParse, &Y, &Z, 0);
+}
+merge_with_alter ::= MERGE nm(Y) dbnm(Z). {
+  comdb2SaveMergeTable(pParse, &Y, &Z, 1);
 }
 
 %endif SQLITE_BUILDING_FOR_COMDB2
@@ -2016,7 +2022,7 @@ alter_table_commit_pending ::= SET COMMIT PENDING. {
 }
 
 alter_table_partitioned ::= partitioned_by.
-alter_table_merge ::= merge_with.
+alter_table_merge ::= merge_with_alter.
 
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.

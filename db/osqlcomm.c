@@ -5796,6 +5796,42 @@ static int _process_single_table_sc(struct ireq *iq)
     return rc;
 }
 
+static int start_schema_change_tran_wrapper_merge(const char *tblname,
+                                                  timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct ireq *iq = sc->iq;
+    int rc;
+
+    /* first shard drops partition also */
+    if (arg->indx == 0) {
+        sc->publish = partition_publish;
+        sc->unpublish = partition_unpublish;
+    }
+
+    struct schema_change_type *alter_sc = clone_schemachange_type(sc);
+
+    /* new target */
+    strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
+    /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
+    alter_sc->kind = SC_ALTERTABLE;
+    /* use the created file as target */
+    alter_sc->newdb = sc->newdb;
+    alter_sc->force_rebuild = 1; /* we are moving rows here */
+    /* alter only in parallel mode for live */
+    alter_sc->scanmode = SCAN_PARALLEL;
+    /* link the sc */
+    iq->sc = alter_sc;
+
+    rc = start_schema_change_tran(iq, NULL);
+    /* link the alter */
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
 static int _process_single_table_sc_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
@@ -5815,29 +5851,16 @@ static int _process_single_table_sc_merge(struct ireq *iq)
         /* at this point we have created the future btree, launch an alter
          * for the to-be-merged table
          */
-        struct schema_change_type *alter_sc = clone_schemachange_type(sc);
-        /* new target */
-        strncpy0(alter_sc->tablename, sc->partition.u.mergetable.tablename,
-                 sizeof(sc->partition.u.mergetable.tablename));
-        alter_sc->usedbtablevers = sc->partition.u.mergetable.version;
-        alter_sc->kind = SC_ALTERTABLE;
-        /* use the created file as target */
-        alter_sc->newdb = sc->newdb;
-        alter_sc->force_rebuild = 1; /* we are moving rows here */
-        /* alter only in parallel mode for live */
-        alter_sc->scanmode = SCAN_PARALLEL;
-        /* link the sc */
-        iq->sc = alter_sc;
+        timepart_sc_arg_t arg = {0};
+        arg.s = sc;
+        arg.s->iq = iq;
+        arg.indx = 1; /* no publishing */
 
-        rc =  start_schema_change_tran(iq, NULL);
-        /* link the alter */
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
-        if (rc != SC_COMMIT_PENDING) {
-            iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
-            return ERR_SC;
-        }
+        /* need table version */
+        sc->usedbtablevers = sc->partition.u.mergetable.version;
 
+        rc = start_schema_change_tran_wrapper_merge(
+            sc->partition.u.mergetable.tablename, &arg);
     } else {
         /* this is an alter with a table merge */
         return -1;
@@ -5846,10 +5869,46 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     return rc;
 }
 
+static int _process_partitioned_table_merge(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    assert(sc->kind == SC_ALTERTABLE);
+
+    /* create a table with the same name as the partition */
+    sc->nothrevent = 1; /* we need do_add_table to run first */
+    sc->finalize = 0;   /* make sure */
+    sc->kind = SC_ADDTABLE;
+
+    rc = start_schema_change_tran(iq, NULL);
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+    if (rc != SC_COMMIT_PENDING) {
+        return ERR_SC;
+    }
+
+    /* at this point we have created the future btree, launch an alter
+     * for each of the shards of the partition
+     */
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+    rc = timepart_foreach_shard(
+        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, 0);
+    return rc;
+}
+
 static int _process_single_table_sc_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
+
+    if (sc->partition.type == PARTITION_REMOVE) {
+        logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
+        sc_errf(sc, "Partition %s does not exist\n", sc->tablename);
+        return ERR_SC;
+    }
 
     assert(sc->partition.type == PARTITION_ADD_TIMED);
 
@@ -5867,7 +5926,9 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         logmsg(LOGMSG_ERROR,
                    "Creating a new time partition failed rc %d \"%s\"\n",
                    err.errval, err.errstr);
-        rc = SC_UNKNOWN_ERROR;
+        sc_errf(sc, "Creating a new time partition failed rc %d \"%s\"",
+                err.errval, err.errstr);
+        rc = ERR_SC;
         goto out;
     }
 
@@ -5877,10 +5938,11 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         assert(err.errval != VIEW_NOERR);
 
         timepart_free_view(sc->newpartition);
-        logmsg(LOGMSG_ERROR,
-                   "Failed to pre-populate the shards rc %d \"%s\"n",
-                   err.errval, err.errstr);
-        rc = SC_UNKNOWN_ERROR;
+        logmsg(LOGMSG_ERROR, "Failed to pre-populate the shards rc %d \"%s\"\n",
+               err.errval, err.errstr);
+        sc_errf(sc, "Failed to pre-populate the shards rc %d \"%s\"",
+                err.errval, err.errstr);
+        rc = ERR_SC;
         goto out;
     }
 
@@ -5904,6 +5966,10 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
                    "Failed to process alter for existing table %s while "
                    "partitioning rc %d\n",
                    sc->tablename, rc);
+            sc_errf(sc,
+                    "Failed to process alter for existing table %s while "
+                    "partitioning rc %d",
+                    sc->tablename, rc);
             return ERR_SC;
         }
         /* we need to  generate retention-1 table adds, with schema provided
@@ -5926,17 +5992,15 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     if (sc->kind == SC_ADDTABLE) {
         /* trying to create a duplicate time partition */
         logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
+        sc_errf(sc, "Duplicate partition %s!", sc->tablename);
         rc = SC_TABLE_ALREADY_EXIST;
         goto out;
     }
 
     if (sc->partition.type == PARTITION_MERGE) {
-        logmsg(LOGMSG_ERROR, "Merging a table to a partition %s not supported yet!\n", sc->tablename);
-        rc = SC_INVALID_OPTIONS;
-        goto out;
+        return _process_partitioned_table_merge(iq);
     }
 
-    /* schema change for a time partition */
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
