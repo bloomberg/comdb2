@@ -3046,9 +3046,10 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
 
             _extract_info(view, &name_dup, &period, &rolltime, &source_id);
 
-            /* here we truncate the current shard; this will not finalize, and
-             * is not creating a long term transaction
-             */
+            /* here we truncate the current shard */
+            print_dbg_verbose(name, &view->source_id, "CCC",
+                              "Truncate rollout shard %d at %d\n",
+                              view->current_shard, rolltime);
             rc = sc_timepart_truncate_table(
                 view->shards[view->current_shard].tblname, err, view);
             if (rc != VIEW_NOERR) {
@@ -3263,33 +3264,36 @@ char *timepart_shard_name(const char *p, int i, int aliased,
 
 int partition_publish(tran_type *tran, struct schema_change_type *sc)
 {
+    char *partition_name = NULL;
     int rc = VIEW_NOERR;
-    int bdberr;
 
     if (sc->partition.type != PARTITION_NONE) {
-        char *partition_name = (char *)sc->timepartition_name;
         switch (sc->partition.type) {
         case PARTITION_ADD_TIMED: {
             assert(sc->newpartition != NULL);
             timepart_create_inmem_view(sc->newpartition);
             break;
         }
-        case PARTITION_REMOVE: {
+        case PARTITION_REMOVE:
+        case PARTITION_MERGE: {
             /* preserve name to signal replicants */
-            partition_name = strdup(partition_name);
+            partition_name = strdup(sc->timepartition_name);
             rc = timepart_destroy_inmem_view(sc->timepartition_name);
             if (rc)
                 abort(); /* restart will fix this*/
             break;
         }
         } /*switch */
-        rc = bdb_llog_partition(thedb->bdb_env, tran, partition_name, &bdberr);
+        int bdberr = 0;
+        rc = bdb_llog_partition(thedb->bdb_env, tran,
+                                partition_name ? partition_name
+                                               : (char *)sc->timepartition_name,
+                                &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
                    __func__, partition_name);
         }
-        if (sc->partition.type == PARTITION_REMOVE)
-            free(partition_name);
+        free(partition_name);
     }
     return rc;
 }
