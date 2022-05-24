@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <hostname_support.h>
 #include <ssl_glue.h>
 
 SSL *SBUF2_FUNC(sslio_get_ssl)(SBUF2 *sb)
@@ -95,6 +96,18 @@ int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len)
 static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid)
 {
     int rc = 0;
+#if SBUF2_SERVER
+    extern int gbl_ssl_allow_localhost;
+    if (gbl_ssl_allow_localhost) {
+        char host[NI_MAXHOST];
+        if (get_hostname_by_fileno_v2(sb->fd, host, sizeof(host)) == 0) {
+            if (ssl_whitelisted(host)) {
+                /* skip certificate check for local connections */
+                return 0;
+            }
+        }
+    }
+#endif
     if (sb->ssl != NULL && mode >= SSL_VERIFY_CA) {
         sb->cert = SSL_get_peer_certificate(sb->ssl);
         if (sb->cert == NULL) {

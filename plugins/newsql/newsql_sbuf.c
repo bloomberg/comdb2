@@ -25,6 +25,7 @@
 #include <pb_alloc.h>
 #include <mem_protobuf.h> /* comdb2_malloc_protobuf */
 #include <sql.h>
+#include <ssl_glue.h>
 #include <str0.h>
 
 #include <newsql.h>
@@ -485,6 +486,9 @@ retry_read:
             cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
             query = NULL;
             goto retry_read;
+        } else if (ssl_whitelisted(clnt->origin)) {
+            /* allow plaintext local connections */
+            return query;
         } else {
             write_response(clnt, RESPONSE_ERROR, "The database requires SSL connections.", CDB2ERR_CONNECT_ERROR);
         }

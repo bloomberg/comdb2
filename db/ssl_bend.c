@@ -67,6 +67,8 @@ int gbl_nid_dbname = NID_commonName;
 #endif
 /* Minimum acceptable TLS version */
 double gbl_min_tls_ver = 0;
+/* (test-only) are connections from localhost always allowed? */
+int gbl_ssl_allow_localhost = 0;
 
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
@@ -278,6 +280,10 @@ int ssl_process_lrl(char *line, size_t len)
             return EINVAL;
         }
         gbl_min_tls_ver = atof(tok);
+    } else if (tokcmp(line, ltok, "ssl_allow_localhost") == 0) {
+        logmsg(LOGMSG_WARN, "Always allow connections from localhost. "
+                            "This option is for testing only and should not be enabled on production.");
+        gbl_ssl_allow_localhost = 1;
     }
     return 0;
 }

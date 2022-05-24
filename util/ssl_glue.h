@@ -20,4 +20,13 @@
 int ssl_verify_dbname(X509 *, const char *, int);
 int ssl_x509_get_attr(const X509 *, int, char *, size_t);
 int ssl_verify_hostname(X509 *, int);
+
+#ifndef SBUF2_SERVER
+#define SBUF2_SERVER 1
+#endif
+#if SBUF2_SERVER /* visible to server only */
+/* returns 1 if the connection is whitelisted */
+int ssl_whitelisted(const char *);
+#endif
+
 #endif /* INCLUDED_SSL_GLUE_H */
