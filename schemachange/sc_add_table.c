@@ -388,6 +388,17 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
             sc_errf(s, "partition_llmeta_write failed \"add\"\n");
             return -1;
         }
+        /* drop partition llmeta, if we remove the partition (i.e. instead
+         * of merging another table in, in which case tablename is provided)
+         * Done only from one shard, the one that will publish results
+         */
+    } else if (s->partition.type == PARTITION_MERGE &&
+               s->partition.u.mergetable.tablename[0] == '\0') {
+        struct errstat err = {0};
+        if (partition_llmeta_delete(tran, s->timepartition_name, &err)) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            return SC_INTERNAL_ERROR;
+        }
     }
 
     sc_printf(s, "Schema change ok\n");

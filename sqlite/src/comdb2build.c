@@ -7075,7 +7075,7 @@ int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
     return rc;
 }
 
-static struct comdb2_partition *_get_partition(Parse* pParse)
+static struct comdb2_partition *_get_partition(Parse* pParse, int remove)
 {
     if (comdb2IsPrepareOnly(pParse))
         return NULL;
@@ -7087,11 +7087,11 @@ static struct comdb2_partition *_get_partition(Parse* pParse)
         goto oom;
 
     if (ctx->partition) {
-        setError(pParse, SQLITE_ERROR, "Only one partitioning alter per txn supported");
+        setError(pParse, SQLITE_ERROR, "Only one partitioning operation per txn supported");
         goto cleanup;
     }
 
-    if (ctx->partition_first_shardname) {
+    if (ctx->partition_first_shardname && !remove) {
         setError(pParse, SQLITE_ERROR, "Partition already exists");
         goto cleanup;
     }
@@ -7125,7 +7125,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
         return;
     }
 
-    partition = _get_partition(pParse);
+    partition = _get_partition(pParse, 0);
     if (!partition)
         return;
 
@@ -7140,27 +7140,31 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
 }
 
 /*
- * Save the table to be merged in
- *
+ * Mark the partition for merging, with or without a table to be merged in
+ * If the table to be merged in is provided, its data will be moved to target
+ * and the source will be dropped
+ * If the table is not provided, if the target is a partition, merge it into a
+ * standalone table; otherwise operation is NOP
  */
-void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database)
+void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database, int alter)
 {
     struct comdb2_partition *partition;
-    char *partition_first_shardname = NULL;
 
-    if (comdb2IsPrepareOnly(pParse))
-        return;
-    
     if (!gbl_merge_table_enabled) {
         setError(pParse, SQLITE_ABORT, "Merge table not enabled");
         return;
     }
 
-    partition = _get_partition(pParse);
+    partition = _get_partition(pParse, alter);
     if (!partition)
         return;
 
     partition->type = PARTITION_MERGE;
+
+    if  (!name)
+        return;
+
+    char *partition_first_shardname = NULL;
 
     if (chkAndCopyTableTokens(pParse, partition->u.mergetable.tablename, name, database,
                               ERROR_ON_TBL_NOT_FOUND, 1, NULL, &partition_first_shardname)) {
