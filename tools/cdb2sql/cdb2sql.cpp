@@ -180,7 +180,9 @@ static const char *usage_text =
     "     cdb2sql mydb --host node1 'select 1'\n"
     " * Query db by connecting to a known set of servers/ports:\n"
     "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
-    "\n"
+    "\n";
+
+static const char *interactive_usage =
     "Interactive session commands:\n"
     "@cdb2_close          Close connection (calls cdb2_close())\n"
     "@desc      tblname   Describe a table\n"
@@ -198,6 +200,7 @@ static const char *usage_text =
 void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
+    fputs(interactive_usage, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
@@ -882,6 +885,8 @@ static int process_escape(const char *cmdstr)
             return -1;
         }
     } else if (strcasecmp(tok, "send") == 0) {
+        int old_printmode = printmode;
+        printmode = DISP_TABS;
         tok = strtok_r(NULL, "", &lasts); // get remainder of string
         if (tok) {
             int start_time_ms, run_time_ms;
@@ -893,6 +898,7 @@ static int process_escape(const char *cmdstr)
             fprintf(stderr, "need command to @send\n");
             return -1;
         }
+        printmode = old_printmode;
     } else if ((strcasecmp(tok, "desc") == 0) ||
                (strcasecmp(tok, "describe") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
@@ -961,6 +967,8 @@ static int process_escape(const char *cmdstr)
         }
         repeat = atoi(tok);
         printf("Repeating every query %d times\n", repeat);
+    } else if (strcasecmp(tok, "help") == 0){
+        printf("%s\n", interactive_usage);
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
         return -1;
