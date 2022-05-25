@@ -68,6 +68,11 @@ int gbl_nid_dbname = NID_commonName;
 /* Minimum acceptable TLS version */
 double gbl_min_tls_ver = 0;
 
+/* number of full ssl handshakes */
+uint64_t gbl_ssl_num_full_handshakes = 0;
+/* number of partial ssl handshakes (via session resumption) */
+uint64_t gbl_ssl_num_partial_handshakes = 0;
+
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
 SSL_CTX *gbl_ssl_ctx = NULL;
@@ -359,6 +364,9 @@ void ssl_stats(void)
         logmsg(LOGMSG_USER,
                "Verify database name in client certificate: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_dbname));
+
+    logmsg(LOGMSG_USER, "  %" PRId64 " full handshakes, %" PRId64 " partial handshakes\n",
+           gbl_ssl_num_full_handshakes, gbl_ssl_num_partial_handshakes);
 
     logmsg(LOGMSG_USER, "Replicant SSL mode: %s\n",
            ssl_mode_to_string(gbl_rep_ssl_mode));
