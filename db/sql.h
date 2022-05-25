@@ -17,6 +17,8 @@
 #ifndef _SQL_H_
 #define _SQL_H_
 
+#include <openssl/asn1.h> /* for ub_common_name */
+
 #include "cdb2api.h"
 #include "comdb2.h"
 
@@ -1130,6 +1132,10 @@ struct connection_info {
     char *sql;
     char *fingerprint;
     int64_t is_admin;
+    int64_t is_ssl; /* 1 if this an SSL connection */
+    int64_t has_cert; /* 1 if the SSL connection has an X509 certificate */
+    char *common_name; /* common name in the certificate */
+    char common_name_str[ub_common_name];
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;

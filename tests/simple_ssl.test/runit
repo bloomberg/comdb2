@@ -95,4 +95,22 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
+has_handshake_cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT value FROM comdb2_metrics WHERE name='nsslfullhandshakes'")
+if [ $has_handshake_cnt = 0 ]; then
+    echo 'No handshake counter???' >&2
+    exit 1
+fi
+
+all_ssl=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT COUNT(*) FROM comdb2_connections WHERE is_ssl = 0")
+if [ $all_ssl != 0 ]; then
+    echo 'Has plaintext connections???' >&2
+    exit 1
+fi
+
+all_have_cert=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT COUNT(*) FROM comdb2_connections WHERE has_cert = 0")
+if [ $all_have_cert != 0 ]; then
+    echo 'Has connections with no cert???' >&2
+    exit 1
+fi
+
 echo "Passed."

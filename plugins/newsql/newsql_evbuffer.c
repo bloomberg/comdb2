@@ -25,6 +25,7 @@
 #include <openssl/ssl.h>
 
 #include <bdb_api.h>
+#include <comdb2_atomic.h>
 #include <hostname_support.h>
 #include <intern_strings.h>
 #include <net_appsock.h>
@@ -42,6 +43,8 @@
 extern int gbl_nid_dbname;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
+extern uint64_t gbl_ssl_num_full_handshakes;
+extern uint64_t gbl_ssl_num_partial_handshakes;
 
 struct ping_pong {
     int status;
@@ -290,6 +293,8 @@ static void wr_dbinfo_int(struct newsql_appdata_evbuffer *appdata, int write_res
 
 static void wr_dbinfo_ssl(struct newsql_appdata_evbuffer *appdata)
 {
+    /* clears openssl's error queue */
+    ERR_clear_error();
     struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
     int len = evbuffer_get_length(wr_buf);
     if (len > KB(16)) len = KB(16);
@@ -537,8 +542,17 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
 {
     struct newsql_appdata_evbuffer *appdata = arg;
     SSL *ssl = appdata->ssl_data->ssl;
+    /* clears openssl's error queue */
+    ERR_clear_error();
+
     int rc = SSL_do_handshake(ssl);
     if (rc == 1) {
+        /* keep track of number of full and partial handshakes */
+        if (SSL_session_reused(ssl))
+            ATOMIC_ADD64(gbl_ssl_num_partial_handshakes, 1);
+        else
+            ATOMIC_ADD64(gbl_ssl_num_full_handshakes, 1);
+
         if (enable_ssl_evbuffer(appdata) == 0) {
             rd_hdr(-1, 0, appdata);
             return;
@@ -572,6 +586,9 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
     SSL *ssl = appdata->ssl_data->ssl;
     int len = KB(16);
     struct iovec v = {0};
+    /* clears openssl's error queue */
+    ERR_clear_error();
+
     if (evbuffer_reserve_space(appdata->rd_buf, len, &v, 1) == -1) {
         return -1;
     }
