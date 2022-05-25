@@ -631,6 +631,7 @@ static int hash_elem_free_wrapper(void *elem, void *unused)
 
 static void *eviction_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     comdb2_objpool_t op;
     intptr_t rc;
     struct timespec tm;

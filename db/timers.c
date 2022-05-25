@@ -170,6 +170,7 @@ int comdb2_timer(int ms, int parm)
 
 void *timer_thread(void *p)
 {
+    comdb2_name_thread(__func__);
     int tnow;
     struct timer t;
     struct timer_parm waitft_parm;

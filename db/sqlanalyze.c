@@ -290,6 +290,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
 /* spawn a thread to sample an index */
 static void *sampling_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     index_descriptor_t *ix_des = (index_descriptor_t *)arg;
 
@@ -882,6 +883,7 @@ error:
 /* spawn thread to analyze a table */
 static void *table_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     table_descriptor_t *td = (table_descriptor_t *)arg;
     struct thr_handle *thd_self;

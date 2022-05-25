@@ -442,6 +442,7 @@ int signal_buflock(struct buf_lock_t *p_slock)
 /* request handler */
 static void *thd_req(void *vthd)
 {
+    comdb2_name_thread(__func__);
     struct thd *thd = (struct thd *)vthd;
     struct dbenv *dbenv;
     struct timespec ts;

@@ -1297,6 +1297,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
 
 void *bplog_commit_timepart_resuming_sc(void *p)
 {
+    comdb2_name_thread(__func__);
     struct ireq iq;
     struct schema_change_type *sc_pending = (struct schema_change_type *)p;
     struct schema_change_type *sc;

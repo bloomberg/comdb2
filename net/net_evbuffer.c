@@ -457,7 +457,11 @@ static void nop(int dummyfd, short what, void *arg)
 static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
+    char thdname[32];
     struct net_dispatch_info *n = arg;
+    snprintf(thdname, sizeof(thdname), "net_dispatch %s", n->who);
+    comdb2_name_thread(n->who);
+
     current_base = n->base;
     struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
     struct timeval ten = {10, 0};

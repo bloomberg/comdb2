@@ -101,6 +101,7 @@ static void watchdogsql(void)
 
 static void *watchdog_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     void *ptr;
     pthread_t dummy_tid;
     int rc;
@@ -402,6 +403,7 @@ void comdb2_die(int aborat)
 
 static void *watchdog_watcher_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     extern int gbl_watchdog_watch_threshold;
     int failed_once = 0;
 

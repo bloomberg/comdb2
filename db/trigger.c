@@ -192,6 +192,7 @@ int trigger_unregister(trigger_reg_t *t)
 
 static void *trigger_start_int(void *name_)
 {
+    comdb2_name_thread(__func__);
     GET_BDB_STATE_CAST(bdb_state, void *);
     char name[strlen(name_) + 1];
     strcpy(name, name_);

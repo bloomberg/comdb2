@@ -432,6 +432,7 @@ typedef struct {
 
 static void *finalize_schema_change_thd_tran(void *varg)
 {
+    comdb2_name_thread(__func__);
     finalize_t *arg = varg;
     void *trans = arg->trans;
     struct ireq *iq = arg->iq;

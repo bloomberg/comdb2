@@ -49,6 +49,7 @@ static char junk[2048];
 
 static void *pushlogs_thread(void *voidarg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     int lastreport = 0;
     thrman_register(THRTYPE_PUSHLOG);

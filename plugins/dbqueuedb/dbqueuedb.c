@@ -646,6 +646,7 @@ struct statthrargs {
 
 static void *stat_thread(void *argsptr)
 {
+    comdb2_name_thread(__func__);
     struct statthrargs *args = argsptr;
     thread_started("dbque stat");
     backend_thread_event(args->db->dbenv, COMDB2_THR_EVENT_START_RDONLY);
@@ -761,6 +762,7 @@ struct flush_thd_data {
 
 static void *flush_thd(void *argsptr)
 {
+    comdb2_name_thread(__func__);
     struct flush_thd_data *args = argsptr;
     thread_started("dbque flush");
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);

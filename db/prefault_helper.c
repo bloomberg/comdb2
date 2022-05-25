@@ -55,6 +55,7 @@ void clear_pfk(struct dbenv *dbenv, int i, int numops)
 
 static void *prefault_helper_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     prefault_helper_thread_arg_type prefault_helper_thread_arg;
     struct dbenv *dbenv;
     int rc;

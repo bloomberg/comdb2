@@ -682,6 +682,7 @@ static void *thdpool_thd(void *voidarg)
     struct thd *thd = voidarg;
     struct thdpool *pool = thd->pool;
 
+    comdb2_name_thread(pool->name);
     ATOMIC_ADD32(pool->nactthd, 1);
 #   ifndef NDEBUG
     logmsg(LOGMSG_DEBUG, "%s(%s): thread going active: %u active\n",
@@ -1296,4 +1297,12 @@ int thdpool_get_queue_depth(struct thdpool *pool)
 void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*)) 
 {
     pool->queued_callback = callback;
+}
+
+void comdb2_name_thread(const char *name) {
+#ifdef __linux
+    pthread_setname_np(pthread_self(), name);
+#elif defined __APPLE__
+    pthread_setname_np(name);
+#endif
 }

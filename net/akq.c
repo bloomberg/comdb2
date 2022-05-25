@@ -97,6 +97,7 @@ static void akq_worker_int(struct akq *q)
 
 static void *akq_worker(void *arg)
 {
+    comdb2_name_thread(__func__);
     struct akq *q = (struct akq *)arg;
     if (q->start) q->start(q);
     akq_worker_int(q);
