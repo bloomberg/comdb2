@@ -27,6 +27,10 @@
 #include <openssl/asn1.h>
 #include <openssl/x509v3.h>
 
+#if SBUF2_SERVER
+extern int gbl_ssl_allow_localhost;
+#endif
+
 SSL *SBUF2_FUNC(sslio_get_ssl)(SBUF2 *sb)
 {
     return sb->ssl;
@@ -354,6 +358,12 @@ static int ssl_verify_dbname(SBUF2 *sb, const char *dbname, int nid)
 static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid)
 {
     int rc = 0;
+#if SBUF2_SERVER
+    if (sslio_whitelisted(sb)) {
+        /* skip certificate check for local connections */
+        return 0;
+    }
+#endif
     if (sb->ssl != NULL && mode >= SSL_VERIFY_CA) {
         sb->cert = SSL_get_peer_certificate(sb->ssl);
         if (sb->cert == NULL) {
@@ -719,3 +729,18 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
     sb->ssl = NULL;
     return rc;
 }
+
+#if SBUF2_SERVER
+int SBUF2_FUNC(sslio_whitelisted)(SBUF2 *sb)
+{
+    const char *host = get_origin_mach_by_buf(sb);
+    if (gbl_ssl_allow_localhost) {
+        if (host != NULL) {
+            if (strcasecmp(host, "localhost") || strcasecmp(host, "localhost.localdomain")) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+#endif

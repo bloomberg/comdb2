@@ -67,6 +67,8 @@ int gbl_nid_dbname = NID_commonName;
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
 SSL_CTX *gbl_ssl_ctx = NULL;
+/* (test-only) are connections from localhost always allowed? */
+int gbl_ssl_allow_localhost = 0;
 
 /******************
  Functions.
@@ -266,6 +268,10 @@ int ssl_process_lrl(char *line, size_t len)
         }
         gbl_nid_dbname = OBJ_txt2nid(nidtext);
         free(nidtext);
+    } else if (tokcmp(line, ltok, "ssl_allow_localhost") == 0) {
+        logmsg(LOGMSG_WARN, "Always allow connections from localhost. "
+               "This option is for testing only and should not be enabled on production.");
+        gbl_ssl_allow_localhost = 1;
     }
     return 0;
 }

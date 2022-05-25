@@ -2272,6 +2272,9 @@ retry_read:
             cdb2__query__free_unpacked(query, &pb_alloc);
             query = NULL;
             goto retry_read;
+        } else if (sslio_whitelisted(sb)) {
+            /* allow plaintext local connections */
+            return query;
         } else {
             newsql_error(clnt, "The database requires SSL connections.",
                          CDB2ERR_CONNECT_ERROR);
