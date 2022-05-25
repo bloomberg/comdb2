@@ -597,6 +597,7 @@ void bdb_newsi_mempool_stat();
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 void *clean_exit_thd(void *unused)
 {
+    comdb2_name_thread(__func__);
     if (!gbl_ready)
         return NULL;
 
@@ -618,6 +619,7 @@ void *clean_exit_thd(void *unused)
 
 static void *getschemalk(void *arg)
 {
+    comdb2_name_thread(__func__);
     int64_t holdtime = (int64_t)arg;
     logmsg(LOGMSG_USER, "Locking the schemalk in write mode for %"PRId64" seconds", holdtime);
     wrlock_schema_lk();

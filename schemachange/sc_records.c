@@ -1153,6 +1153,7 @@ extern pthread_key_t no_pgcompact;
  */
 void *convert_records_thd(struct convert_record_data *data)
 {
+    comdb2_name_thread(__func__);
     struct thr_handle *thr_self = thrman_self();
     enum thrtype oldtype = THRTYPE_UNKNOWN;
     int rc = 1;
@@ -1863,6 +1864,7 @@ static int upgrade_records(struct convert_record_data *data)
 
 static void *upgrade_records_thd(void *vdata)
 {
+    comdb2_name_thread(__func__);
     int rc;
 
     struct convert_record_data *data = (struct convert_record_data *)vdata;
@@ -3170,6 +3172,7 @@ static int sc_redo_size(bdb_state_type *bdb_state)
 
 void *live_sc_logical_redo_thd(struct convert_record_data *data)
 {
+    comdb2_name_thread(__func__);
     struct schema_change_type *s = data->s;
     struct thr_handle *thr_self = thrman_self();
     enum thrtype oldtype = THRTYPE_UNKNOWN;

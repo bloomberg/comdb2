@@ -70,4 +70,6 @@
 #define Pthread_rwlock_wrlock(...)          WRAP_PTHREAD(pthread_rwlock_wrlock, __VA_ARGS__)
 #define Pthread_setspecific(...)            WRAP_PTHREAD(pthread_setspecific, __VA_ARGS__)
 
+extern void comdb2_name_thread(const char *name);
+
 #endif

@@ -282,6 +282,7 @@ static void compr_stat(CompStruct *comp)
 
 static void *handle_comptest_thd(void *_arg)
 {
+    comdb2_name_thread(__func__);
     CompArg *arg = _arg;
     CompStruct comp = {0};
     int rc;

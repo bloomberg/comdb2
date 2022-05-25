@@ -74,6 +74,7 @@ static void free_memptr(void *inarg)
 
 static void *free_stack_thr(void *unused)
 {
+    comdb2_name_thread(__func__);
     thr_arg_t *arg;
     int signal_count;
     size_t stacksz;

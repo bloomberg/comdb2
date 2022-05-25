@@ -3529,6 +3529,7 @@ struct net_decom_node_arg {
  */
 static void *net_decom_node_delayed(void *p)
 {
+    comdb2_name_thread(__func__);
     struct net_decom_node_arg *args = (struct net_decom_node_arg *)p;
     sleep(2);
     net_decom_node(args->netinfo_ptr, args->host);
@@ -3831,8 +3832,14 @@ int gbl_net_writer_thread_poll_ms = 1000;
 
 static void *writer_thread(void *args)
 {
-    netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
+    host_node_ptr = args;
+
+    char thdname[32];
+    snprintf(thdname, sizeof(thdname), "writer_thread %s", host_node_ptr->host);
+    comdb2_name_thread(thdname);
+    netinfo_type *netinfo_ptr;
+
     write_data *write_list_ptr, *write_list_back;
     int rc, flags, maxage;
     struct timespec waittime;
@@ -3843,7 +3850,6 @@ static void *writer_thread(void *args)
     thread_started("net writer");
     ENABLE_PER_THREAD_MALLOC(__func__);
 
-    host_node_ptr = args;
     netinfo_ptr = host_node_ptr->netinfo_ptr;
 
     host_node_ptr->writer_thread_arch_tid = getarchtid();
@@ -4105,8 +4111,14 @@ static int process_hello_common(netinfo_type *netinfo_ptr,
 
 static void *reader_thread(void *arg)
 {
-    netinfo_type *netinfo_ptr;
+    // TODO: node!
     host_node_type *host_node_ptr;
+    host_node_ptr = arg;
+
+    char thdname[32];
+    snprintf(thdname, sizeof(thdname), "writer_thread %s", host_node_ptr->host);
+    comdb2_name_thread(thdname);
+    netinfo_type *netinfo_ptr;
     wire_header_type wire_header;
     int rc, set_qstat = 0;
     char fromhost[256], tohost[256];
@@ -4115,7 +4127,6 @@ static void *reader_thread(void *arg)
     thread_started("net reader");
     ENABLE_PER_THREAD_MALLOC(__func__);
 
-    host_node_ptr = arg;
     netinfo_ptr = host_node_ptr->netinfo_ptr;
 
     host_node_ptr->reader_thread_arch_tid = getarchtid();
@@ -4555,6 +4566,12 @@ static void *connect_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
+    host_node_ptr = arg;
+
+    char thdname[32];
+    snprintf(thdname, sizeof(thdname), "writer_thread %s", host_node_ptr->host);
+    comdb2_name_thread(thdname);
+
     socklen_t len;
     int fd;
     int rc;
@@ -4569,7 +4586,6 @@ static void *connect_thread(void *arg)
     struct pollfd pfd;
     int err;
 
-    host_node_ptr = arg;
     netinfo_ptr = host_node_ptr->netinfo_ptr;
 
     host_node_ptr->connect_thread_arch_tid = getarchtid();
@@ -5202,6 +5218,7 @@ int findpeer(int fd, char *addr, int len)
 /* reads the connect message & creates threads to monitor connection state */
 static void *connect_and_accept(void *arg)
 {
+    comdb2_name_thread(__func__);
     connect_and_accept_t *ca;
     netinfo_type *netinfo_ptr;
     SBUF2 *sb;
@@ -5353,6 +5370,7 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
 
 static void *accept_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     netinfo_type *netinfo_ptr;
     struct pollfd pol;
     int rc;
@@ -5650,6 +5668,7 @@ static void *accept_thread(void *arg)
 
 static void *heartbeat_send_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     host_node_type *ptr;
     netinfo_type *netinfo_ptr;
 
@@ -5863,6 +5882,7 @@ void net_set_writefn(SBUF2 *sb, sbuf2writefn writefn)
 
 static void *heartbeat_check_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     host_node_type *ptr;
     netinfo_type *netinfo_ptr;
     int timestamp;

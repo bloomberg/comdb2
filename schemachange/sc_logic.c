@@ -766,6 +766,7 @@ int do_schema_change_tran(sc_arg_t *arg)
 
 int do_schema_change_tran_thd(sc_arg_t *arg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     bdb_state_type *bdb_state = thedb->bdb_env;
     thread_started("schema_change");
@@ -777,6 +778,7 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
 
 int do_schema_change_locked(struct schema_change_type *s, void *tran)
 {
+    comdb2_name_thread(__func__);
     int rc = 0;
     struct ireq *iq = NULL;
     iq = (struct ireq *)calloc(1, sizeof(*iq));
@@ -862,6 +864,7 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
 
 void *sc_resuming_watchdog(void *p)
 {
+    comdb2_name_thread(__func__);
     struct ireq iq;
     struct schema_change_type *stored_sc = NULL;
     int time = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_WATCHDOG_TIMER);
