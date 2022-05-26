@@ -47,8 +47,11 @@ __db_mutex_setup(dbenv, infop, ptr, flags)
 	u_int32_t flags;
 {
 	DB_MUTEX *mutex;
-	REGMAINT *maint;
-	u_int32_t iflags, offset;
+#ifdef HAVE_MUTEX_SYSTEM_RESOURCES
+	REGMAINT *maint = null;
+    u_int32_t offset;
+#endif
+	u_int32_t iflags;
 	int ret;
 
 	ret = 0;
@@ -76,6 +79,7 @@ __db_mutex_setup(dbenv, infop, ptr, flags)
 	 * Set up to initialize the mutex.
 	 */
 	iflags = LF_ISSET(MUTEX_LOGICAL_LOCK | MUTEX_THREAD | MUTEX_SELF_BLOCK);
+#ifdef	HAVE_MUTEX_SYSTEM_RESOURCES
 	switch (infop->type) {
 	case REGION_TYPE_LOCK:
 		offset = P_TO_UINT32(mutex) + DB_FCNTL_OFF_LOCK;
@@ -87,8 +91,6 @@ __db_mutex_setup(dbenv, infop, ptr, flags)
 		offset = P_TO_UINT32(mutex) + DB_FCNTL_OFF_GEN;
 		break;
 	}
-	maint = NULL;
-#ifdef	HAVE_MUTEX_SYSTEM_RESOURCES
 	if (!LF_ISSET(MUTEX_NO_RECORD))
 		maint = (REGMAINT *)__db_mutex_maint(dbenv, infop);
 #endif

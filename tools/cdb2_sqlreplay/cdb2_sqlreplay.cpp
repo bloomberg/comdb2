@@ -879,7 +879,7 @@ struct event_source {
     cson_value *value;
     int linenum;
 
-    event_source(const char *name) : fname(name), file(), done(false), value(nullptr), timestamp(0), linenum(0) {
+    explicit event_source(const std::string &name) : fname(name), done(false), value(nullptr), timestamp(0), linenum(0) {
         file.open(name);
         if (!file.is_open()) {
             std::cerr << "can't open " << fname << std::endl;
@@ -888,12 +888,13 @@ struct event_source {
         get();
     }
 
+#if 0
     event_source(const event_source &from) {
         fname = from.fname;
         done = false;
         file.open(fname);
         if (!file.is_open()) {
-            std::cerr << "can't open " << fname << std::endl;
+            // std::cerr << "can't open " << fname << std::endl;
             done = true;
         }
         value = nullptr;
@@ -901,6 +902,7 @@ struct event_source {
         linenum = 0;
         get();
     }
+#endif
 
     cson_value *consume() {
         cson_value *v = value;
@@ -956,7 +958,7 @@ class event_queue {
 public:
     event_queue() = default;
 
-    void add_source(const char *name) {
+    void add_source(const std::string name) {
         sources.emplace_back(event_source(name));
     }
 

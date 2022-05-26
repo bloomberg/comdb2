@@ -468,10 +468,8 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	char *name;
 	DB_LSN *lsnp;
 {
-	DB_LOG *dblp;
 	DB *dbp;
 	int ret;
-	dblp = dbenv->lg_handle;
 
 	extern int gbl_abort_ufid_open;
 	if (gbl_abort_ufid_open)

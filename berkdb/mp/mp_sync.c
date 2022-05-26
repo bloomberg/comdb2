@@ -2333,12 +2333,16 @@ __memp_dump(dbenv, s, max_pages, pagecount)
 		qsort(pagearray.pagearray, pagearray.cnt, sizeof(page_fget_count_t),
 				pgrefcmp);
 
+#ifndef NDEBUG
 	u_int32_t lastfget = UINT_MAX;
+#endif
 	for (u_int64_t i = 0; i < dump_pages; i++) {
 		page_fget_count_t *page_fget = &pagearray.pagearray[i];
 		assert((page_fget->fget_count <= lastfget) ||
 				(dump_pages == pagearray.cnt));
+#ifndef NDEBUG
 		lastfget = page_fget->fget_count;
+#endif
 		add_page_to_fileid_list(dbenv, page_fget->fileid_page_list, page_fget->page);
 		(*pagecount)++;
 	}

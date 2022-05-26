@@ -304,7 +304,7 @@ static inline uint32_t crc32c_1024_sse_int(const uint8_t *buf, uint32_t crc)
 
 #endif // Intel only
 
-#if defined(_HAS_CRC32_ARMV7) || defined(_HAS_CRC32_ARMV8)
+#if (defined(_HAS_CRC32_ARMV7) || defined(_HAS_CRC32_ARMV8) ) && !defined(__APPLE__)
 #include <arm_acle.h>
 #include <asm/hwcap.h>
 #include <sys/auxv.h>

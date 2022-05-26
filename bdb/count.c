@@ -274,6 +274,12 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
             (void) keylen;
             DB_MULTIPLE_KEY_NEXT(ptr, &dbt_data, keyptr, keylen, dataptr,
                                  datalen);
+
+            // we don't care about some of the parts returned by multiple key fetch -  shut the compiler up
+            (void)datalen;
+            (void)keyptr;
+            (void)keylen;
+
             if (!dataptr)
                 break;
             count++;

@@ -1021,6 +1021,7 @@ function getpgnos_function() {
 		printf("\tint ret;\n") >> CFILE;
 		printf("\tCOMPQUIET(rec, NULL);\n") >> CFILE;
 		printf("\tCOMPQUIET(notused1, DB_TXN_ABORT);\n") >> CFILE;
+		printf("\tCOMPQUIET(notused1, DB_TXN_ABORT);\n") >> CFILE;
 
 		printf("\n\tt = (TXN_RECS *)summary;\n") >> CFILE;
 		printf("\n\tif ((ret = __rep_check_alloc(dbenv, ") >> CFILE;
@@ -1130,7 +1131,9 @@ function getallpgnos_function() {
 		}
 	}
 
-	printf("\tTXN_RECS *t;\n") >> CFILE;
+	if (has_fileid && npages > 0) {
+	    printf("\tTXN_RECS *t;\n") >> CFILE;
+    }
 	printf("\t%s_args *argp;\n", funcname) >> CFILE;
 	printf("\tint ret = 0;\n\n") >> CFILE;
 
@@ -1138,7 +1141,9 @@ function getallpgnos_function() {
 	printf("\tCOMPQUIET(notused1, DB_TXN_ABORT);\n\n") >> CFILE;
 
 	printf("\targp = NULL;\n") >> CFILE;
-	printf("\tt = (TXN_RECS *)summary;\n\n") >> CFILE;
+	if (has_fileid && npages > 0) {
+	    printf("\tt = (TXN_RECS *)summary;\n\n") >> CFILE;
+    }
 
 	if (has_fileid && npages > 0) {
 		printf("\tif ((ret = %s_read(dbenv, rec->data, &argp)) != 0)\n", \

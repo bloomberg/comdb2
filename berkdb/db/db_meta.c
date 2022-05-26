@@ -125,7 +125,10 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	DB_LSN lsn;
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
-	db_pgno_t last, pgno, newnext;
+	db_pgno_t pgno, newnext;
+#if defined(__STDC__) && defined(DIAGNOSTIC)
+    db_pgno_t last;
+#endif
 	int ret;
 
 	dbp = dbc->dbp;
@@ -135,7 +138,9 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	newnext = PGNO_INVALID;
 
 	pgno = PGNO_BASE_MD;
+#if defined(__STDC__) && defined(DIAGNOSTIC)
 	last = meta->last_pgno;
+#endif
 	if (meta->free == PGNO_INVALID) {
 		__db_err(dbc->dbp->dbenv,
 		    "__db_new_from_freelist called with no pages on freelist\n");
@@ -554,7 +559,11 @@ __db_new_original(dbc, type, pagepp)
 	DB_LSN lsn;
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
-	db_pgno_t last, pgno, newnext;
+	db_pgno_t pgno, newnext;
+
+#if defined(__STDC__) && defined(DIAGNOSTIC)
+    db_pgno_t last;
+#endif
 	u_int32_t meta_flags;
 	int extend, ret;
 
@@ -576,9 +585,14 @@ __db_new_original(dbc, type, pagepp)
 		goto err;
 	if ((ret = __memp_fget(mpf, &pgno, 0, &meta)) != 0)
 		goto err;
+
+#if defined(__STDC__) && defined(DIAGNOSTIC)
 	last = meta->last_pgno;
+#endif
 	if (meta->free == PGNO_INVALID) {
+#if defined(__STDC__) && defined(DIAGNOSTIC)
 		last = pgno = meta->last_pgno + 1;
+#endif
 		ZERO_LSN(lsn);
 		extend = 1;
 	} else {

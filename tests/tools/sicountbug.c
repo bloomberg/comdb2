@@ -214,8 +214,8 @@ void *update_records_thd(void *arg)
         snprintf(sql, sizeof(sql), "begin");
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "td %"PRIuPTR" error in begin, ret=%d, %s.\n",
-                    (uintptr_t) pthread_self(), ret, cdb2_errstr(sqlh));
+            fprintf(stderr, "td %" PRIxPTR " error in begin, ret=%d, %s.\n",
+                    (intptr_t) pthread_self(), ret, cdb2_errstr(sqlh));
             exit(1);
         }
         do

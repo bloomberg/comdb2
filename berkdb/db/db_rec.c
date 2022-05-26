@@ -1108,6 +1108,8 @@ __db_pg_new_recover(dbenv, dbtp, lsnp, op, info)
 	REC_INTRO(__db_pg_free_read, 1);
 	COMPQUIET(op, 0);
 
+    (void) mpf; // REC_INTRO always sets it but we don't always need it
+
 	if (argp->type > 1000) {
 		if ((ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
 						argp->pgno, 1)) == 0)

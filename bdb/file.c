@@ -5758,7 +5758,7 @@ static bdb_state_type *bdb_open_int(
                 bdb_state->ixnulls[i] = 0;
         }
 
-        /* determine the largest key size and the total key size */
+        /* determine the largest key size */
         largest = 0;
         for (i = 0; i < numix; i++) {
             if (ixlen[i] > largest)

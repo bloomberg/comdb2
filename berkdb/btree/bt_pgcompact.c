@@ -1294,6 +1294,11 @@ __bam_pgcompact_undo_target(dbc, h, argp)
 	dbp = dbc->dbp;
 
 	ALLOCA_UNLZ4_BUFFER();
+    (void)dtadbtdata;
+    (void)dtadbtsize;
+    (void)hdrdbtsize;
+
+
 	if ((ret = __bam_unlz4_pg_img(argp, unlz4dta)) != 0) {
 		__db_err(dbp->dbenv, "__bam_unlz4_pg_img: %s",
 				"Failed to decompress");
