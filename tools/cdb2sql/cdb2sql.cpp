@@ -1931,9 +1931,9 @@ static void int_handler(int signum)
                "Please wait...\n");
     if (gbl_sent_cancel_cnonce) exit(1); // pressed ctrl-c again
     if (!gbl_in_stmt) {
-        rl_crlf();
+        //rl_crlf();
         rl_on_new_line();
-        rl_replace_line("", 0);
+        //rl_replace_line("", 0);
         rl_redisplay();
     }
     send_cancel_cnonce(cdb2_cnonce(cdb2h));

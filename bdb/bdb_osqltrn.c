@@ -1260,7 +1260,6 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
 {
     DB_LSN lsn;
     bdb_osql_trn_t *trn = NULL;
-    int trak = 0;
 
     lsn.file = INT_MAX;
     lsn.offset = INT_MAX;
@@ -1276,7 +1275,6 @@ int bdb_osql_trn_get_lwm(bdb_state_type *bdb_state, void *plsn)
 
             if (trn->cancelled == 0 &&
                 log_compare(&trn->shadow_tran->birth_lsn, &lsn) < 0) {
-                trak |= trn->trak;
                 lsn = trn->shadow_tran->birth_lsn;
             }
         }

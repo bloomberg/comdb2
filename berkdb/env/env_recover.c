@@ -738,9 +738,9 @@ int __dbenv_build_mintruncate_list(dbenv)
 				/* Normal log traffic can be adding to the other end: find
 				 * correct place to insert */
 
-				for (prev_mt = NULL, mt = LISTC_BOT(&dbenv->mintruncate) ;
+				for (mt = LISTC_BOT(&dbenv->mintruncate) ;
 						mt && log_compare(&mt->lsn, &lsn) < 0;
-						prev_mt = mt, mt = mt->lnk.prev)
+						 mt = mt->lnk.prev)
 					;
 				if (!mt || log_compare(&mt->lsn, &lsn) > 0) {
 					newmt = malloc(sizeof(*newmt));
@@ -775,9 +775,9 @@ int __dbenv_build_mintruncate_list(dbenv)
 
 			if (ckp_args->ckp_lsn.file > last_ckp_lsn.file) {
 				Pthread_mutex_lock(&dbenv->mintruncate_lk);
-				for (prev_mt = NULL, mt = LISTC_BOT(&dbenv->mintruncate) ;
+				for (mt = LISTC_BOT(&dbenv->mintruncate) ;
 						mt && log_compare(&mt->lsn, &lsn) < 0;
-						prev_mt = mt, mt = mt->lnk.prev)
+						mt = mt->lnk.prev)
 					;
 
 				if (!mt || log_compare(&mt->lsn, &lsn) > 0) {

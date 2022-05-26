@@ -296,7 +296,7 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	size_t nr, pagesize;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
-	int ret, i, pgidx, free_buf, ftype;
+	int ret, i, pgidx, free_buf;
 	u_int32_t n_cache;
 	db_pgno_t inpg;
 
@@ -317,7 +317,6 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 		return DB_PAGE_NOTFOUND;
 
 	pginfo = &duminfo;
-	ftype = mfp->ftype;
 
     if (mfp->pgcookie_len > 0) {
         pginfo = (DB_PGINFO *)R_ADDR(dbmp->reginfo,

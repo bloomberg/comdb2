@@ -2864,7 +2864,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 
     pCur->keybuflen = hdrsz + datasz;
 
-    assert(remainingsz == 0);
+    if(!(remainingsz == 0)) {
+        logmsg(LOGMSG_FATAL, "unexpected: bytes remain after serializing key");
+    }
 
     return FDB_NOERR;
 }

@@ -65,7 +65,7 @@ unsigned int myrand(void)
     if(first)
     {
         seed = time(NULL);
-        adds = (unsigned int)pthread_self();
+        adds = (unsigned int)(intptr_t) pthread_self();
         first = 0;
     }
 

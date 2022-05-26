@@ -433,10 +433,8 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	char *name;
 	DB_LSN *lsnp;
 {
-	DB_LOG *dblp;
 	DB *dbp;
 	int ret;
-	dblp = dbenv->lg_handle;
 
 	if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
 		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error creating db\n");

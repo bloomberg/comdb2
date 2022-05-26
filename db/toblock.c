@@ -3953,10 +3953,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            int updflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
-            if (iq->comdbg_flags)
-                updflags |= RECFLAGS_COMDBG_FROM_LE;
-
             rc = upd_record(iq, trans, NULL, /*primkey - will be formed from
                                                verification data*/
                             rrn, 0,          /*vgenid*/

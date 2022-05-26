@@ -32,7 +32,7 @@ uint32_t crc32c_comdb2(const uint8_t* buf, uint32_t sz);
 
 #define crc32c(buf, sz) crc32c_comdb2(buf,sz)
 
-#elif defined(_HAS_CRC32_ARMV7) || defined(_HAS_CRC32_ARMV8) 
+#elif (defined(_HAS_CRC32_ARMV7) || defined(_HAS_CRC32_ARMV8)  || defined(_HAS_CRC32_ARM64)) && !defined(__APPLE__)
 
 void crc32c_init(int v);
 uint32_t crc32c_comdb2(const uint8_t* buf, uint32_t sz);

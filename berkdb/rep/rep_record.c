@@ -858,6 +858,10 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 			lastpr = now;
 		}
 		rc = pthread_cond_timedwait(&release_cond, &rep_queue_lock, &ts);
+        if (rc && rc != ETIMEDOUT) {
+            __db_err(dbenv, "unexpected pthread_cond_timedwait rc %d %s\n", rc, strerror(rc));
+            abort();
+        }
 	}
 
 	/* Set before enqueing */
@@ -6472,7 +6476,6 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	u_int32_t rectype;
 	u_int32_t keycnt = 0;
 	u_int32_t logflags = DB_LAST;
-	u_int32_t lockcnt;
 	u_int32_t lockid = DB_LOCK_INVALIDID;
 	DB_REP *db_rep;
 	REP *rep;
@@ -6527,7 +6530,6 @@ restart:
 	while ((ret = __log_c_get(logc, &lsn, &mylog, logflags)) == 0 &&
 		log_compare(&lsn, lsnp) > 0) {
 		logflags = DB_PREV;
-		lockcnt = 0;
 		LOGCOPY_32(&rectype, mylog.data);
 		if (rectype == DB___txn_regop_rowlocks) {
 			if ((ret =
@@ -7486,6 +7488,10 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
 	if (dbenv->mintruncate_state != MINTRUNCATE_READY &&
 			log_compare(&lsnp, &dbenv->mintruncate_first) < 0) {
 		rc = __dbenv_build_mintruncate_list(dbenv);
+        if (!(rc || dbenv->mintruncate_state == MINTRUNCATE_READY)) {
+            __db_err(dbenv, "__dbenv_build_mintruncate_list rc %d state %d", rc, dbenv->mintruncate_state);
+        }
+
 		assert(rc || dbenv->mintruncate_state == MINTRUNCATE_READY);
 	}
 	ret = __rep_verify_match(dbenv, &rp, rep->timestamp, online);

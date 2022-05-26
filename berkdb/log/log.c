@@ -1198,7 +1198,7 @@ __log_zero(dbenv, from_lsn, to_lsn)
 {
 	DB_FH *fhp;
 	DB_LOG *dblp;
-	size_t nbytes, len, nw;
+	size_t nbytes, nw;
 	u_int8_t buf[4096];
 	u_int32_t mbytes, bytes;
 	int fn, ret;
@@ -1240,7 +1240,6 @@ __log_zero(dbenv, from_lsn, to_lsn)
 	    NULL, dblp->lfhp, &mbytes, &bytes, NULL)) != 0)
 		goto err;
 	DB_ASSERT((mbytes * MEGABYTE + bytes) >= from_lsn->offset);
-	len = (mbytes * MEGABYTE + bytes) - from_lsn->offset;
 
 	memset(buf, 0, sizeof(buf));
 

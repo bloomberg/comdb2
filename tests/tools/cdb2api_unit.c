@@ -21,6 +21,7 @@
 #undef NDEBUG
 
 #include <assert.h>
+#include <stdlib.h>
 #include <bb_oscompat.h>
 #include <cdb2api.c>
 

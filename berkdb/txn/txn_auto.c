@@ -332,14 +332,12 @@ __txn_regop_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
 	__txn_regop_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
 	argp = NULL;
-	t = (TXN_RECS *)summary;
 
 
 err:	if (argp != NULL)
@@ -712,15 +710,12 @@ __txn_ckp_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
     __txn_ckp_args *argp;
     int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
     argp = NULL;
-	t = (TXN_RECS *)summary;
-
 
 err:if (argp != NULL)
         __os_free(dbenv, argp);
@@ -1078,15 +1073,12 @@ __txn_child_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
     __txn_child_args *argp;
     int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
     argp = NULL;
-	t = (TXN_RECS *)summary;
-
 
 err:if (argp != NULL)
         __os_free(dbenv, argp);
@@ -1504,15 +1496,12 @@ __txn_xa_regop_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
 	__txn_xa_regop_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
 	argp = NULL;
-	t = (TXN_RECS *)summary;
-
 
 err:	if (argp != NULL)
 	__os_free(dbenv, argp);
@@ -1878,15 +1867,12 @@ __txn_recycle_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
 	__txn_recycle_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
 	argp = NULL;
-	t = (TXN_RECS *)summary;
-
 
 err:	if (argp != NULL)
 	__os_free(dbenv, argp);
@@ -2324,15 +2310,12 @@ __txn_regop_rowlocks_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
 	__txn_regop_rowlocks_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
 	argp = NULL;
-	t = (TXN_RECS *)summary;
-
 
 err:	if (argp != NULL)
 	__os_free(dbenv, argp);
@@ -2782,15 +2765,12 @@ __txn_regop_gen_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
 	__txn_regop_gen_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
 
 	argp = NULL;
-	t = (TXN_RECS *)summary;
-
 
 err:	if (argp != NULL)
 	__os_free(dbenv, argp);

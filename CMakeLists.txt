@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 3.3)
 project (Comdb2 ${COMDB2_BBPROJECT})
 
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
@@ -33,7 +34,9 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   list(APPEND CMAKE_PREFIX_PATH
     ${CMAKE_PREFIX_PATH}
     "/usr/local"
+    "/opt/homebrew"
     "/usr/local/opt/openssl"
+    "/opt/homebrew/opt/openssl/"
     "/usr/local/opt/readline")
 endif()
 
@@ -160,7 +163,7 @@ endif()
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
   # This is mostly misused as little-endian
   add_definitions(-D_LINUX_SOURCE)
-elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64)
+elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL arm64)
   add_definitions(-D_LINUX_SOURCE)
   include(crc32c/arm.cmake)
 endif()

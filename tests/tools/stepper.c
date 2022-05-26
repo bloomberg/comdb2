@@ -16,6 +16,7 @@ static int debug = 0;
 
 static int usage( char *prg);
 static int parse_line( char *line, char **query);
+int gbl_ssl_allow_localhost = 0;
 
 /* two minute max */
 #define MAXTIME (60*2)

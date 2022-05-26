@@ -889,7 +889,7 @@ __memp_read_recovery_pages(dbmfp)
 	DB_MPOOL *dbmp;
 	DB_PGINFO duminfo = { 0 }, *pginfo;
 	PAGE *pagep;
-	int ret, free_buf, ftype, i;
+	int ret, free_buf, i;
 	void *fpage;
 	size_t nr, pagesize;
 	db_pgno_t inpg;
@@ -900,7 +900,6 @@ __memp_read_recovery_pages(dbmfp)
 	dbmp = dbenv->mp_handle;
 	free_buf = 0;
 	pginfo = &duminfo;
-	ftype = mfp->ftype;
 
 	/* Error out here if there is no recovery page file. */
 	if (NULL == dbmfp->recp)

@@ -72,7 +72,7 @@ unsigned int myrand(void)
     if(first)
     {
         seed = time(NULL);
-        adds = (unsigned int)pthread_self();
+        adds = (unsigned int)(intptr_t)pthread_self();
         first = 0;
     }
 
@@ -215,8 +215,8 @@ void *update_records_thd(void *arg)
         snprintf(sql, sizeof(sql), "begin");
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "td %u error in begin, ret=%d, %s.\n", 
-                    (uint32_t) pthread_self(), ret, cdb2_errstr(sqlh));
+            fprintf(stderr, "td %" PRIxPTR " error in begin, ret=%d, %s.\n",
+                    (intptr_t) pthread_self(), ret, cdb2_errstr(sqlh));
             exit(1);
         }
         do
