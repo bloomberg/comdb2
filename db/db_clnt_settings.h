@@ -3,13 +3,13 @@
 
 // REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)
 REGISTER_SETTING(dbtran, SETTING_COMPOSITE, 0, gbl_setting_default_query_timeout);
-REGISTER_ACC_SETTING(dbtran.mode, mode, SETTING_ENUM, SETFLAG_DERIVED, gbl_setting_default_query_timeout);
+REGISTER_ACC_SETTING(dbtran.mode, mode, SETTING_ENUM, SETFLAG_DERIVED, gbl_setting_default_mode);
 REGISTER_ACC_SETTING(dbtran.maxchunksize, chunk, SETTING_ENUM, SETFLAG_DERIVED, gbl_setting_default_query_timeout);
 
 // How do I handle cln->plugin.set_timeout?
-//REGISTER_SETTING(plugin, "", SETTING_COMPOSITE, 0, gbl_setting_default_query_timeout);
-//REGISTER_SETTING(plugin.set_timeout, "", SETTING_FUNC, SETFLAG_DERIVED, gbl_setting_default_query_timeout);
-//REGISTER_ACC_SETTING(query_timeout, "", SETTING_INTEGER, 0, gbl_setting_default_query_timeout);
+REGISTER_SETTING(plugin, SETTING_COMPOSITE, 0, gbl_setting_default_query_timeout);
+REGISTER_ACC_SETTING(plugin.set_timeout, timeout, SETTING_FUNC, SETFLAG_DERIVED, gbl_setting_default_timeout);
+REGISTER_ACC_SETTING(query_timeout, maxquerytime, SETTING_INTEGER, 0, gbl_setting_default_query_timeout);
 //REGISTER_ACC_SETTING(tzname, "", SETTING_STRING, 0, gbl_setting_default_query_timeout);
 //REGISTER_ACC_SETTING(dtprec, "", SETTING_INTEGER, 0, gbl_setting_default_query_timeout);
 

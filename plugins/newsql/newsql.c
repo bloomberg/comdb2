@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include "logmsg.h"
 #include "settings.h"
 #include <pthread.h>
 #include <stdlib.h>
@@ -1468,9 +1469,10 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
         sqlstr = skipws(sqlstr);
-        populate_settings(clnt, sqlstr);
 
-        if (strncasecmp(sqlstr, "set", 3) == 0) {
+        if ((rc = populate_settings(clnt, sqlstr) == 0)) {
+            sql_debug_logf(clnt, __func__, __LINE__, "%s: set successfully using new method\n", sqlstr);
+        } else if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
             err[0] = '\0';
             sql_debug_logf(clnt, __func__, __LINE__,

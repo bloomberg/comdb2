@@ -40,7 +40,7 @@ typedef enum {
 struct db_clnt_setting_t;
 typedef struct db_clnt_setting_t db_clnt_setting_t;
 
-typedef int set_clnt_setting(db_clnt_setting_t *, struct sqlclntstate *, const char *);
+typedef int set_clnt_setting(db_clnt_setting_t *, struct sqlclntstate *, const char *, char*);
 typedef void *get_clnt_setting(struct sqlclntstate *, int);
 
 struct db_clnt_setting_t {
@@ -64,45 +64,12 @@ struct db_clnt_setting_t {
 
 int init_client_settings();
 int register_settings(struct sqlclntstate *);
-int populate_settings(struct sqlclntstate *, char *);
+int populate_settings(struct sqlclntstate *, const char *);
 
 LISTC_T(struct db_clnt_setting_t) settings;
 hash_t *desc_settings;
 
-#define SETTING_SET_FUNC(SETTING)                                                                                      \
-    int set_##SETTING(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr)
-
-SETTING_SET_FUNC(plugin);
-SETTING_SET_FUNC(tzname);
-SETTING_SET_FUNC(dtprec);
-SETTING_SET_FUNC(dbtran);
-SETTING_SET_FUNC(current_user);
-SETTING_SET_FUNC(query_timeout);
-SETTING_SET_FUNC(authgen);
-SETTING_SET_FUNC(spname);
-SETTING_SET_FUNC(want_stored_procedure_trace);
-SETTING_SET_FUNC(bdb_osql_trak);
-SETTING_SET_FUNC(verifyretry_off);
-SETTING_SET_FUNC(current_user);
-SETTING_SET_FUNC(query_timeout);
-SETTING_SET_FUNC(authgen);
-SETTING_SET_FUNC(spname);
-SETTING_SET_FUNC(want_stored_procedure_trace);
-SETTING_SET_FUNC(bdb_osql_trak);
-SETTING_SET_FUNC(verifyretry_off);
-SETTING_SET_FUNC(statement_query_effects);
-SETTING_SET_FUNC(get_cost);
-SETTING_SET_FUNC(is_explain);
-SETTING_SET_FUNC(osql_max_trans);
-SETTING_SET_FUNC(group_concat_mem_limit);
-SETTING_SET_FUNC(planner_effort);
-SETTING_SET_FUNC(appdata);
-SETTING_SET_FUNC(admin);
-SETTING_SET_FUNC(is_readonly);
-SETTING_SET_FUNC(is_expert);
-SETTING_SET_FUNC(is_fast_expert);
-SETTING_SET_FUNC(spversion);
-SETTING_SET_FUNC(mode);
+#define SETTING_SET_FUNC(SETTING) int set_##SETTING(db_clnt_setting_t *, struct sqlclntstate *, const char *, char *err)
 
 // TODO: can i add (int*) parse_fun(struct sqlclntstate *, char*cmd, db_clnt_setting_t*);
 // if command can be parsed, to the value as x, then we
