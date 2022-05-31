@@ -705,6 +705,24 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb = s->newdb;
 
+    /* NOTE: add prepopulates newdb->csc2_schema, but alter does not
+     * we need this to be able to call populate_db_with_alt_schema
+     * later on
+     */
+    if (!newdb->csc2_schema) {
+        assert(bdb_have_llmeta() && s->kind == SC_ALTERTABLE);
+        int ver;
+        ver = get_csc2_version_tran(db->tablename, tran);
+        if (ver > 0) {
+            get_csc2_file_tran(db->tablename, ver, &newdb->csc2_schema,
+                               &newdb->csc2_schema_len, tran);
+        } else {
+            sc_client_error(s, "Cannot get csc2 for the table %s",
+                            db->tablename);
+            return -1;
+        }
+    }
+
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
         goto convert_records;
@@ -762,13 +780,21 @@ convert_records:
         return SC_MASTER_DOWNGRADE;
     }
 
-    struct errstat err = {0};
-    rc = populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
-               newdb->csc2_schema);
-        sc_client_error(s, "%s", err.errval, err.errstr);
-        return -1;
+    /* Merging two scenarios:
+     *- alter merge: in this case the schema is already populated with NEW tags
+     *- create merge: we need to populate schema with NEW tags
+     */
+    struct schema *tag = find_tag_schema(newdb->tablename, ".NEW..ONDISK");
+    if (!tag) {
+        struct errstat err = {0};
+        rc =
+            populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
+                   newdb->csc2_schema);
+            sc_client_error(s, "%s", err.errval, err.errstr);
+            return -1;
+        }
     }
 
     add_ongoing_alter(s);
@@ -780,7 +806,8 @@ convert_records:
 
     remove_ongoing_alter(s);
 
-    backout_schemas(newdb->tablename);
+    if (!tag)
+        backout_schemas(newdb->tablename);
 
     if (rc == SC_PREEMPTED) {
         sc_client_error(s, "SCHEMACHANGE PREEMPTED");
