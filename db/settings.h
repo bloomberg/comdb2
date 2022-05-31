@@ -45,7 +45,6 @@ typedef void *get_clnt_setting(struct sqlclntstate *, int);
 
 struct db_clnt_setting_t {
     LINKC_T(struct db_clnt_setting_t) lnk;
-    hash_t * hash;
 
     char *name;
     char *desc;
@@ -144,20 +143,10 @@ int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int);
         listc_abl(&settings, &s);                                                                                      \
     } while (0)
 */
-int temp_debug_set_clnt(char *);
+int add_set_clnt(char *, set_clnt_setting *);
 
 #define REGISTER_ACC_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                          \
     REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT);                                                                       \
-    temp_debug_set_clnt(#DESC);
-/*
-    do {                                                                                                               \
-        db_clnt_setting_t *set = listc_rbl(&settings);                                                                 \
-        assert(set);                                                                                                   \
-        set->desc = #DESC;                                                                                             \
-        set->set_clnt = set_##DESC;                                                                                    \
-        listc_abl(&settings, set);                                                                                     \
-        if (strcmp(#DESC, "") != 0)                                                                                    \
-            temp_debug_set_clnt(set);                                                                                  \
-    } while (0)
-*/
+    add_set_clnt(#DESC, set_##DESC);
+
 #endif

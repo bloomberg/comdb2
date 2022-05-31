@@ -1,6 +1,7 @@
 #include "settings.h"
 #include "comdb2.h"
 #include "list.h"
+#include "plhash.h"
 #include "sbuf2.h"
 #include <strings.h>
 
@@ -8,8 +9,7 @@ int gbl_setting_default_query_timeout = 0;
 
 int init_client_settings()
 {
-    desc_settings = hash_init_strcaseptr(offsetof(db_clnt_setting_t, desc));
-    hash_initsize(desc_settings, 1024);
+    desc_settings = hash_init_strptr(offsetof(db_clnt_setting_t, desc));
     logmsg(LOGMSG_DEBUG, "Settings hash initialized\n");
     return 1;
 }
@@ -36,9 +36,13 @@ enum set_state {
     SET_STATE_DEAD = 999
 };
 
+#define MAX_SELF_TRANSITION 5
+#define RESIDUAL_LENGTH 128
+
 typedef struct set_state_mach {
     struct sqlclntstate *clnt;
     enum set_state state;
+    int num_self_transition;
     int rc;
     char *err;
 } set_state_mach_t;
@@ -71,12 +75,26 @@ int transition(set_state_mach_t *sm, char *key)
     } else if (sm->state == SET_STATE_CHUNK) {
         // set chunk
         // get setter function from setting->set_func(setting, sm->clnt, char*value, char * err)
-        db_clnt_setting_t *sett = hash_find(desc_settings, "chunk");
+        char *chunk = "chunk";
+        db_clnt_setting_t *sett = hash_find(desc_settings, &chunk);
         return sett->set_clnt(sett, sm->clnt, key);
     } else if (sm->state == SET_STATE_MODE) {
         // set mode
-        db_clnt_setting_t *sett = hash_find(desc_settings, "mode");
-        return sett->set_clnt(sett, sm->clnt, key);
+        if (strncmp(key, "read", 4) == 0) {
+            if (sm->num_self_transition == 0) {
+                ++sm->num_self_transition;
+            } else {
+                sm->rc = 4;
+                return 4;
+            }
+        } else if (sm->num_self_transition && (strncmp(key, "committed", 9) == 0)) {
+            char *mode = "mode";
+            db_clnt_setting_t *sett = hash_find(desc_settings, &mode);
+            return sett->set_clnt(sett, sm->clnt, "read committed");
+        } else {
+            sm->rc = 3;
+            return 3;
+        }
     } else {
         sm->rc = 1;
         return 1;
@@ -92,6 +110,7 @@ set_state_mach_t *init_state_machine(struct sqlclntstate *clnt)
     sm->state = SET_STATE_INIT;
     sm->rc = 0;
     sm->err = NULL;
+    sm->num_self_transition = 0;
     return sm;
 }
 
@@ -149,10 +168,8 @@ int set_mode(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *
 
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     clnt->high_availability_flag = 1;
-    if (strncasecmp(value, "read", 4) == 0) {
-        if (strncasecmp(value, "committed", 9) == 0) {
-            clnt->dbtran.mode = TRANLEVEL_RECOM;
-        }
+    if (strncasecmp(value, "read committed", 14) == 0) {
+        clnt->dbtran.mode = TRANLEVEL_RECOM;
     } else if (strncasecmp(value, "serial", 6) == 0) {
         clnt->dbtran.mode = TRANLEVEL_SERIAL;
         if (clnt->hasql_on == 1) {
@@ -356,17 +373,22 @@ int set_dbtran(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char
 
 int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, int blah)
 {
-    db_clnt_setting_t s = {.name = name, .type = type, .flag = flag, .cmd = "default", .def = &blah, .lnk = {}};
-    listc_abl(&settings, &s);
+    db_clnt_setting_t *s = malloc(sizeof(db_clnt_setting_t));
+
+    s->name = name;
+    s->type = type;
+    s->flag = flag;
+    s->def = &blah;
+
+    listc_abl(&settings, s);
     return 0;
 }
 
-int temp_debug_set_clnt(char *desc)
+int add_set_clnt(char *desc, set_clnt_setting *setf)
 {
-    db_clnt_setting_t *set = listc_rbl(&settings);
-    set->desc = desc;
-    set->hash = hash_init_strcaseptr(offsetof(db_clnt_setting_t, desc));
-    set = listc_abl(&settings, set);
+    db_clnt_setting_t *set = settings.bot;
+    set->desc = strdup(desc);
+    set->set_clnt = setf;
     hash_add(desc_settings, set);
     return 0;
 }
@@ -376,60 +398,3 @@ int register_settings(struct sqlclntstate *clnt)
 #include "db_clnt_settings.h"
     return 0;
 }
-
-/**
-
-enum { SET_STATE_SET=0, SET_STATE_TRANS = 1}.... and so on
-
-typedef struct set_state_mach {
-    struct sqlclntstate *clnt,
-    int curr_state;
-    int rc;
-    char * err;
-} set_state_mach_t;
-
-
-int transition(set_state_mach_t * sm, char * key) {
-    if strncmp(key, "set") {
-        sm->state = SET_STATE_SET;
-    }
-
-    if sm->state = SET_STATE_SET; {
-        if strncmp(key, "transaction") {
-            sm->state = SET_STATE_TRANS;
-        } elif strncmp (key, ""){
-            ...and so on, the first level
-        }
-    } elif sm->state = SET_STATE_TRANSACTION {
-        if strncmp(key, "chunk") {
-            sm->state = SET_STATE_CHUNK;
-        } elif strncmp (key, "mode"){
-        }
-    }elif sm->state == SET_STATE_CHUNK {
-        // set chunk
-    } elif sm->state == SET_STATE_MODE {
-        // set mode
-    }
-    } else {
-        sm->rc = 1;
-    }
-}
-
-int populate (clnt, ) {
-    init_state_machine(clnt);
-    int rc = 0;
-    for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
-        if (**ap != '\0') {
-            transition(sm, *ap);
-            if (sm->state == DEAD) {
-                rc = sm->rc;
-                log(sm->error);
-            }
-        }
-
-    destroy_state_machine();
-}
-
-
- *
- */

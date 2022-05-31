@@ -1468,7 +1468,6 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
         sqlstr = skipws(sqlstr);
-        
         populate_settings(clnt, sqlstr);
 
         if (strncasecmp(sqlstr, "set", 3) == 0) {
