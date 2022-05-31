@@ -1,6 +1,8 @@
 #include "settings.h"
+#include "block_internal.h"
 #include "comdb2.h"
 #include "list.h"
+#include "logmsg.h"
 #include "plhash.h"
 #include "sbuf2.h"
 #include <strings.h>
@@ -33,6 +35,7 @@ enum set_state {
     SET_STATE_EXPERT,
     SET_STATE_SPTRACE,
     SET_STATE_CURSORDEBUG,
+    SET_STATE_APPLY = 998,
     SET_STATE_DEAD = 999
 };
 
@@ -42,26 +45,59 @@ enum set_state {
 typedef struct set_state_mach {
     struct sqlclntstate *clnt;
     enum set_state state;
+
     int num_self_transition;
+
+    char *key;
+    char *val;
+
     int rc;
     char *err;
 } set_state_mach_t;
 
+void set_apply(set_state_mach_t *sm, char *key, char *value)
+{
+    sm->key = key;
+    sm->val = value;
+    sm->state = SET_STATE_APPLY;
+}
+
+int apply_sett(set_state_mach_t *sm)
+{
+    if (sm->key == NULL) {
+        logmsg(LOGMSG_ERROR, "invalid key supplied");
+        return 5;
+    }
+    db_clnt_setting_t *sett = NULL;
+    if ((sett = hash_find(desc_settings, &sm->key)) == NULL) {
+        logmsg(LOGMSG_ERROR, "no setting found for key %s\n", sm->key);
+        return 5;
+    }
+    if (sett->set_clnt == NULL) {
+        logmsg(LOGMSG_ERROR, "no setter specified for key %s\n", sm->key);
+        return 5;
+    }
+    return sett->set_clnt(sett, sm->clnt, sm->val);
+}
+
 int transition(set_state_mach_t *sm, char *key)
 {
+    int rc = 0;
     if (sm->state == SET_STATE_INIT) {
         if (strncmp(key, "set", 3) == 0)
             sm->state = SET_STATE_SET;
-        else
-            return 1;
+        else {
+            rc = 1;
+            goto transerr;
+        }
     } else if (sm->state == SET_STATE_SET) {
         if (strncmp(key, "transaction", 11) == 0) {
             sm->state = SET_STATE_TRANS;
         } else if (strncmp(key, "timeout", 7) == 0) {
             sm->state = SET_STATE_TIMEOUT;
         } else {
-            sm->rc = 2;
-            return 2;
+            rc = 2;
+            goto transerr;
         }
     } else if (sm->state == SET_STATE_TRANS) {
         if (strncmp(key, "chunk", 5) == 0) {
@@ -69,38 +105,36 @@ int transition(set_state_mach_t *sm, char *key)
         } else if (strncmp(key, "mode", 4) == 0) {
             sm->state = SET_STATE_MODE;
         } else {
-            sm->rc = 3;
-            return 3;
+            rc = 3;
+            goto transerr;
         }
     } else if (sm->state == SET_STATE_CHUNK) {
         // set chunk
         // get setter function from setting->set_func(setting, sm->clnt, char*value, char * err)
-        char *chunk = "chunk";
-        db_clnt_setting_t *sett = hash_find(desc_settings, &chunk);
-        return sett->set_clnt(sett, sm->clnt, key);
+        set_apply(sm, "chunk", key);
     } else if (sm->state == SET_STATE_MODE) {
         // set mode
         if (strncmp(key, "read", 4) == 0) {
             if (sm->num_self_transition == 0) {
                 ++sm->num_self_transition;
             } else {
-                sm->rc = 4;
-                return 4;
+                rc = 4;
+                goto transerr;
             }
         } else if (sm->num_self_transition && (strncmp(key, "committed", 9) == 0)) {
-            char *mode = "mode";
-            db_clnt_setting_t *sett = hash_find(desc_settings, &mode);
-            return sett->set_clnt(sett, sm->clnt, "read committed");
+            set_apply(sm, "mode", "read committed");
         } else {
             sm->rc = 3;
             return 3;
         }
     } else {
-        sm->rc = 1;
-        return 1;
+        rc = 1;
+        goto transerr;
     }
 
-    return 0;
+transerr:
+    sm->rc = rc;
+    return rc;
 }
 
 set_state_mach_t *init_state_machine(struct sqlclntstate *clnt)
@@ -132,12 +166,15 @@ int populate_settings(struct sqlclntstate *clnt, char *sqlstr)
     for (ap = argv; ((*ap = strsep(&temp, " \t")) != NULL);) {
         if (**ap != '\0') {
             transition(sm, *ap);
-            if (sm->state == SET_STATE_DEAD) {
-                rc = sm->rc;
+            if ((sm->rc) || (sm->state == SET_STATE_APPLY)) {
+                break;
             }
         }
     }
 
+    if ((rc = sm->rc) == 0) {
+        apply_sett(sm);
+    }
     destroy_state_machine(sm);
     return rc;
 }
