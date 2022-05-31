@@ -5837,34 +5837,40 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     struct schema_change_type *sc = iq->sc;
     int rc;
 
-    if (sc->kind == SC_ADDTABLE) {
-        /* created a table and move rows from a different one into it */
-        sc->finalize = 0; /* make sure */
-        sc->nothrevent = 1; /* we need do_add_table to run first */
-        rc =  start_schema_change_tran(iq, NULL);
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
-        if (rc != SC_COMMIT_PENDING) {
-            return ERR_SC;
-        }
+    assert(sc->partition.type == PARTITION_MERGE);
 
-        /* at this point we have created the future btree, launch an alter
-         * for the to-be-merged table
-         */
-        timepart_sc_arg_t arg = {0};
-        arg.s = sc;
-        arg.s->iq = iq;
-        arg.indx = 1; /* no publishing */
-
-        /* need table version */
-        sc->usedbtablevers = sc->partition.u.mergetable.version;
-
-        rc = start_schema_change_tran_wrapper_merge(
-            sc->partition.u.mergetable.tablename, &arg);
-    } else {
-        /* this is an alter with a table merge */
-        return -1;
+    /* if this is an create .. merge, make sure we create table first
+     * if this is an alter .. merge, we still prefer to sequence alters
+     * to limit the amount of parallelism in flight
+     */
+    sc->nothrevent = 1;
+    sc->finalize = 0; /* make sure */
+    if (sc->kind == SC_ALTERTABLE) {
+        /* alter only switches to merge path if this is set */
+        sc->partition.type = PARTITION_NONE;
     }
+    rc = start_schema_change_tran(iq, NULL);
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+    if (rc != SC_COMMIT_PENDING) {
+        return ERR_SC;
+    }
+
+    /* at this point we have created the future btree, launch an alter
+     * for the to-be-merged table
+     */
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+    arg.indx = 1; /* no publishing */
+
+    /* need table version */
+    sc->usedbtablevers = sc->partition.u.mergetable.version;
+    enum comdb2_partition_type old_part_type = sc->partition.type;
+    sc->partition.type = PARTITION_MERGE;
+    rc = start_schema_change_tran_wrapper_merge(
+            sc->partition.u.mergetable.tablename, &arg);
+    sc->partition.type = old_part_type;
 
     return rc;
 }

@@ -69,6 +69,8 @@ char gbl_ondisk_ver[] = ".ONDISK.VER.";
 char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
 const int gbl_ondisk_ver_len = sizeof ".ONDISK.VER.255xx";
 
+int _dbg_tags = 0;
+
 #define TAGLOCK_RW_LOCK
 #ifdef TAGLOCK_RW_LOCK
 static pthread_rwlock_t taglock;
@@ -177,9 +179,13 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
     }
     if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
         listc_rfl(&tag->taglist, fnd);
+        if (_dbg_tags)
+            logmsg(LOGMSG_DEBUG, "Removing %s:%s\n", table, fnd->tag);
         hash_del(tag->tags, fnd);
         free(fnd);
     }
+    if (_dbg_tags)
+        logmsg(LOGMSG_DEBUG, "Adding %s:%s\n", table, schema->tag);
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
 #if defined DEBUG_STACK_TAG_SCHEMA
@@ -206,6 +212,8 @@ static void del_tag_schema_lk(const char *table, const char *tagname)
     struct schema *sc = hash_find(tag->tags, &tagname);
 
     if (sc) {
+        if (_dbg_tags)
+            logmsg(LOGMSG_DEBUG, "2 Removing %s:%s\n", table, sc->tag);
         hash_del(tag->tags, sc);
 #if defined DEBUG_STACK_TAG_SCHEMA
         comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
@@ -1446,10 +1454,14 @@ void add_tag_alias(const char *table, struct schema *s, char *name, int table_nm
     old = hash_find(tag->tags, &sc->tag);
     if (old) {
         listc_rfl(&tag->taglist, old);
+        if (_dbg_tags)
+            logmsg(LOGMSG_DEBUG, "3 Removing %s:%s\n", table, old->tag);
         hash_del(tag->tags, old);
         freeschema(old);
     }
 
+    if (_dbg_tags)
+        logmsg(LOGMSG_DEBUG, "2 Adding %s:%s\n", table, sc->tag);
     hash_add(tag->tags, sc);
 #if defined DEBUG_STACK_TAG_SCHEMA
     comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
@@ -3651,8 +3663,8 @@ int stag_to_stag_buf_cachedmap(int tagmap[], struct schema *from,
     {
         /* make sure we are using the right MAXBLOBS number */
         if (maxblobs != MAXBLOBS) {
-            fprintf(stderr, "stag_to_stag_buf_blobs with maxblobs=%d!\n",
-                    maxblobs);
+            logmsg(LOGMSG_ERROR, "stag_to_stag_buf_blobs with maxblobs=%d!\n",
+                   maxblobs);
             return -1;
         }
 
@@ -5264,6 +5276,8 @@ static int backout_schemas_lockless(const char *tblname)
         if (strncasecmp(sc->tag, ".NEW.", 5) == 0) {
             /* new addition? delete */
             listc_rfl(&dbt->taglist, sc);
+            if (_dbg_tags)
+                logmsg(LOGMSG_DEBUG, "4 Removing %s:%s\n", tblname, sc->tag);
             hash_del(dbt->tags, sc);
             freeschema(sc);
         }
@@ -5448,6 +5462,8 @@ void commit_schemas(const char *tblname)
             listc_rfl(&dbt->taglist, sc);
             sc = NULL;
         } else {
+            if (_dbg_tags)
+                logmsg(LOGMSG_DEBUG, "3 Adding %s:%s\n", tblname, sc->tag);
             hash_add(dbt->tags, sc);
 #if defined DEBUG_STACK_TAG_SCHEMA
             comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
