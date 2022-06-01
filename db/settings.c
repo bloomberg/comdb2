@@ -8,14 +8,25 @@
 #include "sql.h"
 #include <stdio.h>
 #include <strings.h>
+#include <str0.h>
+
+/**
+ * Add a new setting:
+ *  1. Register the setting as accessible in REGISTER_ACC_SETTING. Add a default variable as well.
+ *  2. Add new states in the set_state enum
+ *  3. Make corresponding changes in int transition(set_state_mach_t *sm, char *key){}
+ *  4. Define a set_<setting_name> function
+ */
 
 #define SM_ERROR_LEN 512
 #define SET_ERR(...) snprintf(err, SM_ERROR_LEN, ##__VA_ARGS__);
 
+// TODO: read default stuff
 int gbl_setting_default_query_timeout = 0;
 int gbl_setting_default_chunk_size = 0;
 int gbl_setting_default_mode = TRANLEVEL_INVALID;
 int gbl_setting_default_timeout = 0;
+// char* and other default
 
 int init_client_settings()
 {
@@ -102,6 +113,10 @@ int transition(set_state_mach_t *sm, char *key)
             sm->state = SET_STATE_TIMEOUT;
         } else if (strncmp(key, "maxquerytime", 7) == 0) {
             sm->state = SET_STATE_MAXQUERYTIME;
+        } else if (strncmp(key, "timezone", 8) == 0) {
+            sm->state = SET_STATE_TIMEZONE;
+        } else if (strncmp(key, "datetime", 8) == 0) {
+            sm->state = SET_STATE_DATETIME;
         } else {
             rc = 2;
             goto transerr;
@@ -140,6 +155,18 @@ int transition(set_state_mach_t *sm, char *key)
         set_apply(sm, "timeout", key);
     } else if (sm->state == SET_STATE_MAXQUERYTIME) {
         set_apply(sm, "maxquerytime", key);
+    } else if (sm->state == SET_STATE_TIMEZONE) {
+        set_apply(sm, "timezone", key);
+    } else if (sm->state == SET_STATE_DATETIME) {
+        if ((sm->num_self_transition == 0) && (strncmp(key, "precision", 9) == 0)) {
+            ++sm->num_self_transition;
+        } else if ((sm->num_self_transition != 0)) {
+            set_apply(sm, "datetime", key);
+            sm->num_self_transition = 0;
+        } else {
+            rc = 4;
+            goto transerr;
+        }
     } else {
         rc = 1;
         goto transerr;
@@ -322,6 +349,18 @@ int set_maxquerytime(db_clnt_setting_t *setting, struct sqlclntstate *clnt, cons
 {
     long timeout = strtol(value, NULL, 10);
     clnt->query_timeout = timeout;
+    return 0;
+}
+
+int set_timezone(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value, char *err)
+{
+    strncpy0(clnt->tzname, value, sizeof(clnt->tzname));
+    return 0;
+}
+
+int set_datetime(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value, char *err)
+{
+    DTTZ_TEXT_TO_PREC(value, clnt->dtprec, 0, return -1);
     return 0;
 }
 
