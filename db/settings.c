@@ -21,6 +21,9 @@
 #define SM_ERROR_LEN 512
 #define SET_ERR(...) snprintf(err, SM_ERROR_LEN, ##__VA_ARGS__);
 
+#define SET_TOKEN_CMP(X) strncmp(key, #X, sizeof(#X) - 1) == 0
+#define SET_TOKEN_CASECMP(X) strncasecmp(key, #X, sizeof(#X) - 1) == 0
+
 // TODO: read default stuff
 int gbl_setting_default_query_timeout = 0;
 int gbl_setting_default_chunk_size = 0;
@@ -107,16 +110,38 @@ int transition(set_state_mach_t *sm, char *key)
             goto transerr;
         }
     } else if (sm->state == SET_STATE_SET) {
-        if (strncmp(key, "transaction", 11) == 0) {
+        if (SET_TOKEN_CMP(transaction)) {
             sm->state = SET_STATE_TRANS;
-        } else if (strncmp(key, "timeout", 7) == 0) {
+        } else if (SET_TOKEN_CMP(timeout)) {
             sm->state = SET_STATE_TIMEOUT;
-        } else if (strncmp(key, "maxquerytime", 7) == 0) {
+        } else if (SET_TOKEN_CMP(maxquerytime)) {
             sm->state = SET_STATE_MAXQUERYTIME;
-        } else if (strncmp(key, "timezone", 8) == 0) {
+        } else if (SET_TOKEN_CMP(timezone)) {
             sm->state = SET_STATE_TIMEZONE;
-        } else if (strncmp(key, "datetime", 8) == 0) {
+        } else if (SET_TOKEN_CMP(datetime)) {
             sm->state = SET_STATE_DATETIME;
+        } else if (SET_TOKEN_CMP(user)) {
+            sm->state = SET_STATE_DATETIME;
+        } else if (SET_TOKEN_CMP(password)) {
+            sm->state = SET_STATE_DATETIME;
+        } else if (SET_TOKEN_CMP(spversion)) {
+            sm->state = SET_STATE_DATETIME;
+        } else if (SET_TOKEN_CMP(prepare_only)) {
+            sm->state = SET_STATE_DATETIME;
+        } else if (SET_TOKEN_CASECMP(readonly)) {
+        } else if (SET_TOKEN_CASECMP(expert)) {
+        } else if (SET_TOKEN_CASECMP(sptrace)) {
+        } else if (SET_TOKEN_CASECMP(cursordebug)) {
+        } else if (SET_TOKEN_CASECMP(spdebug)) {
+        } else if (SET_TOKEN_CASECMP(HASQL)) {
+        } else if (SET_TOKEN_CASECMP(verifyretry)) {
+        } else if (SET_TOKEN_CASECMP(queryeffects)) {
+        } else if (SET_TOKEN_CASECMP(remote)) {
+        } else if (SET_TOKEN_CASECMP(getcost)) {
+        } else if (SET_TOKEN_CASECMP(explain)) {
+        } else if (SET_TOKEN_CASECMP(maxtransize)) {
+        } else if (SET_TOKEN_CASECMP(groupconcatmemlimit)) {
+
         } else {
             rc = 2;
             goto transerr;

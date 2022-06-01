@@ -1471,7 +1471,9 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         sqlstr = skipws(sqlstr);
 
         if ((rc = populate_settings(clnt, sqlstr)) == 0) {
-            sql_debug_logf(clnt, __func__, __LINE__, "%s: set successfully using new method\n", sqlstr);
+            char blah[128]; 
+            snprintf0(blah, 128, "set successfully using new method %s\n", sqlstr);
+            newsql_write_response(clnt,  RESPONSE_TRACE, blah, 0);
         } else if (strncasecmp(sqlstr, "set", 3) == 0) {
             char err[256];
             err[0] = '\0';
