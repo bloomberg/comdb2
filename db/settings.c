@@ -53,11 +53,26 @@ enum set_state {
     SET_STATE_USER,
     SET_STATE_PASSWORD,
     SET_STATE_SPVERSION,
-    SET_STATE_PREPARE_ONLy,
+    SET_STATE_PREPARE_ONLY,
     SET_STATE_READONLY,
     SET_STATE_EXPERT,
     SET_STATE_SPTRACE,
     SET_STATE_CURSORDEBUG,
+    SET_STATE_SPDEBUG,
+    SET_STATE_HASQL,
+    SET_STATE_VERIFYRETRY,
+    SET_STATE_QUERYEFFECTS,
+    SET_STATE_REMOTE,
+    SET_STATE_GETCOST,
+    SET_STATE_EXPLAIN,
+    SET_STATE_MAXTRANSIZE,
+    SET_STATE_GROUPCONCATMEMLIMIT,
+    SET_STATE_PLANNEREFFORT,
+    SET_STATE_INTRANSRESULTS,
+    SET_STATE_ADMIN,
+    SET_STATE_QUERYLIMIT,
+    SET_STATE_ROWBUFFER,
+    SET_STATE_SOCKBPLOG,
     SET_STATE_APPLY = 998,
     SET_STATE_DEAD = 999
 };
@@ -121,27 +136,51 @@ int transition(set_state_mach_t *sm, char *key)
         } else if (SET_TOKEN_CMP(datetime)) {
             sm->state = SET_STATE_DATETIME;
         } else if (SET_TOKEN_CMP(user)) {
-            sm->state = SET_STATE_DATETIME;
+            sm->state = SET_STATE_USER;
         } else if (SET_TOKEN_CMP(password)) {
-            sm->state = SET_STATE_DATETIME;
+            sm->state = SET_STATE_PASSWORD;
         } else if (SET_TOKEN_CMP(spversion)) {
-            sm->state = SET_STATE_DATETIME;
+            sm->state = SET_STATE_SPVERSION;
         } else if (SET_TOKEN_CMP(prepare_only)) {
-            sm->state = SET_STATE_DATETIME;
+            sm->state = SET_STATE_PREPARE_ONLY;
         } else if (SET_TOKEN_CASECMP(readonly)) {
+            sm->state = SET_STATE_READONLY;
         } else if (SET_TOKEN_CASECMP(expert)) {
+            sm->state = SET_STATE_EXPERT;
         } else if (SET_TOKEN_CASECMP(sptrace)) {
+            sm->state = SET_STATE_SPTRACE;
         } else if (SET_TOKEN_CASECMP(cursordebug)) {
+            sm->state = SET_STATE_CURSORDEBUG;
         } else if (SET_TOKEN_CASECMP(spdebug)) {
+            sm->state = SET_STATE_SPDEBUG;
         } else if (SET_TOKEN_CASECMP(HASQL)) {
+            sm->state = SET_STATE_HASQL;
         } else if (SET_TOKEN_CASECMP(verifyretry)) {
+            sm->state = SET_STATE_VERIFYRETRY;
         } else if (SET_TOKEN_CASECMP(queryeffects)) {
+            sm->state = SET_STATE_QUERYEFFECTS;
         } else if (SET_TOKEN_CASECMP(remote)) {
+            sm->state = SET_STATE_REMOTE;
         } else if (SET_TOKEN_CASECMP(getcost)) {
+            sm->state = SET_STATE_GETCOST;
         } else if (SET_TOKEN_CASECMP(explain)) {
+            sm->state = SET_STATE_EXPLAIN;
         } else if (SET_TOKEN_CASECMP(maxtransize)) {
+            sm->state = SET_STATE_MAXTRANSIZE;
         } else if (SET_TOKEN_CASECMP(groupconcatmemlimit)) {
-
+            sm->state = SET_STATE_GROUPCONCATMEMLIMIT;
+        } else if (SET_TOKEN_CASECMP(plannereffort)) {
+            sm->state = SET_STATE_PLANNEREFFORT;
+        } else if (SET_TOKEN_CASECMP(intransresults)) {
+            sm->state = SET_STATE_INTRANSRESULTS;
+        } else if (SET_TOKEN_CASECMP(admin)) {
+            sm->state = SET_STATE_ADMIN;
+        } else if (SET_TOKEN_CASECMP(querylimit)) {
+            sm->state = SET_STATE_QUERYLIMIT;
+        } else if (SET_TOKEN_CASECMP(rowbuffer)) {
+            sm->state = SET_STATE_ROWBUFFER;
+        } else if (SET_TOKEN_CASECMP(sockbplog)) {
+            sm->state = SET_STATE_SOCKBPLOG;
         } else {
             rc = 2;
             goto transerr;
@@ -192,6 +231,56 @@ int transition(set_state_mach_t *sm, char *key)
             rc = 4;
             goto transerr;
         }
+        // TODO: single level operations can be turned to
+        //     a simple array, by indexing these states starting
+        //     from custom value = 100. i.e. start SET_STATE_USER=100 and
+        //     arr[state - 100] = "user" and so on
+    } else if (sm->state == SET_STATE_USER) {
+        set_apply(sm, "user", key);
+    } else if (sm->state == SET_STATE_PASSWORD) {
+        set_apply(sm, "password", key);
+    } else if (sm->state == SET_STATE_SPVERSION) {
+        set_apply(sm, "spversion", key);
+    } else if (sm->state == SET_STATE_PREPARE_ONLY) {
+        set_apply(sm, "prepare_only", key);
+    } else if (sm->state == SET_STATE_READONLY) {
+        set_apply(sm, "readonly", key);
+    } else if (sm->state == SET_STATE_EXPERT) {
+        set_apply(sm, "expert", key);
+    } else if (sm->state == SET_STATE_SPTRACE) {
+        set_apply(sm, "sptrace", key);
+    } else if (sm->state == SET_STATE_CURSORDEBUG) {
+        set_apply(sm, "cursordebug", key);
+    } else if (sm->state == SET_STATE_SPDEBUG) {
+        set_apply(sm, "spedebug", key);
+    } else if (sm->state == SET_STATE_HASQL) {
+        set_apply(sm, "hasql", key);
+    } else if (sm->state == SET_STATE_VERIFYRETRY) {
+        set_apply(sm, "verifyretry", key);
+    } else if (sm->state == SET_STATE_QUERYEFFECTS) {
+        set_apply(sm, "queryeffects", key);
+    } else if (sm->state == SET_STATE_REMOTE) {
+        set_apply(sm, "remote", key);
+    } else if (sm->state == SET_STATE_GETCOST) {
+        set_apply(sm, "getcost", key);
+    } else if (sm->state == SET_STATE_EXPLAIN) {
+        set_apply(sm, "explain", key);
+    } else if (sm->state == SET_STATE_MAXTRANSIZE) {
+        set_apply(sm, "maxtransize", key);
+    } else if (sm->state == SET_STATE_GROUPCONCATMEMLIMIT) {
+        set_apply(sm, "groupconcaatmemlimit", key);
+    } else if (sm->state == SET_STATE_PLANNEREFFORT) {
+        set_apply(sm, "plannereffort", key);
+    } else if (sm->state == SET_STATE_INTRANSRESULTS) {
+        set_apply(sm, "intransresults", key);
+    } else if (sm->state == SET_STATE_ADMIN) {
+        set_apply(sm, "admin", key);
+    } else if (sm->state == SET_STATE_QUERYLIMIT) {
+        set_apply(sm, "querylimit", key);
+    } else if (sm->state == SET_STATE_ROWBUFFER) {
+        set_apply(sm, "rowbuffer", key);
+    } else if (sm->state == SET_STATE_SOCKBPLOG) {
+        set_apply(sm, "sockbplog", key);
     } else {
         rc = 1;
         goto transerr;
@@ -291,76 +380,263 @@ int set_mode(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *
     return 7 ? (clnt->dbtran.mode == TRANLEVEL_INVALID) : 0;
 }
 
-int set_spname(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_user(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value, char *err)
 {
+    if (!sqlite3IsCorrectlyQuoted(value)) {
+        snprintf(err, SM_ERROR_LEN, "set user: '%s' is an incorrectly quoted string", value);
+        return 7;
+    }
+    char *deqval = strdup(value);
+    sqlite3Dequote(deqval);
+    if (strlen(deqval) >= sizeof(clnt->current_user.name)) {
+        snprintf(err, SM_ERROR_LEN, "set user: '%s' exceeds %zu characters", deqval,
+                 sizeof(clnt->current_user.name) - 1);
+        return 7;
+    }
+    clnt->current_user.have_name = 1;
+    /* Re-authenticate the new user. */
+    if (clnt->authgen && strcmp(clnt->current_user.name, deqval) != 0)
+        clnt->authgen = 0;
+    clnt->current_user.is_x509_user = 0;
+    strcpy(clnt->current_user.name, deqval);
     return 0;
 }
+int set_password(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
+        snprintf(err, SM_ERROR_LEN, "set user: '%s' is an incorrectly quoted string", sqlstr);
+        return 7;
+    }
+    char *deqval = strdup(sqlstr);
+    sqlite3Dequote(deqval);
+    if (strlen(deqval) >= sizeof(clnt->current_user.password)) {
+        snprintf(err, SM_ERROR_LEN,
+                 "set password: password length exceeds %zu "
+                 "characters",
+                 sizeof(clnt->current_user.password) - 1);
+        return 7;
+    }
+    clnt->current_user.have_password = 1;
+    /* Re-authenticate the new password. */
+    if (clnt->authgen && strcmp(clnt->current_user.password, deqval) != 0)
+        clnt->authgen = 0;
+    strcpy(clnt->current_user.password, deqval);
+    return 0;
+}
+int set_spversion(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    clnt->spversion.version_num = 0;
+    free(clnt->spversion.version_str);
 
-int set_want_stored_procedure_trace(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr,
-                                    char *err)
-{
+    clnt->spversion.version_str = NULL;
+    // TODO: do this
+    //    if ((sqlstr - spname) < MAX_SPNAME) {
+    //        strncpy0(clnt->spname, spname, MAX_SPNAME);
+    //    } else {
+    //        rc = ii + 1;
+    //    }
+    //    ++sqlstr;
+    //
+    //    sqlstr = skipws(sqlstr);
+    //    int ver = strtol(sqlstr, &endp, 10);
+    //    if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
+    //        if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
+    //            clnt->spversion.version_str = strdup(sqlstr);
+    //            sqlite3Dequote(clnt->spversion.version_str);
+    //        } else {
+    //            rc = ii + 1;
+    //        }
+    //    } else if (*endp == 0) { // parsed entire number successfully
+    //        clnt->spversion.version_num = ver;
+    //    } else {
+    //        rc = ii + 1;
+    //    }
     return 0;
 }
-int set_bdb_osql_trak(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_prepare_only(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    clnt->prepare_only = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
     return 0;
 }
-int set_verifyretry_off(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_readonly(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    clnt->is_readonly = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
     return 0;
 }
-int set_statement_query_effects(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_expert(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    if (strncasecmp(sqlstr, "off", 3) == 0) {
+        clnt->is_expert = 0;
+    } else {
+        clnt->is_expert = 1;
+        clnt->is_fast_expert = (strncasecmp(sqlstr, "fast", 4) == 0);
+    }
     return 0;
 }
-int set_get_cost(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_sptrace(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    clnt->want_stored_procedure_trace = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
     return 0;
 }
-int set_is_explain(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_cursordebug(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    char *value = strdup(sqlstr);
+    bdb_osql_trak(value, &clnt->bdb_osql_trak);
     return 0;
 }
-int set_osql_max_trans(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_spedebug(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    clnt->want_stored_procedure_debug = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
     return 0;
 }
-int set_group_concat_mem_limit(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_hasql(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    if (strncasecmp(sqlstr, "on", 2) == 0) {
+        clnt->hasql_on = 1;
+        if (clnt->dbtran.mode == TRANLEVEL_SERIAL || clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
+            clnt->high_availability_flag = 1;
+            sql_debug_logf(clnt, __func__, __LINE__,
+                           "setting "
+                           "high_availability\n");
+        }
+    } else {
+        clnt->hasql_on = 0;
+        clnt->high_availability_flag = 0;
+        sql_debug_logf(clnt, __func__, __LINE__,
+                       "clearing "
+                       "high_availability\n");
+    }
     return 0;
 }
-int set_planner_effort(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_verifyretry(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    if (strncasecmp(sqlstr, "on", 2) == 0) {
+        clnt->verifyretry_off = 0;
+    } else {
+        clnt->verifyretry_off = 1;
+    }
     return 0;
 }
-int set_appdata(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_queryeffects(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    if (strncasecmp(sqlstr, "statement", 9) == 0) {
+        clnt->statement_query_effects = 1;
+    }
+    if (strncasecmp(sqlstr, "transaction", 11) == 0) {
+        clnt->statement_query_effects = 0;
+    }
+    return 0;
+}
+int set_remote(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    char *value = strdup(sqlstr);
+    int fdbrc = fdb_access_control_create(clnt, value);
+    if (fdbrc) {
+        snprintf(err, SM_ERROR_LEN, "%s: failed to process remote access settings \"%s\"\n", __func__, value);
+        return 7;
+    }
+    return 0;
+}
+int set_getcost(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    if (strncasecmp(sqlstr, "on", 2) == 0) {
+        clnt->get_cost = 1;
+    } else {
+        clnt->get_cost = 0;
+    }
+    return 0;
+}
+int set_explain(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    //    if (strncasecmp(sqlstr, "on", 2) == 0) {
+    //        clnt->is_explain = 1;
+    //    } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
+    //        clnt->is_explain = 2;
+    //        sqlstr += 7;
+    //        sqlstr = skipws(sqlstr);
+    //
+    //        /*
+    //           0x2    -> show headnote and footnote from the solver
+    //           0x4    -> show how the best index is picked
+    //           0x8    -> show how the cost of each index is calculated
+    //           0x10   -> show trace for stat4
+    //           0x100  -> show all where terms
+    //           0x200  -> show trace for Or terms
+    //           0x840  -> show trace for virtual tables
+    //         */
+    //
+    //        if (sqlstr[0] == '\0')
+    //            clnt->where_trace_flags = ~0;
+    //        else
+    //            clnt->where_trace_flags = (int)strtol(sqlstr, NULL, 16);
+    //    } else {
+    //        clnt->is_explain = 0;
+    //    }
+    return 0;
+}
+int set_maxtransize(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+
+    int maxtransz = strtol(sqlstr, NULL, 10);
+
+    if (maxtransz < 0) {
+        snprintf(err, SM_ERROR_LEN, "Error: bad value for maxtransize %s\n", sqlstr);
+        return 7;
+    }
+    clnt->osql_max_trans = maxtransz;
+#ifdef DEBUG
+    printf("setting clnt->osql_max_trans to %d\n", clnt->osql_max_trans);
+#endif
+    return 0;
+}
+int set_groupconcaatmemlimit(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    int sz = strtol(sqlstr, NULL, 10);
+    if (sz < 0) {
+        snprintf(err, SM_ERROR_LEN, "Error: bad value for groupconcatmemlimit %s\n", sqlstr);
+        return 7;
+    }
+
+    clnt->group_concat_mem_limit = sz;
+#ifdef DEBUG
+    printf("setting clnt->group_concat_mem_limit to %d\n", clnt->group_concat_mem_limit);
+#endif
+    return 0;
+}
+int set_plannereffort(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    int effort = strtol(sqlstr, NULL, 10);
+    if (0 < effort && effort <= 10)
+        clnt->planner_effort = effort;
+#ifdef DEBUG
+    printf("setting clnt->planner_effort to %d\n", clnt->planner_effort);
+#endif
+    return 0;
+}
+int set_intransresults(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+{
+    //    struct newsql_appdata *appdata = clnt->appdata;
+    //    appdata->send_intrans_response = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : -1;
     return 0;
 }
 int set_admin(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    clnt->admin = (strncasecmp(sqlstr, "off", 3) != 0);
     return 0;
 }
-int set_is_readonly(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_querylimit(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    //    return handle_set_querylimits(sqlstr, clnt);
     return 0;
 }
-int set_is_expert(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_rowbuffer(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    clnt->rowbuffer = (strncasecmp(sqlstr, "on", 2) == 0);
     return 0;
 }
-int set_is_fast_expert(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_sockbplog(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
-    return 0;
-}
-
-int set_authgen(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
-{
-    return 0;
-}
-
-int set_current_user(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
-{
+    // init_bplog_socket(clnt);
     return 0;
 }
 
@@ -386,27 +662,6 @@ int set_timezone(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const ch
 int set_datetime(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value, char *err)
 {
     DTTZ_TEXT_TO_PREC(value, clnt->dtprec, 0, return -1);
-    return 0;
-}
-
-int set_plugin(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
-{
-    return 0;
-}
-
-int set_tzname(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
-{
-    return 0;
-}
-
-int set_dtprec(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
-{
-    return 0;
-}
-
-// Can probably multiplex it here based on mode or chunk
-int set_dbtran(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
-{
     return 0;
 }
 
