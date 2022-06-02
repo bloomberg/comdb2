@@ -1885,7 +1885,7 @@ static int current_shortest_long_request_ms;
 
 static void reqlog_log_longreq(struct sqlclntstate *clnt)
 {
-    if (has_consumer(clnt) == 1) {
+    if (can_consume(clnt) == 1) {
         return; /* Do not log consumers */
     }
 
