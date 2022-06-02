@@ -5031,8 +5031,10 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
                             logmsg(LOGMSG_WARN, "%s:%d Query exceeds max allowed time %d.\n", __FILE__, __LINE__, clnt->query_timeout);
                             write_response(clnt, RESPONSE_TIMEOUT, 0, 0);
                             sbuf2flush(clnt->sb);
-                            int fd = sbuf2fileno(clnt->sb);
-                            shutdown(fd, SHUT_RDWR);
+                            if (!in_client_trans(clnt)) {
+                                int fd = sbuf2fileno(clnt->sb);
+                                shutdown(fd, SHUT_RDWR);
+                            }
                             unlock_client_write_lock(clnt);
                         }
                     }
