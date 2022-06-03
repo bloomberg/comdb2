@@ -220,7 +220,7 @@ u_int64_t gbl_memp_pgreads = 0;
  *      mark whether it needs to do io
  */
 
-int gbl_queue_bufferpool_at_head = 1;
+int gbl_traverse_bufferpool_hash_backwards = 1;
 
 static int
 __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
@@ -328,12 +328,16 @@ hb_search:
 	c_mp = dbmp->reginfo[n_cache].primary;
 	hp = R_ADDR(&dbmp->reginfo[n_cache], c_mp->htab);
 	hp = &hp[NBUCKET(c_mp, mfp, *pgnoaddr)];
+    int backward = gbl_traverse_bufferpool_hash_backwards;
 
 	/* Search the hash chain for the page. */
 retry:	st_hsearch = 0;
 	MUTEX_LOCK(dbenv, &hp->hash_mutex);
-	for (bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
-	    bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
+	for (
+        bhp = (backward ? SH_TAILQ_LAST(&hp->hash_bucket, HashTab) : SH_TAILQ_FIRST(&hp->hash_bucket, __bh));
+	    bhp != NULL; 
+        bhp = (backward ? SH_TAILQ_PREV(bhp, HashTab, hq) : SH_TAILQ_NEXT(bhp, hq, __bh))
+    ) {
 		++st_hsearch;
 		if (bhp->pgno != *pgnoaddr || bhp->mpf != mfp)
 			continue;
@@ -660,12 +664,7 @@ alloc:		/*
 		bhp->priority = UINT32_T_MAX;
 		bhp->pgno = *pgnoaddr;
 		bhp->mpf = mfp;
-
-        if (gbl_queue_bufferpool_at_head) {
-		    SH_TAILQ_INSERT_HEAD(&hp->hash_bucket, bhp, hq, NULL);
-        } else {
-		    SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
-        }
+		SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
 
 		hp->hash_priority =
 		    SH_TAILQ_FIRST(&hp->hash_bucket, __bh)->priority;
@@ -773,11 +772,7 @@ alloc:		/*
 		if (SH_TAILQ_FIRST(&hp->hash_bucket, __bh) !=
 		    SH_TAILQ_LAST(&hp->hash_bucket, HashTab)) {
 			SH_TAILQ_REMOVE(&hp->hash_bucket, bhp, hq, __bh);
-            if (gbl_queue_bufferpool_at_head) {
-			    SH_TAILQ_INSERT_HEAD(&hp->hash_bucket, bhp, hq, NULL);
-            } else {
-			    SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
-            }
+			SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
 		}
 		hp->hash_priority =
 		    SH_TAILQ_FIRST(&hp->hash_bucket, __bh)->priority;
