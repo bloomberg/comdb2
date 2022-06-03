@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <inttypes.h>
 
 #include "reqlog.h"
 #include "logmsg.h"
@@ -259,7 +260,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
             }
             if (t->check_next_queries == 0 && (t->cost_increased > CHECK_NEXT_QUERIES/2)) {
                 logmsg(LOGMSG_WARN,
-                       "Cost %ld vs Previous Avg Cost %ld of Query %s increased after last Analyze. Backout?\n",
+                       "Cost %"PRId64" vs Previous Avg Cost %"PRId64" of Query %s increased after last Analyze. Backout?\n",
                        avg_cost , t->pre_cost_avg_per_row, t->zNormSql);
             }
         }
