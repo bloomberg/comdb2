@@ -219,6 +219,9 @@ u_int64_t gbl_memp_pgreads = 0;
  *	Get a page from the file.
  *      mark whether it needs to do io
  */
+
+int gbl_queue_bufferpool_at_head = 1;
+
 static int
 __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	DB_MPOOLFILE *dbmfp;
@@ -657,7 +660,12 @@ alloc:		/*
 		bhp->priority = UINT32_T_MAX;
 		bhp->pgno = *pgnoaddr;
 		bhp->mpf = mfp;
-		SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
+
+        if (gbl_queue_bufferpool_at_head) {
+		    SH_TAILQ_INSERT_HEAD(&hp->hash_bucket, bhp, hq, NULL);
+        } else {
+		    SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
+        }
 
 		hp->hash_priority =
 		    SH_TAILQ_FIRST(&hp->hash_bucket, __bh)->priority;
@@ -765,7 +773,11 @@ alloc:		/*
 		if (SH_TAILQ_FIRST(&hp->hash_bucket, __bh) !=
 		    SH_TAILQ_LAST(&hp->hash_bucket, HashTab)) {
 			SH_TAILQ_REMOVE(&hp->hash_bucket, bhp, hq, __bh);
-			SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
+            if (gbl_queue_bufferpool_at_head) {
+			    SH_TAILQ_INSERT_HEAD(&hp->hash_bucket, bhp, hq, NULL);
+            } else {
+			    SH_TAILQ_INSERT_TAIL(&hp->hash_bucket, bhp, hq);
+            }
 		}
 		hp->hash_priority =
 		    SH_TAILQ_FIRST(&hp->hash_bucket, __bh)->priority;
