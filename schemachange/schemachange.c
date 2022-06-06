@@ -498,14 +498,14 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 }
 
 int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
-                 int pagesize, int isqueuedb)
+                 int pagesize)
 {
     struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
+    s->qdb_legacy = 1;
     strncpy0(s->tablename, queuename, sizeof(s->tablename));
     s->avgitemsz = avgitem;
     s->pagesize = pagesize;

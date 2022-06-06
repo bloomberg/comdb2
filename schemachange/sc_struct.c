@@ -168,8 +168,9 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->delsp) + sizeof(s->defaultsp) + sizeof(s->is_sfunc) +
         sizeof(s->is_afunc) + sizeof(s->lua_func_flags) + sizeof(s->rename) + 
         sizeof(s->newtable) + sizeof(s->usedbtablevers) + sizeof(s->add_view) + 
-        sizeof(s->drop_view) + sizeof(s->add_qdb_file) + sizeof(s->del_qdb_file)
-        + sizeof(s->qdb_file_ver) + _partition_packed_size(&s->partition);
+        sizeof(s->drop_view) + sizeof(s->add_qdb_file) + sizeof(s->del_qdb_file) +
+        sizeof(s->qdb_legacy) + sizeof(s->qdb_file_ver) +
+        _partition_packed_size(&s->partition);
 
     return s->packed_len;
 }
@@ -329,6 +330,7 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->add_qdb_file, sizeof(s->add_qdb_file), p_buf, p_buf_end);
     p_buf = buf_put(&s->del_qdb_file, sizeof(s->del_qdb_file), p_buf, p_buf_end);
     p_buf = buf_put(&s->qdb_file_ver, sizeof(s->qdb_file_ver), p_buf, p_buf_end);
+    p_buf = buf_put(&s->qdb_legacy, sizeof(s->qdb_legacy), p_buf, p_buf_end);
 
     p_buf = buf_put(&s->partition.type, sizeof(s->partition.type), p_buf,
                     p_buf_end);
@@ -582,6 +584,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->del_qdb_file, sizeof(s->del_qdb_file),
                                p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->qdb_file_ver, sizeof(s->qdb_file_ver),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->qdb_legacy, sizeof(s->qdb_legacy),
                                p_buf, p_buf_end);
 
     p_buf = (uint8_t *)buf_get(&s->partition.type, sizeof(s->partition.type),

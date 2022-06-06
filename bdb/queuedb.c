@@ -191,7 +191,6 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 strncpy0(
                     sc->tablename, tbl_bdb_state->name, sizeof(sc->tablename)
                 );
-                sc->type = DBTYPE_QUEUEDB;
                 sc->del_qdb_file = 1;
                 sc->nothrevent = 1;
                 sc->finalize = 1;
@@ -221,7 +220,6 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             strncpy0(
                 sc->tablename, tbl_bdb_state->name, sizeof(sc->tablename)
             );
-            sc->type = DBTYPE_QUEUEDB;
             sc->add_qdb_file = 1;
             sc->qdb_file_ver = flibc_htonll(bdb_get_cmp_context(tbl_bdb_state));
             sc->nothrevent = 1;

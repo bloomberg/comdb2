@@ -95,8 +95,7 @@ struct schema_change_type {
     /*  ==========    persistent members ========== */
     unsigned long long rqid;
     uuid_t uuid;
-    int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
-                 or DBTYPE_MORESTRIPE */
+    int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_MORESTRIPE */
     size_t tablename_len;
     char tablename[MAXTABLELEN];    /* name of table/queue */
     int rename;                     /* rename table? */
@@ -175,6 +174,7 @@ struct schema_change_type {
     int add_qdb_file;
     int del_qdb_file;
     unsigned long long qdb_file_ver; /* part of file name to add */
+    int qdb_legacy;
 
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
@@ -347,8 +347,7 @@ size_t schemachange_packed_size(struct schema_change_type *s);
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
 int finalize_schema_change(struct ireq *, tran_type *);
-int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize,
-                 int isqueuedb);
+int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize);
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
                         int sync);

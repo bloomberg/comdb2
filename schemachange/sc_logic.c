@@ -579,14 +579,14 @@ char *get_ddl_type_str(struct schema_change_type *s)
         return "UPGRADE";
     else if (s->type == DBTYPE_TAGGED_TABLE)
         return "ALTER";
-    else if (s->type == DBTYPE_QUEUE)
-        return "ALTER QUEUE";
     else if (s->type == DBTYPE_MORESTRIPE)
         return "ALTER STRIPE";
     else if (s->add_view || s->drop_view)
         return "VIEW";
     else if (s->add_qdb_file || s->del_qdb_file)
         return "QUEUE_DB";
+    else if (s->qdb_legacy)
+        return "ALTER QUEUE";
 
     return "UNKNOWN";
 }
@@ -669,14 +669,14 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)
         rc = do_ddl(do_alter_table, finalize_alter_table, iq, s, trans, alter);
-    else if (s->type == DBTYPE_QUEUE)
-        rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
     else if (s->add_view)
         rc = do_ddl(do_add_view, finalize_add_view, iq, s, trans, user_view);
     else if (s->drop_view)
         rc = do_ddl(do_drop_view, finalize_drop_view, iq, s, trans, user_view);
+    else if (s->qdb_legacy)
+        rc = do_alter_queues(s);
     else if (s->add_qdb_file)
         rc = do_ddl(do_add_qdb_file, finalize_add_qdb_file, iq, s, trans,
                     add_queue_file);
