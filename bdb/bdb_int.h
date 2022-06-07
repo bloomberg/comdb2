@@ -1045,6 +1045,7 @@ struct bdb_state_tag {
 
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
+    uint16_t *fld_hints_pd[MAXINDEX]; /* field hints for partial datacopies */
 
     int logical_live_sc;
     pthread_mutex_t sc_redo_lk;
@@ -1228,7 +1229,8 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
               size_t reclen, int dtanum);
 
 int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
-             size_t tolen, void **recptr, uint32_t *recsize, void **freeptr);
+             size_t tolen, void **recptr, uint32_t *recsize, void **freeptr,
+             int pd_index);
 
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);

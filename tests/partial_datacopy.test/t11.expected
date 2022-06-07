@@ -23,3 +23,4 @@
 (a=29, b='bbb30', c='ccc31')
 (a=33, b='bbb34', c='ccc35')
 (a=37, b='bbb38', c='ccc39')
+(id=3, parent=0, notused=0, detail='SEARCH TABLE t USING COVERING INDEX $A_AA0581FA (<expr><?) (~262144 rows)')

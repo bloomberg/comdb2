@@ -131,10 +131,11 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
             void *rec = NULL;
             uint32_t recsize = 0;
             void *freeptr = NULL;
+            int pd_index = bdb_state->ixdtalen[ixnum] > 0 ? ixnum : -1; // partial datacopy
             init_odh(bdb_state, &odh, dta, dtalen, 0);
             bdb_pack(bdb_state, &odh, iptr + 2,
                      keydata_len - sizeof(unsigned long long), &rec, &recsize,
-                     &freeptr);
+                     &freeptr, pd_index);
             /* freeptr cannot be set. Provided buffer as big as rec.
              * Compression does not occur if rec expands */
             assert(freeptr == NULL);

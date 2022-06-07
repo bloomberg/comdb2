@@ -22,6 +22,7 @@
 (a=29, b='cdb30', c=31)
 (a=33, b='cdb34', c=35)
 (a=37, b='cdb38', c=39)
+(id=3, parent=0, notused=0, detail='SEARCH TABLE t USING COVERING INDEX $A_28079FBF (a<?) (~262144 rows)')
 (tablename='t', keyname='A', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
 (tablename='t', keyname='A', columnname='b')
 (tablename='t', keyname='A', columnname='c')
@@ -45,3 +46,4 @@
 (a=29, b='cdb30', c=31)
 (a=33, b='cdb34', c=35)
 (a=37, b='cdb38', c=39)
+(id=3, parent=0, notused=0, detail='SEARCH TABLE t USING COVERING INDEX $A_28079FBF (a<?) (~262144 rows)')

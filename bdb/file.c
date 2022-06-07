@@ -7004,6 +7004,10 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
         free(child->txndir);
         free(child->tmpdir);
         free(child->fld_hints);
+        for (int i = 0; i < child->numix; ++i) {
+            free(child->fld_hints_pd[i]);
+        }
+
         // free bthash
         bdb_handle_dbp_drop_hash(child);
         memset(child, 0xff, sizeof(bdb_state_type));
