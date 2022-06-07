@@ -18,6 +18,7 @@
 (a=29, b=30, c=31)
 (a=33, b=34, c=35)
 (a=37, b=38, c=39)
+(id=3, parent=0, notused=0, detail='SEARCH TABLE t USING COVERING INDEX $A_28079FBF (a<?) (~262144 rows)')
 (a=1, b=2, c=3, d=4)
 (a=5, b=6, c=7, d=8)
 (a=9, b=10, c=11, d=12)
@@ -38,3 +39,4 @@
 (a=29, b=30, c=31)
 (a=33, b=34, c=35)
 (a=37, b=38, c=39)
+(id=3, parent=0, notused=0, detail='SEARCH TABLE t USING COVERING INDEX $A_28079FBF (a<?) (~262144 rows)')

@@ -22,3 +22,4 @@
 (a=9, b=10, c=11)
 (a=5, b=6, c=7)
 (a=1, b=2, c=3)
+(id=3, parent=0, notused=0, detail='SEARCH TABLE t USING COVERING INDEX $A_F48ADEDC (a<?) (~262144 rows)')

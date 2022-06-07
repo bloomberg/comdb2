@@ -5694,16 +5694,33 @@ static struct field *get_field_position(struct schema *s, const char *name,
     return NULL;
 }
 
+static uint16_t *create_fld_hints(struct schema *schema) {
+    int n = schema->nmembers;
+    uint16_t *hints = malloc(sizeof(*hints) * (n + 1));
+    for (int i = 0; i < n; ++i) {
+        hints[i] = schema->member[i].len;
+    }
+    hints[n] = 0;
+    return hints;
+}
+
 static void update_fld_hints(dbtable *tbl)
 {
     struct schema *ondisk = tbl->schema;
-    int n = ondisk->nmembers;
-    uint16_t *hints = malloc(sizeof(*hints) * (n + 1));
-    for (int i = 0; i < n; ++i) {
-        hints[i] = ondisk->member[i].len;
-    }
-    hints[n] = 0;
+    uint16_t *hints = create_fld_hints(ondisk);
     bdb_set_fld_hints(tbl->handle, hints);
+
+    // update partial datacopy field hints
+    struct schema *ixschema;
+    struct schema *pd;
+    for (int i = 0; i < ondisk->nix; ++i) {
+        ixschema = ondisk->ix[i];
+        if (ixschema->flags & SCHEMA_PARTIALDATACOPY) {
+            pd = ixschema->partial_datacopy;
+            hints = create_fld_hints(pd);
+            bdb_set_fld_hints_pd(tbl->handle, hints, i);
+        }
+    }
 }
 
 void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
