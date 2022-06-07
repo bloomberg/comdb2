@@ -225,7 +225,9 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
     osqlstate_t *osql = &clnt->osql;
     int flags = 0;
     int rc = 0;
+    const int poll_ms = 10;
     int retries = 0;
+    const int max_retries = (50 * 1000) / poll_ms; /* wait up to 50 seconds for a new master */
     int keep_rqid = start_flags & OSQL_START_KEEP_RQID;
 
     /* new id */
@@ -266,13 +268,11 @@ retry:
     }
     /* protect against no master */
     if (osql->target.host == NULL || osql->target.host == db_eid_invalid) {
-        /* wait up to 50 seconds for a new master */
-        if (retries < 100) {
+        if (retries < max_retries) {
             retries++;
-
             logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d \n",
                    retries);
-            poll(NULL, 0, 500);
+            poll(NULL, 0, poll_ms);
             goto retry;
         } else {
             logmsg(LOGMSG_ERROR, "%s: no master for %llu!\n", __func__,
@@ -300,10 +300,11 @@ retry:
                                    strlen(clnt->sql) + 1, osql->rqid,
                                    osql->uuid, clnt->tzname, type, flags);
 
-    if (rc != 0 && retries < 100) {
+    if (rc != 0 && retries < max_retries) {
         retries++;
         logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d \n",
                retries);
+        poll(NULL, 0, poll_ms);
         goto retry;
     }
 
