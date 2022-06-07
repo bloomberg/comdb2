@@ -37,6 +37,7 @@
 /* Separator for composite tunable components. */
 #define COMPOSITE_TUNABLE_SEP '.'
 
+extern int gbl_allow_trigger_emit;
 extern int gbl_waitalive_iterations;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
@@ -1614,4 +1615,3 @@ const char *tunable_error(comdb2_tunable_err code)
     }
     return "????";
 }
-
