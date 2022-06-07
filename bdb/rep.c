@@ -31,6 +31,7 @@
 #include <limits.h>
 #include <math.h>
 
+#include <fsnapf.h>
 #include <epochlib.h>
 #include <build/db.h>
 #include <rtcpu.h>
@@ -5124,13 +5125,18 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
            came from the network */
 
         if (p_buf - ((uint8_t *)dta) > dtalen) {
-            logmsg(LOGMSG_ERROR, "buf-dta != dtalen\n");
-            logmsg(LOGMSG_ERROR, "%p %p %d\n", p_buf, dta, dtalen);
+            logmsg(LOGMSG_ERROR,
+                   "buf-dta != dtalen -- from:%s seqnum:%d recbufsz:%d controlbufsz:%d dtalen:%d\n",
+                   from_node, seqnum, recbufsz, controlbufsz, dtalen);
+            if (dtalen <= 256) fsnapf(stderr, dta, dtalen);
             return -1;
         }
 
         if ((controlbufsz + recbufsz) > dtalen) {
-            logmsg(LOGMSG_ERROR, "controlbufsz+recbufsz too big\n");
+            logmsg(LOGMSG_ERROR,
+                   "controlbufsz+recbufsz too big -- from:%s seqnum:%d recbufsz:%d controlbufsz:%d dtalen:%d\n",
+                   from_node, seqnum, recbufsz, controlbufsz, dtalen);
+            if (dtalen <= 256) fsnapf(stderr, dta, dtalen);
             return -1;
         }
 
