@@ -5095,6 +5095,11 @@ static void remove_emit(Lua L)
     lua_pushnil(L);
     lua_setfield(L, -2, "emit");
     lua_pop(L, 1);
+
+    luaL_getmetatable(L, dbtypes.dbtable);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
 }
 
 static void update_tran_funcs(Lua L, struct sqlclntstate *clnt)
