@@ -4295,7 +4295,6 @@ static void *reader_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
-    wire_header_type wire_header;
     int rc, set_qstat = 0;
     char fromhost[256], tohost[256];
 
@@ -4313,6 +4312,12 @@ static void *reader_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
+    wire_header_type hdr_debug[5];
+    memset(hdr_debug, 0, sizeof(hdr_debug));
+    wire_header_type *first = &hdr_debug[0];
+    wire_header_type *end = first + 5;
+    wire_header_type *wire_header = first -1;
+
     while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
            !netinfo_ptr->exiting) {
 
@@ -4326,8 +4331,11 @@ static void *reader_thread(void *arg)
         if (netinfo_ptr->trace && debug_switch_net_verbose())
            logmsg(LOGMSG_USER, "RT: reading header %llu\n", gettmms());
 
-        rc = read_message_header(netinfo_ptr, host_node_ptr, &wire_header,
-                                 fromhost, tohost);
+        ++wire_header;
+        if (wire_header == end) wire_header = first;
+        rc = read_message_header(netinfo_ptr, host_node_ptr, wire_header, fromhost, tohost);
+
+
         if (rc != 0) {
             if (!host_node_ptr->distress) {
                 host_node_printf(LOGMSG_WARN, host_node_ptr, "entering distress mode\n");
@@ -4351,10 +4359,10 @@ static void *reader_thread(void *arg)
         host_node_ptr->timestamp = comdb2_time_epoch();
 
         if (netinfo_ptr->trace && debug_switch_net_verbose())
-           logmsg(LOGMSG_USER, "RT: got packet type=%d %llu\n", wire_header.type,
+           logmsg(LOGMSG_USER, "RT: got packet type=%d %llu\n", wire_header->type,
                    gettmms());
 
-        switch (wire_header.type) {
+        switch (wire_header->type) {
         case WIRE_HEADER_HEARTBEAT:
             /* No special processing for heartbeats */
             break;
@@ -4427,13 +4435,30 @@ static void *reader_thread(void *arg)
 
         default:
             logmsg(LOGMSG_ERROR, 
-                   "reader thread: unknown wire_header.type: %d from host %s\n",
-                   wire_header.type, host_node_ptr->host);
+                   "reader thread: unknown wire_header.type:%d host:%s svc:%s\n",
+                   wire_header->type, host_node_ptr->host, netinfo_ptr->service);
+            {
+            logmsg(LOGMSG_ERROR, "last 5 wire_headers:\n");
+            int i = 4;
+            wire_header_type *t;
+            for (t = wire_header; t >= first; --t) {
+                logmsg(LOGMSG_ERROR,
+                       "i:%d from:%.*s(port:%d,node:%d) to:%.*s(port:%d,node:%d) type:%d\n",
+                       i, HOSTNAME_LEN, t->fromhost, t->fromport, t->fromnode, HOSTNAME_LEN, t->tohost, t->toport, t->tonode, t->type);
+                --i;
+            }
+            for (t = end - 1; t > wire_header; --t) {
+                logmsg(LOGMSG_ERROR,
+                       "i:%d from:%.*s(port:%d,node:%d) to:%.*s(port:%d,node:%d) type:%d\n",
+                       i, HOSTNAME_LEN, t->fromhost, t->fromport, t->fromnode, HOSTNAME_LEN, t->tohost, t->toport, t->tonode, t->type);
+                --i;
+            }
+            }
             goto done;
         }
 
         if (netinfo_ptr->trace && debug_switch_net_verbose())
-           logmsg(LOGMSG_USER, "RT: done processing %d %llu\n", wire_header.type,
+           logmsg(LOGMSG_USER, "RT: done processing %d %llu\n", wire_header->type,
                    gettmms());
     }
 
