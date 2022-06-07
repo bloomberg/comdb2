@@ -6426,12 +6426,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
             goto cleanup;
     }
 
-    if (ctx->partition_first_shardname) {
-        assert(tbl_name);
-        ctx->schema->name = tbl_name;
-    } else {
-        ctx->schema->name = table->tablename;
-    }
+    ctx->schema->name = table->tablename;
 
     /*
       Add all the columns, indexes and constraints in the table to the
