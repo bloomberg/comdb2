@@ -82,6 +82,7 @@ extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int comdb2_sql_tick();
+int gbl_allow_trigger_emit = 0;
 
 pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
@@ -3040,6 +3041,12 @@ static void remove_emit(Lua L)
     lua_setfield(L, -2, "emit");
 
     luaL_getmetatable(L, dbtypes.dbstmt);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "emit");
+
+    if (gbl_allow_trigger_emit) return;
+
+    luaL_getmetatable(L, dbtypes.dbtable);
     lua_pushnil(L);
     lua_setfield(L, -2, "emit");
 }

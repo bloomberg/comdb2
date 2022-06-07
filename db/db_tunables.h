@@ -1966,4 +1966,7 @@ REGISTER_TUNABLE("foreign_metadb", "Forces metadb for fdb queries to the one spe
 REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class specified (Default:NULL)",
                  TUNABLE_STRING, &gbl_foreign_metadb_class, READONLY | READEARLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("allow_trigger_emit", "Allows (temporary) compatibility with buggy triggers which call dbtable:emit",
+                 TUNABLE_BOOLEAN, &gbl_allow_trigger_emit, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
