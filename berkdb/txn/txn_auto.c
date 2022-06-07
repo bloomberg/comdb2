@@ -511,7 +511,7 @@ __txn_regop_read_context(argp)
  */
 int
 __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
-    ckp_lsn, last_ckp, timestamp, rep_gen)
+    ckp_lsn, last_ckp, timestamp, rep_gen, max_utxnid)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -519,12 +519,14 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	DB_LSN * ckp_lsn;
 	DB_LSN * last_ckp;
 	int32_t timestamp;
-	u_int32_t rep_gen;
+    u_int32_t rep_gen;
+    u_int64_t max_utxnid;
 {
 	DBT logrec;
 	DB_TXNLOGREC *lr;
 	DB_LSN *lsnp, null_lsn;
 	u_int32_t uinttmp, rectype, txn_num;
+    u_int64_t uint64tmp;
 	u_int npad;
 	u_int8_t *bp;
 	int is_durable, ret;
@@ -568,7 +570,8 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	    + sizeof(*ckp_lsn)
 	    + sizeof(*last_ckp)
 	    + sizeof(u_int32_t)
-	    + sizeof(u_int32_t);
+	    + sizeof(u_int32_t)
+        + sizeof(u_int64_t);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
 		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
@@ -645,6 +648,10 @@ do_malloc:
 	uinttmp = (u_int32_t)rep_gen;
 	LOGCOPY_32(bp, &uinttmp);
 	bp += sizeof(uinttmp);
+
+    uint64tmp = (u_int64_t)max_utxnid;
+    LOGCOPY_64(bp, &uint64tmp);
+    bp += sizeof(uint64tmp);
 
 	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
 

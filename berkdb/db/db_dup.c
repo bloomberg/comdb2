@@ -52,6 +52,8 @@ __db_ditem(dbc, pagep, indx, nbytes)
 	db_indx_t cnt, *inp, offset;
 	int ret;
 	u_int8_t *from;
+    DB_LSN prevprev_pagelsn;
+    u_int64_t utxnid, prev_utxnid;
 
 	dbp = dbc->dbp;
 	if (DBC_LOGGING(dbc)) {
@@ -98,11 +100,15 @@ __db_ditem(dbc, pagep, indx, nbytes)
 			ASSIGN_ALIGN(db_indx_t, bklen, bk->len);
 			ldbt.size = BKEYDATA_SIZE_FLUFFLESS(bklen);
 		}
-		ret = __db_addrem_log(dbp, dbc->txn,
-		    &LSN(pagep), 0, opcode, PGNO(pagep), (u_int32_t)indx,
-		    ldbt.size, &ldbt, NULL, &LSN(pagep));
 
-		if (binternal_swap) {
+        prev_utxnid = TXNID(pagep);
+        utxnid = dbc->txn ? dbc->txn->utxnid : 0;
+        prevprev_pagelsn = PREVLSN(pagep);
+        ret = __db_addrem_log(dbp, dbc->txn,
+                              &LSN(pagep), 0, opcode, PGNO(pagep), (u_int32_t)indx,
+                              ldbt.size, &ldbt, NULL, &LSN(pagep), utxnid, prev_utxnid, &prevprev_pagelsn);
+
+        if (binternal_swap) {
 			M_16_SWAP(bi->len);
 			M_32_SWAP(bi->pgno);
 			M_32_SWAP(bi->nrecs);
@@ -130,6 +136,11 @@ __db_ditem(dbc, pagep, indx, nbytes)
 			HOFFSET(pagep) = dbp->pgsize;
 		return (0);
 	}
+
+    DB_LSN current_lsn = LSN(pagep);
+    PREVLSN(pagep).file = current_lsn.file;
+    PREVLSN(pagep).offset = current_lsn.offset;
+    TXNID(pagep) = dbc->txn ? dbc->txn->utxnid : 0;
 
 	if (IS_PREFIX(pagep)) {
 		BKEYDATA *bk = GET_BKEYDATA(dbp, pagep, indx);
@@ -187,7 +198,8 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	db_indx_t *inp;
 	int ret;
 	u_int8_t *p;
-
+    DB_LSN prevprev_pagelsn;
+    u_int64_t utxnid, prev_utxnid;
 	dbp = dbc->dbp;
 
 	/* If there is an active Lua trigger/consumer, wake it up. */
@@ -238,9 +250,12 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 			binternal_swap = 1;
 		}
 
+        prev_utxnid = TXNID(pagep);
+        utxnid = dbc->txn ? dbc->txn->utxnid : 0;
+        prevprev_pagelsn = PREVLSN(pagep);
 		ret = __db_addrem_log(dbp, dbc->txn,
 		    &LSN(pagep), 0, DB_ADD_DUP, PGNO(pagep),
-		    (u_int32_t)indx, nbytes, hdr, data, &LSN(pagep));
+		    (u_int32_t)indx, nbytes, hdr, data, &LSN(pagep), utxnid, prev_utxnid, &prevprev_pagelsn);
 
 		if (binternal_swap) {
 			M_16_SWAP(bi->len);
@@ -309,6 +324,11 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 		return (EINVAL);
 	}
 
+    DB_LSN current_lsn = LSN(pagep);
+    PREVLSN(pagep).file = current_lsn.file;
+    PREVLSN(pagep).offset = current_lsn.offset;
+    TXNID(pagep) = dbc->txn ? dbc->txn->utxnid : 0;
+
 	inp = P_INP(dbp, pagep);
 
 	/* Adjust the index table, then put the item on the page. */
@@ -324,9 +344,6 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 		memcpy(p + hdr->size, data->data, data->size);
 	return (0);
 }
-
-int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
-    db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
 /*
  * __db_pitem --
@@ -345,6 +362,9 @@ __db_pitem(dbc, pagep, indx, nbytes, hdr, data)
 {
 	return __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, 0);
 }
+
+int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
+                      db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
 /*
  * __db_relink --

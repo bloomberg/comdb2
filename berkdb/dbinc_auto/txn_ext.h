@@ -42,7 +42,7 @@ int __txn_regop_rowlocks_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, voi
 int __txn_regop_rowlocks_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_regop_rowlocks_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_regop_rowlocks_read __P((DB_ENV *, void *, __txn_regop_rowlocks_args **));
-int __txn_ckp_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, DB_LSN *, DB_LSN *, int32_t, u_int32_t));
+int __txn_ckp_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, DB_LSN *, DB_LSN *, int32_t, u_int32_t, u_int64_t));
 int __txn_ckp_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_ckp_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_ckp_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));

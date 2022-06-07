@@ -342,6 +342,9 @@ __dbenv_init(dbenv)
 	dbenv->trigger_pause = __dbenv_trigger_pause;
 	dbenv->trigger_unpause = __dbenv_trigger_unpause;
 
+    dbenv->next_utxnid = 0;
+    Pthread_mutex_init(&dbenv->utxnid_lock, NULL);
+
 	return (0);
 }
 

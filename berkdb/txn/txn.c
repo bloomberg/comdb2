@@ -521,6 +521,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	int nids, ret;
 	int internal = LF_ISSET(DB_TXN_INTERNAL);
 	int recovery = LF_ISSET(DB_TXN_RECOVERY);
+    u_int64_t utxnid;
 
 
 	/*
@@ -537,6 +538,10 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	}
 
 	region = mgr->reginfo.primary;
+
+    Pthread_mutex_lock(&dbenv->utxnid_lock);
+    utxnid = ++dbenv->next_utxnid;
+    Pthread_mutex_unlock(&dbenv->utxnid_lock);
 
 	/*
 	 * We do not have to write begin records (and if we do not, then we
@@ -672,6 +677,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 				__func__);
 		abort();
 	}
+    txn->utxnid = utxnid;
 
 	td_txn[txncnt++] = txn;
 
@@ -2544,11 +2550,15 @@ do_ckp:
 		ckp_lsn_sav = ckp_lsn;
 		timestamp = (int32_t)time(NULL);
 
+        u_int64_t max_utxnid;
+        Pthread_mutex_lock(&dbenv->utxnid_lock);
+        max_utxnid = dbenv->next_utxnid;
+        Pthread_mutex_unlock(&dbenv->utxnid_lock);
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
 			(ret = __txn_ckp_log(dbenv, NULL, &ckp_lsn,
 				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
 				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
-				gen)) != 0) {
+				gen, max_utxnid)) != 0) {
 			__db_err(dbenv,
 				"txn_checkpoint: log failed at LSN [%ld %ld] %s",
 				(long)ckp_lsn.file, (long)ckp_lsn.offset,

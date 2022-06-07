@@ -1079,7 +1079,9 @@ struct __db_txn {
 					 * existing startlsn usage, so
 					 * this is a new one */
 	void            *pglogs_hashtbl;
-   pthread_mutex_t pglogs_mutex;
+    pthread_mutex_t pglogs_mutex;
+
+    u_int64_t utxnid;
 };
 
 /*
@@ -2724,6 +2726,9 @@ struct __db_env {
 
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+
+    pthread_mutex_t utxnid_lock;
+    u_int64_t next_utxnid;
 };
 
 #ifndef DB_DBM_HSEARCH
