@@ -676,9 +676,10 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
             void *rec = NULL;
             uint32_t recsize = 0;
             void *freeptr = NULL;
+            int pd_index = bdb_state->ixdtalen[ixnum] > 0 ? ixnum : -1; // partial datacopy
             init_odh(bdb_state, &odh, dta, dtalen, 0);
             bdb_pack(bdb_state, &odh, dtacopy_payload + genid_sz,
-                     MAXRECSZ + ODH_SIZE_RESERVE, &rec, &recsize, &freeptr);
+                     MAXRECSZ + ODH_SIZE_RESERVE, &rec, &recsize, &freeptr, pd_index);
             llog_payload_len = dtacopy_payload_len = recsize + genid_sz;
         } else {
             /* put dta only */

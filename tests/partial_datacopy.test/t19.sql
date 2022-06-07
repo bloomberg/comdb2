@@ -8,4 +8,6 @@ insert into t with recursive r(n) as (select 1 union all select n + 4 from r whe
 select * from t where a < 40;
 select a, b, c from t where a < 40;
 
+explain query plan select a, b, c from t where a < 40;
+
 drop table t;
