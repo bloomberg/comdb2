@@ -1051,13 +1051,15 @@ static void return_pglogs_queue_key(struct pglogs_queue_key *qk)
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
 }
 
+int gbl_clear_pool_dbg = 0;
 static void clear_pool(pool_t *p, const char *name)
 {
     int nused;
     pool_info(p, NULL, &nused, NULL);
     if (nused == 0) {
         pool_clear(p);
-        logmsg(LOGMSG_DEBUG, "--- %s CLEARED ---\n", name);
+        if (gbl_clear_pool_dbg)
+            logmsg(LOGMSG_DEBUG, "--- %s CLEARED ---\n", name);
     }
 }
 

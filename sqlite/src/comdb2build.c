@@ -711,7 +711,7 @@ void comdb2CreateTableCSC2(
         goto out;
     }
 
-    sc->addonly = 1;
+    sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;
     sc->live = 1;
     fillTableOption(sc, opt);
@@ -758,7 +758,7 @@ void comdb2AlterTableCSC2(
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto out;
 
-    sc->alteronly = SC_ALTER_ONLY;
+    sc->kind = SC_ALTERTABLE;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -809,8 +809,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         goto out;
 
     sc->same_schema = 1;
-    sc->drop_table = 1;
-    sc->fastinit = 1;
+    sc->kind = SC_DROPTABLE;
     sc->nothrevent = 1;
     if (partition_first_shard)
         sc->partition.type = PARTITION_REMOVE;
@@ -876,7 +875,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     else
         sc->live = 1;
 
-    sc->alteronly = SC_ALTER_ONLY;
+    sc->kind = SC_REBUILDTABLE;
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
@@ -979,7 +978,7 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto out;
 
-    sc->fastinit = 1;
+    sc->kind = SC_TRUNCATETABLE;
     sc->nothrevent = 1;
     sc->same_schema = 1;
 
@@ -1054,7 +1053,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
     free(indexname);
 
-    sc->alteronly = SC_ALTER_ONLY;
+    sc->kind = SC_REBUILDTABLE_INDEX;
     sc->nothrevent = 1;
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
@@ -1113,7 +1112,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
 
     struct schema_change_type *sc = new_schemachange_type();
     strcpy(sc->tablename, spname);
-    sc->addsp = 1;
+    sc->kind = SC_ADDSP;
 
     if (ver) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
@@ -1176,7 +1175,7 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
         strncpy(sc->newcsc2, ver->z, ver->n);
         sc->newcsc2[ver->n] = '\0';
     }
-    sc->defaultsp = 1;
+    sc->kind = SC_DEFAULTSP;
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                         (vdbeFuncArgFree)&free_schema_change_type);
@@ -1245,7 +1244,7 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
         strncpy(sc->newcsc2, ver->z, ver->n);
         sc->newcsc2[ver->n] = '\0';
     }
-    sc->delsp = 1;
+    sc->kind = SC_DELSP;
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran,
                         (vdbeFuncArgFree)&free_schema_change_type);
@@ -2558,7 +2557,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     comdb2WriteTransaction(pParse);
     sc->nothrevent = 1;
     sc->live = 1;
-    sc->rename = gbl_lightweight_rename?SC_RENAME_ALIAS:SC_RENAME_LEGACY;
+    sc->kind = gbl_lightweight_rename?SC_ALIASTABLE:SC_RENAMETABLE;
     strncpy0(sc->newtable, newTable, sizeof(sc->newtable));
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
@@ -4559,8 +4558,8 @@ void comdb2AlterTableEnd(Parse *pParse)
 
     memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
-    sc->alteronly =
-        ((ctx->flags & DDL_PENDING) != 0) ? SC_ALTER_PENDING : SC_ALTER_ONLY;
+    sc->kind =
+        ((ctx->flags & DDL_PENDING) != 0) ? SC_ALTERTABLE_PENDING : SC_ALTERTABLE;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -4718,7 +4717,7 @@ void comdb2CreateTableEnd(
 
     memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
-    sc->addonly = 1;
+    sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;
     sc->live = 1;
 
@@ -5709,7 +5708,7 @@ void comdb2CreateIndex(
     if (pParse->rc)
         goto cleanup;
 
-    sc->alteronly = SC_ALTER_ONLY;
+    sc->kind = SC_ALTERTABLE_INDEX;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -6439,7 +6438,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     if (pParse->rc)
         goto cleanup;
 
-    sc->alteronly = SC_ALTER_ONLY;
+    sc->kind = SC_DROPTABLE_INDEX;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -6994,9 +6993,8 @@ void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
         goto out;
     }
 
-    sc->add_view = 1;
+    sc->kind = SC_ADD_VIEW;
     sc->nothrevent = 1;
-    sc->type = -1;
     sc->live = 1;
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                     (vdbeFuncArgFree)&free_schema_change_type);
@@ -7039,9 +7037,8 @@ void comdb2_drop_view(Parse *pParse, SrcList *pName)
     }
     memcpy(sc->tablename, pName->a[0].zName, sc->tablename_len);
 
-    sc->drop_view = 1;
+    sc->kind = SC_DROP_VIEW;
     sc->nothrevent = 1;
-    sc->type = -1;
     sc->live = 1;
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);

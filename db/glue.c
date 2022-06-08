@@ -3858,8 +3858,7 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
 
 static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
 {
-    if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
-        tbl->dbtype != DBTYPE_TAGGED_TABLE)
+    if (tbl->dbtype != DBTYPE_TAGGED_TABLE)
         return;
 
     char *str = NULL;
@@ -5499,8 +5498,7 @@ uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blob
     uint64_t size_without_blobs = 0;
     db->totalsize = 0;
 
-    if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
-        db->dbtype == DBTYPE_TAGGED_TABLE) {
+    if (db->dbtype == DBTYPE_TAGGED_TABLE) {
         for (ii = 0; ii < db->nix; ii++) {
             db->ixsizes[ii] = bdb_index_size_tran(db->handle, tran, ii);
             db->totalsize += db->ixsizes[ii];

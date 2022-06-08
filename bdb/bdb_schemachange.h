@@ -50,7 +50,7 @@ typedef enum scdone {
     user_view,               // 21
     add_queue_file,          // 22
     del_queue_file,          // 23
-    rename_table_alias       // 24
+    alias_table              // 24
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \

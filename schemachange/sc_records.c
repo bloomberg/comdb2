@@ -1859,7 +1859,7 @@ static int upgrade_records(struct convert_record_data *data)
         }
     }
 
-    if (data->s->fulluprecs)
+    if (data->s->kind == SC_FULLUPRECS)
         return 1;
     else if (recver == data->to->schema_version)
         return 0;
