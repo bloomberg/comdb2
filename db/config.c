@@ -420,7 +420,6 @@ static char *legacy_options[] = {
     "online_recovery off",
     "osql_check_replicant_numops off",
     "osql_send_startgen off",
-    "queuedb_genid_filename off",
     "reorder_socksql_no_deadlock off",
     "setattr DIRECTIO 0",
     "setattr ENABLE_SEQNUM_GENERATIONS 0",
