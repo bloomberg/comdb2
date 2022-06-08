@@ -96,15 +96,15 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         s->finalize = 0;
         Pthread_mutex_unlock(&s->mtx);
     }
-    if (s->alteronly == SC_ALTER_PENDING) {
+    if (s->kind == SC_ALTERTABLE_PENDING) {
         s->nothrevent = 0;
         s->finalize = 0;
     }
 
     /* This section looks for resumed / resuming schema changes:
      * if there is one, then we attach to it here */
-    if (!s->resume && (s->addonly || s->drop_table || s->fastinit ||
-                       s->alteronly != SC_ALTER_NONE)) {
+    if (!s->resume &&
+        (s->kind == SC_ADDTABLE || IS_FASTINIT(s) || IS_ALTERTABLE(s))) {
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
 
@@ -119,8 +119,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                        "Found ongoing schema change: rqid [%llx %s] "
                        "table %s, add %d, drop %d, fastinit %d, alter %d\n",
                        stored_sc->rqid, us, stored_sc->tablename,
-                       stored_sc->addonly, stored_sc->drop_table,
-                       stored_sc->fastinit, stored_sc->alteronly);
+                       stored_sc->kind == SC_ADDTABLE,
+                       stored_sc->kind == SC_DROPTABLE, IS_FASTINIT(stored_sc),
+                       IS_ALTERTABLE(stored_sc));
                 if (stored_sc->rqid == iq->sorese->rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     if (last_sc)
@@ -163,8 +164,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                    "Resuming schema change: rqid [%llx %s] "
                    "table %s, add %d, drop %d, fastinit %d, alter "
                    "%d, finalize_only %d\n",
-                   s->rqid, us, s->tablename, s->addonly, s->drop_table,
-                   s->fastinit, s->alteronly, s->finalize_only);
+                   s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
+                   s->kind == SC_DROPTABLE, IS_FASTINIT(s), IS_ALTERTABLE(s),
+                   s->finalize_only);
 
         } else {
             int bdberr;
@@ -197,9 +199,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 free(packed_sc_data);
                 packed_sc_data = NULL;
             }
-            if (stored_sc && !stored_sc->fulluprecs &&
-                !stored_sc->partialuprecs &&
-                stored_sc->type == DBTYPE_TAGGED_TABLE) {
+            if (stored_sc && !IS_UPRECS(stored_sc) &&
+                IS_SC_DBTYPE_TAGGED_TABLE(stored_sc)) {
                 if (stored_sc->rqid && stored_sc->rqid == iq->sorese->rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     s->rqid = stored_sc->rqid;
@@ -210,8 +211,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     logmsg(LOGMSG_INFO,
                            "Resuming schema change: rqid [%llx %s] "
                            "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                           s->rqid, us, s->tablename, s->addonly, s->drop_table,
-                           s->fastinit, s->alteronly);
+                           s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
+                           s->kind == SC_DROPTABLE, IS_FASTINIT(s),
+                           IS_ALTERTABLE(s));
                 }
                 free_schema_change_type(stored_sc);
             }
@@ -265,8 +267,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
-        if (s->fulluprecs || s->partialuprecs || !s->db ||
-            !s->db->doing_upgrade) {
+        if (IS_UPRECS(s) || !s->db || !s->db->doing_upgrade) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
         } else {
             // upgrade can be preempted by other "real" schemachanges
@@ -311,7 +312,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->sc = iq->sc;
     s->started = 0;
 
-    if (s->resume && s->alteronly != SC_ALTER_NONE && !s->finalize_only) {
+    if (s->resume && IS_ALTERTABLE(s) && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
@@ -320,11 +321,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
     /*
-    ** if s->partialuprecs, we're going radio silent from this point forward
+    ** if s->kind == SC_PARTIALUPRECS, we're going radio silent from this point
+    *forward
     ** in order to produce minimal spew
     */
     if (s->nothrevent) {
-        if (!s->partialuprecs)
+        if (s->kind != SC_PARTIALUPRECS)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
         rc = do_schema_change_tran(arg);
     } else {
@@ -339,11 +341,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         sc_async_threads++;
         Pthread_mutex_unlock(&sc_async_mtx);
 
-        if (!s->partialuprecs)
+        if (s->kind != SC_PARTIALUPRECS)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
 
-        if (s->alteronly == SC_ALTER_PENDING ||
+        if (s->kind == SC_ALTERTABLE_PENDING ||
             s->preempted == SC_ACTION_RESUME) {
             free(arg);
             arg = NULL;
@@ -472,7 +474,6 @@ int change_schema(char *table, char *fname, int odh, int compress,
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = DBTYPE_TAGGED_TABLE;
     strncpy0(s->tablename, table, sizeof(s->tablename));
     strncpy0(s->fname, fname, sizeof(s->fname));
 
@@ -490,7 +491,7 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = DBTYPE_MORESTRIPE;
+    s->kind = SC_LEGACY_MORESTRIPE;
     s->newdtastripe = newstripe;
     s->blobstripe = blobstripe;
 
@@ -498,14 +499,14 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 }
 
 int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
-                 int pagesize, int isqueuedb)
+                 int pagesize)
 {
     struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
+    s->kind = SC_LEGACY_QUEUE;
     strncpy0(s->tablename, queuename, sizeof(s->tablename));
     s->avgitemsz = avgitem;
     s->pagesize = pagesize;
@@ -541,7 +542,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
 
     s->nothrevent = 1;
     s->finalize = 1;
-    s->fastinit = 1;
+    s->kind = SC_TRUNCATETABLE;
     s->same_schema = 1;
     s->headers = -1;
     s->compress = -1;
@@ -564,21 +565,21 @@ int do_dryrun(struct schema_change_type *s)
     // not sure if useful to print: sc_printf(s, "starting dryrun\n");
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        if (s->alteronly != SC_ALTER_NONE) {
+        if (IS_ALTERTABLE(s)) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;
-        } else if (s->fastinit) {
+        } else if (IS_FASTINIT(s)) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;
         }
     } else {
-        if (s->addonly) {
+        if (s->kind == SC_ADDTABLE) {
             sbuf2printf(s->sb, ">Table %s already exists\n", s->tablename);
             rc = -1;
             goto done;
-        } else if (s->fastinit) {
+        } else if (IS_FASTINIT(s)) {
             sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
             goto done;
         }
@@ -957,7 +958,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     }
 
     /* Shouldn't get here */
-    if (s->addonly) {
+    if (s->kind == SC_ADDTABLE) {
         logmsg(LOGMSG_FATAL, "table '%s' already exists\n", s->tablename);
         abort();
         return -1;
@@ -1089,7 +1090,7 @@ int add_schema_change_tables()
 
             MEMORY_SYNC;
 
-            if (s->fastinit || s->type != DBTYPE_TAGGED_TABLE) {
+            if (IS_FASTINIT(s) || !IS_SC_DBTYPE_TAGGED_TABLE(s)) {
                 free_schema_change_type(s);
                 return 0;
             }
@@ -1116,7 +1117,6 @@ int sc_timepart_add_table(const char *existingTableName,
     init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
-    sc.type = DBTYPE_TAGGED_TABLE;
     sc.views_locked = 1;
 
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", newTableName);
@@ -1128,7 +1128,7 @@ int sc_timepart_add_table(const char *existingTableName,
     sc.use_plan = 1;
 
     /* this is a table add */
-    sc.addonly = 1;
+    sc.kind = SC_ADDTABLE;
     sc.finalize = 1;
 
     /* get new schema */
@@ -1217,7 +1217,6 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
-    sc.type = DBTYPE_TAGGED_TABLE;
 
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", tableName);
     sc.tablename[sizeof(sc.tablename) - 1] = '\0';
@@ -1228,8 +1227,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     sc.use_plan = 1;
 
     /* this is a table add */
-    sc.drop_table = 1;
-    sc.fastinit = 1;
+    sc.kind = SC_DROPTABLE;
     sc.finalize = 1;
 
     /* get new schema */
@@ -1300,7 +1298,7 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
     init_schemachange_type(&sc);
     strncpy0(sc.tablename, tableName, MAXTABLELEN);
     sc.onstack = 1;
-    sc.fastinit = 1;
+    sc.kind = SC_TRUNCATETABLE;
     sc.nothrevent = 1;
     sc.same_schema = 1;
     sc.finalize = 1;
@@ -1351,7 +1349,7 @@ int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
     sc->instant_sc = 1;
     sc->nothrevent = sync;
     strncpy0(sc->tablename, tbl, sizeof(sc->tablename));
-    sc->fulluprecs = full;
+    sc->kind = full ? SC_FULLUPRECS : SC_PARTIALUPRECS;
     sc->partialuprecs = partial;
     sc->start_genid = genid;
 
@@ -1479,7 +1477,7 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    if (s && s->partialuprecs) {
+    if (s && s->kind == SC_PARTIALUPRECS) {
         va_end(args);
         return;
     }
@@ -1501,7 +1499,7 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    if (s && s->partialuprecs) {
+    if (s && s->kind == SC_PARTIALUPRECS) {
         va_end(args);
         return;
     }

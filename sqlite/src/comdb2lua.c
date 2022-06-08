@@ -222,8 +222,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 
 	// trigger add table:qname dest:method
 	struct schema_change_type *sc = new_schemachange_type();
-	sc->is_trigger = 1;
-	sc->addonly = 1;
+	sc->kind = SC_ADD_TRIGGER;
     sc->persistent_seq = seq;
 	strcpy(sc->tablename, qname);
 	struct dest *d = malloc(sizeof(struct dest));
@@ -270,15 +269,14 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 
 	// trigger drop table:qname
 	struct schema_change_type *sc = new_schemachange_type();
-	sc->is_trigger = 1;
-	sc->drop_table = 1;
+	sc->kind = SC_DEL_TRIGGER;
 	strcpy(sc->tablename, qname);
 	Vdbe *v = sqlite3GetVdbe(parse);
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
 }
 
-#define comdb2CreateFunc(parse, proc, pfx, type, flags)                        \
+#define comdb2CreateFunc(parse, proc, pfx, PFX, type, flags)                   \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
@@ -294,9 +292,8 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
             return;                                                            \
         }                                                                      \
         struct schema_change_type *sc = new_schemachange_type();               \
-        sc->is_##pfx##func = 1;                                                \
+        sc->kind = SC_ADD_##PFX##FUNC;                                         \
         sc->lua_func_flags |= flags;                                           \
-        sc->addonly = 1;                                                       \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
@@ -321,7 +318,7 @@ void comdb2CreateScalarFunc(Parse *parse, Token *proc, int flags)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, s, scalar, flags);
+	comdb2CreateFunc(parse, proc, s, S, scalar, flags);
 }
 
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
@@ -342,10 +339,10 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, a, aggregate, 0);
+	comdb2CreateFunc(parse, proc, a, A, aggregate, 0);
 }
 
-#define comdb2DropFunc(parse, proc, pfx, type)                                 \
+#define comdb2DropFunc(parse, proc, pfx, PFX, type)                            \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
@@ -357,8 +354,7 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
             return;                                                            \
         }                                                                      \
         struct schema_change_type *sc = new_schemachange_type();               \
-        sc->is_##pfx##func = 1;                                                \
-        sc->addonly = 0;                                                       \
+        sc->kind = SC_DEL_##PFX##FUNC;                                         \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
@@ -400,7 +396,7 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
     }
 #endif
 
-    comdb2DropFunc(parse, proc, s, scalar);
+    comdb2DropFunc(parse, proc, s, S, scalar);
 }
 
 void comdb2DropAggFunc(Parse *parse, Token *proc)
@@ -421,6 +417,6 @@ void comdb2DropAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2DropFunc(parse, proc, a, aggregate);
+	comdb2DropFunc(parse, proc, a, A, aggregate);
 }
 

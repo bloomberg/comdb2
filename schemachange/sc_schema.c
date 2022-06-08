@@ -356,7 +356,7 @@ int set_header_and_properties(void *tran, struct dbtable *newdb,
         return SC_TRANSACTION_FAILED;
     }
 
-    if (s->fastinit || s->force_rebuild || newdb->instant_schema_change) {
+    if (IS_FASTINIT(s) || s->force_rebuild || newdb->instant_schema_change) {
         if (put_db_datacopy_odh(newdb, tran, 1)) {
             sc_errf(s, "Failed to set datacopy odh in meta\n");
             return SC_TRANSACTION_FAILED;
