@@ -85,7 +85,7 @@ static const char *const bdb_scdone_type_names[] = {
     "user_view",               // 21
     "add_queue_file",          // 22
     "del_queue_file",          // 23
-    "rename_table_alias"       // 24
+    "alias_table"              // 24
 };
 
 const char *bdb_get_scdone_str(scdone_t type)
@@ -182,7 +182,7 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
                                         TABLENAME_LOCKED_WRITE));
     }
 
-    if (sctype == rename_table || sctype == rename_table_alias) {
+    if (sctype == rename_table || sctype == alias_table) {
         assert(strlen(table) + 1 < scdoneop->table.size);
         newtable = &table[strlen(table) + 1];
     }

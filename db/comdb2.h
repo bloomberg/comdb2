@@ -427,11 +427,12 @@ enum CONSTRAINT_FLAGS {
     CT_DEL_SETNULL = 0x00000008,
 };
 
+/* dbtable type specifier, please do not use for schema change type */
 enum {
-    DBTYPE_UNTAGGED_TABLE = 0,
+    UNUSED_1 = 0,
     DBTYPE_TAGGED_TABLE = 1,
     DBTYPE_QUEUE = 2,
-    DBTYPE_MORESTRIPE = 3, /* fake type used in schema change code */
+    UNUSED_2 = 3,
     DBTYPE_QUEUEDB = 4
 };
 
@@ -477,8 +478,6 @@ enum RECOVER_DEADLOCK_FLAGS {
     RECOVER_DEADLOCK_FORCE_FAIL = 0x00000002,
     RECOVER_DEADLOCK_IGNORE_DESIRED= 0x00000004
 };
-
-enum { SC_RENAME_LEGACY = 1, SC_RENAME_ALIAS = 2 };
 
 enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 

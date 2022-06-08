@@ -5753,7 +5753,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     rc = start_schema_change_tran(iq, sc->tran);
     if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
         sc->preempted == SC_ACTION_RESUME ||
-        sc->alteronly == SC_ALTER_PENDING) {
+        sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -5785,8 +5785,8 @@ static int _process_single_table_sc(struct ireq *iq)
     /* schema change for a regular table */
     rc = start_schema_change_tran(iq, NULL);
     if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
-            sc->preempted == SC_ACTION_RESUME ||
-            sc->alteronly == SC_ALTER_PENDING) {
+        sc->preempted == SC_ACTION_RESUME ||
+        sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -5801,7 +5801,7 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     struct schema_change_type *sc = iq->sc;
     int rc;
 
-    if (sc->addonly) {
+    if (sc->kind == SC_ADDTABLE) {
         /* created a table and move rows from a different one into it */
         sc->finalize = 0; /* make sure */
         sc->nothrevent = 1; /* we need do_add_table to run first */
@@ -5820,8 +5820,7 @@ static int _process_single_table_sc_merge(struct ireq *iq)
         strncpy0(alter_sc->tablename, sc->partition.u.mergetable.tablename,
                  sizeof(sc->partition.u.mergetable.tablename));
         alter_sc->usedbtablevers = sc->partition.u.mergetable.version;
-        alter_sc->addonly = 0; /* this is an alter! */
-        alter_sc->alteronly = SC_ALTER_ONLY;
+        alter_sc->kind = SC_ALTERTABLE;
         /* use the created file as target */
         alter_sc->newdb = sc->newdb;
         alter_sc->force_rebuild = 1; /* we are moving rows here */
@@ -5890,7 +5889,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     arg.s->iq = iq;
 
     /* is this an alter? preserve existing table as first shard */
-    if (!sc->addonly) {
+    if (sc->kind != SC_ADDTABLE) {
         /* we need to create a light rename for first shard,
          * together with the original alter
          * NOTE: we need to grab the table version first
@@ -5910,8 +5909,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         /* we need to  generate retention-1 table adds, with schema provided
          * by previous alter; we need to convert an alter to a add sc
          */
-        arg.s->alteronly = SC_ALTER_NONE; /* this is an add! */
-        arg.s->addonly = 1;
+        arg.s->kind = SC_ADDTABLE;
         arg.indx = 1; /* first shard is already there */
     }
     rc = timepart_foreach_shard_lockless(
@@ -5925,7 +5923,7 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     struct schema_change_type *sc = iq->sc;
     int rc;
 
-    if (sc->addonly) {
+    if (sc->kind == SC_ADDTABLE) {
         /* trying to create a duplicate time partition */
         logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
         rc = SC_TABLE_ALREADY_EXIST;
@@ -6193,7 +6191,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (rc != SC_OK) {
                 return ERR_SC;
             }
-            if (iq->sc->fastinit && gbl_replicate_local)
+            if (IS_FASTINIT(iq->sc) && gbl_replicate_local)
                 local_replicant_write_clear(iq, trans, iq->sc->db);
             iq->sc = iq->sc->sc_next;
         }

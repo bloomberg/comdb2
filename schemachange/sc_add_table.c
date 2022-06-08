@@ -312,7 +312,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);
         return rc;
     }
-    s->addonly = SC_DONE_ADD; /* done adding to thedb->dbs */
+    s->add_state = SC_DONE_ADD; /* done adding to thedb->dbs */
 
     if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
         return rc;

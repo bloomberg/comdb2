@@ -22,6 +22,7 @@
 #include <util.h>
 #include <locks.h>
 #include <list.h>
+#include <bdb_schemachange.h>
 
 /* To be forward declared one accessors methods are added */
 
@@ -59,14 +60,8 @@ struct dest {
     LINKC_T(struct dest) lnk;
 };
 
-enum schema_alter_option {
-    SC_ALTER_NONE = 0,
-    SC_ALTER_ONLY = 1,
-    SC_ALTER_PENDING = 2
-};
-
-/* status for schema_change_type->addonly */
-enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
+/* status for add table process, stored in sc->add_status */
+enum add_state { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
 
 enum comdb2_partition_type {
     PARTITION_NONE = 0,
@@ -95,15 +90,59 @@ struct comdb2_partition {
 
 struct timepart_view;
 
+/* in sync with do_schema_change_if */
+enum schema_change_kind {
+    SC_INVALID = 0,
+    SC_LEGACY_QUEUE = 1,
+    SC_LEGACY_MORESTRIPE = 2,
+    SC_ADD_QDB_FILE = 3,
+    SC_DEL_QDB_FILE = 4,
+    SC_ADD_VIEW = 5,
+    SC_DROP_VIEW = 6,
+    SC_ADDSP = 7,
+    SC_DELSP = 8,
+    SC_DEFAULTSP = 9,
+    SC_SHOWSP = 10,
+    SC_ADD_TRIGGER = 11,
+    SC_DEL_TRIGGER = 12,
+    SC_ADD_SFUNC = 13,
+    SC_DEL_SFUNC = 14,
+    SC_ADD_AFUNC = 15,
+    SC_DEL_AFUNC = 16,
+    SC_FULLUPRECS = 17,
+    SC_PARTIALUPRECS = 18,
+    SC_DROPTABLE = 19,
+    SC_TRUNCATETABLE = 20,
+    SC_ADDTABLE = 21,
+    SC_RENAMETABLE = 22,
+    SC_ALIASTABLE = 23,
+    SC_ALTERTABLE = 24,
+    SC_ALTERTABLE_PENDING = 25,
+    SC_REBUILDTABLE = 26,
+    SC_ALTERTABLE_INDEX = 27,
+    SC_DROPTABLE_INDEX = 28,
+    SC_REBUILDTABLE_INDEX = 29,
+};
+
+#define IS_SC_DBTYPE_TAGGED_TABLE(s) ((s)->kind > SC_DROP_VIEW)
+#define IS_FASTINIT(s)                                                         \
+    (((s)->kind == SC_DROP_VIEW) || ((s)->kind == SC_TRUNCATETABLE))
+#define IS_SFUNC(s) (((s)->kind == SC_ADD_SFUNC) || ((s)->kind == SC_DEL_SFUNC))
+#define IS_AFUNC(s) (((s)->kind == SC_ADD_AFUNC) || ((s)->kind == SC_DEL_AFUNC))
+#define IS_TRIGGER(s)                                                          \
+    (((s)->kind == SC_ADD_TRIGGER) || ((s)->kind == SC_DEL_TRIGGER))
+#define IS_UPRECS(s)                                                           \
+    (((s)->kind == SC_FULLUPRECS) || ((s)->kind == SC_PARTIALUPRECS))
+#define IS_ALTERTABLE(s)                                                       \
+    (((s)->kind >= SC_ALTERTABLE) && ((s)->kind <= SC_REBUILDTABLE_INDEX))
+
 struct schema_change_type {
     /*  ==========    persistent members ========== */
+    enum schema_change_kind kind;
     unsigned long long rqid;
     uuid_t uuid;
-    int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
-                 or DBTYPE_MORESTRIPE */
     size_t tablename_len;
     char tablename[MAXTABLELEN];    /* name of table/queue */
-    int rename;                     /* rename table? */
     char newtable[MAXTABLELEN];     /* new table name */
     size_t fname_len;
     char fname[256];                /* name of schema file for table schema
@@ -111,15 +150,9 @@ struct schema_change_type {
     size_t aname_len;
     char aname[256];         /* advised file name for .csc2 */
     int avgitemsz;           /* average item size for queue creation */
-    int fastinit;            /* are we doing "fast init?" */
     int newdtastripe;        /* new dtastripe factor */
     int blobstripe;          /* 1 if we are converting to blobstripe */
     int live;
-    int addonly;
-    int partialuprecs; /* 1 if we're doing partial-table upgrade */
-    int fulluprecs;    /* 1 if we're doing full-table upgrade */
-    enum schema_alter_option alteronly;
-    int is_trigger;
     size_t newcsc2_len;
     char *newcsc2; /* malloced buffer containing the new schema */
     enum convert_scan_mode scanmode;
@@ -158,38 +191,28 @@ struct schema_change_type {
     uint8_t index_to_rebuild; /* can use just a short for rebuildindex */
 
     char original_master_node[256];
-    int drop_table;
 
     LISTC_T(struct dest) dests;
 
     size_t spname_len;
     char spname[MAX_SPNAME];
-    int addsp;
-    int delsp;
-    int defaultsp;
-    int is_sfunc; /* lua scalar func */
-    int is_afunc; /* lua agg func */
     int lua_func_flags; /* lua func flags */
 
-    /* View operations */
-    int add_view;
-    int drop_view;
-
     /* QueueDB operations */
-    int add_qdb_file;
-    int del_qdb_file;
     unsigned long long qdb_file_ver; /* part of file name to add */
 
     /* ========== runtime members ========== */
+    scdone_t done_type;
     int onstack; /* if 1 don't free */
     int nothrevent;
     int already_locked; /* already holding schema lock */
     int keep_locked; /* don't release schema lock upon commit */
     int pagesize; /* pagesize override to use */
-    int showsp;
     SBUF2 *sb; /* socket to sponsoring program */
     int must_close_sb;
     int use_old_blobs_on_rebuild;
+    enum add_state add_state;
+    int partialuprecs; /* count updated records in partial table upgrade */
 
     int resume;           /* if we are trying to resume a schema change,
                            * usually because there is a new master */
@@ -341,7 +364,6 @@ enum schema_change_preempt {
     SC_ACTION_ABORT = 4
 };
 
-#include <bdb_schemachange.h>
 typedef struct llog_scdone {
     void *handle;
     scdone_t type;
@@ -351,8 +373,7 @@ size_t schemachange_packed_size(struct schema_change_type *s);
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
 int finalize_schema_change(struct ireq *, tran_type *);
-int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize,
-                 int isqueuedb);
+int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize);
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
                         int sync);
@@ -451,7 +472,7 @@ char *get_ddl_csc2(struct schema_change_type *s);
 
 int comdb2_is_user_op(char *user, char *password);
 
-int llog_scdone_rename_wrapper(bdb_state_type *bdb_state, scdone_t type,
+int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
                                struct schema_change_type *s, tran_type *tran,
                                int *bdberr);
 

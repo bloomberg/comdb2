@@ -141,8 +141,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     transfer_db_settings(db, newdb);
 
     get_db_datacopy_odh_tran(db, &datacopy_odh, tran);
-    if (s->fastinit || s->force_rebuild || /* we're first to set */
-        newdb->instant_schema_change)      /* we're doing instant sc*/
+    if (IS_FASTINIT(s) || s->force_rebuild || /* we're first to set */
+        newdb->instant_schema_change)         /* we're doing instant sc*/
     {
         datacopy_odh = 1;
     }
@@ -177,10 +177,11 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
                     break;
                 sc_pending = sc_pending->sc_next;
             }
-            if (sc_pending && sc_pending->fastinit)
+            if (sc_pending && IS_FASTINIT(sc_pending))
                 logmsg(LOGMSG_INFO,
                        "Fastinit '%s' and %s'%s' transactionally\n",
-                       s->tablename, sc_pending->drop_table ? "drop " : "",
+                       s->tablename,
+                       sc_pending->kind == SC_DROPTABLE ? "drop " : "",
                        sc_pending->tablename);
             else {
                 sc_client_error(s, "Can't truncate a table referenced by a foreign key");

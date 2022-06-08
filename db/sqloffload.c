@@ -673,30 +673,6 @@ static void osql_genid48_commit_callback(struct ireq *iq)
     }
 }
 
-static scdone_t _get_sc_type(struct schema_change_type *s)
-{
-    scdone_t type = invalid;
-
-    if (s->is_trigger || s->is_sfunc || s->is_afunc) {
-        /* already sent scdone in finalize_schema_change_thd */
-        type = invalid;
-    } else if (s->fastinit && s->drop_table)
-        type = drop;
-    else if (s->fastinit)
-        type = fastinit;
-    else if (s->addonly)
-        type = add;
-    else if (s->rename)
-        type = (s->rename == SC_RENAME_LEGACY) ? rename_table
-            : rename_table_alias;
-    else if (s->type == DBTYPE_TAGGED_TABLE)
-        type = alter;
-    else if (s->add_view || s->drop_view)
-        type = user_view;
-
-    return type;
-}
-
 extern int gbl_readonly_sc;
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
@@ -711,14 +687,13 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             int rc = 0;
             sc_next = iq->sc->sc_next;
             if (write_scdone) {
-                struct schema_change_type *s = iq->sc;
-                scdone_t type = _get_sc_type(s);
-
-                if (type == invalid || (type != user_view && s->db == NULL)) {
+                if (iq->sc->done_type == invalid ||
+                    (iq->sc->done_type != user_view && iq->sc->db == NULL)) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
-                           __func__, s->tablename);
+                           __func__, iq->sc->tablename);
                 } else {
-                    rc = llog_scdone_rename_wrapper(thedb->bdb_env, type, s, NULL, &bdberr);
+                    rc = llog_scdone_rename_wrapper(thedb->bdb_env, iq->sc,
+                                                    NULL, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
                         /* We are here because we are running in R6 compatible
                          * mode. For R7 or later, use SC_DONE_SAME_TRAN.
@@ -730,7 +705,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                          */
                         logmsg(LOGMSG_ERROR,
                                "%s: Failed to log scdone for table %s\n",
-                               __func__, s->tablename);
+                               __func__, iq->sc->tablename);
                     }
                 }
             }
@@ -750,7 +725,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                            rc);
                 }
             }
-            if (iq->sc->fastinit && !iq->sc->drop_table)
+            if (iq->sc->kind == SC_TRUNCATETABLE)
                 autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;

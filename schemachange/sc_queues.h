@@ -20,7 +20,7 @@
 int do_alter_queues_int(struct schema_change_type *);
 int consumer_change(const char *queuename, int consumern, const char *method);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
-int perform_trigger_update(struct schema_change_type *); //, char *config);
+int perform_trigger_update(struct schema_change_type *, struct ireq *);
 int perform_trigger_update_replicant(tran_type *, const char *queue_name,
                                      scdone_t);
 int finalize_trigger(struct schema_change_type *);
