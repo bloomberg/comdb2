@@ -2576,12 +2576,14 @@ retry:
         debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%lu):\n",
                    b_read, sizeof(hdr));
         rc = -1;
+#       if WITH_SSL
         /* In TLS 1.3, client authentication happens after handshake (RFC 8446).
            An invalid client (e.g., a revoked cert) may see a successful
            handshake but encounter an error when reading data from the server.
            Catch the error here. */
         if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
             sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+#       endif
         goto after_callback;
     }
 
