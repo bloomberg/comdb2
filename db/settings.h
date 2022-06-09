@@ -22,12 +22,14 @@ gbl_set_default_dbtrans
 
 typedef enum {
     SETTING_INTEGER,
+    SETTING_LONG,
     SETTING_DOUBLE,
     SETTING_BOOLEAN,
     SETTING_STRING,
     SETTING_ENUM,
     SETTING_FUNC,
     SETTING_COMPOSITE,
+    SETTING_MULTIPLE,
 } comdb2_setting_type;
 
 typedef enum {

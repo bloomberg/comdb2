@@ -29,7 +29,62 @@ int gbl_setting_default_query_timeout = 0;
 int gbl_setting_default_chunk_size = 0;
 int gbl_setting_default_mode = TRANLEVEL_INVALID;
 int gbl_setting_default_timeout = 0;
-// char* and other default
+int gbl_setting_default_password;
+int gbl_setting_default_spversion;
+int gbl_setting_default_prepare_only;
+int gbl_setting_default_readonly;
+int gbl_setting_default_expert;
+int gbl_setting_default_sptrace;
+int gbl_setting_default_cursordebug;
+int gbl_setting_default_spdebug;
+int gbl_setting_default_hasql;
+int gbl_setting_default_verifyretry;
+int gbl_setting_default_queryeffects;
+int gbl_setting_default_remote;
+int gbl_setting_default_getcost;
+int gbl_setting_default_explain;
+int gbl_setting_default_maxtransize;
+int gbl_setting_default_groupconcatmemlimit;
+int gbl_setting_default_plannereffort;
+int gbl_setting_default_intransresults;
+int gbl_setting_default_admin;
+int gbl_setting_default_querylimit;
+int gbl_setting_default_rowbuffer;
+int gbl_setting_default_sockbplog;
+int gbl_setting_default_user;
+int gbl_setting_default_password;
+int gbl_setting_default_spversion;
+int gbl_setting_default_prepare_only;
+int gbl_setting_default_readonly;
+int gbl_setting_default_expert;
+int gbl_setting_default_sptrace;
+int gbl_setting_default_cursordebug;
+int gbl_setting_default_spdebug;
+int gbl_setting_default_hasql;
+int gbl_setting_default_verifyretry;
+int gbl_setting_default_queryeffects;
+int gbl_setting_default_remote;
+int gbl_setting_default_getcost;
+int gbl_setting_default_explain;
+int gbl_setting_default_maxtransize;
+int gbl_setting_default_groupconcatmemlimit;
+int gbl_setting_default_plannereffort;
+int gbl_setting_default_intransresults;
+int gbl_setting_default_admin;
+int gbl_setting_default_querylimit;
+int gbl_setting_default_rowbuffer;
+int gbl_setting_default_sockbplog;
+int gbl_setting_default_timezone;
+// char* and other default;
+
+static inline char *skipws(char *str)
+{
+    if (str) {
+        while (*str && isspace(*str))
+            str++;
+    }
+    return str;
+}
 
 int init_client_settings()
 {
@@ -252,7 +307,7 @@ int transition(set_state_mach_t *sm, char *key)
     } else if (sm->state == SET_STATE_CURSORDEBUG) {
         set_apply(sm, "cursordebug", key);
     } else if (sm->state == SET_STATE_SPDEBUG) {
-        set_apply(sm, "spedebug", key);
+        set_apply(sm, "spdebug", key);
     } else if (sm->state == SET_STATE_HASQL) {
         set_apply(sm, "hasql", key);
     } else if (sm->state == SET_STATE_VERIFYRETRY) {
@@ -268,7 +323,7 @@ int transition(set_state_mach_t *sm, char *key)
     } else if (sm->state == SET_STATE_MAXTRANSIZE) {
         set_apply(sm, "maxtransize", key);
     } else if (sm->state == SET_STATE_GROUPCONCATMEMLIMIT) {
-        set_apply(sm, "groupconcaatmemlimit", key);
+        set_apply(sm, "groupconcatmemlimit", key);
     } else if (sm->state == SET_STATE_PLANNEREFFORT) {
         set_apply(sm, "plannereffort", key);
     } else if (sm->state == SET_STATE_INTRANSRESULTS) {
@@ -475,16 +530,17 @@ int set_expert(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char
 }
 int set_sptrace(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    // TODO: should probably make all of these "on"/"off"s more concrete by checking if
+    // sqlstr is 'on' or 'off'.
     clnt->want_stored_procedure_trace = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
     return 0;
 }
 int set_cursordebug(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     char *value = strdup(sqlstr);
-    bdb_osql_trak(value, &clnt->bdb_osql_trak);
-    return 0;
+    return bdb_osql_trak(value, &clnt->bdb_osql_trak);
 }
-int set_spedebug(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_spdebug(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     clnt->want_stored_procedure_debug = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
     return 0;
@@ -519,6 +575,7 @@ int set_verifyretry(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const
 }
 int set_queryeffects(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
+    // TODO: if it isn't either return error;
     if (strncasecmp(sqlstr, "statement", 9) == 0) {
         clnt->statement_query_effects = 1;
     }
@@ -533,7 +590,7 @@ int set_remote(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char
     int fdbrc = fdb_access_control_create(clnt, value);
     if (fdbrc) {
         snprintf(err, SM_ERROR_LEN, "%s: failed to process remote access settings \"%s\"\n", __func__, value);
-        return 7;
+        return fdbrc;
     }
     return 0;
 }
@@ -548,30 +605,31 @@ int set_getcost(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const cha
 }
 int set_explain(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
-    //    if (strncasecmp(sqlstr, "on", 2) == 0) {
-    //        clnt->is_explain = 1;
-    //    } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
-    //        clnt->is_explain = 2;
-    //        sqlstr += 7;
-    //        sqlstr = skipws(sqlstr);
-    //
-    //        /*
-    //           0x2    -> show headnote and footnote from the solver
-    //           0x4    -> show how the best index is picked
-    //           0x8    -> show how the cost of each index is calculated
-    //           0x10   -> show trace for stat4
-    //           0x100  -> show all where terms
-    //           0x200  -> show trace for Or terms
-    //           0x840  -> show trace for virtual tables
-    //         */
-    //
-    //        if (sqlstr[0] == '\0')
-    //            clnt->where_trace_flags = ~0;
-    //        else
-    //            clnt->where_trace_flags = (int)strtol(sqlstr, NULL, 16);
-    //    } else {
-    //        clnt->is_explain = 0;
-    //    }
+    if (strncasecmp(sqlstr, "on", 2) == 0) {
+        clnt->is_explain = 1;
+    } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
+        clnt->is_explain = 2;
+        char *value = strdup(sqlstr);
+        value += 7;
+        value = skipws(value);
+
+        /*
+           0x2    -> show headnote and footnote from the solver
+           0x4    -> show how the best index is picked
+           0x8    -> show how the cost of each index is calculated
+           0x10   -> show trace for stat4
+           0x100  -> show all where terms
+           0x200  -> show trace for Or terms
+           0x840  -> show trace for virtual tables
+         */
+
+        if (value[0] == '\0')
+            clnt->where_trace_flags = ~0;
+        else
+            clnt->where_trace_flags = (int)strtol(value, NULL, 16);
+    } else {
+        clnt->is_explain = 0;
+    }
     return 0;
 }
 int set_maxtransize(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
@@ -589,7 +647,7 @@ int set_maxtransize(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const
 #endif
     return 0;
 }
-int set_groupconcaatmemlimit(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
+int set_groupconcatmemlimit(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     int sz = strtol(sqlstr, NULL, 10);
     if (sz < 0) {
