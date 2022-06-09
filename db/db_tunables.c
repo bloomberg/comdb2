@@ -240,6 +240,7 @@ extern int gbl_max_trigger_threads;
 extern int gbl_do_inline_poll;
 extern int gbl_fingerprint_max_queries;
 extern int gbl_ufid_log;
+extern int gbl_abort_on_missing_ufid;
 extern int gbl_ufid_dbreg_test;
 
 extern long long sampling_threshold;
