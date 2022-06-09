@@ -249,6 +249,7 @@ extern int gbl_alternate_normalize;
 extern int gbl_sc_logbytes_per_second;
 extern int gbl_fingerprint_max_queries;
 extern int gbl_ufid_log;
+extern int gbl_abort_on_missing_ufid;
 extern int gbl_ufid_dbreg_test;
 
 extern long long sampling_threshold;

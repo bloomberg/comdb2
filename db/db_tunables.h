@@ -1973,6 +1973,10 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
 REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_log,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("abort_on_missing_ufid", "Abort if ufid is not found.  (Default: off)", 
+                 TUNABLE_BOOLEAN, &gbl_abort_on_missing_ufid, EXPERIMENTAL | INTERNAL | READONLY,
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("ufid_dbreg_test", "Enable ufid-dbreg test.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_dbreg_test,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
