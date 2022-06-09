@@ -2571,11 +2571,9 @@ static void do_add_host(int accept_fd, short what, void *data)
 
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
 {
-    return strcmp(e->host, gbl_myhostname) == 0
-           || e->fd == -1
-           || e->decomissioned
-           || (e->wr_full && !nodrop)
-           || (check_hello && !e->got_hello);
+    if (e->fd == -1 || e->decomissioned || (check_hello && !e->got_hello)) return -3;
+    if (e->wr_full && !nodrop) return -2;
+    return 0;
 }
 
 struct shared_msg {
@@ -2900,14 +2898,14 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
         }
     }
     Pthread_mutex_lock(&e->wr_lk);
-    if (skip_send(e, nodrop, 0)) {
-        rc = -2;
-    } else if (e->flush_buf) {
+    if (!e->flush_buf) {
+       rc = -3;
+    } else if ((rc = skip_send(e, nodrop, 0)) == 0) {
         if ((rc = evbuffer_add_buffer(e->flush_buf, buf)) == 0) {
             flush_evbuffer(e, nodelay);
+        } else {
+            rc = -1;
         }
-    } else {
-        rc = -3;
     }
     Pthread_mutex_unlock(&e->wr_lk);
 out:if (buf) {
