@@ -453,6 +453,8 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	return 0;
 }
 
+int gbl_abort_on_missing_ufid = 0;
+
 static int
 __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 	DB_ENV *dbenv;
@@ -481,7 +483,10 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 		}
 		(*dbpp) = ufid->dbp;
 	} else {
-		abort();
+		if (gbl_abort_on_missing_ufid) {
+			abort();
+		}
+		ret = DB_DELETED;
 	}
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 	if (close_dbp) {
