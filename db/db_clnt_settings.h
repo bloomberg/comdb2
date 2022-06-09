@@ -20,7 +20,7 @@ REGISTER_ACC_SETTING(prepare_only, prepare_only, SETTING_INTEGER, 0, gbl_setting
 REGISTER_ACC_SETTING(is_readonly, readonly, SETTING_INTEGER, 0, gbl_setting_default_readonly);
 REGISTER_ACC_SETTING(is_expert, expert, SETTING_INTEGER, 0, gbl_setting_default_expert);
 REGISTER_ACC_SETTING(want_stored_procedure_trace, sptrace, SETTING_INTEGER, 0, gbl_setting_default_sptrace);
-REGISTER_ACC_SETTING(db_osql_trak, cursordebug, SETTING_INTEGER, 0, gbl_setting_default_cursordebug);
+REGISTER_ACC_SETTING(bdb_osql_trak, cursordebug, SETTING_INTEGER, 0, gbl_setting_default_cursordebug);
 REGISTER_ACC_SETTING(want_stored_procedure_debug, spdebug, SETTING_INTEGER, 0, gbl_setting_default_spdebug);
 REGISTER_ACC_SETTING(hasql_on, hasql, SETTING_INTEGER, 0, gbl_setting_default_hasql);
 REGISTER_ACC_SETTING(verifyretry_off, verifyretry, SETTING_INTEGER, 0, gbl_setting_default_verifyretry);
@@ -32,7 +32,7 @@ REGISTER_ACC_SETTING(osql_max_trans, maxtransize, SETTING_LONG, 0, gbl_setting_d
 REGISTER_ACC_SETTING(group_concat_mem_limit, groupconcatmemlimit, SETTING_LONG, 0,
                      gbl_setting_default_groupconcatmemlimit);
 REGISTER_ACC_SETTING(planner_effort, plannereffort, SETTING_INTEGER, 0, gbl_setting_default_plannereffort);
-REGISTER_ACC_SETTING(appdata->send_intrans_response, intransresults, SETTING_STRING, 0, gbl_setting_default_intransresults);
+REGISTER_ACC_SETTING(appdata, intransresults, SETTING_STRING, 0, gbl_setting_default_intransresults);
 REGISTER_ACC_SETTING(admin, admin, SETTING_INTEGER, 0, gbl_setting_default_admin);
 REGISTER_ACC_SETTING(limits, querylimit, SETTING_COMPOSITE, 0, gbl_setting_default_querylimit);
 REGISTER_ACC_SETTING(rowbuffer, rowbuffer, SETTING_INTEGER, 0, gbl_setting_default_rowbuffer);

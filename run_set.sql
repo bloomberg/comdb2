@@ -19,14 +19,16 @@ set cursordebug all;
 set verifyretry on;
 set queryeffects statement;
 set getcost on;
-set explain on;
-set explain verbose 2;
 set maxtransize 10;
 set groupconcatmemlimit 100;
-set plannereffort 9;
 set intransresults on;
 set admin on;
 set querylimit warn; 
 set rowbuffer on;
-set remote read;
 select 1
+
+select * from comdb2_set_commands;
+
+set explain verbose 2;
+set plannereffort 9;
+set explain on;

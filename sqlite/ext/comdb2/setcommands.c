@@ -1,15 +1,18 @@
 #include <stddef.h>
 #include <pthread.h>
 
+#include "list.h"
 #include "sql.h"
 
 #include "comdb2systblInt.h"
 #include "ezsystables.h"
 
-struct setcommands {
+#include "settings.h"
+
+struct setcmd_table_ent {
     char *query;
-    char* command;
-    char * args;
+    char *command;
+    char *value;
 };
 
 int populate_set_commands(void **data, int *npoints)
@@ -17,48 +20,39 @@ int populate_set_commands(void **data, int *npoints)
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
-    struct setcommands *cmds = NULL;
-    char **commands = NULL;
-    size_t count = 0;
+    struct setcmd_table_ent *cmds = NULL;
+    size_t count = listc_size(&settings);
     int rc = 0;
 
-    rc = clnt->plugin.get_set_commands(clnt, (void ***)&commands, &count);
-    if (rc || (count == 0))
-        return rc;
+//    rc = clnt->plugin.get_set_commands(clnt, (void ***)&commands, &count);
+//    if (rc || (count == 0))
+//        return rc;
 
-    cmds = (struct setcommands *)malloc(count * sizeof(struct setcommands));
+    cmds = (struct setcmd_table_ent *)malloc(count * sizeof(struct setcmd_table_ent));
 
-    for (int i = 0; i < count; i++) {
-        // argv[3] = {'SET', COMM, ARGS};
-        char **ap, *argv[3];
-        int cmd_len = 0;
-
-        cmds[i].query = strdup(commands[i]);
-        char *temp = strdup(commands[i]);
-
-        for (ap = argv; (*ap = strsep(&temp, " \t")) != NULL;)
-            if (**ap != '\0') {
-                ++cmd_len;
-                if (++ap >= &argv[3])
-                    break;
-            }
-
-        cmds[i].command = (cmd_len >= 2) ? argv[1] : "";
-        cmds[i].args = ((cmd_len >= 3) && (strncasecmp(argv[1], "password", 9) == 0)) ? "***" : argv[2];
-        // free the "SET" part of the command right here
-        free(temp);
+    db_clnt_setting_t *lst;
+    int i = 0;
+    LISTC_FOR_EACH(&settings, lst, lnk)
+    {
+        if (lst->desc) {
+            // TODO: get the actual query used to set this command
+            cmds[i].query = "default";
+            cmds[i].command = lst->desc;
+            cmds[i].value = (lst->type == SETTING_STRING) ? (char*) (clnt + lst->offset) : NULL;
+        }
+        ++i;
     }
 
     *data = cmds;
-    *npoints = count;
+    *npoints = i;
 
     return rc;
 }
 
 void free_set_commands(void *p, int n)
 {
-    for (int i = 0; i < n; i++)
-        free(((struct setcommands *)p)[i].query);
+//    for (int i = 0; i < n; i++)
+//        free(((struct setcmd_table_ent *)p)[i].query);
     free(p);
 }
 
@@ -69,8 +63,8 @@ sqlite3_module systblSetCommandsModule = {
 int systblSetCommandsModuleInit(sqlite3 *db)
 {
     return create_system_table(db, "comdb2_set_commands", &systblSetCommandsModule, populate_set_commands,
-                               free_set_commands, sizeof(struct setcommands), CDB2_CSTRING, "query", -1,
-                               offsetof(struct setcommands, query), CDB2_CSTRING, "command", -1,
-                               offsetof(struct setcommands, command), CDB2_CSTRING, "args", -1,
-                               offsetof(struct setcommands, args), SYSTABLE_END_OF_FIELDS);
+                               free_set_commands, sizeof(struct setcmd_table_ent), CDB2_CSTRING, "query", -1,
+                               offsetof(struct setcmd_table_ent, query), CDB2_CSTRING, "command", -1,
+                               offsetof(struct setcmd_table_ent, command), CDB2_CSTRING, "args", -1,
+                               offsetof(struct setcmd_table_ent, value), SYSTABLE_END_OF_FIELDS);
 }

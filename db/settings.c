@@ -723,14 +723,15 @@ int set_datetime(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const ch
     return 0;
 }
 
-int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, int blah)
+int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, int def, int offset)
 {
     db_clnt_setting_t *s = malloc(sizeof(db_clnt_setting_t));
 
     s->name = name;
     s->type = type;
     s->flag = flag;
-    s->def = &blah;
+    s->def = &def;
+    s->offset = offset;
 
     listc_abl(&settings, s);
     return 0;

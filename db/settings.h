@@ -42,7 +42,7 @@ typedef enum {
 struct db_clnt_setting_t;
 typedef struct db_clnt_setting_t db_clnt_setting_t;
 
-typedef int set_clnt_setting(db_clnt_setting_t *, struct sqlclntstate *, const char *, char*);
+typedef int set_clnt_setting(db_clnt_setting_t *, struct sqlclntstate *, const char *, char *);
 typedef void *get_clnt_setting(struct sqlclntstate *, int);
 
 struct db_clnt_setting_t {
@@ -96,9 +96,10 @@ hash_t *desc_settings;
 // return *((*clnt + offset)
 
 // TODO: format the composite different
-int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int);
+int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int, int);
 
-#define REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT) temp_debug_register(#NAME, TYPE, FLAG, DEFAULT);
+#define REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT)                                                                    \
+    temp_debug_register(#NAME, TYPE, FLAG, DEFAULT, offsetof(struct sqlclntstate, NAME));
 
 /*
     do {                                                                                                               \
