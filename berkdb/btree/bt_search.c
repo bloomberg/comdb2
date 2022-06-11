@@ -184,7 +184,7 @@ __bam_cmp_inline(dbp, dbt, h, indx, func, cmpp, buf)
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, PGNO(h)));
+		return (__db_pgfmt(dbp, PGNO(h), h));
 	}
 
 	/*
@@ -768,6 +768,23 @@ next:		if (recnop != NULL)
 			}
 			goto err;
 		}
+
+        /* we are cracking a btree; check here the format of the
+         * new page instead of using a potential corrupted page
+         * to continue the search (for example, if the corrupted
+         * page is all 0, we end up looping through the search again,
+         * we find rootpage 0 for the next lookup, and read the metapage
+         * at which point we finally abort).
+         */
+        switch(TYPE(h)) {
+        case P_LBTREE:
+        case P_LDUP:
+        case P_LRECNO:
+        case P_IBTREE:
+            break;
+        default:
+            return (__db_pgfmt(dbp, PGNO(h), h));
+        }
 
 		if (cached_pg) {
 			/* Used rcache and got child page. Validate rcache. */

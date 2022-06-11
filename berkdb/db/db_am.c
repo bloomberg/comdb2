@@ -190,7 +190,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 				dbc->lock_dbt.data = &dbc->lock;
 			}
 		}
-		/* Init the DBC internal structure. */
+    	/* Init the DBC internal structure. */
 		switch (dbtype) {
 		case DB_BTREE:
 		case DB_RECNO:
@@ -230,6 +230,10 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 	if (LF_ISSET(DB_DISCARD_PAGES)) {
 		F_SET(dbc, DBC_DISCARD_PAGES);
 	}
+    if (LF_ISSET(DB_CUR_SNAPSHOT)) {
+        F_SET(dbc, DBC_SNAPSHOT);
+    }
+
 #ifndef TESTSUITE
 #ifndef __linux__
 	if (gbl_berk_track_cursors)

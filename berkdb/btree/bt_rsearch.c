@@ -249,7 +249,7 @@ __bam_rsearch(dbc, recnop, flags, stop, exactp)
 			pg = ri->pgno;
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, h->pgno));
+			return (__db_pgfmt(dbp, h->pgno, h));
 		}
 		--indx;
 

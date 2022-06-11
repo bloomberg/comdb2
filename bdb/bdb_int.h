@@ -1689,6 +1689,7 @@ int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
  * non-transactional cursors. it is defined below */
 struct cursor_tran {
     uint32_t lockerid;
+    DB_LSN start_lsn;
     int id; /* debugging */
 };
 

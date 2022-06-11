@@ -243,7 +243,7 @@ __db_pgin(dbenv, pg, pp, cookie)
 	default:
 		break;
 	}
-	return (__db_pgfmt(dbenv, pg));
+	return (__db_pgfmt(dbp, pg, pagep));
 }
 
 /*
@@ -295,7 +295,7 @@ __db_pgout(dbenv, pg, pp, cookie)
 			ret = __bam_pgout(dbenv, dbp, pg, pp, cookie);
 			break;
 		default:
-			return (__db_pgfmt(dbenv, pg));
+			return (__db_pgfmt(dbp, pg, pagep));
 		}
 		break;
 	case P_HASH:
@@ -316,7 +316,7 @@ __db_pgout(dbenv, pg, pp, cookie)
 		ret = __qam_pgin_out(dbenv, pg, pp, cookie);
 		break;
 	default:
-		return (__db_pgfmt(dbenv, pg));
+		return (__db_pgfmt(dbp, pg, pagep));
 	}
 	if (ret)
 		return (ret);
@@ -523,7 +523,7 @@ __db_byteswap(dbenv, dbp, pg, h, pagesize, pgin)
 					if (gbl_dump_page_on_byteswap_error)
 						dumppage(__func__, __LINE__, pg,
 						    h, pagesize);
-					return (__db_pgfmt(dbenv, pg));
+					return (__db_pgfmt(dbp, pg, h));
 				}
 			}
 		}
@@ -577,7 +577,7 @@ __db_byteswap(dbenv, dbp, pg, h, pagesize, pgin)
 					if (gbl_dump_page_on_byteswap_error)
 						dumppage(__func__, __LINE__, pg,
 						    h, pagesize);
-					return (__db_pgfmt(dbenv, pg));
+					return (__db_pgfmt(dbp, pg, h));
 				}
 			}
 
@@ -609,7 +609,7 @@ __db_byteswap(dbenv, dbp, pg, h, pagesize, pgin)
 					if (gbl_dump_page_on_byteswap_error)
 						dumppage(__func__, __LINE__, pg,
 						    h, pagesize);
-					return (__db_pgfmt(dbenv, pg));
+					return (__db_pgfmt(dbp, pg, h));
 				}
 			}
 
@@ -639,7 +639,7 @@ __db_byteswap(dbenv, dbp, pg, h, pagesize, pgin)
 	default:
 		if (gbl_dump_page_on_byteswap_error)
 			dumppage(__func__, __LINE__, 0, h, pagesize);
-		return (__db_pgfmt(dbenv, pg));
+		return (__db_pgfmt(dbp, pg, h));
 	}
 
 out:	if (!pgin) {

@@ -690,6 +690,8 @@ foundlsn:
 
 	if ((ret = __lc_cache_init(dbenv, 0)) != 0)
 		goto err;
+    if ((ret = __mempro_init(dbenv, (1024*1024*64))) != 0)
+        goto err;
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
 	return (0);
@@ -918,6 +920,8 @@ __dbenv_close(dbenv, rep_check)
 
 	/* Release lc_cache */
 	__lc_cache_destroy(dbenv);
+
+    __mempro_destroy(dbenv);
 
 	/* Discard the structure. */
 	memset(dbenv, CLEAR_BYTE, sizeof(DB_ENV));

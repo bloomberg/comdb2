@@ -172,6 +172,8 @@ struct __recovery_processor;
 struct __recovery_list;
 struct __db_trigger_subscription;
 
+struct __mpro;  typedef struct __mpro DB_MPRO;
+
 struct txn_properties;
 
 #include "db_dbt.h"
@@ -1290,10 +1292,11 @@ typedef enum {
  * Masks for flags that can be OR'd into DB access method and cursor
  * operation values.
  *
- *	DB_DIRTY_READ	0x02000000	   Dirty Read. */
-#define	DB_MULTIPLE	0x04000000	/* Return multiple data values. */
-#define	DB_MULTIPLE_KEY	0x08000000	/* Return multiple data/key pairs. */
-#define	DB_RMW		0x10000000	/* Acquire write flag immediately. */
+ *	DB_DIRTY_READ	0x02000000	      Dirty Read. */
+#define	DB_MULTIPLE	0x04000000	   /* Return multiple data values. */
+#define	DB_MULTIPLE_KEY	0x08000000 /* Return multiple data/key pairs. */
+#define	DB_RMW		0x10000000     /* Acquire write flag immediately. */
+#define DB_CUR_SNAPSHOT 0x20000000 /* Snapshot mode cursor - don't acquire lock, read from second buffer pool */
 
 /*
  * DB (user visible) error return codes.
@@ -1963,6 +1966,7 @@ struct __dbc {
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
 	int (*c_replace_lockid) __P((DBC *, u_int32_t));
+    int (*c_set_snapshot_lsn) __P((DBC*, DB_LSN *));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
@@ -1988,6 +1992,7 @@ struct __dbc {
 #define	DBC_PAGE_ORDER	 0x1000		/* Traverse btree in page-order. */
 #define	DBC_DISCARD_PAGES 0x2000	/* Fast discard pages after reading. */
 #define	DBC_PAUSIBLE	 0x4000		/* Never considered for curadj */
+#define	DBC_SNAPSHOT	 0x8000		/* Never considered for curadj */
 	u_int32_t flags;
 
 	int pp_allocated;   /* the owner of the cursor tracking structure */
@@ -2001,6 +2006,8 @@ struct __dbc {
     
 	char*       pf; // Added by Fabio for prefaulting the index pages
 	db_pgno_t   lastpage; // pgno of last move
+
+    DB_LSN snapshot_lsn;
 };
 extern pthread_key_t DBG_FREE_CURSOR;
 
@@ -2727,8 +2734,48 @@ struct __db_env {
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
+    int (*last_commit_lsn) __P((DB_ENV *, DB_LSN *));
+
     pthread_mutex_t utxnid_lock;
     u_int64_t next_utxnid;
+
+    DB_MPRO *mpro;
+};
+
+struct __mpro_key {
+    db_pgno_t pgno;
+    u_int8_t ufid[DB_FILE_ID_LEN];
+    // TODO LSN
+};
+typedef struct __mpro_key MPRO_KEY;
+
+struct __mpro_page_header {
+    MPRO_KEY key;
+    u_int16_t pin;
+
+    LINKC_T(struct __mpro_page_header) lrulnk;
+    LINKC_T(struct __mpro_page_header) commit_order;
+
+    char page[1];
+};
+typedef struct __mpro_page_header MPRO_PAGE_HEADER;
+
+struct __utxnid_track;  typedef struct __utxnid_track UTXNID_TRACK;
+
+struct __utxnid_track {
+    u_int64_t txnid;
+    time_t timestamp;
+    DB_LSN commit_lsn;
+    LISTC_T(struct __txnid_track) lnk;
+};
+
+struct __mpro {
+    pthread_mutex_t mpro_mutexp;
+    mspace *msp;
+    hash_t *pages;
+    hash_t *transactions;
+    LISTC_T(struct __mpro_page_header) pagelru;
+    LISTC_T(struct __utxnid_track) translist;
 };
 
 #ifndef DB_DBM_HSEARCH

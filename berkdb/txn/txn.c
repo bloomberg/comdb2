@@ -1350,6 +1350,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			F_SET(txnp->parent, TXN_CHILDCOMMIT);
 		}
 	}
+    ret = __mempro_add_txn(dbenv, txnp->utxnid, txnp->last_lsn);
+    if (ret)
+        goto err;
 
 	/*
 	 * Process any aborted pages from our children.

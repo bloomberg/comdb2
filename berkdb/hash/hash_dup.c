@@ -362,7 +362,7 @@ finish:		if (ret == 0) {
 		}
 		break;
 	default:
-		ret = __db_pgfmt(dbp->dbenv, hcp->pgno);
+		ret = __db_pgfmt(dbp, hcp->pgno);
 		break;
 	}
 

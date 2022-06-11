@@ -182,7 +182,7 @@ __db_truncate_callback(dbp, p, cookie, putp)
 				}
 				break;
 			default:
-				return (__db_pgfmt(dbp->dbenv, p->pgno));
+				return (__db_pgfmt(dbp, p->pgno, p));
 			}
 		}
 		/* Don't free the head of the bucket. */
@@ -203,7 +203,7 @@ reinit:			*putp = 0;
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, p->pgno));
+		return (__db_pgfmt(dbp, p->pgno, p));
 	}
 
 	if (*putp == 1) {

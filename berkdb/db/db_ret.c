@@ -78,7 +78,7 @@ __db_ret(dbp, h, indx, dbt, memp, memsize)
 		data = bk->data;
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, h->pgno));
+		return (__db_pgfmt(dbp, h->pgno, h));
 	}
 
 	return (__db_retcopy(dbp->dbenv, dbt, data, len, memp, memsize));

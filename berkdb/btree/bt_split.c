@@ -724,11 +724,11 @@ __bam_broot(dbc, rootp, lp, rp)
 					return (ret);
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, rp->pgno));
+			return (__db_pgfmt(dbp, rp->pgno, rp));
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, rp->pgno));
+		return (__db_pgfmt(dbp, rp->pgno, rp));
 	}
 	return (0);
 }
@@ -973,7 +973,7 @@ noprefix:			nksize = child_bk->len;
 					return (ret);
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, rchild->pgno));
+			return (__db_pgfmt(dbp, rchild->pgno, rchild));
 		}
 		break;
 	case P_IRECNO:
@@ -996,7 +996,7 @@ noprefix:			nksize = child_bk->len;
 			return (ret);
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, rchild->pgno));
+		return (__db_pgfmt(dbp, rchild->pgno, rchild));
 	}
 
 	/*
@@ -1141,7 +1141,7 @@ __bam_psplit(dbc, cp, lp, rp, splitret)
 			nbytes += RINTERNAL_SIZE;
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, pp->pgno));
+			return (__db_pgfmt(dbp, pp->pgno, pp));
 		}
 sort:	splitp = off;
 
@@ -1298,7 +1298,7 @@ __bam_copy(dbp, pp, cp, nxt, stop)
 			nbytes = RINTERNAL_SIZE;
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, pp->pgno));
+			return (__db_pgfmt(dbp, pp->pgno, pp));
 		}
 		cinp[off] = HOFFSET(cp) -= nbytes;
 		if (pbk)

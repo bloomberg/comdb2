@@ -1663,6 +1663,7 @@ DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
             *bdberr = rc;
     } else
         assert(dbc != NULL);
+    dbc->c_set_snapshot_lsn(dbc, &curtran->start_lsn);
 
     return dbc;
 }

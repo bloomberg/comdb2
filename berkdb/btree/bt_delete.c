@@ -106,7 +106,7 @@ __bam_ditem(dbc, h, indx)
 				return (ret);
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, PGNO(h)));
+			return (__db_pgfmt(dbp, PGNO(h), h));
 		}
 		break;
 	case P_IRECNO:
@@ -162,11 +162,11 @@ __bam_ditem(dbc, h, indx)
 			nbytes = BKEYDATA_SIZE(bklen);
 			break; }
 		default:
-			return (__db_pgfmt(dbp->dbenv, PGNO(h)));
+			return (__db_pgfmt(dbp, PGNO(h), h));
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, PGNO(h)));
+		return (__db_pgfmt(dbp, PGNO(h), h));
 	}
 
 	/* Delete the item and mark the page dirty. */

@@ -294,7 +294,7 @@ __bam_traverse(dbc, mode, root_pgno, callback, cookie)
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, h->pgno));
+		return (__db_pgfmt(dbp, h->pgno, h));
 	}
 
 	ret = callback(dbp, h, cookie, &already_put);
@@ -398,7 +398,7 @@ __bam_stat_callback(dbp, h, cookie, putp)
 		sp->bt_over_pgfree += P_OVFLSPACE(dbp, dbp->pgsize, h);
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, h->pgno));
+		return (__db_pgfmt(dbp, h->pgno, h));
 	}
 	return (0);
 }

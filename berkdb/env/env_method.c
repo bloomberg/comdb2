@@ -340,7 +340,8 @@ __dbenv_init(dbenv)
 	dbenv->trigger_close = __dbenv_trigger_close;
 	dbenv->trigger_ispaused = __dbenv_trigger_ispaused;
 	dbenv->trigger_pause = __dbenv_trigger_pause;
-	dbenv->trigger_unpause = __dbenv_trigger_unpause;
+    dbenv->trigger_unpause = __dbenv_trigger_unpause;
+    dbenv->last_commit_lsn = __dbenv_last_commit_lsn;
 
     dbenv->next_utxnid = 0;
     Pthread_mutex_init(&dbenv->utxnid_lock, NULL);

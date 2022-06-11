@@ -144,7 +144,7 @@ __bam_cmp(dbp, dbt, h, indx, func, cmpp)
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, PGNO(h)));
+		return (__db_pgfmt(dbp, PGNO(h), h));
 	}
 
 	/*

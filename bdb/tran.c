@@ -2447,6 +2447,8 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
         logmsg(LOGMSG_USER, "BERKDBLOG=%d %p curtran lockerid=%u bdberr=%d GET\n",
                 curtran->id, curtran, (curtran) ? curtran->lockerid : -1U,
                 *bdberr);
+    if (curtran)
+        bdb_state->dbenv->last_commit_lsn(bdb_state->dbenv, &curtran->start_lsn);
 
     return curtran;
 }

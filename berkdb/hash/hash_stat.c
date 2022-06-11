@@ -353,7 +353,7 @@ __ham_stat_callback(dbp, pagep, cookie, putp)
 		sp->hash_big_bfree += P_OVFLSPACE(dbp, dbp->pgsize, pagep);
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, pagep->pgno));
+		return (__db_pgfmt(dbp, pagep->pgno));
 	}
 
 	return (0);

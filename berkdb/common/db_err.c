@@ -120,15 +120,17 @@ __db_pgerr(dbp, pgno, errval)
  * __db_pgfmt --
  *	Error when a page has the wrong format.
  *
- * PUBLIC: int __db_pgfmt __P((DB_ENV *, db_pgno_t));
+ * PUBLIC: int __db_pgfmt __P((DB *, db_pgno_t, PAGE *));
  */
 int
-__db_pgfmt(dbenv, pgno)
-	DB_ENV *dbenv;
+__db_pgfmt(dbp, pgno, p)
+	DB *dbp;
 	db_pgno_t pgno;
+    PAGE *p;
 {
-	__db_err(dbenv, "page %lu: illegal page type or format", (u_long)pgno);
-	return (__db_panic(dbenv, EINVAL));
+    __pgdump_ll(dbp, p);
+	__db_err(dbp->dbenv, "page %lu: illegal page type or format type %d", (u_long)pgno, p->type);
+	return (__db_panic(dbp->dbenv, EINVAL));
 }
 
 #ifdef DIAGNOSTIC

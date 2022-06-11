@@ -294,7 +294,7 @@ __ham_c_count(dbc, recnop)
 
 		break;
 	default:
-		ret = __db_pgfmt(dbp->dbenv, hcp->pgno);
+		ret = __db_pgfmt(dbp, hcp->pgno);
 		goto err;
 	}
 
@@ -1743,7 +1743,7 @@ found_key:			F_SET(hcp, H_OK);
 			 * These are errors because keys are never
 			 * duplicated, only data items are.
 			 */
-			return (__db_pgfmt(dbp->dbenv, PGNO(hcp->page)));
+			return (__db_pgfmt(dbp, PGNO(hcp->page)));
 		}
 	}
 

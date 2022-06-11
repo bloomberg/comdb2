@@ -100,7 +100,7 @@ __thread DB *prefault_dbp = NULL;
 		pagep = NULL;						\
 	} else								\
 		ret = 0;						\
-	if ((ret) == 0 && STD_LOCKING(dbc)){				\
+	if ((ret) == 0 && STD_LOCKING(dbc) && !F_ISSET(dbc, DB_CUR_SNAPSHOT)){				\
 		ret = __db_lget(dbc, LCK_COUPLE, lpgno, mode, 0, &(lock));\
         if(trace && ret) {                                  \
             /* acquire_fprintf(stderr,"ACQUIRE DB_LGET LPGNO %d RETURNS %d\n", lpgno, ret); */                             \
@@ -733,6 +733,15 @@ comdb2__db_c_replace_lockid(dbc, lockid)
 }
 
 static int
+comdb2__db_c_set_snapshot_lsn(dbc, lsn)
+DBC *dbc;
+DB_LSN *lsn;
+{
+    dbc->snapshot_lsn = lsn;
+    return 0;
+}
+
+static int
 comdb2__bam_bulk(dbc, data, flags)
 	DBC *dbc;
 	DBT *data;
@@ -947,6 +956,7 @@ __bam_c_init(dbc, dbtype)
 	dbc->c_put = comdb2__db_c_put_pp;
 	dbc->c_skip_stat = comdb2__db_c_skip_stat;
 	dbc->c_replace_lockid = comdb2__db_c_replace_lockid;
+    dbc->c_set_snapshot_lsn = comdb2__db_c_set_snapshot_lsn;
 	if (dbtype == DB_BTREE) {
 		dbc->c_am_bulk = comdb2__bam_bulk;
 		dbc->c_am_close = comdb2__bam_c_close;
@@ -1841,9 +1851,12 @@ __bam_c_del(dbc)
 	}
 
 	/* Log the change. */
+    u_int64_t prev_utxnid = TXNID(cp->page);
+    u_int64_t utxnid = dbc->txn ?  dbc->txn->utxnid : 0;
+    DB_LSN prevprev_pagelsn = PREVLSN(cp->page);
 	if (DBC_LOGGING(dbc)) {
 		if ((ret = __bam_cdel_log(dbp, dbc->txn, &LSN(cp->page), 0,
-		    PGNO(cp->page), &LSN(cp->page), cp->indx)) != 0)
+		    PGNO(cp->page), &LSN(cp->page), cp->indx, utxnid, prev_utxnid, &prevprev_pagelsn)) != 0)
 			goto err;
 	} else
 		LSN_NOT_LOGGED(LSN(cp->page));
@@ -1853,6 +1866,10 @@ __bam_c_del(dbc)
 		B_DSET(GET_BKEYDATA(dbp, cp->page, cp->indx + O_INDX));
 	else
 		B_DSET(GET_BKEYDATA(dbp, cp->page, cp->indx));
+
+    PREVTXNID(cp->page) = prev_utxnid;
+    TXNID(cp->page) = utxnid;
+    PREVLSN(cp->page) = prevprev_pagelsn;
 
 	/* Mark the page dirty. */
 	ret = __memp_fset(mpf, cp->page, DB_MPOOL_DIRTY);
@@ -4164,7 +4181,7 @@ __bam_c_physdel(dbc)
 			pgno = GET_RINTERNAL(dbp, h, 0)->pgno;
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, PGNO(h)));
+			return (__db_pgfmt(dbp, PGNO(h), h));
 		}
 
 		if ((ret =

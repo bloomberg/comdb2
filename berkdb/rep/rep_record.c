@@ -4579,7 +4579,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	LOGCOPY_32(&rectype, rec->data);
 	memset(&lc, 0, sizeof(lc));
 
-	if (rectype == DB___txn_regop_rowlocks) {
+    if (rectype == DB___txn_regop_rowlocks) {
 
 		int dontlock = 0;
 
@@ -5356,7 +5356,7 @@ bad_resize:	;
 	 * Check which and behave appropriately.
 	 */
 	LOGCOPY_32(&rectype, rec->data);
-	if (rectype == DB___txn_regop_rowlocks) {
+    if (rectype == DB___txn_regop_rowlocks) {
 		if ((ret =
 			__txn_regop_rowlocks_read(dbenv, rec->data,
 				&txn_rl_args)) != 0)
@@ -7255,7 +7255,7 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 	}
 
 	LOGCOPY_32(&rectype, logdta.data);
-	while (rectype != DB___txn_regop && rectype != DB___txn_regop_gen && 
+    while (rectype != DB___txn_regop && rectype != DB___txn_regop_gen &&
 			rectype != DB___txn_regop_rowlocks) {
 		if ((rc = logc->get(logc, &lsn, &logdta, DB_PREV)) != 0) {
 			logmsg(LOGMSG_ERROR, "%s:%d failed find log on prev, rc %d\n",

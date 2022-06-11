@@ -915,7 +915,7 @@ __db_lget(dbc, action, pgno, mode, lkflags, lockp)
 	 * We do not always check if we're configured for locking before
 	 * calling __db_lget to acquire the lock.
 	 */
-	if (CDB_LOCKING(dbenv) ||
+	if (CDB_LOCKING(dbenv) || F_ISSET(dbc, DBC_SNAPSHOT) ||
 	    !LOCKING_ON(dbenv) || F_ISSET(dbc, DBC_COMPENSATE) ||
 	    (F_ISSET(dbc, DBC_RECOVER) &&
 	    (action != LCK_ROLLBACK || IS_REP_CLIENT(dbenv))) ||

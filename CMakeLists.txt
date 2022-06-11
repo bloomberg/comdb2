@@ -187,7 +187,7 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
   if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
+#   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
   endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")

@@ -465,8 +465,8 @@ struct __vrfy_pageinfo; typedef struct __vrfy_pageinfo VRFY_PAGEINFO;
 #include "dbinc/os.h"
 #include "dbinc/rep.h"
 // #include "dbinc_auto/clib_ext.h"
-#include "dbinc_auto/common_ext.h"
 #include "dbinc/db_page.h"
+#include "dbinc_auto/common_ext.h"
 #include "dbinc/qam.h"
 #include "dbinc/hmac.h"
 

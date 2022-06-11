@@ -270,6 +270,7 @@ typedef struct _db_page {
     u_int8_t unused2;
     DB_LSN prevlsn;
     u_int64_t txnid;
+    u_int64_t prev_txnid;
 } PAGE;
 
 
@@ -279,7 +280,7 @@ typedef struct _db_page {
 * the SIZEOF_PAGE.  When giving the sizeof(), many compilers will
 * pad it out to the next 4-byte boundary.
 */
-#define SIZEOF_PAGE     48
+#define SIZEOF_PAGE     56
 /*
  * !!!
  * DB_AM_ENCRYPT always implies DB_AM_CHKSUM so that must come first.
@@ -328,6 +329,7 @@ typedef struct _db_page {
 #define SET_CRC32C(p)	(((PAGE *)p)->type |= CRC32C_MASK)
 #define CLR_CRC32C(p)	(((PAGE *)p)->type &= ~CRC32C_MASK)
 #define TXNID(p)       (((PAGE *)p)->txnid)
+#define PREVTXNID(p)       (((PAGE *)p)->prev_txnid)
 #define PREVLSN(p)     (((PAGE *)p)->prevlsn)
 
 /************************************************************************

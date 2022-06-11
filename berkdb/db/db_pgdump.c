@@ -285,8 +285,12 @@ inspect_internal_page(DB *dbp, PAGE *p)
 
 void inspect_page_hdr(DB *, PAGE *);
 
-static void
-dopage(DB *dbp, PAGE *p)
+/*
+ *
+ * PUBLIC: void __pgdump_ll __P((DB *, PAGE *));
+ * */
+void
+__pgdump_ll(DB *dbp, PAGE *p)
 {
 	/* don't check checksum - pages in cache have that reset to
 	 * 0 - it's populated at pageout time */
@@ -342,7 +346,7 @@ __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 	}
 	logmsg(LOGMSG_USER, "pgdump> %s id %" PRIi32 " page %" PRIu32 "\n", dbp->fname,
 	    fileid, pgno);
-	dopage(dbp, pagep);
+    __pgdump_ll(dbp, pagep);
 	ret = __memp_fput(mpf, pagep, 0);
 	if (ret) {
 		fprintf(stderr,

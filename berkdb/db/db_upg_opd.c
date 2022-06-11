@@ -283,11 +283,11 @@ __db_build_bi(dbp, fhp, ipage, page, indx, nomemp)
 				return (ret);
 			break;
 		default:
-			return (__db_pgfmt(dbp->dbenv, PGNO(page)));
+			return (__db_pgfmt(dbp, PGNO(page), page));
 		}
 		break;
 	default:
-		return (__db_pgfmt(dbp->dbenv, PGNO(page)));
+		return (__db_pgfmt(dbp, PGNO(page), page));
 	}
 
 	return (0);

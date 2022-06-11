@@ -554,6 +554,11 @@ __db_cursor_pp_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
 
 	dbenv = dbp->dbenv;
 
+    if (lid_clone && FLD_ISSET(flags, DB_CUR_SNAPSHOT)) {
+        lid_clone = 0;
+        flags |= DB_CUR_SNAPSHOT;
+    }
+
 	PANIC_CHECK(dbenv);
 	DB_ILLEGAL_BEFORE_OPEN(dbp, "DB->cursor");
 
@@ -663,6 +668,9 @@ __db_cursor_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
 	int ret;
 
 	dbenv = dbp->dbenv;
+
+    if (flags & DB_CUR_SNAPSHOT)
+        lid_clone = DB_LOCK_INVALIDID;
 
 	if (dbcs) {
 		if ((ret =
