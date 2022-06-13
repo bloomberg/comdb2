@@ -2748,6 +2748,7 @@ struct __mpro_key {
     // TODO LSN
 };
 typedef struct __mpro_key MPRO_KEY;
+struct __utxnid_track;  typedef struct __utxnid_track UTXNID_TRACK;
 
 struct __mpro_page_header {
     MPRO_KEY key;
@@ -2760,7 +2761,6 @@ struct __mpro_page_header {
 };
 typedef struct __mpro_page_header MPRO_PAGE_HEADER;
 
-struct __utxnid_track;  typedef struct __utxnid_track UTXNID_TRACK;
 
 struct __utxnid_track {
     u_int64_t txnid;

@@ -737,7 +737,7 @@ comdb2__db_c_set_snapshot_lsn(dbc, lsn)
 DBC *dbc;
 DB_LSN *lsn;
 {
-    dbc->snapshot_lsn = lsn;
+    dbc->snapshot_lsn = *lsn;
     return 0;
 }
 

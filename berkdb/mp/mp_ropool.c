@@ -219,8 +219,13 @@ int __dbenv_last_commit_lsn(DB_ENV *dbenv, DB_LSN *lsnp) {
 int __mempro_fput(DBC *dbc, db_pgno_t pgno, void *page) {
     DB_ENV *dbenv = dbc->dbp->dbenv;
     DB_MPRO *mpro = dbenv->mpro;
-    MPRO_PAGE_HEADER *hdr =
+    MPRO_PAGE_HEADER *hdr = (MPRO_PAGE_HEADER *) ((uintptr_t)page - offsetof(MPRO_PAGE_HEADER, page));
 
     Pthread_mutex_lock(&mpro->mpro_mutexp);
+    hdr->pin--;
+    if (hdr->pin == 0) {
+        listc_abl(&mpro->pagelru, hdr);
+    }
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
+    return 0;
 }
