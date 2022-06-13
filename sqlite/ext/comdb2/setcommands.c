@@ -38,7 +38,7 @@ int populate_set_commands(void **data, int *npoints)
             // TODO: get the actual query used to set this command
             cmds[i].query = "default";
             cmds[i].command = lst->desc;
-            cmds[i].value = (lst->type == SETTING_STRING) ? (char*) (clnt + lst->offset) : NULL;
+            cmds[i].value = (lst->type == SETTING_STRING) ? (char*) (clnt + lst->offset) : "NULL";
         }
         ++i;
     }
