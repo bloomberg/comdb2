@@ -1218,6 +1218,11 @@ static int write_message_int(netinfo_type *netinfo_ptr,
             logmsg(LOGMSG_ERROR, "%s: got reallybad failure?\n", __func__);
             return 2;
         } else {
+            if (rc == -2) {
+                /* write list is full, can't do anymore writes to list
+                   wake up the writer thread, to write to net. */
+                Pthread_cond_signal(&(host_node_ptr->write_wakeup));
+            }
             return rc;
         }
     }
@@ -3503,6 +3508,8 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
     payload = HOST_MALLOC(host_node_ptr, p_net_ack_message_payload.paylen);
     rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, payload,
                      p_net_ack_message_payload.paylen);
+    if (rc != p_net_ack_message_payload.paylen)
+        return -1;
 
     Pthread_mutex_lock(&(host_node_ptr->wait_mutex));
 
@@ -4133,6 +4140,12 @@ static void *writer_thread(void *args)
                     rc = write_stream(
                         netinfo_ptr, host_node_ptr, host_node_ptr->sb,
                         write_list_ptr->payload.raw, write_list_ptr->len);
+                    if (rc > 0 && rc != write_list_ptr->len) {
+                        host_node_errf(LOGMSG_ERROR, host_node_ptr,
+                                       "write stream error. Partial msg written size:%d expected:%d\n",
+                                       rc, write_list_ptr->len);
+                       rc = -1;
+                    }
                     flags |= write_list_ptr->flags;
                 } else
                     rc = -1;
