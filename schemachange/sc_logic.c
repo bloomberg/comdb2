@@ -522,7 +522,7 @@ int do_alter_queues(struct schema_change_type *s)
 
     broadcast_sc_end(s->tablename, s->iq->sc_seed);
 
-    if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
+    if (gbl_pushlogs_after_sc)
         push_next_log();
 
     return rc;
@@ -542,9 +542,7 @@ int do_alter_stripes(struct schema_change_type *s)
 
     broadcast_sc_end(s->tablename, s->iq->sc_seed);
 
-    /* if we did a regular schema change and we used the llmeta we don't need to
-     * push locgs */
-    if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
+    if (gbl_pushlogs_after_sc)
         push_next_log();
 
     s->finalize = 1;
