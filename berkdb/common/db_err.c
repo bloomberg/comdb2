@@ -335,6 +335,7 @@ __db_err(dbenv, fmt, va_alist)
 #endif
 {
 	DB_REAL_ERR(dbenv, 0, 0, 0, fmt);
+    abort();
 }
 
 #define	OVERFLOW_ERROR	"internal buffer overflow, process aborted\n"

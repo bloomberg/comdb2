@@ -235,7 +235,7 @@ typedef enum {
  */
 #define	STD_LOCKING(dbc)						\
 	(!F_ISSET(dbc, DBC_OPD) &&					\
-	    !CDB_LOCKING((dbc)->dbp->dbenv) && LOCKING_ON((dbc)->dbp->dbenv))
+	    !CDB_LOCKING((dbc)->dbp->dbenv) && LOCKING_ON((dbc)->dbp->dbenv) && !F_ISSET(dbc, DBC_SNAPSHOT))
 
 /*
  * IS_RECOVERING: The system is running recovery.
@@ -542,5 +542,30 @@ extern int gbl_use_perfect_ckp;
  * of these functions. Easy peasy.
  */
 extern pthread_key_t txn_key;
+
+
+#define PAGEGET(dbc, mpf, pgno, flags, page) \
+do {                                           \
+    if (F_ISSET(dbc, DBC_SNAPSHOT)) {   \
+        ret = __mempro_fget(dbc, pgno, &(page));                  \
+        printf("new get %s line %d pgno %u ret %d pg %p\n", __func__, __LINE__, pgno, ret, page);        \
+    }                                        \
+    else {                              \
+        ret = __memp_fget(mpf, &(pgno), flags, &(page));          \
+        printf("old get %s %d ret %d\n", __func__, __LINE__, ret);        \
+    }                                            \
+} while(0)
+
+#define PAGEPUT(dbc, mpf, page, flags, ret) \
+do {                                         \
+     if (F_ISSET(dbc, DBC_SNAPSHOT))     {  \
+        ret = __mempro_fput(dbc, page);     \
+        printf("new put %s %d ret %d\n", __func__, __LINE__, ret);        \
+     }                                      \
+     else {                                 \
+        ret = __memp_fput(mpf, page, flags);    \
+        printf("old put %s %d ret %d\n", __func__, __LINE__, ret);        \
+     } \
+} while(0)
 
 #endif /* !_DB_INTERNAL_H_ */

@@ -899,6 +899,10 @@ static void *comdb2_realloc_int(comdb2ma cm, void *ptr, size_t n)
     return (void *)out;
 }
 
+int comdb2_is_mspace_block(void *ptr) {
+    return (COMDB2MA_OK_SENTINEL((void**) ptr));
+}
+
 void *comdb2_realloc(comdb2ma cm, void *ptr, size_t n)
 {
     void **out = NULL;

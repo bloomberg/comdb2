@@ -782,13 +782,17 @@ __bam_cdel_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__bam_cdel_print);
 	REC_INTRO_PANIC(__bam_cdel_read, 1);
 
-	/* Get the page; if it never existed and we're undoing, we're done. */
-	if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
-		if (DB_UNDO(op))
-			goto done;
-		ret = __db_pgerr(file_dbp, argp->pgno, ret);
-		goto out;
-	}
+    if (info == NULL) {
+        /* Get the page; if it never existed and we're undoing, we're done. */
+        if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
+            if (DB_UNDO(op))
+                goto done;
+            ret = __db_pgerr(file_dbp, argp->pgno, ret);
+            goto out;
+        }
+    }
+    else
+        pagep = (PAGE*) info;
 
 	modified = 0;
 	cmp_n = log_compare(lsnp, &LSN(pagep));
@@ -854,15 +858,24 @@ __bam_repl_recover(dbenv, dbtp, lsnp, op, info)
 	COMPQUIET(info, NULL);
 
 	REC_PRINT(__bam_repl_print);
-	REC_INTRO_PANIC(__bam_repl_read, 1);
 
-	/* Get the page; if it never existed and we're undoing, we're done. */
-	if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
-		if (DB_UNDO(op))
-			goto done;
-		ret = __db_pgerr(file_dbp, argp->pgno, ret);
-		goto out;
-	}
+    // TODO: there's a lot of mapping to/from/dbp that we can probably avoid doing here in snapshot mode
+    //       since the caller already has this information.
+    REC_INTRO_PANIC(__bam_repl_read, 1);
+
+    // If we're replication or recovery, we need to extract the page.  Otherwise we're called from a snapshot
+    // are handed a page image.
+    if (info == NULL) {
+        /* Get the page; if it never existed and we're undoing, we're done. */
+        if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
+            if (DB_UNDO(op))
+                goto done;
+            ret = __db_pgerr(file_dbp, argp->pgno, ret);
+            goto out;
+        }
+    }
+    else
+        pagep = (PAGE*) info;
 
     if (check_page) {
         __dir_pg( mpf, argp->pgno, (u_int8_t *)pagep, 0);

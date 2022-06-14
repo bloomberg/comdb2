@@ -160,24 +160,27 @@ __db_addrem_recover(dbenv, dbtp, lsnp, op, info)
 			goto out;
 	}
 
-	if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
-		if (DB_UNDO(op)) {
+    if (info == NULL) {
+        if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
+            if (DB_UNDO(op)) {
 #if defined (UFID_HASH_DEBUG)
-			logmsg(LOGMSG_USER, "t-%p %s ignoring failed memp_fget because undo\n",
-					(void *)pthread_self(),__func__);
+                logmsg(LOGMSG_USER, "t-%p %s ignoring failed memp_fget because undo\n",
+                        (void *)pthread_self(),__func__);
 #endif
-			/*
-			 * We are undoing and the page doesn't exist.  That
-			 * is equivalent to having a pagelsn of 0, so we
-			 * would not have to undo anything.  In this case,
-			 * don't bother creating a page.
-			 */
-			goto done;
-		} else
-			if ((ret = __memp_fget(mpf,
-			    &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
-				goto out;
-	}
+                /*
+                 * We are undoing and the page doesn't exist.  That
+                 * is equivalent to having a pagelsn of 0, so we
+                 * would not have to undo anything.  In this case,
+                 * don't bother creating a page.
+                 */
+                goto done;
+            } else if ((ret = __memp_fget(mpf,
+                                          &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
+                goto out;
+        }
+    }
+    else
+        pagep = (PAGE*) info;
 
     if (check_page) {
         __dir_pg( mpf, argp->pgno, (u_int8_t *)pagep, 0);

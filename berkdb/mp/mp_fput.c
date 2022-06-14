@@ -21,6 +21,8 @@ static const char revid[] = "$Id: mp_fput.c,v 11.48 2003/09/30 17:12:00 sue Exp 
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 
+#include "mem.h"
+
 #include <string.h>
 #include "comdb2_atomic.h"
 
@@ -133,6 +135,10 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 
 	/* Convert a page address to a buffer header and hash bucket. */
 	bhp = (BH *)((u_int8_t *)pgaddr - SSZA(BH, buf));
+
+    if (!comdb2_is_mspace_block(bhp)) {
+        abort();
+    }
 
 	if ((flags & DB_MPOOL_DIRTY)&&dbenv->attr.check_zero_lsn_writes &&
 	    (dbenv->open_flags & DB_INIT_TXN)) {

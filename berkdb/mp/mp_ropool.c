@@ -25,12 +25,13 @@
 
 #include "locks_wrap.h"
 #include "dbinc_auto/lock_ext.h"
+#include "dbinc/db_swap.h"
 
 /*
  *  PUBLIC: int __mempro_fget
- *  PUBLIC:     __P((DBC *, db_pgno_t, void **));
+ *  PUBLIC:     __P((DBC *, db_pgno_t, void *));
  */
-int __mempro_fget(DBC *dbc, db_pgno_t pgno, void **page) {
+int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
     MPRO_KEY k;
     MPRO_PAGE_HEADER *hdr;
     DB *dbp = dbc->dbp;
@@ -42,6 +43,8 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void **page) {
     DB_LOCK lock;
     PAGE *h;
 
+    printf("%s\n", __func__);
+
     k.pgno = pgno;
     memcpy(k.ufid, mpf->fileid, DB_FILE_ID_LEN);
     Pthread_mutex_lock(&mpro->mpro_mutexp);
@@ -50,10 +53,14 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void **page) {
         // remove from lru - we don't want it removed if referenced
         listc_rfl(&mpro->pagelru, hdr);
         hdr->pin++;
+        printf("have in cache\n");
     }
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
 
-    if (hdr == NULL) {
+    if (hdr) {
+        h = (PAGE*) hdr->page;
+    }
+    else {
         DB_LOCK_ILOCK lk;
         lk.pgno = pgno;
         memcpy(lk.fileid, mpf->fileid, DB_FILE_ID_LEN);
@@ -65,23 +72,33 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void **page) {
         ret = __lock_get(dbenv, dbc->locker, DB_LOCK_NOWAIT, &lock_dbt, DB_LOCK_READ, &lock);
         if (ret == DB_LOCK_NOTGRANTED) {
             // something has this lock - we can't get the page from the buffer pool safely - recover from log
+            // TODO: get from disk?
+            printf("lock would block\n");
             goto err;
         }
-        else if (ret)
+        else if (ret) {
+            printf("can't get lock\n");
             goto err;
+        }
         have_lock = 1;
         // we have a lock
         u_int32_t pagesize;
         ret = dbp->get_pagesize(dbp, &pagesize);
-        if (ret)
+        if (ret) {
+            printf("can't get page size\n");
             goto err;
+        }
         ret = __memp_fget(mpf, &pgno, 0, &h);
-        if (ret)
+        if (ret) {
+            printf("can't get page\n");
             goto err;
+        }
         have_page = 1;
         ret = __lock_put(dbenv, &lock);
-        if (ret)
+        if (ret) {
+            printf("can't return lock\n");
             goto err;
+        }
         have_lock = 0;
         Pthread_mutex_lock(&mpro->mpro_mutexp);
         do {
@@ -106,16 +123,20 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void **page) {
         hash_add(mpro->pages, hdr);
 
         Pthread_mutex_unlock(&mpro->mpro_mutexp);
-        ret = __memp_fput(mpf, hdr->page, 0);
-        if (ret)
+        ret = __memp_fput(mpf, h, 0);
+        if (ret) {
+            printf("can't unpin page\n");
             goto err;
-        *page = hdr->page;
+        }
     }
+    *(void**)page = h;
+    printf("returning page: %p\n", *(void**)page);
     return 0;
 
 err:
+    abort();
     if (have_page)
-        __memp_fput(mpf, hdr->page, 0);
+        __memp_fput(mpf, h, 0);
     if (have_lock)
         __lock_put(dbenv, &lock);
     return ret;
@@ -144,6 +165,8 @@ int __mempro_add_txn(DB_ENV *dbenv, u_int64_t txnid, DB_LSN commit_lsn) {
     old = hash_find(dbenv->mpro->transactions, &txnid);
     // we can have duplicates if we truncate and come up with the same LSN again
     if (old) {
+        listc_rfl(&dbenv->mpro->translist, old);
+        hash_del(dbenv->mpro->transactions, old);
         __os_free(dbenv, old);
     }
     hash_add(dbenv->mpro->transactions, txn);
@@ -151,12 +174,43 @@ int __mempro_add_txn(DB_ENV *dbenv, u_int64_t txnid, DB_LSN commit_lsn) {
     // TODO: configurable time
     old = dbenv->mpro->translist.bot;
     while (old && old->timestamp - now > 600) {
+        hash_del(dbenv->mpro->transactions, old);
         listc_rbl(&dbenv->mpro->translist);
         __os_free(dbenv, old);
         old = dbenv->mpro->translist.bot;
     }
     Pthread_mutex_unlock(&dbenv->mpro->mpro_mutexp);
+
+#ifndef NDEBUG
+    {
+        DB_LSN chklsn;
+        int chkret = __mempro_get_commit_lsn_for_txn(dbenv, txnid, &chklsn);
+        if (chkret != 0) {
+            __mempro_get_commit_lsn_for_txn(dbenv, txnid, &chklsn);
+        }
+        assert(chkret == 0 && log_compare(&chklsn, &commit_lsn) == 0);
+    }
+#endif
+
     return 0;
+}
+/*
+ * PUBLIC: int __mempro_get_commit_lsn_for_txn __P((DB_ENV *dbenv, u_int64_t txnid, DB_LSN *commit_lsn));
+ */
+int __mempro_get_commit_lsn_for_txn(DB_ENV *dbenv, u_int64_t txnid, DB_LSN *commit_lsn) {
+    UTXNID_TRACK *txn;
+    DB_MPRO *mpro = dbenv->mpro;
+    int ret = 0;
+    ZERO_LSN(*commit_lsn);
+
+    Pthread_mutex_lock(&mpro->mpro_mutexp);
+    txn = hash_find(mpro->transactions, &txnid);
+    if (txn == NULL)
+        ret = DB_NOTFOUND;
+    else
+        *commit_lsn = txn->commit_lsn;
+    Pthread_mutex_unlock(&mpro->mpro_mutexp);
+    return ret;
 }
 
 /*
@@ -183,6 +237,7 @@ int __mempro_init (DB_ENV *env, u_int64_t size) {
     env->mpro = mp;
     Pthread_mutex_init(&mp->mpro_mutexp, NULL);
     listc_init(&mp->pagelru, offsetof(MPRO_PAGE_HEADER, lrulnk));
+    listc_init(&mp->translist, offsetof(UTXNID_TRACK, lnk));
     return 0;
 
 err:
@@ -209,23 +264,122 @@ int __dbenv_last_commit_lsn(DB_ENV *dbenv, DB_LSN *lsnp) {
     else
         ZERO_LSN(*lsnp);
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
-    printf("last commit lsn: %u:%u\n", lsnp->file, lsnp->offset);
     return 0;
 }
 
 /*
- * PUBLIC: int __mempro_fput __P((DBC *dbc, db_pgno_t pgno, void *page));
+ * PUBLIC: int __mempro_fput __P((DBC *dbc, void *page));
  */
-int __mempro_fput(DBC *dbc, db_pgno_t pgno, void *page) {
+int __mempro_fput(DBC *dbc, void *page) {
     DB_ENV *dbenv = dbc->dbp->dbenv;
     DB_MPRO *mpro = dbenv->mpro;
     MPRO_PAGE_HEADER *hdr = (MPRO_PAGE_HEADER *) ((uintptr_t)page - offsetof(MPRO_PAGE_HEADER, page));
 
     Pthread_mutex_lock(&mpro->mpro_mutexp);
     hdr->pin--;
+    printf("put %d, pin %d\n", hdr->key.pgno, hdr->pin);
     if (hdr->pin == 0) {
         listc_abl(&mpro->pagelru, hdr);
     }
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
     return 0;
+}
+
+// We have some newer version of a page that we either got directly from disk, or out of the buffer
+// pool.  That version is newer than what we want to see.  Roll it back to a version that's <= our start LSN.
+// Our start LSN is the commit LSN of the latest transaction to commit when we start.
+/*
+ * PUBLIC: int __mempro_get_page_as_of_lsn __P((DB_ENV *dbenv, PAGE *p, DB_LSN *start_lsn));
+ */
+int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
+    // walk the for the page, undo changes until we get to a page
+    // modified by a transasction who's commit LSN <= our LSN
+    DB_LOGC *logc = NULL;
+    int ret;
+    DBT dbt = {0};
+
+    if ((ret = __log_cursor(dbenv, &logc)) != 0)
+        goto err;
+    dbt.flags = DB_DBT_REALLOC;
+    ret = logc->get(logc, start_lsn, &dbt, DB_SET);
+    if (ret)
+        goto err;
+    int found = 0;
+    DB_LSN next;
+    DB_LSN prevlsn;
+    do {
+        u_int32_t rectype;
+        void *args;
+        if (dbt.size < sizeof(int)) {
+            __db_err(dbenv, "Unexpected record size %ud\n", (int) dbt.size);
+            ret = EINVAL;
+            goto err;
+        }
+        args = NULL;
+        LOGCOPY_32(&rectype, dbt.data);
+        u_int64_t utxnid;
+        __db_addrem_args *addrem_args;
+        __bam_cdel_args *cdel_args;
+        __bam_repl_args *repl_args;
+        int (*apply)(DB_ENV*, DBT*, DB_LSN*, db_recops, void *);
+        // TODO: have a routine that does this, and pass enough information to recover routines so they don't
+        //       have to read/decode again.
+        switch (rectype) {
+            case DB___db_addrem: {
+                ret = __db_addrem_read(dbenv, dbt.data, &addrem_args);
+                utxnid = addrem_args->utxnid;
+                next = addrem_args->prev_lsn;
+                args = addrem_args;
+                apply = __db_addrem_recover;
+                break;
+            }
+            case DB___bam_cdel: {
+                ret = __bam_cdel_read(dbenv, dbt.data, &cdel_args);
+                utxnid = cdel_args->utxnid;
+                next = cdel_args->prev_lsn;
+                args = cdel_args;
+                apply = __bam_cdel_recover;
+                break;
+            }
+            case DB___bam_repl: {
+                ret = __bam_repl_read(dbenv, dbt.data, &repl_args);
+                utxnid = repl_args->utxnid;
+                next = repl_args->prev_lsn;
+                args = repl_args;
+                apply = __bam_repl_recover;
+                break;
+            }
+            default:
+                __db_err(dbenv, "Don't know how to handle rectype %ud\n", rectype);
+                ret = EINVAL;
+                goto err;
+        }
+        if (args)
+            free(args);
+        // ret from record read
+        if (ret)
+            goto err;
+        ret = apply(dbenv, &dbt, &prevlsn, DB_TXN_ABORT, pg);
+        if (ret)
+            goto err;
+        DB_LSN commit_lsn;
+        ret = __mempro_get_commit_lsn_for_txn(dbenv, utxnid, &commit_lsn);
+        if (ret)
+            goto err;
+        if (log_compare(&commit_lsn, start_lsn) <= 0) {
+            found = 1;
+        }
+        else {
+            ret = logc->get(logc, &next, &dbt, DB_SET);
+            if (ret)
+                goto err;
+        }
+    } while (!found);
+
+err:
+    if (logc)
+        logc->close(logc, 0);
+    if (dbt.data)
+        free(dbt.data);
+    return ret;
 }

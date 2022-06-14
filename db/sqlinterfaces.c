@@ -3329,6 +3329,8 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
         return rc;
     }
 
+    printf(">>> sql %s\n", clnt->sql);
+
     int bind_cnt = sqlite3_bind_parameter_count(rec->stmt);
     int par_cnt = param_count(clnt);
     if (bind_cnt != par_cnt) {

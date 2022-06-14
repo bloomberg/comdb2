@@ -73,4 +73,6 @@ static inline int  comdb2_attach_@module@(comdb2ma alloc)
 #  define comdb2_strdup_@module@  strdup
 #  define malloc_resize_@module@  realloc
 #endif /* USE_SYS_ALLOC */
+
+int comdb2_is_mspace_block(void *ptr);
 #endif

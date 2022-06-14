@@ -799,6 +799,8 @@ __db_c_idup(dbc_orig, dbcp, flags)
 	F_SET(dbc_n, F_ISSET(dbc_orig, DBC_DIRTY_READ));
 	F_SET(dbc_n, F_ISSET(dbc_orig, DBC_WRITECURSOR));
 
+    F_SET(dbc_n, F_ISSET(dbc_orig, DBC_SNAPSHOT));
+
 	/*
 	 * If we're in CDB and this isn't an offpage dup cursor, then
 	 * we need to get a lock for the duplicated cursor.
@@ -835,7 +837,6 @@ __db_c_idup(dbc_orig, dbcp, flags)
 			}
 		}
 	}
-
 
 	return (0);
 
@@ -1917,8 +1918,8 @@ __db_c_cleanup(dbc, dbc_n, failed)
 
 	/* Discard any pages we're holding. */
 	if (internal->page != NULL) {
-		if ((t_ret =
-		    __memp_fput(mpf, internal->page, 0)) != 0 && ret == 0)
+        PAGEPUT(dbc, mpf, internal->page, 0, t_ret);
+		if (t_ret != 0)
 			ret = t_ret;
 		internal->page = NULL;
 	}
@@ -1948,8 +1949,8 @@ __db_c_cleanup(dbc, dbc_n, failed)
 		return (ret);
 
 	if (dbc_n->internal->page != NULL) {
-		if ((t_ret = __memp_fput(
-		    mpf, dbc_n->internal->page, 0)) != 0 && ret == 0)
+        PAGEPUT(dbc, mpf, dbc_n->internal->page, 0, t_ret);
+		if (t_ret != 0 && ret == 0)
 			ret = t_ret;
 		dbc_n->internal->page = NULL;
 	}
