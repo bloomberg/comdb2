@@ -1,0 +1,77 @@
+{
+   comdb2_free
+   Memcheck:Addr8
+   fun:comdb2_free
+   fun:SERVER_sbuf2free
+   fun:SERVER_sbuf2close
+}
+{
+   Conditional
+   Memcheck:Cond
+   fun:__log_putr
+   fun:__log_put_next
+   fun:__log_put_int_int
+   fun:__log_put_int
+   fun:__log_put
+   fun:__db_addrem_log
+   fun:__db_pitem_opcode
+   fun:__db_pitem
+   fun:__bam_iitem
+   fun:__bam_c_put
+   fun:comdb2__bam_c_put
+   fun:__db_c_put
+}
+
+{
+   Conditional
+   Memcheck:Cond
+   fun:__db_check_chksum_algo
+   fun:__db_check_chksum
+   fun:__log_c_get_int
+   fun:__log_c_get_timed
+   fun:__log_c_get
+   fun:__env_find_verify_recover_start
+   fun:__log_archive
+   fun:__log_archive_pp
+   fun:delete_log_files_int
+   fun:delete_log_files
+   fun:logdelete_thread
+   fun:start_thread
+}
+
+{
+   crc320
+   Memcheck:Value8
+   fun:crc32c_1024_sse_int
+   fun:crc32c_sse
+   fun:crc32c_sse_pcl
+   fun:crc32c_comdb2
+   fun:__db_chksum_int
+   fun:__db_chksum
+}
+
+{
+   berkdb
+   Memcheck:Param
+   write(buf)
+   fun:write
+   fun:__berkdb_write
+}
+
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   fun:checkpoint_thread
+   fun:start_thread
+   fun:clone
+}
+
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   fun:__db_cursor_real
+   fun:__db_cursor
+   fun:__bam_read_root
+   fun:__bam_open
+   fun:__db_open
+}

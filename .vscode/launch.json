@@ -1,0 +1,198 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Create",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--create",
+        "--dir",
+        "${workspaceFolder}/dbs/testdb/",
+        "testdb"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "osx": {
+        /* Check if  lldb-mi is configured. https://code.visualstudio.com/docs/cpp/lldb-mi */
+        "MIMode": "lldb",
+      },
+      "linux": {
+        "MIMode": "gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          },
+          {
+            "description": "Enable all-exceptions",
+            "text": "catch throw",
+            "ignoreFailures": true
+          }
+        ],
+      },
+      /* This will create db/testdb and dbs/testdb repositories and update 
+         refresh_lrl.sh. Uncomment if don't want this to happen everytime.*/
+      "preLaunchTask": "setup launch"
+    },
+    {
+      "name": "Launch Create using LRL",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--create",
+        "testdb",
+        "--lrl",
+        "${workspaceFolder}/dbs/testdbref/testdb.lrl"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "osx": {
+        "MIMode": "lldb",
+      },
+      "linux": {
+        "MIMode": "gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          },
+          {
+            "description": "Enable all-exceptions",
+            "text": "catch throw",
+            "ignoreFailures": true
+          }
+        ],
+      },
+      "preLaunchTask": "refresh lrl"
+    },
+    {
+      "name": "Launch Start Database",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--lrl",
+        "${workspaceFolder}/dbs/testdbref/testdb.lrl",
+        "testdb"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "osx": {
+        "MIMode": "lldb",
+      },
+      "linux": {
+        "MIMode": "gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          },
+          {
+            "description": "Enable all-exceptions",
+            "text": "catch throw",
+            "ignoreFailures": true
+          }
+        ],
+      },
+      "internalConsoleOptions": "neverOpen",
+    },
+    {
+      "name": "Create and then Launch Start Database",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "--lrl",
+        "${workspaceFolder}/dbs/testdbref/testdb.lrl",
+        "testdb"
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "osx": {
+        "MIMode": "lldb",
+      },
+      "linux": {
+        "MIMode": "gdb",
+      },
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Enable all-exceptions",
+          "text": "catch throw",
+          "ignoreFailures": true
+        }
+      ],
+      "internalConsoleOptions": "neverOpen",
+      "preLaunchTask": "rebuild db using lrl"
+    },
+    {
+      "name": "(valgrind) Launch Start Database",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "targetArchitecture": "x64",
+      "customLaunchSetupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Attach to valgrind",
+          "text": "target remote | /usr/lib/valgrind/../../bin/vgdb",
+          "ignoreFailures": false
+        }
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "(valgrind) run database"
+    },
+    {
+      "name": "debug core",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "targetArchitecture": "x64",
+      "customLaunchSetupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "coreDumpPath": "${input:coreFileName}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "coreFileName",
+      "type": "promptString",
+      "description": "Enter core file path"
+    }
+  ]
+}

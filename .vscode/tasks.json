@@ -1,0 +1,129 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "setup launch",
+            "type": "shell",
+            "command": "mkdir -p ${workspaceFolder}/dbs/testdb ${workspaceFolder}/dbs/testdbref && cp ${workspaceFolder}/.vscode/refresh_lrl.sh ${workspaceFolder}/dbs/testdbref/refresh_lrl.sh",
+        },
+        {
+            "label": "refresh lrl",
+            "type": "shell",
+            "command": "./refresh_lrl.sh",
+            "dependsOn": "setup launch",
+            "options": {
+                "cwd": "${workspaceFolder}/dbs/testdbref",
+            },
+        },
+        {
+            "label": "rebuild db using lrl",
+            "type": "shell",
+            "command": "${command:cmake.launchTargetPath}",
+            "args": [
+                "--create",
+                "testdb",
+                "--lrl",
+                "${workspaceFolder}/dbs/testdb/testdb.lrl"
+            ],
+            "dependsOn": "refresh lrl"
+        },
+        {
+            "label": "lookup",
+            "type": "shell",
+            "command": "grep -rnIE --color=always ${input:token} ${workspaceFolder}/${input:workdir} | less -R",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+        },
+        {
+            "label": "Run query",
+            "type": "shell",
+            "command": "cdb2sql testdb -- '${input:enterQuery}'",
+        },
+        {
+            "label": "Run query from file",
+            "type": "shell",
+            "command": "cdb2sql testdb -- < ${input:pickQueryFile}"
+        },
+        {
+            "label": "List all query files",
+            "type": "shell",
+            "command": "find ${workspaceFolder} -maxdepth 1 -type f -iname '*.req' -o -iname '*.sql'"
+        },
+        {
+            "label": "(valgrind) run database",
+            "type": "shell",
+            "linux": {
+                "command": "valgrind",
+                "args": [
+                    "--vgdb=yes",
+                    "--vgdb-error=0",
+                    "--gen-suppressions=all",
+                    "--suppressions=${workspaceFolder}/${input:valgrindSuppresions}",
+                    "${command:cmake.launchTargetPath}",
+                    "--lrl",
+                    "${workspaceFolder}/dbs/testdbref/testdb.lrl",
+                    "testdb"
+                ]
+            },
+            "osx" : {
+                "command": "echo 'valgrind not supported on OSX'",
+            },
+            "isBackground": true,
+            "problemMatcher": [
+                {
+                    "pattern": [
+                        {
+                            "regexp": ".",
+                            "file": 1,
+                            "location": 2,
+                            "message": 3
+                        }
+                    ],
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": ".",
+                        "endsPattern": "."
+                    }
+                }
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "token",
+            "description": "input token for lookup",
+            "type": "promptString",
+        },
+        {
+            "id": "workdir",
+            "description": "input for lookup location",
+            "default": "",
+            "type": "promptString"
+        },
+        {
+            // requires augustocdias.tasks-shell-input
+            "id": "pickQueryFile",
+            "type": "command",
+            "command": "shellCommand.execute",
+            "args": {
+                "command": "find . -maxdepth 1 -type f -iname '*.req' -o -iname '*.sql'",
+                "cwd": "${workspaceFolder}",
+            }
+        },
+        {
+            "id": "enterQuery",
+            "description": "Enter a query to run on mohitdb",
+            "type": "promptString",
+            "default": "select 1",
+        },
+        {
+            "id": "valgrindSuppresions",
+            "description": "Enter valgrind suppressions file name",
+            "type": "promptString",
+            "default": ".vscode/comdb2_val.supp",
+        }
+    ]
+}

@@ -77,8 +77,9 @@ static void *free_stack_thr(void *unused)
     comdb2_name_thread(__func__);
     thr_arg_t *arg;
     int signal_count;
+#ifdef M_MMAP_THRESHOLD
     size_t stacksz;
-
+#endif
     /*
     ** [1] get # of elements on list.
     ** [2] if # == 0, sleep for a few seconds and goto [1]. otherwise go to [3].
@@ -117,7 +118,9 @@ static void *free_stack_thr(void *unused)
                         __func__, __LINE__);
             else {
                 comdb2ma saved_ma;
+#ifdef M_MMAP_THRESHOLD
                 stacksz = arg->stacksz;
+#endif
                 saved_ma = arg->alloc;
 
                 comdb2_free(arg->memptr);

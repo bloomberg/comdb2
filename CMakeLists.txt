@@ -190,6 +190,7 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
   endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-but-set-variable")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wignored-qualifiers")
   set(COMMON_FLAGS "${COMMON_FLAGS} -pthread")
