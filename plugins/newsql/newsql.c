@@ -761,6 +761,8 @@ done:
 #error "Missing BYTE_ORDER"
 #endif
 
+extern int gbl_uses_externalauth;
+
 static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                       int postpone)
 {
@@ -1976,6 +1978,10 @@ static void send_dbinforesponse(struct dbenv *dbenv, SBUF2 *sb)
     CDB2DBINFORESPONSE *dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
     cdb2__dbinforesponse__init(dbinfo_response);
     fill_dbinfo(dbinfo_response, dbenv->bdb_env);
+    if (gbl_uses_externalauth) {
+        dbinfo_response->has_require_identity = 1;
+        dbinfo_response->require_identity = 1;
+    }
     int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
 
     struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(sb);
@@ -2038,6 +2044,7 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
+    int identity_dbinfo_sent = 0;
 
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
@@ -2208,6 +2215,24 @@ retry_read:
         cdb2__query__free_unpacked(query, &pb_alloc);
         query = NULL;
         goto retry_read;
+    }
+
+    if (gbl_uses_externalauth && !identity_dbinfo_sent &&
+        query->sqlquery && !query->sqlquery->identity) {
+        int client_supports_identity = 0;
+        for (int ii = 0; ii < query->sqlquery->n_features; ++ii) {
+            if (CDB2_CLIENT_FEATURES__SUPPORTS_IDENTITY == query->sqlquery->features[ii]) {
+                client_supports_identity = 1;
+                break;
+            }
+        }
+        if (client_supports_identity) {
+            send_dbinforesponse(dbenv, sb);
+            identity_dbinfo_sent = 1;
+            cdb2__query__free_unpacked(query, &pb_alloc);
+            query = NULL;
+            goto retry_read;
+        }
     }
 
     if (query->dbinfo) {
