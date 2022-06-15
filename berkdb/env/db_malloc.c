@@ -5,6 +5,8 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+
 #endif
 
 #include "db_int.h"
@@ -69,6 +71,8 @@ __db_shalloc_malloc(void *p, size_t len, size_t align, void *retp)
 		return ENOMEM;
 
 	mem = comdb2_malloc(h->msp, len + sizeof(unsigned long long));
+    printf(">> is block: %d\n", comdb2_is_mspace_block(mem));
+    assert(comdb2_is_mspace_block(mem));
 	if (mem == NULL)
 		return ENOMEM;
 

@@ -791,8 +791,9 @@ __bam_cdel_recover(dbenv, dbtp, lsnp, op, info)
             goto out;
         }
     }
-    else
-        pagep = (PAGE*) info;
+    else {
+        pagep = (PAGE *) info;
+    }
 
 	modified = 0;
 	cmp_n = log_compare(lsnp, &LSN(pagep));

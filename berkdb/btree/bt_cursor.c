@@ -1011,8 +1011,6 @@ __bam_c_refresh(dbc)
 	cp->pagelsn.file = 0;
 	cp->pagelsn.offset = 0;
 
-    printf("refresh cursor %p page %p\n", cp, cp->page);
-
 	__bam_zero_counts(dbc);
 
 	/*
@@ -1417,8 +1415,6 @@ __bam_c_close(dbc, root_pgno, rmroot)
 	    NULL : (BTREE_CURSOR *)dbc_opd->internal;
 	cdb_lock = ret = 0;
 	prefault_dbp = dbp;
-
-    printf("close %d cursor %p page %p\n", !!F_ISSET(dbc, DBC_SNAPSHOT), cp, cp->page);
 
 	/*
 	 * There are 3 ways this function is called:
@@ -3421,7 +3417,6 @@ __bam_c_first(dbc)
 		for (pgno = cp->root;;) {
 
 			ACQUIRE_CUR_COUPLE(dbc, DB_LOCK_READ, pgno, ret);
-            printf("ACQUIRE_CUR_COUPLE ret %d pg %p\n", ret, cp->page);
 			if (ret != 0)
 				return (ret);
 
@@ -3534,8 +3529,6 @@ __bam_c_next(dbc, initial_move, deleted_okay)
 
 	cp = (BTREE_CURSOR *)dbc->internal;
 	ret = discard = 0;
-
-    printf("start of of next: %p\n", cp->page);
 
 	/*
 	 * We're either moving through a page of duplicates or a btree leaf
@@ -3659,9 +3652,7 @@ __bam_c_next(dbc, initial_move, deleted_okay)
 				}
 			} else {
 				pgno = NEXT_PGNO(cp->page);
-                printf("next page %d\n", (int) pgno);
 				if (PGNO_INVALID == pgno) {
-                    printf(">> eof\n");
                     return (DB_NOTFOUND);
                 }
 #if USE_BTPF
@@ -3688,7 +3679,6 @@ __bam_c_next(dbc, initial_move, deleted_okay)
 	if (!op_pf)
 		crsr_nxt(dbc);
 #endif
-    printf("end of next: cursor %p page %p\n", cp, cp->page);
 	return (0);
 }
 

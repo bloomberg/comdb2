@@ -2772,6 +2772,7 @@ struct __utxnid_track {
 struct __mpro {
     pthread_mutex_t mpro_mutexp;
     mspace *msp;
+    u_int64_t size;
     hash_t *pages;
     hash_t *transactions;
     LISTC_T(struct __mpro_page_header) pagelru;

@@ -690,8 +690,9 @@ foundlsn:
 
 	if ((ret = __lc_cache_init(dbenv, 0)) != 0)
 		goto err;
-    if ((ret = __mempro_init(dbenv, (1024*1024*64))) != 0)
+    if ((ret = __mempro_init(dbenv, (1024*1024*64))) != 0) {
         goto err;
+    }
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
 	return (0);

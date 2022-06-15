@@ -136,7 +136,9 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	/* Convert a page address to a buffer header and hash bucket. */
 	bhp = (BH *)((u_int8_t *)pgaddr - SSZA(BH, buf));
 
-    if (!comdb2_is_mspace_block(bhp)) {
+    // see if we're handed a page that belongs to the ro buffer pool
+    extern void *gbl_mpro_base;
+    if (dbenv->mpro && (uintptr_t) bhp >= (uintptr_t) gbl_mpro_base && (uintptr_t) bhp <= ((uintptr_t) gbl_mpro_base + dbenv->mpro->size)) {
         abort();
     }
 

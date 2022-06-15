@@ -5680,7 +5680,6 @@ int main(int argc, char **argv)
      * will wait for all the generic threads to exit */
     thrman_wait_type_exit(THRTYPE_CLEANEXIT);
     finish_clean();
-
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *db = thedb->dbs[ii];
         free(db->handle);

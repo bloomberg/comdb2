@@ -669,8 +669,9 @@ __db_cursor_real(dbp, txn, txn_clone, dbcp_old, lid_clone, dbcs, dbcp, flags,
 
 	dbenv = dbp->dbenv;
 
-    if (flags & DB_CUR_SNAPSHOT)
+    if (flags & DB_CUR_SNAPSHOT) {
         lid_clone = DB_LOCK_INVALIDID;
+    }
 
 	if (dbcs) {
 		if ((ret =

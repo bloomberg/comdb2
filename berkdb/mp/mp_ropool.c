@@ -43,17 +43,15 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
     DB_LOCK lock;
     PAGE *h;
 
-    printf("%s\n", __func__);
-
     k.pgno = pgno;
     memcpy(k.ufid, mpf->fileid, DB_FILE_ID_LEN);
     Pthread_mutex_lock(&mpro->mpro_mutexp);
     hdr = hash_find(mpro->pages, &k);
     if (hdr) {
-        // remove from lru - we don't want it removed if referenced
-        listc_rfl(&mpro->pagelru, hdr);
+        // remove from lru - we don't want it removed if referenced - it's already removed
+        if (hdr->pin == 0)
+            listc_rfl(&mpro->pagelru, hdr);
         hdr->pin++;
-        printf("have in cache\n");
     }
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
 
@@ -73,11 +71,11 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
         if (ret == DB_LOCK_NOTGRANTED) {
             // something has this lock - we can't get the page from the buffer pool safely - recover from log
             // TODO: get from disk?
-            printf("lock would block\n");
+            printf("would block\n");
             goto err;
         }
         else if (ret) {
-            printf("can't get lock\n");
+            printf("error getting lock\n");
             goto err;
         }
         have_lock = 1;
@@ -85,18 +83,18 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
         u_int32_t pagesize;
         ret = dbp->get_pagesize(dbp, &pagesize);
         if (ret) {
-            printf("can't get page size\n");
+            printf("error getting page size\n");
             goto err;
         }
         ret = __memp_fget(mpf, &pgno, 0, &h);
         if (ret) {
-            printf("can't get page\n");
+            printf("error getting page from buffer pool\n");
             goto err;
         }
         have_page = 1;
         ret = __lock_put(dbenv, &lock);
         if (ret) {
-            printf("can't return lock\n");
+            printf("error lock put\n");
             goto err;
         }
         have_lock = 0;
@@ -125,12 +123,12 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
         Pthread_mutex_unlock(&mpro->mpro_mutexp);
         ret = __memp_fput(mpf, h, 0);
         if (ret) {
-            printf("can't unpin page\n");
+            printf("error memp_fput put\n");
             goto err;
         }
+        h = (PAGE*) hdr->page;
     }
     *(void**)page = h;
-    printf("returning page: %p\n", *(void**)page);
     return 0;
 
 err:
@@ -213,6 +211,8 @@ int __mempro_get_commit_lsn_for_txn(DB_ENV *dbenv, u_int64_t txnid, DB_LSN *comm
     return ret;
 }
 
+void *gbl_mpro_base = NULL;
+
 /*
  * PUBLIC: int __mempro_init __P((DB_ENV *env, u_int64_t size));
  */
@@ -233,7 +233,13 @@ int __mempro_init (DB_ENV *env, u_int64_t size) {
         ret = ENOMEM;
         goto err;
     }
-    mp->msp = create_mspace(size, 1);
+    gbl_mpro_base = malloc(size);
+    if (gbl_mpro_base == NULL) {
+        ret = ENOMEM;
+        goto err;
+    }
+    mp->msp = create_mspace_with_base(gbl_mpro_base, size, 1);
+    mp->size = size;
     env->mpro = mp;
     Pthread_mutex_init(&mp->mpro_mutexp, NULL);
     listc_init(&mp->pagelru, offsetof(MPRO_PAGE_HEADER, lrulnk));
@@ -277,7 +283,10 @@ int __mempro_fput(DBC *dbc, void *page) {
 
     Pthread_mutex_lock(&mpro->mpro_mutexp);
     hdr->pin--;
-    printf("put %d, pin %d\n", hdr->key.pgno, hdr->pin);
+    if (hdr->pin > 10) {
+        printf("put %d, pg %p pin %d\n", hdr->key.pgno, page, hdr->pin);
+        printf("hi\n");
+    }
     if (hdr->pin == 0) {
         listc_abl(&mpro->pagelru, hdr);
     }
