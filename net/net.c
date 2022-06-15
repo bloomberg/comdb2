@@ -2655,8 +2655,6 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     Pthread_mutex_init(&(ptr->lock), NULL);
     Pthread_mutex_init(&(ptr->timestamp_lock), NULL);
 
-    ptr->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
-
     Pthread_mutex_init(&(ptr->enquelk), NULL);
     Pthread_mutex_init(&(ptr->wait_mutex), NULL);
     Pthread_mutex_init(&(ptr->throttle_lock), NULL);
@@ -2784,7 +2782,6 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
     comdb2ma_destroy(host_node_ptr->msp);
 #endif /* PER_THREAD_MALLOC */
 
-    free(host_node_ptr->user_data_buf);
     sbuf2free(host_node_ptr->sb);
 
 #ifndef NDEBUG
@@ -3362,17 +3359,13 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
     return 0;
 }
 
-static int read_user_data(host_node_type *host_node_ptr, int *type, int *seqnum,
-                          int *needack, int *datalen, void **data,
-                          int *malloced)
+static int read_user_data(host_node_type *host_node_ptr)
 {
     int rc;
     net_send_message_header msghdr;
     uint8_t databf[NET_SEND_MESSAGE_HEADER_LEN], *p_buf, *p_buf_end;
     netinfo_type *netinfo_ptr = host_node_ptr->netinfo_ptr;
     SBUF2 *sb = host_node_ptr->sb;
-
-    *malloced = 0;
 
     rc = read_stream(netinfo_ptr, host_node_ptr, sb, &databf, sizeof(databf));
     if (rc != sizeof(msghdr)) {
@@ -3386,42 +3379,46 @@ static int read_user_data(host_node_type *host_node_ptr, int *type, int *seqnum,
 
     net_send_message_header_get(&msghdr, p_buf, p_buf_end);
 
-    *type = msghdr.usertype;
-    *seqnum = msghdr.seqnum;
-    *needack = msghdr.waitforack;
-    *datalen = msghdr.datalen;
+    struct user_msg_type *user_msg = host_node_ptr->user_msg;
+    user_msg->usertype = msghdr.usertype;
+    user_msg->seqnum = msghdr.seqnum;
+    user_msg->needack = msghdr.waitforack;
+    int datalen = user_msg->datalen = msghdr.datalen;
 
-    if (*datalen > 0) {
+    if (datalen > 0) {
         if (netinfo_ptr->trace && debug_switch_net_verbose())
-            logmsg(LOGMSG_ERROR, "Reading %d bytes %llu\n", *datalen, gettmms());
+            logmsg(LOGMSG_ERROR, "Reading %d bytes %llu\n", datalen, gettmms());
 
-        if (*datalen < (netinfo_ptr->user_data_buf_size)) {
-            *data = host_node_ptr->user_data_buf;
-            *malloced = 0;
+        if (datalen < (netinfo_ptr->user_data_buf_size)) {
+            user_msg->data = user_msg->user_data_buf;
+            user_msg->used_malloc = 0;
         } else {
-            *data = HOST_MALLOC(host_node_ptr, *datalen);
-            *malloced = 1;
+            user_msg->data = HOST_MALLOC(host_node_ptr, datalen);
+            user_msg->used_malloc = 1;
         }
 
-        if (*data == NULL) {
+        if (user_msg->data == NULL) {
             host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: malloc %d failed\n", __func__,
-                           *datalen);
+                           datalen);
             goto fail;
         }
-        rc = read_stream(netinfo_ptr, host_node_ptr, sb, *data, *datalen);
-        if (rc != *datalen) {
+        rc = read_stream(netinfo_ptr, host_node_ptr, sb, user_msg->data, datalen);
+        if (rc != datalen) {
             host_node_errf(LOGMSG_ERROR, host_node_ptr,
                            "read_user_data:error reading user_data, "
                            "wanted %d bytes, got %d\n",
-                           *datalen, rc);
+                           datalen, rc);
 
-            if (*malloced)
-                free(*data);
+            if (user_msg->used_malloc) {
+                free(user_msg->data);
+                user_msg->data = NULL;
+                user_msg->used_malloc = 0;
+            }
 
             goto fail;
         }
     } else {
-        *data = NULL;
+        user_msg->data = NULL;
     }
 
     return 0;
@@ -3611,32 +3608,23 @@ int net_ack_message(void *handle, int outrc)
     }
     return rc;
 }
-
-static int process_user_message(netinfo_type *netinfo_ptr,
-                                host_node_type *host_node_ptr)
+static int process_user_message(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
-    int usertype, seqnum, datalen, needack;
+    if (netinfo_ptr->fake || netinfo_ptr->exiting) return 0;
     ack_state_type *ack_state = NULL;
-    void *data;
-
-    /* deliver nothing for fake netinfo */
-    if (netinfo_ptr->fake || netinfo_ptr->exiting)
-        return 0;
-
-
-    int malloced = 0;
-
-    int rc = read_user_data(host_node_ptr, &usertype, &seqnum, &needack,
-                            &datalen, &data, &malloced);
-
-#if 0
-    logmsg(LOGMSG_DEBUG, "process_user_message from %s, ut=%d\n",
-           host_node_ptr->host, usertype);
-#endif
-
-    if (rc != 0)
-        return -1; /* not sure ... exit the reader thread??? */
-
+    struct user_msg_type *user_msg = host_node_ptr->user_msg;
+    if (user_msg->used_malloc) {
+        free(user_msg->data);
+        user_msg->data = NULL;
+        user_msg->used_malloc = 0;
+    }
+    int rc = read_user_data(host_node_ptr);
+    if (rc != 0) return -1; /* not sure ... exit the reader thread??? */
+    int usertype = user_msg->usertype;
+    int seqnum = user_msg->seqnum;
+    void *data = user_msg->data;
+    int datalen = user_msg->datalen;
+    int needack = user_msg->needack;
     if (usertype >= 0 && usertype <= MAX_USER_TYPE &&
          netinfo_ptr->userfuncs[usertype].func != NULL) {
         if (needack) {
@@ -3645,10 +3633,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             ack_state->needack = needack;
             ack_state->fromhost = host_node_ptr->host;
             ack_state->netinfo = netinfo_ptr;
-        } else {
-            ack_state = NULL;
         }
-
         Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
         host_node_ptr->running_user_func = 1;
         Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
@@ -3656,11 +3641,9 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         int64_t start_us = comdb2_time_epochus();
         /* run the user's function */
         netinfo_ptr->userfuncs[usertype].func(
-            ack_state, netinfo_ptr->usrptr, host_node_ptr->host, usertype,
-            data, datalen, 1);
+            ack_state, netinfo_ptr->usrptr, host_node_ptr->host, usertype, data, datalen, 1);
         netinfo_ptr->userfuncs[usertype].count++;
-        netinfo_ptr->userfuncs[usertype].totus +=
-            (comdb2_time_epochus() - start_us);
+        netinfo_ptr->userfuncs[usertype].totus += (comdb2_time_epochus() - start_us);
 
         /* update timestamp before checking it */
         Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
@@ -3678,13 +3661,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             lastpr = now;
         }
     }
-
-    if (ack_state)
-        free(ack_state);
-
-    if (malloced)
-        free(data);
-
+    if (ack_state) free(ack_state);
     return 0;
 }
 
@@ -4325,11 +4302,18 @@ static void *reader_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
-    wire_header_type hdr_debug[5];
-    memset(hdr_debug, 0, sizeof(hdr_debug));
-    wire_header_type *first = &hdr_debug[0];
-    wire_header_type *end = first + 5;
-    wire_header_type *wire_header = first -1;
+    const int num_debug = 10;
+    wire_header_type wire_hdr_debug[num_debug];
+    memset(wire_hdr_debug, 0, sizeof(wire_hdr_debug));
+    wire_header_type *first_hdr = &wire_hdr_debug[0];
+    wire_header_type *end_hdr = first_hdr + num_debug;
+    wire_header_type *wire_header = first_hdr - 1;
+
+    struct user_msg_type user_msg_debug[num_debug];
+    memset(user_msg_debug, 0, sizeof(user_msg_debug));
+    struct user_msg_type *first_user_msg = &user_msg_debug[0];
+    struct user_msg_type *end_user_msg = first_user_msg + num_debug;
+    struct user_msg_type *user_msg = first_user_msg - 1;
 
     while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
            !netinfo_ptr->exiting) {
@@ -4345,9 +4329,16 @@ static void *reader_thread(void *arg)
            logmsg(LOGMSG_USER, "RT: reading header %llu\n", gettmms());
 
         ++wire_header;
-        if (wire_header == end) wire_header = first;
-        rc = read_message_header(netinfo_ptr, host_node_ptr, wire_header, fromhost, tohost);
+        if (wire_header == end_hdr) wire_header = first_hdr;
 
+        ++user_msg;
+        if (user_msg == end_user_msg) user_msg = first_user_msg;
+        host_node_ptr->user_msg = user_msg;
+        if (user_msg->user_data_buf == NULL) {
+           user_msg->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
+        }
+
+        rc = read_message_header(netinfo_ptr, host_node_ptr, wire_header, fromhost, tohost);
 
         if (rc != 0) {
             if (!host_node_ptr->distress) {
@@ -4451,19 +4442,37 @@ static void *reader_thread(void *arg)
                    "reader thread: unknown wire_header.type:%d host:%s svc:%s\n",
                    wire_header->type, host_node_ptr->host, netinfo_ptr->service);
             {
-            logmsg(LOGMSG_ERROR, "last 5 wire_headers:\n");
-            int i = 4;
-            wire_header_type *t;
-            for (t = wire_header; t >= first; --t) {
+            int i = num_debug - 1;
+            logmsg(LOGMSG_ERROR, "last %d wire_headers:\n", num_debug);
+            wire_header_type *h;
+            for (h = wire_header; h >= first_hdr; --h) {
                 logmsg(LOGMSG_ERROR,
                        "i:%d from:%.*s(port:%d,node:%d) to:%.*s(port:%d,node:%d) type:%d\n",
-                       i, HOSTNAME_LEN, t->fromhost, t->fromport, t->fromnode, HOSTNAME_LEN, t->tohost, t->toport, t->tonode, t->type);
+                       i, HOSTNAME_LEN, h->fromhost, h->fromport, h->fromnode, HOSTNAME_LEN, h->tohost, h->toport, h->tonode, h->type);
                 --i;
             }
-            for (t = end - 1; t > wire_header; --t) {
+            for (h = end_hdr - 1; h > wire_header; --h) {
                 logmsg(LOGMSG_ERROR,
                        "i:%d from:%.*s(port:%d,node:%d) to:%.*s(port:%d,node:%d) type:%d\n",
-                       i, HOSTNAME_LEN, t->fromhost, t->fromport, t->fromnode, HOSTNAME_LEN, t->tohost, t->toport, t->tonode, t->type);
+                       i, HOSTNAME_LEN, h->fromhost, h->fromport, h->fromnode, HOSTNAME_LEN, h->tohost, h->toport, h->tonode, h->type);
+                --i;
+            }
+            }
+
+            {
+            int i = num_debug - 1;
+            logmsg(LOGMSG_ERROR, "last %d user_msgs:\n", num_debug);
+            struct user_msg_type *u;
+            for (u = user_msg; u >= first_user_msg; --u) {
+                logmsg(LOGMSG_ERROR,
+                        "i:%d usertype:%d seqnum:%d needack:%d datalen:%d used_malloc:%d\n",
+                        i, u->usertype, u->seqnum, u->needack, u->datalen, u->used_malloc);
+                --i;
+            }
+            for (u = end_user_msg - 1; u > user_msg; --u) {
+                logmsg(LOGMSG_ERROR,
+                        "i:%d usertype:%d seqnum:%d needack:%d datalen:%d used_malloc:%d\n",
+                        i, u->usertype, u->seqnum, u->needack, u->datalen, u->used_malloc);
                 --i;
             }
             }
@@ -4476,6 +4485,13 @@ static void *reader_thread(void *arg)
     }
 
 done:
+    {
+        struct user_msg_type *u;
+        for (u = first_user_msg; u != end_user_msg; ++u) {
+            free(u->user_data_buf);
+            u->user_data_buf = NULL;
+        }
+    }
 
     Pthread_mutex_lock(&(host_node_ptr->lock));
     host_node_ptr->have_reader_thread = 0;

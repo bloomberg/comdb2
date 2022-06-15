@@ -124,6 +124,16 @@ typedef struct {
     unsigned long long reorders;
 } stats_type;
 
+struct user_msg_type {
+    int usertype;
+    int seqnum;
+    int needack;
+    int datalen;
+    void *data;
+    void *user_data_buf;
+    int used_malloc;
+};
+
 struct host_node_tag {
     int fd;
     SBUF2 *sb;
@@ -189,7 +199,7 @@ struct host_node_tag {
     comdb2ma msp;
 #endif
 
-    void *user_data_buf;
+    struct user_msg_type *user_msg;
 
     HostInfo udp_info;
     int num_sends;

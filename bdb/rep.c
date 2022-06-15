@@ -3883,7 +3883,7 @@ void bdb_set_seqnum(void *in_bdb_state)
 int gbl_online_recovery = 1;
 
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
-                          DBT *rec)
+                          DBT *rec, int *out_rectype)
 {
     int rc;
     int r;
@@ -3910,7 +3910,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     rep_control_type *rep_control;
     rep_control = control->data;
 
-    rectype = ntohl(rep_control->rectype);
+    *out_rectype = rectype = ntohl(rep_control->rectype);
     generation = ntohl(rep_control->gen);
 
 
@@ -5052,7 +5052,6 @@ int bdb_commitdelay(void *arg)
         bdb_state = bdb_state->parent;
     return bdb_state->attr->commitdelay;
 }
-
 static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
                                   char *from_node, int usertype, void *dta,
                                   int dtalen, uint8_t is_tcp)
@@ -5128,7 +5127,7 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
             logmsg(LOGMSG_ERROR,
                    "buf-dta != dtalen -- from:%s seqnum:%d recbufsz:%d controlbufsz:%d dtalen:%d\n",
                    from_node, seqnum, recbufsz, controlbufsz, dtalen);
-            if (dtalen <= 256) fsnapf(stderr, dta, dtalen);
+            fsnapf(stderr, dta, dtalen < 256 ? dtalen : 256);
             return -1;
         }
 
@@ -5136,7 +5135,7 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
             logmsg(LOGMSG_ERROR,
                    "controlbufsz+recbufsz too big -- from:%s seqnum:%d recbufsz:%d controlbufsz:%d dtalen:%d\n",
                    from_node, seqnum, recbufsz, controlbufsz, dtalen);
-            if (dtalen <= 256) fsnapf(stderr, dta, dtalen);
+            fsnapf(stderr, dta, dtalen < 256 ? dtalen : 256);
             return -1;
         }
 
@@ -5176,7 +5175,8 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
             }
         }
 
-        rc = process_berkdb(bdb_state, from_node, &control, &rec);
+        int rectype = -999;
+        rc = process_berkdb(bdb_state, from_node, &control, &rec, &rectype);
         if (rc > 0) {
             outrc = rc;
             logmsg(LOGMSG_ERROR, "bad rc %d from process_berkdb\n", rc);
@@ -5184,6 +5184,12 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
             outrc = 0;
         }
 
+        /* some messages have 16 bytes of "fluff" */
+        if ((p_buf + 16) != p_buf_end && p_buf != p_buf_end) {
+            ptrdiff_t diff = p_buf_end - p_buf;
+            logmsg(LOGMSG_ERROR, "did not consume full payload -- diff:%td from:%s seqnum:%d recbufsz:%d controlbufsz:%d dtalen:%d rectype:%d\n",
+                   diff, from_node, seqnum, recbufsz, controlbufsz, dtalen, rectype);
+        }
         break;
 
     case USER_TYPE_BERKDB_FILENUM:
