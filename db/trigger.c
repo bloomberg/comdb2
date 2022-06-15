@@ -322,6 +322,11 @@ int trigger_stat()
     for (int i = 0; i < thedb->num_qdbs; ++i) {
         struct dbtable *qdb = thedb->qdbs[i];
         consumer_lock_read(qdb);
+        /* protect us from incomplete triggers (e.g., an old-style queue without a consumer */
+        if (qdb->consumers[0] == NULL) {
+            consumer_unlock(qdb);
+            continue;
+        }
         int ctype = dbqueue_consumer_type(qdb->consumers[0]);
         if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA) {
             consumer_unlock(qdb);

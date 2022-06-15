@@ -4983,7 +4983,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         break;
 
     case TRANLEVEL_SOSQL:
-        if (gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen) {
+        if (!clnt->skip_peer_chk && gbl_early_verify && !clnt->early_retry && gbl_osql_send_startgen) {
             if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                 clnt->early_retry = EARLY_ERR_GENCHANGE;
         }
