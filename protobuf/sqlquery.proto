@@ -21,6 +21,7 @@ enum CDB2ClientFeatures {
     SSL                  = 5;
     /* flat column values. see sqlresponse.proto for more details. */
     FLAT_COL_VALS   = 6;
+    SUPPORTS_IDENTITY = 8;
 }
 
 message CDB2_FLAG {
