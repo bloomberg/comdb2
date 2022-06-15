@@ -811,7 +811,8 @@ struct sqlclntstate {
     uint8_t is_overlapping;
     uint32_t init_gen;
     int8_t gen_changed;
-    uint8_t skip_peer_chk;
+    uint8_t skip_peer_chk; /* 1 if this is a temp table operation from an SP,
+                              where peer check and the dbopen_gen check at commit time are skipped. */
     uint8_t queue_me;
     uint8_t fail_dispatch;
     uint8_t in_sqlite_init; /* clnt is in sqlite init phase when this is set */

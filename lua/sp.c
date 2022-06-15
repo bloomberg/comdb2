@@ -2704,6 +2704,16 @@ static void reset_stmts(SP sp)
     }
 }
 
+static void finalize_stmts(SP sp)
+{
+    dbstmt_t *dbstmt, *tmp;
+    if (sp != NULL) {
+        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
+            donate_stmt(sp, dbstmt);
+        }
+    }
+}
+
 static int db_begin(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -7226,6 +7236,12 @@ void *exec_trigger(trigger_reg_t *reg)
                    reg->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
+        /* Release all unclosed dbstmt's. The same LUA VM is going to be reused for the next execution
+           of this trigger.  Hence the GC won't release those dangling structures. */
+        finalize_stmts(sp);
+        /* Release all temp tables for the same reason above. */
+        drop_temp_tables(sp);
+        free_tmptbls(sp);
         put_curtran(thedb->bdb_env, &clnt);
     }
     if (q) {
@@ -7238,7 +7254,9 @@ void *exec_trigger(trigger_reg_t *reg)
     } else {
         force_unregister(L, reg);
     }
+    finalize_stmts(clnt.sp);
     put_curtran(thedb->bdb_env, &clnt);
+    /* temp tables are cleaned up in this function */
     end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
