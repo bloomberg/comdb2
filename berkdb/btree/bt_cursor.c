@@ -733,11 +733,11 @@ comdb2__db_c_replace_lockid(dbc, lockid)
 }
 
 static int
-comdb2__db_c_set_snapshot_lsn(dbc, lsn)
+comdb2__db_c_set_snapshot_lsn(dbc, utxnid)
 DBC *dbc;
-DB_LSN *lsn;
+u_int64_t utxnid;
 {
-    dbc->snapshot_lsn = *lsn;
+    dbc->utxnid = utxnid;
     return 0;
 }
 
@@ -3652,7 +3652,7 @@ __bam_c_next(dbc, initial_move, deleted_okay)
 				}
 			} else {
 				pgno = NEXT_PGNO(cp->page);
-				if (PGNO_INVALID == pgno) {
+                if (PGNO_INVALID == pgno) {
                     return (DB_NOTFOUND);
                 }
 #if USE_BTPF

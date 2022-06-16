@@ -243,7 +243,7 @@ DEF_ATTR(TEMPTABLE_CACHESZ, temptable_cachesz, BYTES, 262144,
 DEF_ATTR(PARTICIPANTID_BITS, participantid_bits, QUANTITY, 0,
          "Number of bits allocated for the participant stripe ID (remaining "
          "bits are used for the update ID).")
-DEF_ATTR(BULK_SQL_MODE, bulk_sql_mode, BOOLEAN, 0,
+DEF_ATTR(BULK_SQL_MODE, bulk_sql_mode, BOOLEAN, 1,
          "Enable reading data in bulk when performing a scan (alternative is "
          "single-stepping a cursor).")
 DEF_ATTR(BULK_SQL_ROWLOCKS, bulk_sql_rowlocks, BOOLEAN, 1, NULL)

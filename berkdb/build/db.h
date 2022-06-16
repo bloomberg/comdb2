@@ -1966,7 +1966,7 @@ struct __dbc {
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
 	int (*c_replace_lockid) __P((DBC *, u_int32_t));
-    int (*c_set_snapshot_lsn) __P((DBC*, DB_LSN *));
+    int (*c_set_snapshot_lsn) __P((DBC*, u_int64_t));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
@@ -2007,7 +2007,7 @@ struct __dbc {
 	char*       pf; // Added by Fabio for prefaulting the index pages
 	db_pgno_t   lastpage; // pgno of last move
 
-    DB_LSN snapshot_lsn;
+    u_int64_t utxnid;
 };
 extern pthread_key_t DBG_FREE_CURSOR;
 
@@ -2734,7 +2734,7 @@ struct __db_env {
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
-    int (*last_commit_lsn) __P((DB_ENV *, DB_LSN *));
+    int (*last_commit_lsn) __P((DB_ENV *, u_int64_t *));
 
     pthread_mutex_t utxnid_lock;
     u_int64_t next_utxnid;
@@ -2745,22 +2745,27 @@ struct __db_env {
 struct __mpro_key {
     db_pgno_t pgno;
     u_int8_t ufid[DB_FILE_ID_LEN];
-    // TODO LSN
 };
 typedef struct __mpro_key MPRO_KEY;
 struct __utxnid_track;  typedef struct __utxnid_track UTXNID_TRACK;
 
 struct __mpro_page_header {
-    MPRO_KEY key;
     u_int16_t pin;
-
     LINKC_T(struct __mpro_page_header) lrulnk;
     LINKC_T(struct __mpro_page_header) commit_order;
-
     char page[1];
 };
 typedef struct __mpro_page_header MPRO_PAGE_HEADER;
 
+struct __mpro_page_list {
+    MPRO_KEY key;
+    pthread_mutex_t lk;
+
+    // Temporary. We'll need a better data structure here than a list.  An in-memory btree would be ideal.
+    // BerkleyDB's may be too heavy for the purpose.
+    LISTC_T(struct __mpro_page_header) pages;
+};
+typedef struct __mpro_page_list MPRO_PAGE_LIST;
 
 struct __utxnid_track {
     u_int64_t txnid;

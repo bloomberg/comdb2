@@ -26,6 +26,11 @@
 #include "locks_wrap.h"
 #include "dbinc_auto/lock_ext.h"
 #include "dbinc/db_swap.h"
+#include "tohex.h"
+
+int create_pagelist_in_mpro(DBC *dbc, db_pgno_t pgno, MPRO_PAGE_LIST **pages);
+
+int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAGE **page);
 
 /*
  *  PUBLIC: int __mempro_fget
@@ -33,33 +38,113 @@
  */
 int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
     MPRO_KEY k;
-    MPRO_PAGE_HEADER *hdr;
     DB *dbp = dbc->dbp;
     DB_ENV *dbenv = dbp->dbenv;
     DB_MPRO *mpro = dbenv->mpro;
     DB_MPOOLFILE *mpf = dbp->mpf;
     int ret = 0;
-    int have_page = 0, have_lock = 0;
-    DB_LOCK lock;
     PAGE *h;
+    int nopages = 0;
+    MPRO_PAGE_LIST *pages = NULL;
 
     k.pgno = pgno;
     memcpy(k.ufid, mpf->fileid, DB_FILE_ID_LEN);
     Pthread_mutex_lock(&mpro->mpro_mutexp);
-    hdr = hash_find(mpro->pages, &k);
-    if (hdr) {
-        // remove from lru - we don't want it removed if referenced - it's already removed
-        if (hdr->pin == 0)
-            listc_rfl(&mpro->pagelru, hdr);
-        hdr->pin++;
+    pages = hash_find(mpro->pages, &k);
+    if (pages == NULL) {
+        ret = create_pagelist_in_mpro(dbc, pgno, &pages);
+        nopages = 1;
+        if (ret) {
+            goto err;
+        }
     }
+    ret = find_page_for_cursor(pages, dbc, pgno, &h);
+    if (ret) {
+        goto err;
+    }
+    *(void**)page = h;
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
+    return 0;
 
-    if (hdr) {
+err:
+    // There's no separate lru for page lists - we remove the page list if there's no more pages.
+    // If we created a page list but failed to add a page to it, remove it here.
+    if (nopages && pages && pages->pages.count == 0) {
+        Pthread_mutex_lock(&mpro->mpro_mutexp);
+        hash_del(mpro->pages, pages);
+        Pthread_mutex_unlock(&mpro->mpro_mutexp);
+        free(pages);
+    }
+    abort();
+    return ret;
+}
+
+// Find a page image at the right LSN.  This should be called with the mpro lock released and a pagelist lock held
+int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAGE **page) {
+    DB *dbp = dbc->dbp;
+    DB_ENV *dbenv = dbp->dbenv;
+    DB_MPOOLFILE *mpf = dbp->mpf;
+    MPRO_PAGE_HEADER *hdr;
+    DB_MPRO *mpro = dbenv->mpro;
+    DB_LOCK_ILOCK lk;
+    DB_LOCK lock;
+    PAGE *h;
+
+    // This is the txnid we're targetting
+    u_int64_t utxnid = dbc->utxnid;
+
+    int have_lock = 0, have_page = 0, have_page_image = 0;
+    int ret;
+
+    // Walk a list of any cached versions of this page we have.
+    hdr = pagelist->pages.top;
+    while (hdr) {
         h = (PAGE*) hdr->page;
+        if (h->txnid <= utxnid) {
+            // We found a page that's older than our transaction. Now we need to check that there's no newer
+            // transaction that also modified the page.  If there isn't, this is the right version.  The check is easy
+            // if we have a newer transaction in the list preceding us - just check that it's previous id is us.  If
+            // it is, we're done.  If not, there may be transactions that modified this page between us and the version
+            // in the list.  The previous page is newer than what we need (or we would have stopped there). So start
+            // there and roll back to the version we need. If there's no previous version, we need to start somewhere
+            // so grab it from the "real" buffer pool.
+            if (hdr->commit_order.prev && ((PAGE*) hdr->commit_order.prev->page)->prev_txnid == h->txnid) {
+                if (hdr->pin == 0) {
+                    listc_rfl(&mpro->pagelru, hdr);
+                }
+                hdr->pin++;
+                *page = (PAGE*) hdr->page;
+                return 0;
+            }
+            break;
+        }
+        hdr = hdr->commit_order.next;
+    }
+
+    // We need to get a base image for the page.
+    do {
+        hdr = mspace_malloc(dbenv->mpro->msp, offsetof(MPRO_PAGE_HEADER, page) + dbp->pgsize);
+        if (hdr == NULL) {
+            MPRO_PAGE_HEADER *lruhdr;
+            lruhdr = listc_rtl(&dbenv->mpro->pagelru);
+            if (lruhdr == NULL) {
+                __db_panic(dbenv, ENOMEM);
+                ret = ENOMEM;
+                goto err;
+            }
+            hash_del(mpro->pages, lruhdr);
+            mspace_free(mpro->msp, lruhdr);
+        }
+    } while (hdr == NULL);
+    hdr->pin = 0;
+    have_page_image = 1;
+
+    if (hdr->commit_order.prev) {
+        // we have a newer version of the page - recover from that
+        memcpy(hdr->page, hdr->commit_order.prev->page, dbp->pgsize);
     }
     else {
-        DB_LOCK_ILOCK lk;
+        // Get from buffer pool, if we can.
         lk.pgno = pgno;
         memcpy(lk.fileid, mpf->fileid, DB_FILE_ID_LEN);
         lk.type = DB_PAGE_LOCK;
@@ -69,74 +154,58 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
         lock_dbt.size = sizeof(lk);
         ret = __lock_get(dbenv, dbc->locker, DB_LOCK_NOWAIT, &lock_dbt, DB_LOCK_READ, &lock);
         if (ret == DB_LOCK_NOTGRANTED) {
-            // something has this lock - we can't get the page from the buffer pool safely - recover from log
-            // TODO: get from disk?
-            printf("would block\n");
+            // something has this lock - we can't get the page from the buffer pool safely
+            // HERE: get page anyway, checksum until stable? Get from disk, as long as newer than what we need?
             goto err;
         }
         else if (ret) {
-            printf("error getting lock\n");
             goto err;
         }
         have_lock = 1;
-        // we have a lock
-        u_int32_t pagesize;
-        ret = dbp->get_pagesize(dbp, &pagesize);
-        if (ret) {
-            printf("error getting page size\n");
-            goto err;
-        }
+
         ret = __memp_fget(mpf, &pgno, 0, &h);
         if (ret) {
-            printf("error getting page from buffer pool\n");
             goto err;
         }
         have_page = 1;
         ret = __lock_put(dbenv, &lock);
         if (ret) {
-            printf("error lock put\n");
             goto err;
         }
         have_lock = 0;
-        Pthread_mutex_lock(&mpro->mpro_mutexp);
-        do {
-            hdr = mspace_malloc(dbenv->mpro->msp, offsetof(MPRO_PAGE_HEADER, page) + pagesize);
-            if (hdr == NULL) {
-                MPRO_PAGE_HEADER *lruhdr;
-                lruhdr = listc_rtl(&dbenv->mpro->pagelru);
-                if (lruhdr == NULL) {
-                    __db_panic(dbenv, ENOMEM);
-                    ret = ENOMEM;
-                    goto err;
-                }
-                hash_del(mpro->pages, lruhdr);
-                mspace_free(mpro->msp, lruhdr);
-            }
-        } while (hdr == NULL);
-        memcpy(hdr->page, h, pagesize);
-        hdr->pin = 1;
-        // TODO: get us in the right place in the commit order chain for the page
-        hdr->key.pgno = pgno;
-        memcpy(hdr->key.ufid, mpf->fileid, DB_FILE_ID_LEN);
-        hash_add(mpro->pages, hdr);
-
-        Pthread_mutex_unlock(&mpro->mpro_mutexp);
         ret = __memp_fput(mpf, h, 0);
         if (ret) {
-            printf("error memp_fput put\n");
             goto err;
         }
-        h = (PAGE*) hdr->page;
+        have_page = 0;
+        memcpy(hdr->page, h, dbp->pgsize);
     }
-    *(void**)page = h;
-    return 0;
+    // We now have a newer but still wrong page image.  Recover to the version we want
 
+    *page = (PAGE*) hdr->page;
+    return 0;
 err:
-    abort();
-    if (have_page)
-        __memp_fput(mpf, h, 0);
-    if (have_lock)
-        __lock_put(dbenv, &lock);
+    return ret;
+}
+
+// This creates the header of a pagelist only.  Note that this is called with the mpro lock held.
+int create_pagelist_in_mpro(DBC *dbc, db_pgno_t pgno, MPRO_PAGE_LIST **pages) {
+    DB *dbp = dbc->dbp;
+    DB_ENV *dbenv = dbp->dbenv;
+    MPRO_PAGE_LIST *pagelist = NULL;
+    DB_MPRO *mpro = dbenv->mpro;
+    auto
+    int ret;
+
+    ret = __os_malloc(dbenv, sizeof(MPRO_PAGE_LIST), &pagelist);
+    if (ret)
+        goto err;
+    *pages = pagelist;
+    listc_init(&pagelist->pages, offsetof(MPRO_PAGE_HEADER, commit_order));
+    hash_add(mpro->pages, pagelist);
+
+    return 0;
+err:
     return ret;
 }
 
@@ -223,7 +292,7 @@ int __mempro_init (DB_ENV *env, u_int64_t size) {
     ret = __os_calloc(env, 1, sizeof(DB_MPRO), &mp);
     if (ret)
         goto err;
-    mp->pages = hash_init_o(offsetof(MPRO_PAGE_HEADER, key), sizeof(MPRO_KEY));
+    mp->pages = hash_init_o(offsetof(MPRO_PAGE_LIST, key), sizeof(MPRO_KEY));
     if (mp->pages == NULL) {
         ret = ENOMEM;
         goto err;
@@ -260,15 +329,15 @@ int __mempro_destroy(DB_ENV *env) {
 }
 
 /*
- * PUBLIC: int __dbenv_last_commit_lsn __P((DB_ENV *dbenv, DB_LSN *lsnp));
+ * PUBLIC: int __dbenv_last_commit_lsn __P((DB_ENV *dbenv, u_int64_t *utxnid));
  */
-int __dbenv_last_commit_lsn(DB_ENV *dbenv, DB_LSN *lsnp) {
+int __dbenv_last_commit_lsn(DB_ENV *dbenv, u_int64_t *utxnid) {
     DB_MPRO *mpro = dbenv->mpro;
     Pthread_mutex_lock(&mpro->mpro_mutexp);
     if (mpro->translist.top)
-        *lsnp = mpro->translist.top->commit_lsn;
+        *utxnid = mpro->translist.top->txnid;
     else
-        ZERO_LSN(*lsnp);
+        *utxnid = 0;
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
     return 0;
 }
@@ -283,10 +352,6 @@ int __mempro_fput(DBC *dbc, void *page) {
 
     Pthread_mutex_lock(&mpro->mpro_mutexp);
     hdr->pin--;
-    if (hdr->pin > 10) {
-        printf("put %d, pg %p pin %d\n", hdr->key.pgno, page, hdr->pin);
-        printf("hi\n");
-    }
     if (hdr->pin == 0) {
         listc_abl(&mpro->pagelru, hdr);
     }
@@ -294,29 +359,31 @@ int __mempro_fput(DBC *dbc, void *page) {
     return 0;
 }
 
-// We have some newer version of a page that we either got directly from disk, or out of the buffer
-// pool.  That version is newer than what we want to see.  Roll it back to a version that's <= our start LSN.
+// We have some newer version of a page that we found on the side of the road somewhere. The only guarantee we have
+// is that version is newer than what we want to see.  Roll it back to a version that's <= our start LSN.
 // Our start LSN is the commit LSN of the latest transaction to commit when we start.
 /*
- * PUBLIC: int __mempro_get_page_as_of_lsn __P((DB_ENV *dbenv, PAGE *p, DB_LSN *start_lsn));
+ * PUBLIC: int __mempro_get_page_as_of_lsn __P((DB_ENV *dbenv, PAGE *p, u_int64_t want_txnid));
  */
-int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
+int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, u_int64_t want_txnid) {
     // walk the for the page, undo changes until we get to a page
     // modified by a transasction who's commit LSN <= our LSN
     DB_LOGC *logc = NULL;
     int ret;
     DBT dbt = {0};
+    u_int64_t pgtxnid;
 
     if ((ret = __log_cursor(dbenv, &logc)) != 0)
         goto err;
     dbt.flags = DB_DBT_REALLOC;
-    ret = logc->get(logc, start_lsn, &dbt, DB_SET);
+    ret = logc->get(logc, &LSN(pg), &dbt, DB_SET);
     if (ret)
         goto err;
     int found = 0;
     DB_LSN next;
     DB_LSN prevlsn;
-    do {
+    pgtxnid = TXNID(pg);
+    while (pgtxnid > want_txnid) {
         u_int32_t rectype;
         void *args;
         if (dbt.size < sizeof(int)) {
@@ -326,7 +393,6 @@ int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
         }
         args = NULL;
         LOGCOPY_32(&rectype, dbt.data);
-        u_int64_t utxnid;
         __db_addrem_args *addrem_args;
         __bam_cdel_args *cdel_args;
         __bam_repl_args *repl_args;
@@ -336,7 +402,6 @@ int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
         switch (rectype) {
             case DB___db_addrem: {
                 ret = __db_addrem_read(dbenv, dbt.data, &addrem_args);
-                utxnid = addrem_args->utxnid;
                 next = addrem_args->prev_lsn;
                 args = addrem_args;
                 apply = __db_addrem_recover;
@@ -344,7 +409,6 @@ int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
             }
             case DB___bam_cdel: {
                 ret = __bam_cdel_read(dbenv, dbt.data, &cdel_args);
-                utxnid = cdel_args->utxnid;
                 next = cdel_args->prev_lsn;
                 args = cdel_args;
                 apply = __bam_cdel_recover;
@@ -352,7 +416,6 @@ int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
             }
             case DB___bam_repl: {
                 ret = __bam_repl_read(dbenv, dbt.data, &repl_args);
-                utxnid = repl_args->utxnid;
                 next = repl_args->prev_lsn;
                 args = repl_args;
                 apply = __bam_repl_recover;
@@ -371,19 +434,12 @@ int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, DB_LSN *start_lsn) {
         ret = apply(dbenv, &dbt, &prevlsn, DB_TXN_ABORT, pg);
         if (ret)
             goto err;
-        DB_LSN commit_lsn;
-        ret = __mempro_get_commit_lsn_for_txn(dbenv, utxnid, &commit_lsn);
+
+        ret = logc->get(logc, &next, &dbt, DB_SET);
         if (ret)
             goto err;
-        if (log_compare(&commit_lsn, start_lsn) <= 0) {
-            found = 1;
-        }
-        else {
-            ret = logc->get(logc, &next, &dbt, DB_SET);
-            if (ret)
-                goto err;
-        }
-    } while (!found);
+        pgtxnid = TXNID(pg);
+    }
 
 err:
     if (logc)
@@ -391,4 +447,14 @@ err:
     if (dbt.data)
         free(dbt.data);
     return ret;
+}
+
+/*
+ * PUBLIC: int __mpro_dump __P((DB_ENV *dbenv));
+ */
+int __mpro_dump(DB_ENV *dbenv) {
+    DB_MPRO *mpro = dbenv->mpro;
+    if (mpro == NULL)
+        return ENOENT;
+    return 0;
 }
