@@ -723,6 +723,18 @@ int set_datetime(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const ch
     return 0;
 }
 
+void *get_value(db_clnt_setting_t *setting, struct sqlclntstate *clnt)
+{
+    if (setting->type == SETTING_INTEGER) {
+        return (int *)((char *)clnt + setting->offset);
+    } else if (setting->type == SETTING_STRING) {
+        return (char **)((char *)clnt + setting->offset);
+    } else if (setting->type == SETTING_DOUBLE) {
+        return (double *)((char *)clnt + setting->offset);
+    }
+    return NULL;
+}
+
 int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, int def, int offset)
 {
     db_clnt_setting_t *s = malloc(sizeof(db_clnt_setting_t));

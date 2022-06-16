@@ -24,21 +24,33 @@ int populate_set_commands(void **data, int *npoints)
     size_t count = listc_size(&settings);
     int rc = 0;
 
-//    rc = clnt->plugin.get_set_commands(clnt, (void ***)&commands, &count);
-//    if (rc || (count == 0))
-//        return rc;
+    //    rc = clnt->plugin.get_set_commands(clnt, (void ***)&commands, &count);
+    //    if (rc || (count == 0))
+    //        return rc;
 
     cmds = (struct setcmd_table_ent *)malloc(count * sizeof(struct setcmd_table_ent));
 
     db_clnt_setting_t *lst;
     int i = 0;
+    char def[8] = "default";
     LISTC_FOR_EACH(&settings, lst, lnk)
     {
         if (lst->desc) {
             // TODO: get the actual query used to set this command
-            cmds[i].query = "default";
+            cmds[i].query = strndup(def, 8);
             cmds[i].command = lst->desc;
-            cmds[i].value = (lst->type == SETTING_STRING) ? (char*) (clnt + lst->offset) : "NULL";
+            void *value = get_value(lst, clnt);
+
+            char out[100] = {0};
+            if (lst->type == SETTING_STRING) {
+                snprintf(out, 100, "%s", (char*)value);
+            }
+            else if (lst->type == SETTING_INTEGER) {
+                snprintf(out, 100, "%d", *(int*)value);
+            } else if (lst->type == SETTING_DOUBLE) {
+                snprintf(out, 100, "%f", *(float*)value);
+            }
+            cmds[i].value = strndup(out, 100);
         }
         ++i;
     }
@@ -51,9 +63,11 @@ int populate_set_commands(void **data, int *npoints)
 
 void free_set_commands(void *p, int n)
 {
-//    for (int i = 0; i < n; i++)
-//        free(((struct setcmd_table_ent *)p)[i].query);
-    free(p);
+    for (int i = 0; i < n; i++) {
+        free(((struct setcmd_table_ent *)p)[i].value);
+        free(((struct setcmd_table_ent *)p)[i].query);
+    }
+    // free(p);
 }
 
 sqlite3_module systblSetCommandsModule = {

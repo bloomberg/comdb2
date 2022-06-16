@@ -114,6 +114,7 @@ int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int, i
     } while (0)
 */
 int add_set_clnt(char *, set_clnt_setting *);
+void *get_value(db_clnt_setting_t *, struct sqlclntstate *);
 
 #define REGISTER_ACC_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                          \
     REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT);                                                                       \
