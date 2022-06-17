@@ -7602,6 +7602,22 @@ static inline int bdb_is_new_sc_file(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
+static int bdb_get_lowfilenum (bdb_state_type *bdb_state, int *bdberr) {
+    int lognum, ourlowfilenum;
+
+    /* if there's no cluster, use our log file, otherwise use the cluster
+     * low watermark,
+     * or our low watermark, whichever is lower */
+    lognum = get_lowfilenum_sanclist(bdb_state);
+
+    ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
+    if (ourlowfilenum == -1) return -1;
+    if (lognum == 0) lognum = ourlowfilenum;
+
+    if (ourlowfilenum < lognum) lognum = ourlowfilenum;
+    return lognum;
+}
+
 /* check if any of the file on disks start with tblname, and have the known name
    format
    (depending on file type), and if they are, queue them to the to-be-deleted
@@ -7626,8 +7642,8 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     assert(bdb_state->parent == NULL);
 
     if (bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_last_logfile(bdb_state, bdberr);
-        if (lognum == -1)
+        lognum = bdb_get_lowfilenum(bdb_state, bdberr);
+        if (lognum < 0)
             return -1;
     }
 
@@ -7824,8 +7840,8 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     assert(bdb_state->parent != NULL);
 
     if (delay && bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_last_logfile(bdb_state, bdberr);
-        if (lognum == -1)
+        lognum = bdb_get_lowfilenum(bdb_state, bdberr);
+        if (lognum < 0)
             return -1;
     }
 
@@ -8093,18 +8109,9 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     struct stat sb;
 
     if (bdb_state->attr->keep_referenced_files) {
-        int ourlowfilenum;
-
-        /* if there's no cluster, use our log file, otherwise use the cluster
-         * low watermark,
-         * or our low watermark, whichever is lower */
-        lowfilenum = get_lowfilenum_sanclist(bdb_state);
-
-        ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
-        if (ourlowfilenum == -1) return -1;
-        if (lowfilenum == 0) lowfilenum = ourlowfilenum;
-
-        if (ourlowfilenum < lowfilenum) lowfilenum = ourlowfilenum;
+        lowfilenum = bdb_get_lowfilenum(bdb_state, bdberr);
+        if (lowfilenum < 0)
+            return -1;
     }
 
     *bdberr = 0;
