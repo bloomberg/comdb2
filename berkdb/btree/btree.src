@@ -129,8 +129,8 @@ DB	fileid		int32_t		ld
 ARG	pgno		db_pgno_t	lu
 POINTER	lsn		DB_LSN *	lu
 ARG	indx		u_int32_t	lu
-ARG utxnid     u_int64_t    "PRId64"
-ARG prev_utxnid     u_int64_t    "PRId64"
+ARG utxnid     u_int64_t    "PRIx64"
+ARG prev_utxnid     u_int64_t    "PRIx64"
 POINTER	prevprev_pagelsn		DB_LSN *	lu
 END
 
@@ -156,8 +156,8 @@ DBT	orig		DBT		s
 DBT	repl		DBT		s
 ARG	prefix		u_int32_t	lu
 ARG	suffix		u_int32_t	lu
-ARG utxnid     u_int64_t    "PRId64"
-ARG prev_utxnid     u_int64_t    "PRId64"
+ARG utxnid     u_int64_t    "PRIx64"
+ARG prev_utxnid     u_int64_t    "PRIx64"
 POINTER	prevprev_pagelsn		DB_LSN *	lu
 END
 

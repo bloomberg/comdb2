@@ -11,6 +11,7 @@ typedef struct ___txn_regop_args {
 	u_int32_t	opcode;
 	int32_t	timestamp;
 	DBT	locks;
+    u_int64_t utxnid;
 } __txn_regop_args;
 
 #define	DB___txn_ckp	11
@@ -22,6 +23,7 @@ typedef struct ___txn_ckp_args {
 	DB_LSN	last_ckp;
 	int32_t	timestamp;
 	u_int32_t	rep_gen;
+    u_int64_t max_utxnid;
 } __txn_ckp_args;
 
 #define	DB___txn_child	12
@@ -71,6 +73,7 @@ typedef struct ___txn_regop_rowlocks_args {
 	u_int32_t generation;
 	DBT	locks;
 	DBT	rowlocks;
+    u_int64_t utxnid;
 } __txn_regop_rowlocks_args;
 
 #define	DB___txn_regop_gen	16
@@ -83,6 +86,7 @@ typedef struct ___txn_regop_gen_args {
 	u_int64_t	context;
 	u_int64_t	timestamp;
 	DBT	locks;
+    u_int64_t   utxnid;
 } __txn_regop_gen_args;
 
 #endif

@@ -1222,6 +1222,11 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 					goto err;
 				}
 				first_lsn = ckp_args->ckp_lsn;
+                // Just set a starting point to something higher than this checkpoint
+                // We'll process transactions, and in their commit recovery routine for the forward pass
+                // we'll remember the highest value.
+                dbenv->next_utxnid = ckp_args->max_utxnid+1;
+                printf("got txnid %"PRIx64" from checkpoint\n", dbenv->next_utxnid);
 				have_rec = 0;
 				logmsg(LOGMSG_DEBUG, "checkpoint %u:%u points to last lsn %u:%u\n",
 					logged_checkpoint_lsn.file,
@@ -1665,7 +1670,10 @@ msgerr:	__db_err(dbenv,
 #endif
 	}
 
-err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
+
+
+err:
+    if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 
 	if (txninfo != NULL)
@@ -1694,7 +1702,10 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 	F_CLR(region, TXN_IN_RECOVERY);
 	dbenv->recovery_pass = DB_TXN_NOT_IN_RECOVERY;
 
-	return (ret);
+    if (ret == 0)
+       logmsg(LOGMSG_USER, ">> after recovery, next utxnid %"PRId64"\n", dbenv->next_utxnid);
+
+    return (ret);
 }
 
 /*

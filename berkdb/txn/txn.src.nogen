@@ -54,6 +54,7 @@ BEGIN regop		10
 ARG	opcode		u_int32_t	lu
 TIME	timestamp	int32_t		ld
 DBT	locks		DBT		s
+ARG utxnid      u_int64_t "PRIx64"
 END
 
 /*
@@ -134,6 +135,7 @@ ARG lflags      u_int32_t   u
 ARG generation  u_int32_t   u
 DBT	locks		DBT		s
 DBT	rowlocks	DBT		s
+ARG utxnid      u_int64_t "PRIx64"
 END
 
 
@@ -147,5 +149,6 @@ ARG generation  u_int32_t   u
 ARG context   genid_t llx
 TIME	timestamp	u_int64_t		llx
 DBT	locks		DBT		s
+ARG utxnid      u_int64_t "PRIx64"
 END
 

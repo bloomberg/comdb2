@@ -49,7 +49,7 @@ extern int gbl_snapisol;
  */
 static int
 __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
-   opcode, timestamp, locks, usr_ptr)
+   opcode, timestamp, locks, utxnid, usr_ptr)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -58,12 +58,14 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int32_t opcode;
 	int32_t timestamp;
 	const DBT *locks;
+    u_int64_t utxnid;
     void *usr_ptr;
 {
 	DBT logrec;
 	DB_TXNLOGREC *lr;
 	DB_LSN *lsnp, null_lsn;
 	u_int32_t zero, uinttmp, rectype, txn_num;
+    u_int64_t uint64tmp;
 	u_int npad;
 	u_int8_t *bp;
 	int is_durable, ret;
@@ -105,7 +107,8 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t)
-	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size);
+	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size)
+        + sizeof(u_int64_t);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
 		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
@@ -183,6 +186,9 @@ do_malloc:
 		bp += sizeof(locks->size);
 		memcpy(bp, locks->data, locks->size);
 		bp += locks->size;
+
+        LOGCOPY_32(bp, &uinttmp);
+        bp += sizeof(uinttmp);
       if (gbl_snapisol)
       {
          /* save location in the log stream, if any */
@@ -194,8 +200,11 @@ do_malloc:
          }
       }
 	}
+    uint64tmp = (u_int64_t)utxnid;
+    LOGCOPY_64(bp, &uint64tmp);
+    bp += sizeof(uint64tmp);
 
-	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
+    DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
 
 #ifdef DIAGNOSTIC
 	if (!is_durable && txnid != NULL) {
@@ -251,7 +260,7 @@ do_put:
 
 int
 __txn_regop_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
-    opcode, timestamp, locks)
+    opcode, timestamp, locks, utxnid)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -260,14 +269,15 @@ __txn_regop_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int32_t opcode;
 	int32_t timestamp;
 	const DBT *locks;
+    u_int64_t utxnid;
 {
    return __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
-      opcode, timestamp, locks, 0);
+      opcode, timestamp, locks, utxnid, 0);
 }   
 
 int
 __txn_regop_log_commit(dbenv, txnid, ret_lsnp, ret_contextp, flags,
-   opcode, timestamp, locks, usr_ptr)
+   opcode, timestamp, locks, utxnid, usr_ptr)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -276,10 +286,11 @@ __txn_regop_log_commit(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int32_t opcode;
 	int32_t timestamp;
 	const DBT *locks;
+    u_int64_t utxnid;
 	void *usr_ptr;
 {
    return __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
-      opcode, timestamp, locks, usr_ptr);
+      opcode, timestamp, locks, utxnid, usr_ptr);
 }   
 
 
@@ -360,7 +371,8 @@ __txn_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 {
 	__txn_regop_args *argp;
 	u_int32_t uinttmp;
-	u_int8_t *bp;
+    u_int64_t uint64tmp;
+    u_int8_t *bp;
 	int ret;
 
 #ifdef __txn_DEBUG
@@ -396,7 +408,11 @@ __txn_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->locks.data = bp;
 	bp += argp->locks.size;
 
-	*argpp = argp;
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->utxnid = (u_int64_t)uint64tmp;
+    bp += sizeof(uint64tmp);
+
+    *argpp = argp;
 	return (0);
 }
 
@@ -464,13 +480,12 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
         char *p = &((char *)argp->locks.data)[argp->locks.size - 8];
         memcpy(&commit_context, p, 8);
     }
+    (void)printf("\tutxnid: %"PRIx64"\n", argp->utxnid);
+    /* Print commit context */
     printf("\tcommit-context: 0x%llx\n", commit_context);
 	(void)printf("\n");
+    fflush(stdout);
 
-    /* Print commit context */
-
-	fflush(stdout);
-	(void)printf("\n");
 	__os_free(dbenv, argp);
 
 	return (0);
@@ -529,6 +544,10 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	u_int8_t *bp;
 	int is_durable, ret;
 	int used_malloc = 0;
+
+    printf(">> checkpoint: %"PRIx64"\n", max_utxnid);
+    if (max_utxnid > 1000000)
+        abort();
 
     if (last_ckp->file == 0 && last_ckp->offset == 0 && ckp_lsn->file != 1 && ckp_lsn->offset != 28) {
         __db_err(dbenv, "Logging a non-first checkpoint with a 0:0 last checkpoint lsn\n");
@@ -779,7 +798,8 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	__txn_ckp_args **argpp;
 {
 	__txn_ckp_args *argp;
-	u_int32_t uinttmp;
+    u_int32_t uinttmp;
+    u_int64_t uint64tmp;
 	u_int8_t *bp;
 	int ret;
 
@@ -815,6 +835,10 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_32(&uinttmp, bp);
 	argp->rep_gen = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
+
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->max_utxnid = (u_int64_t)uint64tmp;
+    bp += sizeof(uint64tmp);
 
 	*argpp = argp;
 	return (0);
@@ -872,7 +896,8 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
         printf("\ttimestamp: %ld\n", (long)argp->timestamp);
     }
 	fflush(stdout);
-	(void)printf("\trep_gen: %ld\n", (long)argp->rep_gen);
+    (void)printf("\trep_gen: %ld\n", (long)argp->rep_gen);
+    (void)printf("\tmax_utxnid: %"PRIx64"\n", argp->max_utxnid);
 	fflush(stdout);
 	(void)printf("\n");
 	__os_free(dbenv, argp);
@@ -1999,7 +2024,7 @@ __txn_recycle_read(dbenv, recbuf, argpp)
 int
 __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
     opcode, ltranid, begin_lsn, last_commit_lsn, timestamp,
-    lflags, generation, locks, rowlocks, usr_ptr)
+    lflags, generation, locks, rowlocks, utxnid, usr_ptr)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -2014,6 +2039,7 @@ __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int32_t generation;
 	const DBT *locks;
 	const DBT *rowlocks;
+    u_int64_t utxnid;
     void *usr_ptr;
 {
 	DBT logrec;
@@ -2066,7 +2092,8 @@ __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size)
-	    + sizeof(u_int32_t) + (rowlocks == NULL ? 0 : rowlocks->size);
+	    + sizeof(u_int32_t) + (rowlocks == NULL ? 0 : rowlocks->size)
+        + sizeof(u_int64_t);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
 		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
@@ -2211,6 +2238,9 @@ do_malloc:
 		memcpy(bp, rowlocks->data, rowlocks->size);
 		bp += rowlocks->size;
 	}
+
+    LOGCOPY_64(bp, &utxnid);
+    bp += sizeof(utxnid);
 
 	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
 
@@ -2413,7 +2443,12 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->rowlocks.data = bp;
 	bp += argp->rowlocks.size;
 
-	*argpp = argp;
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->utxnid = uint64tmp;
+    bp += sizeof(uint64tmp);
+
+
+    *argpp = argp;
 	return (0);
 }
 
@@ -2475,7 +2510,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
         (void)printf("\ttimestamp: %ld\n", (long)argp->timestamp);
     }
 	fflush(stdout);
-	(void)printf("\tgeneration: %u\n", argp->generation);
+    (void)printf("\tgeneration: %u\n", argp->generation);
 	(void)printf("\tlflags: 0x%08x ", argp->lflags);
 	if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
 		printf("DB_TXN_LOGICAL_BEGIN ");
@@ -2498,8 +2533,9 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\trowlocks: \n");
 	fsnapf(stdout, argp->rowlocks.data, argp->rowlocks.size);
-	fflush(stdout);
 	(void)printf("\n");
+    (void)printf("\tutxnid: %"PRIx64"\n", argp->utxnid);
+    fflush(stdout);
 	__os_free(dbenv, argp);
 
 	return (0);
@@ -2525,7 +2561,7 @@ __txn_regop_rowlocks_read(dbenv, recbuf, argpp)
  */
 int
 __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
-    opcode, generation, timestamp, locks, usr_ptr)
+    opcode, generation, timestamp, locks, utxnid, usr_ptr)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -2535,6 +2571,7 @@ __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	u_int32_t generation;
 	u_int64_t timestamp;
 	const DBT *locks;
+    u_int64_t utxnid;
     void *usr_ptr;
 {
 	DBT logrec;
@@ -2582,7 +2619,8 @@ __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int64_t)
 	    + sizeof(u_int64_t)
-	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size);
+	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size)
+        + sizeof(u_int64_t);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
 		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
@@ -2670,6 +2708,10 @@ do_malloc:
 		memcpy(bp, locks->data, locks->size);
 		bp += locks->size;
 	}
+
+    uint64tmp = (u_int64_t)utxnid;
+    LOGCOPY_64(bp, &uint64tmp);
+    bp += sizeof(uint64tmp);
 
 	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
 
@@ -2844,6 +2886,10 @@ __txn_regop_gen_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->locks.data = bp;
 	bp += argp->locks.size;
 
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->utxnid = (u_int64_t)uint64tmp;
+    bp += sizeof(uint64tmp);
+
 	*argpp = argp;
 	return (0);
 }
@@ -2905,15 +2951,16 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
     }
 	fflush(stdout);
 	(void)printf("\tlocks: \n");
+    (void)printf("\tutxnid: %"PRIx64"\n", argp->utxnid);
 
     DB_LSN ignored;
     int pglogs;
     u_int32_t keycnt;
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 
-	//fsnapf(stdout, argp->locks.data, argp->locks.size);
-	fflush(stdout);
+    //fsnapf(stdout, argp->locks.data, argp->locks.size);
 	(void)printf("\n");
+    fflush(stdout);
 	__os_free(dbenv, argp);
 
 	return (0);

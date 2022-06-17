@@ -548,12 +548,12 @@ extern pthread_key_t txn_key;
 do {                                           \
     if (F_ISSET(dbc, DBC_SNAPSHOT)) {   \
         ret = __mempro_fget(dbc, pgno, &(page));                  \
-        printf("new get %s line %d pgno %u ret %d pg %p\n", __func__, __LINE__, pgno, ret, page);       \
+        /*printf("new get %s line %d pgno %u ret %d pg %p\n", __func__, __LINE__, pgno, ret, page); */   \
     }                                        \
     else {                              \
         ret = __memp_fget(mpf, &(pgno), flags, &(page));          \
         BH *bhp = (BH *)((u_int8_t *)page - SSZA(BH, buf));                                      \
-        printf("old get %s %d ret %d pin %hd\n", __func__, __LINE__, ret, bhp->ref);     \
+        /*printf("old get %s %d ret %d pin %hd\n", __func__, __LINE__, ret, bhp->ref);*/  \
     }                                            \
 } while(0)
 
@@ -561,11 +561,11 @@ do {                                           \
 do {                                         \
      if (F_ISSET(dbc, DBC_SNAPSHOT))     {  \
         ret = __mempro_fput(dbc, page);     \
-        printf("new put %s %d ret %d pg %p\n", __func__, __LINE__, ret, page);    \
+        /*printf("new put %s %d ret %d pg %p\n", __func__, __LINE__, ret, page); */  \
      }                                      \
      else {                                 \
         ret = __memp_fput(mpf, page, flags);    \
-        printf("old put %s %d ret %d pg %p\n", __func__, __LINE__, ret, page);    \
+        /*printf("old put %s %d ret %d pg %p\n", __func__, __LINE__, ret, page); */   \
      } \
 } while(0)
 

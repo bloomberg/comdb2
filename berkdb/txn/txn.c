@@ -726,7 +726,8 @@ int
 
 __txn_regop_gen_log(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
 	u_int64_t * ret_contextp, u_int32_t flags, u_int32_t opcode,
-	u_int32_t generation, u_int64_t timestamp, const DBT *locks, void *usr_ptr);
+	u_int32_t generation, u_int64_t timestamp, const DBT *locks, u_int64_t utxnid,
+    void *usr_ptr);
 
 
 int
@@ -735,7 +736,7 @@ __txn_regop_rowlocks_log(DB_ENV *dbenv, DB_TXN *txnid, DB_LSN *ret_lsnp,
 	u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
 	u_int64_t ltranid, DB_LSN *begin_lsn, DB_LSN *last_commit_lsn,
 	u_int64_t timestamp, u_int32_t lflags, u_int32_t generation,
-	const DBT *locks, const DBT *rowlocks, void *usr_ptr);
+	const DBT *locks, const DBT *rowlocks, u_int64_t utxnid, void *usr_ptr);
 
 static int
 __txn_check_applied_lsns(DB_ENV *dbenv, DB_TXN *txnp)
@@ -1166,7 +1167,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						TXN_COMMIT, ltranid, begin_lsn,
 						last_commit_lsn, timestamp,
 						ltranflags, gen, request.obj,
-						&list_dbt_rl, usr_ptr);
+						&list_dbt_rl, txnp->utxnid, usr_ptr);
 #if defined DEBUG_STACK_AT_TXN_LOG
 					comdb2_cheapstack_sym(stderr, "COMMIT-RL TXNID %x LSN [%d:%d]",
 							txnp->txnid, lsn_out->file, lsn_out->offset);
@@ -1209,7 +1210,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							txnp, &txnp->last_lsn,
 							&context, lflags,
 							TXN_COMMIT, gen, timestamp,
-							request.obj, usr_ptr);
+							request.obj, txnp->utxnid, usr_ptr);
 #if defined DEBUG_STACK_AT_TXN_LOG
 						comdb2_cheapstack_sym(stderr, "TXN-COMMIT-GEN TXNID %x LSN [%d:%d]",
 								txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);
@@ -1626,7 +1627,8 @@ __txn_abort(txnp)
 
 	if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
-			lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
+			lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL,
+            txnp->utxnid)) != 0)
 		 return (__db_panic(dbenv, ret));
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {

@@ -671,6 +671,8 @@ DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10,
 DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
          "Spew debug info about deleting old files.")
 
+DEF_ATTR(USE_SNAPSHOT_FOR_SQL, use_snapshot_for_sql, BOOLEAN, 0, "For SQL cursors, use cursor snapshot mode.")
+
 /*
   BDB_ATTR_REPTIMEOUT
      amount of time to wait for acks.  when the time is exceeded,

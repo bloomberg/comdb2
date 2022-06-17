@@ -49,6 +49,7 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 #include "dbinc/db_page.h"
 #include "dbinc/txn.h"
 #include "dbinc/db_am.h"
+#include "printformats.h"
 
 #include <stdlib.h>
 #include <assert.h>
@@ -85,7 +86,9 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 	(void)__txn_regop_gen_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
-	db_rep = dbenv->rep_handle;
+    // printf(">> "PR_LSN" %s: %"PRIx64"\n", PARM_LSNP(lsnp), __func__, dbenv->next_utxnid);
+
+    db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
 	if ((ret = __txn_regop_gen_read(dbenv, dbtp->data, &argp)) != 0)
@@ -111,6 +114,9 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		 * might already have been removed from the list, and
 		 * that's OK.  Ignore the return code from remove.
 		 */
+        if (argp->utxnid > dbenv->next_utxnid) {
+            dbenv->next_utxnid = argp->utxnid;
+        }
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
@@ -221,6 +227,10 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 * that's OK.  Ignore the return code from remove.
 		 */
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+        if (argp->utxnid > dbenv->next_utxnid) {
+            dbenv->next_utxnid = argp->utxnid;
+            printf(">> %s: %"PRIx64"\n", __func__, dbenv->next_utxnid);
+        }
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t)dbenv->tx_timestamp) ||
 	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -358,6 +368,10 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	}
 	else if (op == DB_TXN_FORWARD_ROLL) 
 	{
+        if (argp->utxnid > dbenv->next_utxnid) {
+            printf(">> %s: %"PRIx64"\n", __func__, dbenv->next_utxnid);
+            dbenv->next_utxnid = argp->utxnid;
+        }
 		if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
 		{
 			assert(NULL == lt);

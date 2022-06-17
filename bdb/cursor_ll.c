@@ -205,6 +205,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
     int lwmrc = 0;
     int cmp;
     u_int32_t curflags = 0;
+    bdb_state_type *env = bdb_state->parent;
 
     *bdberr = 0;
 
@@ -302,7 +303,8 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
             if (cur->discardpages)
                 curflags |= DB_DISCARD_PAGES;
         }
-        curflags |= DB_CUR_SNAPSHOT;
+        if (env->attr->use_snapshot_for_sql)
+            curflags |= DB_CUR_SNAPSHOT;
 
         dbc = get_cursor_for_cursortran_flags(cur->curtran, db, curflags, bdberr);
 

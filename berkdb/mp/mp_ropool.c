@@ -32,6 +32,8 @@ int create_pagelist_in_mpro(DBC *dbc, db_pgno_t pgno, MPRO_PAGE_LIST **pages);
 
 int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAGE **page);
 
+void destroy_pagelist(MPRO_PAGE_LIST *pagelist);
+
 /*
  *  PUBLIC: int __mempro_fget
  *  PUBLIC:     __P((DBC *, db_pgno_t, void *));
@@ -67,12 +69,11 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
     return 0;
 
 err:
+    Pthread_mutex_unlock(&mpro->mpro_mutexp);
     // There's no separate lru for page lists - we remove the page list if there's no more pages.
     // If we created a page list but failed to add a page to it, remove it here.
     if (nopages && pages && pages->pages.count == 0) {
-        Pthread_mutex_lock(&mpro->mpro_mutexp);
         hash_del(mpro->pages, pages);
-        Pthread_mutex_unlock(&mpro->mpro_mutexp);
         free(pages);
     }
     abort();
@@ -102,12 +103,12 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
         h = (PAGE*) hdr->page;
         if (h->txnid <= utxnid) {
             // We found a page that's older than our transaction. Now we need to check that there's no newer
-            // transaction that also modified the page.  If there isn't, this is the right version.  The check is easy
-            // if we have a newer transaction in the list preceding us - just check that it's previous id is us.  If
-            // it is, we're done.  If not, there may be transactions that modified this page between us and the version
-            // in the list.  The previous page is newer than what we need (or we would have stopped there). So start
-            // there and roll back to the version we need. If there's no previous version, we need to start somewhere
-            // so grab it from the "real" buffer pool.
+            // transaction that also modified the page.  That we can use. If there isn't, this is the right version.
+            // The check is easy if we have a newer transaction in the list preceding us - just check that it's previous
+            // id is us.  If it is, we're done.  If not, there may be transactions that modified this page between us
+            // and the version in the list.  The previous page is newer than what we need (or we would have stopped
+            // there). So start there and roll back to the version we need. If there's no previous version, we need to
+            // start somewhere so grab it from the "real" buffer pool.
             if (hdr->commit_order.prev && ((PAGE*) hdr->commit_order.prev->page)->prev_txnid == h->txnid) {
                 if (hdr->pin == 0) {
                     listc_rfl(&mpro->pagelru, hdr);
@@ -125,18 +126,25 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
     do {
         hdr = mspace_malloc(dbenv->mpro->msp, offsetof(MPRO_PAGE_HEADER, page) + dbp->pgsize);
         if (hdr == NULL) {
+            MPRO_PAGE_LIST *lrulist;
             MPRO_PAGE_HEADER *lruhdr;
-            lruhdr = listc_rtl(&dbenv->mpro->pagelru);
+            lruhdr = listc_rtl(&mpro->pagelru);
             if (lruhdr == NULL) {
                 __db_panic(dbenv, ENOMEM);
                 ret = ENOMEM;
                 goto err;
             }
-            hash_del(mpro->pages, lruhdr);
+            lrulist = lruhdr->pagelist;
+            if (lrulist->pages.count == 0) {
+                hash_del(mpro->pages, lruhdr);
+                destroy_pagelist(lrulist);
+            }
             mspace_free(mpro->msp, lruhdr);
         }
     } while (hdr == NULL);
+    have_page_image = 1;
     hdr->pin = 0;
+    hdr->pagelist = pagelist;
     have_page_image = 1;
 
     if (hdr->commit_order.prev) {
@@ -156,6 +164,7 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
         if (ret == DB_LOCK_NOTGRANTED) {
             // something has this lock - we can't get the page from the buffer pool safely
             // HERE: get page anyway, checksum until stable? Get from disk, as long as newer than what we need?
+            //       Add read/write lock intents to buffer pool?
             goto err;
         }
         else if (ret) {
@@ -180,12 +189,28 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
         have_page = 0;
         memcpy(hdr->page, h, dbp->pgsize);
     }
+
     // We now have a newer but still wrong page image.  Recover to the version we want
+    ret = __mempro_get_page_at_txnid(dbenv, (PAGE*) hdr->page, dbc->utxnid);
+    if (ret)
+        goto err;
 
     *page = (PAGE*) hdr->page;
     return 0;
+
 err:
+    if (have_page)
+        __memp_fput(mpf, h, 0);
+    if (have_lock)
+        __lock_put(dbenv, &lock);
+    if (have_page_image)
+        mspace_free(mpro->msp, hdr);
     return ret;
+}
+
+void destroy_pagelist(MPRO_PAGE_LIST *pagelist) {
+    // Pthread_mutex_destroy(&pagelist->lk);
+    free(pagelist);
 }
 
 // This creates the header of a pagelist only.  Note that this is called with the mpro lock held.
@@ -226,7 +251,7 @@ int __mempro_add_txn(DB_ENV *dbenv, u_int64_t txnid, DB_LSN commit_lsn) {
     txn->commit_lsn = commit_lsn;
     txn->timestamp = now;
 
-    printf("%"PRIx64" %u:%u\n", txnid, commit_lsn.file, commit_lsn.offset);
+    // printf("%"PRIx64" %u:%u\n", txnid, commit_lsn.file, commit_lsn.offset);
 
     Pthread_mutex_lock(&dbenv->mpro->mpro_mutexp);
     old = hash_find(dbenv->mpro->transactions, &txnid);
@@ -363,11 +388,11 @@ int __mempro_fput(DBC *dbc, void *page) {
 // is that version is newer than what we want to see.  Roll it back to a version that's <= our start LSN.
 // Our start LSN is the commit LSN of the latest transaction to commit when we start.
 /*
- * PUBLIC: int __mempro_get_page_as_of_lsn __P((DB_ENV *dbenv, PAGE *p, u_int64_t want_txnid));
+ * PUBLIC: int __mempro_get_page_at_txnid __P((DB_ENV *dbenv, PAGE *p, u_int64_t want_txnid));
  */
-int __mempro_get_page_as_of_lsn(DB_ENV *dbenv, PAGE *pg, u_int64_t want_txnid) {
-    // walk the for the page, undo changes until we get to a page
-    // modified by a transasction who's commit LSN <= our LSN
+int __mempro_get_page_at_txnid(DB_ENV *dbenv, PAGE *pg, u_int64_t want_txnid) {
+    // walk the log for the page, undo changes until we get to a page
+    // modified by a transasction who's txnid <= our txnid
     DB_LOGC *logc = NULL;
     int ret;
     DBT dbt = {0};

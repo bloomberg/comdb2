@@ -171,6 +171,10 @@ struct __rowlock_list; typedef struct __rowlock_list RLLIST;
 struct __recovery_processor;
 struct __recovery_list;
 struct __db_trigger_subscription;
+struct __mpro_key; typedef struct __mpro_key MPRO_KEY;
+struct __utxnid_track;  typedef struct __utxnid_track UTXNID_TRACK;
+struct __mpro_page_list; typedef struct __mpro_page_list MPRO_PAGE_LIST;
+struct __mpro_page_header; typedef struct __mpro_page_header MPRO_PAGE_HEADER;
 
 struct __mpro;  typedef struct __mpro DB_MPRO;
 
@@ -2746,26 +2750,23 @@ struct __mpro_key {
     db_pgno_t pgno;
     u_int8_t ufid[DB_FILE_ID_LEN];
 };
-typedef struct __mpro_key MPRO_KEY;
-struct __utxnid_track;  typedef struct __utxnid_track UTXNID_TRACK;
 
 struct __mpro_page_header {
     u_int16_t pin;
+    MPRO_PAGE_LIST *pagelist;
     LINKC_T(struct __mpro_page_header) lrulnk;
     LINKC_T(struct __mpro_page_header) commit_order;
     char page[1];
 };
-typedef struct __mpro_page_header MPRO_PAGE_HEADER;
 
 struct __mpro_page_list {
     MPRO_KEY key;
-    pthread_mutex_t lk;
+    // pthread_mutex_t lk;
 
     // Temporary. We'll need a better data structure here than a list.  An in-memory btree would be ideal.
     // BerkleyDB's may be too heavy for the purpose.
     LISTC_T(struct __mpro_page_header) pages;
 };
-typedef struct __mpro_page_list MPRO_PAGE_LIST;
 
 struct __utxnid_track {
     u_int64_t txnid;
