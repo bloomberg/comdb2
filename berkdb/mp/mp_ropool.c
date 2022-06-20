@@ -49,6 +49,11 @@ int __mempro_fget(DBC *dbc, db_pgno_t pgno, void *page) {
     int nopages = 0;
     MPRO_PAGE_LIST *pages = NULL;
 
+    if (0) {
+fail:
+        printf("fail\n");
+    }
+
     k.pgno = pgno;
     memcpy(k.ufid, mpf->fileid, DB_FILE_ID_LEN);
     Pthread_mutex_lock(&mpro->mpro_mutexp);
@@ -76,7 +81,7 @@ err:
         hash_del(mpro->pages, pages);
         free(pages);
     }
-    abort();
+    goto fail;
     return ret;
 }
 
@@ -92,7 +97,7 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
     PAGE *h;
 
     // This is the txnid we're targetting
-    u_int64_t utxnid = dbc->utxnid;
+    DB_LSN snapshot_lsn = dbc->snapshot_lsn;
 
     int have_lock = 0, have_page = 0, have_page_image = 0;
     int ret;
@@ -101,7 +106,10 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
     hdr = pagelist->pages.top;
     while (hdr) {
         h = (PAGE*) hdr->page;
-        if (h->txnid <= utxnid) {
+        DB_LSN current_lsn;
+        // TODO: cache last?
+        ret = __mempro_get_commit_lsn_for_txn(dbenv, h->txnid, &current_lsn);
+        if (log_compare(&current_lsn, &snapshot_lsn) <= 0) {
             // We found a page that's older than our transaction. Now we need to check that there's no newer
             // transaction that also modified the page.  That we can use. If there isn't, this is the right version.
             // The check is easy if we have a newer transaction in the list preceding us - just check that it's previous
@@ -191,7 +199,7 @@ int find_page_for_cursor(MPRO_PAGE_LIST *pagelist, DBC *dbc, db_pgno_t pgno, PAG
     }
 
     // We now have a newer but still wrong page image.  Recover to the version we want
-    ret = __mempro_get_page_at_txnid(dbenv, (PAGE*) hdr->page, dbc->utxnid);
+    ret = __mempro_get_page_at_txnid(dbenv, (PAGE*) hdr->page, &dbc->snapshot_lsn);
     if (ret)
         goto err;
 
@@ -354,15 +362,17 @@ int __mempro_destroy(DB_ENV *env) {
 }
 
 /*
- * PUBLIC: int __dbenv_last_commit_lsn __P((DB_ENV *dbenv, u_int64_t *utxnid));
+ * PUBLIC: int __dbenv_last_commit_lsn __P((DB_ENV *dbenv, DB_LSN *lsnp));
  */
-int __dbenv_last_commit_lsn(DB_ENV *dbenv, u_int64_t *utxnid) {
+int __dbenv_last_commit_lsn(DB_ENV *dbenv, DB_LSN *lsnp) {
     DB_MPRO *mpro = dbenv->mpro;
     Pthread_mutex_lock(&mpro->mpro_mutexp);
     if (mpro->translist.top)
-        *utxnid = mpro->translist.top->txnid;
-    else
-        *utxnid = 0;
+        *lsnp = mpro->translist.top->commit_lsn;
+    else {
+        // TODO: we can have no transactions on the list - consider an idle database.
+        ZERO_LSN(*lsnp);
+    }
     Pthread_mutex_unlock(&mpro->mpro_mutexp);
     return 0;
 }
@@ -386,17 +396,20 @@ int __mempro_fput(DBC *dbc, void *page) {
 
 // We have some newer version of a page that we found on the side of the road somewhere. The only guarantee we have
 // is that version is newer than what we want to see.  Roll it back to a version that's <= our start LSN.
-// Our start LSN is the commit LSN of the latest transaction to commit when we start.
+// Our start LSN is the commit LSN of the latest transaction to commit when we start.  That's passed to us as
+// want_txnid.
 /*
- * PUBLIC: int __mempro_get_page_at_txnid __P((DB_ENV *dbenv, PAGE *p, u_int64_t want_txnid));
+ * PUBLIC: int __mempro_get_page_at_txnid __P((DB_ENV *dbenv, PAGE *pg, DB_LSN *want_lsn));
  */
-int __mempro_get_page_at_txnid(DB_ENV *dbenv, PAGE *pg, u_int64_t want_txnid) {
+int __mempro_get_page_at_txnid(DB_ENV *dbenv, PAGE *pg, DB_LSN *want_lsn) {
     // walk the log for the page, undo changes until we get to a page
     // modified by a transasction who's txnid <= our txnid
     DB_LOGC *logc = NULL;
     int ret;
     DBT dbt = {0};
     u_int64_t pgtxnid;
+
+    DB_LSN current_txn_lsn;
 
     if ((ret = __log_cursor(dbenv, &logc)) != 0)
         goto err;
@@ -408,7 +421,12 @@ int __mempro_get_page_at_txnid(DB_ENV *dbenv, PAGE *pg, u_int64_t want_txnid) {
     DB_LSN next;
     DB_LSN prevlsn;
     pgtxnid = TXNID(pg);
-    while (pgtxnid > want_txnid) {
+    ret = __mempro_get_commit_lsn_for_txn(dbenv, pgtxnid, &current_txn_lsn);
+    if (ret) {
+        // TODO: We can be asked for a transactions just before it expires.
+        goto err;
+    }
+    while (log_compare(&current_txn_lsn, want_lsn) > 0) {
         u_int32_t rectype;
         void *args;
         if (dbt.size < sizeof(int)) {
@@ -464,6 +482,11 @@ int __mempro_get_page_at_txnid(DB_ENV *dbenv, PAGE *pg, u_int64_t want_txnid) {
         if (ret)
             goto err;
         pgtxnid = TXNID(pg);
+        ret = __mempro_get_commit_lsn_for_txn(dbenv, pgtxnid, &current_txn_lsn);
+        if (ret) {
+            // TODO: We can be asked for a transactions just before it expires.
+            goto err;
+        }
     }
 
 err:

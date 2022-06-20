@@ -45,6 +45,7 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 #include <string.h>
 #endif
 
+#include "db_config.h"
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/txn.h"
@@ -55,6 +56,8 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 #include <assert.h>
 
 #include "logmsg.h"
+#include "dbinc/mp.h"
+#include "dbinc_auto/mp_ext.h"
 
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
@@ -70,7 +73,7 @@ int set_commit_context(unsigned long long context, uint32_t *generation,
  */
 int
 __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
-	DB_ENV *dbenv;
+DB_ENV *dbenv;
 	DBT *dbtp;
 	DB_LSN *lsnp;
 	db_recops op;
@@ -124,6 +127,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
         if (argp->generation > rep->gen)
             __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        __mempro_add_txn(dbenv, argp->utxnid, *lsnp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
 	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -229,8 +233,8 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
         if (argp->utxnid > dbenv->next_utxnid) {
             dbenv->next_utxnid = argp->utxnid;
-            printf(">> %s: %"PRIx64"\n", __func__, dbenv->next_utxnid);
         }
+        __mempro_add_txn(dbenv, argp->utxnid, *lsnp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t)dbenv->tx_timestamp) ||
 	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -421,7 +425,8 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
         if (argp->generation > rep->gen)
             __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	} 
+        __mempro_add_txn(dbenv, argp->utxnid, *lsnp);
+	}
 	else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
 	    	(!IS_ZERO_LSN(headp->trunc_lsn) &&

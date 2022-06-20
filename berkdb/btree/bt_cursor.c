@@ -733,11 +733,11 @@ comdb2__db_c_replace_lockid(dbc, lockid)
 }
 
 static int
-comdb2__db_c_set_snapshot_lsn(dbc, utxnid)
+comdb2__db_c_set_snapshot_lsn(dbc, lsnp)
 DBC *dbc;
-u_int64_t utxnid;
+DB_LSN *lsnp;
 {
-    dbc->utxnid = utxnid;
+    dbc->snapshot_lsn = *lsnp;
     return 0;
 }
 

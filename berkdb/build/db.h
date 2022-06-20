@@ -1970,7 +1970,7 @@ struct __dbc {
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
 	int (*c_replace_lockid) __P((DBC *, u_int32_t));
-    int (*c_set_snapshot_lsn) __P((DBC*, u_int64_t));
+    int (*c_set_snapshot_lsn) __P((DBC*, DB_LSN *lsn));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
@@ -2011,7 +2011,7 @@ struct __dbc {
 	char*       pf; // Added by Fabio for prefaulting the index pages
 	db_pgno_t   lastpage; // pgno of last move
 
-    u_int64_t utxnid;
+    DB_LSN snapshot_lsn;
 };
 extern pthread_key_t DBG_FREE_CURSOR;
 
@@ -2738,7 +2738,7 @@ struct __db_env {
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
-    int (*last_commit_lsn) __P((DB_ENV *, u_int64_t *));
+    int (*last_commit_lsn) __P((DB_ENV *, DB_LSN *));
 
     pthread_mutex_t utxnid_lock;
     u_int64_t next_utxnid;

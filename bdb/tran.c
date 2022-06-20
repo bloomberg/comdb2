@@ -2448,7 +2448,7 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
                 curtran->id, curtran, (curtran) ? curtran->lockerid : -1U,
                 *bdberr);
     if (curtran)
-        bdb_state->dbenv->last_commit_lsn(bdb_state->dbenv, &curtran->last_commit_txn);
+        bdb_state->dbenv->last_commit_lsn(bdb_state->dbenv, &curtran->last_commit_lsn);
 
     return curtran;
 }
