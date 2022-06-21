@@ -94,6 +94,7 @@
 #include "bdb_osqllog.h"
 #include "logmsg.h"
 #include "tohex.h"
+#include "printformats.h"
 
 static unsigned int berkdb_counter = 0;
 
@@ -303,10 +304,14 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
             if (cur->discardpages)
                 curflags |= DB_DISCARD_PAGES;
         }
-        if (env->attr->use_snapshot_for_sql)
-            curflags |= DB_CUR_SNAPSHOT;
 
+        if (env->attr->use_snapshot_for_sql) {
+            curflags |= DB_CUR_SNAPSHOT;
+        }
         dbc = get_cursor_for_cursortran_flags(cur->curtran, db, curflags, bdberr);
+//        if (env->attr->use_snapshot_for_sql) {
+//            printf("Snapshot LSN "PR_LSN"\n", PARM_LSN(cur->curtran->last_commit_lsn));
+//        }
 
         if (!dbc) {
             if (cur->state->attr->dbgberkdbcursor)

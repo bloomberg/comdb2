@@ -801,6 +801,8 @@ __db_c_idup(dbc_orig, dbcp, flags)
 
     F_SET(dbc_n, F_ISSET(dbc_orig, DBC_SNAPSHOT));
 
+    dbc_n->snapshot_lsn = dbc_orig->snapshot_lsn;
+
 	/*
 	 * If we're in CDB and this isn't an offpage dup cursor, then
 	 * we need to get a lock for the duplicated cursor.

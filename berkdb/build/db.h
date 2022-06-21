@@ -622,6 +622,7 @@ struct __db_ltran {
  * of a non-durable transaction.
  */
 #define	DB_user_BEGIN		10000
+#define DB_ufid_BEGIN       1000
 #define	DB_debug_FLAG		0x80000000
 
 struct __db_log_cursor_stat {
@@ -2772,7 +2773,7 @@ struct __utxnid_track {
     u_int64_t txnid;
     time_t timestamp;
     DB_LSN commit_lsn;
-    LISTC_T(struct __txnid_track) lnk;
+    LINKC_T(struct __utxnid_track) lnk;
 };
 
 struct __mpro {

@@ -401,7 +401,13 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	listc_init(&dbenv->mintruncate,
 			offsetof(struct mintruncate_entry, lnk));
 
-	if (LF_ISSET(DB_INIT_TXN)) {
+
+    // Initialize the readonly mempool early - we'll be using it in recovery.
+    if ((ret = __mempro_init(dbenv, (1024*1024*64))) != 0) {
+        goto err;
+    }
+
+    if (LF_ISSET(DB_INIT_TXN)) {
 		if ((ret = __txn_open(dbenv)) != 0)
 			goto err;
 
@@ -690,9 +696,6 @@ foundlsn:
 
 	if ((ret = __lc_cache_init(dbenv, 0)) != 0)
 		goto err;
-    if ((ret = __mempro_init(dbenv, (1024*1024*64))) != 0) {
-        goto err;
-    }
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
 	return (0);
