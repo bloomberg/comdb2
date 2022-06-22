@@ -47,6 +47,7 @@
 #include <bdb_api.h>
 
 #include "comdb2.h"
+#include "settings.h"
 #include "types.h"
 #include "tag.h"
 #include "thdpool.h"
@@ -6807,6 +6808,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
     plugin_set_callbacks(clnt, internal);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);
+    apply_sett_defaults(clnt);
 }
 
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)

@@ -57,7 +57,7 @@ struct db_clnt_setting_t {
     char cmd[SET_CMD_LEN];
     // def = initial value
     // make it constant?
-    void *def;
+    char *def;
 
     set_clnt_setting *set_clnt;
     get_clnt_setting *get_clnt;
@@ -95,7 +95,7 @@ hash_t *desc_settings;
 // return *((*clnt + offset)
 
 // TODO: format the composite different
-int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int, int);
+int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, char *, int);
 
 #define REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT)                                                                    \
     temp_debug_register(#NAME, TYPE, FLAG, DEFAULT, offsetof(struct sqlclntstate, NAME));
@@ -114,6 +114,7 @@ int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int, i
 */
 int add_set_clnt(char *, set_clnt_setting *);
 void get_value(const struct sqlclntstate *, const db_clnt_setting_t *, char *, size_t);
+void apply_sett_defaults(struct sqlclntstate *);
 
 #define REGISTER_ACC_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                          \
     REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT);                                                                       \

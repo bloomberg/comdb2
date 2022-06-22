@@ -25,56 +25,56 @@
 #define SET_TOKEN_CASECMP(X) strncasecmp(key, #X, sizeof(#X) - 1) == 0
 
 // TODO: read default stuff
-int gbl_setting_default_query_timeout = 0;
-int gbl_setting_default_chunk_size = 0;
-int gbl_setting_default_mode = TRANLEVEL_SOSQL;
-int gbl_setting_default_timeout = 0;
-int gbl_setting_default_password;
-int gbl_setting_default_spversion;
-int gbl_setting_default_prepare_only;
-int gbl_setting_default_readonly;
-int gbl_setting_default_expert;
-int gbl_setting_default_sptrace;
-int gbl_setting_default_cursordebug;
-int gbl_setting_default_spdebug;
-int gbl_setting_default_hasql;
-int gbl_setting_default_verifyretry;
-int gbl_setting_default_queryeffects;
-int gbl_setting_default_remote;
-int gbl_setting_default_getcost;
-int gbl_setting_default_explain;
-int gbl_setting_default_maxtransize;
-int gbl_setting_default_groupconcatmemlimit;
-int gbl_setting_default_plannereffort;
-int gbl_setting_default_intransresults;
-int gbl_setting_default_admin;
-int gbl_setting_default_querylimit;
-int gbl_setting_default_rowbuffer;
-int gbl_setting_default_sockbplog;
-int gbl_setting_default_user;
-int gbl_setting_default_password;
-int gbl_setting_default_spversion;
-int gbl_setting_default_prepare_only;
-int gbl_setting_default_readonly;
-int gbl_setting_default_expert;
-int gbl_setting_default_sptrace;
-int gbl_setting_default_cursordebug;
-int gbl_setting_default_spdebug;
-int gbl_setting_default_hasql;
-int gbl_setting_default_verifyretry;
-int gbl_setting_default_queryeffects;
-int gbl_setting_default_remote;
-int gbl_setting_default_getcost;
-int gbl_setting_default_explain;
-int gbl_setting_default_maxtransize;
-int gbl_setting_default_groupconcatmemlimit;
-int gbl_setting_default_plannereffort;
-int gbl_setting_default_intransresults;
-int gbl_setting_default_admin;
-int gbl_setting_default_querylimit;
-int gbl_setting_default_rowbuffer;
-int gbl_setting_default_sockbplog;
-int gbl_setting_default_timezone;
+char *gbl_setting_default_query_timeout = "0";
+char *gbl_setting_default_chunk_size = "0";
+char *gbl_setting_default_mode = "blocksql";
+char *gbl_setting_default_timeout = "0";
+char *gbl_setting_default_password;
+char *gbl_setting_default_spversion;
+char *gbl_setting_default_prepare_only;
+char *gbl_setting_default_readonly;
+char *gbl_setting_default_expert;
+char *gbl_setting_default_sptrace;
+char *gbl_setting_default_cursordebug;
+char *gbl_setting_default_spdebug;
+char *gbl_setting_default_hasql;
+char *gbl_setting_default_verifyretry;
+char *gbl_setting_default_queryeffects;
+char *gbl_setting_default_remote;
+char *gbl_setting_default_getcost;
+char *gbl_setting_default_explain;
+char *gbl_setting_default_maxtransize;
+char *gbl_setting_default_groupconcatmemlimit;
+char *gbl_setting_default_plannereffort;
+char *gbl_setting_default_intransresults;
+char *gbl_setting_default_admin;
+char *gbl_setting_default_querylimit;
+char *gbl_setting_default_rowbuffer;
+char *gbl_setting_default_sockbplog;
+char *gbl_setting_default_user;
+char *gbl_setting_default_password;
+char *gbl_setting_default_spversion;
+char *gbl_setting_default_prepare_only;
+char *gbl_setting_default_readonly;
+char *gbl_setting_default_expert;
+char *gbl_setting_default_sptrace;
+char *gbl_setting_default_cursordebug;
+char *gbl_setting_default_spdebug;
+char *gbl_setting_default_hasql;
+char *gbl_setting_default_verifyretry;
+char *gbl_setting_default_queryeffects;
+char *gbl_setting_default_remote;
+char *gbl_setting_default_getcost;
+char *gbl_setting_default_explain;
+char *gbl_setting_default_maxtransize;
+char *gbl_setting_default_groupconcatmemlimit;
+char *gbl_setting_default_plannereffort;
+char *gbl_setting_default_intransresults;
+char *gbl_setting_default_admin;
+char *gbl_setting_default_querylimit;
+char *gbl_setting_default_rowbuffer;
+char *gbl_setting_default_sockbplog;
+char *gbl_setting_default_timezone;
 // char* and other default;
 
 static inline char *skipws(char *str)
@@ -173,6 +173,21 @@ int apply_sett(set_state_mach_t *sm, char *err)
         return 5;
     }
     return set_for_client(sm->clnt, sm->key, sm->val, err);
+}
+
+void apply_sett_defaults(struct sqlclntstate *clnt)
+{
+    db_clnt_setting_t *lst;
+    char err[SM_ERROR_LEN] = {0};
+
+    LISTC_FOR_EACH(&settings, lst, lnk)
+    {
+        if (lst->desc) {
+            if (set_for_client(clnt, lst->desc, lst->def, err)) {
+                logmsg(LOGMSG_ERROR, "Error setting default value for clnt %s\n", err);
+            };
+        }
+    }
 }
 
 int transition(set_state_mach_t *sm, char *key)
@@ -742,14 +757,14 @@ void get_value(const struct sqlclntstate *clnt, const db_clnt_setting_t *setting
     }
 }
 
-int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, int def, int offset)
+int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, char *def, int offset)
 {
     db_clnt_setting_t *s = malloc(sizeof(db_clnt_setting_t));
 
     s->name = name;
     s->type = type;
     s->flag = flag;
-    s->def = &def;
+    s->def = def;
     s->offset = offset;
 
     listc_abl(&settings, s);
