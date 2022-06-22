@@ -1941,6 +1941,10 @@ REGISTER_TUNABLE("reject_mixed_ddl_dml", "Reject write schedules which mix DDL a
 REGISTER_TUNABLE("debug_mixed_ddl_dml", "Reject write schedules which mix DDL and DML.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_mixed_ddl_dml, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_create_master_entry", "Reproduce startup race in create_master_entry.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_create_master_entry, EXPERIMENTAL | INTERNAL, 
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("sync_osql_cancel", "Synchronous osql cancellation (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_sync_osql_cancel, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
