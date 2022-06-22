@@ -344,6 +344,7 @@ extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int gbl_instrument_consumer_lock;
 extern int gbl_reject_mixed_ddl_dml;
+extern int gbl_debug_create_master_entry;
 extern int eventlog_nkeep;
 extern int gbl_debug_systable_locks;
 extern int gbl_assert_systable_locks;
