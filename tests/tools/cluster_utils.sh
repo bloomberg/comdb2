@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 . ${TESTSROOTDIR}/tools/write_prompt.sh
-. ${TESTSROOTDIR}/tools/waitmach.sh
 
 if [[ -z "$sleeptime" ]]; then 
     sleeptime=5
@@ -95,6 +94,4 @@ function bounce_database
     else
         bounce_local $sleeptime
     fi
-
-    wait_up
 }

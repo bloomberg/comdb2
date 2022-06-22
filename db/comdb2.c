@@ -3912,7 +3912,6 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb, NULL);
 
     gbl_backend_opened = 1;
-    unlock_schema_lk();
 
     sqlinit();
     rc = create_datacopy_arrays();
@@ -3928,6 +3927,7 @@ static int init(int argc, char **argv)
     create_sqlite_master(); /* create sql statements */
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
+    unlock_schema_lk();
 
     /* There could have been an in-process schema change.  Add those tables now
      * before logical recovery */
