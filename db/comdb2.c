@@ -3642,8 +3642,6 @@ static int init(int argc, char **argv)
     if (thedb == 0)
         return -1;
 
-    register_settings();
-
     /* Initialize SSL backend before creating any net.
        If we're exiting, don't bother. */
     if (!gbl_exit && ssl_bend_init(thedb->basedir) != 0) {

@@ -27,7 +27,7 @@
 // TODO: read default stuff
 int gbl_setting_default_query_timeout = 0;
 int gbl_setting_default_chunk_size = 0;
-int gbl_setting_default_mode = TRANLEVEL_INVALID;
+int gbl_setting_default_mode = TRANLEVEL_SOSQL;
 int gbl_setting_default_timeout = 0;
 int gbl_setting_default_password;
 int gbl_setting_default_spversion;
@@ -91,6 +91,7 @@ int init_client_settings()
     // BIG TODO: Initialized clients with default settings
     desc_settings = hash_init_strptr(offsetof(db_clnt_setting_t, desc));
     logmsg(LOGMSG_DEBUG, "Settings hash initialized\n");
+    register_settings();
     return 1;
 }
 
@@ -151,22 +152,27 @@ void set_apply(set_state_mach_t *sm, char *key, char *value)
     sm->state = SET_STATE_APPLY;
 }
 
+int set_for_client(struct sqlclntstate *clnt, char *sett_key, char *val, char *err)
+{
+    db_clnt_setting_t *sett = NULL;
+    if ((sett = hash_find(desc_settings, &sett_key)) == NULL) {
+        SET_ERR("no setting found for key %s\n", sett_key);
+        return 5;
+    }
+    if (sett->set_clnt == NULL) {
+        SET_ERR("no setter specified for key %s\n", sett_key);
+        return 5;
+    }
+    return sett->set_clnt(sett, clnt, val, err);
+}
+
 int apply_sett(set_state_mach_t *sm, char *err)
 {
     if (sm->key == NULL) {
         SET_ERR("invalid key supplied");
         return 5;
     }
-    db_clnt_setting_t *sett = NULL;
-    if ((sett = hash_find(desc_settings, &sm->key)) == NULL) {
-        SET_ERR("no setting found for key %s\n", sm->key);
-        return 5;
-    }
-    if (sett->set_clnt == NULL) {
-        SET_ERR("no setter specified for key %s\n", sm->key);
-        return 5;
-    }
-    return sett->set_clnt(sett, sm->clnt, sm->val, err);
+    return set_for_client(sm->clnt, sm->key, sm->val, err);
 }
 
 int transition(set_state_mach_t *sm, char *key)
