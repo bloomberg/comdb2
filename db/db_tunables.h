@@ -2116,6 +2116,10 @@ REGISTER_TUNABLE("debug_consumer_lock",
 REGISTER_TUNABLE("reject_mixed_ddl_dml", "Reject write schedules which mix DDL and DML.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_reject_mixed_ddl_dml, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_create_master_entry", "Reproduce startup race in create_master_entry.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_create_master_entry, EXPERIMENTAL | INTERNAL, 
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("protobuf_prealloc_buffer_size", "Size of protobuf preallocated buffer.  (Default: 8192)", TUNABLE_INTEGER,
                  &gbl_protobuf_prealloc_buffer_size, INTERNAL, NULL, NULL, NULL, NULL);
 
