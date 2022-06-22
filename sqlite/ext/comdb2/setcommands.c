@@ -10,7 +10,6 @@
 #include "settings.h"
 
 struct setcmd_table_ent {
-    char *query;
     char *command;
     char *value;
 };
@@ -24,35 +23,20 @@ int populate_set_commands(void **data, int *npoints)
     size_t count = listc_size(&settings);
     int rc = 0;
 
-    //    rc = clnt->plugin.get_set_commands(clnt, (void ***)&commands, &count);
-    //    if (rc || (count == 0))
-    //        return rc;
-
     cmds = (struct setcmd_table_ent *)malloc(count * sizeof(struct setcmd_table_ent));
 
     db_clnt_setting_t *lst;
     int i = 0;
-    char def[8] = "default";
     LISTC_FOR_EACH(&settings, lst, lnk)
     {
-        if (lst->desc) {
+        if ((lst->desc) && !(lst->flag & SETFLAG_INTERNAL) && !(lst->flag & SETFLAG_WRITEONLY)) {
             // TODO: get the actual query used to set this command
-            cmds[i].query = strndup(def, 8);
             cmds[i].command = lst->desc;
-            void *value = get_value(lst, clnt);
-
-            char out[100] = {0};
-            if (lst->type == SETTING_STRING) {
-                snprintf(out, 100, "%s", (char*)value);
-            }
-            else if (lst->type == SETTING_INTEGER) {
-                snprintf(out, 100, "%d", *(int*)value);
-            } else if (lst->type == SETTING_DOUBLE) {
-                snprintf(out, 100, "%f", *(float*)value);
-            }
-            cmds[i].value = strndup(out, 100);
+            char value[100] = {0};
+            get_value(clnt, lst, value, 100);
+            cmds[i].value = strndup(value, 100);
+            ++i;
         }
-        ++i;
     }
 
     *data = cmds;
@@ -65,7 +49,6 @@ void free_set_commands(void *p, int n)
 {
     for (int i = 0; i < n; i++) {
         free(((struct setcmd_table_ent *)p)[i].value);
-        free(((struct setcmd_table_ent *)p)[i].query);
     }
     // free(p);
 }
@@ -77,8 +60,7 @@ sqlite3_module systblSetCommandsModule = {
 int systblSetCommandsModuleInit(sqlite3 *db)
 {
     return create_system_table(db, "comdb2_set_commands", &systblSetCommandsModule, populate_set_commands,
-                               free_set_commands, sizeof(struct setcmd_table_ent), CDB2_CSTRING, "query", -1,
-                               offsetof(struct setcmd_table_ent, query), CDB2_CSTRING, "command", -1,
+                               free_set_commands, sizeof(struct setcmd_table_ent), CDB2_CSTRING, "command", -1,
                                offsetof(struct setcmd_table_ent, command), CDB2_CSTRING, "args", -1,
                                offsetof(struct setcmd_table_ent, value), SYSTABLE_END_OF_FIELDS);
 }

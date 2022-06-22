@@ -21,22 +21,21 @@ gbl_set_default_dbtrans
 #define SET_CMD_WORD_LEN 15
 
 typedef enum {
-    SETTING_INTEGER,
-    SETTING_LONG,
-    SETTING_DOUBLE,
-    SETTING_BOOLEAN,
-    SETTING_STRING,
-    SETTING_ENUM,
-    SETTING_FUNC,
-    SETTING_COMPOSITE,
-    SETTING_MULTIPLE,
+    SETTING_INTEGER = 1 << 1,
+    SETTING_LONG = 1 << 2,
+    SETTING_DOUBLE = 1 << 3,
+    SETTING_BOOLEAN = 1 << 4,
+    SETTING_STRING = 1 << 5,
+    SETTING_CSTRING = 1 << 6,
+    SETTING_ENUM = 1 << 7,
+    SETTING_MULTIPLE = 1 << 8,
+    SETTING_STRUCT = 1 << 9
 } comdb2_setting_type;
 
 typedef enum {
     /** Internal, don't expose this to the user **/
     SETFLAG_INTERNAL = 1 << 1,
-    /** Derived field, no explicit setters **/
-    SETFLAG_DERIVED = 1 << 2
+    SETFLAG_WRITEONLY = 1 << 2
 } comdb2_setting_flag;
 
 struct db_clnt_setting_t;
@@ -114,7 +113,7 @@ int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, int, i
     } while (0)
 */
 int add_set_clnt(char *, set_clnt_setting *);
-void *get_value(db_clnt_setting_t *, struct sqlclntstate *);
+void get_value(const struct sqlclntstate *, const db_clnt_setting_t *, char *, size_t);
 
 #define REGISTER_ACC_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)                                                          \
     REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT);                                                                       \
