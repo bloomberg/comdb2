@@ -190,6 +190,12 @@ void apply_sett_defaults(struct sqlclntstate *clnt)
     }
 }
 
+
+/*TODO: Can be shortened a lot by adding apply state to array
+* E.g, we can do SET_STATE_USER = 100, SET_STATE_PASS = 101 and so on
+* arr[] = {"user", "password"} and so on
+* Now, if state > 100, we can do set_apply(sm, arr[state - 100], key)
+ */ 
 int transition(set_state_mach_t *sm, char *key)
 {
     int rc = 0;
