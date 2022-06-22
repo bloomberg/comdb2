@@ -759,7 +759,7 @@ int add_set_clnt(char *desc, set_clnt_setting *setf)
     return 0;
 }
 
-int register_settings(struct sqlclntstate *clnt)
+int register_settings()
 {
 #include "db_clnt_settings.h"
     return 0;

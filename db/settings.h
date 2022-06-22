@@ -64,7 +64,7 @@ struct db_clnt_setting_t {
 };
 
 int init_client_settings();
-int register_settings(struct sqlclntstate *);
+int register_settings();
 int populate_settings(struct sqlclntstate *, const char *);
 
 LISTC_T(struct db_clnt_setting_t) settings;

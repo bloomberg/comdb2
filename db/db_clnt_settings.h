@@ -12,8 +12,8 @@ REGISTER_ACC_SETTING(query_timeout, maxquerytime, SETTING_LONG, 0, gbl_setting_d
 REGISTER_ACC_SETTING(tzname, timezone, SETTING_CSTRING, 0, gbl_setting_default_timezone);
 REGISTER_ACC_SETTING(dtprec, datetime, SETTING_INTEGER, 0, gbl_setting_default_timezone);
 
-REGISTER_ACC_SETTING(current_user.name, user, SETTING_STRING, 0, gbl_setting_default_user);
-REGISTER_ACC_SETTING(current_user.password, password, SETTING_STRING, SETFLAG_INTERNAL, gbl_setting_default_password);
+REGISTER_ACC_SETTING(current_user.name, user, SETTING_CSTRING, 0, gbl_setting_default_user);
+REGISTER_ACC_SETTING(current_user.password, password, SETTING_CSTRING, SETFLAG_INTERNAL, gbl_setting_default_password);
 REGISTER_ACC_SETTING(spversion.version_str, spversion, SETTING_STRING, 0, gbl_setting_default_spversion);
 REGISTER_ACC_SETTING(prepare_only, prepare_only, SETTING_INTEGER, 0, gbl_setting_default_prepare_only);
 REGISTER_ACC_SETTING(is_readonly, readonly, SETTING_INTEGER, 0, gbl_setting_default_readonly);

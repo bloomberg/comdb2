@@ -1456,10 +1456,6 @@ for each setting in global settings:
 **/
 int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
-
-    // Just for testing
-    register_settings(clnt);
-
     struct newsql_appdata *appdata = clnt->appdata;
     int num_commands = 0;
     char *sqlstr = NULL;
