@@ -2277,7 +2277,8 @@ int resolve_sfuncs_for_db(struct dbenv* thedb)
     sql_get_query_id(sqlthd);
     sqlthd->clnt = &clnt;
 
-    get_copy_rootpages(sqlthd);
+    assert_lock_schema_lk();
+    get_copy_rootpages_nolock(sqlthd);
 
     if ((rc = sqlite3_open_serial("db", &hndl, &thd) != 0)) {
         logmsg(LOGMSG_ERROR, "%s: sqlite3_open failed\n", __func__);
