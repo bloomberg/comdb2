@@ -6,9 +6,11 @@
 #include "plhash.h"
 #include "sbuf2.h"
 #include "sql.h"
+
 #include <stdio.h>
 #include <strings.h>
 #include <str0.h>
+
 
 /**
  * Add a new setting:
@@ -342,7 +344,7 @@ int destroy_state_machine(set_state_mach_t *sm)
     return 0;
 }
 
-int populate_settings(struct sqlclntstate *clnt, const char *sqlstr, char * err)
+int populate_settings(struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     set_state_mach_t *sm = init_state_machine(clnt);
 
@@ -459,31 +461,37 @@ int set_spversion(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const c
     clnt->spversion.version_num = 0;
     free(clnt->spversion.version_str);
 
+    char * val = strdup(sqlstr);
+    skipws(val);
+
+    char * spname = val;
+    char * endp;
+
     clnt->spversion.version_str = NULL;
-    // TODO: do this
-    //    if ((sqlstr - spname) < MAX_SPNAME) {
-    //        strncpy0(clnt->spname, spname, MAX_SPNAME);
-    //    } else {
-    //        rc = ii + 1;
-    //    }
-    //    ++sqlstr;
-    //
-    //    sqlstr = skipws(sqlstr);
-    //    int ver = strtol(sqlstr, &endp, 10);
-    //    if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
-    //        if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
-    //            clnt->spversion.version_str = strdup(sqlstr);
-    //            sqlite3Dequote(clnt->spversion.version_str);
-    //        } else {
-    //            rc = ii + 1;
-    //        }
-    //    } else if (*endp == 0) { // parsed entire number successfully
-    //        clnt->spversion.version_num = ver;
-    //    } else {
-    //        rc = ii + 1;
-    //    }
+    if ((val - spname) < MAX_SPNAME) {
+        strncpy0(clnt->spname, spname, MAX_SPNAME);
+    } else {
+        return 7;
+    }
+    ++val;
+
+    val = skipws(val);
+    int ver = strtol(val, &endp, 10);
+    if (*val == '\'' || *val == '"') { // looks like a str
+        if (strlen(val) < MAX_SPVERSION_LEN) {
+            clnt->spversion.version_str = strdup(val);
+            sqlite3Dequote(clnt->spversion.version_str);
+        } else {
+            return 7;
+        }
+    } else if (*endp == 0) { // parsed entire number successfully
+        clnt->spversion.version_num = ver;
+    } else {
+        return 7;
+    }
     return 0;
 }
+
 int set_prepare_only(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     clnt->prepare_only = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : 1;
@@ -670,7 +678,7 @@ int set_rowbuffer(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const c
 }
 int set_sockbplog(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
-    // init_bplog_socket(clnt);
+    //init_bplog_socket(clnt);
     return 0;
 }
 
