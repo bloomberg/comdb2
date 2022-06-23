@@ -16,7 +16,6 @@ struct setcmd_table_ent {
 
 int populate_set_commands(void **data, int *npoints)
 {
-
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
     struct setcmd_table_ent *cmds = NULL;

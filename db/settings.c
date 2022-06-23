@@ -24,6 +24,9 @@
 #define SET_TOKEN_CMP(X) strncmp(key, #X, sizeof(#X) - 1) == 0
 #define SET_TOKEN_CASECMP(X) strncasecmp(key, #X, sizeof(#X) - 1) == 0
 
+#define OFFSET_FOR_APPLY_SETTINGS 100
+
+/* Default values for settings. Can be used to set values via tunables now. */
 char *gbl_setting_default_chunk_size = "0";
 char *gbl_setting_default_mode = "blocksql";
 char *gbl_setting_default_hasql = "off";
@@ -52,24 +55,6 @@ char *gbl_setting_default_rowbuffer = NULL;
 char *gbl_setting_default_sockbplog = NULL;
 char *gbl_setting_default_user = NULL;
 char *gbl_setting_default_timezone = NULL;
-
-static inline char *skipws(char *str)
-{
-    if (str) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
-
-int init_client_settings()
-{
-    // BIG TODO: Initialized clients with default settings
-    desc_settings = hash_init_strptr(offsetof(db_clnt_setting_t, desc));
-    logmsg(LOGMSG_DEBUG, "Settings hash initialized\n");
-    register_settings();
-    return 1;
-}
 
 char *apply_setting[23] = {"user",
                            "password",
@@ -106,7 +91,7 @@ enum set_state {
     SET_STATE_TIMEZONE,
     SET_STATE_DATETIME,
     SET_STATE_PRECISION,
-    SET_STATE_USER = 100,
+    SET_STATE_USER = OFFSET_FOR_APPLY_SETTINGS,
     SET_STATE_PASSWORD,
     SET_STATE_SPVERSION,
     SET_STATE_PREPARE_ONLY,
@@ -145,7 +130,24 @@ typedef struct set_state_mach {
     int rc;
 } set_state_mach_t;
 
-void set_apply(set_state_mach_t *sm, char *key, char *value)
+static inline char *skipws(char *str)
+{
+    if (str) {
+        while (*str && isspace(*str))
+            str++;
+    }
+    return str;
+}
+
+int init_client_settings()
+{
+    desc_settings = hash_init_strptr(offsetof(db_clnt_setting_t, desc));
+    logmsg(LOGMSG_DEBUG, "Settings hash initialized\n");
+    register_settings();
+    return 0;
+}
+
+static void set_apply(set_state_mach_t *sm, char *key, char *value)
 {
     sm->key = key;
     sm->val = value;
@@ -311,12 +313,8 @@ int transition(set_state_mach_t *sm, char *key)
             rc = 4;
             goto transerr;
         }
-        // TODO: single level operations can be turned to
-        //     a simple array, by indexing these states starting
-        //     from custom value = 100. i.e. start SET_STATE_USER=100 and
-        //     arr[state - 100] = "user" and so on
-    } else if (sm->state >= 100) {
-        set_apply(sm, apply_setting[sm->state - 100], key);
+    } else if (sm->state >= OFFSET_FOR_APPLY_SETTINGS) {
+        set_apply(sm, apply_setting[sm->state - OFFSET_FOR_APPLY_SETTINGS], key);
     } else {
         rc = 1;
         goto transerr;
@@ -344,7 +342,7 @@ int destroy_state_machine(set_state_mach_t *sm)
     return 0;
 }
 
-int populate_settings(struct sqlclntstate *clnt, const char *sqlstr)
+int populate_settings(struct sqlclntstate *clnt, const char *sqlstr, char * err)
 {
     set_state_mach_t *sm = init_state_machine(clnt);
 
@@ -361,15 +359,12 @@ int populate_settings(struct sqlclntstate *clnt, const char *sqlstr)
         }
     }
 
-    char err[SM_ERROR_LEN] = {0};
     if ((sm->rc == 0) && sm->state != SET_STATE_APPLY) {
         rc = 10;
     }
 
     if ((rc == 0) && ((rc = sm->rc) == 0)) {
-        if ((rc = apply_sett(sm, err)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s\n", err);
-        };
+        rc = apply_sett(sm, err);
     }
     destroy_state_machine(sm);
     return rc;
@@ -717,7 +712,7 @@ void get_value(const struct sqlclntstate *clnt, const db_clnt_setting_t *setting
     }
 }
 
-int temp_debug_register(char *name, comdb2_setting_type type, comdb2_setting_flag flag, char *def, int offset)
+int register_setting(char *name, comdb2_setting_type type, comdb2_setting_flag flag, char *def, int offset)
 {
     db_clnt_setting_t *s = malloc(sizeof(db_clnt_setting_t));
 

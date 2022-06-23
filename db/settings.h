@@ -6,15 +6,6 @@
 #include "sbuf2.h"
 #include "sql.h"
 
-/**
-
-clnt.dbtrans = SET_COMPO
-dbtrans.mode = <->
-
-gbl_set_default_dbtrans
-
-**/
-
 // TODO: If values for these already exists, remove
 #define SET_CMD_LEN 128
 // maximum number of words in the set command
@@ -64,54 +55,18 @@ struct db_clnt_setting_t {
 };
 
 int init_client_settings();
+int register_setting(char *, comdb2_setting_type, comdb2_setting_flag, char *, int);
 int register_settings();
-int populate_settings(struct sqlclntstate *, const char *);
+int populate_settings(struct sqlclntstate *, const char *, char * err);
 
 LISTC_T(struct db_clnt_setting_t) settings;
 hash_t *desc_settings;
 
 #define SETTING_SET_FUNC(SETTING) int set_##SETTING(db_clnt_setting_t *, struct sqlclntstate *, const char *, char *err)
 
-// TODO: can i add (int*) parse_fun(struct sqlclntstate *, char*cmd, db_clnt_setting_t*);
-// if command can be parsed, to the value as x, then we
-// can do, *((*clnt + s->offset) = x
-// s->cmd = cmd
-
-// or, we can do add (int*) parse_fun(struct sqlclntstate *, char*cmd, int offset);
-// return -> 0 if cmd is valid, else 1
-// if command can be parsed, to the value as x, then we
-// can do, *((*clnt + s->offset) = x
-// s->cmd = cmd
-
-// Actually, this would work best,
-// where cmd can be something like 'set timeout'
-// (int*) parse_cmd(char*cmd, void *value) -> return 0 if cmd is valid else 1;
-// if command can be parsed, to the value as value, then we,
-// *((*clnt + s->offset) = x
-// s->cmd = cmd
-// Would this be problematic? - global s->cmd stays in s->cmd while clnt->field value is stored in the client?
-// Bind a map to the client? and remove cmd from clnt_setting_t
-// get value from (s->type)s->get_cmd(struct sqlclntstate *, int offset) if s->FLAG is not internal
-// return *((*clnt + offset)
-
-// TODO: format the composite different
-int temp_debug_register(char *, comdb2_setting_type, comdb2_setting_flag, char *, int);
-
 #define REGISTER_SETTING(NAME, TYPE, FLAG, DEFAULT)                                                                    \
-    temp_debug_register(#NAME, TYPE, FLAG, DEFAULT, offsetof(struct sqlclntstate, NAME));
+    register_setting(#NAME, TYPE, FLAG, DEFAULT, offsetof(struct sqlclntstate, NAME));
 
-/*
-    do {                                                                                                               \
-        db_clnt_setting_t s = {.name = #NAME,                                                                          \
-                               .type = TYPE,                                                                           \
-                               .flag = FLAG,                                                                           \
-                               .offset = offsetof(struct sqlclntstate, NAME),                                          \
-                               .cmd = "default",                                                                       \
-                               .def = &DEFAULT,                                                                        \
-                               .lnk = {}};                                                                             \
-        listc_abl(&settings, &s);                                                                                      \
-    } while (0)
-*/
 int add_set_clnt(char *, set_clnt_setting *);
 void get_value(const struct sqlclntstate *, const db_clnt_setting_t *, char *, size_t);
 void apply_sett_defaults(struct sqlclntstate *);
