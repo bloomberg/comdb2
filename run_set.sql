@@ -11,7 +11,6 @@ set password 'blahblah';
 set spversion sp1 1;
 set prepare_only on;
 set readonly on;
-set expert on;
 set sptrace on;
 set spdebug on;
 set hasql on;
@@ -25,7 +24,6 @@ set intransresults on;
 set admin on;
 set querylimit warn; 
 set rowbuffer on;
-select 1
 
 select * from comdb2_set_commands;
 

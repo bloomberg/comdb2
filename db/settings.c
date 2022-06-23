@@ -71,6 +71,30 @@ int init_client_settings()
     return 1;
 }
 
+char *apply_setting[23] = {"user",
+                           "password",
+                           "spversion",
+                           "prepare_only",
+                           "readonly",
+                           "expert",
+                           "sptrace",
+                           "cursordebug",
+                           "spdebug",
+                           "hasql",
+                           "verifyretry",
+                           "queryeffects",
+                           "remote",
+                           "getcost",
+                           "explain",
+                           "maxtransize",
+                           "groupconcatmemlimit",
+                           "plannereffort",
+                           "intransresults",
+                           "admin",
+                           "querylimit",
+                           "rowbuffer",
+                           "sockbplog"};
+
 enum set_state {
     SET_STATE_INIT = 0,
     SET_STATE_SET,
@@ -291,52 +315,8 @@ int transition(set_state_mach_t *sm, char *key)
         //     a simple array, by indexing these states starting
         //     from custom value = 100. i.e. start SET_STATE_USER=100 and
         //     arr[state - 100] = "user" and so on
-    } else if (sm->state == SET_STATE_USER) {
-        set_apply(sm, "user", key);
-    } else if (sm->state == SET_STATE_PASSWORD) {
-        set_apply(sm, "password", key);
-    } else if (sm->state == SET_STATE_SPVERSION) {
-        set_apply(sm, "spversion", key);
-    } else if (sm->state == SET_STATE_PREPARE_ONLY) {
-        set_apply(sm, "prepare_only", key);
-    } else if (sm->state == SET_STATE_READONLY) {
-        set_apply(sm, "readonly", key);
-    } else if (sm->state == SET_STATE_EXPERT) {
-        set_apply(sm, "expert", key);
-    } else if (sm->state == SET_STATE_SPTRACE) {
-        set_apply(sm, "sptrace", key);
-    } else if (sm->state == SET_STATE_CURSORDEBUG) {
-        set_apply(sm, "cursordebug", key);
-    } else if (sm->state == SET_STATE_SPDEBUG) {
-        set_apply(sm, "spdebug", key);
-    } else if (sm->state == SET_STATE_HASQL) {
-        set_apply(sm, "hasql", key);
-    } else if (sm->state == SET_STATE_VERIFYRETRY) {
-        set_apply(sm, "verifyretry", key);
-    } else if (sm->state == SET_STATE_QUERYEFFECTS) {
-        set_apply(sm, "queryeffects", key);
-    } else if (sm->state == SET_STATE_REMOTE) {
-        set_apply(sm, "remote", key);
-    } else if (sm->state == SET_STATE_GETCOST) {
-        set_apply(sm, "getcost", key);
-    } else if (sm->state == SET_STATE_EXPLAIN) {
-        set_apply(sm, "explain", key);
-    } else if (sm->state == SET_STATE_MAXTRANSIZE) {
-        set_apply(sm, "maxtransize", key);
-    } else if (sm->state == SET_STATE_GROUPCONCATMEMLIMIT) {
-        set_apply(sm, "groupconcatmemlimit", key);
-    } else if (sm->state == SET_STATE_PLANNEREFFORT) {
-        set_apply(sm, "plannereffort", key);
-    } else if (sm->state == SET_STATE_INTRANSRESULTS) {
-        set_apply(sm, "intransresults", key);
-    } else if (sm->state == SET_STATE_ADMIN) {
-        set_apply(sm, "admin", key);
-    } else if (sm->state == SET_STATE_QUERYLIMIT) {
-        set_apply(sm, "querylimit", key);
-    } else if (sm->state == SET_STATE_ROWBUFFER) {
-        set_apply(sm, "rowbuffer", key);
-    } else if (sm->state == SET_STATE_SOCKBPLOG) {
-        set_apply(sm, "sockbplog", key);
+    } else if (sm->state >= 100) {
+        set_apply(sm, apply_setting[sm->state - 100], key);
     } else {
         rc = 1;
         goto transerr;
