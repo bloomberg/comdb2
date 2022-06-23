@@ -24,58 +24,34 @@
 #define SET_TOKEN_CMP(X) strncmp(key, #X, sizeof(#X) - 1) == 0
 #define SET_TOKEN_CASECMP(X) strncasecmp(key, #X, sizeof(#X) - 1) == 0
 
-// TODO: read default stuff
-char *gbl_setting_default_query_timeout = "0";
 char *gbl_setting_default_chunk_size = "0";
 char *gbl_setting_default_mode = "blocksql";
-char *gbl_setting_default_timeout = "0";
-char *gbl_setting_default_password;
-char *gbl_setting_default_spversion;
-char *gbl_setting_default_prepare_only;
-char *gbl_setting_default_readonly;
-char *gbl_setting_default_expert;
-char *gbl_setting_default_sptrace;
-char *gbl_setting_default_cursordebug;
-char *gbl_setting_default_spdebug;
-char *gbl_setting_default_hasql;
-char *gbl_setting_default_verifyretry;
-char *gbl_setting_default_queryeffects;
-char *gbl_setting_default_remote;
-char *gbl_setting_default_getcost;
-char *gbl_setting_default_explain;
-char *gbl_setting_default_maxtransize;
-char *gbl_setting_default_groupconcatmemlimit;
-char *gbl_setting_default_plannereffort;
-char *gbl_setting_default_intransresults;
-char *gbl_setting_default_admin;
-char *gbl_setting_default_querylimit;
-char *gbl_setting_default_rowbuffer;
-char *gbl_setting_default_sockbplog;
-char *gbl_setting_default_user;
-char *gbl_setting_default_password;
-char *gbl_setting_default_spversion;
-char *gbl_setting_default_prepare_only;
-char *gbl_setting_default_readonly;
-char *gbl_setting_default_expert;
-char *gbl_setting_default_sptrace;
-char *gbl_setting_default_cursordebug;
-char *gbl_setting_default_spdebug;
-char *gbl_setting_default_hasql;
-char *gbl_setting_default_verifyretry;
-char *gbl_setting_default_queryeffects;
-char *gbl_setting_default_remote;
-char *gbl_setting_default_getcost;
-char *gbl_setting_default_explain;
-char *gbl_setting_default_maxtransize;
-char *gbl_setting_default_groupconcatmemlimit;
-char *gbl_setting_default_plannereffort;
-char *gbl_setting_default_intransresults;
-char *gbl_setting_default_admin;
-char *gbl_setting_default_querylimit;
-char *gbl_setting_default_rowbuffer;
-char *gbl_setting_default_sockbplog;
-char *gbl_setting_default_timezone;
-// char* and other default;
+char *gbl_setting_default_hasql = "off";
+char *gbl_setting_default_query_timeout = NULL;
+char *gbl_setting_default_timeout = NULL;
+char *gbl_setting_default_password = NULL;
+char *gbl_setting_default_spversion = NULL;
+char *gbl_setting_default_prepare_only = NULL;
+char *gbl_setting_default_readonly = NULL;
+char *gbl_setting_default_expert = NULL;
+char *gbl_setting_default_sptrace = NULL;
+char *gbl_setting_default_cursordebug = NULL;
+char *gbl_setting_default_spdebug = NULL;
+char *gbl_setting_default_verifyretry = NULL;
+char *gbl_setting_default_queryeffects = NULL;
+char *gbl_setting_default_remote = NULL;
+char *gbl_setting_default_getcost = NULL;
+char *gbl_setting_default_explain = NULL;
+char *gbl_setting_default_maxtransize = NULL;
+char *gbl_setting_default_groupconcatmemlimit = NULL;
+char *gbl_setting_default_plannereffort = NULL;
+char *gbl_setting_default_intransresults = NULL;
+char *gbl_setting_default_admin = NULL;
+char *gbl_setting_default_querylimit = NULL;
+char *gbl_setting_default_rowbuffer = NULL;
+char *gbl_setting_default_sockbplog = NULL;
+char *gbl_setting_default_user = NULL;
+char *gbl_setting_default_timezone = NULL;
 
 static inline char *skipws(char *str)
 {
@@ -106,7 +82,7 @@ enum set_state {
     SET_STATE_TIMEZONE,
     SET_STATE_DATETIME,
     SET_STATE_PRECISION,
-    SET_STATE_USER,
+    SET_STATE_USER = 100,
     SET_STATE_PASSWORD,
     SET_STATE_SPVERSION,
     SET_STATE_PREPARE_ONLY,
@@ -179,10 +155,9 @@ void apply_sett_defaults(struct sqlclntstate *clnt)
 {
     db_clnt_setting_t *lst;
     char err[SM_ERROR_LEN] = {0};
-
     LISTC_FOR_EACH(&settings, lst, lnk)
     {
-        if (lst->desc) {
+        if (lst->def) {
             if (set_for_client(clnt, lst->desc, lst->def, err)) {
                 logmsg(LOGMSG_ERROR, "Error setting default value for clnt %s\n", err);
             };
@@ -190,12 +165,11 @@ void apply_sett_defaults(struct sqlclntstate *clnt)
     }
 }
 
-
 /*TODO: Can be shortened a lot by adding apply state to array
-* E.g, we can do SET_STATE_USER = 100, SET_STATE_PASS = 101 and so on
-* arr[] = {"user", "password"} and so on
-* Now, if state > 100, we can do set_apply(sm, arr[state - 100], key)
- */ 
+ * E.g, we can do SET_STATE_USER = 100, SET_STATE_PASS = 101 and so on
+ * arr[] = {"user", "password"} and so on
+ * Now, if state > 100, we can do set_apply(sm, arr[state - 100], key)
+ */
 int transition(set_state_mach_t *sm, char *key)
 {
     int rc = 0;
@@ -424,7 +398,7 @@ int populate_settings(struct sqlclntstate *clnt, const char *sqlstr)
 int set_chunk(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *value, char *err)
 {
     int chunk_size = 0;
-    if (!value || ((chunk_size = atoi(value)) <= 0)) {
+    if (!value || ((chunk_size = atoi(value)) < 0)) {
         SET_ERR("set transaction chunk N: missing chunk size N \"%s\"", value);
         return 7;
     } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
