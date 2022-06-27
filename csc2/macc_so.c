@@ -1355,7 +1355,10 @@ void datakey_piece_add(char *buf) {
         temp = macc_globals->head_pd;
         while (temp) {
             if (strcmp(buf, temp->field) == 0) {
-                return; // just ignore duplicates
+                csc2_error("Error at line %3d: DUPLICATE FIELD: %s.\n", current_line, buf);
+                csc2_syntax_error("Error at line %3d: DUPLICATE FIELD: %s.", current_line, buf);
+                any_errors++;
+                return;
             }
             temp = temp->next;
         }
