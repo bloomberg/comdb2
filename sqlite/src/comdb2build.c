@@ -5365,7 +5365,6 @@ static void comdb2AddIndexInt(
         struct ExprList_item *pListItem;
         struct comdb2_column *column;
         int i;
-        int duplicate;
 
         /* Validate the partial datacopy list. */
         sqlite3ExprListCheckLength(pParse, pdList, "partial datacopy");
@@ -5378,16 +5377,15 @@ static void comdb2AddIndexInt(
                 goto cleanup;
             }
 
-            duplicate = 0;
             LISTC_FOR_EACH(&key->partial_datacopy_list, partial_datacopy_field, lnk)
             {
                 if (strcmp(column->name, partial_datacopy_field->name) == 0) {
-                    duplicate = 1;
-                    break; // just ignore duplicates
+                    pParse->rc = SQLITE_ERROR;
+                    sqlite3ErrorMsg(pParse, "Duplicate field '%s'.",
+                                    column->name);
+                    goto cleanup;
                 }
             }
-            if (duplicate)
-                continue;
 
             partial_datacopy_field = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_partial_datacopy_field));
             if (partial_datacopy_field == 0) {
