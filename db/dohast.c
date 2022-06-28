@@ -825,6 +825,14 @@ int comdb2_check_parallel(Parse *pParse)
 
     if (gbl_dohsql_disable)
         return 0;
+    
+    struct sql_thread *thd = pthread_getspecific(query_info_key);              \
+    struct sqlclntstate *clnt = thd->clnt;
+
+    if(clnt->is_expert){
+        //if we're in expert mode, don't parallelize
+        return 0;
+    }
 
     if (ast && ast->unsupported)
         return 0;

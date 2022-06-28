@@ -191,7 +191,7 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err);
  *
  */
 int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
-                          struct errstat *err);
+                          struct errstat *err, int isTemp);
 
 /**
  * Delete a sqlite view
@@ -207,6 +207,10 @@ int views_sqlite_del_view(timepart_view_t *view, sqlite3 *db,
  */
 int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
                         struct errstat *err, int lock);
+int views_sqlite_update_temp(timepart_views_t *views, sqlite3 *db,
+                        struct errstat *err, int lock);
+int views_sqlite_update_int(timepart_views_t *views, sqlite3 *db,
+                        struct errstat *err, int lock, int isTemp);
 
 /**
  * Create a new shard;

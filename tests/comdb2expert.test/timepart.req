@@ -1,0 +1,12 @@
+drop table if exists test;
+
+create table test(a int)$$
+insert into test select value from generate_series(1,100)
+
+create time partition on test as tp period 'daily' retention 2 start '{{STARTTIME}}';
+
+set expert on
+select * from tp where a=1
+set expert off
+
+drop time partition tp
