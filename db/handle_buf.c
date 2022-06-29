@@ -971,6 +971,9 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
         return ERR_REJECTED;
     }
 
+    if (qtype != REQ_OFFLOAD && gbl_server_admin_mode)
+        return ERR_REJECTED;
+
     net_delay(frommach);
 
     ndispatch = 0;
