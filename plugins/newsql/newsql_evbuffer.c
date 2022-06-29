@@ -917,7 +917,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
         local = 1;
     }
 
-    if (thedb->no_more_sql_connections || (admin && !allow_admin(local))) {
+    if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         close(arg->fd);

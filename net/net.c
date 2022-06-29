@@ -85,6 +85,7 @@ extern int gbl_pmux_route_enabled;
 extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
 extern int gbl_accept_on_child_nets;
+extern int gbl_server_admin_mode;
 
 extern void myfree(void *ptr);
 extern int db_is_exiting(void);
@@ -5330,6 +5331,12 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
         }
     } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
         logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__, __LINE__);
+        sbuf2close(sb);
+        return;
+    }
+
+
+    if (gbl_server_admin_mode && !admin) {
         sbuf2close(sb);
         return;
     }

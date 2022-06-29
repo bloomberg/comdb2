@@ -2184,5 +2184,7 @@ REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class
 
 REGISTER_TUNABLE("allow_unauthenticated_tag_access", NULL, TUNABLE_BOOLEAN, &gbl_unauth_tag_access, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("admin_mode", "Fail non-admin client requests (Default: False)", TUNABLE_BOOLEAN, &gbl_server_admin_mode, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
