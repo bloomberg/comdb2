@@ -47,6 +47,7 @@ extern int gbl_recovery_lsn_offset;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
+extern int gbl_server_admin_mode;
 
 int gbl_disable_access_controls;
 
@@ -75,6 +76,7 @@ static struct option long_options[] = {
     {"tunable", required_argument, NULL, 0},
     {"version", no_argument, NULL, 'v'},
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
+    {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text =
