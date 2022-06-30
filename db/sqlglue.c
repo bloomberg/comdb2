@@ -599,7 +599,7 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
         clnt->last_check_time = gbl_epoch_time;
         if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
             logmsg(LOGMSG_INFO, "Peer dropped connection %s:%d\n", file, line);
-            clnt->stop_this_statement = 1;
+            clnt->thd->sqlthd->stop_this_statement = 1;
             return 1;
         }
     }
@@ -635,7 +635,7 @@ int sql_tick(struct sql_thread *thd)
         sleep(1);
 
     /* statement cancelled? done */
-    if (clnt->stop_this_statement) {
+    if (thd->stop_this_statement) {
         rc = SQLITE_ABORT;
         goto done;
     }
@@ -9162,7 +9162,18 @@ void cancel_sql_statement(int id)
     {
         if (thd->id == id && thd->clnt) {
             found = 1;
-            thd->clnt->stop_this_statement = 1;
+            /* Previously the flag was defined in the clnt struct and we would do
+                   ```thd->clnt->stop_this_statement = 1```
+
+               this wasn't thread-safe: thd->clnt might be set to NULL
+               after the if check but before the line above, by the sql thread.
+               The race condition would crash the database.
+
+               To fix this we move the flag up to the sql_thread struct.
+               The code is protected by the gbl_sql_lock so `thd' can't disappear
+               under our noses. */
+            thd->stop_this_statement = 1;
+            break;
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -9190,7 +9201,8 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
                 continue;
             found = (memcmp(snap.key, cnonce, cnonce_len) == 0);
             if (found) {
-                thd->clnt->stop_this_statement = 1;
+                /* See comments in cancel_sql_statement() */
+                thd->stop_this_statement = 1;
                 break;
             }
         }

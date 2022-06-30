@@ -2498,7 +2498,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
         }
         clnt.osql.sent_column_data = 0;
-        clnt.stop_this_statement = 0;
+        /* `thd' gets assigned in sqlenginepool. A fresh connection will not have this. */
+        if (clnt.thd && clnt.thd->sqlthd)
+            clnt.thd->sqlthd->stop_this_statement = 0;
 
         if (clnt.tzname[0] == '\0' && sql_query->tzname)
             strncpy0(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));

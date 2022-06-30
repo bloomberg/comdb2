@@ -674,7 +674,6 @@ struct sqlclntstate {
     pthread_t debug_sqlclntstate;
     int last_check_time;
     int query_timeout;
-    int stop_this_statement;
     int statement_timedout;
     struct conninfo conn;
 
@@ -1118,6 +1117,8 @@ struct sql_thread {
 
     /* current shard; cut 0 we support only one partition */
     int crtshard;
+    /* flag to signal that the sql engine should stop executing */
+    int stop_this_statement;
 };
 
 struct connection_info {
