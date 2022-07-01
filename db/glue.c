@@ -94,6 +94,7 @@
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
+#include "tohex.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -158,16 +159,10 @@ extern int get_physical_transaction(bdb_state_type *bdb_state,
 
 static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr,
                     void *data, int dtalen);
-static int meta_get(struct dbtable *db, struct metahdr *key, void *dta, int dtalen);
 static int meta_get_tran(tran_type *tran, struct dbtable *db, struct metahdr *key1,
                          void *dta, int dtalen);
-static int meta_get_var(struct dbtable *db, struct metahdr *key, void **dta,
-                        int *fndlen);
 static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
                              struct metahdr *key1, void **dta, int *fndlen);
-static int put_meta_int(const char *table, void *tran, int rrn, int key,
-                        int value);
-static int get_meta_int(const char *table, int rrn, int key);
 static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
                              int key);
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
@@ -177,6 +172,10 @@ static int syncmode_callback(bdb_state_type *bdb_state);
 
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
+
+int gbl_double_write_meta = 1;
+int gbl_read_meta_from_llmeta = 0;
+int gbl_convert_meta_to_llmeta = 1;
 
 static void *get_bdb_handle(struct dbtable *db, int auxdb)
 {
@@ -4357,16 +4356,6 @@ static uint8_t *metahdr_type_put(const struct metahdr *p_metahdr,
     return p_buf;
 }
 
-int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff)
-{
-
-    struct metahdr hdr;
-
-    hdr.rrn = META_STUFF_RRN;
-    hdr.attr = 0;
-    return meta_put(db, trans, &hdr, stuff, lenstuff);
-}
-
 int put_csc2_file(const char *table, void *tran, int version, const char *text)
 {
     int bdberr;
@@ -4378,6 +4367,21 @@ int put_csc2_file(const char *table, void *tran, int version, const char *text)
         return -1;
     }
     return 0;
+}
+
+int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff)
+{
+
+    struct metahdr hdr;
+
+    hdr.rrn = META_STUFF_RRN;
+    hdr.attr = 0;
+    int rc = meta_put(db, trans, &hdr, stuff, lenstuff);
+    if (rc == 0 && gbl_double_write_meta) {
+        int bdberr;
+        rc = bdb_put_meta(trans, db->tablename, META_STUFF_RRN, stuff, lenstuff, &bdberr);
+    }
+    return rc;
 }
 
 /* gets the csc2 schema for a table and version number.
@@ -4416,6 +4420,8 @@ int get_csc2_version_tran(const char *table, tran_type *tran)
     return csc2_vers;
 }
 
+static const char *metakeystr(int k);
+
 int get_csc2_version(const char *table)
 {
     return get_csc2_version_tran(table, NULL);
@@ -4428,6 +4434,10 @@ int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long geni
     hdr.rrn = META_BLOBSTRIPE_GENID_RRN;
     hdr.attr = 0;
     rc = meta_put(db, tran, &hdr, (void *)&genid, sizeof(genid));
+    if (rc == 0 && gbl_double_write_meta) {
+        int bdberr;
+        rc = bdb_put_meta(tran, db->tablename, META_BLOBSTRIPE_GENID_RRN, &genid, sizeof(genid), &bdberr);
+    }
     return rc;
 }
 
@@ -4438,7 +4448,16 @@ int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,
     int rc;
     hdr.rrn = META_BLOBSTRIPE_GENID_RRN;
     hdr.attr = 0;
-    rc = meta_get_tran(tran, db, &hdr, (void *)genid, sizeof(*genid));
+    if (gbl_read_meta_from_llmeta) {
+        int fnd;
+        int bdberr;
+        rc = bdb_get_meta(tran, db->tablename, META_BLOBSTRIPE_GENID_RRN, genid, sizeof(unsigned long long), &fnd, &bdberr);
+        if (rc == 0 && !fnd)
+            rc = IX_NOTFND;
+    }
+    else {
+        rc = meta_get_tran(tran, db, &hdr, (void *) genid, sizeof(*genid));
+    }
     return rc;
 }
 
@@ -4447,29 +4466,48 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
     return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
+
 // clang-format off
 #define get_put_db_ll(x, y)                                                \
 int put_db_##x(struct dbtable *db, tran_type *tran, long long value)       \
 {                                                                          \
+    int rc;                                                                \
     struct metahdr hdr = {.rrn = y, .attr = 0};                            \
     long long tmp = flibc_htonll(value);                                   \
-    return meta_put(db, tran, &hdr, &tmp, sizeof(unsigned long long));     \
+    int bdberr;                                                            \
+    rc = meta_put(db, tran, &hdr, &tmp, sizeof(unsigned long long));       \
+    if (rc == 0 && gbl_double_write_meta)                                  \
+       rc = bdb_put_meta(tran, db->tablename, y, &tmp, sizeof(unsigned long long), &bdberr); \
+    return rc;                                                             \
 }                                                                          \
 int put_##x(const char *name, tran_type *tran, long long value)            \
 {                                                                          \
+    int rc;                                                                \
     struct dbtable *db = getqueuebyname(name);                             \
-    return put_db_##x(db, tran, value);                                    \
+    rc = put_db_##x(db, tran, value);                                      \
+    return rc;                                                             \
 }                                                                          \
 int get_db_##x##_tran(struct dbtable *db, long long *value,                \
                       tran_type *tran)                                     \
 {                                                                          \
     struct metahdr hdr = {.rrn = y, .attr = 0};                            \
     long long tmp;                                                         \
-    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(long long));       \
-    if (rc == 0)                                                           \
-        *value = flibc_ntohll(tmp);                                        \
+    int rc;                                                                \
+    int found = 1;                                                         \
+    int bdberr;                                                            \
+    if (gbl_read_meta_from_llmeta) {                                       \
+        rc = bdb_get_meta(tran, db->tablename, y, value, sizeof(long long), &found, &bdberr);\
+         if (rc == 0 && !found)                                            \
+            rc = IX_NOTFND;                                                \
+    }                                                                      \
     else                                                                   \
+        rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(long long));       \
+    if (rc == 0 && found) {                                                \
+        *value = flibc_ntohll(tmp);                                        \
+    }                                                                      \
+    else {                                                                 \
         *value = 0;                                                        \
+    }                                                                      \
     return rc;                                                             \
 }                                                                          \
 int get_##x##_tran(const char *name, long long *value, tran_type *tran)    \
@@ -4492,17 +4530,33 @@ int put_db_##x(struct dbtable *db, tran_type *tran, int value)             \
 {                                                                          \
     struct metahdr hdr = {.rrn = y, .attr = 0};                            \
     int tmp = htonl(value);                                                \
-    return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
+    int rc;                                                                \
+    int bdberr;                                                            \
+    rc = meta_put(db, tran, &hdr, &tmp, sizeof(int));                      \
+    if (rc && gbl_double_write_meta)                                       \
+       rc = bdb_put_meta(tran, db->tablename, y, &tmp, sizeof(int), &bdberr); \
+    return rc;                                                             \
 }                                                                          \
 int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)     \
 {                                                                          \
     struct metahdr hdr = {.rrn = y, .attr = 0};                            \
     int tmp;                                                               \
-    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
-    if (rc == 0)                                                           \
-        *value = ntohl(tmp);                                               \
+    int found = 1;                                                         \
+    int bdberr;                                                            \
+    int rc;                                                                \
+    if (gbl_read_meta_from_llmeta) {                                       \
+        rc = bdb_get_meta(tran, db->tablename, y, &tmp, sizeof(int), &found, &bdberr); \
+        if (rc == 0 && !found)                                             \
+            rc = IX_NOTFND;                                                \
+    }                                                                      \
     else                                                                   \
+        rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
+    if (rc == 0 && found) {                                                \
+        *value = ntohl(tmp);                                               \
+    }                                                                      \
+    else {                                                                 \
         *value = 0;                                                        \
+    }                                                                      \
     return rc;                                                             \
 }                                                                          \
 int get_db_##x(struct dbtable *db, int *value)                             \
@@ -4564,40 +4618,6 @@ static int put_meta_int(const char *table, void *tran, int rrn, int key,
 }
 
 // clang-format on
-
-static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
-                             int key)
-{
-    struct metahdr hdr;
-    struct dbtable *db;
-    int rc;
-    int value;
-
-    hdr.rrn = rrn;
-    hdr.attr = key;
-    db = get_dbtable_by_name(table);
-    if (db == NULL) {
-        logmsg(LOGMSG_ERROR, "get_meta_int for bad db %s\n", table);
-        return -1;
-    }
-    rc = meta_get_tran(tran, db, &hdr, &value, sizeof(int));
-    if (rc == IX_NOTFND || rc == IX_PASTEOF || rc == IX_EMPTY ||
-        rc == ERR_NO_AUXDB)
-        return 0;
-    else if (rc == IX_FND)
-        return value;
-    else {
-        /* duplicate? bdb err? */
-        logmsg(LOGMSG_ERROR, "get_meta_int: unexpected rcode %d\n", rc);
-        return -1;
-    }
-}
-
-static int get_meta_int(const char *table, int rrn, int key)
-{
-    return get_meta_int_tran(NULL /*tran*/, table, rrn, key);
-}
-
 static const uint8_t *metahdr_type_get(struct metahdr *p_metahdr,
                                        const uint8_t *p_buf,
                                        const uint8_t *p_buf_end)
@@ -4831,11 +4851,6 @@ static int meta_get_tran(tran_type *tran, struct dbtable *db, struct metahdr *ke
     return rc;
 }
 
-int meta_get(struct dbtable *db, struct metahdr *key1, void *dta, int dtalen)
-{
-    return meta_get_tran(NULL /*tran*/, db, key1, dta, dtalen);
-}
-
 /* get variable length data, placing a pointer to it in *dta. */
 /* can only use a trasaction if the meta table is a lite db */
 static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
@@ -4909,11 +4924,6 @@ static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
     return rc;
 }
 
-int meta_get_var(struct dbtable *db, struct metahdr *key1, void **dta, int *fndlen)
-{
-    return meta_get_var_tran(NULL /*tran*/, db, key1, dta, fndlen);
-}
-
 void purgerrns(struct dbtable *db) { return; }
 
 void flush_db(void)
@@ -4971,6 +4981,7 @@ retry:
     iq->gluewhere = "bdb_lite_exact_fetch done";
     if (rc == -1) {
         if (bdberr == BDBERR_DEADLOCK) {
+            // TODO: almost certainly a bug - we can't retry here with an active transaction
             iq->retries++;
             if (++retries < gbl_maxretries) {
                 n_retries++;
@@ -6184,4 +6195,252 @@ static int sync_state_to_protobuf(int sync) {
 
 static int syncmode_callback(bdb_state_type *bdb_state) {
     return sync_state_to_protobuf(thedb->rep_sync);
+}
+
+
+// These are all the meta fields we know about, and their sizes.  meta code assumes the caller knows
+// the size of the data they're fetching.
+struct meta_info {
+    int id;
+    int sz;
+};
+static struct meta_info ids[] = {
+        { .id = META_STUFF_RRN, .sz = 2048 },
+        { .id = META_BLOBSTRIPE_GENID_RRN, .sz = sizeof(unsigned long long) },
+        { .id = META_ONDISK_HEADER_RRN, .sz = sizeof(int) },
+        { .id = META_INPLACE_UPDATES, .sz = sizeof(int) },
+        { .id = META_COMPRESS_RRN, .sz = sizeof(int) },
+        { .id = META_COMPRESS_BLOBS_RRN, .sz = sizeof(int) },
+        { .id = META_INSTANT_SCHEMA_CHANGE, .sz = sizeof(int) },
+        { .id = META_DATACOPY_ODH, .sz = sizeof(int) },
+        { .id = META_QUEUE_ODH, .sz = sizeof(int) },
+        { .id = META_QUEUE_COMPRESS, .sz = sizeof(int) },
+        { .id = META_BTHASH, .sz = sizeof(int) },
+        { .id = META_QUEUE_PERSISTENT_SEQ, .sz = sizeof(int) },
+        { .id = META_QUEUE_SEQ, .sz = sizeof(long long) },
+};
+
+// meta keys as strings for debugging
+static const char *metakeystr(int k) {
+    switch (k) {
+        case META_BLOBSTRIPE_GENID_RRN:
+            return "BLOBSTRIPE_GENID_RRN";
+        case META_STUFF_RRN:
+            return "STUFF_RRN";
+        case META_ONDISK_HEADER_RRN:
+            return "ONDISK_HEADER_RRN";
+        case META_COMPRESS_RRN:
+            return "COMPRESS_RRN";
+        case META_COMPRESS_BLOBS_RRN:
+            return "COMPRESS_BLOBS_RRN";
+        case META_INSTANT_SCHEMA_CHANGE:
+            return "INSTANT_SCHEMA_CHANGE";
+        case META_DATACOPY_ODH:
+            return "DATACOPY_ODH";
+        case META_INPLACE_UPDATES:
+            return "INPLACE_UPDATES";
+        case META_BTHASH:
+            return "BTHASH";
+        case META_QUEUE_ODH:
+            return "QUEUE_ODH";
+        case META_QUEUE_COMPRESS:
+            return "QUEUE_COMPRESS";
+        case META_QUEUE_PERSISTENT_SEQ:
+            return "QUEUE_PERSISTENT_SEQ";
+        case META_QUEUE_SEQ:
+            return "QUEUE_SEQ";
+        default:
+            return "???";
+    }
+}
+
+
+// Grab read table locks for all tables, and return the list of tables we locked. This just prevents them from
+// starting schema changes while we hold the locks.  Caller should free the list of tables with a single free call.
+static int rdlock_all_tables(tran_type *tran, dbtable ***tables, int *ntables, int *bdberr) {
+    int rc;
+
+    rdlock_schema_lk();
+    *ntables = thedb->num_dbs;
+    *tables = calloc(*ntables+1, sizeof(dbtable *));
+    if (tables == NULL) {
+        *bdberr = BDBERR_MALLOC;
+        rc = -1;
+        goto done;
+    }
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        rc = bdb_lock_table_read(thedb->dbs[i]->handle, tran);
+        if (rc)
+            goto done;
+        (*tables)[i] = thedb->dbs[i];
+    }
+    (*tables)[thedb->num_dbs] = &thedb->static_table;
+done:
+    unlock_schema_lk();
+    (*ntables)++;
+    if (rc)
+        free(tables);
+    return rc;
+}
+
+typedef int(*metakey_callback)(tran_type *tran, dbtable *db, int metakey, void *data, int datasize, int *bdberr);
+
+// Do a thing for every found old meta key.  Just does the keys in ids above.
+static int for_each_meta_key(tran_type *tran, metakey_callback callback_func, int *bdberr) {
+    int rc;
+
+    dbtable **tables = NULL;
+    int ntables = 0;
+
+    // The biggest meta entry is 2k - META_STUFF_RRN - we use this to stuff the logs with something to force them to
+    // roll
+    char val[2048];
+
+    rc = rdlock_all_tables(tran, &tables, &ntables, bdberr);
+    if (rc)
+        return rc;
+
+    // go through all tables and all known meta keys for every table, and call the provided callback
+    for (int tablenum = 0; tablenum < ntables; tablenum++) {
+        for (int id = 0; id < sizeof(ids) / sizeof(ids[0]); id++) {
+            // get the old meta
+            struct metahdr hdr;
+            hdr.rrn = ids[id].id;
+            hdr.attr = 0;
+            rc = meta_get_tran(tran, tables[tablenum], &hdr, val, ids[id].sz);
+
+            // IX_NOTFOUND is expected, no other error is.  deadlock needs to be handled by the top level
+            if (rc && rc != IX_NOTFND && rc != ERR_NO_AUXDB) {
+                // TODO: handle deadlock? - see note in lite_find_exact_auxdb_tran
+                logmsg(LOGMSG_ERROR, "error %d fetching meta %d for table %s\n", *bdberr, ids[id].id,
+                       tables[tablenum]->tablename);
+                goto done;
+            }
+            if (rc == 0) {
+                rc = callback_func(tran, tables[tablenum], ids[id].id, val, ids[id].sz, bdberr);
+                if (rc)
+                    goto done;
+            }
+        }
+    }
+    // reset rc - it may have been set to IX_NOTFOUND.  Any other errors should go straight to done
+    rc = 0;
+
+done:
+    free(tables);
+    return rc;
+}
+
+
+static int for_each_meta_key_tranwrap(metakey_callback callback_func, int *bdberr) {
+    tran_type *tran;
+    int rc = 0;
+
+    // We latch table names here so we can traverse the list of tables without holding the schema lock for any
+    // longer than it takes us to grab table locks.
+    *bdberr = BDBERR_NOERROR;
+
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, bdberr);
+    if (tran == NULL)
+        return -1;
+
+    // TODO: grab all the table locks?  Or go a table at a time? Let's do all the table locks.  These are read
+    //       locks, so only schema changes are going to block. for_each_meta_key grabs all the table locks.
+    rc = for_each_meta_key(tran, callback_func, bdberr);
+    if (rc) {
+        int arc = bdb_tran_abort(thedb->bdb_env, tran, bdberr);
+        if (arc)
+            rc = arc;
+    } else {
+        rc = bdb_tran_commit(thedb->bdb_env, tran, bdberr);
+    }
+    return rc;
+}
+
+static int convert_meta_key(tran_type *tran, dbtable *db, int metakey, void *data, int datasize, int *bdberr) {
+    // the biggest meta payload is 2k
+    char value[2048];
+    int fndvalsize = sizeof(value);
+    int found = 0;
+    int rc = 0;
+
+    // find the value in llmeta first - only write if we don't find it (ie: if it hasn't been converted before)
+    rc = bdb_get_meta(tran, db->tablename, metakey, value, fndvalsize, &found, bdberr);
+    if (rc) {
+        if (*bdberr != BDBERR_DEADLOCK)
+            logmsg(LOGMSG_ERROR, "error %d bdberr %d reading llmeta for meta %d for table %s\n", rc, *bdberr, metakey, db->tablename);
+        return rc;
+    }
+    if (!found) {
+        rc = bdb_put_meta(tran, db->tablename, metakey, data, (int) datasize, bdberr);
+        if (rc) {
+            if (*bdberr != BDBERR_DEADLOCK)
+                logmsg(LOGMSG_ERROR, "error %d writing llmeta for meta %d for table %s\n", *bdberr,
+                       metakey, db->tablename);
+            return rc;
+        }
+    }
+    return 0;
+}
+
+static int diff_meta_key(tran_type *tran, dbtable *db, int metakey, void *data, int datasize, int *bdberr) {
+    // the biggest meta payload is 2k
+
+    char metavalue[2048];
+    int metafndvalsize = sizeof(metavalue);
+
+    char llmetavalue[2048];
+    int llmetafndvalsize = sizeof(llmetavalue);
+
+    int found = 0;
+    int rc = 0;
+
+    // get from llmeta
+    rc = bdb_get_meta(tran, db->tablename, metakey, llmetavalue, llmetafndvalsize, &found, bdberr);
+    if (rc) {
+        if (*bdberr != BDBERR_DEADLOCK)
+            logmsg(LOGMSG_ERROR, "error %d reading llmeta for meta %d for table %s\n", *bdberr, metakey, db->tablename);
+        return rc;
+    }
+
+    // get from meta
+    struct metahdr hdr;
+    hdr.rrn = metakey;
+    hdr.attr = 0;
+    rc = meta_get_tran(tran, db, &hdr, metavalue, metafndvalsize);
+    if (rc == 0) {
+        if (!found) {
+            logmsg(LOGMSG_USER, "%s %d - found in meta, not in llmeta\n", db->tablename, metakey);
+            return 0;
+        }
+        // found in both? diff
+        if (memcmp(metavalue, llmetavalue, datasize) != 0) {
+            logmsg(LOGMSG_USER, "%s %d - different values found:\n", db->tablename, metakey);
+            logmsg(LOGMSG_USER, "meta: ");
+            hexdump(LOGMSG_USER, metavalue, datasize);
+            logmsg(LOGMSG_USER, "llmeta: ");
+            hexdump(LOGMSG_USER, llmetavalue, datasize);
+            return 0;
+        }
+    } else if (rc == IX_NOTFND) {
+        if (found) {
+            logmsg(LOGMSG_USER, "%s %d - found in llmeta, not in meta\n", db->tablename, metakey);
+            return 0;
+        }
+    } else if (rc) {
+        logmsg(LOGMSG_USER, "%s %d - fnd rc %d\n", db->tablename, metakey, rc);
+        return 0;
+    }
+
+
+    return 0;
+}
+
+// This code moves meta keys/values to llmeta.
+int convert_meta_to_llmeta(int *bdberr) {
+    return for_each_meta_key_tranwrap(convert_meta_key, bdberr);
+}
+
+int diff_meta_llmeta(int *bdberr) {
+    return for_each_meta_key_tranwrap(diff_meta_key, bdberr);
 }

@@ -5563,6 +5563,10 @@ int main(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to start\n");
         exit(1);
     }
+    if (thedb->master == gbl_myhostname && gbl_convert_meta_to_llmeta) {
+        int bdberr;
+        convert_meta_to_llmeta(&bdberr);
+    }
 
     /*
       Place a freeze on tunables' registration. This is done to

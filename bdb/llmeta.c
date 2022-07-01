@@ -33,6 +33,9 @@
 #include "lrucache.h"
 #include <sys/time.h>
 #include "lockmacros.h"
+#include "schema_lk.h"
+#include "comdb2.h"
+#include "tohex.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -169,6 +172,9 @@ typedef enum {
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
     LLMETA_SEQUENCE_VALUE = 53,
     LLMETA_LUA_SFUNC_FLAG = 54,
+
+    // Records converted from old metatables
+    LLMETA_META_FLAG = 55
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -6777,6 +6783,24 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                    "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%s\"\n",
                    tblname, (char *)data);
         } break;
+        case LLMETA_META_FLAG: {
+            char tblname[LLMETA_TBLLEN];
+            int rrn;
+            int attr;
+            p_buf_key = buf_no_net_get(&(tblname), sizeof(tblname), p_buf_key + sizeof(int),
+                           p_buf_end_key);
+            if (p_buf_key == NULL)
+                return 1;
+            p_buf_key = buf_get(&rrn, sizeof(rrn), p_buf_key, p_buf_end_key);
+            if (p_buf_key == NULL)
+                return 1;
+            p_buf_key = buf_get(&attr, sizeof(attr), p_buf_key, p_buf_end_key);
+            if (p_buf_key == NULL)
+                return 1;
+            logmsg(LOGMSG_USER, "LLMETA_META_FLAG table=\"%s\" rrn=%d attr=%d value:", tblname, rrn, attr);
+            hexdump( LOGMSG_USER, (char*) p_buf_data, (char*) p_buf_end_data - (char*) p_buf_data);
+            break;
+        }
         default:
             logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
             break;
@@ -10521,3 +10545,211 @@ int bdb_del_view(tran_type *t, const char *view_name)
     }
     return rc;
 }
+
+// This block is responsible for storing/retrieving old meta keys in llmeta. The meta code was
+// pretty simple - the key (we called in an rrn in that code, ugh) is an integer
+// from enum DB_METADATA.  The data payload is variable size (expected to be known by the caller)
+// There's only a few things stored in meta, but they're important - eg: odh/compression flags, etc.
+// There's no reason to have 2 meta-information systems, so this code aims to migrate this
+// information to llmeta.  Generated db_get_put* code in glue.c switches between this and meta
+// until we can prove out the system, at which point we can delete meta code (and hopefully
+// remember to update this comment).
+// {
+struct llmeta_meta_key {
+    int file_type;
+//     WARNING: old meta key name had 128 bytes for the table portion of the key.  But there's a lot of
+//     other llmeta things that limit table names to LLMETA_TBLLEN bytes, and we should warn on conversion
+//     failure.
+    char tblname[LLMETA_TBLLEN];
+    int rrn;
+    int attr;
+};
+
+enum { LLMETA_OLD_META_FLAGS_KEY_LEN = 44 };
+
+
+BB_COMPILE_TIME_ASSERT(llmeta_meta_key_check,
+                       sizeof(struct llmeta_meta_key) ==
+                               LLMETA_OLD_META_FLAGS_KEY_LEN);
+
+BB_COMPILE_TIME_ASSERT(llmeta_meta_key_overflow,
+                       sizeof(struct llmeta_meta_key) <= LLMETA_IXLEN);
+
+static uint8_t *
+llmeta_meta_key_put(const struct llmeta_meta_key *p_meta_key,
+        uint8_t *p_buf, const uint8_t *p_buf_end) {
+    if (p_buf_end < p_buf ||
+        LLMETA_VERSION_NUMBER_TYPE_SIZE > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_put(&(p_meta_key->file_type), sizeof(p_meta_key->file_type), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+    p_buf = buf_no_net_put((p_meta_key->tblname), sizeof(p_meta_key->tblname), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+    p_buf = buf_put(&(p_meta_key->rrn), sizeof(p_meta_key->rrn), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+    p_buf = buf_put(&(p_meta_key->attr), sizeof(p_meta_key->attr), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+
+    return p_buf;
+}
+
+static const uint8_t *
+llmeta_meta_key_get(struct llmeta_meta_key *p_meta_key,
+                    const uint8_t *p_buf, const uint8_t *p_buf_end) {
+    if (p_buf_end < p_buf ||
+        LLMETA_VERSION_NUMBER_TYPE_SIZE > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_get(&(p_meta_key->file_type), sizeof(p_meta_key->file_type), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+    p_buf = buf_no_net_get((p_meta_key->tblname), sizeof(p_meta_key->tblname), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+    p_buf = buf_get(&(p_meta_key->rrn), sizeof(p_meta_key->rrn), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+    p_buf = buf_get(&(p_meta_key->attr), sizeof(p_meta_key->attr), p_buf, p_buf_end);
+    if (p_buf == NULL)
+        return p_buf;
+
+    return p_buf;
+}
+
+int bdb_put_meta(tran_type *tran, const char *tablename, int metakey, void *value, int valsize, int *bdberr) {
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_meta_key k = {.file_type = LLMETA_META_FLAG, .attr = 0, .rrn = metakey};
+    strncpy0(k.tblname, tablename, sizeof(k.tblname));
+    uint8_t *p_buf = (uint8_t *) key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+    *bdberr = BDBERR_NOERROR;
+
+    p_buf = llmeta_meta_key_put(&k, p_buf, p_buf_end);
+    if (p_buf == NULL) {
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    int rc = kv_put(tran, key, value, valsize, bdberr);
+    return rc;
+}
+
+int bdb_get_meta(tran_type *tran, const char *tablename, int metakey, void *value, int valsize, int *found, int *bdberr) {
+    char key[LLMETA_IXLEN] = {0};
+    struct llmeta_meta_key k = {.file_type = LLMETA_META_FLAG, .rrn = metakey, .attr = 0};
+    strncpy0(k.tblname, tablename, sizeof(k.tblname));
+    uint8_t *p_buf = (uint8_t *) key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    // we expect meta values to be unique, so at most should get a single value, but this is what the interface expects
+    int nvalues = 0;
+    void **values = NULL;
+    *found = 0;
+
+    int rc;
+    p_buf = llmeta_meta_key_put(&k, p_buf, p_buf_end);
+    if (p_buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s metakey %d found can't encode key?\n", tablename, metakey);
+        *bdberr = BDBERR_BADARGS;
+        rc = -1;
+        goto done;
+    }
+
+    rc = kv_get(tran, key, sizeof(key), &values, &nvalues, bdberr);
+    // we can find zero records or have an error
+    if (rc || nvalues == 0)
+        goto done;
+    // and we can find a single record, but we shouldn't be able to find multiple matching records
+    if (nvalues != 1) {
+        logmsg(LOGMSG_ERROR, "%s metakey %d found %d records, expected 0 or 1\n", tablename, metakey, nvalues);
+        *bdberr = BDBERR_FETCH_DTA;
+        rc = -1;
+        goto done;
+    }
+    // looks like the calling code must pass a correctly sized buffer since kv_get doesn't return the size
+    memcpy(value, values[0], valsize);
+    *found = 1;
+
+done:
+    for (int i = 0; i < nvalues; i++)
+        free(values[i]);
+    free(values);
+    return rc;
+}
+
+#define DEADLOCK_RETRY() do {                                   \
+    if (bdberr == BDBERR_DEADLOCK) {                            \
+        rc = bdb_tran_abort(bdb_state, tran, &bdberr);          \
+        if (rc) {                                               \
+            tran = NULL;                                        \
+            logmsg(LOGMSG_ERROR, "%s: failed to abort on retry??? %d %d\n", __func__, rc, bdberr); \
+            goto done;                                          \
+        }                                                       \
+        goto retry;                                             \
+    }                                                           \
+} while (0)
+
+void bdb_clear_meta_to_llmeta(bdb_state_type *bdb_state) {
+    tran_type *tran = NULL;
+    int bdberr = 0;
+    int rc = -1;
+    int k = (int) htonl(LLMETA_META_FLAG);
+    int retries = 0;
+    void **keys = NULL;
+    int nkeys = 0;
+retry:
+    retries++;
+    if (retries == gbl_maxretries) {
+        logmsg(LOGMSG_ERROR, "%s: reached max retries trying to clear llmeta meta keys?\n", __func__);
+        goto done;
+    }
+    tran = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+        goto done;
+    }
+
+    rc = kv_get_keys(tran, &k, sizeof(int), &keys, &nkeys, &bdberr);
+    if (rc) {
+        DEADLOCK_RETRY();
+        logmsg(LOGMSG_ERROR, "%s: failed to get keys: %d %d\n", __func__, rc, bdberr);
+        goto done;
+    }
+
+    for (int i = 0; i < nkeys; i++) {
+        rc = kv_del(tran, keys[i], &bdberr);
+        if (rc) {
+            DEADLOCK_RETRY();
+            logmsg(LOGMSG_ERROR, "%s: failed to delete keys: %d %d\n", __func__, rc, bdberr);
+            goto done;
+        }
+    }
+
+done:
+    if (rc) {
+        if (tran) {
+            int arc = bdb_tran_abort(bdb_state, tran, &bdberr);
+            if (arc) {
+                logmsg(LOGMSG_ERROR, "%s: failed to abort??? %d %d\n", __func__, arc, bdberr);
+                rc = arc;
+            }
+        }
+    } else {
+        rc = bdb_tran_commit(bdb_state, tran, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to commit??? %d %d\n", __func__, rc, bdberr);
+        }
+    }
+    if (nkeys) {
+        for (int i = 0; i < nkeys; i++)
+            free(keys[i]);
+        free(keys);
+    }
+}
+#undef DEADLOCK_RETRY
+
+// }
+// End of meta->llmeta code.
