@@ -2187,4 +2187,7 @@ REGISTER_TUNABLE("allow_unauthenticated_tag_access", NULL, TUNABLE_BOOLEAN, &gbl
 REGISTER_TUNABLE("admin_mode", "Fail non-admin client requests (Default: False)", TUNABLE_BOOLEAN, &gbl_server_admin_mode, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sqlite_use_temptable_for_rowset",
+                 "Use temptable instead of sqlite's binary search tree, for recording rowids (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_sqlite_use_temptable_for_rowset, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

@@ -871,6 +871,7 @@
 (name='sqlite3openserial', description='Serialise calls to sqlite3_open to prevent excess CPU', type='BOOLEAN', value='OFF', read_only='N')
 (name='sqlite_makerecord_for_comdb2', description='Enable MakeRecord optimization which converts Mem to comdb2 row data directly', type='BOOLEAN', value='ON', read_only='N')
 (name='sqlite_sorter_tempdir_reqfree', description='Refuse to create a sorter for queries if less than this percent of disk space is available (and return an error to the application).', type='INTEGER', value='6', read_only='N')
+(name='sqlite_use_temptable_for_rowset', description='Use temptable instead of sqlite's binary search tree, for recording rowids (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='sqlreadahead', description='', type='INTEGER', value='0', read_only='Y')
 (name='sqlreadaheadthresh', description='', type='INTEGER', value='0', read_only='Y')
 (name='sqlsortermem', description='Maximum amount of memory to be allocated to the sqlite sorter. (Default: 314572800)', type='INTEGER', value='314572800', read_only='Y')
