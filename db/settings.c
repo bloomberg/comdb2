@@ -29,7 +29,7 @@
 #define OFFSET_FOR_APPLY_SETTINGS 100
 
 /* Default values for settings. Can be used to set values via tunables now. */
-char *gbl_setting_default_chunk_size = "0";
+char *gbl_setting_default_chunk_size;
 char *gbl_setting_default_mode = "blocksql";
 char *gbl_setting_default_hasql = "off";
 char *gbl_setting_default_query_timeout = NULL;
@@ -434,6 +434,7 @@ int set_user(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *
     strcpy(clnt->current_user.name, deqval);
     return 0;
 }
+
 int set_password(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     if (!sqlite3IsCorrectlyQuoted(sqlstr)) {
@@ -456,6 +457,7 @@ int set_password(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const ch
     strcpy(clnt->current_user.password, deqval);
     return 0;
 }
+
 int set_spversion(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     clnt->spversion.version_num = 0;
@@ -655,12 +657,14 @@ int set_plannereffort(db_clnt_setting_t *setting, struct sqlclntstate *clnt, con
 #endif
     return 0;
 }
+
 int set_intransresults(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
-    //    struct newsql_appdata *appdata = clnt->appdata;
-    //    appdata->send_intrans_response = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : -1;
+    struct newsql_appdata *appdata = clnt->appdata;
+    appdata->send_intrans_response = 0 ? (strncasecmp(sqlstr, "off", 3) == 0) : -1;
     return 0;
 }
+
 int set_admin(db_clnt_setting_t *setting, struct sqlclntstate *clnt, const char *sqlstr, char *err)
 {
     clnt->admin = (strncasecmp(sqlstr, "off", 3) != 0);

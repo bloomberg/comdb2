@@ -3,7 +3,7 @@
 
 // REGISTER_SETTING(NAME, DESC, TYPE, FLAG, DEFAULT)
 REGISTER_ACC_SETTING(dbtran.mode, mode, SETTING_INTEGER, 0, gbl_setting_default_mode);
-REGISTER_ACC_SETTING(dbtran.maxchunksize, chunk, SETTING_INTEGER, 0, gbl_setting_default_query_timeout);
+REGISTER_ACC_SETTING(dbtran.maxchunksize, chunk, SETTING_INTEGER, 0, gbl_setting_default_chunk_size);
 
 // How do I handle cln->plugin.set_timeout?
 REGISTER_ACC_SETTING(plugin.set_timeout, timeout, SETTING_INTEGER, SETFLAG_WRITEONLY,
@@ -31,7 +31,7 @@ REGISTER_ACC_SETTING(osql_max_trans, maxtransize, SETTING_LONG, 0, gbl_setting_d
 REGISTER_ACC_SETTING(group_concat_mem_limit, groupconcatmemlimit, SETTING_LONG, 0,
                      gbl_setting_default_groupconcatmemlimit);
 REGISTER_ACC_SETTING(planner_effort, plannereffort, SETTING_INTEGER, 0, gbl_setting_default_plannereffort);
-REGISTER_ACC_SETTING(appdata, intransresults, SETTING_STRING, 0, gbl_setting_default_intransresults);
+REGISTER_ACC_SETTING(appdata, intransresults, SETTING_STRING, SETFLAG_WRITEONLY, gbl_setting_default_intransresults);
 REGISTER_ACC_SETTING(admin, admin, SETTING_INTEGER, 0, gbl_setting_default_admin);
 REGISTER_ACC_SETTING(limits, querylimit, SETTING_MULTIPLE, SETFLAG_WRITEONLY, gbl_setting_default_querylimit);
 REGISTER_ACC_SETTING(rowbuffer, rowbuffer, SETTING_INTEGER, 0, gbl_setting_default_rowbuffer);

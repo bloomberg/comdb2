@@ -21,6 +21,7 @@
   at multiple places.
 */
 
+#include "tunables.h"
 REGISTER_TUNABLE("abort_on_in_use_rqid", NULL, TUNABLE_BOOLEAN,
                  &gbl_abort_on_clear_inuse_rqid, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -2175,5 +2176,9 @@ REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class
 
 REGISTER_TUNABLE("allow_unauthenticated_tag_access", NULL, TUNABLE_BOOLEAN, &gbl_unauth_tag_access, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("default_setting_chunk", NULL, TUNABLE_STRING, &gbl_setting_default_chunk_size, READEARLY,
+                 NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
