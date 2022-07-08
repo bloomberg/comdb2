@@ -15,6 +15,7 @@
 (name='ack_trace', description='Every second, produce trace for ack messages. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='add_record_interval', description='Add a record every seconds while there are incoherent_wait replicants.', type='INTEGER', value='1', read_only='N')
 (name='additional_deferms', description='Wait-fudge to ensure that a replicant has gone incoherent.', type='INTEGER', value='0', read_only='N')
+(name='admin_mode', description='Fail non-admin client requests (Default: False)', type='BOOLEAN', value='OFF', read_only='N')
 (name='all_incoherent', description='Master pretends nodes are incoherent.', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_broken_datetimes', description='Allow broken datetimes', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_key_typechange', description='allow_key_typechange', type='BOOLEAN', value='OFF', read_only='N')
