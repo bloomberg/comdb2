@@ -2255,11 +2255,10 @@ static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
 
     rc = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
     if (rc == 0) {
-        if (port != NULL)
-            *port = addr.sin_port;
-        hp = gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
-        strncpy(buf, hp->h_name, n - 1);
-        buf[n - 1] = '\0';
+        *port = addr.sin_port;
+        /* Request a short host name. Set buf to empty on error. */
+        if (getnameinfo((struct sockaddr *)&addr, addr_size, buf, n, NULL, 0, NI_NOFQDN))
+            buf[0] = '\0';
     }
 }
 
