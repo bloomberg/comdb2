@@ -893,8 +893,14 @@ pfx_bulk_page(DBC *dbc, uint8_t * np, int32_t *offp, uint32_t space)
 	for (i = cp->indx; i < n; ++i) {
 		BKEYDATA *bk = GET_BKEYDATA(dbp, pg, i);
 
-		if (B_DISSET(bk))
-			continue;
+		if (i % 2 == 0) {
+			BKEYDATA *val = GET_BKEYDATA(dbp, pg, i + 1);
+			if (B_DISSET(bk) || B_DISSET(val)) {
+				/* skip this key-value pair, if key or value are marked deleted */
+				++i;
+				continue;
+			}
+		}
 
 		/* WE NEED AT LEAST THIS MUCH IN ANY CASE (for two offp-s) */
 		if (space < (2 * sizeof(*offp)))
