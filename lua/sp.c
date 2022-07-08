@@ -2270,7 +2270,7 @@ retry:
         *stmt = rec_ptr->stmt;
         rec_ptr->sql = sqlite3_sql(*stmt);
     } else if (sp->rc == SQLITE_SCHEMA) {
-        return luaL_error(L, sqlite3ErrStr(sp->rc));
+        luabb_error(L, sp, "%s", sqlite3ErrStr(SQLITE_SCHEMA));
     } else {
         luabb_error(L, sp, "%s in stmt: %s", err.errstr, sql);
     }
@@ -2701,16 +2701,6 @@ static void reset_stmts(SP sp)
     dbstmt_t *dbstmt, *tmp;
     LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
         reset_stmt(sp, dbstmt);
-    }
-}
-
-static void finalize_stmts(SP sp)
-{
-    dbstmt_t *dbstmt, *tmp;
-    if (sp != NULL) {
-        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
-            donate_stmt(sp, dbstmt);
-        }
     }
 }
 
@@ -7174,8 +7164,6 @@ void *exec_trigger(trigger_reg_t *reg)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
-    clnt.recover_ddlk = recover_ddlk_sp;
-    clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd;
@@ -7192,7 +7180,25 @@ void *exec_trigger(trigger_reg_t *reg)
     while (1) {
         int rc, args = 0;
         char *err = NULL;
+
+        /* We're waiting for a new event. We do not want get_curtran
+         * to call recover_deadlock which re-acquires table locks for
+         * everything on the statement list: we may end up holding
+         * these table locks for a long time until there's a new event
+         * that unblocks us.
+         *
+         * So this is what we do:
+         * clear the recover_deadlock callback first, call get_curtran,
+         * and then set them back.
+         *
+         * LUA GC will eventually release those "dangling" statements.
+         */
+        clnt.recover_ddlk = NULL;
+        clnt.recover_ddlk_fail = NULL;
         get_curtran(thedb->bdb_env, &clnt);
+        clnt.recover_ddlk = recover_ddlk_sp;
+        clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
+
         if (setup_sp_for_trigger(reg, &err, &thd, &clnt, &q) != 0) {
             goto bad;
         }
@@ -7236,12 +7242,6 @@ void *exec_trigger(trigger_reg_t *reg)
                    reg->spname, q->info.trigger_cookie, rc, err);
             goto bad;
         }
-        /* Release all unclosed dbstmt's. The same LUA VM is going to be reused for the next execution
-           of this trigger.  Hence the GC won't release those dangling structures. */
-        finalize_stmts(sp);
-        /* Release all temp tables for the same reason above. */
-        drop_temp_tables(sp);
-        free_tmptbls(sp);
         put_curtran(thedb->bdb_env, &clnt);
     }
     if (q) {
@@ -7254,9 +7254,7 @@ void *exec_trigger(trigger_reg_t *reg)
     } else {
         force_unregister(L, reg);
     }
-    finalize_stmts(clnt.sp);
     put_curtran(thedb->bdb_env, &clnt);
-    /* temp tables are cleaned up in this function */
     end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
