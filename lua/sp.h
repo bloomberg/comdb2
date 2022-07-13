@@ -28,7 +28,7 @@ struct spversion_t {
 
 int exec_procedure(struct sqlthdstate *, struct sqlclntstate *, char **err);
 void exec_thread(struct sqlthdstate *, struct sqlclntstate *);
-void *exec_trigger(struct trigger_reg *);
+void *exec_trigger(char *);
 void close_sp(struct sqlclntstate *);
 int is_pingpong(struct sqlclntstate *);
 

@@ -1,8 +1,10 @@
 CREATE TABLE t1 (x INT);$$
 
 CREATE PROCEDURE trigger_1 VERSION 'trigger_1' {
+
+  local tbl = db:table("tbl", {{"i", "int"}})
+
   local function main(event)
-    local tbl = db:table("tbl", {{"i", "int"}})
     local tp = event.type
     local inew, iold
     if tp == 'add' then
