@@ -65,6 +65,7 @@ Installing (from source or a package) creates a directory structure like this:
 ├── bin
 │   ├── cdb2_dump
 │   ├── cdb2_printlog
+│   ├── cdb2_pgdump
 │   ├── cdb2sql
 │   ├── cdb2_stat
 │   ├── cdb2_verify
