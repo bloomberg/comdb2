@@ -94,7 +94,7 @@ static int MIN_RETRIES = MIN_RETRIES_DEFAULT;
 #define CDB2_CONNECT_TIMEOUT_DEFAULT 100
 static int CDB2_CONNECT_TIMEOUT = CDB2_CONNECT_TIMEOUT_DEFAULT;
 
-#define CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT 2
+#define CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT 0
 static int CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
 
 #define COMDB2DB_TIMEOUT_DEFAULT 2000
@@ -3397,9 +3397,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (hndl->ack)
         ack(hndl);
 
-    if (hndl->sb && !hndl->in_trans && hndl->firstresponse &&
-        (!hndl->lastresponse ||
-         (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
+    if (CDB2_AUTO_CONSUME_TIMEOUT_MS > 0 && hndl->sb && !hndl->in_trans && hndl->firstresponse &&
+        (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
         int nrec = 0;
         sbuf2settimeout(hndl->sb, CDB2_AUTO_CONSUME_TIMEOUT_MS,
                         CDB2_AUTO_CONSUME_TIMEOUT_MS);
