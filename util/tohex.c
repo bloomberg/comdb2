@@ -105,6 +105,17 @@ void hexdumpfp(FILE *fp, const unsigned char *key, int keylen)
     }
 }
 
+void print_hex_nl(const uint8_t *b, unsigned l, int newline)
+{
+    hexdumpfp(stdout, b, l);
+    if (newline) fprintf(stdout, "\n");
+}
+
+void print_hex(const uint8_t *b, unsigned l)
+{
+    print_hex_nl(b, l, 1);
+}
+
 #include <dbinc/fileid_len.h>
 
 void fileid_str(u_int8_t *fileid, char *str)

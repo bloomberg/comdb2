@@ -5419,7 +5419,8 @@ static void goodbye()
    TOOL(cdb2_load)      \
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_stat)      \
-   TOOL(cdb2_verify)
+   TOOL(cdb2_verify)    \
+   TOOL(cdb2_pgdump)
 
 #undef TOOL
 #define TOOL(x) int tool_ ##x ##_main(int argc, char *argv[]);
