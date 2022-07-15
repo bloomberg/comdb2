@@ -3,9 +3,9 @@ CREATE TABLE t2_1 (x INTEGER)$$
 INSERT INTO t2_1 VALUES (1)
 
 CREATE PROCEDURE trigger_2 VERSION 'trigger_2' {
+  local tbl = db:table("tbl", {{"i", "int"}})
   local function main(event)
     db:prepare("select * from t2_1"):exec()
-    local tbl = db:table("tbl", {{"i", "int"}})
     local tp = event.type
     local inew, iold
     if tp == 'add' then
