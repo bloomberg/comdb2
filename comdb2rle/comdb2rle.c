@@ -27,14 +27,7 @@
 #endif
 
 #ifdef CRLE_VERBOSE
-static void print_hex(uint8_t *b, unsigned l)
-{
-    static char map[] = "0123456789abcdef";
-    for (unsigned i = 0; i < l; ++i) {
-        fprintf(stderr, "%c%c", map[b[i] >> 4], map[b[i] & 0x0f]);
-    }
-    fprintf(stderr, "\n");
-}
+#include <tohex.h>
 
 static int doprint = 0;
 #endif
