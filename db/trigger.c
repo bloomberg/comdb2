@@ -165,9 +165,10 @@ static int trigger_unregister_int(trigger_reg_t *t)
     trigger_info_t *info;
     if ((info = hash_find(trigger_hash, t->spname)) != NULL &&
         strcmp(info->host, trigger_hostname(t)) == 0 &&
-        info->trigger_cookie == t->trigger_cookie) {
-        trigger_hash_del(info);
+        info->trigger_cookie == t->trigger_cookie
+    ){
         ctrace("TRIGGER:%s %016" PRIx64 " UNASSIGNED\n", info->spname, info->trigger_cookie);
+        trigger_hash_del(info);
         return CDB2_TRIG_REQ_SUCCESS;
     }
     return CDB2_TRIG_ASSIGNED_OTHER;
