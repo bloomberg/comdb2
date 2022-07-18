@@ -1558,6 +1558,7 @@ extern int gbl_uses_password;
 extern int gbl_unauth_tag_access;
 extern int gbl_uses_externalauth;
 extern int gbl_externalauth_warn;
+extern int gbl_identity_cache_max;
 extern int gbl_uses_accesscontrol_tableXnode;
 extern char* gbl_foreign_metadb;
 extern char* gbl_foreign_metadb_class;
