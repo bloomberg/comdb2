@@ -1774,6 +1774,7 @@ local function comdb2_trigger_main()                        \n\
     db:ctrace('trigger:'..sp..' assigned; now running')     \n\
     local e = c:get()                                       \n\
     while e do                                              \n\
+        db:trigger_version_check()                          \n\
         db:trigger_begin()                                  \n\
         local rc = main(e)                                  \n\
         if rc ~= 0 then                                     \n\
@@ -4934,6 +4935,13 @@ static int db_spname(Lua L)
     return 1;
 }
 
+static int db_trigger_version_check(Lua L)
+{
+    SP sp = getsp(L);
+    if (sp->lua_version == gbl_lua_version) return 0;
+    return luaL_error(L, "stale sp version:%d gbl:%d", sp->lua_version, gbl_lua_version);
+}
+
 static const luaL_Reg db_funcs[] = {
     {"bind", db_bind},
     {"cast", db_cast},
@@ -5004,6 +5012,7 @@ static const luaL_Reg trigger_funcs[] = {
     {"trigger_begin", db_begin},
     {"trigger_commit", db_commit},
     {"trigger_rollback", db_rollback},
+    {"trigger_version_check", db_trigger_version_check},
     {NULL, NULL}};
 
 static const luaL_Reg thd_funcs[] = {
