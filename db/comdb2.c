@@ -217,6 +217,7 @@ int gbl_uses_password;
 int gbl_unauth_tag_access = 0;
 int gbl_uses_externalauth = 0;
 int gbl_externalauth_warn = 0;
+int gbl_identity_cache_max = 500;
 int gbl_uses_accesscontrol_tableXnode;
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
