@@ -8410,7 +8410,17 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
     int newlocks_rc = SQLITE_OK;
     int bdberr = 0;
 
+    uint8_t **pIdxInsert = NULL, **pIdxDelete = NULL;
+
     if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
+
+        /* Latch expressional index keys. We do not want them to be
+           cleaned up by the micro transaction we are about to commit. */
+        if (gbl_expressions_indexes && pCur->db->ix_expr) {
+            pIdxInsert = clnt->idxInsert;
+            pIdxDelete = clnt->idxDelete;
+            clnt->idxInsert = clnt->idxDelete = NULL;
+        }
 
         /* commit current transaction and reopen another one */
 
@@ -8508,6 +8518,11 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         clnt->dbtran.crtchunksize++;
     }
 done:
+    /* Restore the expressional index keys onto clnt for the next OP_Insert/OP_Delete. */
+    if (pIdxInsert != NULL || pIdxDelete != NULL) {
+        clnt->idxInsert = pIdxInsert;
+        clnt->idxDelete = pIdxDelete;
+    }
     return rc;
 }
 

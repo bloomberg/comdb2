@@ -52,3 +52,6 @@ Checking error on setting wrong transaction mode
 (out='    OSQL_DONE            5611')
 Checking deduping multiple chunk sets
 (out='    OSQL_DONE            501')
+chunk + indexes on expressions
+(rows inserted=3)
+(COUNT(*)=0)
