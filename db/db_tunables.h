@@ -1659,6 +1659,11 @@ REGISTER_TUNABLE("dohsql_max_queued_kb_highwm",
                  TUNABLE_INTEGER, &gbl_dohsql_max_queued_kb_highwm, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("dohast_disable_joins",
+                 "Disable joins from being parsed by AST engine used by dohsql.",
+                 TUNABLE_BOOLEAN, &gbl_dohast_disable_joins, 0, NULL,
+                 NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "dohsql_max_threads",
     "Maximum number of parallel threads, otherwise run sequential.",

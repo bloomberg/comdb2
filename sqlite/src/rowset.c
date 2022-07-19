@@ -63,7 +63,6 @@
 */
 #include "sqliteInt.h"
 
-
 /*
 ** Target size for allocation chunks.
 */

@@ -4966,7 +4966,7 @@ char* sqlite3ExprDescribe(Vdbe *v, const Expr *pExpr);
 char* sqlite3ExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr);
 struct params_info;
 char* sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, 
-      struct params_info **pParamsOut);
+      struct params_info **pParamsOut, int useFullColnames);
 char *sqlite3DescribeIndexOrder(sqlite3 *db, 
       const char *zName, const char *zDb, 
       Mem *m, int nfields, int *hasCondition,
