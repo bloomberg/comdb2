@@ -2244,7 +2244,6 @@ static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
 {
     int rc;
     struct sockaddr_in addr;
-    struct hostent *hp;
     socklen_t addr_size = sizeof(struct sockaddr_in);
 
     if (!CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD)
