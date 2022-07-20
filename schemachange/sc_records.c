@@ -37,7 +37,7 @@
 int gbl_logical_live_sc = 0;
 
 extern int gbl_partial_indexes;
-
+extern int gbl_debug_omit_zap_on_rebuild;
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
 // place at any given time, currently from lkcounter_check() once per sec
@@ -643,11 +643,15 @@ static int convert_record(struct convert_record_data *data)
        It is technically fine to insert random bytes, since the inline portion is ignored
        for payload longer than the inline size. However inserting uniform bytes here
        is going to help us achieve a better compression ratio and lower disk use. */
-    memset(data->dta_buf, 0, data->from->lrl);
+    if (!gbl_debug_omit_zap_on_rebuild) { // test that field is zeroed out regardless (by default = 0)
+        memset(data->dta_buf, 0, data->from->lrl);
+    }
 
     /* Make sure that we do not inherit inline data from previous row
        (e.g., previous row has inline data, current row does not). See the comment above. */
-    memset(data->rec->recbuf, 0, data->rec->bufsize);
+    if (!gbl_debug_omit_zap_on_rebuild) { // test that field is zeroed out regardless (by default = 0)
+        memset(data->rec->recbuf, 0, data->rec->bufsize);
+    }
 
     if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         if (data->scanmode == SCAN_PARALLEL) {
