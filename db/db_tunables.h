@@ -1980,4 +1980,6 @@ REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class
 REGISTER_TUNABLE("allow_trigger_emit", "Allows (temporary) compatibility with buggy triggers which call dbtable:emit",
                  TUNABLE_BOOLEAN, &gbl_allow_trigger_emit, READONLY | READEARLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
+                   TUNABLE_INTEGER, &gbl_identity_cache_max, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
