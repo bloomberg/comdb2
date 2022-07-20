@@ -616,6 +616,7 @@ can be queried with the `stat autonalyze` command.
 |SC_USE_NUM_THREADS|0 (QUANTITY) | Start up to this many threads for parallel rebuilding durin schema change.  0 means use one per `dtastripe`.  Setting is capped at `dtastripe`.
 |SC_NO_REBUILD_THR_SLEEP|10 (QUANTITY) | Sleep this many microsec when conversion threads count is at max
 |SC_FORCE_DELAY|0 (BOOLEAN) | Force schemachange to delay after every record inserted -- to have sc backoff
+|SC_PAUSE_REDO|0 (BOOLEAN) | Pauses the newsc asynchronous redo-thread for testing
 
 #### UDP tunables
 

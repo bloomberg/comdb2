@@ -455,6 +455,8 @@ struct tran_tag {
 
     int micro_commit;
 
+    unsigned verify_updateid : 1;
+
     /* Rowlocks commit support */
     pool_t *rc_pool;
     DBT **rc_list;

@@ -1355,6 +1355,8 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
 
 int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran);
 
+void bdb_set_tran_verify_updateid(tran_type *tran);
+
 int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);
@@ -1549,6 +1551,21 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
 
 int bdb_del_schema_change_history(tran_type *t, const char *tablename,
                                   uint64_t seed);
+
+typedef struct {
+    uint64_t genid;
+    unsigned int file;
+    unsigned int offset;
+} llmeta_sc_redo_data;
+
+int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename,
+                                      llmeta_sc_redo_data **redo_out, int *num, int *bdberr);
+
+int bdb_newsc_set_redo_genid(tran_type *t, const char *tablename, uint64_t genid, unsigned int file, unsigned int offset, int *bdberr);
+
+int bdb_newsc_del_redo_genid(tran_type *t, const char *tablename, uint64_t genid, int *bdberr);
+
+int bdb_newsc_del_all_redo_genids(tran_type *t, const char *tablename, int *bdberr);
 
 int bdb_set_high_genid(tran_type *input_trans, const char *tablename,
                        unsigned long long genid, int *bdberr);

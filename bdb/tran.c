@@ -2709,3 +2709,8 @@ int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran)
     return bdb_state->dbenv->set_tran_lowpri(bdb_state->dbenv,
                                              tran->tid->txnid);
 }
+
+void bdb_set_tran_verify_updateid(tran_type *tran)
+{
+    tran->verify_updateid = 1;
+}

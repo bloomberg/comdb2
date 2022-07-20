@@ -240,6 +240,8 @@ extern int gbl_max_trigger_threads;
 extern int gbl_do_inline_poll;
 extern int gbl_fingerprint_max_queries;
 extern int gbl_ufid_log;
+extern unsigned gbl_ddlk;
+extern int gbl_abort_on_missing_ufid;
 extern int gbl_ufid_dbreg_test;
 
 extern long long sampling_threshold;
@@ -328,6 +330,7 @@ extern int gbl_debug_sleep_in_sql_tick;
 extern int gbl_instrument_consumer_lock;
 extern int gbl_reject_mixed_ddl_dml;
 extern int gbl_debug_mixed_ddl_dml;
+extern int gbl_debug_create_master_entry;
 extern int gbl_sync_osql_cancel;
 extern int eventlog_nkeep;
 extern int gbl_replicant_retry_on_not_durable;

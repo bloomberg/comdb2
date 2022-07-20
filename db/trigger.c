@@ -193,39 +193,10 @@ int trigger_unregister(trigger_reg_t *t)
     return rc;
 }
 
-static void *trigger_start_int(void *name_)
+static void *trigger_start_int(void *name)
 {
-    GET_BDB_STATE_CAST(bdb_state, void *);
-    char name[strlen(name_) + 1];
-    strcpy(name, name_);
-    free(name_);
-    trigger_reg_t *reg;
-    trigger_reg_init(reg, name);
-    ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname,
-           reg->trigger_cookie);
-    int rc, retry = 10;
-    while (--retry > 0) {
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-        rc = trigger_register_req(reg);
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        if (rc == CDB2_TRIG_REQ_SUCCESS)
-            break;
-        if (rc == CDB2_TRIG_ASSIGNED_OTHER)
-            goto done;
-        sleep(1);
-    }
-    if (rc != CDB2_TRIG_REQ_SUCCESS) {
-        ctrace("trigger:%s %016" PRIx64 " register failed rc:%d\n", reg->spname,
-               reg->trigger_cookie, rc);
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-        force_unregister(NULL, reg);
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        goto done;
-    }
-    ctrace("trigger:%s %016" PRIx64 " register success\n", reg->spname,
-           reg->trigger_cookie);
-    exec_trigger(reg);
-done:
+    exec_trigger(name);
+    free(name);
     Pthread_mutex_lock(&trig_thd_cnt_lk);
     num_trigger_threads--;
     Pthread_mutex_unlock(&trig_thd_cnt_lk);
@@ -328,6 +299,11 @@ int trigger_stat()
     for (int i = 0; i < thedb->num_qdbs; ++i) {
         struct dbtable *qdb = thedb->qdbs[i];
         consumer_lock_read(qdb);
+        /* protect us from incomplete triggers (e.g., an old-style queue without a consumer */
+        if (qdb->consumers[0] == NULL) {
+            consumer_unlock(qdb);
+            continue;
+        }
         int ctype = dbqueue_consumer_type(qdb->consumers[0]);
         if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA) {
             consumer_unlock(qdb);

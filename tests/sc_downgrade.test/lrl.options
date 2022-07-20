@@ -12,3 +12,4 @@ dtastripe 16
 blobstripe
 berkattr elect_highest_committed_gen 0
 ufid_log on
+abort_on_missing_ufid on
