@@ -1302,6 +1302,11 @@ REGISTER_TUNABLE(
     "Deliberately allow insertion without constraint check to debug db_verify",
     TUNABLE_BOOLEAN, &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL,
     NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.omit_zap_on_rebuild",
+                 "Omit zeroing out record on rebuild to test whether array types are already zeroed out after end of field"
+                 " (Default: 0)", TUNABLE_BOOLEAN,
+                 &gbl_debug_omit_zap_on_rebuild, INTERNAL, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,

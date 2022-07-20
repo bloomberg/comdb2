@@ -3763,6 +3763,9 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             return -1;
 
         memcpy(out, in, len);
+        if (len < out_len) {
+            memset(out + len, 0, out_len - len);
+        }
         *outdtsz += len;
 
         if (outblob) {
@@ -3825,6 +3828,9 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
                 return -1;
 
             memcpy(out, inblob->data, len);
+            if (len < out_len) {
+                memset(out + len, 0, out_len - len);
+            }
             *outdtsz += len;
 
             free_blob_buffers(inblob, 1);
@@ -5550,12 +5556,15 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BLOB2(
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - BLOB_ON_DISK_LEN) {
+        char *cout = (char *)out;
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, in, inlen);
             *outdtsz += inlen;
+        }
+        if (inlen < outlen - BLOB_ON_DISK_LEN) {
+            memset(cout + BLOB_ON_DISK_LEN + inlen, 0, outlen - inlen - BLOB_ON_DISK_LEN);
         }
     } else if (outblob) {
         if (inlen > gbl_blob_sz_thresh_bytes)
@@ -5609,13 +5618,16 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_VUTF8(
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - VUTF8_ON_DISK_LEN) {
+        char *cout = (char *)out;
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + VUTF8_ON_DISK_LEN, in, inlen - 1);
             cout[VUTF8_ON_DISK_LEN + inlen - 1] = '\0';
             *outdtsz += inlen;
+        }
+        if (inlen < outlen - VUTF8_ON_DISK_LEN) {
+            memset(cout + VUTF8_ON_DISK_LEN + inlen, 0, outlen - inlen - VUTF8_ON_DISK_LEN);
         }
     } else if (outblob) {
         assert(inlen > 0);
@@ -5681,13 +5693,16 @@ static TYPES_INLINE int CLIENT_PSTR2_to_SERVER_VUTF8(
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - VUTF8_ON_DISK_LEN) {
+        char *cout = (char *)out;
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + VUTF8_ON_DISK_LEN, in, inlen - 1);
             cout[VUTF8_ON_DISK_LEN + inlen - 1] = '\0';
             *outdtsz += inlen;
+        }
+        if (inlen < outlen - VUTF8_ON_DISK_LEN) {
+            memset(cout + VUTF8_ON_DISK_LEN + inlen, 0, outlen - inlen - VUTF8_ON_DISK_LEN);
         }
     } else if (outblob) {
         if (inlen <= 0) {
@@ -6478,6 +6493,9 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
         }
 
         memcpy(out, in, len);
+        if (len < out_len) {
+            memset(((char*) out) + len, 0, out_len - len);
+        }
         *outdtsz += len;
 
         if (outblob) {
@@ -6522,6 +6540,9 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
             }
 
             memcpy(out, inblob->data, len);
+            if (len < out_len) {
+                memset(((char*) out) + len, 0, out_len - len);
+            }
             *outdtsz += len;
 
             free_blob_buffers(inblob, 1);
@@ -6561,12 +6582,15 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
 
     /* if there is enough room in the out buffer to store */
     if (inlen <= outlen - BLOB_ON_DISK_LEN + 1) {
+        char *cout = (char *)out;
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, cin, inlen - 1);
             *outdtsz += (inlen - 1);
+        }
+        if (inlen < outlen - BLOB_ON_DISK_LEN) {
+            memset(cout + BLOB_ON_DISK_LEN + inlen, 0, outlen - inlen - BLOB_ON_DISK_LEN);
         }
     } else if (outblob) {
         if (inlen > gbl_blob_sz_thresh_bytes)
@@ -10075,6 +10099,7 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
     decSingle dfp_single;
     decDouble dfp_double;
     decQuad dfp_quad;
+    int slen;
 
     if (stype_is_null(in)) {
         *outnull = 1;
@@ -10094,6 +10119,10 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
         decimal32_ondisk_to_single((server_decimal32_t *)in, &dfp_single);
 
         decSingleToString(&dfp_single, (char *)out);
+        slen = strlen((char *)out) + 1;
+        if (slen < outlen) {
+            memset(out + slen, 0, outlen - slen);
+        }
         break;
     case sizeof(server_decimal64_t):
 
@@ -10103,6 +10132,10 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
         decimal64_ondisk_to_double((server_decimal64_t *)in, &dfp_double);
 
         decDoubleToString(&dfp_double, (char *)out);
+        slen = strlen((char *)out) + 1;
+        if (slen < outlen) {
+            memset(out + slen, 0, outlen - slen);
+        }
         break;
     case sizeof(server_decimal128_t):
 
@@ -10112,6 +10145,10 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
         decimal128_ondisk_to_quad((server_decimal128_t *)in, &dfp_quad);
 
         decQuadToString(&dfp_quad, (char *)out);
+        slen = strlen((char *)out) + 1;
+        if (slen < outlen) {
+            memset(out + slen, 0, outlen - slen);
+        }
         break;
     }
 
@@ -10252,8 +10289,12 @@ int SERVER_INTVYM_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
     *outnull = 0;
 
     rc = _intv_srv2string(in, INTV_YM, out, outlen);
-    if (!rc)
+    if (!rc) {
         *outdtsz = strlen(out) + 1;
+        if (*outdtsz < outlen) {
+            memset(out + *outdtsz, 0, outlen - *outdtsz);
+        }
+    }
 
     return rc;
 }
@@ -10398,8 +10439,12 @@ int SERVER_INTVDS_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
     *outnull = 0;
 
     rc = _intv_srv2string(in, INTV_DS, out, outlen);
-    if (!rc)
+    if (!rc) {
         *outdtsz = strlen(out) + 1;
+        if (*outdtsz < outlen) {
+            memset(out + *outdtsz, 0, outlen - *outdtsz);
+        }
+    }
 
     return rc;
 }
@@ -10416,8 +10461,12 @@ int SERVER_INTVDSUS_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
     *outnull = 0;
 
     rc = _intv_srv2string(in, INTV_DSUS, out, outlen);
-    if (!rc)
+    if (!rc) {
         *outdtsz = strlen(out) + 1;
+        if (*outdtsz < outlen) {
+            memset(out + *outdtsz, 0, outlen - *outdtsz);
+        }
+    }
 
     return rc;
 }
@@ -12033,6 +12082,9 @@ int SERVER_INTVYM_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
         return rc;
 
     *outdtsz = strlen((char *)out + 1) + 2;
+    if (*outdtsz < outlen) {
+        memset(out + *outdtsz, 0, outlen - *outdtsz);
+    }
     return 0;
 }
 
@@ -12102,6 +12154,9 @@ int SERVER_INTVDS_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
         return rc;
 
     *outdtsz = strlen((char *)out + 1) + 2;
+    if (*outdtsz < outlen) {
+        memset(out + *outdtsz, 0, outlen - *outdtsz);
+    }
 
     return 0;
 }
@@ -12123,6 +12178,9 @@ int SERVER_INTVDSUS_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
         return rc;
 
     *outdtsz = strlen((char *)out + 1) + 2;
+    if (*outdtsz < outlen) {
+        memset(out + *outdtsz, 0, outlen - *outdtsz);
+    }
 
     return 0;
 }
