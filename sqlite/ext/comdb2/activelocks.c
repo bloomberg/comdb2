@@ -30,9 +30,7 @@ typedef struct systable_activelocks {
     uint32_t                lockerid;
     const char              *mode;
     const char              *status;
-    char                    object_str[64];
     char                    *object;
-    char                    type_str[80];
     char                    *type;
     int64_t                 page;
     int                     page_isnull;
@@ -67,18 +65,8 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         l->page = page;
         l->page_isnull = 0;
     }
-    if (object)
-        strncpy0(l->object_str, object, sizeof(l->object_str));
-    else
-        l->object_str[0] = '\0';
-    l->object = l->object_str;
-
-    if (rectype)
-        strncpy0(l->type_str, rectype, sizeof(l->type_str));
-    else 
-        l->type_str[0] = '\0';
-    l->type = l->type_str;
-
+    l->object = strdup(object ? object : "");
+    l->type = strdup(rectype ? rectype : "");
     return 0;
 }
 
@@ -94,6 +82,12 @@ static int get_activelocks(void **data, int *records)
 
 static void free_activelocks(void *p, int n)
 {
+    systable_activelocks_t *a, *begin = p;
+    systable_activelocks_t *end = begin + n;
+    for (a = begin; a < end; ++a) {
+        free(a->object);
+        free(a->type);
+    }
     free(p);
 }
 
