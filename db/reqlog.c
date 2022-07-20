@@ -1597,13 +1597,13 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
               clnt->conninfo.pid, clnt->argv0 ? clnt->argv0 : "???");
     }
 
-    dumpf(logger, out, " rqid %s from %s rc %d", logger->id,
-          reqorigin(logger), logger->rc);
+    dumpf(logger, out, " rqid %s from %s", logger->id, reqorigin(logger));
 
     if (out == long_request_out && is_running) {
+        /* No need to include 'rc' if the request is still running. */
         dumpf(logger, out, " **running**\n");
     } else {
-        dumpf(logger, out, "\n");
+        dumpf(logger, out, " rc %d\n", logger->rc);
     }
 
     if (logger->iq) {
@@ -1915,10 +1915,20 @@ static void reqlog_log_longreq(struct sqlclntstate *clnt)
         current_shortest_long_request_ms = duration_ms;
     }
 
-    /* Should this long running statement be reported at this intant? */
-    if ((((duration_ms - gbl_sql_time_threshold) / 1000) % gbl_longreq_log_freq_sec) != 0) {
+    /* Should this long running statement be reported at this instant? */
+
+    int duration_beyond_thresh_sec = (duration_ms - gbl_sql_time_threshold) / 1000;
+    if ((duration_beyond_thresh_sec % gbl_longreq_log_freq_sec) != 0) {
         return;
     }
+
+    if (!reqlog_init_off && duration_beyond_thresh_sec >= 0 &&
+        duration_beyond_thresh_sec < gbl_longreq_log_freq_sec) {
+        /* Only for the first time, also log more information (like sql)
+           about this long running query. */
+        logger.event_mask |= REQL_INFO;
+    }
+    logger.mask = logger.event_mask | logger.dump_mask;
 
     reqlog_set_clnt(&logger, clnt);
     reqlog_set_origin(&logger, "%s", clnt->origin);
