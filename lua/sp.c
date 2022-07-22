@@ -2599,6 +2599,7 @@ static void reset_stmts(SP sp)
     LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
         reset_stmt(sp, dbstmt);
     }
+    sqlite3UnlockStmtTablesRemotes(sp->clnt);
 }
 
 static int db_begin(Lua L)
