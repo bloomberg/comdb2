@@ -408,7 +408,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
 
-     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
+     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
          if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
@@ -444,7 +444,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 
 static int comdb2CheckOpAccess(void) {
     struct sqlclntstate *clnt = get_sql_clnt();
-    if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
+    if (gbl_uses_externalauth && externalComdb2CheckOpAccess && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
          if (gbl_externalauth_warn && !clnt->authdata) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",

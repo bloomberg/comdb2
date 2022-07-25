@@ -83,7 +83,7 @@ static int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
+    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
@@ -167,7 +167,7 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     else
         rc = check_user_password(clnt);
 
-    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
+    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
         return rc;
     }
 
@@ -223,7 +223,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
                                                   : pCur->db->tablename;
 
-    if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
+    if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata)
@@ -302,7 +302,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
-        externalComdb2AuthenticateUserRead) {
+        externalComdb2AuthenticateUserRead && !clnt->admin) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
