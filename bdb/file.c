@@ -5069,6 +5069,8 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
     bdb_state_type *child;
     int i;
 
+    osql_repository_cancelall();
+
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;

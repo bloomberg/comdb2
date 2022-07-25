@@ -2878,11 +2878,10 @@ static int new_master_callback(void *bdb_handle, char *host,
     ++gbl_master_changes;
     struct dbenv *dbenv;
     char *oldmaster, *newmaster;
-    uint32_t oldgen, gen, egen;
+    uint32_t gen, egen;
     int trigger_timepart = 0;
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
-    oldgen = dbenv->gen;
     dbenv->master = host;
 
     if (assert_sc_clear) {
@@ -2914,10 +2913,6 @@ static int new_master_callback(void *bdb_handle, char *host,
             }
             load_auto_analyze_counters();
             trigger_timepart = 1;
-
-            if (oldgen != gen) {
-                osql_repository_cancelall();
-            }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
