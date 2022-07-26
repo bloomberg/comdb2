@@ -4608,6 +4608,8 @@ read_record:
         }
     }
 
+    debugprint("Received message %d\n", hndl->firstresponse->response_type);
+
     if (using_hint) {
         if (hndl->firstresponse->error_code ==
                 CDB2__ERROR_CODE__PREPARE_ERROR_OLD ||
@@ -4868,8 +4870,7 @@ int cdb2_numcolumns(cdb2_hndl_tp *hndl)
     if (hndl->firstresponse == NULL)
         rc = 0;
     else
-        rc = hndl->firstresponse->has_sqlite_row ? 1
-                                                 : hndl->firstresponse->n_value;
+        rc = hndl->firstresponse->n_value;
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_numcolumns(%p) = %d\n",
                 (void *)pthread_self(), hndl, rc);
@@ -4883,9 +4884,7 @@ const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
     if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = NULL;
     else
-        ret = hndl->firstresponse->has_sqlite_row
-                  ? "sqliterow"
-                  : (const char *)hndl->firstresponse->value[col]->value.data;
+        ret = (const char *)hndl->firstresponse->value[col]->value.data;
     if (log_calls)
         fprintf(stderr, "%p> cdb2_column_name(%p, %d) = \"%s\"\n",
                 (void *)pthread_self(), hndl, col, ret == NULL ? "NULL" : ret);
@@ -4977,9 +4976,7 @@ int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
     if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = 0;
     else
-        ret = hndl->firstresponse->has_sqlite_row
-                  ? CDB2_BLOB
-                  : hndl->firstresponse->value[col]->type;
+        ret = hndl->firstresponse->value[col]->type;
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_column_type(%p, %d) = %s\n",
                 (void *)pthread_self(), hndl, col, cdb2_type_str(ret));

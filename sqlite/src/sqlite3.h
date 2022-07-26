@@ -463,6 +463,7 @@ SQLITE_API int sqlite3_exec(
                                       * local cache */
 #define SQLITE_SCHEMA_DOHSQL      51 /* see dohsql */
 #define SQLITE_EARLYSTOP_DOHSQL   52 /* see dohsql */
+#define SQLITE_SCHEMA_PUSH_REMOTE 53 /* push query to remote node */
 #define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
 #define SQLITE_ACCESS            201 /* failed permissions */
 #define SQLITE_LIMIT_DEPRECATED  202 /* SQLITE_LIMIT -- no longer used */

@@ -56,9 +56,15 @@ cdb2sql ${SRC_CDB2_OPTIONS} -cost --host $mach $a_dbname default "select * from 
 echo cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
 cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
-sed "s/DBNAME/${a_remdbname}/g" output.log > output.log.actual
 
 # validate results 
+if [[ $a_dbname == "srcdbscremsqlfdbpushgenerated"* ]]; then
+    active_output=output.log.fdbpush
+else
+    active_output=output.log
+fi
+
+sed "s/DBNAME/${a_remdbname}/g" $active_output > output.log.actual
 testcase_output=$(cat $output)
 expected_output=$(cat output.log.actual)
 if [[ "$testcase_output" != "$expected_output" ]]; then

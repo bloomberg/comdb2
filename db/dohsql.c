@@ -124,7 +124,6 @@ struct dohsql {
     int nparams;
     /* stats */
     dohsql_req_stats_t stats;
-    struct plugin_callbacks backup;
 };
 
 struct dohsql_stats {
@@ -245,23 +244,6 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     _mark_shard_done(clnt->plugin.state);
 }
 
-static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
-{
-    int type;
-    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
-        type = sqlite3_column_type(stmt, col);
-        if (type == SQLITE_NULL) {
-            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
-        }
-    } else {
-        type = SQLITE_NULL;
-    }
-    if (type == SQLITE_DECIMAL) {
-        type = SQLITE_TEXT;
-    }
-    return type;
-}
-
 static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
@@ -277,7 +259,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     conn->ncols = ncols;
 
     for (i = 0; i < ncols; i++) {
-        conn->cols[i].type = inner_type(clnt, stmt, i);
+        conn->cols[i].type = get_sqlite3_column_type(clnt, stmt, i, 0);
     }
     return 0;
 }
@@ -1093,7 +1075,7 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
 {
     assert(clnt->conns);
 
-    clnt->conns->backup = clnt->plugin;
+    clnt->backup = clnt->plugin;
 
     clnt->plugin.column_count = dohsql_dist_column_count;
     clnt->plugin.next_row = (clnt->conns->order) ? dohsql_dist_next_row_ordered
@@ -1112,26 +1094,6 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     clnt->plugin.param_index = dohsql_dist_param_index;
 }
 
-static void _master_clnt_reset(struct sqlclntstate *clnt)
-{
-    assert(clnt->conns);
-    struct plugin_callbacks *backup = &clnt->conns->backup;
-
-    clnt->plugin.column_count = backup->column_count;
-    clnt->plugin.next_row = backup->next_row;
-    clnt->plugin.column_type = backup->column_type;
-    clnt->plugin.column_int64 = backup->column_int64;
-    clnt->plugin.column_double = backup->column_double;
-    clnt->plugin.column_text = backup->column_text;
-    clnt->plugin.column_bytes = backup->column_bytes;
-    clnt->plugin.column_blob = backup->column_blob;
-    clnt->plugin.column_datetime = backup->column_datetime;
-    clnt->plugin.column_interval = backup->column_interval;
-    clnt->plugin.sqlite_error = backup->sqlite_error;
-    clnt->plugin.param_count = backup->param_count;
-    clnt->plugin.param_value = backup->param_value;
-    clnt->plugin.param_index = backup->param_index;
-}
 
 static void _save_params(dohsql_node_t *node, struct param_data **p, int *np)
 {
@@ -1352,7 +1314,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
         free(conns->order);
         free(conns->order_dir);
     }
-    _master_clnt_reset(clnt);
+    clnt_plugin_reset(clnt);
     clnt->conns = NULL;
     free(conns);
 

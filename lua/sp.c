@@ -86,7 +86,6 @@ extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
-extern int comdb2_sql_tick();
 
 pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
@@ -1439,7 +1438,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             cdb2_client_datetime_t cdt;
             datetime_t datetime;
             const dttz_t *dt = column_datetime(clnt, stmt, col);
-            dttz_to_client_datetime(dt, stmt_tzname(stmt), &cdt);
+            dttz_to_client_datetime(dt, clnt_tzname(clnt, stmt), &cdt);
             client_datetime_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
             break;
@@ -1448,7 +1447,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             cdb2_client_datetimeus_t cdt;
             datetime_t datetime;
             const dttz_t *dt = column_datetime(clnt, stmt, col);
-            dttz_to_client_datetimeus(dt, stmt_tzname(stmt), &cdt);
+            dttz_to_client_datetimeus(dt, clnt_tzname(clnt, stmt), &cdt);
             client_datetimeus_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
             break;

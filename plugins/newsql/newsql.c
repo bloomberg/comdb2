@@ -335,18 +335,11 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     int type = -1;
     if (sql_query->n_types) {
         type = sql_query->types[col];
-    } else if (stmt) {
-        if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
-            type = column_type(clnt, stmt, col);
-            if (type == SQLITE_NULL) {
-                type = typestr_to_type(sqlite3_column_decltype(stmt, col));
-            }
-        } else {
-            type = SQLITE_NULL;
+        if (type == SQLITE_DECIMAL) {
+            type = SQLITE_TEXT;
         }
-    }
-    if (type == SQLITE_DECIMAL) {
-        type = SQLITE_TEXT;
+    } else if (stmt) {
+        type = get_sqlite3_column_type(clnt, stmt, col, 0);
     }
     return type;
 }
@@ -459,6 +452,30 @@ static int newsql_columns_str(struct sqlclntstate *clnt, char **names,
         cols[i].value.len = strlen(name) + 1;
         cols[i].has_type = 1;
         cols[i].type = appdata->col_info.type[i] = SQLITE_TEXT;
+    }
+    clnt->osql.sent_column_data = 1;
+    CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
+    resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
+    resp.n_value = ncols;
+    resp.value = value;
+    return newsql_response(clnt, &resp, 0);
+}
+
+int newsql_columns_fdb_push(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
+                            int ncols)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    update_col_info(&appdata->col_info, ncols);
+    CDB2SQLRESPONSE__Column cols[ncols];
+    CDB2SQLRESPONSE__Column *value[ncols];
+    for (int i = 0; i < ncols; ++i) {
+        value[i] = &cols[i];
+        cdb2__sqlresponse__column__init(&cols[i]);
+        const char *name = cdb2_column_name(hndl, i);
+        cols[i].value.data = (uint8_t *)name;
+        cols[i].value.len = strlen(name) + 1;
+        cols[i].has_type = 1;
+        cols[i].type = appdata->col_info.type[i] = cdb2_column_type(hndl, i);
     }
     clnt->osql.sent_column_data = 1;
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
@@ -585,7 +602,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                       int postpone)
 {
     sqlite3_stmt *stmt = arg->stmt;
-    if (stmt == NULL) {
+    if (!clnt->fdb_push && stmt == NULL) {
         return newsql_send_postponed_row(clnt);
     }
     int ncols = column_count(clnt, stmt);
@@ -615,8 +632,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         if (!clnt->flat_col_vals)
             value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        if (!sqlite3_can_get_column_type_and_data(clnt, stmt) ||
-                column_type(clnt, stmt, i) == SQLITE_NULL) {
+        if (is_column_type_null(clnt, stmt, i)) {
             newsql_null(cols, i);
             if (clnt->flat_col_vals)
                 isnulls[i] = cols[i].has_isnull ? cols[i].isnull : 0;
@@ -648,7 +664,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         case SQLITE_DATETIMEUS: {
             const dttz_t *d = column_datetime(clnt, stmt, i);
             cdb2_client_datetime_t *c = alloca(sizeof(*c));
-            if (convDttz2ClientDatetime(d, stmt_tzname(stmt), c, type) != 0) {
+            if (convDttz2ClientDatetime(d, clnt_tzname(clnt, stmt), c, type) !=
+                0) {
                 char *e =
                     "failed to convert sqlite to client datetime for field";
                 errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s \"%s\"", e,
@@ -933,6 +950,8 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_COLUMNS: return newsql_columns(c, a);
     case RESPONSE_COLUMNS_LUA: return newsql_columns_lua(c, a);
     case RESPONSE_COLUMNS_STR: return newsql_columns_str(c, a, i);
+    case RESPONSE_COLUMNS_FDB_PUSH:
+        return newsql_columns_fdb_push(c, a, i);
     case RESPONSE_DEBUG: return newsql_debug(c, a);
     case RESPONSE_ERROR: return newsql_error(c, a, i);
     case RESPONSE_ERROR_ACCESS: return newsql_error(c, a, CDB2ERR_ACCESS);
@@ -1861,6 +1880,29 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         }
     }
     return rc;
+}
+
+int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
+                         struct errstat *err)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sql_query = appdata->sqlquery;
+    int rc = 0;
+
+    if (!sql_query) {
+        errstat_set_rcstrf(err, -1, "Sqlquery not set");
+        return -1;
+    }
+
+    for (int ii = 0; ii < sql_query->n_set_flags && rc == 0; ii++) {
+        char *sqlstr = sql_query->set_flags[ii];
+        rc = cdb2_run_statement(hndl, sqlstr);
+        if (rc != CDB2_OK) {
+            errstat_set_rcstrf(err, -1, "Failed to run \"%s\"", sqlstr);
+            return -1;
+        }
+    }
+    return 0;
 }
 
 int newsql_heartbeat(struct sqlclntstate *clnt)
