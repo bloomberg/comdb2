@@ -394,7 +394,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 
      struct sql_thread *thd = pthread_getspecific(query_info_key);
      struct sqlclntstate *clnt = get_sql_clnt();
-     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
+     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
          if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename))
              return SQLITE_AUTH;
@@ -421,7 +421,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 
 static int comdb2CheckOpAccess(void) {
     struct sqlclntstate *clnt = get_sql_clnt();
-    if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
+    if (gbl_uses_externalauth && externalComdb2CheckOpAccess && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
          return externalComdb2CheckOpAccess(clnt->authdata);
     }    
