@@ -3007,10 +3007,6 @@ static int new_master_callback(void *bdb_handle, char *host,
             }
             load_auto_analyze_counters();
             trigger_timepart = 1;
-
-            if (oldgen != gen) {
-                osql_repository_cancelall();
-            }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
 
