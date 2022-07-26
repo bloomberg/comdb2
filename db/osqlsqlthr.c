@@ -1790,8 +1790,8 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
         }
     }
 
-     if (gbl_uses_externalauth && thd->clnt->no_transaction == 0 &&
-        externalComdb2AuthenticateUserWrite) {
+     if (gbl_uses_externalauth && clnt->no_transaction == 0 &&
+        externalComdb2AuthenticateUserWrite && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
          if(externalComdb2AuthenticateUserWrite(clnt->authdata, pCur->db->tablename)) {
              char msg[1024];
@@ -1862,8 +1862,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         }
     }
 
-    if (gbl_uses_externalauth && thd->clnt->no_transaction == 0 &&
-        externalComdb2AuthenticateUserRead) {
+    if (gbl_uses_externalauth && clnt->no_transaction == 0 &&
+        externalComdb2AuthenticateUserRead && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
          if(externalComdb2AuthenticateUserRead(clnt->authdata, pCur->db->tablename)) {
              char msg[1024];
