@@ -399,23 +399,11 @@ int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     return sqlite3_column_count(stmt);
 }
 
-int validate_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
-{
-    int ncols = column_count(clnt, stmt), rc = 0;
-    if (!sqlite3_can_get_column_type_and_data(clnt, stmt))
-        return 0;
-    for (int i = 0; i < ncols; ++i) {
-        int type = column_type(clnt, stmt, i);
-        if (type == (int)SQLITE_NEXTSEQ)
-            rc = -1;
-    }
-    return rc;
-}
-
 int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
 {
-    if (clnt && clnt->plugin.column_type) return clnt->plugin.column_type(clnt, stmt, iCol);
-    return sqlite3_column_type(stmt, iCol);
+    if (clnt && clnt->plugin.column_type)
+        return clnt->plugin.column_type(clnt, stmt, iCol);               \
+    return sqlite3_column_type(stmt, iCol);                              \
 }
 
 sqlite_int64 column_int64(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
@@ -925,33 +913,72 @@ int sqlite3_maybe_step(
   return clnt->step_rc;
 }
 
-int sqlite3_can_get_column_type_and_data(
-  struct sqlclntstate *clnt,
-  sqlite3_stmt *stmt
-){
-  if( !sqlite3_is_prepare_only(clnt) ){
-    /*
-    ** When the client is not in 'prepare only' mode, the result set
-    ** should always be available (i.e. anytime after sqlite3_step()
-    ** is called).  The column type / data should be available -IF-
-    ** this is not a write transaction.  An assert is used here to
-    ** verify this invariant.
-    */
-    assert( clnt->step_rc!=SQLITE_ROW || sqlite3_hasResultSet(stmt) );
-    return 1;
-  }
-  if( sqlite3_hasResultSet(stmt) ){
-    /*
-    ** If the result set is available for the prepared statement, e.g.
-    ** due to sqlite3_step() having been called, it can always be used
-    ** to query the column type and data.  It shouldn't be possible to
-    ** reach this point in 'prepare only' mode; therefore, assert this
-    ** invariant here.
-    */
-    assert( !sqlite3_is_prepare_only(clnt) );
-    return 1;
-  }
-  return 0;
+int sqlite3_can_get_column_type_and_data(struct sqlclntstate *clnt,
+                                         sqlite3_stmt *stmt)
+{
+    if (!sqlite3_is_prepare_only(clnt)) {
+        /*
+        ** When the client is not in 'prepare only' mode, the result set
+        ** should always be available (i.e. anytime after sqlite3_step()
+        ** is called).  The column type / data should be available -IF-
+        ** this is not a write transaction.  An assert is used here to
+        ** verify this invariant.
+        */
+        assert(clnt->step_rc != SQLITE_ROW || sqlite3_hasResultSet(stmt));
+        return 1;
+    }
+    if (sqlite3_hasResultSet(stmt)) {
+        /*
+        ** If the result set is available for the prepared statement, e.g.
+        ** due to sqlite3_step() having been called, it can always be used
+        ** to query the column type and data.  It shouldn't be possible to
+        ** reach this point in 'prepare only' mode; therefore, assert this
+        ** invariant here.
+        */
+        assert(!sqlite3_is_prepare_only(clnt));
+        return 1;
+    }
+    return 0;
+}
+
+int validate_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    int ncols = column_count(clnt, stmt), type;
+    if (!sqlite3_can_get_column_type_and_data(clnt, stmt))
+        return 0;
+    for (int i = 0; i < ncols; ++i) {
+        type = column_type(clnt, stmt, i);
+        if (type == (int)SQLITE_NEXTSEQ)
+            return -1;
+    }
+    return 0;
+}
+
+int get_sqlite3_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                            int col, int skip_decltype)
+{
+    int type = SQLITE_NULL;
+
+    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+        type = column_type(clnt, stmt, col);
+        if (type == SQLITE_NULL && !skip_decltype) {
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        }
+        if (type == SQLITE_DECIMAL) {
+            type = SQLITE_TEXT;
+        }
+    }
+    return type;
+}
+
+int is_column_type_null(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
+{
+    if (!clnt->fdb_push) {
+        return get_sqlite3_column_type(clnt, stmt, col, 1) == SQLITE_NULL ||
+               column_type(clnt, stmt, col) == SQLITE_NULL;
+    }
+
+    return column_type(clnt, stmt, col) == SQLITE_NULL;
 }
 
 pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -3518,8 +3545,8 @@ static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
     return write_response(clnt, RESPONSE_COLUMNS, stmt, 0);
 }
 
-static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
-                    uint64_t row_id, int postpone, struct errstat *err)
+int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
+             uint64_t row_id, int postpone, struct errstat *err)
 {
     if (skip_row(clnt, row_id))
         return 0;
@@ -3904,6 +3931,10 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             rec.sql = (const char *)allocd_str;
             continue;
         }
+        if (rc == SQLITE_SCHEMA_PUSH_REMOTE) {
+            rc = handle_fdb_push(clnt, &err);
+            goto done;
+        }
 
         if (rc) {
             int irc = errstat_get_rc(&err);
@@ -3950,6 +3981,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* set these after sending response so client gets results a bit sooner */
     post_run_reqlog(thd, clnt, &rec);
 
+done:
     sqlite_done(thd, clnt, &rec, rc);
 
     if (allocd_str)
@@ -7004,6 +7036,26 @@ void update_col_info(struct sql_col_info *info, int ncols)
     info->count = ncols;
 }
 
+void clnt_plugin_reset(struct sqlclntstate *clnt)
+{
+    struct plugin_callbacks *backup = &clnt->backup;
+
+    clnt->plugin.column_count = backup->column_count;
+    clnt->plugin.next_row = backup->next_row;
+    clnt->plugin.column_type = backup->column_type;
+    clnt->plugin.column_int64 = backup->column_int64;
+    clnt->plugin.column_double = backup->column_double;
+    clnt->plugin.column_text = backup->column_text;
+    clnt->plugin.column_bytes = backup->column_bytes;
+    clnt->plugin.column_blob = backup->column_blob;
+    clnt->plugin.column_datetime = backup->column_datetime;
+    clnt->plugin.column_interval = backup->column_interval;
+    clnt->plugin.sqlite_error = backup->sqlite_error;
+    clnt->plugin.param_count = backup->param_count;
+    clnt->plugin.param_value = backup->param_value;
+    clnt->plugin.param_index = backup->param_index;
+}
+
 void exhausted_appsock_connections(struct sqlclntstate *clnt)
 {
     write_response(clnt, RESPONSE_ERROR, "Exhausted appsock connections.", CDB2__ERROR_CODE__APPSOCK_LIMIT);
@@ -7033,4 +7085,12 @@ int64_t comdb2_last_stmt_cost(void) {
       return -1;
 
    return thd->clnt ? thd->clnt->last_cost : -1;
+}
+
+char *clnt_tzname(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    if (clnt->plugin.tzname)
+        return clnt->plugin.tzname(clnt, stmt);
+
+    return stmt_tzname(stmt);
 }

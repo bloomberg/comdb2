@@ -489,6 +489,8 @@ REGISTER_TUNABLE("foreign_db_allow_cross_class", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN,
                  &gbl_fdb_resolve_local, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN,
+                 &gbl_fdb_push_remote, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fullrecovery", "Attempt to run database "
                                  "recovery from the beginning of "
                                  "available logs. (Default : off)",

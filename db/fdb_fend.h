@@ -139,6 +139,8 @@ enum fdb_errors {
     FDB_ERR_TRANSIENT_IO = -27 /* Temporary IO failure */
 };
 
+extern int gbl_fdb_push_remote;
+
 #define fdb_is_error(n) ((n) < FDB_NOERR)
 #define fdb_node_invalid(n) (fdb_is_error((n)))
 

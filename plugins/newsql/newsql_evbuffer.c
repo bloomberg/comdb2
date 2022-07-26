@@ -408,6 +408,7 @@ static void check_sqlite_row(struct newsql_appdata_evbuffer *appdata,
     if (!query || !query->sqlquery)
         return;
 
+    appdata->clnt.sqlite_row_format = 0;
     for (int i = 0; i < query->sqlquery->n_features; ++i) {
         if (CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT ==
             query->sqlquery->features[i]) {
