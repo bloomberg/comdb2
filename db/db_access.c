@@ -83,7 +83,7 @@ static int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
+    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
@@ -167,7 +167,9 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     else
         rc = check_user_password(clnt);
 
-    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
+    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
+        if (rc == 0 && gbl_uses_externalauth_connect)
+            clnt->authgen = bpfunc_auth_gen;
         return rc;
     }
 
