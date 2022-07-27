@@ -2176,6 +2176,9 @@ REGISTER_TUNABLE("merge_table_enabled",
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("externalauth_connect", "Check for externalauth only once on connect", TUNABLE_BOOLEAN,
+                 &gbl_uses_externalauth_connect, NOARG | READEARLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case of missing authdata",
                  TUNABLE_BOOLEAN, &gbl_externalauth_warn, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
