@@ -56,7 +56,7 @@ static char *SOCKPOOL_OTHER_NAME = NULL;
 #define COMDB2DB_NUM 32432
 #define MAX_BUFSIZE_ONSTACK 8192
 #define MAX_BIND_ARRAY 32768
-#define CDB2HOSTNAME_LEN 64
+#define CDB2HOSTNAME_LEN 128
 
 #define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
 static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
@@ -907,7 +907,7 @@ typedef struct cdb2_query_list_item {
 } cdb2_query_list;
 
 typedef struct cdb2_ssl_sess {
-    char host[64];
+    char host[CDB2HOSTNAME_LEN];
     SSL_SESSION *sess;
 } cdb2_ssl_sess;
 
@@ -959,11 +959,11 @@ struct cdb2_hndl {
     char dbname[DBNAME_LEN];
     char cluster[64];
     char type[TYPE_LEN];
-    char hosts[MAX_NODES][64];
+    char hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
     int hosts_connected[MAX_NODES];
-    char cached_host[64]; /* hostname of a sockpool connection */
+    char cached_host[CDB2HOSTNAME_LEN]; /* hostname of a sockpool connection */
     int cached_port;      /* port of a sockpool connection */
     SBUF2 *sb;
     int dbnum;
@@ -1248,12 +1248,10 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 
 static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
 
-static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
-                              const char *comdb2db_name, const char *buf,
-                              char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts,
-                              int *comdb2db_num, const char *dbname,
-                              char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
-                              int *dbnum, int *stack_at_open)
+static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db_name, const char *buf,
+                              char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts, int *comdb2db_num,
+                              const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
+                              int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int line_no = 0;
@@ -1484,11 +1482,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
     }
 }
 
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
-                             const char *dbname, int dbnum, const char *host,
-                             char valid_hosts[][64], int *valid_ports,
-                             int *master_node, int *num_valid_hosts,
-                             int *num_valid_sameroom_hosts);
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname, int dbnum, const char *host,
+                             char valid_hosts[][CDB2HOSTNAME_LEN], int *valid_ports, int *master_node,
+                             int *num_valid_hosts, int *num_valid_sameroom_hosts);
 static int get_config_file(const char *dbname, char *f, size_t s)
 {
     char *root = getenv("COMDB2_ROOT");
@@ -1526,10 +1522,10 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
 /* Read all available comdb2 configuration files.
    The function returns -1 if the config file path is longer than PATH_MAX;
    returns 0 otherwise. */
-static int read_available_comdb2db_configs(
-    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
-    int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
-    int *num_db_hosts, int *dbnum, int noLock, int defaultOnly)
+static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN],
+                                           const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
+                                           const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
+                                           int *dbnum, int noLock, int defaultOnly)
 {
     char filename[PATH_MAX];
     SBUF2 *s;
@@ -1596,8 +1592,7 @@ static int read_available_comdb2db_configs(
  * returns 0 if hosts were found
  * this function has functionality similar to cdb2_tcpresolve()
  */
-static int get_host_by_name(const char *comdb2db_name,
-                            char comdb2db_hosts[][64], int *num_hosts)
+static int get_host_by_name(const char *comdb2db_name, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts)
 {
     struct hostent *hp = NULL;
     char dns_name[512];
@@ -1641,12 +1636,10 @@ static int get_host_by_name(const char *comdb2db_name,
     return rc;
 }
 
-static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
-                              int *comdb2db_ports, int *master,
-                              const char *comdb2db_name, int *num_hosts,
-                              int *comdb2db_num, const char *dbname,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int read_cfg, int dbinfo_or_dns)
+static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *comdb2db_ports,
+                              int *master, const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
+                              const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
+                              int read_cfg, int dbinfo_or_dns)
 {
     int rc;
 
@@ -3582,11 +3575,9 @@ int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql)
     return cdb2_run_statement_typed(hndl, sql, 0, NULL);
 }
 
-static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
-                             char valid_hosts[][64], int *valid_ports,
-                             int *master_node, int *num_valid_hosts,
-                             int *num_valid_sameroom_hosts, int debug_trace,
-                             peer_ssl_mode *s_mode)
+static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response, char valid_hosts[][CDB2HOSTNAME_LEN],
+                             int *valid_ports, int *master_node, int *num_valid_hosts, int *num_valid_sameroom_hosts,
+                             int debug_trace, peer_ssl_mode *s_mode)
 {
     if (log_calls)
         fprintf(stderr, "td %" PRIxPTR "%s:%d\n", (intptr_t)pthread_self(), __func__,
@@ -3623,10 +3614,10 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         if (currnode->incoherent)
             continue;
 
-        if (strlen(currnode->name) >= 64)
+        if (strlen(currnode->name) >= CDB2HOSTNAME_LEN)
             continue;
 
-        strncpy(valid_hosts[*num_valid_hosts], currnode->name, 64);
+        strncpy(valid_hosts[*num_valid_hosts], currnode->name, CDB2HOSTNAME_LEN);
         if (currnode->has_port) {
             valid_ports[*num_valid_hosts] = currnode->port;
         } else {
@@ -5376,11 +5367,9 @@ free_vars:
  * returns -1 on error
  * returns 0 if number of hosts it finds is > 0
  */
-static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
-                             const char *dbname, int dbnum, const char *host,
-                             char valid_hosts[][CDB2HOSTNAME_LEN], int *valid_ports,
-                             int *master_node, int *num_valid_hosts,
-                             int *num_valid_sameroom_hosts)
+static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname, int dbnum, const char *host,
+                             char valid_hosts[][CDB2HOSTNAME_LEN], int *valid_ports, int *master_node,
+                             int *num_valid_hosts, int *num_valid_sameroom_hosts)
 {
     char newsql_typestr[128];
     SBUF2 *sb = NULL;
