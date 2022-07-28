@@ -95,6 +95,8 @@ struct comdb2_metrics_store {
     int64_t reprepares;
     int64_t nonsql; 
     int64_t vreplays;
+    double weighted_queue_depth;
+    int64_t weighted_standing_queue_time;
 };
 
 static struct comdb2_metrics_store stats;
@@ -262,6 +264,11 @@ comdb2_metric gbl_metrics[] = {
 	{"verify_replays", "Number of replays on verify errors",
       STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.vreplays,
       NULL},
+    {"weighted_queue_depth", "Weighted queue depth", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.weighted_queue_depth, NULL},
+    {"weighted_standing_queue_time", "How long the database has had a weighted standing queue",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.weighted_standing_queue_time, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -312,6 +319,44 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
     unlock_schema_lk();
     Pthread_mutex_unlock(&lk);
     return total;
+}
+
+/* see the definition in db_tunables.h */
+int gbl_track_weighted_queue_metrics_separately = 0;
+/* Weighted queue depth */
+static double weighted_queue_depth = 0;
+/* When did weighted queue start */
+static time_t weighted_queue_start_time = 0;
+/* Return weighted standing queue time */
+static time_t metrics_weighted_standing_queue_time(void)
+{
+    return (weighted_queue_start_time == 0) ? 0 : (time(NULL) - weighted_queue_start_time);
+}
+/* Update weighted queue depth over the last N samples:
+   Weighted_queue_depth = (N-1) / N * Weighted_queue_depth + 1/N * Current_queue_depth
+
+   Also update when a weighted standing queue first started, accordingly */
+static void update_weighted_standing_queue_metrics(void)
+{
+    extern int gbl_metric_maxage;
+    extern int gbl_update_metrics_interval;
+    int curr_depth = thd_queue_depth() /* tag */ + thdpool_get_queue_depth(gbl_sqlengine_thdpool) /* sql */;
+    double weight = gbl_metric_maxage / gbl_update_metrics_interval;
+
+    if (weight < 0)
+        weight = 1;
+
+    /* Fix an edge case: if queue depth is constantly 1, the weighted average only approximates 1.
+       In this case we set the weighted average to 1 so it'll be reported too. */
+    if (weighted_queue_depth < 1 && curr_depth == 1)
+        weighted_queue_depth = 1;
+    else
+        weighted_queue_depth = (weight - 1) / weight * weighted_queue_depth + curr_depth / weight;
+
+    if (weighted_queue_depth < 1)
+        weighted_queue_start_time = 0;
+    else if (weighted_queue_start_time == 0)
+        weighted_queue_start_time = time(NULL);
 }
 
 /* TODO: this isn't threadsafe. */
@@ -438,7 +483,11 @@ int refresh_metrics(void)
 #endif
     stats.diskspace = refresh_diskspace(thedb);
     stats.service_time = time_metric_average(thedb->service_time);
-    stats.queue_depth = time_metric_average(thedb->queue_depth);
+    stats.weighted_queue_depth = weighted_queue_depth;
+    if (gbl_track_weighted_queue_metrics_separately)
+        stats.queue_depth = time_metric_average(thedb->queue_depth);
+    else
+        stats.queue_depth = stats.weighted_queue_depth;
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
     stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
     stats.sql_queue_timeouts = thdpool_get_timeouts(gbl_sqlengine_thdpool);
@@ -492,7 +541,11 @@ int refresh_metrics(void)
 
     bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
 
-    stats.standing_queue_time = metrics_standing_queue_time();
+    stats.weighted_standing_queue_time = metrics_weighted_standing_queue_time();
+    if (gbl_track_weighted_queue_metrics_separately)
+        stats.standing_queue_time = metrics_standing_queue_time();
+    else
+        stats.standing_queue_time = stats.weighted_standing_queue_time;
 
 #if 0
     bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
@@ -598,4 +651,5 @@ static void update_cpu_percent(void)
 void update_metrics(void) {
     update_cpu_percent();
     update_standing_queue_time();
+    update_weighted_standing_queue_metrics();
 }

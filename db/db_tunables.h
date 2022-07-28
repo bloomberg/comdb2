@@ -1985,4 +1985,11 @@ REGISTER_TUNABLE("allow_trigger_emit", "Allows (temporary) compatibility with bu
 
 REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
                    TUNABLE_INTEGER, &gbl_identity_cache_max, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("track_weighted_queue_metrics_separately",
+                 "When on, report both average and weighted average queue metrics;"
+                 "When off, report only weighted average queue metrics "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_track_weighted_queue_metrics_separately, INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
