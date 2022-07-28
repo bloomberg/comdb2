@@ -108,6 +108,7 @@ extern int gbl_allow_bplog_restarts;
 extern int gbl_test_blob_race;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
+extern int gbl_track_weighted_queue_metrics_separately;
 extern int gbl_berkdb_track_locks;
 extern int gbl_db_lock_maxid_override;
 extern int gbl_udp;

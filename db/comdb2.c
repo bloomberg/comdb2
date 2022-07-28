@@ -179,6 +179,8 @@ extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
 extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
+/* How frequent metrics are refreshed, once per this many seconds */
+int gbl_update_metrics_interval = 5;
 extern void update_metrics(void);
 extern void *timer_thread(void *);
 extern void comdb2_signal_timer();
@@ -4595,7 +4597,7 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        if (count % 5 == 0)
+        if (count % gbl_update_metrics_interval == 0)
             update_metrics();
 
         if (!get_schema_change_in_progress(__func__, __LINE__)) {
