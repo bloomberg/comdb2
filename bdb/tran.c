@@ -2510,11 +2510,8 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
 
 int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
 {
-    if (!curtran || curtran->lockerid == 0)
-        return 0;
-
-    return bdb_state->dbenv->lock_id_has_waiters(bdb_state->dbenv,
-                                                 curtran->lockerid);
+    if (!curtran || curtran->lockerid == 0) return 0;
+    return bdb_state->dbenv->lock_id_has_waiters(bdb_state->dbenv, curtran->lockerid);
 }
 
 unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran)

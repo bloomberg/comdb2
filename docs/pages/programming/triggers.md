@@ -5,6 +5,7 @@ sidebar: mydoc_sidebar
 permalink: triggers.html
 ---
 
+
 ## Lua Triggers
 
 The server can be set up to run a stored procedure when records are inserted,
@@ -349,6 +350,7 @@ The client which executes this procedure will receive:
 ($0='--sentinal--')
 ```
 
+
 ## Consumer API
 
 ### db:consumer
@@ -485,9 +487,83 @@ Like `db:emit()`, except it will block until the calling client requests next
 row by calling `cdb2_next_record`.
 
 ### dbconsumer:emit_timeout
+
 ```
 dbconsumer:emit_timeout(t)
     t: number (ms)
 ```
 
-Specify timeout (in milliseconds) for a `dbconsumer:emit()` call.
+Description:
+
+Specify timeout (in milliseconds) for a `dbconsumer:emit()` call. If a client
+does not request the next event (by calling `cdb2_next_record()`) for the
+duration of the timeout, and there is another client blocked on call to
+`db:consumer()` to read from the same queue, then the blocked client will be
+allowed to proceed.
+
+
+## Default Lua Consumers
+
+Most consumer procedures simply emit whatever events are generated. The system
+provides a default consumer which does this as a convenience for developers.
+<pre>CREATE <b>DEFAULT</b> LUA CONSUMER ...</pre> statement will create a
+default procedure, set the default version for the procedure, and create the
+queue for saving and consuming modifications to specified table. A client
+application simply runs `exec procedure ...` statement for the named consumer
+and start receiving events without any additional work.
+
+In addition to the table's columns, the emitted rows also have `comdb2_event`
+and `comdb2_id` columns. `comdb2_id` is the unique id associated with an event
+as described in the prior sections. `comdb2_event` will be `add` or `del` for
+insert and delete events respectively. For update events, two rows are emitted.
+`comdb2_event` for the first row will be `old` and rest of the columns will
+contain the old values, while `comdb2_event` for the second row will be `new`
+and rest of the columns will provide the updated values. `comdb2_id` for `old`
+and `new` rows will be the same.
+
+An application can pass a JSON string as an argument to `main` to modify the
+behavior of the default stored procedure.
+
+To include additional metadata (`epoch`, `sequence`, and `tid` as documented in
+earlier sections), an application can set the following attributes:
+
+```json
+{
+    "with_epoch": true,
+    "with_sequence": true,
+    "with_tid": true
+}
+```
+
+These will add `comdb2_epoch`, `comdb2_sequence`, and `comdb2_tid` columns
+respectively to the emitted rows.
+
+By deafult, one event is consumed per transaction (dbconsumer:get() followed by
+dbconsumer:consume()), Application can change this to consume in batches which
+match originating transaction sizes (by using `dbconsumer:next()`.) To do this
+pass the following parameter to main:
+
+```json
+{
+    "batch_consume": true
+}
+```
+
+The default consumer makes blocking calls (`db:consumer()` and
+`dbconsumer:get()`.) The consumer also sets `emit_timeout` to 10 seconds. To
+override this behavior, applications can set the following attributes
+(parameter values in milliseconds):
+
+```json
+{
+    "register_timeout": 1000,
+    "poll_timeout": 2000,
+    "emit_timeout": 3000
+}
+```
+
+When `poll_timeout` is specified, default consumer uses `dbconsumer:poll()`
+instead of `dbconsumer:get()`. If `register_timeout` or `poll_timeout` occur,
+the procedure will emit a row and `comdb2_event` will contain the string
+`register_timeout` and `poll_timeout` respectively, and then continue
+execution (unless the client calls `cdb2_close()`.)

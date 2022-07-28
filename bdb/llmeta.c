@@ -189,8 +189,7 @@ BB_COMPILE_TIME_ASSERT(llmeta_file_type_key,
 BB_COMPILE_TIME_ASSERT(llmeta_file_type_key_overflow,
                        sizeof(struct llmeta_file_type_key) <= LLMETA_IXLEN);
 
-static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
-                  int *bdberr);
+static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num, int *bdberr);
 static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr);
 static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
@@ -9464,8 +9463,7 @@ done:
 */
 
 // get values for all matching keys
-static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num,
-                  int *bdberr)
+static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num, int *bdberr)
 {
     int fnd;
     int n = 0;
