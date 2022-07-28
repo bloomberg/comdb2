@@ -2,12 +2,13 @@
 set -e
 function setup {
 cdb2sql="${CDB2SQL_EXE} -tabs -s ${CDB2_OPTIONS} ${DBNAME} default"
+${cdb2sql} 'drop table if exists t'
 for q in $($cdb2sql 'select distinct name from comdb2_triggers'); do
     ${cdb2sql} "drop lua trigger $q"
 done
-${cdb2sql} 'create table t03(i cstring(32))' > /dev/null
-${cdb2sql} "create procedure t03consumer version 'test' {}" > /dev/null
-${cdb2sql} 'create lua consumer t03consumer on (table t03 for insert)' > /dev/null
+${cdb2sql} 'create table t(i cstring(32))' > /dev/null
+${cdb2sql} "create procedure tconsumer version 'test' {}" > /dev/null
+${cdb2sql} 'create lua consumer tconsumer on (table t for insert)' > /dev/null
 
 pre=$(cat <<EOF
 local function main(sql)
@@ -78,21 +79,21 @@ sps+=("${sp}")
 
 function run_test {
     sql="${1}"
-    $cdb2sql 'truncate table t03'
+    $cdb2sql 'truncate table t'
     i=0
     for sp in "${sps[@]}"; do
         i=$(($i + 1))
         insert="${2} ${func} ${i}"
         echo "${sp}"
-        $cdb2sql "create procedure t03consumer version 'test' {${sp}}" >> /dev/null
-        $cdb2sql "insert into t03 values('${insert}')" >> /dev/null
-        $cdb2sql "exec procedure t03consumer('$sql')"
+        $cdb2sql "create procedure tconsumer version 'test' {${sp}}" >> /dev/null
+        $cdb2sql "insert into t values('${insert}')" >> /dev/null
+        $cdb2sql "exec procedure tconsumer('$sql')"
     done
 }
 
 function test_read {
-    run_test 'select * from t03' 'read test'
-    j=$($cdb2sql 'select count(*) from t03')
+    run_test 'select * from t' 'read test'
+    j=$($cdb2sql 'select count(*) from t')
     k=$($cdb2sql 'select depth from comdb2_queues')
     echo "run:$i rows:$j depth:$k"
     [[ $i -ne $sp_count ]] && echo 'Fail to run all procedures' && exit 1
@@ -103,8 +104,8 @@ function test_read {
 }
 
 function test_write {
-    run_test 'delete from t03' 'write test'
-    j=$($cdb2sql 'select count(*) from t03')
+    run_test 'delete from t' 'write test'
+    j=$($cdb2sql 'select count(*) from t')
     k=$($cdb2sql 'select depth from comdb2_queues')
     echo "run:$i rows:$j depth:$k"
     [[ $i -ne $sp_count ]] && echo 'Fail to run all procedures' && exit 1
@@ -141,4 +142,7 @@ test_read
 #Can't fetch 'write' stmts - they don't return a row
 #test_write
 
-echo 'passed t03'
+
+${TESTSBUILDDIR}/default_consumer ${DBNAME} default ${CDB2_CONFIG}
+
+echo 'passed t00'

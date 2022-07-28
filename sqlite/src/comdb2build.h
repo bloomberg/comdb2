@@ -45,7 +45,10 @@
 #define SET_ANALYZE_THREAD(opt, val) opt += (val & 0xFFFF)
 #define GET_ANALYZE_THREAD(opt) (opt & 0xFFFF)
 
+#define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
+
 int  readIntFromToken(Token* t, int *rst);
+int  comdb2SqlSchemaChange(OpFunc *);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
 void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
 void comdb2AlterTableCSC2(Parse *, Token *, Token *, int, Token *);
@@ -152,5 +155,7 @@ int comdb2TokenToStr(Token *nm, char *buf, size_t len);
 
 int comdb2IsPrepareOnly(Parse* pParse);
 int comdb2AuthenticateUserOp(Parse* pParse);
+
+void create_default_consumer_sp(Parse *, char *);
 
 #endif // COMDB2BUILD_H

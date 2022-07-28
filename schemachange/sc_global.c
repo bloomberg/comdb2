@@ -280,19 +280,20 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
     assert(sc_tables);
 
     if (running && (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
-        logmsg(LOGMSG_ERROR, "%s sc already running against table %s\n",
-               __func__, table);
-        rc = -1;
-        goto done;
+        if (!s || s->kind != SC_DEFAULTSP) {
+            logmsg(LOGMSG_ERROR, "%s sc already running against table %s\n", __func__, table);
+            rc = -1;
+            goto done;
+        }
     }
     if (running) {
-        /* We are master and already found it. */
-        assert(!sctbl);
-
+        if (s && s->kind != SC_DEFAULTSP) {
+            /* We are master and already found it. */
+            assert(!sctbl);
+        }
         /* These two (increment and add to hash) should stay in lockstep */
         if (increment_schema_change_in_progress(func, line)) {
-            logmsg(LOGMSG_INFO, "%s:%d aborting sc because stopsc is set\n",
-                   __func__, __LINE__);
+            logmsg(LOGMSG_INFO, "%s:%d aborting sc because stopsc is set\n", __func__, __LINE__);
             rc = -1;
             goto done;
         }

@@ -370,7 +370,7 @@ set all_graphs {
     {line lbrc /lua-src rbrc}
   }
   create-trigger {stack
-    {line CREATE LUA {or TRIGGER CONSUMER} /procedure-name}
+    {line CREATE {or {line {opt DEFAULT} LUA CONSUMER} {line LUA TRIGGER}} /procedure-name}
     {opt {line {or WITH WITHOUT} SEQUENCE}}
     {line ON {loop {line ( table-event )} ,}}
   }

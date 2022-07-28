@@ -1,7 +1,7 @@
 ifeq ($(MAKEFILE_COMMON_INCLUDED),)
 export BUILDSFX?=build
 export BUILDDIR?=$(shell readlink -f $(SRCHOME)/$(BUILDSFX) 2> /dev/null || realpath $(SRCHOME)/$(BUILDSFX) )
-export TESTSBUILDDIR?=$(BUILDDIR)/tests/tools/
+export TESTSBUILDDIR?=$(BUILDDIR)/tests/tools
 export TESTID?=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 export TESTDIRPFX?=$(TESTSROOTDIR)
 export TESTDIR?=$(TESTDIRPFX)/test_$(TESTID)

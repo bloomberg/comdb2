@@ -2516,10 +2516,10 @@ rle_compress_type(A) ::= LZ4. {A = REC_LZ4;}
 
 ////////////////////////////// CREATE PROCEDURE ///////////////////////////////
 
-cmd ::= dryrun createkw PROCEDURE nm(N) NOSQL(X). {
+cmd ::= dryrun CREATE PROCEDURE nm(N) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, NULL, &X);
 }
-cmd ::= dryrun createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
+cmd ::= dryrun CREATE PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, &V, &X);
 }
 
@@ -2545,21 +2545,22 @@ cmd ::= dryrun DROP PROCEDURE nm(N) VERSION STRING(V). {
 sfuncattr(A) ::= DETERMINISTIC.          {A = SQLITE_FUNC_CONSTANT;}
 sfuncattr(A) ::= .                       {A = 0;}
 
-cmd ::= dryrun createkw LUA SCALAR FUNCTION nm(Q) sfuncattr(A). {
+cmd ::= dryrun CREATE LUA SCALAR FUNCTION nm(Q) sfuncattr(A). {
 	comdb2CreateScalarFunc(pParse, &Q, A);
 }
 
-cmd ::= dryrun createkw LUA AGGREGATE FUNCTION nm(Q). {
+cmd ::= dryrun CREATE LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= dryrun createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,S,&Q,T);
+cmd ::= dryrun CREATE trigger(T) nm(Q) withsequence(S) ON table_trigger_event(E). {
+  comdb2CreateTrigger(pParse,T,S,&Q,E);
 }
 
-cmd ::= dryrun createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,S,&Q,T);
-}
+%type trigger {int}
+trigger(A) ::= LUA TRIGGER. { A = 0; }
+trigger(A) ::= LUA CONSUMER. { A = 1; }
+trigger(A) ::= DEFAULT LUA CONSUMER. { A = 2; }
 
 table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
   A = comdb2AddTriggerTable(pParse,B,T,C);

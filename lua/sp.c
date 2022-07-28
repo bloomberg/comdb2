@@ -4986,6 +4986,7 @@ static const luaL_Reg consumer_funcs[] = {
     {"get_event_epoch", db_get_event_epoch},
     {"get_event_sequence", db_get_event_sequence},
     {"get_event_tid", db_get_event_tid},
+    {"spname", db_spname},
     {NULL, NULL}
 };
 
