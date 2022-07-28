@@ -993,7 +993,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->ping_pong(clnt);
+    return appdata->ping_pong(clnt); /* newsql_ping_pong_evbuffer */
 }
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)

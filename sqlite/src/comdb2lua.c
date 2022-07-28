@@ -21,20 +21,19 @@ struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 
-#define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
+#define COMDB2_DEFAULT_CONSUMER 2
 
-int comdb2LocateSP(Parse *p, char *sp)
+static int comdb2LocateSP(Parse *p, char *sp)
 {
     char *ver = NULL;
-    int bdberr;
-    int rc0 = bdb_get_sp_get_default_version(sp, &bdberr);
-    int rc1 = bdb_get_default_versioned_sp(sp, &ver);
+    int rc = bdb_get_default_versioned_sp(sp, &ver);
     free(ver);
-    if (rc0 < 0 && rc1 < 0) {
-        sqlite3ErrorMsg(p, "no such procedure: %s", sp);
-        return -1;
-    }
-    return 0;
+    if (rc >= 0) return 1; // client-versioned default
+
+    int bdberr;
+    if (bdb_get_sp_get_default_version(sp, &bdberr) >= 0) return 1; // old-style default version
+
+    return 0; // no such procedure or no default version for procedure
 }
 
 enum ops { del = 0x01, ins = 0x02, upd = 0x04 };
@@ -64,22 +63,18 @@ static ColumnEvent *getcol(ColumnEventList *list, const char *col)
     return e;
 }
 
-#define ALLOW_ALL_COLS
-static void add_watched_cols(int type, Table *table, Cdb2TrigEvent *event,
-                             ColumnEventList *list)
+static void add_watched_cols(int type, Table *table, Cdb2TrigEvent *event, ColumnEventList *list)
 {
     if (event->cols) {
         for (int i = 0; i < event->cols->nId; ++i) {
             ColumnEvent *ce = getcol(list, event->cols->a[i].zName);
             ce->event |= type;
         }
-#ifdef ALLOW_ALL_COLS
     } else {
         for (int i = 0; i < table->nCol; ++i) {
             ColumnEvent *ce = getcol(list, table->aCol[i].zName);
             ce->event |= type;
         }
-#endif
     }
 }
 
@@ -100,20 +95,13 @@ Cdb2TrigEvents *comdb2AddTriggerEvent(Parse *pParse, Cdb2TrigEvents *A, Cdb2Trig
         sqlite3DbFree(pParse->db, A);
         sqlite3ErrorMsg(pParse, "%s condition repeated", type);
         return NULL;
-#ifndef ALLOW_ALL_COLS
-    } else if (B->cols == NULL) {
-        sqlite3DbFree(pParse->db, A);
-        sqlite3ErrorMsg(pParse, "%s condition has unspecified columns", type);
-        return NULL;
-#endif
     }
     e->op = B->op;
     e->cols = B->cols;
     return A;
 }
 
-Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
-                                      SrcList *tbl, Cdb2TrigEvents *events)
+Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables, SrcList *tbl, Cdb2TrigEvents *events)
 {
     Table *table;
     if ((table = sqlite3LocateTableItem(parse, 0, &tbl->a[0])) == NULL) {
@@ -143,9 +131,7 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
     return tmp;
 }
 
-// dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
-                         Cdb2TrigTables *tbl)
+void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2TrigTables *tbl)
 {
     if (comdb2IsPrepareOnly(parse))
         return;
@@ -157,7 +143,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
     }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(parse, dynamic ? SQLITE_CREATE_LUA_CONSUMER :
+        if( sqlite3AuthCheck(parse, consumer ? SQLITE_CREATE_LUA_CONSUMER :
                              SQLITE_CREATE_LUA_TRIGGER, 0, 0, 0) ){
             sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
             parse->rc = SQLITE_AUTH;
@@ -166,23 +152,34 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
     }
 #endif
 
+    if (!tbl) {
+        sqlite3ErrorMsg(parse, "invalid table name");
+        return;
+    }
+
     if (comdb2AuthenticateUserOp(parse))
         return;
 
     char spname[MAX_SPNAME];
 
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
-        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        sqlite3ErrorMsg(parse, "procedure name is too long");
         return;
     }
 
     Q4SP(qname, spname);
     if (getqueuebyname(qname)) {
-        sqlite3ErrorMsg(parse, "trigger already exists: %s", spname);
+        sqlite3ErrorMsg(parse, "%s:%s already exists", consumer ? "consumer" : "trigger", spname);
         return;
     }
 
-    if (comdb2LocateSP(parse, spname) != 0) {
+    if (consumer == COMDB2_DEFAULT_CONSUMER) {
+        if (tbl->next) {
+            sqlite3ErrorMsg(parse, "cannot create default consumer for multiple tables");
+            return;
+        }
+    } else if (!comdb2LocateSP(parse, spname)) {
+        sqlite3ErrorMsg(parse, "no such procedure: %s", spname);
         return;
     }
 
@@ -223,7 +220,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
     }
 
     char method[64];
-    sprintf(method, "dest:%s:%s", dynamic ? "dynlua" : "lua", spname);
+    sprintf(method, "dest:%s:%s", consumer ? "dynlua" : "lua", spname);
 
     // trigger add table:qname dest:method
     struct schema_change_type *sc = new_schemachange_type();
@@ -236,20 +233,24 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
     sc->newcsc2 = strbuf_disown(s);
     strbuf_free(s);
     Vdbe *v = sqlite3GetVdbe(parse);
-    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
-                        (vdbeFuncArgFree)&free_schema_change_type);
+
+    if (consumer == COMDB2_DEFAULT_CONSUMER) {
+        create_default_consumer_sp(parse, spname);
+        comdb2prepareNoRows(v, parse, 0, sc, comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
+    } else {
+        comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
-    free_schema_change_type(sc);
 }
 
-void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
+void comdb2DropTrigger(Parse *parse, int consumer, Token *proc)
 {
     if (comdb2IsPrepareOnly(parse))
         return;
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(parse, dynamic ? SQLITE_DROP_LUA_CONSUMER :
+        if( sqlite3AuthCheck(parse, consumer ? SQLITE_DROP_LUA_CONSUMER :
                              SQLITE_DROP_LUA_TRIGGER, 0, 0, 0) ){
             sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
             parse->rc = SQLITE_AUTH;
@@ -279,43 +280,40 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
     sc->kind = SC_DEL_TRIGGER;
     strcpy(sc->tablename, qname);
     Vdbe *v = sqlite3GetVdbe(parse);
-    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
-                        (vdbeFuncArgFree)&free_schema_change_type);
+    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
 }
 
-#define comdb2CreateFunc(parse, proc, pfx, PFX, type, flags)                   \
-    do {                                                                       \
-        char spname[MAX_SPNAME];                                               \
-        struct schema_change_type *sc = new_schemachange_type();               \
-        sc->kind = SC_ADD_##PFX##FUNC;                                         \
-        if(comdb2IsDryrun(parse)){                                             \
-            if(comdb2SCIsDryRunnable(sc)){                                     \
-                (sc)->dryrun = 1;                                              \
-            } else {                                                           \
-                sqlite3ErrorMsg(parse, "DRYRUN not supported "                 \
-                            "for this operation");                             \
-                (parse)->rc = SQLITE_MISUSE;                                   \
-                free_schema_change_type(sc);                                   \
-                return;                                                        \
-            }                                                                  \
-        }                                                                      \
-        if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
-            sqlite3ErrorMsg(parse, "Procedure name is too long");              \
-            return;                                                            \
-        }                                                                      \
-        if (comdb2LocateSP(parse, spname) != 0) {                              \
-            return;                                                            \
-        }                                                                      \
-        if (find_lua_##pfx##func(spname)) {                                    \
-            sqlite3ErrorMsg(parse, "lua " #type "func:%s already exists",      \
-                            spname);                                           \
-            return;                                                            \
-        }                                                                      \
-        sc->lua_func_flags |= flags;                                           \
-        strcpy(sc->spname, spname);                                            \
-        Vdbe *v = sqlite3GetVdbe(parse);                                       \
-        comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
-                            (vdbeFuncArgFree)&free_schema_change_type);        \
+#define comdb2CreateFunc(p, proc, pfx, PFX, type, flags)                            \
+    do {                                                                            \
+        char spname[MAX_SPNAME];                                                    \
+        struct schema_change_type *sc = new_schemachange_type();                    \
+        sc->kind = SC_ADD_##PFX##FUNC;                                              \
+        if (comdb2IsDryrun(p)) {                                                    \
+            if (comdb2SCIsDryRunnable(sc)) {                                        \
+                (sc)->dryrun = 1;                                                   \
+            } else {                                                                \
+                sqlite3ErrorMsg(p, "DRYRUN not supported for this operation");      \
+                (p)->rc = SQLITE_MISUSE;                                            \
+                free_schema_change_type(sc);                                        \
+                return;                                                             \
+            }                                                                       \
+        }                                                                           \
+        if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                       \
+            sqlite3ErrorMsg(p, "procedure name is too long");                       \
+            return;                                                                 \
+        }                                                                           \
+        if (!comdb2LocateSP(p, spname)) {                                           \
+            return;                                                                 \
+        }                                                                           \
+        if (find_lua_##pfx##func(spname)) {                                         \
+            sqlite3ErrorMsg(p, "lua " #type " function:%s already exists", spname); \
+            return;                                                                 \
+        }                                                                           \
+        sc->lua_func_flags |= flags;                                                \
+        strcpy(sc->spname, spname);                                                 \
+        Vdbe *v = sqlite3GetVdbe(p);                                                \
+        comdb2prepareNoRows(v, p, 0, sc, &comdb2SqlSchemaChange_tran,               \
+                            (vdbeFuncArgFree)&free_schema_change_type);             \
     } while (0)
 
 void comdb2CreateScalarFunc(Parse *parse, Token *proc, int flags)
@@ -360,33 +358,32 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
     comdb2CreateFunc(parse, proc, a, A, aggregate, 0);
 }
 
-#define comdb2DropFunc(parse, proc, pfx, PFX, type)                            \
-    do {                                                                       \
-        char spname[MAX_SPNAME];                                               \
-        if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
-            sqlite3ErrorMsg(parse, "Procedure name is too long");              \
-            return;                                                            \
-        }                                                                      \
-        if (find_lua_##pfx##func(spname) == 0) {                               \
-            sqlite3ErrorMsg(parse, "no such lua " #type "func:%s", spname);    \
-            return;                                                            \
-        }                                                                      \
-        struct schema_change_type *sc = new_schemachange_type();               \
-        sc->kind = SC_DEL_##PFX##FUNC;                                         \
-        if(comdb2IsDryrun(parse)){                                             \
-            if(comdb2SCIsDryRunnable(sc)){                                     \
-                (sc)->dryrun = 1;                                              \
-            } else {                                                           \
-                sqlite3ErrorMsg(parse, "DRYRUN not supported"                  \
-                                            "for this operation");             \
-                (parse)->rc = SQLITE_MISUSE;                                   \
-                return;                                                        \
-            }                                                                  \
-        }                                                                      \
-        strcpy(sc->spname, spname);                                            \
-        Vdbe *v = sqlite3GetVdbe(parse);                                       \
-        comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
-                            (vdbeFuncArgFree)&free_schema_change_type);        \
+#define comdb2DropFunc(p, proc, pfx, PFX, type)                                     \
+    do {                                                                            \
+        char spname[MAX_SPNAME];                                                    \
+        if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                       \
+            sqlite3ErrorMsg(p, "procedure name is too long");                       \
+            return;                                                                 \
+        }                                                                           \
+        if (find_lua_##pfx##func(spname) == 0) {                                    \
+            sqlite3ErrorMsg(p, "no such lua " #type " function:%s", spname);        \
+            return;                                                                 \
+        }                                                                           \
+        struct schema_change_type *sc = new_schemachange_type();                    \
+        sc->kind = SC_DEL_##PFX##FUNC;                                              \
+        if(comdb2IsDryrun(p)){                                                      \
+            if(comdb2SCIsDryRunnable(sc)){                                          \
+                (sc)->dryrun = 1;                                                   \
+            } else {                                                                \
+                sqlite3ErrorMsg(p, "DRYRUN not supported for this operation");      \
+                (p)->rc = SQLITE_MISUSE;                                            \
+                return;                                                             \
+            }                                                                       \
+        }                                                                           \
+        strcpy(sc->spname, spname);                                                 \
+        Vdbe *v = sqlite3GetVdbe(p);                                                \
+        comdb2prepareNoRows(v, p, 0, sc, &comdb2SqlSchemaChange_tran,               \
+                            (vdbeFuncArgFree)&free_schema_change_type);             \
     } while (0)
 
 void comdb2DropScalarFunc(Parse *parse, Token *proc)
@@ -447,4 +444,3 @@ void comdb2DropAggFunc(Parse *parse, Token *proc)
 
     comdb2DropFunc(parse, proc, a, A, aggregate);
 }
-
