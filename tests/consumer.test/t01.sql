@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS t
 CREATE TABLE t (i INT);$$
 CREATE PROCEDURE next VERSION 'testsuite' {
 

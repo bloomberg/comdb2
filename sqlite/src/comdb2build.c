@@ -571,7 +571,7 @@ static int comdb2SqlSchemaChange_usedb(OpFunc *f)
     return comdb2SqlSchemaChange_int(f, 1);
 }
 
-static int comdb2SqlSchemaChange(OpFunc *f)
+int comdb2SqlSchemaChange(OpFunc *f)
 {
     return comdb2SqlSchemaChange_int(f, 0);
 }
@@ -7479,4 +7479,17 @@ void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database, int alter
     partition->u.mergetable.version = comdb2_table_version(partition->u.mergetable.tablename);
 
     free(partition_first_shardname);
+}
+
+#include <default_consumer_v1.h>
+
+void create_default_consumer_sp(Parse *p, char *spname)
+{
+    struct schema_change_type *sc = new_schemachange_type();
+    sc->kind = SC_ADDSP;
+    strcpy(sc->tablename, spname);
+    strcpy(sc->fname, "comdb2 default consumer 1.0");
+    sc->newcsc2 = strdup(default_consumer_v1);
+    comdb2PrepareSC(sqlite3GetVdbe(p), p, 0, sc, &comdb2SqlSchemaChange,
+                    (vdbeFuncArgFree)&free_schema_change_type);
 }

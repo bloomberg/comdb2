@@ -5042,6 +5042,7 @@ static const luaL_Reg consumer_funcs[] = {
     {"get_event_epoch", db_get_event_epoch},
     {"get_event_sequence", db_get_event_sequence},
     {"get_event_tid", db_get_event_tid},
+    {"spname", db_spname},
     {NULL, NULL}
 };
 
@@ -7391,7 +7392,9 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     clnt->ready_for_heartbeats = 1;
     clnt->recover_ddlk = recover_ddlk_sp;
     clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
+    int osql_max_trans = clnt->osql_max_trans;
     int rc = exec_procedure_int(thd, clnt, err, 0);
+    clnt->osql_max_trans = osql_max_trans;
     clnt->recover_ddlk = NULL;
     clnt->recover_ddlk_fail = NULL;
     if (clnt->sp) {

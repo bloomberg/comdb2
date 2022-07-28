@@ -21,9 +21,10 @@ struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 
+#define COMDB2_DEFAULT_CONSUMER 2
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 
-int comdb2LocateSP(Parse *p, char *sp)
+int comdb2LocateSP(Parse *p, char *sp, int must_exist)
 {
 	char *ver = NULL;
 	int bdberr;
@@ -31,7 +32,12 @@ int comdb2LocateSP(Parse *p, char *sp)
 	int rc1 = bdb_get_default_versioned_sp(sp, &ver);
 	free(ver);
 	if (rc0 < 0 && rc1 < 0) {
-		sqlite3ErrorMsg(p, "no such procedure: %s", sp);
+		if (must_exist) {
+			sqlite3ErrorMsg(p, "no such procedure: %s", sp);
+			return -1;
+		}
+	} else if (!must_exist) {
+		sqlite3ErrorMsg(p, "procedure %s already exists", sp);
 		return -1;
 	}
 	return 0;
@@ -143,8 +149,7 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 	return tmp;
 }
 
-// dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
+void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc,
                          Cdb2TrigTables *tbl)
 {
     if (comdb2IsPrepareOnly(parse))
@@ -157,7 +162,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
     }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(parse, dynamic ? SQLITE_CREATE_LUA_CONSUMER :
+        if( sqlite3AuthCheck(parse, consumer ? SQLITE_CREATE_LUA_CONSUMER :
                              SQLITE_CREATE_LUA_TRIGGER, 0, 0, 0) ){
             sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
             parse->rc = SQLITE_AUTH;
@@ -182,7 +187,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 		return;
 	}
 
-	if (comdb2LocateSP(parse, spname) != 0) {
+	if (comdb2LocateSP(parse, spname, consumer != COMDB2_DEFAULT_CONSUMER) != 0) {
 		return;
 	}
 
@@ -223,7 +228,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 	}
 
 	char method[64];
-	sprintf(method, "dest:%s:%s", dynamic ? "dynlua" : "lua", spname);
+	sprintf(method, "dest:%s:%s", consumer ? "dynlua" : "lua", spname);
 
 	// trigger add table:qname dest:method
 	struct schema_change_type *sc = new_schemachange_type();
@@ -236,20 +241,27 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 	sc->newcsc2 = strbuf_disown(s);
 	strbuf_free(s);
 	Vdbe *v = sqlite3GetVdbe(parse);
+
+	if (consumer == COMDB2_DEFAULT_CONSUMER) {
+		create_default_consumer_sp(parse, spname);
+		comdb2prepareNoRows(v, parse, 0, sc, comdb2SqlSchemaChange,
+				    (vdbeFuncArgFree)&free_schema_change_type);
+		return;
+	}
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
     return;
     free_schema_change_type(sc);
 }
 
-void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
+void comdb2DropTrigger(Parse *parse, int consumer, Token *proc)
 {
     if (comdb2IsPrepareOnly(parse))
         return;
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(parse, dynamic ? SQLITE_DROP_LUA_CONSUMER :
+        if( sqlite3AuthCheck(parse, consumer ? SQLITE_DROP_LUA_CONSUMER :
                              SQLITE_DROP_LUA_TRIGGER, 0, 0, 0) ){
             sqlite3ErrorMsg(parse, COMDB2_NOT_AUTHORIZED_ERRMSG);
             parse->rc = SQLITE_AUTH;
@@ -303,7 +315,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \
         }                                                                      \
-        if (comdb2LocateSP(parse, spname) != 0) {                              \
+        if (comdb2LocateSP(parse, spname, 1) != 0) {                           \
             return;                                                            \
         }                                                                      \
         if (find_lua_##pfx##func(spname)) {                                    \
@@ -447,4 +459,3 @@ void comdb2DropAggFunc(Parse *parse, Token *proc)
 
     comdb2DropFunc(parse, proc, a, A, aggregate);
 }
-

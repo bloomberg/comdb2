@@ -1,0 +1,8 @@
+(rows inserted=1)
+(rows updated=1)
+(rows deleted=1)
+(comdb2_event='add', i=1, d=2.000000, c='3', v='4', dt="1969-12-31T190005.000 America/New_York", dtus="1969-12-31T190006.000000 America/New_York", b0=x'600d', b1=NULL)
+(comdb2_event='old', i=1, d=2.000000, c='3', v='4', dt="1969-12-31T190005.000 America/New_York", dtus="1969-12-31T190006.000000 America/New_York", b0=x'600d', b1=NULL)
+(comdb2_event='new', i=2, d=3.000000, c='33', v='44', dt="1970-01-01T190005.000 America/New_York", dtus="1970-01-05T190006.000000 America/New_York", b0=x'baad', b1=NULL)
+(comdb2_event='del', i=2, d=3.000000, c='33', v='44', dt="1970-01-01T190005.000 America/New_York", dtus="1970-01-05T190006.000000 America/New_York", b0=x'baad', b1=NULL)
+(comdb2_event='consume_count', i=NULL, d=NULL, c=NULL, v=NULL, dt=NULL, dtus=NULL, b0=NULL, b1=NULL)

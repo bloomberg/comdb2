@@ -2,5 +2,5 @@
 bash -n "$0" | exit 1
 
 set -e
+./t00.sh
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
-./t03.sh
