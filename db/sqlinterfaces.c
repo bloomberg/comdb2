@@ -2802,7 +2802,7 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    if(gbl_uses_externalauth && !clnt->admin &&
+    if((gbl_uses_externalauth || gbl_uses_externalauth_connect) && !clnt->admin &&
         externalComdb2AuthenticateUserMakeRequest) {
           clnt->authdata = get_authdata(clnt);
           int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
@@ -4225,8 +4225,11 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 #   endif
         rc = check_user_password(clnt);
 
-    if (gbl_uses_externalauth && !clnt->admin &&
+    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && !clnt->admin &&
         externalComdb2AuthenticateUserMakeRequest) {
+         if (rc == 0 && gbl_uses_externalauth_connect)
+           clnt->authgen = bpfunc_auth_gen;
+
          return rc;
     }
 

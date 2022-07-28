@@ -1968,6 +1968,9 @@ REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
                   NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("externalauth_connect", "Check for externalauth only once on connect", TUNABLE_BOOLEAN,
+                  &gbl_uses_externalauth_connect, NOARG | READEARLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit.  (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
