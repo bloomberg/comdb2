@@ -22,6 +22,7 @@ int global_state; // global
     } while (0);
 
 typedef struct cdb2_hndl cdb2_hndl_tp;
+#define CDB2HOSTNAME_LEN 128
 #define PATH_MAX 1024
 static char *CDB2DBCONFIG_BUF = NULL;
 static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
@@ -30,19 +31,19 @@ static char cdb2_default_cluster[64] = "";
 static char cdb2_dnssuffix[255] = "";
 
 // forward declare the function we are testing
-static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
+static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][COMDB2HOSTNAME_LEN],
                               int *comdb2db_ports, int *master,
                               const char *comdb2db_name, int *num_hosts,
                               int *comdb2db_num, const char *dbname,
-                              char db_hosts[][64],
+                              char db_hosts[][COMDB2HOSTNAME_LEN],
                               int *num_db_hosts, int *dbnum, int read_cfg,
                               int dbinfo_or_dns);
 
 
 // we need here all the functions that get_comdb2db_hosts() calls
 static int read_available_comdb2db_configs(
-    cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
-    int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
+    cdb2_hndl_tp *hndl, char comdb2db_hosts[][COMDB2HOSTNAME_LEN], const char *comdb2db_name,
+    int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][COMDB2HOSTNAME_LEN],
     int *num_db_hosts, int *dbnum, int noLock, int defaultOnly)
 {
     if (global_state == 1) return -1;
@@ -80,7 +81,7 @@ static int read_available_comdb2db_configs(
 
 
 static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *dbname,
-                             int dbnum, const char *host, char valid_hosts[][64],
+                             int dbnum, const char *host, char valid_hosts[][COMDB2HOSTNAME_LEN],
                              int *valid_ports, int *master_node,
                              int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
@@ -105,7 +106,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
 }
 
 static int get_host_by_name(const char *comdb2db_name, 
-                            char comdb2db_hosts[][64], int *num_hosts)
+                            char comdb2db_hosts[][COMDB2HOSTNAME_LEN], int *num_hosts)
 {
     assert(global_state != 1);
     assert(global_state != 2);
@@ -162,8 +163,8 @@ int main()
                // should populate and check comdb2db_hosts
 
     {
-    char comdb2db_hosts[MAX_NODES][64] = {0};
-    char db_hosts[MAX_NODES][64] = {0};
+    char comdb2db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
+    char db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
             NULL, &num_hosts, NULL, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
@@ -183,8 +184,8 @@ int main()
                // should populate and check db_hosts
 
     {
-    char comdb2db_hosts[MAX_NODES][64] = {0};
-    char db_hosts[MAX_NODES][64] = {0};
+    char comdb2db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
+    char db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
             NULL, &num_hosts, NULL, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
@@ -203,8 +204,8 @@ int main()
     global_state = 5; // read_available_comdb2db_configs returns 0, will call cdb2_dbinfo_query
 
     {
-    char comdb2db_hosts[MAX_NODES][64] = {0};
-    char db_hosts[MAX_NODES][64] = {0};
+    char comdb2db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
+    char db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
             NULL, &num_hosts, &comdb2db_num, NULL,
@@ -225,8 +226,8 @@ int main()
     global_state = 6; // cdb2_dbinfo_query will return -1, will call get_host_by_name
 
     {
-    char comdb2db_hosts[MAX_NODES][64] = {0};
-    char db_hosts[MAX_NODES][64] = {0};
+    char comdb2db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
+    char db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
             NULL, &num_hosts, &comdb2db_num, NULL,
@@ -243,8 +244,8 @@ int main()
     global_state = 7; // cdb2_dbinfo_query will return -1, will call get_host_by_name
 
     {
-    char comdb2db_hosts[MAX_NODES][64] = {0};
-    char db_hosts[MAX_NODES][64] = {0};
+    char comdb2db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
+    char db_hosts[MAX_NODES][COMDB2HOSTNAME_LEN] = {0};
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
             NULL, &num_hosts, &comdb2db_num, NULL,
