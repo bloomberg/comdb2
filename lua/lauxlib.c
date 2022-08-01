@@ -188,10 +188,6 @@ LUALIB_API void luaL_checkany (lua_State *L, int narg) {
 
 
 LUALIB_API const char *luaL_checklstring (lua_State *L, int narg, size_t *len) {
-  /* COMDB2 MODIFICATION. */
-  if (narg == 1 && luaL_callmeta(L, 1, "__tostring")) {
-     lua_replace(L, narg);
-  }
   const char *s = lua_tolstring(L, narg, len);
   if (!s) tag_error(L, narg, LUA_TSTRING);
   return s;

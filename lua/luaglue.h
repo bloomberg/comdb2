@@ -17,9 +17,9 @@
 #ifndef LUAGLUE_H
 #define LUAGLUE_H
 
-#include "lua_fwd_types.h"
-
 struct lua_State;
+struct lua_TValue;
+
 enum dbtypes_enum;
 int luabb_type_by_name(const char *);
 int luabb_dbtype_by_name(const char *);
@@ -34,10 +34,12 @@ typedef enum {
 	String
 } HashType;
 HashType luabb_hashinfo(void *udata, double *, const char **, size_t *);
-int luabb_eq(const TValue *, const TValue *, int *eq);
-int luabb_dbtype_from_tvalue(TValue *);
+int luabb_eq(const struct lua_TValue *, const struct lua_TValue *, int *eq);
+int luabb_dbtype_from_tvalue(struct lua_TValue *);
 int luabb_isnumber(struct lua_State *, int idx);
 double luabb_tonumber(struct lua_State *, int idx);
+int luabb_iscstring(struct lua_State *, int idx);
+const char *luabb_tocstring(struct lua_State *, int idx);
 int luabb_isnull(struct lua_State *, int idx);
 void luabb_tointeger(struct lua_State *, int idx, long long *val);
 
