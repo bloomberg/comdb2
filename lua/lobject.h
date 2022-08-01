@@ -14,7 +14,6 @@
 
 #include "llimits.h"
 #include "lua.h"
-#include "lua_fwd_types.h"
 
 
 /* tags for values visible from Lua */
@@ -71,9 +70,9 @@ typedef union {
 
 #define TValuefields	Value value; int tt
 
-struct lua_TValue {
+typedef struct lua_TValue {
   TValuefields;
-};
+} TValue;
 
 
 /* Macros to test type */
