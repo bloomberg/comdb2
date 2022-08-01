@@ -2125,6 +2125,8 @@ __log_name(dblp, filenumber, namep, fhpp, flags)
 	char *oname;
 	char old[sizeof(LFPREFIX) + 5 + 20], new[sizeof(LFPREFIX) + 10 + 20];
 
+	flags |= DB_OSO_LOG;
+
 	dbenv = dblp->dbenv;
 	lp = dblp->reginfo.primary;
 

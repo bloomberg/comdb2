@@ -348,6 +348,7 @@ size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
 int gbl_file_permissions = 0660;
 extern int gbl_transaction_grace_period;
+extern int gbl_force_direct_io;
 
 /*
   =========================================================
