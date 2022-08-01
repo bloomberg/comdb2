@@ -72,6 +72,7 @@ ___os_open(dbenv, name, flags, mode, fhpp)
 	return (__os_open_extend(dbenv, name, 0, 0, flags, mode, fhpp));
 }
 
+int gbl_force_direct_io = 1;
 /*
  * __os_open_extend --
  *	Open a file descriptor (including page size and log size information).
@@ -95,6 +96,9 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 
 	*fhpp = NULL;
 	oflags = 0;
+
+    if (gbl_force_direct_io && (F_ISSET(dbenv, DB_ENV_DIRECT_DB)) && !(LF_ISSET(DB_OSO_LOG)))
+        LF_SET(DB_OSO_DIRECT);
 
 #define	OKFLAGS								\
 	(DB_OSO_CREATE | DB_OSO_DIRECT | DB_OSO_EXCL | DB_OSO_LOG |	\
