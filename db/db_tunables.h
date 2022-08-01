@@ -2210,4 +2210,8 @@ REGISTER_TUNABLE("track_weighted_queue_metrics_separately",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_track_weighted_queue_metrics_separately, INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("force_directio", "Force directio on all file opens if set on environment (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_force_direct_io, 0, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */
