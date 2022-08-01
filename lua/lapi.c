@@ -29,6 +29,7 @@
 #include "lundump.h"
 #include "lvm.h"
 
+#include "luaglue.h"
 
 
 const char lua_ident[] =
@@ -343,6 +344,12 @@ LUA_API int lua_toboolean (lua_State *L, int idx) {
 LUA_API const char *lua_tolstring (lua_State *L, int idx, size_t *len) {
   StkId o = index2adr(L, idx);
   if (!ttisstring(o)) {
+    /* COMDB2 MODIFICATION */
+    if (luabb_iscstring(L, idx)) {
+        const char *s = luabb_tocstring(L, idx);
+        if (len) *len = strlen(s);
+        return s;
+    }
     lua_lock(L);  /* `luaV_tostring' may create a new string */
     if (!luaV_tostring(L, o)) {  /* conversion failed? */
       if (len != NULL) *len = 0;

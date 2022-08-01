@@ -572,6 +572,24 @@ double luabb_tonumber(Lua l, int idx)
     }
 }
 
+int luabb_iscstring(Lua l, int idx)
+{
+    const TValue *o = index2adr(l, idx);
+    if (!ttisuserdata(o)) return 0;
+    lua_dbtypes_t *bb = luabb_todbpointer(o);
+    if (bb->is_null) return 0;
+    return bb->dbtype == DBTYPES_CSTRING;
+}
+
+/* assumes luabb_iscstring is true */
+const char *luabb_tocstring(Lua l, int idx)
+{
+    const TValue *o = index2adr(l, idx);
+    lua_dbtypes_t *bb = luabb_todbpointer(o);
+    if (bb->dbtype != DBTYPES_CSTRING) abort();
+    lua_cstring_t *ptr = (lua_cstring_t *)bb;
+    return ptr->val;
+}
 
 /* out should be appropriately sized */
 void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len)

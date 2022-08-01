@@ -4220,12 +4220,10 @@ static int db_emiterror(lua_State *lua)
 static int db_column_name(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
-    luaL_checkstring(L, 2);
-    luaL_checknumber(L, 3);
+    char *name = strdup(luaL_checkstring(L, 2));
+    int index = luaL_checknumber(L, 3);
     SP sp = getsp(L);
     SP parent = sp->parent;
-    char *name = strdup(luabb_tostring(L, 2));
-    int index = lua_tonumber(L, 3);
     if (name == NULL || index < 1) {
         free(name);
         return luaL_error(L, "bad arguments to 'column_name'");
@@ -4258,12 +4256,10 @@ static int db_column_name(Lua L)
 static int db_column_type(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
-    luaL_checkstring(L, 2);
-    luaL_checknumber(L, 3);
+    char *name = strdup(luaL_checkstring(L, 2));
+    int index = luaL_checknumber(L, 3);
     SP sp = getsp(L);
     SP parent = sp->parent;
-    char *name = strdup(luabb_tostring(L, 2));
-    int index = lua_tonumber(L, 3);
     if (name == NULL || index < 1) {
         free(name);
         return luaL_error(L, "bad arguments to 'column_type'");
@@ -4322,12 +4318,11 @@ static int db_column_type(Lua L)
 static int db_num_columns(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
-    luaL_checknumber(L, 2);
+    int num_cols = luaL_checknumber(L, 2);
     SP sp = getsp(L);
     SP parent = sp->parent;
     struct sqlclntstate *parent_clnt = parent->clnt;
     int num = override_count(parent_clnt);
-    int num_cols = lua_tonumber(L, 2);
     if (num && num != num_cols) {
         return luaL_error(
             L, "attempt to change number of columns for typed-statement");
