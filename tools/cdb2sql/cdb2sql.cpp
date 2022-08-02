@@ -36,6 +36,7 @@
 #include <iostream>
 #include <list>
 #include <string>
+#include <sstream>
 #include <vector>
 
 #include "cdb2api.h"
@@ -1247,13 +1248,16 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
                 }
                 column += '\'';
             } else {
-                column += "x'";
+                std::stringstream ss;
+                char hexmap[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
+                ss << "x'";
                 for (int i = 0; i < len; i++) {
-                    snprintf(buffer, sizeof(buffer), "%02x",
-                             (unsigned int)((char *)val)[i]);
-                    column += buffer;
+                    char byte = *((char *)val + i);
+                    ss << hexmap[(byte & 0xf0) >> 4];
+                    ss << hexmap[byte & 0x0f];
                 }
-                column += "'";
+                ss << "'";
+                column = ss.str();
             }
             break;
         }
