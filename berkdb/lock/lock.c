@@ -2065,7 +2065,9 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	db_timeout_t timeout;
 	DB_LOCK *lock;
 {
-	if (unlikely(gbl_ddlk && !LF_ISSET(DB_LOCK_NOWAIT) &&
+    extern __thread int disable_random_deadlocks;
+	if (disable_random_deadlocks == 0 && 
+        unlikely(gbl_ddlk && !LF_ISSET(DB_LOCK_NOWAIT) &&
 		rand() % gbl_ddlk == 0)) {
 		return DB_LOCK_DEADLOCK;
 	}
