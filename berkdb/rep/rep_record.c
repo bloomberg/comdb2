@@ -2896,6 +2896,8 @@ static inline void repdb_dequeue(DBT *control_dbt, DBT *rec_dbt)
 	free(r);
 }
 
+__thread int disable_random_deadlocks = 0;
+
 /*
  * __rep_apply --
  *
@@ -3120,6 +3122,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				assert(log_compare(&lp->ready_lsn, &rp->lsn) == 0);
 				ret = 0;
 			} else {
+				disable_random_deadlocks = 1;
 				if (dbc == NULL &&
 						(ret = __db_cursor(dbp, NULL, &dbc, 0)) != 0) {
 					abort();
@@ -3135,6 +3138,7 @@ gap_check:		max_lsn_dbtp = NULL;
 					abort();
 					goto err;
 				}
+				disable_random_deadlocks = 0;
 			}
 
 			rp = (REP_CONTROL *)control_dbt.data;
@@ -3179,10 +3183,12 @@ gap_check:		max_lsn_dbtp = NULL;
 				rectype = 0;
 			}
 
+			disable_random_deadlocks = 1;
 			if (!gbl_inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
 				abort();
 				goto err;
 			}
+			disable_random_deadlocks = 0;
 
 			/*
 			 * If we just processed a permanent log record, make
@@ -3225,11 +3231,13 @@ gap_check:		max_lsn_dbtp = NULL;
 				nextrec_dbt.ulen = nextrec_dbt.dlen = 0;
 
 				memset(&lsn_dbt, 0, sizeof(lsn_dbt));
+				disable_random_deadlocks = 1;
 				ret = __db_c_get(dbc, &lsn_dbt, &nextrec_dbt, DB_NEXT);
 				if (ret != DB_NOTFOUND && ret != 0) {
 					abort();
 					goto err;
 				}
+				disable_random_deadlocks = 0;
 
 				if (ret == DB_NOTFOUND) {
 					ZERO_LSN(lp->waiting_lsn);
@@ -3298,11 +3306,14 @@ gap_check:		max_lsn_dbtp = NULL;
 			ZERO_LSN(lp->max_wait_lsn);
 		}
 
-		if (dbc != NULL)
+		if (dbc != NULL) {
+			disable_random_deadlocks = 1;
 			if ((ret = __db_c_close(dbc)) != 0) {
 				abort();
 				goto err;
 			}
+			disable_random_deadlocks = 0;
+		}
 		dbc = NULL;
 
 		if (do_req) {
@@ -3421,9 +3432,11 @@ gap_check:		max_lsn_dbtp = NULL;
 			repdb_enqueue(rp, rec, decoupled);
 			ret = 0;
 		} else {
+			disable_random_deadlocks = 1;
 			ret = __db_put(dbp, NULL, &key_dbt, rec, 0);
 			if (ret != 0)
 				abort();
+			disable_random_deadlocks = 0;
 		}
 
 		rep->stat.st_log_queued++;
