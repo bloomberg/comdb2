@@ -1529,6 +1529,7 @@ err:	if (ret != 0) {
 }
 
 /* Limbo support routines. */
+extern __thread int disable_random_deadlocks;
 
 /*
  * __db_lock_move --
@@ -1556,7 +1557,10 @@ __db_lock_move(dbenv, fileid, pgno, mode, ptxn, txn)
 	lock_dbt.data = &lock_obj;
 	lock_dbt.size = sizeof(lock_obj);
 
+    int rd = disable_random_deadlocks;
+    disable_random_deadlocks = 1;
     ret = __lock_get(dbenv, txn->txnid, 0, &lock_dbt, mode, &lock);
+    disable_random_deadlocks = rd;
     if (ret) {
         fprintf(stderr, "%s:%d: error getting a lock we already have?  ret=%d\n", 
                 __func__, __LINE__, ret);
