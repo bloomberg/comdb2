@@ -83,6 +83,9 @@ struct fingerprint_track {
     size_t nNormSql;  /* Length of normalized SQL query */
     int typeMismatch; /* Type(s) did not match when compared to sqlitex's */
     int nameMismatch; /* Column name(s) did not match when compared to sqlitex's */
+
+    hash_t *query_plan_hash;   /* Query plans associated with fingerprint + cost stats */
+    int alert_once_query_plan; /* Alert (once) if hit max number of plans for associated query. Init to 1 */
 };
 
 struct sql_authorizer_state {
@@ -1350,16 +1353,25 @@ void save_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
 void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
 void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 
-int clear_fingerprints(void);
+int clear_fingerprints(int *plans_count);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *,
-                     const char *, int64_t, int64_t, int64_t, int64_t,
-                     struct reqlogger *, unsigned char *fingerprint_out);
+void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *, const char *, int64_t, int64_t, int64_t,
+                     int64_t, struct reqlogger *, unsigned char *fingerprint_out, int is_lua);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                                 struct errstat *err);
+
+struct query_plan_item {
+    char *plan;
+    double total_cost_per_row;
+    int nexecutions;
+};
+int free_query_plan_hash(hash_t *query_plan_hash);
+int clear_query_plans();
+void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, int64_t nrows,
+                    struct fingerprint_track *t);
 
 /* Connection tracking */
 int gather_connection_info(struct connection_info **info, int *num_connections);

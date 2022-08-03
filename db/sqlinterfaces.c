@@ -1208,10 +1208,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     int64_t time;
     int64_t prepTime;
     int64_t rows;
+    int is_lua;
+
+    if (1 || clnt->query_stats == NULL) {
+        record_query_cost(thd, clnt);
+        reqlog_set_path(logger, clnt->query_stats);
+    }
 
     if (gbl_fingerprint_queries) {
         if (h->sql_ref) {
-            if (is_stored_proc_sql(string_ref_cstr(h->sql_ref))) {
+            if ((is_lua = is_stored_proc_sql(string_ref_cstr(h->sql_ref)))) {
                 cost = clnt->spcost.cost;
                 time = clnt->spcost.time;
                 prepTime = clnt->spcost.prepTime;
@@ -1223,14 +1229,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zOrigNormSql,
-                                cost, time, prepTime, rows, logger,
-                                fingerprint);
+                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zOrigNormSql, cost, time, prepTime,
+                                rows, logger, fingerprint, is_lua);
                 have_fingerprint = 1;
             } else if (clnt->work.zNormSql &&
                        sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zNormSql, cost,
-                                time, prepTime, rows, logger, fingerprint);
+                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zNormSql, cost, time, prepTime,
+                                rows, logger, fingerprint, is_lua);
                 have_fingerprint = 1;
             } else {
                 reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
@@ -1240,10 +1245,6 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         }
     }
 
-    if (clnt->query_stats == NULL) {
-        record_query_cost(thd, clnt);
-        reqlog_set_path(logger, clnt->query_stats);
-    }
     reqlog_set_vreplays(logger, clnt->verify_retries);
 
     if (clnt->saved_rc)

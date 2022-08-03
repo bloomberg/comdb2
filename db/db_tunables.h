@@ -1320,6 +1320,18 @@ REGISTER_TUNABLE("debug.txn_sleep",
                  "Sleep during a transaction to test transaction state systable", TUNABLE_INTEGER,
                  &gbl_debug_txn_sleep, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug.print_query_plans",
+                 "Print query plan hash table every time after running a query. (Default: 0)", TUNABLE_BOOLEAN,
+                 &gbl_debug_print_query_plans, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "query_plan_percentage",
+    "Alarm if the average cost per row of current query plan is n percent above the cost for different query plan."
+    " (Default: 50)",
+    TUNABLE_DOUBLE, &gbl_query_plan_percentage, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_plan_query_plans",
+                 "Maximum number of plans to be placed into the query plan "
+                 "hash for each fingerprint (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_query_plan_max_plans, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
