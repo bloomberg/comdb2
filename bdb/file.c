@@ -7643,8 +7643,9 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
 
     assert(bdb_state->parent == NULL);
 
+    /* Always use most recent logfile when placing on oldfile list */
     if (bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_lowfilenum(bdb_state, bdberr);
+        lognum = bdb_get_last_logfile(bdb_state, bdberr);
         if (lognum < 0)
             return -1;
     }
@@ -7841,8 +7842,9 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     assert(bdb_state->parent != NULL);
 
+    /* Always use most recent logfile when placing on oldfile list */
     if (delay && bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_lowfilenum(bdb_state, bdberr);
+        lognum = bdb_get_last_logfile(bdb_state, bdberr);
         if (lognum < 0)
             return -1;
     }
@@ -8110,6 +8112,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     unsigned lognum = 0, lowfilenum = 0;
     struct stat sb;
 
+    /* Purge if cluster low-logfile is larger */
     if (bdb_state->attr->keep_referenced_files) {
         lowfilenum = bdb_get_lowfilenum(bdb_state, bdberr);
         if (lowfilenum < 0)
