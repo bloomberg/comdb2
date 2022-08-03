@@ -33,6 +33,7 @@ hash_t *gbl_fingerprint_hash;
 pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 
 extern int gbl_fingerprint_queries;
+extern int gbl_query_plans;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000;
 int gbl_warn_on_equiv_type_mismatch;
@@ -40,26 +41,36 @@ int gbl_warn_on_equiv_type_mismatch;
 static int free_fingerprint(void *obj, void *arg)
 {
     struct fingerprint_track *t = (struct fingerprint_track *)obj;
+    int *plans_count = (int *)arg;
     if (t != NULL) {
         free(t->zNormSql);
+        if (t->query_plan_hash) {
+            *plans_count += free_query_plan_hash(t->query_plan_hash);
+        }
         free(t);
     }
     return 0;
 }
 
-int clear_fingerprints(void) {
+int clear_fingerprints(int *plans_count)
+{
     int count = 0;
+    int plans_count_tmp = 0;
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (!gbl_fingerprint_hash) {
         Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+        if (plans_count)
+            *plans_count = plans_count_tmp;
         return count;
     }
     hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
-    hash_for(gbl_fingerprint_hash, free_fingerprint, NULL);
+    hash_for(gbl_fingerprint_hash, free_fingerprint, &plans_count_tmp);
     hash_clear(gbl_fingerprint_hash);
     hash_free(gbl_fingerprint_hash);
     gbl_fingerprint_hash = NULL;
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+    if (plans_count)
+        *plans_count = plans_count_tmp;
     return count;
 }
 
@@ -175,10 +186,9 @@ static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     strbuf_free(newtypes);
 }
 
-void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                     const char *zSql, const char *zNormSql, int64_t cost,
-                     int64_t time, int64_t prepTime, int64_t nrows,
-                     struct reqlogger *logger, unsigned char *fingerprint_out)
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
+                     int64_t cost, int64_t time, int64_t prepTime, int64_t nrows, struct reqlogger *logger,
+                     unsigned char *fingerprint_out, int is_lua)
 {
     size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
@@ -218,6 +228,13 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
+        if (gbl_query_plans && !is_lua && clnt->query_stats->n_components > 0 && nrows > 0) {
+            t->query_plan_hash = hash_init_strptr(0);
+            t->alert_once_query_plan = 1;
+            add_query_plan(clnt->query_stats, cost, nrows, t);
+        } else {
+            t->query_plan_hash = NULL;
+        }
 
         char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
         util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
@@ -259,6 +276,13 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         t->time += time;
         t->prepTime += prepTime;
         t->rows += nrows;
+        if (gbl_query_plans && !is_lua && clnt->query_stats->n_components > 0 && nrows > 0) {
+            if (!t->query_plan_hash) {
+                t->query_plan_hash = hash_init_strptr(0);
+                t->alert_once_query_plan = 1;
+            }
+            add_query_plan(clnt->query_stats, cost, nrows, t);
+        }
 
         /* Do a check after an interval */
         if (t->check_next_queries) {

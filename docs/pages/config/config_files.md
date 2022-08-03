@@ -941,6 +941,7 @@ These options are toggle-able at runtime.
 |sockbplog_sockpool | off | Osql bplog sent over sockets is using local sockpool
 |throttle_txn_chunks_msec | 0 | Wait that many milliseconds before starting a new transaction chunk
 |externalauth| off | Enable use of external auth plugin
+|query_plan_percentage| 50 | Alarm if the average cost per row of current query plan is n percent above the cost for different query plan.
 
 
 

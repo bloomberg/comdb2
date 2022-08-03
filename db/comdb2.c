@@ -345,6 +345,8 @@ int gbl_debug_omit_blob_write;
 int gbl_debug_omit_zap_on_rebuild = 0;
 int gbl_debug_txn_sleep = 0;
 int gbl_debug_skip_constraintscheck_on_insert;
+int gbl_debug_print_query_plans = 0;
+double gbl_query_plan_percentage = 50;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -738,6 +740,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_query_plans = 1;
 int gbl_prioritize_queries = 1;
 int gbl_verbose_normalized_queries = 0;
 int gbl_verbose_prioritize_queries = 0;
@@ -5284,6 +5287,7 @@ static void register_all_int_switches()
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
+    register_int_switch("query_plans", "Keep track of query plans and their costs for each query", &gbl_query_plans);
     register_int_switch("verbose_normalized_queries",
                         "For new fingerprints, show normalized queries.",
                         &gbl_verbose_normalized_queries);

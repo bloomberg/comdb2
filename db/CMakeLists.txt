@@ -11,6 +11,7 @@ set(src
   db_access.c
   db_fingerprint.c
   db_metrics.c
+  db_query_plan.c
   db_tunables.c
   db_util.c
   dbglog_iface.c
