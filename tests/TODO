@@ -81,6 +81,5 @@ rootpagememleak.test
 rowlocks_blkseq.test
 sc_async_constraints.test
 sigstopcluster.test
-sc_downgrade.test -- known issue, no need to keep running it (__ufid_to_db_int -> abort)
 
 # vim: set sw=4 ts=4 et:

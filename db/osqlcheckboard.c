@@ -387,7 +387,7 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-extern int comdb2_sql_tick();
+extern int comdb2_sql_tick_no_recover_deadlock();
 /* NB: this is a helper function and waits for response from master
  * until max_wait count is reached.
  * This function is ment to be called with mutex entry->mtx in locked state
@@ -404,7 +404,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
            ((max_wait > 0 && (*cnt) < max_wait) || max_wait < 0)) {
 
         if (entry->progressing)
-            comdb2_sql_tick();
+            comdb2_sql_tick_no_recover_deadlock();
 
         /* prepare to wait for a second */
         struct timespec tm_s;

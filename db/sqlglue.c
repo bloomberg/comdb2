@@ -620,7 +620,7 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
    The query is aborted if this returns non-zero.
  */
 int gbl_debug_sleep_in_sql_tick;
-int sql_tick(struct sql_thread *thd)
+static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
 {
     struct sqlclntstate *clnt;
     int rc;
@@ -659,20 +659,22 @@ int sql_tick(struct sql_thread *thd)
         goto done;
 
     if (clnt->in_sqlite_init == 0) {
-        if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
+        if (no_recover_deadlock == 0) {
+            if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
 
-            rc = clnt_check_bdb_lock_desired(clnt);
+                rc = clnt_check_bdb_lock_desired(clnt);
 
-        } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
+            } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
 
-            rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
 
-            if ((rc = check_recover_deadlock(clnt)))
-                goto done;
+                if ((rc = check_recover_deadlock(clnt)))
+                    goto done;
 
-            logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+                logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
-            clnt->deadlock_recovered++;
+                clnt->deadlock_recovered++;
+            }
         }
     }
 
@@ -697,7 +699,13 @@ static uint32_t gbl_query_id = 1;
 int comdb2_sql_tick()
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    return sql_tick(thd);
+    return sql_tick(thd, 0);
+}
+
+int comdb2_sql_tick_no_recover_deadlock()
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    return sql_tick(thd, 1);
 }
 
 void sql_get_query_id(struct sql_thread *thd)
@@ -2415,7 +2423,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
     }
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd);
+        rc = sql_tick(thd, 0);
         if (rc) {
             *done = 1;
             return rc;
@@ -5609,7 +5617,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     assert(0 == pCur->is_sampled_idx);
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd);
+        rc = sql_tick(thd, 0);
         if (rc)
             return rc;
     }
