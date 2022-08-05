@@ -4674,6 +4674,9 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
+    clnt->thd = thd;
+    /* Reset the cancel-statement flag */
+    thd->sqlthd->stop_this_statement = 0;
 
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, 1);
@@ -4750,6 +4753,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     assert(sqlthd);
     sqlthd->clnt = clnt;
     clnt->thd = thd;
+    /* Reset the cancel-statement flag */
+    sqlthd->stop_this_statement = 0;
 
     thr_set_user("appsock", clnt->appsock_id);
 
