@@ -2942,6 +2942,7 @@ static struct fingerprint_track *prepare_fingerprint(struct sqlclntstate *clnt,
     /* Generate normalized sql */
     if (!(flags & PREPARE_NO_NORMALIZE)) {
         free_normalized_sql(clnt);
+        free_original_normalized_sql(clnt);
         normalize_stmt_and_store(clnt, rec, 0);
         zNormSql = clnt->work.zNormSql;
     } else {
@@ -3792,6 +3793,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     **       however, the parser now recognizes it and so it
     **       can be normalized.
     */
+    free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL, 1);
 
@@ -4493,6 +4495,7 @@ static int preview_and_calc_fingerprint(struct sqlclntstate *clnt)
         **       query that is not an "EXEC", "BEGIN", "COMMIT",
         **       or "ROLLBACK".
         */
+        free_normalized_sql(clnt);
         free_original_normalized_sql(clnt);
         normalize_stmt_and_store(clnt, NULL, is_stored_proc_sql(clnt->sql));
 

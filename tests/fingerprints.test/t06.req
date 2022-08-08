@@ -1,0 +1,4 @@
+create table t(a int); $$
+@send clear_fingerprints // bug would set all following normalized sql to this
+select * from t;
+select fingerprint, count, normalized_sql from comdb2_fingerprints;
