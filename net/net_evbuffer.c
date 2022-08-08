@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -982,7 +983,7 @@ static void reconnect(struct event_info *e)
     do_close(e, do_reconnect);
 }
 
-static void check_wr_full(struct event_info *e)
+static void check_wr_full(struct event_info *e, int eagain)
 {
     uint64_t max_bytes = e->net_info->wr_max;
     size_t outstanding = evbuffer_get_length(e->wr_buf);
@@ -992,19 +993,21 @@ static void check_wr_full(struct event_info *e)
                     max_bytes / MB(1), (int)(time(NULL) - e->wr_full));
             e->wr_full = 0;
         }
-    } else if (outstanding > max_bytes) {
+    } else if (outstanding > max_bytes || eagain) {
         e->wr_full = time(NULL);
-        hprintf("SUSPENDING WR outstanding:%zumb (max:%"PRIu64"mb)\n", outstanding / MB(1), max_bytes / MB(1));
+        hprintf("SUSPENDING WR outstanding:%zumb (max:%" PRIu64 "mb) eagain:%d\n", outstanding / MB(1),
+                max_bytes / MB(1), eagain);
     }
 }
 
 static void writecb(int fd, short what, void *data)
 {
     struct event_info *e = data;
+    int eagain = 0;
     Pthread_mutex_lock(&e->wr_lk);
     if (fd != e->fd || !e->flush_buf || !e->wr_buf) abort(); /* sanity check */
     evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    check_wr_full(e);
+    check_wr_full(e, eagain);
     Pthread_mutex_unlock(&e->wr_lk);
 
     int rc;
@@ -1013,7 +1016,8 @@ static void writecb(int fd, short what, void *data)
         rc = evbuffer_write(e->wr_buf, fd);
         len = evbuffer_get_length(e->wr_buf);
     } while (rc > 0 && len);
-    if (rc <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    eagain = ((rc <= 0) && (errno == EAGAIN || errno == EWOULDBLOCK));
+    if (rc <= 0 && !eagain) {
         hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
         Pthread_mutex_lock(&e->wr_lk);
         do_disable_write(e);
@@ -1025,7 +1029,7 @@ static void writecb(int fd, short what, void *data)
 
     Pthread_mutex_lock(&e->wr_lk);
     evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    check_wr_full(e);
+    check_wr_full(e, eagain);
     if (evbuffer_get_length(e->wr_buf) == 0) {
         event_del(e->wr_ev);
     }
@@ -1555,7 +1559,12 @@ static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
 {
 #   define NVEC 8
     struct iovec v[NVEC];
-    const int nv = evbuffer_reserve_space(buf, MB(4), v, NVEC);
+    int avail = TCP_BUFSZ;
+
+#ifdef FIONREAD
+    (void)ioctl(fd, FIONREAD, &avail);
+#endif
+    const int nv = evbuffer_reserve_space(buf, avail, v, NVEC);
     if (nv <= 0) {
         errno = ENOMEM;
         return -1;

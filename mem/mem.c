@@ -1958,6 +1958,7 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
     size_t sum;
     int np = 0;
     size_t cap;
+    size_t flen;
 
     trc_t trc;
     trc = toctrc ? pfx_ctrace : (trc_t)printf;
@@ -1984,6 +1985,7 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
 
     /* construct format string */
     if (verbose) {
+        flen = strlen(cm->file);
         cap = !cm->bm ? cm->cap : (cm->bm->cap == (size_t)-1 ? 0 : cm->bm->cap);
         fmt[0] = '\0';
         strcat(fmt, " %-3s "); /* MT-safe: YES/no */
@@ -1991,7 +1993,7 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
         strcat(fmt, (cm->init_sz == COMDB2MA_DEFAULT_SIZE || hr) ? " %12s "
                                                                  : " %12u ");
         strcat(fmt, (cap == COMDB2MA_UNLIMITED || hr) ? " %12s " : " %12u ");
-        strcat(fmt, (strlen(cm->file) > 15) ? " %12.12s... " : " %15.15s ");
+        strcat(fmt, (flen > 15) ? " ...%12.12s " : " %15.15s ");
         strcat(fmt, " %6d ");
 #ifdef PER_THREAD_MALLOC
         strcat(fmt, " 0x%016llx ");
@@ -2004,7 +2006,8 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
                 : (hr ? TB_TO_HR(cm->init_sz) : (char *)cm->init_sz),
             (cap == COMDB2MA_UNLIMITED) ? "unlimited"
                                         : (hr ? TB_TO_HR(cap) : (char *)cap),
-            cm->file, cm->line
+            (flen <= 15) ? cm->file : (cm->file + flen - 12), /* display the last 12 characters of the file name */
+            cm->line
 #ifdef PER_THREAD_MALLOC
             ,
             cm->pid
