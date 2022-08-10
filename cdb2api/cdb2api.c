@@ -1047,6 +1047,7 @@ struct cdb2_hndl {
     int protobuf_offset;
     int protobuf_used_sysmalloc;
     ProtobufCAllocator allocator;
+    int auto_consume_timeout_ms;
 };
 
 static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
@@ -1517,6 +1518,8 @@ static void set_cdb2_timeouts(cdb2_hndl_tp *hndl)
         hndl->comdb2db_timeout = COMDB2DB_TIMEOUT;
     if (!hndl->socket_timeout)
         hndl->socket_timeout = CDB2_SOCKET_TIMEOUT;
+    if (!hndl->auto_consume_timeout_ms)
+        hndl->auto_consume_timeout_ms = CDB2_AUTO_CONSUME_TIMEOUT_MS;
 }
 
 /* Read all available comdb2 configuration files.
@@ -3390,11 +3393,10 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (hndl->ack)
         ack(hndl);
 
-    if (CDB2_AUTO_CONSUME_TIMEOUT_MS > 0 && hndl->sb && !hndl->in_trans && hndl->firstresponse &&
+    if (hndl->auto_consume_timeout_ms > 0 && hndl->sb && !hndl->in_trans && hndl->firstresponse &&
         (!hndl->lastresponse || (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) {
         int nrec = 0;
-        sbuf2settimeout(hndl->sb, CDB2_AUTO_CONSUME_TIMEOUT_MS,
-                        CDB2_AUTO_CONSUME_TIMEOUT_MS);
+        sbuf2settimeout(hndl->sb, hndl->auto_consume_timeout_ms, hndl->auto_consume_timeout_ms);
         struct timeval tv;
         gettimeofday(&tv, NULL);
         uint64_t starttimems = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
@@ -3403,7 +3405,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
             gettimeofday(&tv, NULL);
             uint64_t curr = ((uint64_t)tv.tv_sec) * 1000 + tv.tv_usec / 1000;
             /* auto consume for up to CDB2_AUTO_CONSUME_TIMEOUT_MS */
-            if (curr - starttimems >= CDB2_AUTO_CONSUME_TIMEOUT_MS)
+            if (curr - starttimems >= hndl->auto_consume_timeout_ms)
                 break;
         }
         if (hndl->debug_trace) {
