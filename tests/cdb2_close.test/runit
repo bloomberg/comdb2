@@ -6,6 +6,8 @@ export exe=${TESTSBUILDDIR}/cdb2_close_early
 
 set -e
 
+echo "comdb2_config:auto_consume_timeout=2" >>$DBDIR/comdb2db.cfg
+
 cdb2sql ${CDB2_OPTIONS} $db default "create table t1 (i int)"
 cdb2sql ${CDB2_OPTIONS} $db default "insert into t1 select * from generate_series(1,20)"
 
