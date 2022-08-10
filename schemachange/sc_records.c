@@ -31,6 +31,7 @@
 #include "bdb_osql_log_rec.h"
 
 #include "comdb2_atomic.h"
+#include "epochlib.h"
 #include "reqlog.h"
 #include "logmsg.h"
 #include "debug_switches.h"
@@ -570,12 +571,13 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
 }
 
 int gbl_sc_logbytes_per_second = 4 * (40 * 1024 * 1024); // 4 logs/sec
+
 static pthread_mutex_t sc_bps_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sc_bps_cd = PTHREAD_COND_INITIALIZER;
-static u_int64_t sc_bytes_this_second;
-static time_t sc_current_second;
+static int64_t sc_bytes_this_second;
+static int sc_current_millisecond;
 
-static void throttle_sc_logbytes()
+static void throttle_sc_logbytes(int estimate)
 {
     if (gbl_sc_logbytes_per_second == 0)
         return;
@@ -583,9 +585,9 @@ static void throttle_sc_logbytes()
     Pthread_mutex_lock(&sc_bps_lk);
     do
     {
-        time_t now = time(NULL);
-        if (sc_current_second != now) {
-            sc_current_second = now;
+        int now = comdb2_time_epochms();
+        if (sc_current_millisecond < now - 1000) {
+            sc_current_millisecond = now;
             sc_bytes_this_second = 0;
         }
         if (gbl_sc_logbytes_per_second > 0 && sc_bytes_this_second > gbl_sc_logbytes_per_second) {
@@ -596,15 +598,16 @@ static void throttle_sc_logbytes()
         }
     } 
     while ((gbl_sc_logbytes_per_second > 0) && (sc_bytes_this_second > gbl_sc_logbytes_per_second));
+    sc_bytes_this_second += estimate;
     Pthread_mutex_unlock(&sc_bps_lk);
 }
 
-static void increment_sc_logbytes(u_int64_t bytes)
+static void increment_sc_logbytes(int64_t bytes)
 {
     Pthread_mutex_lock(&sc_bps_lk);
-    time_t now = time(NULL);
-    if (sc_current_second != now) {
-        sc_current_second = now;
+    int now = comdb2_time_epochms();
+    if (sc_current_millisecond < now - 1000) {
+        sc_current_millisecond = now;
         sc_bytes_this_second = 0;
     }
     sc_bytes_this_second += bytes;
@@ -622,9 +625,10 @@ static int convert_record(struct convert_record_data *data)
 {
     int dtalen = 0, rc, rrn, opfailcode = 0, ixfailnum = 0;
     unsigned long long genid, ngenid, check_genid;
-    u_int64_t logbytes = 0;
+    int64_t logbytes = 0;
     void *dta = NULL;
     int no_wait_rowlock = 0;
+    int64_t estimate = 0;
 
     if (debug_switch_convert_record_sleep())
         sleep(5);
@@ -649,7 +653,7 @@ static int convert_record(struct convert_record_data *data)
 
     if (data->trans == NULL) {
         /* Schema-change writes are always page-lock, not rowlock */
-        throttle_sc_logbytes();
+        throttle_sc_logbytes(0);
         rc = trans_start_sc_lowpri(&data->iq, &data->trans);
         if (rc) {
             sc_errf(data->s, "Error %d starting transaction\n", rc);
@@ -981,6 +985,7 @@ static int convert_record(struct convert_record_data *data)
     uint8_t *p_tagname_buf_end = p_tagname_buf + 12;
     uint8_t *p_buf_data = data->rec->recbuf;
     uint8_t *p_buf_data_end = p_buf_data + data->rec->bufsize;
+    estimate = data->rec->bufsize;
 
     if (!dta_needs_conversion) {
         p_buf_data = dta;
@@ -991,6 +996,14 @@ static int convert_record(struct convert_record_data *data)
 
     if (data->s->schema_change != SC_CONSTRAINT_CHANGE) {
         int nrrn = rrn;
+
+        for (int i = 0; i != MAXBLOBS; ++i)
+            estimate += data->wrblb[i].length;
+
+        /* Estimate how many log bytes this convert thread will write, and throttle if needed.
+           We'll adjust it after add_record() when we know the actual number of log bytes. */
+        throttle_sc_logbytes(estimate);
+
         rc = add_record(
             &data->iq, data->trans, p_tagname_buf, p_tagname_buf_end,
             p_buf_data, p_buf_data_end, NULL, data->wrblb, MAXBLOBS,
@@ -1049,7 +1062,7 @@ err:
                    __func__, ngenid, data->stripe, data->cv_wait_lsn.file,
                    data->cv_wait_lsn.offset);
             logbytes = bdb_tran_logbytes(data->trans);
-            increment_sc_logbytes(logbytes);
+            increment_sc_logbytes(logbytes - estimate);
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
             poll(0, 0, 200);
@@ -1060,7 +1073,7 @@ err:
     if (gbl_sc_abort || data->from->sc_abort ||
         (data->s->iq && data->s->iq->sc_should_abort)) {
         logbytes = bdb_tran_logbytes(data->trans);
-        increment_sc_logbytes(logbytes);
+        increment_sc_logbytes(logbytes - estimate);
         trans_abort(&data->iq, data->trans);
         data->trans = NULL;
         return -1;
@@ -1069,7 +1082,7 @@ err:
     /* if we should retry the operation */
     if (rc == RC_INTERNAL_RETRY) {
         logbytes = bdb_tran_logbytes(data->trans);
-        increment_sc_logbytes(logbytes);
+        increment_sc_logbytes(logbytes - estimate);
         trans_abort(&data->iq, data->trans);
         data->trans = NULL;
         data->num_retry_errors++;
@@ -1091,7 +1104,7 @@ err:
                     ixfailnum, rrn, genid);
             data->sc_genids[data->stripe] = genid;
             logbytes = bdb_tran_logbytes(data->trans);
-            increment_sc_logbytes(logbytes);
+            increment_sc_logbytes(logbytes - estimate);
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
             return 1;
@@ -1126,7 +1139,7 @@ err:
     } else {
         rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
     }
-    increment_sc_logbytes(data->iq.txnsize);
+    increment_sc_logbytes(data->iq.txnsize - estimate);
 
     data->trans = NULL;
 
@@ -1672,7 +1685,7 @@ static int upgrade_records(struct convert_record_data *data)
 
     if (data->trans == NULL) {
         /* Schema-change writes are always page-lock, not rowlock */
-        throttle_sc_logbytes();
+        throttle_sc_logbytes(0);
         rc = trans_start_sc_lowpri(&data->iq, &data->trans);
         if (rc) {
             sc_errf(data->s, "error %d starting transaction\n", rc);
@@ -3281,7 +3294,7 @@ again:
     assert(data->trans == NULL);
 
     /* Schema-change writes are always page-lock, not rowlock */
-    throttle_sc_logbytes();
+    throttle_sc_logbytes(0);
     rc = trans_start_sc_lowpri(&data->iq, &data->trans);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d error %d starting transaction\n", __func__,
