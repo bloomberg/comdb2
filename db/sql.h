@@ -898,6 +898,8 @@ struct sqlclntstate {
     int sqlengine_state_line;
     int last_sqlengine_state;
 
+    int sqlite_row_format;
+
     // Latch last statement's cost for comdb2_last_cost to fetch
     int64_t last_cost;
 };
@@ -1242,6 +1244,18 @@ unsigned long long comdb2_table_version(const char *tablename);
 
 int fdb_add_remote_time(BtCursor *pCur, unsigned long long start,
                         unsigned long long end);
+
+/**
+ * Pack an sqlite result to be send to a remote db
+ *
+ */
+void fdb_sqlite_row(sqlite3_stmt *stmt, Mem *res);
+
+/**
+ * Free a packed sqlite row after being used
+ *
+ */
+void fdb_sqlite_row_free(Mem *res);
 
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);

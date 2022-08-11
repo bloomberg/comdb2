@@ -1021,3 +1021,29 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
     return clnt;
 }
 
+/**
+ * Pack an sqlite result to be send to a remote db
+ *
+ */
+void fdb_sqlite_row(sqlite3_stmt *stmt, Mem *res)
+{
+    UnpackedRecord upr;
+    int nField;
+
+    bzero(&upr, sizeof(upr));
+    upr.aMem = sqlite3GetCachedResultRow(stmt, &nField);
+    assert(upr.aMem);
+    upr.nField = nField;
+
+    bzero(res, sizeof(*res));
+    sqlite3VdbeRecordPack(&upr, res);
+}
+
+/**
+ * Free a packed sqlite row after being used
+ *
+ */
+void fdb_sqlite_row_free(Mem *res)
+{
+    sqlite3VdbeMemRelease(res);
+}

@@ -402,10 +402,28 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
     return -1;
 }
 
+static void check_sqlite_row(struct newsql_appdata_evbuffer *appdata,
+                             CDB2QUERY *query)
+{
+    if (!query || !query->sqlquery)
+        return;
+
+    for (int i = 0; i < query->sqlquery->n_features; ++i) {
+        if (CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT ==
+            query->sqlquery->features[i]) {
+            appdata->clnt.sqlite_row_format = 1;
+            break;
+        }
+    }
+}
+
 static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
     int do_read = 0;
     int commit_rollback;
+
+    check_sqlite_row(appdata, query);
+
     if (SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
         switch (ssl_check(appdata, query)) {
         case 0: break;
