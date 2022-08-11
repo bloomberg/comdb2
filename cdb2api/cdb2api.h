@@ -35,7 +35,8 @@ enum cdb2_hndl_alloc_flags {
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
     CDB2_ROOM = 32,
-    CDB2_ADMIN = 64
+    CDB2_ADMIN = 64,
+    CDB2_SQL_ROWS = 128
 };
 
 enum cdb2_request_type {

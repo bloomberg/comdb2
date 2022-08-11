@@ -25,6 +25,8 @@ enum CDB2ClientFeatures {
     FLAT_COL_VALS        = 6;
     /* request server to send back query fingerprint */
     REQUEST_FP           = 7;
+    /* rows come in sqlite format */
+    SQLITE_ROW_FORMAT    = 8;
 }
 
 message CDB2_FLAG {

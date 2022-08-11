@@ -3000,6 +3000,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
     }
 
+    if (hndl && hndl->flags & CDB2_SQL_ROWS) {
+        features[n_features++] = CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT;
+    }
+
     if (n_features) {
         sqlquery.n_features = n_features;
         sqlquery.features = features;
@@ -3149,8 +3153,10 @@ retry_next_record:
             PRINT_AND_RETURN_OK(CDB2_OK_DONE);
         }
 
-        if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES &&
-                hndl->lastresponse->error_code != 0) {
+        if ((hndl->lastresponse->response_type ==
+                 RESPONSE_TYPE__COLUMN_VALUES ||
+             hndl->lastresponse->response_type == RESPONSE_TYPE__SQL_ROW) &&
+            hndl->lastresponse->error_code != 0) {
             int rc = cdb2_convert_error_code(hndl->lastresponse->error_code);
             if (hndl->in_trans) {
                 /* Give the same error for every query until commit/rollback */
@@ -3218,7 +3224,8 @@ retry_next_record:
         hndl->snapshot_offset = hndl->lastresponse->snapshot_info->offset;
     }
 
-    if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
+    if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES ||
+        hndl->lastresponse->response_type == RESPONSE_TYPE__SQL_ROW) {
         // "Good" rcodes are not retryable
         if (is_retryable(hndl->lastresponse->error_code) &&
             hndl->snapshot_file) {
@@ -3288,7 +3295,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
         rc = CDB2_OK_DONE;
     } else if (hndl->lastresponse && hndl->first_record_read == 0) {
         hndl->first_record_read = 1;
-        if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
+        if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES ||
+            hndl->lastresponse->response_type == RESPONSE_TYPE__SQL_ROW) {
             rc = hndl->lastresponse->error_code;
         } else if (hndl->lastresponse->response_type ==
                    RESPONSE_TYPE__LAST_ROW) {
@@ -4860,7 +4868,8 @@ int cdb2_numcolumns(cdb2_hndl_tp *hndl)
     if (hndl->firstresponse == NULL)
         rc = 0;
     else
-        rc = hndl->firstresponse->n_value;
+        rc = hndl->firstresponse->has_sqlite_row ? 1
+                                                 : hndl->firstresponse->n_value;
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_numcolumns(%p) = %d\n",
                 (void *)pthread_self(), hndl, rc);
@@ -4874,7 +4883,9 @@ const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
     if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = NULL;
     else
-        ret = (const char *)hndl->firstresponse->value[col]->value.data;
+        ret = hndl->firstresponse->has_sqlite_row
+                  ? "sqliterow"
+                  : (const char *)hndl->firstresponse->value[col]->value.data;
     if (log_calls)
         fprintf(stderr, "%p> cdb2_column_name(%p, %d) = \"%s\"\n",
                 (void *)pthread_self(), hndl, col, ret == NULL ? "NULL" : ret);
@@ -4966,7 +4977,9 @@ int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
     if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = 0;
     else
-        ret = hndl->firstresponse->value[col]->type;
+        ret = hndl->firstresponse->has_sqlite_row
+                  ? CDB2_BLOB
+                  : hndl->firstresponse->value[col]->type;
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_column_type(%p, %d) = %s\n",
                 (void *)pthread_self(), hndl, col, cdb2_type_str(ret));
@@ -4988,6 +5001,9 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
     /* data came back in the child column structure */
     if (lastresponse->value != NULL)
         return lastresponse->value[col]->value.len;
+    /* sqlite row */
+    if (hndl->lastresponse->has_sqlite_row)
+        return lastresponse->sqlite_row.len;
     /* data came back in the parent CDB2SQLRESPONSE structure */
     return (col_values_flattened(lastresponse)) ? lastresponse->values[col].len : -1;
 }
@@ -5007,6 +5023,9 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
         }
         return lastresponse->value[col]->value.data;
     }
+    /* sqlite row */
+    if (hndl->lastresponse->has_sqlite_row)
+        return lastresponse->sqlite_row.data;
     /* data came back in the parent CDB2SQLRESPONSE structure */
     if (col_values_flattened(lastresponse)) {
         /* handle empty values */

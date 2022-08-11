@@ -383,6 +383,9 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
     resp.n_value = ncols;
     resp.value = value;
+    if (clnt->sqlite_row_format)
+        resp.has_sqlite_row = 1;
+
     if (clnt->request_fp) {
         /* client has requested the fingerprint. if the fingerprint is already
            available in clnt, use it. otherwise compute its value and store
@@ -885,6 +888,31 @@ static int newsql_row_str(struct sqlclntstate *clnt, char **data, int ncols)
     return newsql_response(clnt, &resp, 0);
 }
 
+static int newsql_row_sqlite(struct sqlclntstate *clnt,
+                             struct response_data *arg, int postpone)
+{
+    Mem res;
+    int rc;
+
+    assert(postpone == 0); /* read only */
+
+    CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
+    r.response_type = RESPONSE_TYPE__SQL_ROW;
+    r.has_sqlite_row = 1;
+
+    bzero(&res, sizeof(res));
+    fdb_sqlite_row(arg->stmt, &res);
+
+    r.sqlite_row.data = (uint8_t *)res.z;
+    r.sqlite_row.len = res.n;
+
+    rc = newsql_response(clnt, &r, 1);
+
+    fdb_sqlite_row_free(&res);
+
+    return rc;
+}
+
 static int newsql_trace(struct sqlclntstate *clnt, char *info)
 {
     CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
@@ -913,7 +941,9 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_ERROR_REJECT: return newsql_error(c, a, CDB2ERR_REJECTED);
     case RESPONSE_FLUSH: return c->plugin.flush(c);
     case RESPONSE_HEARTBEAT: return newsql_heartbeat(c);
-    case RESPONSE_ROW: return newsql_row(c, a, i);
+    case RESPONSE_ROW:
+        return c->sqlite_row_format ? newsql_row_sqlite(c, a, i)
+                                    : newsql_row(c, a, i);
     case RESPONSE_ROW_LAST: return newsql_row_last(c);
     case RESPONSE_ROW_LAST_DUMMY: return newsql_row_last_dummy(c);
     case RESPONSE_ROW_LUA: return newsql_row_lua(c, a);

@@ -307,6 +307,10 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
     int pre_enabled = 0;
     int was_timeout = 0;
 
+    /* reset here, if query has this feature,
+    it will be enabled before returning */
+    clnt->sqlite_row_format = 0;
+
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
     if (rc != 1) {
@@ -507,6 +511,15 @@ retry_read:
         cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         return NULL;
     }
+
+    for (int ii = 0; ii < query->sqlquery->n_features; ++ii) {
+        if (CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT ==
+            query->sqlquery->features[ii]) {
+            clnt->sqlite_row_format = 1;
+            break;
+        }
+    }
+
     return query;
 }
 
