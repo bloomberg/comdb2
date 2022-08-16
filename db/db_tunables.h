@@ -2218,5 +2218,10 @@ REGISTER_TUNABLE("track_weighted_queue_metrics_separately",
 REGISTER_TUNABLE("force_directio", "Force directio on all file opens if set on environment (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_force_direct_io, 0, NULL, NULL, NULL, NULL);
 
-
+REGISTER_TUNABLE("pgcomp_dryrun", "Dry-run page compaction (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_pgcomp_dryrun, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("pgcomp_dbg_stdout", "Enable debugging stdout trace for page compaction (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_pgcomp_dbg_stdout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("pgcomp_dbg_ctrace", "Enable debugging ctrace for page compaction (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_pgcomp_dbg_ctrace, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

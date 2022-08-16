@@ -649,6 +649,7 @@
 (name='pflt_toblock_lcl', description='Prefault toblock operations locally', type='BOOLEAN', value='ON', read_only='N')
 (name='pflt_toblock_rep', description='Prefault toblock operations on replicants', type='BOOLEAN', value='ON', read_only='N')
 (name='pfltverbose', description='Verbose errors in prefaulting code', type='BOOLEAN', value='ON', read_only='N')
+(name='pgcomp_dbg', description='Enable debugging trace for page compaction (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='pgcompactpool.dump_on_full', description='Dump status on full queue.', type='BOOLEAN', value='OFF', read_only='N')
 (name='pgcompactpool.exit_on_error', description='Exit on pthread error.', type='BOOLEAN', value='ON', read_only='N')
 (name='pgcompactpool.linger', description='Thread linger time (in seconds).', type='INTEGER', value='10', read_only='N')
