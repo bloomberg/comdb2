@@ -10,3 +10,6 @@ page_compact_thresh_ff 34.6
 # sparse table)
 cachekbmin 0
 cache 4 mb
+logmsg level info
+pgcomp_dbg_stdout 1
+pgcomp_dbg_ctrace 1
