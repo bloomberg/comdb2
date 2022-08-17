@@ -74,6 +74,9 @@
 #include "logmsg.h"
 #include <compat.h>
 #include "str0.h"
+#ifdef _LINUX_SOURCE
+#include <sys/syscall.h>
+#endif
 
 #include <inttypes.h>
 
@@ -3882,6 +3885,92 @@ void bdb_set_seqnum(void *in_bdb_state)
 
 int gbl_online_recovery = 1;
 
+static pthread_mutex_t rep_mon_lk = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t rep_mon_cd = PTHREAD_COND_INITIALIZER;
+static pthread_t rep_mon_td;
+
+struct rep_mon {
+    pid_t tid;
+    char *host;
+    int starttime;
+    int type;
+    int added;
+};
+static hash_t *rep_mon_hash = NULL;
+
+int gbl_rep_mon_threshold = 0;
+
+static int process_rep_mon_hash(void *obj, void *arg)
+{
+    struct rep_mon *rm = (struct rep_mon *)obj;
+    int now = comdb2_time_epoch(), threshold = gbl_rep_mon_threshold; 
+    if (threshold > 0 && now - rm->starttime > threshold) {
+        fprintf(stderr, "Thread %u host %s type %d hung for %d seconds\n",
+            rm->tid, rm->host, rm->type, now - rm->starttime);
+        char pstack_cmd[128];
+        snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)rm->tid);
+        system(pstack_cmd);
+        /* Linux pstacks tid, non-linux halts hash-for */
+#ifndef _LINUX_SOURCE
+        return 1;
+#endif
+    }
+    return 0;
+}
+
+static void *rep_mon(void *thd)
+{
+    Pthread_mutex_lock(&rep_mon_lk);
+    if (rep_mon_hash) {
+        Pthread_mutex_unlock(&rep_mon_lk);
+        return NULL;
+    }
+    rep_mon_td = pthread_self();
+    rep_mon_hash = hash_init(sizeof(pthread_t));
+    logmsg(LOGMSG_INFO, "Starting replication monitor thread\n");
+    while(gbl_rep_mon_threshold > 0)
+    {
+        struct timespec waittime;
+        clock_gettime(CLOCK_REALTIME, &waittime);
+        waittime.tv_sec += 1;
+        pthread_cond_timedwait(&rep_mon_cd, &rep_mon_lk, &waittime);
+        if (gbl_rep_mon_threshold > 0) {
+            hash_for(rep_mon_hash, process_rep_mon_hash, NULL);
+        }
+    }
+    hash_free(rep_mon_hash);
+    rep_mon_hash = NULL;
+    logmsg(LOGMSG_INFO, "Exiting replication monitor thread\n");
+    Pthread_mutex_unlock(&rep_mon_lk);
+    return NULL;
+}
+
+static void add_rep_mon(struct rep_mon *rm)
+{
+    if (gbl_rep_mon_threshold <= 0)
+        return;
+    Pthread_mutex_lock(&rep_mon_lk);
+    if (rep_mon_hash) {
+        hash_add(rep_mon_hash, rm);
+        rm->added = 1;
+    } else {
+        pthread_t t;
+        pthread_create(&t, NULL, rep_mon, NULL);
+    }
+    Pthread_mutex_unlock(&rep_mon_lk);
+}
+
+static void rem_rep_mon(struct rep_mon *rm)
+{
+    if (!rm->added)
+        return;
+    Pthread_mutex_lock(&rep_mon_lk);
+    if (rep_mon_hash) {
+        hash_del(rep_mon_hash, rm);
+    }
+    Pthread_mutex_unlock(&rep_mon_lk);
+}
+
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
                           DBT *rec)
 {
@@ -3901,6 +3990,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     int got_vote2lock = 0;
     int done = 0;
     int master_confused = 0;
+    struct rep_mon rm = {0};
 
     /* don't give it to berkeley db if we havent started rep yet */
     if (!bdb_state->rep_started || control == NULL) {
@@ -3928,6 +4018,16 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     /* give it to berkeley db */
     time1 = comdb2_time_epoch();
+
+#ifdef _LINUX_SOURCE
+    rm.tid = syscall(__NR_gettid);
+#else
+    rm.tid = getpid();
+#endif
+    rm.host = host;
+    rm.starttime = time1;
+    rm.type = rectype;
+    add_rep_mon(&rm);
 
     bdb_state->repinfo->repstats.rep_process_message++;
 
@@ -3987,6 +4087,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (bdb_state->attr->rep_debug_delay > 0)
         usleep(bdb_state->attr->rep_debug_delay * 1000);
 
+    rem_rep_mon(&rm);
     time2 = comdb2_time_epoch();
 
     if ((time2 - time1) > bdb_state->attr->rep_longreq) {

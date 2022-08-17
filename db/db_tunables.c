@@ -95,6 +95,7 @@ extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
 extern int gbl_reallyearly;
+extern int gbl_rep_mon_threshold;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;
 extern int gbl_return_long_column_names;
