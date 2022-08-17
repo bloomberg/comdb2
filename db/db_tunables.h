@@ -1651,6 +1651,11 @@ REGISTER_TUNABLE("rep_wait_core_ms",
                  TUNABLE_INTEGER, &gbl_rep_wait_core_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("rep_mon_threshold",
+                 "Pstack rep-thread if blocked this long.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_rep_mon_threshold,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("random_get_curtran_failures",
                  "Force a random get-curtran failure 1/this many times.  "
                  "(Default: 0)",
