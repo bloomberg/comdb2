@@ -2236,4 +2236,7 @@ REGISTER_TUNABLE("pgcomp_dbg_stdout", "Enable debugging stdout trace for page co
                  &gbl_pgcomp_dbg_stdout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("pgcomp_dbg_ctrace", "Enable debugging ctrace for page compaction (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_pgcomp_dbg_ctrace, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dump_history_on_too_many_verify_errors",
+                 "Dump osql history and client info on too many verify errors (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_dump_history_on_too_many_verify_errors, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

@@ -90,6 +90,7 @@ extern int gbl_net_throttle_percent;
 extern int gbl_notimeouts;
 extern int gbl_watchdog_disable_at_start;
 extern int gbl_osql_verify_retries_max;
+extern int gbl_dump_history_on_too_many_verify_errors;
 extern int gbl_page_latches;
 extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
