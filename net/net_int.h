@@ -335,6 +335,7 @@ struct netinfo_struct {
     QSTATREADERFP *qstat_reader_rtn;
     QSTATENQUEFP *qstat_enque_rtn;
     QSTATCLEARFP *qstat_clear_rtn;
+    QSTATDUMPFP *qstat_dump_rtn;
     QSTATFREEFP *qstat_free_rtn;
 
     struct quantize *conntime_all;

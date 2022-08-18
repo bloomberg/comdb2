@@ -67,10 +67,10 @@ typedef void QSTATCLEARFP(struct netinfo_struct *netinfo, void *netstat);
 typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *netstat,
                           void *rec, int len);
 typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
-
 typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
                          void *qstat);
-
+typedef void QSTATDUMPFP(struct netinfo_struct *netinfo, void *netstat,
+                         FILE *f);
 typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
                          char *service, char *userfunc, int64_t count,
                          int64_t totus);
@@ -153,7 +153,8 @@ int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
 
 int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
                             QSTATREADERFP *reader, QSTATENQUEFP *enque,
-                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree);
+                            QSTATDUMPFP *dump, QSTATCLEARFP *qclear,
+                            QSTATFREEFP *qfree);
 
 /* register a callback that you can compare the order of things
    already on the write queue. */

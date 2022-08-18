@@ -1394,6 +1394,13 @@ REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
                                        "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dump_net_queue_on_partial_write",
+                 "Dump net-queue info on partial write. (Default: off):",
+                 TUNABLE_BOOLEAN, &gbl_dump_net_queue_on_partial_write,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_partial_write", "Simulate partial write in net.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_debug_partial_write,
+                 EXPERIMENTAL | INTERNAL, NULL,NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "max_clientstats",
     "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
