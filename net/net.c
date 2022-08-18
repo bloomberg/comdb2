@@ -116,6 +116,8 @@ extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
 
 int gbl_verbose_net = 0;
+int gbl_dump_net_queue_on_partial_write = 0;
+int gbl_debug_partial_write = 0;
 int subnet_blackout_timems = 5000;
 
 int gbl_net_maxconn = 0;
@@ -2330,7 +2332,8 @@ int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
 
 int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
                             QSTATREADERFP *reader, QSTATENQUEFP *enque,
-                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree)
+                            QSTATDUMPFP *dump, QSTATCLEARFP *qclear,
+                            QSTATFREEFP *qfree)
 {
     host_node_type *tmp_host_ptr;
 
@@ -2349,6 +2352,7 @@ int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
     netinfo_ptr->qstat_init_rtn = qinit;
     netinfo_ptr->qstat_reader_rtn = reader;
     netinfo_ptr->qstat_enque_rtn = enque;
+    netinfo_ptr->qstat_dump_rtn = dump;
     netinfo_ptr->qstat_clear_rtn = qclear;
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
@@ -4140,10 +4144,15 @@ static void *writer_thread(void *args)
                     rc = write_stream(
                         netinfo_ptr, host_node_ptr, host_node_ptr->sb,
                         write_list_ptr->payload.raw, write_list_ptr->len);
-                    if (rc > 0 && rc != write_list_ptr->len) {
+                    if ((rc > 0 && rc != write_list_ptr->len) || (gbl_debug_partial_write > 0 &&
+                        ((rand() % gbl_debug_partial_write) == 0))) {
                         host_node_errf(LOGMSG_ERROR, host_node_ptr,
                                        "write stream error. Partial msg written size:%d expected:%d\n",
                                        rc, write_list_ptr->len);
+                       if (gbl_dump_net_queue_on_partial_write &&
+                           netinfo_ptr->qstat_dump_rtn) {
+                           (netinfo_ptr->qstat_dump_rtn)(netinfo_ptr, host_node_ptr->qstat, stderr);
+                       }
                        rc = -1;
                     }
                     flags |= write_list_ptr->flags;
