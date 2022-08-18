@@ -256,6 +256,7 @@
 (name='dump_after_byteswap', description='dump page after byteswap', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_blkseq', description='Dump all blkseq inserts and replays', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_cache_max_pages', description='Maximum number of pages that will dump into a pagelist.  Setting to 0 means that there is no limit.  (Default: 0)', type='INTEGER', value='0', read_only='N')
+(name='dump_history_on_too_many_verify_errors', description='Dump osql history and client info on too many verify errors (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_locks_on_repwait', description='Dump locks on repwaits', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_page_on_byteswap_error', description='fsnap a malformed page from byteswap', type='BOOLEAN', value='OFF', read_only='N')
 (name='dump_pool_on_full', description='dump_pool_on_full', type='BOOLEAN', value='ON', read_only='N')

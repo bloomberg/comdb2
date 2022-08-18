@@ -184,6 +184,7 @@ int gbl_bpfunc_auth_gen = 1;
 
 uint64_t gbl_clnt_seq_no = 0;
 
+int gbl_dump_history_on_too_many_verify_errors = 0;
 int gbl_thdpool_queue_only = 0;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
@@ -2324,6 +2325,12 @@ done:
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
+        /* if the last verify retry has failed, dump the transaction */
+        if (outrc && clnt->osql.last_replay == OSQL_RETRY_LAST && gbl_dump_history_on_too_many_verify_errors) {
+            logmsg(LOGMSG_ERROR, "too many verify errors host=%s task=%s\n", clnt->origin, clnt->argv0);
+            srs_tran_print_history(clnt, 2);
+            logmsg(LOGMSG_WARN, "------\n");
+        }
         if (srs_tran_destroy(clnt))
             logmsg(LOGMSG_ERROR,
                    "Fail to destroy transaction replay session\n");
@@ -3554,6 +3561,11 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
             if (replicant_can_retry_rc(clnt, irc) &&
                 clnt->osql.replay == OSQL_RETRY_LAST) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
+                if (gbl_dump_history_on_too_many_verify_errors) {
+                    logmsg(LOGMSG_ERROR, "too many verify errors host=%s task=%s\n", clnt->origin, clnt->argv0);
+                    srs_tran_print_history(clnt, 2);
+                    logmsg(LOGMSG_WARN, "------\n");
+                }
             }
             /* if this is still an error, but not verify, pass it back to
                client */
