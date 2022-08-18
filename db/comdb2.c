@@ -117,6 +117,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "debug_switches.h"
 #include "eventlog.h"
 #include "config.h"
+#include "settings.h"
 
 #include "views.h"
 
@@ -2777,7 +2778,8 @@ int lua_func_list_free(void * list) {
     /* remove and free item */
     free(listc_rfl(list, item));
 
-    listc_init(list, offsetof(struct lua_func_t, lnk));
+    //TODO: check this?
+    listc_free(list);
     return 0;
 }
 
@@ -5494,6 +5496,8 @@ int main(int argc, char **argv)
     }
 
     init_debug_switches();
+
+    init_client_settings();
 
     /* Initialize plugin tunables. */
     register_plugin_tunables();

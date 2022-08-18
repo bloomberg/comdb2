@@ -363,6 +363,8 @@ extern int gbl_enable_internal_sql_stmt_caching;
 extern int gbl_longreq_log_freq_sec;
 extern int gbl_disable_seekscan_optimization;
 
+extern char * gbl_setting_default_chunk_size;
+
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
                                    sqlite's limit */

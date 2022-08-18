@@ -21,6 +21,7 @@
   at multiple places.
 */
 
+#include "tunables.h"
 REGISTER_TUNABLE("abort_on_in_use_rqid", NULL, TUNABLE_BOOLEAN,
                  &gbl_abort_on_clear_inuse_rqid, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -2222,6 +2223,10 @@ REGISTER_TUNABLE("track_weighted_queue_metrics_separately",
 
 REGISTER_TUNABLE("force_directio", "Force directio on all file opens if set on environment (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_force_direct_io, 0, NULL, NULL, NULL, NULL);
+
+
+REGISTER_TUNABLE("default_setting_chunk", NULL, TUNABLE_STRING, &gbl_setting_default_chunk_size, READEARLY,
+                 NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */

@@ -76,6 +76,15 @@ int systblViewsInit(sqlite3 *);
 int systblSQLClientStats(sqlite3 *);
 int systblSQLIndexStatsInit(sqlite3 *);
 int systblTemporaryFileSizesModuleInit(sqlite3 *);
+int systblSetCommandsModuleInit(sqlite3 *);
+
+int comdb2_next_allowed_table(sqlite3_int64 *tabId);
+
+int systblScStatusInit(sqlite3 *db);
+int systblScHistoryInit(sqlite3 *db);
+int systblConnectionsInit(sqlite3 *db);
+int systblFunctionsInit(sqlite3 *db);
+
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 
