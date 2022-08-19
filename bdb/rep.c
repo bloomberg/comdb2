@@ -3756,7 +3756,8 @@ static int process_rep_mon_hash(void *obj, void *arg)
             rm->tid, rm->host, rm->type, now - rm->starttime);
         char pstack_cmd[128];
         snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)rm->tid);
-        system(pstack_cmd);
+        int rc = system(pstack_cmd);
+        (void)rc;
         /* Linux pstacks tid, non-linux halts hash-for */
 #ifndef _LINUX_SOURCE
         return 1;
