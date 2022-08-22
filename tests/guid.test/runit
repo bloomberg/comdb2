@@ -17,7 +17,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
 echo $CDB2_CONFIG
 CNT=10000
 
@@ -63,7 +62,6 @@ test_guid_function() {
     for fl in `ls sel1_in.*`; do
         cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
     done
-
 
     echo "make sure we can find all the rndm (field 2) from content.out"
     cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2
@@ -500,4 +498,11 @@ test_guid_sp
 test_guid_errors
 
 rm -f *.out
+
+# Run all *.sql tests
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
+[ $? -eq 0 ] || exit 1
+
 echo "Success"
+
+exit 0
