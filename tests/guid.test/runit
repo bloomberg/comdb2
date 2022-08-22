@@ -16,7 +16,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-
 failexit()
 {
     echo "Failed $1"
@@ -109,6 +108,12 @@ fi
 mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
 echo "found $mult with duplicate key for randomblob()"
 
-
 rm *.out
+
+# Run all *.sql tests
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
+[ $? -eq 0 ] || exit 1
+
 echo "Success"
+
+exit 0
