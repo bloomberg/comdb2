@@ -3905,11 +3905,15 @@ static int process_rep_mon_hash(void *obj, void *arg)
     struct rep_mon *rm = (struct rep_mon *)obj;
     int now = comdb2_time_epoch(), threshold = gbl_rep_mon_threshold; 
     if (threshold > 0 && now - rm->starttime > threshold) {
-        fprintf(stderr, "Thread %u host %s type %d hung for %d seconds\n",
-            rm->tid, rm->host, rm->type, now - rm->starttime);
+        logmsg(LOGMSG_ERROR, "Thread %u host %s type %d hung for %d seconds\n",
+               rm->tid, rm->host, rm->type, now - rm->starttime);
         char pstack_cmd[128];
         snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)rm->tid);
-        system(pstack_cmd);
+        int rc = system(pstack_cmd);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d system() failed with rc: %d\n",
+                   __func__, __LINE__, rc);
+        }
         /* Linux pstacks tid, non-linux halts hash-for */
 #ifndef _LINUX_SOURCE
         return 1;
