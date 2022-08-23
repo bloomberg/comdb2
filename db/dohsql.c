@@ -75,7 +75,13 @@ struct dohsql_connector {
 };
 typedef struct dohsql_connector dohsql_connector_t;
 
-typedef Mem row_t;
+struct row {
+    char *packed;  /* allocated&freed by child thread */
+    Mem *unpacked; /* allocated&freed by coordinator thread */
+    long long row_size;
+};
+typedef struct row row_t;
+
 enum {
     ILIMIT_MEM_IDX = 0,
     ILIMIT_SAVED_MEM_IDX = 1,
@@ -133,20 +139,6 @@ typedef struct dohsql_stats dohsql_stats_t;
 pthread_mutex_t dohsql_stats_mtx = PTHREAD_MUTEX_INITIALIZER;
 dohsql_stats_t gbl_dohsql_stats;       /* updated only on request completion */
 dohsql_stats_t gbl_dohsql_stats_dirty; /* updated dynamically, unlocked */
-
-/* An SQlite engine's mspace isn't thread-safe because it's supposed to
-   be accessed by the engine only. DOHSQL breaks the assumption:
-   While the master engine is casting a Mem object which needs to reallocate
-   zMalloc from its mspace, a child engine may decide to reuse or discard a
-   cached Mem object and therefore free zMalloc in the Mem object which is
-   also allocated from the master's mspace. They can race with each other.
-
-   An obvious fix to this is to make an SQL mspace thread-safe. However
-   this would incur unnecessary locking overhead for non-parallelizable
-   queries. Instead we use a mutex to guard the Mem objects. We just need to
-   ensure that we always hold the mutex whenever casting, reusing or discarding
-   a Mem object inside the DOHSQL subsystem. */
-pthread_mutex_t master_mem_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static int gbl_plugin_api_debug = 0;
 
@@ -290,6 +282,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     return 0;
 }
 
+/* run by the child thread */
 static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
                     queue_type *que, int limit)
 {
@@ -298,15 +291,15 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
 
     while (queue_count(que) > limit) {
         row = queue_next(que);
+        assert(row->unpacked == NULL);
+        row_size = row->row_size;
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_USER,
-                   "%p XXX: conn %p %s %p freed older row limit %d\n",
+                   "%p XXX: conn %p %s %p freed older row size %lld limit %d\n",
                    (void *)pthread_self(), conn,
-                   que == conn->que ? "que" : "que_free", que, limit);
-
-        Pthread_mutex_lock(&master_mem_mtx);
-        sqlite3CloneResultFree(stmt, &row, &row_size);
-        Pthread_mutex_unlock(&master_mem_mtx);
+                   que == conn->que ? "que" : "que_free", que, row_size, limit);
+        sqlite3_free(row->packed);
+        free(row);
 
         if (gbl_dohsql_max_queued_kb_highwm) {
             conn->queue_size -= row_size;
@@ -404,14 +397,10 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 {
     dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
     sqlite3_stmt *stmt = resp->stmt;
-    long long row_size;
 
     row_t *row;
-    row_t *oldrow;
 
-    oldrow = NULL;
     Pthread_mutex_lock(&conn->mtx);
-
     if (conn->status == DOH_MASTER_DONE) {
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_USER, "%p %s master done q %d qf %d\n",
@@ -429,22 +418,21 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
         return SQLITE_DONE; /* any != 0 will do, this impersonates a normal end
                              */
     }
-
-    /* try to steal an old row */
-    oldrow = queue_next(conn->que_free);
-    if (oldrow && gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%p %s retrieved older row\n",
-               (void *)pthread_self(), __func__);
     Pthread_mutex_unlock(&conn->mtx);
 
-    if (oldrow)
-        Pthread_mutex_lock(&master_mem_mtx);
-    row = sqlite3CloneResult(stmt, oldrow, &row_size);
-    if (oldrow)
-        Pthread_mutex_unlock(&master_mem_mtx);
-
+    row = calloc(1, sizeof(row_t));
     if (!row)
         return SHARD_ERR_GENERIC;
+
+    row->packed = sqlite3PackedResult(stmt, &row->row_size);
+    if (gbl_dohsql_verbose)
+        logmsg(LOGMSG_USER, "%p: XXX: packed result %p in %p size %lld\n",
+               (void *)pthread_self(), row->packed, row, row->row_size);
+
+    if (!row->packed) {
+        free(row);
+        return SHARD_ERR_GENERIC;
+    }
 
     Pthread_mutex_lock(&conn->mtx);
     conn->rc = SQLITE_ROW;
@@ -456,7 +444,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
                "%p XXX: added new row conn %p que %p que_free %p\n",
                (void *)pthread_self(), conn, conn->que, conn->que_free);
 
-    _que_limiter(conn, stmt, row_size);
+    _que_limiter(conn, stmt, row->row_size);
 
     Pthread_mutex_unlock(&conn->mtx);
 
@@ -480,20 +468,18 @@ static int dohsql_dist_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
     return clnt->conns->ncols;
 }
 
-/* Typecasting may reallocate zMalloc. So do it while holding master_mem_mtx. */
 #define FUNC_COLUMN_TYPE(ret, type)                                            \
     static ret dohsql_dist_column_##type(struct sqlclntstate *clnt,            \
                                          sqlite3_stmt *stmt, int iCol)         \
     {                                                                          \
-        ret rv;                                                                \
         dohsql_t *conns = clnt->conns;                                         \
-        Pthread_mutex_lock(&master_mem_mtx);                                   \
         if (conns->row_src == 0)                                               \
-            rv = sqlite3_column_##type(stmt, iCol);                            \
-        else                                                                   \
-            rv = sqlite3_value_##type(&conns->row[iCol]);                      \
-        Pthread_mutex_unlock(&master_mem_mtx);                                 \
-        return rv;                                                             \
+            return sqlite3_column_##type(stmt, iCol);                          \
+        if (!conns->row->unpacked) {                                           \
+            conns->row->unpacked = sqlite3UnpackedResult(                      \
+                stmt, conns->ncols, conns->row->packed, conns->row->row_size); \
+        }                                                                      \
+        return sqlite3_value_##type(&conns->row->unpacked[iCol]);              \
     }
 
 FUNC_COLUMN_TYPE(int, type)
@@ -508,29 +494,30 @@ static const intv_t *dohsql_dist_column_interval(struct sqlclntstate *clnt,
                                                  sqlite3_stmt *stmt, int iCol,
                                                  int type)
 {
-    const intv_t *rv;
     dohsql_t *conns = clnt->conns;
-    Pthread_mutex_lock(&master_mem_mtx);
     if (conns->row_src == 0)
-        rv = sqlite3_column_interval(stmt, iCol, type);
-    else
-        rv = sqlite3_value_interval(&conns->row[iCol], type);
-    Pthread_mutex_unlock(&master_mem_mtx);
-    return rv;
+        return sqlite3_column_interval(stmt, iCol, type);
+
+    if (!conns->row->unpacked) {
+        conns->row->unpacked = sqlite3UnpackedResult(
+            stmt, conns->ncols, conns->row->packed, conns->row->row_size);
+    }
+    return sqlite3_value_interval(&conns->row->unpacked[iCol], type);
 }
 
 static sqlite3_value *dohsql_dist_column_value(struct sqlclntstate *clnt,
                                                sqlite3_stmt *stmt, int i)
 {
-    sqlite3_value *rv;
     dohsql_t *conns = clnt->conns;
-    Pthread_mutex_lock(&master_mem_mtx);
+
     if (conns->row_src == 0)
-        rv = sqlite3_column_value(stmt, i);
-    else
-        rv = &conns->row[i];
-    Pthread_mutex_unlock(&master_mem_mtx);
-    return rv;
+        return sqlite3_column_value(stmt, i);
+
+    if (!conns->row->unpacked) {
+        conns->row->unpacked = sqlite3UnpackedResult(
+            stmt, conns->ncols, conns->row->packed, conns->row->row_size);
+    }
+    return &conns->row->unpacked[i];
 }
 
 #define Q_LOCK(x) Pthread_mutex_lock(&conns->conns[x].mtx)
@@ -581,21 +568,33 @@ static int dohsql_dist_param_value(struct sqlclntstate *clnt,
 
 static void donate_current_row(dohsql_t *conns, int locked)
 {
-    if (conns->row && conns->row_src) {
+    if (conns->row) {
+        if (conns->row_src) {
+            /* free what coordinator allocated before sending the row back */
+            if (conns->row->unpacked) {
+                sqlite3UnpackedResultFree(&conns->row->unpacked, conns->ncols);
+            }
 
-        if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "%p %s donating current row %p src %d\n",
-                   (void *)pthread_self(), __func__, conns->row,
-                   conns->row_src);
-        if (!locked)
-            Q_LOCK(conns->row_src);
-        if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
-            abort();
-        conns->conns[conns->row_src].selected = 0;
-        if (!locked)
-            Q_UNLOCK(conns->row_src);
-        conns->row = NULL;
-        conns->row_src = 0;
+            if (gbl_dohsql_verbose)
+                logmsg(LOGMSG_USER, "%p %s donating current row %p src %d\n",
+                       (void *)pthread_self(), __func__, conns->row,
+                       conns->row_src);
+            if (!locked)
+                Q_LOCK(conns->row_src);
+            if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
+                abort();
+            conns->conns[conns->row_src].selected = 0;
+            if (!locked)
+                Q_UNLOCK(conns->row_src);
+            conns->row = NULL;
+            conns->row_src = 0;
+        } else {
+            /* local row; there is no use of que_free, here, but we still need
+             * to free the dummy row_t that points to the Vdbe->pResultSet
+             */
+            free(conns->row);
+            conns->row = NULL;
+        }
     }
 }
 
@@ -627,6 +626,15 @@ static void _signal_children_master_is_done(dohsql_t *conns)
         /* is coordinator sitting on a row? */
         if (conns->row && conns->row_src == child_num) {
             donate_current_row(conns, 1);
+        }
+        if (conns->conns[child_num].que->lst.top) {
+            /* make sure we free the Unpacked of top of the queue,
+             * which is allocated if we do an ordered select
+             */
+            row_t *r = conns->conns[child_num].que->lst.top->obj;
+            if (r->unpacked) {
+                sqlite3UnpackedResultFree(&r->unpacked, conns->ncols);
+            }
         }
 
         if (conns->conns[child_num].status != DOH_CLIENT_DONE) {
@@ -1497,10 +1505,21 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
     }
 }
 
-static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
+static Mem *_get_mem(sqlite3_stmt *stmt, dohsql_t *conns, int idx)
+{
+    row_t *r = conns->conns[idx].que->lst.top->obj;
+    if (!r->unpacked) {
+        assert(idx > 0);
+        r->unpacked =
+            sqlite3UnpackedResult(stmt, conns->ncols, r->packed, r->row_size);
+    }
+    return r->unpacked;
+}
+
+static int _cmp(sqlite3_stmt *stmt, dohsql_t *conns, int idx_a, int idx_b)
 {
     int *order = conns->order;
-    row_t *a, *b;
+    Mem *a, *b;
     int i;
     int ret = 0;
     int qc_a, qc_b;
@@ -1522,8 +1541,8 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
     } else if (qc_b == 0) {
         ret = 1;
     } else {
-        a = conns->conns[order[idx_a]].que->lst.top->obj;
-        b = conns->conns[order[idx_b]].que->lst.top->obj;
+        a = _get_mem(stmt, conns, order[idx_a]);
+        b = _get_mem(stmt, conns, order[idx_b]);
 
         for (i = 0; i < conns->order_size /*conns->ncols*/; i++) {
             int orderby_idx = (conns->order_dir[i] > 0)
@@ -1550,7 +1569,7 @@ static int _cmp(dohsql_t *conns, int idx_a, int idx_b)
     return ret;
 }
 
-int _pos(dohsql_t *conns, int index)
+int _pos(sqlite3_stmt *stmt, dohsql_t *conns, int index)
 {
     int left;
     int right;
@@ -1563,7 +1582,7 @@ int _pos(dohsql_t *conns, int index)
     right = (conns->top_idx + conns->filling /*-1*/) % conns->nconns;
 
     if (left > right) {
-        if (_cmp(conns, index, conns->nconns - 1) < 0) {
+        if (_cmp(stmt, conns, index, conns->nconns - 1) < 0) {
             right = conns->nconns - 1;
         } else {
             left = 0;
@@ -1572,7 +1591,7 @@ int _pos(dohsql_t *conns, int index)
 
     while (left < right) {
         pivot = left + (right - left) / 2;
-        if (_cmp(conns, index, pivot) < 0) {
+        if (_cmp(stmt, conns, index, pivot) < 0) {
             right = pivot;
             continue;
         }
@@ -1625,10 +1644,10 @@ static int q_top(dohsql_t *conns)
     return ret_val;
 }
 
-static int q_insert(dohsql_t *conns, int indx)
+static int q_insert(sqlite3_stmt *stmt, dohsql_t *conns, int indx)
 {
     int *order = conns->order;
-    int pos = _pos(conns, indx);
+    int pos = _pos(stmt, conns, indx);
     int last = (conns->top_idx + conns->filling) % conns->nconns;
     int saved = order[indx];
 
@@ -1666,7 +1685,7 @@ static void _move_client_done(dohsql_t *conns, int idx)
         _print_order_info(conns, "client_done");
 }
 
-static void _move_client_row(dohsql_t *conns, int idx)
+static void _move_client_row(sqlite3_stmt *stmt, dohsql_t *conns, int idx)
 {
     int *order = conns->order;
     int last, tmp;
@@ -1678,7 +1697,7 @@ static void _move_client_row(dohsql_t *conns, int idx)
         order[last] = tmp;
         idx = last;
     }
-    q_insert(conns, idx);
+    q_insert(stmt, conns, idx);
 
     if (gbl_dohsql_verbose)
         _print_order_info(conns, "insert_new_row");
@@ -1694,10 +1713,11 @@ static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_USER, "%p XXX: %s added local new row\n",
                    (void *)pthread_self(), __func__);
-
-        if (queue_add(conns->conns[0].que, ((Vdbe *)stmt)->pResultSet))
+        row_t *row = calloc(1, sizeof(row_t));
+        row->unpacked = ((Vdbe *)stmt)->pResultSet;
+        if (queue_add(conns->conns[0].que, row))
             abort();
-        _move_client_row(conns, crt_idx);
+        _move_client_row(stmt, conns, crt_idx);
     } else if (conns->conns[0].rc == SQLITE_DONE) {
         _move_client_done(conns, crt_idx);
     } else {
@@ -1777,7 +1797,7 @@ retry_row:
         if (que_idx) {
             Q_LOCK(que_idx);
             if (queue_count(conns->conns[que_idx].que) > 0) {
-                _move_client_row(conns, idx);
+                _move_client_row(stmt, conns, idx);
             } else {
                 if (conns->conns[que_idx].rc == SQLITE_DONE) {
                     _move_client_done(conns, idx);
