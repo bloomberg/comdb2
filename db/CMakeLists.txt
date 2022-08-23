@@ -26,7 +26,6 @@ set(src
   fdb_boots.c
   fdb_fend.c
   fdb_fend_cache.c
-  fdb_util.c
   glue.c
   handle_buf.c
   history.c

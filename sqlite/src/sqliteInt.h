@@ -5040,8 +5040,10 @@ void comdb2WriteTransaction(Parse*);
 
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
 int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
-Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *cols, long long *pSize);
-void sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols, long long *pSize);
+char *sqlite3PackedResult(sqlite3_stmt *pStmt, long long *size);
+Mem *sqlite3UnpackedResult(sqlite3_stmt *pStmt, int ncols, char *packed, int packed_len);
+void sqlite3UnpackedResultFree(Mem **ppMem, int nCols);
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 int sqlite3ExprVectorSize(Expr *pExpr);
