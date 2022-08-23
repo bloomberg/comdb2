@@ -5742,100 +5742,98 @@ Mem *sqlite3GetCachedResultRow(
   return NULL;
 }
 
-static long long memRowSize(
-  Mem *pMem,
-  int nMem
-){
-  unsigned long long size = sizeof(Mem) * nMem;
-  int i;
-  for(i=0; i<nMem; i++){
-    if( pMem[i].flags&(MEM_Str|MEM_Blob) ){
-        size += pMem[i].n + 2;
-    }
-  }
-  return size;
-}
-
-int sqlite3_value_dup_inplace(
-  sqlite3_value *pNew,
-  const sqlite3_value *pOrig
-){
-  if( pOrig==0 || pNew==0 ) return SQLITE_MISUSE;
-  memset(pNew, 0, sizeof(Mem));
-  memcpy(pNew, pOrig, MEMCELLSIZE);
-  pNew->flags &= ~MEM_Dyn;
-  pNew->szMalloc = 0;
-  pNew->db = 0;
-  if( pNew->flags&(MEM_Str|MEM_Blob) ){
-    int rc;
-    pNew->flags &= ~MEM_Static;
-    pNew->flags |= MEM_Ephem;
-    rc = sqlite3VdbeMemMakeWriteable(pNew);
-    if( rc!=SQLITE_OK ) return rc;
-  }
-  return SQLITE_OK;
-}
-
-void sqlite3_value_free_inplace(sqlite3_value *v){
-  if( !v ) return;
-  sqlite3VdbeMemRelease((Mem *)v);
-}
-
-Mem *sqlite3CloneResult(
-  sqlite3_stmt *pStmt, /* in */
-  Mem *pMem,           /* in, out */
-  long long *pSize     /* out */
-){
-  Vdbe *p = (Vdbe*)pStmt;
-  int i, rc, nCols = p->nResColumn;
-  Mem *pCols = p->pResultSet;
-  Mem *pMalloc = 0;
-  *pSize = 0LL;
-  if( !pMem ){
-    pMem = pMalloc = sqlite3_malloc64(sizeof(Mem) * nCols);
-    if( !pMem ) return 0;
-  }else{
-    *pSize -= memRowSize(pMem, nCols);
-    for(i=0; i<nCols; i++){
-      sqlite3_value_free_inplace(&pMem[i]);
-    }
-  }
-  memset(pMem, 0, sizeof(Mem) * nCols);
-  for(i=0; i<nCols; i++){
-    rc = sqlite3_value_dup_inplace(&pMem[i], &pCols[i]);
-    if( rc!=SQLITE_OK ) goto error;
-  }
-  *pSize += memRowSize(pMem, nCols);
-  goto done;
-error:
-  if( pMalloc ){
-    for(i=0; i<nCols; i++){
-      sqlite3_value_free_inplace(&pMalloc[i]);
-    }
-    sqlite3_free(pMalloc);
-    pMalloc = 0;
-  }
-  return pMalloc;
-done:
-  return pMem;
-}
-
-void sqlite3CloneResultFree(
+char *sqlite3PackedResult(
   sqlite3_stmt *pStmt,
-  Mem **ppMem,
-  long long *pSize
+  long long *size
 ){
+  extern int sqlite3_unpacked_to_packed(Mem *, int nmems, char **, int *);
   Vdbe *p = (Vdbe*)pStmt;
-  int i, nCols = p->nResColumn;
+  Mem *pCols = p->pResultSet;
+  int nCols = p->nResColumn;
+  int ret_row_len = 0;
+  int rc;
+  char *ret_row;
+
+  rc = sqlite3_unpacked_to_packed(pCols, nCols, &ret_row, &ret_row_len);
+  if (rc)
+    return NULL;
+
+  *size = ret_row_len;
+    
+  return ret_row;
+}
+
+Mem *sqlite3UnpackedResult(
+  sqlite3_stmt *pStmt,
+  int nCols,
+  char *packed, 
+  int packedLen
+){
+  Mem *pCols = NULL;
+  int i;
+
+  pCols = sqlite3_malloc64(sizeof(Mem) * nCols);
+  if (!pCols)
+    return NULL;
+  bzero(pCols, sizeof(Mem) * nCols);
+  for(i=0;i<nCols;i++) {
+    /* default encoding */
+    pCols[i].enc = SQLITE_UTF8;
+  }
+
+  /* distilled from vdbeRecordCompareDebug */
+  const unsigned char *aKey1 = (const unsigned char *)packed;
+  int nKey1 = packedLen;
+  u32 d1;            /* Offset into aKey[] of next data element */
+  u32 idx1;          /* Offset into aKey[] of next header element */
+  u32 szHdr1;        /* Number of bytes in header */
+
+  idx1 = getVarint32(aKey1, szHdr1);
+  if( szHdr1>98307 ) abort();
+  d1 = szHdr1;
+  i = 0;
+  do{
+    u32 serial_type1;
+
+    /* Read the serial types for the next element in each key. */
+    idx1 += getVarint32( aKey1+idx1, serial_type1 );
+
+    /* Verify that there is enough key space remaining to avoid
+    ** a buffer overread.  The "d1+serial_type1+2" subexpression will
+    ** always be greater than or equal to the amount of required key space.
+    ** Use that approximation to avoid the more expensive call to
+    ** sqlite3VdbeSerialTypeLen() in the common case.
+    */
+    if( d1+(u64)serial_type1+2>(u64)nKey1
+     && d1+(u64)sqlite3VdbeSerialTypeLen(serial_type1)>(u64)nKey1 
+    ){
+      break;
+    }
+
+    /* Extract the value
+    */
+    d1 += sqlite3VdbeSerialGet(&aKey1[d1], serial_type1, &pCols[i]);
+
+    i++;
+  }while( idx1<szHdr1 && i<nCols);
+
+  return pCols;
+}
+
+void sqlite3UnpackedResultFree(
+  Mem **ppMem,
+  int nCols
+){
+  int i;
   Mem *pMem = *ppMem;
   if( !pMem ) return;
-  *pSize = memRowSize(pMem, nCols);
   for(i=0; i<nCols; i++){
-    sqlite3_value_free_inplace(&pMem[i]);
+    sqlite3VdbeMemRelease(&pMem[i]);
   }
   sqlite3_free(pMem);
   *ppMem = 0;
 }
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK

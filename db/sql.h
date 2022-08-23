@@ -1359,4 +1359,8 @@ void wait_for_transactions(void);
 
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line);
 
+/* Convert a sequence of Mem * to a serialized sqlite row */
+int sqlite3_unpacked_to_packed(Mem *mems, int nmems, char **ret_rec,
+                               int *ret_rec_len);
+
 #endif /* _SQL_H_ */

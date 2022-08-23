@@ -31,7 +31,6 @@
 #include "fdb_fend.h"
 #include "fdb_boots.h"
 #include "fdb_comm.h"
-#include "fdb_util.h"
 #include "fdb_fend_cache.h"
 #include "fdb_access.h"
 #include "fdb_whitelist.h"

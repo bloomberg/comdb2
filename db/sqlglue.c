@@ -595,6 +595,9 @@ static int is_sqlite_db_init(BtCursor *pCur)
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
 {
     extern int gbl_epoch_time;
+    extern int gbl_watchdog_disable_at_start;
+    if (gbl_watchdog_disable_at_start)
+        return 0;
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
         clnt->last_check_time = gbl_epoch_time;
         if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
@@ -933,6 +936,68 @@ static int ondisk_to_sqlite(struct dbtable *db, struct schema *s, void *inp, int
 {
     return ondisk_to_sqlite_tz(db, s, inp, rrn, genid, outp, maxout, nblobs,
                                blob, blobsz, bloboffs, reqsize, NULL, NULL);
+}
+
+/* Convert a sequence of Mem * to a serialized sqlite row */
+int sqlite3_unpacked_to_packed(Mem *mems, int nmems, char **ret_rec,
+                               int *ret_rec_len)
+{
+    char *rec, *crt;
+    int sz, remsz, total_data_sz, total_header_sz;
+    int fnum;
+    u32 type;
+    u32 len;
+
+    /* compute output row size, header + data */
+    total_data_sz = 0;
+    total_header_sz = 0;
+    for (fnum = 0; fnum < nmems; fnum++) {
+        type = sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
+                                     &len);
+        total_data_sz += sqlite3VdbeSerialTypeLen(type);
+        total_header_sz += sqlite3VarintLen(type);
+    }
+    total_header_sz += sqlite3VarintLen(total_header_sz);
+
+    /* create the sqlite row */
+    rec = (char *)calloc(1, total_header_sz + total_data_sz);
+    if (!rec) {
+        return -1;
+    }
+
+    crt = rec;
+    remsz = total_header_sz + total_data_sz;
+
+    sz = sqlite3PutVarint((unsigned char *)crt, total_header_sz);
+    crt += sz;
+    remsz -= sz;
+
+    /* serialize headers */
+    for (fnum = 0; fnum < nmems; fnum++) {
+        sz = sqlite3PutVarint((unsigned char *)crt,
+                              sqlite3VdbeSerialType(&mems[fnum],
+                                                    SQLITE_DEFAULT_FILE_FORMAT,
+                                                    &len));
+        crt += sz;
+        remsz -= sz;
+    }
+    for (fnum = 0; fnum < nmems; fnum++) {
+        sz = sqlite3VdbeSerialPut(
+            (unsigned char *)crt, &mems[fnum],
+            sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
+                                  &len));
+        crt += sz;
+        remsz -= sz;
+    }
+
+    *ret_rec = rec;
+    *ret_rec_len = total_header_sz + total_data_sz;
+
+    if (remsz != 0) {
+        abort();
+    }
+
+    return 0;
 }
 
 /* Called by convert_failure_reason_str() to decode the sql specific part. */
