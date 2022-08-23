@@ -42,7 +42,6 @@
 #include "fdb_fend.h"
 #include "fdb_boots.h"
 #include "fdb_comm.h"
-#include "fdb_util.h"
 #include "fdb_fend_cache.h"
 #include "fdb_access.h"
 #include "fdb_bend.h"
@@ -1616,11 +1615,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
 {
 #define SQLITE_MASTER_ROW_COLS 6
     Mem mems[SQLITE_MASTER_ROW_COLS], *m;
-    u32 type;
-    int sz, remsz, total_data_sz, total_header_sz;
-    int fnum;
-    char *rec, *crt;
-    u32 len;
+    int rc;
 
     logmsg(LOGMSG_INFO, "Creating master table for %s %s %s %d \"%s\" \"%s\"\n", etype, name,
            tbl_name, rootpage, sql, csc2);
@@ -1696,59 +1691,16 @@ int create_sqlite_master_table(const char *etype, const char *name,
         m->flags = MEM_Null;
     }
 
-    /* compute output row size, header + data */
-    total_data_sz = 0;
-    total_header_sz = 0;
-    for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
-        type = sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
-                                     &len);
-        total_data_sz += sqlite3VdbeSerialTypeLen(type);
-        total_header_sz += sqlite3VarintLen(type);
-    }
-    total_header_sz += sqlite3VarintLen(total_header_sz);
-
-    /* create the sqlite row */
-    rec = (char *)calloc(1, total_header_sz + total_data_sz);
-    if (!rec) {
-        logmsg(LOGMSG_ERROR, "ENOMEM: Malloc %d\n", total_data_sz + total_header_sz);
+    rc = sqlite3_unpacked_to_packed(mems, SQLITE_MASTER_ROW_COLS, ret_rec,
+                                    ret_rec_len);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "ENOMEM: Malloc error\n");
         free(mems[0].z);
         free(mems[1].z);
         free(mems[2].z);
         free(mems[4].z);
         free(mems[5].z);
         return FDB_ERR_MALLOC;
-    }
-
-    crt = rec;
-    remsz = total_header_sz + total_data_sz;
-
-    sz = sqlite3PutVarint((unsigned char *)crt, total_header_sz);
-    crt += sz;
-    remsz -= sz;
-
-    /* serialize headers */
-    for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
-        sz = sqlite3PutVarint((unsigned char *)crt,
-                              sqlite3VdbeSerialType(&mems[fnum],
-                                                    SQLITE_DEFAULT_FILE_FORMAT,
-                                                    &len));
-        crt += sz;
-        remsz -= sz;
-    }
-    for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
-        sz = sqlite3VdbeSerialPut(
-            (unsigned char *)crt, &mems[fnum],
-            sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
-                                  &len));
-        crt += sz;
-        remsz -= sz;
-    }
-
-    *ret_rec = rec;
-    *ret_rec_len = total_header_sz + total_data_sz;
-
-    if (remsz != 0) {
-        abort();
     }
 
     return FDB_NOERR;
@@ -3167,52 +3119,6 @@ retry:
     return rc;
 }
 
-static void fdb_unpacked_get_reqsz(Mem *m, int nField, int *p_hdrsz,
-                                   int *p_datasz)
-{
-    int fnum;
-    u32 type;
-    int sz;
-    int datasz, hdrsz;
-    u32 len;
-
-    datasz = 0;
-    hdrsz = 0;
-
-    for (fnum = 0; fnum < nField; fnum++) {
-        type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialTypeLen(type);
-        datasz += sz;
-        hdrsz += sqlite3VarintLen(type);
-    }
-    /* to account for size of header in header */
-    hdrsz += sqlite3VarintLen(hdrsz);
-
-    *p_hdrsz = hdrsz;
-    *p_datasz = datasz;
-}
-
-static int fdb_sqlite_unpacked_to_packed(Mem *m, int ncols, char **out,
-                                         int *outlen)
-{
-    int datasz, hdrsz;
-
-    fdb_unpacked_get_reqsz(m, ncols, &hdrsz, &datasz);
-
-    *outlen = hdrsz + datasz;
-
-    *out = (char *)malloc(*outlen);
-    if (*out == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, *outlen);
-        return FDB_ERR_MALLOC;
-    }
-
-    fdb_unp_to_p(m, ncols, hdrsz, datasz, *out, *outlen);
-
-    return FDB_NOERR;
-}
-
 static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                                       int bias, int last)
 {
@@ -3267,22 +3173,8 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                 sql = fdbc->sql_hint;
                 sqllen = strlen(sql) + 1;
             } else {
-#if 0
-            NOTE: I will code the prefilter as part of sql
-
-            sql = _build_run_sql_from_hint(pCur, bias, &sqllen);
-
-            /* pack the key to send */
-            rc = fdb_sqlite_unpacked_to_packed(key, nfields, &packed_key, &packed_keylen);
-            if (rc)
-            {
-               return -1;
-            }
-#else
-
                 sql = _build_run_sql_from_hint(pCur, key, nfields, bias,
                                                &sqllen, &error);
-#endif
             }
         }
 

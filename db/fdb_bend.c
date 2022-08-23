@@ -64,7 +64,6 @@
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
-#include "fdb_util.h"
 #include "fdb_fend.h"
 #include <flibc.h>
 #include "comdb2uuid.h"
@@ -107,7 +106,8 @@ static svc_center_t *center;
 
 static int fdb_convert_data(svc_cursor_t *cur, unsigned long long *genid,
                             char **data, int *datalen);
-
+static int fdb_unp_to_p(Mem *m, int ncols, int hdrsz, int datasz, char *out,
+                        int outlen);
 /**
    ======== API ===========
 
@@ -1409,3 +1409,38 @@ retry:
     trans->seq++;
 }
 
+/* pack an sqlite unpacked row to a packed row */
+static int fdb_unp_to_p(Mem *m, int ncols, int hdrsz, int datasz, char *out,
+                        int outlen)
+{
+    char *hdrbuf, *dtabuf;
+    int fnum;
+    int sz;
+    u32 len;
+
+    hdrbuf = out;
+    dtabuf = out + hdrsz;
+
+    /* enough room? */
+    if ((datasz + hdrsz) > outlen) {
+        return -1;
+    }
+
+    /* put header size in header */
+    sz = sqlite3PutVarint((unsigned char *)hdrbuf, hdrsz);
+    hdrbuf += sz;
+
+    for (fnum = 0; fnum < ncols; fnum++) {
+        sz = sqlite3VdbeSerialPut(
+            (unsigned char *)dtabuf, &m[fnum],
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
+        dtabuf += sz;
+        sz = sqlite3PutVarint(
+            (unsigned char *)hdrbuf,
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
+        hdrbuf += sz;
+        assert(hdrbuf <= (out + hdrsz));
+    }
+
+    return 0;
+}
