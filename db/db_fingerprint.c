@@ -245,9 +245,11 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
                 t->cost_increased++;
             }
             if (t->check_next_queries == 0 && (t->cost_increased > CHECK_NEXT_QUERIES/2)) {
+                char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+                util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
                 logmsg(LOGMSG_WARN,
-                       "Cost %ld vs Previous Avg Cost %ld of Query %s increased after last Analyze. Backout?\n",
-                       avg_cost , t->pre_cost_avg_per_row, t->zNormSql);
+                       "Cost %ld vs Previous Avg Cost %ld of Query %s with fingerprint %s increased after last Analyze. Backout?\n",
+                       avg_cost , t->pre_cost_avg_per_row, t->zNormSql, fp);
             }
         }
         assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
