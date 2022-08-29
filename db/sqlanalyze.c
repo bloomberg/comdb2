@@ -937,12 +937,27 @@ static void *table_thread(void *arg)
 static int dispatch_table_thread(table_descriptor_t *td)
 {
     int rc;
+    struct timespec timeout;
     /* grab lock */
     Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for thread availability */
     while (analyze_cur_table_threads >= analyze_max_table_threads) {
-        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        ++timeout.tv_sec; // 1 second timeout
+        rc = pthread_cond_timedwait(&table_thd_cond, &table_thd_mutex, &timeout);
+        if (rc == ETIMEDOUT) {
+            if (bdb_lock_desired(thedb->bdb_env)) {
+                rc = recover_deadlock_simple(thedb->bdb_env);
+                if (rc) {
+                    logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc);
+                }
+            }
+        } else if (rc) {
+            logmsg(LOGMSG_FATAL, "pthread_cond_timedwait:%d rc:%d (%s) thd:%p\n", __LINE__, rc, strerror(rc),
+                   (void *)pthread_self());
+            abort();
+        }
     }
 
     /* grab table thread */
@@ -962,19 +977,35 @@ static int dispatch_table_thread(table_descriptor_t *td)
 /* wait for table to complete */
 static int wait_for_table(table_descriptor_t *td)
 {
+    int rc;
+    struct timespec timeout;
     /* lock table mutex */
     Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for the state to change */
     while (td->table_state == TABLE_STARTUP ||
            td->table_state == TABLE_RUNNING) {
-        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        ++timeout.tv_sec; // 1 second timeout
+        rc = pthread_cond_timedwait(&table_thd_cond, &table_thd_mutex, &timeout);
+        if (rc == ETIMEDOUT) {
+            if (bdb_lock_desired(thedb->bdb_env)) {
+                rc = recover_deadlock_simple(thedb->bdb_env);
+                if (rc) {
+                    logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc);
+                }
+            }
+        } else if (rc) {
+            logmsg(LOGMSG_FATAL, "pthread_cond_timedwait:%d rc:%d (%s) thd:%p\n", __LINE__, rc, strerror(rc),
+                   (void *)pthread_self());
+            abort();
+        }
     }
 
     /* release */
     Pthread_mutex_unlock(&table_thd_mutex);
 
-    int rc = 0;
+    rc = 0;
     if (TABLE_COMPLETE == td->table_state) {
         sbuf2printf(td->sb, ">Analyze table '%s' is complete\n", td->table);
     } else if (TABLE_SKIPPED == td->table_state) {
