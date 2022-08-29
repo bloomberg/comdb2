@@ -1,0 +1,2 @@
+Test running analyze followed by downgrade to see if analyze completes.
+Recover deadlock should be called in analyze thread.
