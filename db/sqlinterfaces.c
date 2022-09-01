@@ -1457,11 +1457,16 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
 {
     Pthread_mutex_lock(&clnt->wait_mutex);
-    /* if this is a new chunk, do not stop the hearbeats */
-    if (sideeffects != TRANS_CLNTCOMM_CHUNK)
+    /* if this is a new chunk, do not stop the hearbeats.*/
+    if (sideeffects != TRANS_CLNTCOMM_CHUNK){
         clnt->ready_for_heartbeats = 0;
+    }
 
-    reqlog_setup_begin_commit_rollback(thd, clnt);
+    if(sideeffects == TRANS_CLNTCOMM_NORMAL){
+        // for chunks and SPs (which implicitly call begin)
+        // we don't want to set up reqlog again
+        reqlog_setup_begin_commit_rollback(thd, clnt);
+    }
 
     /* this is a good "begin", just say "ok" */
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_STRT_STATE);
@@ -1483,7 +1488,10 @@ done:
     if (srs_tran_add_query(clnt))
         logmsg(LOGMSG_ERROR, "Fail to create a transaction replay session\n");
 
-    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    if(sideeffects == TRANS_CLNTCOMM_NORMAL){
+        // for chunks and SPs, don't end the request
+        reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    }
 
     return SQLITE_OK;
 }
@@ -1946,7 +1954,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int outrc = 0;
 
-    reqlog_setup_begin_commit_rollback(thd, clnt);
+    if(sideeffects == TRANS_CLNTCOMM_NORMAL){
+    // Don't setup(reset) logger for commits of individual chunks,
+    // and for the implicit commit from an SP
+        reqlog_setup_begin_commit_rollback(thd, clnt);
+    }
 
     int64_t rows = clnt->log_effects.num_updated +
                    clnt->log_effects.num_deleted +
@@ -2099,7 +2111,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 done:
     reset_clnt_flags(clnt);
-    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    if(sideeffects == TRANS_CLNTCOMM_NORMAL){
+        // end request only for non-chunk and non-SP transactions
+        reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    }
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
