@@ -5174,6 +5174,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     }
     clnt->recno = 1;
     clnt->done = 1;
+    clnt->fail_dispatch = 1;
     strcpy(clnt->tzname, "America/New_York");
     clnt->dtprec = gbl_datetime_precision;
     bzero(&clnt->conninfo, sizeof(clnt->conninfo));
