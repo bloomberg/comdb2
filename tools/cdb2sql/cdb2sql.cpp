@@ -107,6 +107,7 @@ static int istty = 0;
 static int isadmin = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
+static int connect_to_master = 0;
 
 static int now_ms(void)
 {
@@ -1489,6 +1490,44 @@ static int run_statement(const char *sql, int ntypes, int *types,
             cdb2h = NULL;
             return 1;
         }
+
+        if (connect_to_master) {
+            rc = cdb2_run_statement(cdb2h, "SELECT host FROM comdb2_cluster WHERE is_master = 'Y'");
+            if (rc != 0) {
+                fprintf(stderr, "error retrieving master node rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                cdb2_close(cdb2h);
+                cdb2h = NULL;
+                return 1;
+            }
+
+            rc = cdb2_next_record(cdb2h);
+            if (rc != CDB2_OK) {
+                fprintf(stderr, "error retrieving master node rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                cdb2_close(cdb2h);
+                cdb2h = NULL;
+                return 1;
+            }
+
+            char *masterhost = strdup((char *)cdb2_column_value(cdb2h, 0));
+            cdb2_close(cdb2h);
+            cdb2h = NULL;
+
+            if (masterhost == NULL) {
+                fprintf(stderr, "error retrieving master node rc %d %s\n", errno, strerror(errno));
+                return 1;
+            }
+
+            rc = cdb2_open(&cdb2h, dbname, masterhost, CDB2_DIRECT_CPU);
+            free(masterhost);
+
+            if (rc) {
+                fprintf(stderr, "error connecting to master rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                cdb2_close(cdb2h);
+                cdb2h = NULL;
+                return 1;
+            }
+        }
+
         if (debug_trace) {
             cdb2_set_debug_trace(cdb2h);
         }
@@ -1983,9 +2022,10 @@ int main(int argc, char *argv[])
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
+        {"connect-to-master", no_argument, NULL, 'm'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:m",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -2029,6 +2069,9 @@ int main(int argc, char *argv[])
             break;
         case 'n':
             dbhostname = optarg;
+            break;
+        case 'm':
+            connect_to_master = 1;
             break;
         case '?':
             cdb2sql_usage(EXIT_FAILURE);
