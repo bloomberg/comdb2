@@ -119,6 +119,8 @@ int gbl_longreq_log_freq_sec = 60;
 
 static void log_all_events(struct reqlogger *logger, struct output *out);
 
+extern int is_stored_proc(struct sqlclntstate*);
+
 inline void sltdbt_get_stats(int *n_reqs, int *l_reqs)
 {
     *n_reqs = norm_reqs;
@@ -1944,8 +1946,13 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
     if (gbl_fingerprint_queries) {
         unsigned char fp[FINGERPRINTSZ];
         size_t unused;
-        const char *normSql = (clnt->work.zNormSql) ? clnt->work.zNormSql :
+        const char *normSql = NULL;
+        if (is_stored_proc(clnt)) {
+            normSql = clnt->work.zOrigNormSql;
+        } else {
+            normSql = (clnt->work.zNormSql) ? clnt->work.zNormSql :
           clnt->work.zOrigNormSql;
+        }
         if (normSql) {
             calc_fingerprint(normSql, &unused, fp);
             reqlog_set_fingerprint(&logger, (const char *)fp, FINGERPRINTSZ);
