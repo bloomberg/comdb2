@@ -424,6 +424,32 @@ __ufid_add_dbp(dbenv, dbp)
 	return ret;
 }
 
+// PUBLIC: int __ufid_rem_dbp __P((DB_ENV *, u_int8_t *));
+//	This function is ufid's substitute for __dbreg_add_dbentry(dbp=NULL).
+//	The only difference between these 2 functions is that, __dbreg_add_dbentry(dbp=NULL)
+//	only marks the dbreg entry deleted, whereas __ufid_rem_dbp actually deletes
+//	the uid from ufid hash. We can't delete a dbreg entry because
+//	1) dbreg mapping is an in-memory array and is accessed by array index, and 2) dbreg ID's are recycled.
+//	in ufid, we simply delete the uid from the hashtable, as uid is unique and isn't recycled.
+//
+int
+__ufid_rem_dbp(dbenv, uid)
+	DB_ENV *dbenv;
+	u_int8_t *uid;
+{
+	struct __ufid_to_db_t *ufid;
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, uid))) {
+		if (ufid->dbp)
+			ufid->dbp->added_to_ufid = 0;
+		hash_del(dbenv->ufid_to_db_hash, ufid);
+		__os_free(dbenv, ufid);
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return 0;
+}
+
 static int
 __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	DB_ENV *dbenv;
@@ -1075,6 +1101,7 @@ not_right:
 
    /*fprintf(stderr, "__dbreg_do_open: adding ndx %d as deleted\n", ndx);*/
 
+	__ufid_rem_dbp(dbenv, uid);
 	(void)__dbreg_add_dbentry(dbenv, lp, NULL, ndx);
 	return (ret);
 }
