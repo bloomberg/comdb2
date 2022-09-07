@@ -1002,7 +1002,7 @@ static int is_stored_proc_sql(const char *sql)
     return 0;
 }
 
-static int is_stored_proc(struct sqlclntstate *clnt)
+int is_stored_proc(struct sqlclntstate *clnt)
 {
     return is_stored_proc_sql(clnt->sql);
 }
