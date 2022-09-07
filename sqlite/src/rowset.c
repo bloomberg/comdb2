@@ -69,7 +69,7 @@
 #include <logmsg.h>
 
 int gbl_sqlite_use_temptable_for_rowset = 1;
-struct dbenv *thedb;
+extern struct dbenv *thedb;
 #endif
 
 /*
