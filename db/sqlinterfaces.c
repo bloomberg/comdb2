@@ -1117,7 +1117,7 @@ static int is_stored_proc_sql(const char *zSql)
     return is_meta_sql(zSql, azMeta);
 }
 
-static int is_stored_proc(struct sqlclntstate *clnt)
+int is_stored_proc(struct sqlclntstate *clnt)
 {
     return is_stored_proc_sql(clnt->sql);
 }
