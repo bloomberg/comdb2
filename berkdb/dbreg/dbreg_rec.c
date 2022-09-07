@@ -397,6 +397,7 @@ __dbreg_open_file(dbenv, txn, argp, info)
 	 * get a valid dbp from __dbreg_id_to_db.
 	 */
 	if (argp->name.size == 0) {
+		__ufid_rem_dbp(dbenv, argp->uid.data);
 		(void)__dbreg_add_dbentry(dbenv, lp, NULL, argp->fileid);
 		return (ENOENT);
 	}
