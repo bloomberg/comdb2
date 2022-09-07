@@ -5874,12 +5874,7 @@ static char* sqlite3ExprDescribe_inner(
     case TK_ANY: {
       break;
     }
-    case TK_AND: {
-        if (pExpr->pRight &&
-                ExprHasProperty(pExpr->pRight, EP_FromJoin)) {
-
-        }
-    }
+    case TK_AND:
     case TK_OR:
     case TK_IS: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
@@ -6369,26 +6364,9 @@ default_prec:
       else
         return sqlite3_mprintf("\"%w\"", name);
     }
-    case TK_AGG_FUNCTION: {
-      if (pParamsOut /* comes from dohsql */ &&
-              !strcasecmp(pExpr->u.zToken, "count")) {
-        if (!pExpr->x.pList) {
-          return sqlite3_mprintf("count(*)");
-        } else if (pExpr->x.pList->nExpr == 1) {
-            char *arguments = sqlite3ExprDescribe_inner(v,
-                    pExpr->x.pList->a[0].pExpr, atRuntime, pParamsOut,
-                    useFullColnames);
-            if (arguments) {
-                char *ret = sqlite3_mprintf("count(%s)", arguments);
-                sqlite3_free(arguments);
-                return ret;
-            }
-        }
-      }
-    } 
-    case TK_AGG_COLUMN: {
+    case TK_AGG_FUNCTION: /* fallthrough */
+    case TK_AGG_COLUMN:
       break;
-    }
     case TK_UMINUS : {
        char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
                pParamsOut, useFullColnames);
@@ -6425,6 +6403,23 @@ default_prec:
 
       last = pExpr->op;
     }
+  }
+  if (op == TK_AGG_FUNCTION) {
+      if (pParamsOut /* comes from dohsql */ &&
+              !strcasecmp(pExpr->u.zToken, "count")) {
+        if (!pExpr->x.pList) {
+          return sqlite3_mprintf("count(*)");
+        } else if (pExpr->x.pList->nExpr == 1) {
+            char *arguments = sqlite3ExprDescribe_inner(v,
+                    pExpr->x.pList->a[0].pExpr, atRuntime, pParamsOut,
+                    useFullColnames);
+            if (arguments) {
+                char *ret = sqlite3_mprintf("count(%s)", arguments);
+                sqlite3_free(arguments);
+                return ret;
+            }
+        }
+      }
   }
   return NULL;
 }
