@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2022, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -81,6 +81,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"
+#include <rep_qstat.h>
 #include "comdb2_atomic.h"
 
 extern int gbl_exit_alarm_sec;
@@ -868,6 +869,29 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
     }
+    else if (tokcmp(tok, ltok, "reptrack") == 0) {
+        int reptype;
+        tok = segtok(line, lline, &st, &ltok);
+        reptype = toknum(tok, ltok);
+        logmsg(LOGMSG_USER, "Tracking rep-type %d.\n", reptype);
+        rep_qstat_track(reptype);
+    }
+    else if (tokcmp(tok, ltok, "repuntrack") == 0) {
+        int reptype;
+        tok = segtok(line, lline, &st, &ltok);
+        reptype = toknum(tok, ltok);
+        logmsg(LOGMSG_USER, "Un-tracking rep-type %d.\n", reptype);
+        rep_qstat_untrack(reptype);
+    }
+
+    else if (tokcmp(tok, ltok, "repthreshold") == 0) {
+        int threshold;
+        tok = segtok(line, lline, &st, &ltok);
+        threshold = toknum(tok, ltok);
+        logmsg(LOGMSG_USER, "Setting rep-track threshold to %d.\n", threshold);
+        rep_qstat_track_threshold(threshold);
+    }
+
     else if (tokcmp(tok, ltok, "netpoll") == 0) {
         int pval;
         tok = segtok(line, lline, &st, &ltok);

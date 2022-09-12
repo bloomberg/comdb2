@@ -35,7 +35,13 @@ typedef struct net_queue_stat {
     /* Other counts */
     int64_t unknown_count;
     int64_t total_count;
+
+    /* Debug tunables */
+    int did_pstack;
 } net_queue_stat_t;
 
 void net_rep_qstat_init(netinfo_type *netinfo_ptr);
+void rep_qstat_track(int reptype);
+void rep_qstat_untrack(int reptype);
+void rep_qstat_track_threshold(int count);
 #endif
