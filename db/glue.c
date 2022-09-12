@@ -5312,7 +5312,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
 {
     int bdberr;
     void *bdb_handle;
-    unsigned long long genid;
+    unsigned long long genid = 0;
     bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -5337,7 +5337,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     recorded_hit:
         /* Add this genid to the replication list; queue consumers will block
          * on this until it has replicated. */
-        iq->repl_list = add_genid_to_repl_list(genid, iq->repl_list);
+        if (genid) iq->repl_list = add_genid_to_repl_list(genid, iq->repl_list);
         return 0;
     }
     if (bdberr == BDBERR_DEADLOCK)
