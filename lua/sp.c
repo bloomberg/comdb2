@@ -7194,7 +7194,7 @@ void *exec_trigger(char *spname)
     clnt.dbtran.trans_has_sp = 1;
 
     thread_memcreate(128 * 1024);
-    struct sqlthdstate thd;
+    struct sqlthdstate thd = {0};
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
