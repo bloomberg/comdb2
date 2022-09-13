@@ -22,6 +22,9 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __sun
+#  define BSD_COMP /* for FIONREAD */
+#endif
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -1559,11 +1562,14 @@ static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
 {
 #   define NVEC 8
     struct iovec v[NVEC];
-    int avail = TCP_BUFSZ;
-
-#ifdef FIONREAD
+#   ifdef FIONREAD
+    int avail;
     (void)ioctl(fd, FIONREAD, &avail);
-#endif
+    if (avail <= 0) avail = TCP_BUFSZ;
+#   else
+#   pragma message("FIONREAD not available")
+    avail = TCP_BUFSZ;
+#   endif
     const int nv = evbuffer_reserve_space(buf, avail, v, NVEC);
     if (nv <= 0) {
         errno = ENOMEM;
@@ -1572,7 +1578,7 @@ static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
     const ssize_t sz = readv(fd, v, nv);
     if (sz <= 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
-        return -1;
+        return sz;
     }
     ssize_t n = sz;
     for (int i = 0; i < nv; ++i) {
@@ -1595,7 +1601,7 @@ static void readcb(int fd, short what, void *data)
     /* Writing my own readv wrapper; Observed max read of 4K with:
     ssize_t n = evbuffer_read(e->rd_buf, e->fd, -1); */
     ssize_t n = readv_evbuffer(e->rd_buf, e->fd);
-    if (n < 0) {
+    if (n <= 0) {
         hprintf("readv rc:%zd errno:%d:%s\n", n, errno, strerror(errno));
         reconnect:
         do_disable_read(e);
