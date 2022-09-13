@@ -7625,8 +7625,7 @@ static int bdb_get_lowfilenum (bdb_state_type *bdb_state, int *bdberr) {
    (depending on file type), and if they are, queue them to the to-be-deleted
    file list
  */
-int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
-                            int *bdberr)
+int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname, int *bdberr)
 {
     const char data_ext[] = ".data";
     const char index_ext[] = ".index";
@@ -7642,13 +7641,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     int lognum = 0;
 
     assert(bdb_state->parent == NULL);
-
-    /* Always use most recent logfile when placing on oldfile list */
-    if (bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_last_logfile(bdb_state, bdberr);
-        if (lognum < 0)
-            return -1;
-    }
 
     if (!bdb_state || !bdberr) {
         logmsg(LOGMSG_ERROR, "%s: null or invalid argument\n", __func__);
@@ -7794,6 +7786,15 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         if (oldfile_list_contains(munged_name))
             continue;
 
+        /* Always use most recent logfile when placing on oldfile list.
+           Refresh lognum because it may have pushed forward while
+           we scan the files. */
+        if (bdb_state->attr->keep_referenced_files) {
+            lognum = bdb_get_last_logfile(bdb_state, bdberr);
+            if (lognum < 0)
+                return -1;
+        }
+
         if (oldfile_list_add(strdup(munged_name), lognum, __func__, __LINE__)) {
             print(bdb_state, "failed to collect old file (list full) %s\n",
                   ent->d_name);
@@ -7840,14 +7841,9 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     int error;
     int lognum = 0;
 
-    assert(bdb_state->parent != NULL);
+    int delay_delete = delay && bdb_state->attr->keep_referenced_files;
 
-    /* Always use most recent logfile when placing on oldfile list */
-    if (delay && bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_last_logfile(bdb_state, bdberr);
-        if (lognum < 0)
-            return -1;
-    }
+    assert(bdb_state->parent != NULL);
 
     if (!bdb_state || !bdberr) {
         logmsg(LOGMSG_ERROR, "%s: null or invalid argument\n", __func__);
@@ -8034,10 +8030,25 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (oldfile_list_contains(munged_name))
                 continue;
 
+<<<<<<< HEAD
             if (oldfile_list_add(strdup(munged_name), lognum, __func__,
                                  __LINE__)) {
                 print(bdb_state, "failed to collect old file (list full) %s\n",
                       ent->d_name);
+=======
+            /* Always use most recent logfile when placing on oldfile list.
+               Refresh lognum because it may have pushed forward while
+               we scan the files. */
+            if (delay_delete) {
+                lognum = bdb_get_last_logfile(bdb_state, bdberr);
+                if (lognum < 0)
+                    return -1;
+            }
+
+            if (oldfile_add(munged_name, lognum, __func__, __LINE__,
+                            spew_debug)) {
+                print(bdb_state, "failed to collect old file %s\n", ent->d_name);
+>>>>>>> a1ae2b4f (Tweak the delayed-file-deletion logic)
                 break;
             } else {
                 print(bdb_state, "collected old file %s\n", ent->d_name);
