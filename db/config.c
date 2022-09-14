@@ -1508,7 +1508,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
         /* local defaults */
         lrlfile = comdb2_location("config", "comdb2_local.lrl");
-        loaded_comdb2 = global_is_local(lrlfile, crtdir, "comdb2_local.lrl");
+        loaded_comdb2_local = global_is_local(lrlfile, crtdir, "comdb2_local.lrl");
         if (!read_lrl_file(dbenv, lrlfile, 0)) {
             free(lrlfile);
             return 0;
