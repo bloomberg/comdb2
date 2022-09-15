@@ -465,14 +465,14 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	dblp = dbenv->lg_handle;
 
 	if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
-		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error creating db\n");
+		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error creating db:%s\n", name);
 		abort();
 	}
 	F_SET(dbp, DB_AM_RECOVER);
 
 	if ((ret = __db_open(dbp, txn, name, NULL,
 		DB_UNKNOWN, DB_ODDFILESIZE, __db_omode("rw----"), 0)) != 0) {
-		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error opening db\n");
+		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error opening db:%s\n", name);
 		abort();
 	}
 	(*dbpp) = dbp;
