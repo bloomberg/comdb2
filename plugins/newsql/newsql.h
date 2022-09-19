@@ -51,6 +51,7 @@ struct newsql_postponed_data {
     CDB2QUERY *query;                                                          \
     CDB2SQLQUERY *sqlquery;                                                    \
     int8_t send_intrans_response;                                              \
+    int8_t protocol_version;                                              \
     struct newsql_postponed_data *postponed;                                   \
     struct sql_col_info col_info;
 

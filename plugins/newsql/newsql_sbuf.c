@@ -599,6 +599,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
+    appdata->protocol_version = -1; // Protocol version not set
+
     if (newsql_first_run(&clnt, sql_query) != 0) {
         goto done;
     }

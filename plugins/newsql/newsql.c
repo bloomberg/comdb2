@@ -1,5 +1,5 @@
 /*
-   Copyright 2017, 2018 Bloomberg Finance L.P.
+   Copyright 2017, 2023 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -340,7 +340,8 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int s)
     return appdata->write_hdr(clnt, h, s);
 }
 
-static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
+static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col,
+                        int check_protocol_version)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sql_query = appdata->sqlquery;
@@ -353,14 +354,20 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
         }
     } else if (stmt) {
         type = get_sqlite3_column_type(clnt, stmt, col, 0);
+        if ((check_protocol_version == 1 && appdata->protocol_version == 1 /* fastsql */) ||
+            type == SQLITE_NULL) {
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        }
     }
     return type;
 }
 
 #define MAX_COL_NAME_LEN 31
-#define ADJUST_LONG_COL_NAME(n, l)                                             \
+#define ADJUST_LONG_COL_NAME(appdata, n, l)                                    \
     do {                                                                       \
-        if (!gbl_return_long_column_names && l > MAX_COL_NAME_LEN) {           \
+        if ((l > MAX_COL_NAME_LEN) &&                                          \
+            ((gbl_return_long_column_names == 0) ||                            \
+             (appdata->protocol_version == 1 /* fastsql */))) {                \
             l = MAX_COL_NAME_LEN + 1;                                          \
             char *namebuf = alloca(l);                                         \
             n = strncpy0(namebuf, n, l);                                       \
@@ -379,11 +386,11 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         cdb2__sqlresponse__column__init(&cols[i]);
         const char *name = sqlite3_column_name(stmt, i);
         size_t len = strlen(name) + 1;
-        ADJUST_LONG_COL_NAME(name, len);
+        ADJUST_LONG_COL_NAME(appdata, name, len);
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;
-        cols[i].type = appdata->col_info.type[i] = get_col_type(clnt, stmt, clnt->typessql_state ? i + ncols : i);
+        cols[i].type = appdata->col_info.type[i] = get_col_type(clnt, stmt,clnt->typessql_state ? i + ncols : i, 1);
     }
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
     resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
@@ -435,12 +442,12 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
         cdb2__sqlresponse__column__init(&cols[i]);
         const char *name = sp_column_name(arg, i);
         size_t len = strlen(name) + 1;
-        ADJUST_LONG_COL_NAME(name, len);
+        ADJUST_LONG_COL_NAME(appdata, name, len);
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;
         cols[i].type = appdata->col_info.type[i] =
-            sp_column_type(arg, i, n_types, get_col_type(clnt, stmt, i));
+            sp_column_type(arg, i, n_types, get_col_type(clnt, stmt, i, 0));
     }
     clnt->osql.sent_column_data = 1;
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
@@ -1979,6 +1986,7 @@ int is_commit_rollback(struct sqlclntstate *clnt)
 
 int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
+    struct newsql_appdata *appdata = clnt->appdata;
     for (int ii = 0; ii < sql_query->n_features; ++ii) {
         switch(sql_query->features[ii]) {
         case CDB2_CLIENT_FEATURES__FLAT_COL_VALS:
@@ -1986,6 +1994,11 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             break;
         case CDB2_CLIENT_FEATURES__REQUEST_FP:
             clnt->request_fp = 1;
+            break;
+        case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL:
+            logmsg(LOGMSG_USER, "%s:%d cdb2api requested for 'fastsql' protocol\n",
+                   __func__, __LINE__);
+            appdata->protocol_version = 1; // FASTSQL's protocol version = 1
             break;
         }
     }

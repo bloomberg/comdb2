@@ -27,6 +27,8 @@ enum CDB2ClientFeatures {
     REQUEST_FP           = 7;
     /* rows come in sqlite format */
     SQLITE_ROW_FORMAT    = 9;
+    /* cdb2api is being invoked by comdb2api library (comdb2api -> cdb2api -> * comdb2) */
+    REQUIRE_FASTSQL = 10;
 }
 
 message CDB2_FLAG {
