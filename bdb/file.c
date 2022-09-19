@@ -8030,12 +8030,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (oldfile_list_contains(munged_name))
                 continue;
 
-<<<<<<< HEAD
-            if (oldfile_list_add(strdup(munged_name), lognum, __func__,
-                                 __LINE__)) {
-                print(bdb_state, "failed to collect old file (list full) %s\n",
-                      ent->d_name);
-=======
             /* Always use most recent logfile when placing on oldfile list.
                Refresh lognum because it may have pushed forward while
                we scan the files. */
@@ -8045,10 +8039,10 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                     return -1;
             }
 
-            if (oldfile_add(munged_name, lognum, __func__, __LINE__,
-                            spew_debug)) {
-                print(bdb_state, "failed to collect old file %s\n", ent->d_name);
->>>>>>> a1ae2b4f (Tweak the delayed-file-deletion logic)
+            if (oldfile_list_add(strdup(munged_name), lognum, __func__,
+                                 __LINE__)) {
+                print(bdb_state, "failed to collect old file (list full) %s\n",
+                      ent->d_name);
                 break;
             } else {
                 print(bdb_state, "collected old file %s\n", ent->d_name);
