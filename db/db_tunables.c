@@ -155,6 +155,7 @@ extern int gbl_debug_partial_write;
 extern int gbl_debug_sleep_on_verify;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
+extern int gbl_dedup_rep_all_reqs;
 extern int gbl_apply_queue_memory;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
