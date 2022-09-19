@@ -503,7 +503,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 			Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 			if (dbp != NULL && ufid->dbp == NULL) {
 				ufid->dbp = dbp;
-			} else {
+			} else if (ufid->dbp != dbp) {
 				close_dbp = dbp;
 			}
 		}
