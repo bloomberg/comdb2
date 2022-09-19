@@ -682,6 +682,7 @@
 (name='prefaulthelper_sqlreadahead', description='', type='INTEGER', value='1', read_only='Y')
 (name='prefaulthelperthreads', description='Max number of prefault helper threads. (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='prefix_foreign_keys', description='Allow foreign key to be a prefix of your key', type='BOOLEAN', value='ON', read_only='N')
+(name='prevent_large_log_records', description='Prevent log-records which exceed log-file size. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='print_blockp_stats', description='print thread-count in block processor', type='BOOLEAN', value='OFF', read_only='N')
 (name='print_deadlock_cycles', description='Print every Nth deadlock cycle, set to 0 to turn off. (Default: 100)', type='INTEGER', value='100', read_only='N')
 (name='print_flush_log_msg', description='Produce trace when flushing log files.', type='BOOLEAN', value='OFF', read_only='N')

@@ -627,6 +627,8 @@ REGISTER_TUNABLE("log_delete_now",
                  TUNABLE_INTEGER, &db->log_delete_age,
                  READONLY | NOARG | INTERNAL, NULL, NULL, log_delete_now_update,
                  NULL);
+REGISTER_TUNABLE("prevent_large_log_records", "Prevent log-records which exceed log-file size. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_prevent_large_log_records, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("loghist", NULL, TUNABLE_INTEGER, &gbl_loghist,
                  READONLY | NOARG, NULL, NULL, loghist_update, NULL);
 REGISTER_TUNABLE("loghist_verbose", NULL, TUNABLE_BOOLEAN, &gbl_loghist_verbose,

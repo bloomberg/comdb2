@@ -160,6 +160,7 @@ extern int gbl_apply_queue_memory;
 extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
+extern int gbl_prevent_large_log_records;
 extern int gbl_net_writer_thread_poll_ms;
 extern int gbl_max_apply_dequeue;
 extern int gbl_catchup_window_trace;
