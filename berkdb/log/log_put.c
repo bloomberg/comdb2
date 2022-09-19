@@ -618,6 +618,8 @@ __log_txn_lsn(dbenv, lsnp, mbytesp, bytesp)
 	R_UNLOCK(dbenv, &dblp->reginfo);
 }
 
+int gbl_prevent_large_log_records = 0;
+
 /*
  * __log_put_next --
  *	Put the given record as the next in the log, wherever that may
@@ -668,12 +670,17 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 	 */
 	if (lp->lsn.offset == 0 ||
 		lp->lsn.offset + hdr->size + dbt->size > lp->log_size) {
-		if (hdr->size + sizeof(LOGP) + dbt->size > lp->log_size) {
+		if (gbl_prevent_large_log_records && hdr->size + sizeof(LOGP) + dbt->size > lp->log_size) {
 			__db_err(dbenv,
 		"DB_ENV->log_put: record larger than maximum file size (%lu > %lu)",
 				(u_long)hdr->size + sizeof(LOGP) + dbt->size,
 				(u_long)lp->log_size);
 			return (EINVAL);
+		}
+
+		if (hdr->size + sizeof(LOGP) + dbt->size > lp->log_size) {
+			logmsg(LOGMSG_INFO, "%s large log record (%lu) exceeds file size (%lu)\n",
+					__func__, (u_long)hdr->size + sizeof(LOGP) + dbt->size, (u_long)lp->log_size);
 		}
 
 		if ((ret = __log_newfile(dblp, NULL)) != 0)
