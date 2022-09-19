@@ -87,5 +87,6 @@ compile_commands.json
 cscope.*
 CMakeLists.txt.user
 plugins/.gitignore
+plugins/bb-plugins
 /.idea/*
 /cmake-build*
