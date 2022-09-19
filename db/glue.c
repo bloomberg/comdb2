@@ -4013,6 +4013,8 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     }
 
     if (!dbenv->meta) {
+        /* open the meta file for the "static table". */
+        (void)open_auxdbs(&dbenv->static_table, 0);
         for (ii = 0; ii < dbenv->num_dbs; ii++) {
             rc = open_auxdbs(dbenv->dbs[ii], 0);
             /* We still have production comdb2s that don't have meta, so we

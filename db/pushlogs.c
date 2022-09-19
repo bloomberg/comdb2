@@ -107,6 +107,20 @@ static void *pushlogs_thread(void *voidarg)
         /* put some junk into meta table */
         init_fake_ireq(thedb, &iq);
         db = &thedb->static_table;
+        /* if we do not have a meta, try creating one on the spot. */
+        if (thedb->meta == NULL && db->meta == NULL) {
+            wrlock_schema_lk();
+            int ret = open_auxdbs(&thedb->static_table, 1);
+            unlock_schema_lk();
+            if (ret != 0) {
+                logmsg(LOGMSG_ERROR, "pushlogs_thread: failed opening meta\n");
+                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+                Pthread_mutex_lock(&mutex);
+                have_thread = 0;
+                Pthread_mutex_unlock(&mutex);
+                break;
+            }
+        }
         iq.usedb = db;
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {
