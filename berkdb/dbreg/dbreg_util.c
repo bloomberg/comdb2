@@ -504,7 +504,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 			if (dbp != NULL && ufid->dbp == NULL) {
 				dbp->added_to_ufid = 1;
 				ufid->dbp = dbp;
-			} else {
+			} else if (ufid->dbp != dbp) {
 				close_dbp = dbp;
 			}
 		}
