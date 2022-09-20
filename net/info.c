@@ -136,8 +136,9 @@ void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1)
 
     static const char *help_msg[] = {"stat    - basic stats",
                                      "dump #  - detailed dump of node #",
-                                     "help    - help menu", NULL,
-                                     "conn     - dump connection stats"};
+                                     "qstat   - dump all qstats", 
+                                     "conn    - dump connection stats",
+                                     "help    - help menu", NULL};
 
     tok = segtok(line, lline, &st, &ltok);
     if (ltok == 0 || tokcmp(tok, ltok, "stat") == 0) {
@@ -149,6 +150,8 @@ void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1)
             dump_node(netinfo_ptr, host);
             free(host);
         }
+    } else if (tokcmp(tok, ltok, "qstat") == 0) {
+        net_dump_qstats(netinfo_ptr);
     } else if (tokcmp(tok, ltok, "help") == 0) {
         int ii;
         for (ii = 0; help_msg[ii]; ii++)

@@ -304,6 +304,13 @@ unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
 extern int set_pbkdf2_iterations(int val);
 
+/* bdb/rep_qstat.c */
+extern unsigned long long track_qstat;
+extern int qstat_stack_threshold;
+extern int rep_qstat_tunable_track(void *context, void *reptype);
+extern int rep_qstat_tunable_untrack(void *context, void *reptype);
+extern void *rep_qstat_tunable_value(void *context);
+
 static char *gbl_name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_socksql_no_deadlock;
