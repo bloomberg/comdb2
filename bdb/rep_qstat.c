@@ -6,11 +6,21 @@
 #include "bdb_int.h"
 #include <rep_qstat.h>
 #include "locks_wrap.h"
+#include <plbitlib.h>
+#include <logmsg.h>
+#include <unistd.h>
+#include <str0.h>
+#ifdef _LINUX_SOURCE
+#include <sys/syscall.h>
+#endif
 
 int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
                         DB_LSN *lsn, int *myrectype);
 
 static __thread void *reader_qstat;
+
+unsigned long long track_qstat = 0;
+int qstat_stack_threshold = 0;
 
 static void *net_init_queue_stats_rtn(netinfo_type *netinfo_type,
                                       const char *nettype,
@@ -21,6 +31,7 @@ static void *net_init_queue_stats_rtn(netinfo_type *netinfo_type,
     n->nettype = strdup(nettype);
     n->hostname = strdup(hostname);
     n->max_type = -1;
+    n->did_pstack = 0;
     return n;
 }
 
@@ -34,6 +45,7 @@ static void net_dump_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat,
 {
     net_queue_stat_t *n = (net_queue_stat_t *)netstat;
     int unknown = 0;
+    if (!n) return;
     Pthread_mutex_lock(&n->lock);
     fprintf(f, "Net-queue node=%s minlsn=[%d:%d] maxlsn=[%d:%d] ",
         n->hostname, n->min_lsn.file, n->min_lsn.offset, n->max_lsn.file,
@@ -88,6 +100,7 @@ static void net_clear_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat)
     memset(&n->max_lsn, 0, sizeof(n->max_lsn));
     memset(&n->min_lsn, 0, sizeof(n->min_lsn));
     n->unknown_count = n->total_count = 0;
+    n->did_pstack = 0;
     Pthread_mutex_unlock(&n->lock);
 }
 
@@ -115,6 +128,27 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
             n->max_type = REP_MAX_TYPE - 1;
         }
         n->type_counts[rectype]++;
+
+        if (n->did_pstack == 0 && btst(&track_qstat, rectype) &&
+                qstat_stack_threshold > 0 && n->type_counts[rectype] >
+                qstat_stack_threshold) {
+            pid_t tid;
+#ifdef _LINUX_SOURCE
+            tid = syscall(__NR_gettid);
+#else
+            tid = getpid();
+#endif
+            logmsg(LOGMSG_USER, "pstack: tracked rep-type %d > threshold %d\n",
+                    rectype, qstat_stack_threshold);
+            char pstack_cmd[128];
+            snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)tid);
+            rc = system(pstack_cmd);
+            if (rc != 0) {
+                logmsg(LOGMSG_USER, "%s: error pstacking: %d\n", __func__, rc);
+            } else {
+                n->did_pstack = 1;
+            }
+        }
 
         if (n->min_lsn.file == 0) {
             n->min_lsn = n->max_lsn = lsn;
@@ -205,4 +239,48 @@ void rep_qstat_lsn_range(DB_LSN *min_lsn, DB_LSN *max_lsn)
     *min_lsn = n->min_lsn;
     *max_lsn = n->max_lsn;
     Pthread_mutex_unlock(&n->lock);
+}
+
+int rep_qstat_tunable_track(void *context, void *in)
+{
+    char *repstr = (char *)in;
+    int reptype = atoi(repstr);
+
+    if (reptype < 0 || reptype >= REP_MAX_TYPE) {
+        return -1;
+    }
+    bset(&track_qstat, reptype);
+    return 0;
+}
+
+int rep_qstat_tunable_untrack(void *context, void *in)
+{
+    char *repstr = (char *)in;
+    int reptype = atoi(repstr);
+    if (reptype < 0 || reptype >= REP_MAX_TYPE) {
+        return -1;
+    }
+    bclr(&track_qstat, reptype);
+    return 0;
+}
+
+void *rep_qstat_tunable_value(void *context)
+{
+    static char value[256] = {0};
+    value[0] = '\0';
+    int first = 0;
+
+    for (int i = 0; i < REP_MAX_TYPE; i++) {
+        if (btst(&track_qstat, i)) {
+            char n[5];
+            if (first) {
+                snprintf(n, sizeof(n), ",%d", i);
+            } else {
+                snprintf(n, sizeof(n), "%d", i);
+                first = 1;
+            }
+            strncat0(value, n, sizeof(value));
+        }
+    }
+    return value;
 }

@@ -6633,6 +6633,19 @@ int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat) {
     return 0;
 }
 
+void net_dump_qstats(netinfo_type *netinfo_ptr)
+{
+    struct host_node_tag *ptr;
+    if (netinfo_ptr->qstat_dump_rtn == NULL) {
+        return;
+    }
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        (netinfo_ptr->qstat_dump_rtn)(netinfo_ptr, ptr->qstat, stderr);
+    }
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+}
+
 int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_host_stats *stat) {
     struct host_node_tag *ptr;
     stat->queue_size = 0;

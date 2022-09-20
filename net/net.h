@@ -439,6 +439,7 @@ int64_t net_get_num_current_non_appsock_accepts(netinfo_type *netinfo_ptr);
 int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
 void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
+void net_dump_qstats(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
 
 extern int gbl_libevent;

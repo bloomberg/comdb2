@@ -2177,6 +2177,18 @@ REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",
                  TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
 
+/* rep_qstat_track & rep_qstat_untrack can be set multple times to track multple rep-messages */
+REGISTER_TUNABLE("rep_qstat_track", "Track queued replication message.  (Default: 0)",
+                 TUNABLE_STRING, &track_qstat, 0, rep_qstat_tunable_value, NULL,
+                 rep_qstat_tunable_track, NULL);
+
+REGISTER_TUNABLE("rep_qstat_untrack", "Untrack queued replication message.  (Default: 0)",
+                 TUNABLE_STRING, &track_qstat, 0, rep_qstat_tunable_value, NULL,
+                 rep_qstat_tunable_untrack, NULL);
+
+REGISTER_TUNABLE("rep_qstat_stack_threshold", "Rep-qstat dumpstack threshold.  (Default: 0)",
+                 TUNABLE_INTEGER, &qstat_stack_threshold, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before starting a new chunk  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_throttle_txn_chunks_msec, 0, NULL, NULL, NULL, NULL);
 
