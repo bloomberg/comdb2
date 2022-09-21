@@ -62,6 +62,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
  * PUBLIC: int __db_open __P((DB *, DB_TXN *,
  * PUBLIC:     const char *, const char *, DBTYPE, u_int32_t, int, db_pgno_t));
  */
+int gbl_ufid_add_on_open = 0;
 #include "cheapstack.h"
 int
 __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
@@ -237,8 +238,9 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 			goto err;
 	}
 
-	__ufid_add_dbp(dbp->dbenv, dbp);
-
+	if (gbl_ufid_add_on_open) {
+		__ufid_add_dbp(dbp->dbenv, dbp);
+	}
 
 	if (dbp->pgsize > 65536) {
 		/* If we have large pages, we need a bias factor for accessing entries. */

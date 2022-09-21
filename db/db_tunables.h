@@ -1877,6 +1877,9 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
 REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_log,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("ufid_add_on_open", "Add to ufid-hash on db_open.  (Default: off)", TUNABLE_BOOLEAN, 
+                 &gbl_ufid_add_on_open, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
