@@ -2495,18 +2495,16 @@ static void print_dbg_verbose(const char *name, uuid_t *source_id,
     va_end(va);
 }
 
-
 /**
  * Update the retention of the existing partition
- *
+ * NOTE: this is called from bpfunc on master, and we already
+ * have the views lock
  */
 int timepart_update_retention(void *tran, const char *name, int retention, struct errstat *err)
 {
    timepart_views_t *views = thedb->timepart_views;
    timepart_view_t *view;
    int rc = VIEW_NOERR;
-
-   Pthread_rwlock_wrlock(&views_lk);
 
    /* make sure we are unique */
    view = _get_view(views, name);
@@ -2610,7 +2608,6 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
    }
 
 done:
-    Pthread_rwlock_unlock(&views_lk);
     return rc;
 }
 

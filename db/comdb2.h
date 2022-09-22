@@ -1252,6 +1252,7 @@ struct osql_sess {
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
     int is_tranddl;
+    int is_tptlock;   /* needs tpt locking */
     int is_cancelled; /* 1 if session is cancelled */
 };
 typedef struct osql_sess osql_sess_t;
@@ -1403,6 +1404,7 @@ struct ireq {
     int osql_flags;
     uint32_t priority;
     int tranddl;
+    int tptlock; /* need to know if we need to wrap whole txn in a view_lock */
     uint32_t written_row_count;
     uint32_t cascaded_row_count;
 
