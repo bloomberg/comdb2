@@ -2535,6 +2535,11 @@ __rep_classify_type(u_int32_t type, int *had_serializable_records)
 	extern int gbl_allow_parallel_rep_on_pagesplit;
 	extern int gbl_allow_parallel_rep_on_prefix;
 
+	/* ufid -> non-ufid */
+	if (type < 10000 && type > 1000) {
+		type -= 1000;
+	}
+
 	if (had_serializable_records && (type == DB___dbreg_register ||
 		type == DB___fop_create ||
 		type == DB___fop_remove ||
@@ -4032,9 +4037,9 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	struct __recovery_processor *rp;
 	struct __recovery_queue *rq;
 	struct __recovery_record *rr;
-    hash_t *fuid_hash = NULL;
-    u_int8_t fuid[DB_FILE_ID_LEN] = {0};
-    u_int8_t last_fuid[DB_FILE_ID_LEN] = {0};
+	hash_t *fuid_hash = NULL;
+	u_int8_t fuid[DB_FILE_ID_LEN] = {0};
+	u_int8_t last_fuid[DB_FILE_ID_LEN] = {0};
 	DBT data_dbt, lock_prev_lsn_dbt;
 	DB_LOCK prev_lsn_lk;
 	int i;
@@ -5774,7 +5779,7 @@ __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	}
 }
 
-
+int gbl_ufid_add_on_collect = 0;
 
 // PUBLIC: int __rep_collect_txn_from_log __P((DB_ENV *, DB_LSN *, LSN_COLLECTION *, int *, struct __recovery_processor *));
 int
@@ -5846,6 +5851,13 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 		} else {
 
 			__rep_classify_type(rectype, had_serializable_records);
+			if (gbl_ufid_add_on_collect && rectype < 10000 && rectype > 1000) {
+				DB *file_dbp;
+				u_int8_t ufid[DB_FILE_ID_LEN] = {0};
+				if ((int)ufid_for_recovery_record(dbenv, NULL, rectype, ufid, &data)) {
+					__ufid_to_db(dbenv, NULL, &file_dbp, ufid, NULL);
+				}
+			}
 			if (lc->nalloc < lc->nlsns + 1) {
 				int i;
 				nalloc = lc->nalloc == 0 ? 20 : lc->nalloc * 2;
