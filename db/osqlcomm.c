@@ -9696,3 +9696,30 @@ int osql_send_test(SBUF2 *sb)
                                   NULL /*clnt->query_stats*/, &snap_info);
     return rc;
 }
+
+/* check if we need to get tpt lock */
+int need_views_lock(char *msg, int msglen, int use_uuid)
+{
+    const uint8_t *p_buf, *p_buf_end;
+
+    if (use_uuid) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+    } else {
+        osql_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+    }
+
+    osql_bpfunc_t *rpl = NULL;
+    p_buf_end = (const uint8_t *)p_buf + sizeof(osql_bpfunc_t) + msglen;
+    const uint8_t *n_p_buf = osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
+
+    if (!n_p_buf || !rpl)
+        return -1;
+
+    return bpfunc_check(rpl->data, rpl->data_len, BPFUNC_TIMEPART_RETENTION);
+}

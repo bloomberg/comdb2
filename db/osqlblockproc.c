@@ -826,7 +826,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
         /* something has gone wrong dispatching the socksql request, ignoring
-           when the bplog creation failed, the caller is responsible for
+           when the bplog creation failed, the caller is responsible fonr
            notifying the source that the session has gone awry
          */
         return 0;
@@ -840,6 +840,15 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type == OSQL_SCHEMACHANGE)
         iq->tranddl++;
+    else if (type == OSQL_BPFUNC) {
+        rc = need_views_lock(rpl, rplen, rqid == OSQL_RQID_USE_UUID);
+        if (rc < 0) {
+            return -1;
+        }
+        if (rc) {
+            iq->tptlock = 1;
+        }
+    }
 
     assert(sess->rqid == rqid);
     key.seq = sess->seq;

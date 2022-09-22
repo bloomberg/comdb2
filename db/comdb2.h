@@ -1422,6 +1422,7 @@ struct ireq {
     int priority;
     int sqlhistory_len;
     int tranddl;
+    int tptlock; /* need to know if we need to wrap whole txn in a view_lock */
 
     /* Client endian flags. */
     uint8_t client_endian;
