@@ -438,4 +438,7 @@ int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
  */
 int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess);
 
+/* check if we need to get tpt lock */
+int need_views_lock(char *msg, int msglen, int use_uuid);
+
 #endif

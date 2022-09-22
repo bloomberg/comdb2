@@ -35,6 +35,9 @@ void free_bpfunc_arg(BpfuncArg *arg);
 int bpfunc_prepare(bpfunc_t **func, int32_t data_len, uint8_t *data,
                    bpfunc_info *info);
 
+/* unpack a serialized bpfunc and check if the type matches the argument */
+int bpfunc_check(const uint8_t *data, int32_t data_len, int type);
+
 struct bpfunc {
     BpfuncArg *arg;
     bpfunc_prot exec;
