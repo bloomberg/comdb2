@@ -74,6 +74,7 @@
 #include "bpfunc.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "views.h"
 
 #if 0
 #define TEST_OSQL
@@ -6070,6 +6071,23 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     }
 
     start = gettimeofday_ms();
+    if (iq->tptlock) {
+        if (iq->tranddl) {
+            /* avoid a lock inversion here; simply forbit mixing bpfunc that
+             * requires tpt lock with other schema changes
+             */
+            reqlog_set_error(
+                iq->reqlogger,
+                "Error cannot mix tpt retention with other schema changes",
+                rc = -1);
+            logmsg(
+                LOGMSG_ERROR,
+                "Error cannot mix tpt retention with other schema changes\n");
+            end = gettimeofday_ms();
+            goto done;
+        }
+        views_lock();
+    }
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
@@ -6082,6 +6100,11 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
     }
+
+    if (iq->tptlock)
+        views_unlock();
+
+done:
 
     assert(iq->sc_running == 0);
 
