@@ -986,9 +986,10 @@ static void reconnect(struct event_info *e)
     do_close(e, do_reconnect);
 }
 
-static void check_wr_full(struct event_info *e, int eagain)
+static size_t get_wr_buf(struct event_info *e)
 {
     uint64_t max_bytes = e->net_info->wr_max;
+    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
     size_t outstanding = evbuffer_get_length(e->wr_buf);
     if (e->wr_full) {
         if (outstanding < (max_bytes * resume_lvl)) {
@@ -996,47 +997,40 @@ static void check_wr_full(struct event_info *e, int eagain)
                     max_bytes / MB(1), (int)(time(NULL) - e->wr_full));
             e->wr_full = 0;
         }
-    } else if (outstanding > max_bytes || eagain) {
+    } else if (outstanding > max_bytes) {
         e->wr_full = time(NULL);
-        hprintf("SUSPENDING WR outstanding:%zumb (max:%" PRIu64 "mb) eagain:%d\n", outstanding / MB(1),
-                max_bytes / MB(1), eagain);
+        hprintf("SUSPENDING WR outstanding:%zumb (max:%" PRIu64 "mb)\n", outstanding / MB(1), max_bytes / MB(1));
     }
+    return outstanding;
 }
 
 static void writecb(int fd, short what, void *data)
 {
     struct event_info *e = data;
-    int eagain = 0;
     Pthread_mutex_lock(&e->wr_lk);
     if (fd != e->fd || !e->flush_buf || !e->wr_buf) abort(); /* sanity check */
-    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    check_wr_full(e, eagain);
+    size_t len = get_wr_buf(e);
     Pthread_mutex_unlock(&e->wr_lk);
-
-    int rc;
-    size_t len;
-    do {
-        rc = evbuffer_write(e->wr_buf, fd);
-        len = evbuffer_get_length(e->wr_buf);
-    } while (rc > 0 && len);
-    eagain = ((rc <= 0) && (errno == EAGAIN || errno == EWOULDBLOCK));
-    if (rc <= 0 && !eagain) {
-        hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
+    while (len) {
+        int rc = evbuffer_write(e->wr_buf, fd);
+        if (rc <= 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
+                Pthread_mutex_lock(&e->wr_lk);
+                do_disable_write(e);
+                Pthread_mutex_unlock(&e->wr_lk);
+                reconnect(e);
+            }
+            return;
+        }
+        e->sent_at = time(NULL);
         Pthread_mutex_lock(&e->wr_lk);
-        do_disable_write(e);
+        len = get_wr_buf(e);
+        if (len == 0) {
+            event_del(e->wr_ev);
+        }
         Pthread_mutex_unlock(&e->wr_lk);
-        reconnect(e);
-        return;
     }
-    e->sent_at = time(NULL);
-
-    Pthread_mutex_lock(&e->wr_lk);
-    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    check_wr_full(e, eagain);
-    if (evbuffer_get_length(e->wr_buf) == 0) {
-        event_del(e->wr_ev);
-    }
-    Pthread_mutex_unlock(&e->wr_lk);
 }
 
 static void flush_evbuffer(struct event_info *e, int nodelay)
