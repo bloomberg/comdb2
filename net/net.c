@@ -2205,15 +2205,14 @@ void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
     }
 }
 
-void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter,
-                            void *arg)
+void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter, struct net_get_records *arg)
 {
     host_node_type *tmp_host_ptr;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
          tmp_host_ptr = tmp_host_ptr->next) {
-        qs_iter(netinfo_ptr, arg, tmp_host_ptr->qstat);
+        qs_iter(arg, tmp_host_ptr->qstat);
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
