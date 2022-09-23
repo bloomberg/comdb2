@@ -1887,6 +1887,9 @@ REGISTER_TUNABLE("ufid_add_on_open", "Add to ufid-hash on db_open.  (Default: of
 REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: off)", TUNABLE_BOOLEAN, 
                  &gbl_ufid_add_on_collect, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("ufid_remove_dbp", "Remove dbp from ufid-hash.  (Default: off)", TUNABLE_BOOLEAN, 
+                 &gbl_ufid_remove_dbp, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
