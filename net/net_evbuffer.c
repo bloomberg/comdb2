@@ -986,11 +986,10 @@ static void reconnect(struct event_info *e)
     do_close(e, do_reconnect);
 }
 
-static size_t get_wr_buf(struct event_info *e)
+static size_t check_wr_full(struct event_info *e)
 {
     uint64_t max_bytes = e->net_info->wr_max;
-    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    size_t outstanding = evbuffer_get_length(e->wr_buf);
+    size_t outstanding = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
     if (e->wr_full) {
         if (outstanding < (max_bytes * resume_lvl)) {
             hprintf("RESUMING WR outstanding:%zumb (max:%"PRIu64"mb) after:%ds\n", outstanding / MB(1),
@@ -1002,6 +1001,12 @@ static size_t get_wr_buf(struct event_info *e)
         hprintf("SUSPENDING WR outstanding:%zumb (max:%" PRIu64 "mb)\n", outstanding / MB(1), max_bytes / MB(1));
     }
     return outstanding;
+}
+
+static size_t get_wr_buf(struct event_info *e)
+{
+    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
+    return check_wr_full(e);
 }
 
 static void writecb(int fd, short what, void *data)
@@ -1038,6 +1043,7 @@ static void flush_evbuffer(struct event_info *e, int nodelay)
     if (nodelay || evbuffer_get_length(e->flush_buf) > KB(512)) {
         event_add(e->wr_ev, NULL);
     }
+    check_wr_full(e);
 }
 
 static void send_decom_all(int dummyfd, short what, void *data)
@@ -1059,7 +1065,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    //hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
+    hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
 }
 
 static void message_done(struct event_info *e)
