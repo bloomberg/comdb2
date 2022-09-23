@@ -187,14 +187,3 @@ int rep_qstat_has_fills(void)
     Pthread_mutex_unlock(&n->lock);
     return ret ? 1 : 0;
 }
-
-void rep_qstat_lsn_range(DB_LSN *min_lsn, DB_LSN *max_lsn)
-{
-    net_queue_stat_t *n = (net_queue_stat_t *)reader_qstat;
-    if (n == NULL)
-        return;
-    Pthread_mutex_lock(&n->lock);
-    *min_lsn = n->min_lsn;
-    *max_lsn = n->max_lsn;
-    Pthread_mutex_unlock(&n->lock);
-}

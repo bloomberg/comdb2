@@ -46,6 +46,7 @@
 #include <comdb2_atomic.h>
 #include <compat.h>
 #include <dbinc/queue.h>
+#include <dbinc/rep_types.h>
 #include <intern_strings.h>
 #include <locks_wrap.h>
 #include <logmsg.h>
@@ -56,6 +57,9 @@
 #include <net_int.h>
 #include <plhash.h>
 #include <portmuxapi.h>
+
+#define NEED_LSN_DEF
+#include <rep_qstat.h>
 
 #ifndef likely
 #  if defined(__GNUC__)
@@ -1555,6 +1559,144 @@ static int process_payload(struct event_info *e)
     case WIRE_HEADER_DECOM_NAME: return process_decom_hostname(e);
     case WIRE_HEADER_ACK_PAYLOAD: return process_ack_with_payload(e);
     default: hprintf("UNKNOWN HDR:%d\n", e->hdr.type); return -1;
+    }
+}
+
+#define advance_evbuffer_ptr(ptr, size) evbuffer_ptr_set(e->flush_buf, (ptr), (size), EVBUFFER_PTR_ADD)
+
+
+static int get_stat_from_user_msg(struct event_info *e, struct evbuffer_ptr *p, net_queue_stat_t *stat) 
+{
+    /* seqnum */
+    if (advance_evbuffer_ptr(p, sizeof(uint32_t)) != 0) return -1;
+    uint32_t n = sizeof(uint32_t);
+
+    struct {
+        uint32_t sz;
+        uint32_t crc;
+    } rep, ctrl;
+
+    /* rep record */
+    if (evbuffer_copyout_from(e->flush_buf, p, &rep, sizeof(rep)) != sizeof(rep)) {
+        return -1;
+    }
+    rep.sz = ntohl(rep.sz);
+    if (advance_evbuffer_ptr(p, sizeof(rep) + rep.sz) != 0) return -1;
+    n += (sizeof(rep) + rep.sz);
+
+    /* control record */
+    if (evbuffer_copyout_from(e->flush_buf, p, &ctrl, sizeof(ctrl)) != sizeof(ctrl)) {
+        return -1;
+    }
+    ctrl.sz = ntohl(ctrl.sz);
+    if (advance_evbuffer_ptr(p, sizeof(ctrl)) != 0) return -1;
+    n += sizeof(ctrl);
+
+    /* rep_control */
+    struct {
+        uint32_t rep_version;
+        uint32_t log_version;
+        struct __db_lsn lsn;
+        uint32_t rectype;
+    } rep_ctrl;
+    if (evbuffer_copyout_from(e->flush_buf, p, &rep_ctrl, sizeof(rep_ctrl)) != sizeof(rep_ctrl)) {
+        return -1;
+    }
+    if (advance_evbuffer_ptr(p, ctrl.sz) != 0) return -1;
+    n += ctrl.sz;
+    rep_ctrl.lsn.file = ntohl(rep_ctrl.lsn.file);
+    rep_ctrl.lsn.offset = ntohl(rep_ctrl.lsn.offset);
+    rep_ctrl.rectype = ntohl(rep_ctrl.rectype);
+
+    ++stat->total_count;
+    if (rep_ctrl.rectype <= 0 || rep_ctrl.rectype >= REP_MAX_TYPE) {
+        return -1;
+    }
+    ++stat->type_counts[rep_ctrl.rectype];
+    if (stat->min_lsn.file == 0) {
+        stat->min_lsn = stat->max_lsn = rep_ctrl.lsn;
+    } else if (rep_ctrl.lsn.file <= stat->min_lsn.file) {
+        if (rep_ctrl.lsn.file < stat->min_lsn.file || rep_ctrl.lsn.offset < stat->min_lsn.offset) {
+            stat->min_lsn = rep_ctrl.lsn;
+        }
+    } else if (rep_ctrl.lsn.file >= stat->max_lsn.file) {
+        if (rep_ctrl.lsn.file > stat->max_lsn.file || rep_ctrl.lsn.offset > stat->max_lsn.offset) {
+            stat->max_lsn = rep_ctrl.lsn;
+        }
+    }
+    return n;
+}
+
+static void get_stat_evbuffer(struct event_info *e, net_queue_stat_t *stat)
+{
+    if (!e->flush_buf) return;
+    if (!e->got_hello && !e->got_hello_reply) return;
+    uint32_t n;
+    wire_header_type hdr;
+    net_send_message_header msg;
+    net_ack_message_payload_type ack;
+    struct evbuffer_ptr p;
+    evbuffer_ptr_set(e->flush_buf, &p, 0, EVBUFFER_PTR_SET);
+    while (evbuffer_copyout_from(e->flush_buf, &p, &hdr, sizeof(hdr)) == sizeof(hdr)) {
+        if (advance_evbuffer_ptr(&p, e->wirehdr_len) != 0) return;
+        int rc = -1;
+        int type = ntohl(hdr.type);
+        int known = 0;
+        switch (type) {
+        case WIRE_HEADER_HEARTBEAT:
+            rc = 0;
+            break;
+        case WIRE_HEADER_HELLO:
+        case WIRE_HEADER_HELLO_REPLY:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &n, sizeof(n)) != sizeof(n)) {
+                break;
+            }
+            n = ntohl(n);
+            rc = advance_evbuffer_ptr(&p, n);
+            break;
+        case WIRE_HEADER_DECOM:
+            rc = advance_evbuffer_ptr(&p, sizeof(n));
+            break;
+        case WIRE_HEADER_USER_MSG:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &msg, sizeof(msg)) != sizeof(msg)) {
+                break;
+            }
+            advance_evbuffer_ptr(&p, NET_SEND_MESSAGE_HEADER_LEN);
+            msg.datalen = ntohl(msg.datalen);
+            msg.usertype = ntohl(msg.usertype);
+            if (msg.usertype != USER_TYPE_BERKDB_REP) {
+                rc = advance_evbuffer_ptr(&p, msg.datalen);
+            } else if (get_stat_from_user_msg(e, &p, stat) == msg.datalen) {
+                rc = 0;
+                known = 1;
+            }
+            break;
+        case WIRE_HEADER_ACK:
+            rc = advance_evbuffer_ptr(&p, NET_ACK_MESSAGE_TYPE_LEN);
+            break;
+        case WIRE_HEADER_DECOM_NAME:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &n, sizeof(n)) != sizeof(n)) {
+                break;
+            }
+            n = ntohl(n);
+            rc = advance_evbuffer_ptr(&p, sizeof(n) + n);
+            break;
+        case WIRE_HEADER_ACK_PAYLOAD:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &ack, sizeof(ack)) != sizeof(ack)) {
+                break;
+            }
+            n = ntohl(ack.paylen);
+            rc = advance_evbuffer_ptr(&p, NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN + n);
+            break;
+        default:
+            break;
+        }
+        if (rc) {
+            hprintf_nd("got error on type:%d (%d)\n", type, ntohl(type));
+            break;
+        } else if (!known) {
+            ++stat->unknown_count;
+        }
     }
 }
 
@@ -3097,4 +3239,26 @@ void run_on_base(struct event_base *base, run_on_base_fn func, void *arg)
     Pthread_mutex_unlock(&info.lock);
     Pthread_mutex_destroy(&info.lock);
     Pthread_cond_destroy(&info.cond);
+}
+
+void net_queue_stat_iterate_evbuffer(netinfo_type *netinfo_ptr, QSTATITERFP func, struct net_get_records *arg)
+{
+    struct net_info *ni = net_info_find(netinfo_ptr->service);
+    struct event_info *e;
+    LIST_FOREACH(e, &ni->event_list, net_list_entry) {
+        int type_counts[REP_MAX_TYPE] = {0};
+        net_queue_stat_t stat = {0};
+        Pthread_mutex_init(&stat.lock, NULL);
+        stat.nettype = e->service;
+        stat.hostname = e->host;
+        stat.max_type = REP_MAX_TYPE - 1;
+        stat.type_counts = type_counts;
+
+        Pthread_mutex_lock(&e->wr_lk);
+        get_stat_evbuffer(e, &stat);
+        Pthread_mutex_unlock(&e->wr_lk);
+
+        func(arg, &stat); /* net_to_systable */
+        Pthread_mutex_destroy(&stat.lock);
+    }
 }
