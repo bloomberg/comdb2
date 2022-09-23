@@ -74,12 +74,9 @@ typedef struct net_get_records {
 
 #define MAX_LSN_STR 64
 
-static void net_to_systable(struct netinfo_struct *netinfo_ptr, void *arg,
-        void *qstat)
+static void net_to_systable(net_get_records_t *gr, net_queue_stat_t *n)
 {
     int i;
-    net_get_records_t *gr = (net_get_records_t *)arg;
-    net_queue_stat_t *n = (net_queue_stat_t *)qstat;
 
     if (n == NULL)
         return;
