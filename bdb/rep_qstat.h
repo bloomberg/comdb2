@@ -16,7 +16,13 @@
 
 #ifndef __rep_qstat_h
 #define __rep_qstat_h
-#include <net.h>
+
+#ifdef NEED_LSN_DEF
+struct __db_lsn {
+    uint32_t file;
+    uint32_t offset;
+};
+#endif
 
 typedef struct net_queue_stat {
     char *nettype;
@@ -25,8 +31,8 @@ typedef struct net_queue_stat {
     pthread_mutex_t lock;
 
     /* Keep track of the minimum and maximum lsn */
-    DB_LSN min_lsn;
-    DB_LSN max_lsn;
+    struct __db_lsn min_lsn;
+    struct __db_lsn max_lsn;
 
     /* Keep track of how many of each type of record */
     int max_type;
@@ -37,5 +43,6 @@ typedef struct net_queue_stat {
     int64_t total_count;
 } net_queue_stat_t;
 
-void net_rep_qstat_init(netinfo_type *netinfo_ptr);
+struct netinfo_struct;
+void net_rep_qstat_init(struct netinfo_struct *netinfo_ptr);
 #endif

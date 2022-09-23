@@ -2207,6 +2207,10 @@ void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
 
 void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter, struct net_get_records *arg)
 {
+    if (gbl_libevent) {
+        net_queue_stat_iterate_evbuffer(netinfo_ptr, qs_iter, arg);
+        return;
+    }
     host_node_type *tmp_host_ptr;
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));

@@ -416,6 +416,7 @@ void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
 void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
 void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records *);
+void net_queue_stat_iterate_evbuffer(netinfo_type *, QSTATITERFP, struct net_get_records *);
 
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
                           void *arg);
