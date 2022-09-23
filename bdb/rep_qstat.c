@@ -7,9 +7,6 @@
 #include <rep_qstat.h>
 #include "locks_wrap.h"
 
-int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
-                        DB_LSN *lsn, int *myrectype);
-
 static __thread void *reader_qstat;
 
 static void *net_init_queue_stats_rtn(netinfo_type *netinfo_type,
@@ -95,19 +92,14 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
                                 void *rec, int len)
 {
     net_queue_stat_t *n = (net_queue_stat_t *)netstat;
-    bdb_state_type *bdb_state;
     DB_LSN lsn;
     int rectype, rc;
 
     /* If we're exiting, some fields might have been
        destroyed before we get here. Return now. */
-    if (net_is_exiting(netinfo_ptr))
-        return;
+    if (net_is_exiting(netinfo_ptr)) return;
 
-    /* Get a pointer back to our bdb_state */
-    bdb_state = net_get_usrptr(netinfo_ptr);
-
-    rc = net_get_lsn_rectype(bdb_state, rec, len, &lsn, &rectype);
+    rc = net_get_lsn_rectype(rec, len, &lsn, &rectype);
     Pthread_mutex_lock(&n->lock);
     if (rc == 0 && rectype < REP_MAX_TYPE) {
         if (n->type_counts == NULL) {

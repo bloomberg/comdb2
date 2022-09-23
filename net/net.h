@@ -73,8 +73,11 @@ typedef void QSTATCLEARFP(struct netinfo_struct *netinfo, void *netstat);
 typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *netstat,
                           void *rec, int len);
 typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
-typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
-                         void *qstat);
+
+struct net_get_records;
+struct net_queue_stat;
+typedef void QSTATITERFP(struct net_get_records *, struct net_queue_stat*);
+
 typedef void QSTATDUMPFP(struct netinfo_struct *netinfo, void *netstat,
                          FILE *f);
 typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
@@ -412,8 +415,8 @@ int net_listen(int port);
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
 void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
-void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP func,
-                            void *arg);
+void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records *);
+
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
                           void *arg);
 

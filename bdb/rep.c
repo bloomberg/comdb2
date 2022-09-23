@@ -1525,8 +1525,7 @@ typedef struct __rep_control {
 } REP_CONTROL;
 */
 
-int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
-                        DB_LSN *lsn, int *myrectype)
+int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype)
 {
     int wire_header_type, usertype, recsize, rectype;
     uint8_t *p_buf;
@@ -1593,22 +1592,12 @@ int net_get_lsn_rectype(bdb_state_type *bdb_state, const void *buf, int buflen,
 static int net_getlsn_rectype(netinfo_type *netinfo_ptr, void *record, int len,
                               int *file, int *offset, int *rectype)
 {
-    bdb_state_type *bdb_state;
     DB_LSN lsn;
     int myrectype;
-
-    bdb_state = net_get_usrptr(netinfo_ptr);
-
-    if ((net_get_lsn_rectype(bdb_state, record, len, &lsn, &myrectype)) != 0)
-        return -1;
-
-    if (file)
-        *file = lsn.file;
-    if (offset)
-        *offset = lsn.offset;
-    if (rectype)
-        *rectype = myrectype;
-
+    if ((net_get_lsn_rectype(record, len, &lsn, &myrectype)) != 0) return -1;
+    if (file) *file = lsn.file;
+    if (offset) *offset = lsn.offset;
+    if (rectype) *rectype = myrectype;
     return 0;
 }
 
@@ -1629,18 +1618,14 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen)
 {
     int rc;
-    bdb_state_type *bdb_state;
     DB_LSN xlsn, ylsn;
-
-    /* get a pointer back to our bdb_state */
-    bdb_state = net_get_usrptr(netinfo_ptr);
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if ((rc = net_get_lsn_rectype(bdb_state, x, xlen, &xlsn, NULL)) != 0)
+    if ((rc = net_get_lsn_rectype(x, xlen, &xlsn, NULL)) != 0)
         abort();
 
-    if ((rc = net_get_lsn_rectype(bdb_state, y, ylen, &ylsn, NULL)) != 0)
+    if ((rc = net_get_lsn_rectype(y, ylen, &ylsn, NULL)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);
