@@ -1,2 +1,3 @@
 ufid_log on
+ufid_remove_dbp on
 dtastripe 1

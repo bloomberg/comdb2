@@ -424,6 +424,9 @@ __ufid_add_dbp(dbenv, dbp)
 	return ret;
 }
 
+// Disable by default.
+int gbl_ufid_remove_dbp = 0;
+
 // PUBLIC: int __ufid_rem_dbp __P((DB_ENV *, u_int8_t *));
 //	This function is ufid's substitute for __dbreg_add_dbentry(dbp=NULL).
 //	The only difference between these 2 functions is that, __dbreg_add_dbentry(dbp=NULL)
@@ -438,6 +441,9 @@ __ufid_rem_dbp(dbenv, uid)
 	u_int8_t *uid;
 {
 	struct __ufid_to_db_t *ufid;
+	if (!gbl_ufid_remove_dbp) {
+		return 0;
+	}
 
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 	if ((ufid = hash_find(dbenv->ufid_to_db_hash, uid))) {
