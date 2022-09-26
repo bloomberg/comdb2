@@ -1,0 +1,10 @@
+schema
+{
+    int a
+    int b
+    vutf8 txt[16] null=yes
+}
+keys
+{
+    "B" = b
+}

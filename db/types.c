@@ -3726,7 +3726,14 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
          * our blob-conversion code, it will always return success, whether or
          * not
          * this copy takes place.  The calling code expects this behavior. */
-        if (inblob && outblob && inblob->exists) {
+
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && inblob->exists && inblob->length != -2) {
+            /* if outblob is NULL, we're trying to fit excess
+               characters into a cstring. Return an error here. */
+            if (outblob == NULL)
+                return -1;
+
             /* validate input blob */
             assert(inblob->length == len);
 
@@ -3801,6 +3808,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             outblob->exists = 1;
             outblob->collected = 1;
         } else {
+            /* if outblob is NULL, we're trying to fit excess
+               characters into a cstring. Return an error here. */
             return -1;
         }
     }
@@ -3812,7 +3821,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
     {
         int valid_len;
 
-        if (inblob) {
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && inblob->length != -2) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "vutf8_convert: missing inblob\n");
                 return -1;
@@ -6531,7 +6541,8 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * blob to the out buffer */
     else /* len <= out_len */
     {
-        if (inblob) {
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && inblob->length != -2) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "blob2_convert: missing inblob\n");
                 return -1;
@@ -6716,7 +6727,7 @@ static TYPES_INLINE int SERVER_BLOB2_to_SERVER_BLOB2(
         set_null(out, outlen);
         if (inblob && inblob->exists) {
             /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "SERVER_VUTF8_to_SERVER_VUTF8: bogus blob!\n");
+            logmsg(LOGMSG_ERROR, "SERVER_BLOB2_to_SERVER_VUTF8: bogus blob!\n");
             return -1;
         }
         return 0;
