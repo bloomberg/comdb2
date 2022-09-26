@@ -1110,10 +1110,7 @@ static void user_msg_callback(void *work)
         size_t outstanding = evbuffer_get_length(e->akq_buf) + evbuffer_get_length(e->payload_buf);
         if (outstanding < (max_bytes * resume_lvl)) {
             time_t diff = time(NULL) - e->rd_full;
-            if (diff > 5) {
-                hprintf("RESUMING RD outstanding:%zumb (max:%"PRIu64"mb ) after:%ds\n",
-                        outstanding / MB(1), max_bytes / MB(1), (int)diff);
-            }
+            hprintf("RESUMING RD outstanding:%zumb (max:%"PRIu64"mb ) after:%ds\n", outstanding / MB(1), max_bytes / MB(1), (int)diff);
             e->rd_full = 0;
             evtimer_once(rd_base, resume_read, e);
         }
