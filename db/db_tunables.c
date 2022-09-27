@@ -352,6 +352,7 @@ int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
 int gbl_enable_sq_flattening_optimization = 1;
 int gbl_mask_internal_tunables = 1;
+int gbl_allow_readonly_runtime_mod = 0;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
@@ -1483,7 +1484,7 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
-    if ((t->flags & READONLY) != 0) {
+    if ((t->flags & READONLY) != 0 && !gbl_allow_readonly_runtime_mod) {
         logmsg(LOGMSG_DEBUG, "Attempt to update a READ-ONLY tunable '%s'.\n",
                name);
         return TUNABLE_ERR_READONLY;
