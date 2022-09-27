@@ -3390,10 +3390,10 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
                 abort();
 
             iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
+            if (iq->snap_info.keylen <= 0) {
+                iq->have_snap_info = 0;
+            }
             if (likely(gbl_master_sends_query_effects)) {
-                if (iq->snap_info.keylen == 0) {
-                    iq->have_snap_info = 0;
-                }
                 /* Reset 'write' query effects as master will repopulate them
                  * and report them back to the replicant.
                  */

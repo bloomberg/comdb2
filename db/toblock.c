@@ -5605,7 +5605,7 @@ add_blkseq:
         void *bskey;
         int bskeylen;
         /* Snap_info is our blkseq key */
-        if (iq->have_snap_info) {
+        if (iq->have_snap_info && iq->snap_info.keylen > 0) {
             bskey = iq->snap_info.key;
             bskeylen = iq->snap_info.keylen;
         } else {
