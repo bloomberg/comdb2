@@ -1,8 +1,7 @@
 FROM ubuntu:latest
-
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-    apt-get install -y \
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt update
+RUN apt install -y \
     bc \
     bison \
     build-essential \
