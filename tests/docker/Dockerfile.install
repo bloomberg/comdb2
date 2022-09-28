@@ -1,8 +1,7 @@
 FROM ubuntu:latest
-
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
-  apt-get install -y \
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt update
+RUN apt install -y \
     cmake \
     bc \
     bison \
@@ -39,12 +38,9 @@ RUN apt-get update && \
     strace \
     gdb \
     openssh-server \
-    psmisc && \
-  ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
-  dpkg-reconfigure --frontend noninteractive tzdata
-
+    psmisc
+RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && dpkg-reconfigure --frontend noninteractive tzdata
 COPY . /comdb2
-
 RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
@@ -56,5 +52,4 @@ RUN cd /comdb2 &&  \
     cp /comdb2/tests/docker/client / && \
     cp /comdb2/tests/docker/server / && \
     apt-get clean
-
 ENV PATH      $PATH:/opt/bb/bin
