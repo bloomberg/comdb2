@@ -1405,6 +1405,9 @@ REGISTER_TUNABLE("dump_net_queue_on_partial_write",
 REGISTER_TUNABLE("debug_partial_write", "Simulate partial write in net.  "
                  "(Default: 0)", TUNABLE_INTEGER, &gbl_debug_partial_write,
                  EXPERIMENTAL | INTERNAL, NULL,NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_verify_sleep", "Sleep one-second per record in verify.  "
+                 "(Default: off)", TUNABLE_BOOLEAN, &gbl_debug_sleep_on_verify,
+                 EXPERIMENTAL | INTERNAL, NULL,NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "max_clientstats",
     "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",

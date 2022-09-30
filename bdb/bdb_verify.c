@@ -45,6 +45,8 @@ extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
 
+int gbl_debug_sleep_on_verify = 0;
+
 /* print to sb if available lua callback otherwise */
 static int locprint(SBUF2 *sb, int (*lua_callback)(void *, const char *), 
         void *lua_params, char *fmt, ...)
@@ -204,6 +206,15 @@ ret:
 
 static inline int print_verify_progress(verify_common_t *par, int now)
 {
+    if (bdb_lock_desired(par->bdb_state)) {
+        logmsg(LOGMSG_WARN, "master change, stopped verify\n");
+        locprint(par->sb, par->lua_callback, par->lua_params,
+                      "verify stopping on master change\n");
+        par->lock_desired = 1;
+        par->client_dropped_connection = 1;
+        goto out;
+    }
+
     if (!par->progress_report_seconds)
         goto out;
 
@@ -323,6 +334,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         /* check existence of client and print progress every 1000ms */
         if (print_verify_progress(par, now))
             break;
+
+        /* sleep for a second if requested */
+        if (gbl_debug_sleep_on_verify)
+            sleep(1);
 
         unsigned long long genid;
         memcpy(&genid, dbt_key.data, sizeof(genid));
