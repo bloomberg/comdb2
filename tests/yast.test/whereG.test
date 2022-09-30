@@ -28,7 +28,7 @@ reset_db
 do_execsql_test 5.1 {
   CREATE TABLE t1(a, b, c);
   CREATE INDEX i1 ON t1(a, b);
-}
+} {}
 
 do_test 5.2 {
   for {set i 0} {$i < 100} {incr i} {
