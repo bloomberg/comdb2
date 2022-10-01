@@ -25,6 +25,7 @@
 #include "comdb2_atomic.h"
 #include "constraints.h"
 #include "string_ref.h"
+#include <unistd.h>
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_exit;
@@ -36,6 +37,7 @@ extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
 extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
+int gbl_debug_sleep_on_verify = 0;
 
 static int locprint(verify_common_t *par, char *fmt, ...)
 {
@@ -182,6 +184,12 @@ ret:
 static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 {
     unsigned int last = par->last_connection_check; // get a copy of the last timestamp
+    if (bdb_lock_desired(par->bdb_state)) {
+        logmsg(LOGMSG_WARN, "master change, stopped verify\n");
+        par->lock_desired = 1;
+        par->client_dropped_connection = 1;
+        goto out;
+    }
 
     // do the comparison with t_ms, we want to check connection every 1s
     if ((t_ms - last) < 1000)
@@ -297,6 +305,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         /* check existence of client and print progress every 1000ms */
         if (check_connection_and_progress(par, now))
             break;
+
+        /* sleep for a second if requested */
+        if (gbl_debug_sleep_on_verify)
+            sleep(1);
 
         unsigned long long genid;
         memcpy(&genid, dbt_key.data, sizeof(genid));
