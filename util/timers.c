@@ -56,7 +56,8 @@ void timer_init(void (*func)(struct timer_parm *))
         abort();
     }
     starttime = tv.tv_sec * 1000 + tv.tv_usec / 1000;
-    timer_func = func;
+    if (func != NULL)
+        timer_func = func;
 }
 
 int comdb2_time_epoch(void)
