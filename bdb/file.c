@@ -1034,6 +1034,8 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
     char *saved_origname; /* certain sc set this, preserve */
     int rc;
 
+    __dbreg_lock_lazy_id(bdb_state->dbenv);
+
     rc = close_dbs_flush(bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
@@ -1061,6 +1063,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
     bdb_state->name = saved_name;
     bdb_state->isopen = 1;
 
+    __dbreg_unlock_lazy_id(bdb_state->dbenv);
     return 0;
 }
 
@@ -1654,11 +1657,19 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
     DB_TXN *cltid = cltrans ? cltrans->tid : NULL;
+
+    /* Block others from assigning dbreg ID's, while we're reopening. */
+    __dbreg_lock_lazy_id(bdb_state->dbenv);
+
     int rc = close_dbs_txn(bdb_state, cltid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        __dbreg_unlock_lazy_id(bdb_state->dbenv);
         return -1;
     }
+
+    if (debug_switch_bdb_handle_reset_delay())
+        sleep(5);
 
     int iammaster;
     if (bdb_state->read_write)
@@ -1669,10 +1680,12 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
     rc = open_dbs(bdb_state, iammaster, 1, 0, tid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        __dbreg_unlock_lazy_id(bdb_state->dbenv);
         return -1;
     }
     bdb_state->isopen = 1;
 
+    __dbreg_unlock_lazy_id(bdb_state->dbenv);
     return 0;
 }
 int bdb_handle_reset(bdb_state_type *bdb_state)

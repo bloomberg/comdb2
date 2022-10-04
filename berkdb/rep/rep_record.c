@@ -50,9 +50,11 @@ static const char revid[] =
 #include <bbhrtime.h>
 #include <epochlib.h>
 #include "schema_lk.h"
+#include "thrman.h"
+#include "thread_util.h"
 #include "logmsg.h"
 #include <errno.h>
-
+#include "debug_switches.h"
 
 #ifndef TESTSUITE
 int bdb_am_i_coherent(void *bdb_state);
