@@ -226,6 +226,10 @@ __log_init(dbenv, dblp)
 	    MUTEX_NO_RLOCK)) != 0)
 		return (ret);
 
+	if ((ret = __db_mutex_setup(dbenv, &dblp->reginfo, &region->lazy_id_mutex,
+	    MUTEX_NO_RLOCK)) != 0)
+		return (ret);
+
 	/*
 	 * We must create a place for the flush mutex separately; mutexes have
 	 * to be aligned to MUTEX_ALIGN, and the only way to guarantee that is

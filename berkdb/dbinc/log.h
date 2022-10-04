@@ -163,6 +163,7 @@ struct __log {
 	 * flush_mutex_off points to a mutex in a separately-allocated chunk.
 	 */
 	DB_MUTEX fq_mutex;		/* Mutex guarding file name list. */
+	DB_MUTEX lazy_id_mutex;	/* Mutex guarding the dbreg_lazy_id() call. */
 
 	LOGP	 persist;		/* Persistent information. */
 
