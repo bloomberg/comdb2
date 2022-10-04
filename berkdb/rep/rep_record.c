@@ -54,6 +54,7 @@ static const char revid[] =
 #include "schema_lk.h"
 #include "thrman.h"
 #include "thread_util.h"
+#include "debug_switches.h"
 
 
 #ifndef TESTSUITE
