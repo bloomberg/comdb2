@@ -397,8 +397,12 @@ __ufid_add_dbp(dbenv, dbp)
 
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
-		if (ufid->dbp != NULL) {
-			DB_ASSERT(ufid->dbp == dbp);
+		if (ufid->dbp != NULL && ufid->dbp != dbp) {
+			/* There may be 2 dbp's for the same ufid, if a replicant upgrades to a
+			   master and later assigns a dbreg ID to a btree (see __dbreg_lazy_id).
+			   In this case, we need to take the old dbp off the hashtable so that
+			   __db_close() doesn't mistakenly clear the new dbp. */
+			ufid->dbp->added_to_ufid = 0;
 		}
 	} else {
 		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
@@ -463,6 +467,10 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	DB *dbp;
 	int ret;
 	dblp = dbenv->lg_handle;
+
+	extern int gbl_abort_ufid_open;
+	if (gbl_abort_ufid_open)
+		abort();
 
 	if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
 		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error creating db:%s\n", name);
