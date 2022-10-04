@@ -5013,6 +5013,7 @@ err1:
 static unsigned long long rep_process_txn_usc = 0;
 static unsigned long long rep_process_txn_cnt = 0;
 
+int gbl_abort_ufid_open = 0;
 
 // PUBLIC: int __rep_process_txn __P((DB_ENV *, REP_CONTROL *, DBT *, LTDESC **, DB_LSN, uint32_t *));
 int
@@ -5026,11 +5027,16 @@ __rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
 {
 	static int lastpr = 0;
 	int now;
+	int rc;
+
+	if (debug_switch_abort_ufid_open()) {
+		gbl_abort_ufid_open = 1;
+	}
+
 	if (!gbl_rep_process_txn_time) {
-		return __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
+		rc = __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
 			commit_gen, 0, NULL, NULL);
 	} else {
-		int rc;
 		long long usecs;
 		bbtime_t start = { 0 }, end = {
 		0};
@@ -5051,9 +5057,12 @@ __rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
 				rep_process_txn_usc / rep_process_txn_cnt);
 			lastpr = now;
 		}
-
-		return rc;
 	}
+
+	if (gbl_abort_ufid_open) {
+		gbl_abort_ufid_open = 0;
+	}
+	return rc;
 }
 
 static inline int
