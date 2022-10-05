@@ -154,8 +154,8 @@ __log_cursor_complete(dbenv, logcp, bpsize, maxrec)
     logc->totalus = 0;
     logc->lockwaitus = 0;
 
-    if (bpsize || maxrec)
-        F_SET(logc, DB_LOG_CUSTOM_SIZE);
+	if (bpsize || maxrec)
+		F_SET(logc, DB_LOG_CUSTOM_SIZE);
 
 	*logcp = logc;
 	return (0);

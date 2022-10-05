@@ -318,7 +318,7 @@ void comdb2CreateScalarFunc(Parse *parse, Token *proc, int flags)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, s, S, scalar, flags);
+    comdb2CreateFunc(parse, proc, s, S, scalar, flags);
 }
 
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
@@ -339,7 +339,7 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, a, A, aggregate, 0);
+    comdb2CreateFunc(parse, proc, a, A, aggregate, 0);
 }
 
 #define comdb2DropFunc(parse, proc, pfx, PFX, type)                            \
@@ -417,6 +417,6 @@ void comdb2DropAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2DropFunc(parse, proc, a, A, aggregate);
+    comdb2DropFunc(parse, proc, a, A, aggregate);
 }
 
