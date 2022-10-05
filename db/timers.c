@@ -43,7 +43,8 @@ static void (*timer_func)(struct timer_parm *) = NULL;
 
 void timer_init(void (*func)(struct timer_parm *))
 {
-    timer_func = func;
+    if (func != NULL)
+        timer_func = func;
     comdb2_time_init();
 }
 

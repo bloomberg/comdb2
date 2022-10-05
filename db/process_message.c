@@ -1331,9 +1331,11 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "reset_blkmax") == 0) {
         reset_blkmax();
         logmsg(LOGMSG_USER, "Reset blkmax\n");
-    }
-
-    else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
+    } else if (tokcmp(tok, ltok, "reset_time") == 0) {
+        logmsg(LOGMSG_USER,
+               "Resetting epochms starttime\n");
+        timer_init(NULL);
+    } else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
         int blkmax = get_blkmax();
         logmsg(LOGMSG_USER,
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
