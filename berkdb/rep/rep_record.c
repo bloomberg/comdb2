@@ -342,7 +342,8 @@ void send_master_req(DB_ENV *dbenv, const char *func, int line)
 
 	call_count++;
 	if (!gbl_master_req_waitms || (spanms = (comdb2_time_epochms() -
-			gbl_last_master_req)) > gbl_master_req_waitms) {
+			gbl_last_master_req)) > gbl_master_req_waitms ||
+			gbl_last_master_req > comdb2_time_epochms()) {
 		req_count++;
 		if (gbl_verbose_master_req && ((now = time(NULL)) - lastpr)) {
 			logmsg(LOGMSG_USER, "%s line %d sending REP_MASTER_REQ, "
