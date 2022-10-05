@@ -31,7 +31,7 @@
 
 struct tick {
     int value;
-    int time_added;
+    int64_t time_added;
     LINKC_T(struct tick) lnk;
 };
 
@@ -65,7 +65,7 @@ void averager_clear(struct averager *avg) {
     avg->sum = 0;
 }
 
-void averager_purge_old(struct averager *avg, int now)
+void averager_purge_old(struct averager *avg, int64_t now)
 {
     struct tick *t = NULL;
 
@@ -79,7 +79,7 @@ void averager_purge_old(struct averager *avg, int now)
     }
 }
 
-void averager_add(struct averager *avg, int value, int now)
+void averager_add(struct averager *avg, int value, int64_t now)
 {
     struct tick *t;
 

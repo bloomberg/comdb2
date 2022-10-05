@@ -1650,7 +1650,7 @@ extern int gbl_logmemsize;   /* log memory size */
 extern int gbl_fullrecovery; /* full recovery mode*/
 extern int gbl_local_mode;   /* local mode, no siblings */
 extern int gbl_report;       /* update rate to log */
-extern int gbl_report_last;
+extern int64_t gbl_report_last;
 extern long gbl_report_last_n;
 extern long gbl_report_last_r;
 extern int gbl_exit;           /* exit requested.*/

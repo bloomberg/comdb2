@@ -3947,7 +3947,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "lockspeed") == 0) {
         pthread_mutex_t lk;
         int i;
-        int start, end;
+        int64_t start, end;
 
         Pthread_mutex_init(&lk, NULL);
         start = comdb2_time_epochms();
@@ -3957,8 +3957,8 @@ clipper_usage:
         }
         end = comdb2_time_epochms();
 
-        logmsg(LOGMSG_USER, "pthread took %dms (%d per second)\n", end - start,
-               100000000 / (end - start) * 1000);
+        logmsg(LOGMSG_USER, "pthread took %dms (%d per second)\n", (int)(end - start),
+               (int)(100000000 / (end - start) * 1000));
         bdb_lockspeed(dbenv->bdb_env);
     } else if (tokcmp(tok, ltok, "logevents") == 0) {
         dump_log_event_counts();

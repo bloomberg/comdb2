@@ -51,9 +51,9 @@ struct osql_sqlthr {
 
     int status;       /* poking support; status at the last check */
     int timestamp;    /* poking support: timestamp at the last check */
-    int last_updated; /* poking support: when was the last time I got info, 0 is
+    int64_t last_updated; /* poking support: when was the last time I got info, 0 is
                          never */
-    int last_checked; /* poking support: when was the loast poke sent */
+    int64_t last_checked; /* poking support: when was the loast poke sent */
     struct sqlclntstate *clnt; /* cache clnt */
 };
 typedef struct osql_sqlthr osql_sqlthr_t;

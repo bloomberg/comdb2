@@ -38,7 +38,7 @@ static int norm_writes = 0;
 static int bdb_pread(int fd, void *buf, size_t nbytes, off_t offset)
 {
     int rc;
-    int t1, t2;
+    int64_t t1, t2;
     int errno_sav;
 
     io_start();
@@ -49,7 +49,7 @@ static int bdb_pread(int fd, void *buf, size_t nbytes, off_t offset)
 
     t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
-        logmsg(LOGMSG_WARN, "LONG PREAD: %d ms\n", t2 - t1);
+        logmsg(LOGMSG_WARN, "LONG PREAD: %"PRId64" ms\n", t2 - t1);
         long_reads++;
     } else {
         norm_reads++;
@@ -64,7 +64,7 @@ static int bdb_pread(int fd, void *buf, size_t nbytes, off_t offset)
 static ssize_t bdb_read(int fd, void *buf, size_t nbytes)
 {
     int rc;
-    int t1, t2;
+    int64_t t1, t2;
     int errno_sav;
 
     io_start();
@@ -74,7 +74,7 @@ static ssize_t bdb_read(int fd, void *buf, size_t nbytes)
     errno_sav = errno;
     t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
-        logmsg(LOGMSG_WARN, "LONG READ: %d ms\n", t2 - t1);
+        logmsg(LOGMSG_WARN, "LONG READ: %"PRId64" ms\n", t2 - t1);
         long_reads++;
     } else {
         norm_reads++;
@@ -88,7 +88,7 @@ static ssize_t bdb_read(int fd, void *buf, size_t nbytes)
 static int bdb_fsync(int fd)
 {
     int rc;
-    int t1, t2;
+    int64_t t1, t2;
     int errno_sav;
 
     /* io_start(); */
@@ -98,7 +98,7 @@ static int bdb_fsync(int fd)
     errno_sav = errno;
     t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000)
-        logmsg(LOGMSG_WARN, "LONG FSYNC: %d ms\n", t2 - t1);
+        logmsg(LOGMSG_WARN, "LONG FSYNC: %"PRId64" ms\n", t2 - t1);
 
     /* io_cmplt(); */
 
@@ -109,7 +109,7 @@ static int bdb_fsync(int fd)
 static int bdb_pwrite(int fd, const void *buf, size_t nbytes, off_t offset)
 {
     int rc;
-    int t1, t2;
+    int64_t t1, t2;
     int errno_sav;
 
     io_start();
@@ -119,7 +119,7 @@ static int bdb_pwrite(int fd, const void *buf, size_t nbytes, off_t offset)
     errno_sav = errno;
     t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
-        logmsg(LOGMSG_WARN, "LONG PWRITE: %d ms\n", t2 - t1);
+        logmsg(LOGMSG_WARN, "LONG PWRITE: %"PRId64" ms\n", t2 - t1);
         long_writes++;
     } else {
         norm_writes++;
@@ -134,7 +134,7 @@ static int bdb_pwrite(int fd, const void *buf, size_t nbytes, off_t offset)
 static ssize_t bdb_write(int fd, const void *buf, size_t nbytes)
 {
     int rc;
-    int t1, t2;
+    int64_t t1, t2;
     int errno_sav;
 
     io_start();
@@ -144,7 +144,7 @@ static ssize_t bdb_write(int fd, const void *buf, size_t nbytes)
     errno_sav = errno;
     t2 = comdb2_time_epochms();
     if ((t2 - t1) > 2000) {
-        logmsg(LOGMSG_WARN, "LONG WRITE: %d ms\n", t2 - t1);
+        logmsg(LOGMSG_WARN, "LONG WRITE: %"PRId64" ms\n", t2 - t1);
         long_writes++;
     } else {
         norm_writes++;

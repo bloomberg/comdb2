@@ -595,7 +595,7 @@ void sc_del_unused_files(struct dbtable *db)
  * then gbl_sc_del_unused_files_threshold_ms, if so it exits */
 void sc_del_unused_files_check_progress(void)
 {
-    int start_ms;
+    int64_t start_ms;
 
     Pthread_mutex_lock(&gbl_sc_lock);
     start_ms = sc_del_unused_files_start_ms;

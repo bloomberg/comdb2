@@ -2595,7 +2595,7 @@ int collect_clientstats(void *ent, void *arg)
 /* called (roughly) once a second to update our per node stats */
 void process_nodestats(void)
 {
-    static int last_time_ms = 0;
+    static int64_t last_time_ms = 0;
     int span_ms;
     clientstats_ptr_list cpl;
     nodestats_t *nodestats;

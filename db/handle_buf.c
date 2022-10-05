@@ -63,7 +63,7 @@ static pool_t *p_reqs; /* request pool */
 struct dbq_entry_t {
     LINKC_T(struct dbq_entry_t) qlnk;
     LINKC_T(struct dbq_entry_t) rqlnk;
-    time_t queue_time_ms;
+    int64_t queue_time_ms;
     void *obj;
 };
 

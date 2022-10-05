@@ -341,7 +341,7 @@ void *auto_analyze_main(void *unused)
     call_counter++;
     char my_buf[30];
 
-    int strt = comdb2_time_epochms();
+    int64_t strt = comdb2_time_epochms();
 
     if (save_freq > 0)
         BDB_READLOCK(__func__);
@@ -459,7 +459,7 @@ void *auto_analyze_main(void *unused)
     if (save_freq > 0)
         BDB_RELLOCK();
 
-    ctrace("AUTOANALYZE check took %d ms\n", comdb2_time_epochms() - strt);
+    ctrace("AUTOANALYZE check took %"PRId64" ms\n", comdb2_time_epochms() - strt);
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;

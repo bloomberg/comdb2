@@ -87,7 +87,7 @@ int gbl_finish_fill_threshold = 60000000;
 
 int gbl_max_logput_queue = 100000;
 int gbl_apply_thread_pollms = 100;
-int last_fill = 0;
+int64_t last_fill = 0;
 int gbl_req_all_threshold = 10000000;
 int gbl_req_all_time_threshold = 0;
 int gbl_req_delay_count_threshold = 5;
@@ -334,7 +334,7 @@ void send_master_req(DB_ENV *dbenv, const char *func, int line)
 {
 	static unsigned long long call_count = 0, req_count = 0;
 	static int lastpr = 0;
-	int now, spanms=0;
+	int64_t now, spanms=0;
 
 	call_count++;
 	if (!gbl_master_req_waitms || (spanms = (comdb2_time_epochms() -
@@ -422,7 +422,7 @@ struct queued_log {
 	REP_CONTROL *rp;
 	u_int32_t gen;
 	u_int32_t size;
-	u_int32_t enqueued_time;
+	int64_t enqueued_time;
 	char *data;
 };
 
@@ -466,7 +466,7 @@ static void *apply_thread(void *arg)
 	LOG *lp;
 	DB_LOG *dblp;
 	DB_LSN master_lsn, my_lsn, my_last_lsn, first_repdb_lsn;
-	int last_lsn_change_time = 0;
+	int64_t last_lsn_change_time = 0;
 	DB_ENV *dbenv = (DB_ENV *)arg;
 	struct queued_log *q;
 	struct timespec ts;
@@ -801,7 +801,8 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 	uint32_t gen;
 {
 	int rc, now;
-	int start, elapsed;
+	int64_t start;
+    int elapsed;
 	static unsigned long long count=0;
 	struct queued_log *q = (struct queued_log *)malloc(
 			sizeof(struct queued_log));
@@ -1002,7 +1003,8 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	REP_GEN_VOTE_INFO *vig;
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
 	unsigned long long bytes_sent;
-	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
+	int check_limit, cmp, done, do_req, rc, tottime;
+    int64_t starttime, endtime;
 	int match, old, recovering, ret, t_ret, sendtime;
 	time_t savetime;
 #if defined INSTRUMENT_REP_APPLY
@@ -4475,7 +4477,7 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 	int32_t timestamp, unsigned long long context);
 
 static unsigned long long getlock_poll_count = 0;
-int gbl_rep_lock_time_ms = 0;
+int64_t gbl_rep_lock_time_ms = 0;
 
 /*
  * __rep_process_txn --

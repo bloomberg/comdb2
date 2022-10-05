@@ -48,7 +48,7 @@ extern int gbl_sc_report_freq;      /* seconds between reports */
 extern int gbl_sc_abort;
 extern uint32_t gbl_sc_resume_start;
 /* see sc_del_unused_files() and sc_del_unused_files_check_progress() */
-extern int sc_del_unused_files_start_ms;
+extern int64_t sc_del_unused_files_start_ms;
 extern int gbl_sc_del_unused_files_threshold_ms;
 
 extern int gbl_sc_commit_count; /* number of schema change commits - these can

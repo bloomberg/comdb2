@@ -838,7 +838,7 @@ pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                         struct sqlthdstate *thd)
 {
-    static int exec_warn_ms = 0;
+    static int64_t exec_warn_ms = 0;
     int serial = gbl_serialise_sqlite3_open;
     if (serial)
         Pthread_mutex_lock(&open_serial_lock);
@@ -850,7 +850,7 @@ int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
             char *zErr = 0;
             rc2 = sqlite3_exec(*ppDb, zSql, NULL, NULL, &zErr);
             if (rc2 != SQLITE_OK) {
-                int current_time_ms = comdb2_time_epochms();
+                int64_t current_time_ms = comdb2_time_epochms();
                 if ((exec_warn_ms == 0) ||
                         (current_time_ms - exec_warn_ms) > 60000) { /* 1 min */
                     exec_warn_ms = current_time_ms;
@@ -2771,9 +2771,9 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 {
     extern int gbl_locks_check_waiters;
     extern int gbl_sql_release_locks_on_emit_row;
-    extern int gbl_rep_lock_time_ms;
+    extern int64_t gbl_rep_lock_time_ms;
     extern int gbl_sql_random_release_interval;
-    int rep_lock_time_ms = gbl_rep_lock_time_ms;
+    int64_t rep_lock_time_ms = gbl_rep_lock_time_ms;
 
     /* Release if we're emitting during a master change */
     if (bdb_lock_desired(thedb->bdb_env))
@@ -3370,7 +3370,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     const char *tail = NULL;
 
     /* if we did not get a cached stmt, need to prepare it in sql engine */
-    int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
+    int64_t startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
         comdb2_set_authstate(thd, clnt, flags);

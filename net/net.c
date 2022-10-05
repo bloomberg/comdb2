@@ -4506,7 +4506,7 @@ static char *subnet_suffices[MAXSUBNETS + 1] = {0};
 static uint8_t num_dedicated_subnets = 0;
 static time_t subnet_disabled[MAXSUBNETS + 1] = {0};
 static int last_bad_subnet_idx = -1;
-static time_t last_bad_subnet_time = 0;
+static int64_t last_bad_subnet_time = 0;
 uint8_t _non_dedicated_subnet = 0;
 pthread_mutex_t subnet_mtx = PTHREAD_MUTEX_INITIALIZER;
 
@@ -5526,7 +5526,7 @@ int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, 
       char paddr[64];
       struct pollfd pol;
       pthread_t tid;
-      unsigned int last_stat_dump_time = comdb2_time_epochms();
+      int64_t last_stat_dump_time = comdb2_time_epochms();
       watchlist_node_type *watchlist_node;
       connect_and_accept_t *ca;
       int new_fd = sbuf2fileno(sb);
@@ -5546,7 +5546,7 @@ int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, 
       pol.events=POLLIN;
 
       /* poll */
-      unsigned pollstart, pollend;
+      int64_t pollstart, pollend;
       pollstart = comdb2_time_epochms();
       rc = poll(&pol, 1, polltm);
       pollend = comdb2_time_epochms();

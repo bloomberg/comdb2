@@ -425,7 +425,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     char *oldname = NULL;
     int rc = 0;
     DB_ENV *env;
-    int start, end;
+    int64_t start, end;
 
     start = comdb2_time_epochms();
     now = comdb2_time_epoch();
@@ -517,7 +517,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     if (bdb_state->attr->private_blkseq_close_warn_time) {
         end = comdb2_time_epochms();
         if ((end - start) > bdb_state->attr->private_blkseq_close_warn_time) {
-            logmsg(LOGMSG_WARN, "blkseq close took %dms\n", end - start);
+            logmsg(LOGMSG_WARN, "blkseq close took %"PRId64"ms\n", end - start);
         }
     }
 

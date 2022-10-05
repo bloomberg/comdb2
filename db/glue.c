@@ -602,7 +602,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 {
     int rc = 0;
     int sync;
-    int start_ms, end_ms;
+    int64_t start_ms, end_ms;
 
     if (iq->sc_pending) {
         sync = REP_SYNC_FULL;

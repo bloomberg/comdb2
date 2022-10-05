@@ -15,7 +15,7 @@ sqlite3_module systblConnectionsModule = {
 int get_connections(void **data, int *num_points) {
     struct connection_info *info;
     int rc = gather_connection_info(&info, num_points);
-    int now = comdb2_time_epochms();
+    int64_t now = comdb2_time_epochms();
     if (rc)
         return rc;
     *data = info;

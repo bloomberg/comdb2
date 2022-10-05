@@ -33,7 +33,7 @@
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t timerwait = PTHREAD_COND_INITIALIZER;
 struct timer {
-    int next;
+    int64_t next;
     int ms;
     int parm;
     int oneshot;
@@ -77,7 +77,7 @@ int64_t comdb2_time_epochus(void)
     return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
 }
 
-int comdb2_time_epochms(void)
+int64_t comdb2_time_epochms(void)
 {
     struct timeval tv;
     int rc;
@@ -205,7 +205,7 @@ int comdb2_timer(int ms, int parm)
 
 void *timer_thread(void *p)
 {
-    int tnow;
+    int64_t tnow;
     struct timer t;
     struct timer_parm waitft_parm;
     int rc;

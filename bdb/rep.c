@@ -117,7 +117,7 @@ static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
 
 static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host);
 
-static int last_slow_node_check_time = 0;
+static int64_t last_slow_node_check_time = 0;
 static pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
 
 struct rep_type_berkdb_rep_buf_hdr {
@@ -1240,7 +1240,7 @@ static void *elect_thread(void *args)
     bdb_state_type *bdb_state;
     char *master_host;
     int num;
-    int end, start;
+    int64_t end, start;
     int num_connected;
     int node_not_up = 0;
     uint32_t newgen;
@@ -2430,7 +2430,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     int rc;
     unsigned long long cntbytes;
     struct waiting_for_lsn *waitforlsn = NULL;
-    int now;
+    int64_t now;
     int track_times;
 
     track_times = bdb_state->attr->track_replication_times;
@@ -3240,7 +3240,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                                             seqnum_type *seqnum, int *timeoutms,
                                             uint64_t txnsize, int newcoh)
 {
-    int i, now, cntbytes;
+    int i, cntbytes;
+    int64_t now;
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
     int durable_lsns;
@@ -3256,7 +3257,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int outrc;
     int num_incoh = 0;
 
-    int begin_time, end_time;
+    int64_t begin_time, end_time;
     int we_used = 0;
     const char *base_node = NULL;
     char str[80];
@@ -5427,7 +5428,7 @@ int gbl_rep_wait_core_ms = 0;
 void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
-    extern int gbl_rep_lock_time_ms;
+    extern int64_t gbl_rep_lock_time_ms;
     extern int gbl_truncating_log;
     char *master_host = db_eid_invalid;
     int stopped_count = 0;
@@ -5521,7 +5522,7 @@ void *watcher_thread(void *arg)
             create_master_lease_thread(bdb_state);
         }
 
-        int rep_lock_wait_time_ms = gbl_rep_lock_time_ms;
+        int64_t rep_lock_wait_time_ms = gbl_rep_lock_time_ms;
         int rep_wait_core_ms = gbl_rep_wait_core_ms;
         int elapsed;
 
@@ -5620,7 +5621,7 @@ void *watcher_thread(void *arg)
             }
 
             if (bdb_state->attr->track_replication_times) {
-                int now;
+                int64_t now;
                 now = comdb2_time_epochms();
                 Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
                 for (i = 0; i < count; i++) {

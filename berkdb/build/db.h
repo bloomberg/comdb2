@@ -2820,7 +2820,7 @@ int berkdb_is_recovering(DB_ENV *dbenv);
 
 #define TIMEIT(x)			   \
 do {							\
-	int start, end, diff;	   \
+	int64_t start, end, diff;	   \
 	start = comdb2_time_epochms(); \
 	x						   \
 	end = comdb2_time_epochms();\
@@ -2831,7 +2831,7 @@ do {							\
 
 #define TIMEITX(x, y)		   \
 do {							\
-	int start, end, diff;	   \
+	int64_t start, end, diff;	   \
 	start = comdb2_time_epochms(); \
 	x						   \
 	end = comdb2_time_epochms();\
