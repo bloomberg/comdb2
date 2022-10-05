@@ -1115,7 +1115,7 @@ int main(int argc, char *argv[])
     int listenfd;
     struct sockaddr_un serv_addr = {.sun_family = AF_UNIX};
 
-    sigignore(SIGPIPE);
+    signal(SIGPIPE, SIG_IGN);
 #ifndef LOG_PERROR
 #define LOG_PERROR 0
 #endif

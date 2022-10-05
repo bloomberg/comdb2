@@ -5358,7 +5358,7 @@ int main(int argc, char **argv)
     berk_fsync_alarm_ms(__berkdb_fsync_alarm_ms);
     berk_memp_sync_alarm_ms(500);
 
-    sighold(SIGPIPE); /*dothis before kicking off any threads*/
+    signal(SIGPIPE, SIG_IGN); /* do this before kicking off any threads */
 
     thrman_init();
     javasp_once_init();

@@ -6682,7 +6682,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
              uint8_t flip_orig, const char *tzname)
 {
     int null;
-    i64 ival;
+    i64 ival = 0;
     int outdtsz = 0;
     int rc = 0;
     struct field *f = &(sc->member[fnum]);
@@ -11831,7 +11831,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
                                 Mem *m, uint8_t flip_orig, const char *tzname)
 {
     int null;
-    i64 ival;
+    i64 ival = 0;
     int outdtsz = 0;
     int rc = 0;
     struct field *f = &(sc->member[fnum]);

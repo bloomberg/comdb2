@@ -188,6 +188,8 @@ static int decrypt_page(DB *dbp, PAGE *p)
     size_t passwd_len = strlen(passwd) + 1;
 
 #ifdef USE_HMAC
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     // VERIFY MAC ON DISK
     uint8_t mac_key[SHA_DIGEST_LENGTH] = {0};
     SHA1_Init(&ctx);
@@ -195,6 +197,7 @@ static int decrypt_page(DB *dbp, PAGE *p)
     SHA1_Update(&ctx, DB_MAC_MAGIC, strlen(DB_MAC_MAGIC));
     SHA1_Update(&ctx, passwd, passwd_len);
     SHA1_Final(mac_key, &ctx);
+#pragma GCC diagnostic pop
 
     size_t len = DB_MAC_KEY;
     uint8_t old[DB_MAC_KEY], new[DB_MAC_KEY];
@@ -217,6 +220,8 @@ static int decrypt_page(DB *dbp, PAGE *p)
     }
 #endif
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     // DECRYPT PAGE
     uint8_t tmp_key[SHA_DIGEST_LENGTH] = {0};
     SHA1_Init(&ctx);
@@ -237,6 +242,7 @@ static int decrypt_page(DB *dbp, PAGE *p)
     void *data = ((uint8_t *)p) + skip;
     AES_cbc_encrypt(data, data, chksum_pgsize(dbp, p) - skip, &key, tmp_iv,
                     AES_DECRYPT);
+#pragma GCC diagnostic pop
     return 0;
 }
 
@@ -323,6 +329,8 @@ static void __db_hmac(u_int8_t *k, u_int8_t *data, size_t data_len, u_int8_t *ma
     opad[i] ^= key[i];
   }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   SHA1_Init(&ctx);
   SHA1_Update(&ctx, ipad, HMAC_BLOCK_SIZE);
   SHA1_Update(&ctx, data, data_len);
@@ -331,6 +339,7 @@ static void __db_hmac(u_int8_t *k, u_int8_t *data, size_t data_len, u_int8_t *ma
   SHA1_Update(&ctx, opad, HMAC_BLOCK_SIZE);
   SHA1_Update(&ctx, tmp, HMAC_OUTPUT_SIZE);
   SHA1_Final(mac, &ctx);
+#pragma GCC diagnostic pop
   return;
 }
 #endif
