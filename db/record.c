@@ -2870,8 +2870,8 @@ void testrep(int niter, int recsz)
     int bdberr;
     unsigned char *stuff;
     struct ireq iq;
-    int rc;
-    int now, last, n;
+    int rc, n;
+    int64_t now, last;
 
     stuff = malloc(recsz);
 

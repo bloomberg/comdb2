@@ -298,7 +298,7 @@ int gbl_maxwthreads = 8;      /* max # of threads */
 int gbl_maxqueue = 192;       /* max pending requests.*/
 int gbl_thd_linger = 5;       /* number of seconds for threads to linger */
 int gbl_report = 0;           /* update rate to log */
-int gbl_report_last;
+int64_t gbl_report_last;
 long gbl_report_last_n;
 long gbl_report_last_r;
 char *gbl_myhostname;      /* my hostname */

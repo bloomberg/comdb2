@@ -698,7 +698,7 @@ struct bdb_callback_tag {
 
 struct waiting_for_lsn {
     DB_LSN lsn;
-    int start;
+    int64_t start;
     LINKC_T(struct waiting_for_lsn) lnk;
 };
 

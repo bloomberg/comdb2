@@ -30,7 +30,7 @@ void comdb2_time_init(void);
 int comdb2_time_epoch(void);
 
 /* RETURNS # MILLISECONDS SINCE STARTUP */
-int comdb2_time_epochms(void);
+int64_t comdb2_time_epochms(void);
 
 /* Microseconds since start of epoch */
 int64_t comdb2_time_epochus(void);

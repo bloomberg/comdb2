@@ -859,7 +859,7 @@ void bdb_lockspeed(bdb_state_type *bdb_state)
     int i;
     DB_LOCK lock;
     DBT lkname = {0};
-    int start, end;
+    int64_t start, end;
 
     dbenv->lock_id(dbenv, &lid);
     lkname.data = "hello";
@@ -870,7 +870,7 @@ void bdb_lockspeed(bdb_state_type *bdb_state)
         dbenv->lock_put(dbenv, &lock);
     }
     end = comdb2_time_epochms();
-    logmsg(LOGMSG_USER, "berkeley took %dms (%d per second)\n", end - start,
+    logmsg(LOGMSG_USER, "berkeley took %" PRId64 "ms (%" PRId64 " per second)\n", end - start,
            100000000 / (end - start) * 1000);
     dbenv->lock_id_free(dbenv, lid);
 }

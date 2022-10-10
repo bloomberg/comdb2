@@ -361,7 +361,7 @@ void *checkpoint_thread(void *arg)
     int checkpointrand;
     int loaded_cache = 0, last_cache_dump = 0;
     bdb_state_type *bdb_state;
-    int start, end;
+    int64_t start, end;
     int total_sleep_msec;
     unsigned long long end_sleep_time_msec;
     unsigned long long crt_time_msec;
@@ -432,7 +432,7 @@ void *checkpoint_thread(void *arg)
         end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;
-        ctrace("checkpoint (scheduled) took %d ms\n", end - start);
+        ctrace("checkpoint (scheduled) took %d ms\n", (int)(end - start));
         gbl_last_checkpoint_ms = (end - start);
         gbl_total_checkpoint_ms += gbl_last_checkpoint_ms;
         gbl_checkpoint_count++;

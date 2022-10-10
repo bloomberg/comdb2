@@ -413,7 +413,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
 
         Pthread_mutex_unlock(&entry->mtx);
 
-        int tm_recov_deadlk = comdb2_time_epochms();
+        int64_t tm_recov_deadlk = comdb2_time_epochms();
         /* this call could wait for a bdb read lock; in the meantime,
            someone might try to signal us */
         // NC: what is this for?
@@ -455,7 +455,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_FREQ_SEC) * 1000;
 
         /* is it the time to check the master? have we already done so? */
-        int now = comdb2_time_epochms();
+        int64_t now = comdb2_time_epochms();
 
         if ((poke_timeout > 0) &&
             (entry->last_updated + poke_timeout + tm_recov_deadlk < now)) {

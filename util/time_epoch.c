@@ -53,7 +53,7 @@ int64_t comdb2_time_epochus(void)
     return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
 }
 
-int comdb2_time_epochms(void)
+int64_t comdb2_time_epochms(void)
 {
     struct timeval tv;
     int rc;

@@ -370,7 +370,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
     }
 
     for (;;) {
-        int ms_before, ms_after, ms_diff;
+        int64_t ms_before, ms_after, ms_diff;
 
         u_int32_t flags;
 
@@ -424,8 +424,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         if (ms_diff > common->bdb_parent_state->attr->fstdump_longreq) {
             const struct berkdb_thread_stats *thread_stats =
                 bdb_get_thread_stats();
-            logmsg(LOGMSG_ERROR, "fstdump_thread: LONG REQUEST dbcp->c_get %d ms\n",
-                    ms_diff);
+            logmsg(LOGMSG_ERROR, "fstdump_thread: LONG REQUEST dbcp->c_get %" PRId64 " ms\n", ms_diff);
             bdb_fprintf_stats(thread_stats, "  ", stderr);
         }
 

@@ -23,7 +23,7 @@ void usage(FILE *f)
 
 static int iters = 1000;
 
-int comdb2_time_epochms(void)
+int64_t comdb2_time_epochms(void)
 {
     struct timeval tv;
     int rc;

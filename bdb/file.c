@@ -1512,7 +1512,7 @@ int bdb_dump_cache_default(bdb_state_type *bdb_state)
 static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
 {
     int rc;
-    int start, end;
+    int64_t start, end;
 
     *bdberr = BDBERR_NOERROR;
 
@@ -1534,7 +1534,7 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
             return -1;
         }
         end = comdb2_time_epochms();
-        ctrace("checkpoint took %dms\n", end - start);
+        ctrace("checkpoint took %" PRId64 "ms\n", end - start);
     }
 
     return 0;

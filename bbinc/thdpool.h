@@ -62,7 +62,7 @@ typedef void (*thdpool_work_fn)(struct thdpool *pool, void *work, void *thddata,
 struct workitem {
     void *work;
     thdpool_work_fn work_fn;
-    int queue_time_ms;
+    int64_t queue_time_ms;
     LINKC_T(struct workitem) linkv;
     int available;
     struct string_ref *ref_persistent_info;

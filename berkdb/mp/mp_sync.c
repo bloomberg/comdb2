@@ -1092,7 +1092,7 @@ void init_trickle_threads(void)
 
 int gbl_parallel_memptrickle = 1;
 
-extern int comdb2_time_epochms();
+extern int64_t comdb2_time_epochms();
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
 	int st);
 
@@ -1151,7 +1151,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	int do_parallel;
 	struct trickler *pt;
 	struct writable_range *range;
-	int start, end;
+	int64_t start, end;
 	int memp_sync_files_time = 0;
 	DB_LSN oldest_first_dirty_tx_begin_lsn;
 	int accum_sync, accum_skip;
@@ -1555,7 +1555,7 @@ done:
          */
         if (ret == 0 && (op == DB_SYNC_CACHE || op == DB_SYNC_FILE)) {
             if (dbmfp == NULL) {
-                int start, end;
+                int64_t start, end;
                 start = comdb2_time_epochms();
                 ret = __memp_sync_files(dbenv, dbmp);
                 end = comdb2_time_epochms();
@@ -1581,7 +1581,7 @@ err:	__os_free(dbenv, bharray);
 
 	if (wrote && ((end - start) > memp_sync_alarm_ms))
 		ctrace("memp_sync %d pages %d ms (memp_sync_files %d ms)\n",
-		    wrote, end - start, memp_sync_files_time);
+		    wrote, (int)(end - start), memp_sync_files_time);
 
 	return (ret);
 }
