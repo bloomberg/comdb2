@@ -73,7 +73,7 @@ void check_access_controls(struct dbenv *dbenv)
     check_tableXnode_enabled(dbenv);
 }
 
-int (*externalComdb2AuthenticateUserMakeRequest)(void *) = NULL;
+int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
 
 /* If user password does not match this function
  * will write error response and return a non 0 rc
@@ -90,7 +90,7 @@ static int check_user_password(struct sqlclntstate *clnt)
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
             return 0;
         }
-        int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+        int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, clnt->argv0);
         if (rc) {
             write_response(clnt, RESPONSE_ERROR,
                            "User isn't allowed to make request on this db",
