@@ -24,7 +24,7 @@ enum COMDB2_TRN_CNST {
 typedef struct longblk_trn {
     unsigned long long tranid;
     void *trn_data;
-    int blocking;
+    int inuse; /* 1 if being processed and hence should not be timed out */
     int timestamp;
     int datasz;
     int numsegs;

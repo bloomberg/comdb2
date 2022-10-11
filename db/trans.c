@@ -41,8 +41,8 @@ static int check_trn_purge(void *trnarg, void *purgebuf)
 
     curtime = time(NULL);
 
-    /* transaction is not blocking on malloc() and is older than 10 seconds! */
-    if (!trn->blocking &&
+    /* transaction is not being processed and is older than 10 seconds! */
+    if (!trn->inuse &&
         (curtime - trn->timestamp) > gbl_longblk_trans_purge_interval) {
         pbuf->purgearr[pbuf->count] = trn;
         pbuf->count++;
