@@ -50,6 +50,7 @@ struct javasp_trans_state {
     void *trans;
     void *parent_trans;
     int debug;
+    int lockref;
 };
 
 struct sp_rec_blob {
@@ -205,6 +206,7 @@ struct javasp_trans_state *javasp_trans_start(int debug)
     st->trans = NULL;
     st->parent_trans = NULL;
     st->debug = 0;
+    st->lockref = 1;
 
     SP_READLOCK();
 
@@ -223,10 +225,21 @@ void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
     }
 }
 
+void javasp_trans_release(struct javasp_trans_state *javasp_trans_handle)
+{
+    if (javasp_trans_handle->lockref) {
+        SP_RELLOCK();
+        javasp_trans_handle->lockref = 0;
+    }
+}
+
 void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle)
 {
     if (javasp_trans_handle) {
-        SP_RELLOCK();
+        if (javasp_trans_handle->lockref) {
+            SP_RELLOCK();
+            javasp_trans_handle->lockref = 0;
+        }
         bzero(javasp_trans_handle, sizeof(struct javasp_trans_state));
         free(javasp_trans_handle);
     }
