@@ -1,0 +1,4 @@
+logmsg level info
+debug_add_replication_latency on
+# uncomment to see bug
+# javasp_early_release off

@@ -724,6 +724,9 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
         bdberr);
 }
 
+int gbl_javasp_early_release = 1;
+int gbl_debug_add_replication_latency = 0;
+
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey,
@@ -755,12 +758,22 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         iq->sc_locked = 0;
     }
 
+    /* release_schema_lk == parent-tran */
+    if (release_schema_lk && iq->jsph && gbl_javasp_early_release) {
+        javasp_trans_release(iq->jsph);
+    }
+
     if (rc != 0) {
         return rc;
     }
 
     rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
                                    timeoutms, adaptive, &ss);
+    
+    if (release_schema_lk && gbl_debug_add_replication_latency) {
+        logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
+        sleep(5);
+    }
 
     if (cnonce) {
         DB_LSN *lsn = (DB_LSN *)&ss;

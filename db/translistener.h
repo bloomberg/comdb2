@@ -128,6 +128,9 @@ void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
 /* Call this at the end of a transaction (committed or aborted).  Cleans up. */
 void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle);
 
+/* Call this prior to distributed commit to release splock */
+void javasp_trans_release(struct javasp_trans_state *javasp_trans_handle);
+
 /* This is used to determine if we want to be notified about a particular
  * event - if we don't care, then the block processor needn't waste time
  * creating temporary things.  It is not an error to report events that
