@@ -260,6 +260,8 @@ extern int gbl_ufid_add_on_collect;
 extern unsigned gbl_ddlk;
 extern int gbl_abort_on_missing_ufid;
 extern int gbl_ufid_dbreg_test;
+extern int gbl_debug_add_replication_latency;
+extern int gbl_javasp_early_release;
 
 extern long long sampling_threshold;
 
