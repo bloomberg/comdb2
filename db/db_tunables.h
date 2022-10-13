@@ -1351,7 +1351,7 @@ REGISTER_TUNABLE("verbose_send_cohlease",
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("dedup_rep_all_reqs", "Only allow a single rep-all on queue to the master. (Default: on)",
+REGISTER_TUNABLE("dedup_rep_all_reqs", "Only allow a single rep-all on queue to the master. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_dedup_rep_all_reqs, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("decoupled_logputs",
                  "Perform logputs out-of-band. (Default: on)", TUNABLE_BOOLEAN,
