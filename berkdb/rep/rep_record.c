@@ -464,7 +464,7 @@ int gbl_verbose_repdups = 0;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
-int gbl_dedup_rep_all_reqs = 1;
+int gbl_dedup_rep_all_reqs = 0;
 
 int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 					 const char *func, int line)
