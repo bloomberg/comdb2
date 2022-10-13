@@ -250,9 +250,12 @@ struct host_node_tag {
     unsigned long long num_flushes;
     pthread_mutex_t timestamp_lock; /* no more premature session killing */
 
-    int throttle_waiters;
-    pthread_mutex_t throttle_lock;
-    pthread_cond_t throttle_wakeup;
+    /* Number of waiters. This includes number of throttle waiters and connect
+       thread waiter. A host can't be safely removed unless its nwaiters is 0
+       and its reader or writer has exited. */
+    int nwaiters;
+    pthread_mutex_t waiter_lock;
+    pthread_cond_t waiter_wakeup;
     int last_queue_dump;
     int last_print_queue_time;
     int interval_max_queue_count;

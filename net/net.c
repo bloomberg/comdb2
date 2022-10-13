@@ -1440,8 +1440,8 @@ static void net_throttle_wait_loop(netinfo_type *netinfo_ptr,
                                    uint64_t byte_threshold)
 {
     int loops = 0;
-    Pthread_mutex_lock(&(host_ptr->throttle_lock));
-    host_ptr->throttle_waiters++;
+    Pthread_mutex_lock(&(host_ptr->waiter_lock));
+    host_ptr->nwaiters++;
 
     while (!host_ptr->closed && ((host_ptr->enque_count > queue_threshold) ||
                                  (host_ptr->enque_bytes > byte_threshold)))
@@ -1468,14 +1468,13 @@ static void net_throttle_wait_loop(netinfo_type *netinfo_ptr,
         host_ptr->stats.throttle_waits++;
         netinfo_ptr->stats.throttle_waits++;
 
-        pthread_cond_timedwait(&(host_ptr->throttle_wakeup),
-                               &(host_ptr->throttle_lock), &waittime);
+        pthread_cond_timedwait(&(host_ptr->waiter_wakeup), &(host_ptr->waiter_lock), &waittime);
 
         loops++;
     }
 
-    host_ptr->throttle_waiters--;
-    Pthread_mutex_unlock(&(host_ptr->throttle_lock));
+    host_ptr->nwaiters--;
+    Pthread_mutex_unlock(&(host_ptr->waiter_lock));
 }
 
 
@@ -2499,10 +2498,10 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
 
     Pthread_mutex_init(&(ptr->enquelk), NULL);
     Pthread_mutex_init(&(ptr->wait_mutex), NULL);
-    Pthread_mutex_init(&(ptr->throttle_lock), NULL);
+    Pthread_mutex_init(&(ptr->waiter_lock), NULL);
     Pthread_cond_init(&(ptr->ack_wakeup), NULL);
     Pthread_cond_init(&(ptr->write_wakeup), NULL);
-    Pthread_cond_init(&(ptr->throttle_wakeup), NULL);
+    Pthread_cond_init(&(ptr->waiter_wakeup), NULL);
 
     if (netinfo_ptr->qstat_init_rtn) {
         ptr->qstat = (netinfo_ptr->qstat_init_rtn)(
@@ -2614,11 +2613,11 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
     Pthread_mutex_destroy(&(host_node_ptr->write_lock));
     Pthread_mutex_destroy(&(host_node_ptr->enquelk));
     Pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
-    Pthread_mutex_destroy(&(host_node_ptr->throttle_lock));
+    Pthread_mutex_destroy(&(host_node_ptr->waiter_lock));
 
     Pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
     Pthread_cond_destroy(&(host_node_ptr->write_wakeup));
-    Pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
+    Pthread_cond_destroy(&(host_node_ptr->waiter_wakeup));
 
 #ifdef PER_THREAD_MALLOC
     if (!gbl_libevent)
@@ -3885,7 +3884,7 @@ static void *writer_thread(void *args)
             /* release this before writing to sock*/
             Pthread_mutex_unlock(&(host_node_ptr->enquelk));
 
-            Pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
+            Pthread_cond_broadcast(&(host_node_ptr->waiter_wakeup));
 
             rc = 0;
             flags = 0;
@@ -4893,11 +4892,11 @@ static void *connect_thread(void *arg)
               host_node_ptr->have_writer_thread;
         Pthread_mutex_unlock(&(host_node_ptr->lock));
 
-        Pthread_mutex_lock(&(host_node_ptr->throttle_lock));
-        ref += host_node_ptr->throttle_waiters;
-        if (host_node_ptr->throttle_waiters > 0)
-            Pthread_cond_broadcast(&(host_node_ptr->throttle_wakeup));
-        Pthread_mutex_unlock(&(host_node_ptr->throttle_lock));
+        Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
+        ref += host_node_ptr->nwaiters;
+        if (host_node_ptr->nwaiters > 0)
+            Pthread_cond_broadcast(&(host_node_ptr->waiter_wakeup));
+        Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
 
         if (ref == 0)
             break;
@@ -5086,6 +5085,13 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         }
         /* shutdown the fd. rd/wr thds (if any) will stop immediately */
         close_hostnode_ll(host_node_ptr);
+
+        /* We're about to give up the locks. Increment nwaiters to prevent
+           the node from being removed before we re-acquire the locks. */
+        Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
+        ++host_node_ptr->nwaiters;
+        Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
+
         Pthread_mutex_unlock(&(host_node_ptr->lock));
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         poll(NULL, 0, 100);
@@ -5095,6 +5101,11 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         }
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
         Pthread_mutex_lock(&(host_node_ptr->lock));
+
+        /* Decrement nwaiters as the host now can be removed safely after we release the locks. */
+        Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
+        --host_node_ptr->nwaiters;
+        Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
     }
 
     /* Set the port so that we can send out messages that the other end
