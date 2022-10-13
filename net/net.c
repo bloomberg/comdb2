@@ -5093,13 +5093,13 @@ static void *connect_thread(void *arg)
         Pthread_mutex_lock(&(host_node_ptr->lock));
         ref = host_node_ptr->have_reader_thread +
               host_node_ptr->have_writer_thread;
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
 
         Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
         ref += host_node_ptr->nwaiters;
         if (host_node_ptr->nwaiters > 0)
             Pthread_cond_broadcast(&(host_node_ptr->waiter_wakeup));
         Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
+        Pthread_mutex_unlock(&(host_node_ptr->lock));
 
         if (ref == 0)
             break;
