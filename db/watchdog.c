@@ -381,10 +381,20 @@ void watchdog_enable(void)
 
 void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
+static void abort_stalled_exit(int signum) {
+    logmsg(LOGMSG_WARN, "Aborting stalled watchdog alarm\n");
+    raise(SIGABRT);
+    _exit(1);
+}
+
 void comdb2_die(int aborat)
 {
     pid_t pid;
     char pstack_cmd[128];
+
+    if (aborat) {
+        signal(SIGALRM, abort_stalled_exit);
+    }
 
     /* we have 60 seconds to "print useful stuff" */
     alarm(60);
