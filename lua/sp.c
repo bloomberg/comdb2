@@ -4010,6 +4010,19 @@ static int db_csv_to_table(Lua L)
         }
     }
     free(csv.z);
+    // Expected Lua stack:
+    //   2: Array of parsed values
+    //   1: CSV string
+    if (lua_gettop(L) > 2) { // clean up any left-overs
+        if (cols) {
+            lua_rawseti(L, -2, ++lines);
+        } else {
+            lua_pop(L, 1); //new-line (EOF)
+        }
+    }
+    if (lua_gettop(L) != 2) {
+        return luaL_error(L, "csv_to_table failed");
+    }
     if (lines == 1) lua_rawgeti(L, -1, 1);
     return 1;
 }
