@@ -5250,14 +5250,23 @@ int request_delaymore(void *bdb_state_in)
 
 int gbl_rep_wait_core_ms = 0;
 
+static void abort_stalled_exit(int signum)
+{
+    logmsg(LOGMSG_WARN, "Aborting stalled watchdog alarm\n");
+    raise(SIGABRT);
+    _exit(1);
+}
+
 void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
                                       int fatal)
 {
     if (watchdog || fatal) {
-      alarm(60);
+        if (fatal) {
+            signal(SIGALRM, abort_stalled_exit);
+        }
+        alarm(60);
 
-      logmsg(LOGMSG_FATAL,
-             "Getting ready to die, printing useful debug info.\n");
+        logmsg(LOGMSG_FATAL, "Getting ready to die, printing useful debug info.\n");
     }
     if (bdb_state->callback->threaddump_rtn)
         (bdb_state->callback->threaddump_rtn)();
