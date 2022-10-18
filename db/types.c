@@ -6586,9 +6586,11 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, cin, inlen - 1);
             *outdtsz += (inlen - 1);
-        }
-        if (inlen < outlen - BLOB_ON_DISK_LEN) {
-            memset(cout + BLOB_ON_DISK_LEN + inlen, 0, outlen - inlen - BLOB_ON_DISK_LEN);
+
+            // looks like for this function inlen is always > 0 so should always reach this conditional
+            if (inlen < outlen - BLOB_ON_DISK_LEN + 1) {
+                memset(cout + BLOB_ON_DISK_LEN + inlen - 1, 0, outlen - inlen - BLOB_ON_DISK_LEN + 1);
+            }
         }
     } else if (outblob) {
         if (inlen > gbl_blob_sz_thresh_bytes)
