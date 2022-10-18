@@ -5250,6 +5250,8 @@ int request_delaymore(void *bdb_state_in)
 
 int gbl_rep_wait_core_ms = 0;
 
+#include <signal.h>
+
 static void abort_stalled_exit(int signum)
 {
     logmsg(LOGMSG_WARN, "Aborting stalled watchdog alarm\n");
