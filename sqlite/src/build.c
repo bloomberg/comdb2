@@ -3918,6 +3918,7 @@ void sqlite3CreateIndex(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       pTab->hasExprIdx = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      pIndex->bHasExpr = 1;
     }else{
       j = pCExpr->iColumn;
       assert( j<=0x7fff );
