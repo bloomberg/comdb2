@@ -623,6 +623,7 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
    The query is aborted if this returns non-zero.
  */
 int gbl_debug_sleep_in_sql_tick;
+int gbl_debug_sleep_in_analyze;
 static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
 {
     struct sqlclntstate *clnt;
@@ -644,7 +645,7 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
     /* Increment per-clnt sqltick */
     ++clnt->sqltick;
 
-    if (gbl_debug_sleep_in_sql_tick)
+    if (gbl_debug_sleep_in_sql_tick || (gbl_debug_sleep_in_analyze && clnt->is_analyze))
         sleep(1);
 
     /* statement cancelled? done */

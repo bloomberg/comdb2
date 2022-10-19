@@ -2156,6 +2156,10 @@ REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid 
 REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_analyze", "Sleep analyze sql tick.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_analyze, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+
 REGISTER_TUNABLE("debug_consumer_lock",
                  "Enable debug-trace for consumer lock.  "
                  "(Default: off)",
