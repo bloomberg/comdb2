@@ -947,7 +947,7 @@ static int dispatch_table_thread(table_descriptor_t *td)
         ++timeout.tv_sec; // 1 second timeout
         rc = pthread_cond_timedwait(&table_thd_cond, &table_thd_mutex, &timeout);
         if (rc == ETIMEDOUT) {
-            if (bdb_lock_desired(thedb->bdb_env)) {
+            if (pthread_getspecific(query_info_key) && bdb_lock_desired(thedb->bdb_env)) {
                 rc = recover_deadlock_simple(thedb->bdb_env);
                 if (rc) {
                     logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc);
@@ -989,7 +989,7 @@ static int wait_for_table(table_descriptor_t *td)
         ++timeout.tv_sec; // 1 second timeout
         rc = pthread_cond_timedwait(&table_thd_cond, &table_thd_mutex, &timeout);
         if (rc == ETIMEDOUT) {
-            if (bdb_lock_desired(thedb->bdb_env)) {
+            if (pthread_getspecific(query_info_key) && bdb_lock_desired(thedb->bdb_env)) {
                 rc = recover_deadlock_simple(thedb->bdb_env);
                 if (rc) {
                     logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc);

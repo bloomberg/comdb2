@@ -55,6 +55,85 @@ function checkifdone {
     done
 }
 
+function runaatest {
+    rep=$1
+    master=$2
+
+    # pre checks
+    analyzedelay=$(cdb2sql --tabs $dbnm --host $rep "select value from comdb2_tunables where name='test_delay_analyze_commit'")
+    if [ "$analyzedelay" != "ON" ]; then
+        echo "Unable to set test_delay_analyze_commit to ON"
+        exit 1
+    fi
+
+    # one table-thread
+    cdb2sql $dbnm --host $rep "exec procedure sys.cmd.send('analyze tblthd 1')" >/dev/null
+    numthds=$(cdb2sql --tabs $dbnm --host $rep "select value from comdb2_tunables where name='analyze_tbl_threads'")
+    if [ $numthds != 1 ]; then
+        echo "Unable to set analyze_tbl_threads to 1, got $numthds instead"
+        exit 1
+    fi
+
+    # enable autoanalyze
+    for node in ${CLUSTER}
+    do
+        cdb2sql $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr autoanalyze 1')"
+    done
+
+    # sleep for a second per record while analyzing
+    for node in ${CLUSTER}
+    do
+        cdb2sql $dbnm --host $node "put tunable 'debug_sleep_in_analyze' 1"
+    done
+
+    # trigger autoanalyze
+    for table in t v;
+    do
+        cdb2sql $dbnm --host $rep "update $table set a=a where 1" >/dev/null
+    done
+
+    sleep 3
+
+    # run election on master
+    cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('downgrade')" 2>election.txt &
+    electionpid=$!
+
+    timeout=60
+    st=$SECONDS
+
+    set +e # next block of code relies on checking error codes
+    checkifdone $electionpid $timeout $st
+    ps -p $electionpid >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "Error: Election still running after 1 minute"
+        kill -9 $electionpid >/dev/null 2>&1 
+        failed=1
+    fi
+    set -e
+
+    sleep 10
+
+    # disable sleep for a second per record while analyzing
+    for node in ${CLUSTER}
+    do
+        cdb2sql $dbnm --host $node "put tunable 'debug_sleep_in_analyze' 0"
+        cdb2sql $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr autoanalyze 0')"
+    done
+
+
+    electionerrors=$(cat election.txt)
+
+    if [ "$electionerrors" != "" ]; then
+        echo "Election Error: $electionerrors"
+        failed=1
+    fi
+
+    if [ $failed -eq 1 ]; then
+        exit 1
+    fi
+}
+
+
 function runtest {
     rep=$1
     master=$2
@@ -148,3 +227,12 @@ master=`getmaster`
 runtest $rep $master "analyze"
 
 echo "dispatch_table_thread test passed"
+
+sleep 3
+
+echo "Test autoanalyze recover_deadlock"
+rep=`getrepnode`
+master=`getmaster`
+runaatest $rep $master
+
+echo "autoanalyze test passed"
