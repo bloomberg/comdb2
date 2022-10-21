@@ -1908,6 +1908,14 @@ REGISTER_TUNABLE("clean_exit_on_sigterm",
                  TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,
                  NOARG, NULL, NULL, update_clean_exit_on_sigterm, NULL);
 
+REGISTER_TUNABLE("msgwaittime",
+                 "Network timeout for pushnext & queue changes.  (Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_msgwaittime, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("scwaittime",
+                 "Network timeout for schema changes.  (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_scwaittime, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_children_lock",
                  "Stacktrace when database acquires or releases children lock."
                  "  (Default: off)",

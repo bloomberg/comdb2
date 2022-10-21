@@ -3360,8 +3360,8 @@ int send_to_all_nodes(void *dta, int len, int type, int waittime)
     return failed;
 }
 
-#define MSGWAITTIME 300000 /* tunable? */
-#define SCWAITTIME 1000
+int gbl_msgwaittime = 10000;
+int gbl_scwaittime = 1000;
 
 /* Send an async message to the master node reminding it that I appear to be
  * incoherent and would it kindly let me know if this isn't th case anymore. */
@@ -3377,7 +3377,7 @@ int send_forgetmenot(void)
 
 int broadcast_close_all_dbs(void)
 {
-    return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, MSGWAITTIME);
+    return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, gbl_msgwaittime);
 }
 
 int broadcast_sc_end(const char *table, uint64_t seed)
@@ -3393,7 +3393,7 @@ int broadcast_sc_end(const char *table, uint64_t seed)
         sc->table[0] = '\0';
     sc->seed = flibc_htonll(seed);
 
-    return send_to_all_nodes(sc, len, NET_STOP_SC, SCWAITTIME);
+    return send_to_all_nodes(sc, len, NET_STOP_SC, gbl_scwaittime);
 }
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
@@ -3418,12 +3418,12 @@ int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
     sc->time = flibc_htonll(t);
     strcpy(sc->host, intern(from));
 
-    return send_to_all_nodes(sc, len, NET_START_SC, SCWAITTIME);
+    return send_to_all_nodes(sc, len, NET_START_SC, gbl_scwaittime);
 }
 
 int broadcast_sc_ok(void)
 {
-    return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, SCWAITTIME);
+    return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, gbl_scwaittime);
 }
 
 int broadcast_procedure_op(int op, const char *name, const char *param)
@@ -3450,7 +3450,7 @@ int broadcast_procedure_op(int op, const char *name, const char *param)
     memcpy(ptr, param, paramlen);
     ptr += paramlen;
 
-    return send_to_all_nodes(msg, len, NET_JAVASP_OP, MSGWAITTIME);
+    return send_to_all_nodes(msg, len, NET_JAVASP_OP, gbl_msgwaittime);
 }
 
 int broadcast_add_new_queue(char *table, int avgitemsz)
@@ -3463,13 +3463,13 @@ int broadcast_add_new_queue(char *table, int avgitemsz)
     msg.reserved = 0;
     strncpy0(msg.name, table, sizeof(msg.name));
     msg.avgitemsz = avgitemsz;
-    return send_to_all_nodes(&msg, sizeof(msg), NET_NEW_QUEUE, MSGWAITTIME);
+    return send_to_all_nodes(&msg, sizeof(msg), NET_NEW_QUEUE, gbl_msgwaittime);
 }
 
 int broadcast_flush_all(void)
 {
     int i = 0;
-    return send_to_all_nodes(&i, sizeof(int), NET_FLUSH_ALL, MSGWAITTIME);
+    return send_to_all_nodes(&i, sizeof(int), NET_FLUSH_ALL, gbl_msgwaittime);
 }
 
 int broadcast_add_consumer(const char *queuename, int consumern,
@@ -3480,7 +3480,7 @@ int broadcast_add_consumer(const char *queuename, int consumern,
     msg.consumern = consumern;
     strncpy0(msg.name, queuename, sizeof(msg.name));
     strncpy0(msg.method, method, sizeof(msg.method));
-    return send_to_all_nodes(&msg, sizeof(msg), NET_ADD_CONSUMER, MSGWAITTIME);
+    return send_to_all_nodes(&msg, sizeof(msg), NET_ADD_CONSUMER, gbl_msgwaittime);
 }
 
 /* Return 1 if we should allow connections from/to the given node, return 0

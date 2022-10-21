@@ -349,6 +349,9 @@ extern int gbl_legacy_defaults;
 extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
+extern int gbl_msgwaittime;
+extern int gbl_scwaittime;
+
 extern int gbl_reorder_idx_writes;
 extern int gbl_perform_full_clean_exit;
 extern int gbl_clean_exit_on_sigterm;
