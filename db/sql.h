@@ -636,6 +636,7 @@ struct sqlclntstate {
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
+    pthread_mutex_t sql_lk;
     char *sql;
     int recno;
     int client_understands_query_stats;

@@ -1209,7 +1209,9 @@ static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
     CDB2QUERY *query = appdata->query = stmt->query;
     appdata->sqlquery = query->sqlquery;
     strncpy0(clnt->tzname, stmt->tzname, sizeof(clnt->tzname));
+    Pthread_mutex_lock(&clnt->sql_lk);
     clnt->sql = query->sqlquery->sql_query;
+    Pthread_mutex_unlock(&clnt->sql_lk);
     return NULL;
 }
 
@@ -2483,7 +2485,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 #endif
         APPDATA->query = query;
         APPDATA->sqlquery = sql_query;
+        Pthread_mutex_lock(&clnt.sql_lk);
         clnt.sql = sql_query->sql_query;
+        Pthread_mutex_unlock(&clnt.sql_lk);
         clnt.added_to_hist = 0;
 
         free_original_normalized_sql(&clnt);
@@ -2614,7 +2618,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
              * clnt.sql points into the protobuf unpacked buffer, which becomes
              * invalid after cdb2__query__free_unpacked. Reset the pointer here.
              */
+            Pthread_mutex_lock(&clnt.sql_lk);
             clnt.sql = NULL;
+            Pthread_mutex_unlock(&clnt.sql_lk);
         }
 
         query = read_newsql_query(dbenv, &clnt, sb);
