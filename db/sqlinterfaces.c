@@ -5276,6 +5276,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->dtran_mtx);
     Pthread_mutex_destroy(&clnt->state_lk);
     Pthread_mutex_destroy(&clnt->sql_tick_lk);
+    Pthread_mutex_destroy(&clnt->sql_lk);
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
@@ -5290,6 +5291,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         Pthread_mutex_init(&clnt->dtran_mtx, NULL);
         Pthread_mutex_init(&clnt->state_lk, NULL);
         Pthread_mutex_init(&clnt->sql_tick_lk, NULL);
+        Pthread_mutex_init(&clnt->sql_lk, NULL);
     }
     else {
        clnt->sql_since_reset = 0;

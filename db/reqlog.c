@@ -1994,9 +1994,11 @@ void reqlog_log_all_longreqs(void)
 
     Pthread_mutex_lock(&clnt_lk);
     LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+        Pthread_mutex_lock(&clnt->sql_lk);
         if (!clnt->done && clnt->thd != NULL && clnt->sql) {
             reqlog_log_longreq(clnt);
         }
+        Pthread_mutex_unlock(&clnt->sql_lk);
     }
     Pthread_mutex_unlock(&clnt_lk);
 
