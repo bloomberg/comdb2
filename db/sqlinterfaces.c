@@ -2792,7 +2792,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-int (*externalComdb2AuthenticateUserMakeRequest)(void*) = NULL;
+int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
 
 /* If user password does not match this function
  * will write error response and return a non 0 rc
@@ -2805,7 +2805,7 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if((gbl_uses_externalauth || gbl_uses_externalauth_connect) && !clnt->admin &&
         externalComdb2AuthenticateUserMakeRequest) {
           clnt->authdata = get_authdata(clnt);
-          int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+          int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, clnt->argv0);
           if (rc) {
               write_response(clnt, RESPONSE_ERROR,
                              "User isn't allowed to make request on this db",
