@@ -414,11 +414,11 @@ static int verify(Comdb2RLE *c)
     uint8_t buf[c->insz];
     Comdb2RLE d = { .in = c->out, .insz = c->outsz, .out = buf, .outsz = c->insz};
     if (decompressComdb2RLE(&d) != 0) {
-        fprintf(stderr, "Comdb2RLE decompress error size:%d data:0x", c->insz);
+        fprintf(stderr, "Comdb2RLE decompress error size:%zu data:0x", c->insz);
         print_hex(c->in, c->insz);
         bad = 1;
     } else if (memcmp(c->in, buf, c->insz) != 0) {
-        fprintf(stderr, "Comdb2RLE memcmp error - Input size:%d data:0x", c->insz);
+        fprintf(stderr, "Comdb2RLE memcmp error - Input size:%zu data:0x", c->insz);
         print_hex(c->in, c->insz);
         bad = 1;
     }
@@ -618,7 +618,7 @@ int compressComdb2RLE_hints(Comdb2RLE *c, uint16_t *fld_hints)
 {
     Data input = {.dt = c->in, .sz = c->insz};
     Data output = {.dt = c->out, .sz = c->outsz};
-    uint32_t prev = 0;
+    uint32_t prev = 0; // should only be > 0 if references fields that cannot be compressed
     uint16_t sz;
     while ((sz = *fld_hints) != 0) {
         uint32_t w = 0; // wellknown pattern of bytes?
@@ -676,9 +676,17 @@ int compressComdb2RLE_hints(Comdb2RLE *c, uint16_t *fld_hints)
                 }
                 // adjust to point at next field
                 uint32_t adj = next - consumed;
-                prev += adj;
-                input.dt += adj;
-                input.sz -= adj;
+
+                // encode last adj bytes now if repeats so prev doesn't contain compressible data
+                if (adj > 0 && repeats_rev(&input, adj, &tmp_r)) {
+                    if (encode_repeat_rev(&output, &input, tmp_r, adj, &prev)) {
+                        return 1;
+                    }
+                } else {
+                    prev += adj;
+                    input.dt += adj;
+                    input.sz -= adj;
+                }
             }
         } else {
             prev += sz;
