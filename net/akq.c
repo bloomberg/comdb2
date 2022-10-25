@@ -75,10 +75,16 @@ static void akq_worker_int(struct akq *q)
     TAILQ_INIT(&work_list);
     while (1) {
         Pthread_mutex_lock(&q->lock);
+        if (q->stop_work) {
+            Pthread_mutex_unlock(&q->lock);
+            return;
+        }
         TAILQ_CONCAT(&q->free_list, &work_list, entry);
         if (TAILQ_EMPTY(&q->work_list)) {
             Pthread_cond_wait(&q->cond, &q->lock);
         }
+        /* Check it again. If we're asked to stop,
+           don't waste time doing any work, just exit. */
         if (q->stop_work) {
             Pthread_mutex_unlock(&q->lock);
             return;
