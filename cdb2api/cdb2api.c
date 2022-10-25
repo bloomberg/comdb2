@@ -5371,10 +5371,9 @@ free_vars:
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
     int timeoutms = 10 * 1000;
+    sbuf2free(ss);
     cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000,
                                 comdb2db_num);
-
-    sbuf2free(ss);
     free_events(&tmp);
     return 0;
 }
@@ -5544,9 +5543,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
 
     int timeoutms = 10 * 1000;
 
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
-
     sbuf2free(sb);
+    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
 
     rc = (*num_valid_hosts > 0) ? 0 : -1;
 
