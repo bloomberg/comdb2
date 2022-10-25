@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -331,6 +332,145 @@ static void test_repeat_rev()
     fprintf(stderr, "passed %s\n", __func__);
 }
 
+/*
+Problematic when starting with short or int that = 0 followed by 2 compressible strings
+Given short, vutf8[1000], vutf8[500], insert (0, 'hi', 'hj') = (0, 036869, 03686a)
+Previously second field would not be compressed since would jump to middle of second field and not compress in this case
+Previously:
+compressComdb2RLE_hints
+   encode_repeat: 2 x 0x080000
+     encode_prev: 0x0003686900000(many many 0s)000800000003686a
+encode_wellknown: 498 x 0x00
+Now:
+compressComdb2RLE_hints
+   encode_repeat: 2 x 0x080000
+     encode_prev: 0x00036869
+encode_wellknown: 998 x 0x00
+     encode_prev: 0x0800000003686a
+encode_wellknown: 498 x 0x00
+*/
+static void test_encode_middle_field()
+{
+    const uint8_t data = 0x08;
+    #pragma pack(1)
+    struct row {
+        uint8_t h1; /* header 1 */
+        u_short c1; //uint8_t c1[2]; /* column 1 */
+
+        uint8_t h2;
+        struct {
+            int32_t len;
+            uint8_t dta[1000]; // previously would fail to encode this
+        } c2;
+
+        uint8_t h3;
+        struct {
+            int32_t len;
+            uint8_t dta[500];
+        } c3;
+    };
+    #pragma pack()
+
+    struct row in =  {
+        .h1 = data,
+        .c1 = 0,
+
+        .h2 = data,
+        .c2 = { .len = htonl(strlen("hi") + 1), .dta = "hi"},
+
+        .h3 = data,
+        .c3 = { .len = htonl(strlen("hj") + 1), .dta = "hj"},
+    };
+
+    uint8_t out[sizeof(in) * 2];
+    uint8_t out_in[sizeof(in)];
+
+    uint16_t hints[] = {
+        sizeof(in.c1) + 1,
+        sizeof(in.c2) + 1,
+        sizeof(in.c3) + 1,
+        0
+    };
+
+    Comdb2RLE c = { .in = (uint8_t *)&in, .insz = sizeof(in), .out = out, .outsz = sizeof(out) };
+    assert(compressComdb2RLE_hints(&c, hints) == 0);
+
+    assert(c.outsz < 100); // assert this compresses well
+
+    Comdb2RLE d = { .in = (uint8_t *)out, .insz = c.outsz, .out = out_in, .outsz = sizeof(out_in) };
+    assert(decompressComdb2RLE(&d) == 0);
+    assert(d.outsz == c.insz);
+    assert(memcmp(&in, out_in, sizeof(in)) == 0);
+    fprintf(stderr, "passed %s\n", __func__);
+}
+
+/*
+Given short, vutf8[1000], short, vutf8[500], insert (0, 'hi', 1, 'hj') = (0, 036869, 1, 03686a)
+Similar to above, previously second field would not be compressed since would jump to middle of second field and not compress in this case
+The difference is that in this case when you reach c3 (short=1), which=0 in compressComdb2RLE_hints()
+*/
+static void test_encode_middle_field_2()
+{
+    const uint8_t data = 0x08;
+    #pragma pack(1)
+    struct row {
+        uint8_t h1; /* header 1 */
+        u_short c1; //uint8_t c1[2]; /* column 1 */
+
+        uint8_t h2;
+        struct {
+            int32_t len;
+            uint8_t dta[1000]; // previously would fail to encode this
+        } c2;
+
+        uint8_t h3;
+        u_short c3;
+
+        uint8_t h4;
+        struct {
+            int32_t len;
+            uint8_t dta[500];
+        } c4;
+    };
+    #pragma pack()
+
+    struct row in =  {
+        .h1 = data,
+        .c1 = 0,
+
+        .h2 = data,
+        .c2 = { .len = htonl(strlen("hi") + 1), .dta = "hi"},
+
+        .h3 = data,
+        .c3 = 1,
+
+        .h4 = data,
+        .c4 = { .len = htonl(strlen("hj") + 1), .dta = "hj"},
+    };
+
+    uint8_t out[sizeof(in) * 2];
+    uint8_t out_in[sizeof(in)];
+
+    uint16_t hints[] = {
+        sizeof(in.c1) + 1,
+        sizeof(in.c2) + 1,
+        sizeof(in.c3) + 1,
+        sizeof(in.c4) + 1,
+        0
+    };
+
+    Comdb2RLE c = { .in = (uint8_t *)&in, .insz = sizeof(in), .out = out, .outsz = sizeof(out) };
+    assert(compressComdb2RLE_hints(&c, hints) == 0);
+
+    assert(c.outsz < 100); // assert this compresses well
+
+    Comdb2RLE d = { .in = (uint8_t *)out, .insz = c.outsz, .out = out_in, .outsz = sizeof(out_in) };
+    assert(decompressComdb2RLE(&d) == 0);
+    assert(d.outsz == c.insz);
+    assert(memcmp(&in, out_in, sizeof(in)) == 0);
+    fprintf(stderr, "passed %s\n", __func__);
+}
+
 int main(int argc, char *argv[])
 {
     test_varint();
@@ -341,6 +481,8 @@ int main(int argc, char *argv[])
     test_encode_repeat();
     test_encode_well_known();
     test_decode();
+    test_encode_middle_field();
+    test_encode_middle_field_2();
 
     fprintf(stderr, "PASSED ALL TESTS\n");
     return EXIT_SUCCESS;
