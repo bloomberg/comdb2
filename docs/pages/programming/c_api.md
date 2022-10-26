@@ -650,7 +650,7 @@ These return codes can be found in ```cdb2api.h```
 | 203  |```CDB2ERR_DEADLOCK``` | <a id="CDB2ERR_DEADLOCK"/>Deadlock detected. 
 | -105 |```CDB2ERR_TRAN_IO_ERROR``` | <a id="CDB2ERR_TRAN_IO_ERROR"/>I/O error. 
 | -106 |```CDB2ERR_ACCESS``` | <a id="CDB2ERR_ACCESS"/>Access denied. 
-| -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | <a id="CDB2ERR_TRAN_MODE_UNSUPPORTED"/>Transaction mode is unsupported. 
+| -107 |```CDB2ERR_QUERYLIMIT``` | <a id="CDB2ERR_QUERYLIMIT"/>Query has exceeded a limit. To define query limits, see [Query limit commands](config_files.html#query-limit-commands).
 | -110 |```CDB2ERR_SCHEMA``` | <a id="CDB2ERR_SCHEMA"/>Table schema was changed in the middle of query execution.
 | 2    |```CDB2ERR_VERIFY_ERROR``` | <a id="CDB2ERR_VERIFY_ERROR"/>An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose). 
 | 3    |```CDB2ERR_FKEY_VIOLATION``` | <a id="CDB2ERR_FKEY_VIOLATION"/>Foreign key violation. 

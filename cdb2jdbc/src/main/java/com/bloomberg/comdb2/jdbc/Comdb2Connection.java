@@ -751,13 +751,12 @@ public class Comdb2Connection implements Connection {
                 _ex = new SQLNonTransientException(msg, "25000", rc, ex);
                 break;
 
-            /* feature not supported - 0Axxx */
-            /* CDB2ERR_TRAN_MODE_UNSUPPORTED and SQLHERR_LIMIT have the same value.
-               The code below is commented out to avoid the confusion.
-            case Constants.Errors.CDB2ERR_TRAN_MODE_UNSUPPORTED:
-                _ex = new SQLFeatureNotSupportedException(msg, "0A000", rc, ex);
+            /* query exceeding limit (maxquerytime, maxcost, tablescan, etc.) - HY008 */
+            case Constants.Errors.CDB2ERR_QUERYLIMIT:
+                _ex = new SQLNonTransientConnectionException(msg, "HY008", rc, ex);
                 break;
-            */
+
+            /* feature not supported - 0Axxx */
             case Constants.Errors.CDB2ERR_NOTSUPPORTED:
                 _ex = new SQLFeatureNotSupportedException(msg, "0A000", rc, ex);
                 break;

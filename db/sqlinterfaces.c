@@ -6306,7 +6306,7 @@ int sqlserver2sqlclient_error(int rc)
     case SQLITE_COST_TOO_HIGH:
     case SQLITE_NO_TEMPTABLES:
     case SQLITE_NO_TABLESCANS:
-        return SQLHERR_LIMIT;
+        return CDB2ERR_QUERYLIMIT;
     case SQLITE_TRANTOOCOMPLEX:
         return SQLHERR_ROLLBACKTOOLARGE;
     case SQLITE_CLIENT_CHANGENODE:
@@ -6974,5 +6974,5 @@ void exhausted_appsock_connections(struct sqlclntstate *clnt)
 int maxquerytime_cb(struct sqlclntstate *clnt)
 {
     clnt->statement_timedout = 1;
-    return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), SQLHERR_LIMIT);
+    return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), CDB2ERR_QUERYLIMIT);
 }
