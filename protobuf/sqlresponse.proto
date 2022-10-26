@@ -53,7 +53,7 @@ enum CDB2_ErrorCode {
     TRAN_IO_ERROR           = -105;
     ACCESS                  = -106;
 
-    TRAN_MODE_UNSUPPORTED   = -107;
+    QUERYLIMIT              = -107;
     MASTER_TIMEOUT          = -109;
     APPSOCK_LIMIT           = -110;
     WRONG_DB                = -111;
