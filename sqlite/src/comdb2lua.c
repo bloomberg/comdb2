@@ -224,6 +224,11 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 	struct schema_change_type *sc = new_schemachange_type();
 	sc->is_trigger = 1;
 	sc->addonly = 1;
+    if(comdb2IsDryrun(parse)){
+        sqlite3ErrorMsg(parse, "DRYRUN not supported for this operation");
+        parse->rc = SQLITE_MISUSE;
+        goto out;
+    }
 	strcpy(sc->tablename, qname);
 	struct dest *d = malloc(sizeof(struct dest));
 	d->dest = strdup(method);
@@ -233,6 +238,9 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 	Vdbe *v = sqlite3GetVdbe(parse);
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+out:
+    free_schema_change_type(sc);
 }
 
 void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
@@ -295,6 +303,12 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
         struct schema_change_type *sc = new_schemachange_type();               \
         sc->is_##pfx##func = 1;                                                \
         sc->addonly = 1;                                                       \
+        if(comdb2IsDryrun(parse)){                                             \
+            sqlite3ErrorMsg(parse, "DRYRUN not supported"                  \
+                        "for this operation");                             \
+            (parse)->rc = SQLITE_MISUSE;                                   \
+            return;                                                        \
+        }                                                                      \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
@@ -357,6 +371,12 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
         struct schema_change_type *sc = new_schemachange_type();               \
         sc->is_##pfx##func = 1;                                                \
         sc->addonly = 0;                                                       \
+        if(comdb2IsDryrun(parse)){                                             \
+            sqlite3ErrorMsg(parse, "DRYRUN not supported"                  \
+                                        "for this operation");             \
+            (parse)->rc = SQLITE_MISUSE;                                   \
+            return;                                                        \
+        }                                                                      \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
