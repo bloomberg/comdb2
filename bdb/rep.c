@@ -679,6 +679,12 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
     static int lastpr = 0;
     static unsigned long long throttles = 0;
     unsigned long long cntbytes;
+    uint32_t window = gbl_incoherent_logput_window;
+
+    /* Disabled */
+    if (window <= 0) {
+        return 0;
+    }
 
     if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
         pr = 1;
@@ -687,41 +693,30 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
 
     /* INCOHERENT & INCOHERENT_SLOW */
     if (is_incoherent(bdb_state, host)) {
-        uint32_t window = gbl_incoherent_logput_window;
 
         DB_LSN *lsnp, *masterlsn;
-        if (!window) {
+
+        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+        masterlsn = &bdb_state->seqnum_info
+            ->seqnums[nodeix(bdb_state->repinfo->master_host)]
+            .lsn;
+        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+        if (cntbytes > window) {
             ret = 1;
             throttles++;
             if (pr) {
                 logmsg(LOGMSG_USER,
-                       "%s throttling logput to %s, incoherent, %llu "
-                       "throttles\n",
-                       __func__, host, throttles);
+                        "%s throttling logput to %s, incoherent"
+                        " %llu bytes behind, total throttles=%llu\n",
+                        __func__, host, cntbytes, throttles);
             }
         } else {
-            lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
-            masterlsn = &bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                             .lsn;
-            cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
-            if (cntbytes > window) {
-                ret = 1;
-                throttles++;
-                if (pr) {
-                    logmsg(LOGMSG_USER,
-                           "%s throttling logput to %s, incoherent"
-                           " %llu bytes behind, total throttles=%llu\n",
-                           __func__, host, cntbytes, throttles);
-                }
-            } else {
-                if (pr) {
-                    logmsg(LOGMSG_USER,
-                           "%s NOT throttling logput to %s, "
-                           "incoherent and %llu bytes behind, total, "
-                           "throttles=%llu\n",
-                           __func__, host, cntbytes, throttles);
-                }
+            if (pr) {
+                logmsg(LOGMSG_USER,
+                        "%s NOT throttling logput to %s, "
+                        "incoherent and %llu bytes behind, total, "
+                        "throttles=%llu\n",
+                        __func__, host, cntbytes, throttles);
             }
         }
     } else if (pr) {
@@ -1026,14 +1021,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                         rc = net_send(bdb_state->repinfo->netinfo, hostlist[i],
                                       USER_TYPE_GBLCONTEXT, &gblcontext,
                                       sizeof(unsigned long long), 0);
-
-                        if (rc != 0)
-                            dontsend = 1;
                     }
                 }
             }
-
-            dontsend = 0;
 
             if (dontsend && (flags & DB_REP_TRACE)) {
                 logmsg(LOGMSG_USER, "%s line %d logput to %s throttled\n",
