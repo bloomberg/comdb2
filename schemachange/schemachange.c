@@ -584,13 +584,22 @@ int do_dryrun(struct schema_change_type *s)
         } else if (IS_FASTINIT(s)) {
             sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
             goto done;
+        } else if (s->kind == SC_DROPTABLE) {
+            if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
+                sc_client_error(s, "Can't drop a table referenced by a foreign key");
+                rc = -1;
+            } else {
+                sbuf2printf(s->sb, ">Table %s will be dropped\n", s->tablename);
+            }
+            goto done;
         }
     }
-
+    
     if (db == NULL) {
         sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
         goto done;
     }
+
 
     struct errstat err = {0};
     newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, 0, 0,

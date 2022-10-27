@@ -3378,6 +3378,7 @@ struct Parse {
   char **azSrcListOnly;     /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
                              * enabled, this will contain the table names
                              * which were discovered in the SELECT query. */
+  u8 isDryrun;              /* Is a dryrun command */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4582,7 +4583,7 @@ extern sqlite3_uint64 sqlite3NProfileCnt;
 void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3AlterRenameTable(Parse*, Token*, Token*, int);
+void sqlite3AlterRenameTable(Parse*, Token*, Token*);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3AlterFunctions(void);
 void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
@@ -5060,6 +5061,7 @@ struct Cdb2TrigTables {
   Cdb2TrigEvents *events;
   Cdb2TrigTables *next;
 };
+struct schema_change_type;
 Cdb2TrigEvents *comdb2AddTriggerEvent(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
 void comdb2DropTrigger(Parse*,int,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
@@ -5069,6 +5071,8 @@ void comdb2CreateScalarFunc(Parse *, Token *, int flags);
 void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
+int comdb2IsDryrun(Parse *);
+int comdb2SCIsDryRunnable(struct schema_change_type *);
 
 void comdb2WriteTransaction(Parse*);
 

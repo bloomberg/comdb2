@@ -1,0 +1,1 @@
+Simple test to verify that dryruns through sql produce expected output (i.e output should match that produced by comdb2sc.tsk -y mode)
