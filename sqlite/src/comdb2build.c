@@ -435,6 +435,13 @@ int comdb2IsPrepareOnly(Parse* pParse)
     return pParse==NULL || pParse->prepare_only;
 }
 
+int comdb2IsDryrun(Parse* pParse)
+{
+   if(!pParse || !pParse->isDryrun)
+       return 0;
+   return 1;
+}
+
 int comdb2AuthenticateUserOp(Parse* pParse)
 {
     int rc;
@@ -689,10 +696,20 @@ void comdb2CreateTableCSC2(
     sc->addonly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
+
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
+
     fillTableOption(sc, opt);
     copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+
+    if(sc->dryrun)
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -705,8 +722,7 @@ void comdb2AlterTableCSC2(
   Token *pName1,   /* First part of the name of the table or view */
   Token *pName2,   /* Second part of the name of the table or view */
   int opt,         /* Various options for alter (compress, etc) */
-  Token *csc2,
-  int dryrun
+  Token *csc2
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -737,13 +753,15 @@ void comdb2AlterTableCSC2(
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = dryrun;
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
     fillTableOption(sc, opt);
     if(OPT_ON(opt, FORCE_SC)){
         sc->force = 1;
     }
     copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
-    if(dryrun)
+    if(sc->dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
                             (vdbeFuncArgFree)  &free_schema_change_type);
     else
@@ -785,6 +803,9 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->drop_table = 1;
     sc->fastinit = 1;
     sc->nothrevent = 1;
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
 
     if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
@@ -792,9 +813,12 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+    if(sc->dryrun)
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -844,6 +868,9 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
     sc->same_schema = 1;
     if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
     {
@@ -852,8 +879,13 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+    if(sc->dryrun){
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    } else {
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 
 out:
@@ -942,6 +974,10 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
     sc->fastinit = 1;
     sc->nothrevent = 1;
     sc->same_schema = 1;
+    if(comdb2IsDryrun(pParse)){
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        goto out;
+    }
 
     if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
     {
@@ -950,8 +986,13 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+
+    if(sc->dryrun)
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -1013,6 +1054,9 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     sc->index_to_rebuild = index_num;
     sc->use_plan = 1;
     sc->scanmode = gbl_default_sc_scanmode;
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
 
     if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
@@ -1032,8 +1076,13 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
     sc->same_schema = 1;
 
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+    if(sc->dryrun){
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    } else {
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 
 out:
@@ -1073,6 +1122,10 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     strcpy(sc->tablename, spname);
     sc->addsp = 1;
 
+    if(comdb2IsDryrun(pParse)){
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        goto cleanup;
+    }
     if (ver) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
             setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
@@ -1192,6 +1245,10 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
     }
     sc->delsp = 1;
 
+    if(comdb2IsDryrun(pParse)){
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        goto cleanup;
+    }
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran,
                         (vdbeFuncArgFree)&free_schema_change_type);
     return;
@@ -1210,6 +1267,10 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+    if (comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+         return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
@@ -1323,6 +1384,10 @@ void comdb2DropPartition(Parse* pParse, Token* partition_name)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+    if(comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_DROP_PART, 0, 0, 0) ){
@@ -2205,7 +2270,10 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
+    if(comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
@@ -2428,8 +2496,7 @@ void comdb2CounterSet(Parse *pParse, Token *nm, Token *lnm, long long value)
     comdb2CounterInt(pParse, nm, lnm, 1, value);
 }
 
-void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
-        int dryrun)
+void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -2482,6 +2549,10 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     sc->nothrevent = 1;
     sc->live = 1;
     sc->rename = 1;
+    if(comdb2IsDryrun(pParse)){
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        goto out;
+    }
     strncpy0(sc->newtable, newTable, sizeof(sc->newtable));
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
@@ -2666,7 +2737,6 @@ struct comdb2_schema {
 /* DDL context flags */
 enum {
     DDL_NOOP = 1 << 0,
-    DDL_DRYRUN = 1 << 1,
     DDL_PENDING = 1 << 2,
 };
 
@@ -4151,8 +4221,7 @@ err:
 void comdb2AlterTableStart(
     Parse *pParse, /* Parser context */
     Token *pName1, /* First part of the name of the table. */
-    Token *pName2, /* Second part of the name of the table. */
-    int dryrun     /* Whether its a dryrun? */
+    Token *pName2  /* Second part of the name of the table. */
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -4182,9 +4251,6 @@ void comdb2AlterTableStart(
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
     if (ctx->schema->name == 0)
         goto oom;
-
-    if (dryrun == 1)
-        ctx->flags |= DDL_DRYRUN;
 
     /*
       Add all the columns, indexes and constraints in the table to the
@@ -4235,7 +4301,9 @@ void comdb2AlterTableEnd(Parse *pParse)
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = ((ctx->flags & DDL_DRYRUN) != 0) ? 1 : 0;
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
 
     fillTableOption(sc, ctx->schema->table_options);
     if(OPT_ON(ctx->schema->table_options, FORCE_SC)){
@@ -4377,7 +4445,6 @@ void comdb2CreateTableEnd(
     if ((ctx->flags & DDL_NOOP) != 0) {
         goto cleanup;
     }
-
     v = sqlite3GetVdbe(pParse);
 
     sc = new_schemachange_type();
@@ -4390,6 +4457,10 @@ void comdb2CreateTableEnd(
     sc->nothrevent = 1;
     sc->live = 1;
 
+    if(comdb2IsDryrun(pParse)){
+        sc->dryrun = 1;
+    }
+
     fillTableOption(sc, comdb2Opts);
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
@@ -4399,8 +4470,12 @@ void comdb2CreateTableEnd(
         goto cleanup;
     }
 
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+    if (sc->dryrun)
+        comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
+                             (vdbeFuncArgFree)&free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 oom:
@@ -5263,7 +5338,10 @@ void comdb2CreateIndex(
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = 0;
+    if(comdb2IsDryrun(pParse)){
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        goto cleanup;
+    }
 
     fillTableOption(sc, ctx->schema->table_options);
 
@@ -5273,9 +5351,13 @@ void comdb2CreateIndex(
         assert(pParse->rc != 0);
         goto cleanup;
     }
-
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+    if(sc->dryrun) {
+        comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
                     (vdbeFuncArgFree)&free_schema_change_type);
+    } else {
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 
 oom:
@@ -5957,7 +6039,10 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = 0;
+    if(comdb2IsDryrun(pParse)){
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        goto cleanup;
+    }
 
     fillTableOption(sc, ctx->schema->table_options);
 

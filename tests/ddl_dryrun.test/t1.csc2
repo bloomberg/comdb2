@@ -1,0 +1,11 @@
+schema
+{
+    int  id
+    blob data null = yes
+    blob inline_data[32]
+}
+
+keys
+{
+    "key" = id
+}

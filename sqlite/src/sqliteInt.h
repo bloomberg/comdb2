@@ -3336,6 +3336,7 @@ struct Parse {
                              * of interest to the DDL integration code in
                              * the "comdb2build.c" and "comdb2lua.c" files.
                              */
+  u8 isDryrun;              /* Is a dryrun command */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4536,7 +4537,7 @@ extern sqlite3_uint64 sqlite3NProfileCnt;
 void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3AlterRenameTable(Parse*, Token*, Token*, int);
+void sqlite3AlterRenameTable(Parse*, Token*, Token*);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3AlterFunctions(void);
 void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
@@ -5007,6 +5008,7 @@ void comdb2CreateScalarFunc(Parse *, Token *);
 void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
+int comdb2IsDryrun(Parse *);
 
 void comdb2WriteTransaction(Parse*);
 

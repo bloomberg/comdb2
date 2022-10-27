@@ -335,6 +335,10 @@ void sqlite3VtabBeginParse(
   Table *pTable;        /* The new virtual table */
   sqlite3 *db;          /* Database connection */
 
+  if(comdb2IsDryrun(pParse)){
+      sqlite3ErrorMsg(pParse,"DRYRUN not supported for this operation");
+      return;
+  }
   sqlite3StartTable(pParse, pName1, pName2, 0, 0, 1, ifNotExists);
   pTable = pParse->pNewTable;
   if( pTable==0 ) return;
