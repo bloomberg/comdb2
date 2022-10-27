@@ -103,6 +103,10 @@ void sqlite3BeginTrigger(
   assert( pName2!=0 );
   assert( op==TK_INSERT || op==TK_UPDATE || op==TK_DELETE );
   assert( op>0 && op<0xff );
+  if(comdb2IsDryrun(pParse)){
+      sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+      goto trigger_cleanup;
+  }
   if( isTemp ){
     /* If TEMP was specified, then the trigger name may not be qualified. */
     if( pName2->n>0 ){
@@ -292,6 +296,11 @@ void sqlite3FinishTrigger(
   int iDb;                                /* Database containing the trigger */
   Token nameToken;                        /* Trigger name for error reporting */
 
+
+  if(comdb2IsDryrun(pParse)){
+      sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+      goto triggerfinish_cleanup;
+  }
   pParse->pNewTrigger = 0;
   if( NEVER(pParse->nErr) || !pTrig ) goto triggerfinish_cleanup;
   zName = pTrig->zName;
@@ -571,6 +580,10 @@ void sqlite3DropTrigger(Parse *pParse, SrcList *pName, int noErr){
   const char *zName;
   sqlite3 *db = pParse->db;
 
+  if(comdb2IsDryrun(pParse)){
+      sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+      goto drop_trigger_cleanup;
+  }
   if( db->mallocFailed ) goto drop_trigger_cleanup;
   if( SQLITE_OK!=sqlite3ReadSchema(pParse) ){
     goto drop_trigger_cleanup;

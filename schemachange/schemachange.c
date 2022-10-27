@@ -575,6 +575,14 @@ int do_dryrun(struct schema_change_type *s)
         } else if (s->fastinit) {
             sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
             goto succeed;
+        } else if (s->drop_table) {
+            if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
+                logmsg(LOGMSG_ERROR, "Can't drop a table referenced by a foreign key");
+                rc = -1;
+            } else {
+                sbuf2printf(s->sb, ">Table %s will be dropped\n", s->tablename);
+            }
+            goto done;
         }
     }
 
