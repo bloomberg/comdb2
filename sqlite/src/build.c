@@ -2752,6 +2752,10 @@ void sqlite3CreateView(
   int iDb;
   sqlite3 *db = pParse->db;
 
+  if(comdb2IsDryrun(pParse)){
+    sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+    goto create_view_fail;
+  }
   if( pParse->nVar>0 ){
     sqlite3ErrorMsg(pParse, "parameters are not allowed in views");
     goto create_view_fail;
@@ -3199,6 +3203,11 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   int bDropTable = 0;
 
   comdb2WriteTransaction(pParse);
+  if(isView && comdb2IsDryrun(pParse)){
+      sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+      pParse->rc = SQLITE_MISUSE;
+      goto exit_drop_table;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( db->mallocFailed ){
     goto exit_drop_table;
