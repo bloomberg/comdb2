@@ -2721,6 +2721,9 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
+    /* Register logput throttle function */
+    net_rep_throttle_init(bdb_state->repinfo->netinfo);
+
     /* Register qstat if its enabled */
     net_rep_qstat_init(bdb_state->repinfo->netinfo);
 

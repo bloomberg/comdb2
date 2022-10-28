@@ -1748,6 +1748,7 @@ void udp_backup(int, short, void *);
 void auto_analyze(int, short, void *);
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
+void net_rep_throttle_init(netinfo_type *netinfo_ptr);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
 void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,

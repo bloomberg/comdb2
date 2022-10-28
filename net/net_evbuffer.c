@@ -3075,11 +3075,13 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
     }
     int nodrop = 0;
     int nodelay = 0;
+    int logput = 0;
     int sz = (n * NET_SEND_MESSAGE_HEADER_LEN);
     for (int i = 0; i < n; ++i) {
         sz += len[i];
         nodrop |= flags[i] & NET_SEND_NODROP;
         nodelay |= flags[i] & NET_SEND_NODELAY;
+        logput |= flags[i] & NET_SEND_LOGPUT;
     }
     struct shared_msg **msg = NULL;
     if (sz > 256) {
@@ -3098,6 +3100,9 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
     struct net_info *ni = net_info_find(netinfo_ptr->service);
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
+        if (logput && netinfo_ptr->throttle_rtn && (netinfo_ptr->throttle_rtn)(netinfo_ptr, e->host)) {
+            continue;
+        }
         Pthread_mutex_lock(&e->wr_lk);
         if (e->flush_buf && !skip_send(e, nodrop, 1)) {
             if (msg) {
