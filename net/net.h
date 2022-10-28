@@ -86,6 +86,8 @@ typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
+typedef int NETTHROTTLEFP(struct netinfo_struct *netinfo, const char *hostname);
+
 void net_setbufsz(netinfo_type *info, int bufsz);
 
 void net_set_callback_data(netinfo_type *info, void *data);
@@ -97,9 +99,10 @@ int net_close_connection(netinfo_type *net, const char *hostname);
 
 enum {
     NET_SEND_NODELAY = 0x00000001,
-    NET_SEND_NODROP = 0x00000002,
+    NET_SEND_NODROP  = 0x00000002,
     NET_SEND_INORDER = 0x00000004,
-    NET_SEND_TRACE = 0x00000008
+    NET_SEND_TRACE   = 0x00000008,
+    NET_SEND_LOGPUT  = 0x00000010
 };
 
 enum {
@@ -173,6 +176,10 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+
+/* callback to disable logputs if a node is too far behind */
+int net_register_throttle(netinfo_type *netinfo_ptr, NETTHROTTLEFP func);
+
 int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net

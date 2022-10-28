@@ -628,13 +628,19 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
 int gbl_throttle_logput_trace = 0;
 int gbl_incoherent_logput_window = 0;
 
-static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
-                                             const char *host)
+static int throttle_updates_incoherent_nodes(netinfo_type *netinfo_ptr, const char *host)
 {
+    bdb_state_type *bdb_state = net_get_usrptr(netinfo_ptr);;
     int ret = 0, now, pr = 0;
     static int lastpr = 0;
     static unsigned long long throttles = 0;
     unsigned long long cntbytes;
+    uint32_t window = gbl_incoherent_logput_window;
+
+    /* Disabled */
+    if (window <= 0) {
+        return 0;
+    }
 
     if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
         pr = 1;
@@ -643,41 +649,30 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
 
     /* INCOHERENT & INCOHERENT_SLOW */
     if (is_incoherent(bdb_state, host)) {
-        uint32_t window = gbl_incoherent_logput_window;
 
         DB_LSN *lsnp, *masterlsn;
-        if (!window) {
+
+        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+        masterlsn = &bdb_state->seqnum_info
+            ->seqnums[nodeix(bdb_state->repinfo->master_host)]
+            .lsn;
+        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+        if (cntbytes > window) {
             ret = 1;
             throttles++;
             if (pr) {
                 logmsg(LOGMSG_USER,
-                       "%s throttling logput to %s, incoherent, %llu "
-                       "throttles\n",
-                       __func__, host, throttles);
+                        "%s throttling logput to %s, incoherent"
+                        " %llu bytes behind, total throttles=%llu\n",
+                        __func__, host, cntbytes, throttles);
             }
         } else {
-            lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
-            masterlsn = &bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                             .lsn;
-            cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
-            if (cntbytes > window) {
-                ret = 1;
-                throttles++;
-                if (pr) {
-                    logmsg(LOGMSG_USER,
-                           "%s throttling logput to %s, incoherent"
-                           " %llu bytes behind, total throttles=%llu\n",
-                           __func__, host, cntbytes, throttles);
-                }
-            } else {
-                if (pr) {
-                    logmsg(LOGMSG_USER,
-                           "%s NOT throttling logput to %s, "
-                           "incoherent and %llu bytes behind, total, "
-                           "throttles=%llu\n",
-                           __func__, host, cntbytes, throttles);
-                }
+            if (pr) {
+                logmsg(LOGMSG_USER,
+                        "%s NOT throttling logput to %s, "
+                        "incoherent and %llu bytes behind, total, "
+                        "throttles=%llu\n",
+                        __func__, host, cntbytes, throttles);
             }
         }
     } else if (pr) {
@@ -685,6 +680,11 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
     }
 
     return ret;
+}
+
+void net_rep_throttle_init(netinfo_type *netinfo_ptr)
+{
+    net_register_throttle(netinfo_ptr, throttle_updates_incoherent_nodes);
 }
 
 extern int gbl_rowlocks;
@@ -922,7 +922,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
         sz[num] = bufsz;
         type[num] = USER_TYPE_BERKDB_REP;
         flag[num] =
-            (!is_logput ? (NET_SEND_NODROP | NET_SEND_NODELAY) : 0) |
+            (is_logput ? NET_SEND_LOGPUT : (NET_SEND_NODROP | NET_SEND_NODELAY)) |
             ((flags & DB_REP_NODROP) ? NET_SEND_NODROP : 0) |
             (bdb_state->attr->net_inorder_logputs ? NET_SEND_INORDER : 0) |
             (nodelay ? NET_SEND_NODELAY : 0) |
