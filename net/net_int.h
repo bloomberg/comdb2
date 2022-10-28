@@ -342,6 +342,7 @@ struct netinfo_struct {
     int decom_time;
     char *name;
     stats_type stats;
+    NETTHROTTLEFP *throttle_rtn;
     NETALLOWFP *allow_rtn;
     void *callback_data;
     void (*start_thread_callback)(void *);

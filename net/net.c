@@ -6239,6 +6239,12 @@ int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
     return 0;
 }
 
+int net_register_throttle(netinfo_type *netinfo_ptr, NETTHROTTLEFP func)
+{
+    netinfo_ptr->throttle_rtn = func;
+    return 0;
+}
+
 int net_register_allow(netinfo_type *netinfo_ptr, NETALLOWFP func)
 {
     netinfo_ptr->allow_rtn = func;
@@ -6675,6 +6681,10 @@ int net_send_all(netinfo_type *netinfo_ptr, int num, void **data, int *sz,
     for (int i = 0; i < count; i++) {
         const char *h = hostlist[i];
         for (int j = 0; j < num; ++j) {
+            if ((flag[j] & NET_SEND_LOGPUT) && netinfo_ptr->throttle_rtn &&
+                (netinfo_ptr->throttle_rtn)(netinfo_ptr, h)) {
+                continue;
+            }
             if (net_send_flags(netinfo_ptr, h, type[j], data[j], sz[j], flag[j])) {
                 rc = 1;
             }
