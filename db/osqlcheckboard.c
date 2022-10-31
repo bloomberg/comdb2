@@ -290,9 +290,8 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
     return (osql_chkboard_fetch_entry(rqid, uuid, 1) != NULL);
 }
 
-int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat,
-                                struct query_effects *effects)
+int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, void *data, struct errstat *errstat,
+                                struct query_effects *effects, const char *from)
 {
     if (!checkboard)
         return 0;
@@ -316,9 +315,19 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         return -1;
     }
 
-    if (errstat)
+    if (errstat) {
+        /* Ignore errors from non-master.
+           This can happen when:
+           1) A bplog session is opened right before the old master downgrades.
+           2) The old master signals the replicant with a wrong-master error message (see sorese_rcvreq()).
+              The message however hasn't been processed by replicant's reader-thread just yet.
+           3) Replicant detects that master has swung, and restarts the transaction against the new master.
+           4) Replicant reader-thread processes the wrong-master error from the old master, and restarts
+              the transaction again. */
+        if (errstat->errval != 0 && entry->master != from)
+            return 0;
         entry->err = *errstat;
-    else
+    } else
         bzero(&entry->err, sizeof(entry->err));
 
     Pthread_mutex_lock(&entry->mtx);
