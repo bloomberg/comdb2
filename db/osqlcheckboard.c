@@ -313,7 +313,7 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
                                 void *data, struct errstat *errstat,
-                                struct query_effects *effects)
+                                struct query_effects *effects, const char *from)
 {
     int rc = 0;
 
@@ -340,9 +340,20 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     } else {
         Pthread_mutex_lock(&entry->mtx);
 
-        if (errstat)
+        if (errstat) {
+            /* Ignore errors from non-master.
+               This can happen when:
+               1) A bplog session is opened right before the old master downgrades.
+               2) The old master signals the replicant with a ERR_TRAN_FAILED error message (see sorese_rcvreq()).
+                  The message however hasn't been processed by replicant's reader-thread just yet.
+               3) Replicant detects that master has swung, and restarts the transaction against the new master.
+               4) Replicant reader-thread processes the ERR_TRAN_FAILED error from the old master, errors out
+                  the transaction, and returns the error to the client. The transaction, however, is silently
+                  completed on the new master. */
+            if (errstat->errval != 0 && entry->master != from)
+                return 0;
             entry->err = *errstat;
-        else
+        } else
             bzero(&entry->err, sizeof(entry->err));
 
         entry->done = 1; /* mem sync? */
