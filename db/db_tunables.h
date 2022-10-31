@@ -1661,7 +1661,7 @@ REGISTER_TUNABLE("client_heartbeat_ms",
 
 REGISTER_TUNABLE("rep_release_wait_ms",
                  "Release sql-locks if rep-thd is blocked for this many ms."
-                 "  (Default: 60000)",
+                 "  (Default: 10000)",
                  TUNABLE_INTEGER, &gbl_rep_wait_release_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
