@@ -3351,7 +3351,7 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
     snap_uid_t snap_info;
     snap_uid_get(&snap_info, dtap, (uint8_t *)dtap + dtalen);
     osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0,
-                                &snap_info, NULL, &snap_info.effects);
+                                &snap_info, NULL, &snap_info.effects, fromhost);
 }
 
 int gbl_disable_cnonce_blkseq;
@@ -5380,7 +5380,7 @@ int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
 
         irc = osql_chkboard_sqlsession_rc(sorese->rqid, sorese->uuid,
                                           sorese->nops, snap, xerr,
-                                          (snap) ? &snap->effects : NULL);
+                                          (snap) ? &snap->effects : NULL, gbl_mynode);
     }
 
     return irc;
@@ -7904,9 +7904,9 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
             uint8_t *p_buf_end = (p_buf + sizeof(struct errstat));
             osqlcomm_errstat_type_get(&errstat, p_buf, p_buf_end);
 
-            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL);
+            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL, fromhost);
         } else {
-            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects);
+            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects, fromhost);
         }
 
     } else {
