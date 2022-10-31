@@ -5830,7 +5830,7 @@ __rep_process_txn_concurrent(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	}
 }
 
-int gbl_ufid_add_on_collect = 0;
+int gbl_ufid_add_on_collect = 1;
 
 // PUBLIC: int __rep_collect_txn_from_log __P((DB_ENV *, DB_LSN *, LSN_COLLECTION *, int *, struct __recovery_processor *));
 int

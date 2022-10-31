@@ -1661,9 +1661,8 @@ REGISTER_TUNABLE("client_heartbeat_ms",
 
 REGISTER_TUNABLE("rep_release_wait_ms",
                  "Release sql-locks if rep-thd is blocked for this many ms."
-                 "  (Default: 60000)",
-                 TUNABLE_INTEGER, &gbl_rep_wait_release_ms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 "  (Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_rep_wait_release_ms, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("rep_wait_core_ms",
                  "Abort if rep-thread waits longer than this threshold for "
@@ -2008,10 +2007,10 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_log,
+REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: on)", TUNABLE_BOOLEAN, &gbl_ufid_log,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: off)", TUNABLE_BOOLEAN, 
+REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: on)", TUNABLE_BOOLEAN, 
                  &gbl_ufid_add_on_collect, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,

@@ -2593,7 +2593,7 @@ int release_locks_int(const char *trace, const char *func, int line)
 }
 
 /* Release-locks if rep-thread is blocked longer than this many ms */
-int gbl_rep_wait_release_ms = 60000;
+int gbl_rep_wait_release_ms = 10000;
 
 int release_locks_on_emit_row(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt)

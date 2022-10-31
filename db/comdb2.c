@@ -716,7 +716,7 @@ int gbl_only_match_commit_records = 1;
 int gbl_sql_release_locks_on_si_lockwait = 1;
 /* If this is set, recom_replay will see the same row multiple times in a scan &
  * fail */
-int gbl_sql_release_locks_on_emit_row = 0;
+int gbl_sql_release_locks_on_emit_row = 1;
 int gbl_sql_release_locks_on_slow_reader = 1;
 int gbl_sql_no_timeouts_on_release_locks = 1;
 int gbl_sql_release_locks_in_update_shadows = 1;
