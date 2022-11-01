@@ -176,7 +176,7 @@ are refused to join the cluster.
 
 | LRL Directive | Description | Default Value |
 |---------------|-------------|---------------|
-| `ssl_client_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME` and `VERIFY_DBNAME` | `ALLOW` |
+| `ssl_client_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME`, `VERIFY_DBNAME`, `PREFER`, `PREFER_VERIFY_CA`, `PREFER_VERIFY_HOSTNAME` and `PREFER_VERIFY_DBNAME` | `ALLOW` |
 | `ssl_replicant_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME` and `VERIFY_DBNAME` | `ALLOW` |
 | `ssl_cert_path path` | Directory containing the server certificate files. Comdb2 searches `server.crt`, `server.key`, `root.crt` and `root.crl` for the server certificate, key, trusted CAs and CRL respectively | The data directory |
 | `ssl_cert file`| Path to the certificate | `<ssl_cert_path>/server.crt` |
@@ -191,7 +191,7 @@ are refused to join the cluster.
 
 | Option | Description | Default Value |
 |---------------|-------------|--------|
-| `ssl_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME` and `VERIFY_DBNAME` | `ALLOW` |
+| `ssl_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA`, `VERIFY_HOSTNAME`, `VERIFY_DBNAME`, `PREFER`, `PREFER_VERIFY_CA`, `PREFER_VERIFY_HOSTNAME` and `PREFER_VERIFY_DBNAME` | `ALLOW` |
 | `ssl_cert_path path` | Directory containing client certificate files. libcdb2api searches `client.crt`, `client.key`, `root.crt` and `root.crl` for the client certificate, key, trusted CAs and CRL respectively | `N/A` |
 | `ssl_cert file` | Path to the client certificate | `<ssl_cert_path>/client.crt` |
 | `ssl_key file` | Path to the client key | `<ssl_cert_path>/client.key` |
@@ -205,10 +205,14 @@ are refused to join the cluster.
 
 |  Mode  | Encryption  | MITM | Overhead  |
 |---|---|---|---|
-|  `ALLOW` | Maybe |  Yes |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead if the server requires SSL. No overhead otherwise. |
+|  `ALLOW` | Maybe |  Yes |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead if the peer requires SSL. No overhead otherwise. |
 |  `REQUIRE` | Yes  | Yes  |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead |
 | `VERIFY_CA` | Yes | Maybe if signed by 3rd party CA. No if self-signed or signed by a local CA. | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification |
 | `VERIFY_HOSTNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation |
 | `VERIFY_DBNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation + database name validation |
+|  `PREFER` | Maybe |  Yes |  Behaves like `REQUIRE` if peer allows SSL; behaves like `ALLOW` otherwise. |
+|  `PREFER_VERIFY_CA` | Maybe |  Yes | Behaves LIKE `VERIFY_CA` if peer allows SSL; behaves like `ALLOW` otherwise.  |
+|  `PREFER_VERIFY_HOSTNAME` | Maybe |  Yes | Behaves LIKE `VERIFY_HOSTNAME` if peer allows SSL; behaves like `ALLOW` otherwise.  |
+|  `PREFER_VERIFY_DBNAME` | Maybe |  Yes | Behaves LIKE `VERIFY_DBNAME` if peer allows SSL; behaves like `ALLOW` otherwise.  |
 
-<a name="sslfootnote">[1]</a>: In order to establish an SSL connection to server, the client needs to negotiate with the server over the plaintext connection before upgrading to SSL. This happens only once for each connection establishment.
+<a name="sslfootnote">[1]</a>: In order to establish an SSL connection, the client and the server need to negotiate over the plaintext connection before upgrading to SSL. This happens only once for each connection establishment.

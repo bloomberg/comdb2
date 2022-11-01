@@ -939,7 +939,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     *portnum = connect_message.my_portnum;
 
     if (connect_message.flags & CONNECT_MSG_SSL) {
-        if (gbl_rep_ssl_mode < SSL_ALLOW) {
+        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
             /* Reject if mis-configured. */
             logmsg(LOGMSG_ERROR,
                    "Misconfiguration: Peer requested SSL, "
@@ -955,7 +955,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
             logmsg(LOGMSG_ERROR, "%s\n", err);
             return -1;
         }
-    } else if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
+    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
         /* Reject if I require SSL. */
         logmsg(LOGMSG_WARN,
                "Replicant SSL connections are required.\n");
@@ -1018,7 +1018,7 @@ int write_connect_message(netinfo_type *netinfo_ptr,
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
     connect_message.flags = 0;
-    if (gbl_rep_ssl_mode >= SSL_REQUIRE)
+    if (SSL_IS_REQUIRED(gbl_rep_ssl_mode))
         connect_message.flags |= CONNECT_MSG_SSL;
 
     if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
@@ -1100,7 +1100,7 @@ int write_connect_message(netinfo_type *netinfo_ptr,
         }
     }
 
-    if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
+    if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
         net_flush(host_node_ptr);
         if (sslio_connect(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
                           gbl_nid_dbname, 1) != 1) {

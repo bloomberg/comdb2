@@ -57,12 +57,16 @@
 #endif
 #define SSL_MIN_TLS_VER_OPT "ssl_min_tls_ver"
 
-#define SSL_MODE_ALLOW          "ALLOW"
-#define SSL_MODE_REQUIRE        "REQUIRE"
-#define SSL_MODE_VERIFY_CA      "VERIFY_CA"
-#define SSL_MODE_VERIFY_HOST    "VERIFY_HOSTNAME"
+#define SSL_MODE_ALLOW "ALLOW"
+#define SSL_MODE_PREFER "PREFER"
+#define SSL_MODE_PREFER_VERIFY_CA "PREFER_VERIFY_CA"
+#define SSL_MODE_PREFER_VERIFY_HOST "PREFER_VERIFY_HOSTNAME"
+#define SSL_MODE_PREFER_VERIFY_DBNAME "PREFER_VERIFY_DBNAME"
+#define SSL_MODE_REQUIRE "REQUIRE"
+#define SSL_MODE_VERIFY_CA "VERIFY_CA"
+#define SSL_MODE_VERIFY_HOST "VERIFY_HOSTNAME"
 #define SSL_MODE_VERIFY_DBNAME "VERIFY_DBNAME"
-#define SSL_MODE_OPTIONAL       "OPTIONAL"
+#define SSL_MODE_OPTIONAL "OPTIONAL"
 
 /* Default file names */
 #define DEFAULT_SERVER_KEY "server.key"
@@ -125,15 +129,26 @@ do {                                            \
             PRINT_SSL_ERRSTR_MT(cb, msg);                       \
     } while (0)
 
+/* XXX Don't change the order of the enum types */
 typedef enum {
     SSL_DISABLE, /* invisible to users */
     SSL_UNKNOWN, /* invisible to users */
     SSL_ALLOW,
+    SSL_PREFER,
+    SSL_PREFER_VERIFY_CA,       /* implies PREFER */
+    SSL_PREFER_VERIFY_HOSTNAME, /* implies PREFER_VERIFY_CA */
+    SSL_PREFER_VERIFY_DBNAME,   /* implies PREFER_VERIFY_DBNAME */
     SSL_REQUIRE,
     SSL_VERIFY_CA,       /* It implies REQUIRE. */
     SSL_VERIFY_HOSTNAME, /* It impiles VERIFY_CA. */
     SSL_VERIFY_DBNAME    /* It impiles VERIFY_HOSTNAME. */
 } ssl_mode;
+
+#define SSL_IS_ABLE(mode) ((mode) >= SSL_ALLOW)
+#define SSL_IS_REQUIRED(mode) ((mode) >= SSL_REQUIRE)
+#define SSL_IS_OPTIONAL(mode) ((mode) < SSL_REQUIRE)
+#define SSL_IS_PREFERRED(mode) ((mode) >= SSL_PREFER)
+#define SSL_NEEDS_VERIFICATION(mode) ((mode) > SSL_PREFER && (mode) != SSL_REQUIRE)
 
 typedef enum {
     PEER_SSL_UNSUPPORTED,

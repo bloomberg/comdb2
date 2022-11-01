@@ -394,8 +394,8 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
             return 1;
         }
     }
-    if (ssl_whitelisted(appdata->clnt.origin)) {
-        /* allow plaintext local connections */
+    if (ssl_whitelisted(appdata->clnt.origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode))) {
+        /* allow plaintext local connections, or server is configured to prefer (but not disallow) SSL clients. */
         return 0;
     }
     write_response(&appdata->clnt, RESPONSE_ERROR, "database requires SSL connections", CDB2ERR_CONNECT_ERROR);
@@ -406,7 +406,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
 {
     int do_read = 0;
     int commit_rollback;
-    if (gbl_client_ssl_mode >= SSL_REQUIRE) {
+    if (SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
         switch (ssl_check(appdata, query)) {
         case 0: break;
         case 1: do_read = 1; // fallthrough
@@ -502,9 +502,13 @@ static int verify_ssl(struct newsql_appdata_evbuffer *appdata)
         /* skip certificate check for local connections */
         return 0;
     }
+
     switch (gbl_client_ssl_mode) {
+    case SSL_PREFER_VERIFY_DBNAME:
     case SSL_VERIFY_DBNAME: if (verify_dbname(cert) != 0) return -1; // fallthrough
+    case SSL_PREFER_VERIFY_HOSTNAME:
     case SSL_VERIFY_HOSTNAME: if (verify_hostname(appdata, cert) != 0) return -1; // fallthrough
+    case SSL_PREFER_VERIFY_CA:
     case SSL_VERIFY_CA: if (!cert) return -1; // fallthrough
     default: return 0;
     }
@@ -630,15 +634,17 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         goto cleanup;
     }
     int rc;
-    char ssl_response = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+    char ssl_response = SSL_IS_ABLE(gbl_client_ssl_mode) ? 'Y' : 'N';
     if ((rc = write(appdata->fd, &ssl_response, 1)) != 1) {
         logmsg(LOGMSG_ERROR, "%s write fd:%d ssl_response:%c rc:%d err:%s\n",
                __func__, appdata->fd, ssl_response, rc, strerror(errno));
         goto cleanup;
     }
-    if (ssl_response != 'Y') {
-        goto cleanup;
+    if (ssl_response == 'N') {
+        rd_hdr(-1, 0, appdata);
+        return;
     }
+
     if (!appdata->ssl_data) {
         appdata->ssl_data = calloc(1, sizeof(struct ssl_data));
     }

@@ -330,14 +330,17 @@ retry_read:
               actual status of this node;
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
-        char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+        char ssl_able = SSL_IS_ABLE(gbl_client_ssl_mode) ? 'Y' : 'N';
         if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
             return NULL;
         }
+
+        if (ssl_able == 'N')
+            goto retry_read;
+
         /* Don't close the connection if SSL verify fails so that we can
            send back an error to the client. */
-        if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname, gbl_nid_dbname, 0) != 1) {
+        if (sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname, gbl_nid_dbname, 0) != 1) {
             write_response(clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
             /* Print the error message in the sbuf2. */
             char err[256];
@@ -476,7 +479,7 @@ retry_read:
        The check must be done for every query, otherwise
        attackers could bypass it by using pooled connections
        from sockpool. The overhead of the check is negligible. */
-    if (gbl_client_ssl_mode >= SSL_REQUIRE && !sslio_has_ssl(sb)) {
+    if (SSL_IS_PREFERRED(gbl_client_ssl_mode) && !sslio_has_ssl(sb)) {
         /* The code block does 2 things:
            1. Return an error to outdated clients;
            2. Send dbinfo to new clients to trigger SSL.
@@ -495,8 +498,8 @@ retry_read:
             cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
             query = NULL;
             goto retry_read;
-        } else if (ssl_whitelisted(clnt->origin)) {
-            /* allow plaintext local connections */
+        } else if (ssl_whitelisted(clnt->origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode))) {
+            /* allow plaintext local connections, or server is configured to prefer (but not disallow) SSL clients. */
             return query;
         } else {
             write_response(clnt, RESPONSE_ERROR, "The database requires SSL connections.", CDB2ERR_CONNECT_ERROR);

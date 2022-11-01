@@ -86,7 +86,7 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     /* If we are told to verify peer, and cacert file is NULL,
        we explicitly make one with the default name so that
        ssl_new_ctx() would fail if it could not load the CA. */
-    if (mode >= SSL_VERIFY_CA && *pca == NULL) {
+    if (SSL_NEEDS_VERIFICATION(mode) && *pca == NULL) {
         if (dir == NULL) {
             ssl_sfeprint(err, n, my_ssl_eprintln,
                          "A trusted CA certificate is required "

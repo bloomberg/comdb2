@@ -87,7 +87,7 @@ setup_db() {
     LRL="$DBDIR/$DBNAME.lrl"
     > ${LRL}
 
-    if [[ -z "${SKIPSSL}" ]] ; then
+    if [[ -z "${SKIPSSL}" && $DBNAME != *"nossl"* ]] ; then
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 

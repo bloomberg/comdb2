@@ -104,6 +104,14 @@ int ssl_process_lrl(char *line, size_t len)
         }
         if (tokcmp(tok, ltok, SSL_MODE_ALLOW) == 0)
             gbl_client_ssl_mode = SSL_ALLOW;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER) == 0)
+            gbl_client_ssl_mode = SSL_PREFER;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER_VERIFY_CA) == 0)
+            gbl_client_ssl_mode = SSL_PREFER_VERIFY_CA;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER_VERIFY_HOST) == 0)
+            gbl_client_ssl_mode = SSL_PREFER_VERIFY_HOSTNAME;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER_VERIFY_DBNAME) == 0)
+            gbl_client_ssl_mode = SSL_PREFER_VERIFY_DBNAME;
         else if (tokcmp(tok, ltok, SSL_MODE_REQUIRE) == 0)
             gbl_client_ssl_mode = SSL_REQUIRE;
         else if (tokcmp(tok, ltok, SSL_MODE_VERIFY_CA) == 0)
@@ -339,6 +347,14 @@ static const char *ssl_mode_to_string(ssl_mode mode)
         return "DISABLE";
     case SSL_ALLOW:
         return SSL_MODE_ALLOW;
+    case SSL_PREFER:
+        return SSL_MODE_PREFER;
+    case SSL_PREFER_VERIFY_CA:
+        return SSL_MODE_PREFER_VERIFY_CA;
+    case SSL_PREFER_VERIFY_HOSTNAME:
+        return SSL_MODE_PREFER_VERIFY_HOST;
+    case SSL_PREFER_VERIFY_DBNAME:
+        return SSL_MODE_PREFER_VERIFY_DBNAME;
     case SSL_REQUIRE:
         return SSL_MODE_REQUIRE;
     case SSL_VERIFY_CA:

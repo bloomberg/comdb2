@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#############################################
+# Test SSL prefer modes                     #
+#############################################
+
+dbnm=$1
+keydir=$DBDIR
+set -e
+
+# Generate my own CA
+openssl req -x509 -newkey rsa:4096 -keyout $keydir/mycakey.pem \
+            -out $keydir/mycacrt.pem -days 365 -nodes \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com"
+chmod a+r $keydir/mycacrt.pem
+
+# these should succeed regardless of whether backend supports ssl
+SSL_MODE=PREFER cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+SSL_MODE=PREFER_VERIFY_CA cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+SSL_MODE=PREFER_VERIFY_HOSTNAME cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+
+if [[ $dbnm == *"nossl"* ]] ; then
+  SSL_MODE=ALLOW cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+  SSL_MODE=REQUIRE cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1' 2>&1 | grep 'does not support SSL'
+  SSL_MODE=VERIFY_CA cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1' 2>&1 | grep 'does not support SSL'
+  SSL_MODE=VERIFY_HOSTNAME cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1' 2>&1 | grep 'does not support SSL'
+else
+  SSL_MODE=ALLOW cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+  SSL_MODE=REQUIRE cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+  SSL_MODE=VERIFY_CA cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+  SSL_MODE=VERIFY_HOSTNAME cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1'
+  # Make sure that we validate server identity in prefer modes, if server supports ssl
+  SSL_MODE=PREFER_VERIFY_CA SSL_CA=$keydir/mycacrt.pem cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1' 2>&1 | grep 'certificate verify failed'
+  SSL_MODE=PREFER_VERIFY_HOSTNAME SSL_CA=$keydir/mycacrt.pem cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT 1' 2>&1 | grep 'certificate verify failed'
+fi

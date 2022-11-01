@@ -1229,6 +1229,14 @@ int is_valid_int(const char *str)
 
 static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 {
+    if (strcasecmp(SSL_MODE_PREFER, s) == 0)
+        return SSL_PREFER;
+    if (strcasecmp(SSL_MODE_PREFER_VERIFY_CA, s) == 0)
+        return SSL_PREFER_VERIFY_CA;
+    if (strcasecmp(SSL_MODE_PREFER_VERIFY_HOST, s) == 0)
+        return SSL_PREFER_VERIFY_HOSTNAME;
+    if (strcasecmp(SSL_MODE_PREFER_VERIFY_DBNAME, s) == 0)
+        return SSL_PREFER_VERIFY_DBNAME;
     if (strcasecmp(SSL_MODE_REQUIRE, s) == 0)
         return SSL_REQUIRE;
     if (strcasecmp(SSL_MODE_VERIFY_CA, s) == 0)
@@ -1368,6 +1376,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 if (tok != NULL) {
                     if (strcasecmp(SSL_MODE_ALLOW, tok) == 0)
                         cdb2_c_ssl_mode = SSL_ALLOW;
+                    else if (strcasecmp(SSL_MODE_PREFER, tok) == 0)
+                        cdb2_c_ssl_mode = SSL_PREFER;
+                    else if (strcasecmp(SSL_MODE_PREFER_VERIFY_CA, tok) == 0)
+                        cdb2_c_ssl_mode = SSL_PREFER_VERIFY_CA;
+                    else if (strcasecmp(SSL_MODE_PREFER_VERIFY_HOST, tok) == 0)
+                        cdb2_c_ssl_mode = SSL_PREFER_VERIFY_HOSTNAME;
                     else if (strcasecmp(SSL_MODE_REQUIRE, tok) == 0)
                         cdb2_c_ssl_mode = SSL_REQUIRE;
                     else if (strcasecmp(SSL_MODE_VERIFY_CA, tok) == 0)
@@ -1376,6 +1390,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                         cdb2_c_ssl_mode = SSL_VERIFY_HOSTNAME;
                     else if (strcasecmp(SSL_MODE_VERIFY_DBNAME, tok) == 0) {
                         cdb2_c_ssl_mode = SSL_VERIFY_DBNAME;
+                        tok = strtok_r(NULL, " :,", &last);
+                        if (tok != NULL)
+                            cdb2_nid_dbname = OBJ_txt2nid(tok);
+                    } else if (strcasecmp(SSL_MODE_PREFER_VERIFY_DBNAME, tok) == 0) {
+                        cdb2_c_ssl_mode = SSL_PREFER_VERIFY_DBNAME;
                         tok = strtok_r(NULL, " :,", &last);
                         if (tok != NULL)
                             cdb2_nid_dbname = OBJ_txt2nid(tok);
@@ -2086,16 +2105,18 @@ static int send_reset(SBUF2 *sb)
 static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 {
     /*
-     *                   |<---------------- CLIENT ---------------->|
-     *                   |------------------------------------------|
-     *                   |    REQUIRE    |    ALLOW    |    < R7    |
-     * -------|-----------------------------------------------------|
-     *   ^    | REQUIRE  |     SSL[1]    |    SSL[1]   |    X[2]    |
-     *   |    |-----------------------------------------------------|
-     * SERVER | ALLOW    |     SSL[1]    |  PLAINTEXT  |  PLAINTEXT |
-     *   |    |-----------------------------------------------------|
-     *   v    | < R7     |     X[3]      |  PLAINTEXT  |  PLAINTEXT |
-     * -------|-----------------------------------------------------|
+     *                   |<----------------------- CLIENT ----------------------->|
+     *                   |--------------------------------------------------------|
+     *                   |    REQUIRE    |    PREFER   |    ALLOW    |   others   |
+     * -------|-------------------------------------------------------------------|
+     *   ^    | REQUIRE  |     SSL[1]    |    SSL[1]   |    SSL[1]   |    X[2]    |
+     *   |    |-------------------------------------------------------------------|
+     *   |    | PREFER   |     SSL[1]    |    SSL[1]   |    SSL[1]   |  PLAINTEXT |
+     *   |    |-------------------------------------------------------------------|
+     * SERVER | ALLOW    |     SSL[1]    |    SSL[1]   |  PLAINTEXT  |  PLAINTEXT |
+     *   |    |-------------------------------------------------------------------|
+     *   v    | others   |     X[3]      |  PLAINTEXT  |  PLAINTEXT  |  PLAINTEXT |
+     * -------|-------------------------------------------------------------------|
      *        [1] The client writes an SSL negotiation packet first.
      *        [2] Rejected by the server.
      *        [3] Rejected by the client API.
@@ -2107,7 +2128,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     int rc, dossl = 0;
     cdb2_ssl_sess *p;
 
-    if (hndl->c_sslmode >= SSL_REQUIRE) {
+    if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
         switch (hndl->s_sslmode) {
         case PEER_SSL_UNSUPPORTED:
             sprintf(hndl->errstr, "The database does not support SSL.");
@@ -2123,7 +2144,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
             hndl->sslerr = 1;
             return -1;
         }
-    } else {
+    } else if (SSL_IS_PREFERRED(hndl->c_sslmode)) {
+        dossl = 1;
+    } else { /* hndl->c_sslmode == SSL_ALLOW */
         switch (hndl->s_sslmode) {
         case PEER_SSL_ALLOW:
         case PEER_SSL_UNSUPPORTED:
@@ -2156,14 +2179,21 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1)
         return -1;
-    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0)
+    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
+        /* If SSL is optional (this includes ALLOW and PREFER), change
+           my mode to ALLOW so that we can reconnect in plaintext. */
+        if (SSL_IS_OPTIONAL(hndl->c_sslmode))
+            hndl->c_sslmode = SSL_ALLOW;
         return rc;
+    }
 
     /* The node does not agree with dbinfo. This usually happens
        during the downgrade from SSL to non-SSL. */
     if (rc == 'N') {
-        if (hndl->c_sslmode <= SSL_ALLOW)
+        if (SSL_IS_OPTIONAL(hndl->c_sslmode)) {
+            hndl->c_sslmode = SSL_ALLOW;
             return 0;
+        }
 
         /* We reach here only if the server is mistakenly downgraded
            before the client. */
