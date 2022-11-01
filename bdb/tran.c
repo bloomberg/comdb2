@@ -1397,10 +1397,13 @@ tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
     return tran;
 }
 
-tran_type *bdb_tran_begin(bdb_state_type *bdb_state, tran_type *parent,
-                          int *bdberr)
+tran_type *bdb_tran_begin_internal(bdb_state_type *bdb_state, tran_type *parent,
+                          int *bdberr, const char *func, int line)
 {
     tran_type *tran;
+#if DEBUG_RECOVERY_LOCK
+    logmsg(LOGMSG_USER, "%s called from %s:%d\n", __func__, func, line);
+#endif
     tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, 0);
     return tran;
 }
