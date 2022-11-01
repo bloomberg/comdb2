@@ -1,1 +1,2 @@
 table t1 t1.csc2
+sql_release_locks_on_emit_row_lockwait 0
