@@ -46,9 +46,7 @@ XMACRO_DBTYPES(DBTYPES_BLOB,       "blob",       blob,       l_blob_tostring)\
 XMACRO_DBTYPES(DBTYPES_DBTABLE,    "dbtable",    dbtable,    NULL)\
 XMACRO_DBTYPES(DBTYPES_THREAD,     "dbthread",   dbthread,   NULL)\
 XMACRO_DBTYPES(DBTYPES_DBCONSUMER, "dbconsumer", dbconsumer, NULL)\
-XMACRO_DBTYPES(DBTYPES_STMT,       "stmt",         stmt,	NULL)\
-XMACRO_DBTYPES(DBTYPES_CDB2TABLES, "comdb2tables", comdb2tables,NULL)\
-XMACRO_DBTYPES(DBTYPES_DBQUEUE,    "dbqueue",    dbqueue,    NULL)\
+XMACRO_DBTYPES(DBTYPES_STMT,       "stmt",       stmt,       NULL)\
 XMACRO_DBTYPES(DBTYPES_DBSTMT,     "dbstmt",     dbstmt,     NULL)\
 XMACRO_DBTYPES(DBTYPES_DB,         "db",         db,         NULL)\
 XMACRO_DBTYPES(DBTYPES_MAXTYPE,    "max",        maxtype,    NULL)
