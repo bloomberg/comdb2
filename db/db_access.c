@@ -350,7 +350,7 @@ static int check_tag_access(struct ireq *iq) {
         return ERR_ACCESS;
     }
 
-    if (gbl_client_ssl_mode >= SSL_REQUIRE) {
+    if (SSL_IS_REQUIRED(gbl_client_ssl_mode)) {
         reqerrstr(iq, ERR_ACCESS, "The database requires SSL connections\n");
         return ERR_ACCESS;
     }

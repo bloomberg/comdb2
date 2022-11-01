@@ -661,7 +661,7 @@ void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
     if (gbl_client_ssl_mode <= SSL_UNKNOWN)
         return;
     dbinfo_response->has_require_ssl = 1;
-    dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
+    dbinfo_response->require_ssl = SSL_IS_REQUIRED(gbl_client_ssl_mode);
 }
 
 void fill_dbinfo(CDB2DBINFORESPONSE *dbinfo_response, bdb_state_type *bdb_state)

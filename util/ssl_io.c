@@ -108,7 +108,10 @@ static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid)
         }
     }
 #endif
-    if (sb->ssl != NULL && mode >= SSL_VERIFY_CA) {
+    if (sb->ssl != NULL && SSL_NEEDS_VERIFICATION(mode)) {
+        /* Convert SSL_PREFER_VERIFY_XXX to SSL_VERIFY_XXX */
+        if (SSL_IS_OPTIONAL(mode))
+            mode += (SSL_REQUIRE - SSL_PREFER);
         sb->cert = SSL_get_peer_certificate(sb->ssl);
         if (sb->cert == NULL) {
             ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,

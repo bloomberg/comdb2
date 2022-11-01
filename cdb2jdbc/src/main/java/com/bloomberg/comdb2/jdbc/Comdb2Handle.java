@@ -260,6 +260,12 @@ public class Comdb2Handle extends AbstractConnection {
 
     /* attribute setters - bb precious */
     public void setSSLMode(String mode) {
+        if ("PREFER".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.PREFER;
+        if ("PREFER_VERIFY_CA".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.PREFER_VERIFY_CA;
+        if ("PREFER_VERIFY_HOSTNAME".equalsIgnoreCase(mode))
+            sslmode = SSL_MODE.PREFER_VERIFY_HOSTNAME;
         if ("REQUIRE".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.REQUIRE;
         else if ("VERIFY_CA".equalsIgnoreCase(mode))
@@ -271,7 +277,12 @@ public class Comdb2Handle extends AbstractConnection {
             String[] splits = mode.split(",;\\s*");
             if (splits.length > 1)
                 sslNIDDbName = splits[1].toUpperCase();
-        } else{
+        } else if (mode.toUpperCase().startsWith("PREFER_VERIFY_DBNAME")) {
+            sslmode = SSL_MODE.PREFER_VERIFY_DBNAME;
+            String[] splits = mode.split(",;\\s*");
+            if (splits.length > 1)
+                sslNIDDbName = splits[1].toUpperCase();
+        } else {
             sslmode = SSL_MODE.ALLOW;
         }
     }
@@ -1864,12 +1875,22 @@ readloop:
 
     private boolean trySSL() {
         boolean dossl = false;
-        if (sslmode != SSL_MODE.ALLOW) {
+        if (SSL_MODE.isRequired(sslmode)) {
             switch (peersslmode) {
                 case PEER_SSL_UNSUPPORTED:
                     driverErrStr = "The database does not support SSL.";
                     sslerr = true;
                     return false;
+                case PEER_SSL_ALLOW:
+                case PEER_SSL_REQUIRE:
+                    dossl = true;
+                    break;
+            }
+        } else if (SSL_MODE.isPreferred(sslmode)) {
+            switch (peersslmode) {
+                case PEER_SSL_UNSUPPORTED:
+                    dossl = false;
+                    break;
                 case PEER_SSL_ALLOW:
                 case PEER_SSL_REQUIRE:
                     dossl = true;
