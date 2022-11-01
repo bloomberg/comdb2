@@ -206,10 +206,10 @@ ret:
 
 static inline int print_verify_progress(verify_common_t *par, int now)
 {
-    if (bdb_lock_desired(par->bdb_state)) {
+    if (bdb_lock_desired(par->bdb_state) || bdb_recoverlk_blocked(par->bdb_state)) {
         logmsg(LOGMSG_WARN, "master change, stopped verify\n");
         locprint(par->sb, par->lua_callback, par->lua_params,
-                      "verify stopping on master change\n");
+                      "verify stopping on master change");
         par->lock_desired = 1;
         par->client_dropped_connection = 1;
         goto out;

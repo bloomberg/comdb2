@@ -2204,6 +2204,11 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     return mygen;
 }
 
+int bdb_recoverlk_blocked(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->wrlock_recovery_blocked(bdb_state->dbenv);
+}
+
 void send_newmaster(bdb_state_type *bdb_state, int online)
 {
     bdb_state->dbenv->rep_start(bdb_state->dbenv, NULL, 0, DB_REP_MASTER);

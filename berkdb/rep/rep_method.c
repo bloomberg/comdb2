@@ -58,8 +58,10 @@ static int __rep_set_check_standalone __P((DB_ENV *, int (*)(DB_ENV *)));
 static int __rep_set_truncate_sc_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *)));
 static int __rep_set_rep_truncate_callback __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, uint32_t is_master)));
 static int __rep_set_rep_recovery_cleanup __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *, int is_master)));
-static int __rep_lock_recovery_lock __P((DB_ENV *));
-static int __rep_unlock_recovery_lock __P((DB_ENV *));
+static int __rep_lock_recovery_lock __P((DB_ENV *, const char *func, int line));
+static int __rep_wrlock_recovery_lock __P((DB_ENV *, const char *func, int line));
+static int __rep_unlock_recovery_lock __P((DB_ENV *, const char *func, int line));
+static int __rep_wrlock_recovery_blocked __P((DB_ENV *));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -127,6 +129,8 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
 		dbenv->set_rep_recovery_cleanup = __rep_set_rep_recovery_cleanup;
 		dbenv->rep_set_gen = __rep_set_gen_pp;
+		dbenv->wrlock_recovery_lock = __rep_wrlock_recovery_lock;
+		dbenv->wrlock_recovery_blocked = __rep_wrlock_recovery_blocked;
 		dbenv->lock_recovery_lock = __rep_lock_recovery_lock;
 		dbenv->unlock_recovery_lock = __rep_unlock_recovery_lock;
 		dbenv->set_check_standalone = __rep_set_check_standalone;
@@ -915,20 +919,72 @@ __rep_set_rep_truncate_callback(dbenv, rep_truncate_callback)
 	return (0);
 }
 
+#if DEBUG_RECOVERY_LOCK
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
+
+static int recoverlk_blocked = 0;
+
 static int
-__rep_lock_recovery_lock(dbenv)
-    DB_ENV *dbenv;
+__rep_wrlock_recovery_lock(dbenv, func, line)
+	DB_ENV *dbenv;
+	const char *func;
+	int line;
 {
-    Pthread_rwlock_rdlock(&dbenv->recoverlk);
-    return 0;
+	recoverlk_blocked = 1;
+	Pthread_rwlock_wrlock(&dbenv->recoverlk);
+	recoverlk_blocked = 0;
+#if DEBUG_RECOVERY_LOCK
+	logmsg(LOGMSG_USER, "%s line %d WRITE-LOCK recoverlk, readers=%d\n", func, line,
+		dbenv->recoverlk.__data.__readers);
+	comdb2_cheapstack_sym(stderr, "%s:%d", func, line);
+#endif
+	return 0;
 }
 
 static int
-__rep_unlock_recovery_lock(dbenv)
-    DB_ENV *dbenv;
+__rep_wrlock_recovery_blocked(dbenv)
+	DB_ENV *dbenv;
 {
-    Pthread_rwlock_unlock(&dbenv->recoverlk);
-    return 0;
+	return recoverlk_blocked;
+}
+
+#if DEBUG_RECOVERY_LOCK
+pthread_mutex_t prlk = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+static int
+__rep_lock_recovery_lock(dbenv, func, line)
+	DB_ENV *dbenv;
+	const char *func;
+	int line;
+{
+	Pthread_rwlock_rdlock(&dbenv->recoverlk);
+#if DEBUG_RECOVERY_LOCK
+	Pthread_mutex_lock(&prlk);
+	logmsg(LOGMSG_USER, "%s line %d READ-LOCK recoverlk, readers=%d\n", func, line,
+		dbenv->recoverlk.__data.__readers);
+	comdb2_cheapstack_sym(stderr, "%s:%d", func, line);
+	Pthread_mutex_unlock(&prlk);
+#endif
+	return 0;
+}
+
+static int
+__rep_unlock_recovery_lock(dbenv, func, line)
+	DB_ENV *dbenv;
+	const char *func;
+	int line;
+{
+#if DEBUG_RECOVERY_LOCK
+	Pthread_mutex_lock(&prlk);
+	logmsg(LOGMSG_USER, "%s line %d UNLOCK recoverlk, readers=%d\n", func, line,
+		dbenv->recoverlk.__data.__readers);
+	comdb2_cheapstack_sym(stderr, "%s:%d", func, line);
+	Pthread_mutex_unlock(&prlk);
+#endif
+	Pthread_rwlock_unlock(&dbenv->recoverlk);
+	return 0;
 }
 
 static int
