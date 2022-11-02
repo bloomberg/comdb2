@@ -1524,6 +1524,12 @@ REGISTER_TUNABLE("early_ack_trace",
                  "Print trace when sending an early ack.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_early_ack_trace, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_delay_timeout_seconds",
+                 "Set timeout for commit-delay on copy.  (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_commit_delay_timeout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_delay_on_copy_ms",
+                 "Set automatic delay-ms for commit-delay on copy.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_commit_delay_copy_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);

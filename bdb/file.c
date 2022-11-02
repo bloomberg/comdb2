@@ -2598,6 +2598,9 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COMMITDELAYNONE,
                          "commitdelaynone", berkdb_receive_rtn);
 
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COMMITDELAYTIMED, "commitdelaytimed",
+                         berkdb_receive_rtn);
+
     net_register_handler(bdb_state->repinfo->netinfo,
                          USER_TYPE_MASTERCMPCONTEXTLIST, "mastercmpcontextlist",
                          berkdb_receive_rtn);

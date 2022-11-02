@@ -3631,6 +3631,15 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
     return rc;
 }
 
+int request_copydelay(void *bdb_state_in)
+{
+    int rc;
+    bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_in;
+    rc = net_send_flags(bdb_state->repinfo->netinfo,
+                        bdb_state->repinfo->master_host, USER_TYPE_COMMITDELAYTIMED, NULL,
+                        0, NET_SEND_NODROP);
+    return rc;
+}
 
 int send_myseqnum_to_master(bdb_state_type *bdb_state, int nodelay)
 {
@@ -4987,12 +4996,29 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     return rc;
 }
 
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+int gbl_commit_delay_copy_ms = 0;
+int gbl_commit_delay_timeout = 10;
+static int64_t commit_delay_timeout = 0;
+
 int bdb_commitdelay(void *arg)
 {
     bdb_state_type *bdb_state = arg;
+
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
-    return bdb_state->attr->commitdelay;
+
+    if (bdb_state->attr->commitdelaymax <= 0)
+        return 0;
+
+    if (bdb_state->attr->commitdelay > 0)
+        return MIN(bdb_state->attr->commitdelay, bdb_state->attr->commitdelaymax);
+
+    if (time(NULL) < commit_delay_timeout)
+        return MIN(gbl_commit_delay_copy_ms, bdb_state->attr->commitdelaymax);
+
+    return 0;
 }
 
 static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
@@ -5138,6 +5164,12 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
                                                       p_buf_end);
 
         got_new_seqnum_from_node(bdb_state, &berkdb_seqnum, from_node, is_tcp);
+        break;
+
+    case USER_TYPE_COMMITDELAYTIMED:
+        commit_delay_timeout = time(NULL) + gbl_commit_delay_timeout;
+        logmsg(LOGMSG_WARN, "--- got commitdelaytimed req from node %s.  timeout=%" PRId64 "\n", from_node,
+               commit_delay_timeout);
         break;
 
     case USER_TYPE_COMMITDELAYMORE:
@@ -5767,6 +5799,18 @@ void *watcher_thread(void *arg)
             bdb_state->pending_seqnum_broadcast = 0;
         }
         Pthread_mutex_unlock(&bdb_state->pending_broadcast_lock);
+
+        int log_delete_is_stopped(void);
+        if (log_delete_is_stopped()) {
+            logmsg(LOGMSG_WARN, "Logdelete stopped, requesting copy commit-delay\n");
+            if (rep_master == bdb_state->repinfo->myhost) {
+                commit_delay_timeout = time(NULL) + gbl_commit_delay_timeout;
+                logmsg(LOGMSG_WARN, "--- delaying commits for copy on master.  timeout=%"PRId64"\n",
+                    commit_delay_timeout);
+            } else {
+                request_copydelay(bdb_state);
+            }
+        }
 
         /* check if we have connections to everyone in the sanc list */
         bdb_state->sanc_ok =
