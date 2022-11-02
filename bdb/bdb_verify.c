@@ -184,7 +184,7 @@ ret:
 static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 {
     unsigned int last = par->last_connection_check; // get a copy of the last timestamp
-    if (bdb_lock_desired(par->bdb_state)) {
+    if (bdb_lock_desired(par->bdb_state) || bdb_recoverlk_blocked(par->bdb_state)) {
         logmsg(LOGMSG_WARN, "master change, stopped verify\n");
         par->lock_desired = 1;
         par->client_dropped_connection = 1;

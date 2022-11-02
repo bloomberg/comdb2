@@ -2164,7 +2164,7 @@ static void *pglogs_asof_thread(void *arg)
     /* We need to stop this thread when truncating the log */
     if (!db_is_exiting()) {
         haslock = 1;
-        dbenv->lock_recovery_lock(dbenv);
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
     }
 
     while (!db_is_exiting()) {
@@ -2350,7 +2350,7 @@ static void *pglogs_asof_thread(void *arg)
         }
 #endif
 
-        dbenv->unlock_recovery_lock(dbenv);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
         clear_newsi_pool();
         if (!dont_poll) {
             pollms = bdb_state->attr->asof_thread_poll_interval_ms <= 0
@@ -2358,11 +2358,11 @@ static void *pglogs_asof_thread(void *arg)
                          : bdb_state->attr->asof_thread_poll_interval_ms;
             poll(NULL, 0, pollms);
         }
-        dbenv->lock_recovery_lock(dbenv);
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
     }
 
     if (haslock)
-        dbenv->unlock_recovery_lock(dbenv);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 
     return NULL;
 }

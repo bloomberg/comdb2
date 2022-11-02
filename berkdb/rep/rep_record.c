@@ -6543,12 +6543,12 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 		wait_for_sc_to_stop("log-truncate", __func__, __LINE__);
 	}
 
-	Pthread_rwlock_wrlock(&dbenv->recoverlk);
+	dbenv->wrlock_recovery_lock(dbenv, __func__, __LINE__);
 	have_recover_lk = 1;
 	if (i_am_master) {
 		if (truncate_count > 0) {
 			logmsg(LOGMSG_ERROR, "%s forbidding concurrent truncates\n", __func__);
-			Pthread_rwlock_unlock(&dbenv->recoverlk);
+			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return -1;
 		}
 		truncate_count++;
@@ -6556,7 +6556,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 
 	/* Figure out if we are backing out any commited transactions. */
 	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
-		Pthread_rwlock_unlock(&dbenv->recoverlk);
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		logmsg(LOGMSG_ERROR, "%s error getting log cursor\n", __func__);
 		if (i_am_master) {
 			truncate_count--;
@@ -6678,7 +6678,7 @@ restart:
 	logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
 			trunclsnp->file, trunclsnp->offset);
 
-	Pthread_rwlock_unlock(&dbenv->recoverlk);
+	dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	have_recover_lk = 0;
 
 	if (online) {
@@ -6710,7 +6710,7 @@ err:
 	}
 
 	if (have_recover_lk) {
-		Pthread_rwlock_unlock(&dbenv->recoverlk);
+	    dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	}
 
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
