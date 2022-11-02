@@ -110,6 +110,7 @@ void serialise_database(
   bool incr_create,
   bool incr_gen,
   bool copy_physical,
+  bool add_latency,
   const std::string& incr_path
 );
 // Serialise a database into tape archive format and write it to stdout.

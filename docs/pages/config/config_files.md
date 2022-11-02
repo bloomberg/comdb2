@@ -776,6 +776,8 @@ These options are toggle-able at runtime.
 |default_sql_mspace_kbsz          | 1024            | Default size of memory regions owned by SQL threads, in KB 
 |osync                            |Off         | Enables `O_SYNC` on data files (reads still go through FS cache) if `directio` isn't set
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
+|commit_delay_timeout_seconds     |10          | Period of time a master will delay-commits if a copy is ongoing
+|commit_delay_on_copy_ms          |0           | Amount of time each commit will be delayed if a copy is ongoing
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
 |gbl_exit_on_pthread_create_fail  |1           | If set, database will exit if thread pools aren't able to create threads.
