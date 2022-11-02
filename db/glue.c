@@ -69,7 +69,7 @@
 #include <cdb2api.h>
 #include <dlmalloc.h>
 
-#include "sqloffload.h"
+#include <osqlrepository.h>
 #include "osqlcomm.h"
 
 #include <flibc.h>
@@ -94,6 +94,7 @@
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
+#include <comdb2_atomic.h>
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -2888,7 +2889,7 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
 {
-    ++gbl_master_changes;
+    ATOMIC_ADD32(gbl_master_changes, 1);
     struct dbenv *dbenv;
     char *oldmaster, *newmaster;
     uint32_t gen, egen;
@@ -2917,7 +2918,6 @@ static int new_master_callback(void *bdb_handle, char *host,
 
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
-            gbl_master_changes++;
 
             /* if there is an active schema changes, resume it */
             if (gbl_ready && resume_schema_change()) {
@@ -2946,9 +2946,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     }
 
     gbl_lost_master_time = 0; /* reset this */
-
-    /* fudge around my lockless access to gbl_master_changes */
-    MEMORY_SYNC;
 
     osql_checkboard_for_each(dbenv->master, osql_checkboard_master_changed);
 

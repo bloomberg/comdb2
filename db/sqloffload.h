@@ -81,7 +81,6 @@ int snapisol_abort(struct sqlclntstate *clnt);
 
 void osql_checkboard_for_each(void *arg, int (*func)(void *, void *));
 int osql_checkboard_master_changed(void *obj, void *arg);
-int osql_repository_cancelall(void);
 
 int selectv_range_commit(struct sqlclntstate *clnt);
 

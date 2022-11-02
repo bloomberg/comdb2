@@ -4689,8 +4689,7 @@ clipper_usage:
        logmsg(LOGMSG_USER, "disabled rcache\n");
 #endif
     } else if (tokcmp(tok, ltok, "swing") == 0) {
-        extern int gbl_master_changes;
-        ++gbl_master_changes;
+        ATOMIC_ADD32(gbl_master_changes, 1);
     } else if (tokcmp(tok, ltok, "stat4dump") == 0) {
         int more;
         segtok(line, lline, &st, &more);
