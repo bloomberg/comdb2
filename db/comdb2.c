@@ -5642,6 +5642,16 @@ int check_current_schemas(void)
     return 0;
 }
 
+int log_delete_is_stopped(void)
+{
+    int rc;
+    struct dbenv *dbenv = thedb;
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    rc = dbenv->log_delete_state_list.count;
+    Pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
+    return rc;
+}
+
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state)
 {
     Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);

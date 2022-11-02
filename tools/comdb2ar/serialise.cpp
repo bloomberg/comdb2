@@ -760,6 +760,7 @@ void serialise_database(
   bool incr_create,
   bool incr_gen,
   bool copy_physical,
+  bool add_latency,
   const std::string& incr_path
 )
 // Serialise a database into tape archive format and write it to stdout.
@@ -1332,6 +1333,9 @@ void serialise_database(
                 }
 
                 serialise_file(fi, iom);
+                if (add_latency) {
+                    sleep(1);
+                }
             }
             islrl = false;
         }
@@ -1353,6 +1357,9 @@ void serialise_database(
                 }
 
                 serialise_file(fi, iom);
+                if (add_latency) {
+                    sleep(1);
+                }
             }
             catch (SerialiseError &err) {
                 std::cerr << "Warning: " << *it << ": " << err.what() << std::endl;
@@ -1389,6 +1396,9 @@ void serialise_database(
                 }
 
                 serialise_file(*it, iom, "", incr_path, incr_create);
+                if (add_latency) {
+                    sleep(1);
+                }
             }
 
             // Serialise all remaining log files, including incomplete ones
@@ -1413,6 +1423,9 @@ void serialise_database(
         FileInfo fi(FileInfo::LOG_FILE, absfile, dbdir);
 
         serialise_file(fi);
+        if (add_latency) {
+            sleep(1);
+        }
 
         long long log_number(lowest_log);
 
@@ -1484,6 +1497,9 @@ void serialise_database(
 
             // Ok, now serialise this file.
             serialise_file(*new_it, iom, "", incr_path, true);
+            if (add_latency) {
+                sleep(1);
+            }
         }
 
 
