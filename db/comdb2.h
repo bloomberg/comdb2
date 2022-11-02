@@ -2857,6 +2857,7 @@ int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
                    const char *fmt, ...);
 
 enum { LOG_DEL_ABS_ON, LOG_DEL_ABS_OFF, LOG_DEL_REFRESH };
+int log_delete_is_stopped(void);
 void log_delete_counter_change(struct dbenv *dbenv, int action);
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state);
 void log_delete_rem_state(struct dbenv *dbenv, struct log_delete_state *state);

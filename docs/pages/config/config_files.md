@@ -750,6 +750,8 @@ These options are toggle-able at runtime.
 |nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
 |checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
+|commit_delay_timeout_seconds     |10          | Period of time a master will delay-commits if a copy is ongoing
+|commit_delay_on_copy_ms          |8           | Amount of time each commit will be delayed if a copy is ongoing
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
 |blocksql_grace                   |10 sec      | Let block transactions run this long if db is exiting before being killed (and returning an error).
