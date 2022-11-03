@@ -324,8 +324,10 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, 
            3) Replicant detects that master has swung, and restarts the transaction against the new master.
            4) Replicant reader-thread processes the wrong-master error from the old master, and restarts
               the transaction again. */
-        if (errstat->errval != 0 && entry->master != from)
+        if (errstat->errval != 0 && entry->master != from) {
+            Pthread_mutex_unlock(&checkboard->mtx);
             return 0;
+        }
         entry->err = *errstat;
     } else
         bzero(&entry->err, sizeof(entry->err));
