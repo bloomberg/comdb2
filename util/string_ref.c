@@ -39,19 +39,23 @@ static int gbl_creation_count;
 struct string_ref {
     int cnt;
     size_t len;
+    const char *func;
+    int line;
     char str[1];
 };
 
 
 /* Makes a copy of the string passed and uses that as a reference counted object
  */
-struct string_ref * create_string_ref(const char *str)
+struct string_ref * create_string_ref_internal(const char *str, const char *func, int line)
 {
     assert(str);
     size_t len = strlen(str);
     struct string_ref *ref = malloc(sizeof(struct string_ref) + len);
     ref->cnt = 1;
     ref->len = len;
+    ref->func = func;
+    ref->line = line;
     strcpy(ref->str, str);
 
 #ifdef TRACK_REFERENCES
@@ -134,7 +138,7 @@ size_t string_ref_len(struct string_ref *ref)
 static int print_it(void *obj, void *arg)
 {
     struct string_ref *ref = obj;
-    logmsg(LOGMSG_USER, "%s:%d\n", ref->str, ref->cnt);
+    logmsg(LOGMSG_USER, "%s:%d allocated %s:%d\n", ref->str, ref->cnt, ref->func, ref->line);
     return 0;
 }
 
