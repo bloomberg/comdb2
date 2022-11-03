@@ -4822,7 +4822,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
 
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
-    clnt->sql_ref = create_string_ref(clnt->sql);
+    if (!clnt->sql_ref && clnt->sql) {
+        clnt->sql_ref = create_string_ref(clnt->sql);
+    }
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
