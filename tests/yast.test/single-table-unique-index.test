@@ -1,0 +1,24 @@
+# Test prefering a unique index on a simple table select
+
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+set testprefix whereG
+
+reset_db
+
+do_execsql_test simple-unique-key-test {
+  CREATE TABLE t1(a, b, c, d);
+  CREATE UNIQUE INDEX i1 ON t1(a, b, c);
+} {}
+
+do_test simple-unique-key-test-1 {
+  execsql "INSERT INTO t1 VALUES(1, 2, 3, 4);"
+} {}
+
+do_test simple-unique-key-test-2 {
+  execsql {
+    EXPLAIN QUERY PLAN SELECT d FROM t1 WHERE a=1 and b=2 and c=3
+  }
+} {5 0 0 {SEARCH TABLE t1 USING INDEX $I1_4882B606 (a=? AND b=? AND c=?) (~1 row)}}
+
+finish_test
