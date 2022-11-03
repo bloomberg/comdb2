@@ -350,8 +350,11 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
                4) Replicant reader-thread processes the ERR_TRAN_FAILED error from the old master, errors out
                   the transaction, and returns the error to the client. The transaction, however, is silently
                   completed on the new master. */
-            if (errstat->errval != 0 && entry->master != from)
+            if (errstat->errval != 0 && entry->master != from) {
+                Pthread_mutex_unlock(&entry->mtx);
+                Pthread_rwlock_unlock(&checkboard->rwlock);
                 return 0;
+            }
             entry->err = *errstat;
         } else
             bzero(&entry->err, sizeof(entry->err));
