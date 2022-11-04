@@ -3058,9 +3058,12 @@ static int _dttz_to_native_datetimeus(cdb2_client_datetimeus_t * cdt, const Mem 
 static int _native_datetime_to_dttz(cdb2_client_datetime_t * cdt, Mem * res) {
 
     char    tmp[11] = {0};
-    unsigned char buf[CLIENT_DATETIME_LEN];
-    unsigned char *p_buf=buf, *p_buf_end=(p_buf+CLIENT_DATETIME_LEN);
+    unsigned char buf[CLIENT_DATETIME_LEN+sizeof(char)];
+    unsigned char *p_buf=buf;
+    unsigned char *p_buf_end=buf+CLIENT_DATETIME_LEN;
     int     outdtsz  = 0; 
+
+    *p_buf_end = 0;
 
     if(!(client_datetime_put(cdt,p_buf, p_buf_end)))
     {
@@ -3082,9 +3085,11 @@ static int _native_datetime_to_dttz(cdb2_client_datetime_t * cdt, Mem * res) {
 static int _native_datetimeus_to_dttz(cdb2_client_datetimeus_t * cdt, Mem * res) {
 
     char    tmp[13] = {0};
-    unsigned char buf[CLIENT_DATETIME_LEN];
+    unsigned char buf[CLIENT_DATETIME_LEN+sizeof(char)];
     unsigned char *p_buf=buf, *p_buf_end=(p_buf+CLIENT_DATETIME_LEN);
     int     outdtsz  = 0; 
+
+    *p_buf_end = 0;
 
     if(!(client_datetimeus_put(cdt,p_buf, p_buf_end)))
     {

@@ -6226,7 +6226,7 @@ backout:
 int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
                         int *bdberr, int add, int file_type)
 {
-    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t key[LLMETA_IXLEN+sizeof(uint8_t)] = {0};
     int rc;
     struct llmeta_authentication authentication_data = {0};
     uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;

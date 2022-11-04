@@ -58,7 +58,7 @@ static int run1(const char *sql)
 
 int main(int argc, char **argv)
 {
-    sigignore(SIGPIPE);
+    signal(SIGPIPE, SIG_IGN);
 
     char *cluster = getenv("CLUSTER");
     if (cluster) {
