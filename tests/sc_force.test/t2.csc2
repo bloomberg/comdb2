@@ -1,0 +1,3 @@
+tag ondisk {
+    int b null = yes
+}

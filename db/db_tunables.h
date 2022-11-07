@@ -2069,4 +2069,7 @@ REGISTER_TUNABLE("pgcomp_dbg_ctrace", "Enable debugging ctrace for page compacti
 REGISTER_TUNABLE("warn_on_equiv_types", "Warn about mismatch of different but equivalent data types "
                  "returned by different sqlite versions (Default off)", TUNABLE_BOOLEAN,
                  &gbl_warn_on_equiv_types, NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_headroom", 
+                 "Percentage threshold for low headroom calculation. (Default: 10)",
+                 TUNABLE_DOUBLE, &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

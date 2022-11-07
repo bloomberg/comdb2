@@ -739,6 +739,9 @@ void comdb2AlterTableCSC2(
     sc->scanmode = SCAN_PARALLEL;
     sc->dryrun = dryrun;
     fillTableOption(sc, opt);
+    if(OPT_ON(opt, FORCE_SC)){
+        sc->force = 1;
+    }
     copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
     if(dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
@@ -4229,6 +4232,9 @@ void comdb2AlterTableEnd(Parse *pParse)
     sc->dryrun = ((ctx->flags & DDL_DRYRUN) != 0) ? 1 : 0;
 
     fillTableOption(sc, ctx->schema->table_options);
+    if(OPT_ON(ctx->schema->table_options, FORCE_SC)){
+        sc->force = 1;
+    }
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
