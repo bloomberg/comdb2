@@ -26,6 +26,7 @@
 #include "logmsg.h"
 
 extern int gbl_partial_indexes;
+extern uint64_t gbl_sc_headroom;
 
 int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
@@ -1227,7 +1228,7 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     uint64_t avail, wanted;
     struct statvfs st;
     int rc;
-    int headroom = 10; /* percent */
+    uint64_t headroom = gbl_sc_headroom; /* percent */
     uint64_t oldsize, newsize, diff;
     char b1[32], b2[32], b3[32], b4[32];
 

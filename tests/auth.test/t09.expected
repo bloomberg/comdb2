@@ -78,6 +78,7 @@
 (candidate='FILTER')
 (candidate='FOLLOWING')
 (candidate='FOR')
+(candidate='FORCE')
 (candidate='FOREIGN')
 (candidate='FROM')
 (candidate='FULL')

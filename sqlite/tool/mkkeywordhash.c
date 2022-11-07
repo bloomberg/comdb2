@@ -353,6 +353,7 @@ static Keyword aKeywordTable[] = {
   { "EXEC",             "TK_EXEC",           ALWAYS               },
   { "EXECUTE",          "TK_EXECUTE",        ALWAYS               },
   { "ENABLE",           "TK_ENABLE",         ALWAYS               },
+  { "FORCE",            "TK_FORCE",          ALWAYS               },
   { "FUNCTION",         "TK_FUNCTION",       ALWAYS               },
   { "GENID48",          "TK_GENID48",        ALWAYS               },
   { "GET",              "TK_GET",            ALWAYS               },
