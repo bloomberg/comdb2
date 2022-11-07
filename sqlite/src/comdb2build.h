@@ -28,6 +28,7 @@
 #define FORCE_REBUILD 0x2000
 #define PAGE_ORDER    0x4000
 #define READ_ONLY     0x8000
+#define FORCE_SC      0x10000
 
 #define REBUILD_ALL     1
 #define REBUILD_DATA    2
