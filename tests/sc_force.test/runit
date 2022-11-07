@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+fixednode=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $fixednode 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1`
+
+### create and populate the table 
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >actual 2>&1 
+drop table if exists t
+create table t {`cat t1.csc2`}\$\$
+set transaction chunk 10000
+BEGIN
+insert into t select * from generate_series(1,1000000)
+COMMIT
+EOF
+
+### set env to delay sc and increase sc status reporting frequency 
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $master - >>actual 2>&1
+exec procedure sys.cmd.send('screportfreq 1')
+EOF
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" 
+
+### try to schemachange without force
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+alter table t {`cat t2.csc2`}
+EOF
+
+### verify that schemachange failed
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+select csc2 from sqlite_master where tbl_name='t'
+EOF
+
+### try to schemachange with force
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+alter table t options force {`cat t2.csc2`}
+EOF
+
+
+### verify that schemachange succeeded
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode - >>actual 2>&1
+select csc2 from sqlite_master where tbl_name='t'
+EOF
+
+diff actual expected 

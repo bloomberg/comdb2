@@ -2340,4 +2340,7 @@ REGISTER_TUNABLE("seekscan_maxsteps",
                  NULL);
 REGISTER_TUNABLE("wal_osync", "Open WAL files using the O_SYNC flag (Default: off)", TUNABLE_BOOLEAN, &gbl_wal_osync, 0,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_headroom", 
+                 "Percentage threshold for low headroom calculation. (Default: 10)",
+                 TUNABLE_DOUBLE, &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

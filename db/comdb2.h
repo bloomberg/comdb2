@@ -1837,7 +1837,7 @@ extern int gbl_sockbplog_sockpool;
 extern int gbl_logical_live_sc;
 
 extern int gbl_test_io_errors;
-
+extern uint64_t gbl_sc_headroom;
 /* init routines */
 int appsock_init(void);
 int thd_init(void);

@@ -793,6 +793,9 @@ void comdb2AlterTableCSC2(
         }
     }
     fillTableOption(sc, opt);
+    if(OPT_ON(opt, FORCE_SC)){
+        sc->force = 1;
+    }
     copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
     if(sc->dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
@@ -4713,6 +4716,9 @@ void comdb2AlterTableEnd(Parse *pParse)
     }
 
     fillTableOption(sc, ctx->schema->table_options);
+    if(OPT_ON(ctx->schema->table_options, FORCE_SC)){
+        sc->force = 1;
+    }
 
     if (ctx->partition)
         sc->partition = *ctx->partition;
