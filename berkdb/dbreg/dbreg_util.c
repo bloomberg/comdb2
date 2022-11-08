@@ -397,7 +397,6 @@ __ufid_add_dbp(dbenv, dbp)
 
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
-#if 0
 		if (ufid->dbp != NULL && ufid->dbp != dbp) {
 			/* There may be 2 dbp's for the same ufid, if a replicant upgrades to a
 			   master and later assigns a dbreg ID to a btree (see __dbreg_lazy_id).
@@ -405,7 +404,6 @@ __ufid_add_dbp(dbenv, dbp)
 			   __db_close() doesn't mistakenly clear the new dbp. */
 			ufid->dbp->added_to_ufid = 0;
 		}
-#endif
 	} else {
 		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
 			abort();
@@ -1180,11 +1178,14 @@ __dbreg_lazy_id(dbp)
 	lp = dblp->reginfo.primary;
 	fnp = dbp->log_filename;
 
+	/* The lazy_id_mutex protects replication from allocating
+	   a new dbreg ID in the middle of a schema change. */
 	MUTEX_LOCK(dbenv, &lp->lazy_id_mutex);
 	/* The fq_mutex protects the FNAME list and id management. */
 	MUTEX_LOCK(dbenv, &lp->fq_mutex);
 	if (fnp->id != DB_LOGFILEID_INVALID) {
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+		MUTEX_UNLOCK(dbenv, &lp->lazy_id_mutex);
 		return (0);
 	}
 	id = DB_LOGFILEID_INVALID;
