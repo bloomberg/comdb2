@@ -3404,8 +3404,12 @@ static int openDatabase(
     rc = sqlite3SeriesInit(db);
   }
 #endif
+#if !defined(SQLITE_OMIT_VIRTUALTABLE) && !defined(SQLITE_OMIT_JSON)
+  if( !db->mallocFailed && rc==SQLITE_OK){
+    rc = sqlite3JsonTableFunctions(db);
+  }
+#endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
 #ifdef SQLITE_ENABLE_STMTVTAB
   if( !db->mallocFailed && rc==SQLITE_OK){
     rc = sqlite3StmtVtabInit(db);

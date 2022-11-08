@@ -5035,6 +5035,7 @@ SQLITE_API int sqlite3_create_window_function(
 */
 #define SQLITE_DETERMINISTIC    0x000000800
 #define SQLITE_SUBTYPE          0x000100000
+#define SQLITE_INNOCUOUS        0x000200000
 
 /*
 ** CAPI3REF: Deprecated Functions
@@ -8901,6 +8902,7 @@ SQLITE_API int sqlite3_vtab_config(sqlite3*, int op, ...);
 ** </dl>
 */
 #define SQLITE_VTAB_CONSTRAINT_SUPPORT 1
+#define SQLITE_VTAB_INNOCUOUS 2
 
 /*
 ** CAPI3REF: Determine The Virtual Table Conflict Policy

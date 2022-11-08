@@ -1238,6 +1238,9 @@ int sqlite3_vtab_config(sqlite3 *db, int op, ...){
       }
       break;
     }
+    case SQLITE_VTAB_INNOCUOUS: {
+      break;
+    }
     default:
       rc = SQLITE_MISUSE_BKPT;
       break;
