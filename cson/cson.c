@@ -13,32 +13,40 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+#include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "../berkdb/dbinc/queue.h"
 #include "cson.h"
 
-/* cson::glue::json1 */
+#define SQLITE_INTEGER        1
+#define SQLITE_FLOAT          2
+#define SQLITE_TEXT           3
+#define SQLITE_BLOB           4
+#define SQLITE_NULL           5
+/* CSON doesn't support these; add them so JSON module can compile. */
+#define SQLITE_DATETIME       6
+#define SQLITE_INTERVAL_YM    7
+#define SQLITE_INTERVAL_DS    8
+#define SQLITE_DATETIMEUS     9
+#define SQLITE_INTERVAL_DSUS 10
+#define SQLITE_DECIMAL       11
 
-enum {
-    SQLITE_INTEGER = 1,
-    SQLITE_FLOAT,
-    SQLITE_BLOB,
-    SQLITE_NULL,
-    SQLITE_TEXT,
-
-    SQLITE_OK = 0,
-    SQLITE_NOMEM = 7,
-
-    SQLITE_UTF8 = 1,
-
-    SQLITE_DETERMINISTIC = 0x800,
-};
+#define SQLITE_OK           0   /* Successful result */
+#define SQLITE_NOMEM        7   /* A malloc() failed */
 
 #define i64 int64_t
+#define u8 int8_t
+#define u16 int16_t
+#define u32 int32_t
+#define u64 uint64_t
+
 #define sqlite3 void
 #define sqlite3_context cson_kvp
 #define sqlite3_int64 int64_t
@@ -61,12 +69,14 @@ enum {
 #define sqlite3_result_null cson__result_null
 #define sqlite3_result_subtype cson__result_subtype
 #define sqlite3_result_text cson__result_text
-#define sqlite3_result_text64 cson__result_text64
+#define sqlite3_result_text64(a, b, c, d, e) cson__result_text(a, b, c, d)
 
 #define SQLITE_STATIC cson__not_reached_alloc
 #define SQLITE_TRANSIENT cson__not_reached_alloc
+#define sqlite3Isalnum(x) isalnum(x)
+#define sqlite3Isdigit(x) isdigit(x)
+#define sqlite3Isxdigit(x) isxdigit(x)
 #define sqlite3_aggregate_context(a, ...) cson__not_reached_void_ptr((intptr_t) a, __VA_ARGS__)
-#define sqlite3_create_function(a, ...) (intptr_t)cson__not_reached_void_ptr((intptr_t) a, __VA_ARGS__)
 #define sqlite3_get_auxdata(a, ...) cson__not_reached_void_ptr((intptr_t) a, __VA_ARGS__)
 #define sqlite3_mprintf(a, ...) cson__not_reached_void_ptr((intptr_t) a, __VA_ARGS__)
 #define sqlite3_result_error(...) cson__not_reached_void()
@@ -87,24 +97,35 @@ static void cson__result_int64(cson_kvp *, int64_t);
 static void cson__result_null(cson_kvp *);
 static void cson__result_subtype(cson_kvp *, unsigned int);
 static void cson__result_text(cson_kvp *, const char *, int , void (*)(void *));
-static void cson__result_text64(cson_kvp *, const char *, uint64_t, void (*)(void *), unsigned char);
 
 static void cson__not_reached_alloc(void *);
 static void cson__not_reached_void(void);
 static void *cson__not_reached_void_ptr(intptr_t, ...);
 
-/* Evil: Need to borrow SQLite's JSON implementation. We also, want, just the
- * implementation. We don't want sqlite3.h, sqliteInt.h, ... */
-#define SQLITE3_H
-#define SQLITEINT_H
-#define SQLITE_API
-#define SQLITE_CORE
-#define SQLITE_ENABLE_JSON1
-#define SQLITE_EXTENSION_INIT1
-#define SQLITE_OMIT_VIRTUALTABLE
-#define SQLITE_OMIT_WINDOWFUNC
-#define sqlite3Json1Init cson__sqlite3Json1Init
-#include "../sqlite/ext/misc/json1.c"
+#define testcase(X)
+#define LARGEST_INT64  (0xffffffff|(((i64)0x7fffffff)<<32))
+#define SMALLEST_INT64 (((i64)-1) - LARGEST_INT64)
+#define ALWAYS(X)      (1)
+#define NEVER(X)       (0)
+#define UNUSED_PARAMETER(x) (void)(x)
+
+#define SQLITEINT_H /* Don't include sqliteInt.h */
+#define SQLITE_OMIT_VIRTUALTABLE /* Don't need sqlite3JsonTableFunctions */
+#define SQLITE_OMIT_WINDOWFUNC /* Don't need json_group_array, json_group_object */
+#define SQLITE_BUILDING_FOR_COMDB2 /* Handle 'deliberate_fall_through' */
+#define SQLITE_PTR_TO_INT(X) ((int)(intptr_t)(X)) /* Handle json_extract */
+
+/* Handle unused variable aJsonFunc in sqlite3RegisterJsonFunctions */
+#define FuncDef int
+#define JFUNCTION(...) 0
+#define WAGGREGATE(...) 0
+#define sqlite3InsertBuiltinFuncs(a, b) UNUSED_PARAMETER(a)
+
+/* Rename function to prevent multiple definition error. */
+#define sqlite3RegisterJsonFunctions cson__dummy_function
+
+/* Glue is ready. Activate.. */
+#include "../sqlite/src/json.c"
 
 /* List of cson_values created for $[key] or $.key */
 LIST_HEAD(get_list, cson_get);
@@ -221,13 +242,6 @@ static void cson__result_text(cson_kvp *kvp, const char *z, int n,
     if (xDel == free)
         free((void *)z);
 }
-static void cson__result_text64(cson_kvp *kvp, const char *z,
-                                  uint64_t n, void (*xDel)(void *),
-                                  unsigned char enc)
-{
-    cson__result_text(kvp, z, n, xDel);
-}
-
 static void cson__reset_slots(cson_value *v)
 {
     for (int i = 0; i < v->replace.used; ++i) {

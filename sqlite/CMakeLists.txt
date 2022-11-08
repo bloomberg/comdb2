@@ -83,6 +83,7 @@ add_library(sqlite
   src/global.c
   src/hash.c
   src/insert.c
+  src/json.c
   src/legacy.c
   src/loadext.c
   src/main.c

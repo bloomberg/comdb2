@@ -24,6 +24,12 @@
 #ifndef SQLITE_OMIT_JSON
 #include "sqliteInt.h"
 
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+#  ifndef deliberate_fall_through
+#    define deliberate_fall_through
+#  endif /* deliberate_fall_through */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+
 /*
 ** Growing our own isspace() routine this way is twice as fast as
 ** the library isspace() function, resulting in a 7% overall performance
@@ -314,6 +320,14 @@ static void jsonAppendValue(
       jsonAppendRaw(p, z, n);
       break;
     }
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+    case SQLITE_DATETIME:
+    case SQLITE_DATETIMEUS:
+    case SQLITE_INTERVAL_YM:
+    case SQLITE_INTERVAL_DS:
+    case SQLITE_INTERVAL_DSUS:
+    case SQLITE_DECIMAL:
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
     case SQLITE_TEXT: {
       const char *z = (const char*)sqlite3_value_text(pValue);
       u32 n = (u32)sqlite3_value_bytes(pValue);
@@ -2607,6 +2621,10 @@ static sqlite3_module jsonEachModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0                          /* xShadowName */
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  ,
+  CDB2_ALLOW_ALL|CDB2_HIDDEN,/* access_flag */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 };
 
 /* The methods of the json_tree virtual table. */
@@ -2635,6 +2653,10 @@ static sqlite3_module jsonTreeModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0                          /* xShadowName */
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  ,
+  CDB2_ALLOW_ALL|CDB2_HIDDEN,/* access_flag */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 };
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
 #endif /* !defined(SQLITE_OMIT_JSON) */
