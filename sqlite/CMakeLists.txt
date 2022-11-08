@@ -58,7 +58,6 @@ add_library(sqlite
   ext/misc/carray.c
   ext/misc/completion.c
   ext/misc/regexp.c
-  ext/misc/json1.c
   ext/expert/sqlite3expert.c
   ext/misc/series.c
   src/alter.c

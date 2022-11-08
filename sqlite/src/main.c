@@ -35,9 +35,6 @@
 # endif
 # include <logmsg.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-#ifdef SQLITE_ENABLE_JSON1
-int sqlite3Json1Init(sqlite3*);
-#endif
 #ifdef SQLITE_ENABLE_STMTVTAB
 int sqlite3StmtVtabInit(sqlite3*);
 #endif
@@ -3408,11 +3405,6 @@ static int openDatabase(
   }
 #endif
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-#ifdef SQLITE_ENABLE_JSON1
-  if( !db->mallocFailed && rc==SQLITE_OK){
-    rc = sqlite3Json1Init(db);
-  }
-#endif
 
 #ifdef SQLITE_ENABLE_STMTVTAB
   if( !db->mallocFailed && rc==SQLITE_OK){
