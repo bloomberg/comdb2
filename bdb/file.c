@@ -5481,7 +5481,6 @@ static bdb_state_type *bdb_open_int(
     int rc;
     int i;
     int largest;
-    int total;
     struct stat sb;
     int iammaster;
 
@@ -5727,9 +5726,7 @@ static bdb_state_type *bdb_open_int(
 
         /* determine the largest key size and the total key size */
         largest = 0;
-        total = 0;
         for (i = 0; i < numix; i++) {
-            total += ixlen[i];
             if (ixlen[i] > largest)
                 largest = ixlen[i];
         }

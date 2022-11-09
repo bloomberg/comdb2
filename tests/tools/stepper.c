@@ -210,3 +210,8 @@ static int parse_line( char *line, char **query)
    *query = sp;
    return id;
 }
+
+// TODO: not sure why this is only undefined on MacOS
+#ifdef _DARWIN_C_SOURCE
+int gbl_ssl_allow_localhost = 0;
+#endif

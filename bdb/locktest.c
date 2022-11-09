@@ -712,7 +712,6 @@ static void get_locks_wrapper(int argc, GetLocksArg argv[])
     intptr_t rc[argc];
     int ret = 0;
     int i;
-    int retry = 0;
 
     for (i = 0; i < argc; ++i) {
         pthread_create(&t[i], &locktest_attr, get_locks, &argv[i]);
@@ -720,7 +719,6 @@ static void get_locks_wrapper(int argc, GetLocksArg argv[])
     for (i = 0; i < argc; ++i) {
         pthread_join(t[i], (void **)&rc[i]);
         ret += rc[i];
-        retry += argv[i].retry;
     }
     assert(ret == 0);
 }

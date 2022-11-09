@@ -1069,7 +1069,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
+    hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", (size_t)(outstanding / MB(1)), (size_t) (max_bytes / MB(1)));
 }
 
 static void message_done(struct event_info *e)
