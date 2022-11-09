@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #include <stdarg.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #define FMTSZ 512
 
@@ -24,7 +25,7 @@ void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line,
         strcat(fmt, "XXX ");
     }
 
-    snprintf(buf, sizeof(buf), "td %u ", (uint32_t)pthread_self());
+    snprintf(buf, sizeof(buf), "td %"PRIdPTR" ", (intptr_t)pthread_self());
     strcat(fmt, buf);
 
     snprintf(buf, sizeof(buf), "handle %p ", db);
@@ -129,8 +130,8 @@ char *read_node(cdb2_hndl_tp *db)
 
 void myexit(const char *func, int line, int status)
 {
-    printf("calling exit from thread %u function %s line %d with status %d\n",
-           (uint32_t)pthread_self(), func, line, status);
+    printf("calling exit from thread %"PRIdPTR" function %s line %d with status %d\n",
+           (intptr_t)pthread_self(), func, line, status);
     fflush(stdout);
     fflush(stderr);
     exit(status);

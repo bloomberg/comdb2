@@ -285,8 +285,10 @@ int gbl_compress_page_compact_log = 1;
 } while (0)
 
 #define ALLOCA_UNLZ4_BUFFER() do {				\
-	hdrdbtdata = argp->hdr.data;				\
-	hdrdbtsize = argp->hdr.size;				\
+	hdrdbtdata = argp->hdr.data;                \
+	hdrdbtsize = argp->hdr.size;                \
+    (void) hdrdbtdata;                          \
+    (void) hdrdbtsize;                          \
 	if (argp->data.size != argp->dtaoriglen) {	\
 		unlz4dta = alloca(argp->dtaoriglen);	\
 		dtadbtdata = (void *)unlz4dta;			\
@@ -294,7 +296,9 @@ int gbl_compress_page_compact_log = 1;
 	} else {									\
 		dtadbtdata = argp->data.data;			\
 		dtadbtsize = argp->data.size;			\
-	}											\
+	}                                           \
+    (void) dtadbtsize;                          \
+    (void) dtadbtdata;                          \
 } while (0)
 
 /* Try to compress page image. Return 1 if successfully lz'd. */
