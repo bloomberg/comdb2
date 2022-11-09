@@ -41,6 +41,9 @@ struct string_ref {
     size_t len;
     const char *func;
     int line;
+#ifdef STACK_STRING_REFERENCES
+    char stack[1024];
+#endif
     char str[1];
 };
 
@@ -56,6 +59,10 @@ struct string_ref * create_string_ref_internal(const char *str, const char *func
     ref->len = len;
     ref->func = func;
     ref->line = line;
+#ifdef STACK_STRING_REFERENCES
+    extern void comdb2_cheapstack_sym_char_array(char *str, int maxln);
+    comdb2_cheapstack_sym_char_array(ref->stack, sizeof(ref->stack));
+#endif
     strcpy(ref->str, str);
 
 #ifdef TRACK_REFERENCES
@@ -138,7 +145,11 @@ size_t string_ref_len(struct string_ref *ref)
 static int print_it(void *obj, void *arg)
 {
     struct string_ref *ref = obj;
+#ifdef STACK_STRING_REFERENCES
+    logmsg(LOGMSG_USER, "%s:%d allocated %s:%d %s\n", ref->str, ref->cnt, ref->func, ref->line, ref->stack);
+#else
     logmsg(LOGMSG_USER, "%s:%d allocated %s:%d\n", ref->str, ref->cnt, ref->func, ref->line);
+#endif
     return 0;
 }
 
