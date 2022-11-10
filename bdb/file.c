@@ -246,6 +246,11 @@ void set_repinfo_master_host(bdb_state_type *bdb_state, char *master,
                master, func, line);
     }
     bdb_state->repinfo->master_host = master;
+
+    if (master == db_eid_invalid) {
+        /* whoismaster_rtn (new_master_callback) will be called when master is available */
+        thedb_set_master(db_eid_invalid);
+    }
 }
 
 static void bdb_checkpoint_list_delete_log(int filenum)
@@ -4992,6 +4997,12 @@ end:
     return outrc;
 }
 
+static void whoismaster_rtn(bdb_state_type *bdb_state, int sc_clear)
+{
+    if (!bdb_state->callback->whoismaster_rtn) return;
+    bdb_state->callback->whoismaster_rtn(bdb_state, bdb_state->repinfo->master_host, sc_clear); /* new_master_callback */
+}
+
 void bdb_setmaster(bdb_state_type *bdb_state, char *host)
 {
     BDB_READLOCK("bdb_setmaster");
@@ -5003,9 +5014,7 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
 
     BDB_RELLOCK();
 
-    if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(
-            bdb_state, bdb_state->repinfo->master_host, 0);
+    whoismaster_rtn(bdb_state, 0);
 }
 
 static inline void bdb_set_read_only(bdb_state_type *bdb_state)
@@ -5183,10 +5192,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
     defer_commits_for_upgrade(bdb_state, 0, __func__);
 
     /* notify the user that we are the master */
-    if (bdb_state->callback->whoismaster_rtn) {
-        (bdb_state->callback->whoismaster_rtn)(
-            bdb_state, bdb_state->repinfo->master_host, 1);
-    }
+    whoismaster_rtn(bdb_state, 1);
 
     /* master cannot be incoherent, that makes no sense.
      *
@@ -5328,11 +5334,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
         break;
     }
 
-    /* call the user with a NEWMASTER of -1 */
-    if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(
-            bdb_state, bdb_state->repinfo->master_host, 1);
-
+    whoismaster_rtn(bdb_state, 1);
     allow_sc_to_run();
     BDB_RELLOCK();
 
@@ -5988,9 +5990,7 @@ static bdb_state_type *bdb_open_int(
 
         bdb_state->repinfo->upgrade_allowed = 1;
 
-        if (bdb_state->callback->whoismaster_rtn)
-            (bdb_state->callback->whoismaster_rtn)(
-                bdb_state, bdb_state->repinfo->master_host, 1);
+        whoismaster_rtn(bdb_state, 1);
 
         logmsg(
             LOGMSG_INFO, "@LSN %u:%u\n",
