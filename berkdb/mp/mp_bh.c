@@ -532,8 +532,6 @@ struct logfile {
 
 int gbl_verify_lsn_written = 0;
 
-pthread_mutex_t verifylk = PTHREAD_MUTEX_INITIALIZER;
-
 int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
     int check_checkpoint);
 
@@ -542,41 +540,12 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 int
 berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 {
-	DIR *d;
-	int filenum = 0;
-	struct dirent *ent;
-	char dir[PATH_MAX];
-	bdb_trans(dbenv->db_home, dir);
+	DB_LSN lastlsn = {0};
 
-	Pthread_mutex_lock(&verifylk);
-	d = opendir(dir);
-	if (d == NULL) {
-		__db_err(dbenv, "Can't get directory listing");
-		Pthread_mutex_unlock(&verifylk);
-		return 1;
-	}
-
-	ent = readdir(d);
-	while (ent) {
-		int n;
-
-		if (strncmp(ent->d_name, "log.", 4) == 0) {
-			errno = 0;
-			n = strtol(ent->d_name + 4, NULL, 10);
-
-			if (n > 0 && errno == 0) {
-				if (n > filenum)
-					filenum = n;
-			}
-		}
-		ent = readdir(d);
-	}
-	closedir(d);
-
-	Pthread_mutex_unlock(&verifylk);
+	__log_get_last_lsn(dbenv, &lastlsn);
 
 	/* guaranteed written */
-	if (lsn->file < filenum)
+	if (lsn->file < lastlsn.file)
 		return 0;
 
 	return berkdb_verify_lsn_written_to_disk(dbenv, lsn, 0);
