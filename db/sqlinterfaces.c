@@ -5155,6 +5155,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->dtran_mtx);
     Pthread_mutex_destroy(&clnt->state_lk);
     Pthread_mutex_destroy(&clnt->sql_tick_lk);
+    Pthread_mutex_destroy(&clnt->sql_lk);
 }
 
 void reset_clnt(struct sqlclntstate *clnt, int initial)
@@ -5168,6 +5169,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         Pthread_mutex_init(&clnt->dtran_mtx, NULL);
         Pthread_mutex_init(&clnt->state_lk, NULL);
         Pthread_mutex_init(&clnt->sql_tick_lk, NULL);
+        Pthread_mutex_init(&clnt->sql_lk, NULL);
     }
     else {
        clnt->sql_since_reset = 0;
@@ -6622,7 +6624,9 @@ static void log_long_running_stmts_evbuffer(void)
     struct sqlclntstate *clnt;
     Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
+        Pthread_mutex_lock(&clnt->sql_lk);
         reqlog_long_running_clnt(clnt);
+        Pthread_mutex_unlock(&clnt->sql_lk);
     }
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
@@ -6635,12 +6639,14 @@ static void log_long_running_stmts_sbuf(void)
     struct sqlclntstate *clnt;
     Pthread_mutex_lock(&clnt_lk);
     LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+        Pthread_mutex_lock(&clnt->sql_lk);
         reqlog_long_running_clnt(clnt);
+        Pthread_mutex_unlock(&clnt->sql_lk);
     }
     Pthread_mutex_unlock(&clnt_lk);
 }
 
-void log_long_running_sql_statements(void)
+void reqlog_long_running_sql_statements(void)
 {
     if (gbl_libevent_appsock) {
         log_long_running_stmts_evbuffer();
