@@ -2885,74 +2885,81 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
     return -1;
 }
 
-/* callback to report new master */
-static int new_master_callback(void *bdb_handle, char *host,
-                               int assert_sc_clear)
+static void thedb_set_master_int(char *master)
 {
-    ATOMIC_ADD32(gbl_master_changes, 1);
-    struct dbenv *dbenv;
-    char *oldmaster, *newmaster;
+    thedb->master = master;
+}
+
+static pthread_mutex_t new_master_lk = PTHREAD_MUTEX_INITIALIZER;
+void thedb_set_master(char *master)
+{
+    if (gbl_create_mode) return;
+    Pthread_mutex_lock(&new_master_lk);
+    char *old = thedb->master;
+    thedb_set_master_int(master);
+    logmsg(LOGMSG_USER, "%s: %s -> %s\n", __func__, old, master);
+    Pthread_mutex_unlock(&new_master_lk);
+}
+
+static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
+{
+    char *host;
     uint32_t gen, egen;
+    bdb_get_rep_master(bdb_handle, &host, &gen, &egen);
+    logmsg(LOGMSG_USER,
+           "%s: old old-master:%s old-gen:%d old-egen:%d\n"
+           "%s: new rep-master:%s rep-gen:%d rep-egen:%d\n"
+           ,__func__, thedb->master, thedb->gen, thedb->egen
+           ,__func__, host, gen, egen);
+    if (host == db_eid_invalid) {
+        logmsg(LOGMSG_USER, "%s: skipping callback\n", __func__);
+        return;
+    }
+    char *oldmaster = thedb->master;
+    thedb_set_master_int(host);
+    thedb->egen = egen;
+    thedb->gen = gen;
+    ATOMIC_ADD32(gbl_master_changes, 1);
+
     int trigger_timepart = 0;
-    dbenv = bdb_get_usr_ptr(bdb_handle);
-    oldmaster = dbenv->master;
-    dbenv->master = host;
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
-        if (oldmaster == gbl_myhostname && host != gbl_myhostname)
+        if (oldmaster == gbl_myhostname && host != gbl_myhostname) {
             sc_assert_clear(__func__, __LINE__);
+        }
     }
-
-    bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
-    if (gbl_master_swing_osql_verbose)
-        logmsg(LOGMSG_INFO,
-               "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
-               __func__, __LINE__, host ? host : "NULL",
-               newmaster ? newmaster : "NULL", egen);
-    dbenv->gen = gen;
-    /*this is only used when handle not established yet. */
     if (host == gbl_myhostname) {
-
         trigger_clear_hash();
-
         if (oldmaster != host) {
-            logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
-
-            /* if there is an active schema changes, resume it */
+            logmsg(LOGMSG_USER, "I AM NEW MASTER NODE %s\n", host);
             if (gbl_ready && resume_schema_change()) {
-                logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if "
-                        "one was in progress it will have to be restarted\n");
+                logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
             trigger_timepart = 1;
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
-        /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
-
-        /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
-        if (oldmaster != host && !gbl_create_mode) {
-            logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
+        if (oldmaster != host) {
+            logmsg(LOGMSG_USER, "NEW MASTER NODE %s\n", host);
         }
-
         osql_repository_cancelall();
     }
-
-    /* poke master in comdb2 shm */
     if (!gbl_exit && comdb2_ipc_master_set) {
         comdb2_ipc_master_set(host);
     }
+    gbl_lost_master_time = 0;
+    osql_checkboard_for_each(thedb->master, osql_checkboard_master_changed);
+}
 
-    gbl_lost_master_time = 0; /* reset this */
-
-    osql_checkboard_for_each(dbenv->master, osql_checkboard_master_changed);
-
-    /* inform watcher that we have a new master !*/
-    if(trigger_timepart)
-        gbl_trigger_timepart = 1;
-
+static int new_master_callback(void *bdb_handle, char *host, int assert_sc_clear)
+{
+    if (gbl_create_mode) return 0;
+    Pthread_mutex_lock(&new_master_lk);
+    new_master_callback_int(bdb_handle, assert_sc_clear);
+    Pthread_mutex_unlock(&new_master_lk);
     return 0;
 }
 

@@ -2362,4 +2362,6 @@ void fill_dbinfo(struct _CDB2DBINFORESPONSE *, bdb_state_type *);
 void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
 #endif
 
+void thedb_set_master(char *);
+
 #endif
