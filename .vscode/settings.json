@@ -1,0 +1,15 @@
+{
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    /* Uncomment if you want to specify any path here */
+    // "cmake.cmakePath": "/usr/bin/cmake",
+    // "clangd.path": "/usr/bin/clangd-12",
+    // "cmake.configureSettings": {
+    //     "CMAKE_MAKE_PROGRAM": "/usr/bin/ninja"
+    // },
+    "cmake.configureArgs": [
+        //        "-DCOMDB2_PER_THREAD_MALLOC=OFF",
+        "-GNinja",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=on", /* outputs compile_commands.json useful for clangd*/
+    ],
+}
