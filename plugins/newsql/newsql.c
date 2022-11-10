@@ -990,7 +990,9 @@ static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
     CDB2QUERY *query = appdata->query = stmt->query;
     appdata->sqlquery = query->sqlquery;
     strncpy0(clnt->tzname, stmt->tzname, sizeof(clnt->tzname));
+    Pthread_mutex_lock(&clnt->sql_lk);
     clnt->sql = query->sqlquery->sql_query;
+    Pthread_mutex_unlock(&clnt->sql_lk);
     return NULL;
 }
 
@@ -1910,7 +1912,9 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 
 int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
+    Pthread_mutex_lock(&clnt->sql_lk);
     clnt->sql = sql_query->sql_query;
+    Pthread_mutex_unlock(&clnt->sql_lk);
     clnt->added_to_hist = 0;
     if (!in_client_trans(clnt)) {
         bzero(&clnt->effects, sizeof(clnt->effects));

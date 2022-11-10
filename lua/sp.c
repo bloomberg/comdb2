@@ -7261,3 +7261,19 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     }
     return rc;
 }
+
+int can_consume(struct sqlclntstate *clnt) {
+    if (clnt == NULL || clnt->sp == NULL)
+        return 0;
+
+    SP sp = clnt->sp;
+    char spname[strlen(sp->spname) + 1];
+    strcpy(spname, sp->spname);
+    Q4SP(qname, spname);
+
+    struct dbtable *db = getqueuebyname(qname);
+    if (db != NULL) {
+        return 1;
+    }
+    return 0;
+}

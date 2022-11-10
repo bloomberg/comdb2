@@ -655,7 +655,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             /* clnt.sql points into the protobuf unpacked buffer, which becomes
              * invalid after cdb2__query__free_unpacked. Reset the pointer here.
              */
+            Pthread_mutex_lock(&clnt.sql_lk);
             clnt.sql = NULL;
+            Pthread_mutex_unlock(&clnt.sql_lk);
         }
         appdata->query = NULL;
 
