@@ -888,6 +888,9 @@ struct sqlclntstate {
     char *sqlengine_state_file;
     int sqlengine_state_line;
     int last_sqlengine_state;
+
+    // Latch last statement's cost for comdb2_last_cost to fetch
+    int64_t last_cost;
 };
 
 /* Query stats. */

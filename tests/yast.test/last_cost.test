@@ -1,0 +1,10 @@
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+
+do_execsql_test lastcost {
+  DROP TABLE IF EXISTS last_test;
+  CREATE TABLE last_test(a int);
+  INSERT INTO last_test values(1),(2),(3);
+  SELECT * FROM last_test;
+  SELECT comdb2_last_cost();
+} {1 2 3 13}
