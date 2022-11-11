@@ -1193,6 +1193,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->txnid = rqid;
 
     time_metric_add(thedb->service_time, h->cost.time);
+    clnt->last_cost = (int64_t) h->cost.cost;
 
     /* request logging framework takes care of logging long sql requests */
     reqlog_set_cost(logger, h->cost.cost);
@@ -6977,4 +6978,15 @@ int maxquerytime_cb(struct sqlclntstate *clnt)
 {
     clnt->statement_timedout = 1;
     return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), CDB2ERR_QUERYLIMIT);
+}
+
+/* Sqlite prototypes this as i64, since it insists on C89 compatibility, which precludes
+ * using int64_t.  We'll just make the assumption that i64 and int64_t are the same underlying
+ * type. */
+int64_t comdb2_last_stmt_cost(void) {
+   struct sql_thread *thd = pthread_getspecific(query_info_key);
+   if (!thd)
+      return -1;
+
+   return thd->clnt ? thd->clnt->last_cost : -1;
 }
