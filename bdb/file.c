@@ -241,6 +241,8 @@ void set_repinfo_master_host(bdb_state_type *bdb_state, char *master,
                master, func, line);
     }
     bdb_state->repinfo->master_host = master;
+    void set_thedb_master(char *);
+    if (master == db_eid_invalid) set_thedb_master(db_eid_invalid);
 }
 
 static void bdb_checkpoint_list_delete_log(int filenum)

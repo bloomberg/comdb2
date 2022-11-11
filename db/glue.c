@@ -2961,6 +2961,11 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
     return -1;
 }
 
+void set_thedb_master(void *master)
+{
+    thedb->master = master;
+}
+
 /* callback to report new master */
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
