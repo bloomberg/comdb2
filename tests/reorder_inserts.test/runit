@@ -103,7 +103,7 @@ else
 fi
 
 ddcount=`grep -c DEADLOCK $mlog`
-limit=300
+limit=150
 if [[ $DBNAME == *"noreordergenerated"* ]] ; then
     if [[ $ddcount -lt $limit ]] ; then
         failexit 'no reorder expected to get more than 500 deadlocks for this test'
