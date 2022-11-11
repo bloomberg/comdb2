@@ -284,6 +284,7 @@
 (candidate='comdb2_double_to_blob()')
 (candidate='comdb2_extract_table_names()')
 (candidate='comdb2_host()')
+(candidate='comdb2_last_cost()')
 (candidate='comdb2_node()')
 (candidate='comdb2_normalize_sql()')
 (candidate='comdb2_port()')
