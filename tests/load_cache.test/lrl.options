@@ -10,5 +10,5 @@ verbose_set_sc_in_progress on
 #setattr REP_WORKERS 0
 cache 512 mb
 online_recovery on
-pagelist_flush_interval 0
+cache_flush_interval 0
 ack_trace
