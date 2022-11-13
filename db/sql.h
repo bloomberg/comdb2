@@ -1415,6 +1415,10 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  unsigned char *fingerprint, int cost,
                                  int rows, int timems);
 
+tran_type *curtran_gettran(void);
+void curtran_puttran(tran_type *tran);
+
+
 /**
  * If bdb_lock_desired, run recovery (releasing locks)
  * and pause proportionally with the number of retries

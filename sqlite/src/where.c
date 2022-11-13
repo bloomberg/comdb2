@@ -3675,6 +3675,7 @@ static int whereLoopAddAll(WhereLoopBuilder *pBuilder){
         }
       }
       rc = whereLoopAddVirtual(pBuilder, mPrereq, mUnusable);
+      sqlite3VdbeAddTable(pWInfo->pParse->pVdbe, pItem->pTab);
     }else
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
     {

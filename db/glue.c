@@ -60,6 +60,7 @@
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
 #include <bdb_queue.h>
+#include <bdb_int.h>
 
 #include <net.h>
 #include <net_types.h>
@@ -5413,16 +5414,18 @@ retry:
     iq->gluewhere = "bdb_queuedb_stats done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
-            iq->retries++;
-            if (++retries < gbl_maxretries) {
-                n_retries++;
-                goto retry;
+            if (tran == NULL) {
+                iq->retries++;
+                if (++retries < gbl_maxretries) {
+                    n_retries++;
+                    goto retry;
+                }
+                logmsg(LOGMSG_ERROR,
+                       "*ERROR* bdb_queue_stats too much contention "
+                       "%d count %d\n",
+                       bdberr, retries);
             }
-            logmsg(LOGMSG_ERROR,
-                   "*ERROR* bdb_queue_stats too much contention "
-                   "%d count %d\n",
-                   bdberr, retries);
-            return ERR_INTERNAL;
+            return -1;
         }
         return map_unhandled_bdb_rcode("bdb_queue_stats", bdberr, 0);
     }
@@ -5430,7 +5433,7 @@ retry:
 }
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             tran_type *tran, void *userptr)
+             int limit, tran_type *tran, void *userptr)
 {
     int bdberr;
     void *bdb_handle;
@@ -5446,7 +5449,7 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 retry:
     iq->gluewhere = "bdb_queue_walk";
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
-                        (bdb_queue_walk_callback_t)callback, tran, userptr,
+                        (bdb_queue_walk_callback_t)callback, tran, limit, userptr,
                         &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
@@ -5466,6 +5469,22 @@ retry:
         return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
     return rc;
+}
+
+int dbq_oldest_epoch(struct ireq *iq, tran_type *tran, time_t *epoch) {
+    bdb_state_type *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+    int bdberr;
+    int rc;
+    if (!bdb_handle)
+        return ERR_NO_AUXDB;
+    rc = bdb_queue_oldest_epoch(bdb_handle, tran, epoch, &bdberr);
+    if (rc) {
+        if (bdberr == BDBERR_DEADLOCK)
+            return RC_INTERNAL_RETRY;
+        else
+            return ERR_INTERNAL;
+    }
+    return 0;
 }
 
 void diagnostics_dump_dta(struct dbtable *db, int dtanum)

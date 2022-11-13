@@ -60,7 +60,8 @@ struct systbl_queues_cursor {
   char          queue_name[32];
   char          spname[256];
   unsigned long long     depth;
-  unsigned long long     age;
+  unsigned long long     head_age;
+  unsigned long long     tail_age;
   int           last_qid;
   int           is_last;
   unsigned long long     tot_enqueued;
@@ -72,8 +73,9 @@ struct systbl_queues_cursor {
 #define STQUEUE_SPNAME       1
 #define STQUEUE_HEADTIME     2
 #define STQUEUE_DEPTH        3
-#define STQUEUE_TOT_ENQUEUED 4
-#define STQUEUE_TOT_DEQUEUED 5
+#define STQUEUE_TAILTIME     4
+#define STQUEUE_TOT_ENQUEUED 5
+#define STQUEUE_TOT_DEQUEUED 6
 
 static int systblQueuesConnect(
   sqlite3 *db,
@@ -87,7 +89,7 @@ static int systblQueuesConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE comdb2_queues(queuename, spname, head_age, depth, "
+     "CREATE TABLE comdb2_queues(queuename, spname, head_age, depth, tail_age, "
      "total_enqueued, total_dequeued)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
@@ -110,8 +112,6 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   unsigned long long depth = 0;
   char *spname = NULL;
   struct dbtable *qdb = thedb->qdbs[pCur->last_qid];
-  struct sql_thread *thd = pthread_getspecific(query_info_key);
-  uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
 
   dbqueuedb_get_name(qdb, &spname);
   strcpy(pCur->queue_name, qdb->tablename);
@@ -122,7 +122,8 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   else
       pCur->spname[0] = 0;
 
-  int rc = dbqueuedb_get_stats(qdb, stats, lockid);
+  tran_type *tran = curtran_gettran();
+  int rc = dbqueuedb_get_stats(qdb, tran, stats);
   if (rc) {
       /* TODO: signal error? */
   }
@@ -130,12 +131,17 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
       if (stats[consumern].has_stuff)
           depth += stats[consumern].depth;
   }
+  curtran_puttran(tran);
 
   pCur->depth = depth;
-  if (stats[0].epoch)
-      pCur->age  = comdb2_time_epoch() - stats[0].epoch;
-  else
-      pCur->age  = 0;
+  if (stats[0].newest_epoch) {
+      pCur->head_age = comdb2_time_epoch() - stats[0].newest_epoch;
+      pCur->tail_age = comdb2_time_epoch() - stats[0].oldest_epoch;
+  }
+  else {
+      pCur->head_age = 0;
+      pCur->tail_age = 0;
+  }
   pCur->tot_enqueued = bdb_get_qdb_adds(qdb->handle);
   pCur->tot_dequeued = bdb_get_qdb_cons(qdb->handle);
   return 0;
@@ -219,8 +225,12 @@ static int systblQueuesColumn(
       break;
     }
     case STQUEUE_HEADTIME: {
-      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->age);
-      break;
+        sqlite3_result_int64(ctx, (sqlite3_int64)pCur->head_age);
+        break;
+    }
+    case STQUEUE_TAILTIME: {
+        sqlite3_result_int64(ctx, (sqlite3_int64)pCur->tail_age);
+        break;
     }
   }
   return SQLITE_OK;

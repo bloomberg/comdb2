@@ -2312,4 +2312,8 @@ REGISTER_TUNABLE("seekscan_maxsteps",
                  "Overrides the max number of steps for a seekscan optimization", TUNABLE_INTEGER,
                  &gbl_seekscan_maxsteps, SIGNED, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("queue_walk_limit",
+                 "When walking queues for metrics, stop after this many elements.  "
+                 "(Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_queue_walk_limit, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

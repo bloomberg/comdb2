@@ -91,6 +91,7 @@ int bdb_lock_table_read(bdb_state_type *, tran_type *);
 
 int bdb_lock_table_read_fromlid(bdb_state_type *, int lid);
 int bdb_lock_tablename_read_fromlid(bdb_state_type *, const char *name, int lid);
+int bdb_lock_table_read_by_name_fromlid(bdb_state_type *bdb_state, char *name, int lid);
 int bdb_lock_table_write_fromlid(bdb_state_type *, int lid);
 int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
                                void *lkname, int mode, void *lk);

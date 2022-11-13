@@ -192,6 +192,12 @@ int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
     char **dests;
     int bdberr;
 
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Error %d getting tablelock for comdb2_queues\n", rc);
+        goto done;
+    }
+
     /* Queue information should already be in llmeta. Fetch it and create
      * queue/consumer handles */
 
@@ -607,6 +613,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         remove_from_qdbs(db);
     }
 
+    if (sc->kind == SC_ADD_TRIGGER) {
+        dbqueuedb_admin(thedb, !same_tran ? tran : ltran);
+    }
+
     if (!same_tran) {
         rc = trans_commit(&iq, tran, gbl_myhostname);
         tran = NULL;
@@ -690,10 +700,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
     if (sc->kind == SC_ADD_TRIGGER && db && rc == 0) {
         add_to_qdbs(db);
-    }
-
-    if (sc->kind == SC_ADD_TRIGGER) {
-        dbqueuedb_admin(thedb);
     }
 
 done:

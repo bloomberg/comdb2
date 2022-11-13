@@ -25,12 +25,12 @@ int dbqueuedb_add_consumer(struct dbtable *db, int consumern, const char *method
 }
 
 /* This gets called for all plugins, not just the first */
-void dbqueuedb_admin(struct dbenv *dbenv) {
+void dbqueuedb_admin(struct dbenv *dbenv, tran_type *tran) {
     comdb2_queue_consumer_t *handler; 
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
         if (handler)
-            handler->admin(dbenv, i);
+            handler->admin(dbenv, tran, i);
     }
 }
 
@@ -147,40 +147,18 @@ static int dbqueuedb_get_stats_int(struct dbtable *db, tran_type *tran,
     return -1;
 }
 
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_t lockid)
+int dbqueuedb_get_stats(struct dbtable *db, tran_type *tran, struct consumer_stat *stats)
 {
     int rc;
-    int bdberr;
-    uint32_t savedlid;
     bdb_state_type *bdb_state = db->handle;
-    tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
-    if (!trans) {
-        logmsg(LOGMSG_ERROR, "%s bdb_tran_begin:%s bdberr:%d\n", __func__,
-               db->tablename, bdberr);
-        return -1;
-    }
-    if (lockid) {
-        bdb_get_tran_lockerid(trans, &savedlid);
-        bdb_set_tran_lockerid(trans, lockid);
 
-        if (gbl_debug_systable_locks) {
-            assert(bdb_has_tablename_locked(bdb_state, "_comdb2_systables", lockid, TABLENAME_LOCKED_READ));
-        }
-
-        if (gbl_assert_systable_locks) {
-            assert(bdb_has_tablename_locked(bdb_state, "comdb2_queues", lockid, TABLENAME_LOCKED_READ));
-        }
-    }
-    if ((rc = bdb_lock_table_read(bdb_state, trans)) == 0) {
-        rc = dbqueuedb_get_stats_int(db, trans, stats);
+    if ((rc = bdb_lock_table_read(bdb_state, tran)) == 0) {
+        rc = dbqueuedb_get_stats_int(db, tran, stats);
     } else {
         logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
                db->tablename, rc);
     }
-    if (lockid) {
-        bdb_set_tran_lockerid(trans, savedlid);
-    }
-    bdb_tran_abort(bdb_state, trans, &bdberr);
+
     return rc;
 }
 
