@@ -13029,14 +13029,17 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         /* CHECK constraint has passed if we get 1 or NULL. */
         assert(clnt.has_sqliterow);
-        if (sm.min->flags & MEM_Int) {
+
+        if (sm.mout->flags & MEM_Int) {
             if (sm.mout->u.i == 0) {
                 /* CHECK constraint failed */
                 rc = i + 1;
             } else {
                 /* Check constraint passed */
             }
-        } else if (sm.min->flags & MEM_Null) {
+        } else if (sm.mout->flags & MEM_Null) {
+            /* Check constraint passed */
+        } else if (sm.min->flags & MEM_Null) { // CREATE TABLE ... CHECK (NULL) -- allow all ?
             /* Check constraint passed */
         } else {
             /* CHECK constraint failed */
