@@ -1,0 +1,11 @@
+This test exercises REBUILD command with table options which were introduced
+as part of RDSICOMDB2-229
+
+A few points about the test: 
+    1. IPU, ISC and COMPRESSION require ODH to be enabled. As a result,
+       the strategy for the test is :
+       a.) create table => this should have ODH on, IPU on, ISC on, 
+                           COMPRESS CRLE, BLOBCOMPRESS LZ4
+       b.) turn off flags using REBUILD in the following order: 
+           IPU OFF -> ISC OFF -> BLOBFIELD NONE -> REC NONE -> ODH OFF 
+           , and verify flags with stat compr after every run 

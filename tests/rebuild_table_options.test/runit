@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+dbnm=$1
+
+fixednode=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'exec procedure sys.cmd.send("on osql_odh_blob")'
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $fixednode 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | awk '{print $1}' | cut -d':' -f1`
+
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $master - >actual 2>&1
+create table t(a int)\$\$
+exec procedure sys.cmd.send('stat compr')
+REBUILD t OPTIONS IPU OFF
+exec procedure sys.cmd.send('stat compr')
+REBUILD t OPTIONS ISC OFF
+exec procedure sys.cmd.send('stat compr')
+REBUILD t OPTIONS BLOBFIELD NONE
+exec procedure sys.cmd.send('stat compr')
+REBUILD t OPTIONS REC NONE
+exec procedure sys.cmd.send('stat compr')
+REBUILD t OPTIONS ODH OFF
+exec procedure sys.cmd.send('stat compr')
+EOF
+
+### Test enabling compression with rebuild 
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $master - >>actual 2>&1
+drop table if exists t
+create table t(a int) options rec none, blobfield none \$\$
+exec procedure sys.cmd.send('stat compr')
+REBUILD t OPTIONS REC RLE, BLOBFIELD LZ4
+exec procedure sys.cmd.send('stat compr')
+EOF
+
+diff actual expected
