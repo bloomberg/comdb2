@@ -135,12 +135,16 @@ function rebuild_thread
 
         if [[ $(( cnt % 2 )) == 1  ]]; then
             write_prompt $func "Rebuilding and adding a column: new record size should be 10"
-            x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "alter table t1 options rebuild { `cat t1_2.csc2 ` }" 2>&1)
-            [[ $? -ne 0 ]] && failexit "Failed to rebuild: $x"
+            x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "alter table t1 { `cat t1_2.csc2 ` }" 2>&1)
+            [[ $? -ne 0 ]] && failexit "alter table failed: $x"
+            x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "rebuild t1" 2>&1)
+            [[ $? -ne 0 ]] && failexit "rebuild table failed: $x"
         else
             write_prompt $func "Rebuilding and removing a column: new record size should be 5"
-            x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "alter table t1 options rebuild { `cat t1_1.csc2 ` }" 2>&1)
-            [[ $? -ne 0 ]] && failexit "Failed to rebuild: $x"
+            x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "alter table t1 { `cat t1_1.csc2 ` }" 2>&1)
+            [[ $? -ne 0 ]] && failexit "alter table failed: $x"
+            x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "rebuild t1" 2>&1)
+            [[ $? -ne 0 ]] && failexit "rebuild failed: $x"
         fi
         let vers=vers+1
 
