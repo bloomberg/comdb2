@@ -61,13 +61,15 @@ struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
         goto err;
     }
 
-    rc = init_check_constraints(newtable);
-    if (rc) {
-        errstat_set_rcstrf(err, -1,
-                           "Failed to load check constraints "
-                           "for %s",
-                           newtable->tablename);
-        goto err;
+    if (newtable->schema) {
+        rc = init_check_constraints(newtable);
+        if (rc) {
+            errstat_set_rcstrf(err, -1,
+                               "Failed to load check constraints "
+                               "for %s",
+                               newtable->tablename);
+            goto err;
+        }
     }
 
 err:

@@ -115,3 +115,20 @@ constraints
 [UPDATE t1 SET i=110 WHERE i=1] failed with rc 3 CHECK constraint violation verify key constraint cannot cascade update table 't2' rc 320
 (i=1)
 (i=1)
+(test='10. Test for NULLs')
+(rows inserted=1)
+(rows inserted=1)
+(v=NULL)
+(v='aaa')
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+[INSERT INTO t2 VALUES('baaa')] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_7823CE20' unable to add record rc = 320
+(v=NULL)
+(v='aaa')
+(v='aaaa')
+[INSERT INTO t3 VALUES(NULL)] failed with rc 403 CHECK constraint violation CHECK constraint failed for '$CONSTRAINT_9A13D8EC' unable to add record rc = 320
+(rows inserted=1)
+(rows inserted=1)
+(v='')
+(v='aaa')
