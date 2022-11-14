@@ -1,0 +1,40 @@
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: no   instant schema change: yes
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: no   instant schema change: no 
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: crle     Blob compress: none      in-place updates: no   instant schema change: no 
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: none     Blob compress: none      in-place updates: no   instant schema change: no 
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH:  no Compress: none     Blob compress: none      in-place updates: no   instant schema change: no 
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: none     Blob compress: none      in-place updates: yes  instant schema change: yes
+COMPRESSION FLAGS
+These apply to new records only!
+[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes
+[t               ] ODH: yes Compress: rle8     Blob compress: lz4       in-place updates: yes  instant schema change: yes
