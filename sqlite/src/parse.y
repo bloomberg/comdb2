@@ -2453,7 +2453,6 @@ comdb2optlist(A) ::= comdb2optlist(X) COMMA comdb2optfield(O). {
 comdb2optfield(A) ::= odh(O). {A = O;}
 comdb2optfield(A) ::= ipu(I). {A = I;}
 comdb2optfield(A) ::= isc(S). {A = S;}
-comdb2optfield(A) ::= REBUILD. {A = FORCE_REBUILD;}
 comdb2optfield(A) ::= PAGEORDER. {A = PAGE_ORDER;}
 comdb2optfield(A) ::= READONLY. {A = READ_ONLY;}
 comdb2optfield(A) ::= compress_blob(C). {A = C;}
@@ -2461,12 +2460,15 @@ comdb2optfield(A) ::= compress_rec(C). {A = C;}
 
 %type odh {int}
 odh(A) ::= ODH OFF. {A = ODH_OFF;}
+odh(A) ::= ODH ON.  {A = ODH_ON;}
 
 %type ipu {int}
 ipu(A) ::= IPU OFF. {A = IPU_OFF;}
+ipu(A) ::= IPU ON.  {A = IPU_ON;}
 
 %type isc {int}
 isc(A) ::= ISC OFF. {A = ISC_OFF;}
+isc(A) ::= ISC ON.  {A = ISC_ON;}
 
 %type compress_blob {int}
 compress_blob(A) ::= BLOBFIELD blob_compress_type(T). { A = T;}

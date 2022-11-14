@@ -45,7 +45,6 @@ extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
 extern void *comdb2_get_ddl_context(char *name);
-
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
@@ -337,20 +336,19 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
 {
     if (OPT_ON(opt, ODH_OFF))
         sc->headers = 0;
-    else 
+    else if (OPT_ON(opt, ODH_ON)) 
         sc->headers = 1;
 
     if (OPT_ON(opt, IPU_OFF))
         sc->ip_updates = 0;
-    else
+    else if (OPT_ON(opt, IPU_ON))
         sc->ip_updates = 1;
 
     if (OPT_ON(opt, ISC_OFF))
         sc->instant_sc = 0;
-    else
+    else if (OPT_ON(opt, ISC_ON))
         sc->instant_sc = 1;
 
-    sc->compress_blobs = -1;
     if (OPT_ON(opt, BLOB_NONE))
         sc->compress_blobs = BDB_COMPRESS_NONE;
     else if (OPT_ON(opt, BLOB_RLE))
@@ -360,7 +358,6 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
     else if (OPT_ON(opt, BLOB_LZ4))
         sc->compress_blobs = BDB_COMPRESS_LZ4;
 
-    sc->compress = -1;
     if (OPT_ON(opt, REC_NONE))
         sc->compress = BDB_COMPRESS_NONE;
     else if (OPT_ON(opt, REC_RLE))
@@ -371,19 +368,6 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
         sc->compress = BDB_COMPRESS_ZLIB;
     else if (OPT_ON(opt, REC_LZ4))
         sc->compress = BDB_COMPRESS_LZ4;
-
-    if (OPT_ON(opt, FORCE_REBUILD))
-        sc->force_rebuild = 1;
-    else
-        sc->force_rebuild = 0;
-
-    if (OPT_ON(opt, PAGE_ORDER))
-        sc->scanmode = SCAN_PAGEORDER;
-
-    if (OPT_ON(opt, READ_ONLY))
-        sc->live = 0;
-    else
-        sc->live = 1;
 
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
@@ -849,10 +833,11 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto out;
 
+    fillTableOption(sc, opt);
     sc->nothrevent = 1;
     sc->live = 1;
     sc->scanmode = gbl_default_sc_scanmode;
-    
+
     if (OPT_ON(opt, REBUILD_ALL))
         sc->force_rebuild = 1;
 

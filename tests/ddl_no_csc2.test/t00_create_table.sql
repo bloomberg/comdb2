@@ -133,7 +133,7 @@ DROP TABLE t7;
 SELECT '---------------------------------- PART #13 ----------------------------------' AS part;
 # Table options
 CREATE TABLE t1(i INT) OPTIONS REC ZLIB, BLOBFIELD ZLIB $$
-CREATE TABLE t2(i INT) OPTIONS REC ZLIB, REBUILD $$
+CREATE TABLE t2(i INT) OPTIONS REC ZLIB $$
 CREATE TABLE t3(i INT) OPTIONS REC LZ4, BLOBFIELD LZ4 $$
 
 SELECT '---------------------------------- PART #14 ----------------------------------' AS part;

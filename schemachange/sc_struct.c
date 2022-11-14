@@ -926,7 +926,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
     else if (!s->ip_updates && olddb_inplace_updates)
         info = ">Table will not support in-place updates.\n";
     else if (s->ip_updates && olddb_inplace_updates)
-        info = ">Table supports in-place updates.\n";
+        info = ">Table already supports in-place updates.\n";
     else
         info = ">Table does not support in-place updates.\n";
 
@@ -982,6 +982,9 @@ void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable 
     int rc;
 
     /* Get properties from meta */
+    rc = get_db_odh_tran(db, &scinfo->olddb_odh, tran);
+    if (rc) scinfo->olddb_odh = 0;
+
     rc = get_db_compress_tran(db, &scinfo->olddb_compress, tran);
     if (rc) scinfo->olddb_compress = 0;
 

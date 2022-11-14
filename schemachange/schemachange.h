@@ -308,6 +308,7 @@ struct scinfo {
     int olddb_compress_blobs;
     int olddb_inplace_updates;
     int olddb_instant_sc;
+    int olddb_odh;
 };
 
 enum schema_change_rc {
