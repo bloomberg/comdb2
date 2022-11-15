@@ -254,7 +254,7 @@ static int verify_formkey_callback(const dbtable *tbl, void *dta,
 
 static int convert_to_partial_datacopy(const struct dbtable *tbl, const int pd_ix, const void *inbuf, void *outbuf)
 {
-    return stag_to_stag_buf_schemas(tbl->schema, tbl->schema->ix[pd_ix]->partial_datacopy, inbuf, outbuf, tbl->tablename);
+    return stag_to_stag_buf_schemas(tbl->schema, tbl->schema->ix[pd_ix]->partial_datacopy, inbuf, outbuf, NULL);
 }
 
 static int verify_add_blob_buffer_callback(void *parm, void *dta, int dtasz,
