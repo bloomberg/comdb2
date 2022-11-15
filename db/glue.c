@@ -2920,9 +2920,6 @@ static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
     thedb->egen = egen;
     thedb->gen = gen;
     ATOMIC_ADD32(gbl_master_changes, 1);
-
-    int trigger_timepart = 0;
-
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
         if (oldmaster == gbl_myhostname && host != gbl_myhostname) {
@@ -2937,7 +2934,7 @@ static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
                 logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
-            trigger_timepart = 1;
+            XCHANGE32(gbl_trigger_timepart, 1);
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         gbl_master_changed_oldfiles = 1;
