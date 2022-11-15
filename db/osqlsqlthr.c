@@ -270,13 +270,25 @@ retry:
     if (osql->target.host == NULL || osql->target.host == db_eid_invalid) {
         if (retries < max_retries) {
             retries++;
-            logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d \n",
-                   retries);
+            if (retries % (1000 / poll_ms) == 0) { /* reduce spew - once a second */
+                if (gbl_noenv_messages) {
+                    uuidstr_t us;
+                    comdb2uuidstr(osql->uuid, us);
+                    logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d uuid:%s\n", retries, us);
+                } else {
+                    logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d rqid:%llx\n", retries, osql->rqid);
+                }
+            }
             poll(NULL, 0, poll_ms);
             goto retry;
         } else {
-            logmsg(LOGMSG_ERROR, "%s: no master for %llu!\n", __func__,
-                   osql->rqid);
+            if (gbl_noenv_messages) {
+                uuidstr_t us;
+                comdb2uuidstr(osql->uuid, us);
+                logmsg(LOGMSG_ERROR, "%s: no master for uuid:%s\n", __func__, us);
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: no master for rqid:%llx\n", __func__, osql->rqid);
+            }
             errstat_set_rc(&osql->xerr, ERR_NOMASTER);
             errstat_set_str(&osql->xerr, "No master available");
             return SQLITE_ABORT;
@@ -302,8 +314,15 @@ retry:
 
     if (rc != 0 && retries < max_retries) {
         retries++;
-        logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d \n",
-               retries);
+        if (retries % (1000 / poll_ms) == 0) { /* reduce spew */
+            if (gbl_noenv_messages) {
+                uuidstr_t us;
+                comdb2uuidstr(osql->uuid, us);
+                logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d uuid:%s\n", retries, us);
+            } else {
+                logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d rqid:%llx\n", retries, osql->rqid);
+            }
+        }
         poll(NULL, 0, poll_ms);
         goto retry;
     }
