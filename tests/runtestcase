@@ -247,7 +247,12 @@ find_cores() {
 }
 
 verify_physical_at_finish() {
+    local LCLDBNM="$1"
+    local LCLCONFIG="$2"
+    local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
+
     if [[ -z "$CLUSTER" ]]; then
+        timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
         ls ${DBDIR}/ | egrep "\.datas|\.index|\.blobs" | while read fl ; do 
             ${CDB2VERIFY_EXE} ${DBDIR}/$fl 
             if [[ $? != 0 ]]; then
@@ -257,6 +262,7 @@ verify_physical_at_finish() {
         done
     else
         for node in ${CLUSTER} ; do
+            timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
             ck=`ssh -o StrictHostKeyChecking=no $node "ls ${DBDIR}/ | egrep \"\.datas|\.index|\.blobs\" | while read fl ; do ${CDB2VERIFY_EXE} ${DBDIR}/\\\${fl} ; if [[ \\\$? != 0 ]]; then echo \"$node:${DBDIR}/\\\${fl} failed verify\" ; break 2 ; fi ; done" < /dev/null`
             if [[ -n "$ck" ]]; then
                 echo "$ck"
@@ -414,7 +420,7 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
         if [[ -z "${verify_ret}" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
             verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
         fi
-        verify_phys=`verify_physical_at_finish`
+        verify_phys=`verify_physical_at_finish ${DBNAME} $CDB2_CONFIG`
     fi
 fi
 
