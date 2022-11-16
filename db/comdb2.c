@@ -343,6 +343,7 @@ int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
 int gbl_debug_omit_zap_on_rebuild = 0;
+int gbl_debug_txn_sleep = 0;
 int gbl_debug_skip_constraintscheck_on_insert;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;

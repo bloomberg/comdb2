@@ -599,6 +599,18 @@ Lists all the transaction log records.
 * `timestamp` - Timestamp
 * `payload` - Paylod
 
+## comdb2_transaction_state
+
+Lists the state of all threads processing transactions.
+
+    comdb2_transaction_state(state, time, machine, opcode, function)
+
+* `state` - Thread state ('busy' or 'idle')
+* `time` - The amount of time (ms) that the thread has been processing this request 
+* `machine` - The ID of the machine that the thread is running on
+* `opcode` - The opcode that the thread is processing
+* `function` - The backend function that the thread is running
+
 ## comdb2_triggers
 
 Lists triggers in the database.

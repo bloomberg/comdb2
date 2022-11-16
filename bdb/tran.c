@@ -63,6 +63,7 @@
 #include "txn_properties.h"
 
 static unsigned int curtran_counter = 0;
+extern int gbl_debug_txn_sleep;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 
 #if 0
@@ -1037,6 +1038,9 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
                                         int tranclass, int *bdberr,
                                         u_int32_t inflags)
 {
+    if (gbl_debug_txn_sleep)
+        sleep(gbl_debug_txn_sleep);
+
     tran_type *tran;
     int rc;
     DB_TXN *parent_tid;
