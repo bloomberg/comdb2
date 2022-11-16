@@ -406,6 +406,7 @@
 (name='comdb2_timepartshards')
 (name='comdb2_timeseries')
 (name='comdb2_transaction_logs')
+(name='comdb2_transaction_state')
 (name='comdb2_triggers')
 (name='comdb2_tunables')
 (name='comdb2_type_samples')

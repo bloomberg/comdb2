@@ -49,6 +49,7 @@ add_library(sqlite
   ext/comdb2/timepartitions.c
   ext/comdb2/timeseries.c
   ext/comdb2/tranlog.c
+  ext/comdb2/transactionstate.c
   ext/comdb2/triggers.c
   ext/comdb2/tunables.c
   ext/comdb2/typesamples.c
