@@ -6037,7 +6037,7 @@ static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
             abort();
         }
     } else {
-        osql_rpl_t rpl;
+        osql_rpl_t rpl = {0};
         p_buf = (const uint8_t *)msg;
         p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
         p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);

@@ -607,7 +607,7 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     } break;
     case OSQL_DELREC:
     case OSQL_DELETE: {
-        osql_del_t dt;
+        osql_del_t dt = {0};
         p_buf = (uint8_t *)&((osql_del_rpl_t *)rpl)->dt;
         p_buf = (uint8_t *)osqlcomm_del_type_get(&dt, p_buf, p_buf_end,
                                                  rpl_op.type == OSQL_DELETE);

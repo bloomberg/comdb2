@@ -141,10 +141,10 @@ int remove_timer(int parm, int dolock)
                 fixdown(i);
             }
             ntimers--;
-            if (dolock)
+            if (dolock) {
                 Pthread_cond_signal(&timerwait);
-            if (dolock)
                 Pthread_mutex_unlock(&timerlk);
+            }
             return 0;
         }
     }
@@ -176,8 +176,6 @@ void *timer_thread(void *p)
     struct timer t;
     struct timer_parm waitft_parm;
     int rc;
-    int oneshot;
-    int ms;
 
     thrman_register(THRTYPE_GENERIC);
     thread_started("timer_thread");
@@ -211,18 +209,15 @@ void *timer_thread(void *p)
 
             pthread_cond_timedwait(&timerwait, &timerlk, &ts);
         } else {
-            oneshot = timers[0].oneshot;
-            if (!oneshot)
-                ms = timers[0].ms;
-
             waitft_parm.parm = timers[0].parm;
             waitft_parm.epoch = comdb2_time_epoch();
             waitft_parm.epochms = tnow;
 
             timer_func(&waitft_parm);
             remove_timer(waitft_parm.parm, 0);
-            if (!oneshot)
-                new_timer(ms, waitft_parm.parm, 0, 0);
+            if (!timers[0].oneshot) {
+                new_timer(timers[0].ms, waitft_parm.parm, 0, 0);
+            }
         }
         Pthread_mutex_unlock(&timerlk);
     }
