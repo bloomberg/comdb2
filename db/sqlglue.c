@@ -491,10 +491,14 @@ int authenticate_cursor(BtCursor *pCur, int how)
     return 0;
 }
 
+static int skip_clnt_check(struct sqlclntstate *clnt)
+{
+    return clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk || clnt->no_transaction;
+}
+
 int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk ||
-        clnt->no_transaction) {
+    if (skip_clnt_check(clnt)) {
         return 0;
     }
     int rc;
@@ -616,7 +620,6 @@ int gbl_debug_sleep_in_sql_tick;
 int gbl_debug_sleep_in_analyze;
 int sql_tick(struct sql_thread *thd)
 {
-    struct sqlclntstate *clnt;
     int rc;
     extern int gbl_epoch_time;
 
@@ -625,10 +628,10 @@ int sql_tick(struct sql_thread *thd)
 
     gbl_sqltick++;
 
-    clnt = thd->clnt;
-
-    if (clnt == NULL)
+    struct sqlclntstate *clnt = thd->clnt;
+    if (skip_clnt_check(clnt)) {
         return 0;
+    }
 
     Pthread_mutex_lock(&clnt->sql_tick_lk);
 
