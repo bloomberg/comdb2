@@ -514,9 +514,14 @@ int peer_dropped_connection_sbuf(SBUF2 *sb)
     return 1;
 }
 
+static int skip_clnt_check(struct sqlclntstate *clnt)
+{
+    return clnt == NULL || clnt->skip_peer_chk || clnt->in_sqlite_init;
+}
+
 int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->skip_peer_chk || clnt->in_sqlite_init) {
+    if (skip_clnt_check(clnt)) {
         return 0;
     }
     return clnt->plugin.peer_check(clnt);
@@ -626,7 +631,6 @@ int gbl_debug_sleep_in_sql_tick;
 int gbl_debug_sleep_in_analyze;
 static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
 {
-    struct sqlclntstate *clnt;
     int rc;
     extern int gbl_epoch_time;
 
@@ -635,10 +639,10 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
 
     gbl_sqltick++;
 
-    clnt = thd->clnt;
-
-    if (clnt == NULL)
+    struct sqlclntstate *clnt = thd->clnt;
+    if (skip_clnt_check(clnt)) {
         return 0;
+    }
 
     Pthread_mutex_lock(&clnt->sql_tick_lk);
 
