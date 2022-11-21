@@ -382,6 +382,7 @@ extern int gbl_disable_seekscan_optimization;
 extern int gbl_pgcomp_dryrun;
 extern int gbl_pgcomp_dbg_stdout;
 extern int gbl_pgcomp_dbg_ctrace;
+extern int gbl_warn_on_equiv_type_mismatch;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
