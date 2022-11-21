@@ -2281,4 +2281,7 @@ REGISTER_TUNABLE("pgcomp_dbg_ctrace", "Enable debugging ctrace for page compacti
 REGISTER_TUNABLE("dump_history_on_too_many_verify_errors",
                  "Dump osql history and client info on too many verify errors (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_dump_history_on_too_many_verify_errors, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("warn_on_equiv_type_mismatch", "Warn about mismatch of different but equivalent data types "
+                 "returned by different sqlite versions (Default off)", TUNABLE_BOOLEAN,
+                 &gbl_warn_on_equiv_type_mismatch, NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
