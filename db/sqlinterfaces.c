@@ -2818,7 +2818,7 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     int valid_user;
 
     if((gbl_uses_externalauth || gbl_uses_externalauth_connect) && !clnt->admin &&
-        externalComdb2AuthenticateUserMakeRequest) {
+        externalComdb2AuthenticateUserMakeRequest && !clnt->current_user.bypass_auth) {
           clnt->authdata = get_authdata(clnt);
           int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, clnt->argv0);
           if (rc) {
