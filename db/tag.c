@@ -5125,6 +5125,7 @@ void *get_field_ptr_in_buf(struct schema *sc, int idx, const void *buf)
     return (void *)(cptr + sc->member[idx].offset);
 }
 
+void reset_sc_stat();
 static int backout_schemas_lockless(const char *tblname)
 {
     struct dbtag *dbt;
@@ -5143,6 +5144,7 @@ static int backout_schemas_lockless(const char *tblname)
         sc = tmp;
     }
 
+    reset_sc_stat();
     return 0;
 }
 
