@@ -770,6 +770,7 @@ REGISTER_TUNABLE("net_poll",
                  "shut down. (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_net_poll, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("netpoll", "Alias of net_poll", TUNABLE_INTEGER, &gbl_net_poll, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("net_portmux_register_interval",
                  "Check on this interval if our port is correctly registered "
                  "with pmux for the replication net. (Default: 600ms)",
