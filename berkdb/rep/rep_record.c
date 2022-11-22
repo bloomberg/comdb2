@@ -4496,6 +4496,7 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 
 static unsigned long long getlock_poll_count = 0;
 int gbl_rep_lock_time_ms = 0;
+int gbl_collect_before_locking = 1;
 
 /*
  * __rep_process_txn --
@@ -4525,6 +4526,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	DB_LSN prev_lsn, *lsnp;
 	DB_REP *db_rep;
 	REP *rep;
+	int collect_before_locking = gbl_collect_before_locking;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
@@ -4697,6 +4699,23 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		lock_dbt = &prep_args->locks;
 	}
 
+	if (collect_before_locking) {
+		if (lcin)
+			lc = *lcin;
+		else {
+			/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
+			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
+							&had_serializable_records, NULL, txnid)) != 0) {
+				line = __LINE__;
+				goto err;
+			}
+			lcin = &lc;
+			/* here's the bug!!!! ! */
+			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
+					__rep_lsn_cmp);
+		}
+	}
+
 	if (lockid) {
 		get_locks_and_ack = 0;
 	} else {
@@ -4832,19 +4851,21 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	}
 
 	/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
-	if (lcin)
-		lc = *lcin;
-	else {
-		/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
-		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
-				&had_serializable_records, NULL, txnid)) != 0) {
-			line = __LINE__;
-			goto err;
+	if (!collect_before_locking) {
+		if (lcin)
+			lc = *lcin;
+		else {
+			/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
+			if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &lc,
+							&had_serializable_records, NULL, txnid)) != 0) {
+				line = __LINE__;
+				goto err;
+			}
+			lcin = &lc;
+			/* here's the bug!!!! ! */
+			qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
+					__rep_lsn_cmp);
 		}
-		lcin = &lc;
-		/* here's the bug!!!! ! */
-		qsort(lc.array, lc.nlsns, sizeof(struct logrecord),
-			__rep_lsn_cmp);
 	}
 
 
@@ -5216,6 +5237,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 {
 	DBT *lock_dbt, lsn_lock_dbt;
 	int32_t timestamp = 0;
+    int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
 	DB_REP *db_rep;
@@ -5475,6 +5497,19 @@ bad_resize:	;
 		}
 	}
 
+	if (collect_before_locking) {
+		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
+				&had_serializable_records, rp, txnid)) != 0) {
+#if defined ABORT_ON_CONCURRENT_ERROR
+			abort();
+#else
+			goto err;
+#endif
+		}
+		qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
+			__rep_lsn_cmp);
+	}
+
 	if (!rp->context) {
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
@@ -5567,18 +5602,18 @@ bad_resize:	;
 	/* Phase 1.  Get a list of the LSNs in this transaction, and sort it. */
 	/* Had serializable records means the transaction has a record type that requires
 	 * this transaction to be processed serially. */
-	had_serializable_records = 0;
-	if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
-			&had_serializable_records, rp, txnid)) != 0) {
+	if (!collect_before_locking) {
+		if ((ret = __rep_collect_txn_txnid(dbenv, &prev_lsn, &rp->lc,
+				&had_serializable_records, rp, txnid)) != 0) {
 #if defined ABORT_ON_CONCURRENT_ERROR
-		abort();
+			abort();
 #else
-		goto err;
+			goto err;
 #endif
+		}
+		qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
+			__rep_lsn_cmp);
 	}
-
-	qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
-		__rep_lsn_cmp);
 
 #ifndef NDEBUG
 	if (txn_rl_args) {
