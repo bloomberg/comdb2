@@ -122,6 +122,7 @@
 (name='clean_exit_on_sigterm', description='Attempt to do orderly shutdown on SIGTERM (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='coherency_lease', description='A coherency lease grants a replicant the right to be coherent for this many ms.', type='INTEGER', value='500', read_only='N')
 (name='coherency_lease_udp', description='Use udp to issue leases.', type='BOOLEAN', value='ON', read_only='N')
+(name='collect_before_locking', description='Collect a transaction from the log before acquiring locks.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='commit_delay_on_copy_ms', description='Set automatic delay-ms for commit-delay on copy.  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='commit_delay_timeout_seconds', description='Set timeout for commit-delay on copy.  (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='commitdelay', description='Add a delay after every commit. This is occasionally useful to throttle the transaction rate.', type='INTEGER', value='0', read_only='N')

@@ -2025,6 +2025,9 @@ REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOL
 REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: off)", TUNABLE_BOOLEAN, 
                  &gbl_ufid_add_on_collect, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("collect_before_locking", "Collect a transaction from the log before acquiring locks.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_collect_before_locking, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
