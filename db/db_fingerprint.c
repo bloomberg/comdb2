@@ -34,6 +34,7 @@ pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000;
+int gbl_warn_on_equiv_types;
 
 static int free_fingerprint(void *obj, void *arg)
 {
@@ -132,6 +133,16 @@ static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct
     for (int i = 0; i < cachedColCount; i++) {
         char *newtype = stmt_column_decltype(stmt, i);
         char *oldtype = stmt_cached_column_decltype(stmt, i);
+
+        /* Do not warn when old and new Sqlite versions return different but
+           equivalent data types for the column.
+        */
+        if (gbl_warn_on_equiv_types == 0 &&
+            ((strcmp(oldtype, "text") == 0 && strncmp(newtype, "char", 4) == 0) ||    // text vs char[N]
+             (strcmp(oldtype, "integer") == 0 && strcmp(newtype, "int") == 0))) {     // integer vs int
+            continue;
+        }
+
         if (strcmp(newtype, oldtype) != 0) {
             strbuf_appendf(newtypes, "%s%s %s", typesep, stmt_column_name(stmt, i), newtype);
             strbuf_appendf(oldtypes, "%s%s %s", typesep, stmt_cached_column_name(stmt, i), oldtype);

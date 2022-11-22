@@ -356,6 +356,7 @@ extern int gbl_longreq_log_freq_sec;
 extern int gbl_pgcomp_dryrun;
 extern int gbl_pgcomp_dbg_stdout;
 extern int gbl_pgcomp_dbg_ctrace;
+extern int gbl_warn_on_equiv_types;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_page_order_table_scan;
