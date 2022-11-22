@@ -3102,7 +3102,7 @@ static int node_in_list(int node, int list[], int listsz)
 
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */
 
-int gbl_replicant_retry_on_not_durable = 1;
+int gbl_replicant_retry_on_not_durable = 0;
 static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                                             seqnum_type *seqnum, int *timeoutms,
                                             uint64_t txnsize, int newcoh)
