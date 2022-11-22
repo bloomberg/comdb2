@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=967)
+(TUNABLES_COUNT=968)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -521,6 +521,7 @@
 (name='net_verbose', description='net_verbose', type='BOOLEAN', value='OFF', read_only='N')
 (name='netbufsz', description='Size of the network buffer (per node) for the replication network. (Default: 1MB)', type='INTEGER', value='1048576', read_only='Y')
 (name='netconndumptime', description='Dump connection statistics to ctrace this often.', type='INTEGER', value='3158070', read_only='N')
+(name='netpoll', description='Alias of net_poll', type='INTEGER', value='100', read_only='Y')
 (name='new_indexes', description='Let replicants send indexes values to master', type='BOOLEAN', value='OFF', read_only='N')
 (name='new_master_dummy_add_delay', description='Force a transaction after this delay, after becoming master.', type='INTEGER', value='5', read_only='N')
 (name='newqdelmode', description='Enables new queue deletion mode.', type='BOOLEAN', value='ON', read_only='N')
