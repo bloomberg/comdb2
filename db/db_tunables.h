@@ -2065,4 +2065,7 @@ REGISTER_TUNABLE("pgcomp_dbg_stdout", "Enable debugging stdout trace for page co
                  &gbl_pgcomp_dbg_stdout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("pgcomp_dbg_ctrace", "Enable debugging ctrace for page compaction (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_pgcomp_dbg_ctrace, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("warn_on_equiv_types", "Warn about mismatch of different but equivalent data types "
+                 "returned by different sqlite versions (Default off)", TUNABLE_BOOLEAN,
+                 &gbl_warn_on_equiv_types, NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
