@@ -81,8 +81,4 @@ extern time_t gbl_election_time_completed;
 extern uint64_t gbl_last_election_time_ms;
 extern uint64_t gbl_total_election_time_ms;
 extern uint64_t gbl_election_count;
-
-extern uint64_t gbl_ssl_num_full_handshakes;
-extern uint64_t gbl_ssl_num_partial_handshakes;
-
 #endif /* _STATISTICS_H */

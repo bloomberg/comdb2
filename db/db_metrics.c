@@ -26,6 +26,7 @@
 #include <net.h>
 #include <thread_stats.h>
 #include <net_appsock.h>
+#include <ssl_bend.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -562,8 +563,8 @@ int refresh_metrics(void)
     }
     stats.diskspace = refresh_diskspace(thedb, trans);
     stats.vreplays = gbl_verify_tran_replays;
-    stats.nsslfullhandshakes = gbl_ssl_num_full_handshakes;
-    stats.nsslpartialhandshakes = gbl_ssl_num_partial_handshakes;
+    stats.nsslfullhandshakes = ssl_num_full_handshakes();
+    stats.nsslpartialhandshakes = ssl_num_partial_handshakes();
     curtran_puttran(trans);
 
     return 0;

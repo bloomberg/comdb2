@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
-#include <time.h>
+#include <sys/time.h>
 
 #include <cdb2api.h>
 
@@ -10,6 +10,7 @@ int main(int argc, char **argv)
     cdb2_hndl_tp *hndl = NULL;
     int rc, i, len;
     char *conf = getenv("CDB2_CONFIG");
+    struct timeval tv;
     unsigned long tm, delta1, delta2, delta3;
     const char *tier;
 
@@ -29,10 +30,12 @@ int main(int argc, char **argv)
     if (conf != NULL)
         cdb2_set_comdb2db_config(conf);
 
+    gettimeofday(&tv, NULL);
+    tm = tv.tv_sec * 1000000ULL + tv.tv_usec;
     /* The race is on! first let's test no ssl cache. */
-    for (i = 0, tm = (unsigned long)time(NULL); i < len; i += 4) {
+    for (i = 0; i < len; i += 4) {
         if (i > 0 && i % 100 == 0)
-            fprintf(stderr, "progress: %d\n", i);
+            fprintf(stdout, "progress: %d\n", i);
         /* 1st */
         rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
         if (rc != 0) {
@@ -121,14 +124,18 @@ int main(int argc, char **argv)
         }
         cdb2_close(hndl);
     }
-    delta1 = ((unsigned long)time(NULL)) - tm;
-    fprintf(stderr, "Without SSL session cache: %lu.\n", delta1);
+
+    gettimeofday(&tv, NULL);
+    delta1 =  tv.tv_sec * 1000000ULL + tv.tv_usec - tm;
+    fprintf(stdout, "Without SSL session cache: %lu.\n", delta1);
 
     /* Now test ssl cache */
     setenv("SSL_SESSION_CACHE", "1", 1);
-    for (i = 0, tm = (unsigned long)time(NULL); i < len; i += 4) {
+    gettimeofday(&tv, NULL);
+    tm = tv.tv_sec * 1000000ULL + tv.tv_usec;
+    for (i = 0; i < len; i += 4) {
         if (i > 0 && i % 100 == 0)
-            fprintf(stderr, "progress: %d\n", i);
+            fprintf(stdout, "progress: %d\n", i);
 
         /* 1st */
         rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
@@ -219,19 +226,22 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
     }
 
-    delta2 = ((unsigned long)time(NULL)) - tm;
-    fprintf(stderr, "With SSL session cache:    %lu.\n", delta2);
+    gettimeofday(&tv, NULL);
+    delta2 =  tv.tv_sec * 1000000ULL + tv.tv_usec - tm;
+    fprintf(stdout, "With SSL session cache:    %lu.\n", delta2);
     if (delta2 == 0)
-        fprintf(stderr, "delta1/delta2 == inf\n");
+        fprintf(stdout, "delta1/delta2 == inf\n");
     else
-        fprintf(stderr, "delta1/delta2 == %2.2f%%\n", delta1 * 100.0 / delta2);
+        fprintf(stdout, "delta1/delta2 == %2.2f%%\n", delta1 * 100.0 / delta2);
 
 
     /* Now test "SET SSL_SESSION_CACHE ON" */
     setenv("SSL_SESSION_CACHE", "0", 1);
-    for (i = 0, tm = (unsigned long)time(NULL); i < len; i += 4) {
+    gettimeofday(&tv, NULL);
+    tm = tv.tv_sec * 1000000ULL + tv.tv_usec;
+    for (i = 0; i < len; i += 4) {
         if (i > 0 && i % 100 == 0)
-            fprintf(stderr, "progress: %d\n", i);
+            fprintf(stdout, "progress: %d\n", i);
 
         /* 1st */
         rc = cdb2_open(&hndl, argv[1], tier, CDB2_RANDOM);
@@ -326,12 +336,13 @@ int main(int argc, char **argv)
         cdb2_close(hndl);
     }
 
-    delta3 = ((unsigned long)time(NULL)) - tm;
-    fprintf(stderr, "SET SSL_SESSION_CACHE ON:  %lu.\n", delta3);
+    gettimeofday(&tv, NULL);
+    delta3 =  tv.tv_sec * 1000000ULL + tv.tv_usec - tm;
+    fprintf(stdout, "SET SSL_SESSION_CACHE ON:  %lu.\n", delta3);
     if (delta3 == 0)
-        fprintf(stderr, "delta1/delta3 == inf\n");
+        fprintf(stdout, "delta1/delta3 == inf\n");
     else
-        fprintf(stderr, "delta1/delta3 == %2.2f%%\n", delta1 * 100.0 / delta3);
+        fprintf(stdout, "delta1/delta3 == %2.2f%%\n", delta1 * 100.0 / delta3);
 
     return (delta2 > delta1) && (delta3 > delta1);
 }

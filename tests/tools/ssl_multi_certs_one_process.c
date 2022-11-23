@@ -11,7 +11,7 @@ int main(int argc, char **argv)
     cdb2_hndl_tp *charlie = NULL;
     cdb2_hndl_tp *sally = NULL;
     char *conf = getenv("CDB2_CONFIG");
-    char *dir = getenv("TESTDIR");
+    char *dir = getenv("DBDIR");
     cdb2_set_comdb2db_config(conf);
 
     cdb2_open(&charlie, argv[1], "default", 0);
