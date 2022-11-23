@@ -1,0 +1,100 @@
+#!/bin/bash
+
+a_dbn=$1
+rc=0
+OpUsr='op'
+NoOpUsr='nop'
+password='password'
+ParentTable='foo'
+ChildTable='bar'
+EnabledTable='baz'
+
+# Setup authentication and create parent table
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+put password '$password' for $OpUsr
+put password '$password' for $NoOpUsr 
+grant op to '$OpUsr'
+
+set user '$OpUsr'
+set password '$password'
+put authentication on
+create table $ParentTable{schema {int i int j} keys {"K1"=i "K2"=j}};
+EOF
+
+# Create child table
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+set user '$OpUsr'
+set password '$password'
+create table $ChildTable{schema {int i int j} keys {"K1"=i "K2"=j} constraints {"K1"-><"$ParentTable":"K1"> "K2"-><"$ParentTable":"K2">}};
+EOF
+
+# Create table without constraints that NoOpUsr will have access to
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+set user '$OpUsr'
+set password '$password'
+create table $EnabledTable{schema {int i} keys {"K1"=i}};
+EOF
+
+# Deny NoOpUsr access to all tables except for EnabledTable
+
+tables=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+set user '$OpUsr'
+set password '$password'
+select name from comdb2_systables union select tablename from comdb2_tables
+EOF
+)
+
+for table in $tables
+do
+    table=$(echo $table | grep -oP name=\'\(.*?\)\')
+    table=${table:6:-1}
+    if [[ ! -z "$table" ]]
+    then
+        cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+        set user '$OpUsr'
+        set password '$password'
+        revoke read on $table to '$NoOpUsr'
+EOF
+    fi
+done
+
+# Read from comdb2_constraints. OpUsr should see foo's constraints and NoOpUsr should see no constraints.
+
+(cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+    set user '$OpUsr'
+    set password '$password'
+    grant ddl on $EnabledTable to $NoOpUsr
+    grant read on comdb2_constraints to $NoOpUsr
+    select * from comdb2_constraints
+EOF
+) > testtableconstraints.out1
+
+(cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+    set user '$NoOpUsr'
+    set password '$password'
+    select * from comdb2_constraints
+EOF
+) > testtableconstraints.out2
+
+
+constraint1=$(grep -o "tablename='bar', keyname='K1', foreigntablename='foo', foreignkeyname='K1', iscascadingdelete='N', iscascadingupdate='N'" testtableconstraints.out1)
+constraint2=$(grep -o "tablename='bar', keyname='K2', foreigntablename='foo', foreignkeyname='K2', iscascadingdelete='N', iscascadingupdate='N'" testtableconstraints.out1)
+badconstriant=$(grep -o "keyname" testtableconstraints.out2)
+
+if [ ! -z "$badconstriant" ] | [ -z "$constraint1" ] | [ -z "$constraint2" ]
+then
+    rc=1
+    echo "Failed testtableconstraints"
+fi
+
+# Cleanup
+cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+    set user '$OpUsr'
+    set password '$password'
+    put authentication off
+EOF
+
+exit $rc

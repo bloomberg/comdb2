@@ -113,13 +113,15 @@ static int systblConstraintsClose(sqlite3_vtab_cursor *cur){
 ** Advance to the next key.
 */
 static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
+
   systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
 
   pCur->iRuleid++;
 
   // protect thedb access
   rdlock_schema_lk();
-  /* Test just in case cursor is in a bad state */
+  comdb2_next_allowed_table(&pCur->iRowid);
+
   if( pCur->iRowid < thedb->num_dbs ){
     if( pCur->iConstraintid >= thedb->dbs[pCur->iRowid]->n_constraints
      || pCur->iRuleid >=
@@ -130,16 +132,18 @@ static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
 
       while( pCur->iRowid < thedb->num_dbs
        && pCur->iConstraintid >= thedb->dbs[pCur->iRowid]->n_constraints ){
+        // If this table has no more constraints to read, 
+        // advance to the next allowed table with a constraint to read
         pCur->iConstraintid = 0;
         pCur->iRowid++;
+        comdb2_next_allowed_table(&pCur->iRowid);
       }
     }
   }
   unlock_schema_lk();
-  comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
-}
+} 
 
 /*
 ** Return the table name for the current row.
