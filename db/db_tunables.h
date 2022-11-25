@@ -2308,4 +2308,8 @@ REGISTER_TUNABLE("dump_history_on_too_many_verify_errors",
 REGISTER_TUNABLE("warn_on_equiv_type_mismatch", "Warn about mismatch of different but equivalent data types "
                  "returned by different sqlite versions (Default off)", TUNABLE_BOOLEAN,
                  &gbl_warn_on_equiv_type_mismatch, NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("seekscan_maxsteps",
+                 "Overrides the max number of steps for a seekscan optimization", TUNABLE_INTEGER,
+                 &gbl_seekscan_maxsteps, SIGNED, NULL, NULL, NULL,
+                 NULL);
 #endif /* _DB_TUNABLES_H */

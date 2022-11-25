@@ -1234,8 +1234,12 @@ static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
     return SQLITE_OK;
 }
 
+#ifdef __GNUC__
+#ifndef __clang__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
+#endif
+#endif
 static int _failed_AddAndLockTable(const char *dbname, int errcode,
                                    const char *prefix)
 {
@@ -1259,7 +1263,11 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
 
     return SQLITE_ERROR; /* speak sqlite */
 }
+#ifdef __GNUC__
+#ifndef __clang__
 #pragma GCC diagnostic pop
+#endif
+#endif
 
 /**
  * Sqlite wrapper for adding a new database table
