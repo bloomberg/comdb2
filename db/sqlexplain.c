@@ -888,6 +888,15 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_Close:
         strbuf_appendf(out, "Close cursor [%d]", op->p1);
         break;
+    case OP_SeekScan: {
+        if (pc+1 >= v->nOp) {
+            strbuf_appendf(out, "Huh?  SeekScan not followed by OP_Seek*?\n");
+            return;
+        }
+        Op *seek = &v->aOp[pc+1];
+        strbuf_appendf(out, "Walk the next %d rows of cursor [%d] to see if it matches the key in [R%d..R%d]\n", op->p2, seek->p1, seek->p3, seek->p4);
+        break;
+    }
     case OP_SeekLT:
     case OP_SeekLE:
     case OP_SeekGE:

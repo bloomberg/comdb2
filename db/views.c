@@ -770,8 +770,12 @@ static int _extract_shardname_index(const char *tblName,
     return nextNum;
 }
 
+#ifdef __GNUC__
+#ifndef __clang__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-truncation"
+#endif
+#endif
 /** dummy version for now */
 static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
@@ -800,7 +804,11 @@ static int _generate_new_shard_name(const char *oldname, char *newname,
 
     return VIEW_NOERR;
 }
+#ifdef __GNUC__
+#ifndef __clang__
 #pragma GCC diagnostic pop
+#endif
+#endif
 
 static int _view_check_sharding(timepart_view_t *view, struct errstat *err)
 {

@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -e
+dbname=$1
+
+host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default "select comdb2_host()")
+
+cdb2sql --host $host $dbname - <<EOF
+drop table if exists t;
+create table t(a int, b int, c int); \$\$
+create index t_ix on t(a, b);
+truncate t;
+
+set transaction chunk 100;
+begin;
+insert into t select a.value as a, b.value as b, 0 from generate_series(1, 10000) as a cross join generate_series(1, 10) as b;
+insert into t select 1111, value, 0 from generate_series(0, 1000);
+commit;
+analyze;
+EOF
+
+cdb2sql --host $host $dbname - >out.1 <<EOF
+select '------- default behavior ---------' as ''
+put tunable seekscan_maxsteps=-1;
+select count(*) from t where a=1111 and b in (10, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+select comdb2_last_cost() as cost;
+select '------- limit scan---------' as ''
+put tunable seekscan_maxsteps=2;
+select count(*) from t where a=1111 and b in (10, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+select comdb2_last_cost() as cost;
+select '------- disable ---------' as ''
+put tunable seekscan_maxsteps=0;
+select count(*) from t where a=1111 and b in (10, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
+select comdb2_last_cost() as cost;
+EOF
+
+grep '^(cost' out.1 > out
+
+diff expected out
