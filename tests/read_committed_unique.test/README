@@ -1,0 +1,12 @@
+3
+
+There's a reason we lie to SQLite about uniqueness of keys.  SQLite is an immediate constraint
+system.  Comdb2 is a deferred constraint system.  Comdb2 can violate integrity constraints
+during a transaction, as long as they're resolved at commit time.  SQLite doesn't do this,
+and assumes it can check immediately if a key exists as a constraint check.  It also knows
+that no other matches will be found on a unique index and doesn't generate OP_Next opcode
+to check other matches, which breaks queries against records temporarily added during a read
+committed transaction.  When it begins to sound like a good idea to stop lying to SQLite
+for whatever reason - (1) make sure it passes this test, (2) find the next place that breaks
+(3) add the new failure test (4) increment the number on line one of this file as a
+warning to future developers.

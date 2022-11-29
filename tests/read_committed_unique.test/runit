@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+dbnm=$1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - > out <<'EOF'
+drop table if exists t
+create table t(i int unique, j int)$$
+insert into t values(1, 10)
+set transaction read committed
+begin
+insert into t values(1, 100)
+select * from t where i = 1
+rollback
+EOF
+
+diff out expected

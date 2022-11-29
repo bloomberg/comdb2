@@ -4556,18 +4556,10 @@ static int whereShortCut(WhereLoopBuilder *pBuilder){
     for(pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext){
       int opMask;
       assert( pLoop->aLTermSpace==pLoop->aLTerm );
-#ifdef SQLITE_BUILDING_FOR_COMDB2
-      if( !(is_comdb2_index_unique(pIdx->pTable->zName, pIdx->zName))
-       || pIdx->pPartIdxWhere!=0
-       || pIdx->nKeyCol>ArraySize(pLoop->aLTermSpace)
-      ) continue;
-#else
       if( !IsUniqueIndex(pIdx)
        || pIdx->pPartIdxWhere!=0 
        || pIdx->nKeyCol>ArraySize(pLoop->aLTermSpace) 
       ) continue;
-
-#endif
       opMask = pIdx->uniqNotNull ? (WO_EQ|WO_IS) : WO_EQ;
       for(j=0; j<pIdx->nKeyCol; j++){
         pTerm = sqlite3WhereFindTerm(pWC, iCur, j, 0, opMask, pIdx);
