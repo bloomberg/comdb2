@@ -1,0 +1,11 @@
+[drop table if exists t] rc 0
+[create table t(i int unique, j int)] rc 0
+(rows inserted=1)
+[insert into t values(1, 10)] rc 0
+[set transaction read committed] rc 0
+[begin] rc 0
+[insert into t values(1, 100)] rc 0
+(i=1, j=10)
+(i=1, j=100)
+[select * from t where i = 1] rc 0
+[rollback] rc 0
