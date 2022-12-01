@@ -1631,9 +1631,9 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->is_readonly = 0;
+                    clnt->is_readonly_set = 0;
                 } else {
-                    clnt->is_readonly = 1;
+                    clnt->is_readonly_set = 1;
                 }
             } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
                 sqlstr += 6;
@@ -1976,6 +1976,14 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     if (process_set_commands(clnt, sql_query)) {
         return -1;
     }
+
+    /* Mark connection as readonly, if the db is running in readonly mode or
+       if the connection was explicitly set to readonly. */
+    if (gbl_readonly || clnt->is_readonly_set)
+        clnt->is_readonly = 1;
+    else
+        clnt->is_readonly = 0;
+
     if (gbl_rowlocks && clnt->dbtran.mode != TRANLEVEL_SERIAL) {
         clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
     }

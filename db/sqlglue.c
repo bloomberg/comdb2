@@ -3815,7 +3815,7 @@ int sqlite3BtreeLast(BtCursor *pCur, int *pRes)
         if (clnt->is_readonly &&                                                                          \
             (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&                           \
             (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {                                                   \
-            errstat_set_strf(&clnt->osql.xerr, "Cannot modify tables via a read-only client connection"); \
+            errstat_set_strf(&clnt->osql.xerr, "connection/database in read-only mode");                  \
             rc = SQLITE_ACCESS;                                                                           \
             goto done;                                                                                    \
         }                                                                                                 \

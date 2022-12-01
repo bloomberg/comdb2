@@ -2613,6 +2613,12 @@ void comdb2WriteTransaction(Parse *pParse)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+    struct sqlclntstate *clnt = get_sql_clnt();
+    if (clnt && clnt->is_readonly) {
+      setError(pParse, SQLITE_READONLY, "connection/database in read-only mode");
+      return;
+    }
+
     pParse->write = 1;
 }
 
