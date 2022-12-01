@@ -613,6 +613,9 @@ struct user {
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
 struct string_ref;
 
+struct session_tbl;
+void clear_session_tbls(struct sqlclntstate *);
+
 /* Client specific sql state */
 struct sqlclntstate {
     struct thdpool *pPool;     /* When null, the default SQL thread pool is
@@ -723,7 +726,8 @@ struct sqlclntstate {
     int authgen;
 
     char *origin;
-    uint8_t dirty[256]; /* We can track upto 2048 tables */
+
+    TAILQ_HEAD(, session_tbl) session_tbls;
 
     int had_errors; /* to remain compatible with blocksql: if a user starts a
                        transaction, we
@@ -988,6 +992,7 @@ struct BtCursor {
     int ondisk_dtabuf_alloc;
     int ondisk_keybuf_alloc;
 
+    struct session_tbl *session_tbl;
     int tblnum;
     int ixnum;
 
