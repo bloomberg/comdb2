@@ -1863,8 +1863,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
         rc = SQLITE_OK;
     } else {
-        bzero(clnt->dirty, sizeof(clnt->dirty));
-
+        clear_session_tbls(clnt);
         sql_debug_logf(clnt, __func__, __LINE__, "starting\n");
 
         switch (clnt->dbtran.mode) {
@@ -5170,8 +5169,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         Pthread_mutex_init(&clnt->state_lk, NULL);
         Pthread_mutex_init(&clnt->sql_tick_lk, NULL);
         Pthread_mutex_init(&clnt->sql_lk, NULL);
-    }
-    else {
+        TAILQ_INIT(&clnt->session_tbls);
+    } else {
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();
@@ -5260,7 +5259,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
 
-    bzero(clnt->dirty, sizeof(clnt->dirty));
+    clear_session_tbls(clnt);
 
     clnt->planner_effort = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;

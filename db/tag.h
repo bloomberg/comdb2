@@ -70,9 +70,7 @@ struct schema {
     int ix_blob; /* set to 1 if blobs are involved in indexes */
     int recsize; /* for tables, gives the length of the record structure */
     int numblobs;
-    char *
-        csctag; /* this is valid for indices, name of the index listed in csc
-                   file */
+    char *csctag; /* this is valid for indices, name of the index listed in csc file */
     char *sqlitetag;
     int *datacopy;
     char *where;

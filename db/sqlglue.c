@@ -2386,42 +2386,47 @@ done:
     return rc;
 }
 
-/* return true if we are in a transaction mode
- * different from TRANLEVEL_SERIAL, TRANLEVEL_SNAPISOL,
- * and TRANLEVEL_RECOM
- * If we are in one of the above modes, return true
- * only if there is no dirty pages written to that table
- *
- */
-static int has_no_read_dirty_data(int tblnum)
+struct session_tbl {
+    int dirty;
+    char *name;
+    TAILQ_ENTRY(session_tbl) entry;
+};
+
+static struct session_tbl *get_session_tbl(struct sqlclntstate *clnt, const char *tbl_name)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
-
-    if (clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-        clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-        clnt->dbtran.mode != TRANLEVEL_RECOM) {
-        /* Other modes don't do transactional reads */
-        return 1;
+    struct session_tbl *tbl = NULL;
+    TAILQ_FOREACH(tbl, &clnt->session_tbls, entry) {
+        if (strcmp(tbl_name, tbl->name) == 0)  {
+            break;
+        }
     }
-
-    /* if table number is in the bitmap */
-    /* and Table has not been written into */
-    if (tblnum < sizeof(clnt->dirty) * 8 && btst(clnt->dirty, tblnum) == 0) {
-        return 1;
+    if (!tbl) {
+        tbl = calloc(1, sizeof(struct session_tbl));
+        tbl->name = strdup(tbl_name);
+        TAILQ_INSERT_TAIL(&clnt->session_tbls, tbl, entry);
     }
+    return tbl;
+}
 
-    return 0;
+void clear_session_tbls(struct sqlclntstate *clnt)
+{
+    struct session_tbl *tbl, *tmp;
+    TAILQ_FOREACH_SAFE(tbl, &clnt->session_tbls, entry, tmp) {
+        TAILQ_REMOVE(&clnt->session_tbls, tbl, entry);
+        free(tbl->name);
+        free(tbl);
+    }
 }
 
 static int move_is_nop(BtCursor *pCur, int *pRes)
 {
-    if (*pRes == 1 && pCur->cursor_class == CURSORCLASS_INDEX) {
-        struct schema *s = pCur->db->ixschema[pCur->sc->ixnum];
-        if ((s->flags & SCHEMA_DUP) == 0) { /* unique index? */
-            return has_no_read_dirty_data(pCur->tblnum);
-        }
+    if (*pRes != 1 || pCur->cursor_class != CURSORCLASS_INDEX) {
+        return 0;
     }
+    struct schema *s = pCur->db->ixschema[pCur->sc->ixnum];
+    if (s->flags & SCHEMA_DUP) return 0;
+    if (pCur->clnt->dbtran.mode == TRANLEVEL_SOSQL) return 1;
+    if (pCur->session_tbl && !pCur->session_tbl->dirty) return 1;
     return 0;
 }
 
@@ -4181,21 +4186,15 @@ int sqlite3BtreeDropTable(Btree *pBt, int iTable, int *piMoved)
 */
 int sqlite3BtreePrevious(BtCursor *pCur, int flags)
 {
-    int rc = SQLITE_OK;
     int fndlen;
     void *buf;
     int *pRes = &flags;
 
-    if (pCur->empty) {
+    if (pCur->empty || move_is_nop(pCur, pRes)) {
         return SQLITE_DONE;
     }
 
-    if (move_is_nop(pCur, pRes)) {
-        if( *pRes==1 ) rc = SQLITE_DONE;
-        return rc;
-    }
-
-    rc = pCur->cursor_move(pCur, pRes, CPREV);
+    int rc = pCur->cursor_move(pCur, pRes, CPREV);
     if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
@@ -4764,7 +4763,7 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
 
     clnt->intrans = 1;
-    bzero(clnt->dirty, sizeof(clnt->dirty));
+    clear_session_tbls(clnt);
 
 #ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
@@ -5215,11 +5214,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
                                 SQLENG_NORMAL_PROCESS);
 
     clnt->intrans = 0;
-    bzero(clnt->dirty, sizeof(clnt->dirty));
-#if 0
-    fprintf(stderr, "%p rollbacks transaction %d %d\n", clnt, (void *)pthread_self(),
-            clnt->dbtran.mode);
-#endif
+    clear_session_tbls(clnt);
 
     /* UPSERT: Restore the isolation level back to what it was. */
     if (clnt->dbtran.mode == TRANLEVEL_RECOM && clnt->translevel_changed) {
@@ -6401,18 +6396,6 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
     if (thd == NULL)
         return 0;
     struct sqlclntstate *clnt = thd->clnt;
-    CurRangeArr **append_to;
-
-#if 0
-   FOR NOW, THIS IS CLEARED AT SQLCLNTSTATE LEVEL 
-   pCur->keyDdl = 0ULL;
-   if (pCur->dataDdl)
-   {
-      free(pCur->dataDdl);
-      pCur->dataDdl = NULL;
-      pCur->nDataDdl = 0;
-   }
-#endif
 
     if (pCur->range) {
         if (pCur->range->idxnum == -1 && pCur->range->islocked == 0) {
@@ -6424,8 +6407,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             if (!pCur->is_recording ||
                 (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
                  gbl_selectv_rangechk)) {
-                append_to =
-                    (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
+                CurRangeArr **append_to = (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
                     *append_to = malloc(sizeof(CurRangeArr));
                     currangearr_init(*append_to);
@@ -8148,6 +8130,11 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
 
     cur->db = get_sqlite_db(thd, iTable, &cur->ixnum);
     assert(cur->db);
+    if (cur->db == NULL) {
+        /* this shouldn't happen */
+       logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: no cur->db\n");
+        return SQLITE_INTERNAL;
+    }
     cur->tableversion = cur->db->tableversion;
 
     /* initialize the shadow, if any  */
@@ -8182,11 +8169,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         free_blob_status_data(&cur->blobs);
 
     cur->tblnum = cur->db->dbs_idx;
-    if (cur->db == NULL) {
-        /* this shouldn't happen */
-       logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: no cur->db\n");
-        return SQLITE_INTERNAL;
-    }
+    cur->session_tbl = get_session_tbl(clnt, cur->db->tablename);
 
     cur->ondisk_dtabuf_alloc = getdatsize(cur->db);
     if (cur->writeTransaction) {
@@ -8948,9 +8931,7 @@ int sqlite3BtreeInsert(
             goto done;
         }
 
-        if (pCur->tblnum < sizeof(clnt->dirty) * 8) { /* tbl num < total bits */
-            bset(clnt->dirty, pCur->tblnum);
-        }
+        if (pCur->session_tbl) pCur->session_tbl->dirty = 1;
 
         if (likely(pCur->cursor_class != CURSORCLASS_STAT24) && likely(pCur->bt == NULL || pCur->bt->is_remote == 0) &&
             pData != NULL) {
@@ -9100,21 +9081,15 @@ done:
 */
 int sqlite3BtreeNext(BtCursor *pCur, int flags)
 {
-    int rc = SQLITE_OK;
     int fndlen;
     void *buf;
     int *pRes = &flags;
 
-    if (pCur->empty) {
+    if (pCur->empty || move_is_nop(pCur, pRes)) {
         return SQLITE_DONE;
     }
 
-    if (move_is_nop(pCur, pRes)) {
-        if( *pRes==1 ) rc = SQLITE_DONE;
-        return rc;
-    }
-
-    rc = pCur->cursor_move(pCur, pRes, CNEXT);
+    int rc = pCur->cursor_move(pCur, pRes, CNEXT);
     if( *pRes==1 ) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
