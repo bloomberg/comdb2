@@ -73,6 +73,7 @@ ___os_open(dbenv, name, flags, mode, fhpp)
 }
 
 int gbl_force_direct_io = 1;
+int gbl_wal_osync = 0;
 /*
  * __os_open_extend --
  *	Open a file descriptor (including page size and log size information).
@@ -188,7 +189,7 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 
 	/* if they didn't request direct on this file, it's a log file, and the
 	 * environment wants direct logs, request sync io, but not directio */
-	if (F_ISSET(dbenv, DB_ENV_DIRECT_LOG) && LF_ISSET(DB_OSO_LOG)) {
+	if (F_ISSET(dbenv, DB_ENV_DIRECT_LOG) && LF_ISSET(DB_OSO_LOG) && gbl_wal_osync) {
 		/* don't do O_DIRECT for logs */
 #if defined(_AIX) && !defined (TESTSUITE)
 		oflags |= O_DSYNC;

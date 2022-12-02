@@ -2312,4 +2312,6 @@ REGISTER_TUNABLE("seekscan_maxsteps",
                  "Overrides the max number of steps for a seekscan optimization", TUNABLE_INTEGER,
                  &gbl_seekscan_maxsteps, SIGNED, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("wal_osync", "Open WAL files using the O_SYNC flag (Default: off)", TUNABLE_BOOLEAN, &gbl_wal_osync, 0,
+                 NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

@@ -725,15 +725,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    /* Fast return if broadcasting in standalone mode. */
-    if (host == db_eid_broadcast) {
-        const char *hostlist[REPMAX];
-        int count =
-            net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-        if (count == 0)
-            return 0;
-    }
-
     callcount++;
 
     /*
@@ -6056,4 +6047,11 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
     return 0;
 }
 
+int bdb_num_connected_nodes(bdb_state_type *bdb_state)
+{
+    const char *hostlist[REPMAX];
 
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+}
