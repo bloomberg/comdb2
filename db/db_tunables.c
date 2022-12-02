@@ -404,6 +404,7 @@ int gbl_file_permissions = 0660;
 extern int gbl_net_maxconn;
 extern int gbl_force_direct_io;
 extern int gbl_seekscan_maxsteps;
+extern int gbl_wal_osync;
 
 /*
   =========================================================

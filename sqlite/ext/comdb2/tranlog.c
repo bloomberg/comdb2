@@ -114,6 +114,7 @@ static int tranlogClose(sqlite3_vtab_cursor *cur){
 
 extern pthread_mutex_t gbl_logput_lk;
 extern pthread_cond_t gbl_logput_cond;
+extern int gbl_num_logput_listeners;
 extern pthread_mutex_t gbl_durable_lsn_lk;
 extern pthread_cond_t gbl_durable_lsn_cond;
 extern int comdb2_sql_tick();
@@ -193,6 +194,10 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           /* Wait on a condition variable */
           clock_gettime(CLOCK_REALTIME, &ts);
           ts.tv_nsec += (200 * 1000000);
+          if (ts.tv_nsec >= 1000000000) {
+              ++ts.tv_sec;
+              ts.tv_nsec -= 1000000000;
+          }
           Pthread_mutex_lock(&gbl_durable_lsn_lk);
           pthread_cond_timedwait(&gbl_durable_lsn_cond, &gbl_durable_lsn_lk, &ts);
           Pthread_mutex_unlock(&gbl_durable_lsn_lk);
@@ -216,8 +221,14 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
               ts.tv_nsec += (200 * 1000000);
+              if (ts.tv_nsec >= 1000000000) {
+                  ++ts.tv_sec;
+                  ts.tv_nsec -= 1000000000;
+              }
               Pthread_mutex_lock(&gbl_logput_lk);
+              ++gbl_num_logput_listeners;
               pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
+              --gbl_num_logput_listeners;
               Pthread_mutex_unlock(&gbl_logput_lk);
 
               int sleepms = 100;

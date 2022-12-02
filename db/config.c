@@ -420,6 +420,7 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "sqlsortermaxmmapsize 268435456",
     "unnatural_types 1",
+    "wal_osync 1",
     "init_with_queue_ondisk_header off",
     "init_with_queue_compr off",
     "init_with_queue_persistent_sequence off",

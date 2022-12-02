@@ -41,6 +41,7 @@ extern pthread_mutex_t rep_candidate_lock;
 extern int gbl_passed_repverify;
 struct bdb_state_tag;
 void bdb_set_rep_handle_dead(struct bdb_state_tag *);
+int bdb_num_connected_nodes(struct bdb_state_tag *);
 #endif
 
 int gbl_verbose_master_req = 0;
@@ -142,6 +143,9 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 				break;
 		}
 	}
+
+	if (eid == db_eid_broadcast && bdb_num_connected_nodes(dbenv->app_private) == 0)
+		return 0;
 
 	/* Set up control structure. */
 	memset(&cntrl, 0, sizeof(cntrl));

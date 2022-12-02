@@ -12,6 +12,7 @@ static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic 
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
+#include <fcntl.h> /* for sync_file_range */
 
 #if TIME_WITH_SYS_TIME
 #include <sys/time.h>
@@ -66,6 +67,7 @@ static int __log_put_next __P((DB_ENV *,
 	u_int8_t *key, u_int32_t));
 static int __log_putr __P((DB_LOG *, DB_LSN *, const DBT *, u_int32_t, HDR *));
 static int __log_write __P((DB_LOG *, void *, u_int32_t));
+static void __log_sync_range __P((DB_LOG *, off_t));
 
 pthread_mutex_t log_write_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t log_write_cond = PTHREAD_COND_INITIALIZER;
@@ -80,10 +82,13 @@ int __db_debug_log(DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, const DBT *,
 extern int gbl_inflate_log;
 pthread_cond_t gbl_logput_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t gbl_logput_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_num_logput_listeners = 0;
 
 /* TODO: Delete once finished with testing on local reps */
 extern int gbl_is_physical_replicant;
 int gbl_abort_on_illegal_log_put = 0;
+
+extern int gbl_wal_osync;
 
 /*
  * __log_put_pp --
@@ -263,14 +268,10 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 	ZERO_LSN(old_lsn);
 
-    Pthread_mutex_lock(&gbl_logput_lk);
 	if ((ret =
 		__log_put_next(dbenv, lsnp, contextp, dbt, udbt, &hdr, &old_lsn,
 		    off_context, key, flags)) != 0)
 		goto panic_check;
-
-    Pthread_cond_broadcast(&gbl_logput_cond);
-    Pthread_mutex_unlock(&gbl_logput_lk);
 
 	lsn = *lsnp;
 
@@ -390,6 +391,13 @@ err:
 		R_UNLOCK(dbenv, &dblp->reginfo);
 	if (need_free)
 		__os_free(dbenv, dbt->data);
+
+	if (gbl_num_logput_listeners > 0) {
+		Pthread_mutex_lock(&gbl_logput_lk);
+		if (gbl_num_logput_listeners > 0)
+			Pthread_cond_broadcast(&gbl_logput_cond);
+		Pthread_mutex_unlock(&gbl_logput_lk);
+	}
 
 	if (IS_REP_MASTER(dbenv) && is_commit_record(rectype) && 
 			(delay = bdb_commitdelay(dbenv->app_private))) {
@@ -907,10 +915,13 @@ __write_inmemory_buffer(dblp, write_all)
 		ret = __write_inmemory_buffer_lk(dblp, NULL, write_all);
 
 		Pthread_mutex_unlock(&log_write_lk);
-		return ret;
 	} else {
-		return __log_write(dblp, dblp->bufp, (u_int32_t)lp->b_off);
+		if ((ret = __log_write(dblp, dblp->bufp, (u_int32_t)lp->b_off)) == 0) {
+			if (!gbl_wal_osync)
+				ret = __os_fsync(dblp->dbenv, dblp->lfhp);
+		}
 	}
+	return ret;
 }
 
 
@@ -1884,6 +1895,7 @@ __log_fill(dblp, lsn, addr, len)
 	u_int32_t bsize, nrec;
 	size_t nw, remain;
 	int ret;
+	off_t s_off;
 
 	lp = dblp->reginfo.primary;
 
@@ -1905,8 +1917,13 @@ __log_fill(dblp, lsn, addr, len)
 		 */
 		if (lp->b_off == 0 && len >= bsize) {
 			nrec = len / bsize;
+			s_off = lp->w_off;
 			if ((ret = __log_write(dblp, addr, nrec * bsize)) != 0)
 				return (ret);
+			/* hint the file system to start writing out the file to disk. it's okay
+			   to not wait for the write-out to complete, for log_put() does not guarantee
+			   the log record will be sync'd to disk (log_flush() does). */
+			__log_sync_range(dblp, s_off);
 			addr = (u_int8_t *)addr + nrec * bsize;
 			len -= nrec * bsize;
 			++lp->stat.st_wcount_fill;
@@ -1923,13 +1940,36 @@ __log_fill(dblp, lsn, addr, len)
 
 		/* If we fill the buffer, flush it. */
 		if (lp->b_off == bsize) {
+			s_off = lp->w_off;
 			if ((ret = __log_write(dblp, dblp->bufp, bsize)) != 0)
 				return (ret);
+			/* hint the file system to start writing out the file to disk. it's okay
+			   to not wait for the write-out to complete, for log_put() does not guarantee
+			   the log record will be sync'd to disk (log_flush() does). */
+			__log_sync_range(dblp, s_off);
 			lp->b_off = 0;
 			++lp->stat.st_wcount_fill;
 		}
 	}
 	return (0);
+}
+
+extern int gbl_wal_osync;
+static void
+__log_sync_range(dblp, off)
+	DB_LOG *dblp;
+	off_t off;
+{
+	/* Linux only: hint the OS that we're about to fsync the log file. */
+#ifdef _LINUX_SOURCE
+	DB_ENV *dbenv;
+	LOG *lp;
+	dbenv = dblp->dbenv;
+	lp = dblp->reginfo.primary;
+
+	if (!gbl_wal_osync)
+		sync_file_range(dblp->lfhp->fd, off, 0, SYNC_FILE_RANGE_WRITE);
+#endif
 }
 
 /*
