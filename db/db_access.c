@@ -305,7 +305,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
-        externalComdb2AuthenticateUserRead && !clnt->admin) {
+        externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
+        && !clnt->current_user.bypass_auth /* not analyze */) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
