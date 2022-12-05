@@ -739,8 +739,10 @@ static int analyze_table_int(table_descriptor_t *td,
     int sampled_table = 0;
 
     clnt.current_user        = td->current_user;
-    clnt.appdata             = td->appdata;
-    clnt.plugin.get_authdata = td->get_authdata;
+    if (td->appdata != NULL)
+        clnt.appdata = td->appdata;
+    if (td->get_authdata != NULL)
+        clnt.plugin.get_authdata = td->get_authdata;
 
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
