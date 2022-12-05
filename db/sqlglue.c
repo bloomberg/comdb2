@@ -2394,6 +2394,9 @@ struct session_tbl {
 
 static struct session_tbl *get_session_tbl(struct sqlclntstate *clnt, const char *tbl_name)
 {
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL || is_sqlite_stat(tbl_name)) {
+        return NULL;
+    }
     struct session_tbl *tbl = NULL;
     TAILQ_FOREACH(tbl, &clnt->session_tbls, entry) {
         if (strcmp(tbl_name, tbl->name) == 0)  {
