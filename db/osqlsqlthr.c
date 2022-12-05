@@ -1867,7 +1867,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     }
 
     if (gbl_uses_externalauth && clnt->no_transaction == 0 &&
-        externalComdb2AuthenticateUserRead && !clnt->admin) {
+        externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
+        && !clnt->current_user.bypass_auth /* not analyze */) {
          clnt->authdata = get_authdata(clnt);
          if(externalComdb2AuthenticateUserRead(clnt->authdata, pCur->db->tablename)) {
              char msg[1024];
