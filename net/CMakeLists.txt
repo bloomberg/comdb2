@@ -1,6 +1,7 @@
 add_library(net
   sqlwriter.c
   net_evbuffer.c
+  ssl_evbuffer.c
   info.c
   net.c
   trace.c
