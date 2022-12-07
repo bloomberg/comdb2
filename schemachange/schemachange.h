@@ -122,6 +122,7 @@ enum schema_change_kind {
     SC_ALTERTABLE_INDEX = 27,
     SC_DROPTABLE_INDEX = 28,
     SC_REBUILDTABLE_INDEX = 29,
+    SC_LAST /* End marker */
 };
 
 #define IS_SC_DBTYPE_TAGGED_TABLE(s) ((s)->kind > SC_DROP_VIEW)
@@ -411,7 +412,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end);
 void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end);
-
+void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
+                              void *p_buf_end);
+void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf,
+                              void *p_buf_end);
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 
