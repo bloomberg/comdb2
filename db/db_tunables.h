@@ -1413,6 +1413,10 @@ REGISTER_TUNABLE("rep_verify_will_recover_trace",
 REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("written_rows_warn",
+                 "Set warning threshold for rows written in a transaction.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_written_rows_warn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_cascaded_rows_per_txn",
                  "Set the max cascaded rows updated per transaction.", TUNABLE_INTEGER,
                  &gbl_max_cascaded_rows_per_txn, 0, NULL, NULL, NULL, NULL);
