@@ -145,6 +145,7 @@ extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
+extern uint32_t gbl_written_rows_warn;
 extern uint32_t gbl_max_wr_rows_per_txn;
 extern uint32_t gbl_max_cascaded_rows_per_txn;
 extern uint32_t gbl_max_time_per_txn_ms;
