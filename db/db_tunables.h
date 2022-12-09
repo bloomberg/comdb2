@@ -1374,6 +1374,10 @@ REGISTER_TUNABLE("rep_verify_will_recover_trace",
 REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("written_rows_warn",
+                 "Set warning threshold for rows written in a transaction.  "
+                 "(Default: 0)", TUNABLE_INTEGER, &gbl_written_rows_warn, 0, 
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("print_deadlock_cycles",
                  "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
