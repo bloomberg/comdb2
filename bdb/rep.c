@@ -1572,7 +1572,8 @@ int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype
         return -1;
 
     /* Copyout rectype */
-    *myrectype = rectype;
+    if (myrectype)
+        *myrectype = rectype;
 
     return 0;
 }
