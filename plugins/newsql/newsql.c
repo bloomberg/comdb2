@@ -1823,9 +1823,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->is_readonly = 0;
+                    clnt->is_readonly_set = 0;
                 } else {
-                    clnt->is_readonly = 1;
+                    clnt->is_readonly_set = 1;
                 }
             } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
                 sqlstr += 6;
@@ -2553,6 +2553,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         if (process_set_commands(dbenv, &clnt, sql_query))
             goto done;
+
+
+        /* Mark connection as readonly, if the db is running in readonly mode or
+           if the connection was explicitly set to readonly. */
+        if (gbl_readonly || clnt.is_readonly_set)
+            clnt.is_readonly = 1;
+        else
+            clnt.is_readonly = 0;
 
         if (gbl_rowlocks && clnt.dbtran.mode != TRANLEVEL_SERIAL)
             clnt.dbtran.mode = TRANLEVEL_SNAPISOL;

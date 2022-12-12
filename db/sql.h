@@ -747,6 +747,7 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
+    int is_readonly_set; /* Whether 'readonly' was set explicitly via SET command? */
     int is_expert;
     int added_to_hist;
 

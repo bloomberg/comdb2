@@ -3711,7 +3711,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         /* exclude writes in a temp table for a select */
         (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&
         (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {
-        errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
+        errstat_set_strf(&clnt->osql.xerr, "connection/database in read-only mode");
         rc = SQLITE_ACCESS;
         goto done;
     }
@@ -8640,7 +8640,7 @@ int sqlite3BtreeInsert(
         /* exclude writes in a temp table for a select */
         (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&
         (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {
-        errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
+        errstat_set_strf(&clnt->osql.xerr, "connection/database in read-only mode");
         rc = SQLITE_ACCESS;
         goto done;
     }
