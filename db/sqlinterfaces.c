@@ -5343,6 +5343,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->prepare_only = 0;
     clnt->is_readonly = 0;
+    clnt->is_readonly_set = 0;
     clnt->admin = 0;
 
     /* reset page-order. */

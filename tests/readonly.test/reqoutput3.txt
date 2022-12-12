@@ -1,2 +1,2 @@
-[insert into t values (1)] failed with rc 305 
-[update t set id=id+1 limit 1] failed with rc 305 
+[insert into t values (1)] failed with rc -106 connection/database in read-only mode
+[update t set id=id+1 limit 1] failed with rc -106 connection/database in read-only mode

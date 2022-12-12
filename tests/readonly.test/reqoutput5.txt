@@ -1,0 +1,8 @@
+[put authentication on] failed with rc -3 connection/database in read-only mode
+[put password 'baz' for 'baz'] failed with rc -3 connection/database in read-only mode
+[put tunable 'logmsg.level' 'debug'] failed with rc -3 connection/database in read-only mode
+[grant op to 'foo'] failed with rc -3 connection/database in read-only mode
+[grant read on t to 'bar'] failed with rc -3 connection/database in read-only mode
+[revoke read on t to 'bar'] failed with rc -3 connection/database in read-only mode
+[set user foo] rc 0
+[set password foo] rc 0
