@@ -55,7 +55,7 @@
 	if (argp->type > 1000) { \
 		if ((ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, \
 						argp->ufid_fileid, lsnp)) != 0) { \
-			if (ret	== DB_DELETED) { \
+			if (ret	== DB_DELETED || ret == DB_IGNORED) { \
 				ret = 0; \
 				goto done; \
 			} \
@@ -109,7 +109,7 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 			&file_dbp, argp->fileid, inc_count, lsnp, 0);	\
 	} 								\
 	if (ret) { 							\
-		if (ret	== DB_DELETED && IS_RECOVERING(dbenv)) {	\
+		if (ret == DB_IGNORED || (ret == DB_DELETED && IS_RECOVERING(dbenv))) {	\
 			ret = 0;					\
 			goto done;					\
 		}							\

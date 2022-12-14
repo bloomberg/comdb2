@@ -15,6 +15,23 @@ struct LOG_INFO {
 struct __db_env;
 struct bdb_state_tag;
 
+typedef unsigned char u_int8_t;
+
+/* Mark this table to be ignored (not replicated to) */
+int physrep_add_ignore_table(char *tablename);
+
+/* Return 1 if this btree should be ignored */
+int physrep_ignore_btree(const char *filename);
+
+/* Return 1 if this table should be ignored */
+int physrep_ignore_table(const char *tablename);
+
+/* Return count of ignored tables */
+int physrep_ignore_table_count(void);
+
+/* List ignored tables */
+int physrep_list_ignored_tables(void);
+
 LOG_INFO get_last_lsn(struct bdb_state_tag *);
 uint32_t get_next_offset(struct __db_env *, LOG_INFO log_info);
 int apply_log(struct __db_env *, unsigned int file, unsigned int offset,

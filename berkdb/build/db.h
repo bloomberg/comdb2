@@ -1333,6 +1333,7 @@ typedef enum {
 
 
 /* DB (private) error return codes. */
+#define DB_IGNORED			(-30900) /* Ignore logging to this btree */
 #define	DB_ALREADY_ABORTED	(-30899)
 #define	DB_DELETED		(-30898)/* Recovery file marked deleted. */
 #define	DB_LOCK_NOTEXIST	(-30897)/* Object to lock is gone. */
@@ -2083,6 +2084,7 @@ struct __lc_cache {
 
 struct __ufid_to_db_t {
 	u_int8_t ufid[DB_FILE_ID_LEN];
+    int ignore : 1;
 	char *fname;
 	DB *dbp;
 };
@@ -2173,6 +2175,8 @@ struct __db_env {
 	int		(*rep_send)	/* Send function. */
 			__P((DB_ENV *, const DBT *, const DBT *,
 				   const DB_LSN *, char*, int, void *));
+	int	 (*rep_ignore) 
+			__P((const char *));
 	int	 (*txn_logical_start)
 			__P((DB_ENV *, void *state, u_int64_t ltranid,
 			DB_LSN *lsn));
@@ -2409,6 +2413,7 @@ struct __db_env {
 		char*, int, void *)));
 	int  (*set_rep_db_pagesize) __P((DB_ENV *, int));
 	int  (*get_rep_db_pagesize) __P((DB_ENV *, int *));
+	int  (*set_rep_ignore) __P((DB_ENV *, int (*func)(const char *filename)));
 	void *tx_handle;		/* Txn handle and methods. */
 	int  (*get_tx_max) __P((DB_ENV *, u_int32_t *));
 	int  (*set_tx_max) __P((DB_ENV *, u_int32_t));
