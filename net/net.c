@@ -5679,6 +5679,9 @@ int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, 
          return 0;
       }
 
+      sbuf2settimeout(sb, 0, 0);
+      sbuf2setbufsize(sb, netinfo_ptr->bufsz);
+
       /* grab pool memory for connect_and_accept_t */
       Pthread_mutex_lock(&(netinfo_ptr->connlk));
       ca=(connect_and_accept_t *)pool_getablk(netinfo_ptr->connpool);
