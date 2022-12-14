@@ -249,22 +249,27 @@ verify_physical_at_finish() {
     local LCLDBNM="$1"
     local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
+    local rc
 
     if [[ -z "$CLUSTER" ]]; then
-        timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.send('flush')"
+        timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.send('flush')" >/dev/null
         ls ${DBDIR}/ | egrep "\.datas|\.index|\.blobs" | while read fl ; do 
-            ${CDB2VERIFY_EXE} ${DBDIR}/$fl 
-            if [[ $? != 0 ]]; then
+            ${CDB2VERIFY_EXE} ${DBDIR}/$fl > verify.out 2>&1
+            rc=$?
+            grep -v "no version information available" verify.out > verify.out.1
+            if [[ $rc -ne 0 ]]; then
                 echo "${DBDIR}/$fl failed physical verify"
+                cat verify.out.1
+                rm verify.out verify.out.1
                 return
             fi
         done
     else
         for node in ${CLUSTER} ; do
-            timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node "exec procedure sys.cmd.send('flush')"
+            timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node "exec procedure sys.cmd.send('flush')" >/dev/null
             ck=`ssh -o StrictHostKeyChecking=no $node "ls ${DBDIR}/ | egrep \"\.datas|\.index|\.blobs\" | while read fl ; do ${CDB2VERIFY_EXE} ${DBDIR}/\\\${fl} ; if [[ \\\$? != 0 ]]; then echo \"$node:${DBDIR}/\\\${fl} failed verify\" ; break 2 ; fi ; done" < /dev/null`
             if [[ -n "$ck" ]]; then
-                echo "$ck"
+                echo "$ck" | grep -v "no version information available"
                 return
             fi
         done
@@ -325,7 +330,7 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
         if [[ -z "$verify_ret" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
             verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
         fi
-        verify_phys=`verify_physical_at_finish`${DBNAME} $CDB2_CONFIG
+        verify_phys=`verify_physical_at_finish ${DBNAME} $CDB2_CONFIG`
     fi
 fi
 

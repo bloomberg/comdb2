@@ -2126,9 +2126,22 @@ putcmd ::= SCHEMACHANGE CONVERTSLEEP INTEGER(F). {
     comdb2schemachangeConvertsleep(pParse, tmp);
 }
 
-putcmd ::= TUNABLE nm(N) INTEGER|FLOAT|STRING(M). {
-    comdb2putTunable(pParse, &N, &M);
+putcmd ::= TUNABLE nm(N) tunable_value(V). {
+    comdb2putTunable(pParse, &N, &V);
 }
+
+tunable_value ::= INTEGER.
+tunable_value(V) ::= MINUS number(N). {
+    Token t;
+    char *z = sqlite3DbMallocRawNN(pParse->db, N.n+1);
+    t.z = z;
+    t.n = N.n+1;
+    memcpy(z+1, N.z, N.n);
+    z[0] = '-';
+    V = t;
+}
+tunable_value ::= STRING.
+
 
 /////////////////////////////////// REBUILD ///////////////////////////////////
 
