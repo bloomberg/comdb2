@@ -372,6 +372,8 @@ int gbl_sqlite_sorterpenalty = 5;
 int gbl_file_permissions = 0660;
 extern int gbl_transaction_grace_period;
 extern int gbl_force_direct_io;
+extern int gbl_seekscan_maxsteps;
+
 extern uint64_t gbl_sc_headroom;
 
 /*

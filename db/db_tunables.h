@@ -2079,4 +2079,9 @@ REGISTER_TUNABLE("warn_on_equiv_types", "Warn about mismatch of different but eq
 REGISTER_TUNABLE("sc_headroom", 
                  "Percentage threshold for low headroom calculation. (Default: 10)",
                  TUNABLE_DOUBLE, &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("seekscan_maxsteps",
+                 "Overrides the max number of steps for a seekscan optimization", TUNABLE_INTEGER,
+                 &gbl_seekscan_maxsteps, SIGNED, NULL, NULL, NULL,
+                 NULL);
+
 #endif /* _DB_TUNABLES_H */
