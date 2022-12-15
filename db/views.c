@@ -241,6 +241,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 {
     char next_existing_shard[MAXTABLELEN + 1];
     int preemptive_rolltime = _get_preemptive_rolltime(view);
+    int published = 0;
     char *tmp_str;
     int rc;
     int tm;
@@ -260,6 +261,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     if (rc != VIEW_NOERR) {
         return rc;
     }
+    published = 1;
 
     Pthread_rwlock_wrlock(&views_lk);
 
@@ -333,6 +335,17 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     gbl_views_gen++;
 
 done:
+    if (rc) {
+        if (published) {
+            int irc = views_write_view(NULL, view->name, NULL, 1 /*unused*/);
+            if (irc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "Failed %d to remove tpt %s llmeta during failed create\n",
+                    irc, view->name);
+            }
+        }
+    }
     Pthread_rwlock_unlock(&views_lk);
 
     return rc;
@@ -770,12 +783,6 @@ static int _extract_shardname_index(const char *tblName,
     return nextNum;
 }
 
-#ifdef __GNUC__
-#ifndef __clang__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wformat-truncation"
-#endif
-#endif
 /** dummy version for now */
 static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
@@ -794,21 +801,16 @@ static int _generate_new_shard_name(const char *oldname, char *newname,
         suffix_len = _shard_suffix_str_len(maxshards);
 
         snprintf(newname, newnamelen, "%s%.*d", oldname, suffix_len, nextnum);
-        newname[newnamelen - 1] = '\0';
     } else {
         char hash[128];
         len = snprintf(hash, sizeof(hash), "%u%s", nextnum, oldname);
         len = crc32c((uint8_t *)hash, len);
         snprintf(newname, newnamelen, "$%u_%X", nextnum, len);
     }
+    newname[newnamelen - 1] = '\0';
 
     return VIEW_NOERR;
 }
-#ifdef __GNUC__
-#ifndef __clang__
-#pragma GCC diagnostic pop
-#endif
-#endif
 
 static int _view_check_sharding(timepart_view_t *view, struct errstat *err)
 {
