@@ -241,6 +241,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 {
     char next_existing_shard[MAXTABLELEN + 1];
     int preemptive_rolltime = _get_preemptive_rolltime(view);
+    int published = 0;
     char *tmp_str;
     int rc;
     int tm;
@@ -260,6 +261,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     if (rc != VIEW_NOERR) {
         return rc;
     }
+    published = 1;
 
     Pthread_rwlock_wrlock(&views_lk);
 
@@ -333,6 +335,17 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     gbl_views_gen++;
 
 done:
+    if (rc) {
+        if (published) {
+            int irc = views_write_view(NULL, view->name, NULL, 1 /*unused*/);
+            if (irc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "Failed %d to remove tpt %s llmeta during failed create\n",
+                    irc, view->name);
+            }
+        }
+    }
     Pthread_rwlock_unlock(&views_lk);
 
     return rc;
