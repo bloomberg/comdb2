@@ -6232,7 +6232,10 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
     /* Refresh in case of renegotiation. */
     p = hndl->sess;
     sess = p->sessobj;
-    p->sessobj = SSL_get1_session(sslio_get_ssl(hndl->sb));
+    /* In the prefer mode, we may end up here without an SSL connection,
+       if the SSL negotiation on a reconnect attempt fails and we reconnect
+       again using plaintext. Check for this. */
+    p->sessobj = sslio_has_ssl(hndl->sb) ? SSL_get1_session(sslio_get_ssl(hndl->sb)) : NULL;
     if (sess != NULL)
         SSL_SESSION_free(sess);
     return 0;
