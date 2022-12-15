@@ -3962,7 +3962,7 @@ int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmet
 
     for (int i = 0; i < nkey; i++) {
         llmeta_newsc_redo_genid_key k = {0};
-        struct llmeta_db_lsn_data_type d = {0};
+        struct llmeta_db_lsn_data_type d = {{0}};
         llmeta_newsc_redo_genid_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(llmeta_newsc_redo_genid_key));
         sc_redo[i].genid = k.genid;
         llmeta_db_lsn_data_type_get(&d, data[i], (uint8_t *)(data[i]) + sizeof(struct llmeta_db_lsn_data_type));
@@ -6777,7 +6777,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             return -1;
         }
         llmeta_newsc_redo_genid_key k;
-        struct llmeta_db_lsn_data_type newsc_lsn = {0};
+        struct llmeta_db_lsn_data_type newsc_lsn = {{0}};
         llmeta_newsc_redo_genid_key_get(&k, p_buf_key, p_buf_end_key);
         llmeta_db_lsn_data_type_get(&newsc_lsn, p_buf_data, p_buf_end_data);
 
