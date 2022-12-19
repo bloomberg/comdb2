@@ -618,6 +618,7 @@ void dump_sql_event(cson_value *event) {
     char *sqlptr = cson_value_get_string(sqlval);
     std::string sql(sqlptr);
     std::replace(sql.begin(), sql.end(), '\n', ' ');
+    std::replace(sql.begin(), sql.end(), '\r', ' ');
     printf("tranid 0 %s", sql.c_str());
 }
 
