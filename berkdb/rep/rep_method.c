@@ -65,6 +65,7 @@ static int __rep_unlock_recovery_lock __P((DB_ENV *, const char *func, int line)
 static int __rep_wrlock_recovery_blocked __P((DB_ENV *));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
+static int __rep_set_ignore __P((DB_ENV *, int (*func)(const char *filename)));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 static int __rep_deadlocks __P((DB_ENV *, u_int64_t *));
@@ -127,6 +128,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_limit = __rep_set_limit;
 		dbenv->set_rep_request = __rep_set_request;
 		dbenv->set_rep_transport = __rep_set_rep_transport;
+		dbenv->set_rep_ignore = __rep_set_ignore;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
 		dbenv->set_rep_recovery_cleanup = __rep_set_rep_recovery_cleanup;
@@ -1004,6 +1006,25 @@ __rep_set_truncate_sc_callback(dbenv, truncate_sc_callback)
 		return (EINVAL);
 	}
 	dbenv->truncate_sc_callback = truncate_sc_callback;
+	return (0);
+}
+
+/*
+ * __rep_set_ignore --
+ *  Register function which tells replication to ignore certain fileids 
+ */
+static int
+__rep_set_ignore(dbenv, f_ignore)
+	DB_ENV *dbenv;
+	int (*f_ignore) __P((const char *));
+{
+	PANIC_CHECK(dbenv);
+	if (f_ignore == NULL) {
+		__db_err(dbenv,
+			"DB_ENV->set_rep_ignore_fileid_func: no send function specified");
+		return (EINVAL);
+	}
+	dbenv->rep_ignore = f_ignore;
 	return (0);
 }
 

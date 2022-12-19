@@ -386,6 +386,8 @@ __ufid_dump(dbenv)
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 }
 
+#include <tohex.h>
+
 // PUBLIC: int __ufid_add_dbp __P(( DB_ENV *, DB *));
 int
 __ufid_add_dbp(dbenv, dbp)
@@ -409,10 +411,13 @@ __ufid_add_dbp(dbenv, dbp)
 			abort();
 		}
 		memcpy(ufid->ufid, dbp->fileid, DB_FILE_ID_LEN);
-		if (dbp->fname)
+		if (dbp->fname) {
 			ufid->fname = strdup(dbp->fname);
-		else
+			ufid->ignore = dbenv->rep_ignore ? dbenv->rep_ignore(ufid->fname) : 0;
+		} else {
 			ufid->fname = NULL;
+			ufid->ignore = 0;
+		}
 		hash_add(dbenv->ufid_to_db_hash, ufid);
 	}
 
@@ -515,6 +520,7 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 				close_dbp = dbp;
 			}
 		}
+		ret = ret ? ret : (ufid->ignore ? DB_IGNORED : 0);
 		(*dbpp) = ufid->dbp;
 	} else {
 		if (gbl_abort_on_missing_ufid) {

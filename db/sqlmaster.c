@@ -4,6 +4,7 @@
 #include "vdbeInt.h"
 #include <ctrace.h>
 #include <poll.h>
+#include <phys_rep_lsn.h>
 
 /**
  * sqlite master global entries
@@ -330,6 +331,10 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
 
     tbl = get_dbtable_by_name(tblname);
     if (!tbl)
+        return NULL;
+
+    extern int gbl_is_physical_replicant;
+    if (gbl_is_physical_replicant && physrep_ignore_table(tblname))
         return NULL;
 
     if (ixnum)
