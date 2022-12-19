@@ -36,6 +36,7 @@
 #include "rtcpu.h"
 #include "config.h"
 #include "phys_rep.h"
+#include "phys_rep_lsn.h"
 #include "macc_glue.h"
 
 extern int gbl_create_mode;
@@ -1349,6 +1350,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         free(type);
         start_replication();
 
+    } else if (tokcmp(tok, ltok, "physrep_ignore") == 0) {
+        /* Tables that should ignore replication */
+        while ((tok = segtok(line, len, &st, &ltok)) != NULL && ltok > 0) {
+            char *table = tokdup(tok, ltok);
+            logmsg(LOGMSG_INFO, "Physrep ignoring table %s\n", table);
+            physrep_add_ignore_table(table);
+        }
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
         tok = segtok(line, len, &st, &ltok);
 

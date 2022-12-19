@@ -104,6 +104,7 @@
 #include <bdb_queuedb.h>
 #include <schema_lk.h>
 #include <tohex.h>
+#include <phys_rep_lsn.h>
 #include <timer_util.h>
 
 extern int gbl_bdblock_debug;
@@ -2379,6 +2380,11 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     rc = dbenv->set_paniccall(dbenv, panic_func);
 
+    extern int gbl_is_physical_replicant;
+    if (gbl_is_physical_replicant && physrep_ignore_table_count() > 0) {
+        rc = dbenv->set_rep_ignore(dbenv, physrep_ignore_btree);
+    }
+
 #ifdef BDB_VERB_REPLICATION_DEFAULT
     /* turn on verbose replication by default, so I can see what's happening
      * before the mtrap is enabled. */
@@ -4260,6 +4266,15 @@ deadlock_again:
                     }
                 }
 
+                if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
+                    char new[PATH_MAX];
+                    print(bdb_state, "truncating ignored table %s\n", bdb_trans(tmpname, new));
+                    rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
+                    if (rc != 0) {
+                        logmsg(LOGMSG_ERROR, "truncate %s error %d\n", bdb_trans(tmpname, new), errno);
+                    }
+                }
+
                 rc = dbp->set_pagesize(dbp, pagesize);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "unable to set pagesize on %s to %d\n",
@@ -4442,6 +4457,16 @@ deadlock_again:
             pagesize = bdb_state->pagesize_override;
         else
             pagesize = bdb_state->attr->pagesizedta;
+
+        if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
+            char new[PATH_MAX];
+            print(bdb_state, "truncating ignored queue %s\n", bdb_trans(tmpname, new));
+            rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "truncate %s error %d\n", bdb_trans(tmpname, new), errno);
+            }
+        }
+
         rc = dbp->set_pagesize(dbp, pagesize);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "unable to set pagesize on dta to %d\n", pagesize);
@@ -4596,7 +4621,14 @@ deadlock_again:
                         pagesize);
             }
 
-            /*fprintf(stderr, "opening %s\n", tmpname);*/
+            if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
+                char new[PATH_MAX];
+                print(bdb_state, "truncating ignored queue %s\n", bdb_trans(tmpname, new));
+                rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
+                if (rc != 0) {
+                    logmsg(LOGMSG_ERROR, "truncate %s error %d\n", bdb_trans(tmpname, new), errno);
+                }
+            }
 
             print(bdb_state, "opening %s ([%d])\n", tmpname, i);
             if (bdb_state->attr->page_compact_indexes /* compact index */
