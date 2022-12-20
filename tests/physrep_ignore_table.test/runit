@@ -15,8 +15,6 @@ function failexit
 {
     touch $stopfile
     echo "Failed: $1"
-    echo "CHECK PHYSREP NOW"
-    sleep 9999999999
     exit -1
 }
 
