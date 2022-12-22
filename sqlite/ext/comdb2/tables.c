@@ -153,7 +153,7 @@ static int systblTablesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 /*
 ** Return TRUE if the cursor has been moved off of the last row of output.
 */
-static int systblTablesEof(sqlite3_vtab_cursor *cur){
+static int systblTablesEof(sqlite3_vtab_cursor *cur) {
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
 
   return pCur->iRowid >= thedb->num_dbs + timepart_num_views();
@@ -346,6 +346,8 @@ int comdb2SystblInit(
 #endif
   if (rc == SQLITE_OK)  
     rc = systblPreparedInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblLogfilesInit(db);
 #endif
   return rc;
 }

@@ -105,6 +105,8 @@ int __dbenv_dump_mintruncate_list __P((DB_ENV*));
 int __dbenv_clear_mintruncate_list __P((DB_ENV*));
 int __dbenv_build_mintruncate_list __P((DB_ENV*));
 
+static void __dbenv_set_signal_catchup __P((DB_ENV *, void(*)(DB_ENV*, DB_LSN*, char*)));
+
 /*
  * db_env_create --
  *	DB_ENV constructor.
@@ -283,6 +285,7 @@ __dbenv_init(dbenv)
         dbenv->dump_mintruncate_list = __dbenv_dump_mintruncate_list;
         dbenv->clear_mintruncate_list = __dbenv_clear_mintruncate_list;
         dbenv->build_mintruncate_list = __dbenv_build_mintruncate_list;
+        dbenv->set_signal_catchup = __dbenv_set_signal_catchup;
 #ifdef	HAVE_RPC
 	}
 #endif
@@ -1479,4 +1482,11 @@ __dbenv_trigger_unpause(dbenv, fname)
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
+}
+
+static void __dbenv_set_signal_catchup(dbenv, callback)
+DB_ENV *dbenv;
+void(*callback)(DB_ENV*, DB_LSN*, char*);
+{
+    dbenv->signal_catchup_callback = callback;
 }

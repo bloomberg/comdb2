@@ -7,6 +7,7 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
+#include "printformats.h"
 
 #ifndef lint
 static const char revid[] =
@@ -505,9 +506,13 @@ void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
 int gbl_dedup_rep_all_reqs = 0;
 
-int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
-					 const char *func, int line)
+int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line, int do_initial_catchup)
 {
+    if (do_initial_catchup && dbenv->signal_catchup_callback) {
+        dbenv->signal_catchup_callback(dbenv, lsn, master_eid);
+        return 0;
+    }
+
 	if (gbl_dedup_rep_all_reqs && rep_qstat_has_allreq()) {
 		if (gbl_verbose_fills) {
 			logmsg(LOGMSG_DEBUG, "BLOCKING rep_all_req from %s line %d\n", func, line);
@@ -657,9 +662,9 @@ static void *apply_thread(void *arg)
 					R_UNLOCK(dbenv, &dblp->reginfo);
 
 					int flags = (DB_REP_NODROP|DB_REP_NOBUFFER);
-					if (master_eid != db_eid_invalid && 
-							(rc = send_rep_all_req(dbenv, master_eid, &lsn, 
-							 flags, __func__, __LINE__)) == 0) {
+					if (master_eid != db_eid_invalid &&
+                        (rc = send_rep_all_req(dbenv, master_eid, &lsn,
+                                               flags, __func__, __LINE__, 0)) == 0) {
 						last_fill = comdb2_time_epochms();
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d continue "
@@ -803,8 +808,8 @@ static void *apply_thread(void *arg)
 
 		if (request_all_records) {
 			/* Request all records from the master */
-			if ((ret = send_rep_all_req(dbenv, master_eid, &my_lsn, 0, 
-							__func__, __LINE__)) == 0) {
+			if ((ret = send_rep_all_req(dbenv, master_eid, &my_lsn, 0,
+                                        __func__, __LINE__, 0)) == 0) {
 				last_fill = comdb2_time_epochms();
 				if (gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ from %d:%d "
@@ -1625,7 +1630,7 @@ more:
 			if (master == db_eid_invalid)
 				ret = 0;
 			else if (send_rep_all_req(dbenv, master, &lsn, DB_REP_NODROP,
-						__func__, __LINE__) != 0) {
+                                      __func__, __LINE__, 0) != 0) {
 				if (gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d failed continue REP_ALL_REQ"
 							" lsn %d:%d\n", __func__, __LINE__, lsn.file,
@@ -7170,6 +7175,8 @@ restart:
 		}
 	}
 
+    printf(">> w_lsn is "PR_LSN"\n", PARM_LSN(db_rep->region->w_lsn));
+
 	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
 			lsnp->file, lsnp->offset);
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
@@ -8408,7 +8415,7 @@ finish:ZERO_LSN(lp->waiting_lsn);
 		if (undid_schema_change && !online && dbenv->truncate_sc_callback)
 			dbenv->truncate_sc_callback(dbenv, &trunclsn);
 		if (send_rep_all_req(dbenv, master, &rp->lsn, DB_REP_NODROP,
-					__func__, __LINE__) == 0) {
+                             __func__, __LINE__, 1) == 0) {
 			last_fill = comdb2_time_epochms();
 			if (gbl_verbose_fills) {
 				logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ for "

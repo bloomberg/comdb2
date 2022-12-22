@@ -2838,6 +2838,9 @@ struct __txn_commit_map {
 	pthread_mutex_t txmap_mutexp;
 	hash_t *transactions;
 	hash_t *logfile_lists;
+
+    void (*set_signal_catchup) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN *lsnp, char *master)));
+    void (*signal_catchup_callback) __P((DB_ENV *, DB_LSN *lsnp, char *master));
 };
 
 #ifndef DB_DBM_HSEARCH

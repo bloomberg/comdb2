@@ -2356,6 +2356,9 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 int32_t bdb_get_dbopen_gen(void);
 int is_incoherent(bdb_state_type *, const char *);
 
+int bdb_fetch_log(bdb_state_type *bdb_state, uint32_t lognum, void **payload, uint32_t *size);
+int bdb_log_range(bdb_state_type *bdb_state, uint32_t *start_log, uint32_t *end_log);
+
 #ifdef __APPLE__
 struct CDB2DBINFORESPONSE;
 void fill_dbinfo(struct CDB2DBINFORESPONSE *, bdb_state_type *);
