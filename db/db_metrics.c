@@ -82,6 +82,15 @@ struct comdb2_metrics_store {
     double sql_queue_time;
     int64_t sql_queue_timeouts;
     double handle_buf_queue_time;
+    double bp_time;
+    double async_wait_queue_time;
+    double async_wait_init_time;
+    double async_wait_wait_for_first_ack_time;
+    double async_wait_wait_for_all_ack_time;
+    double async_wait_wait_finish_time;
+    double async_wait_wait_next_commit_timestamp_time;
+    double async_wait_wait_notify_time;
+    double async_wait_time_before_first_access;
     int64_t denied_appsock_connections;
     int64_t locks;
     int64_t temptable_created;
@@ -222,6 +231,33 @@ comdb2_metric gbl_metrics[] = {
     {"handle_buf_queue_time", "Average ms spent waiting in handle-buf queue",
      STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.handle_buf_queue_time, NULL},
+    {"async_wait_queue_time", "Average ms spent waiting in async-wait queue",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_queue_time, NULL},
+    {"async_wait_init_time", "Average ms spent waiting in async-wait queue in the init phase",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_init_time, NULL},
+    {"async_wait_wait_for_first_ack_time", "Average ms spent waiting in async-wait queue in the wait_for_first_ack phase",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_wait_for_first_ack_time, NULL},
+    {"async_wait_wait_for_all_ack_time", "Average ms spent waiting in async-wait queue in the wait_for_all_ack phase",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_wait_for_all_ack_time, NULL},
+    {"async_wait_wait_finish_time", "Average ms spent waiting in async-wait queue in the wait_finish phase",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_wait_finish_time, NULL},
+    {"async_wait_wait_next_commit_timestamp_time", "Average ms spent waiting in async-wait queue in the wait_next_commit_timestamp phase",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_wait_next_commit_timestamp_time, NULL},
+    {"async_wait_wait_notify_time", "Average ms spent waiting in async-wait queue in the wait_notify phase",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_wait_notify_time, NULL},
+    {"async_wait_time_before_first_access", "Average ms spent waiting in async-wait queue before first being accessed",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.async_wait_time_before_first_access, NULL},
+    {"block_processor_time", "Average ms spent by a block processor thread on one request",
+     STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.bp_time, NULL},
     {"denied_appsocks", "Number of denied appsock connections",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
      &stats.denied_appsock_connections, NULL},
@@ -493,6 +529,23 @@ int refresh_metrics(void)
     stats.sql_queue_timeouts = get_all_sql_pool_timeouts();
     stats.handle_buf_queue_time =
         time_metric_average(thedb->handle_buf_queue_time);
+    stats.async_wait_queue_time =
+        time_metric_average(thedb->async_wait_queue_time);
+    stats.async_wait_init_time =
+        time_metric_average(thedb->async_wait_init_time);
+    stats.async_wait_wait_for_first_ack_time =
+        time_metric_average(thedb->async_wait_wait_for_first_ack_time);
+    stats.async_wait_wait_for_all_ack_time =
+        time_metric_average(thedb->async_wait_wait_for_all_ack_time);
+    stats.async_wait_wait_finish_time =
+        time_metric_average(thedb->async_wait_wait_finish_time);
+    stats.async_wait_wait_next_commit_timestamp_time =
+        time_metric_average(thedb->async_wait_wait_next_commit_timestamp_time);
+    stats.async_wait_wait_notify_time =
+        time_metric_average(thedb->async_wait_wait_notify_time);
+    stats.async_wait_time_before_first_access =
+        time_metric_average(thedb->async_wait_time_before_first_access);
+    stats.bp_time = time_metric_average(thedb->bp_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master =
         bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_myhostname ? 1

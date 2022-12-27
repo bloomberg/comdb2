@@ -81,5 +81,5 @@ int thrman_wait_type_exit(enum thrtype type);
 
 enum thrsubtype thrman_get_subtype(struct thr_handle *thr);
 void thrman_set_subtype(struct thr_handle *thr, enum thrsubtype subtype);
-
+void thrman_disown_logger(struct thr_handle *thr);
 #endif

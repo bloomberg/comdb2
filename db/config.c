@@ -428,6 +428,8 @@ static char *legacy_options[] = {
     "setattr max_sql_idle_time 864000",
     "utxnid_log off",
     "commit_lsn_map off"
+    "async_dist_commit 0",
+    "async_dist_commit_verbose 0"
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

@@ -1,0 +1,2 @@
+This is test to ensure that the async wait machinery works, and can withstand heavy loads.
+The test creates 50 tables and spawns 50 inserters, each inserted working on a separate table.

@@ -70,7 +70,7 @@ do_inserts()
       done
       echo "commit"
 
-    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> $outfl  || failexit "delete_reconds error"
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> $outfl  || failexit "do_inserts error"
 
     echo "done inserter $item"
 }
