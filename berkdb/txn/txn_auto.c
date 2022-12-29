@@ -2506,8 +2506,10 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
     u_int32_t keycnt;
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	fflush(stdout);
-	(void)printf("\trowlocks: \n");
-	fsnapf(stdout, argp->rowlocks.data, argp->rowlocks.size);
+	if (argp->rowlocks.size > 0) {
+		(void)printf("\trowlocks: \n");
+		fsnapf(stdout, argp->rowlocks.data, argp->rowlocks.size);
+	}
 	fflush(stdout);
 	(void)printf("\n");
 	__os_free(dbenv, argp);
