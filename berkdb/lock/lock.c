@@ -5729,6 +5729,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 	FILE *fp;
 {
 	DBT obj_dbt;
+	char tablename[30] = {0};
 	DB_LOCK ret_lock;
 	DB_LOCK_ILOCK *lock;
 	DB_LOCKER *sh_locker;
@@ -5805,24 +5806,54 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 
 			GET_LSNCOUNT(dp, nlsns);
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-				if (fp)
-					fprintf(fp, "\t\tFILEID: ");
-				else
-					logmsg(LOGMSG_USER, "\t\tFILEID: ");
+				switch(obj_dbt.size)  {
+					case(sizeof(struct __db_ilock)): 
+						if (fp)
+							fprintf(fp, "\t\tFILEID: ");
+						else
+							logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-				hexdumpfp(fp, lock->fileid, sizeof(lock->fileid));
-				if (fp) {
-					fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
-					fprintf(fp, " PAGE: %u", lock->pgno);
-				} else {
-					logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
-					logmsg(LOGMSG_USER, " PAGE: %u", lock->pgno);
-				}
-				if (nlsns) {
-					if (fp)
-						fprintf(fp, " LSNS: ");
-					else
-						logmsg(LOGMSG_USER, " LSNS: ");
+						hexdumpfp(fp, lock->fileid, sizeof(lock->fileid));
+						if (fp) {
+							fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
+							fprintf(fp, " PAGE: %u\n", lock->pgno);
+						} else {
+							logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
+							logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
+						}
+						if (nlsns) {
+							if (fp)
+								fprintf(fp, "\t\tPGLOGS: ");
+							else
+								logmsg(LOGMSG_USER, "\t\tPGLOGS: ");
+						}
+						break;
+					case(32):
+						memcpy(tablename,obj_dbt.data, 28);
+						if (fp)
+							fprintf(fp, "\t\tTABLELOCK: %s", tablename);
+						else
+							logmsg(LOGMSG_USER, "\t\tTABLELOCK: %s", tablename);
+						// Tablenames > 28 chars have crc32 appended 
+						uint32_t crc32 = *(uint32_t *)(obj_dbt.data + 28);
+						if (crc32 > 0) {
+							if (fp)
+								fprintf(fp, " CRC32: %u", crc32);
+							else
+								logmsg(LOGMSG_USER, " CRC32: %u", crc32);
+						}
+						if (fp)
+							fprintf(fp, "\n");
+						else
+							logmsg(LOGMSG_USER, "\n");
+						break;
+					default:
+						if (fp)
+							fprintf(fp, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+						else
+							logmsg(LOGMSG_USER, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+						hexdumpfp(fp, obj_dbt.data, obj_dbt.size);
+						break;
 				}
 			}
 			for (j = 0; j < nlsns; j++) {
@@ -5876,8 +5907,9 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	DB_LSN *maxlsn;
 	void **pglogs;
 	u_int32_t *keycnt;
-    FILE *fp;
+	FILE *fp;
 {
+	char tablename[30] = {0};
 	DBT obj_dbt;
 	DB_LOCK ret_lock;
 	DB_LOCK_ILOCK *lock;
@@ -5970,22 +6002,55 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 					}
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                    if (fp) 
-                        fprintf(fp, "\t\tFILEID: ");
-                    else
-                        logmsg(LOGMSG_USER, "\t\tFILEID: ");
+					switch(obj_dbt.size) {
+						case(sizeof(struct __db_ilock)): 
+							if (fp) 
+								fprintf(fp, "\t\tFILEID: ");
+							else
+								logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-					hexdumpfp(fp, lock->fileid,
-					    sizeof(lock->fileid));
-                    if (fp) {
-                        fprintf(fp, " TYPE: %s",
-                                ilock_type_str(lock->type));
-                        fprintf(fp, " PAGE: %u\n", lock->pgno);
-                    } else {
-                        logmsg(LOGMSG_USER, " TYPE: %s",
-                                ilock_type_str(lock->type));
-                        logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
-                    }
+							hexdumpfp(fp, lock->fileid,
+									sizeof(lock->fileid));
+							if (fp) {
+								fprintf(fp, " TYPE: %s",
+										ilock_type_str(lock->type));
+								fprintf(fp, " PAGE: %u\n", lock->pgno);
+							} else {
+								logmsg(LOGMSG_USER, " TYPE: %s",
+										ilock_type_str(lock->type));
+								logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
+							}
+							break;
+
+						case(32):
+							memcpy(tablename,obj_dbt.data, 28);
+							if (fp)
+								fprintf(fp, "\t\tTABLELOCK: %s", tablename);
+							else
+								logmsg(LOGMSG_USER, "\t\tTABLELOCK: %s", tablename);
+
+							// Tablenames > 28 chars have crc32 appended 
+							uint32_t crc32 = *(uint32_t *)(obj_dbt.data + 28);
+							if (crc32 > 0) {
+								if (fp)
+									fprintf(fp, " CRC32: %u", crc32);
+								else
+									logmsg(LOGMSG_USER, " CRC32: %u", crc32);
+							}
+							if (fp)
+								fprintf(fp, "\n");
+							else
+								logmsg(LOGMSG_USER, "\n");
+							break;
+
+						default:
+							if (fp)
+								fprintf(fp, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+							else
+								logmsg(LOGMSG_USER, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+							hexdumpfp(fp, obj_dbt.data, obj_dbt.size);
+							break;
+					}
 				}
 
 				if (npgno != 0)
