@@ -7749,6 +7749,13 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             return rc;
         }
 
+        if (db->timepartition_name != NULL &&
+            (rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, db->timepartition_name,
+                                                  bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+            logmsg(LOGMSG_ERROR, "%s lock %s returns %d\n", __func__, db->timepartition_name, rc);
+            return rc;
+        }
+
         /* BIG NOTE:
          * A sqlite engine can safely access a dbtable once it acquires the read lock
          * for the table. This is done under schema change lock, and after that the
