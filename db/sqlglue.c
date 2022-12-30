@@ -104,6 +104,7 @@
 #include "comdb2_atomic.h"
 #include "comdb2_query_preparer.h"
 #include "sc_util.h"
+#include "views.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -7637,6 +7638,14 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
         bdb_lock_table_read_fromlid(
             db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+
+        char tablename[MAXTABLELEN] = {0};
+        char *name = resolve_table_name(db->tablename, tablename, sizeof(tablename));
+        if ((name == tablename) && (rc = bdb_lock_table_read_by_name_fromlid(thedb->bdb_env, tablename,
+            bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+            logmsg(LOGMSG_ERROR, "%s lock %s returns %d\n", __func__, tablename, rc);
+            return rc;
+        }
 
         /* BIG NOTE:
          * A sqlite engine can safely access a dbtable once it acquires the read lock
