@@ -187,10 +187,11 @@ retry:
     }
 
     uint32_t sctype = ntohl(*((uint32_t *)type->data));
-    if ((sctype == alter || sctype == fastinit || sctype == bulkimport) &&
+    if ((sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop || sctype == views) &&
         (strncmp(ch_bdb_state->name, "sqlite_stat",
-                 sizeof("sqlite_stat") - 1) != 0))
+                 sizeof("sqlite_stat") - 1) != 0)) {
         bdb_lock_table_write(ch_bdb_state, tran);
+    }
     /* analyze does NOT need schema_lk */
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;
