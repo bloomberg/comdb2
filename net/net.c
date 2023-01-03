@@ -5652,6 +5652,9 @@ static void *accept_thread(void *arg)
             continue;
         }
 
+        sbuf2settimeout(sb, 0, 0);
+        sbuf2setbufsize(sb, netinfo_ptr->bufsz);
+
         /* grab pool memory for connect_and_accept_t */
         Pthread_mutex_lock(&(netinfo_ptr->connlk));
         ca = (connect_and_accept_t *)pool_getablk(netinfo_ptr->connpool);
