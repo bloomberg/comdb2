@@ -1552,9 +1552,8 @@ more:
 					goto errlock;
 			} else {
 				fromline = __LINE__;
-				if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								commit_gen, 0)) != 0)
-					goto errlock;
+				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+								commit_gen, 0);
 			}
 		} else {
 			send_master_req(dbenv, __func__, __LINE__);
@@ -1562,7 +1561,7 @@ more:
 			goto errlock;
 		}
 
-		if (rp->rectype == REP_LOG_MORE && !gbl_decoupled_logputs) {
+		if ((ret == 0 || ret == DB_REP_ISPERM) && rp->rectype == REP_LOG_MORE && !gbl_decoupled_logputs) {
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			master = rep->master_id;
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -1593,8 +1592,8 @@ more:
 				logmsg(LOGMSG_USER, "%s line %d continuing REP_ALL_REQ lsn "
 						"%d:%d\n", __func__, __LINE__, lsn.file, lsn.offset);
 			}
+		    fromline = __LINE__;
 		}
-		fromline = __LINE__;
 		goto errlock;
 
 	case REP_LOG_REQ:
