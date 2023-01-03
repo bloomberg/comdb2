@@ -1697,38 +1697,43 @@ static void get_stat_evbuffer(struct event_info *e, net_queue_stat_t *stat)
     }
 }
 
+
+static void free_wrapper(const void *unused0, size_t unused1, void *ptr)
+{
+    free(ptr);
+}
+
 static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
 {
-#   define NVEC 8
-    struct iovec v[NVEC];
-#   ifdef FIONREAD
+    void *p;
     int avail;
+#   ifdef FIONREAD
     (void)ioctl(fd, FIONREAD, &avail);
     if (avail <= 0) avail = TCP_BUFSZ;
 #   else
 #   pragma message("FIONREAD not available")
     avail = TCP_BUFSZ;
 #   endif
-    const int nv = evbuffer_reserve_space(buf, avail, v, NVEC);
-    if (nv <= 0) {
+
+    /* Request the memory directly from the system -
+       Libevent internally pre-allocates at least 1KiB memory. Network data is
+       transferred from rd_buf to akq_buf, on message boundary, via evbuffer_remove_buffer().
+       However, evbuffer_remove_buffer() will copy an entire chunk of memory to avoid memcpy,
+       whenever possible. This can lead to a fragmented heap on a congested network. */
+    if ((p = malloc(avail)) == NULL) {
         errno = ENOMEM;
         return -1;
     }
-    const ssize_t sz = readv(fd, v, nv);
-    if (sz <= 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
-        return sz;
-    }
-    ssize_t n = sz;
-    for (int i = 0; i < nv; ++i) {
-        if (v[i].iov_len < n) {
-            n -= v[i].iov_len;
-            continue;
-        }
-        v[i].iov_len = n;
-        n = 0;
-    }
-    evbuffer_commit_space(buf, v, nv);
+
+    ssize_t sz = read(fd, p, avail);
+    if (sz <= 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        sz = 0;
+
+    if (sz > 0 && evbuffer_add_reference(buf, p, sz, free_wrapper, p) != 0)
+        sz = -1;
+
+    if (sz <= 0)
+        free(p);
     return sz;
 }
 
@@ -3036,35 +3041,39 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
     int nodrop = flags & WRITE_MSG_NOLIMIT;
     int nodelay = flags & WRITE_MSG_NODELAY;
     struct event_info *e = host_node_ptr->event_info;
-    struct evbuffer *buf = evbuffer_new();
-    if (buf == NULL) {
-        rc = -1;
-        goto out;
-    }
-    if (evbuffer_add(buf, e->wirehdr[type], e->wirehdr_len) != 0) {
-        rc = -1;
-        goto out;
-    }
-    for (int i = 0; i < n; ++i) {
-        if (evbuffer_add(buf, iov[i].iov_base, iov[i].iov_len) != 0) {
-            rc = -1;
-            goto out;
-        }
-    }
+    size_t sz;
+    struct iovec v[1];
+    uint8_t *b;
+
     Pthread_mutex_lock(&e->wr_lk);
     if (!e->flush_buf) {
        rc = -3;
     } else if ((rc = skip_send(e, nodrop, 0)) == 0) {
-        if ((rc = evbuffer_add_buffer(e->flush_buf, buf)) == 0) {
+        sz = e->wirehdr_len;
+        for (int i = 0; i < n; ++i)
+            sz += iov[i].iov_len;
+
+        const int nv = evbuffer_reserve_space(e->flush_buf, sz, v, 1);
+        if (nv != 1) {
+            return -1;
+        }
+
+        b = v[0].iov_base;
+        memcpy(b, e->wirehdr[type], e->wirehdr_len);
+        b += e->wirehdr_len;
+        for (int i = 0; i < n; ++i) {
+            memcpy(b, iov[i].iov_base, iov[i].iov_len);
+            b += iov[i].iov_len;
+        }
+        v[0].iov_len = sz;
+
+        if ((rc = evbuffer_commit_space(e->flush_buf, v, 1)) == 0) {
             flush_evbuffer(e, nodelay);
         } else {
             rc = -1;
         }
     }
     Pthread_mutex_unlock(&e->wr_lk);
-out:if (buf) {
-        evbuffer_free(buf);
-    }
     return rc;
 }
 
