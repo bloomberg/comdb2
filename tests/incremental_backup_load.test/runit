@@ -4,6 +4,10 @@ export debug=1
 export sleeptime=30
 [[ $debug == 1 ]] && set -x
 
+if [[ -n "$COMDB2AR_EXE_OVERRIDE" ]]; then
+    COMDB2AR_EXE=${COMDB2AR_EXE_OVERRIDE}
+fi
+
 if [[ -z "$DBNAME" ]] ; then
   echo DBNAME missing
   exit 1
