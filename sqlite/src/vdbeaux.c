@@ -168,6 +168,7 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
     SWAP(int *, pA->updCols, pB->updCols);
     SWAP(int, pA->oldColCount, pB->oldColCount);
     SWAP(char **, pA->oldColNames, pB->oldColNames);
+    SWAP(char **, pA->oldColDeclTypes, pB->oldColDeclTypes);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pB->expmask = pA->expmask;
