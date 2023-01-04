@@ -3,6 +3,10 @@
 export debug=1
 [[ $debug == 1 ]] && set -x
 
+if [[ -n "$COMDB2AR_EXE_OVERRIDE" ]]; then
+    COMDB2AR_EXE=${COMDB2AR_EXE_OVERRIDE}
+fi
+
 export DBNAME=$1
 
 LOCTMPDIR=$TMPDIR/$DBNAME
