@@ -6,6 +6,11 @@ export debug=1
 # Write 10k rows.  Bring one node down.  Write another 1k rows.  Copy and
 # bring up db.  Make sure it passes verify, and has 10k rows after copy.
 
+if [[ -n "$COMDB2AR_EXE_OVERRIDE" ]]; then
+    COMDB2AR_EXE=${COMDB2AR_EXE_OVERRIDE}
+fi
+
+
 #set -e
 export sleeptime=15
 
