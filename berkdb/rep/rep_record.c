@@ -7429,7 +7429,7 @@ __truncate_repdb(dbenv)
 		return 0;
 	}
 
-	if (!F_ISSET(rep, REP_ISCLIENT) || !db_rep->rep_db)
+	if ((!F_ISSET(rep, REP_ISCLIENT) && !gbl_is_physical_replicant) || !db_rep->rep_db)
 		return DB_NOTFOUND;
 
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
