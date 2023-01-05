@@ -20,3 +20,4 @@
 (TEST='REMSQL DEDUP TEST 3')
 (a=0, b=0)
 (a=0, b=3)
+(rows inserted=1)
