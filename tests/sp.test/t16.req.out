@@ -1,0 +1,7 @@
+(version='test')
+(udf()='udf result')
+(version='test')
+[exec procedure consumer()] failed with rc -3 [string "..."]:5: attempt to call method 'consumer' (a nil value)
+(emit='consumer result')
+(udf()='udf result')
+(emit='consumer result')

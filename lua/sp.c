@@ -227,7 +227,6 @@ static int db_exec(Lua);
 static int dbstmt_emit(Lua);
 
 static void add_tran_funcs(Lua);
-static void remove_consumer(Lua);
 static void remove_thd_funcs(Lua);
 
 /*
@@ -3246,7 +3245,6 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         goto err;
     }
     Lua newlua = newsp->lua;
-    remove_consumer(newlua);
     remove_thd_funcs(newlua);
     add_tran_funcs(newlua);
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
@@ -4996,11 +4994,6 @@ static const luaL_Reg db_funcs[] = {
     #ifdef WITH_RDKAFKA
     {"kafka_publish", kafka_publish},
     #endif
-    /************ CONSUMER/TRIGGER ************/
-    {"consumer", db_consumer},
-    {"get_event_epoch", db_get_event_epoch},
-    {"get_event_sequence", db_get_event_sequence},
-    {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
     {"db_debug", db_db_debug},
     {"debug", db_debug},
@@ -5017,21 +5010,35 @@ static const luaL_Reg tran_funcs[] = {
     {"begin", db_begin},
     {"commit", db_commit},
     {"rollback", db_rollback},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
+
+static const luaL_Reg consumer_funcs[] = {
+    {"consumer", db_consumer},
+    {"get_event_epoch", db_get_event_epoch},
+    {"get_event_sequence", db_get_event_sequence},
+    {"get_event_tid", db_get_event_tid},
+    {NULL, NULL}
+};
 
 static const luaL_Reg trigger_funcs[] = {
     {"ctrace", db_ctrace},
+    {"get_event_epoch", db_get_event_epoch},
+    {"get_event_sequence", db_get_event_sequence},
+    {"get_event_tid", db_get_event_tid},
     {"spname", db_spname},
     {"trigger", db_consumer},
     {"trigger_begin", db_begin},
     {"trigger_commit", db_commit},
     {"trigger_rollback", db_rollback},
     {"trigger_version_check", db_trigger_version_check},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static const luaL_Reg thd_funcs[] = {
     {"create_thread", db_create_thread},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static const struct luaL_Reg dbtable_funcs[] = {
     {"insert", dbtable_insert},
@@ -5056,7 +5063,8 @@ static const struct luaL_Reg dbstmt_funcs[] = {
     {"exec", dbstmt_exec},
     {"fetch", dbstmt_fetch},
     {"rows_changed", dbstmt_rows_changed},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static void init_db_funcs(Lua L)
 {
@@ -5137,11 +5145,27 @@ static void remove_thd_funcs(Lua L)
     lua_pop(L, 1);
 }
 
-static void remove_consumer(Lua L)
+static void add_consumer_funcs(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "consumer");
+    luaL_openlib(L, NULL, consumer_funcs, 0);
+    lua_pop(L, 1);
+}
+
+static void remove_consumer_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    for (int i = 0; consumer_funcs[i].name; ++i) {
+        lua_pushnil(L);
+        lua_setfield(L, -2, consumer_funcs[i].name);
+    }
+    lua_pop(L, 1);
+}
+
+static void add_trigger_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    luaL_openlib(L, NULL, trigger_funcs, 0);
     lua_pop(L, 1);
 }
 
@@ -6970,7 +6994,6 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
     SP sp = clnt->sp;
     if (new_vm) {
         remove_emit(L);
-        remove_consumer(L);
         remove_tran_funcs(L);
         if ((rc = process_src(L, sp->src, err)) != 0) return rc;
     }
@@ -6989,7 +7012,6 @@ static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
     remove_emit(L);
-    remove_consumer(L);
     remove_tran_funcs(L);
     if ((rc = process_src(L, sp->src, err)) != 0) return rc;
     if ((rc = get_func_by_name(L, spname, err)) != 0) return rc;
@@ -7017,13 +7039,6 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if ((rc = begin_sp(clnt, &err)) != 0) return rc;
     if ((rc = run_sp(clnt, args, &err)) != 0) return rc;
     return commit_sp(L, &err);
-}
-
-static void add_trigger_funcs(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    luaL_openlib(L, NULL, trigger_funcs, 0);
-    lua_pop(L, 1);
 }
 
 static int exec_procedure_int(struct sqlthdstate *thd,
@@ -7058,10 +7073,14 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if (trigger) {
         remove_tran_funcs(L);
         remove_thd_funcs(L);
-        remove_consumer(L);
         remove_emit(L);
         add_trigger_funcs(L);
     } else {
+        if (can_consume(clnt)) {
+            add_consumer_funcs(L);
+        } else {
+            remove_consumer_funcs(L);
+        }
         update_tran_funcs(L, clnt);
     }
 
@@ -7098,6 +7117,22 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 int is_pingpong(struct sqlclntstate *clnt)
 {
     return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
+}
+
+int can_consume(struct sqlclntstate *clnt) {
+    if (clnt == NULL || clnt->sp == NULL)
+        return 0;
+
+    SP sp = clnt->sp;
+    char spname[strlen(sp->spname) + 1];
+    strcpy(spname, sp->spname);
+    Q4SP(qname, spname);
+
+    struct dbtable *db = getqueuebyname(qname);
+    if (db != NULL) {
+        return 1;
+    }
+    return 0;
 }
 
 void close_sp(struct sqlclntstate *clnt)
@@ -7260,20 +7295,4 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
         reset_sp(clnt->sp);
     }
     return rc;
-}
-
-int can_consume(struct sqlclntstate *clnt) {
-    if (clnt == NULL || clnt->sp == NULL)
-        return 0;
-
-    SP sp = clnt->sp;
-    char spname[strlen(sp->spname) + 1];
-    strcpy(spname, sp->spname);
-    Q4SP(qname, spname);
-
-    struct dbtable *db = getqueuebyname(qname);
-    if (db != NULL) {
-        return 1;
-    }
-    return 0;
 }
