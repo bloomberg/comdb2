@@ -3813,8 +3813,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int isuuid = (clnt->osql.rqid == OSQL_RQID_USE_UUID) &&
-                 (fdb->server_version > FDB_VER_WR_NAMES);
+    int isuuid = gbl_noenv_messages && (fdb->server_version > FDB_VER_WR_NAMES);
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 

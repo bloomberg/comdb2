@@ -87,6 +87,12 @@ cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "UPDATE LOCAL_${dbname}.dedu
 # Ensure that we've updated only 1 row.
 cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbname}.dedup" >>output.actual 2>&1
 
+#### remote write + higher isolation test ####
+cdb2sql -s --cdb2cfg ${cdb2config} $dbname default - >>output.actual <<EOF
+SET TRANSACTION READ COMMITTED
+INSERT INTO LOCAL_${dbname}.dedup VALUES (4, 4)
+EOF
+
 # validate results
 testcase_output=$(cat output.actual)
 expected_output=$(cat output.expected)
