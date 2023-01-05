@@ -104,7 +104,6 @@ int mach_class_addclass(const char *name, int value)
     if (is_default) {
         /* override the default with client classes */
         hash_clear(classes);
-        classes = NULL;
         is_default = 0;
     }
     rc = _mach_class_add(class, &added);
