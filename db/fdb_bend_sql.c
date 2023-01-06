@@ -361,7 +361,10 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
         return rc;
 
-    return osql_sock_start_deferred(clnt);
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->osql.sock_started)
+        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 1);
+
+    return rc;
 }
 
 /**
@@ -826,7 +829,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
     clnt->nrows++;
 
 done:
-
+    free_blob_buffers(rowblobs, MAXBLOBS);
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
@@ -965,7 +968,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     clnt->nrows++;
 
 done:
-
+    free_blob_buffers(rowblobs, MAXBLOBS);
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
