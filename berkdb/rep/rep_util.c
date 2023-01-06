@@ -407,7 +407,7 @@ __rep_set_gen(dbenv, func, line, gen)
 	egen = rep->egen;
 	if (rep->egen <= gen)
 		egen = gen + 1;
-	logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
+	fprintf(stderr, ">>>>>>> %s line %d setting rep->gen from %d to %d, egen from %d to %d <<<<<< \n",
 			func, line, rep->gen, gen, rep->egen, egen);
 	rep->gen = gen;
 	rep->egen = egen;

@@ -158,19 +158,20 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 	(R) != DB___txn_dist_commit && (R) != DB___txn_ckp && (R) != DB___dbreg_register && \
     (R) != DB___txn_dist_prepare && (R) != DB___txn_dist_abort)
 
-int gbl_rep_process_msg_print_rc;
+int gbl_rep_process_msg_print_rc = 1;
 
 #define PRINT_RETURN(retrc, fromline)										\
 	do {																	\
 		static uint32_t lastpr = 0;											\
 		static uint32_t count = 0;											\
-		uint32_t now;														\
+		uint32_t now = time(NULL);											\
 		count++;															\
-		if (gbl_rep_process_msg_print_rc && ((now = time(NULL)) - lastpr)) {\
+		if (gbl_rep_process_msg_print_rc && rc && rc != DB_REP_NOTPERM && (now - lastpr)) {\
 			logmsg(LOGMSG_ERROR,											\
-				"td %" PRIxPTR "%s line %d from line %d returning %d, count=%u\n",	\
+				"td %" PRIxPTR "%s line %d from line %d returning %d for %u:%u, count=%u\n",	\
 				(intptr_t)pthread_self(), __func__, __LINE__, fromline,		\
-				retrc, count);												\
+				retrc, rp->lsn.file, rp->lsn.offset, count);												\
+            lastpr = now;                       \
 		}																	\
 		return retrc;														\
 	} while (0);
@@ -509,6 +510,12 @@ int gbl_dedup_rep_all_reqs = 0;
 int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line, int do_initial_catchup)
 {
     if (do_initial_catchup && dbenv->signal_catchup_callback) {
+        DB_REP *db_rep;
+        REP *rep;
+
+        db_rep = (DB_REP*) dbenv->rep_handle;
+        rep = db_rep->region;
+
         dbenv->signal_catchup_callback(dbenv, lsn, master_eid);
         return 0;
     }
@@ -1072,7 +1079,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	REP_GEN_VOTE_INFO *vig;
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
 	unsigned long long bytes_sent;
-	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
+	int check_limit, cmp, done, do_req, rc=0, starttime, endtime, tottime;
 	int match, old, recovering, ret, t_ret, sendtime;
 	time_t savetime;
 #if defined INSTRUMENT_REP_APPLY
@@ -1277,6 +1284,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 #endif
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		} else if (rp->rectype != REP_NEWMASTER) {
+            printf("huh? lsn %u:%u got gen %d my gen %d\n", rp->lsn.file, rp->lsn.offset, rp->gen, gen);
 			send_master_req(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
@@ -1296,6 +1304,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	 * NEW* and ALIVE_REQ.
 	 */
 	if (recovering) {
+        printf("recovering while got %u:%u\n", rp->lsn.file, rp->lsn.offset);
 		switch (rp->rectype) {
 		case REP_VERIFY:
 			MUTEX_LOCK(dbenv, db_rep->db_mutexp);
@@ -1431,6 +1440,7 @@ skip:				/*
 		bytes_sent = 0;
 		starttime = comdb2_time_epochms();
 		sendtime = 0;
+        printf(">> got REP_ALL_REQ for %u:%u from %s\n", rp->lsn.file, rp->lsn.offset, *eidp);
 
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		gbytes = rep->gbytes;
@@ -1601,10 +1611,22 @@ more:
 					goto errlock;
 			} else {
 				fromline = __LINE__;
+<<<<<<< HEAD
 				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
 								commit_gen, 0);
+||||||| parent of 7ec746504 (WIP - try to inject NEWFILE)
+				if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+								commit_gen, 0)) != 0)
+					goto errlock;
+=======
+				if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+								commit_gen, 0)) != 0) {
+					goto errlock;
+                }
+>>>>>>> 7ec746504 (WIP - try to inject NEWFILE)
 			}
 		} else {
+            printf("in election tally for %u:%u\n", rp->lsn.file, rp->lsn.offset);
 			send_master_req(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
@@ -3071,6 +3093,12 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	lp = dblp->reginfo.primary;
 	cmp = log_compare(&rp->lsn, &lp->ready_lsn);
 
+    int now = time(NULL);
+    static int last = 0;
+    if (cmp && last != now) {
+        printf("ready_lsn %u:%u got %u:%u cmp %d\n", lp->ready_lsn.file, lp->ready_lsn.offset, rp->lsn.file, rp->lsn.offset, cmp);
+        last = now;
+    }
 	/*
 	 * fprintf(stderr, "Rep log file %s line %d for %d:%d ready_lsn is %d:%d cmp=%d\n", 
 	 * __FILE__, __LINE__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file, 
@@ -3109,6 +3137,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	}
 
 	if (cmp == 0) {
+        printf("got expected at %u:%u\n", rp->lsn.file, rp->lsn.offset);
 		/* We got the log record that we are expecting. */
 		if (rp->rectype == REP_NEWFILE) {
 
