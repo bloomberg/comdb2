@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source $TESTSROOTDIR/tools/runstepper.sh
+
 ################################################################################
 
 # debug=1
@@ -74,27 +76,6 @@ function runtool
     $tool "$args" $db notused $tcs $rmt $dblog $dbex $dbdir > $log 2>&1
 }
 
-# runstepper
-function runstepper
-{
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
-
-    # args
-    typeset db=$1
-    typeset tcs=$2
-    typeset log=$3
-
-    # teststepper
-    typeset stp=${TESTSBUILDDIR}/stepper
-
-    # echo
-    echo "> $stp $db $tcs $log"
-
-    # execute
-    $stp $db $tcs $log
-}
-
 
 # Wait a little for election to complete
 sleep 5
@@ -125,7 +106,7 @@ for testcase in $files ; do
     # Check for run-stepper
     if [[ -f $new_batch.runstepper ]] ; then
 
-        runstepper $a_dbn $testcase $output
+        runstepper $a_dbn $testcase $output 1
 
     elif [[ -f $new_batch.tool ]] ; then
 
