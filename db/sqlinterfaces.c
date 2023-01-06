@@ -5433,6 +5433,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->wrong_db = 0;
     clnt->sqltick = 0;
     clnt->flat_col_vals = 0;
+
+    free(clnt->prev_cost_string);
+    clnt->prev_cost_string = NULL;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)

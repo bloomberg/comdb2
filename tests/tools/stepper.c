@@ -134,6 +134,12 @@ int main( int argc, char **argv)
          break;
       } 
 
+      if (strcmp(query, "DoNe") == 0) {
+         clnt_close(clnt);  
+         continue;
+      }
+
+
       if (debug)
          fprintf( out, "%d [%s]\n", id, query);
       rc = clnt_run_query(clnt, query, out);

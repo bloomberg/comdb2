@@ -1,31 +1,14 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source $TESTSROOTDIR/tools/runstepper.sh
+
 dbname=$1
 if [[ -z $dbname ]] ; then
     echo dbname missing
     exit 1
 fi
 
-# runstepper
-function runstepper
-{
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
-
-    # args
-    typeset db=$1
-    typeset tcs=$2
-    typeset log=$3
-
-    # teststepper
-    typeset stp=${TESTSBUILDDIR}/stepper
-
-    #echo "> $stp $db $tcs > $log 3>&1"
-
-    # execute
-    $stp $db $tcs > $log 2>&1
-}
 
 # verify the result
 function verify
