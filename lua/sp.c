@@ -6113,11 +6113,10 @@ do_continue:
     logmsg(LOGMSG_USER, "Exit debugging \n");
 }
 
-static int get_spname(struct sqlclntstate *clnt, const char **exec,
-                      char *spname, char **err)
+static int get_spname(struct sqlclntstate *clnt, char *spname, const char **end_ptr, char **err)
 {
-#define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
-    const char *s = *exec;
+#   define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
+    const char *s = clnt->sql;
     while (s && isspace(*s))
         s++;
     if (!s) {
@@ -6186,7 +6185,7 @@ static int get_spname(struct sqlclntstate *clnt, const char **exec,
         return -1;
     }
 
-    *exec = s;
+    *end_ptr = s;
     return 0;
 }
 
@@ -6319,8 +6318,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd, struct sqlclntstate *
     return setup_sp_int(spname, thd, clnt, 0, new_vm, err);
 }
 
-static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
-                     int *argc)
+static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err, int *argc)
 {
     const char *s = *argstr;
     SP sp = clnt->sp;
@@ -6360,7 +6358,6 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
         reset_sp(sp);
         return -1;
     }
-    *argstr = s;
     *argc = argcnt;
     return 0;
 }
@@ -7041,18 +7038,26 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return commit_sp(L, &err);
 }
 
+static int push_args_and_run_sp(struct sqlclntstate *clnt, const char *arg_str, char **err)
+{
+    int rc, args;
+    if ((rc = push_args(&arg_str, clnt, err, &args)) != 0) return rc;
+    if ((rc = begin_sp(clnt, err)) != 0) return rc;
+    return run_sp(clnt, args, err);
+}
+
 static int exec_procedure_int(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, char **err, int trigger)
 {
-    const char *s = clnt->sql;
+    const char *end_ptr = NULL;
     char spname[MAX_SPNAME];
     long long sprc = 0;
-    int rc, args, new_vm;
+    int rc, new_vm;
     *err = NULL;
 
     reqlog_set_event(thd->logger, EV_SP);
 
-    if ((rc = get_spname(clnt, &s, spname, err)) != 0)
+    if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
 
     if (strcmp(spname, "debug") == 0) {
@@ -7070,32 +7075,31 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = get_func_by_name(L, main_func, err)) != 0) return rc;
 
+    int consumer = 0;
     if (trigger) {
         remove_tran_funcs(L);
         remove_thd_funcs(L);
         remove_emit(L);
         add_trigger_funcs(L);
     } else {
-        if (can_consume(clnt)) {
-            add_consumer_funcs(L);
-        } else {
-            remove_consumer_funcs(L);
-        }
+        consumer = can_consume(clnt);
+        if (consumer) add_consumer_funcs(L);
         update_tran_funcs(L, clnt);
     }
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if ((rc = push_args(&s, clnt, err, &args)) != 0) return rc;
-
-    if ((rc = begin_sp(clnt, err)) != 0) return rc;
-
-    if ((rc = run_sp(clnt, args, err)) != 0) return rc;
+    rc = push_args_and_run_sp(clnt, end_ptr, err);
 
     if (trigger) {
-        rollback_sp(L);
         return rc;
     }
+
+    if (consumer) {
+        remove_consumer_funcs(L); /* lua vm may be resused by another proc */
+    }
+
+    if (rc) return rc;
 
     if ((rc = emit_result(L, &sprc, err)) != 0) return rc;
 
