@@ -469,9 +469,9 @@ constraints
 (part='---------------------------------- PART #16 ----------------------------------')
 [CREATE TABLE t6(a INT(100))] failed with rc -3 Invalid type specified.
 (part='---------------------------------- PART #17 ----------------------------------')
-(tablename='t1', columnname='v', type='vutf8', size=105, sqltype='text', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
+(tablename='t1', columnname='v', type='vutf8', size=105, sqltype='varchar', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t2', columnname='d', type='datetime', size=11, sqltype='datetime', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
-(tablename='t3', columnname='t', type='vutf8', size=105, sqltype='text', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
+(tablename='t3', columnname='t', type='vutf8', size=105, sqltype='varchar', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t4', columnname='t', type='u_short', size=3, sqltype='smallint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t5', columnname='c', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t7', columnname='v', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
@@ -483,7 +483,7 @@ constraints
 (tablename='t11', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t11', columnname='j', type='short', size=3, sqltype='smallint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t11', columnname='k', type='longlong', size=9, sqltype='largeint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" text);', csc2='schema
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" varchar);', csc2='schema
 	{
 		vutf8 v[100] null = yes 
 	}
@@ -493,7 +493,7 @@ constraints
 		datetime d null = yes 
 	}
 ')
-(type='table', name='t3', tbl_name='t3', rootpage=6, sql='create table "t3"("t" text);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=6, sql='create table "t3"("t" varchar);', csc2='schema
 	{
 		vutf8 t[100] null = yes 
 	}
@@ -866,8 +866,8 @@ keys
 (tablename='t1', columnname='c1', type='cstring', size=3, sqltype='char(2)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t1', columnname='c2', type='cstring', size=2, sqltype='char(1)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t1', columnname='c3', type='cstring', size=3, sqltype='char(2)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
-(tablename='t1', columnname='c4', type='vutf8', size=5, sqltype='text', varinlinesize='0', defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
-(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("c1" char(2), "c2" char(1), "c3" char(2), "c4" text);', csc2='schema
+(tablename='t1', columnname='c4', type='vutf8', size=5, sqltype='varchar', varinlinesize='0', defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("c1" char(2), "c2" char(1), "c3" char(2), "c4" varchar);', csc2='schema
 	{
 		cstring c1[3] null = yes 
 		cstring c2[2] null = yes 

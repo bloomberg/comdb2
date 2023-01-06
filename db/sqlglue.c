@@ -2131,7 +2131,7 @@ char *sqltype(struct field *f, char *buf, int len)
 
     case CLIENT_VUTF8:
     case SERVER_VUTF8:
-        snprintf(buf, len, "text");
+        snprintf(buf, len, "varchar");
         return buf;
 
     case CLIENT_DATETIME:
