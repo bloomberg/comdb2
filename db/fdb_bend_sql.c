@@ -353,7 +353,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     } else
         clnt->osql.rqid = rqid;
 
-    if (osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
+    if (clnt->dbtran.mode != TRANLEVEL_SOSQL && osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
         logmsg(LOGMSG_ERROR, "%s: unable to register blocksql thread %llx\n",
                 __func__, clnt->osql.rqid);
     }
@@ -826,7 +826,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
     clnt->nrows++;
 
 done:
-
+    free_blob_buffers(rowblobs, MAXBLOBS);
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
@@ -965,7 +965,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     clnt->nrows++;
 
 done:
-
+    free_blob_buffers(rowblobs, MAXBLOBS);
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
