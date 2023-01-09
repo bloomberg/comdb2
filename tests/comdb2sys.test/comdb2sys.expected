@@ -385,6 +385,7 @@
 (name='comdb2_partial_datacopies')
 (name='comdb2_plugins')
 (name='comdb2_procedures')
+(name='comdb2_query_plans')
 (name='comdb2_queues')
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')

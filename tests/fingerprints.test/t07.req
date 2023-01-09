@@ -1,0 +1,8 @@
+create table t2(a int, b int, c int, d int); $$
+create index a on t2(a) include all;
+insert into t2 select value, value + 1, value + 2, value + 3 from generate_series(1, 100, 4);
+select * from t2 where a < 40;
+select * from t2 where a < 40; // increment num executions
+drop index a on t2;
+select * from t2 where a < 40; // use worse query plan
+select * from comdb2_query_plans where fingerprint='f57a9e3c17f13606af3630d8ebb27f3f';

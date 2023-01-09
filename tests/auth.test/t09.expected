@@ -247,6 +247,7 @@
 (candidate='comdb2_partial_datacopies')
 (candidate='comdb2_plugins')
 (candidate='comdb2_procedures')
+(candidate='comdb2_query_plans')
 (candidate='comdb2_queues')
 (candidate='comdb2_repl_stats')
 (candidate='comdb2_replication_netqueue')
