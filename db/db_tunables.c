@@ -260,7 +260,6 @@ extern int gbl_alternate_normalize;
 extern int gbl_sc_logbytes_per_second;
 extern int gbl_fingerprint_max_queries;
 extern int gbl_query_plan_max_plans;
-extern int gbl_debug_print_query_plans;
 extern double gbl_query_plan_percentage;
 extern int gbl_ufid_log;
 extern int gbl_ufid_add_on_collect;
