@@ -327,6 +327,19 @@ List all stored procedures in the database.
 * `default` - Is default?
 * `src` - Source
 
+## comdb2_query_plans
+
+List all query plans for each fingerprint/query in the database.
+
+    comdb2_query_plans(fingerprint, normalized_sql, plan, total_cost_per_row, num_executions, avg_cost_per_row)
+
+* `fingerprint` - Fingerprint of the query
+* `normalized_sql` - Query associated with the fingerprint
+* `plan` - Query plan for this fingerprint that includes the tables and indices traversed
+* `total_cost_per_row` - The sum of all of the cost per rows (in results set) each time this query plan is executed for this query
+* `num_executions` - The number of times this query plan is executed for this query
+* `avg_cost_per_row` - Average cost per row (in results set), calculated by `total_cost_per_row` / `num_executions`
+
 ## comdb2_queues
 
 List all queues in the database.

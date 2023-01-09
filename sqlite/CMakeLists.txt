@@ -33,6 +33,7 @@ add_library(sqlite
   ext/comdb2/permissions.c
   ext/comdb2/plugins.c
   ext/comdb2/procedures.c
+  ext/comdb2/query_plans.c
   ext/comdb2/queues.c
   ext/comdb2/repl_stats.c
   ext/comdb2/repnetqueue.c
