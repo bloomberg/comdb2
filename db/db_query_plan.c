@@ -21,7 +21,6 @@
 #include <ctrace.h>
 
 int gbl_query_plan_max_plans = 20;
-extern int gbl_debug_print_query_plans;
 extern double gbl_query_plan_percentage;
 extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
@@ -123,28 +122,6 @@ void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, 
     }
 
     add_query_plan_int(t, query_plan, cost, nrows);
-
-    if (gbl_debug_print_query_plans) {
-        void *ent, *ent2;
-        unsigned int bkt, bkt2;
-        struct query_plan_item *q;
-        struct fingerprint_track *f;
-        logmsg(LOGMSG_WARN, "START\n");
-        for (f = (struct fingerprint_track *)hash_first(gbl_fingerprint_hash, &ent, &bkt); f;
-             f = (struct fingerprint_track *)hash_next(gbl_fingerprint_hash, &ent, &bkt)) {
-            if (!f->query_plan_hash) {
-                continue;
-            }
-            logmsg(LOGMSG_WARN, "QUERY: %s\n", f->zNormSql);
-            for (q = (struct query_plan_item *)hash_first(f->query_plan_hash, &ent2, &bkt2); q;
-                 q = (struct query_plan_item *)hash_next(f->query_plan_hash, &ent2, &bkt2)) {
-                logmsg(LOGMSG_WARN, "plan: %s, total cost per row: %f, num executions: %d, average: %f\n", q->plan,
-                       q->total_cost_per_row, q->nexecutions, q->avg_cost_per_row);
-            }
-        }
-        logmsg(LOGMSG_WARN, "END\n\n");
-    }
-
     free(query_plan);
 }
 

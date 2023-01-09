@@ -1320,9 +1320,6 @@ REGISTER_TUNABLE("debug.txn_sleep",
                  "Sleep during a transaction to test transaction state systable", TUNABLE_INTEGER,
                  &gbl_debug_txn_sleep, INTERNAL, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("debug.print_query_plans",
-                 "Print query plan hash table every time after running a query. (Default: 0)", TUNABLE_BOOLEAN,
-                 &gbl_debug_print_query_plans, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "query_plan_percentage",
     "Alarm if the average cost per row of current query plan is n percent above the cost for different query plan."
