@@ -170,7 +170,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	HDR hdr;
 	LOG *lp;
 	int lock_held, need_free, ret;
-	u_int8_t *key;
+	u_int8_t *key = NULL;
 	int rectype = 0;
 	int delay;
 
@@ -1961,7 +1961,7 @@ __log_sync_range(dblp, off)
 	off_t off;
 {
 	/* Linux only: hint the OS that we're about to fsync the log file. */
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 	DB_ENV *dbenv;
 	LOG *lp;
 	dbenv = dblp->dbenv;
