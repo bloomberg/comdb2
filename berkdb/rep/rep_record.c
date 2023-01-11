@@ -1955,31 +1955,6 @@ more:
 				dbenv->newest_rep_verify_tran_time = t;
 				dbenv->rep_verify_start_lsn = rp->lsn;
 			}
-
-			if (dbenv->newest_rep_verify_tran_time &&
-				dbenv->attr.max_backout_seconds &&
-				(dbenv->newest_rep_verify_tran_time - timestamp >
-				dbenv->attr.max_backout_seconds)) {
-				ctime_r(&dbenv->newest_rep_verify_tran_time,
-					start_time);
-				ctime_r(&t, my_time);
-				__db_err(dbenv,
-					"Rolled back too far at %u:%u:\n   started at %s   now at %s",
-					rp->lsn.file, rp->lsn.offset, start_time,
-					my_time);
-				ret = EINVAL;
-				goto rep_verify_err;
-			}
-			if (dbenv->newest_rep_verify_tran_time &&
-				dbenv->attr.max_backout_logs &&
-				((dbenv->rep_verify_start_lsn.file - rp->lsn.file) >
-				dbenv->attr.max_backout_logs)) {
-				__db_err(dbenv,
-					"Rolled back too far at %u:%u, started at %s\n",
-					rp->lsn.file, rp->lsn.offset, start_time);
-				ret = EINVAL;
-				goto rep_verify_err;
-			}
 		}
 		dbenv->rep_verify_current_lsn = rp->lsn;
 
