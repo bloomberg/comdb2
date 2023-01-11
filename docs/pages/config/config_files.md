@@ -460,8 +460,6 @@ preallocate_on_writes| 0 |Pre-allocate on writes
 preallocate_max| 256 * MEGABYTE |Pre-allocation size
 lsnerr_pgdump| 1 |Dump page on LSN errors
 lsnerr_pgdump_all| 0 |Dump page on LSN errors on all nodes
-max_backout_seconds| 0 |Refuse to roll back replicant past this many seconds
-max_backout_logs| 3 |Refuse to roll back replicant past this many log files
 log_applied_lsns| 0 |Log applied LSNs to log
 check_applied_lsns| 0 |Check transaction that its LSNs have been applied
 check_applied_lsns_fatal| 0 |Abort if check_applied_lsns fails
