@@ -131,7 +131,7 @@ extern int set_commit_context(unsigned long long context, uint32_t *generation,
 extern int gbl_berkdb_verify_skip_skipables;
 
 static int __rep_apply __P((DB_ENV *, REP_CONTROL *, DBT *, DB_LSN *,
-	uint32_t *, int));
+	uint32_t *, int, int));
 static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *, int, int *));
 int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
@@ -637,7 +637,7 @@ static void *apply_thread(void *arg)
 					last_applying_print = now;
 				}
 
-				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
+				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1, 0);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
 					bdb_set_seqnum(dbenv->app_private);
@@ -1053,17 +1053,18 @@ done:
  *	(respectively).
  *
  * PUBLIC: int __rep_process_message __P((DB_ENV *, DBT *, DBT *, char**,
- * PUBLIC:	 DB_LSN *, uint32_t *,int));
+ * PUBLIC:	 DB_LSN *, uint32_t *,int,int));
  */
 
 int
-__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
+__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online, oob)
 	DB_ENV *dbenv;
 	DBT *control, *rec;
 	char **eidp;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 	int online;
+    int oob;
 {
 	int fromline = 0;
 	DB_LOG *dblp;
@@ -1611,19 +1612,10 @@ more:
 					goto errlock;
 			} else {
 				fromline = __LINE__;
-<<<<<<< HEAD
-				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								commit_gen, 0);
-||||||| parent of 7ec746504 (WIP - try to inject NEWFILE)
-				if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								commit_gen, 0)) != 0)
-					goto errlock;
-=======
-				if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								commit_gen, 0)) != 0) {
+                if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+								commit_gen, 0, /* HERE */oob)) != 0) {
 					goto errlock;
                 }
->>>>>>> 7ec746504 (WIP - try to inject NEWFILE)
 			}
 		} else {
             printf("in election tally for %u:%u\n", rp->lsn.file, rp->lsn.offset);
@@ -1952,7 +1944,7 @@ more:
 	case REP_NEWFILE:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
-		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, 0);
+		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, 0, 0);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWMASTER:
@@ -2983,13 +2975,14 @@ __thread int disable_random_deadlocks = 0;
  * process and manage incoming log records.
  */
 static int
-__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
+__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 	int decoupled;
+    int oob;
 {
 	__dbreg_register_args dbreg_args;
 	__txn_ckp_args *ckp_args = NULL;
@@ -3095,8 +3088,8 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 
     int now = time(NULL);
     static int last = 0;
-    if (cmp && last != now) {
-        printf("ready_lsn %u:%u got %u:%u cmp %d\n", lp->ready_lsn.file, lp->ready_lsn.offset, rp->lsn.file, rp->lsn.offset, cmp);
+    if (cmp)  {
+        printf("ready_lsn %u:%u got %u:%u cmp %d oob %d\n", lp->ready_lsn.file, lp->ready_lsn.offset, rp->lsn.file, rp->lsn.offset, cmp, oob);
         last = now;
     }
 	/*
@@ -3137,7 +3130,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	}
 
 	if (cmp == 0) {
-        printf("got expected at %u:%u\n", rp->lsn.file, rp->lsn.offset);
+        // printf("got expected at %u:%u\n", rp->lsn.file, rp->lsn.offset);
 		/* We got the log record that we are expecting. */
 		if (rp->rectype == REP_NEWFILE) {
 
@@ -3903,13 +3896,14 @@ int gbl_time_rep_apply = 0;
 static pthread_mutex_t apply_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static int
-__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
+__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 	int decoupled;
+    int oob;
 {
 	static unsigned long long rep_apply_count = 0;
 	static unsigned long long rep_apply_usc = 0;
@@ -3925,7 +3919,7 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 
 	Pthread_mutex_lock(&apply_lk);
 	getbbtime(&start);
-	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);
+	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob);
 	getbbtime(&end);
 	Pthread_mutex_unlock(&apply_lk);
 	usecs = diff_bbtime(&end, &start);
@@ -3973,7 +3967,7 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 
 	/* call with decoupled = 2 to differentiate from true master */
 	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp,
-			      (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2);
+			      (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2, 0);
 
 	if (ret == 0 || ret == DB_REP_ISPERM) {
 		bdb_set_seqnum(dbenv->app_private);
@@ -7203,8 +7197,6 @@ restart:
 				goto err;
 		}
 	}
-
-    printf(">> w_lsn is "PR_LSN"\n", PARM_LSN(db_rep->region->w_lsn));
 
 	logmsg(LOGMSG_INFO, "%s calling truncate with lsn [%d:%d]\n", __func__,
 			lsnp->file, lsnp->offset);

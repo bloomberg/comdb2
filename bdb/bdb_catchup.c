@@ -161,7 +161,7 @@ static int apply_log_file(struct catchup *c, uint32_t lognum, uint8_t *log, uint
         rp.log_version = DB_LOGVERSION;
         rp.rectype = REP_NEWFILE;
         __rep_control_swap(&rp);
-        dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0);
+        dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0, 1);
         printf(">>>> newfile %u\n", last_lsn->file);
     }
 
@@ -187,7 +187,7 @@ static int apply_log_file(struct catchup *c, uint32_t lognum, uint8_t *log, uint
         rec.data = hdrp;
         rec.size = hdr.len;
 
-        rc = dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0);
+        rc = dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0, 1);
         if (rc) {
             printf("lsn %u:%u %d\n", lognum, off, rc);
             return rc;

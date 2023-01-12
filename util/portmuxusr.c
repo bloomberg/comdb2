@@ -73,7 +73,7 @@ int gbl_pmux_route_enabled = 1;
 */
 
 extern int db_is_exiting(void);
-int portmux_port = 5105;
+int portmux_port = 5106;
 
 enum {
     TIMEOUTMS = 10000,
@@ -85,7 +85,7 @@ enum {
 static int portmux_default_timeout = TIMEOUTMS;
 static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
 
-#define PORTMUX_UNIX_SOCKET_DEFAULT_PATH "/tmp/portmux.socket"
+#define PORTMUX_UNIX_SOCKET_DEFAULT_PATH "/tmp/hipmux"
 static char portmux_unix_socket[PATH_MAX] = PORTMUX_UNIX_SOCKET_DEFAULT_PATH;
 
 static int (*reconnect_callback)(void *) = NULL;
