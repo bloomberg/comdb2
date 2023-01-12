@@ -345,6 +345,8 @@ int gbl_debug_omit_blob_write;
 int gbl_debug_omit_zap_on_rebuild = 0;
 int gbl_debug_txn_sleep = 0;
 int gbl_debug_skip_constraintscheck_on_insert;
+int gbl_debug_pb_connectmsg_dbname_check = 0;
+int gbl_debug_pb_connectmsg_gibberish = 0;
 double gbl_query_plan_percentage = 50;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;

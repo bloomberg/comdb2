@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+db=$DBNAME
+
+function shut_down_new_node {
+    node=$1
+    echo 'comdb2pid=$(cat '$DBDIR/$db.pid')' > commands2.sh
+    echo "rm $DBDIR/$db.pid" >> commands2.sh
+    echo 'kill -9 $comdb2pid' >> commands2.sh
+    echo "echo \"kill returns "'$?'"\" 1>&2" >> commands2.sh
+    ssh $node < commands2.sh >/dev/null
+    rm commands2.sh
+    sleep 2
+}
+
+function change_lrl_tunable {
+    tunable=$1
+    node=$2
+
+    echo "Adding tunable $tunable and restarting node $node"
+    # shut down node
+    cdb2sql $db --host $node "exec procedure sys.cmd.send('exit')"
+    sleep 5
+
+    # add tunable and restart replicant
+    echo "nohup $COMDB2_EXE $db --lrl $DBDIR/$db.lrl --tunable '$tunable' --pidfile $DBDIR/$db.pid $db > $DBDIR/$db.$node.db_new 2>&1 < /dev/null &" >> commands.sh
+
+    ssh $node < commands.sh >/dev/null
+    rm commands.sh
+    sleep 15
+    echo "Done restarting"
+}
+
+function check_tunable_value {
+    tunable=$1
+    exp=$2
+    node=$3
+
+    value=$(cdb2sql --tabs $db --host $node "select value from comdb2_tunables where name='$tunable'")
+    if [ "$value" != "$exp" ]; then
+        echo "Error: Unable to set $tunable to $exp, got value $value"
+        shut_down_new_node $node
+        exit 1
+    fi
+}
+
+rep=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='N' and coherent_state='coherent' limit 1")
+
+# pre check
+check_tunable_value "protobuf_connectmsg" "ON" $rep
+
+# try using a bad dbname
+echo "Can new message connect if we use bad dbname? Should not be able to"
+change_lrl_tunable "debug.protobuf_connectmsg_dbname_check on" $rep
+
+set +e # next block of code should error
+
+cdb2sql $db --host $rep "select 1"
+error_code=$?
+
+set -e
+
+shut_down_new_node $rep
+
+if [ $error_code -eq 0 ]; then
+    echo "Error: Query still able to run with bad dbname"
+    exit 1
+fi
+
+echo "Passed."
+exit 0
