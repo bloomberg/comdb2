@@ -1321,6 +1321,14 @@ REGISTER_TUNABLE(
     "Deliberately allow insertion without constraint check to debug db_verify",
     TUNABLE_BOOLEAN, &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL,
     NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.protobuf_connectmsg_dbname_check",
+                 "Send the wrong dbname in the connect message to test that a node in the same cluster should not "
+                 "connect in this case (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_pb_connectmsg_dbname_check, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.protobuf_connectmsg_gibberish",
+                 "Don't understand the new protobuf connnect message to test connecting with older versions of comdb2"
+                 " (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_pb_connectmsg_gibberish, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.omit_zap_on_rebuild",
                  "Omit zeroing out record on rebuild to test whether array types are already zeroed out after end of field"
                  " (Default: 0)", TUNABLE_BOOLEAN,
@@ -1884,6 +1892,9 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_pb_connectmsg, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("libevent", "Use libevent in net library. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
