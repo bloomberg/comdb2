@@ -154,9 +154,7 @@ static void myfree(void *ptr)
 static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
-static int process_hello_common(netinfo_type *netinfo_ptr,
-                                host_node_type *host_node_ptr,
-                                int look_for_magic);
+static int process_hello_common(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr);
 static int process_hello(netinfo_type *netinfo_ptr,
                          host_node_type *host_node_ptr);
 static int process_hello_reply(netinfo_type *netinfo_ptr,
@@ -2251,13 +2249,6 @@ int net_register_name(netinfo_type *netinfo_ptr, char name[])
     return 0;
 }
 
-int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func)
-{
-    netinfo_ptr->hello_rtn = func;
-
-    return 0;
-}
-
 int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
                          char *name, NETFP func)
 {
@@ -4043,7 +4034,7 @@ done:
 static int process_hello(netinfo_type *netinfo_ptr,
                          host_node_type *host_node_ptr)
 {
-    int rc = process_hello_common(netinfo_ptr, host_node_ptr, 1);
+    int rc = process_hello_common(netinfo_ptr, host_node_ptr);
     if (rc == 1) {
         logmsg(LOGMSG_ERROR, "rejected hello from %s\n", host_node_ptr->host);
     }
@@ -4060,7 +4051,7 @@ static int process_hello(netinfo_type *netinfo_ptr,
 static int process_hello_reply(netinfo_type *netinfo_ptr,
                                host_node_type *host_node_ptr)
 {
-    int rc = process_hello_common(netinfo_ptr, host_node_ptr, 0);
+    int rc = process_hello_common(netinfo_ptr, host_node_ptr);
     if (rc == 1) {
         logmsg(LOGMSG_ERROR, "rejected hello reply from %s\n", host_node_ptr->host);
     }
@@ -4073,17 +4064,13 @@ static int process_hello_reply(netinfo_type *netinfo_ptr,
 
 /* Common code for processing hello and hello reply.
  *
- * Inputs: look_for_magic==1 if we want to check for the MAGICNODE.
- *
  * Returns:
  *    1     Hello was rejected (contained bad port numbers or error in
  *          read_hostlist).
  *    -1    IO error, reader thread cleans up.
  *    0     Success.
  */
-static int process_hello_common(netinfo_type *netinfo_ptr,
-                                host_node_type *host_node_ptr,
-                                int look_for_magic)
+static int process_hello_common(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
     char *hosts[REPMAX];
     int ports[REPMAX];

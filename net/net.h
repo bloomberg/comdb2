@@ -46,8 +46,6 @@ typedef struct netinfo_struct netinfo_type;
 typedef struct host_node_tag host_node_type;
 typedef struct sanc_node_tag sanc_node_type;
 
-typedef void HELLOFP(struct netinfo_struct *netinfo, char name[]);
-
 typedef void APPSOCKFP(struct netinfo_struct *netinfo, SBUF2 *sb);
 
 typedef void NETFP(void *ack_handle, void *usr_ptr, char *fromhost,
@@ -293,7 +291,6 @@ int net_set_heartbeat_check_time(netinfo_type *netinfo_ptr, int time);
 int net_set_decom_time(netinfo_type *netinfo_ptr, int time);
 
 int net_register_name(netinfo_type *netinfo_ptr, char name[]);
-int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func);
 
 /* For berkdb_rep.c */
 void connect_to_all(netinfo_type *netinfo_ptr);

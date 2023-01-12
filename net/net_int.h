@@ -335,7 +335,6 @@ struct netinfo_struct {
     pthread_attr_t pthread_attr_detach;
     APPSOCKFP *appsock_rtn;
     APPSOCKFP *admin_appsock_rtn;
-    HELLOFP *hello_rtn;
     int accept_thread_created;
     int heartbeat_send_time;
     int heartbeat_check_time;
