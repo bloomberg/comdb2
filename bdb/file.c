@@ -681,10 +681,6 @@ static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
                 "%s: queuedb %s file %d version not found, stopping...\n",
                 __func__, bdb_state->name, file_num);
             return 1;
-        } else if (USE_GENID_IN_QUEUEDB_FILE_NAME()) {
-            logmsg(LOGMSG_ERROR,
-                "%s: queuedb %s file %d version not found, error %d\n",
-                __func__, bdb_state->name, file_num, bdberr);
         }
     }
     if (file_version != NULL) *file_version = local_file_version;
