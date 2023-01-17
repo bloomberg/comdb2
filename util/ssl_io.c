@@ -457,10 +457,10 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
     if (sb->ssl == NULL)
         return 0;
 
-    if (!reuse)
-        SSL_set_shutdown(sb->ssl, SSL_SENT_SHUTDOWN);
-    else {
-        rc = SSL_shutdown(sb->ssl);
+    rc = SSL_shutdown(sb->ssl);
+    if (!reuse) /* If a bidirectional shutdown isn't needed, ignore any error from the SSL_shutdown call above. */
+        rc = 0;
+    else { /* If a bidirectional shutdown is needed, do the 2-step shutdown process */
         if (rc == 0)
             rc = SSL_shutdown(sb->ssl);
         if (rc == 1)
