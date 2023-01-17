@@ -88,7 +88,7 @@ static void add_rd_event(struct newsql_appdata_evbuffer *, struct event *, struc
 static void rd_hdr(int, short, void *);
 static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *);
 static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *);
-static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *);
+static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *, int);
 static int newsql_write_hdr_evbuffer(struct sqlclntstate *, int, int);
 
 static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
@@ -115,7 +115,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
         evbuffer_free(appdata->rd_buf);
     }
     if (appdata->ssl_data) {
-        disable_ssl_evbuffer(appdata);
+        disable_ssl_evbuffer(appdata, 1);
         free(appdata->ssl_data);
     }
     if (appdata->query) {
@@ -562,7 +562,7 @@ static int enable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     return rc;
 }
 
-static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
+static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata, int clean_shutdown)
 {
     appdata->wr_dbinfo_fn = wr_dbinfo_plaintext;
     appdata->rd_evbuffer_fn = rd_evbuffer_plaintext;
@@ -573,7 +573,8 @@ static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     appdata->ssl_data->ssl = NULL;
     X509 *cert = appdata->ssl_data->cert;
     appdata->ssl_data->cert = NULL;
-    SSL_shutdown(ssl);
+    if (clean_shutdown)
+        SSL_shutdown(ssl);
     SSL_free(ssl);
     X509_free(cert);
 }
@@ -599,7 +600,10 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
         }
         goto error;
     }
+    /* SSL_get_error() returns an int; ERR_get_error() returns an unsigned long ... */
     int err = SSL_get_error(ssl, rc);
+    unsigned long sslerr = 0;
+    char sslerrstr[SSL_ERRSTR_LENGTH];
     switch (err) {
     case SSL_ERROR_WANT_READ:
         event_base_once(appdata->base, appdata->fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
@@ -610,10 +614,20 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
     case SSL_ERROR_SYSCALL:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d errno:%d [%s]\n",
                __func__, __LINE__, rc, err, errno, strerror(errno));
+        disable_ssl_evbuffer(appdata, 0);
+        break;
+    case SSL_ERROR_SSL:
+        sslerr = ERR_get_error();
+        if (sslerr != SSL_R_SSL_HANDSHAKE_FAILURE) {
+            logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d [%s]\n",
+                   __func__, __LINE__, rc, err, ERR_error_string(sslerr, sslerrstr));
+        }
+        disable_ssl_evbuffer(appdata, 0);
         break;
     default:
+        sslerr = ERR_get_error();
         logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d [%s]\n",
-               __func__, __LINE__, rc, err, ERR_error_string(err, NULL));
+               __func__, __LINE__, rc, err, ERR_error_string(sslerr, sslerrstr));
         break;
     }
 error:
@@ -639,17 +653,27 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
         return rc;
     }
     int err = SSL_get_error(ssl, rc);
+    int sslerr = 0;
+    char sslerrstr[SSL_ERRSTR_LENGTH];
     switch (err) {
-    case SSL_ERROR_ZERO_RETURN: disable_ssl_evbuffer(appdata); // fallthrough
+    case SSL_ERROR_ZERO_RETURN: disable_ssl_evbuffer(appdata, 1); // fallthrough
     case SSL_ERROR_WANT_READ: return 1;
     case SSL_ERROR_SYSCALL:
-        if (errno == 0 || errno == ECONNRESET) break;
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d SSL_ERROR_SYSCALL errno:%d [%s]\n",
-               __func__, __LINE__, rc, errno, strerror(errno));
+        if (errno != 0 && errno != ECONNRESET)
+            logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d SSL_ERROR_SYSCALL errno:%d [%s]\n",
+                   __func__, __LINE__, rc, errno, strerror(errno));
+        disable_ssl_evbuffer(appdata, 0);
+        break;
+    case SSL_ERROR_SSL:
+        sslerr = ERR_get_error();
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d sslerr: %s\n",
+               __func__, __LINE__, rc, err, ERR_error_string(sslerr, sslerrstr));
+        disable_ssl_evbuffer(appdata, 0);
         break;
     default:
+        sslerr = ERR_get_error();
         logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
-               __func__, __LINE__, rc, err, ERR_error_string(err, NULL));
+               __func__, __LINE__, rc, err, ERR_error_string(sslerr, sslerrstr));
         break;
     }
     return rc;
@@ -995,7 +1019,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
         .timer_base = appdata->base,
     };
     appdata->writer = sqlwriter_new(&sqlwriter_arg);
-    disable_ssl_evbuffer(appdata);
+    disable_ssl_evbuffer(appdata, 0);
     add_sql_evbuffer(clnt);
     init_lru_evbuffer(clnt);
     if (add_appsock_connection_evbuffer(clnt) != 0) {

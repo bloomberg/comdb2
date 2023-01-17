@@ -95,19 +95,20 @@
 #define loge(...)
 #endif
 
+#define SSL_ERRSTR_LENGTH 256
+
 /* Helper functions */
 #define ssl_println(pfx, fmt, ...)  \
     logi(pfx " SSL Info: " fmt "\n", ##__VA_ARGS__)
 #define ssl_eprintln(pfx, fmt, ...) \
     loge(pfx " SSL Error: " fmt "\n", ##__VA_ARGS__)
 
-#define SSL_ERRSTR() ERR_reason_error_string(ERR_get_error())
-#define SSL_ERRSTR_MT(buf) ERR_error_string(ERR_get_error(), buf)
+#define SSL_ERRSTR(e, buf) ERR_error_string((e), (buf))
 
-#define PRINT_SSL_ERRSTR_MT(cb, msg)            \
+#define PRINT_SSL_ERRSTR_MT(cb, msg, e)         \
 do {                                            \
-    char *__b = alloca(120);                    \
-    ERR_error_string(ERR_get_error(), __b);     \
+    char *__b = alloca(SSL_ERRSTR_LENGTH);      \
+    ERR_error_string((e), __b);                 \
     cb(msg ": %s", __b);                        \
 } while (0)
 
@@ -121,12 +122,14 @@ do {                                            \
 
 #define ssl_sfliberrprint(err, n, cb, msg)                      \
     do {                                                        \
+        unsigned long __sslerr = ERR_get_error();               \
+        char *__b = alloca(SSL_ERRSTR_LENGTH);                  \
         if (err != NULL)                                        \
             snprintf(err, n,                                    \
                      "SSL Error: %s: (%lu) %s",                 \
-                     msg, ERR_get_error(), SSL_ERRSTR());       \
+                     msg, __sslerr, SSL_ERRSTR(__sslerr, __b)); \
         else                                                    \
-            PRINT_SSL_ERRSTR_MT(cb, msg);                       \
+            PRINT_SSL_ERRSTR_MT(cb, msg, __sslerr);             \
     } while (0)
 
 /* XXX Don't change the order of the enum types */

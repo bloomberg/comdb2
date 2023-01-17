@@ -254,7 +254,7 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     if (myctx == NULL) {
         ssl_sfliberrprint(err, n, my_ssl_eprintln,
                           "Failed to create SSL context");
-        rc = ERR_get_error();
+        rc = -1;
         goto error;
     }
 
@@ -298,7 +298,7 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
         if (RAND_bytes(sid_ctx, sizeof(sid_ctx)) != 1) {
             ssl_sfliberrprint(err, n, my_ssl_eprintln,
                               "Failed to get random bytes");
-            rc = ERR_get_error();
+            rc = -1;
             goto error;
         }
         SSL_CTX_set_session_id_context(myctx, sid_ctx, sizeof(sid_ctx));

@@ -2208,6 +2208,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
     SSL_CTX_free(ctx);
     if (rc != 1) {
         hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+        /* Shut it down and reset sbuf. Caller will reconnect upon a null `hndl->sb'. */
+        sbuf2close(sb);
+        hndl->sb = NULL;
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sessobj = NULL;
@@ -2363,7 +2366,6 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
     sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
     if (try_ssl(hndl, sb) != 0) {
-        sbuf2close(sb);
         rc = -1;
         goto after_callback;
     }

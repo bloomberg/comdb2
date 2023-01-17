@@ -22,8 +22,13 @@
 
 /* Gracefully shutdown an SSL connection. The fd remains resuable.
    Return 0 upon success. */
-int SBUF2_FUNC(sslio_close)(SBUF2 *, int reuse);
+int SBUF2_FUNC(sslio_close)(SBUF2 *, int wait_for_peer);
 #define sslio_close SBUF2_FUNC(sslio_close)
+
+/* Free the SSL struct, without calling SSL_shutdown(). This should be called
+   only on a non-recoverable SSL error (ie SSL_ERROR_SYSCALL or SSL_ERROR_SSL). */
+void SBUF2_FUNC(sslio_free)(SBUF2 *);
+#define sslio_free SBUF2_FUNC(sslio_free)
 
 int SBUF2_FUNC(sslio_read)(SBUF2 *, char *cc, int len);
 #define sslio_read SBUF2_FUNC(sslio_read)
