@@ -582,13 +582,7 @@ ssl_downgrade:
                 break;
             case SSL_ERROR_ZERO_RETURN:
                 /* Peer has done a clean shutdown. */
-                SSL_shutdown(sb->ssl);
-                SSL_free(sb->ssl);
-                sb->ssl = NULL;
-                if (sb->cert) {
-                    X509_free(sb->cert);
-                    sb->cert = NULL;
-                }
+                sslio_close(sb, 0);
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
                 sb->protocolerr = 0;
@@ -600,6 +594,7 @@ ssl_downgrade:
                     ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
                                  my_ssl_eprintln, "IO error. errno %d.", errno);
                 }
+                sslio_free(sb);
                 break;
             case SSL_ERROR_SSL:
                 errno = EIO;
@@ -607,6 +602,7 @@ ssl_downgrade:
                 ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr),
                                   my_ssl_eprintln,
                                   "A failure in SSL library occured");
+                sslio_free(sb);
                 break;
             default:
                 errno = EIO;
@@ -676,13 +672,7 @@ ssl_downgrade:
                 break;
             case SSL_ERROR_ZERO_RETURN:
                 /* Peer has done a clean shutdown. */
-                SSL_shutdown(sb->ssl);
-                SSL_free(sb->ssl);
-                sb->ssl = NULL;
-                if (sb->cert) {
-                    X509_free(sb->cert);
-                    sb->cert = NULL;
-                }
+                sslio_close(sb, 0);
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
                 sb->protocolerr = 0;
@@ -694,6 +684,7 @@ ssl_downgrade:
                     ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
                                  my_ssl_eprintln, "IO error. errno %d.", errno);
                 }
+                sslio_free(sb);
                 break;
             case SSL_ERROR_SSL:
                 errno = EIO;
@@ -701,6 +692,7 @@ ssl_downgrade:
                 ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr),
                                   my_ssl_eprintln,
                                   "A failure in SSL library occured");
+                sslio_free(sb);
                 break;
             default:
                 errno = EIO;

@@ -239,7 +239,7 @@ re_accept_or_connect:
             break;
         case SSL_ERROR_SYSCALL:
             sb->protocolerr = 0;
-            if (rc == 0) {
+            if (errno == 0) {
                 ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "Unexpected EOF observed.");
                 errno = ECONNRESET;
@@ -247,12 +247,14 @@ re_accept_or_connect:
                 ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "IO error. errno %d.", errno);
             }
+            sslio_free(sb);
             break;
         case SSL_ERROR_SSL:
             errno = EIO;
             sb->protocolerr = 1;
             ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                               "A failure in SSL library occured");
+            sslio_free(sb);
             break;
         default:
             errno = EIO;
@@ -277,15 +279,7 @@ re_accept_or_connect:
     }
     if (rc != 1 && close_on_verify_error) {
     error:
-        if (sb->ssl != NULL) {
-            SSL_shutdown(sb->ssl);
-            SSL_free(sb->ssl);
-            sb->ssl = NULL;
-        }
-        if (sb->cert) {
-            X509_free(sb->cert);
-            sb->cert = NULL;
-        }
+        sslio_close(sb, 0);
     }
 
     return rc;
@@ -344,17 +338,11 @@ reread:
             goto reread;
         case SSL_ERROR_ZERO_RETURN:
             /* Peer has done a clean shutdown. */
-            SSL_shutdown(sb->ssl);
-            SSL_free(sb->ssl);
-            sb->ssl = NULL;
-            if (sb->cert) {
-                X509_free(sb->cert);
-                sb->cert = NULL;
-            }
+            sslio_close(sb, 0);
             break;
         case SSL_ERROR_SYSCALL:
             sb->protocolerr = 0;
-            if (n == 0) {
+            if (errno == 0) {
                 ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "Unexpected EOF observed.");
                 errno = ECONNRESET;
@@ -362,12 +350,14 @@ reread:
                 ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "IO error. errno %d.", errno);
             }
+            sslio_free(sb);
             break;
         case SSL_ERROR_SSL:
             errno = EIO;
             sb->protocolerr = 1;
             ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                               "A failure in SSL library occured");
+            sslio_free(sb);
             break;
         default:
             errno = EIO;
@@ -411,17 +401,11 @@ rewrite:
             goto rewrite;
         case SSL_ERROR_ZERO_RETURN:
             /* Peer has done a clean shutdown. */
-            SSL_shutdown(sb->ssl);
-            SSL_free(sb->ssl);
-            sb->ssl = NULL;
-            if (sb->cert) {
-                X509_free(sb->cert);
-                sb->cert = NULL;
-            }
+            sslio_close(sb, 0);
             break;
         case SSL_ERROR_SYSCALL:
             sb->protocolerr = 0;
-            if (n == 0) {
+            if (errno == 0) {
                 ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "Unexpected EOF observed.");
                 errno = ECONNRESET;
@@ -429,11 +413,13 @@ rewrite:
                 ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "IO error. errno %d.", errno);
             }
+            sslio_free(sb);
         case SSL_ERROR_SSL:
             errno = EIO;
             sb->protocolerr = 1;
             ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                               "A failure in SSL library occured");
+            sslio_free(sb);
             break;
         default:
             errno = EIO;
@@ -449,23 +435,10 @@ rewrite:
     return n;
 }
 
-int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
+void SBUF2_FUNC(sslio_free)(SBUF2 *sb)
 {
-    /* Upon success, the 1st call to SSL_shutdown
-       returns 0, and the 2nd returns 1. */
-    int rc = 0;
     if (sb->ssl == NULL)
-        return 0;
-
-    rc = SSL_shutdown(sb->ssl);
-    if (!reuse) /* If a bidirectional shutdown isn't needed, ignore any error from the SSL_shutdown call above. */
-        rc = 0;
-    else { /* If a bidirectional shutdown is needed, do the 2-step shutdown process */
-        if (rc == 0)
-            rc = SSL_shutdown(sb->ssl);
-        if (rc == 1)
-            rc = 0;
-    }
+        return;
 
     if (sb->cert) {
         X509_free(sb->cert);
@@ -474,5 +447,26 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
 
     SSL_free(sb->ssl);
     sb->ssl = NULL;
+}
+
+int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int wait_for_peer)
+{
+    /* Upon success, the 1st call to SSL_shutdown
+       returns 0, and the 2nd returns 1. */
+    int rc = 0;
+    if (sb->ssl == NULL)
+        return 0;
+
+    rc = SSL_shutdown(sb->ssl);
+    if (!wait_for_peer)
+        rc = 0;
+    else {
+        if (rc == 0)
+            rc = SSL_shutdown(sb->ssl);
+        if (rc == 1)
+            rc = 0;
+    }
+
+    sslio_free(sb);
     return rc;
 }

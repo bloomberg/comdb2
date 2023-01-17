@@ -544,6 +544,17 @@ static int enable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     return rc;
 }
 
+static void free_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
+{
+    SSL *ssl = appdata->ssl_data ? appdata->ssl_data->ssl : NULL;
+    if (!ssl) return;
+    appdata->ssl_data->ssl = NULL;
+    X509 *cert = appdata->ssl_data->cert;
+    appdata->ssl_data->cert = NULL;
+    SSL_free(ssl);
+    X509_free(cert);
+}
+
 static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
     appdata->wr_dbinfo_fn = wr_dbinfo_plaintext;
@@ -552,12 +563,8 @@ static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     sql_disable_ssl(appdata->writer);
     SSL *ssl = appdata->ssl_data ? appdata->ssl_data->ssl : NULL;
     if (!ssl) return;
-    appdata->ssl_data->ssl = NULL;
-    X509 *cert = appdata->ssl_data->cert;
-    appdata->ssl_data->cert = NULL;
     SSL_shutdown(ssl);
-    SSL_free(ssl);
-    X509_free(cert);
+    free_ssl_evbuffer(appdata);
 }
 
 static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
@@ -590,8 +597,10 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
         event_base_once(appdata->base, appdata->fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
         return;
     case SSL_ERROR_SYSCALL:
+    case SSL_ERROR_SSL:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d errno:%d [%s]\n",
                __func__, __LINE__, rc, err, errno, strerror(errno));
+        free_ssl_evbuffer(appdata);
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d [%s]\n",
@@ -629,6 +638,8 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
         if (errno != 0 && errno != ECONNRESET)
             logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
                    __func__, __LINE__, rc, err, errno, strerror(errno));
+    case SSL_ERROR_SSL:
+        free_ssl_evbuffer(appdata);
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
