@@ -340,7 +340,7 @@ struct host_connected_info;
 
 struct event_info {
     host_node_type *host_node_ptr;
-    LIST_HEAD(, host_connected_info) host_connected_list;
+    TAILQ_HEAD(host_connected_list, host_connected_info) host_connected_list;
     LIST_ENTRY(event_info) host_list_entry;
     LIST_ENTRY(event_info) net_list_entry;
     int fd;
@@ -663,7 +663,7 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     struct event_info *e = calloc(1, sizeof(struct event_info));
     LIST_INSERT_HEAD(&h->event_list, e, host_list_entry);
     LIST_INSERT_HEAD(&n->event_list, e, net_list_entry);
-    LIST_INIT(&e->host_connected_list);
+    TAILQ_INIT(&e->host_connected_list);
     e->fd = -1;
     e->host = h->host;
     e->service = n->service;
@@ -693,7 +693,7 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
 }
 
 struct host_connected_info {
-    LIST_ENTRY(host_connected_info) entry;
+    TAILQ_ENTRY(host_connected_info) entry;
     int fd;
     struct event_info *e;
     int connect_msg;
@@ -706,13 +706,13 @@ host_connected_info_new(struct event_info *e, int fd, int connect_msg)
     info->e = e;
     info->fd = fd;
     info->connect_msg = connect_msg;
-    LIST_INSERT_HEAD(&e->host_connected_list, info, entry);
+    TAILQ_INSERT_TAIL(&e->host_connected_list, info, entry);
     return info;
 }
 
 static void host_connected_info_free(struct host_connected_info *info)
 {
-    LIST_REMOVE(info, entry);
+    TAILQ_REMOVE(&info->e->host_connected_list, info, entry);
     free(info);
 }
 
@@ -1773,18 +1773,28 @@ static void resume_read(int dummyfd, short what, void *data)
 
 static void do_queued(int dummyfd, short what, void *data)
 {
+    check_base_thd();
     struct event_info *e = data;
-    struct host_connected_info *info = LIST_FIRST(&e->host_connected_list);
+    struct host_connected_info *info = TAILQ_FIRST(&e->host_connected_list);
+    struct host_connected_info *last = TAILQ_LAST(&e->host_connected_list, host_connected_list);
+    while (info != last) {
+        hprintf("CLOSING OLD PENDING CONNECTION fd:%d\n", info->fd);
+        shutdown_close(info->fd);
+        host_connected_info_free(info);
+        info = TAILQ_FIRST(&e->host_connected_list);
+    }
+    hprintf("PROCESSING CONNECTION fd:%d\n", info->fd);
     evtimer_once(base, do_open, info);
 }
 
 static void finish_host_setup(int dummyfd, short what, void *data)
 {
+    check_base_thd();
     struct host_connected_info *i = data;
     struct event_info *e = i->e;
     int connect_msg = i->connect_msg;
     host_connected_info_free(i);
-    if (!LIST_EMPTY(&e->host_connected_list)) {
+    if (!TAILQ_EMPTY(&e->host_connected_list)) {
         hputs("WORKING ON QUEUED CONNECTION\n");
         do_close(e, do_queued);
     } else if (connect_msg) {
@@ -1864,7 +1874,7 @@ static void do_open(int dummyfd, short what, void *data)
 static void host_connected(struct event_info *e, int fd, int connect_msg)
 {
     check_base_thd();
-    int dispatch = LIST_EMPTY(&e->host_connected_list);
+    int dispatch = TAILQ_EMPTY(&e->host_connected_list);
     host_connected_info_new(e, fd, connect_msg);
     if (dispatch) {
         hprintf("PROCESSING CONNECTION fd:%d\n", fd);
@@ -1895,9 +1905,9 @@ static void comdb2_connected(int fd, short what, void *data)
     }
     if (e->fd != -1) {
         hputs("HAVE ACTIVE CONNECTION\n");
-    } else if (!LIST_EMPTY(&e->host_connected_list)) {
-        struct host_connected_info *i = LIST_FIRST(&e->host_connected_list);
-        hprintf("HAVE PENDING CONNECTION fd:%d\n", i->fd);
+    } else if (!TAILQ_EMPTY(&e->host_connected_list)) {
+        struct host_connected_info *info = TAILQ_LAST(&e->host_connected_list, host_connected_list);
+        hprintf("HAVE PENDING CONNECTION fd:%d\n", info->fd);
     } else if (!skip_connect(e)) {
         hprintf("MADE NEW CONNECTION fd:%d\n", fd);
         host_connected(e, fd, 1);
@@ -2056,7 +2066,7 @@ static void pmux_reconnect(struct connect_info *c)
     struct event_info *e = c->e;
     hprintf("FAILED CONNECTING fd:%d\n", c->fd);
     connect_info_free(c);
-    if (e->fd == -1 && LIST_EMPTY(&e->host_connected_list)) {
+    if (e->fd == -1 && TAILQ_EMPTY(&e->host_connected_list)) {
         do_reconnect(-1, 0, e);
     }
 }
