@@ -573,6 +573,7 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
     SSL *ssl = appdata->ssl_data->ssl;
     /* clears openssl's error queue */
     ERR_clear_error();
+    char sslerr[256];
 
     int rc = SSL_do_handshake(ssl);
     if (rc == 1) {
@@ -597,9 +598,13 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
         event_base_once(appdata->base, appdata->fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
         return;
     case SSL_ERROR_SYSCALL:
-    case SSL_ERROR_SSL:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d errno:%d [%s]\n",
                __func__, __LINE__, rc, err, errno, strerror(errno));
+        free_ssl_evbuffer(appdata);
+        break;
+    case SSL_ERROR_SSL:
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d sslerr: %s\n",
+               __func__, __LINE__, rc, err, ERR_error_string(ERR_get_error(), sslerr));
         free_ssl_evbuffer(appdata);
         break;
     default:
@@ -619,6 +624,7 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
     struct iovec v = {0};
     /* clears openssl's error queue */
     ERR_clear_error();
+    char sslerr[256];
 
     if (evbuffer_reserve_space(appdata->rd_buf, len, &v, 1) == -1) {
         return -1;
@@ -638,7 +644,11 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
         if (errno != 0 && errno != ECONNRESET)
             logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
                    __func__, __LINE__, rc, err, errno, strerror(errno));
+        free_ssl_evbuffer(appdata);
+        break;
     case SSL_ERROR_SSL:
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d sslerr: %s\n",
+               __func__, __LINE__, rc, err, ERR_error_string(ERR_get_error(), sslerr));
         free_ssl_evbuffer(appdata);
         break;
     default:

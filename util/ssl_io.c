@@ -440,10 +440,8 @@ void SBUF2_FUNC(sslio_free)(SBUF2 *sb)
     if (sb->ssl == NULL)
         return;
 
-    if (sb->cert) {
-        X509_free(sb->cert);
-        sb->cert = NULL;
-    }
+    X509_free(sb->cert);
+    sb->cert = NULL;
 
     SSL_free(sb->ssl);
     sb->ssl = NULL;
@@ -457,10 +455,10 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int wait_for_peer)
     if (sb->ssl == NULL)
         return 0;
 
-    rc = SSL_shutdown(sb->ssl);
     if (!wait_for_peer)
-        rc = 0;
+        SSL_set_shutdown(sb->ssl, SSL_SENT_SHUTDOWN);
     else {
+        rc = SSL_shutdown(sb->ssl);
         if (rc == 0)
             rc = SSL_shutdown(sb->ssl);
         if (rc == 1)

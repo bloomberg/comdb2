@@ -106,7 +106,7 @@
 
 #define PRINT_SSL_ERRSTR_MT(cb, msg)            \
 do {                                            \
-    char *__b = alloca(120);                    \
+    char *__b = alloca(256);                    \
     ERR_error_string(ERR_get_error(), __b);     \
     cb(msg ": %s", __b);                        \
 } while (0)
