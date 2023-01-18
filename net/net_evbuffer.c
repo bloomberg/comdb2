@@ -887,6 +887,7 @@ static void disable_write(int dummyfd, short what, void *data)
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
+    hputs("DISABLED\n");
     evtimer_once(base, d->func, e);
     free(d);
 }
@@ -912,6 +913,7 @@ static void disable_read(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     do_disable_read(e);
+    hputs("DISABLED\n");
     evtimer_once(wr_base, disable_write, d);
 }
 
@@ -933,6 +935,7 @@ static void disable_heartbeats(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     do_disable_heartbeats(e);
+    hputs("DISABLED\n");
     evtimer_once(rd_base, disable_read, d);
 }
 
@@ -941,11 +944,13 @@ static void do_host_close(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     host_node_close(e->host_node_ptr);
+    hputs("CLOSED\n");
     evtimer_once(timer_base, disable_heartbeats, d);
 }
 
 static void do_close(struct event_info *e, event_callback_fn func)
 {
+    hputs("HOST DOWN ROUTINE\n");
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     if (netinfo_ptr->hostdown_rtn) {
         netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
@@ -1197,6 +1202,7 @@ static void stop_base(struct event_base *b)
 static int net_stop = 1;
 static void exit_once_func(void)
 {
+    logmsg(LOGMSG_USER, "%s: STOP NET\n", __func__);
     struct net_info *n;
     struct host_info *h;
     struct event_info *e;
@@ -1290,6 +1296,7 @@ static void exit_once_func(void)
     }
     Pthread_cond_destroy(&exit_cond);
     Pthread_mutex_destroy(&exit_mtx);
+    logmsg(LOGMSG_USER, "%s: STOPPED NET\n", __func__);
 }
 
 static void heartbeat_check(int dummyfd, short what, void *data)
@@ -1803,6 +1810,7 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
     e->hb_send_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_send, e);
     event_add(e->hb_check_ev, &one_sec);
     event_add(e->hb_send_ev, &one_sec);
+    hputs("ENABLE\n");
     evtimer_once(base, finish_host_setup, i);
 }
 
@@ -1820,6 +1828,7 @@ static void enable_read(int dummyfd, short what, void *data)
     e->rd_buf = evbuffer_new();
     e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
     event_add(e->rd_ev, NULL);
+    hputs("ENABLE\n");
     evtimer_once(timer_base, enable_heartbeats, i);
 }
 
@@ -1839,14 +1848,15 @@ static void enable_write(int dummyfd, short what, void *data)
     e->wr_full = 0;
     e->decomissioned = 0;
     Pthread_mutex_unlock(&e->wr_lk);
+    hputs("ENABLE\n");
     evtimer_once(rd_base, enable_read, i);
 }
 
 static void do_open(int dummyfd, short what, void *data)
 {
+    check_base_thd();
     struct host_connected_info *i = data;
     struct event_info *e = i->e;
-    check_base_thd();
     host_node_open(e->host_node_ptr, i->fd);
     evtimer_once(wr_base, enable_write, i);
 }
@@ -1859,6 +1869,8 @@ static void host_connected(struct event_info *e, int fd, int connect_msg)
     if (dispatch) {
         hprintf("PROCESSING CONNECTION fd:%d\n", fd);
         do_close(e, do_queued);
+    } else {
+        hprintf("ADDED TO CONNECTION QUEUE fd:%d\n", fd);
     }
 }
 
