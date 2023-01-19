@@ -54,12 +54,12 @@ typedef enum scdone {
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
-    bdb_bump_dbopen_gen(bdb_get_scdone_str(type), (msg), \
+    bdb_bump_dbopen_gen(type, (msg), \
                         __func__, __FILE__, __LINE__)
 
 const char *bdb_get_scdone_str(scdone_t type);
 
-int bdb_bump_dbopen_gen(const char *type, const char *message,
+int bdb_bump_dbopen_gen(scdone_t type, const char *message,
                         const char *funcName, const char *fileName, int lineNo);
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
