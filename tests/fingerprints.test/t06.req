@@ -1,4 +1,4 @@
 create table t(a int); $$
-@send clear_fingerprints // bug would set all following normalized sql to this
-select * from t;
-select fingerprint, count, normalized_sql from comdb2_fingerprints;
+@send hi // bug would set all following normalized sql to this
+select * from t; // make sure this is added to fingerprints
+select fingerprint, count, normalized_sql from comdb2_fingerprints where fingerprint='c4fe7ad6cc25bb59daf8101f2196edf6';
