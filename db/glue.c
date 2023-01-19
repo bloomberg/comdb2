@@ -5436,10 +5436,19 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
     void *bdb_handle;
     int retries = 0;
     int rc;
+    int created_tran = 0;
     bbuint32_t lastitem = 0;
     bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
+
+    if (tran == NULL) {
+        // int trans_start(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
+        rc = trans_start(iq, NULL, &tran);;
+        if (rc)
+            goto done;
+        created_tran = 1;
+    }
 
     flags &= ~BDB_QUEUE_WALK_RESTART;
 
@@ -5448,6 +5457,7 @@ retry:
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
                         (bdb_queue_walk_callback_t)callback, tran, userptr,
                         &bdberr);
+done:
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5464,6 +5474,9 @@ retry:
             return IX_NOTFND;
         }
         return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
+    }
+    if (created_tran && tran != NULL) {
+        trans_abort(iq, tran);
     }
     return rc;
 }
