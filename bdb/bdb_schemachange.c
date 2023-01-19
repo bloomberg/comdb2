@@ -115,14 +115,25 @@ int32_t bdb_get_dbopen_gen(void)
     return ATOMIC_LOAD32(dbopen_gen);
 }
 
-int bdb_bump_dbopen_gen(const char *type, const char *message,
+int sc_type_requires_dbopen_gen_bump(scdone_t type) {
+    if (type == add_queue_file || type == del_queue_file || type == sc_analyze)
+        return 0;
+    return 1;
+}
+
+int bdb_bump_dbopen_gen(int type, const char *message,
                         const char *funcName, const char *fileName, int lineNo)
 {
+    const char *typestr = bdb_get_scdone_str(type);
+
+    if (!sc_type_requires_dbopen_gen_bump(type))
+        return 0;
+
     int rc = ATOMIC_ADD32(dbopen_gen, 1);
     if (message == NULL) message = "<null>";
     logmsg(LOGMSG_WARN,
            "DBOPEN_GEN is now %d (for type %s via %s, %s, line #%d): %s\n",
-           rc, type, funcName, fileName, lineNo, message);
+           rc, typestr, funcName, fileName, lineNo, message);
     return rc;
 }
 
@@ -301,8 +312,7 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
     if (bdb_state->parent)
         abort();
 
-    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
-        BDB_BUMP_DBOPEN_GEN(type, NULL);
+    BDB_BUMP_DBOPEN_GEN(type, NULL);
 
     DBT *dtbl = NULL;
     if (tbl) {
