@@ -2754,7 +2754,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     u32 type = 0;
     int sz;
     int datasz, hdrsz;
+#ifndef NDEBUG
     int remainingsz;
+#endif
     char *dtabuf;
     char *hdrbuf;
     u32 len;
@@ -2797,14 +2799,18 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     hdrbuf += sz;
 
     /* keep track of the size remaining */
+#ifndef NDEBUG
     remainingsz = datasz;
+#endif
 
     for (fnum = 0; fnum < nfields; fnum++) {
         type =
             sqlite3VdbeSerialType(&key[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
         sz = sqlite3VdbeSerialPut((unsigned char *)dtabuf, &key[fnum], type);
         dtabuf += sz;
+#ifndef NDEBUG
         remainingsz -= sz;
+#endif
         sz =
             sqlite3PutVarint((unsigned char *)hdrbuf,
                              sqlite3VdbeSerialType(
@@ -2814,7 +2820,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 
     pCur->keybuflen = hdrsz + datasz;
 
+#ifndef NDEBUG
     assert(remainingsz == 0);
+#endif
 
     return FDB_NOERR;
 }

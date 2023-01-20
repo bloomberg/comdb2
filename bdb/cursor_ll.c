@@ -1328,6 +1328,7 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
         char *foundkey = bdb_temp_table_key(berkdb->u.sd.cur);
         int foundkeylen = bdb_temp_table_keysize(berkdb->u.sd.cur);
 
+#ifndef NDEBUG
         int assert_keylen = foundkeylen;
 
         /* In function bdb_cursor_reposition_noupdate for DB_SET_RANGE operation
@@ -1346,6 +1347,7 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
                /* for shadow only search */
                (berkdb->cur->type == BDBC_IX && !berkdb->cur->rl &&
                 keylen <= foundkeylen));
+#endif
 
         if (keylen == foundkeylen - sizeof(unsigned long long)) {
             rc =
