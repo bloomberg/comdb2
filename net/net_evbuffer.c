@@ -208,6 +208,7 @@ struct event_info;
 struct net_info;
 
 static struct akq *setup_akq(char *);
+static void do_add_host(int, short, void *);
 static void do_open(int, short, void *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
@@ -947,18 +948,18 @@ static void do_host_close(int dummyfd, short what, void *data)
 {
     struct disable_info *d = data;
     struct event_info *e = d->e;
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    if (netinfo_ptr->hostdown_rtn) { /* net_hostdown_rtn or net_osql_nodedwn */
+        netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
+    }
     host_node_close(e->host_node_ptr);
-    hputs("CLOSED\n");
+    hputs("CLOSING\n");
     evtimer_once(timer_base, disable_heartbeats, d);
 }
 
 static void do_close(struct event_info *e, event_callback_fn func)
 {
     hputs("CLOSE CONNECTION\n");
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    if (netinfo_ptr->hostdown_rtn) {
-        netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
-    }
     struct disable_info *i = malloc(sizeof(struct disable_info));
     i->e = e;
     i->func = func;
@@ -1341,6 +1342,28 @@ static void hello_hdr_common(struct event_info *e)
     e->need = htonl(n) - sizeof(uint32_t);
 }
 
+struct add_host_info {
+    struct event_info *e;
+    char *ihost;
+    int port;
+};
+
+static void add_host_from_hello_msg(void *data)
+{
+    check_base_thd();
+    struct add_host_info *i = data;
+    struct event_info *e = i->e;
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    host_node_type *host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, i->ihost);
+    if (host_node_ptr) return;
+    host_node_ptr = add_to_netinfo_ll(netinfo_ptr, i->ihost, i->port);
+    if (!host_node_ptr) return;
+    if (i->port) {
+        host_node_ptr->port = i->port;
+    }
+    evtimer_once(base, do_add_host, host_node_ptr);
+}
+
 static int hello_msg_common(struct event_info *e)
 {
     uint32_t hello_recv = e->need;
@@ -1386,13 +1409,12 @@ static int hello_msg_common(struct event_info *e)
         }
         char *ihost = intern(host);
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-        host_node_type *newhost = add_to_netinfo(netinfo_ptr, ihost, ports[i]);
-        if (newhost) {
-            if (ports[i]) {
-                newhost->port = ports[i];
-            }
-            add_host(newhost);
+        if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, ihost)) { /* net_allow_node */
+            logmsg(LOGMSG_ERROR, "connection to host:%s not allowed\n", ihost);
+            continue;
         }
+        struct add_host_info info = {.e = e, .ihost = ihost, .port = ports[i]};
+        run_on_base(base, add_host_from_hello_msg, &info);
     }
     /* R6/7.0 are sloppy with accounting and send extra fluff */
     uint32_t end_sz = evbuffer_get_length(e->rd_buf);
@@ -2175,11 +2197,9 @@ static int accept_host(struct accept_info *a)
         e = event_info_new(n, h);
     }
     host_node_type *host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
-    if (host_node_ptr == NULL) {
-        host_node_ptr = add_to_netinfo(netinfo_ptr, host, port);
-    }
-    if (host_node_ptr == NULL) {
-        return -1;
+    if (!host_node_ptr) {
+        host_node_ptr = add_to_netinfo_ll(netinfo_ptr, host, port);
+        if (!host_node_ptr) return -1;
     }
     host_node_ptr->addr = a->ss.sin_addr;
     update_host_node_ptr(host_node_ptr, e);

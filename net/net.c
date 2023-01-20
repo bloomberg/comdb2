@@ -2427,8 +2427,7 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
     return nsent;
 }
 
-static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
-                                         const char hostname[], int portnum)
+host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr, const char hostname[], int portnum)
 {
     host_node_type *ptr;
     /* check to see if the node already exists */
