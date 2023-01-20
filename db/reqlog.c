@@ -2207,7 +2207,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             if (last_long_request_epoch != comdb2_time_epoch()) {
                 last_long_request_epoch = comdb2_time_epoch();
 
-                if (long_request_out != default_out) {
+                if (long_request_out != default_out && long_request_thresh && logger->clnt && !can_consume(logger->clnt)) {
 
                     if (logger->iq && logger->iq->sorese) {
                         char *sqlinfo = osql_sess_info(logger->iq->sorese);
