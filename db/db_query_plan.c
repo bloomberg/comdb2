@@ -17,6 +17,9 @@
 #include "sql.h"
 #include "tohex.h"
 
+#include <math.h>
+#include <ctrace.h>
+
 int gbl_query_plan_max_plans = 20;
 extern int gbl_debug_print_query_plans;
 extern double gbl_query_plan_percentage;
@@ -49,8 +52,9 @@ static char *form_query_plan(const struct client_query_stats *query_stats)
 
 // assumed to have fingerprint lock
 // assume t->query_plan_hash is not NULL
-static void add_query_plan_int(struct fingerprint_track *t, const char *query_plan, double current_cost_per_row)
+static void add_query_plan_int(struct fingerprint_track *t, const char *query_plan, int64_t cost, int64_t nrows)
 {
+    double current_cost_per_row = (double)cost / nrows;
     struct query_plan_item *q = hash_find(t->query_plan_hash, &query_plan);
     char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
     if (q == NULL) {
@@ -70,29 +74,40 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
             q->plan = strdup(query_plan);
             q->total_cost_per_row = current_cost_per_row;
             q->nexecutions = 1;
+            q->alert_once_cost = 1;
+            q->avg_cost_per_row = q->total_cost_per_row / q->nexecutions;
             hash_add(t->query_plan_hash, q);
         }
     } else {
+        double prev_avg = q->avg_cost_per_row;
         q->total_cost_per_row += current_cost_per_row;
         q->nexecutions++;
+        q->avg_cost_per_row = q->total_cost_per_row / q->nexecutions;
+        if (fabs(q->avg_cost_per_row - prev_avg) > 0.01) {
+            q->alert_once_cost = 1; // reset since avg cost changed significantly
+        }
     }
 
     // compare query plans
-    double average_cost_per_row = q->total_cost_per_row / q->nexecutions;
+    double current_avg = q->avg_cost_per_row;
     void *ent;
     unsigned int bkt;
-    double alt_avg;
     double significance = 1 + gbl_query_plan_percentage / 100;
     for (q = (struct query_plan_item *)hash_first(t->query_plan_hash, &ent, &bkt); q;
          q = (struct query_plan_item *)hash_next(t->query_plan_hash, &ent, &bkt)) {
-        alt_avg = q->total_cost_per_row / q->nexecutions;
-        if (alt_avg * significance < average_cost_per_row) { // should be at least equal if same query plan
+        if (q->alert_once_cost &&
+            q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
             util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
             logmsg(LOGMSG_WARN,
-                   "For query %s with fingerprint %s:\n"
+                   "Better plan available for fingerprint %s, avg cost per row difference: %f, current # rows: %ld\n",
+                   fp, current_avg - q->avg_cost_per_row, nrows);
+
+            ctrace("For query %s with fingerprint %s:\n"
                    "Currently using query plan %s, which has an average cost per row of %f.\n"
                    "But query plan %s has a lower average cost per row of %f.\n",
-                   t->zNormSql, fp, query_plan, average_cost_per_row, q->plan, alt_avg);
+                   t->zNormSql, fp, query_plan, current_avg, q->plan, q->avg_cost_per_row);
+
+            q->alert_once_cost = 0;
         }
     }
 }
@@ -107,8 +122,7 @@ void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, 
         return;
     }
 
-    double current_cost_per_row = (double)cost / nrows;
-    add_query_plan_int(t, query_plan, current_cost_per_row);
+    add_query_plan_int(t, query_plan, cost, nrows);
 
     if (gbl_debug_print_query_plans) {
         void *ent, *ent2;
@@ -125,7 +139,7 @@ void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, 
             for (q = (struct query_plan_item *)hash_first(f->query_plan_hash, &ent2, &bkt2); q;
                  q = (struct query_plan_item *)hash_next(f->query_plan_hash, &ent2, &bkt2)) {
                 logmsg(LOGMSG_WARN, "plan: %s, total cost per row: %f, num executions: %d, average: %f\n", q->plan,
-                       q->total_cost_per_row, q->nexecutions, q->total_cost_per_row / q->nexecutions);
+                       q->total_cost_per_row, q->nexecutions, q->avg_cost_per_row);
             }
         }
         logmsg(LOGMSG_WARN, "END\n\n");
