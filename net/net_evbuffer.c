@@ -73,7 +73,7 @@
 
 #define TCP_BUFSZ MB(8)
 #define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
-#define MAX_DISTRESS_COUNT 3
+#define MAX_DISTRESS_COUNT 10
 
 #define hprintf_lvl LOGMSG_USER
 #define hprintf_format(a) "[%.3s %-8s fd:%-3d %20s] " a, e->service, e->host, e->fd, __func__
@@ -216,12 +216,16 @@ static void unix_connect(int, short, void *);
 
 static struct timeval reconnect_time(int retry)
 {
-    time_t sec = 0;
+    time_t sec;
     suseconds_t usec = (random() % 900000) + 100000;
-    if (retry > 100) {
-        sec = 10 + (usec % 5);
-    } else if (retry > 10) {
-        sec = 1 + (usec % 5);
+    if (retry <= 3) {
+        sec = 0;
+    } else if (retry <= 10) {
+        sec = 1;
+    } else if (retry <= 100) {
+        sec = 5 + (usec % 6); /* (5, 10) */
+    } else {
+        sec = 10 + (usec % 51); /* (10, 60) */
     }
     struct timeval t = {sec, usec};
     return t;
@@ -859,6 +863,7 @@ struct disable_info {
 static void do_disable_write(struct event_info *e)
 {
     check_wr_thd();
+    hputs("STOP WR\n");
     if (e->wr_ev) {
         event_free(e->wr_ev);
         e->wr_ev = NULL;
@@ -895,6 +900,7 @@ static void disable_write(int dummyfd, short what, void *data)
 static void do_disable_read(struct event_info *e)
 {
     check_rd_thd();
+    hputs("STOP RD\n");
     Pthread_mutex_lock(&e->akq_lk);
     ++e->akq_gen;
     Pthread_mutex_unlock(&e->akq_lk);
@@ -920,6 +926,7 @@ static void disable_read(int dummyfd, short what, void *data)
 static void do_disable_heartbeats(struct event_info *e)
 {
     check_timer_thd();
+    hputs("STOP HB\n");
     if (e->hb_check_ev) {
         event_free(e->hb_check_ev);
         e->hb_check_ev = NULL;
@@ -950,7 +957,7 @@ static void do_host_close(int dummyfd, short what, void *data)
 
 static void do_close(struct event_info *e, event_callback_fn func)
 {
-    hputs("HOST DOWN ROUTINE\n");
+    hputs("CLOSE CONNECTION\n");
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     if (netinfo_ptr->hostdown_rtn) {
         netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
@@ -964,7 +971,7 @@ static void do_close(struct event_info *e, event_callback_fn func)
 static int skip_connect(struct event_info *e)
 {
     if (e->decomissioned) {
-        hputs("SKIPPING DECOM HOST\n");
+        hputs_nd("SKIPPING DECOM HOST\n");
         return 1;
     }
     return 0;
@@ -992,6 +999,7 @@ static void reconnect(struct event_info *e)
     if (gbl_exit) {
         return;
     }
+    hputs("CLOSE AND RECONNECT\n");
     do_close(e, do_reconnect);
 }
 
@@ -1303,9 +1311,10 @@ static void heartbeat_check(int dummyfd, short what, void *data)
 {
     check_timer_thd();
     struct event_info *e = data;
+    if (e->rd_full) return;
     int diff = time(NULL) - e->recv_at;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    if (diff > netinfo_ptr->heartbeat_check_time && !e->rd_full) {
+    if (diff >= netinfo_ptr->heartbeat_check_time) {
         hprintf("no data in %d seconds\n", (int)diff);
         do_disable_heartbeats(e);
         reconnect(e);
@@ -1316,15 +1325,15 @@ static void heartbeat_send(int dummyfd, short what, void *data)
 {
     check_timer_thd();
     struct event_info *e = data;
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    if (e->wr_full) return;
     int diff = time(NULL) - e->sent_at;
-    if (diff && !e->wr_full) {
-        if (diff < 5) { /* if fd not writeable, hbeat won't help */
-            write_heartbeat(netinfo_ptr, e->host_node_ptr);
-        }
-        if (diff % 10 == 0) { /* reduce spew */
-            hprintf("no data in %d seconds\n", diff);
-        }
+    if (!diff) return;
+    if (diff < 10) {
+        netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+        write_heartbeat(netinfo_ptr, e->host_node_ptr);
+    }
+    if (diff % 10 == 0) { /* reduce spew */
+        hprintf("no data in %d seconds\n", diff);
     }
 }
 
@@ -1867,6 +1876,7 @@ static void do_open(int dummyfd, short what, void *data)
     check_base_thd();
     struct host_connected_info *i = data;
     struct event_info *e = i->e;
+    hprintf("PROCESSING fd:%d\n", i->fd);
     host_node_open(e->host_node_ptr, i->fd);
     evtimer_once(wr_base, enable_write, i);
 }
@@ -1899,7 +1909,7 @@ static void comdb2_connected(int fd, short what, void *data)
     struct connect_info *c = data;
     struct event_info *e = c->e;
     if (what & EV_TIMEOUT) {
-        hprintf("CONNECT TIMED OUT fd:%d\n", fd);
+        hprintf("TIMEOUT fd:%d\n", fd);
         pmux_reconnect(c);
         return;
     }
@@ -1945,8 +1955,15 @@ static void comdb2_connect(struct connect_info *c, int port)
 static void pmux_rte_readcb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
-    if ((what & EV_TIMEOUT) || evbuffer_read(c->buf, fd, -1) <= 0) {
+    struct event_info *e = c->e;
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_read(c->buf, fd, -1)) <= 0) {
+        hprintf("FAILED read fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -1957,7 +1974,7 @@ static void pmux_rte_readcb(int fd, short what, void *data)
         return;
     }
     int pmux_rc = -1;
-    int rc = sscanf(res, "%d", &pmux_rc);
+    rc = sscanf(res, "%d", &pmux_rc);
     free(res);
     if (rc != 1 || pmux_rc != 0) {
         pmux_reconnect(c);
@@ -1969,8 +1986,15 @@ static void pmux_rte_readcb(int fd, short what, void *data)
 static void pmux_rte_writecb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
-    if ((what & EV_TIMEOUT) || evbuffer_write(c->buf, fd) <= 0) {
+    struct event_info *e = c->e;
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_write(c->buf, fd)) <= 0) {
+        hprintf("FAILED write fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -1995,10 +2019,16 @@ static void pmux_rte(struct connect_info *c)
 static void pmux_get_readcb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
     struct event_info *e = c->e;
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
-    if ((what & EV_TIMEOUT) || evbuffer_read(c->buf, fd, -1) <= 0) {
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_read(c->buf, fd, -1)) <= 0) {
+        hprintf("FAILED read fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -2038,8 +2068,15 @@ static void pmux_get_readcb(int fd, short what, void *data)
 static void pmux_get_writecb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
-    if ((what & EV_TIMEOUT) || evbuffer_write(c->buf, fd) <= 0) {
+    struct event_info *e = c->e;
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_write(c->buf, fd)) <= 0) {
+        hprintf("FAILED write fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -2156,7 +2193,7 @@ static int accept_host(struct accept_info *a)
     update_host_node_ptr(host_node_ptr, e);
     update_event_port(e, port);
     update_wire_hdrs(e);
-    if (netinfo_ptr->new_node_rtn) {
+    if (netinfo_ptr->new_node_rtn) { /* net_newnode_rtn */
         netinfo_ptr->new_node_rtn(netinfo_ptr, host, port);
     }
     hprintf("ACCEPTED NEW CONNECTION fd:%d\n", a->fd);
@@ -2215,7 +2252,7 @@ static int validate_host(struct accept_info *a)
         return -1;
     }
     char *host = a->from_host_interned = intern(a->from_host);
-    if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, host)) {
+    if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, host)) { /* net_allow_node */
         logmsg(LOGMSG_ERROR, "connection from node:%d host:%s not allowed\n",
                a->c.my_nodenum, host);
         return -1;
@@ -3013,6 +3050,7 @@ void decom(char *host)
     if (h == NULL) {
         return;
     }
+    logmsg(LOGMSG_USER, "%s host:%s\n", __func__, host);
     struct event_info *e;
     LIST_FOREACH(e, &h->event_list, host_list_entry) {
         if (e->decomissioned) continue;
