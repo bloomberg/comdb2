@@ -1379,8 +1379,10 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
 
 struct query_plan_item {
     char *plan;
+    double avg_cost_per_row;
     double total_cost_per_row;
     int nexecutions;
+    int alert_once_cost; /* Only log query plan cost differences once, reset if the avg cost changes. Init to 1 */
 };
 int free_query_plan_hash(hash_t *query_plan_hash);
 int clear_query_plans();
