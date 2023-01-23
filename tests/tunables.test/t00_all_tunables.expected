@@ -838,7 +838,7 @@
 (name='simulate_rowlock_deadlock', description='', type='INTEGER', value='0', read_only='N')
 (name='simulate_verify_error', description='simulate_verify_error', type='BOOLEAN', value='OFF', read_only='N')
 (name='singlemeta', description='', type='INTEGER', value='1', read_only='Y')
-(name='skip_cget_in_db_put', description='Don't perform a cget when we do a cput', type='BOOLEAN', value='ON', read_only='N')
+(name='skip_cget_in_db_put', description='Don't perform a cget when we do a cput', type='BOOLEAN', value='OFF', read_only='N')
 (name='skip_clear_queue_extents', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='skip_duplicate_seqnums', description='skip_duplicate_seqnums', type='BOOLEAN', value='ON', read_only='N')
 (name='skip_skipables_on_verify', description='skip_skipables_on_verify', type='BOOLEAN', value='ON', read_only='N')
