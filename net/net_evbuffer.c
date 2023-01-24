@@ -3109,6 +3109,7 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
     int nodelay = flags & WRITE_MSG_NODELAY;
     struct event_info *e = host_node_ptr->event_info;
     struct evbuffer *buf = evbuffer_new();
+    size_t bytes_written;
     if (buf == NULL) {
         rc = -1;
         goto out;
@@ -3123,6 +3124,7 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
             goto out;
         }
     }
+    bytes_written = evbuffer_get_length(buf);
     Pthread_mutex_lock(&e->wr_lk);
     if (!e->flush_buf) {
        rc = -3;
@@ -3132,6 +3134,13 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
         } else {
             rc = -1;
         }
+    }
+    if (rc==0) {
+        if (e->net_info && e->net_info->netinfo_ptr) {
+            netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+            netinfo_ptr->stats.bytes_written += bytes_written;
+        }
+        host_node_ptr->stats.bytes_written += bytes_written;
     }
     Pthread_mutex_unlock(&e->wr_lk);
 out:if (buf) {
@@ -3185,6 +3194,10 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
             flush_evbuffer(e, nodelay);
         }
         Pthread_mutex_unlock(&e->wr_lk);
+        if (e->host_node_ptr) {
+            e->host_node_ptr->stats.bytes_written += sz;
+        }
+        netinfo_ptr->stats.bytes_written += sz;
     }
     if (msg) {
         for (int i = 0; i < n; ++i) {
