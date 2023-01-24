@@ -825,7 +825,7 @@ static void set_hello_message(struct event_info *e)
 static void set_decom(struct event_info *e)
 {
     e->decomissioned = 1;
-    net_decom_node(e->net_info->netinfo_ptr, e->host_node_ptr->host);
+    e->host_node_ptr->decom_flag = 1;
 }
 
 static void update_host_node_ptr(host_node_type *host_node_ptr, struct event_info *e)
