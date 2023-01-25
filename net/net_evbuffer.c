@@ -1021,6 +1021,10 @@ static size_t check_wr_full(struct event_info *e)
 static size_t get_wr_buf(struct event_info *e)
 {
     evbuffer_add_buffer(e->wr_buf, e->flush_buf);
+    if (e->host_node_ptr) {
+        e->host_node_ptr->enque_count = 0;
+        e->host_node_ptr->enque_bytes = 0;
+    }
     return check_wr_full(e);
 }
 
@@ -3141,6 +3145,7 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
             netinfo_ptr->stats.bytes_written += bytes_written;
         }
         host_node_ptr->stats.bytes_written += bytes_written;
+        update_host_net_queue_stats(host_node_ptr, 1, bytes_written);
     }
     Pthread_mutex_unlock(&e->wr_lk);
 out:if (buf) {
@@ -3196,6 +3201,7 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
         Pthread_mutex_unlock(&e->wr_lk);
         if (e->host_node_ptr) {
             e->host_node_ptr->stats.bytes_written += sz;
+            update_host_net_queue_stats(e->host_node_ptr, 1, sz);
         }
         netinfo_ptr->stats.bytes_written += sz;
     }
