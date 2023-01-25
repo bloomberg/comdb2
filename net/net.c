@@ -497,6 +497,19 @@ static void check_list_sizes(host_node_type *host_node_ptr)
 }
 #endif
 
+void update_host_net_queue_stats(host_node_type *host_node_ptr, size_t count, size_t bytes) {
+    host_node_ptr->enque_count += count;
+    if (host_node_ptr->enque_count > host_node_ptr->peak_enque_count) {
+        host_node_ptr->peak_enque_count = host_node_ptr->enque_count;
+        host_node_ptr->peak_enque_count_time = comdb2_time_epoch();
+    }
+    host_node_ptr->enque_bytes += bytes;
+    if (host_node_ptr->enque_bytes > host_node_ptr->peak_enque_bytes) {
+        host_node_ptr->peak_enque_bytes = host_node_ptr->enque_bytes;
+        host_node_ptr->peak_enque_bytes_time = comdb2_time_epoch();
+    }
+}
+
 int gbl_print_net_queue_size = 0;
 
 /* Enque a net message consisting of a header and some optional data.
@@ -658,16 +671,8 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
 
     if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
         logmsg(LOGMSG_USER, "Queing %zu bytes %llu\n", insert->len, gettmms());
-    host_node_ptr->enque_count++;
-    if (host_node_ptr->enque_count > host_node_ptr->peak_enque_count) {
-        host_node_ptr->peak_enque_count = host_node_ptr->enque_count;
-        host_node_ptr->peak_enque_count_time = comdb2_time_epoch();
-    }
-    host_node_ptr->enque_bytes += insert->len;
-    if (host_node_ptr->enque_bytes > host_node_ptr->peak_enque_bytes) {
-        host_node_ptr->peak_enque_bytes = host_node_ptr->enque_bytes;
-        host_node_ptr->peak_enque_bytes_time = comdb2_time_epoch();
-    }
+
+    update_host_net_queue_stats(host_node_ptr, 1, insert->len);
 
     rc = 0;
 
