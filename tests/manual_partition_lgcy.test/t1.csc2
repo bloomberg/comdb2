@@ -1,0 +1,9 @@
+schema
+{
+    int         a
+    vutf8       alltypes_vutf8[16]              null=yes
+}
+
+keys {
+	"PK"=a
+}

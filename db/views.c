@@ -3123,6 +3123,17 @@ int timepart_create_inmem_view(timepart_view_t *view)
         logmsg(LOGMSG_ERROR, "Unable to add view %s rc %d \"%s\"\n", view->name,
                err.errval, err.errstr);
     } else {
+        if (period == VIEW_PARTITION_MANUAL) {
+            /* dedicated logical cron schedulers */
+            rc = logical_cron_init(name_dup, &err);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Failed to initialize logical cron %s\n",
+                       name_dup);
+                free(name_dup);
+                return rc;
+            }
+        }
+
         /* we need to add the first scheduler event */
         rc = _view_new_rollout_lkless(name_dup, period, rolltime, &source_id,
                                       &err);
@@ -3269,7 +3280,8 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
 
     if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
-        case PARTITION_ADD_TIMED: {
+        case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_create_inmem_view(sc->newpartition);
             break;
@@ -3303,7 +3315,8 @@ void partition_unpublish(struct schema_change_type *sc)
 {
    if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
-        case PARTITION_ADD_TIMED: {
+        case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_destroy_inmem_view(sc->timepartition_name);
             break;

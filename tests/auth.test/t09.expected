@@ -115,6 +115,7 @@
 (candidate='LIMIT')
 (candidate='LUA')
 (candidate='LZ4')
+(candidate='MANUAL')
 (candidate='MATCH')
 (candidate='MERGE')
 (candidate='NATURAL')
