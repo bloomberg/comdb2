@@ -5742,7 +5742,8 @@ static int start_schema_change_tran_wrapper(const char *tblname,
         sc->fix_tp_badvers = 1;
     }
 
-    if ((sc->partition.type == PARTITION_ADD_TIMED && arg->indx == 0) ||
+    if (((sc->partition.type == PARTITION_ADD_TIMED ||
+          sc->partition.type == PARTITION_ADD_MANUAL) && arg->indx == 0) ||
         (sc->partition.type == PARTITION_REMOVE &&
          arg->nshards == arg->indx + 1)) {
         sc->publish = partition_publish;
@@ -5915,7 +5916,8 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         return ERR_SC;
     }
 
-    assert(sc->partition.type == PARTITION_ADD_TIMED);
+    assert(sc->partition.type == PARTITION_ADD_TIMED || 
+           sc->partition.type == PARTITION_ADD_MANUAL);
 
     /* create a new time partition object */
     struct errstat err = {0};

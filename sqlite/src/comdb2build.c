@@ -1242,6 +1242,17 @@ cleanup:
 
 /********************* PARTITIONS  **********************************************/
 
+static int _get_integer(Token *tok, int32_t *oInt)
+{
+    char str[10];
+    if (tok->n >= sizeof(str)) {
+        return -1;
+    }
+    strncpy0(str, tok->z, tok->n + 1);
+    *oInt = atoi(str);
+    return 0;
+}
+
 static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
                                         Token *retention, Token *start,
                                         int32_t *oPeriod, int32_t *oRetention,
@@ -1264,13 +1275,10 @@ static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
         return -1;
     }
 
-    char retention_str[10];
-    if (retention->n >= sizeof(retention_str)) {
+    if (_get_integer(retention, oRetention)) {
         setError(pParse, SQLITE_MISUSE, "Invalid retention");
         return -1;
     }
-    strncpy0(retention_str, retention->z, retention->n + 1);
-    *oRetention = atoi(retention_str);
 
     char start_str[200];
     assert (*start->z == '\'' || *start->z == '\"');
@@ -1287,6 +1295,21 @@ static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
         return -1;
     }
 
+    return 0;
+}
+
+static int comdb2GetManualPartitionParams(Parse* pParse, Token *retention,
+                                          Token *start, int32_t *oRetention,
+                                          int32_t *oStart)
+{
+    if (_get_integer(retention, oRetention)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid manual retention");
+        return -1;
+    }
+    if (_get_integer(start, oStart)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid manual start");
+        return -1;
+    }
     return 0;
 }
 
@@ -7213,6 +7236,35 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
                                      (int64_t*)&partition->u.tpt.start)) {
         free_ddl_context(pParse);
     }
+}
+
+/**
+ * Create Manual Partition
+ *
+ */
+void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
+{
+    struct comdb2_partition *partition;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create manual partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse, 0);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_MANUAL;
+    partition->u.tpt.period = VIEW_PARTITION_MANUAL;
+
+    int32_t tmp = 0;
+    if (comdb2GetManualPartitionParams(pParse, retention, start,
+                                     (int32_t*)&partition->u.tpt.retention,
+                                     &tmp)) {
+        free_ddl_context(pParse);
+    }
+    partition->u.tpt.start = tmp;
 }
 
 /*

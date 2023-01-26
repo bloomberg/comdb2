@@ -364,6 +364,7 @@ static Keyword aKeywordTable[] = {
   { "KW",               "TK_KW",             ALWAYS               },
   { "LUA",              "TK_LUA",            ALWAYS               },
   { "LZ4",              "TK_LZ4",            ALWAYS               },
+  { "MANUAL",           "TK_MANUAL",         ALWAYS               },
   { "MERGE",            "TK_MERGE",          ALWAYS               },
   { "NEXTSEQUENCE",     "TK_CTIME_KW",       ALWAYS               },
   { "NONE",             "TK_NONE",           ALWAYS               },

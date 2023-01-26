@@ -3419,7 +3419,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
     if (!bdb_am_i_coherent(thedb->bdb_env)) {
         if (((flags & FD_MSG_FLAGS_ISUUID) && comdb2uuid_is_zero((unsigned char*)open_msg.tid)) ||
                 (*(unsigned long long *)open_msg.tid == 0ULL)) {
-            logmsg(LOGMSG_ERROR, "Rejecting standalong remsql, node incoherent\n");
+            logmsg(LOGMSG_ERROR, "Rejecting standalone remsql, node incoherent\n");
             return -1;
         }
     }

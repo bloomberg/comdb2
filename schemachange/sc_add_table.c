@@ -376,7 +376,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
      * if this is the original request for a partition table add,
      * create partition here
      */
-    if (s->partition.type == PARTITION_ADD_TIMED && s->publish) {
+    if ((s->partition.type == PARTITION_ADD_TIMED ||
+         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
         struct errstat err = {0};
         assert(s->newpartition);
         rc = partition_llmeta_write(tran, s->newpartition, 0, &err);
