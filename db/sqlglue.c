@@ -1119,6 +1119,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                              (struct field_conv_opts *)convopts, NULL /*blob */,
                              out + f->offset, f->len, f->type, 0, &outdtsz,
                              &f->convopts, NULL /*&outblob[nblobs] blob */);
+            if (bias_info) bias_info->truncated = 1;
     } else if (m->flags & MEM_Str) {
         blob_buffer_t *vutf8_outblob = NULL;
 
@@ -1255,6 +1256,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                 } else {
                     rc = -1;
                 }
+                if (bias_info) bias_info->truncated = 1;
                 break;
             }
             default:
