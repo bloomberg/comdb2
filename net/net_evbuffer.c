@@ -3047,7 +3047,7 @@ void add_host(host_node_type *host_node_ptr)
 {
     netinfo_type *netinfo_ptr = host_node_ptr->netinfo_ptr;
     int fake = netinfo_ptr->fake;
-    if (gbl_create_mode || gbl_fullrecovery || fake || !gbl_libevent) {
+    if (gbl_create_mode || gbl_exit || fake || !gbl_libevent) {
         return;
     }
     init_event_net(netinfo_ptr);
