@@ -1965,6 +1965,7 @@ void bdb_thread_assert_nolocks(bdb_state_type *bdb_state);
 void bdb_tran_assert_nolocks(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr);
+int bdb_llmeta_dump_records(bdb_state_type *bdb_state, int *bdberr);
 
 int bdb_have_ipu(bdb_state_type *bdb_state);
 
