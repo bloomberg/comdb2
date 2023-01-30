@@ -1961,11 +1961,19 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         strncpy0(clnt->tzname, sql_query->tzname, sizeof(clnt->tzname));
     }
     if (sql_query->dbname && thedb->envname && strcasecmp(sql_query->dbname, thedb->envname)) {
+        CDB2SQLQUERY__Cinfo *info = sql_query->client_info;
+        const char *query = sql_query->sql_query;
+        logmsg(LOGMSG_ERROR, "bad  dbname:%s  host:%s  pid:%d  argv0:%s  query:%.32s  len:%d\n",
+               sql_query->dbname,
+               clnt->origin,
+               info ? info->pid : -999,
+               info ? info->argv0 : "???",
+               query ? query : "???",
+               query ? (int)strlen(query) : -999);
         char errstr[64 + (2 * MAX_DBNAME_LENGTH)];
         snprintf(errstr, sizeof(errstr),
                  "DB name mismatch query:%s actual:%s", sql_query->dbname,
                  thedb->envname);
-        logmsg(LOGMSG_ERROR, "%s\n", errstr);
         write_response(clnt, RESPONSE_ERROR, errstr, CDB2__ERROR_CODE__WRONG_DB);
         return -1;
     }
