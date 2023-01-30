@@ -470,6 +470,10 @@ out:
 
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
+    if (!query) {
+        newsql_cleanup(appdata);
+        return;
+    }
     CDB2DBINFO *dbinfo = query->dbinfo;
     if (!dbinfo) {
         process_query(appdata, query);
