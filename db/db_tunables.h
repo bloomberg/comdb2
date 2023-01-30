@@ -1714,6 +1714,12 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("dont_block_delete_files_thread", "Ignore files that would block delete-files thread.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_txn_fop_noblock, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_random_fop_block", "Randomly return .  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_random_block_on_fop, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("random_thdpool_work_timeout",
                  "Force a random thread pool work item timeout 1/this many "
                  "times.  (Default: 0)",

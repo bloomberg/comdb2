@@ -665,6 +665,7 @@ can be queried with the `stat autonalyze` command.
 |REP_VERIFY_MIN_PROGRESS | 10485760 | Abort replicant if it doesn't make this much progress while rolling back logs to sync up to master.
 |REP_VERIFY_LIMIT_ENABLED | 1 | Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.
 |DELETE_OLD_FILE_DEBUG | 0 | Spew debug info about deleting old files during schema change.
+|DONT_BLOCK_DELETE_FILES_THREAD | 0 | Don't delete any files that would cause delete files thread to block
 |file_permissions | 0660 | Default filesystem permissions for database files.
 
 #### Log configuration

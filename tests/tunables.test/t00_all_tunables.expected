@@ -244,6 +244,7 @@
 (name='dohsql_pool_thread_slack', description='Forbid parallel sql coordinators from running on this many sql engines (if 0, defaults to 1).', type='INTEGER', value='1', read_only='N')
 (name='dohsql_verbose', description='Run distributed queries in verbose/debug mode', type='BOOLEAN', value='OFF', read_only='N')
 (name='dont_abort_on_in_use_rqid', description='Disable 'abort_on_in_use_rqid'', type='BOOLEAN', value='OFF', read_only='Y')
+(name='dont_block_delete_files_thread', description='Ignore files that would block delete-files thread.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='dont_forbid_ulonglong', description='Disables 'forbid_ulonglong'', type='BOOLEAN', value='OFF', read_only='N')
 (name='dont_init_queue_with_persistent_sequence', description='Disables 'init_queue_with_persistent_sequence'', type='BOOLEAN', value='ON', read_only='Y')
 (name='dont_init_with_inplace_updates', description='Disables 'init_with_inplace_updates'', type='BOOLEAN', value='OFF', read_only='Y')

@@ -179,6 +179,9 @@ static int syncmode_callback(bdb_state_type *bdb_state);
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
 
+/* Dont block when removing old files */
+int gbl_txn_fop_noblock = 0;
+
 static void *get_bdb_handle(struct dbtable *db, int auxdb)
 {
     void *bdb_handle;
@@ -354,8 +357,14 @@ int trans_start_sc(struct ireq *iq, tran_type *parent_trans,
 
 int trans_start_sc_lowpri(struct ireq *iq, tran_type **out_trans)
 {
-    struct txn_properties p = { .flags = DB_LOCK_ID_LOWPRI };
+    struct txn_properties p = {.flags = DB_LOCK_ID_LOWPRI};
     return trans_start_int(iq, NULL, out_trans, 0, 0, &p, 0);
+}
+
+int trans_start_sc_fop(struct ireq *iq, tran_type **out_trans)
+{
+    struct txn_properties p = {.flags = DB_TXN_FOP_NOBLOCK};
+    return trans_start_int(iq, NULL, out_trans, 0, 0, gbl_txn_fop_noblock ? &p : NULL, 0);
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
