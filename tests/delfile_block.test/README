@@ -1,0 +1,1 @@
+Test behavior of delfiles thread when we fail to delete a file because it is locked

@@ -327,6 +327,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, prop)
 		F_SET(txn, TXN_SYNC);
 	if (LF_ISSET(DB_TXN_NOWAIT))
 		F_SET(txn, TXN_NOWAIT);
+	if (prop && prop->flags & DB_TXN_FOP_NOBLOCK) 
+		F_SET(txn, TXN_FOP_NOBLOCK);
 
 	if ((ret =
 		__txn_begin_int_with_prop(txn, prop,

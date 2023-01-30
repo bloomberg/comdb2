@@ -1,0 +1,10 @@
+setattr PRIVATE_BLKSEQ_MAXAGE 1
+setattr MIN_KEEP_LOGS 1
+setattr MIN_KEEP_LOGS_AGE 0 
+setattr LOGDELETEAGE 0
+setattr DEBUG_LOG_DELETION 1
+dont_block_delete_files_thread 1
+debug_random_fop_block 1
+delete_old_file_debug 1
+setattr CHECKPOINTTIME 10
+setattr CHECKPOINTRAND 5

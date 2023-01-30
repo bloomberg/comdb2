@@ -214,6 +214,8 @@ extern int gbl_client_heartbeat_ms;
 extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
+extern int gbl_txn_fop_noblock;
+extern int gbl_debug_random_block_on_fop;
 extern int gbl_random_thdpool_work_timeout;
 extern int gbl_thdpool_queue_only;
 extern int gbl_random_sql_work_delayed;
