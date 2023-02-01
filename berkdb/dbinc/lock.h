@@ -20,6 +20,8 @@ extern size_t gbl_lkr_hash;
 
 #define	DB_LOCK_DEFAULT_N	1000	/* Default # of locks in region. */
 
+#define MAX_BERK_STACK_FRAMES 32
+
 /*
  * The locker id space is divided between the transaction manager and the lock
  * manager.  Lock IDs start at 1 and go to DB_LOCK_MAXID.  Txn IDs start at
