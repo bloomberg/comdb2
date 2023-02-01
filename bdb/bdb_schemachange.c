@@ -257,7 +257,7 @@ retry:
         return -1;
     }
 
-    if ((sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop || sctype == views) &&
+    if ((sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop) &&
         (strncmp(tbl, "sqlite_stat", sizeof("sqlite_stat") - 1) != 0)) {
         bdb_lock_tablename_write(bdb_state, tbl, tran);
     }
