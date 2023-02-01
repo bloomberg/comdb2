@@ -1932,7 +1932,7 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 static void inline
 get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
 {
-	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
+	lockp->frames = backtrace(lockp->buf, MAX_BERK_STACK_FRAMES);
 
 	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
 		abort();
