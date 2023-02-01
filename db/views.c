@@ -142,7 +142,7 @@ static void _view_unregister_shards_lkless(timepart_views_t *views,
 
 static int _create_inmem_view(timepart_views_t *views, timepart_view_t *view,
                               struct errstat *err);
-static int _view_find_current_shard(timepart_view_t *view, struct errstat *err);
+static void _view_find_current_shard(timepart_view_t *view);
 
 enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
@@ -617,15 +617,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
             /* the order of the shards does not dictate current shard,
              * determine the current shard here
              */
-            rc = _view_find_current_shard(view, &xerr);
-            if (rc != VIEW_NOERR) {
-                logmsg(LOGMSG_ERROR, "Unable to find current shard for %s\n",
-                       view->name);
-                timepart_free_view(view);
-
-                view = NULL;
-                goto done;
-            }
+            _view_find_current_shard(view);
         }
     }
 
@@ -2923,7 +2915,7 @@ static int _view_new_rollout_lkless(char *name, int period, int roll_time,
     return rc;
 }
 
-static int _view_find_current_shard(timepart_view_t *view, struct errstat *err)
+static void _view_find_current_shard(timepart_view_t *view)
 {
     int now = comdb2_time_epoch();
     int newest_earlier_shard = -1;
@@ -2940,19 +2932,19 @@ static int _view_find_current_shard(timepart_view_t *view, struct errstat *err)
                 print_dbg_verbose(view->name, &view->source_id, "SSS",
                                   "Found current shard %d\n", i);
                 view->current_shard = i;
-                return VIEW_NOERR;
-            } else if (view->shards[newest_earlier_shard].high <
-                       view->shards[i].high) {
-                /* remember the newest one */
-                newest_earlier_shard = i;
+                return;
             }
         }
+        if (newest_earlier_shard < 0 ||
+            view->shards[newest_earlier_shard].low < view->shards[i].low)
+            newest_earlier_shard = i;
     }
-    assert(newest_earlier_shard >= 0);
+    assert(newest_earlier_shard >= 0 && newest_earlier_shard < view->nshards);
+
     print_dbg_verbose(view->name, &view->source_id, "SSS",
-                      "Found the earliest shard, deem it current %d\n",
+                      "Stale rollout, use last shard%d\n",
                       newest_earlier_shard);
-    return newest_earlier_shard;
+    view->current_shard = newest_earlier_shard;
 }
 
 static int _view_restart_new_rollout(timepart_view_t *view, struct errstat *err)
@@ -2964,9 +2956,7 @@ static int _view_restart_new_rollout(timepart_view_t *view, struct errstat *err)
     print_dbg_verbose(view->name, &view->source_id, "III",
                       "Restart new rollout mode\n");
 
-    rc = _view_find_current_shard(view, err);
-    if (rc != VIEW_NOERR)
-        goto error;
+    _view_find_current_shard(view);
 
     view->roll_time = view->shards[view->current_shard].high;
     rc = _view_new_rollout_lkless(strdup(view->name), view->period,
