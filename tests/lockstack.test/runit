@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export stopfile=./stop.test
+
+function failexit
+{
+    touch $stopfile
+    echo "Failed: $1: $2"
+    exit -1
+}
+
+function verify_enabled
+{
+    typeset func="verify_disabled"
+    typeset tunable=$1
+    write_prompt $func "Verify that $tunable is disabled"
+}
+
+function verify_disabled
+{
+    typeset func="verify_disabled"
+    typeset tunable=$1
+    write_prompt $func "Verify that $tunable is disabled"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select value from comdb2_tunables where name='$1'")
+    [[ "$x" != "OFF" ]] && failexit $func "$tunable is incorrectly ENABLED"
+}
+
+function verify_enabled
+{
+    typeset func="verify_disabled"
+    typeset tunable=$1
+    write_prompt $func "Verify that $tunable is disabled"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select value from comdb2_tunables where name='$1'")
+    [[ "$x" != "ON" ]] && failexit $func "$tunable is incorrectly DISABLED"
+}
+
+function verify_no_stacks
+{
+    typeset func="verify_no_stacks"
+    write_prompt $func "Verify that no stacks have been collected in comdb2_locks"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select count(*) from comdb2_locks where stack !='(no-stack)'")
+    [[ "$x" != "0" ]] && failexit $func "comdb2_locks has collected $x stacks"
+}
+
+function verify_locks
+{
+    typeset func="verify_locks"
+    typeset vtype=$1
+    typeset withstack=$2
+    typeset j=0
+    typeset found_lock=0
+
+    write_prompt $func "Verify that we see $vtype locks"
+
+    sleep 1
+
+    while [[ ! -f $stopfile && $found_writelock -eq 0 && $j -lt 10 ]]; do
+        x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select stack from comdb2_locks where mode='$vtype' and locktype='PAGE'" | sort -u)
+        if [[ -z "$x" ]]; then
+            write_prompt $func "Failed to find any $vtype-locks, iteration $j: sleeping and retrying"
+            let j=j+1
+            sleep 1
+            continue
+        fi
+        found_writelock=1
+        echo "$x" | egrep "(no-stack)" > /dev/null 2>&1
+        r=$?
+
+        # Fail if any writelocks don't have stacks
+        if [[ "$withstack" == 1 ]]; then
+            [[ $r == 0 ]] && failexit $func "All $vtype locks should have stacks: $x"
+            write_prompt $func "Verified that $vtype locks have stacks"
+        # Fail if any writelocks have stacks
+        else
+            [[ $r != 0 ]] && failexit $func "No $vtype locks should have stacks: $x"
+            write_prompt $func "Verified that $vtype locks do not have stacks"
+        fi
+
+    done
+    [[ "$found_writelock" == "0" ]] && failexit $func "Never detected any writelocks"
+}
+
+
+function verify_write_locks
+{
+    verify_locks WRITE $1
+}
+
+function verify_read_locks
+{
+    verify_locks READ $1
+}
+
+function verify_no_stacks_for_write_locks
+{
+    typeset func="verify_no_stacks"
+    write_prompt $func "Verify that we see write-locks and that there are no stacks"
+}
+
+function background_write_thread
+{
+    typeset j=0 
+    typeset table=$1
+    while [[ $j -lt 200 && ! -f $stopfile ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into $table(a) select * from generate_series(1, 1000)" >/dev/null 2>&1
+        let j=j+1
+    done
+}
+
+function background_read_thread
+{
+    typeset j=0 
+    typeset table=$1
+    while [[ $j -lt 1000 && ! -f $stopfile ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select count(*) from $table" >/dev/null 2>&1
+        let j=j+1
+    done
+}
+
+function background_readload
+{
+    typeset i=0
+    typeset table=$1
+    while [[ $i -lt 10 ]]; do
+        background_read_thread $table &
+        let i=i+1
+    done
+    wait
+}
+
+function background_writeload
+{
+    typeset i=0
+    typeset table=$1
+    while [[ $i -lt 10 ]]; do
+        background_write_thread $table &
+        let i=i+1
+    done
+    wait
+}
+
+function verify_stack_at_handle_lock
+{
+    typeset func="verify_stack_at_handle_lock"
+    write_prompt $func "Enable stacks on handle locks"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'stack_at_lock_handle' '1'" >/dev/null 2>&1
+    write_prompt $func "Creating table t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int)" >/dev/null 2>&1
+    write_prompt $func "Verify handle-locks have stacks"
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select * from comdb2_locks where object LIKE 't2%' and locktype='HANDLE'" | sort -u)
+    [[ -z "$x" ]] && failexit $func "No handle locks found"
+    echo "$x" | egrep "(no-stack)" >/dev/null 2>&1
+    r=$?
+    [[ "$r" == 0 ]] && failexit $func "Handle locks have no stack"
+    write_prompt $func "Handle locks all have stacks"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t2" > /dev/null 2>&1
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'stack_at_lock_handle' '0'" >/dev/null 2>&1
+}
+
+function verify_stack_at_write_lock
+{
+    typeset func="verify_stack_at_write_lock"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" >/dev/null 2>&1
+
+    write_prompt $func "Ensure write-locks have no stacks"
+    background_writeload t1 &
+    verify_write_locks 0
+    touch $stopfile
+    wait
+    rm $stopfile >/dev/null 2>&1
+
+    write_prompt $func "Enable stack-at-write-lock tunable, ensure write-locks have stacks"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'stack_at_write_lock' '1'" >/dev/null 2>&1
+    background_writeload t1 &
+    verify_write_locks 1
+    touch $stopfile
+    wait
+    rm $stopfile >/dev/null 2>&1
+
+    write_prompt $func "Disable stack-at-write-lock tunable"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'stack_at_write_lock' '0'" >/dev/null 2>&1
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1" >/dev/null 2>&1
+}
+
+function verify_stack_at_lock_get
+{
+    typeset func="verify_stack_at_lock_get"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int)" >/dev/null 2>&1
+
+    write_prompt $func "Ensure locks have no stacks"
+    background_writeload t3 &
+    background_readlock t3 &
+    verify_write_locks 0
+    verify_read_locks 0
+    touch $stopfile
+    wait
+    rm $stopfile >/dev/null 2>&1
+
+    write_prompt $func "Enable stack-at-lock-get tunable, ensure locks have stacks"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'stack_at_lock_get' '1'" >/dev/null 2>&1
+    background_writeload t3 &
+    background_readlock t3 &
+    verify_write_locks 1
+    verify_read_locks 1
+    touch $stopfile
+    wait
+    rm $stopfile >/dev/null 2>&1
+
+    write_prompt $func "Disable stack-at-lock-get tunable"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'stack_at_lock_get' '0'" >/dev/null 2>&1
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t3" >/dev/null 2>&1
+}
+
+function run_test
+{
+    typeset func="run_test"
+    write_prompt $func "Running $func"
+
+    # Verify that tunables are disabled
+    verify_disabled stack_at_lock_get
+    verify_disabled stack_at_write_lock
+    verify_disabled stack_at_lock_handle
+
+    # Verify that no stacks have been collected
+    verify_no_stacks
+
+    # Verify stack-at-write-lock
+    verify_stack_at_write_lock
+
+    # Verify stack-at-handle-lock
+    verify_stack_at_handle_lock
+
+    # Verify stack-at-lock-get
+    verify_stack_at_lock_get
+}
+
+rm $stopfile >/dev/null 2>&1
+run_test 
+wait
+
+echo "Success"

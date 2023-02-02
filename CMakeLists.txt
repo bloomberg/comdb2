@@ -114,12 +114,6 @@ if(DEBUG_STACK_AT_DB_OPEN_CLOSE)
     add_definitions(-DDEBUG_STACK_AT_DB_OPEN_CLOSE)
 endif()
 
-option(STACK_AT_GET_LOCK "Store a cheapstack at every get-lock" OFF)
-mark_as_advanced(STACK_AT_GET_LOCK)
-if(STACK_AT_GET_LOCK)
-    add_definitions(-DSTACK_AT_GET_LOCK)
-endif()
-
 option(DEBUG_SCHEMA_LK "Assert a thread isn't holding berkley locks when acquiring schemalk" OFF)
 mark_as_advanced(DEBUG_SCHEMA_LK)
 if(DEBUG_SCHEMA_LK)

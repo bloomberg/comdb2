@@ -239,6 +239,14 @@ REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'",
 REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_rowlocks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("stack_at_lock_get", "Stores stack-id for every lock-get.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_lock_get, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_lock_handle", "Stores stack-id for every lock-handle.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_lock_handle, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_write_lock", "Stores stack-id for every write-lock.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_write_lock, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_lock_gen_increment", "Stores stack-id when lock's generation increments.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_stack_at_lock_gen_increment, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_seekscan_optimization",
                  "Disables SEEKSCAN optimization", TUNABLE_BOOLEAN,
                  &gbl_disable_seekscan_optimization, NOARG, NULL, NULL, NULL,

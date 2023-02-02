@@ -40,6 +40,7 @@
 (tablename='comdb2_sc_status', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_sql_client_stats', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_sqlpool_queue', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_stacks', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_systablepermissions', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_systables', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_table_properties', username='mohit', READ='Y', WRITE='Y', DDL='Y')

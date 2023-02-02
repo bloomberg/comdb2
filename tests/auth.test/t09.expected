@@ -255,6 +255,7 @@
 (candidate='comdb2_sc_status')
 (candidate='comdb2_sql_client_stats')
 (candidate='comdb2_sqlpool_queue')
+(candidate='comdb2_stacks')
 (candidate='comdb2_systablepermissions')
 (candidate='comdb2_systables')
 (candidate='comdb2_table_properties')
