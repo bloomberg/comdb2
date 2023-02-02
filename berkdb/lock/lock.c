@@ -1933,13 +1933,6 @@ static void inline
 get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
 {
 	lockp->frames = backtrace(lockp->buf, MAX_BERK_STACK_FRAMES);
-
-	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
-		abort();
-	}
-	lockp->stack_gen = lockp->gen;
-	lockp->tid = pthread_self();
-	lockp->lock = lock;
 }
 #endif
 

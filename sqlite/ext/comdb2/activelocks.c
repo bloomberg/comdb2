@@ -24,6 +24,10 @@
 #include "ezsystables.h"
 #include "cdb2api.h"
 #include "str0.h"
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+#include "dbinc/maxstackframes.h"
+#include "strbuf.h"
+#endif
 
 typedef struct systable_activelocks {
     int64_t                 threadid;
@@ -34,6 +38,11 @@ typedef struct systable_activelocks {
     char                    *type;
     int64_t                 page;
     int                     page_isnull;
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+    int                     frames;
+    void                    *buf[MAX_BERK_STACK_FRAMES];
+    char                    *stack;
+#endif
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -44,7 +53,12 @@ typedef struct getactivelocks {
 
 static int collect(void *args, int64_t threadid, int32_t lockerid,
         const char *mode, const char *status, const char *object,
-        int64_t page, const char *rectype)
+        int64_t page, const char *rectype
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+        ,int frames, void *buf[MAX_BERK_STACK_FRAMES]
+#endif
+    )
+
 {
     getactivelocks_t *a = (getactivelocks_t *)args;
     systable_activelocks_t *l;
@@ -67,6 +81,30 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
     }
     l->object = strdup(object ? object : "");
     l->type = strdup(rectype ? rectype : "");
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+    char **strings;
+    extern char **backtrace_symbols(void *const *, int);
+    strings = backtrace_symbols(buf, frames);
+    strbuf *b = strbuf_new();
+    for (int j = 0, pr = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            p++; q--;
+            while (*p && *p == ' ') p++;
+            while (*q && q > p && *q == ' ') q--;
+            (q[1]) = '\0';
+            if ((q - p) > 0) {
+                if (pr) strbuf_append(b, " ");
+                strbuf_appendf(b, "%s", p);
+                pr = 1;
+            }
+        }
+    }
+    l->stack = strbuf_disown(b);
+    if (strings)
+        free(strings);
+#endif
     return 0;
 }
 
@@ -87,6 +125,9 @@ static void free_activelocks(void *p, int n)
     for (a = begin; a < end; ++a) {
         free(a->object);
         free(a->type);
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+        free(a->stack);
+#endif
     }
     free(p);
 }
@@ -105,5 +146,8 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_CSTRING, "object", -1, offsetof(systable_activelocks_t, object),
             CDB2_CSTRING, "locktype", -1, offsetof(systable_activelocks_t, type),
             CDB2_INTEGER, "page", offsetof(systable_activelocks_t, page_isnull), offsetof(systable_activelocks_t, page),
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+            CDB2_CSTRING, "stack", -1, offsetof(systable_activelocks_t, stack),
+#endif
             SYSTABLE_END_OF_FIELDS);
 }

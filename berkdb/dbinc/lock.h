@@ -20,7 +20,7 @@ extern size_t gbl_lkr_hash;
 
 #define	DB_LOCK_DEFAULT_N	1000	/* Default # of locks in region. */
 
-#define MAX_BERK_STACK_FRAMES 32
+#include <dbinc/maxstackframes.h>
 
 /*
  * The locker id space is divided between the transaction manager and the lock
@@ -360,9 +360,6 @@ struct __db_lock {
 #if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 	int			frames;
 	void		*buf[MAX_BERK_STACK_FRAMES];
-	int 		stack_gen;
-	DB_LOCK		*lock;
-	pthread_t	tid;
 #endif
 };
 

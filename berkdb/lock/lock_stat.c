@@ -735,7 +735,11 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 	if (namep && memcmp(namep, "XXX.", 4) == 0)
 		namep += 4;
 
-	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype);
+	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+        ,lp->frames, lp->buf
+#endif
+    );
 	if (hexdump)
 		free(hexdump);
 	return 0;

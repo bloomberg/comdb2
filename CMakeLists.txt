@@ -114,7 +114,7 @@ if(DEBUG_STACK_AT_DB_OPEN_CLOSE)
     add_definitions(-DDEBUG_STACK_AT_DB_OPEN_CLOSE)
 endif()
 
-option(STACK_AT_GET_LOCK "Store a cheapstack at every get-lock" OFF)
+option(STACK_AT_GET_LOCK "Store a cheapstack at every get-lock" ON)
 mark_as_advanced(STACK_AT_GET_LOCK)
 if(STACK_AT_GET_LOCK)
     add_definitions(-DSTACK_AT_GET_LOCK)

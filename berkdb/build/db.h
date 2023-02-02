@@ -58,6 +58,7 @@
 
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
+#include <dbinc/maxstackframes.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -2189,7 +2190,11 @@ struct __ufid_to_db_t {
 
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
-		int64_t page, const char *rectype);
+		int64_t page, const char *rectype
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+        ,int frames, void *buf[MAX_BERK_STACK_FRAMES]
+#endif
+        );
 
 /* Database Environment handle. */
 struct __db_env {
