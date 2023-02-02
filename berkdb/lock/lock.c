@@ -30,6 +30,8 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 
 #include "dbinc/db_swap.h"
 
+#include "stackutil.h"
+
 #ifndef TESTSUITE
 #include <thread_util.h>
 #include <cheapstack.h>
@@ -2124,7 +2126,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	struct __db_lock *newl, *lp, *firstlp, *wwrite;
 	DB_ENV *dbenv;
 	DB_LOCKER *sh_locker, *master_locker;
-	DB_LOCKOBJ *sh_obj;
+	DB_LOCKOBJ *sh_obj = NULL;
 	DB_LOCKREGION *region;
 	u_int32_t holder, obj_ndx, ihold, *holdarr, holdix, holdsz;
 	extern int gbl_lock_get_verbose_waiter;
@@ -2982,10 +2984,15 @@ expired:			obj_ndx = sh_obj->index;
 	if (holdarr)
 		__os_free(dbenv, holdarr);
 
-	return (0);
+    if (sh_obj)
+        sh_obj->stackid = stackutil_get_stack_id();
+    return 0;
 
 done:
 	ret = 0;
+    if (sh_obj)
+        sh_obj->stackid = stackutil_get_stack_id();
+
 err:
 	if (newl != NULL &&
 	    (t_ret = __lock_freelock(lt, newl, sh_locker,

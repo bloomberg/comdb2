@@ -201,6 +201,7 @@ typedef struct __db_lockobj {
 	u_int32_t partition;
 	u_int32_t index;
 	u_int32_t generation;
+    int       stackid;
 } DB_LOCKOBJ;
 
 typedef struct __db_ilock_latch
