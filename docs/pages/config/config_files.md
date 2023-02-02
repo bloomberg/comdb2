@@ -887,6 +887,9 @@ These options are toggle-able at runtime.
 |disable_inplace_blob_optimization | | Disables enable_inplace_blob_optimization
 |enable_osql_blob_optimization | set | Replicant tracks which columns are modified in a transaction to allow blob updates to be omitted if possible
 |disable_osql_blob_optimization | | Disables disable_osql_blob_optimization
+|stack_at_lock_get| not set | Collect comdb2_stack for every lock
+|stack_at_lock_handle| not set | Collect comdb2_stack for every handle-lock
+|stack_at_write_lock| not set | Collect comdb2_stack for every write-lock
 |pagedeadlock_maxpoll | 5 (ms) | Randomly poll for this many ms and retry a deadlocked component of a rowlocks transaction
 |pagedeadlock_retries | 500 | Retry a deadlocked component of a rowlock transaction this many times before reporting deadlock for the transaction.
 |enable_cache_internal_nodes | set | Btree internal nodes have a higher cache priority.

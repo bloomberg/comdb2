@@ -728,3 +728,14 @@ Heap memory usage
 * `used` - number of used bytes in the allocator
 * `unused` - number of unused bytes in the allocator
 * `peak` - maximum number of bytes used by the allocator since it was created
+
+## comdb2_stacks
+
+Generic stack collection
+
+    comdb2_stacks(id, hits, stack)
+
+* `id` - index of this stack.
+* `hits` - number of times this stack has been collected.
+* `stack` - flattened stack.
+

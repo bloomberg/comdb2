@@ -36,10 +36,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <sys/types.h>
 #endif
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-#include <execinfo.h>
-#include <walkback.h>
-#endif
+#include <stackutil.h>
 #include "dbinc/txn.h"
 #include "logmsg.h"
 #include "util.h"
@@ -56,15 +53,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #define PRINTF(...)
 #endif
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-extern void backtrace_symbols_fd(void *const *, int, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols_fd(A, B, C)
-#endif
-#endif
+
 
 extern int verbose_deadlocks;
 extern int gbl_rowlocks;
@@ -1928,35 +1917,24 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 	return (ret);
 }
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-static void inline
-get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
-{
-	lockp->frames = backtrace(lockp->buf, MAX_BERK_STACK_FRAMES);
-
-	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
-		abort();
-	}
-	lockp->stack_gen = lockp->gen;
-	lockp->tid = pthread_self();
-	lockp->lock = lock;
-}
-#endif
+int gbl_stack_at_lock_get = 0;
+int gbl_stack_at_lock_handle = 0;
+int gbl_stack_at_write_lock = 0;
+int gbl_stack_at_lock_gen_increment = 0;
 
 static void inline
 stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
 {
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
-	get_stack(lockp, lock, 1);
-#endif
+	lockp->stackid = gbl_stack_at_lock_gen_increment ? stackutil_get_stack_id("getlock") : -1;
 }
 
 static void inline
-stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock)
+stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock, int ishandle, int iswrite)
 {
-#ifdef STACK_AT_GET_LOCK
-	get_stack(lockp, lock, 0);
-#endif
+	lockp->stackid = (gbl_stack_at_lock_get ||
+					 (gbl_stack_at_lock_handle && ishandle) ||
+					 (gbl_stack_at_write_lock && iswrite)) ?
+					 stackutil_get_stack_id("getlock") : -1;
 }
 
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */
@@ -2113,13 +2091,14 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	db_timeout_t timeout;
 	DB_LOCK *lock;
 {
-    extern __thread int disable_random_deadlocks;
+	extern __thread int disable_random_deadlocks;
 	if (disable_random_deadlocks == 0 && 
-        unlikely(gbl_ddlk && !LF_ISSET(DB_LOCK_NOWAIT) &&
+		unlikely(gbl_ddlk && !LF_ISSET(DB_LOCK_NOWAIT) &&
 		rand() % gbl_ddlk == 0)) {
 		return DB_LOCK_DEADLOCK;
 	}
 	u_int32_t partition = gbl_lk_parts, lpartition = gbl_lkr_parts;
+	int handlelock = 0, writelock = 0;
 	uint64_t x1 = 0, x2;
 	struct __db_lock *newl, *lp, *firstlp, *wwrite;
 	DB_ENV *dbenv;
@@ -2929,7 +2908,6 @@ expired:			obj_ndx = sh_obj->index;
 	lock->off = R_OFFSET(&lt->reginfo, newl);
 	lock->gen = newl->gen;
 	lock->mode = newl->mode;
-	stack_at_get_lock(newl, lock);
 	sh_locker->nlocks++;
 
 
@@ -2950,11 +2928,13 @@ expired:			obj_ndx = sh_obj->index;
 
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
-	if (is_handlelock(sh_obj))
-        sh_locker->nhandlelocks++;
-
-	if (IS_WRITELOCK(newl->mode))
+	if ((handlelock = is_handlelock(sh_obj)))
+		sh_locker->nhandlelocks++;
+	if ((writelock = IS_WRITELOCK(newl->mode)))
 		sh_locker->nwrites++;
+
+	stack_at_get_lock(newl, lock, handlelock, writelock);
+
 	if (is_pagelock(sh_obj) && IS_WRITELOCK(lock->mode) &&
 	    F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
 		if (sh_locker->ntrackedlocks + 1 > sh_locker->maxtrackedlocks) {

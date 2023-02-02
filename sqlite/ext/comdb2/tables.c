@@ -338,6 +338,8 @@ int comdb2SystblInit(
     rc = systblMemstatsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTransactionStateInit(db);
+  if (rc == SQLITE_OK)  
+    rc = systblStacks(db);
 #endif
   return rc;
 }

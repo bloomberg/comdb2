@@ -1,0 +1,1 @@
+Verify correct behavior of 'stack_at_lock_get', 'stack_at_lock_handle', and 'stack_at_write_lock'
