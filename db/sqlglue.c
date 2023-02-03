@@ -2510,8 +2510,9 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 
     int inprogress;
     if (thd->clnt->is_analyze &&
-        (inprogress = get_schema_change_in_progress(__func__, __LINE__) ||
-                      get_analyze_abort_requested())) {
+        ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
+                      get_analyze_abort_requested() ||
+                      db_is_exiting())) {
         if (inprogress)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because schema_change_in_progress\n",
@@ -2519,6 +2520,10 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
         if (get_analyze_abort_requested())
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because of send analyze abort\n",
+                    __func__);
+        if (db_is_exiting())
+            logmsg(LOGMSG_ERROR,
+                    "%s: Aborting Analyze because db is exiting\n",
                     __func__);
         *done = 1;
         rc = -1;
