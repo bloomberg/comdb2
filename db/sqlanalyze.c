@@ -1190,6 +1190,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
     /* tell comdb2sc the results */
     if (failed) {
         sbuf2printf(sb, "FAILED\n");
+        rc = -1;
     } else {
         sbuf2printf(sb, "SUCCESS\n");
         cleanup_stats(sb);
