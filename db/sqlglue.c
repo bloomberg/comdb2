@@ -119,6 +119,7 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
 extern int gbl_debug_tmptbl_corrupt_mem;
+extern int gbl_exit;
 
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
@@ -2365,8 +2366,9 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 
     int inprogress;
     if (thd->clnt->is_analyze &&
-        (inprogress = get_schema_change_in_progress(__func__, __LINE__) ||
-                      get_analyze_abort_requested())) {
+        ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
+                      get_analyze_abort_requested() ||
+                      gbl_exit)) {
         if (inprogress)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because schema_change_in_progress\n",
@@ -2374,6 +2376,10 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
         if (get_analyze_abort_requested())
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because of send analyze abort\n",
+                    __func__);
+        if (gbl_exit)
+            logmsg(LOGMSG_ERROR,
+                    "%s: Aborting Analyze because db is exiting\n",
                     __func__);
         *done = 1;
         rc = -1;

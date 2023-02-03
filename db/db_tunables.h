@@ -2003,6 +2003,9 @@ REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (D
 REGISTER_TUNABLE("debug_sleep_in_analyze", "Sleep in analyze sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_analyze, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_summarize", "Sleep analyze summarize.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_summarize, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("queue_walk_limit",
                  "When walking queues for metrics, stop after this many elements.  "
                  "(Default: 10000)",
