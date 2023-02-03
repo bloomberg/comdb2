@@ -74,6 +74,7 @@
 #include "analyze.h"
 
 extern int get_schema_change_in_progress(const char *func, int line);
+extern int gbl_exit;
 static double analyze_headroom = 6;
 
 void analyze_set_headroom(uint64_t headroom)
@@ -120,6 +121,7 @@ static DB *dbp_from_meta(DB *dbp, DBMETA *meta)
     return dbp;
 }
 
+int gbl_debug_sleep_in_summarize = 0;
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                         struct temp_table **outtbl, unsigned long long *outrecs,
                         unsigned long long *cmprecs, int *bdberr)
@@ -226,6 +228,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     last = comdb2_time_epoch();
     while (rc == pgsz) {
         if (ISLEAF(page)) {
+            if (gbl_debug_sleep_in_summarize) {
+                sleep(1);
+            }
+
             int i, ret;
             uint8_t *chksum = NULL;
             /* If we have checksums, use them to verify we don't have a partial
@@ -333,13 +339,16 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
 
         int inprogress;
         if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
-            get_analyze_abort_requested()) {
+            get_analyze_abort_requested() || gbl_exit) {
             if (inprogress)
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "schema_change_in_progress\n", __func__);
             if (get_analyze_abort_requested())
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "of send analyze abort\n", __func__);
+            if (gbl_exit)
+                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
+                        "db is exiting\n", __func__);
             rc = -1;
             goto done;
         }
