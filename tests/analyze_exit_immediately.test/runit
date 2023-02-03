@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+set -e
+
+function getmaster {
+    master=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'")
+    if [ "$master" = "" ]; then
+        echo "Failed to get master"
+        exit 1
+    fi
+    echo $master
+}
+
+function fillintables {
+    master=$1
+    for table in t v;
+    do
+        cdb2sql $dbnm --host $master "drop table if exists $table" >/dev/null
+        cdb2sql $dbnm --host $master "create table $table(a int unique)" >/dev/null
+        cdb2sql $dbnm --host $master "insert into $table select * from generate_series(1, 10000)" >/dev/null
+        sleep 3
+    done
+}
+
+# check if a pid is done executing given a timeout and starting point
+function checkifdone {
+    cpid=$1
+    timeout=$2
+    st=$3
+
+    elapsed=0
+
+    # verify pid
+    ps -p $cpid >/dev/null 2>&1
+    while [[ $? == 0 && $elapsed -lt $timeout ]] ; do
+        sleep 1
+
+        # check to see if it's time to break out of the loop
+        et=$SECONDS
+        elapsed=$(( et - st ))
+
+        # verify pid
+        ps -p $cpid >/dev/null 2>&1
+    done
+}
+
+function runtest {
+    master=$1
+    sample=$2
+
+    # pre checks
+    analyzesleep=$(cdb2sql --tabs $dbnm --host $master "select value from comdb2_tunables where name='debug_sleep_in_analyze'")
+    if [ "$analyzesleep" != "ON" ]; then
+        echo "Unable to set debug_sleep_in_analyze to ON, got value $analyzesleep"
+        exit 1
+    fi
+
+    summarizesleep=$(cdb2sql --tabs $dbnm --host $master "select value from comdb2_tunables where name='debug_sleep_in_summarize'")
+    if [ "$summarizesleep" != "ON" ]; then
+        echo "Unable to set debug_sleep_in_summarize to ON, got value $summarizesleep"
+        exit 1
+    fi
+
+    if [ $sample -eq 1 ]; then
+        cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('analyze sample')" >/dev/null
+        cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('analyze thresh 1000')" >/dev/null
+    else
+        cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('analyze nosample')" >/dev/null
+    fi
+
+    # run analyze on master
+    cdb2sql $dbnm --host $master "analyze" 2>analyze.txt &
+    analyzepid=$!
+    sleep 3
+
+    # run exit on master
+    cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('exit')" 2>exit.txt &
+    exitpid=$!
+
+    # error if either are still running after 15 seconds
+    timeout=15
+    st=$SECONDS
+
+    set +e # next block of code relies on checking error codes
+    checkifdone $analyzepid $timeout $st
+    checkifdone $exitpid $timeout $st
+
+    failed=0
+
+    ps -p $analyzepid >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "Error: Analyze still running after 15 seconds"
+        kill -9 $analyzepid >/dev/null 2>&1 
+        failed=1
+    fi
+
+    ps -p $exitpid >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "Error: Exit still running after 15 seconds"
+        kill -9 $exitpid >/dev/null 2>&1 
+        failed=1
+    fi
+    set -e
+
+    # check for other errors
+    analyzeerrors=$(cat analyze.txt)
+    exiterrors=$(cat exit.txt)
+
+    rm analyze.txt
+    rm exit.txt
+
+    if [ "$analyzeerrors" != "" ]; then
+        echo "Analyze Error (this is ok): $analyzeerrors"
+    else
+        echo "Error: Analyze did not error"
+        failed=1
+    fi
+
+    if [ "$exiterrors" != "" ]; then
+        echo "Exit Error: $exiterrors"
+        failed=1
+    fi
+
+    if [ $failed -eq 1 ]; then
+        exit 1
+    fi
+}
+
+master=`getmaster`
+
+fillintables $master
+
+echo "Test analyze + exit"
+runtest $master 0
+
+echo "Analyze passed"
+
+sleep 10
+
+echo "Test sampling + exit"
+master=`getmaster`
+runtest $master 1
+
+echo "Sampling passed"

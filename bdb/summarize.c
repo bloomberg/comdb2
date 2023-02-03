@@ -269,6 +269,7 @@ int sampler_close(sampler_t *sampler)
     return 0;
 }
 
+int gbl_debug_sleep_in_summarize = 0;
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                         sampler_t **samplerp, unsigned long long *outrecs,
                         unsigned long long *cmprecs, int *bdberr)
@@ -385,6 +386,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         if (!ISLEAF(page))
             continue;
 
+        if (gbl_debug_sleep_in_summarize) {
+            sleep(1);
+        }
+
         int ret;
         uint8_t *chksum = NULL;
         /* If we have checksums, use them to verify we don't have
@@ -468,13 +473,16 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
 
         int inprogress;
         if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
-            get_analyze_abort_requested()) {
+            get_analyze_abort_requested() || db_is_exiting()) {
             if (inprogress)
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "schema_change_in_progress\n", __func__);
             if (get_analyze_abort_requested())
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "of send analyze abort\n", __func__);
+            if (db_is_exiting())
+                logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
+                        "db is exiting\n", __func__);
             rc = -1;
             goto done;
         }
