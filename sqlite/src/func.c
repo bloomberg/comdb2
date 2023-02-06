@@ -2622,8 +2622,8 @@ static void dbglogCookieFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  uint64_t comdb2fastseed(void);
-  sqlite3_result_int64(context, (i64)comdb2fastseed());
+  uint64_t comdb2fastseed(int);
+  sqlite3_result_int64(context, (i64)comdb2fastseed(4));
 }
 
 static void dbglogBeginFunc(

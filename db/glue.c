@@ -5712,7 +5712,7 @@ long long get_unique_longlong(struct dbenv *env)
     if (gbl_use_fastseed_for_comdb2_seqno) {
         uint64_t uid;
 
-        uid = comdb2fastseed();
+        uid = comdb2fastseed(3);
         uid = flibc_htonll(uid);
         memcpy(&id, &uid, sizeof(uid));
     } else {
