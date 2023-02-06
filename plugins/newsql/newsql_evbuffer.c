@@ -629,8 +629,9 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
     case SSL_ERROR_ZERO_RETURN: disable_ssl_evbuffer(appdata); // fallthrough
     case SSL_ERROR_WANT_READ: return 1;
     case SSL_ERROR_SYSCALL:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
-               __func__, __LINE__, rc, err, errno, strerror(errno));
+        if (errno == ECONNRESET) break;
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d SSL_ERROR_SYSCALL errno:%d [%s]\n",
+               __func__, __LINE__, rc, errno, strerror(errno));
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
