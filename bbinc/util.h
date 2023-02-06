@@ -60,7 +60,8 @@ void timeval_diff(struct timeval *before, struct timeval *after,
                   struct timeval *diff);
 int getroom_callback(void *dummy, const char *host);
 
-uint64_t comdb2fastseed(void);
+uint64_t comdb2fastseed(int srcid);
+void report_fastseed_users(int lvl);
 
 char *inet_ntoa_r(in_addr_t addr, char out[16]);
 

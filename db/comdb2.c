@@ -1456,6 +1456,8 @@ static void free_sqlite_table(struct dbenv *dbenv)
  */
 void clean_exit(void)
 {
+    report_fastseed_users(LOGMSG_ERROR);
+
     int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
     logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
