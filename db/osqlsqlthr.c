@@ -236,7 +236,7 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
             osql->rqid = OSQL_RQID_USE_UUID;
             comdb2uuid(osql->uuid);
         } else {
-            osql->rqid = comdb2fastseed();
+            osql->rqid = comdb2fastseed(0);
             comdb2uuid_clear(osql->uuid);
             assert(osql->rqid);
         }

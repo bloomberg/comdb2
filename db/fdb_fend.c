@@ -2389,7 +2389,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
         comdb2uuid(fdbc->ciduuid);
         memcpy(fdbc->tid, tid, sizeof(uuid_t));
     } else {
-        *((unsigned long long *)fdbc->cid) = comdb2fastseed();
+        *((unsigned long long *)fdbc->cid) = comdb2fastseed(1);
         memcpy(fdbc->tid, tid, sizeof(unsigned long long));
     }
     fdbc->flags = flags;
@@ -3766,7 +3766,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         if (tran->isuuid) {
             comdb2uuid((unsigned char *)tran->tid);
         } else
-            *(unsigned long long *)tran->tid = comdb2fastseed();
+            *(unsigned long long *)tran->tid = comdb2fastseed(2);
 
         tran->fdb = fdb;
 

@@ -1648,6 +1648,8 @@ static void begin_clean_exit(void)
  */
 void clean_exit(void)
 {
+    report_fastseed_users(LOGMSG_ERROR);
+
     if(gbl_perform_full_clean_exit) {
         begin_clean_exit();
         return;
