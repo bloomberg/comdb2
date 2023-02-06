@@ -2935,8 +2935,8 @@ static void _view_find_current_shard(timepart_view_t *view)
                 return;
             }
         }
-        if (newest_earlier_shard < 0 ||
-            view->shards[newest_earlier_shard].low < view->shards[i].low)
+        if (newest_earlier_shard < 0 || (view->shards[i].low != INT_MAX && 
+            view->shards[newest_earlier_shard].low < view->shards[i].low))
             newest_earlier_shard = i;
     }
     assert(newest_earlier_shard >= 0 && newest_earlier_shard < view->nshards);
