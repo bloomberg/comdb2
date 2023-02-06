@@ -2189,7 +2189,7 @@ struct __ufid_to_db_t {
 
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
-		int64_t page, const char *rectype);
+		int64_t page, const char *rectype, int lockid);
 
 /* Database Environment handle. */
 struct __db_env {

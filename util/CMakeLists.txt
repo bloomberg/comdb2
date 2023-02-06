@@ -40,6 +40,7 @@ set(src
   sbuf2.c
   schema_lk.c
   segstring.c
+  stackutil.c
   sltpck.c
   ssl_glue.c
   ssl_support.c

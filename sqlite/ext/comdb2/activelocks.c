@@ -34,6 +34,8 @@ typedef struct systable_activelocks {
     char                    *type;
     int64_t                 page;
     int                     page_isnull;
+    int                     stackid_isnull;
+    int64_t                 stackid;
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -44,7 +46,7 @@ typedef struct getactivelocks {
 
 static int collect(void *args, int64_t threadid, int32_t lockerid,
         const char *mode, const char *status, const char *object,
-        int64_t page, const char *rectype)
+        int64_t page, const char *rectype, int stackid)
 {
     getactivelocks_t *a = (getactivelocks_t *)args;
     systable_activelocks_t *l;
@@ -67,6 +69,8 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
     }
     l->object = strdup(object ? object : "");
     l->type = strdup(rectype ? rectype : "");
+    l->stackid_isnull = (stackid == -1) ? 1 : 0;
+    l->stackid = stackid;
     return 0;
 }
 
@@ -105,5 +109,6 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_CSTRING, "object", -1, offsetof(systable_activelocks_t, object),
             CDB2_CSTRING, "locktype", -1, offsetof(systable_activelocks_t, type),
             CDB2_INTEGER, "page", offsetof(systable_activelocks_t, page_isnull), offsetof(systable_activelocks_t, page),
+            CDB2_INTEGER, "stack", offsetof(systable_activelocks_t, stackid_isnull), offsetof(systable_activelocks_t, stackid),
             SYSTABLE_END_OF_FIELDS);
 }
