@@ -56,16 +56,17 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
     double current_cost_per_row = (double)cost / nrows;
     struct query_plan_item *q = hash_find(t->query_plan_hash, &query_plan);
     char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
+    *fp = '\0';
     if (q == NULL) {
         /* make sure we haven't generated an unreasonable number of these */
         int nents = hash_get_num_entries(t->query_plan_hash);
         if (nents >= gbl_query_plan_max_plans) {
-            if (t->alert_once_query_plan) {
+            if (t->alert_once_query_plan_max) {
                 util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
                 logmsg(LOGMSG_WARN,
                        "Stopped tracking query plans for query %s with fingerprint %s, hit max #plans %d.\n",
                        t->zNormSql, fp, gbl_query_plan_max_plans);
-                t->alert_once_query_plan = 0;
+                t->alert_once_query_plan_max = 0;
             }
             return;
         } else {
@@ -91,23 +92,38 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
     double current_avg = q->avg_cost_per_row;
     void *ent;
     unsigned int bkt;
+    double max_diff = 0;
+    double current_diff;
     double significance = 1 + gbl_query_plan_percentage / 100;
     for (q = (struct query_plan_item *)hash_first(t->query_plan_hash, &ent, &bkt); q;
          q = (struct query_plan_item *)hash_next(t->query_plan_hash, &ent, &bkt)) {
-        if (q->alert_once_cost &&
-            q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
-            util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
-            logmsg(LOGMSG_WARN,
-                   "Better plan available for fingerprint %s, avg cost per row difference: %f, current # rows: %ld\n",
-                   fp, current_avg - q->avg_cost_per_row, nrows);
+        if (q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
+            current_diff = current_avg - q->avg_cost_per_row;
+            if (t->alert_once_query_plan && current_diff > max_diff)
+                max_diff = current_diff;
 
-            ctrace("For query %s with fingerprint %s:\n"
-                   "Currently using query plan %s, which has an average cost per row of %f.\n"
-                   "But query plan %s has a lower average cost per row of %f.\n",
-                   t->zNormSql, fp, query_plan, current_avg, q->plan, q->avg_cost_per_row);
+            if (q->alert_once_cost) { // Only log query plan cost differences once per query plan in trace, but reset if the avg cost changes
+                if (!*fp)
+                    util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
 
-            q->alert_once_cost = 0;
+                ctrace("For query %s with fingerprint %s:\n"
+                       "Currently using query plan %s, which has an average cost per row of %f.\n"
+                       "But query plan %s has a lower average cost per row of %f.\n",
+                       t->zNormSql, fp, query_plan, current_avg, q->plan, q->avg_cost_per_row);
+
+                q->alert_once_cost = 0;
+            }
         }
+    }
+
+    if (max_diff > 0 && t->alert_once_query_plan) { // only print once per fingerprint (even if avg cost changes), and print the max diff plan only
+        if (!*fp)
+            util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
+
+        logmsg(LOGMSG_WARN,
+               "Possible better plan available for fingerprint %s, avg cost per row difference: %f, current # rows: %ld\n",
+               fp, max_diff, nrows);
+        t->alert_once_query_plan = 0;
     }
 }
 
@@ -166,6 +182,7 @@ int clear_query_plans()
             plans_count += free_query_plan_hash(f->query_plan_hash);
             f->query_plan_hash = NULL;
             f->alert_once_query_plan = 1;
+            f->alert_once_query_plan_max = 1;
         }
     }
 
