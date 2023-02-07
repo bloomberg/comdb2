@@ -2073,11 +2073,12 @@ static void pmux_get_readcb(int fd, short what, void *data)
         return;
     }
     update_event_port(e, port);
+    /*
     if (gbl_pmux_route_enabled) {
         pmux_rte(c);
         return;
     }
-    /* Thanks pmux for the port */
+    */
     c->fd = -1;
     shutdown_close(fd);
     comdb2_connect(c, port);
@@ -2164,11 +2165,14 @@ static void pmux_connect(int dummyfd, short what, void *data)
         return;
     }
     hprintf("CONNECTING fd:%d\n", c->fd);
+    /*
     if (gbl_pmux_route_enabled && e->port != 0) {
         pmux_rte(c);
     } else {
         pmux_get(c);
     }
+    */
+    pmux_get(c);
 }
 
 static struct timeval ms_to_timeval(int ms)
