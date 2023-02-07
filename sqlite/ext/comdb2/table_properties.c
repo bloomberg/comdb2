@@ -36,14 +36,11 @@ typedef struct systable_table_properties {
     const char *instant_schema_change;
 } systable_table_properties_t;
 
-int table_properties_systable_collect(void **data, int *nrecords)
-{
+static void table_properties_gather_data(systable_table_properties_t *arr, struct dbtable **dbs, int nrecords, int startIndex) {
     int odh, compr, blob_compr;
-
-    *nrecords = thedb->num_dbs;
-    systable_table_properties_t *arr = calloc(*nrecords, sizeof(systable_table_properties_t));
-    for (int i = 0; i < *nrecords; i++) {
-        struct dbtable *db = thedb->dbs[i];
+    for (int ii = 0; ii < nrecords; ii++) {
+        int i = ii + startIndex;
+        struct dbtable *db = dbs[ii];
         bdb_get_compr_flags(db->handle, &odh, &compr, &blob_compr);
 
         arr[i].table_name = strdup(db->tablename);
@@ -52,6 +49,20 @@ int table_properties_systable_collect(void **data, int *nrecords)
         arr[i].blob_compress = bdb_algo2compr(blob_compr);
         arr[i].in_place_updates = db->inplace_updates ? "Y" : "N";
         arr[i].instant_schema_change = db->instant_schema_change ? "Y" : "N";
+    }
+}
+
+int table_properties_systable_collect(void **data, int *nrecords)
+{
+    *nrecords = thedb->num_dbs + thedb->num_qdbs;
+    systable_table_properties_t *arr = calloc(*nrecords, sizeof(systable_table_properties_t));
+
+    if (thedb->num_dbs) {
+        table_properties_gather_data(arr, thedb->dbs, thedb->num_dbs, 0);
+    }
+
+    if (thedb->num_qdbs) {
+        table_properties_gather_data(arr, thedb->qdbs, thedb->num_qdbs, thedb->num_dbs);
     }
 
     *data = arr;
