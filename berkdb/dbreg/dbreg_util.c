@@ -469,8 +469,8 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	DB_LSN *lsnp;
 {
 	DB_LOG *dblp;
-	DB *dbp;
-	int ret;
+	DB *dbp = NULL;
+	int ret = 0;
 	dblp = dbenv->lg_handle;
 
 	extern int gbl_abort_ufid_open;
@@ -485,11 +485,11 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 
 	if ((ret = __db_open(dbp, txn, name, NULL,
 		DB_UNKNOWN, DB_ODDFILESIZE, __db_omode("rw----"), 0)) != 0) {
-		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error opening db:%s\n", name);
-		abort();
+		logmsg(LOGMSG_INFO, "__dbreg_fid_to_fname error opening db:%s\n", name);
+		ret = ENOENT;
 	}
 	(*dbpp) = dbp;
-	return 0;
+	return ret;
 }
 
 int gbl_abort_on_missing_ufid = 0;
