@@ -231,6 +231,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         if (gbl_query_plans && !is_lua && clnt->query_stats->n_components > 0 && nrows > 0) {
             t->query_plan_hash = hash_init_strptr(0);
             t->alert_once_query_plan = 1;
+            t->alert_once_query_plan_max = 1;
             add_query_plan(clnt->query_stats, cost, nrows, t);
         } else {
             t->query_plan_hash = NULL;
@@ -280,6 +281,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
             if (!t->query_plan_hash) {
                 t->query_plan_hash = hash_init_strptr(0);
                 t->alert_once_query_plan = 1;
+                t->alert_once_query_plan_max = 1;
             }
             add_query_plan(clnt->query_stats, cost, nrows, t);
         }

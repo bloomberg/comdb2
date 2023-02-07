@@ -85,7 +85,8 @@ struct fingerprint_track {
     int nameMismatch; /* Column name(s) did not match when compared to sqlitex's */
 
     hash_t *query_plan_hash;   /* Query plans associated with fingerprint + cost stats */
-    int alert_once_query_plan; /* Alert (once) if hit max number of plans for associated query. Init to 1 */
+    int alert_once_query_plan; /* Alert only once if there is a better query plan for a query. Init to 1 */
+    int alert_once_query_plan_max; /* Alert (once) if hit max number of plans for associated query. Init to 1 */
 };
 
 struct sql_authorizer_state {
@@ -1382,7 +1383,7 @@ struct query_plan_item {
     double avg_cost_per_row;
     double total_cost_per_row;
     int nexecutions;
-    int alert_once_cost; /* Only log query plan cost differences once, reset if the avg cost changes. Init to 1 */
+    int alert_once_cost; /* Only log query plan cost differences once per query plan in trace, but reset if the avg cost changes. Init to 1 */
 };
 int free_query_plan_hash(hash_t *query_plan_hash);
 int clear_query_plans();
