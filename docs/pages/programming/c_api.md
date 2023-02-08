@@ -358,27 +358,65 @@ Parameters:
 
 ### cdb2_bind_array
 ```
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type, const void *varaddr, unsigned int count, int typelen)
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
 
 ```
 
 Description:
+`Carray` is a table-valued function with a single column (named "value") and zero or more rows, corresponding to the values in the array. The "value" of each row in the carray() is taken from a C-language array supplied by the application via parameter binding by calling `cdb2_bind_array`. In this way, the carray() function provides a convenient mechanism to bind C-language arrays to SQL queries. There can only be a single `carray` parameter in a given SQL statement. This means only one array parameter can be used in a single SQL statement.
 
-This routine is used to bind arrays in an sql statement, for use with sql statements with IN clause with many parameters example: `SELECT * FROM t1 WHERE a IN CARRAY(@myarray)` as a replacement for 'select * from t1 where a IN (1,2,3,4,...)`.
+`cdb2_bind_array` is also used to bind an array of values passed to a stored procedure (without the `carray` keyword.) The `main` function in the procedure will receive a Lua array with corresponding values for every array parameter. User can pass multiple array arguments to a procedure.
 
-Usage example for an array with 10 elements:
+This routine supports binding CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING and CDB2_BLOB values. The maximum number of elements in the array is `INT16_MAX`. For CDB2_INTEGER arrays, application must provide size of elements (`sizeof(int32_t)` or `sizeof(int64_t)`). The pointer `varaddr` accepts following types: `int32_t *` (or `int64_t *`) for `CDB2_INTEGER`, `double *` for `CDB2_REAL` and `char **` for `CDB2_STRING`. For `CDB2_BLOB`, the pointer should point to array of structures defined as:
 
 ```c
-char *sql = "SELECT * FROM t1 WHERE a IN CARRAY(@myarray)”
-int arr[10] = {1,2,3,4...};
-
-cdb2_bind_array(hndl, "myarray", CDB2_INTEGER, arr, 10, sizeof(int));
-cdb2_run_statement(db, sql);
+struct {
+    size_t len;
+    void * data;
+};
 ```
 
-Notice that you can name parameter `myarray` any valid varable name you want.
 
-Other usage of such binding can be an insert statement such as this: `INSERT INTO t2 SELECT * FROM CARRAY(@myintarr)`.
+Examples:
+
+```c
+//int32_t array:
+int arr[10] = {1,2,3,4...};
+cdb2_bind_array(hndl, "arr", CDB2_INTEGER, arr, 10, sizeof(int));
+
+
+//Run the SQL statement:
+cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)”);
+
+
+//bind cstrings:
+char *strs[] = {"hello", "world"};
+cdb2_bind_array(hndl, "strings", CDB2_CSTRING, strs, 2, 0);
+cdb2_run_statement(db, `INSERT INTO b SELECT * FROM CARRAY(@strings)`.
+
+
+//bind blobs:
+struct {
+    size_t len;
+    void *ptr;
+} b[2];
+
+b[0].len = 4;
+b[0].ptr = 0x600dcafe;
+
+b[1].len = 2;
+b[2].ptr = 0xf00d;
+cdb2_bind_array(hndle, "blobs", CDB2_BLOB, b, 2, 0);
+
+
+//Pass array to stored procedure:
+cdb2_run_statement(db, "exec procedure sp(@arr)");
+
+//or pass multiple array parameters:
+cdb2_run_statement(db, "exec procedure sp(@arr, @strings, @blobs)");
+
+
+```
 
 Parameters:
 
