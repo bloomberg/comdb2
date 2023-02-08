@@ -2928,7 +2928,7 @@ static void free_normalized_sql(
   }
 }
 
-static void free_original_normalized_sql(
+void free_original_normalized_sql(
   struct sqlclntstate *clnt
 ){
   if (clnt->work.zOrigNormSql) {
@@ -4498,8 +4498,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 int gbl_debug_sqlthd_failures;
 int gbl_enable_internal_sql_stmt_caching = 1;
 
-static int execute_verify_indexes(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt)
+static int execute_verify_indexes(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     int rc;
     stmt_cache_entry_t *cached_entry = NULL;

@@ -193,3 +193,9 @@ const char *mach_class_class2tier(int value)
 
     return ret;
 }
+
+int is_valid_mach_class(const char *name)
+{
+  if (hash_find(classes, &name) == NULL) return 0;
+  return 1;
+}

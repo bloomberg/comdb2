@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2022, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@
 #include "dbinc/mp.h"
 #include <trigger.h>
 #include "printformats.h"
+#include "phys_rep.h"
 #include "phys_rep_lsn.h"
 #include <compat.h>
 #include "str0.h"
@@ -427,7 +428,7 @@ void bdb_transfermaster(bdb_state_type *bdb_state)
     }
 }
 
-int gbl_set_coherent_state_trace = 0;
+int gbl_set_coherent_state_trace = 1;
 
 char *coherent_state_to_str(int state)
 {
@@ -1177,6 +1178,9 @@ elect_again:
     }
 
     if (!is_electable(bdb_state, &num, &num_connected)) {
+        logmsg(LOGMSG_USER,
+              "election will not be held, connected to %d of %d nodes\n",
+              num_connected, num);
         print(bdb_state,
               "election will not be held, connected to %d of %d nodes\n",
               num_connected, num);
@@ -1342,8 +1346,10 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
     logmsg(LOGMSG_INFO, "call_for_election: creating elect thread\n");
     rc = pthread_create(&elect_thr, &(bdb_state->pthread_attr_detach),
                         elect_thread, (void *)elect_thread_args);
-    if (rc)
+    if (rc) {
         logmsg(LOGMSG_ERROR, "call_for_election: can't create election thread: %d\n", rc);
+        free(elect_thread_args);
+    }
 }
 
 void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
@@ -1403,12 +1409,10 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
                __func__, bdb_state->repinfo->master_host,
                bdb_state->repinfo->myhost);
         goto done;
-    } else {
-        if (gbl_write_dummy_trace) {
-            logmsg(LOGMSG_USER,
-                   "%s: adding dummy record for master %s, host %s\n", __func__,
-                   bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
-        }
+    } else if (gbl_write_dummy_trace) {
+        logmsg(LOGMSG_USER,
+               "%s: adding dummy record for master %s, host %s\n", __func__,
+               bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
     }
 
     add_dummy(bdb_state);
@@ -2312,6 +2316,11 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 lastpr = now;
             }
 
+            if (gbl_is_physical_replicant == 1) {
+                logmsg(LOGMSG_USER,
+                       "%s: got seqnum from %s of gen %u (high), i want %u, count=%llu\n",
+                       __func__, host, seqnum->generation, mygen, count);
+            } else
             if (bdb_state->attr->downgrade_on_seqnum_gen_mismatch &&
                 bdb_state->repinfo->master_host == bdb_state->repinfo->myhost)
                 call_for_election(bdb_state, __func__, __LINE__);
@@ -2361,6 +2370,10 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         }
     } else
         change_coherency = 1;
+
+    if (gbl_is_physical_replicant == 1) {
+        change_coherency = 1;
+    }
 
     /* if a node is incoherent_slow and we haven't seen any packets for a while,
      * make it plain old incoherent.  Need to
@@ -4842,6 +4855,9 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         break;
 
     case USER_TYPE_TRUNCATE_LOG:
+        if (gbl_physrep_debug == 1)
+            logmsg(LOGMSG_USER, "%s:%d processing truncate log message\n", __func__, __LINE__);
+
         p_buf = (uint8_t *)dta;
         p_buf_end = ((uint8_t *)dta + dtalen);
         if ((db_lsn_type_get(&trunc_lsn, p_buf, p_buf_end)) == NULL) {

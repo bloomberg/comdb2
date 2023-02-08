@@ -153,6 +153,7 @@ extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;
 extern int gbl_fdb_track;
 extern int gbl_selectv_rangechk;
+extern int gbl_enable_internal_sql_stmt_caching;
 
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
@@ -11302,6 +11303,8 @@ sbuf:
         return NULL;
     }
 
+    logmsg(LOGMSG_INFO, "%s:%d connected to remote fd: %d\n", __func__, __LINE__, sbuf2fileno(sb));
+
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
     return sb;
@@ -12506,7 +12509,8 @@ static int bind_stmt_mem(struct schema *sc, sqlite3_stmt *stmt, Mem *m)
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm)
 {
     struct schema_mem *psm = (struct schema_mem *)sm;
-    bind_stmt_mem(psm->sc, stmt, psm->min);
+    if (psm->sc)
+        bind_stmt_mem(psm->sc, stmt, psm->min);
 }
 
 /* verify_indexes_column_value
@@ -13189,3 +13193,4 @@ int comdb2_is_field_indexable(const char *table_name, int fld_idx) {
     }
     return 1;
 }
+

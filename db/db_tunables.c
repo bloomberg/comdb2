@@ -237,13 +237,8 @@ extern int gbl_random_sql_work_rejected;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
-extern int gbl_verbose_physrep;
-extern int gbl_physrep_exit_on_invalid_logstream;
-extern int gbl_blocking_physrep;
 extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_send_failed_dispatch_message;
-extern int gbl_physrep_reconnect_penalty;
-extern int gbl_physrep_register_interval;
 extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
 extern int gbl_online_recovery;
@@ -409,6 +404,31 @@ extern int gbl_warn_on_equiv_type_mismatch;
 extern int gbl_warn_on_equiv_types;
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
+
+/* Physical replication */
+extern int gbl_blocking_physrep;
+extern int gbl_physrep_check_minlog_freq_sec;
+extern int gbl_physrep_debug;
+extern int gbl_physrep_exit_on_invalid_logstream;
+extern int gbl_physrep_fanout;
+extern int gbl_physrep_hung_replicant_check_freq_sec;
+extern int gbl_physrep_hung_replicant_threshold;
+extern int gbl_physrep_keepalive_freq_sec;
+extern int gbl_physrep_max_candidates;
+extern int gbl_physrep_max_pending_replicants;
+extern int gbl_physrep_reconnect_penalty;
+extern int gbl_physrep_register_interval;
+extern int gbl_physrep_shuffle_host_list;
+
+extern char *gbl_physrep_source_dbname;
+extern char *gbl_physrep_source_host;
+extern char *gbl_physrep_metadb_name;
+extern char *gbl_physrep_metadb_host;
+
+/* Reversql connection/sql */
+extern int gbl_revsql_allow_command_exec;
+extern int gbl_revsql_debug;
+extern int gbl_revsql_cdb2_debug;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,

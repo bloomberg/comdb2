@@ -56,7 +56,9 @@ enum SBUF2_FLAGS {
     /* sbuf2close() will not flush the underlying fd */
     SBUF2_NO_FLUSH = 8,
     /* adjust read/write calls to write on non-blocking socket */
-    SBUF2_NO_BLOCK = 16
+    SBUF2_NO_BLOCK = 16,
+    /* the underlying connection has been marked 'READONLY' */
+    SBUF2_IS_READONLY = 32,
 };
 
 typedef int (*sbuf2readfn)(SBUF2 *sb, char *buf, int nbytes);
@@ -69,6 +71,12 @@ int SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb);
 /* set flags on an SBUF2 after opening */
 void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags);
 #define sbuf2setflags SBUF2_FUNC(sbuf2setflags)
+
+void SBUF2_FUNC(sbuf2setisreadonly)(SBUF2 *sb);
+#define sbuf2setisreadonly SBUF2_FUNC(sbuf2setisreadonly)
+
+int SBUF2_FUNC(sbuf2getisreadonly)(SBUF2 *sb);
+#define sbuf2getisreadonly SBUF2_FUNC(sbuf2getisreadonly)
 
 /* open SBUF2 for file descriptor.  returns SBUF2 handle or 0 if error.*/
 SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags);

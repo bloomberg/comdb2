@@ -104,8 +104,10 @@
 #include <bdb_queuedb.h>
 #include <schema_lk.h>
 #include <tohex.h>
-#include <phys_rep_lsn.h>
 #include <timer_util.h>
+
+#include <phys_rep.h>
+#include <phys_rep_lsn.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -3566,6 +3568,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
     }
 
+    physrep_update_low_file_num(&lowfilenum, &local_lowfilenum);
+
     /* debug: print filenums from other nodes */
 
     /* if we have a maximum filenum defined in bdb attributes which is lower,
@@ -5043,7 +5047,7 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
     whoismaster_rtn(bdb_state, 0);
 }
 
-static inline void bdb_set_read_only(bdb_state_type *bdb_state)
+void bdb_set_read_only(bdb_state_type *bdb_state)
 {
     bdb_state_type *child;
     int i;

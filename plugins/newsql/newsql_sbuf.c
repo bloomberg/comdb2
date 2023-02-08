@@ -291,6 +291,8 @@ static void newsql_setup_clnt_sbuf(struct sqlclntstate *clnt, SBUF2 *sb)
     clnt->origin = origin ? origin : intern("???");
     clnt->appdata = appdata;
 
+    clnt->force_readonly = sbuf2getisreadonly(sb);
+
     newsql_setup_clnt(clnt);
     clnt_register(clnt);
     plugin_set_callbacks_newsql(sbuf);

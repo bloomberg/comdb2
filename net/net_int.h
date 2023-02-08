@@ -453,4 +453,8 @@ int get_hosts_evbuffer(int n, host_node_type **);
 
 int should_reject_request(void);
 
+#if defined _SUN_SOURCE
+void wait_alive(int fd);
+#endif
+
 #endif /* INCLUDED__NET_INT_H */

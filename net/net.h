@@ -28,6 +28,7 @@
 #include <cdb2_constants.h>
 #include <perf.h>
 #include <sbuf2.h>
+#include <event2/buffer.h>
 
 #ifndef HOST_NAME_MAX
 #   ifdef MAXHOSTNAMELEN
@@ -36,6 +37,11 @@
 #       define HOST_NAME_MAX 64
 #   endif
 #endif
+
+extern int gbl_libevent;
+extern int gbl_libevent_appsock;
+extern int gbl_libevent_rte_only;
+extern int gbl_net_maxconn;
 
 /* Public structures and typedefs */
 struct netinfo_struct;
@@ -424,9 +430,9 @@ void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
 void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records *);
 void net_queue_stat_iterate_evbuffer(netinfo_type *, QSTATITERFP, struct net_get_records *);
+void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter, void *arg);
 
-void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
-                          void *arg);
+int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly);
 
 /* Blocks until the net-queue is X% full or less */
 int net_throttle_wait(netinfo_type *netinfo_ptr);
@@ -452,17 +458,6 @@ void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
 void update_host_net_queue_stats(host_node_type *, size_t, size_t);
-extern int gbl_libevent;
-extern int gbl_libevent_appsock;
-extern int gbl_libevent_rte_only;
-
-extern int gbl_net_maxconn;
-
-#if 0
-void add_tcp_event(int, void(*)(int, short, void *), void *);
-void add_udp_event(int, void(*)(int, short, void *), void *);
-void add_timer_event(void(*)(int, short, void *), void *, int);
-#endif
 int db_is_stopped(void);
 int db_is_exiting(void);
 void stop_event_net(void);

@@ -1,3 +1,19 @@
+/*
+   Copyright 2015, 2023, Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -408,54 +424,6 @@ static int db_comdb_truncate_time(Lua L) {
     return 1;
 }
 
-
-static int db_comdb_apply_log(Lua L) {
-    SP sp = getsp(L);
-    sp->max_num_instructions = 1000000; //allow large number of steps
-    char *lsnstr = NULL;
-    int rc, newfile;
-    blob_t blob; 
-
-    if (lua_isstring(L, 1)) {
-        lsnstr = (char *) lua_tostring(L, 1);
-    }
-    else {
-        return luaL_error(L, 
-                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
-                "1st param not string.");
-    }
-
-    luabb_toblob(L, 2, &blob);
-
-    if (lua_isnumber(L, 3))
-    {
-        newfile = (int) lua_tointeger(L, 1);
-    }
-    else {
-        return luaL_error(L, 
-                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
-                "3rd param not int flag.");
-    }
-
-    unsigned int file, offset; 
-  
-    if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
-        return luaL_error(L, 
-                "Usage: apply_log(\"{<file>:<offset>}\", 'blob'). "
-                "LSN not valid.");
-    }
-    logmsg(LOGMSG_USER, "applying log lsn {%u:%u}\n", file, offset);
-
-    if ((rc = apply_log_procedure(file, offset, blob.data, 
-                    blob.length, newfile)) != 0)
-    {
-        return luaL_error(L, "Log apply failed.");
-    }
-
-    return 1;
-}
-
-
 static int db_send(Lua L) {
     FILE *f;
     char buf[1024];
@@ -514,17 +482,11 @@ static int db_send(Lua L) {
 
     return 1;
 }
-
 static int db_comdb_start_replication(Lua L)
 {
     int rc;
 
-    if (!gbl_is_physical_replicant)
-    {
-        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
-    }
-
-    if ((rc = start_replication()) != 0)
+    if ((rc = start_physrep_threads()) != 0)
     {
         if (rc > 0)
         {
@@ -538,12 +500,7 @@ static int db_comdb_start_replication(Lua L)
 
 static int db_comdb_stop_replication(Lua L)
 {
-    if (!gbl_is_physical_replicant)
-    {
-        return luaL_error(L, "Database is not a physical replicant, cannot replicate");
-    }
-
-    if (stop_replication() != 0)
+    if (stop_physrep_threads() != 0)
     {
         return luaL_error(L, "Something went horribly wrong. Replicating thread wouldn't stop");
     }
@@ -551,35 +508,6 @@ static int db_comdb_stop_replication(Lua L)
     return 1;
 }
 
-extern char gbl_dbname[MAX_DBNAME_LENGTH];
-
-static int db_comdb_register_replicant(Lua L)
-{
-    int nnodes;
-    struct host_node_info nodes[REPMAX];
-    nnodes = net_get_nodes_info(thedb->handle_sibling, REPMAX, nodes);
-
-    lua_createtable(L, nnodes, 0);
-    for (int i = 0; i < nnodes; i++) {
-        lua_createtable(L, 3, 0);
-
-        lua_pushstring(L, "tier");
-        lua_pushinteger(L, 0);
-        lua_settable(L, -3);
-
-        lua_pushstring(L, "dbname");
-        lua_pushstring(L, gbl_dbname);
-        lua_settable(L, -3);
-
-        lua_pushstring(L, "host");
-        lua_pushstring(L, nodes[i].host);
-        lua_settable(L, -3);
-
-        lua_rawseti(L, -2, i+1);
-    }
-
-    return 1;
-}
 
 // delete sc history by tablename and by seed
 static int db_comdb_delete_sc_history(Lua L)
@@ -598,6 +526,31 @@ static int db_comdb_delete_sc_history(Lua L)
     return 1;
 }
 
+extern int gbl_physrep_fanout;
+extern int gbl_physrep_max_pending_replicants;
+extern int gbl_physrep_max_candidates;
+
+static int db_comdb_physrep_tunables(Lua L)
+{
+    int tunables_count = 3;
+
+    lua_createtable(L, tunables_count, 0);
+
+    lua_pushstring(L, "physrep_fanout");
+    lua_pushinteger(L, gbl_physrep_fanout);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "physrep_max_candidates");
+    lua_pushinteger(L, gbl_physrep_max_candidates);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "physrep_max_pending_replicants");
+    lua_pushinteger(L, gbl_physrep_max_pending_replicants);
+    lua_settable(L, -3);
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -607,10 +560,9 @@ static const luaL_Reg sys_funcs[] = {
     { "comdb_verify", db_comdb_verify },
     { "truncate_log", db_comdb_truncate_log },
     { "truncate_time", db_comdb_truncate_time },
-    { "apply_log", db_comdb_apply_log },
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
-    { "register_replicant", db_comdb_register_replicant },
+    { "physrep_tunables", db_comdb_physrep_tunables },
     { "delete_sc_history", db_comdb_delete_sc_history },
     { NULL, NULL }
 }; 
@@ -761,29 +713,6 @@ static struct sp_source syssps[] = {
         "end\n",
         NULL
     }
-
-    /* allow replication assignment */
-    ,{
-        "sys.cmd.register_replicant",
-        "local function main(dbname, machname, file, offset)\n"
-        "    local schema = {\n"
-        "        { 'int',    'tier' },\n"
-        "        { 'string', 'dbname' },\n"
-        "        { 'string', 'host' },\n"
-        "    }\n"
-        "    db:num_columns(table.getn(schema))\n"
-        "    for i, v in ipairs(schema) do\n"
-        "        db:column_name(v[2], i)\n"
-        "        db:column_type(v[1], i)\n"
-        "    end\n"
-        "    local rep_machs\n"
-        "    rep_machs = sys.register_replicant(dbname, machname, file, offset)\n"
-        "    for i, v in ipairs(rep_machs) do\n"
-        "        db:emit(v)\n"
-        "    end\n"
-        "end\n",
-        "register_replicant"
-    }
     ,{
         /* delete all but the last N rows from llmeta for this table */
         "sys.cmd.trim_sc_history",
@@ -813,7 +742,8 @@ static struct sp_source syssps[] = {
         "  end \n"
         "end\n",
         NULL
-    }
+    },
+    @CMAKE_SYSSP_LIST@
 };
 
 char* find_syssp(const char *s, char **override) {

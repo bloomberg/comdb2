@@ -1,3 +1,8 @@
+add_custom_command(OUTPUT syssp.c
+                   COMMAND ${CMAKE_COMMAND} -DCURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DCURRENT_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/configure_syssp_c.cmake.in
+                   DEPENDS lib/
+                   COMMENT "Configuring lua/syssp.c")
+
 add_library(lua
   lapi.c
   lauxlib.c
@@ -31,7 +36,7 @@ add_library(lua
   lvm.c
   lzio.c
   sp.c
-  syssp.c
+  ${CMAKE_BINARY_DIR}/lua/syssp.c
 )
 
 set(module lua)

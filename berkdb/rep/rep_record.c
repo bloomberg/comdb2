@@ -80,6 +80,7 @@ extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 extern int gbl_is_physical_replicant;
 extern int gbl_dumptxn_at_commit;
+
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
 int gbl_inmem_repdb = 0;
@@ -480,8 +481,8 @@ static pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t release_cond = PTHREAD_COND_INITIALIZER;
 static pthread_t apply_thd;
 static int apply_thd_created = 0;
-LISTC_T(struct queued_log) log_queue;
-LISTC_T(struct repdb_rec) repdb_queue;
+static LISTC_T(struct queued_log) log_queue;
+static LISTC_T(struct repdb_rec) repdb_queue;
 
 extern int bdb_the_lock_desired(void); 
 void bdb_relthelock(const char *funcname, int line);
@@ -608,7 +609,8 @@ static void *apply_thread(void *arg)
 			rec.data = q->data;
 			rec.size = q->size;
 
-			if (rep->gen == q->gen) {
+			if (rep->gen == q->gen || (gbl_is_physical_replicant
+						   && (rep->log_gen == q->gen))) {
 				static int last_print = 0, last_applying_print = 0;
 				static unsigned long long count = 0;
 				int now;
@@ -1195,8 +1197,11 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	 * except requests that are indicative of a new client that needs
 	 * to get in sync.
 	 */
-	if (rp->gen < gen && rp->rectype != REP_ALIVE_REQ &&
-		rp->rectype != REP_NEWCLIENT && rp->rectype != REP_MASTER_REQ) {
+	if ((gbl_is_physical_replicant && rp->gen < rep->log_gen) ||
+		(rp->gen < gen &&
+			rp->rectype != REP_ALIVE_REQ &&
+			rp->rectype != REP_NEWCLIENT &&
+			rp->rectype != REP_MASTER_REQ)) {
 		/*
 		 * We don't hold the rep mutex, and could miscount if we race.
 		 */
@@ -3087,7 +3092,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 				lp->ready_lsn.file, lp->ready_lsn.offset, count);
 		goto done;
 	}
-	
+
 	if (cmp == 0) {
 		/* We got the log record that we are expecting. */
 		if (rp->rectype == REP_NEWFILE) {
@@ -3917,7 +3922,8 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 	rp.flags = 0;
 
 	/* call with decoupled = 2 to differentiate from true master */
-	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
+	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp,
+			      (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2);
 
 	if (ret == 0 || ret == DB_REP_ISPERM) {
 		bdb_set_seqnum(dbenv->app_private);
@@ -6680,10 +6686,10 @@ __rep_cmp_vote(dbenv, rep, eidp, egen, lsnp, priority, gen, committed_gen, tiebr
 		 * LSN is primary determinant. Then priority if LSNs
 		 * are equal, then tiebreaker if both are equal.
 		 */
-		if (cmp > 0 ||
-			(cmp == 0 && (priority > rep->w_priority ||
-				(priority == rep->w_priority &&
-				(tiebreaker > rep->w_tiebreaker))))) {
+                 if (cmp > 0 ||
+                     (cmp == 0 && (priority > rep->w_priority ||
+                                   (priority == rep->w_priority &&
+				   (tiebreaker > rep->w_tiebreaker))))) {
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Accepting new vote");
@@ -7049,7 +7055,7 @@ restart:
 	ret = __db_apprec(dbenv, lsnp, trunclsnp, undo, DB_RECOVER_NOCKP);
 
 	/* Increase generation before releasing recovery lock */
-	if (i_am_master && !gbl_is_physical_replicant) {
+	if (i_am_master) {
 		uint32_t newgen = rep->gen+(20+rand()%20);
 		__rep_set_gen(dbenv, __func__, __LINE__, newgen);
 	}
@@ -7910,8 +7916,11 @@ __truncate_repdb(dbenv)
 		return 0;
 	}
 
-	if ((!F_ISSET(rep, REP_ISCLIENT) && !gbl_is_physical_replicant) || !db_rep->rep_db)
+	if ((!F_ISSET(rep, REP_ISCLIENT) && !gbl_is_physical_replicant) || !db_rep->rep_db) {
+                logmsg(LOGMSG_FATAL, "%s:%d returning DB_NOTFOUND\n", __func__, __LINE__);
 		return DB_NOTFOUND;
+        }
+
 
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 	F_SET(db_rep->rep_db, DB_AM_RECOVER);

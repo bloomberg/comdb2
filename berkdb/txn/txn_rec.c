@@ -438,8 +438,10 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
-		if (argp->generation > rep->gen)
+		if (argp->generation > rep->gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
@@ -737,15 +739,17 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
-        rep->committed_lsn = *lsnp;
-        if (argp->generation > rep->gen)
-            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+		rep->committed_lsn = *lsnp;
+		if (argp->generation > rep->gen) {
+			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+			__rep_set_gen(dbenv, __func__, __LINE__, rep->gen);
+		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	} 
+	}
 	else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
-	    	(!IS_ZERO_LSN(headp->trunc_lsn) &&
-		log_compare(&headp->trunc_lsn, lsnp) < 0)) 
+		(!IS_ZERO_LSN(headp->trunc_lsn) &&
+		log_compare(&headp->trunc_lsn, lsnp) < 0))
 	{
 		/* We're truncating to someplace before this commit */
 		assert(op == DB_TXN_BACKWARD_ROLL);

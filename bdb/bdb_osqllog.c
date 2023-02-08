@@ -4399,7 +4399,7 @@ int bdb_osql_log_undo_required(tran_type *tran, bdb_osql_log_t *log)
 
 extern bdb_state_type *gbl_bdb_state;
 
-static int is_commit(u_int32_t rectype)
+int is_commit(u_int32_t rectype)
 {
     switch (rectype) {
     case DB___txn_regop:

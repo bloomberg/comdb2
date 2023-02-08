@@ -681,8 +681,8 @@ out:
     return rc;
 }
 
-static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
-                       SBUF2 *sb, void *inptr, int maxbytes)
+int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
+                SBUF2 *sb, void *inptr, int maxbytes)
 {
     uint8_t *ptr = inptr;
     const int fd = sbuf2fileno(sb);
@@ -4567,6 +4567,7 @@ int net_get_port_by_service(const char *dbname)
 
 int gbl_waitalive_iterations = 3;
 
+#if defined _SUN_SOURCE
 void wait_alive(int fd)
 {
     int iter = gbl_waitalive_iterations, i;
@@ -4584,6 +4585,7 @@ void wait_alive(int fd)
         poll(NULL, 0, 10);
     }
 }
+#endif
 
 static void *connect_thread(void *arg)
 {
@@ -6575,6 +6577,7 @@ int net_listen(int port)
 #if defined _SUN_SOURCE
     wait_alive(listenfd);
 #endif
+
 #ifdef NODELAY
     flag = 1;
     len = sizeof(flag);

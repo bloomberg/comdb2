@@ -28,6 +28,8 @@
 
 #include <newsql.h>
 
+void free_original_normalized_sql(struct sqlclntstate *);
+
 extern int gbl_allow_incoherent_sql;
 extern int gbl_disable_skip_rows;
 extern int gbl_return_long_column_names;
@@ -2004,6 +2006,9 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     clnt->sql = sql_query->sql_query;
     Pthread_mutex_unlock(&clnt->sql_lk);
     clnt->added_to_hist = 0;
+
+    free_original_normalized_sql(clnt);
+
     if (!in_client_trans(clnt)) {
         bzero(&clnt->effects, sizeof(clnt->effects));
         bzero(&clnt->log_effects, sizeof(clnt->log_effects));
@@ -2074,9 +2079,12 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         return -1;
     }
 
-    /* Mark connection as readonly, if the db is running in readonly mode or
-       if the connection was explicitly set to readonly. */
-    if (gbl_readonly || clnt->is_readonly_set)
+    /* Mark connection as readonly, if the
+     * 1. db is running in readonly mode,
+     * 2. the connection is forced to run in readonly mode, or
+     * 3. the connection is explicitly set to in readonly mode
+     */
+    if (gbl_readonly || clnt->force_readonly || clnt->is_readonly_set)
         clnt->is_readonly = 1;
     else
         clnt->is_readonly = 0;

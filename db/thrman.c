@@ -50,6 +50,7 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "str0.h"
+#include "phys_rep.h"
 
 extern struct thdpool *gbl_loadcache_thdpool;
 
@@ -546,6 +547,8 @@ void stop_threads(struct dbenv *dbenv)
 
     block_new_requests(dbenv);
     dbenv->no_more_sql_connections = 1;
+
+    stop_physrep_threads();
 
     if (gbl_appsock_thdpool)
         thdpool_stop(gbl_appsock_thdpool);

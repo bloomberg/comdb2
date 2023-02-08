@@ -2585,6 +2585,37 @@ static void read_len(int fd, short what, void *data)
     }
 }
 
+int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly)
+{
+    struct appsock_info *info = NULL;
+    struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
+    if (b.pos == -1) {
+        b = evbuffer_search(buf, " ", 1, NULL);
+    }
+
+    if (b.pos != -1) {
+        char key[b.pos + 2];
+        evbuffer_copyout(buf, key, b.pos + 1);
+        key[b.pos + 1] = 0;
+        info = get_appsock_info(key);
+    }
+
+    if (info == NULL) return 1;
+
+    evbuffer_drain(buf, b.pos + 1);
+    struct appsock_handler_arg *arg = malloc(sizeof(*arg));
+    arg->fd = fd;
+    arg->addr = *ss;
+    arg->rd_buf = buf;
+    arg->is_readonly = is_readonly;
+
+    static int appsock_counter = 0;
+    arg->base = appsock_base[appsock_counter++];
+    if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
+    evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
+    return 0;
+}
+
 static void do_read(int fd, short what, void *data)
 {
     check_base_thd();
@@ -2617,30 +2648,10 @@ static void do_read(int fd, short what, void *data)
         shutdown_close(fd);
         return;
     }
-    struct appsock_info *info = NULL;
-    struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
-    if (b.pos == -1) {
-        b = evbuffer_search(buf, " ", 1, NULL);
-    }
-    if (b.pos != -1) {
-        char key[b.pos + 2];
-        evbuffer_copyout(buf, key, b.pos + 1);
-        key[b.pos + 1] = 0;
-        info = get_appsock_info(key);
-    }
-    if (info) {
-        evbuffer_drain(buf, b.pos + 1);
-        struct appsock_handler_arg *arg = malloc(sizeof(*arg));
-        arg->fd = fd;
-        arg->addr = ss;
-        arg->rd_buf = buf;
 
-        static int appsock_counter = 0;
-        arg->base = appsock_base[appsock_counter++];
-        if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
-        evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
+    if ((do_appsock_evbuffer(buf, &ss, fd, 0)) == 0)
         return;
-    }
+
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 

@@ -14,11 +14,12 @@ set(PLUGIN_BASE_DIR "${PROJECT_SOURCE_DIR}/plugins")
 # Clear the list of static plugin libraries from cache.
 unset(PLUGIN_LIBRARIES CACHE)
 
+add_subdirectory(dbqueuedb)
 add_subdirectory(logdelete)
 add_subdirectory(newsql)
 add_subdirectory(remsql)
 add_subdirectory(repopnewlrl)
-add_subdirectory(dbqueuedb)
+add_subdirectory(reversesql)
 add_subdirectory(sockbplog)
 
 set(COMDB2_EXTRA_PLUGINS ${EXTRA_PLUGINS} CACHE PATH "Path to additional plugins")

@@ -41,6 +41,7 @@ RUN apt-get update && \
     time \
     tzdata \
     valgrind \
+    vim \
     uuid-dev && \
   ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
   dpkg-reconfigure --frontend noninteractive tzdata

@@ -90,6 +90,8 @@ int gbl_abort_on_illegal_log_put = 0;
 
 extern int gbl_wal_osync;
 
+extern char *gbl_physrep_source_dbname;
+
 /*
  * __log_put_pp --
  *	DB_ENV->log_put pre/post processing.
@@ -2300,6 +2302,90 @@ __log_rep_put(dbenv, lsnp, rec)
 
 	DB_ASSERT(log_compare(lsnp, &lp->lsn) == 0);
 	ret = __log_putr(dblp, lsnp, dbt, lp->lsn.offset - lp->len, &hdr);
+
+        /* Physical replication:
+
+           In a 'physical replication cluster', it is the leader node's job to
+           read changes from the source, apply them locally and also transmit
+           the changes to other nodes in the cluster. The following code
+           enables the replication of logs to other nodes in the cluster.
+        */
+	if (IS_REP_MASTER(dbenv)) {
+                assert(gbl_physrep_source_dbname != NULL);
+		/*
+		 * If we are not a rep application, but are sharing a
+		 * master rep env, we should not be writing log records.
+		 */
+		if (dbenv->rep_send == NULL) {
+			__db_err(dbenv, "%s %s",
+			    "Non-replication DB_ENV handle attempting",
+			    "to modify a replicated environment");
+			ret = EINVAL;
+			goto err;
+		}
+
+		/*
+		 * If we changed files and we're in a replicated
+		 * environment, we need to inform our clients now that
+		 * we've dropped the region lock.
+		 *
+		 * Note that a failed NEWFILE send is a dropped message
+		 * that our client can handle, so we can ignore it.  It's
+		 * possible that the record we already put is a commit, so
+		 * we don't just want to return failure.
+		 */
+#if 0
+		if (!IS_ZERO_LSN(old_lsn))
+			(void)__rep_send_message(dbenv,
+			    db_eid_broadcast, REP_NEWFILE, &old_lsn, NULL, 0,
+			    usr_ptr);
+#endif
+
+		/*
+		 * Then send the log record itself on to our clients.
+		 *
+		 * If the send fails and we're a commit or checkpoint,
+		 * there's nothing we can do;  the record's in the log.
+		 * Flush it, even if we're running with TXN_NOSYNC, on the
+		 * grounds that it should be in durable form somewhere.
+		 */
+		/*
+		 * !!!
+		 * In the crypto case, we MUST send the udbt, not the
+		 * now-encrypted dbt.  Clients have no way to decrypt
+		 * without the header.
+		 */
+		/* COMDB2 MODIFICATION
+		 *
+		 * We want to be able to throttle log propagation to
+		 * avoid filling the net queue; this will allow signal
+		 * messages and catching up log replies to be
+		 * transferred even though the database is under heavy
+		 * load.  Problem is, in berkdb_send_rtn both regular
+		 * log messages and catching up log replies are coming
+		 * as REP_LOG In __log_push we replace REP_LOG with
+		 * REP_LOG_LOGPUT so we know that this must be
+		 * throttled; we revert to REP_LOG in the same routine
+		 * before sending the message
+		 */
+                DB_LSN lsn;
+                lsn = *lsnp;
+
+                int flags = 0;
+                u_int32_t rectype = 0;
+
+                LOGCOPY_32(&rectype, rec->data);
+                normalize_rectype(&rectype);
+                if (is_commit_record(rectype)) {
+                    flags = DB_REP_FLUSH|DB_LOG_PERM;
+                }
+
+		if ((__rep_send_message(dbenv,
+			    db_eid_broadcast, REP_LOG, &lsn, rec, flags,
+			    NULL) != 0) && LF_ISSET(DB_LOG_PERM))
+			 LF_SET(DB_FLUSH);
+	}
+
 err:
 	/*
 	 * !!! Assume caller holds db_rep->db_mutex to modify ready_lsn.
