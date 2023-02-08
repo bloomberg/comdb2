@@ -463,7 +463,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    if ((rc = check_option_queue_coherency(sc, db)))
+    if (sc->kind != SC_DROPTABLE && (rc = check_option_queue_coherency(sc, db)))
         goto done;
 
     /* TODO: other checks: procedure with this name must not exist either */
