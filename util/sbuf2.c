@@ -547,6 +547,11 @@ static int swrite_unsecure(SBUF2 *sb, const char *cc, int len)
             return -100000 + pol.revents;
         /*can write*/
     }
+#if 0
+    char buf[100] = {0};
+    memcpy(buf, cc, (len < 99) ? len : 99);
+    printf("%s:%d writing data of size %d '%s'\n", __func__, __LINE__, len, buf);
+#endif
     return write(sb->fd, cc, len);
 }
 
@@ -770,6 +775,16 @@ int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
 void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags)
 {
     sb->flags |= flags;
+}
+
+void SBUF2_FUNC(sbuf2setisreadonly)(SBUF2 *sb)
+{
+    sb->flags |= SBUF2_IS_READONLY;
+}
+
+int SBUF2_FUNC(sbuf2getisreadonly)(SBUF2 *sb)
+{
+    return (sb->flags & SBUF2_IS_READONLY) ? 1 : 0;
 }
 
 SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)

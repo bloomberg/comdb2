@@ -11,6 +11,7 @@ struct sqlclntstate;
 
 struct appsock_handler_arg {
     int fd;
+    int is_readonly;
     struct sockaddr_in addr;
     struct evbuffer *rd_buf;
     struct event_base *base;

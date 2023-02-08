@@ -54,6 +54,14 @@ if [[ -n "$CLUSTER" ]]; then
     fi
 fi
 
+override_physrep_sp()
+{
+    local mnode=`getmaster`
+    # Override the register_replicant stored procedure
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $dbname --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+}
+override_physrep_sp
+
 # use copycomdb2 to create a physical replicant
 
 ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR

@@ -6,10 +6,9 @@
 
 #include <parse_lsn.h>
 
-extern int gbl_verbose_physrep;
+extern int gbl_physrep_debug;
 extern struct dbenv *thedb;
 extern int gbl_match_on_ckp;
-void close_repl_connection(void);
 
 LOG_INFO find_match_lsn(void *bdb_state, cdb2_hndl_tp *repl_db,
                         LOG_INFO start_info);
@@ -19,12 +18,12 @@ LOG_INFO handle_truncation(cdb2_hndl_tp *repl_db, LOG_INFO latest_info)
     LOG_INFO match_lsn = find_match_lsn(thedb->bdb_env, repl_db, latest_info);
 
     if (match_lsn.file == 0) {
-        if (gbl_verbose_physrep)
-            logmsg(LOGMSG_USER, "%s: unable to find match-lsn", __func__);
+        if (gbl_physrep_debug)
+            logmsg(LOGMSG_USER, "%s: unable to find match-lsn\n", __func__);
         return match_lsn;
     }
 
-    if (gbl_verbose_physrep) {
+    if (gbl_physrep_debug) {
         logmsg(LOGMSG_USER, "Rewind to lsn: {%u:%u}\n", match_lsn.file,
                match_lsn.offset);
     }

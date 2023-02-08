@@ -2,6 +2,8 @@
 
 #set -x
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 export DESTDB=${TESTCASE}dest${TESTID}
 export DEST_DBDIR=${DBDIR}/$DESTDB
@@ -130,26 +132,32 @@ function check_physrep_file_sizes
 function verify_ignored_tables
 {
     # Give physreps 100 seconds to catch up
-    t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
-    t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
 
+    t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
+    t3=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t3" 2>&1)
+
+    t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
+    t3p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t3" 2>&1)
+
+    # Physrep t1 & t3 should match parent
     j=0
-    while [[ "$j" -lt 100 && "$t1" != "$t1p" ]] ; do
+    while [[ "$j" -lt 101 ]] && [[ "$t1" != "$t1p" || "$t3" != "$t3p" ]] ; do
         sleep 1
-        t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
-        t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
+
+        t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
+        t3=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t3" 2>&1)
+
+        t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
+        t3p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t3" 2>&1)
+
         let j=j+1
     done
-    [[ "$t1" != "$t1p" ]] && failexit "physrep has different count than parent: cluster=$t1 vs physrep=$t1p"
+    [[ "$t1" != "$t1p" ]] && failexit "t1 has different size on physrep: cluster=$t1 vs physrep=$t1p"
+    [[ "$t3" != "$t3p" ]] && failexit "t3 has different size on physrep: cluster=$t3 vs physrep=$t3p"
 
     # Physrep t2 should be ignored
     t2=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t2" 2>&1)
     [[ "$t2" != *"no such table"* ]] && failexit "ignored table t2 accessible from physrep"
-
-    # Physrep t3 should match parent 
-    t3=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t3" 2>&1)
-    t3p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t3" 2>&1)
-    [[ "$t3" != "$t3p" ]] && failexit "physrep has different count than parent"
 
     # Physrep t4 should be ignored
     t4=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t4" 2>&1)
@@ -175,11 +183,19 @@ function insert_new_records
     done
 }
 
+function override_physrep_sp
+{
+    local mnode=`getmaster`
+    # Override the register_replicant stored procedure
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+}
+
 function run_test
 {
     rm $stopfile
 
     create_tables
+    override_physrep_sp
     fill_tables
     flush_nodes
     create_physrep

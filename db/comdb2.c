@@ -139,6 +139,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_query_preparer.h"
 #include <net_appsock.h>
 #include "sc_csc2.h"
+#include "reverse_conn.h"
 
 #define tokdup strndup
 
@@ -390,7 +391,6 @@ int gbl_replicate_local_concurrent = 0;
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
-char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 char *gbl_timepart_file_name = NULL;
 int gbl_max_lua_instructions = 10000;
@@ -1507,9 +1507,6 @@ static void free_view_hash(hash_t *view_hash)
  */
 static void finish_clean()
 {
-    if(gbl_is_physical_replicant)
-        stop_replication();
-
     int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
@@ -1547,6 +1544,7 @@ static void finish_clean()
         free_view_hash(thedb->view_hash);
         thedb->view_hash = NULL;
     }
+    free(thedb->envname);
 
     cleanup_interned_strings();
     cleanup_peer_hash();
@@ -5655,6 +5653,8 @@ int main(int argc, char **argv)
     }
     Pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
     Pthread_attr_destroy(&timer_attr);
+
+    start_physrep_threads();
 
     if (!gbl_perform_full_clean_exit) {
         void *ret;

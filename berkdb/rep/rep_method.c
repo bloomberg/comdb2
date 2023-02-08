@@ -123,6 +123,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_stat = __rep_stat;
 		dbenv->rep_deadlocks = __rep_deadlocks;
 		dbenv->get_rep_gen = __rep_get_gen;
+		dbenv->get_rep_log_gen = __rep_get_log_gen;
 		dbenv->get_last_locked = __rep_get_last_locked;
 		dbenv->get_rep_limit = __rep_get_limit;
 		dbenv->set_rep_limit = __rep_set_limit;
@@ -380,6 +381,7 @@ __rep_start(dbenv, dbt, gen, flags)
 
 			logmsg(LOGMSG_DEBUG, "%s line %d upgrading to gen %d egen %d\n",
 					__func__, __LINE__, rep->gen, rep->egen);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
 		}
 		F_CLR(rep, REP_F_WAITSTART);
 		Pthread_mutex_unlock(&rep_candidate_lock);
@@ -1124,8 +1126,10 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_lsn = *lsn = curlsn;
 		rep->committed_gen = *gen = txn_gen_args->generation;
-		if (rep->gen < rep->committed_gen)
+		if (rep->gen < rep->committed_gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_free(dbenv, txn_gen_args);
 	} else if (rectype == DB___txn_dist_prepare) {
@@ -1148,8 +1152,10 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_lsn = *lsn = curlsn;
 		rep->committed_gen = *gen = txn_rl_args->generation;
-		if (rep->gen < rep->committed_gen)
+		if (rep->gen < rep->committed_gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		__os_free(dbenv, txn_rl_args);
 	} else if (rectype == DB___txn_regop) {

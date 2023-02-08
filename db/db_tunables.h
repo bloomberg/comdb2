@@ -1832,28 +1832,86 @@ REGISTER_TUNABLE("match_on_ckp",
                  TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("verbose_physrep",
-                 "Print extended physrep trace.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_verbose_physrep, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("physrep_reconnect_penalty",
-                 "Physrep wait seconds before retry to the same node.  "
-                 "(Default: 5)",
-                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
-                 NULL, NULL);
-
-REGISTER_TUNABLE("physrep_register_interval",
-                 "Interval for physical replicant re-registration.  "
-                 "(Default: 3600)",
-                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL,
-                 NULL, NULL);
-
+/* physical replication */
 REGISTER_TUNABLE("blocking_physrep",
-                 "Physical replicant blocks on select.  "
-                 "(Default: false)",
+                 "Physical replicant blocks on select. (Default: false)",
                  TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("physrep_check_minlog_freq_sec",
+                 "Check the minimum log number to keep this often. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physrep_check_minlog_freq_sec, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_debug",
+                 "Print extended physrep trace. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_debug, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_fanout",
+                 "Maximum number of physical replicants that a node can service (Default: 8)",
+                 TUNABLE_INTEGER, &gbl_physrep_fanout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_hung_replicant_check_freq_sec",
+                 "Check for hung physical replicant this often. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physrep_hung_replicant_check_freq_sec, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_hung_replicant_threshold",
+                 "Report if the physical replicant has been inactive for this duration. (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_physrep_hung_replicant_threshold, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_keepalive_freq_sec",
+                 "Periodically send lsn to source node after this interval. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physrep_keepalive_freq_sec, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_max_candidates",
+                 "Maximum number of candidates that should be returned to a "
+                 "new physical replicant during registration. (Default: 6)",
+                 TUNABLE_INTEGER, &gbl_physrep_max_candidates, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_max_pending_replicants",
+                 "There can be no more than this many physical replicants in "
+                 "pending state. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physrep_max_pending_replicants, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb cluster hosts.",
+                 TUNABLE_STRING, &gbl_physrep_metadb_host, READONLY, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster name.",
+                 TUNABLE_STRING, &gbl_physrep_metadb_name, READONLY, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("physrep_reconnect_penalty",
+                 "Physrep wait seconds before retry to the same node. (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("physrep_register_interval",
+                 "Interval for physical replicant re-registration. (Default: 3600)",
+                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("physrep_shuffle_host_list",
+                 "Shuffle the host list returned by register_replicant() "
+                 "before connecting to the hosts. (Default: OFF)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_shuffle_host_list, 0, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("physrep_source_dbname", "Physical replication source cluster dbname.",
+                 TUNABLE_STRING, &gbl_physrep_source_dbname, READONLY, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("physrep_source_host", "List of physical replication source cluster hosts.",
+                 TUNABLE_STRING, &gbl_physrep_source_host, READONLY, NULL, NULL, NULL,
+                 NULL);
+
+/* reversql-sql */
+REGISTER_TUNABLE("revsql_allow_command_execution",
+                 "Allow processing and execution of command over the 'reverse connection' "
+                 "that has come in as part of the request. This is mostly intended for "
+                 "testing. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_revsql_allow_command_exec, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_debug",
+                 "Print extended reversql-sql trace. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_revsql_debug, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_cdb2_debug",
+                 "Print extended reversql-sql cdb2 related trace. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_revsql_cdb2_debug, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
@@ -2225,9 +2283,6 @@ REGISTER_TUNABLE("max_trigger_threads", "Maximum number of trigger threads allow
 REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_test_io_errors, INTERNAL, NULL, NULL,
                  NULL, NULL);
-
-REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);

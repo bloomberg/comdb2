@@ -42,6 +42,7 @@
 #define TRANLOG_COLUMN_LSN_FILE     12 /* Useful for sorting records by LSN */
 #define TRANLOG_COLUMN_LSN_OFFSET   13
 
+extern int gbl_apprec_gen;
 
 /* Modeled after generate_series */
 typedef struct tranlog_cursor tranlog_cursor;
@@ -59,6 +60,7 @@ struct tranlog_cursor {
   int hitLast;
   int notDurable;
   int openCursor;
+  int startAppRecGen;
   DB_LOGC *logc;             /* Log Cursor */
   DBT data;
 };
@@ -94,6 +96,7 @@ static int tranlogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
+  pCur->startAppRecGen = gbl_apprec_gen;
   *ppCursor = &pCur->base;
   return SQLITE_OK;
 }
@@ -223,6 +226,11 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
                  (peer dropped connection, max query time reached, etc.) */
               if ((rc = comdb2_sql_tick()) != 0)
                   return rc;
+
+              if (db_is_exiting() || pCur->startAppRecGen != gbl_apprec_gen) {
+                    pCur->hitLast = 1;
+                    return SQLITE_OK;
+              }
 
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);

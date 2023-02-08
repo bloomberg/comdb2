@@ -782,6 +782,7 @@ struct sqlclntstate {
     int is_hasql_retry;
     int is_readonly;
     int is_readonly_set; /* Whether 'readonly' was set explicitly via SET command? */
+    int force_readonly;
     int is_expert;
     int is_fast_expert; /* 1 if not scanning data to generate stat1 */
     int added_to_hist;

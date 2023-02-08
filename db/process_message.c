@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2023, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -62,6 +62,8 @@ extern int __berkdb_read_alarm_ms;
 #include "comdb2_ruleset.h"
 #include "osqluprec.h"
 #include "schemachange.h"
+#include "reverse_conn.h"
+#include "phys_rep.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -601,6 +603,8 @@ void *clean_exit_thd(void *unused)
     comdb2_name_thread(__func__);
     if (!gbl_ready)
         return NULL;
+
+    physrep_cleanup();
 
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
@@ -1690,6 +1694,8 @@ clipper_usage:
             thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
             thdpool_print_stats(stdout, gbl_udppfault_thdpool);
             thdpool_print_stats(stdout, gbl_pgcompact_thdpool);
+        } else if (tokcmp(tok, ltok, "dumprevsql") == 0) {
+            dump_reverse_connection_host_list();
         } else if (tokcmp(tok, ltok, "dumpsql") == 0) {
             sql_dump_running_statements();
         } else if (tokcmp(tok, ltok, "rep") == 0) {
@@ -4947,6 +4953,28 @@ clipper_usage:
             Pthread_mutex_unlock(&testguard);
         } else if (tokcmp(tok, ltok, "bad_osql") == 0) {
             osql_send_test();
+        } else if (tokcmp(tok, ltok, "reversesql") == 0) {
+            char *dbname;
+            char *host;
+            char *query;
+
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_ERROR, "Need database name and host\n");
+                return -1;
+            }
+            dbname = tokdup(tok, ltok);
+
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_ERROR, "Need database name and host\n");
+                return -1;
+            }
+            host = tokdup(tok, ltok);
+
+            query = tok+ltok;
+
+            send_reversesql_request(dbname, host, query);
         } else if (tokcmp(tok, ltok, "rep") == 0) { // was testrep
             int nitems;
             int size;

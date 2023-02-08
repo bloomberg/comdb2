@@ -63,6 +63,7 @@ set(src
   reqlog.c
   request_stats.c
   resource.c
+  reverse_conn.c
   rmtpolicy.c
   rowlocks_bench.c
   sigutil.c
@@ -201,6 +202,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
+  ${PROJECT_SOURCE_DIR}/plugins/reversesql
 )
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(

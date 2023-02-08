@@ -1,0 +1,543 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export NRECS=10
+export comdb2ar=${COMDB2AR_EXE}
+
+dbname=$1
+dgpid=0
+NRUNS=100
+SLEEPAMOUNT=120 # 2 minutes
+KILL_WAIT_TIME=10
+SLEEP_BETWEEN_CHECKS=.5
+PIDs=""
+
+if [[ -z "$TEST_TIMEOUT" ]]; then
+    export TEST_TIMEOUT=5m
+fi
+
+function cleanFailExit()
+{
+    cleanup
+    failexit $@
+}
+
+function downgradeonce()
+{
+    local dbname=$1
+    local mnode=`getmaster`
+    echo "== downgrading $mnode"
+    cdb2sql ${CDB2_OPTIONS} --host $mnode $dbname "exec procedure sys.cmd.send('downgrade')"
+}
+
+function downgrade()
+{
+    local dbname=$1
+    local sleepamount=${2:-4}
+    while true; do
+        sleep $sleepamount
+        local mnode=`getmaster`
+        echo "== downgrading $mnode"
+        cdb2sql ${CDB2_OPTIONS} --host $mnode $dbname "exec procedure sys.cmd.send('downgrade')"
+    done
+}
+
+function cleanup_abort()
+{
+    # If pkill is always available, use pkill -F fl.pid
+    # fixme
+    #kill -6 $(cat $REPL_DBDIR/${REPL_DBNAME}.pid)
+    [[ $dgpid != 0 ]] && kill -9 $dgpid
+}
+
+function wait_for_catchup()
+{
+    local _repl_dbname=$1
+    local _repl_host=$2
+    local start=$SECONDS
+    local mnode=""
+    local c_lsn=""
+    local r_lsn=""
+
+    echo "== Comparing source against $_repl_dbname@$_repl_host"
+
+    while [[ -z "$mnode" ]] || [[ -z "$c_lsn" ]] || [[ -z "$r_lsn" ]] || [[ "$c_lsn" -ne "$r_lsn" ]]; do
+        sleep 0.5
+        elapsed=$((SECONDS-start))
+        if [[ $elapsed -gt $SLEEPAMOUNT ]] ; then
+            break;
+        fi
+
+        mnode=`getmaster`
+        if [[ -z "$mnode" ]]; then
+            continue;
+        fi
+        c_lsn=`$CDB2SQL_EXE --tabs $CDB2_OPTIONS $dbname         --host $mnode        'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
+        r_lsn=`$CDB2SQL_EXE --tabs $CDB2_OPTIONS ${_repl_dbname} --host ${_repl_host} 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
+    done
+
+    if [[ "$c_lsn" -ne "$r_lsn" ]] ; then
+        cleanFailExit "The wait_for_lsn is not enough and we need the extra sleep because lsn on replicant can move ahead--as local log--then roll back"
+    else
+        echo "comdb2_transaction_logs are the same, continue"
+    fi
+}
+
+function create_physrep_tables()
+{
+    local repl_metadb_name=$1
+    local repl_metadb_host=$2
+
+    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    if [ $? -ne 0 ]; then
+        cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physrep_connections(dbname CSTRING(60), host CSTRING(120), source_dbname CSTRING(60), source_host CSTRING(120), UNIQUE (dbname, host, source_dbname, source_host), FOREIGN KEY(dbname, host) REFERENCES comdb2_physreps(dbname, host) ON DELETE CASCADE)"
+    if [ $? -ne 0 ]; then
+        cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60), host CSTRING(120), source_dbname CSTRING(60), source_host CSTRING(120), UNIQUE (dbname, host), UNIQUE (dbname, host, source_dbname, source_host))"
+    if [ $? -ne 0 ]; then
+        cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
+    fi
+
+    echo "Physrep tables created"
+}
+
+function add_to_physrep_sources() {
+    local _repl_metadb_name=$1
+    local _repl_metadb_host=$2
+    local _source_dbname=$3
+    local _source_host=$4
+    local _repl_dbname=$5
+    local _repl_host=$6
+
+    echo "== Adding ${_source_dbname}@${_source_host} -> ${_repl_dbname}@${_repl_host} to comdb2_physrep_sources table =="
+
+    cdb2sql ${CDB2_OPTIONS} --host ${_repl_metadb_host} ${_repl_metadb_name} "INSERT INTO comdb2_physrep_sources VALUES ('${_repl_dbname}', '${_repl_host}', '${_source_dbname}', '${_source_host}')"
+    if [ $? -ne 0 ]; then
+        cleanFailExit "failed to insert record in ${_repl_metadb_name}@${_repl_metadb_host}"
+    fi
+}
+
+function setup_physrep_metadb()
+{
+    echo "== Setting up replication metadb cluster =="
+    local _dbname=$1
+    local _dbdir=$2
+    local tmpdir=${TMPDIR:-/tmp}
+
+    if [[ -z "$CLUSTER" ]]; then # Standalone
+        node=$(hostname)
+        logFile=$TESTDIR/logs/${_dbname}.${node}.log
+
+        mkdir ${_dbdir}
+
+        cat <<END >> ${_dbdir}/${_dbname}.lrl
+name ${_dbname}
+dir ${_dbdir}
+logmsg level debug
+END
+
+        $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
+        $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1 &
+ 
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+
+        # wait until we can query it
+        echo "${_dbname}: waiting until ready"
+        while [[ "$out" != "1" ]]; do
+            sleep $SLEEP_BETWEEN_CHECKS
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+        done
+
+        PIDs="${PIDs} $(cat ${_dbdir}/${_dbname}.pid)"
+
+        create_physrep_tables ${_dbname} ${node}
+
+    # Cluster
+    else
+        firstNode=""
+        # 1. Copy data
+        for node in ${CLUSTER}; do
+            logFile=$TESTDIR/logs/${_dbname}.${node}.log
+
+            ssh ${node} "mkdir ${_dbdir}"
+
+            if [[ ${firstNode} = "" ]]; then
+                cat <<END >> ${tmpdir}/${_dbname}.lrl
+name ${_dbname}
+dir ${_dbdir}
+cluster nodes ${CLUSTER}
+logmsg level debug
+END
+                scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
+                ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1
+                firstNode=${node}
+            else
+                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1
+                if [ ! $? -eq 0 ]; then
+                    cleanFailExit "copycomdb2 failed"
+                fi
+            fi
+        done
+
+        # 2. Start instances
+        for node in ${CLUSTER}; do
+            logFile=$TESTDIR/logs/${_dbname}.${node}.log
+            ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 &
+            PIDs="${PIDs} $!"
+        done
+
+        # 3. Wait for instances to come online
+        for node in $CLUSTER ; do
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+
+            # wait until we can query it
+            echo "${_dbname}: waiting until ready"
+            while [[ "$out" != "1" ]]; do
+                sleep $SLEEP_BETWEEN_CHECKS
+                out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+            done
+        done
+
+        create_physrep_tables ${_dbname} ${firstNode}
+    fi
+    echo "Physrep replication metadb cluster/node started!"
+}
+
+function fix_lrl_and_restart_source_nodes()
+{
+    echo "== Going to update source cluster's lrl and restart it =="
+    local _source_dbname=$1
+    local _source_host=$2
+    local _source_dbdir=$3
+    local _meta_dbname=$4
+    local _meta_host=$5
+    local _meta_dbdir=$6
+
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+        echo "physrep_metadb ${_meta_dbname} ${_meta_host}" >> ${_source_dbdir}/${_source_dbname}.lrl
+        #echo "blocking_physrep 0" >> ${_source_dbdir}/${_source_dbname}.lrl
+        echo "physrep_debug 1" >> ${_source_dbdir}/${_source_dbname}.lrl
+        echo "killrestart node $node"
+        kill_restart_node $node $KILL_WAIT_TIME &
+        sleep $KILL_WAIT_TIME
+
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${_source_dbname} 'select 1' 2>/dev/null)
+
+        # wait until we can query it
+        echo "${_source_dbname}: waiting until ready"
+        while [[ "$out" != "1" ]]; do
+            sleep $SLEEP_BETWEEN_CHECKS
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${_source_dbname} 'select 1' 2>/dev/null)
+        done
+    else
+
+        for node in $CLUSTER ; do
+            ssh ${node} "echo \"physrep_metadb ${_meta_dbname} ${_meta_host}\" >> ${_source_dbdir}/${_source_dbname}.lrl"
+            ssh ${node} "echo \"physrep_debug 1\" >> ${_source_dbdir}/${_source_dbname}.lrl"
+            #ssh ${node} "echo \"physrep_register_interval 5\" >> ${_source_dbdir}/${_source_dbname}.lrl"
+            echo "killrestart node $node"
+            kill_restart_node $node $KILL_WAIT_TIME &
+        done
+        sleep $KILL_WAIT_TIME
+
+        # select 1 all nodes
+        for node in $CLUSTER ; do
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${_source_dbname} 'select 1' 2>/dev/null)
+            # wait until we can query it
+            echo "$DBNAME: waiting until ready"
+            while [[ "$out" != "1" ]]; do
+                sleep $SLEEP_BETWEEN_CHECKS
+                out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${_source_dbname}  'select 1' 2>/dev/null)
+            done
+        done
+    fi
+    echo "Source cluster/node restarted"
+}
+
+function setup_physrep_cluster()
+{
+    echo "== Setting up replication cluster =="
+    local _dbname=$1
+    local _dbdir=$2
+    local _source_dbname=$3
+    local _source_host=$4
+    local _source_dbdir=$5
+    local _meta_dbname=$6
+    local _meta_host=$7
+    local _meta_dbdir=$8
+
+    tmpdir=${TMPDIR:-/tmp}
+
+    if [[ -z "$CLUSTER" ]]; then # Standalone
+        node=$(hostname)
+        logFile=$TESTDIR/logs/${_dbname}.${node}.log
+
+        # use copycomdb2 to create a physical replicant
+
+        ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_dbname} -y @${_source_host} ${node}:${_source_dbdir}/${_source_dbname}.lrl ${_dbdir} ${_dbdir} >> ${logFile} 2>&1
+        if [ ! $? -eq 0 ]; then
+            cleanFailExit "copycomdb2 failed"
+        fi
+
+        $COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1 &
+ 
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+
+        # wait until we can query it
+        echo "${_dbname}: waiting until ready"
+        while [[ "$out" != "1" ]]; do
+            sleep $SLEEP_BETWEEN_CHECKS
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+        done
+
+        PIDs="${PIDs} $(cat ${_dbdir}/${_dbname}.pid)"
+
+    else # Cluster
+        firstNode=""
+        # 1. Copy data
+        for node in ${CLUSTER}; do
+            logFile=$TESTDIR/logs/${_dbname}.${node}.log
+
+            if [[ ${firstNode} = "" ]]; then
+                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_dbname} -y @${_source_host} ${_source_host}:${SOURCE_DBDIR}/${SOURCE_DBNAME}.lrl ${_dbdir} ${_dbdir}" >> ${logFile} 2>&1
+                if [[ ! $? -eq 0 ]]; then
+                    cleanFailExit "copycomdb2 failed"
+                fi
+
+                # Update the lrl
+                ssh $node "echo \"cluster nodes ${CLUSTER}\" >> ${_dbdir}/${_dbname}.lrl"
+
+                firstNode=${node}
+            else
+                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1
+                if [ ! $? -eq 0 ]; then
+                    cleanFailExit "copycomdb2 failed"
+                fi
+            fi
+        done
+
+        2. Start instances
+        for node in ${CLUSTER}; do
+            logFile=$TESTDIR/logs/${_dbname}.${node}.log
+        ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 &
+        PIDs="${PIDs} $!"
+        done
+
+        # 3. Wait for instances to come online
+        for node in $CLUSTER ; do
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+
+            # wait until we can query it
+            echo "${_dbname}: waiting until ready"
+            while [[ "$out" != "1" ]]; do
+                sleep $SLEEP_BETWEEN_CHECKS
+                out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_dbname} 'select 1' 2>/dev/null)
+            done
+        done
+    fi
+    echo "Physrep replication cluster/node started!"
+}
+
+function setup_physrep_replicants()
+{
+    echo "== Setting up standalone replicants =="
+    local _dbname_prefix=$1
+    local _dbdir_prefix=$2
+    local _source_dbname=$3
+    local _source_host=$4
+    local _source_dbdir=$5
+    local _meta_dbname=$6
+    local _meta_host=$7
+    local _meta_dbdir=$8
+
+    local tmpdir=${TMPDIR:-/tmp}
+
+    # Standalone
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+        _repl_dbname=${_dbname_prefix}_${node}
+        _repl_dbdir=${_dbdir_prefix}_${node}
+
+        logFile=$TESTDIR/logs/${_repl_dbname}.log
+
+        # Add this node to comdb2_physrep_sources table to test for 'reverse connection'
+        add_to_physrep_sources ${_meta_dbname} ${_meta_host} ${_source_dbname} ${_source_host} ${_repl_dbname} ${node}
+
+        # use copycomdb2 to create a physical replicant
+
+        ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir} >> ${logFile} 2>&1
+        if [ ! $? -eq 0 ]; then
+            cleanFailExit "copycomdb2 failed"
+        fi
+
+        $COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid >> ${logFile} 2>&1 &
+
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_repl_dbname} 'select 1' 2>/dev/null)
+
+        # Wait until we can query it
+        echo "${_repl_dbname}: waiting until ready"
+        while [[ "$out" != "1" ]]; do
+            sleep $SLEEP_BETWEEN_CHECKS
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_repl_dbname} 'select 1' 2>/dev/null)
+        done
+
+        PIDs="${PIDs} $(cat ${_repl_dbdir}/${_repl_dbname}.pid)"
+    else
+        # Start replicants on all the nodes
+        firstNode=""
+        for node in ${CLUSTER}; do
+            _repl_dbname=${_dbname_prefix}_${node}
+            _repl_dbdir=${_dbdir_prefix}_${node}
+
+            logFile=$TESTDIR/logs/${_repl_dbname}.log
+
+            if [[ ${firstNode} = "" ]]; then
+                # Add first replicant to comdb2_physrep_sources table to test for 'reverse connection'
+                add_to_physrep_sources ${_meta_dbname} ${_meta_host} ${_source_dbname} ${_source_host} ${_repl_dbname} ${node}
+                firstNode=${node}
+            fi
+
+            ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1
+            if [ ! $? -eq 0 ]; then
+                cleanFailExit "copycomdb2 failed"
+            fi
+
+            ssh ${node} "$COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 &
+            PIDs="${PIDs} $!"
+
+            # Wait for the node to start
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_repl_dbname} 'select 1' 2>/dev/null)
+
+            # wait until we can query it
+            echo "${_repl_dbname}: waiting until ready"
+            while [[ "$out" != "1" ]]; do
+                sleep $SLEEP_BETWEEN_CHECKS
+                out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host ${node} ${_repl_dbname} 'select 1' 2>/dev/null)
+            done
+
+        done
+    fi
+    echo "Standalone physrep replication nodes started!"
+}
+
+function generate_tests()
+{
+    ./generate_tests.sh
+}
+
+function run_tests()
+{
+    # iterate over each test: for every .src.sql and .src.sh file there is a .query.sql file to check
+    for file in `ls *.src.sql *src.sh | sort -V`; do
+        echo "== executing statements from file $file"
+
+        # for each sql test execute it
+        if [ "${file: -3}" == "sql" ]; then
+            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -f $file ${CDB2_OPTIONS} $dbname default || cleanFailExit "Error from $file"
+            query_cmd=$(echo $file | sed 's/\.src\.sql//').query.sql
+
+        else
+            source ./"$file"
+
+            query_cmd=$(echo $file | sed 's/\.src\.sh//').query.sql
+        fi
+
+        if [ $((RANDOM % 3)) -eq 1 ] ; then
+            downgradeonce $dbname
+        fi
+
+        is_ok=1
+        while [ $is_ok -ne 0 ] ; do
+            sleep 2
+            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -v -f $query_cmd ${CDB2_OPTIONS} $dbname default 2> src.err > src.out 
+            is_ok=$?
+        done
+
+        wait_for_catchup ${REPL_CLUS_DBNAME} ${REPL_CLUS_HOST}
+
+        ${CDB2SQL_EXE} -s --tabs -f $query_cmd ${REPL_CLUS_DBNAME} --host ${REPL_CLUS_HOST} 2> dest.err > dest.out
+
+        if ! diff src.out dest.out ; then
+            echo "Replicant not updated [correctly] vimdiff $PWD/{src.out,dest.out}"
+            sleep 1
+            src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 ) 
+            dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${REPL_CLUS_DBNAME} --host ${REPL_CLUS_HOST} 2>&1 )
+            cleanFailExit "Failed on $file test."
+        fi
+    done
+}
+
+function cleanup()
+{
+    echo "Killing ${PIDs}"
+    kill -9 ${PIDs}
+    [[ $dgpid != 0 ]] && kill -9 $dgpid
+}
+
+# Compare LSNs of all the replicants against the source cluster/node
+function compare_end_lsns()
+{
+    echo "== Going to compare LSNs of all the replicants =="
+    if [[ -z "$CLUSTER" ]]; then
+        wait_for_catchup ${REPL_CLUS_DBNAME} ${REPL_CLUS_HOST}
+        wait_for_catchup ${REPL_DBNAME_PREFIX}_$(hostname) ${REPL_CLUS_HOST}
+    else
+        for node in ${CLUSTER}; do
+            wait_for_catchup ${REPL_CLUS_DBNAME} ${node}
+            wait_for_catchup ${REPL_DBNAME_PREFIX}_${node} ${node}
+        done
+    fi
+}
+
+trap - INT EXIT
+
+# 1. Setup replication metadata cluster
+REPL_META_DBNAME=${TESTCASE}_META
+REPL_META_DBDIR=${DBDIR}/${REPL_META_DBNAME}
+REPL_META_HOST=""
+if [[ -z "$CLUSTER" ]]; then # Standalone
+    REPL_META_HOST=$(hostname)
+else                         # Cluster
+    for node in ${CLUSTER}; do
+        REPL_META_HOST=${node}
+        break
+    done
+fi
+
+setup_physrep_metadb ${REPL_META_DBNAME} ${REPL_META_DBDIR}
+
+# 2. Update source cluster lrl to point to the replication metadata cluster
+SOURCE_DBNAME=${dbname}
+SOURCE_DBDIR=${DBDIR}
+SOURCE_HOST=${REPL_META_HOST}
+
+fix_lrl_and_restart_source_nodes ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+
+# 3. Setup physical replication cluster (nodes share same hosts as the source cluster)
+REPL_CLUS_DBNAME=${TESTCASE}_CLUS
+REPL_CLUS_DBDIR=${DBDIR}/${REPL_CLUS_DBNAME}
+REPL_CLUS_HOST=${REPL_META_HOST}
+setup_physrep_cluster ${REPL_CLUS_DBNAME} ${REPL_CLUS_DBDIR} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+
+# 4. Setup physical replicants
+REPL_DBNAME_PREFIX=${TESTCASE}_REPL
+REPL_DBDIR_PREFIX=${DBDIR}/${REPL_DBNAME_PREFIX}
+setup_physrep_replicants ${REPL_DBNAME_PREFIX} ${REPL_DBDIR_PREFIX} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+
+generate_tests
+run_tests
+compare_end_lsns
+cleanup
+
+exit 0

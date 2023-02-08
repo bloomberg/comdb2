@@ -650,13 +650,12 @@ function assert_select_sp
     [[ $debug == "1" ]] && set -x
     typeset func="assert_select_sp"
     typeset prev_sp="$1"
-    typeset rep=$(select_sp_rep)
     typeset tries=$total_tries
     write_prompt $func "Assert select_sp is the same"
     typeset curr_sp=$(select_sp)
     while [[ "$prev_sp" != "$curr_sp" ]] ; do 
         let tries=tries-1
-        [[ "$tries" == 0 ]] && failexit $func "Failed to run select_sp from rep"
+        [[ "$tries" == "0" ]] && failexit $func "select_sp is different on master. got: <<$curr_sp>> expected: <<$prev_sp>>"
         sleep 1
         curr_sp=$(select_sp)
     done
@@ -666,7 +665,7 @@ function assert_select_sp
         rep=$(select_sp_rep)
         while [[ "$rep" != "$prev_sp" ]]; do
             let tries=tries-1
-            [[ "$tries" == "0" ]] && failexit $func "Failed to run select_t1 from rep"
+            [[ "$tries" == "0" ]] && failexit $func "select_sp is different on rep. got: <<$curr_sp>> expected: <<$prev_sp>>"
             rep=$(select_sp_rep)
         done
     fi
@@ -1212,6 +1211,7 @@ function luasp
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, x'12')" >/dev/null
     luasp_lsn_1=$(get_current_lsn)
     luasp_sal_1=$(select_all)
+    luasp_ssp_1=$(select_sp)
     luasp_rtn_1=$(select_sp)
 
     write_prompt $func "Creating return_number:v1"
@@ -1691,10 +1691,19 @@ function time_partitions
     assert_notable t3
 }
 
+function override_physrep_sp()
+{
+    local mnode=$(get_master)
+    # Override the register_replicant stored procedure
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+}
+
 function setup
 {
     [[ $debug == "1" ]] && set -x
     typeset func="setup"
+
+    override_physrep_sp
 
     if [[ "$physrep" == 1 ]] ; then
         make_phys_rep

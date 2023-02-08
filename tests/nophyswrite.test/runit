@@ -3,6 +3,8 @@ bash -n "$0" | exit 1
 
 [[ $debug == "1" ]] && set -x
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 # Grab my database name.
 export repsleep=5
 export repname=rep${DBNAME}
@@ -60,10 +62,19 @@ function make_phys_rep
     ( timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $repname --lrl $repdir/${repname}.lrl --pidfile $repdir/${repname}.pid >$replog 2>&1) &
 }
 
+override_physrep_sp()
+{
+    local mnode=`getmaster`
+    # Override the register_replicant stored procedure
+    ${CDB2SQL_EXE} $CDB2_OPTIONS $DBNAME --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
+}
+
 function setup
 {
     [[ $debug == "1" ]] && set -x
     typeset func="setup"
+
+    override_physrep_sp
 
     make_phys_rep
     sleep $repsleep

@@ -980,6 +980,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     plugin_set_callbacks_newsql(evbuffer);
 
     clnt->admin = admin;
+    clnt->force_readonly = arg->is_readonly;
     appdata->base = arg->base;
     appdata->initial = 1;
     appdata->local = local;

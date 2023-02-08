@@ -452,6 +452,29 @@ __rep_set_egen(dbenv, func, line, egen)
 }
 
 /*
+ * __rep_set_loh_gen --
+ *  Called as a utility function to see places where an instance's
+ * replication log generation can be changed.
+ *
+ * PUBLIC: void __rep_set_log_gen __P((DB_ENV *, const char *func, int line, int egen));
+ */
+
+void
+__rep_set_log_gen(dbenv, func, line, log_gen)
+	DB_ENV *dbenv;
+	const char *func;
+	int line;
+	int log_gen;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+	logmsg(LOGMSG_DEBUG, "%s line %d setting rep->log_gen from %d to %d\n",
+			func, line, rep->log_gen, log_gen);
+	rep->log_gen = log_gen;
+}
+/*
  * __rep_new_master --
  *	Called after a master election to sync back up with a new master.
  * It's possible that we already know of this new master in which case
@@ -1103,6 +1126,29 @@ __rep_get_gen(dbenv, genp)
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 }
 
+/*
+ * __rep_get_log_gen --
+ *
+ *	Get the 'log' generation number from a replicated environment.
+ *
+ * PUBLIC: void __rep_get_log_gen __P((DB_ENV *, u_int32_t *));
+ */
+void
+__rep_get_log_gen(dbenv, genp)
+	DB_ENV *dbenv;
+	u_int32_t *genp;
+{
+	DB_REP *db_rep;
+	REP *rep;
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	*genp = rep->log_gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+}
+
 #ifdef NOTYET
 static int __rep_send_file __P((DB_ENV *, DBT *, u_int32_t));
 
@@ -1279,6 +1325,9 @@ __rep_print_message(dbenv, eid, rp, str)
 		break;
 	case REP_GEN_VOTE2:
 		type = "gen_vote2";
+		break;
+	case REP_LOG_LOGPUT:
+		type = "logput";
 		break;
 	default:
 		type = "NOTYPE";

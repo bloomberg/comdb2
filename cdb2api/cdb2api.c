@@ -2277,6 +2277,61 @@ static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
     }
 }
 
+static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
+{
+    int fd = -1;
+    int rc = 0;
+    SBUF2 *sb = NULL;
+    void *callbackrc;
+    int overwrite_rc = 0;
+    cdb2_event *e = NULL;
+
+    /* Handle BEFRE_NEWSQL_CONNECT callbacks */
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_NEWSQL_CONNECT, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, NULL, CDB2_PORT, -1);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
+    }
+    if (overwrite_rc)
+        goto after_callback;
+
+    char *endptr;
+    fd = strtol(hndl->type, &endptr, 10);
+    if ((errno == ERANGE && (fd == LONG_MAX || fd == LONG_MIN))
+        || (errno != 0 && fd == 0)) {
+        debugprint("ERROR: %s:%d invalid fd", __func__, __LINE__);
+    } else {
+        if ((sb = sbuf2open(fd, 0)) == 0) {
+            close(fd);
+            rc = -1;
+            goto after_callback;
+        }
+        sbuf2printf(sb, hndl->is_admin ? "@newsql\n" : "newsql\n");
+        sbuf2flush(sb);
+    }
+
+    sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
+
+    if (try_ssl(hndl, sb) != 0) {
+        sbuf2close(sb);
+        rc = -1;
+        goto after_callback;
+    }
+
+    hndl->sb = sb;
+    hndl->num_set_commands_sent = 0;
+    hndl->sent_client_info = 0;
+    hndl->connected_host = 0;
+    hndl->hosts_connected[hndl->connected_host] = 1;
+    debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
+
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_NEWSQL_CONNECT, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, NULL, CDB2_PORT, -1, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
+    }
+    return rc;
+}
+
 static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *remote_host, const char *app,
                            const char *service, const char *instance);
 
@@ -2397,7 +2452,9 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
         (hndl->firstresponse &&
          (!hndl->lastresponse ||
           (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
-        (!hndl->firstresponse) || hndl->in_trans) {
+        (!hndl->firstresponse) ||
+        (hndl->in_trans) ||
+        ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
         sbuf2close(sb);
     } else {
         sbuf2free(sb);
@@ -2566,6 +2623,10 @@ static int getRandomExclude(int max, int exclude)
 
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
+    if (hndl->flags & CDB2_TYPE_IS_FD) {
+        return newsql_connect_via_fd(hndl);
+    }
+
     if (hndl->sb) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
     }
@@ -2939,9 +3000,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     sqlquery.types = types;
     sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
     sqlquery.mach_class = cdb2_default_cluster;
-
-
-    
 
     query.sqlquery = &sqlquery;
 

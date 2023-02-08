@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2023 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -39,5 +39,6 @@ int mach_class_name2class(const char *name);
 const char *mach_class_class2name(int value);
 int mach_class_remap_fdb_tier(const char *name, const char *tier);
 const char *mach_class_class2tier(int value);
+int is_valid_mach_class(const char *name);
 
 #endif
