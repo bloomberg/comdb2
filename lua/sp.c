@@ -72,6 +72,7 @@
 
 #endif
 #include <event2/util.h> /* missing timeradd on aix */
+#include <carray.h>
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
@@ -2164,22 +2165,88 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
     }
 }
 
+static int luabb_carray_bind_real(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    double ds[count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        luabb_toreal(L, -1, &ds[i - 1]);
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, ds, count, CARRAY_DOUBLE, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind_integer(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    long long ints[count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        luabb_tointeger(L, -1, &ints[i - 1]);
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, ints, count, CARRAY_INT64, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind_string(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    const char *strings[count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        strings[i - 1] = luabb_tostring(L, -1);
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, strings, count, CARRAY_TEXT, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    struct {
+        size_t len;
+        void *data;
+    }blobs [count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        blob_t b;
+        luabb_toblob(L, -1, &b);
+        blobs[i - 1].len = b.length;
+        blobs[i - 1].data = b.data;
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, blobs, count, CARRAY_BLOB, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    lua_rawgeti(L, lua_idx, 1);
+    dbtypes_enum dbtype = luabb_dbtype(L, -1);
+    lua_pop(L, 1);
+    switch (dbtype) {
+    case DBTYPES_LNUMBER:
+    case DBTYPES_REAL: return luabb_carray_bind_real(L, lua_idx, stmt, sql_idx);
+    case DBTYPES_INTEGER: return luabb_carray_bind_integer(L, lua_idx, stmt, sql_idx);
+    case DBTYPES_LSTRING:
+    case DBTYPES_CSTRING: return luabb_carray_bind_string(L, lua_idx, stmt, sql_idx);
+    case DBTYPES_BLOB: return luabb_carray_bind_blob(L, lua_idx, stmt, sql_idx);
+    default: return luaL_error(L, "bad array argument to bind of type:%s", dbtypes_str[dbtype]);
+    }
+    return -1;
+}
+
 static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
 {
-    SP sp = getsp(lua);
-    int position;
+    int position = 0;
     if (lua_isnumber(lua, name)) {
         position = lua_tonumber(lua, name);
     } else if (lua_isstring(lua, name)) {
         position = sqlite3_bind_parameter_index(stmt, lua_tostring(lua, name));
-    } else {
-        return luabb_error(lua, sp, "bad argument to 'bind'");
     }
-
     if (position == 0) {
-        return luabb_error(lua, sp, "invalid position");
+        return luaL_error(lua, "bad argument to 'bind'");
     }
-
     dttz_t dt;
     const char *c;
     const void *p = NULL;
@@ -2187,7 +2254,6 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     intv_t *i;
     datetime_t *d;
     int type;
-
     if ((type = luabb_dbtype(lua, value)) > DBTYPES_MINTYPE) {
         if (luabb_isnull(lua, value)) {
             return sqlite3_bind_null(stmt, position);
@@ -2221,6 +2287,8 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     case DBTYPES_INTERVALDS:
         i = &((lua_intervalds_t *)p)->val;
         return sqlite3_bind_interval(stmt, position, i);
+    case DBTYPES_LTABLE:
+        return luabb_carray_bind(lua, value, stmt, position);
     default: return luabb_error(lua, NULL, "unsupported type (%d) for bind ", type);
     }
 }
@@ -5824,9 +5892,75 @@ static int push_null(Lua L, int param_type)
     return 0;
 }
 
+static int push_blob_array(Lua L, struct param_data *p)
+{
+    struct {
+        size_t len;
+        void *data;
+    } *bs = p->u.p;
+    lua_newtable(L);
+    for (int i = 0; i < p->arraylen; ++i) {
+        blob_t b = {.length = bs[i].len, .data = bs[i].data};
+        luabb_pushblob(L, &b);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_string_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    char **ss = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushcstring(L, ss[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_i32_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    int32_t *is = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushinteger(L, is[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_i64_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    int64_t *is = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushinteger(L, is[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_int_array(Lua L, struct param_data *p)
+{
+    if (p->len == sizeof(int32_t)) return push_i32_array(L, p);
+    if (p->len == sizeof(int64_t)) return push_i64_array(L, p);
+    return -1;
+}
+
+static int push_real_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    double *ds = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushreal(L, ds[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
 static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
 {
-    struct param_data p;
+    struct param_data p = {0};
     if (param_value(clnt, &p, index) != 0) {
         if (p.type > CLIENT_MINTYPE && p.type < CLIENT_MAXTYPE)
             return p.type;
@@ -5834,6 +5968,15 @@ static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
     }
     if (p.null || p.type == COMDB2_NULL_TYPE) {
         return push_null(L, p.type);
+    }
+    if (p.arraylen) {
+        switch (p.type) {
+        case CLIENT_BLOB: return push_blob_array(L, &p);
+        case CLIENT_CSTR: return push_string_array(L, &p);
+        case CLIENT_INT: return push_int_array(L, &p);
+        case CLIENT_REAL: return push_real_array(L, &p);
+        }
+        return -1;
     }
     switch (p.type) {
     case CLIENT_INT:

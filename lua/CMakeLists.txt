@@ -68,6 +68,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite/src
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/misc
   ${PROJECT_BINARY_DIR}/sqlite
   ${PROJECT_SOURCE_DIR}/berkdb
   ${OPENSSL_INCLUDE_DIR}
