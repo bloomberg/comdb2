@@ -374,7 +374,7 @@ void *auto_analyze_main(void *unused)
 
         if (newautoanalyze_counter > 0) {
             long long int num = get_num_rows_from_stat1(tbl);
-            new_aa_percnt = 100.0 * (newautoanalyze_counter - min_percent_jitter) / num;
+            new_aa_percnt = 100.0 * ((long long int)newautoanalyze_counter - min_percent_jitter) / num;
         }
 
         /* if there is enough change, run analyze
