@@ -5109,72 +5109,91 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
 }
 
 
-#define GENERIC_BIND_ARR_VALUE(bind_array, Type, type, ctype, oneoftype)                                           \
-    do {     \
-        CDB2SQLQUERY__Bindvalue__##Type##array *arr = malloc(sizeof(CDB2SQLQUERY__Bindvalue__##Type##array));           \
-        cdb2__sqlquery__bindvalue__##type##array__init(arr);           \
-        arr->elements = (ctype) varaddr;           \
-        arr->n_elements = count;           \
-        bind_array = malloc(sizeof(CDB2SQLQUERY__Bindvalue__Bindarray));           \
-        cdb2__sqlquery__bindvalue__bindarray__init(bind_array);           \
-        bind_array->oneof_t_case = CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_##oneoftype##_ARR;           \
-        bind_array->type##_arr = arr;    \
-    } while(0);
-
-
 /* cdb2_bind_array -- bind c array to a parameter name
  * name is the variable name we used in the sql
- * type is the type of elements we will bind ex. CDB2_INTEGER
+ * type is the type of elements to bind ex. CDB2_INTEGER
  * varaddr is the array address
  * count is the number of items in the array we will bind
- * typelen is the type size of the acrual elements in the array (ex sizeof(int) for int array)
+ * typelen is the size of the elements for integer-arrays sizeof(int32_t or int64_t)
  */
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type,
-                    const void *varaddr, unsigned int count, int typelen)
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
 {
     if (count <= 0 || count > MAX_BIND_ARRAY) {
-        sprintf(hndl->errstr, "%s: bind array count outside of range [0,%d]", __func__, MAX_BIND_ARRAY);
+        sprintf(hndl->errstr, "%s: bad array length:%zd (max:%d)", __func__, count, MAX_BIND_ARRAY);
         return -1;
+    }
+
+    CDB2SQLQUERY__Bindvalue__Array *carray = malloc(sizeof(*carray));
+    cdb2__sqlquery__bindvalue__array__init(carray);
+
+    switch(type) {
+    case CDB2_INTEGER:
+    if (typelen == sizeof(int32_t)) {
+        CDB2SQLQUERY__Bindvalue__I32Array *i32 = malloc(sizeof(*i32));
+        cdb2__sqlquery__bindvalue__i32_array__init(i32);
+        i32->elements = (int32_t *)varaddr;
+        i32->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_I32;
+        carray->i32 = i32;
+    } else if (typelen == sizeof(int64_t)) {
+        CDB2SQLQUERY__Bindvalue__I64Array *i64 = malloc(sizeof(*i64));
+        cdb2__sqlquery__bindvalue__i64_array__init(i64);
+        i64->elements = (int64_t *)varaddr;
+        i64->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_I64;
+        carray->i64 = i64;
+    } else {
+        goto notsupported;
+    }
+    break;
+    case CDB2_REAL: {
+        CDB2SQLQUERY__Bindvalue__DblArray *dbl = malloc(sizeof(*dbl));
+        cdb2__sqlquery__bindvalue__dbl_array__init(dbl);
+        dbl->elements = (double *)varaddr;
+        dbl->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_DBL;
+        carray->dbl = dbl;
+    }
+    break;
+    case CDB2_CSTRING: {
+        CDB2SQLQUERY__Bindvalue__TxtArray *txt = malloc(sizeof(*txt));
+        cdb2__sqlquery__bindvalue__txt_array__init(txt);
+        txt->elements = (char **)varaddr;
+        txt->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_TXT;
+        carray->txt = txt;
+    }
+    break;
+    case CDB2_BLOB: {
+        CDB2SQLQUERY__Bindvalue__BlobArray *blob = malloc(sizeof(*blob));
+        cdb2__sqlquery__bindvalue__blob_array__init(blob);
+        blob->elements = (ProtobufCBinaryData *) varaddr;
+        blob->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_BLOB;
+        carray->blob = blob;
+    }
+    break;
+    default: goto notsupported;
     }
 
     CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
     cdb2__sqlquery__bindvalue__init(bindval);
     bindval->type = type;
     bindval->varname = (char *)name;
-    switch(type) {
-    case CDB2_INTEGER:
-        if (typelen == sizeof(int32_t)) {
-            GENERIC_BIND_ARR_VALUE( bindval->bind_array, Int32, int32, int32_t *, INT32);
-        } else if (typelen == sizeof(int64_t)) {
-            GENERIC_BIND_ARR_VALUE( bindval->bind_array, Int64, int64, int64_t *, INT64);
-        } else 
-            goto notsupported;
-    break;
-    case CDB2_REAL:
-        if (typelen == sizeof(double)) {
-            GENERIC_BIND_ARR_VALUE( bindval->bind_array, Double, double, double *, DOUBLE);
-        } else 
-            goto notsupported;
-    break;
-    case CDB2_CSTRING: {
-        GENERIC_BIND_ARR_VALUE( bindval->bind_array, Text, text, char **, TEXT);
-    }
-    break;
-    default:
-        goto notsupported;
-    }
+    bindval->carray = carray;
 
     hndl->n_bindvars++;
     hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) * hndl->n_bindvars);
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
     if (log_calls)
-        fprintf(stderr, "%p> cdb2_bind_array(%p, \"%s\", %d, %s, %p, %d) = 0\n",
+        fprintf(stderr, "%p> cdb2_bind_array(%p, \"%s\", %zu, %s, %p, %zu) = 0\n",
                 (void *)pthread_self(), hndl, name, count,
                 cdb2_type_str(type), varaddr, typelen);
 
     return 0;
 
 notsupported:
+    free(carray);
     sprintf(hndl->errstr, "%s: bind array type not supported", __func__);
     return -1;
 }
@@ -5188,9 +5207,9 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
         return 0;
     for (int i = 0; i < hndl->n_bindvars; i++) {
         CDB2SQLQUERY__Bindvalue *val = hndl->bindvars[i];
-        if (val->bind_array) {
-            free(val->bind_array->int32_arr);
-            free(val->bind_array);
+        if (val->carray) {
+            free(val->carray->i32);
+            free(val->carray);
         }
         free(hndl->bindvars[i]);
     }

@@ -1063,6 +1063,38 @@ static int newsql_param_index(struct sqlclntstate *clnt, const char *name,
     return -1;
 }
 
+static int newsql_carray_value(CDB2SQLQUERY__Bindvalue__Array *carray, struct param_data *param)
+{
+    param->null = 0;
+    switch (carray->type_case) {
+    case CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_I32:
+        param->u.p = carray->i32->elements;
+        param->arraylen = carray->i32->n_elements;
+        param->len = sizeof(int32_t);
+        break;
+    case CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_I64:
+        param->u.p = carray->i64->elements;
+        param->arraylen = carray->i64->n_elements;
+        param->len = sizeof(int64_t);
+        break;
+    case CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_DBL:
+        param->u.p = carray->dbl->elements;
+        param->arraylen = carray->dbl->n_elements;
+        break;
+    case CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_TXT:
+        param->u.p = carray->txt->elements;
+        param->arraylen = carray->txt->n_elements;
+        break;
+    case CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_BLOB:
+        param->u.p = carray->blob->elements;
+        param->arraylen = carray->blob->n_elements;
+        break;
+    default:
+        return -1;
+    }
+    return 0;
+}
+
 static int newsql_param_value(struct sqlclntstate *clnt,
                               struct param_data *param, int n)
 {
@@ -1075,37 +1107,13 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     param->name = val->varname;
     param->pos = val->has_index ? val->index : 0;
     param->type = newsql_to_client_type(val->type);
+
+    if (val->carray) {
+        return newsql_carray_value(val->carray, param);
+    }
+
     int len = val->value.len;
     void *p = val->value.data;
-
-    
-    if (val->bind_array) {
-        switch (val->bind_array->oneof_t_case) { 
-            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_INT32_ARR: {
-                param->u.p = val->bind_array->int32_arr->elements;
-                param->arraylen = val->bind_array->int32_arr->n_elements;
-                param->len = sizeof(int32_t);
-                return 0;
-            }
-            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_INT64_ARR: {
-                param->u.p = val->bind_array->int64_arr->elements;
-                param->arraylen = val->bind_array->int64_arr->n_elements;
-                param->len = sizeof(int64_t);
-                return 0;
-            }
-            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_DOUBLE_ARR: {
-                param->u.p = val->bind_array->double_arr->elements;
-                param->arraylen = val->bind_array->double_arr->n_elements;
-                return 0;
-            }
-            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_TEXT_ARR: {
-                param->u.p = val->bind_array->text_arr->elements;
-                param->arraylen = val->bind_array->text_arr->n_elements;
-                return 0;
-            }
-            default: break;
-        }
-    }
 
     /* The bound parameter is from an old client which does not send isnull,
        and its length is 0. Treat it as a NULL to keep backward-compatible. */

@@ -56,6 +56,13 @@
 SQLITE_EXTENSION_INIT1
 #include <assert.h>
 #include <string.h>
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+# include <carray.h>
+  struct cdb2vec {
+    size_t iov_len;
+    void *iov_base;
+  };
+#else
 #ifdef _WIN32
   struct iovec {
     void *iov_base;
@@ -64,6 +71,7 @@ SQLITE_EXTENSION_INIT1
 #else
 # include <sys/uio.h>
 #endif
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
  
 /* Allowed values for the mFlags parameter to sqlite3_carray_bind().
 ** Must exactly match the definitions in carray.h.
@@ -235,7 +243,11 @@ static int carrayColumn(
           return SQLITE_OK;
         }
         case CARRAY_BLOB: {
+#         if defined(SQLITE_BUILDING_FOR_COMDB2)
+          const struct cdb2vec *p = (struct cdb2vec*)pCur->pPtr;
+#         else
           const struct iovec *p = (struct iovec*)pCur->pPtr;
+#         endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           sqlite3_result_blob(ctx, p[pCur->iRowid-1].iov_base,
                                (int)p[pCur->iRowid-1].iov_len, SQLITE_TRANSIENT);
           return SQLITE_OK;
@@ -455,7 +467,11 @@ SQLITE_API int sqlite3_carray_bind(
       case CARRAY_INT64:   sz *= 8;                     break;
       case CARRAY_DOUBLE:  sz *= 8;                     break;
       case CARRAY_TEXT:    sz *= sizeof(char*);         break;
+#     if defined(SQLITE_BUILDING_FOR_COMDB2)
+      case CARRAY_BLOB:    sz *= sizeof(struct cdb2vec);break;
+#     else
       case CARRAY_BLOB:    sz *= sizeof(struct iovec);  break;
+#     endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
     if( (mFlags & 0x07)==CARRAY_TEXT ){
       for(i=0; i<nData; i++){
@@ -464,7 +480,11 @@ SQLITE_API int sqlite3_carray_bind(
       }
     }else if( (mFlags & 0x07)==CARRAY_BLOB ){
       for(i=0; i<nData; i++){
+#       if defined(SQLITE_BUILDING_FOR_COMDB2)
+        sz += ((struct cdb2vec*)aData)[i].iov_len;
+#       else
         sz += ((struct iovec*)aData)[i].iov_len;
+#       endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     } 
     pNew->aData = sqlite3_malloc64( sz );
@@ -488,14 +508,26 @@ SQLITE_API int sqlite3_carray_bind(
         z += n+1;
       }
     }else if( (mFlags & 0x07)==CARRAY_BLOB ){
+#     if defined(SQLITE_BUILDING_FOR_COMDB2)
+      struct cdb2vec *p = (struct cdb2vec*)pNew->aData;
+#     else
       struct iovec *p = (struct iovec*)pNew->aData;
+#     endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       unsigned char *z = (unsigned char*)&p[nData];
       for(i=0; i<nData; i++){
+#       if defined(SQLITE_BUILDING_FOR_COMDB2)
+        size_t n = ((struct cdb2vec*)aData)[i].iov_len;
+#       else
         size_t n = ((struct iovec*)aData)[i].iov_len;
+#       endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         p[i].iov_len = n;
         p[i].iov_base = z;
         z += n;
+#       if defined(SQLITE_BUILDING_FOR_COMDB2)
+        memcpy(p[i].iov_base, ((struct cdb2vec*)aData)[i].iov_base, n);
+#       else
         memcpy(p[i].iov_base, ((struct iovec*)aData)[i].iov_base, n);
+#       endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
     }else{
       memcpy(pNew->aData, aData, sz);

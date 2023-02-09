@@ -233,8 +233,7 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
                     const void *varaddr, int length);
 int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
                     const void *varaddr, int length);
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type,
-                    const void *varaddr, unsigned int count, int typelen);
+int cdb2_bind_array(cdb2_hndl_tp *, const char *, cdb2_coltype, const void *, size_t count, size_t typelen);
 int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
