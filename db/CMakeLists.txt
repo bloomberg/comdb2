@@ -195,6 +195,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/schemachange
   ${PROJECT_SOURCE_DIR}/sockpool
   ${PROJECT_SOURCE_DIR}/sqlite/ext/expert
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/misc
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}

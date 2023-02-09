@@ -1337,16 +1337,13 @@ int sqlite3_is_prepare_only(struct sqlclntstate *);
 int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite3_can_get_column_type_and_data(struct sqlclntstate *, sqlite3_stmt *);
 
-#define SQLITE_PROTO_API(ret, type)                                            \
-    ret column_##type(struct sqlclntstate *, sqlite3_stmt *, int)
-
-SQLITE_PROTO_API(int, type);
-SQLITE_PROTO_API(sqlite_int64, int64);
-SQLITE_PROTO_API(double, double);
-SQLITE_PROTO_API(const unsigned char *, text);
-SQLITE_PROTO_API(int, bytes);
-SQLITE_PROTO_API(const void *, blob);
-SQLITE_PROTO_API(const dttz_t *, datetime);
+int column_type(struct sqlclntstate *, sqlite3_stmt *, int);
+sqlite_int64 column_int64(struct sqlclntstate *, sqlite3_stmt *, int);
+double column_double(struct sqlclntstate *, sqlite3_stmt *, int);
+const unsigned char *column_text(struct sqlclntstate *, sqlite3_stmt *, int);
+int column_bytes(struct sqlclntstate *, sqlite3_stmt *, int);
+const void *column_blob(struct sqlclntstate *, sqlite3_stmt *, int);
+const dttz_t *column_datetime(struct sqlclntstate *, sqlite3_stmt *, int);
 const intv_t *column_interval(struct sqlclntstate *, sqlite3_stmt *, int, int);
 
 struct query_stats {
