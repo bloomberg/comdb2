@@ -1305,6 +1305,7 @@ static void *purge_old_files_thread(void *arg)
     int empty = 0;
     int empty_pause = 5; // seconds
     int retries = 0;
+    extern int gbl_all_prepare_leak;
 
     thrman_register(THRTYPE_PURGEFILES);
     thread_started("purgefiles");
@@ -1317,10 +1318,11 @@ static void *purge_old_files_thread(void *arg)
     while (!db_is_exiting()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
-        if (thedb->master != gbl_myhostname) {
+        if (thedb->master != gbl_myhostname || gbl_all_prepare_leak) {
             sleep_with_check_for_exiting(empty_pause);
             continue;
         }
+
         if (db_is_exiting())
             continue;
 
@@ -4081,6 +4083,11 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb, NULL);
 
     gbl_backend_opened = 1;
+
+    if (!gbl_exit && !gbl_create_mode && (thedb->nsiblings == 1 ||
+        thedb->master == gbl_myhostname)) {
+        bdb_upgrade_all_prepared(thedb->bdb_env);
+    }
 
     sqlinit();
     rc = create_datacopy_arrays();

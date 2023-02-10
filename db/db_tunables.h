@@ -1377,6 +1377,18 @@ REGISTER_TUNABLE("block_set_commit_genid_trace",
                  "Print trace when blocking set commit_genid. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_block_set_commit_genid_trace, INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_random_prepare",
+                 "Prepare randomly. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_random_prepare_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_all_prepare_commit",
+                 "Prepare all transactions. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_all_prepare_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_all_prepare_abort",
+                 "Prepare and abort all transactions. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_all_prepare_abort, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_all_prepare_leak",
+                 "Prepare and leak all transactions. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_all_prepare_leak, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("abort_on_unset_ha_flag",
                  "Abort in snap_uid_retry if ha is unset. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_unset_ha_flag, INTERNAL, NULL,

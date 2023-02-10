@@ -337,6 +337,10 @@ int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
     return IX_NOTFND;
 }
 
+/* 
+ * TODO: create 'distributed-abort' blkseq response & update blkseq when
+ * we see a dist_abort log-record.
+ */
 int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
                       int klen, void *data, int datalen, void **dtaout,
                       int *lenout)

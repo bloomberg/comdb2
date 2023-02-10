@@ -802,6 +802,17 @@ void replay_stat(void)
 
 void flush_db(void);
 
+/* I need to be able to create a blkseq key & data for prepared txns that have
+ * been aborted by the coordinator.  This will be added outside of the block
+ * processor if the master crashed while holding prepared transactions.
+ *
+ * Will defer writing until after I have written aborted dist-txn from toblock */
+int prepare_dist_abort_blkseq()
+{
+    /* TODO */
+    return 0;
+}
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -2665,7 +2676,26 @@ static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
         } \
     }
 
+int gbl_random_prepare_commit = 0;
+int gbl_all_prepare_commit = 0;
+int gbl_all_prepare_abort = 0;
+int gbl_all_prepare_leak = 0;
 
+static inline int debug_should_prepare()
+{
+    return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak ||
+           (gbl_random_prepare_commit && rand()%2);
+}
+
+static inline int debug_prepared_should_commit()
+{
+    return (!gbl_all_prepare_leak && !gbl_all_prepare_abort);
+}
+
+static inline int debug_prepared_should_abort()
+{
+    return gbl_all_prepare_abort;
+}
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
@@ -5469,8 +5499,39 @@ add_blkseq:
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
-                    irc = trans_commit_adaptive(iq, parent_trans, source_host);
-                    parent_trans = NULL;
+					int prepared = 0, bdberr = 0;
+                    char dist_txnid[64] = {0};
+
+                    /* TODO: Prevent 2pc txns from running in serializable isolation, as that 
+                     * would require holding the commit-lock in write mode long-term.  */
+
+					/* Prepare tests */
+					if (debug_should_prepare()) {
+                        uint64_t g = get_genid(thedb->bdb_env, 0);
+                        snprintf(dist_txnid, sizeof(dist_txnid), "test-%"PRIu64, g);
+						int prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, 
+                            "test-coordinator", "test-tier", rand() % 10000, bskey, bskeylen, &bdberr);
+                        if (prepare_rc) {
+                            logmsg(LOGMSG_FATAL, "%s got weird error from prepare, %d??\n",
+                                __func__, prepare_rc);
+                            abort();
+                        }
+						prepared = 1;
+					}
+					if (!prepared || debug_prepared_should_commit()) {
+                    	irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                    	parent_trans = NULL;
+					} else if (prepared && debug_prepared_should_abort()) {
+						irc = trans_abort(iq, parent_trans);
+						parent_trans = NULL;
+					} else {
+						assert(gbl_all_prepare_leak);
+						logmsg(LOGMSG_USER, "%s leaking a prepared txn %s\n",
+							__func__, dist_txnid);
+						bdb_flush(thedb->bdb_env, &bdberr);
+						sleep(2);
+						exit(1);
+					}
                 }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:
@@ -5866,7 +5927,9 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
-    bdb_assert_notran(thedb->bdb_env);
+    extern int gbl_all_prepare_leak;
+    if (!gbl_all_prepare_leak)
+        bdb_assert_notran(thedb->bdb_env);
 
     if (rc == 0) {
         osql_postcommit_handle(iq);
