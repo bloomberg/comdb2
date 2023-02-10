@@ -85,4 +85,38 @@ typedef struct ___txn_regop_gen_args {
 	DBT	locks;
 } __txn_regop_gen_args;
 
+#define DB___txn_prepare  17
+typedef struct __txn_prepare_args {
+	u_int32_t type;
+	DB_TXN *txnid;
+	DB_LSN prev_lsn;
+	u_int32_t opcode;
+    DB_LSN begin_lsn;
+    u_int64_t dist_txnid;
+    u_int32_t coordinator_gen;
+    DBT coordinator_name;
+    DBT coordinator_tier;
+    DBT locks;
+} __txn_prepare_args;
+
+#define DB___txn_abort_prepare  18
+typedef struct __txn_abort_prepare_args {
+	u_int32_t type;
+	DB_TXN *txnid;
+	DB_LSN prev_lsn;
+	u_int32_t opcode;
+    u_int64_t dist_txnid;
+} __txn_abort_prepare_args;
+
+#define DB___txn_commit_prepare	19
+typedef struct __txn_commit_prepare_args {
+	u_int32_t type;
+	DB_TXN *txnid;
+	DB_LSN prev_lsn;
+	u_int32_t	opcode;
+    u_int64_t	dist_txnid;
+	u_int32_t	generation;
+	u_int64_t	context;
+	u_int64_t	timestamp;
+} __txn_commit_prepare_args;
 #endif

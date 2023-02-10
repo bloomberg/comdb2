@@ -2948,6 +2948,1155 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
 }
 
 /*
+ * PUBLIC: int __txn_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
+ * PUBLIC:     u_int32_t, u_int32_t, DB_LSN *, u_int64_t, u_int32_t, const DBT,
+ * PUBLIC:     const DBT *, const DBT *));
+ */
+int
+__txn_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_txnid,
+        coordinator_gen, coordinator_name, coordinator_tier, locks)
+	DB_ENV *dbenv;
+	DB_TXN *txnid;
+	DB_LSN *ret_lsnp;
+	u_int32_t flags;
+	u_int32_t opcode;
+    DB_LSN *begin_lsn;
+	u_int64_t dist_txnid;
+    u_int32_t coordinator_gen;
+    const DBT *coordinator_name;
+    const DBT *coordinator_tier;
+	const DBT *locks;
+{
+	DBT logrec;
+	DB_TXNLOGREC *lr;
+	DB_LSN *lsnp, null_lsn;
+	u_int32_t zero, uinttmp, rectype, txn_num;
+	u_int64_t uint64tmp;
+	u_int npad;
+	u_int8_t *bp;
+	int is_durable, ret;
+	int used_malloc = 0;
+	int off_context = -1;
+
+#ifdef __txn_DEBUG
+	fprintf(stderr,"__txn_prepare_log: begin\n");
+#endif
+
+	rectype = DB___txn_prepare;
+	npad = 0;
+
+	is_durable = 1;
+	if (LF_ISSET(DB_LOG_NOT_DURABLE) ||
+	    F_ISSET(dbenv, DB_ENV_TXN_NOT_DURABLE)) {
+		if (txnid == NULL)
+			return (0);
+		is_durable = 0;
+	}
+	if (txnid == NULL) {
+		txn_num = 0;
+		null_lsn.file = 0;
+		null_lsn.offset = 0;
+		lsnp = &null_lsn;
+	}
+	else
+	{
+		if (TAILQ_FIRST(&txnid->kids) != NULL &&
+		    (ret = __txn_activekids(dbenv, rectype, txnid)) != 0)
+			return (ret);
+		txn_num = txnid->txnid;
+		lsnp = &txnid->last_lsn;
+	}
+
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN)
+	    + sizeof(u_int32_t) /* opcode */
+        + sizeof(DB_LSN)    /* begin_lsn */
+	    + sizeof(u_int64_t) /* dist-txnid */
+	    + sizeof(u_int32_t) /* coordinator-gen */
+        + sizeof(u_int32_t) + (coordinator_name == NULL ? 0 : coordinator_name->size)
+        + sizeof(u_int32_t) + (coordinator_tier == NULL ? 0 : coordinator_tier->size)
+	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size);
+	if (CRYPTO_ON(dbenv)) {
+		npad =
+		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
+		logrec.size += npad;
+	}
+
+	if (!is_durable && txnid != NULL)
+	{
+		if ((ret = __os_malloc(dbenv,
+		    logrec.size + sizeof(DB_TXNLOGREC), &lr)) != 0)
+			return (ret);
+#ifdef DIAGNOSTIC
+		goto do_malloc;
+#else
+		logrec.data = &lr->data;
+#endif
+
+	}
+	else
+	{
+#ifdef DIAGNOSTIC
+do_malloc:
+#endif
+
+		if (logrec.size > 4096)
+		{
+			if ((ret =
+			    __os_malloc(dbenv, logrec.size, &logrec.data)) != 0) {
+#ifdef DIAGNOSTIC
+				if (!is_durable && txnid != NULL)
+					(void)__os_free(dbenv, lr);
+#endif
+
+				return (ret);
+			}
+			used_malloc = 1;
+		}
+		else
+		{
+			used_malloc = 0;
+			logrec.data = alloca(logrec.size);
+		}
+	}
+	if (npad > 0)
+		memset((u_int8_t *)logrec.data + logrec.size - npad, 0, npad);
+
+	bp = logrec.data;
+
+	LOGCOPY_32(bp, &rectype);
+	bp += sizeof(rectype);
+
+	LOGCOPY_32(bp, &txn_num);
+	bp += sizeof(txn_num);
+
+	LOGCOPY_FROMLSN(bp, lsnp);
+	bp += sizeof(DB_LSN);
+
+	uinttmp = (u_int32_t)opcode;
+	LOGCOPY_32(bp, &uinttmp);
+	bp += sizeof(uinttmp);
+
+    LOGCOPY_FROMLSN(bp, begin_lsn);
+	bp += sizeof(DB_LSN);
+
+	uint64tmp = (u_int64_t)dist_txnid;
+	LOGCOPY_64(bp, &uint64tmp);
+    bp += sizeof(uint64tmp);
+
+	uinttmp = (u_int32_t)coordinator_gen;
+	LOGCOPY_32(bp, &uinttmp);
+	bp += sizeof(uinttmp);
+
+    if (coordinator_name == NULL)
+    {
+		zero = 0;
+		LOGCOPY_32(bp, &zero);
+		bp += sizeof(u_int32_t);
+    }
+    else
+    {
+		LOGCOPY_32(bp, &coordinator_name->size);
+		bp += sizeof(coordinator_name->size);
+		memcpy(bp, coordinator_name->data, coordinator_name->size);
+		bp += coordinator_name->size;
+    }
+
+    if (coordinator_tier == NULL)
+    {
+		zero = 0;
+		LOGCOPY_32(bp, &zero);
+		bp += sizeof(u_int32_t);
+    }
+    else
+    {
+		LOGCOPY_32(bp, &coordinator_tier->size);
+		bp += sizeof(coordinator_tier->size);
+		memcpy(bp, coordinator_tier->data, coordinator_tier->size);
+		bp += coordinator_tier->size;
+    }
+
+	if (locks == NULL)
+	{
+		zero = 0;
+		LOGCOPY_32(bp, &zero);
+		bp += sizeof(u_int32_t);
+	}
+	else
+	{
+		LOGCOPY_32(bp, &locks->size);
+		bp += sizeof(locks->size);
+		memcpy(bp, locks->data, locks->size);
+		bp += locks->size;
+	}
+
+	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
+
+#ifdef DIAGNOSTIC
+	if (!is_durable && txnid != NULL) {
+		 /*
+		 * We set the debug bit if we are going
+		 * to log non-durable transactions so
+		 * they will be ignored by recovery.
+		 */
+		memcpy(lr->data, logrec.data, logrec.size);
+		rectype |= DB_debug_FLAG;
+		LOGCOPY_32(logrec.data, &rectype);
+	}
+#endif
+
+	if (!is_durable && txnid != NULL) {
+		ret = 0;
+		STAILQ_INSERT_HEAD(&txnid->logs, lr, links);
+#ifdef DIAGNOSTIC
+		goto do_put;
+#endif
+
+	}
+	else
+	{
+#ifdef DIAGNOSTIC
+do_put:
+#endif
+		ret = __log_put(dbenv,
+		    ret_lsnp, (DBT *)&logrec, flags | DB_LOG_NOCOPY);
+		if (ret == 0 && txnid != NULL)
+			txnid->last_lsn = *ret_lsnp;
+	}
+
+	if (!is_durable)
+		LSN_NOT_LOGGED(*ret_lsnp);
+#ifdef LOG_DIAGNOSTIC
+	if (ret != 0)
+		(void)__txn_prepare_print(dbenv,
+		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
+#endif
+
+#ifndef DIAGNOSTIC
+	if (is_durable || txnid == NULL)
+#endif
+
+		if (used_malloc)
+			__os_free(dbenv, logrec.data);
+
+	return (ret);
+}
+
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __txn_prepare_getpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:     DB_LSN *, db_recops, void *));
+ */
+int
+__txn_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	int ret;
+	COMPQUIET(rec, NULL);
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	t = (TXN_RECS *)summary;
+
+	if ((ret = __rep_check_alloc(dbenv, t, 1)) != 0)
+		return (ret);
+
+	t->array[t->npages].flags = LSN_PAGE_NOLOCK;
+	t->array[t->npages].lsn = *lsnp;
+	t->array[t->npages].fid = DB_LOGFILEID_INVALID;
+	memset(&t->array[t->npages].pgdesc, 0,
+	    sizeof(t->array[t->npages].pgdesc));
+
+	t->npages++;
+
+	return (0);
+}
+#endif /* HAVE_REPLICATION */
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __txn_prepare_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:     DB_LSN *, db_recops, void *));
+ */
+int
+__txn_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	__txn_prepare_args *argp;
+	int ret = 0;
+
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	argp = NULL;
+	t = (TXN_RECS *)summary;
+
+
+err:	if (argp != NULL)
+	__os_free(dbenv, argp);
+
+	return (ret);
+}
+#endif /* HAVE_REPLICATION */
+
+
+/*
+ * PUBLIC: int __txn_prepare_read_int __P((DB_ENV *, void *,
+ * PUBLIC:     int do_pgswp,  __txn_prepare_args **));
+ */
+int
+__txn_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	int do_pgswp;
+	__txn_prepare_args **argpp;
+{
+	__txn_prepare_args *argp;
+	u_int32_t uinttmp;
+	u_int64_t uint64tmp;
+	u_int8_t *bp;
+	int ret;
+
+#ifdef __txn_DEBUG
+	fprintf(stderr,"__txn_prepare_read_int: begin\n");
+#endif
+
+	if ((ret = __os_malloc(dbenv,
+	    sizeof(__txn_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
+		return (ret);
+	argp->txnid = (DB_TXN *)&argp[1];
+
+	bp = recbuf;
+	LOGCOPY_32(&argp->type, bp);
+	bp += sizeof(argp->type);
+
+	LOGCOPY_32(&argp->txnid->txnid,  bp);
+	bp += sizeof(argp->txnid->txnid);
+
+	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
+	bp += sizeof(DB_LSN);
+
+	LOGCOPY_32(&uinttmp, bp);
+	argp->opcode = (u_int32_t)uinttmp;
+	bp += sizeof(uinttmp);
+
+    LOGCOPY_TOLSN(&argp->begin_lsn, bp);
+	bp += sizeof(DB_LSN);
+
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->dist_txnid = (u_int64_t)uint64tmp;
+    bp += sizeof(uint64tmp);
+
+	LOGCOPY_32(&uinttmp, bp);
+    argp->coordinator_gen = uinttmp;
+    bp += sizeof(uinttmp);
+
+    memset(&argp->coordinator_name, 0, sizeof(argp->coordinator_name));
+    LOGCOPY_32(&argp->coordinator_name.size, bp);
+	bp += sizeof(u_int32_t);
+    argp->coordinator_name.data = bp;
+    bp += argp->coordinator_name.size;
+
+    memset(&argp->coordinator_tier, 0, sizeof(argp->coordinator_tier));
+    LOGCOPY_32(&argp->coordinator_tier.size, bp);
+	bp += sizeof(u_int32_t);
+    argp->coordinator_tier.data = bp;
+    bp += argp->coordinator_tier.size;
+
+	memset(&argp->locks, 0, sizeof(argp->locks));
+	LOGCOPY_32(&argp->locks.size, bp);
+	bp += sizeof(u_int32_t);
+	argp->locks.data = bp;
+	bp += argp->locks.size;
+
+	*argpp = argp;
+	return (0);
+}
+
+/*
+ * PUBLIC: int __txn_prepare_read __P((DB_ENV *, void *,
+ * PUBLIC:      __txn_prepare_args **));
+ */
+int
+__txn_prepare_read(dbenv, recbuf, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	__txn_prepare_args **argpp;
+{
+	return __txn_prepare_read_int (dbenv, recbuf, 1, argpp);
+}
+
+/*
+ * PUBLIC: int __txn_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC:     db_recops, void *));
+ */
+int
+__txn_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+    DB_ENV *dbenv;
+    DBT *dbtp;
+    DB_LSN *lsnp;
+    db_recops notused2;
+    void *notused3;
+{
+	__txn_prepare_args *argp;
+	int ret;
+
+	notused2 = DB_TXN_ABORT;
+	notused3 = NULL;
+
+	if ((ret = __txn_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+        return (ret);
+    (void)printf(
+	    "[%lu][%lu]__txn_prepare_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
+	    (u_long)lsnp->file,
+	    (u_long)lsnp->offset,
+	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
+	    (u_long)argp->type,
+	    (u_long)argp->txnid->txnid,
+	    (u_long)argp->prev_lsn.file,
+	    (u_long)argp->prev_lsn.offset);
+	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
+	fflush(stdout);
+	(void)printf("\tbegin-lsn: [%lu][%lu]\n",
+        (u_long)argp->begin_lsn.file,
+        (u_long)argp->begin_lsn.offset);
+	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
+	(void)printf("\tcoordinator-gen: %lu\n", (u_long)argp->coordinator_gen);
+	(void)printf("\tcoordinator-name: %*s\n", argp->coordinator_name.size, (char *)argp->coordinator_name.data);
+	(void)printf("\tcoordinator-tier: %*s\n", argp->coordinator_tier.size, (char *)argp->coordinator_tier.data);
+	fflush(stdout);
+
+	(void)printf("\tlocks: \n");
+
+    DB_LSN ignored;
+    int pglogs;
+    u_int32_t keycnt;
+    __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
+
+	(void)printf("\n");
+	__os_free(dbenv, argp);
+
+	return (0);
+}
+
+
+/*
+ * PUBLIC: int __txn_abort_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t));
+ */
+ int
+ __txn_abort_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, dist_txnid)
+	DB_ENV *dbenv;
+	DB_TXN *txnid;
+	DB_LSN *ret_lsnp;
+	u_int32_t flags;
+	u_int32_t opcode;
+	u_int64_t dist_txnid;
+{
+	DBT logrec;
+	DB_TXNLOGREC *lr;
+	DB_LSN *lsnp, null_lsn;
+	u_int32_t uinttmp, rectype, txn_num;
+    u_int64_t uint64tmp;
+	u_int npad;
+	u_int8_t *bp;
+	int is_durable, ret;
+	int used_malloc = 0;
+
+#ifdef __txn_DEBUG
+	fprintf(stderr,"__txn_abort_prepare_log: begin\n");
+#endif
+
+	rectype = DB___txn_abort_prepare;
+	npad = 0;
+
+	is_durable = 1;
+    DB_ASSERT(txn != NULL);
+	txn_num = txnid->txnid;
+	lsnp = &txnid->last_lsn;
+
+    logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + sizeof(u_int32_t) + sizeof(u_int64_t);
+
+	if (CRYPTO_ON(dbenv)) {
+		npad =
+		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
+		logrec.size += npad;
+	}
+
+	if (!is_durable && txnid != NULL)
+	{
+		if ((ret = __os_malloc(dbenv,
+		    logrec.size + sizeof(DB_TXNLOGREC), &lr)) != 0)
+			return (ret);
+#ifdef DIAGNOSTIC
+		goto do_malloc;
+#else
+		logrec.data = &lr->data;
+#endif
+
+	}
+	else
+	{
+#ifdef DIAGNOSTIC
+do_malloc:
+#endif
+
+		if (logrec.size > 4096)
+		{
+			if ((ret =
+			    __os_malloc(dbenv, logrec.size, &logrec.data)) != 0) {
+#ifdef DIAGNOSTIC
+				if (!is_durable && txnid != NULL)
+					(void)__os_free(dbenv, lr);
+#endif
+
+				return (ret);
+			}
+			used_malloc = 1;
+		}
+		else
+		{
+			used_malloc = 0;
+			logrec.data = alloca(logrec.size);
+		}
+	}
+	if (npad > 0)
+		memset((u_int8_t *)logrec.data + logrec.size - npad, 0, npad);
+
+	bp = logrec.data;
+
+	LOGCOPY_32(bp, &rectype);
+	bp += sizeof(rectype);
+
+	LOGCOPY_32(bp, &txn_num);
+	bp += sizeof(txn_num);
+
+	LOGCOPY_FROMLSN(bp, lsnp);
+	bp += sizeof(DB_LSN);
+
+	uinttmp = (u_int32_t)opcode;
+	LOGCOPY_32(bp, &uinttmp);
+	bp += sizeof(uinttmp);
+
+    uint64tmp = (u_int64_t)dist_txnid;
+    LOGCOPY_64(bp, &uint64tmp);
+    bp += sizeof(uint64tmp);
+
+	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
+
+#ifdef DIAGNOSTIC
+	if (!is_durable && txnid != NULL) {
+		 /*
+		 * We set the debug bit if we are going
+		 * to log non-durable transactions so
+		 * they will be ignored by recovery.
+		 */
+		memcpy(lr->data, logrec.data, logrec.size);
+		rectype |= DB_debug_FLAG;
+		LOGCOPY_32(logrec.data, &rectype);
+	}
+#endif
+
+	if (!is_durable && txnid != NULL) {
+		ret = 0;
+		STAILQ_INSERT_HEAD(&txnid->logs, lr, links);
+#ifdef DIAGNOSTIC
+		goto do_put;
+#endif
+
+	}
+	else
+	{
+#ifdef DIAGNOSTIC
+do_put:
+#endif
+
+		ret = __log_put(dbenv,
+		    ret_lsnp, (DBT *)&logrec, flags | DB_LOG_NOCOPY);
+		if (ret == 0 && txnid != NULL)
+			txnid->last_lsn = *ret_lsnp;
+	}
+
+	if (!is_durable)
+		LSN_NOT_LOGGED(*ret_lsnp);
+#ifdef LOG_DIAGNOSTIC
+	if (ret != 0)
+		(void)__txn_abort_prepare_print(dbenv,
+		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
+#endif
+
+#ifndef DIAGNOSTIC
+	if (is_durable || txnid == NULL)
+#endif
+		if (used_malloc)
+			__os_free(dbenv, logrec.data);
+
+	return (ret);
+}
+
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __txn_abort_prepare_getpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:     DB_LSN *, db_recops, void *));
+ */
+int
+__txn_abort_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	int ret;
+	COMPQUIET(rec, NULL);
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	t = (TXN_RECS *)summary;
+
+	if ((ret = __rep_check_alloc(dbenv, t, 1)) != 0)
+		return (ret);
+
+	t->array[t->npages].flags = LSN_PAGE_NOLOCK;
+	t->array[t->npages].lsn = *lsnp;
+	t->array[t->npages].fid = DB_LOGFILEID_INVALID;
+	memset(&t->array[t->npages].pgdesc, 0,
+	    sizeof(t->array[t->npages].pgdesc));
+
+	t->npages++;
+
+	return (0);
+}
+#endif /* HAVE_REPLICATION */
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __txn_abort_prepare_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:     DB_LSN *, db_recops, void *));
+ */
+int
+__txn_abort_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	__txn_abort_prepare_args *argp;
+	int ret = 0;
+
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	argp = NULL;
+	t = (TXN_RECS *)summary;
+
+
+err:	if (argp != NULL)
+	__os_free(dbenv, argp);
+
+	return (ret);
+}
+#endif /* HAVE_REPLICATION */
+
+/*
+ * PUBLIC: int __txn_abort_prepare_read_int __P((DB_ENV *, void *,
+ * PUBLIC:	  int do_pgswp, __txn_abort_prepare_args **));
+ */
+int
+__txn_abort_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	int do_pgswp;
+	__txn_abort_prepare_args **argpp;
+{
+	__txn_abort_prepare_args *argp;
+	u_int32_t uinttmp;
+	u_int64_t uint64tmp;
+	u_int8_t *bp;
+	int ret;
+
+	if ((ret = __os_malloc(dbenv,
+		sizeof(__txn_abort_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
+		return (ret);
+	argp->txnid = (DB_TXN *)&argp[1];
+
+	bp = recbuf;
+	LOGCOPY_32(&argp->type, bp);
+	bp += sizeof(argp->type);
+
+	LOGCOPY_32(&argp->txnid->txnid,  bp);
+	bp += sizeof(argp->txnid->txnid);
+
+	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
+	bp += sizeof(DB_LSN);
+
+	LOGCOPY_32(&uinttmp, bp);
+	argp->opcode = (u_int32_t)uinttmp;
+	bp += sizeof(uinttmp);
+
+	LOGCOPY_64(&uint64tmp, bp);
+	argp->dist_txnid = uint64tmp;
+	bp += sizeof(uint64tmp);
+
+	*argpp = argp;
+	return (0);
+}
+
+/*
+ * PUBLIC: int __txn_abort_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC:      db_recops, void *));
+ */
+int
+__txn_abort_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops notused2;
+	void *notused3;
+{
+	__txn_abort_prepare_args *argp;
+	int ret;
+
+	notused2 = DB_TXN_ABORT;
+	notused3 = NULL;
+
+	if ((ret = __txn_abort_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+		return (ret);
+
+	(void)printf(
+		"[%lu][%lu]__txn_abort_prepare_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
+		(u_long)lsnp->file,
+		(u_long)lsnp->offset,
+		(argp->type & DB_debug_FLAG) ? "_debug" : "",
+		(u_long)argp->type,
+		(u_long)argp->txnid->txnid,
+		(u_long)argp->prev_lsn.file,
+		(u_long)argp->prev_lsn.offset);
+	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
+	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
+	fflush(stdout);
+
+	(void)printf("\n");
+	__os_free(dbenv, argp);
+
+	return (0);
+}
+
+/*
+ * PUBLIC: int __txn_abort_prepare_read __P((DB_ENV *, void *,
+ * PUBLIC:	  __txn_abort_prepare_args **));
+ */
+int
+__txn_abort_prepare_read(dbenv, recbuf, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	__txn_abort_prepare_args **argpp;
+{
+	return __txn_abort_prepare_read_int (dbenv, recbuf, 1, argpp);
+}
+
+/*
+ * PUBLIC: int __txn_commit_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *, 
+ * PUBLIC:	  u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
+ * PUBLIC:	  u_int32_t generation, u_int64_t timestamp, void *usr_ptr));
+ */
+
+int
+__txn_commit_prepare_log(dbenv, txnid, ret_lsnp, ret_contextp, flags, 
+		opcode, dist_txnid, generation, timestamp, usr_ptr)
+	DB_ENV *dbenv;
+	DB_TXN *txnid;
+	DB_LSN *ret_lsnp;
+	u_int64_t *ret_contextp;
+	u_int32_t flags;
+	u_int32_t opcode;
+	u_int64_t dist_txnid;
+	u_int32_t generation;
+	u_int64_t timestamp;
+    void *usr_ptr;
+{
+	DBT logrec;
+	DB_TXNLOGREC *lr;
+	DB_LSN *lsnp, null_lsn;
+	u_int32_t zero, uinttmp, rectype, txn_num;
+	u_int64_t uint64tmp;
+	u_int npad;
+	u_int8_t *bp;
+	int is_durable, ret;
+	int used_malloc = 0;
+	int off_context = -1;
+
+#ifdef __txn_DEBUG
+	fprintf(stderr,"__txn_commit_prepare_log: begin\n");
+#endif
+
+	rectype = DB___txn_commit_prepare;
+	npad = 0;
+
+	is_durable = 1;
+	if (LF_ISSET(DB_LOG_NOT_DURABLE) ||
+	    F_ISSET(dbenv, DB_ENV_TXN_NOT_DURABLE)) {
+		if (txnid == NULL)
+			return (0);
+		is_durable = 0;
+	}
+	if (txnid == NULL) {
+		txn_num = 0;
+		null_lsn.file = 0;
+		null_lsn.offset = 0;
+		lsnp = &null_lsn;
+	}
+	else
+	{
+		if (TAILQ_FIRST(&txnid->kids) != NULL &&
+		    (ret = __txn_activekids(dbenv, rectype, txnid)) != 0)
+			return (ret);
+		txn_num = txnid->txnid;
+		lsnp = &txnid->last_lsn;
+	}
+
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN)
+	    + sizeof(u_int32_t)	/* opcode */
+	    + sizeof(u_int64_t)	/* dist_txnid */
+	    + sizeof(u_int32_t)	/* generation */
+	    + sizeof(u_int64_t)	/* context */
+	    + sizeof(u_int64_t);/* timestamp */
+	if (CRYPTO_ON(dbenv)) {
+		npad =
+		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
+		logrec.size += npad;
+	}
+
+	if (!is_durable && txnid != NULL)
+	{
+		if ((ret = __os_malloc(dbenv,
+		    logrec.size + sizeof(DB_TXNLOGREC), &lr)) != 0)
+			return (ret);
+#ifdef DIAGNOSTIC
+		goto do_malloc;
+#else
+		logrec.data = &lr->data;
+#endif
+
+	}
+	else
+	{
+#ifdef DIAGNOSTIC
+do_malloc:
+#endif
+
+		if (logrec.size > 4096)
+		{
+			if ((ret =
+			    __os_malloc(dbenv, logrec.size, &logrec.data)) != 0) {
+#ifdef DIAGNOSTIC
+				if (!is_durable && txnid != NULL)
+					(void)__os_free(dbenv, lr);
+#endif
+
+				return (ret);
+			}
+			used_malloc = 1;
+		}
+		else
+		{
+			used_malloc = 0;
+			logrec.data = alloca(logrec.size);
+		}
+	}
+	if (npad > 0)
+		memset((u_int8_t *)logrec.data + logrec.size - npad, 0, npad);
+
+	bp = logrec.data;
+
+	LOGCOPY_32(bp, &rectype);
+	bp += sizeof(rectype);
+
+	LOGCOPY_32(bp, &txn_num);
+	bp += sizeof(txn_num);
+
+	LOGCOPY_FROMLSN(bp, lsnp);
+	bp += sizeof(DB_LSN);
+
+	uinttmp = (u_int32_t)opcode;
+	LOGCOPY_32(bp, &uinttmp);
+	bp += sizeof(uinttmp);
+
+	uint64tmp = (u_int64_t)dist_txnid;
+	LOGCOPY_64(bp, &uint64tmp);
+	bp += sizeof(uint64tmp);
+
+	uinttmp = (u_int32_t)generation;
+	LOGCOPY_32(bp, &uinttmp);
+	bp += sizeof(uinttmp);
+
+	off_context = (u_int8_t*)bp-((u_int8_t*)(logrec.data));
+
+    memset(bp, 0, sizeof(u_int64_t));
+	bp += sizeof(u_int64_t);
+
+	uint64tmp = (u_int64_t)timestamp;
+	LOGCOPY_64(bp, &uint64tmp);
+	bp += sizeof(uint64tmp);
+
+	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
+
+#ifdef DIAGNOSTIC
+	if (!is_durable && txnid != NULL) {
+		 /*
+		 * We set the debug bit if we are going
+		 * to log non-durable transactions so
+		 * they will be ignored by recovery.
+		 */
+		memcpy(lr->data, logrec.data, logrec.size);
+		rectype |= DB_debug_FLAG;
+		LOGCOPY_32(logrec.data, &rectype);
+	}
+#endif
+
+	if (!is_durable && txnid != NULL) {
+		ret = 0;
+		STAILQ_INSERT_HEAD(&txnid->logs, lr, links);
+#ifdef DIAGNOSTIC
+		goto do_put;
+#endif
+
+	}
+	else
+	{
+#ifdef DIAGNOSTIC
+do_put:
+#endif
+		ret = __log_put_commit_context(dbenv,
+		    ret_lsnp, ret_contextp, (DBT *)&logrec, flags | DB_LOG_NOCOPY, off_context, usr_ptr);
+		if (ret == 0 && txnid != NULL)
+			txnid->last_lsn = *ret_lsnp;
+	}
+
+	if (!is_durable)
+		LSN_NOT_LOGGED(*ret_lsnp);
+#ifdef LOG_DIAGNOSTIC
+	if (ret != 0)
+		(void)__txn_regop_gen_print(dbenv,
+		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
+#endif
+
+#ifndef DIAGNOSTIC
+	if (is_durable || txnid == NULL)
+#endif
+
+		if (used_malloc)
+			__os_free(dbenv, logrec.data);
+
+	return (ret);
+}
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __txn_commit_prepare_getpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:     DB_LSN *, db_recops, void *));
+ */
+int
+__txn_commit_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	int ret;
+	COMPQUIET(rec, NULL);
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	t = (TXN_RECS *)summary;
+
+	if ((ret = __rep_check_alloc(dbenv, t, 1)) != 0)
+		return (ret);
+
+	t->array[t->npages].flags = LSN_PAGE_NOLOCK;
+	t->array[t->npages].lsn = *lsnp;
+	t->array[t->npages].fid = DB_LOGFILEID_INVALID;
+	memset(&t->array[t->npages].pgdesc, 0,
+	    sizeof(t->array[t->npages].pgdesc));
+
+	t->npages++;
+
+	return (0);
+}
+#endif /* HAVE_REPLICATION */
+
+#ifdef HAVE_REPLICATION
+/*
+ * PUBLIC: int __txn_commit_prepare_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC:     DB_LSN *, db_recops, void *));
+ */
+int
+__txn_commit_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+	DB_ENV *dbenv;
+	DBT *rec;
+	DB_LSN *lsnp;
+	db_recops notused1;
+	void *summary;
+{
+	TXN_RECS *t;
+	__txn_commit_prepare_args *argp;
+	int ret = 0;
+
+	COMPQUIET(notused1, DB_TXN_ABORT);
+
+	argp = NULL;
+	t = (TXN_RECS *)summary;
+
+
+err:	if (argp != NULL)
+	__os_free(dbenv, argp);
+
+	return (ret);
+}
+#endif /* HAVE_REPLICATION */
+
+/*
+ * PUBLIC: int __txn_commit_prepare_read_int __P((DB_ENV *, void *,
+ * PUBLIC:	  int do_pgswp, __txn_commit_prepare_args **));
+ */
+int
+__txn_commit_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	int do_pgswp;
+	__txn_commit_prepare_args **argpp;
+{
+	__txn_commit_prepare_args *argp;
+	u_int32_t uinttmp;
+	u_int64_t uint64tmp;
+	u_int8_t *bp;
+	int ret;
+
+	if ((ret = __os_malloc(dbenv,
+		sizeof(__txn_commit_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
+		return (ret);
+	argp->txnid = (DB_TXN *)&argp[1];
+
+	bp = recbuf;
+	LOGCOPY_32(&argp->type, bp);
+	bp += sizeof(argp->type);
+
+	LOGCOPY_32(&argp->txnid->txnid,  bp);
+	bp += sizeof(argp->txnid->txnid);
+
+	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
+	bp += sizeof(DB_LSN);
+
+	LOGCOPY_32(&uinttmp, bp);
+	argp->opcode = (u_int32_t)uinttmp;
+	bp += sizeof(uinttmp);
+
+	LOGCOPY_64(&uint64tmp, bp);
+	argp->dist_txnid = uint64tmp;
+	bp += sizeof(uint64tmp);
+
+    LOGCOPY_32(&uinttmp, bp);
+    argp->generation = uinttmp;
+    bp += sizeof(uinttmp);
+
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->context = uint64tmp;
+    bp += sizeof(uint64tmp);
+
+    LOGCOPY_64(&uint64tmp, bp);
+    argp->timestamp = uint64tmp;
+    bp += sizeof(uint64tmp);
+
+	*argpp = argp;
+	return (0);
+}
+
+/*
+ * PUBLIC: int __txn_commit_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC:      db_recops, void *));
+ */
+int
+__txn_commit_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops notused2;
+	void *notused3;
+{
+	__txn_commit_prepare_args *argp;
+	int ret;
+
+	notused2 = DB_TXN_ABORT;
+	notused3 = NULL;
+
+	if ((ret = __txn_commit_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+		return (ret);
+
+	(void)printf(
+		"[%lu][%lu]__txn_abort_prepare_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
+		(u_long)lsnp->file,
+		(u_long)lsnp->offset,
+		(argp->type & DB_debug_FLAG) ? "_debug" : "",
+		(u_long)argp->type,
+		(u_long)argp->txnid->txnid,
+		(u_long)argp->prev_lsn.file,
+		(u_long)argp->prev_lsn.offset);
+	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
+	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
+	(void)printf("\tgeneration: %u\n", argp->generation);
+
+    unsigned long long flipcontext;
+    int *fliporig = (int *)&argp->context;
+    int *flipptr = (int *)&flipcontext;
+    flipptr[0] = htonl(fliporig[1]);
+    flipptr[1] = htonl(fliporig[0]);
+    (void)printf("\tcontext: %016"PRIx64" %016llx\n", argp->context, flipcontext);
+	struct tm *lt;
+    lt = localtime((time_t *)&argp->timestamp);
+    if (lt)
+    {
+        (void)printf(
+                "\ttimestamp: %ld (%.24s, 20%02lu%02lu%02lu%02lu%02lu.%02lu)\n",
+                (long)argp->timestamp, ctime((time_t *)&argp->timestamp),
+                (u_long)lt->tm_year - 100, (u_long)lt->tm_mon+1,
+                (u_long)lt->tm_mday, (u_long)lt->tm_hour,
+                (u_long)lt->tm_min, (u_long)lt->tm_sec);
+    }
+    else
+    {
+        (void)printf("\ttimestamp: %ld\n", (long)argp->timestamp);
+    }
+
+	(void)printf("\n");
+	__os_free(dbenv, argp);
+
+	return (0);
+}
+
+/*
+ * PUBLIC: int __txn_commit_prepare_read __P((DB_ENV *, void *,
+ * PUBLIC:	  __txn_commit_prepare_args **));
+ */
+int
+__txn_commit_prepare_read(dbenv, recbuf, argpp)
+	DB_ENV *dbenv;
+	void *recbuf;
+	__txn_commit_prepare_args **argpp;
+{
+	return __txn_commit_prepare_read_int (dbenv, recbuf, 1, argpp);
+}
+
+/*
  * PUBLIC: int __txn_init_print __P((DB_ENV *, int (***)(DB_ENV *,
  * PUBLIC:     DBT *, DB_LSN *, db_recops, void *), size_t *));
  */
