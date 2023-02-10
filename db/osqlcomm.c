@@ -6318,14 +6318,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
              * finally sends them to the replicant as part of 'done'.
              */
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
-
-            /* The following assert could fail when/if master modifies the
-             * write query effects.
-             */
-            if (!gbl_master_sends_query_effects && IQ_HAS_SNAPINFO(iq)) {
-                assert(
-                    !memcmp(&snap_info, IQ_SNAPINFO(iq), sizeof(snap_uid_t)));
-            }
         }
 
 #if 0
