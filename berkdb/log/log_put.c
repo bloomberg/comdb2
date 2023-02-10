@@ -144,6 +144,7 @@ static inline int is_commit_record(int rectype) {
         /* regop regop_gen regop_rowlocks */
         case (DB___txn_regop): 
         case (DB___txn_regop_gen):
+        case (DB___txn_dist_commit):
         case (DB___txn_regop_rowlocks):
             return 1;
             break;
@@ -719,7 +720,7 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 		int pushlog = 1;
 
 		assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
-				rectype == DB___txn_regop_rowlocks);
+				rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit);
 
 		if (rectype == DB___txn_regop_rowlocks)
 		{
@@ -733,6 +734,12 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 		{
 			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+GENERATION(4) */
 			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4] );
+		}
+
+		if (rectype == DB___txn_dist_commit)
+		{
+			/* rectype(4)+txn_num(4)+db_lsn(8)+GENERATION(4)*/
+			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + 4] );
 		}
 
 		bdb_push_pglogs_commit(dbenv->app_private, *lsn, generation, *ltranid, pushlog);

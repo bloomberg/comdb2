@@ -431,6 +431,12 @@ __db_new(dbc, type, pagepp)
 					goto err;
 				memcpy(bp, ldbt.data, ldbt.size);
 
+#if defined (DEBUG_PGFREE_ZERO)
+				if (h->pgno == 0) {
+					__log_flush(dbc->dbp->dbenv, NULL);
+					abort();
+				}
+#endif
 				/* Now log the page being put on the freelist */
 				ret =
 				    __db_pg_free_log(dbc->dbp, t, &LSN(meta), 0,
@@ -790,9 +796,16 @@ __db_free(dbc, h)
 		default:
 			DB_ASSERT(TYPE(h) != P_QAMDATA);
 
-log:			ret = __db_pg_free_log(dbp,
-			    dbc->txn, &LSN(meta), 0, h->pgno,
-			    &LSN(meta), PGNO_BASE_MD, &ldbt, meta->free);
+log:
+#if defined (DEBUG_PGFREE_ZERO)
+				if (h->pgno == 0) {
+					__log_flush(dbc->dbp->dbenv, NULL);
+					abort();
+				}
+#endif
+				ret = __db_pg_free_log(dbp,
+				dbc->txn, &LSN(meta), 0, h->pgno,
+				&LSN(meta), PGNO_BASE_MD, &ldbt, meta->free);
 		}
 		if (ret != 0) {
 			(void)__memp_fput(mpf, (PAGE *)meta, 0);

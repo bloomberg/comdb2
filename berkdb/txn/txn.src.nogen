@@ -149,3 +149,47 @@ TIME	timestamp	u_int64_t		llx
 DBT	locks		DBT		s
 END
 
+
+/*
+ * Prepare is a commit-record with a begin-lsn, the distributed txnid, the 
+ * coordinator's dbname, and coordinator's tier.  We require the begin-lsn
+ * for log-deletion: if a master crashes prior to knowing the outcome of a
+ * prepared transaction, a new master will need to re-acquire all of the 
+ * transaction's locks in recovery, and create a 'prepared-txn' to hand up
+ * to a higher layer.  It will be up to the new master to determine the 
+ * fate of this prepared transaction, and then to write a commit or abort.
+ */
+BEGIN dist_prepare			17
+ARG	opcode	u_int32_t		lu
+POINTER	begin_lsn DB_LSN *	lu
+ARG dist_txnid	genid_t		llx
+ARG lflags      u_int32_t   u
+ARG coordinator_gen	u_int32_t	u
+DBT coordinator_name DBT	s
+DBT coordinator_tier DBT	s
+DBT blkseq_key  DBT			s
+DBT	locks	DBT				s
+END
+
+/*
+ * Prepare-abort aborts a prepared transaction.  We need this for recovery
+ * to distinguish between outstanding and resolved prepared transactions.
+ */
+BEGIN dist_abort			18
+ARG	opcode		u_int32_t	lu
+ARG dist_txnid	genid_t		llx
+DBT blkseq_key  DBT		 s
+END
+
+/*
+ * Commit a prepared transaction.  The format is identical to regop_gen,
+ * aside from there being no field for locks.  The locks are listed in the
+ * prepare record.
+ */
+BEGIN dist_commit			19
+ARG	opcode		u_int32_t	lu
+ARG dist_txnid	genid_t		llx
+ARG generation	u_int32_t	u
+ARG context		genid_t		llx
+TIME timestamp	u_int64_t	llx
+END

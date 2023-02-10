@@ -64,6 +64,322 @@ extern int gbl_commit_lsn_map;
 
 int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
 int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+
+/*
+ * PUBLIC: int __txn_dist_abort_recover
+ * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ *
+ * These records are only ever written for commits.  Normally, we redo any
+ * committed transaction, however if we are doing recovery to a timestamp, then
+ * we may treat transactions that commited after the timestamp as aborted.
+ */
+int
+__txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops op;
+	void *info;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s - opcode is %d", __func__, op);
+#endif
+	DB_REP *db_rep;
+	REP *rep;
+	DB_TXNHEAD *headp;
+	__txn_dist_abort_args *argp;
+	int ret;
+
+#ifdef DEBUG_RECOVER
+	(void)__txn_dist_abort_print(dbenv, dbtp, lsnp, op, info);
+#endif
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
+	if ((ret = __txn_dist_abort_read(dbenv, dbtp->data, &argp)) != 0)
+		return (ret);
+
+	headp = info;
+	/*
+	 * We are only ever called during BACKWARD_ROLL.
+	 */
+
+	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
+		abort();
+	} else if (op == DB_TXN_FORWARD_ROLL) {
+		/* abort should never be called during forward roll */
+		abort();
+	} else if ((dbenv->tx_timestamp != 0 &&
+        argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
+        (!IS_ZERO_LSN(headp->trunc_lsn) &&
+		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+		/* We are truncating to a point where we don't see the abort record 
+         & possibly dont see prepare record either.  Just ignore */
+	} else if (op == DB_TXN_BACKWARD_ROLL){
+		char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+		memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+		dist_txnid[argp->dist_txnid.size] = '\0';
+		/* Should not be added to txnlist- add blkseq in this function */
+		__txn_recover_dist_abort(dbenv, dist_txnid);
+	} else {
+		/* Master aborting prepared transaction: nothing to do */
+		assert(op == DB_TXN_ABORT);
+	}
+
+	if (ret == 0) {
+		*lsnp = argp->prev_lsn;
+	}
+
+	__os_free(dbenv, argp);
+
+	return (ret);
+}
+
+
+/*
+ * PUBLIC: int __txn_dist_commit_recover
+ * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ *
+ * These records are only ever written for commits.  Normally, we redo any
+ * committed transaction, however if we are doing recovery to a timestamp, then
+ * we may treat transactions that commited after the timestamp as aborted.
+ */
+int
+__txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops op;
+	void *info;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	DB_TXNHEAD *headp;
+	__txn_dist_commit_args *argp;
+	int ret, commit_lsn_map;
+
+#ifdef DEBUG_RECOVER
+	(void)__txn_dist_commit_print(dbenv, dbtp, lsnp, op, info);
+#endif
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+	commit_lsn_map = gbl_commit_lsn_map;
+
+	if ((ret = __txn_dist_commit_read(dbenv, dbtp->data, &argp)) != 0)
+		return (ret);
+
+	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+	dist_txnid[argp->dist_txnid.size] = '\0';
+
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s opcode %d, dist-txnid=%s", __func__, op, dist_txnid);
+#endif
+
+	headp = info;
+	/*
+	 * We are only ever called during FORWARD_ROLL or BACKWARD_ROLL.
+	 * We check for the former explicitly and the last two clauses
+	 * apply to the BACKWARD_ROLL case.
+	 */
+
+	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
+		abort();
+		/* 
+		 * Don't bother resetting rep->committed_gen to the previous value: if we are undoing this,
+		 * then it wasn't replicated to a majority of the nodes.  We'll be writing a new commit 
+		 * history with logs that (potentially) were replicated to a majority of nodes.  
+		 */
+	} else if (op == DB_TXN_FORWARD_ROLL) {
+		/*
+		 * If this was a 2-phase-commit transaction, then it
+		 * might already have been removed from the list, and
+		 * that's OK.  Ignore the return code from remove.
+		 */
+		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		rep->committed_gen = argp->generation;
+		rep->committed_lsn = *lsnp;
+		if (argp->generation > rep->gen)
+			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s op %d removed %s from txnlist\n",
+			__func__, op, dist_txnid);
+#endif
+		__txn_recover_dist_commit(dbenv, dist_txnid);
+	} else if ((dbenv->tx_timestamp != 0 &&
+		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
+		(!IS_ZERO_LSN(headp->trunc_lsn) &&
+		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+		/*
+		 * We failed either the timestamp check or the trunc_lsn check,
+		 * so we treat this as an abort even if it was a commit record.
+		 */
+		ret = __db_txnlist_update(dbenv,
+			info, argp->txnid->txnid, TXN_ABORT, NULL);
+
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s op %d updated %s to abort\n",
+			__func__, op, dist_txnid);
+#endif
+
+		if (ret == TXN_IGNORE)
+			ret = TXN_OK;
+		else if (ret == TXN_NOTFOUND) {
+			ret = __db_txnlist_add(dbenv,
+				info, argp->txnid->txnid, TXN_IGNORE, NULL);
+#if defined (DEBUG_PREPARE)
+			logmsg(LOGMSG_USER, "%s op %d updated %s to ignore\n",
+				__func__, op, dist_txnid);
+#endif
+		} else if (ret != TXN_OK)
+			goto err;
+		/* else ret = 0; Not necessary because TXN_OK == 0 */
+	} else {
+		/* This is a normal commit; mark it appropriately. */
+		assert(op == DB_TXN_BACKWARD_ROLL);
+		ret = __db_txnlist_update(dbenv,
+			info, argp->txnid->txnid, TXN_COMMIT, lsnp);
+
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s op %d updated %s to %d\n",
+			__func__, op, dist_txnid, TXN_COMMIT);
+#endif
+		if (ret == TXN_IGNORE)
+			ret = TXN_OK;
+		else if (ret == TXN_NOTFOUND) {
+			ret = __db_txnlist_add(dbenv,
+				info, argp->txnid->txnid,
+				TXN_COMMIT, lsnp);
+		}
+		else if (ret != TXN_OK) {
+			__db_txnlist_update(dbenv,
+					info, argp->txnid->txnid, TXN_COMMIT, lsnp);
+			abort();
+			goto err;
+		}
+		/* else ret = 0; Not necessary because TXN_OK == 0 */
+		if (commit_lsn_map) {
+			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		}
+		__txn_recover_dist_commit(dbenv, dist_txnid);
+	}
+
+	if (ret == 0) {
+		if (argp->context)
+			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
+				DB___txn_dist_commit);
+		*lsnp = argp->prev_lsn;
+	}
+
+	if (0) {
+err:		__db_err(dbenv,
+			"txnid %lx commit record found, already on commit list",
+			(u_long) argp->txnid->txnid);
+		ret = EINVAL;
+	}
+	__os_free(dbenv, argp);
+
+	return (ret);
+}
+
+
+/*
+ * PUBLIC: int __txn_dist_prepare_recover
+ * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+ *
+ * These records are only ever written for commits.  Normally, we redo any
+ * committed transaction, however if we are doing recovery to a timestamp, then
+ * we may treat transactions that commited after the timestamp as aborted.
+ */
+int
+__txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
+	DB_ENV *dbenv;
+	DBT *dbtp;
+	DB_LSN *lsnp;
+	db_recops op;
+	void *info;
+{
+	DB_REP *db_rep;
+	REP *rep;
+	DB_TXNHEAD *headp;
+	__txn_dist_prepare_args *argp;
+	int ret;
+
+#ifdef DEBUG_RECOVER
+	(void)__txn_dist_prepare_print(dbenv, dbtp, lsnp, op, info);
+#endif
+
+	db_rep = dbenv->rep_handle;
+	rep = db_rep->region;
+
+	if ((ret = __txn_dist_prepare_read(dbenv, dbtp->data, &argp)) != 0)
+		return (ret);
+
+	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+	dist_txnid[argp->dist_txnid.size] = '\0';
+
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s opcode %d, dist-txnid=%s", __func__, op, dist_txnid);
+#endif
+
+	headp = info;
+
+	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
+		abort();
+   	} else if (op == DB_TXN_FORWARD_ROLL) {
+		/* If we are here then we already know that this committed. */
+#if 0
+	} else if ((!IS_ZERO_LSN(headp->trunc_lsn) &&
+		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+		/* Backwards roll to a point before the prepare .. we can ignore */
+#endif
+	} else if (op == DB_TXN_ABORT) {
+		/* Either aborted or unresolved */
+		ret = __txn_recover_abort_prepared(dbenv, dist_txnid, lsnp, &argp->blkseq_key,
+			argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier);
+	} else if (op == DB_TXN_APPLY) {
+	} else if (op == DB_TXN_DIST_ADD_TXNLIST) {
+		/* If this is a dist-committed transaction:
+		 * ignore so backwards roll doesnt touch */
+		if ((!IS_ZERO_LSN(headp->trunc_lsn) &&  log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
+		} else {
+			if ((ret = __txn_is_dist_committed(dbenv, dist_txnid))) {
+				ret = __db_txnlist_add(dbenv, info, argp->txnid->txnid, TXN_COMMIT, NULL);
+			} else {
+				logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
+				if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
+								&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
+					abort();
+			}
+		}
+	} else {
+		/* Either aborted or unresolved */
+   		assert(op == DB_TXN_BACKWARD_ROLL);
+		if ((!IS_ZERO_LSN(headp->trunc_lsn) && log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
+		} else {
+			logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
+			if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
+				&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
+				abort();
+		}
+	}
+
+	if (ret == 0) {
+		*lsnp = argp->prev_lsn;
+	}
+
+	__os_free(dbenv, argp);
+
+	return (ret);
+}
 
 /*
  * PUBLIC: int __txn_regop_gen_recover
@@ -121,13 +437,13 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
-        rep->committed_lsn = *lsnp;
-        if (argp->generation > rep->gen)
-            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+		rep->committed_lsn = *lsnp;
+		if (argp->generation > rep->gen)
+			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
-	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
+		(!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 		/*
 		 * We failed either the timestamp check or the trunc_lsn check,
@@ -693,7 +1009,7 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 			if (argp->rep_gen > rep->recover_gen)
 				rep->recover_gen = argp->rep_gen;
 		}
-        __log_flush(dbenv, NULL);
+		__log_flush(dbenv, NULL);
 		__checkpoint_save(dbenv, lsnp, 1);
 		region->last_ckp = *lsnp;
 	}
@@ -780,7 +1096,11 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		ret = __db_txnlist_lsnadd(dbenv, info,
 			&argp->c_lsn, TXNLIST_NEW);
 	} else if (op == DB_TXN_BACKWARD_ROLL) {
+		/* Remember if this is a prepared but unresolved transaction */
 		/* Child might exist -- look for it. */
+		if (argp->txnid->utxnid != 0) {
+			__txn_add_prepared_child(dbenv, argp->child_utxnid, argp->txnid->utxnid);
+		}
 		c_stat = __db_txnlist_find(dbenv, info, argp->child);
 		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid);
 		if (c_stat == TXN_EXPECTED) {

@@ -248,6 +248,7 @@
 (candidate='comdb2_opcode_handlers')
 (candidate='comdb2_partial_datacopies')
 (candidate='comdb2_plugins')
+(candidate='comdb2_prepared')
 (candidate='comdb2_procedures')
 (candidate='comdb2_query_plans')
 (candidate='comdb2_queues')

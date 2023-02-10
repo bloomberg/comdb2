@@ -1381,6 +1381,16 @@ REGISTER_TUNABLE("block_set_commit_genid_trace",
                  "Print trace when blocking set commit_genid. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_block_set_commit_genid_trace, INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_random_prepare", "Prepare randomly. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_random_prepare_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_all_prepare_commit", "Prepare all transactions. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_all_prepare_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_all_prepare_abort", "Prepare and abort all transactions. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_all_prepare_abort, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_all_prepare_leak", "Prepare and leak all transactions. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_all_prepare_leak, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("flush_on_prepare", "Flush replicant log on prepare. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_flush_on_prepare, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("abort_on_unset_ha_flag",
                  "Abort in snap_uid_retry if ha is unset. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_unset_ha_flag, INTERNAL, NULL,
@@ -1800,12 +1810,6 @@ REGISTER_TUNABLE("reorder_socksql_no_deadlock",
 REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("osql_snap_info_hashcheck",
-                 "Enable snapinfo to be stored and checked in a hash in "
-                 "toblock on master. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_osql_snap_info_hashcheck,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("disable_tpsc_tblvers",
                  "Disable table version checks for time partition schema "

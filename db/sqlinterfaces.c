@@ -6355,6 +6355,9 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case ERR_CONSTR:
         return CDB2ERR_CONSTRAINTS;
 
+    case ERR_DIST_ABORT:
+        return CDB2ERR_DIST_ABORT;
+
     case ERR_NULL_CONSTRAINT:
         return CDB2ERR_NULL_CONSTRAINT;
 

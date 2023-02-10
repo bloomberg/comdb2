@@ -148,6 +148,7 @@ struct __db_qam_stat;	typedef struct __db_qam_stat DB_QUEUE_STAT;
 struct __db_rep;	typedef struct __db_rep DB_REP;
 struct __db_rep_stat;	typedef struct __db_rep_stat DB_REP_STAT;
 struct __db_txn;	typedef struct __db_txn DB_TXN;
+struct __db_txn_prepared;   typedef struct __db_txn_prepared DB_TXN_PREPARED;
 struct __db_txn_active;	typedef struct __db_txn_active DB_TXN_ACTIVE;
 struct __db_txn_stat;	typedef struct __db_txn_stat DB_TXN_STAT;
 struct __db_txnmgr;	typedef struct __db_txnmgr DB_TXNMGR;
@@ -289,6 +290,8 @@ struct txn_properties;
 #define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
 #define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
 #define DB_TXN_FOP_NOBLOCK         0x0400000 /* Don't block on fop operations */
+#define DB_TXN_DIST_PREPARE        0x0800000 /* Write a prepare record for this txn */
+#define DB_TXN_DIST_UPD_SHADOWS    0x1000000 /* Set update-shadows in dist-commit */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
@@ -430,6 +433,9 @@ struct txn_properties;
 #define DB_LOCK_ID_TRACK    0x002	/* Track this lockid */
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
 
+/* Flag values for lock_abort_waiters */
+#define DB_LOCK_ABORT_LOGICAL   0x0001 /* Only abort logical waiters */
+
 /*
  * Simple R/W lock modes and for multi-granularity intention locking.
  *
@@ -472,7 +478,8 @@ typedef enum {
 	DB_LOCK_TIMEOUT=8,		/* Force a txn to timeout. */
 	DB_LOCK_TRADE=9,		/* Trade locker ids on a lock. */
 	DB_LOCK_UPGRADE_WRITE=10, /* Upgrade writes for dirty reads. */
-	DB_LOCK_TRADE_COMP=11   /* Trade locks for compensating txn. */
+	DB_LOCK_TRADE_COMP=11,  /* Trade locks for compensating txn. */
+    DB_LOCK_PREPARE=12      /* lock-put-read but retain tablelocks */
 } db_lockop_t;
 
 /*
@@ -971,7 +978,8 @@ typedef enum {
 	DB_TXN_UNUSED4=13,
 	DB_TXN_LOGICAL_BACKWARD_ROLL=14, /* Public, COMDB2 MODIFICATION */
 	DB_TXN_NOT_IN_RECOVERY=15,
-	DB_TXN_GETALLPGNOS=16		/* Internal. */
+	DB_TXN_GETALLPGNOS=16,		/* Internal. */
+	DB_TXN_DIST_ADD_TXNLIST=17  /* Internal. */
 } db_recops;
 
 /*
@@ -1068,7 +1076,8 @@ struct __db_txn {
 	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
-		      u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
+			  u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
+	int   (*dist_prepare) __P((DB_TXN *, const char *, const char *, const char *, u_int32_t, DBT *, u_int32_t));
 	int   (*getlogbytes) __P((DB_TXN *, u_int64_t *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
@@ -1086,16 +1095,58 @@ struct __db_txn {
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 #define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
+#define TXN_DIST_PREPARED	0x800 /* Dist-txn has written prepare record */
+#define TXN_DIST_DISCARD	0x1000 /* Discard a repared dist-txn */
+#define TXN_NOPREP	        0x2000 /* Prevent prepares against this txn */
 	u_int32_t	flags;
 
-	void     *app_private;		/* pointer to bdb transaction object */
+	void	 *app_private;		/* pointer to bdb transaction object */
 	DB_LSN   we_start_at_this_lsn;	/* hard to pinpoint the
 					 * existing startlsn usage, so
 					 * this is a new one */
-	void            *pglogs_hashtbl;
-   pthread_mutex_t pglogs_mutex;
+	void			*pglogs_hashtbl;
+	pthread_mutex_t pglogs_mutex;
+	u_int64_t utxnid;
+	char *dist_txnid;
+	char *coordinator_name;
+	char *coordinator_tier;
+	u_int32_t coordinator_gen;
+	DBT blkseq_key;
+};
 
-   u_int64_t utxnid;
+typedef enum {
+	DB_DIST_HAVELOCKS   = 0x00000001,
+	DB_DIST_COMMITTED   = 0x00000002,
+	DB_DIST_ABORTED     = 0x00000004,
+	DB_DIST_SCHEMA_LK   = 0x00000008,
+	DB_DIST_INFLIGHT    = 0x00000010,
+	DB_DIST_RECOVERED   = 0x00000020,
+	DB_DIST_UPDSHADOWS  = 0x00000040
+} db_dist_state;
+
+struct __db_txn_prepared_child {
+	u_int64_t cutxnid;
+	DB_TXN_PREPARED *p;
+    LINKC_T(struct __db_txn_prepared_child) lnk;
+};
+
+typedef LISTC_T(struct __db_txn_prepared_child) txn_children;
+
+struct __db_txn_prepared {
+	char *dist_txnid;
+	u_int64_t utxnid;
+	u_int32_t flags;
+	DB_LSN prepare_lsn;
+	DB_LSN prev_lsn;
+	DB_LSN begin_lsn;
+	DBT blkseq_key;
+	u_int32_t coordinator_gen;
+	DBT coordinator_name;
+	DBT coordinator_tier;
+	struct __db_txn *txnp;
+	void *pglogs;
+	u_int32_t keycnt;
+	txn_children children;
 };
 
 /*
@@ -1224,8 +1275,8 @@ struct __db_rep_stat {
 	u_int64_t lc_cache_misses;	/* Transaction commit records
 					 * NOT in cache */
 	int lc_cache_size;		/* Current size of lc cache */
-    uint32_t durable_gen;
-    DB_LSN durable_lsn;
+	uint32_t durable_gen;
+	DB_LSN durable_lsn;
 };
 
 
@@ -1413,39 +1464,39 @@ struct fileid_adj_fileid
 /* Thread-local cursor queue definitions
 
    +-------------------------------------------+
-   | gbl_all_cursors (linkedlist)              |
-   |                                           |
-   |        +----------------------------+     |
-   |        | Thread N                   |     |
-   |      +----------------------------+ |     |
-   |      | Thread (N - 1)             | |     |
-   |     //////////////////////////////| |     |
-   |    +----------------------------+/| |     |
-   |    | Thread 2                   |/| |     |
-   |  +----------------------------+ |/| |     |
-   |  | Thread 1                   | |/| |     |
-   |  |----------------------------| |/| |     |
-   |  | DB_CQ_HASH (hashtable)     | |/| |     |
-   |  |----------------------------| |/| |     |
-   |  | Key  | Value               | |/| |     |
-   |  |----------------------------| |/| |     |
-   |  | DB * | DB_CQ (linkedlist)  | |/| |     |
-   |  |      | DBC <-> ... <-> DBC | |/| |     |
-   |  |----------------------------| |/| |     |
-   |  | DB * | DB_CQ (linkedlist)  | |/| |     |
-   |  |      | DBC <-> ... <-> DBC | |/| |     |
-   |  |----------------------------| |/| |     |
-   |  ~ .......................... ~ |/| |     |
-   |  ~ .......................... ~ |/| |     |
-   |  ~ .......................... ~ |/| |     |
-   |  |----------------------------| |/| |     |
-   |  | DB * | DB_CQ (linkedlist)  | |/|-+     |
-   |  |      | DBC <-> ... <-> DBC | |/+       |
-   |  |----------------------------| |/        |
-   |  | DB * | DB_CQ (linkedlist)  |-+         |
-   |  |      | DBC <-> ... <-> DBC |           |
-   |  +----------------------------+           |
-   |                                           |
+   | gbl_all_cursors (linkedlist)			  |
+   |										   |
+   |		+----------------------------+	 |
+   |		| Thread N				   |	 |
+   |	  +----------------------------+ |	 |
+   |	  | Thread (N - 1)			 | |	 |
+   |	 //////////////////////////////| |	 |
+   |	+----------------------------+/| |	 |
+   |	| Thread 2				   |/| |	 |
+   |  +----------------------------+ |/| |	 |
+   |  | Thread 1				   | |/| |	 |
+   |  |----------------------------| |/| |	 |
+   |  | DB_CQ_HASH (hashtable)	 | |/| |	 |
+   |  |----------------------------| |/| |	 |
+   |  | Key  | Value			   | |/| |	 |
+   |  |----------------------------| |/| |	 |
+   |  | DB * | DB_CQ (linkedlist)  | |/| |	 |
+   |  |	  | DBC <-> ... <-> DBC | |/| |	 |
+   |  |----------------------------| |/| |	 |
+   |  | DB * | DB_CQ (linkedlist)  | |/| |	 |
+   |  |	  | DBC <-> ... <-> DBC | |/| |	 |
+   |  |----------------------------| |/| |	 |
+   |  ~ .......................... ~ |/| |	 |
+   |  ~ .......................... ~ |/| |	 |
+   |  ~ .......................... ~ |/| |	 |
+   |  |----------------------------| |/| |	 |
+   |  | DB * | DB_CQ (linkedlist)  | |/|-+	 |
+   |  |	  | DBC <-> ... <-> DBC | |/+	   |
+   |  |----------------------------| |/		|
+   |  | DB * | DB_CQ (linkedlist)  |-+		 |
+   |  |	  | DBC <-> ... <-> DBC |		   |
+   |  +----------------------------+		   |
+   |										   |
    +-------------------------------------------+
  */
 
@@ -1647,7 +1698,7 @@ struct __db {
 					/* Methods. */
 	int  (*associate) __P((DB *, DB_TXN *, DB *, int (*)(DB *, const DBT *,
 		const DBT *, DBT *), u_int32_t));
-    int  (*get_fileid) __P((DB *, u_int8_t *fileid));
+	int  (*get_fileid) __P((DB *, u_int8_t *fileid));
 	int  (*close) __P((DB *, u_int32_t));
 	int  (*closetxn) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
@@ -1681,7 +1732,7 @@ struct __db {
 	int  (*put) __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
 	int  (*remove) __P((DB *, const char *, const char *, u_int32_t));
 	int  (*rename) __P((DB *,
-	    const char *, const char *, const char *, u_int32_t));
+		const char *, const char *, const char *, u_int32_t));
 	int  (*truncate) __P((DB *, DB_TXN *, u_int32_t *, u_int32_t));
 	int  (*set_append_recno) __P((DB *, int (*)(DB *, DBT *, db_recno_t)));
 	int  (*set_alloc) __P((DB *, void *(*)(size_t),
@@ -1689,7 +1740,7 @@ struct __db {
 	int  (*set_cachesize) __P((DB *, u_int32_t, u_int32_t, int));
 	int  (*set_mp_multiple) __P((DB *, double));
 	int  (*set_dup_compare) __P((DB *,
-	    int (*)(DB *, const DBT *, const DBT *)));
+		int (*)(DB *, const DBT *, const DBT *)));
 	int  (*set_encrypt) __P((DB *, const char *, u_int32_t));
 	void (*set_errcall) __P((DB *, void (*)(const char *, char *)));
 	void (*set_errfile) __P((DB *, FILE *));
@@ -1703,21 +1754,21 @@ struct __db {
 	int  (*sync) __P((DB *, u_int32_t));
 	int  (*upgrade) __P((DB *, const char *, u_int32_t));
 	int  (*verify) __P((DB *,
-	    const char *, const char *, FILE *, u_int32_t));
+		const char *, const char *, FILE *, u_int32_t));
 
 	int  (*get_bt_minkey) __P((DB *, u_int32_t *));
 	int  (*set_bt_compare) __P((DB *,
-	    int (*)(DB *, const DBT *, const DBT *)));
+		int (*)(DB *, const DBT *, const DBT *)));
 	int  (*set_bt_maxkey) __P((DB *, u_int32_t));
 	int  (*set_bt_minkey) __P((DB *, u_int32_t));
 	int  (*set_bt_prefix) __P((DB *,
-	    size_t (*)(DB *, const DBT *, const DBT *)));
+		size_t (*)(DB *, const DBT *, const DBT *)));
 
 	int  (*get_h_ffactor) __P((DB *, u_int32_t *));
 	int  (*get_h_nelem) __P((DB *, u_int32_t *));
 	int  (*set_h_ffactor) __P((DB *, u_int32_t));
 	int  (*set_h_hash) __P((DB *,
-	    u_int32_t (*)(DB *, const void *, u_int32_t)));
+		u_int32_t (*)(DB *, const void *, u_int32_t)));
 	int  (*set_h_nelem) __P((DB *, u_int32_t));
 
 	int  (*get_re_delim) __P((DB *, int *));
@@ -1733,9 +1784,9 @@ struct __db {
 	int  (*set_q_extentsize) __P((DB *, u_int32_t));
 
 	int  (*db_am_remove) __P((DB *,
-	    DB_TXN *, const char *, const char *, DB_LSN *));
+		DB_TXN *, const char *, const char *, DB_LSN *));
 	int  (*db_am_rename) __P((DB *, DB_TXN *,
-	    const char *, const char *, const char *));
+		const char *, const char *, const char *));
 
 	/* COMDB2 MODIFICATION
 	 * Create a cursor with the same locker id as an existing cursor.
@@ -1818,9 +1869,9 @@ struct __db {
 	LINKC_T(DB) adjlnk;
 	int inadjlist;
 
-#define DB_PFX_COMP	      0x0000001
-#define DB_SFX_COMP	      0x0000002
-#define DB_RLE_COMP	      0x0000004
+#define DB_PFX_COMP		  0x0000001
+#define DB_SFX_COMP		  0x0000002
+#define DB_RLE_COMP		  0x0000004
 	uint8_t compression_flags;
 	void (*set_compression_flags) __P((DB *, uint8_t));
 	uint8_t (*get_compression_flags) __P((DB *));
@@ -1836,7 +1887,7 @@ struct __db {
  */
 #define	DB_MULTIPLE_INIT(pointer, dbt)					\
 	(pointer = (u_int8_t *)(dbt)->data +				\
-	    (dbt)->ulen - sizeof(u_int32_t))
+		(dbt)->ulen - sizeof(u_int32_t))
 #define	DB_MULTIPLE_NEXT(pointer, dbt, retdata, retdlen)		\
 	do {								\
 		if (*((u_int32_t *)(pointer)) == (u_int32_t)-1) {	\
@@ -1845,12 +1896,12 @@ struct __db {
 			break;						\
 		}							\
 		retdata = (u_int8_t *)					\
-		    (dbt)->data + *(u_int32_t *)(pointer);		\
+			(dbt)->data + *(u_int32_t *)(pointer);		\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		retdlen = *(u_int32_t *)(pointer);			\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		if (retdlen == 0 &&					\
-		    retdata == (u_int8_t *)(dbt)->data)			\
+			retdata == (u_int8_t *)(dbt)->data)			\
 			retdata = NULL;					\
 	} while (0)
 #define	DB_MULTIPLE_KEY_NEXT(pointer, dbt, retkey, retklen, retdata, retdlen) \
@@ -1862,12 +1913,12 @@ struct __db {
 			break;						\
 		}							\
 		retkey = (u_int8_t *)					\
-		    (dbt)->data + *(u_int32_t *)(pointer);		\
+			(dbt)->data + *(u_int32_t *)(pointer);		\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		retklen = *(u_int32_t *)(pointer);			\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		retdata = (u_int8_t *)					\
-		    (dbt)->data + *(u_int32_t *)(pointer);		\
+			(dbt)->data + *(u_int32_t *)(pointer);		\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		retdlen = *(u_int32_t *)(pointer);			\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
@@ -1884,7 +1935,7 @@ struct __db {
 		recno = *(u_int32_t *)(pointer);			\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		retdata = (u_int8_t *)					\
-		    (dbt)->data + *(u_int32_t *)(pointer);		\
+			(dbt)->data + *(u_int32_t *)(pointer);		\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
 		retdlen = *(u_int32_t *)(pointer);			\
 		(pointer) = (u_int32_t *)(pointer) - 1;			\
@@ -1896,9 +1947,9 @@ struct __db {
 #define MAXSTACKDEPTH 25
 #define SKIPFRAMES 3
 struct cursor_track {
-    void *stack[MAXSTACKDEPTH];
-    unsigned nframes;
-    u_int32_t lockerid;
+	void *stack[MAXSTACKDEPTH];
+	unsigned nframes;
+	u_int32_t lockerid;
 };
 
 
@@ -1960,7 +2011,7 @@ struct __dbc {
 	int (*c_getnextpgno) __P((DBC *, db_pgno_t *nextpgno));
 	int (*c_firstleaf) __P((DBC *, db_pgno_t *pgno));
 	int (*c_getgenids) __P((DBC *, unsigned long long *genids, int *num,
-                             int max  ));
+							 int max  ));
 	int (*c_close_ser) __P((DBC *, DBCS *));
 	int (*c_pause) __P((DBC *, DBCPS *));
 	int (*c_unpause) __P((DBC *, DBCPS *));
@@ -2006,15 +2057,15 @@ struct __dbc {
 	u_int32_t flags;
 
 	int pp_allocated;   /* the owner of the cursor tracking structure */
-    
-	pthread_t   tid;    /* tid of the creating thread */
+	
+	pthread_t   tid;	/* tid of the creating thread */
 
 	struct cursor_track stackinfo;
 
 	u_int64_t   nextcount;
 	u_int64_t   skipcount;
-    
-	char*       pf; // Added by Fabio for prefaulting the index pages
+	
+	char*	   pf; // Added by Fabio for prefaulting the index pages
 	db_pgno_t   lastpage; // pgno of last move
 };
 extern pthread_key_t DBG_FREE_CURSOR;
@@ -2121,10 +2172,10 @@ typedef struct
 /* TODO: use something bdb/attr.h-like so we don't need to edit 17 places
  * to have settable attributes */
 struct __dbenv_attr {
-    char *iomapfile;
+	char *iomapfile;
 #undef BERK_DEF_ATTR
 #define BERK_DEF_ATTR(option, description, type, default_value) \
-    int option;
+	int option;
 #include "dbinc/db_attr.h"
 #undef BERK_DEF_ATTR
 };
@@ -2201,7 +2252,7 @@ struct __lc_cache {
 
 struct __ufid_to_db_t {
 	u_int8_t ufid[DB_FILE_ID_LEN];
-    int ignore : 1;
+	int ignore : 1;
 	char *fname;
 	DB *dbp;
 };
@@ -2209,6 +2260,10 @@ struct __ufid_to_db_t {
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype, int stackid);
+
+typedef int (*collect_prepared_f)(void *args, char *dist_txnid, uint32_t flags,
+		DB_LSN *lsn, DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name,
+		char *coordinator_tier, uint64_t utxnid);
 
 /* Database Environment handle. */
 struct __db_env {
@@ -2463,10 +2518,10 @@ struct __db_env {
 	int  (*set_lk_max_objects) __P((DB_ENV *, u_int32_t));
 	int  (*lock_detect) __P((DB_ENV *, u_int32_t, u_int32_t, int *));
 	int  (*lock_dump_region) __P((DB_ENV *, const char *, FILE *));
-	int  (*lock_abort_logical_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
+	int  (*lock_abort_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
-    int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
+	int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
 	int  (*lock_put) __P((DB_ENV *, DB_LOCK *));
 	int  (*lock_id) __P((DB_ENV *, u_int32_t *));
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
@@ -2475,6 +2530,7 @@ struct __db_env {
 	int  (*lock_id_set_logical_abort) __P((DB_ENV *, u_int32_t));
 	int  (*lock_stat) __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
 	int  (*collect_locks) __P((DB_ENV *, collect_locks_f, void *arg));
+	int  (*collect_prepared) __P((DB_ENV *, collect_prepared_f, void *arg));
 	int  (*lock_locker_lockcount)
 		__P((DB_ENV *, u_int32_t id, u_int32_t *nlocks));
 	int  (*lock_locker_pagelockcount)
@@ -2548,6 +2604,12 @@ struct __db_env {
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
 	int  (*txn_stat) __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
+	int  (*txn_commit_recovered) __P((DB_ENV *, const char *));
+	int  (*txn_abort_recovered) __P((DB_ENV *, const char *));
+	int  (*txn_discard_recovered) __P((DB_ENV *, const char *));
+	int  (*txn_discard_all_recovered) __P((DB_ENV *));
+	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
+	int  (*txn_abort_prepared_waiters) __P((DB_ENV *));
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));
@@ -2639,6 +2701,12 @@ struct __db_env {
 	/* ufid to dbp hash */
 	hash_t *ufid_to_db_hash;
 	pthread_mutex_t ufid_to_db_lk;
+
+	/* prepared transactions */
+	hash_t *prepared_txn_hash;
+	hash_t *prepared_utxnid_hash;
+	hash_t *prepared_children;
+	pthread_mutex_t prepared_txn_lk;
 
 	/* Parallel recovery.  These are only valid on replicants. */
 	DB_LSN prev_commit_lsn;

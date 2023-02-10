@@ -22,5 +22,8 @@ struct txn_properties {
     uint32_t priority;
     uint32_t retries;
     uint32_t flags;
+    uint32_t prepared_txnid;
+    uint64_t prepared_utxnid;
+    DB_LSN begin_lsn;
 };
 #endif
