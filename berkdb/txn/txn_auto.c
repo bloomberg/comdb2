@@ -2948,12 +2948,12 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
 }
 
 /*
- * PUBLIC: int __txn_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
+ * PUBLIC: int __txn_dist_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
  * PUBLIC:     u_int32_t, u_int32_t, DB_LSN *, u_int64_t, u_int32_t, const DBT,
  * PUBLIC:     const DBT *, const DBT *));
  */
 int
-__txn_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_txnid,
+__txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_txnid,
         coordinator_gen, coordinator_name, coordinator_tier, locks)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
@@ -2982,7 +2982,7 @@ __txn_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_txnid,
 	fprintf(stderr,"__txn_prepare_log: begin\n");
 #endif
 
-	rectype = DB___txn_prepare;
+	rectype = DB___txn_dist_prepare;
 	npad = 0;
 
 	is_durable = 1;
@@ -3167,7 +3167,7 @@ do_put:
 		LSN_NOT_LOGGED(*ret_lsnp);
 #ifdef LOG_DIAGNOSTIC
 	if (ret != 0)
-		(void)__txn_prepare_print(dbenv,
+		(void)__txn_dist_prepare_print(dbenv,
 		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
 #endif
 
@@ -3184,11 +3184,11 @@ do_put:
 
 #ifdef HAVE_REPLICATION
 /*
- * PUBLIC: int __txn_prepare_getpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC: int __txn_dist_prepare_getpgnos __P((DB_ENV *, DBT *,
  * PUBLIC:     DB_LSN *, db_recops, void *));
  */
 int
-__txn_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
+__txn_dist_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
 	DB_ENV *dbenv;
 	DBT *rec;
 	DB_LSN *lsnp;
@@ -3219,11 +3219,11 @@ __txn_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
 
 #ifdef HAVE_REPLICATION
 /*
- * PUBLIC: int __txn_prepare_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC: int __txn_dist_prepare_getallpgnos __P((DB_ENV *, DBT *,
  * PUBLIC:     DB_LSN *, db_recops, void *));
  */
 int
-__txn_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+__txn_dist_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	DB_ENV *dbenv;
 	DBT *rec;
 	DB_LSN *lsnp;
@@ -3231,7 +3231,7 @@ __txn_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	void *summary;
 {
 	TXN_RECS *t;
-	__txn_prepare_args *argp;
+	__txn_dist_prepare_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
@@ -3249,28 +3249,28 @@ err:	if (argp != NULL)
 
 
 /*
- * PUBLIC: int __txn_prepare_read_int __P((DB_ENV *, void *,
- * PUBLIC:     int do_pgswp,  __txn_prepare_args **));
+ * PUBLIC: int __txn_dist_prepare_read_int __P((DB_ENV *, void *,
+ * PUBLIC:     int do_pgswp,  __txn_dist_prepare_args **));
  */
 int
-__txn_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
+__txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 	DB_ENV *dbenv;
 	void *recbuf;
 	int do_pgswp;
-	__txn_prepare_args **argpp;
+	__txn_dist_prepare_args **argpp;
 {
-	__txn_prepare_args *argp;
+	__txn_dist_prepare_args *argp;
 	u_int32_t uinttmp;
 	u_int64_t uint64tmp;
 	u_int8_t *bp;
 	int ret;
 
 #ifdef __txn_DEBUG
-	fprintf(stderr,"__txn_prepare_read_int: begin\n");
+	fprintf(stderr,"__txn_dist_prepare_read_int: begin\n");
 #endif
 
 	if ((ret = __os_malloc(dbenv,
-	    sizeof(__txn_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
+	    sizeof(__txn_dist_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
 		return (ret);
 	argp->txnid = (DB_TXN *)&argp[1];
 
@@ -3322,40 +3322,40 @@ __txn_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 }
 
 /*
- * PUBLIC: int __txn_prepare_read __P((DB_ENV *, void *,
- * PUBLIC:      __txn_prepare_args **));
+ * PUBLIC: int __txn_dist_prepare_read __P((DB_ENV *, void *,
+ * PUBLIC:      __txn_dist_prepare_args **));
  */
 int
-__txn_prepare_read(dbenv, recbuf, argpp)
+__txn_dist_prepare_read(dbenv, recbuf, argpp)
 	DB_ENV *dbenv;
 	void *recbuf;
-	__txn_prepare_args **argpp;
+	__txn_dist_prepare_args **argpp;
 {
-	return __txn_prepare_read_int (dbenv, recbuf, 1, argpp);
+	return __txn_dist_prepare_read_int (dbenv, recbuf, 1, argpp);
 }
 
 /*
- * PUBLIC: int __txn_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC: int __txn_dist_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
  * PUBLIC:     db_recops, void *));
  */
 int
-__txn_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+__txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
     DB_ENV *dbenv;
     DBT *dbtp;
     DB_LSN *lsnp;
     db_recops notused2;
     void *notused3;
 {
-	__txn_prepare_args *argp;
+	__txn_dist_prepare_args *argp;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
 	notused3 = NULL;
 
-	if ((ret = __txn_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+	if ((ret = __txn_dist_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
         return (ret);
     (void)printf(
-	    "[%lu][%lu]__txn_prepare_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
+	    "[%lu][%lu]__txn_dist_prepare%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
 	    (u_long)lsnp->file,
 	    (u_long)lsnp->offset,
 	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -3392,7 +3392,7 @@ __txn_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
  * PUBLIC: int __txn_abort_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t));
  */
  int
- __txn_abort_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, dist_txnid)
+ __txn_dist_abort_log(dbenv, txnid, ret_lsnp, flags, opcode, dist_txnid)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -3411,10 +3411,10 @@ __txn_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	int used_malloc = 0;
 
 #ifdef __txn_DEBUG
-	fprintf(stderr,"__txn_abort_prepare_log: begin\n");
+	fprintf(stderr,"__txn_dist_abort_log: begin\n");
 #endif
 
-	rectype = DB___txn_abort_prepare;
+	rectype = DB___txn_dist_abort;
 	npad = 0;
 
 	is_durable = 1;
@@ -3517,7 +3517,6 @@ do_malloc:
 #ifdef DIAGNOSTIC
 do_put:
 #endif
-
 		ret = __log_put(dbenv,
 		    ret_lsnp, (DBT *)&logrec, flags | DB_LOG_NOCOPY);
 		if (ret == 0 && txnid != NULL)
@@ -3528,7 +3527,7 @@ do_put:
 		LSN_NOT_LOGGED(*ret_lsnp);
 #ifdef LOG_DIAGNOSTIC
 	if (ret != 0)
-		(void)__txn_abort_prepare_print(dbenv,
+		(void)__txn_dist_abort_print(dbenv,
 		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
 #endif
 
@@ -3544,11 +3543,11 @@ do_put:
 
 #ifdef HAVE_REPLICATION
 /*
- * PUBLIC: int __txn_abort_prepare_getpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC: int __txn_dist_abort_getpgnos __P((DB_ENV *, DBT *,
  * PUBLIC:     DB_LSN *, db_recops, void *));
  */
 int
-__txn_abort_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
+__txn_dist_abort_getpgnos(dbenv, rec, lsnp, notused1, summary)
 	DB_ENV *dbenv;
 	DBT *rec;
 	DB_LSN *lsnp;
@@ -3579,11 +3578,11 @@ __txn_abort_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
 
 #ifdef HAVE_REPLICATION
 /*
- * PUBLIC: int __txn_abort_prepare_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC: int __txn_dist_abort_getallpgnos __P((DB_ENV *, DBT *,
  * PUBLIC:     DB_LSN *, db_recops, void *));
  */
 int
-__txn_abort_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+__txn_dist_abort_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	DB_ENV *dbenv;
 	DBT *rec;
 	DB_LSN *lsnp;
@@ -3591,7 +3590,7 @@ __txn_abort_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	void *summary;
 {
 	TXN_RECS *t;
-	__txn_abort_prepare_args *argp;
+	__txn_dist_abort_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
@@ -3608,24 +3607,24 @@ err:	if (argp != NULL)
 #endif /* HAVE_REPLICATION */
 
 /*
- * PUBLIC: int __txn_abort_prepare_read_int __P((DB_ENV *, void *,
- * PUBLIC:	  int do_pgswp, __txn_abort_prepare_args **));
+ * PUBLIC: int __txn_dist_abort_read_int __P((DB_ENV *, void *,
+ * PUBLIC:	  int do_pgswp, __txn_dist_abort_args **));
  */
 int
-__txn_abort_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
+__txn_dist_abort_read_int(dbenv, recbuf, do_pgswp, argpp)
 	DB_ENV *dbenv;
 	void *recbuf;
 	int do_pgswp;
-	__txn_abort_prepare_args **argpp;
+	__txn_dist_abort_args **argpp;
 {
-	__txn_abort_prepare_args *argp;
+	__txn_dist_abort_args *argp;
 	u_int32_t uinttmp;
 	u_int64_t uint64tmp;
 	u_int8_t *bp;
 	int ret;
 
 	if ((ret = __os_malloc(dbenv,
-		sizeof(__txn_abort_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
+		sizeof(__txn_dist_abort_args) + sizeof(DB_TXN), &argp)) != 0)
 		return (ret);
 	argp->txnid = (DB_TXN *)&argp[1];
 
@@ -3652,28 +3651,28 @@ __txn_abort_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 }
 
 /*
- * PUBLIC: int __txn_abort_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC: int __txn_dist_abort_print __P((DB_ENV *, DBT *, DB_LSN *,
  * PUBLIC:      db_recops, void *));
  */
 int
-__txn_abort_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+__txn_dist_abort_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_ENV *dbenv;
 	DBT *dbtp;
 	DB_LSN *lsnp;
 	db_recops notused2;
 	void *notused3;
 {
-	__txn_abort_prepare_args *argp;
+	__txn_dist_abort_args *argp;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
 	notused3 = NULL;
 
-	if ((ret = __txn_abort_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+	if ((ret = __txn_dist_abort_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 
 	(void)printf(
-		"[%lu][%lu]__txn_abort_prepare_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
+		"[%lu][%lu]__txn_dist_abort%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		(argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -3692,26 +3691,26 @@ __txn_abort_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 }
 
 /*
- * PUBLIC: int __txn_abort_prepare_read __P((DB_ENV *, void *,
- * PUBLIC:	  __txn_abort_prepare_args **));
+ * PUBLIC: int __txn_dist_abort_read __P((DB_ENV *, void *,
+ * PUBLIC:	  __txn_dist_abort_args **));
  */
 int
-__txn_abort_prepare_read(dbenv, recbuf, argpp)
+__txn_dist_abort_read(dbenv, recbuf, argpp)
 	DB_ENV *dbenv;
 	void *recbuf;
-	__txn_abort_prepare_args **argpp;
+	__txn_dist_abort_args **argpp;
 {
-	return __txn_abort_prepare_read_int (dbenv, recbuf, 1, argpp);
+	return __txn_dist_abort_read_int (dbenv, recbuf, 1, argpp);
 }
 
 /*
- * PUBLIC: int __txn_commit_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *, 
+ * PUBLIC: int __txn_dist_commit_log __P((DB_ENV *, DB_TXN *, DB_LSN *, 
  * PUBLIC:	  u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
  * PUBLIC:	  u_int32_t generation, u_int64_t timestamp, void *usr_ptr));
  */
 
 int
-__txn_commit_prepare_log(dbenv, txnid, ret_lsnp, ret_contextp, flags, 
+__txn_dist_commit_log(dbenv, txnid, ret_lsnp, ret_contextp, flags, 
 		opcode, dist_txnid, generation, timestamp, usr_ptr)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
@@ -3736,10 +3735,10 @@ __txn_commit_prepare_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	int off_context = -1;
 
 #ifdef __txn_DEBUG
-	fprintf(stderr,"__txn_commit_prepare_log: begin\n");
+	fprintf(stderr,"__txn_dist_commit_log: begin\n");
 #endif
 
-	rectype = DB___txn_commit_prepare;
+	rectype = DB___txn_dist_commit;
 	npad = 0;
 
 	is_durable = 1;
@@ -3902,11 +3901,11 @@ do_put:
 
 #ifdef HAVE_REPLICATION
 /*
- * PUBLIC: int __txn_commit_prepare_getpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC: int __txn_dist_commit_getpgnos __P((DB_ENV *, DBT *,
  * PUBLIC:     DB_LSN *, db_recops, void *));
  */
 int
-__txn_commit_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
+__txn_dist_commit_getpgnos(dbenv, rec, lsnp, notused1, summary)
 	DB_ENV *dbenv;
 	DBT *rec;
 	DB_LSN *lsnp;
@@ -3937,11 +3936,11 @@ __txn_commit_prepare_getpgnos(dbenv, rec, lsnp, notused1, summary)
 
 #ifdef HAVE_REPLICATION
 /*
- * PUBLIC: int __txn_commit_prepare_getallpgnos __P((DB_ENV *, DBT *,
+ * PUBLIC: int __txn_dist_commit_getallpgnos __P((DB_ENV *, DBT *,
  * PUBLIC:     DB_LSN *, db_recops, void *));
  */
 int
-__txn_commit_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
+__txn_dist_commit_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	DB_ENV *dbenv;
 	DBT *rec;
 	DB_LSN *lsnp;
@@ -3949,7 +3948,7 @@ __txn_commit_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	void *summary;
 {
 	TXN_RECS *t;
-	__txn_commit_prepare_args *argp;
+	__txn_dist_commit_args *argp;
 	int ret = 0;
 
 	COMPQUIET(notused1, DB_TXN_ABORT);
@@ -3966,24 +3965,24 @@ err:	if (argp != NULL)
 #endif /* HAVE_REPLICATION */
 
 /*
- * PUBLIC: int __txn_commit_prepare_read_int __P((DB_ENV *, void *,
+ * PUBLIC: int __txn_dist_commit_read_int __P((DB_ENV *, void *,
  * PUBLIC:	  int do_pgswp, __txn_commit_prepare_args **));
  */
 int
-__txn_commit_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
+__txn_dist_commit_read_int(dbenv, recbuf, do_pgswp, argpp)
 	DB_ENV *dbenv;
 	void *recbuf;
 	int do_pgswp;
-	__txn_commit_prepare_args **argpp;
+	__txn_dist_commit_args **argpp;
 {
-	__txn_commit_prepare_args *argp;
+	__txn_dist_commit_args *argp;
 	u_int32_t uinttmp;
 	u_int64_t uint64tmp;
 	u_int8_t *bp;
 	int ret;
 
 	if ((ret = __os_malloc(dbenv,
-		sizeof(__txn_commit_prepare_args) + sizeof(DB_TXN), &argp)) != 0)
+		sizeof(__txn_dist_commit_args) + sizeof(DB_TXN), &argp)) != 0)
 		return (ret);
 	argp->txnid = (DB_TXN *)&argp[1];
 
@@ -4022,28 +4021,28 @@ __txn_commit_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 }
 
 /*
- * PUBLIC: int __txn_commit_prepare_print __P((DB_ENV *, DBT *, DB_LSN *,
+ * PUBLIC: int __txn_dist_commit_print __P((DB_ENV *, DBT *, DB_LSN *,
  * PUBLIC:      db_recops, void *));
  */
 int
-__txn_commit_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+__txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_ENV *dbenv;
 	DBT *dbtp;
 	DB_LSN *lsnp;
 	db_recops notused2;
 	void *notused3;
 {
-	__txn_commit_prepare_args *argp;
+	__txn_dist_commit_args *argp;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
 	notused3 = NULL;
 
-	if ((ret = __txn_commit_prepare_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
+	if ((ret = __txn_dist_commit_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
 
 	(void)printf(
-		"[%lu][%lu]__txn_abort_prepare_gen%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
+		"[%lu][%lu]__txn_dist_commit%s: rec: %lu txnid %lx prevlsn [%lu][%lu]\n",
 		(u_long)lsnp->file,
 		(u_long)lsnp->offset,
 		(argp->type & DB_debug_FLAG) ? "_debug" : "",
@@ -4084,16 +4083,16 @@ __txn_commit_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 }
 
 /*
- * PUBLIC: int __txn_commit_prepare_read __P((DB_ENV *, void *,
- * PUBLIC:	  __txn_commit_prepare_args **));
+ * PUBLIC: int __txn_dist_commit_read __P((DB_ENV *, void *,
+ * PUBLIC:	  __txn_dist_commit_args **));
  */
 int
-__txn_commit_prepare_read(dbenv, recbuf, argpp)
+__txn_dist_commit_read(dbenv, recbuf, argpp)
 	DB_ENV *dbenv;
 	void *recbuf;
-	__txn_commit_prepare_args **argpp;
+	__txn_dist_commit_args **argpp;
 {
-	return __txn_commit_prepare_read_int (dbenv, recbuf, 1, argpp);
+	return __txn_dist_commit_read_int (dbenv, recbuf, 1, argpp);
 }
 
 /*
