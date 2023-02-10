@@ -85,8 +85,8 @@ typedef struct ___txn_regop_gen_args {
 	DBT	locks;
 } __txn_regop_gen_args;
 
-#define DB___txn_prepare  17
-typedef struct __txn_prepare_args {
+#define DB___txn_dist_prepare  17
+typedef struct __txn_dist_prepare_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
@@ -97,19 +97,19 @@ typedef struct __txn_prepare_args {
     DBT coordinator_name;
     DBT coordinator_tier;
     DBT locks;
-} __txn_prepare_args;
+} __txn_dist_prepare_args;
 
-#define DB___txn_abort_prepare  18
-typedef struct __txn_abort_prepare_args {
+#define DB___txn_dist_abort	18
+typedef struct __txn_dist_abort_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
 	u_int32_t opcode;
     u_int64_t dist_txnid;
-} __txn_abort_prepare_args;
+} __txn_dist_abort_args;
 
-#define DB___txn_commit_prepare	19
-typedef struct __txn_commit_prepare_args {
+#define DB___txn_dist_commit	19
+typedef struct __txn_dist_commit_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
@@ -118,5 +118,5 @@ typedef struct __txn_commit_prepare_args {
 	u_int32_t	generation;
 	u_int64_t	context;
 	u_int64_t	timestamp;
-} __txn_commit_prepare_args;
+} __txn_dist_commit_args;
 #endif
