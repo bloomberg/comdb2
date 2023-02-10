@@ -2024,6 +2024,12 @@ alter_table_commit_pending ::= SET COMMIT PENDING. {
 alter_table_partitioned ::= partitioned_by.
 alter_table_merge ::= merge_with_alter.
 
+// Even though they make the syntax a bit ugly, the parentheses were
+// added to overcome a parer conflict.
+alter_table_alter_options ::= ALTER OPTIONS LP comdb2optlist(O) RP. {
+  comdb2AlterTableOptions(pParse,O);
+}
+
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
 alter_table_action ::= alter_table_alter_column.
@@ -2038,6 +2044,7 @@ alter_table_action ::= alter_table_drop_index.
 alter_table_action ::= alter_table_commit_pending.
 alter_table_action ::= alter_table_partitioned.
 alter_table_action ::= alter_table_merge.
+alter_table_action ::= alter_table_alter_options.
 
 alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.
@@ -2443,11 +2450,11 @@ analyze_sumthds(A) ::= SUMMARIZE INTEGER(X). {
 comdb2opt(A) ::= . {A = 0;}
 comdb2opt(A) ::= OPTIONS comdb2optlist(X). {A = X;}
 %type comdb2optlist {int}
-comdb2optlist(A) ::= comdb2optfield(O). {
-    A = O;
-}
 comdb2optlist(A) ::= comdb2optlist(X) COMMA comdb2optfield(O). {
     A = X | O;
+}
+comdb2optlist(A) ::= comdb2optfield(O). {
+    A = O;
 }
 %type comdb2optfield {int}
 comdb2optfield(A) ::= odh(O). {A = O;}
