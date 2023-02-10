@@ -364,6 +364,17 @@ set all_graphs {
     } ,} 
   }
 
+  alter-table-options {
+    line OPTIONS ( {loop {or 
+      {line ODH OFF}
+      {line IPU OFF}
+      {line ISC OFF}
+      {line REBUILD}
+      {line REC {or NONE CRLE LZ4 RLE ZLIB}}
+      {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
+    } ,} ) 
+  }
+
   create-proc {stack
     {line CREATE PROCEDURE /procedure-name}
     {opt {line VERSION /string-literal }}
@@ -802,19 +813,23 @@ stack
                           }
                       }
                       {line ALTER
-                          {line {opt COLUMN} column-name }
                           {or
-                              {line {opt SET DATA} TYPE column-type }
-                              {line SET DEFAULT expr }
-                              {line DROP DEFAULT }
-                              {line DROP AUTOINCREMENT }
-                              {line
+                              {line {opt COLUMN} column-name
                                   {or
-                                      {line SET }
-                                      {line DROP }
+                                      {line {opt SET DATA} TYPE column-type }
+                                      {line SET DEFAULT expr }
+                                      {line DROP DEFAULT }
+                                      {line DROP AUTOINCREMENT }
+                                      {line
+                                          {or
+                                              {line SET }
+                                              {line DROP }
+                                          }
+                                          NOT NULL
+                                      }
                                   }
-                                  NOT NULL
                               }
+                              {line alter-table-options }
                           }
                       }
                       {line DROP
@@ -827,7 +842,7 @@ stack
                       }
                       {line SET COMMIT PENDING }
                   }
-              }
+              , }
               {line DO NOTHING }
           }
       }

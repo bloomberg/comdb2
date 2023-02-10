@@ -3941,19 +3941,19 @@ static int retrieve_table_options(struct dbtable *table)
 
     switch (odh) {
     case 0: table_options |= ODH_OFF; break;
-    case 1: break;
+    case 1: table_options |= ODH_ON; break;
     default: assert(0);
     }
 
     switch (inplace_updates) {
     case 0: table_options |= IPU_OFF; break;
-    case 1: break;
+    case 1: table_options |= IPU_ON; break;
     default: assert(0);
     }
 
     switch (instant_schema_change) {
     case 0: table_options |= ISC_OFF; break;
-    case 1: break;
+    case 1: table_options |= ISC_ON; break;
     default: assert(0);
     }
 
@@ -6497,6 +6497,91 @@ oom:
 
 cleanup:
     free_ddl_context(pParse);
+    return;
+}
+
+#define ODH_FLAGS (ODH_OFF|ODH_ON)
+#define IPU_FLAGS (IPU_OFF|IPU_ON)
+#define ISC_FLAGS (ISC_OFF|ISC_ON)
+#define BLOB_CMPR_FLAGS (BLOB_NONE|BLOB_RLE|BLOB_CRLE|BLOB_ZLIB|BLOB_LZ4)
+#define REC_CMPR_FLAGS (REC_NONE|REC_RLE|REC_CRLE|REC_ZLIB|REC_LZ4)
+#define REBUILD_FLAGS (REBUILD_ALL|REBUILD_DATA|REBUILD_BLOB)
+
+static int bitSetCount(int num) {
+    int count = 0;
+    while (num) {
+        ++count;
+        num &= (num-1);
+    }
+    return count;
+}
+
+static int checkAndSetBits(Parse *pParse, uint32_t *dst, uint32_t src,
+                           uint32_t propertyFlags, const char *propertyName) {
+    uint32_t propertyBits = src & propertyFlags;
+    int count = bitSetCount(propertyBits);
+    if (count >= 1) {
+        if (count > 1) {
+            sqlite3ErrorMsg(pParse, "Conflicting '%s' options", propertyName);
+            return 1;
+        }
+
+        *dst &= (~propertyFlags);
+        *dst |= propertyBits;
+    }
+    return 0;
+}
+
+void comdb2AlterTableOptions(
+    Parse *pParse,      /* Parse context */
+    uint32_t comdb2Opts /* Comdb2 specific table properties */
+)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    /* At this point, we have already retreived the existing table properties.
+     * Here we update all the flags that was explicitly asked in the ALTER
+     * command. */
+
+    uint32_t *tableOpts = &ctx->schema->table_options;
+
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, ODH_FLAGS, "ODH")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, IPU_FLAGS, "IPU")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, ISC_FLAGS, "ISC")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, BLOB_CMPR_FLAGS, "BLOB COMPRESSION")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, REC_CMPR_FLAGS, "RECORD COMPRESSION")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, REBUILD_FLAGS, "REBUILD")) == 1) {
+        return;
+    }
+    if (comdb2Opts & PAGE_ORDER) {
+        *tableOpts |= PAGE_ORDER;
+    }
+    if (comdb2Opts & READ_ONLY) {
+        *tableOpts |= READ_ONLY;
+    }
     return;
 }
 

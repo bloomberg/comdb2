@@ -59,6 +59,7 @@ void comdb2AlterColumnDropDefault(Parse *);
 void comdb2AlterColumnDropAutoIncrement(Parse *);
 void comdb2AlterColumnSetNotNull(Parse *);
 void comdb2AlterColumnDropNotNull(Parse *);
+void comdb2AlterTableOptions(Parse *pParse, uint32_t);
 void comdb2CreateTableStart(Parse *, Token *, Token *, int, int, int, int);
 void comdb2CreateTableEnd(Parse *, Token *, Token *, u8, int);
 void comdb2CreateTableLikeEnd(Parse *, Token *, Token *);
