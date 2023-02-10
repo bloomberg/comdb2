@@ -54,6 +54,70 @@ __txn_stat_pp(dbenv, statp, flags)
 	return (ret);
 }
 
+struct collect_prepared
+{
+	collect_prepared_f func;
+	void *arg;
+};
+
+#include <alloca.h>
+
+static int __prepared_collect_hashfor(void *obj, void *arg)
+{
+	struct collect_prepared *c = (struct collect_prepared *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	u_int64_t utxnid = p->txnp ? p->txnp->utxnid : 0;
+	char *name = alloca(p->coordinator_name.size + 1);
+	char *tier = alloca(p->coordinator_tier.size + 1);
+	memcpy(name, p->coordinator_name.data, p->coordinator_name.size);
+	name[p->coordinator_name.size] = '\0';
+	memcpy(tier, p->coordinator_tier.data, p->coordinator_tier.size);
+	tier[p->coordinator_tier.size] = '\0';
+	return (*c->func)(c->arg, p->dist_txnid, p->flags, &p->prepare_lsn,
+		&p->begin_lsn, p->coordinator_gen, name, tier, utxnid);
+}
+
+static int
+__prepared_collect(DB_ENV *dbenv, collect_prepared_f func, void *arg)
+{
+	DB_TXN_PREPARED *p;
+	struct collect_prepared c = {.func = func, .arg = arg };
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __prepared_collect_hashfor, &c);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return 0;
+}
+
+/*
+ * __txn_prepared_collect_pp --
+ *  DB_ENV->prepared_collect pre/post processing
+ *
+ * PUBLIC: int __txn_prepared_collect_pp __P((DB_ENV *, collect_prepared_f, void *));
+ */
+ int
+ __txn_prepared_collect_pp(dbenv, func, arg)
+	DB_ENV *dbenv;
+	collect_prepared_f func;
+	void *arg;
+{
+	int rep_check, ret;
+
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+		dbenv->lk_handle, "DB_ENV->lock_collect", DB_INIT_LOCK);
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __prepared_collect(dbenv, func, arg);
+
+	if (rep_check)
+		__env_rep_exit(dbenv);
+
+	return (ret);
+}
+
 /*
  * __txn_stat --
  *	DB_ENV->txn_stat.

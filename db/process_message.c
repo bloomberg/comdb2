@@ -3245,6 +3245,24 @@ clipper_usage:
             thdpool_process_message(gbl_verify_thdpool, line, lline, st);
         else
             logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
+    } else if (tokcmp(tok, ltok, "disttxn") == 0) {
+        char dist_txnid[128] = {0};
+        int found = 0;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 0) {
+            memcpy(dist_txnid, tok, ltok < sizeof(dist_txnid) ? ltok : sizeof(dist_txnid) - 1);
+            found = 1;
+        }
+        tok = segtok(line, lline, &st, &ltok);
+        if ((tokcmp(tok, ltok, "commit") == 0) && found) {
+            dbenv->bdb_env->dbenv->txn_commit_recovered(dbenv->bdb_env->dbenv, dist_txnid);
+        } else if ((tokcmp(tok, ltok, "abort") == 0) && found) {
+            dbenv->bdb_env->dbenv->txn_abort_recovered(dbenv->bdb_env->dbenv, dist_txnid);
+        } else if ((tokcmp(tok, ltok, "discard") == 0) && found) {
+            dbenv->bdb_env->dbenv->txn_discard_recovered(dbenv->bdb_env->dbenv, dist_txnid);
+        } else {
+            logmsg(LOGMSG_ERROR, "Expected <dist-txnid> 'commit', 'abort', or 'discard'\n");
+        }
     } else if (tokcmp(tok, ltok, "oldestgenids") == 0) {
         int i, stripe;
         void *buf = malloc(64 * 1024);

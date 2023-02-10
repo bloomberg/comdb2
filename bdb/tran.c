@@ -61,6 +61,7 @@
 #include "nodemap.h"
 #include "logmsg.h"
 #include "txn_properties.h"
+#include <build/db.h>
 
 static unsigned int curtran_counter = 0;
 extern int gbl_debug_txn_sleep;
@@ -409,8 +410,7 @@ int bdb_abort_logical_waiters(bdb_state_type *bdb_state)
                             tranlist_lnk)
         {
             if (ltran->logical_lid) {
-                rc = bdb_state->dbenv->lock_abort_logical_waiters(
-                    bdb_state->dbenv, ltran->logical_lid, 0);
+                rc = bdb_state->dbenv->lock_abort_waiters(bdb_state->dbenv, ltran->logical_lid, DB_LOCK_ABORT_LOGICAL);
                 if (rc)
                     abort();
             }
@@ -1430,7 +1430,8 @@ static int update_logical_redo_lsn(void *obj, void *arg)
 
     last = LISTC_BOT(&bdb_state->sc_redo_list);
     /* Add in order */
-    if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
+    /* 'Logical commits' can be out-of-order for prepared txns */
+    if (!last || (log_compare(&last->lsn, &redo->lsn) <= 0) || tran->is_prepared)
         listc_abl(&bdb_state->sc_redo_list, redo);
     else {
         logmsg(LOGMSG_FATAL, "%s: logical commit lsn should be in order\n",
@@ -1441,6 +1442,64 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     Pthread_cond_signal(&bdb_state->sc_redo_wait);
     Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
     return 0;
+}
+
+int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dist_txnid, const char *coordinator_name,
+                     const char *coordinator_tier, uint32_t coordinator_gen, void *blkseq_key, int blkseq_key_len,
+                     int *bdberr)
+{
+    u_int32_t flags = (DB_TXN_DONT_GET_REPO_MTX | (tran->request_ack) ? DB_TXN_REP_ACK : 0);
+    *bdberr = BDBERR_NOERROR;
+    DBT blkseq = {.data = blkseq_key, .size = blkseq_key_len};
+    extern int gbl_utxnid_log;
+
+    if (gbl_utxnid_log == 0) {
+        logmsg(LOGMSG_DEBUG, "%s requires utxnid_log\n", __func__);
+        return -1;
+    }
+
+    if (tran->tranclass != TRANCLASS_BERK) {
+        logmsg(LOGMSG_FATAL, "%s preparing incorrect tranclass: %d\n", __func__, tran->tranclass);
+        abort();
+    }
+
+    if (tran->parent != NULL) {
+        logmsg(LOGMSG_FATAL, "%s cannot prepare child txns\n", __func__);
+        abort();
+    }
+
+    if (tran->tid->parent) {
+        logmsg(LOGMSG_FATAL, "%s preparing child transaction\n", __func__);
+        abort();
+    }
+
+    if (tran->is_prepared) {
+        logmsg(LOGMSG_FATAL, "%s re-preparing an already prepared txn\n", __func__);
+        abort();
+    }
+
+    if ((add_snapisol_logging(bdb_state, tran) || tran->force_logical_commit) && !(tran->flags & BDB_TRAN_NOLOG)) {
+        unsigned long long ctx = get_gblcontext(bdb_state);
+        int rc, isabort = (tran->committed_child) ? 0 : 1;
+        rc = llog_ltran_commit_log_wrap(bdb_state->dbenv, tran->tid, &tran->commit_lsn, 0, tran->logical_tranid,
+                                        &tran->last_logical_lsn, ctx, isabort);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s error writing logical commit, %d\n", __func__, rc);
+            abort();
+        }
+        memcpy(&tran->last_logical_lsn, &tran->commit_lsn, sizeof(DB_LSN));
+        flags |= DB_TXN_DIST_UPD_SHADOWS;
+    }
+
+    int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen,
+                                             &blkseq, flags);
+
+    if (prepare_rc != 0) {
+        logmsg(LOGMSG_INFO, "%s error preparing txn: %d\n", __func__, prepare_rc);
+    }
+    tran->is_prepared = 1;
+
+    return prepare_rc;
 }
 
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -1531,20 +1590,18 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
              tran->force_logical_commit) &&
             !(tran->flags & BDB_TRAN_NOLOG)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
-            int iirc;
+            int iirc = 0;
             int isabort;
             unsigned long long ctx = get_gblcontext(bdb_state);
 
             /* If the child didn't commit, this is a logical abort. */
             isabort = (tran->committed_child) ? 0 : 1;
 
-            iirc = llog_ltran_commit_log_wrap(
-                bdb_state->dbenv, tran->tid, &parent->commit_lsn, 0,
-                parent->logical_tranid, &parent->last_logical_lsn, ctx,
-                isabort);
-
-            memcpy(&parent->last_logical_lsn, &parent->commit_lsn,
-                   sizeof(DB_LSN));
+            if (!tran->is_prepared) {
+                iirc = llog_ltran_commit_log_wrap(bdb_state->dbenv, tran->tid, &parent->commit_lsn, 0,
+                                                  parent->logical_tranid, &parent->last_logical_lsn, ctx, isabort);
+                memcpy(&parent->last_logical_lsn, &parent->commit_lsn, sizeof(DB_LSN));
+            }
 
             if (iirc) {
                 tran->tid->abort(tran->tid);
@@ -1689,8 +1746,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         if (blkseq) {
             *bdberr = 0;
-            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen,
-                                   blkseq, blklen, NULL, NULL);
+            rc = bdb_blkseq_insert(bdb_state, physical_tran, blkkey, blkkeylen, blkseq, blklen, NULL, NULL, 0);
             *bdberr = (rc == IX_DUP) ? BDBERR_ADD_DUPE : rc;
 
             /*
@@ -2626,6 +2682,13 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
         rc = -1;
     }
     return rc;
+}
+
+void bdb_upgrade_all_prepared(bdb_state_type *bdb_state)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    bdb_state->dbenv->txn_upgrade_all_prepared(bdb_state->dbenv);
 }
 
 unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,

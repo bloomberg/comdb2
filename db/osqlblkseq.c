@@ -57,7 +57,52 @@ int cnonce_hashcmpfunc(const void *key1, const void *key2, int len)
     return -1;
 }
 
-int osql_blkseq_register_cnonce(struct ireq *iq)
+int osql_blkseq_unregister_cnonce(void *cnonce, int len)
+{
+    snap_uid_t *iq_src, fnd = {0};
+    assert(hiqs_cnonce != NULL);
+    if (len > MAX_SNAP_KEY_LEN) {
+        logmsg(LOGMSG_ERROR, "%s cannot remove snap-uid with cnonce size %d\n", __func__, len);
+        return -1;
+    }
+    memcpy(&fnd.key, cnonce, len);
+    Pthread_mutex_lock(&hmtx);
+    iq_src = hash_find(hiqs_cnonce, &fnd);
+    if (!iq_src) {
+        logmsg(LOGMSG_FATAL, "%s: missing cnonce for recovered prepare\n", __func__);
+        abort();
+    } else {
+        hash_del(hiqs_cnonce, iq_src);
+        free(iq_src);
+    }
+    Pthread_mutex_unlock(&hmtx);
+    return 0;
+}
+
+int osql_blkseq_register_cnonce(void *cnonce, int len)
+{
+    snap_uid_t *iq_src, fnd = {0};
+    assert(hiqs_cnonce != NULL);
+    if (len > MAX_SNAP_KEY_LEN) {
+        logmsg(LOGMSG_ERROR, "%s cannot add snap-uid with cnonce size %d\n", __func__, len);
+        return -1;
+    }
+    memcpy(&fnd.key, cnonce, len);
+    Pthread_mutex_lock(&hmtx);
+    iq_src = hash_find(hiqs_cnonce, &fnd);
+    if (!iq_src) {
+        iq_src = calloc(sizeof(snap_uid_t), 1);
+        memcpy(iq_src->key, cnonce, len);
+        hash_add(hiqs_cnonce, iq_src);
+    } else {
+        logmsg(LOGMSG_FATAL, "%s: found cnonce for recovered prepare\n", __func__);
+        abort();
+    }
+    Pthread_mutex_unlock(&hmtx);
+    return 0;
+}
+
+int osql_blkseq_register_ireq(struct ireq *iq)
 {
     void *iq_src = NULL;
     int rc = 0;
@@ -99,7 +144,7 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
 }
 
 /* call with hmtx acquired */
-static inline int osql_blkseq_unregister_cnonce(struct ireq *iq)
+static inline int osql_blkseq_unregister_ireq(struct ireq *iq)
 {
     assert(hiqs_cnonce != NULL);
 
@@ -193,9 +238,9 @@ int osql_blkseq_unregister(struct ireq *iq)
     hash_del(hiqs, iq);
     if (IQ_HAS_SNAPINFO_KEY(iq)) {
 #ifdef DEBUG_BLKSEQ
-        int rc = osql_blkseq_unregister_cnonce(iq);
+        int rc = osql_blkseq_unregister_ireq(iq);
 #else
-        osql_blkseq_unregister_cnonce(iq);
+        osql_blkseq_unregister_ireq(iq);
 #endif
     }
 

@@ -159,12 +159,6 @@ int osql_open(struct dbenv *dbenv)
         return -2;
     }
 
-    rc = osql_blkseq_init();
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failing to init blocksql blockseq module\n",
-               __func__);
-    }
-
     /* create comm endpoint and kickoff the communication */
     rc = osql_comm_init(dbenv);
     if (rc) {

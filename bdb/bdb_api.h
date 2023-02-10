@@ -681,6 +681,10 @@ tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
 
 /* return log bytes written so far for this transaction */
 uint64_t bdb_tran_logbytes(tran_type *tran);
+/* Write a prepare record */
+int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dist_txnid, const char *coordinator_name,
+                     const char *coordinator_tier, uint32_t coordinator_gen, void *blkseq_key, int blkseq_key_len,
+                     int *bdberr);
 
 /* commit the transaction referenced by the tran handle */
 int bdb_tran_commit(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
@@ -1823,6 +1827,8 @@ extern void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out);
 int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
                      int seqno, void *blob, int sz, int *bdberr);
 
+void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
+
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
@@ -2080,9 +2086,8 @@ void llmeta_list_tablename_alias(void);
 void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state);
 int bdb_create_private_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe);
-int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
-                      int klen, void *data, int datalen, void **dtaout,
-                      int *lenout);
+int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void *data, int datalen,
+                      void **dtaout, int *lenout, int overwrite);
 int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
                     int klen, void **dtaout, int *lenout);
 void bdb_blkseq_dumpall(bdb_state_type *bdb_state);

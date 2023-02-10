@@ -39,13 +39,25 @@ extern int gbl_block_blockseq_poll;
 int osql_blkseq_init(void);
 
 /**
+ * Register a cnonce directly.  This is used for recovered prepares.
+ *
+ */
+int osql_blkseq_register_cnonce(void *cnonce, int len);
+
+/**
+ * Unregister a cnonce directly.  This is used for recovered prepares.
+ *
+ */
+int osql_blkseq_unregister_cnonce(void *cnonce, int len);
+
+/**
  * Main function to do same as osql_blkseq_register snap_info was passed
  * - check to see if the cnonce exists
  * - if this is a replay, return OSQL_BLOCKSEQ_REPLAY
  * - if this is NOT a replay, insert the seq and return OSQL_BLOCKSEQ_FIRST
  *
  */
-int osql_blkseq_register_cnonce(struct ireq *iq);
+int osql_blkseq_register_ireq(struct ireq *iq);
 
 /**
  * Main function

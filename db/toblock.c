@@ -121,7 +121,6 @@ enum {
 
 
 int gbl_sc_close_txn = 1;
-int gbl_osql_snap_info_hashcheck = 1;
 
 #if 0
 #define GOTOBACKOUT                                                            \
@@ -803,6 +802,80 @@ void replay_stat(void)
 
 void flush_db(void);
 
+/* buf_fstblk is sized FSTBLK_MAX_BUF_LEN */
+int prepare_dist_abort_blkseq(uint8_t *buf_fstblk, int *outlen)
+{
+    uint8_t *p_buf_fstblk = buf_fstblk;
+    const uint8_t *p_buf_fstblk_end = buf_fstblk + FSTBLK_MAX_BUF_LEN;
+
+    struct fstblk_header fstblk_header;
+    struct fstblk_pre_rspkl fstblk_pre_rspkl;
+
+    /* Prepares require cnonce fstblk keys */
+    fstblk_header.type = FSTBLK_SNAP_INFO;
+    fstblk_pre_rspkl.fluff = (short)0;
+
+    if (!(p_buf_fstblk = fstblk_header_put(&fstblk_header, p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    if (!(p_buf_fstblk = fstblk_pre_rspkl_put(&fstblk_pre_rspkl, p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    int outrc = ERR_DIST_ABORT;
+
+    if (!(p_buf_fstblk = buf_put(&(outrc), sizeof(outrc), p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    errstat_t errstat = {0};
+    errstat.errval = ERR_DIST_ABORT;
+    snprintf(errstat.errstr, sizeof(errstat.errstr), "Transaction aborted by coordinator");
+
+    if (!(p_buf_fstblk = osqlcomm_errstat_type_put(&errstat, p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    struct query_effects effects = {0};
+
+    if (!(p_buf_fstblk = osqlcomm_query_effects_put(&effects, p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    struct fstblk_rspkl fstblk_rspkl = {0};
+    if (!(p_buf_fstblk = fstblk_rspkl_put(&fstblk_rspkl, p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    struct block_err block_err = {0};
+    if (!(p_buf_fstblk = block_err_put(&block_err, p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+
+    int t = comdb2_time_epoch();
+
+    if (!(p_buf_fstblk = buf_no_net_put(&(t), sizeof(t), p_buf_fstblk, p_buf_fstblk_end))) {
+        return ERR_INTERNAL;
+    }
+    (*outlen) = (p_buf_fstblk - buf_fstblk);
+
+    return 0;
+}
+
+int dist_txn_abort_write_blkseq(void *in_bdb_state, void *bskey, int bskeylen)
+{
+    bdb_state_type *bdb_state = (in_bdb_state ? in_bdb_state : thedb->bdb_env);
+    uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
+    int outlen = 0, rc;
+    if ((rc = prepare_dist_abort_blkseq(buf_fstblk, &outlen)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: error %d preparing blkseq payload\n", __func__, rc);
+        return rc;
+    }
+    assert(outlen <= FSTBLK_MAX_BUF_LEN);
+    return bdb_blkseq_insert(bdb_state, NULL, bskey, bskeylen, buf_fstblk, outlen, NULL, NULL, 1);
+}
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -1041,6 +1114,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     case ERR_CONSTR:
                     case ERR_UNCOMMITABLE_TXN:
                     case ERR_NOMASTER:
+                    case ERR_DIST_ABORT:
                     case ERR_NOTSERIAL:
                         outrc = err.errcode;
                         break;
@@ -1062,6 +1136,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         case ERR_UNCOMMITABLE_TXN:
                         case ERR_NOMASTER:
                         case ERR_NOTSERIAL:
+                        case ERR_DIST_ABORT:
                         case ERR_SC:
                         case ERR_TRAN_TOO_BIG:
                             iq->sorese->rcout = outrc;
@@ -2666,7 +2741,26 @@ static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
         } \
     }
 
+int gbl_random_prepare_commit = 0;
+int gbl_all_prepare_commit = 0;
+int gbl_all_prepare_abort = 0;
+int gbl_all_prepare_leak = 0;
 
+static inline int debug_should_prepare()
+{
+    return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak ||
+           (gbl_random_prepare_commit && rand() % 2);
+}
+
+static inline int debug_prepared_should_commit()
+{
+    return (!gbl_all_prepare_leak && !gbl_all_prepare_abort);
+}
+
+static inline int debug_prepared_should_abort()
+{
+    return gbl_all_prepare_abort;
+}
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
@@ -2866,11 +2960,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (got_osql && IQ_HAS_SNAPINFO_KEY(iq)) {
-            if (gbl_osql_snap_info_hashcheck) {
-                // the goal here is to stall until the original transaction
-                // has finished that way we can retrieve the outcome from blkseq
-                osql_blkseq_register_cnonce(iq);
-            }
+            // the goal here is to stall until the original transaction
+            // has finished that way we can retrieve the outcome from blkseq
+            osql_blkseq_register_ireq(iq);
 
             void *replay_data = NULL;
             int replay_len = 0;
@@ -5188,6 +5280,7 @@ backout:
     case ERR_UNCOMMITABLE_TXN:
     case ERR_NOMASTER:
     case ERR_NOTSERIAL:
+    case ERR_DIST_ABORT:
     case ERR_SC:
     case ERR_TRAN_TOO_BIG:
         outrc = rc;
@@ -5412,10 +5505,8 @@ add_blkseq:
                  IQ_SNAPINFO(iq)->replicant_is_able_to_retry)) {
                 /* do nothing */
             } else {
-                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
-                                       bskeylen, buf_fstblk,
-                                       p_buf_fstblk - buf_fstblk + sizeof(int),
-                                       &replay_data, &replay_len);
+                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen, buf_fstblk,
+                                       p_buf_fstblk - buf_fstblk + sizeof(int), &replay_data, &replay_len, 0);
                 if (debug_switch_test_ddl_backout_blkseq())
                     rc = -1;
                 if (!rc && gbl_debug_blkseq_race && !(rand() % 5)) {
@@ -5474,8 +5565,41 @@ add_blkseq:
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
-                    irc = trans_commit_adaptive(iq, parent_trans, source_host);
-                    parent_trans = NULL;
+                    int prepared = 0, bdberr = 0;
+                    char dist_txnid[64] = {0};
+
+                    /* TODO: Prevent 2pc txns from running in serializable isolation, as that
+                     * would require holding the commit-lock in write mode long-term.  */
+
+                    /* Prepare tests */
+                    if (debug_should_prepare()) {
+                        uint64_t g = get_genid(thedb->bdb_env, 0);
+                        snprintf(dist_txnid, sizeof(dist_txnid), "test-%" PRIu64, g);
+                        /* TODO: only allow prepares blkseq-key is a cnonce.  We can check
+                         * early & error out. */
+                        int prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, "test-coordinator",
+                                                          "test-tier", rand() % 10000, bskey, bskeylen, &bdberr);
+                        /* We test that prepare fails if the logs don't have utxnids */
+                        if (prepare_rc) {
+                            logmsg(LOGMSG_FATAL, "%s got weird error from prepare, %d??\n", __func__, prepare_rc);
+                            exit(1);
+                        }
+                        prepared = 1;
+                    }
+                    if (!prepared || debug_prepared_should_commit()) {
+                        irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                        parent_trans = NULL;
+                    } else if (prepared && debug_prepared_should_abort()) {
+                        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                        irc = trans_abort(iq, parent_trans);
+                        parent_trans = NULL;
+                    } else {
+                        assert(gbl_all_prepare_leak);
+                        logmsg(LOGMSG_USER, "%s leaking a prepared txn %s\n", __func__, dist_txnid);
+                        bdb_flush(thedb->bdb_env, &bdberr);
+                        sleep(2);
+                        exit(1);
+                    }
                 }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:
@@ -5871,7 +5995,9 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
-    bdb_assert_notran(thedb->bdb_env);
+    extern int gbl_all_prepare_leak;
+    if (!gbl_all_prepare_leak)
+        bdb_assert_notran(thedb->bdb_env);
 
     if (rc == 0) {
         osql_postcommit_handle(iq);

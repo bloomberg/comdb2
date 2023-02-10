@@ -2317,6 +2317,9 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
     __txn_regop_args *argp = NULL;
     __txn_regop_gen_args *arggenp = NULL;
     __txn_regop_rowlocks_args *argrlp = NULL;
+    __txn_dist_commit_args *argdistp = NULL;
+    __txn_dist_prepare_args *argprepp = NULL;
+    void *freeme = NULL;
     unsigned long long ltranid;
     tran_type *ltrans = NULL;
     int rc = 0;
@@ -2324,14 +2327,18 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
     if (!gbl_new_snapisol)
         return;
 
-    if (rectype != DB___txn_regop && rectype != DB___txn_regop_rowlocks &&
-        rectype != DB___txn_regop_gen)
+    if (rectype != DB___txn_regop && rectype != DB___txn_regop_rowlocks && rectype != DB___txn_regop_gen &&
+        rectype != DB___txn_dist_commit && rectype != DB___txn_dist_prepare)
         return;
 
     if (rectype == DB___txn_regop)
         argp = (__txn_regop_args *)args;
     else if (rectype == DB___txn_regop_gen)
         arggenp = (__txn_regop_gen_args *)args;
+    else if (rectype == DB___txn_dist_commit)
+        argdistp = (__txn_dist_commit_args *)args;
+    else if (rectype == DB___txn_dist_prepare)
+        argprepp = (__txn_dist_prepare_args *)args;
     else
         argrlp = (__txn_regop_rowlocks_args *)args;
 
@@ -2380,7 +2387,48 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
         rc = undo_get_ltranid(bdb_state, &logdta, &ltranid);
         if (rc)
             goto done;
-    } else if (rectype == DB___txn_regop_rowlocks) {
+    }
+    /* Dist-commit is preceeded by prepare-record before a logical log  */
+    if (rectype == DB___txn_dist_commit) {
+        lsn = argdistp->prev_lsn;
+        if (lsn.file == 0 || lsn.offset == 0)
+            goto done;
+
+        rc = logcur->get(logcur, &lsn, &logdta, DB_SET);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s log_cur->get(%u:%u) rc %d\n", __FILE__, __LINE__, __func__, lsn.file,
+                   lsn.offset, rc);
+            goto done;
+        }
+        /* rectype -> prepare & handle below */
+        rectype = LOGCOPY_32(&rectype, logdta.data);
+        normalize_rectype(&rectype);
+        assert(rectype == DB___txn_dist_prepare);
+
+        rc = __txn_dist_prepare_read(bdb_state->dbenv, logdta.data, &argprepp);
+        if (rc)
+            goto done;
+
+        freeme = argprepp;
+    }
+
+    if (rectype == DB___txn_dist_prepare) {
+        lsn = argprepp->prev_lsn;
+        if (lsn.file == 0 || lsn.offset == 0)
+            goto done;
+
+        rc = logcur->get(logcur, &lsn, &logdta, DB_SET);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s log_cur->get(%u:%u) rc %d\n", __FILE__, __LINE__, __func__, lsn.file,
+                   lsn.offset, rc);
+            goto done;
+        }
+        rc = undo_get_ltranid(bdb_state, &logdta, &ltranid);
+        if (rc)
+            goto done;
+    }
+
+    if (rectype == DB___txn_regop_rowlocks) {
         lsn = argrlp->prev_lsn;
         ltranid = argrlp->ltranid;
     }
@@ -2397,6 +2445,8 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
 done:
     if (logdta.data)
         free(logdta.data);
+    if (freeme)
+        free(freeme);
     logcur->close(logcur, 0);
 }
 
@@ -4354,6 +4404,7 @@ static int is_commit(u_int32_t rectype)
     switch (rectype) {
     case DB___txn_regop:
     case DB___txn_regop_gen:
+    case DB___txn_dist_commit:
     case DB___txn_regop_rowlocks:
         return 1;
     default:
@@ -4366,11 +4417,57 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
     bdb_state_type *bdb_state = gbl_bdb_state;
     DB_ENV *dbenv = bdb_state->dbenv;
     __txn_regop_args *txn_args;
+    __txn_dist_commit_args *txn_dist_args;
+    __txn_dist_prepare_args *txn_prepare_args;
     __txn_regop_gen_args *txn_gen_args;
     __txn_regop_rowlocks_args *txn_rl_args;
     int rc;
 
     switch (rectype) {
+    case DB___txn_dist_commit:
+        if ((rc = __txn_dist_commit_read(dbenv, data->data, &txn_dist_args)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d regop read returns %d for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, lsn->file, lsn->offset);
+            return 1;
+        }
+        DB_LSN prevlsn = txn_dist_args->prev_lsn;
+        free(txn_dist_args);
+
+        DB_LOGC *cur = NULL;
+        rc = dbenv->log_cursor(dbenv, &cur, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d error get log cursor rc %d\n", __FILE__, __LINE__, rc);
+            return -1;
+        }
+        DBT logdta = {0};
+        logdta.flags = DB_DBT_REALLOC;
+
+        rc = cur->get(cur, &prevlsn, &logdta, DB_SET);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s line %d log-read returns %d for %d:%d\n", __func__, __LINE__, rc, prevlsn.file,
+                   prevlsn.offset);
+            cur->close(cur, 0);
+            return 1;
+        }
+        LOGCOPY_32(&rectype, logdta.data);
+        normalize_rectype(&rectype);
+        assert(rectype == DB___txn_dist_prepare);
+        if ((rc = __txn_dist_prepare_read(dbenv, logdta.data, &txn_prepare_args)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d dist_prepare read returns %d for "
+                   "%d:%d\n",
+                   __func__, __LINE__, rc, prevlsn.file, prevlsn.offset);
+            free(logdta.data);
+            cur->close(cur, 0);
+            return 1;
+        }
+        (*lsn) = txn_prepare_args->prev_lsn;
+        free(logdta.data);
+        free(txn_prepare_args);
+        cur->close(cur, 0);
+        break;
     case DB___txn_regop:
         if ((rc = __txn_regop_read(dbenv, data->data, &txn_args)) != 0) {
             logmsg(LOGMSG_ERROR,
@@ -4479,9 +4576,9 @@ static int create_logical_payload(bdb_llog_cursor *pCur, DB_LSN regop_lsn,
     return 0;
 }
 
-static int bdb_llog_cursor_move(bdb_llog_cursor *pCur)
+static int bdb_llog_cursor_move(bdb_llog_cursor *pCur, u_int32_t flags)
 {
-    u_int32_t rectype = 0;
+    u_int32_t rectype = 0, first_txnid = 0, txnid = 0;
     int rc = 0;
 
 again:
@@ -4495,6 +4592,9 @@ again:
         if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data);
             normalize_rectype(&rectype);
+            LOGCOPY_32(&txnid, pCur->data.data + 4);
+            if (!first_txnid)
+                first_txnid = txnid;
         } else {
             rectype = 0;
         }
@@ -4503,7 +4603,7 @@ again:
             /* traverse upto maxLsn */
             return 0;
         }
-    } while (!pCur->hitLast && !is_commit(rectype));
+    } while (!pCur->hitLast && (!is_commit(rectype) || (flags && first_txnid != txnid)));
 
     if (!pCur->hitLast) {
         /* Can happen if we're missing the beginning of the transaction */
@@ -4554,7 +4654,7 @@ int bdb_llog_cursor_first(bdb_llog_cursor *pCur)
         }
     }
 
-    return bdb_llog_cursor_move(pCur);
+    return bdb_llog_cursor_move(pCur, 0);
 }
 
 int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
@@ -4571,7 +4671,7 @@ int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
         pCur->getflags = DB_NEXT;
     }
 
-    return bdb_llog_cursor_move(pCur);
+    return bdb_llog_cursor_move(pCur, 0);
 }
 
 int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
@@ -4590,7 +4690,7 @@ int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
     pCur->curLsn = pCur->minLsn;
     pCur->getflags = DB_SET;
 
-    return bdb_llog_cursor_move(pCur);
+    return bdb_llog_cursor_move(pCur, 1);
 }
 
 void bdb_llog_cursor_reset(bdb_llog_cursor *pCur)

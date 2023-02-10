@@ -344,6 +344,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblTranCommitInit(db);
 #endif
+  if (rc == SQLITE_OK)  
+    rc = systblPreparedInit(db);
 #endif
   return rc;
 }

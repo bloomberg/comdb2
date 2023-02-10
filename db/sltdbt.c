@@ -227,16 +227,13 @@ done:
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
-    if (rc != 0 && rc != ERR_BLOCK_FAILED && rc != ERR_READONLY &&
-        rc != ERR_SQL_PREP && rc != ERR_NO_AUXDB && rc != ERR_INCOHERENT &&
-        rc != ERR_SC_COMMIT && rc != ERR_CONSTR && rc != ERR_TRAN_FAILED &&
-        rc != ERR_CONVERT_DTA && rc != ERR_NULL_CONSTRAINT &&
-        rc != ERR_CONVERT_IX && rc != ERR_BADREQ && rc != ERR_RMTDB_NESTED &&
-        rc != ERR_NESTED && rc != ERR_NOMASTER && rc != ERR_READONLY &&
-        rc != ERR_VERIFY && rc != RC_TRAN_CLIENT_RETRY &&
-        rc != RC_INTERNAL_FORWARD && rc != RC_INTERNAL_RETRY &&
+    if (rc != 0 && rc != ERR_BLOCK_FAILED && rc != ERR_READONLY && rc != ERR_SQL_PREP && rc != ERR_NO_AUXDB &&
+        rc != ERR_INCOHERENT && rc != ERR_SC_COMMIT && rc != ERR_CONSTR && rc != ERR_TRAN_FAILED &&
+        rc != ERR_CONVERT_DTA && rc != ERR_NULL_CONSTRAINT && rc != ERR_CONVERT_IX && rc != ERR_BADREQ &&
+        rc != ERR_RMTDB_NESTED && rc != ERR_NESTED && rc != ERR_NOMASTER && rc != ERR_READONLY && rc != ERR_VERIFY &&
+        rc != RC_TRAN_CLIENT_RETRY && rc != RC_INTERNAL_FORWARD && rc != RC_INTERNAL_RETRY &&
         rc != ERR_TRAN_TOO_BIG && /* THIS IS SENT BY BLOCKSQL WHEN TOOBIG */
-        rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITABLE_TXN &&
+        rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITABLE_TXN && rc != ERR_DIST_ABORT &&
         (rc != ERR_NOT_DURABLE || !iq->sorese)) {
         /* XXX CLIENT_RETRY DOESNT ACTUALLY CAUSE A RETRY USUALLY, just
            a bad rc to the client! */

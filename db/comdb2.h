@@ -356,6 +356,7 @@ enum RCODES {
     ERR_INDEX_CONFLICT = 330,
     ERR_UNCOMMITABLE_TXN = 404, /* txn is uncommitable, returns ERR_VERIFY
                                    rather than retry */
+    ERR_DIST_ABORT = 430,       /* Prepared txn has been aborted */
     ERR_QUERY_REJECTED = 451,
     ERR_INCOHERENT = 996, /* prox2 understands it should retry another
                              node for 996 */

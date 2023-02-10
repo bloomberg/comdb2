@@ -328,6 +328,14 @@ long long toknumll(const char *tok, int ltok)
     return strtoll(lnum, 0, 0);
 }
 
+/* RETURN STRTOULL OF TOKEN */
+unsigned long long toknumull(const char *tok, int ltok)
+{
+    char lnum[64];
+    F2CSTRD(tok, ltok, lnum);
+    return strtoull(lnum, 0, 0);
+}
+
 /* RETURN STRTOLL OF TOKEN, specify base */
 long long toknumllbase(const char *tok, int ltok, int base)
 {

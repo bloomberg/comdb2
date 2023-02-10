@@ -29,6 +29,7 @@
 #include <list.h>
 #include <fsnapf.h>
 
+#include <logmsg.h>
 #include <bdb_osqllog.h>
 #include <bdb_osqltrn.h>
 #include <bdb_int.h>
@@ -93,8 +94,8 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
         LOGCOPY_32(&rectype, logdta.data);
         normalize_rectype(&rectype);
     } else {
-        fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-        fprintf(stderr, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
+        logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+        logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
         return 1;
     }
     while (rc == 0 && rectype != DB_llog_ltran_start) {
@@ -275,7 +276,7 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
             break;
 
         default:
-            fprintf(stderr, "Unknown log entry type %d\n", rectype);
+            logmsg(LOGMSG_ERROR, "Unknown log entry type %d\n", rectype);
             abort();
             rc = -1;
             break;
@@ -306,8 +307,8 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
             LOGCOPY_32(&rectype, logdta.data);
             normalize_rectype(&rectype);
         } else {
-            fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-            fprintf(stderr, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
+            logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+            logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
             return 1;
         }
     }
@@ -349,6 +350,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
     u_int32_t rectype = 0;
     __txn_regop_args *argp = NULL;
     __txn_regop_gen_args *arggenp = NULL;
+    __txn_dist_commit_args *argdist = NULL;
+    __txn_dist_prepare_args *argprep = NULL;
     __txn_regop_rowlocks_args *argrlp = NULL;
     llog_ltran_commit_args *commit = NULL;
 
@@ -398,6 +401,14 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
             free(arggenp);
             arggenp = NULL;
         }
+        if (argdist) {
+            free(argdist);
+            argdist = NULL;
+        }
+        if (argprep) {
+            free(argprep);
+            argprep = NULL;
+        }
         if (commit) {
             free(commit);
             commit = NULL;
@@ -413,9 +424,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
             rc = 0;
             break;
         } else {
-            fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-            fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
-                    seriallsn.offset);
+            logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+            logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
             goto done;
         }
 
@@ -446,9 +456,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 *offset = seriallsn.offset;
                 break;
             } else {
-                fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-                fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
-                        seriallsn.offset);
+                logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
                 goto done;
             }
             if (rectype == DB___txn_regop) {
@@ -462,10 +471,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                     normalize_rectype(&rectype);
                 }
                 else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
-                            rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
-                            seriallsn.offset);
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
                     goto done;
                 }
                 if (rectype == DB_llog_ltran_commit) {
@@ -482,10 +489,45 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                     LOGCOPY_32(&rectype, logdta.data);
                     normalize_rectype(&rectype);
                 } else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
-                            rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
-                            seriallsn.offset);
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
+                    goto done;
+                }
+                if (rectype == DB_llog_ltran_commit) {
+                    break;
+                }
+            } else if (rectype == DB___txn_dist_commit) {
+                rc = __txn_dist_commit_read(bdb_state->dbenv, logdta.data, &argdist);
+                prevlsn = argdist->prev_lsn;
+                free(logdta.data);
+                logdta.data = NULL;
+                rc = prevcur->get(prevcur, &prevlsn, &logdta, DB_SET);
+                if (!rc) {
+                    LOGCOPY_32(&rectype, logdta.data);
+                    normalize_rectype(&rectype);
+                } else {
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
+                    goto done;
+                }
+                if (rectype != DB___txn_dist_prepare) {
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
+                    goto done;
+                }
+
+                rc = __txn_dist_prepare_read(bdb_state->dbenv, logdta.data, &argprep);
+                prevlsn = argprep->prev_lsn;
+                free(logdta.data);
+                logdta.data = NULL;
+
+                rc = prevcur->get(prevcur, &prevlsn, &logdta, DB_SET);
+                if (!rc) {
+                    LOGCOPY_32(&rectype, logdta.data);
+                    normalize_rectype(&rectype);
+                } else {
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
                     goto done;
                 }
                 if (rectype == DB_llog_ltran_commit) {
@@ -502,10 +544,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                     LOGCOPY_32(&rectype, logdta.data);
                     normalize_rectype(&rectype);
                 } else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
-                            rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
-                            seriallsn.offset);
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file, seriallsn.offset);
                     goto done;
                 }
                 if (rectype == DB_llog_ltran_commit) {

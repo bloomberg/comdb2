@@ -31,6 +31,8 @@
 #include <ctrace.h>
 #include <strings.h>
 #include <alloca.h>
+#include <dbinc/txn.h>
+#include <dbinc_auto/txn_ext.h>
 
 #include <logmsg.h>
 #include "util.h"
@@ -38,6 +40,7 @@
 #include "tohex.h"
 
 extern int blkseq_get_rcode(void *data, int datalen);
+extern int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
                                         int timestamp, DB_LSN lsn, int stripe);
 
@@ -338,9 +341,12 @@ int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
     return IX_NOTFND;
 }
 
-int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
-                      int klen, void *data, int datalen, void **dtaout,
-                      int *lenout)
+/*
+ * TODO: create 'distributed-abort' blkseq response & update blkseq when
+ * we see a dist_abort log-record.
+ */
+int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen, void *data, int datalen,
+                      void **dtaout, int *lenout, int overwrite)
 {
     DBT dkey = {0}, ddata = {0};
     DB_LSN lsn;
@@ -348,6 +354,7 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
     // int *k;
     int rc;
     uint8_t stripe;
+    int write_ix = 0;
 
     if (!bdb_state->attr->private_blkseq_enabled)
         return 0;
@@ -368,12 +375,17 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
         rc = bdb_state->blkseq[i][stripe]->get(bdb_state->blkseq[i][stripe],
                                                NULL, &dkey, &ddata, 0);
         if (rc == 0) {
-            if (dtaout)
-                *dtaout = ddata.data;
-            if (lenout)
-                *lenout = ddata.size;
-            Pthread_mutex_unlock(&bdb_state->blkseq_lk[stripe]);
-            return IX_DUP;
+            if (overwrite) {
+                write_ix = i;
+                break;
+            } else {
+                if (dtaout)
+                    *dtaout = ddata.data;
+                if (lenout)
+                    *lenout = ddata.size;
+                Pthread_mutex_unlock(&bdb_state->blkseq_lk[stripe]);
+                return IX_DUP;
+            }
         } else if (rc != DB_NOTFOUND) {
             logmsg(LOGMSG_ERROR, "bdb_blkseq_insert stripe %d num %d rc %d\n",
                     stripe, i, rc);
@@ -387,9 +399,9 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
     ddata.size = datalen;
 
     /* not found in either tree - put it in the first */
+    int flags = overwrite ? 0 : DB_NOOVERWRITE;
 
-    rc = bdb_state->blkseq[0][stripe]->put(bdb_state->blkseq[0][stripe], NULL,
-                                           &dkey, &ddata, DB_NOOVERWRITE);
+    rc = bdb_state->blkseq[write_ix][stripe]->put(bdb_state->blkseq[write_ix][stripe], NULL, &dkey, &ddata, flags);
     if (rc) {
         logmsg(LOGMSG_ERROR, "blkseq put stripe %d error %d\n", stripe, rc);
         Pthread_mutex_unlock(&bdb_state->blkseq_lk[stripe]);
@@ -648,6 +660,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
     DBT logdta = {0};
     DB_LSN lsn, last_lsn = {0};
     llog_blkseq_args *blkseq = NULL;
+    __txn_dist_prepare_args *prepare = NULL;
     int now = comdb2_time_epoch();
     int nblkseq = 0;
     int ndupes = 0;
@@ -670,20 +683,46 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
     last_log_filenum = lsn.file;
     while (rc == 0) {
         u_int32_t rectype;
+        char *bp;
+        DB_LSN bslsn;
         if (logdta.size > (sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN))) {
             LOGCOPY_32(&rectype, logdta.data);
             normalize_rectype(&rectype);
 
-            /* blkseq-record is previous */
-            if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen || rectype == DB___txn_regop_rowlocks) {
-                /* Skip past rectype & txnid */
-                char *bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
-                DB_LSN bslsn = {0};
+            if (rectype == DB___txn_dist_abort) {
+                bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
                 LOGCOPY_TOLSN(&bslsn, bp);
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                 if (rc == 0) {
                     LOGCOPY_32(&rectype, logdta.data);
                     normalize_rectype(&rectype);
+                    if (rectype == DB___txn_dist_prepare) {
+                        rc = __txn_dist_prepare_read(bdb_state->dbenv, logdta.data, &prepare);
+                        if (rc) {
+                            logmsg(LOGMSG_ERROR, "at " PR_LSN " __txn_dist_prepare_read rc %d\n", PARM_LSN(bslsn), rc);
+                            goto err;
+                        }
+                        dist_txn_abort_write_blkseq(bdb_state, prepare->blkseq_key.data, prepare->blkseq_key.size);
+                    }
+                }
+            } else if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
+                       rectype == DB___txn_regop_rowlocks || rectype == DB___txn_dist_commit) {
+                /* Skip past rectype & txnid */
+                bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                LOGCOPY_TOLSN(&bslsn, bp);
+                rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+                if (rc == 0) {
+                    LOGCOPY_32(&rectype, logdta.data);
+                    normalize_rectype(&rectype);
+                    if (rectype == DB___txn_dist_prepare) {
+                        bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                        LOGCOPY_TOLSN(&bslsn, bp);
+                        rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+                        if (rc == 0) {
+                            LOGCOPY_32(&rectype, logdta.data);
+                            normalize_rectype(&rectype);
+                        }
+                    }
                     if (rectype == DB_llog_ltran_commit) {
                         bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
                         LOGCOPY_TOLSN(&bslsn, bp);
@@ -739,7 +778,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                         }
 
                         rc = bdb_blkseq_insert(bdb_state, NULL, blkseq->key.data, blkseq->key.size, blkseq->data.data,
-                                               blkseq->data.size, NULL, NULL);
+                                               blkseq->data.size, NULL, NULL, 0);
                         if (rc == IX_DUP)
                             ndupes++;
                         else if (rc) {
