@@ -140,7 +140,7 @@ function kill_restart_node
             PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
             $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
         else
-            PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+            PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
             CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
             ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid

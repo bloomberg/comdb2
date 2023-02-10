@@ -44,6 +44,7 @@ unknown @ls sub-command foo
 (name='comdb2_opcode_handlers')
 (name='comdb2_partial_datacopies')
 (name='comdb2_plugins')
+(name='comdb2_prepared')
 (name='comdb2_procedures')
 (name='comdb2_query_plans')
 (name='comdb2_queues')

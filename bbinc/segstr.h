@@ -47,6 +47,7 @@
 **
 ** toknum     - return token converted to int.
 ** toknumll   - return token converted to long long
+** toknumull   - return token converted to unsigned long long
 ** toknumbase - return token converted to int, specify base.
 ** toknumllbase - return token converted to long long, specify base
 ** tokunum    - return token converted to unsigned int.
@@ -83,6 +84,7 @@ int toknumbase(const char *tok, int ltok, int base);
 unsigned int tokunum(const char *tok, int ltok);
 double toknumd(const char *tok, int ltok);
 long long toknumll(const char *tok, int ltok);
+unsigned long long toknumull(const char *tok, int ltok);
 long long toknumllbase(const char *tok, int ltok, int base);
 char *tokdup(const char *tok, int ltok);
 char *tokcpy(const char *tok, int ltok, char *dest);

@@ -466,7 +466,7 @@ function log_function() {
 	if (has_dbp == 1) {
 		printf("\tif (ufid_log)\n") >> CFILE;
 		printf("\t\trectype += 1000;\n") >> CFILE;
-	}	
+	}
 	printf("\tnpad = 0;\n\n") >> CFILE;
 
 	if (dbprivate) {

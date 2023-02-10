@@ -98,6 +98,7 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 	mpf = NULL;							\
 	if ((ret = func(dbenv, dbtp->data, &argp)) != 0) {		\
 		__log_flush(dbenv, NULL); 				\
+		abort(); 						\
 	}								\
 	if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {					\
 		ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp,	\
