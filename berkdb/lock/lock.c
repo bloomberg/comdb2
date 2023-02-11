@@ -1334,7 +1334,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	DBT *objlist, *np;
 	struct __db_lockobj_lsn *lklsnp;
 	u_int32_t lndx, ndx;
-	u_int32_t nwrites = 0, nwritelatches = 0, countwl = 0, counttot = 0;
+	u_int32_t nwrites = 0, nwritelatches = 0, countwl = 0, counttot = 0, ntable = 0;
 	u_int32_t partition;
 	u_int32_t run_dd;
 	int i, ret, rc, upgrade, writes, prepare, has_pglk_lsn = 0;
@@ -1532,35 +1532,41 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				}
 				if (objlist != NULL) {
 					counttot++;
-					if (has_pglk_lsn) {
-						DB_ASSERT((char *)lklsnp <
-						    (char *)objlist->data +
-						    objlist->size);
-						SH_LIST_INIT(&lklsnp->lsns);
-						Pthread_mutex_lock(&lp->
-						    lsns_mtx);
-						lklsnp->nlsns = lp->nlsns;
-						SH_LIST_FIRST(&(lklsnp->lsns),
-						    __db_lock_lsn) =
-						    SH_LIST_FIRST(&lp->lsns,
-						    __db_lock_lsn);
-						SH_LIST_INIT(&lp->lsns);
-						lp->nlsns = 0;
-						Pthread_mutex_unlock(&lp->
-						    lsns_mtx);
-
-						lklsnp->data =
-						    sh_obj->lockobj.data;
-						lklsnp->size =
-						    sh_obj->lockobj.size;
-						lklsnp++;
+					/* Tablelocks are readlocks, dont include them  */
+					if (prepare && lp->mode == DB_LOCK_READ) {
+						assert(is_tablelock(lp->lockobj));
+						ntable++;
 					} else {
-						DB_ASSERT((char *)np <
-						    (char *)objlist->data +
-						    objlist->size);
-						np->data = sh_obj->lockobj.data;
-						np->size = sh_obj->lockobj.size;
-						np++;
+						if (has_pglk_lsn) {
+							DB_ASSERT((char *)lklsnp <
+									(char *)objlist->data +
+									objlist->size);
+							SH_LIST_INIT(&lklsnp->lsns);
+							Pthread_mutex_lock(&lp->
+									lsns_mtx);
+							lklsnp->nlsns = lp->nlsns;
+							SH_LIST_FIRST(&(lklsnp->lsns),
+									__db_lock_lsn) =
+								SH_LIST_FIRST(&lp->lsns,
+										__db_lock_lsn);
+							SH_LIST_INIT(&lp->lsns);
+							lp->nlsns = 0;
+							Pthread_mutex_unlock(&lp->
+									lsns_mtx);
+
+							lklsnp->data =
+								sh_obj->lockobj.data;
+							lklsnp->size =
+								sh_obj->lockobj.size;
+							lklsnp++;
+						} else {
+							DB_ASSERT((char *)np <
+									(char *)objlist->data +
+									objlist->size);
+							np->data = sh_obj->lockobj.data;
+							np->size = sh_obj->lockobj.size;
+							np++;
+						}
 					}
 				}
 			}
@@ -1668,7 +1674,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 			}
 
 			if (objlist != NULL) {
-				assert(counttot == nwrites);
+				assert(counttot - ntable == nwrites);
 				assert(countwl == nwritelatches);
 
 				if ((ret = __lock_fix_list(dbenv,
