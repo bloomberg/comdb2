@@ -177,6 +177,7 @@ static int __txn_logbytes_pp __P((DB_TXN *, u_int64_t *));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
+static int __txn_dist_prepare_pp __P((DB_TXN *, u_int64_t, const char *, const char*, u_int32_t, u_int32_t));
 static int __txn_discard_pp __P((DB_TXN *, u_int32_t));
 static int __txn_end __P((DB_TXN *, int));
 static int __txn_isvalid __P((const DB_TXN *, TXN_DETAIL **, txnop_t));
@@ -652,6 +653,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
     txn->getlogbytes = __txn_logbytes_pp;
 	txn->commit_getlsn = __txn_commit_getlsn_pp;
 	txn->commit_rowlocks = __txn_commit_rl_pp;
+    txn->dist_prepare = __txn_dist_prepare_pp;
 	txn->discard = __txn_discard_pp;
 	txn->id = __txn_id;
 	txn->prepare = __txn_prepare;
@@ -1004,7 +1006,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		"DB_TXN->commit", flags,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
-		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN) != 0)
+		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1023,6 +1025,23 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		LF_SET(DB_TXN_SYNC);
 		F_CLR(txnp, TXN_NOSYNC);
 		F_SET(txnp, TXN_SYNC);
+	}
+
+	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
+	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
+	int apply_forward = F_ISSET(txnp, TXN_DIST_REC_PREPARED);
+	u_int64_t dist_txnid = 0;
+
+	if (is_prepare) {
+		if (commit_prepared) {
+			__db_err(dbenv,
+					"transaction is already prepared");
+			return EINVAL;
+		}
+	}
+
+	if (apply_forward) {
+		/* TODO rep-apply the log-records before emitting commit-record */
 	}
 
 	/*
@@ -1046,12 +1065,15 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * Commit any unresolved children.  If anyone fails to commit,
 	 * then try to abort the rest of the kids and then abort the parent.
 	 * Abort should never fail; if it does, we bail out immediately.
+	 * Skip this check for prepared transactions.
 	 */
-	while ((kid = TAILQ_FIRST(&txnp->kids)) != NULL)
-		if ((ret = __txn_commit(kid, flags)) != 0)
-			while ((kid = TAILQ_FIRST(&txnp->kids)) != NULL)
-				if ((t_ret = __txn_abort(kid)) != 0)
-					return (__db_panic(dbenv, t_ret));
+	if (!commit_prepared) {
+		while ((kid = TAILQ_FIRST(&txnp->kids)) != NULL)
+			if ((ret = __txn_commit(kid, flags)) != 0)
+				while ((kid = TAILQ_FIRST(&txnp->kids)) != NULL)
+					if ((t_ret = __txn_abort(kid)) != 0)
+						return (__db_panic(dbenv, t_ret));
+	}
 
 	/*
 	 * If there are any log records, write a log record and sync the log,
@@ -1070,7 +1092,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	extern int gbl_dumptxn_at_commit;
 
-	if (gbl_dumptxn_at_commit)
+	if (gbl_dumptxn_at_commit && !is_prepare)
 		dumptxn(dbenv, &txnp->last_lsn);
 
 	if (DBENV_LOGGING(dbenv) && (!IS_ZERO_LSN(txnp->last_lsn) ||
@@ -1093,10 +1115,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			memset(&request, 0, sizeof(request));
 			memset(&list_dbt_rl, 0, sizeof(list_dbt_rl));
 
-			Pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
+			if (!is_prepare)
+				Pthread_rwlock_rdlock(&gbl_dbreg_log_lock);
 
 			if (LOCKING_ON(dbenv)) {
-				request.op = DB_LOCK_PUT_READ;
+				request.op = is_prepare ? DB_LOCK_PREPARE : DB_LOCK_PUT_READ;
 				if (IS_REP_MASTER(dbenv) &&
 					!IS_ZERO_LSN(txnp->last_lsn)) {
 					memset(&list_dbt, 0, sizeof(list_dbt));
@@ -1136,7 +1159,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								 ltranid,
 								 begin_lsn,
 								 &lt)) != 0) {
-							Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+							if (!is_prepare)
+								Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 							goto err;
 						}
 					}
@@ -1146,7 +1170,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							ltranid, &lt)) != 0) {
 						logmsg(LOGMSG_FATAL, "Couldn't find ltrans?");
 						abort();
-						Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+						if (!is_prepare)
+							Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 						goto err;
 					}
 
@@ -1164,13 +1189,21 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					} else
 						gen = 0;
 
-					ret =
-						__txn_regop_rowlocks_log(dbenv,
-						txnp, lsn_out, &context, lflags,
-						TXN_COMMIT, ltranid, begin_lsn,
-						last_commit_lsn, timestamp,
-						ltranflags, gen, request.obj,
-						&list_dbt_rl, usr_ptr);
+                    if (commit_prepared) {
+                        /* No need for locks */
+                        ret = __txn_dist_commit_log(dbenv,
+                                    txnp, lsn_out, &context, lflags,
+                                    TXN_COMMIT, txnp->dist_txnid, gen,
+                                    timestamp, usr_ptr);
+                    } else {
+                        ret =
+                            __txn_regop_rowlocks_log(dbenv,
+                                    txnp, lsn_out, &context, lflags,
+                                    TXN_COMMIT, ltranid, begin_lsn,
+                                    last_commit_lsn, timestamp,
+                                    ltranflags, gen, request.obj,
+                                    &list_dbt_rl, usr_ptr);
+                    }
 #if defined DEBUG_STACK_AT_TXN_LOG
 					comdb2_cheapstack_sym(stderr, "COMMIT-RL TXNID %x LSN [%d:%d]",
 							txnp->txnid, lsn_out->file, lsn_out->offset);
@@ -1200,7 +1233,21 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					SET_LOG_FLAGS(dbenv, txnp, lflags);
 					timestamp = comdb2_time_epoch();
 
-					if (elect_highest_committed_gen) {
+					if (is_prepare) {
+						DBT coordinator = {0}, tier = {0};
+						coordinator.data = txnp->coordinator_name;
+						coordinator.size = strlen(txnp->coordinator_name);
+						tier.data = txnp->coordinator_tier;
+						tier.size = strlen(txnp->coordinator_tier);
+						SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags);
+
+						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
+
+						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
+							TXN_COMMIT, &tp->begin_lsn, txnp->dist_txnid, ltranflags,
+							txnp->coordinator_gen, &coordinator, &tier, request.obj);
+						F_SET(txnp, TXN_DIST_PREPARED);
+					} else if (elect_highest_committed_gen) {
 
 						MUTEX_LOCK(dbenv,
 							db_rep->rep_mutexp);
@@ -1245,9 +1292,10 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							txnp->last_lsn.offset;
 					}
 				}
-				Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
+				if (!is_prepare)
+					Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
 
-				if (gbl_new_snapisol) {
+				if (gbl_new_snapisol && !is_prepare) {
 					if (!txnp->pglogs_hashtbl) {
 						DB_ASSERT(
 							F_ISSET(
@@ -1354,7 +1402,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * allocations, if necessary, without worrying about
 	 * these pages which were not on the free list before.
 	 */
-	if (txnp->txn_list != NULL) {
+	if (!is_prepare && txnp->txn_list != NULL) {
 		t_ret = __db_do_the_limbo(dbenv,
 			  NULL, txnp, txnp->txn_list, LIMBO_NORMAL);
 		__db_txnlist_end(dbenv, txnp->txn_list);
@@ -1368,8 +1416,12 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	}
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
+	
+	if (is_prepare) {
+		return 0;
 	}
 
 	remove_td_txn(txnp);
@@ -1711,6 +1763,51 @@ __txn_discard(txnp, flags)
 	return (0);
 }
 
+static int
+__txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen, lflags)
+	DB_TXN *txnp;
+	u_int64_t dist_txnid;
+	const char *coordinator_name;
+	const char *coordinator_tier;
+	u_int32_t coordinator_gen;
+	u_int32_t lflags;
+{
+	DB_ENV *dbenv = txnp->mgrp->dbenv;
+	int ret;
+
+	if (txnp->parent) {
+		__db_err(dbenv,
+	"dist_prepare is not supported in child transactions");
+		return EINVAL;
+	}
+	if (txnp->dist_txnid != 0) {
+		__db_err(dbenv,
+	"transaction is already prepared");
+		return EINVAL;
+	}
+	if ((ret = __os_calloc(dbenv, 1, strlen(coordinator_name) + 1, &txnp->coordinator_name)) != 0) {
+		__db_err(dbenv, "malloc error");
+		return ret;
+	}
+	memcpy(txnp->coordinator_name, coordinator_name, strlen(coordinator_name));
+	if ((ret = __os_calloc(dbenv, 1, strlen(coordinator_tier) + 1, &txnp->coordinator_tier)) != 0) {
+		__db_err(dbenv, "malloc error");
+		return ret;
+	}
+
+	memcpy(txnp->coordinator_tier, coordinator_tier, strlen(coordinator_tier));
+	txnp->coordinator_gen = coordinator_gen;
+	txnp->dist_txnid = dist_txnid;
+
+	lflags |= DB_TXN_DIST_PREPARE;
+
+	ret =
+		__txn_commit_int(txnp, lflags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
+	if (IS_ENV_REPLICATED(dbenv))
+		__op_rep_exit(dbenv);
+	return (ret);
+}
+
 /*
  * __txn_prepare --
  *	Flush the log so a future commit is guaranteed to succeed.
@@ -2025,6 +2122,12 @@ __txn_end(txnp, is_commit)
 		STAILQ_REMOVE(&txnp->logs, lr, __txn_logrec, links);
 		__os_free(dbenv, lr);
 	}
+
+	if (txnp->coordinator_name) {
+		__os_free(dbenv, txnp->coordinator_name);
+		__os_free(dbenv, txnp->coordinator_tier);
+	}
+
 	if (F_ISSET(txnp, TXN_MALLOC)) {
 		MUTEX_THREAD_LOCK(dbenv, mgr->mutexp);
 		TAILQ_REMOVE(&mgr->txn_chain, txnp, links);

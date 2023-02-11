@@ -1297,7 +1297,11 @@ __get_page_latch(lt, locker, flags, obj, lock_mode, lock)
 	return ret;
 }
 
-
+static inline int
+is_tablelock(DB_LOCKOBJ *sh_obj)
+{
+	return (sh_obj->lockobj.size == 32);
+}
 
 /*
  * __lock_vec --
@@ -1333,7 +1337,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	u_int32_t nwrites = 0, nwritelatches = 0, countwl = 0, counttot = 0;
 	u_int32_t partition;
 	u_int32_t run_dd;
-	int i, ret, rc, upgrade, writes, has_pglk_lsn = 0;
+	int i, ret, rc, upgrade, writes, prepare, has_pglk_lsn = 0;
 
 	/* Check if locks have been globally turned off. */
 	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
@@ -1362,6 +1366,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 			break;
 		case DB_LOCK_PUT_ALL:
 		case DB_LOCK_PUT_READ:
+		case DB_LOCK_PREPARE:
 		case DB_LOCK_UPGRADE_WRITE:
 #ifdef VERBOSE_LATCH
 			printf("Calling %s for lockerid %u line %d\n",
@@ -1410,7 +1415,12 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 
 			upgrade = 0;
 			writes = 1;
-			if (list[i].op == DB_LOCK_PUT_READ)
+			prepare = 0;
+			if (list[i].op == DB_LOCK_PREPARE) {
+				writes = 0;
+				prepare = 1;
+			}
+			else if (list[i].op == DB_LOCK_PUT_READ)
 				writes = 0;
 			else if (list[i].op == DB_LOCK_UPGRADE_WRITE) {
 				assert(!F_ISSET(sh_locker, DB_LOCKER_DIRTY));
@@ -1487,8 +1497,9 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				next_lock = SH_LIST_NEXT(lp,
 				    locker_links, __db_lock);
 				if (writes == 1 ||
-				    lp->mode == DB_LOCK_READ ||
-				    lp->mode == DB_LOCK_DIRTY) {
+					(lp->mode == DB_LOCK_READ &&
+                        ((!prepare) || (!is_tablelock(sh_obj)))) ||
+					lp->mode == DB_LOCK_DIRTY) {
 					SH_LIST_REMOVE(lp,
 					    locker_links, __db_lock);
 					sh_obj = lp->lockobj;
@@ -3796,6 +3807,7 @@ __lock_freefamilylocker(lt, locker)
 		unlock_locker_partition(region, partition);
 		unlock_lockers(region);
 		__db_err(dbenv, "Freeing locker with locks");
+        abort();
 		return EINVAL;
 	}
 
