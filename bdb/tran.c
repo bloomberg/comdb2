@@ -1443,6 +1443,8 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
+int gbl_random_prepare_commit = 1;
+
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                                     seqnum_type *seqnum, int *bdberr,
                                     int getseqnum, uint64_t *out_txnsize,
@@ -1585,7 +1587,17 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
-        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+
+        if (tran->tid->parent == NULL && gbl_random_prepare_commit && rand()%2) {
+            int prepare_rc = tran->tid->dist_prepare(tran->tid, 1234567890, "test-coordinator",
+                    "test-tier", rand() % 100, flags);
+            if (prepare_rc) {
+                abort();
+            }
+            rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+        } else {
+            rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+        }
         bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 

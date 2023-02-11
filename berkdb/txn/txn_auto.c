@@ -2949,12 +2949,12 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
 
 /*
  * PUBLIC: int __txn_dist_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
- * PUBLIC:     u_int32_t, u_int32_t, DB_LSN *, u_int64_t, u_int32_t, const DBT,
+ * PUBLIC:     u_int32_t, u_int32_t, DB_LSN *, u_int64_t, u_int32_t, u_int32_t, 
  * PUBLIC:     const DBT *, const DBT *));
  */
 int
 __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_txnid,
-        coordinator_gen, coordinator_name, coordinator_tier, locks)
+        lflags, coordinator_gen, coordinator_name, coordinator_tier, locks)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -2962,6 +2962,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_tx
 	u_int32_t opcode;
     DB_LSN *begin_lsn;
 	u_int64_t dist_txnid;
+    u_int32_t lflags;
     u_int32_t coordinator_gen;
     const DBT *coordinator_name;
     const DBT *coordinator_tier;
@@ -2979,7 +2980,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_tx
 	int off_context = -1;
 
 #ifdef __txn_DEBUG
-	fprintf(stderr,"__txn_prepare_log: begin\n");
+	fprintf(stderr,"__txn_dist_prepare_log: begin\n");
 #endif
 
 	rectype = DB___txn_dist_prepare;
@@ -3011,6 +3012,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_tx
 	    + sizeof(u_int32_t) /* opcode */
         + sizeof(DB_LSN)    /* begin_lsn */
 	    + sizeof(u_int64_t) /* dist-txnid */
+        + sizeof(u_int32_t) /* lflags */
 	    + sizeof(u_int32_t) /* coordinator-gen */
         + sizeof(u_int32_t) + (coordinator_name == NULL ? 0 : coordinator_name->size)
         + sizeof(u_int32_t) + (coordinator_tier == NULL ? 0 : coordinator_tier->size)
@@ -3082,6 +3084,10 @@ do_malloc:
 	uint64tmp = (u_int64_t)dist_txnid;
 	LOGCOPY_64(bp, &uint64tmp);
     bp += sizeof(uint64tmp);
+
+    uinttmp = (u_int32_t)lflags;
+	LOGCOPY_32(bp, &uinttmp);
+	bp += sizeof(uinttmp);
 
 	uinttmp = (u_int32_t)coordinator_gen;
 	LOGCOPY_32(bp, &uinttmp);
@@ -3295,6 +3301,10 @@ __txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
     argp->dist_txnid = (u_int64_t)uint64tmp;
     bp += sizeof(uint64tmp);
 
+    LOGCOPY_32(&uinttmp, bp);
+    argp->lflags = uinttmp;
+    bp += sizeof(uinttmp);
+
 	LOGCOPY_32(&uinttmp, bp);
     argp->coordinator_gen = uinttmp;
     bp += sizeof(uinttmp);
@@ -3369,6 +3379,19 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
         (u_long)argp->begin_lsn.file,
         (u_long)argp->begin_lsn.offset);
 	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
+    /* Need schema-lk to support 2pc-sc */
+	(void)printf("\tlflags: 0x%08x ", argp->lflags);
+	if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
+		printf("DB_TXN_LOGICAL_BEGIN ");
+	if (argp->lflags & DB_TXN_LOGICAL_COMMIT)
+		printf("DB_TXN_LOGICAL_COMMIT ");
+	if (argp->lflags & DB_TXN_SCHEMA_LOCK)
+		printf("DB_TXN_SCHEMA_LOCK ");
+	if (argp->lflags & DB_TXN_LOGICAL_GEN)
+		printf("DB_TXN_LOGICAL_GEN ");
+	if (argp->lflags & DB_TXN_DONT_GET_REPO_MTX)
+		printf("DB_TXN_DONT_GET_REPO_MTX ");
+	printf("\n");
 	(void)printf("\tcoordinator-gen: %lu\n", (u_long)argp->coordinator_gen);
 	(void)printf("\tcoordinator-name: %*s\n", argp->coordinator_name.size, (char *)argp->coordinator_name.data);
 	(void)printf("\tcoordinator-tier: %*s\n", argp->coordinator_tier.size, (char *)argp->coordinator_tier.data);

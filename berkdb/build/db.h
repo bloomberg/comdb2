@@ -284,6 +284,7 @@ struct txn_properties;
 #define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
 #define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
 #define DB_TXN_FOP_NOBLOCK         0x0400000 /* Don't block on fop operations */
+#define DB_TXN_DIST_PREPARE        0x0800000 /* Write a prepare record for this txn */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
@@ -467,7 +468,8 @@ typedef enum {
 	DB_LOCK_TIMEOUT=8,		/* Force a txn to timeout. */
 	DB_LOCK_TRADE=9,		/* Trade locker ids on a lock. */
 	DB_LOCK_UPGRADE_WRITE=10, /* Upgrade writes for dirty reads. */
-	DB_LOCK_TRADE_COMP=11   /* Trade locks for compensating txn. */
+	DB_LOCK_TRADE_COMP=11,   /* Trade locks for compensating txn. */
+    DB_LOCK_PREPARE=12      /* lock-put-read but retain tablelocks */
 } db_lockop_t;
 
 /*
@@ -1057,7 +1059,8 @@ struct __db_txn {
 	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
-		      u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
+			  u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
+	int   (*dist_prepare) __P((DB_TXN *, u_int64_t, const char *, const char *, u_int32_t, u_int32_t));
 	int   (*getlogbytes) __P((DB_TXN *, u_int64_t *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
@@ -1075,14 +1078,20 @@ struct __db_txn {
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 #define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
+#define TXN_DIST_PREPARED	0x800 /* Dist-txn has written prepare record */
+#define TXN_DIST_REC_PREPARED	0x1000 /* Prepared dist-txn collected by recovery */
 	u_int32_t	flags;
 
-	void     *app_private;		/* pointer to bdb transaction object */
+	void	 *app_private;		/* pointer to bdb transaction object */
 	DB_LSN   we_start_at_this_lsn;	/* hard to pinpoint the
 					 * existing startlsn usage, so
 					 * this is a new one */
-	void            *pglogs_hashtbl;
-   pthread_mutex_t pglogs_mutex;
+	void			*pglogs_hashtbl;
+	pthread_mutex_t pglogs_mutex;
+	u_int64_t dist_txnid;
+	char *coordinator_name;
+	char *coordinator_tier;
+	u_int32_t coordinator_gen;
 };
 
 /*
