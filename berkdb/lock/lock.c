@@ -1487,7 +1487,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				np = NULL;
 			}
 
-			if (sh_locker)
+			if (list[i].op != DB_LOCK_PREPARE && sh_locker)
 				F_SET(sh_locker, DB_LOCKER_DELETED);
 
 			/* Now traverse the locks, releasing each one. */
@@ -1497,8 +1497,8 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 				next_lock = SH_LIST_NEXT(lp,
 				    locker_links, __db_lock);
 				if (writes == 1 ||
-					(lp->mode == DB_LOCK_READ &&
-                        ((!prepare) || (!is_tablelock(sh_obj)))) ||
+   					(lp->mode == DB_LOCK_READ &&
+						((!prepare) || (!is_tablelock(sh_obj)))) ||
 					lp->mode == DB_LOCK_DIRTY) {
 					SH_LIST_REMOVE(lp,
 					    locker_links, __db_lock);

@@ -1402,7 +1402,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	 * allocations, if necessary, without worrying about
 	 * these pages which were not on the free list before.
 	 */
-	if (!is_prepare && txnp->txn_list != NULL) {
+	if (txnp->txn_list != NULL) {
 		t_ret = __db_do_the_limbo(dbenv,
 			  NULL, txnp, txnp->txn_list, LIMBO_NORMAL);
 		__db_txnlist_end(dbenv, txnp->txn_list);
