@@ -177,7 +177,7 @@ static int __txn_logbytes_pp __P((DB_TXN *, u_int64_t *));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
-static int __txn_dist_prepare_pp __P((DB_TXN *, u_int64_t, const char *, const char*, u_int32_t, u_int32_t));
+static int __txn_dist_prepare_pp __P((DB_TXN *, u_int64_t, const char *, const char*, u_int32_t, DBT *, u_int32_t));
 static int __txn_discard_pp __P((DB_TXN *, u_int32_t));
 static int __txn_end __P((DB_TXN *, int));
 static int __txn_isvalid __P((const DB_TXN *, TXN_DETAIL **, txnop_t));
@@ -1189,21 +1189,21 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					} else
 						gen = 0;
 
-                    if (commit_prepared) {
-                        /* No need for locks */
-                        ret = __txn_dist_commit_log(dbenv,
-                                    txnp, lsn_out, &context, lflags,
-                                    TXN_COMMIT, txnp->dist_txnid, gen,
-                                    timestamp, usr_ptr);
-                    } else {
-                        ret =
-                            __txn_regop_rowlocks_log(dbenv,
-                                    txnp, lsn_out, &context, lflags,
-                                    TXN_COMMIT, ltranid, begin_lsn,
-                                    last_commit_lsn, timestamp,
-                                    ltranflags, gen, request.obj,
-                                    &list_dbt_rl, usr_ptr);
-                    }
+					if (commit_prepared) {
+						/* No need for locks */
+						ret = __txn_dist_commit_log(dbenv,
+									txnp, lsn_out, &context, lflags,
+									TXN_COMMIT, txnp->dist_txnid, gen,
+									timestamp, usr_ptr);
+					} else {
+						ret =
+							__txn_regop_rowlocks_log(dbenv,
+									txnp, lsn_out, &context, lflags,
+									TXN_COMMIT, ltranid, begin_lsn,
+									last_commit_lsn, timestamp,
+									ltranflags, gen, request.obj,
+									&list_dbt_rl, usr_ptr);
+					}
 #if defined DEBUG_STACK_AT_TXN_LOG
 					comdb2_cheapstack_sym(stderr, "COMMIT-RL TXNID %x LSN [%d:%d]",
 							txnp->txnid, lsn_out->file, lsn_out->offset);
@@ -1245,7 +1245,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
 							TXN_COMMIT, &tp->begin_lsn, txnp->dist_txnid, ltranflags,
-							txnp->coordinator_gen, &coordinator, &tier, request.obj);
+							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
 					} else if (elect_highest_committed_gen) {
 
@@ -1764,12 +1764,13 @@ __txn_discard(txnp, flags)
 }
 
 static int
-__txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen, lflags)
+__txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen, blkseq_key, lflags)
 	DB_TXN *txnp;
 	u_int64_t dist_txnid;
 	const char *coordinator_name;
 	const char *coordinator_tier;
 	u_int32_t coordinator_gen;
+	DBT *blkseq_key;
 	u_int32_t lflags;
 {
 	DB_ENV *dbenv = txnp->mgrp->dbenv;
@@ -1786,18 +1787,31 @@ __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coor
 		return EINVAL;
 	}
 	if ((ret = __os_calloc(dbenv, 1, strlen(coordinator_name) + 1, &txnp->coordinator_name)) != 0) {
-		__db_err(dbenv, "malloc error");
+		__db_err(dbenv, "failed malloc");
 		return ret;
 	}
 	memcpy(txnp->coordinator_name, coordinator_name, strlen(coordinator_name));
 	if ((ret = __os_calloc(dbenv, 1, strlen(coordinator_tier) + 1, &txnp->coordinator_tier)) != 0) {
-		__db_err(dbenv, "malloc error");
+		__db_err(dbenv, "failed malloc");
 		return ret;
 	}
 
 	memcpy(txnp->coordinator_tier, coordinator_tier, strlen(coordinator_tier));
 	txnp->coordinator_gen = coordinator_gen;
 	txnp->dist_txnid = dist_txnid;
+
+	__os_free(dbenv, txnp->blkseq_key.data);
+	txnp->blkseq_key.data = NULL;
+	txnp->blkseq_key.size = 0;
+
+	if (blkseq_key != NULL) {
+	if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &txnp->blkseq_key.data)) != 0) {
+		__db_err(dbenv, "failed malloc");
+		return ret;
+	}
+	txnp->blkseq_key.size = blkseq_key->size;
+	memcpy(txnp->blkseq_key.data, blkseq_key->data, blkseq_key->size);
+	}
 
 	lflags |= DB_TXN_DIST_PREPARE;
 

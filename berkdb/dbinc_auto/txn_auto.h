@@ -97,6 +97,7 @@ typedef struct __txn_dist_prepare_args {
     u_int32_t coordinator_gen;
     DBT coordinator_name;
     DBT coordinator_tier;
+    DBT blkseq_key;
     DBT locks;
 } __txn_dist_prepare_args;
 
@@ -107,6 +108,7 @@ typedef struct __txn_dist_abort_args {
 	DB_LSN prev_lsn;
 	u_int32_t opcode;
     u_int64_t dist_txnid;
+    DBT blkseq_key;
 } __txn_dist_abort_args;
 
 #define DB___txn_dist_commit	19

@@ -2954,7 +2954,7 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
  */
 int
 __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_txnid,
-        lflags, coordinator_gen, coordinator_name, coordinator_tier, locks)
+        lflags, coordinator_gen, coordinator_name, coordinator_tier, blkseq_key, locks)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -2966,6 +2966,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_tx
     u_int32_t coordinator_gen;
     const DBT *coordinator_name;
     const DBT *coordinator_tier;
+    const DBT *blkseq_key;
 	const DBT *locks;
 {
 	DBT logrec;
@@ -3016,6 +3017,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, begin_lsn, dist_tx
 	    + sizeof(u_int32_t) /* coordinator-gen */
         + sizeof(u_int32_t) + (coordinator_name == NULL ? 0 : coordinator_name->size)
         + sizeof(u_int32_t) + (coordinator_tier == NULL ? 0 : coordinator_tier->size)
+        + sizeof(u_int32_t) + (blkseq_key == NULL ? 0 : blkseq_key->size)
 	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
@@ -3119,6 +3121,20 @@ do_malloc:
 		bp += sizeof(coordinator_tier->size);
 		memcpy(bp, coordinator_tier->data, coordinator_tier->size);
 		bp += coordinator_tier->size;
+    }
+
+    if (blkseq_key == NULL)
+    {
+		zero = 0;
+		LOGCOPY_32(bp, &zero);
+		bp += sizeof(u_int32_t);
+    }
+    else
+    {
+		LOGCOPY_32(bp, &blkseq_key->size);
+		bp += sizeof(blkseq_key->size);
+		memcpy(bp, blkseq_key->data, blkseq_key->size);
+		bp += blkseq_key->size;
     }
 
 	if (locks == NULL)
@@ -3321,6 +3337,12 @@ __txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
     argp->coordinator_tier.data = bp;
     bp += argp->coordinator_tier.size;
 
+    memset(&argp->blkseq_key, 0, sizeof(argp->blkseq_key));
+    LOGCOPY_32(&argp->blkseq_key.size, bp);
+	bp += sizeof(u_int32_t);
+    argp->blkseq_key.data = bp;
+    bp += argp->blkseq_key.size;
+
 	memset(&argp->locks, 0, sizeof(argp->locks));
 	LOGCOPY_32(&argp->locks.size, bp);
 	bp += sizeof(u_int32_t);
@@ -3395,7 +3417,10 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tcoordinator-gen: %lu\n", (u_long)argp->coordinator_gen);
 	(void)printf("\tcoordinator-name: %*s\n", argp->coordinator_name.size, (char *)argp->coordinator_name.data);
 	(void)printf("\tcoordinator-tier: %*s\n", argp->coordinator_tier.size, (char *)argp->coordinator_tier.data);
-	fflush(stdout);
+	if (argp->blkseq_key.size > 0) {
+		(void)printf("\tblkseq_key:\n");
+		fsnapf(stdout, argp->blkseq_key.data, argp->blkseq_key.size);
+	}
 
 	(void)printf("\tlocks: \n");
 
@@ -3405,6 +3430,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 
 	(void)printf("\n");
+	fflush(stdout);
 	__os_free(dbenv, argp);
 
 	return (0);
@@ -3412,16 +3438,17 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 
 
 /*
- * PUBLIC: int __txn_abort_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t));
+ * PUBLIC: int __txn_dist_abort_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t, u_int64_t, DBT *));
  */
  int
- __txn_dist_abort_log(dbenv, txnid, ret_lsnp, flags, opcode, dist_txnid)
+ __txn_dist_abort_log(dbenv, txnid, ret_lsnp, flags, opcode, dist_txnid, blkseq_key)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int32_t flags;
 	u_int32_t opcode;
 	u_int64_t dist_txnid;
+    DBT *blkseq_key;
 {
 	DBT logrec;
 	DB_TXNLOGREC *lr;
@@ -3445,7 +3472,8 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	txn_num = txnid->txnid;
 	lsnp = &txnid->last_lsn;
 
-    logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + sizeof(u_int32_t) + sizeof(u_int64_t);
+    logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + sizeof(u_int32_t) + sizeof(u_int64_t)
+    + sizeof(u_int32_t) + (blkseq_key == NULL ? 0 : blkseq_key->size);
 
 	if (CRYPTO_ON(dbenv)) {
 		npad =
@@ -3511,6 +3539,20 @@ do_malloc:
     uint64tmp = (u_int64_t)dist_txnid;
     LOGCOPY_64(bp, &uint64tmp);
     bp += sizeof(uint64tmp);
+
+    if (blkseq_key == NULL)
+    {
+		u_int32_t zero = 0;
+		LOGCOPY_32(bp, &zero);
+		bp += sizeof(u_int32_t);
+    }
+    else
+    {
+		LOGCOPY_32(bp, &blkseq_key->size);
+		bp += sizeof(blkseq_key->size);
+		memcpy(bp, blkseq_key->data, blkseq_key->size);
+		bp += blkseq_key->size;
+    }
 
 	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
 
@@ -3669,6 +3711,12 @@ __txn_dist_abort_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->dist_txnid = uint64tmp;
 	bp += sizeof(uint64tmp);
 
+	memset(&argp->blkseq_key, 0, sizeof(argp->blkseq_key));
+	LOGCOPY_32(&argp->blkseq_key.size, bp);
+	bp += sizeof(u_int32_t);
+	argp->blkseq_key.data = bp;
+	bp += argp->blkseq_key.size;
+
 	*argpp = argp;
 	return (0);
 }
@@ -3705,6 +3753,10 @@ __txn_dist_abort_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->prev_lsn.offset);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
+	if (argp->blkseq_key.size > 0) {
+		(void)printf("\tblkseq_key:\n");
+		fsnapf(stdout, argp->blkseq_key.data, argp->blkseq_key.size);
+	}
 	fflush(stdout);
 
 	(void)printf("\n");
@@ -4077,27 +4129,27 @@ __txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
 	(void)printf("\tgeneration: %u\n", argp->generation);
 
-    unsigned long long flipcontext;
-    int *fliporig = (int *)&argp->context;
-    int *flipptr = (int *)&flipcontext;
-    flipptr[0] = htonl(fliporig[1]);
-    flipptr[1] = htonl(fliporig[0]);
-    (void)printf("\tcontext: %016"PRIx64" %016llx\n", argp->context, flipcontext);
+	unsigned long long flipcontext;
+	int *fliporig = (int *)&argp->context;
+	int *flipptr = (int *)&flipcontext;
+	flipptr[0] = htonl(fliporig[1]);
+	flipptr[1] = htonl(fliporig[0]);
+	(void)printf("\tcontext: %016"PRIx64" %016llx\n", argp->context, flipcontext);
 	struct tm *lt;
-    lt = localtime((time_t *)&argp->timestamp);
-    if (lt)
-    {
-        (void)printf(
-                "\ttimestamp: %ld (%.24s, 20%02lu%02lu%02lu%02lu%02lu.%02lu)\n",
-                (long)argp->timestamp, ctime((time_t *)&argp->timestamp),
-                (u_long)lt->tm_year - 100, (u_long)lt->tm_mon+1,
-                (u_long)lt->tm_mday, (u_long)lt->tm_hour,
-                (u_long)lt->tm_min, (u_long)lt->tm_sec);
-    }
-    else
-    {
-        (void)printf("\ttimestamp: %ld\n", (long)argp->timestamp);
-    }
+	lt = localtime((time_t *)&argp->timestamp);
+	if (lt)
+	{
+		(void)printf(
+				"\ttimestamp: %ld (%.24s, 20%02lu%02lu%02lu%02lu%02lu.%02lu)\n",
+				(long)argp->timestamp, ctime((time_t *)&argp->timestamp),
+				(u_long)lt->tm_year - 100, (u_long)lt->tm_mon+1,
+				(u_long)lt->tm_mday, (u_long)lt->tm_hour,
+				(u_long)lt->tm_min, (u_long)lt->tm_sec);
+	}
+	else
+	{
+		(void)printf("\ttimestamp: %ld\n", (long)argp->timestamp);
+	}
 
 	(void)printf("\n");
 	__os_free(dbenv, argp);

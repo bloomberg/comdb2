@@ -166,6 +166,7 @@ ARG dist_txnid	genid_t		llx
 ARG coordinator_gen	u_int32_t	u
 DBT coordinator_name DBT	s
 DBT coordinator_tier DBT	s
+DBT blkseq_key  DBT			s
 DBT	locks	DBT				s
 END
 
@@ -176,6 +177,7 @@ END
 BEGIN dist_abort			18
 ARG	opcode		u_int32_t	lu
 ARG dist_txnid	genid_t		llx
+DBT blkseq_key  DBT		 s
 END
 
 /*
