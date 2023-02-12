@@ -1591,7 +1591,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         if (tran->tid->parent == NULL && (gbl_test_prepare_commit || (gbl_random_prepare_commit && rand()%2))) {
             int prepare_rc = tran->tid->dist_prepare(tran->tid, 1234567890, "test-coordinator",
-                    "test-tier", rand() % 100, flags);
+                    "test-tier", rand() % 100, NULL, flags);
             if (prepare_rc) {
                 abort();
             }

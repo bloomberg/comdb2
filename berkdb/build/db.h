@@ -1060,7 +1060,7 @@ struct __db_txn {
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
 			  u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
-	int   (*dist_prepare) __P((DB_TXN *, u_int64_t, const char *, const char *, u_int32_t, u_int32_t));
+	int   (*dist_prepare) __P((DB_TXN *, u_int64_t, const char *, const char *, u_int32_t, DBT *, u_int32_t));
 	int   (*getlogbytes) __P((DB_TXN *, u_int64_t *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
@@ -1092,6 +1092,7 @@ struct __db_txn {
 	char *coordinator_name;
 	char *coordinator_tier;
 	u_int32_t coordinator_gen;
+    DBT blkseq_key;
 };
 
 /*
