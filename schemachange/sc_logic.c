@@ -895,8 +895,8 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     strncpy0(new_sc->tablename, shardname, sizeof(new_sc->tablename));
     new_sc->iq = NULL;
     new_sc->tran = NULL;
-    /*new_sc->resume = 0; ALL RESUMED SC-s HAVE THIS SET, TO PREVENT RESUME DEADLOCK ON BDB LOCK */
-    new_sc->resume = SC_RESUME;
+    new_sc->resume = 0;
+    new_sc->must_resume = 1; /* this is a shard, we cannot complete partition sc without it */
     new_sc->nothrevent = 0;
     new_sc->finalize = 0;
 

@@ -217,6 +217,7 @@ struct schema_change_type {
 
     int resume;           /* if we are trying to resume a schema change,
                            * usually because there is a new master */
+    int must_resume;      /* used for partitions, if we generate new shard sc-s upon resume */
     int retry_bad_genids; /* retrying a schema change (with full rebuild)
                              because there are old genids in flight */
     int dryrun;           /* comdb2sc.tsk -y */
