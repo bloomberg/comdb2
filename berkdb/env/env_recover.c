@@ -853,7 +853,7 @@ full_recovery_check(DB_ENV *dbenv, DB_LSN *max_lsn)
 		if (IS_ZERO_LSN(first))
 			first = lsn;
 		if (type == DB___txn_regop || type == DB___txn_regop_gen ||
-			type == DB___txn_regop_rowlocks) {
+			type == DB___txn_dist_commit || type == DB___txn_regop_rowlocks) {
 			cpy = lsn;
 			ret =
 				__rep_collect_txn(dbenv, &cpy, &lc, &ignore, NULL);
@@ -2186,6 +2186,9 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 break;
+        /* XXX TODO */
+		case DB___txn_dist_commit:
+            break;
 		case DB___txn_regop:
 			if ((ret =
 				__txn_regop_read(dbenv, data.data,

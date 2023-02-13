@@ -480,6 +480,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 				DB_LOGC *logc;
 				__txn_regop_args *regop;
 				__txn_regop_gen_args *regopgen;
+				__txn_dist_commit_args *regopdist;
 				__txn_regop_rowlocks_args *regoprowlocks;
 				u_int32_t rectype;
 				int32_t timestamp=0;
@@ -521,6 +522,21 @@ __dbenv_open(dbenv, db_home, flags, mode)
 								goto foundlsn;
 							}
 							break;
+						case (DB___txn_dist_commit):
+							if ((ret = __txn_dist_commit_read(dbenv, data.data, 
+											&regopdist))!=0)
+								goto err;
+							timestamp = regopdist->timestamp;
+							__os_free(dbenv, regopdist);
+							
+							if (timestamp <= gbl_recovery_timestamp) {
+								maxlsn.file = lsn.file;
+								maxlsn.offset = lsn.offset;
+								goto foundlsn;
+							}
+							break;
+
+
 						case (DB___txn_regop_rowlocks):
 							if ((ret = __txn_regop_rowlocks_read(dbenv, 
 											data.data, &regoprowlocks)) != 0)
