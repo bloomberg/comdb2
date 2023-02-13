@@ -173,7 +173,7 @@ next_leaf:
     ii = sampler->pos;
     n = NUM_ENT(page);
 #ifndef NDEBUG
-    uint8_t *max = (uint8_t *)page + 4096;
+    uint8_t *max = (uint8_t *)page + dbp->pgsize;
 #endif
 
     for (; ii < n; ii += 2) {
