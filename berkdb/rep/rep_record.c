@@ -143,8 +143,8 @@ int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 static inline int wait_for_running_transactions(DB_ENV *dbenv);
 
 #define	IS_SIMPLE(R)	((R) != DB___txn_regop && (R) != DB___txn_xa_regop && \
-	(R) != DB___txn_regop_rowlocks && (R) != DB___txn_regop_gen && (R) != \
-	DB___txn_ckp && (R) != DB___dbreg_register)
+	(R) != DB___txn_regop_rowlocks && (R) != DB___txn_regop_gen && \
+	(R) != DB___txn_dist_commit && DB___txn_ckp && (R) != DB___dbreg_register)
 
 int gbl_rep_process_msg_print_rc;
 
@@ -402,6 +402,7 @@ matchable_log_type(int rectype)
 	if (gbl_only_match_commit_records) {
 		ret = (rectype == DB___txn_regop ||
 			rectype == DB___txn_regop_gen ||
+			rectype == DB___txn_dist_commit ||
 			rectype == DB___txn_regop_rowlocks ||
 			(gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
@@ -2803,6 +2804,7 @@ static inline int is_commit(int rectype)
 		case DB___txn_regop_rowlocks:
 		case DB___txn_regop:
 		case DB___txn_regop_gen:
+		case DB___txn_dist_commit:
 			return 1;
 		default:
 			return 0;
@@ -3594,6 +3596,7 @@ gap_check:		max_lsn_dbtp = NULL;
 	case DB___txn_regop_rowlocks:
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
+	case DB___txn_dist_commit:
 		if (gbl_dumptxn_at_commit)
 			dumptxn(dbenv, &rp->lsn);
 		if (!F_ISSET(rep, REP_F_LOGSONLY)) {
@@ -4481,6 +4484,53 @@ static unsigned long long getlock_poll_count = 0;
 int gbl_rep_lock_time_ms = 0;
 int gbl_collect_before_locking = 1;
 
+static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u_int32_t *lflags)
+{
+	int ret;
+	u_int32_t rectype;
+	DB_LOGC *logc;
+	DBT mylog = {0};
+	__txn_dist_prepare_args *argpp = NULL;
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+		logmsg(LOGMSG_ERROR, "Error getting log cursor, %d\n", ret);
+		abort();
+	}
+	
+	if ((ret = __log_c_get(logc, lsn, &mylog, DB_SET)) != 0) {
+		logmsg(LOGMSG_ERROR, "Error putting log cursor at %d:%d, %d\n", lsn->file, lsn->offset, ret);
+		abort();
+	}
+	LOGCOPY_32(&rectype, mylog.data);
+	if (rectype != DB___txn_dist_prepare) {
+		logmsg(LOGMSG_ERROR, "Previous record is not prepare: %u\n", rectype);
+		abort();
+	}
+	if ((ret = __txn_dist_prepare_read(dbenv, mylog.data, &argpp)) != 0) {
+		logmsg(LOGMSG_ERROR, "Error reading prepare txn, %d\n", ret);
+		abort();
+	}
+	void *locksmem = NULL;
+	if ((ret = __os_malloc(dbenv, argpp->locks.size, &locksmem)) != 0) {
+		logmsg(LOGMSG_ERROR, "Error mallocing locks memory, %d\n", ret);
+		abort();
+	}
+	memcpy(locksmem, argpp->locks.data, argpp->locks.size);
+	locks->data = locksmem;
+	locks->size = argpp->locks.size;
+    (*lflags) = argpp->lflags;
+	ret = 0;
+
+done:		
+	if (logc != NULL) {
+		__log_c_close(logc);
+	}
+	if (argpp != NULL) {
+		__os_free(dbenv, argpp);
+	}
+	return 0;
+}
+
 /*
  * __rep_process_txn --
  *
@@ -4501,7 +4551,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	struct __recovery_processor *rp;
 	LSN_COLLECTION *lcin;
 {
-	DBT data_dbt, *lock_dbt = NULL;
+	DBT data_dbt, *lock_dbt = NULL, lock_dbt_mem = {0};
 	LTDESC *lt = NULL;
 	LSN_COLLECTION lc;
 	DB_LOCKREQ req, *lvp;
@@ -4510,9 +4560,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	DB_REP *db_rep;
 	REP *rep;
 	int collect_before_locking = gbl_collect_before_locking;
+	int get_schema_lock = 0;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
+	__txn_dist_commit_args *txn_dist_commit_args = NULL;
 	void *args = NULL;
 	int32_t timestamp = 0;
 	__txn_xa_regop_args *prep_args;
@@ -4524,6 +4576,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	unsigned long long context = 0;
 	int had_serializable_records = 0;
 	int get_locks_and_ack = 1;
+	int release_schema_lock = 0;
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
 
@@ -4621,7 +4674,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 
 		if (!dontlock) {
 			if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
-				wrlock_schema_lk();
+				get_schema_lock = 1;
 			}
 		}
 
@@ -4671,6 +4724,38 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		assert(*commit_gen);
 		rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	} else if (rectype == DB___txn_dist_commit) {
+		if ((ret = __txn_dist_commit_read(dbenv, rec->data, &txn_dist_commit_args)) != 0) {
+			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
+			return (ret);
+		}
+		if (txn_dist_commit_args->opcode != TXN_COMMIT) {
+			__os_free(dbenv, txn_dist_commit_args);
+			return (0);
+		}
+		args = txn_dist_commit_args;
+		context = txn_dist_commit_args->context;
+		txnid = txn_dist_commit_args->txnid->txnid;
+		prev_lsn = txn_dist_commit_args->prev_lsn;
+		u_int32_t lflags = 0;
+
+		/* Locks for dist-commit are in the previous record */
+		if ((ret = retrieve_locks_from_prepare(dbenv, &prev_lsn, &lock_dbt_mem, &lflags)) != 0) {
+			abort();
+		}
+		lock_dbt = &lock_dbt_mem;
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		(*commit_gen) = rep->committed_gen = txn_dist_commit_args->generation;
+		assert(*commit_gen);
+		rep->committed_lsn = rctl->lsn;
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+		if (lflags & DB_TXN_SCHEMA_LOCK) {
+			if (lockid == 0)
+				get_schema_lock = 1;
+			/* If lockid isn't 0, then this is parallel rep forced serial: 
+			   we got the schemalk already- we should release it. */
+			release_schema_lock = 1;
+		}
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -4737,7 +4822,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 				lastpr = now;
 			}
 		}
-
+		if (get_schema_lock) {
+			wrlock_schema_lk();
+		}
 		if (!context) {
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
@@ -4815,6 +4902,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			timestamp = txn_gen_args->timestamp;
 		else if (txn_args)
 			timestamp = txn_args->timestamp;
+		else if (txn_dist_commit_args)
+			timestamp = txn_dist_commit_args->timestamp;
 
 		ret =
 			bdb_transfer_pglogs_to_queues(dbenv->app_private, pglogs,
@@ -4975,7 +5064,8 @@ err:
 		}
 	}
 
-	if (ret == 0 && txn_rl_args && txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+	if (release_schema_lock ||
+		(ret == 0 && txn_rl_args && txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK)) {
 		unlock_schema_lk();
 	}
 
@@ -4991,6 +5081,8 @@ err1:
 		__os_free(dbenv, txn_gen_args);
 	else if (rectype == DB___txn_regop_rowlocks)
 		__os_free(dbenv, txn_rl_args);
+	else if (rectype == DB___txn_dist_commit)
+		__os_free(dbenv, txn_dist_commit_args);
 	else
 		__os_free(dbenv, prep_args);
 
@@ -5005,6 +5097,9 @@ err1:
 
 	if (F_ISSET(&data_dbt, DB_DBT_REALLOC) && data_dbt.data != NULL)
 		__os_ufree(dbenv, data_dbt.data);
+
+	if (lock_dbt_mem.data != NULL)
+		__os_free(dbenv, lock_dbt_mem.data);
 
 	if (ret == 0) {
 		/*
@@ -5218,7 +5313,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	uint32_t *commit_gen;
 	DB_LSN prev_commit_lsn;
 {
-	DBT *lock_dbt, lsn_lock_dbt;
+	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
 	int32_t timestamp = 0;
     int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
@@ -5231,6 +5326,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
+	__txn_dist_commit_args *txn_dist_commit_args = NULL;
 	void *args = NULL;
 	__txn_xa_regop_args *prep_args = NULL;
 	u_int32_t lockid = DB_LOCK_INVALIDID, rectype = 0;
@@ -5444,6 +5540,37 @@ bad_resize:	;
 		(*commit_gen) = rep->committed_gen = txn_gen_args->generation;
 		rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+	} else if (rectype == DB___txn_dist_commit) {
+		if ((ret = __txn_dist_commit_read(dbenv, rec->data, &txn_dist_commit_args)) != 0) {
+			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
+			return (ret);
+		}
+		if (txn_dist_commit_args->opcode != TXN_COMMIT) {
+			__os_free(dbenv, txn_dist_commit_args);
+			return (0);
+		}
+		args = txn_dist_commit_args;
+		rp->context = txn_dist_commit_args->context;
+
+		txnid = txn_dist_commit_args->txnid->txnid;
+        rp->ltrans = NULL;
+
+		prev_lsn = txn_dist_commit_args->prev_lsn;
+		u_int32_t lflags = 0;
+
+		/* Locks for dist-commit are in the previous record */
+		if ((ret = retrieve_locks_from_prepare(dbenv, &prev_lsn, &lock_dbt_mem, &lflags)) != 0) {
+			abort();
+		}
+		lock_dbt = &lock_dbt_mem;
+		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+		(*commit_gen) = rep->committed_gen = txn_dist_commit_args->generation;
+		assert(*commit_gen);
+		rep->committed_lsn = rctl->lsn;
+		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+		if (lflags & DB_TXN_SCHEMA_LOCK) {
+			get_schema_lk = 1;
+		}
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -5453,20 +5580,6 @@ bad_resize:	;
 			return (ret);
 		prev_lsn = prep_args->prev_lsn;
 		lock_dbt = &prep_args->locks;
-	}
-
-	/* Serialize before acquiring schemalk so DEBUG_SCHEMA_LK works correctly */
-	if (get_schema_lk && !dontlock) {
-		ret = wait_for_running_transactions(dbenv);
-		if (ret) {
-			logmsg(LOGMSG_ERROR, "wait err %d\n", ret);
-#if defined ABORT_ON_CONCURRENT_ERROR
-			abort();
-#else
-			goto err;
-#endif
-		}
-		wrlock_schema_lk();
 	}
 
 	/* XXX new logic: collect the locks & commit context, and then send the ack */
@@ -5503,6 +5616,20 @@ bad_resize:	;
 		}
 		qsort(rp->lc.array, rp->lc.nlsns, sizeof(struct logrecord),
 			__rep_lsn_cmp);
+	}
+
+	/* Serialize before acquiring schemalk so DEBUG_SCHEMA_LK works correctly */
+	if (get_schema_lk && !dontlock) {
+		ret = wait_for_running_transactions(dbenv);
+		if (ret) {
+			logmsg(LOGMSG_ERROR, "wait err %d\n", ret);
+#if defined ABORT_ON_CONCURRENT_ERROR
+			abort();
+#else
+			goto err;
+#endif
+		}
+		wrlock_schema_lk();
 	}
 
 	if (!rp->context) {
@@ -5765,6 +5892,8 @@ err:
 		__os_free(dbenv, txn_args);
 	if (rectype == DB___txn_regop_gen && txn_gen_args)
 		__os_free(dbenv, txn_gen_args);
+	if (rectype == DB___txn_dist_commit && txn_dist_commit_args)
+		__os_free(dbenv, txn_dist_commit_args);
 	else if (rectype == DB___txn_regop_rowlocks && txn_rl_args)
 		__os_free(dbenv, txn_rl_args);
 	else
@@ -6523,6 +6652,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	DB_LSN lsn;
 	DBT mylog;
 	DB_LOGC *logc;
+	DB_LOGC *logc_dist;
 	DBT *lock_dbt = NULL;
 	int ret, t_ret, undo, count=0;
 	int have_recover_lk = 0;
@@ -6541,6 +6671,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	REP *rep;
 	__txn_regop_args *txnrec;
 	__txn_regop_gen_args *txngenrec;
+	__txn_dist_commit_args *txndist;
 	__txn_regop_rowlocks_args *txnrlrec;
 
 	db_rep = dbenv->rep_handle;
@@ -6621,6 +6752,31 @@ restart:
 				goto err;
 		}
 
+		if (rectype == DB___txn_dist_commit) {
+			if ((ret =
+				__txn_dist_commit_read(dbenv, mylog.data,
+					&txndist)) != 0)
+				goto err;
+			if (txndist->opcode != TXN_ABORT) {
+				undo = 1;
+			}
+            /* TODO XXX locks are in previous record */
+			if (online) {
+				ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
+            }
+
+			__os_free(dbenv, txndist);
+
+			if (ret == DB_LOCK_DEADLOCK) {
+				gbl_rep_trans_deadlocked++;
+				recovery_release_locks(dbenv, lockid);
+				lockid = DB_LOCK_INVALIDID;
+				goto restart;
+			}
+
+			if (ret)
+				goto err;
+        }
 		if (rectype == DB___txn_regop_gen) {
 			if ((ret =
 				__txn_regop_gen_read(dbenv, mylog.data,
@@ -6763,9 +6919,11 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 	u_int32_t rectype;
 	int ret, t_ret;
 	int curlim = 0;
-	__txn_regop_args *txn_args;
-	__txn_regop_gen_args *txn_gen_args;
-	__txn_regop_rowlocks_args *txn_rl_args;
+	__txn_regop_args *txn_args = NULL;
+	__txn_regop_gen_args *txn_gen_args = NULL;
+	__txn_dist_commit_args *txn_dist_commit_args = NULL;
+	__txn_dist_prepare_args *txn_dist_prepare_args = NULL;
+	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 	int done = 0;
 	DB_LSN *lsns = NULL, *newlsns;
 
@@ -6940,6 +7098,116 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					__os_free(dbenv, txn_gen_args);
 				} break;
 
+			case DB___txn_dist_commit: {
+				if ((ret = __txn_dist_commit_read(dbenv, mylog.data,
+												&txn_dist_commit_args)) != 0) {
+					if (gbl_extended_sql_debug_trace) {
+						fprintf(stderr, "td %" PRIxPTR "%s line %d lsn %d:%d"
+										"txn_regop_gen_read returns %d\n",
+								(intptr_t)pthread_self(), __func__, __LINE__,
+								lsn.file, lsn.offset, ret);
+					}
+					return (ret);
+				}
+
+				if (txn_dist_commit_args->timestamp < epoch) {
+#if 0
+					fprintf(stderr,
+						"%s:%d stopped at epoch %u < %u\n",
+						__FILE__, __LINE__,
+						txn_gen_args->timestamp, epoch);
+#endif
+						if (gbl_extended_sql_debug_trace) {
+							logmsg(LOGMSG_USER, "td %p %s line %d lsn %d:%d "
+												"break-loop because timestamp "
+												"(%"PRId64") < epoch (%d)\n",
+								   (void *)pthread_self(), __func__, __LINE__,
+								   lsn.file, lsn.offset,
+								   txn_dist_commit_args->timestamp, epoch);
+						}
+						__os_free(dbenv, txn_dist_commit_args);
+						done = 1;
+						break;
+					}
+
+					if (txn_dist_commit_args->opcode == TXN_COMMIT) {
+                        ret = __log_c_get(logc, &txn_dist_commit_args->prev_lsn, &mylog, DB_SET);
+                        if (ret) {
+                            logmsg(LOGMSG_ERROR, "%s:%d, %u:%u failed to get last log entry, ret=%d\n",
+                                    __FILE__, __LINE__, lsn.file, lsn.offset, ret);
+                            goto err;
+                        }
+                        LOGCOPY_32(&rectype, mylog.data);
+                        if (rectype != DB___txn_dist_prepare) {
+                            logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, prev-log not a PREPARE\n",
+                                    __FILE__, __LINE__, lsn.file, lsn.offset);
+
+                            goto err;
+                        }
+
+                        if ((ret = __txn_dist_prepare_read(dbenv, mylog.data,
+                                        &txn_dist_prepare_args)) != 0) {
+                            logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, error reading PREPARE\n",
+                                    __FILE__, __LINE__, lsn.file, lsn.offset);
+                            goto err;
+                        }
+
+                    // Go to PREVIOUS LSN
+#if 0
+					ret = __db_txnlist_add(dbenv,
+						txninfo, txn_gen_args.txnid->txnid,
+						TXN_COMMIT, NULL);
+#endif
+					if (*n_lsns + 1 >= curlim) {
+						curlim =
+							(!curlim) ? 1000 : 2 *
+							curlim;
+						if (!(newlsns =
+							(DB_LSN *) realloc(lsns,
+								curlim *
+								sizeof(DB_LSN)))) {
+							logmsg(LOGMSG_ERROR, 
+								"%s:%d Too complex snapshot (realloc failure at trns %d)\n",
+								__FILE__, __LINE__,
+								*n_lsns);
+														ret = ENOMEM;
+														if (lsns) free(lsns);
+														lsns = NULL;
+														__os_free(dbenv,
+																  txn_dist_commit_args);
+														__os_free(dbenv,
+																  txn_dist_prepare_args);
+
+
+														goto err;
+												}
+												lsns = newlsns;
+										}
+
+										if (gbl_extended_sql_debug_trace) {
+											logmsg(
+												LOGMSG_USER,
+												"td %" PRIxPTR "%s line %d lsn %d:%d "
+												"adding prev-lsn %d:%d at "
+												"index %d\n",
+												(intptr_t)pthread_self(),
+												__func__, __LINE__, lsn.file,
+												lsn.offset,
+												txn_dist_prepare_args->prev_lsn.file,
+												txn_dist_prepare_args->prev_lsn.offset,
+												*n_lsns);
+										}
+
+										lsns[*n_lsns] = txn_dist_prepare_args->prev_lsn;
+										*n_lsns += 1;
+					}
+					__os_free(dbenv, txn_dist_commit_args);
+					__os_free(dbenv, txn_dist_prepare_args);
+				} break;
+
+
+
+
 				case DB___txn_regop: {
 					if ((ret = __txn_regop_read(dbenv, mylog.data,
 												&txn_args)) != 0) {
@@ -7067,6 +7335,7 @@ get_lsn_context_from_timestamp(dbenv, timestamp, ret_lsn, ret_context)
 
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
+	__txn_dist_commit_args *txn_dist_commit_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 
 	ret_lsn->file = 0;
@@ -7155,6 +7424,28 @@ get_lsn_context_from_timestamp(dbenv, timestamp, ret_lsn, ret_context)
 			txn_gen_args = NULL;
 		}
 
+		if (rectype == DB___txn_dist_commit) {
+			if ((rc =
+				__txn_dist_commit_read(dbenv, logdta.data,
+					&txn_dist_commit_args)) != 0)
+				goto err;
+			if (txn_dist_commit_args->timestamp <= timestamp) {
+				*ret_lsn = lsn;
+				if (ret_context)
+					*ret_context = txn_dist_commit_args->context;
+			}
+			if (txn_dist_commit_args->timestamp > timestamp) {
+				if (logdta.data) {
+					__os_free(dbenv, logdta.data);
+					logdta.data = NULL;
+				}
+				__os_free(dbenv, txn_dist_commit_args);
+				__log_c_close(logc);
+				return 0;
+			}
+			__os_free(dbenv, txn_dist_commit_args);
+			txn_dist_commit_args = NULL;
+		}
 
 		else if (rectype == DB___txn_regop_rowlocks) {
 			if ((rc =
@@ -7208,6 +7499,7 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
+	__txn_dist_commit_args *txn_dist_commit_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 
 	*ret_context = 0;
@@ -7230,7 +7522,7 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 
 	LOGCOPY_32(&rectype, logdta.data);
 	while (rectype != DB___txn_regop && rectype != DB___txn_regop_gen && 
-			rectype != DB___txn_regop_rowlocks) {
+			rectype != DB___txn_dist_commit && rectype != DB___txn_regop_rowlocks) {
 		if ((rc = logc->get(logc, &lsn, &logdta, DB_PREV)) != 0) {
 			logmsg(LOGMSG_ERROR, "%s:%d failed find log on prev, rc %d\n",
 					__func__, __LINE__, rc);
@@ -7245,7 +7537,7 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 	}
 
 	assert(rectype == DB___txn_regop || rectype == DB___txn_regop_gen ||
-		rectype == DB___txn_regop_rowlocks);
+		rectype == DB___txn_dist_commit || rectype == DB___txn_regop_rowlocks);
 	if (rectype == DB___txn_regop) {
 		if ((rc = __txn_regop_read(dbenv, logdta.data, &txn_args)) != 0)
 			goto err;
@@ -7268,6 +7560,19 @@ get_context_from_lsn(dbenv, lsn, ret_context)
 			logdta.data = NULL;
 		}
 		__os_free(dbenv, txn_gen_args);
+		__log_c_close(logc);
+		return 0;
+	} else if (rectype == DB___txn_dist_commit) {
+		if ((rc =
+			__txn_dist_commit_read(dbenv, logdta.data,
+				&txn_dist_commit_args)) != 0)
+			goto err;
+		*ret_context = txn_dist_commit_args->context;
+		if (logdta.data) {
+			__os_free(dbenv, logdta.data);
+			logdta.data = NULL;
+		}
+		__os_free(dbenv, txn_dist_commit_args);
 		__log_c_close(logc);
 		return 0;
 	} else if (rectype == DB___txn_regop_rowlocks) {

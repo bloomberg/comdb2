@@ -3726,7 +3726,7 @@ __txn_dist_abort_read_int(dbenv, recbuf, do_pgswp, argpp)
  * PUBLIC:      db_recops, void *));
  */
 int
-__txn_dist_abort_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
+__txn_dist_abort_print(dbenv, dbtp, lsnp, notused2, notused3)
 	DB_ENV *dbenv;
 	DBT *dbtp;
 	DB_LSN *lsnp;
@@ -4203,6 +4203,16 @@ __txn_init_print(dbenv, dtabp, dtabsizep)
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 	    __txn_regop_gen_print, DB___txn_regop_gen)) != 0)
 		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_prepare_print, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_commit_print, DB___txn_dist_commit)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_abort_print, DB___txn_dist_abort)) != 0)
+		return (ret);
+
 	return (0);
 }
 
@@ -4240,6 +4250,16 @@ __txn_init_getpgnos(dbenv, dtabp, dtabsizep)
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 	    __txn_regop_gen_getpgnos, DB___txn_regop_gen)) != 0)
 		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_prepare_getpgnos, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_abort_getpgnos, DB___txn_dist_abort)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_commit_getpgnos, DB___txn_dist_commit)) != 0)
+		return (ret);
+
 	return (0);
 }
 #endif /* HAVE_REPLICATION */
@@ -4279,6 +4299,16 @@ __txn_init_getallpgnos(dbenv, dtabp, dtabsizep)
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 	    __txn_regop_gen_getallpgnos, DB___txn_regop_gen)) != 0)
 		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_prepare_getallpgnos, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_abort_getallpgnos, DB___txn_dist_abort)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_commit_getallpgnos, DB___txn_dist_commit)) != 0)
+		return (ret);
+
 	return (0);
 }
 #endif /* HAVE_REPLICATION */
@@ -4315,6 +4345,15 @@ __txn_init_recover(dbenv, dtabp, dtabsizep)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 	    __txn_regop_gen_recover, DB___txn_regop_gen)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_prepare_recover, DB___txn_dist_prepare)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_commit_recover, DB___txn_dist_commit)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+	    __txn_dist_abort_recover, DB___txn_dist_abort)) != 0)
 		return (ret);
 	return (0);
 }

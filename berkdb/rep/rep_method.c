@@ -1098,7 +1098,8 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 	LOGCOPY_32(&rectype, rec.data);
 
 	while (ret == 0 && rectype != DB___txn_regop_gen && rectype !=
-			DB___txn_regop_rowlocks && rectype != DB___txn_regop) {
+			DB___txn_regop_rowlocks && rectype != DB___txn_dist_commit &&
+			rectype != DB___txn_regop) {
 		if ((ret = __log_c_get(logc, &curlsn, &rec, DB_PREV)) == 0)
 			LOGCOPY_32(&rectype, rec.data);
 	}
@@ -1130,6 +1131,9 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 	} else if (rectype == DB___txn_regop) {
 		logmsg(LOGMSG_ERROR, "%s returning -1 on regop-record / "
 				"recent-upgrade.\n", __func__);
+		ret = -1;
+	} else if (rectype == DB___txn_dist_commit) {
+		/* XXX TODO */
 		ret = -1;
 	}
 
