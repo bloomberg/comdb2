@@ -163,6 +163,7 @@ BEGIN dist_prepare			17
 ARG	opcode	u_int32_t		lu
 POINTER	begin_lsn DB_LSN *	lu
 ARG dist_txnid	genid_t		llx
+ARG lflags      u_int32_t   u
 ARG coordinator_gen	u_int32_t	u
 DBT coordinator_name DBT	s
 DBT coordinator_tier DBT	s

@@ -1255,12 +1255,19 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
 
-						ret =
-							__txn_regop_gen_log(dbenv,
-							txnp, &txnp->last_lsn,
-							&context, lflags,
-							TXN_COMMIT, gen, timestamp,
-							request.obj, usr_ptr);
+						if (commit_prepared) {
+							ret = __txn_dist_commit_log(dbenv, txnp, 
+									&txnp->last_lsn, &context, lflags,
+									TXN_COMMIT, txnp->dist_txnid, gen,
+									timestamp, usr_ptr);
+						} else {
+							ret =
+								__txn_regop_gen_log(dbenv,
+										txnp, &txnp->last_lsn,
+										&context, lflags,
+										TXN_COMMIT, gen, timestamp,
+										request.obj, usr_ptr);
+						}
 #if defined DEBUG_STACK_AT_TXN_LOG
 						comdb2_cheapstack_sym(stderr, "TXN-COMMIT-GEN TXNID %x LSN [%d:%d]",
 								txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);

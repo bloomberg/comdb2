@@ -124,8 +124,8 @@ dump_log_event_counts(void)
 		    DB___ham_chgpg, DB___qam_incfirst,
 		DB___qam_mvptr, DB___qam_del, DB___qam_add, DB___qam_delext,
 		    DB___txn_regop,
-		DB___txn_regop_gen, DB___txn_regop_rowlocks, DB___txn_ckp,
-		    DB___txn_child, DB___txn_xa_regop,
+		DB___txn_regop_gen, DB___txn_regop_rowlocks, DB___txn_dist_commit,
+            DB___txn_ckp, DB___txn_child, DB___txn_xa_regop,
 		DB___txn_recycle
 	};
 	char *event_names[] = {
@@ -147,8 +147,8 @@ dump_log_event_counts(void)
 		    "DB___ham_chgpg", "DB___qam_incfirst",
 		"DB___qam_mvptr", "DB___qam_del", "DB___qam_add",
 		    "DB___qam_delext", "DB___txn_regop",
-		"DB___txn_regop_gen", "DB___txn_regop_rowlocks", "DB___txn_ckp",
-		    "DB___txn_child", "DB___txn_xa_regop",
+		"DB___txn_regop_gen", "DB___txn_regop_rowlocks", "DB___txn_dist_commit",
+            "DB___txn_ckp", "DB___txn_child", "DB___txn_xa_regop",
 		"DB___txn_recycle"
 	};
 	int i;
@@ -255,6 +255,8 @@ optostr(int op)
 		return "DB___txn_regop_gen";
 	case DB___txn_regop_rowlocks:
 		return "DB___txn_regop_rowlocks";
+	case DB___txn_dist_commit:
+		return "DB___txn_dist_commit";
 	case DB___txn_ckp:
 		return "DB___txn_ckp";
 	case DB___txn_child:
@@ -370,6 +372,9 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
+	case DB___txn_dist_prepare:
+	case DB___txn_dist_commit:
+	case DB___txn_dist_abort:
 	case DB___txn_regop_rowlocks:
 	case DB___txn_ckp:
 	case DB___txn_child:
@@ -467,6 +472,8 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		switch (rectype) {
 		case DB___txn_regop:
 		case DB___txn_regop_gen:
+		case DB___txn_dist_commit:
+		case DB___txn_dist_abort:
 		case DB___txn_regop_rowlocks:
 		case DB___txn_child:
 			/* need to capture all transactions, as I am collecting
@@ -545,6 +552,8 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		switch (rectype) {
 		case DB___txn_regop:
 		case DB___txn_regop_gen:
+		case DB___txn_dist_commit:
+		case DB___txn_dist_abort:
 		case DB___txn_regop_rowlocks:
 		case DB___txn_recycle:
 		case DB___txn_ckp:

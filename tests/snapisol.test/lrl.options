@@ -6,3 +6,5 @@ init_with_inplace_updates
 round_robin_stripes
 enable_snapshot_isolation
 nowatch
+online_recovery off
+setattr enable_seqnum_generations off
