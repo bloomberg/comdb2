@@ -2309,6 +2309,8 @@ struct cluster_info {
     int64_t port;
     char *is_master;
     char *coherent_state;
+    int64_t logfile;
+    int64_t logoffset;
 };
 
 int bdb_fill_cluster_info(void **data, int *num_nodes);
