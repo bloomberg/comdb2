@@ -115,8 +115,14 @@ openssl ca -config $CADIR/ca.cnf -gencrl -out $CADIR/root.crl
 
 # SAN config
 san="DNS:$(hostname), DNS: $(hostname -f)"
+for ip in $(hostname -I); do
+  san="$san, DNS: $ip"
+done
 for node in $CLUSTER; do
   san="$san, DNS:$(ssh -o StrictHostKeyChecking=no $node 'hostname -f')"
+  for ip in $(ssh -o StrictHostKeyChecking=no $node 'hostname -I'); do
+    san="$san, DNS: $ip"
+  done
 done
 
 echo "
@@ -170,7 +176,7 @@ for node in $CLUSTER; do
               -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=$fqdn/host=ssldbname*"
   # Sign server_$fqdn key
   openssl x509 -req -in $CADIR/server_$fqdn.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
-               -CAcreateserial -out $CADIR/server_$fqdn.crt -days 10
+               -CAcreateserial -out $CADIR/server_$fqdn.crt -days 10 -extensions v3_req -extfile $CADIR/san.cnf
   # Change key permissions
   chmod 400 $CADIR/server_$fqdn.key
 
