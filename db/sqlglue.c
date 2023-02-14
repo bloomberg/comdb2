@@ -7204,7 +7204,8 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
             }
 
             in = (unsigned char *)new_in;
-        } else if (pCur->ixnum >= 0 && pCur->db->ix_datacopy[pCur->ixnum]) {
+        } else if (pCur->ixnum >= 0 && pCur->db->ix_datacopy[pCur->ixnum] && f->idx != -1) {
+            // if f->idx == -1 then "in" is already the datacopy record
             struct field *fidx = &(pCur->db->schema->member[f->idx]);
             assert(f->len == fidx->len);
             in = pCur->bdbcur->datacopy(pCur->bdbcur) + fidx->offset;
