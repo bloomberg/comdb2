@@ -2119,9 +2119,12 @@ static int stat4ValueFromExpr(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pExpr->op==TK_STRING && affinity!=SQLITE_AFF_TEXT ){
       rc = castExpr(db, pExpr, affinity, &pVal, pAlloc);
-    }else
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    }else{
+      rc = valueFromExpr(db, pExpr, ENC(db), affinity, &pVal, pAlloc);
+    }
+#else
     rc = valueFromExpr(db, pExpr, ENC(db), affinity, &pVal, pAlloc);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 
   assert( pVal==0 || pVal->db==db );
