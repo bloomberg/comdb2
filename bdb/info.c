@@ -2269,6 +2269,9 @@ int bdb_fill_cluster_info(void **data, int *num_nodes) {
         info[i].coherent_state = bdb_coherent_state_string(nodes[i].host);
         if (info[i].coherent_state[0] == 0)
             info[i].coherent_state = "coherent";
+        DB_LSN *lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[i].host)].lsn;
+        info[i].logfile = lsnp->file;
+        info[i].logoffset = lsnp->offset;
     }
     *data = info;
     return 0;
