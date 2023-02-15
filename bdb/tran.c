@@ -1443,8 +1443,8 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
-int gbl_random_prepare_commit = 1;
-int gbl_test_prepare_commit = 1;
+int gbl_random_prepare_commit = 0;
+int gbl_all_prepare_commit = 1;
 
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                                     seqnum_type *seqnum, int *bdberr,
@@ -1589,7 +1589,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
 
-        if (tran->tid->parent == NULL && (gbl_test_prepare_commit || (gbl_random_prepare_commit && rand()%2))) {
+        if (tran->tid->parent == NULL && (gbl_all_prepare_commit || (gbl_random_prepare_commit && rand()%2))) {
             int prepare_rc = tran->tid->dist_prepare(tran->tid, 1234567890, "test-coordinator",
                     "test-tier", rand() % 100, NULL, flags);
             if (prepare_rc) {
