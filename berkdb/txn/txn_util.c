@@ -23,6 +23,10 @@ static const char revid[] = "$Id: txn_util.c,v 11.25 2003/12/03 14:33:07 bostic 
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 #include "dbinc/db_am.h"
+#include "logmsg.h"
+#include "dbinc/log.h"
+#include "dbinc/db_swap.h"
+#include "schema_lk.h"
 
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
@@ -323,4 +327,277 @@ dofree:
 	}
 
 	return (ret);
+}
+
+static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
+{
+	assert(p->is_prepared == 0);
+	if (p->blkseq_key.data != NULL)
+		__os_free(dbenv, p->blkseq_key.data);
+	if (p->coordinator_name.data != NULL)
+		__os_free(dbenv, p->coordinator_name.data);
+	if (p->coordinator_tier.data != NULL)
+		__os_free(dbenv, p->coordinator_tier.data);
+	/* This better not have locks or schema-lock */
+	if (p->txnp)
+		__txn_discard(p->txnp, 0);
+	if (p->pglogs)
+		free(p->pglogs);
+	__os_free(dbenv, p);
+}
+
+/*
+ * __txn_recover_prepared --
+ *
+ * Collect prepared transactions during recovery's forward-pass (openfiles).
+ *
+ * PUBLIC: int __txn_recover_prepared __P((DB_ENV *,
+ * PUBLIC:     u_int64_t, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
+ */
+int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_gen,
+		coordinator_name, coordinator_tier)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+	DB_LSN *prep_lsn;
+	DBT *blkseq_key;
+	u_int32_t coordinator_gen;
+	DBT *coordinator_name;
+	DBT *coordinator_tier;
+{
+	int ret;
+	DB_TXN_PREPARED *p, *fnd;
+
+	if ((ret = __os_calloc(dbenv, 1, sizeof(DB_TXN_PREPARED), &p)) != 0) {
+		return (ret);
+	}
+
+	p->dist_txnid = dist_txnid;
+	p->prepare_lsn = *prep_lsn;
+
+	if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &p->blkseq_key.data)) != 0) {
+		__free_prepared_txn(dbenv, p);
+		__db_err(dbenv, "failed malloc");
+		return ret;
+	}
+
+	memcpy(p->blkseq_key.data, blkseq_key->data, blkseq_key->size);
+	p->blkseq_key.size = blkseq_key->size;
+
+	p->coordinator_gen = coordinator_gen;
+
+	if ((ret = __os_calloc(dbenv, 1, coordinator_name->size, &p->coordinator_name.data)) != 0) {
+		__free_prepared_txn(dbenv, p);
+		__db_err(dbenv, "failed malloc");
+		return ret;
+	}
+
+	memcpy(p->coordinator_name.data, coordinator_name->data, coordinator_name->size);
+	p->coordinator_name.size = coordinator_name->size;
+
+	if ((ret = __os_calloc(dbenv, 1, coordinator_tier->size, &p->coordinator_tier.data)) != 0) {
+		__free_prepared_txn(dbenv, p);
+		__db_err(dbenv, "failed malloc");
+		return ret;
+	}
+
+	memcpy(p->coordinator_tier.data, coordinator_tier->data, coordinator_tier->size);
+	p->coordinator_tier.size = coordinator_tier->size;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((fnd = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		logmsg(LOGMSG_FATAL, "Recovery found multiple prepared records with dist-txnid %"PRIu64"\n",
+			dist_txnid);
+		abort();
+	}
+	hash_add(dbenv->prepared_txn_hash, p);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return 0;
+}
+
+static int __free_prepared(void *obj, void *arg)
+{
+	DB_ENV *dbenv = (DB_ENV *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	__free_prepared_txn(dbenv, p);
+	return 0;
+}
+
+/*
+ * __txn_clear_all_prepared --
+ *
+ * Clear all prepared transactions
+ *
+ * PUBLIC: int __txn_recover_prepared __P((DB_ENV *));
+ */
+int __txn_clear_all_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __free_prepared, dbenv);
+	hash_clear(dbenv->prepared_txn_hash);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return 0;
+}
+
+/* 
+ * __txn_clear_prepared --
+ *
+ * Remove a prepared transaction, optionally update it's blkseq 
+ *
+ * PUBLIC: int __txn_clear_prepared __P((DB_ENV *, u_int64_t, int ));
+ */
+int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+	int update_blkseq;
+{
+	DB_TXN_PREPARED *p;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		hash_del(dbenv->prepared_txn_hash, p);
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+
+	if (p == NULL) {
+		logmsg(LOGMSG_INFO, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
+		return -1;
+	}
+
+	/* TODO */
+	if (update_blkseq) {
+	}
+	__free_prepared_txn(dbenv, p);
+
+	return 0;
+}
+
+static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED *p)
+{
+	DBT dbt = { 0 };
+	__txn_dist_prepare_args *prepare = NULL;
+	u_int32_t type;
+	dbt.flags = DB_DBT_REALLOC;
+	DB_TXN *txnp = NULL;
+	int ret;
+
+	assert(p->is_prepared == 0);
+
+	if ((ret = __log_c_get(logc, &p->prepare_lsn, &dbt, DB_SET)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d retrieving prepare record at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	LOGCOPY_32(&type, dbt.data);
+	assert(type == DB___txn_dist_prepare);
+
+	if ((ret = __txn_dist_prepare_read(dbenv, dbt.data, &prepare)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d unpacking prepare record at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	/* TODO: I guess I need to force it to use the txnid listed in the log so
+	 * that it's not re-allocated to a different txn.  Maybe straightforward? */
+	if ((ret = __txn_begin_with_prop(dbenv, NULL, &txnp, 0, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d creating txn at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	/* TODO: consider collecting & storing lc-colleciton in prepared-txn */
+	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
+		wrlock_schema_lk(); p->have_schema_lock = 1;
+	}
+
+	/* Acquire locks/pglogs from prepare record */
+	if ((ret = __lock_get_list(dbenv, txnp->txnid, LOCK_GET_LIST_GETLOCK,
+		DB_LOCK_WRITE, &prepare->locks, &p->prepare_lsn, &p->pglogs,
+		&p->keycnt, stdout)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d acquiring locks for prepare at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	/* Set the 'apply-forward' flag.. on second thought i dont need it */
+	//F_SET(txnp, TXN_DIST_REC_PREPARED);
+	p->txnp = txnp;
+	p->is_prepared = 1;
+
+	__os_free(dbenv, prepare);
+	__os_free(dbenv, dbt.data);
+
+	return 0;
+}
+
+static int __upgrade_prepared(void *obj, void *arg)
+{
+	DB_LOGC *logc = (DB_LOGC *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	__upgrade_prepared_txn(logc->dbenv, logc, p);
+	return 0;
+}
+
+/* 
+ * __txn_upgrade_all_prepared --
+ *
+ * Create berkley txns for unresolved but prepared transactions we found
+ * during recovery.  Acquire locks for these transactions.
+ *
+ * PUBLIC: int __txn_upgrade_all_prepared __P((DB_ENV *));
+ */
+int __txn_upgrade_all_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_LOGC *logc = NULL;
+	int ret;
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error getting log-cursor, %d\n", __func__, ret);
+		abort();
+	}
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __upgrade_prepared, logc);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	logc->close(logc, 0);
+	return 0;
+}
+
+/* 
+ * __txn_abort_prepared --
+ *
+ * Write a dist_abort record for this prepared txnid.  
+ *
+ * PUBLIC: int __txn_abort_prepared __P((DB_ENV *, u_int64_t));
+ */
+int __txn_abort_prepared(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	return 0;
+}
+
+int __txn_commit_prepared(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	DB_TXN_PREPARED *p;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		if (!p->is_prepared) {
+			logmsg(LOGMSG_INFO, "%s unable to commit unprepared dist-txn %"PRIu64"\n", __func__, dist_txnid);
+			p = NULL;
+		} else {
+			hash_del(dbenv->prepared_txn_hash, p);
+		}
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	if (p == NULL) {
+		logmsg(LOGMSG_INFO, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
+		return -1;
+	}
+	/* Collect txn */
+	/* Then 'roll-forward' */
+	/* Then 'commit' */
+
+	return 0;
 }

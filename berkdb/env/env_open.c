@@ -385,15 +385,17 @@ __dbenv_open(dbenv, db_home, flags, mode)
 		dbenv->ltrans_hash = hash_init(sizeof(u_int64_t));
 		Pthread_mutex_init(&dbenv->ltrans_hash_lk, NULL);
 		listc_init(&dbenv->active_ltrans,
-		    offsetof(struct __ltrans_descriptor, lnk));
+			offsetof(struct __ltrans_descriptor, lnk));
 		listc_init(&dbenv->inactive_ltrans,
-		    offsetof(struct __ltrans_descriptor, lnk));
+			offsetof(struct __ltrans_descriptor, lnk));
 		Pthread_mutex_init(&dbenv->ltrans_inactive_lk, NULL);
 		Pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
 		Pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
 	}
-    dbenv->ufid_to_db_hash = hash_init(DB_FILE_ID_LEN);
-    Pthread_mutex_init(&dbenv->ufid_to_db_lk, NULL);
+	dbenv->ufid_to_db_hash = hash_init(DB_FILE_ID_LEN);
+	Pthread_mutex_init(&dbenv->ufid_to_db_lk, NULL);
+	dbenv->prepared_txn_hash = hash_init(sizeof(u_int64_t));
+	Pthread_mutex_init(&dbenv->prepared_txn_lk, NULL);
 	dbenv->mintruncate_state = MINTRUNCATE_START;
 	ZERO_LSN(dbenv->mintruncate_first);
 	ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
@@ -920,14 +922,19 @@ __dbenv_close(dbenv, rep_check)
 		__os_free(dbenv, dbenv->comdb2_dirs.tmp_dir);
 
 	if (dbenv->ltrans_hash != NULL) {
-        hash_clear(dbenv->ltrans_hash);
-        hash_free(dbenv->ltrans_hash);
-    }
+		hash_clear(dbenv->ltrans_hash);
+		hash_free(dbenv->ltrans_hash);
+	}
 
-    if (dbenv->ufid_to_db_hash != NULL) {
-        hash_clear(dbenv->ufid_to_db_hash);
-        hash_free(dbenv->ufid_to_db_hash);
-    }
+	if (dbenv->ufid_to_db_hash != NULL) {
+		hash_clear(dbenv->ufid_to_db_hash);
+		hash_free(dbenv->ufid_to_db_hash);
+	}
+
+	if (dbenv->prepared_txn_hash != NULL) {
+		hash_clear(dbenv->prepared_txn_hash);
+		hash_free(dbenv->prepared_txn_hash);
+	}
 
 	/* Release DB list */
 	__os_free(dbenv, dbenv->dbs);
