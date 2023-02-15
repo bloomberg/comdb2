@@ -734,8 +734,8 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 
 		if (rectype == DB___txn_dist_commit)
 		{
-			/* rectype(4)+txn_num(4)+db_lsn(8)+opcode(4)+GENERATION(4) */
-			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + 4] );
+			/* rectype(4)+txn_num(4)+db_lsn(8)+opcode(4)+dist_txnid(8)+GENERATION(4) */
+			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + 4 + 8] );
 		}
 
 		bdb_push_pglogs_commit(dbenv->app_private, *lsn, generation, *ltranid, pushlog);

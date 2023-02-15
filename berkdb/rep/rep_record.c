@@ -6651,8 +6651,8 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 {
 	DB_LSN lsn;
 	DBT mylog;
-	DB_LOGC *logc;
-	DB_LOGC *logc_dist;
+	DB_LOGC *logc = NULL;
+	DB_LOGC *logc_dist = NULL;
 	DBT *lock_dbt = NULL;
 	int ret, t_ret, undo, count=0;
 	int have_recover_lk = 0;
@@ -6672,6 +6672,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	__txn_regop_args *txnrec;
 	__txn_regop_gen_args *txngenrec;
 	__txn_dist_commit_args *txndist;
+	__txn_dist_prepare_args *txnprep;
 	__txn_regop_rowlocks_args *txnrlrec;
 
 	db_rep = dbenv->rep_handle;
@@ -6760,12 +6761,32 @@ restart:
 			if (txndist->opcode != TXN_ABORT) {
 				undo = 1;
 			}
+
+            if (logc_dist == NULL) {
+                if ((ret = __log_cursor(dbenv, &logc_dist)) != 0) {
+                    logmsg(LOGMSG_FATAL, "%s error getting log cursor\n", __func__);
+                    abort();
+                }
+            }
+
+            if ((ret = __log_c_get(logc_dist, &txndist->prev_lsn, &mylog,
+                    DB_SET)) != 0) {
+                logmsg(LOGMSG_FATAL, "%s error getting log cursor\n", __func__);
+                abort();
+            }
+		    LOGCOPY_32(&rectype, mylog.data);
+            assert(rectype == DB___txn_dist_prepare);
+            if ((ret = 
+                __txn_dist_prepare_read(dbenv, mylog.data, &txnprep)) != 0)
+                    goto err;
+
             /* TODO XXX locks are in previous record */
 			if (online) {
-				ret = recovery_getlocks(dbenv, lockid, &txngenrec->locks, lsn);
+				ret = recovery_getlocks(dbenv, lockid, &txnprep->locks, lsn);
             }
 
 			__os_free(dbenv, txndist);
+			__os_free(dbenv, txnprep);
 
 			if (ret == DB_LOCK_DEADLOCK) {
 				gbl_rep_trans_deadlocked++;
@@ -6877,6 +6898,11 @@ err:
 	if (have_recover_lk) {
 	    dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	}
+
+    if (logc_dist != NULL) {
+        __log_c_close(logc_dist);
+        logc_dist = NULL;
+    }
 
 	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -7151,7 +7177,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                     __FILE__, __LINE__, lsn.file, lsn.offset);
                             goto err;
                         }
-
                     // Go to PREVIOUS LSN
 #if 0
 					ret = __db_txnlist_add(dbenv,
@@ -7177,8 +7202,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 																  txn_dist_commit_args);
 														__os_free(dbenv,
 																  txn_dist_prepare_args);
-
-
 														goto err;
 												}
 												lsns = newlsns;
@@ -7193,8 +7216,8 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 												(intptr_t)pthread_self(),
 												__func__, __LINE__, lsn.file,
 												lsn.offset,
-												txn_dist_prepare_args->prev_lsn.file,
-												txn_dist_prepare_args->prev_lsn.offset,
+												txn_dist_commit_args->prev_lsn.file,
+												txn_dist_commit_args->prev_lsn.offset,
 												*n_lsns);
 										}
 

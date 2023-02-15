@@ -2397,10 +2397,6 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
                     __LINE__, __func__, lsn.file, lsn.offset, rc);
             goto done;
         }
-        rc = undo_get_ltranid(bdb_state, &logdta, &ltranid);
-        if (rc)
-            goto done;
-
         /* rectype -> prepare & handle below */
         rectype = LOGCOPY_32(&rectype, logdta.data);
         assert(rectype == DB___txn_dist_prepare);
@@ -2410,7 +2406,7 @@ void bdb_update_ltran_lsns(bdb_state_type *bdb_state, DB_LSN regop_lsn,
             goto done;
 
         freeme = argprepp;
-    } 
+    }
 
     if (rectype == DB___txn_dist_prepare) {
         lsn = argprepp->prev_lsn;
@@ -4446,25 +4442,29 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
         }
         DBT logdta = {0};
         logdta.flags = DB_DBT_REALLOC;
-        int found = 0;
 
         rc = cur->get(cur, &prevlsn, &logdta, DB_SET);
-        if (rc == 0) {
-            LOGCOPY_32(&rectype, logdta.data);
-            if (rectype == DB___txn_dist_prepare) {
-                if ((rc = __txn_dist_prepare_read(dbenv, logdta.data, &txn_prepare_args)) == 0) {
-                    found = 1;
-                    (*lsn) = txn_prepare_args->prev_lsn;
-                    free(txn_prepare_args);
-                }
-            } 
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR,
+                "%s line %d log-read returns %d for %d:%d\n",
+                __func__, __LINE__, rc, prevlsn.file, prevlsn.offset);
+            cur->close(cur, 0);
+            return 1;
         }
+        LOGCOPY_32(&rectype, logdta.data);
+        assert(rectype == DB___txn_dist_prepare);
+        if ((rc = __txn_dist_prepare_read(dbenv, logdta.data, &txn_prepare_args)) != 0) {
+            logmsg(LOGMSG_ERROR,
+                    "%s line %d dist_prepare read returns %d for "
+                    "%d:%d\n", __func__, __LINE__, rc, prevlsn.file, prevlsn.offset);
+            free(logdta.data);
+            cur->close(cur, 0);
+            return 1;
+        }
+        (*lsn) = txn_prepare_args->prev_lsn;
+        free(logdta.data);
+        free(txn_prepare_args);
         cur->close(cur, 0);
-        if (!found) {
-            logmsg(LOGMSG_FATAL, "%s:%d error geting previous log, %d\n", __FILE__,
-                    __LINE__, rc);
-            abort();
-        }
         break;
     case DB___txn_regop:
         if ((rc = __txn_regop_read(dbenv, data->data, &txn_args)) != 0) {

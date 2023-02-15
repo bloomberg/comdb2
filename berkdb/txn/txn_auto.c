@@ -4083,7 +4083,7 @@ __txn_dist_commit_read_int(dbenv, recbuf, do_pgswp, argpp)
     argp->generation = uinttmp;
     bp += sizeof(uinttmp);
 
-    LOGCOPY_64(&uint64tmp, bp);
+    memcpy(&uint64tmp, bp, sizeof(u_int64_t));
     argp->context = uint64tmp;
     bp += sizeof(uint64tmp);
 
