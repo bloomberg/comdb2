@@ -148,6 +148,7 @@ struct __db_qam_stat;	typedef struct __db_qam_stat DB_QUEUE_STAT;
 struct __db_rep;	typedef struct __db_rep DB_REP;
 struct __db_rep_stat;	typedef struct __db_rep_stat DB_REP_STAT;
 struct __db_txn;	typedef struct __db_txn DB_TXN;
+struct __db_txn_prepared;   typedef struct __db_txn_prepared DB_TXN_PREPARED;
 struct __db_txn_active;	typedef struct __db_txn_active DB_TXN_ACTIVE;
 struct __db_txn_stat;	typedef struct __db_txn_stat DB_TXN_STAT;
 struct __db_txnmgr;	typedef struct __db_txnmgr DB_TXNMGR;
@@ -1079,7 +1080,7 @@ struct __db_txn {
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 #define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
 #define TXN_DIST_PREPARED	0x800 /* Dist-txn has written prepare record */
-#define TXN_DIST_REC_PREPARED	0x1000 /* Prepared dist-txn collected by recovery */
+#define TXN_DIST_REC_PREPARED	0x1000 /* Prepared dist-txn collected by recovery XXX dont think its needed*/
 	u_int32_t	flags;
 
 	void	 *app_private;		/* pointer to bdb transaction object */
@@ -1092,7 +1093,21 @@ struct __db_txn {
 	char *coordinator_name;
 	char *coordinator_tier;
 	u_int32_t coordinator_gen;
-    DBT blkseq_key;
+	DBT blkseq_key;
+};
+
+struct __db_txn_prepared {
+	u_int64_t dist_txnid;
+	DB_LSN prepare_lsn;
+	DBT blkseq_key;
+	u_int32_t coordinator_gen;
+	DBT coordinator_name;
+	DBT coordinator_tier;
+	struct __db_txn *txnp;
+	void *pglogs;
+	u_int32_t keycnt;
+    int is_prepared;
+	int have_schema_lock;
 };
 
 /*
@@ -2634,6 +2649,10 @@ struct __db_env {
 	/* ufid to dbp hash */
 	hash_t *ufid_to_db_hash;
 	pthread_mutex_t ufid_to_db_lk;
+
+    /* prepared transactions */
+    hash_t *prepared_txn_hash;
+    pthread_mutex_t prepared_txn_lk;
 
 	/* Parallel recovery.  These are only valid on replicants. */
 	DB_LSN prev_commit_lsn;

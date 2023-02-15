@@ -108,6 +108,21 @@ void __txn_region_destroy __P((DB_ENV *, REGINFO *));
 int __txn_id_set __P((DB_ENV *, u_int32_t, u_int32_t));
 int __txn_stat_pp __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
 int __txn_closeevent __P((DB_ENV *, DB_TXN *, DB *));
+
+int __txn_recover_prepared __P((DB_ENV *, u_int64_t dist_txnid, DB_LSN *prep_lsn,
+		DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name, DBT *coordinator_tier));
+int __txn_clear_prepared __P((DB_ENV *, u_int64_t dist_txnid, int update_blkseq));
+int __txn_clear_all_prepared __P((DB_ENV *));
+
+/* Allocate txn structs & acquire locks for prepared transactions on a new master */
+int __txn_upgrade_all_prepared __P((DB_ENV *));
+
+/* Abort a prepared transaction, remove it from the prepared transaction hash */
+int __txn_abort_prepared __P((DB_ENV *, u_int64_t dist_txnid));
+
+/* Commit a prepared transaction, remove it from the prepared transaction hash */
+int __txn_commit_prepared __P((DB_ENV *, u_int64_t dist_txnid));
+
 int __txn_remevent __P((DB_ENV *, DB_TXN *, const char *, u_int8_t*));
 void __txn_remrem __P((DB_ENV *, DB_TXN *, const char *));
 int __txn_lockevent __P((DB_ENV *, DB_TXN *, DB *, DB_LOCK *, u_int32_t));

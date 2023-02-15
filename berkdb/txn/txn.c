@@ -650,10 +650,10 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 
 	txn->abort = __txn_abort_pp;
 	txn->commit = __txn_commit_pp;
-    txn->getlogbytes = __txn_logbytes_pp;
+	txn->getlogbytes = __txn_logbytes_pp;
 	txn->commit_getlsn = __txn_commit_getlsn_pp;
 	txn->commit_rowlocks = __txn_commit_rl_pp;
-    txn->dist_prepare = __txn_dist_prepare_pp;
+	txn->dist_prepare = __txn_dist_prepare_pp;
 	txn->discard = __txn_discard_pp;
 	txn->id = __txn_id;
 	txn->prepare = __txn_prepare;
@@ -1029,7 +1029,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
 	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
-	int apply_forward = F_ISSET(txnp, TXN_DIST_REC_PREPARED);
+	//int apply_forward = F_ISSET(txnp, TXN_DIST_REC_PREPARED);
 	u_int64_t dist_txnid = 0;
 
 	if (is_prepare) {
@@ -1040,9 +1040,10 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		}
 	}
 
+/*
 	if (apply_forward) {
-		/* TODO rep-apply the log-records before emitting commit-record */
 	}
+*/
 
 	/*
 	 * This was written to run on replicants, thus the rep_* calls
