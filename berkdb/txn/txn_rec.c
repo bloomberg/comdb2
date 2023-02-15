@@ -163,10 +163,11 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 
+    /* TODO */
 	if (ret == 0) {
 		if (argp->context)
 			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
-				DB___txn_regop_gen);
+				DB___txn_dist_abort);
 		*lsnp = argp->prev_lsn;
 	}
 
@@ -287,7 +288,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 	if (ret == 0) {
 		if (argp->context)
 			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
-				DB___txn_regop_gen);
+				DB___txn_dist_commit);
 		*lsnp = argp->prev_lsn;
 	}
 
