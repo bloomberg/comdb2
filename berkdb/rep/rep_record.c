@@ -124,7 +124,7 @@ extern int gbl_berkdb_verify_skip_skipables;
 static int __rep_apply __P((DB_ENV *, REP_CONTROL *, DBT *, DB_LSN *,
 	uint32_t *, int));
 static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *, int, int *));
-static int __rep_lsn_cmp __P((const void *, const void *));
+int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
 static int __rep_verify_match __P((DB_ENV *, REP_CONTROL *, time_t, int));
 void send_master_req(DB_ENV *dbenv, const char *func, int line);
@@ -6337,7 +6337,7 @@ __rep_collect_txn(dbenv, lsnp, lc, had_serializable_records, rp)
  * __rep_lsn_cmp --
  *	qsort-type-compatible wrapper for log_compare.
  */
-static int
+int
 __rep_lsn_cmp(lsn1, lsn2)
 	const void *lsn1, *lsn2;
 {
