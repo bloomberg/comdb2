@@ -1825,8 +1825,6 @@ __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coor
 
 	ret =
 		__txn_commit_int(txnp, lflags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
-	if (IS_ENV_REPLICATED(dbenv))
-		__op_rep_exit(dbenv);
 	return (ret);
 }
 
