@@ -524,7 +524,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	int nids, ret;
 	int internal = LF_ISSET(DB_TXN_INTERNAL);
 	int recovery = LF_ISSET(DB_TXN_RECOVERY);
-
+	u_int32_t prepared_txnid = (prop && prop->prepared_txnid) ? prop->prepared_txnid : 0;
 
 	/*
 	 * if (prop && prop->retries)
@@ -551,17 +551,21 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	 * We should set this value when we write the first log record, not
 	 * here.
 	 */
-	if (DBENV_LOGGING(dbenv))
-		__log_txn_lsn(dbenv, &begin_lsn, NULL, NULL);
-	else
+	if (DBENV_LOGGING(dbenv)) {
+		if (prop && prop->begin_lsn.file) {
+			begin_lsn = prop->begin_lsn;
+		} else {
+			__log_txn_lsn(dbenv, &begin_lsn, NULL, NULL);
+		}
+	} else
 		ZERO_LSN(begin_lsn);
 
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
 
 	if (!recovery) {
-        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
-    }
+		dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
+	}
 
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
@@ -586,15 +590,25 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 		region->cur_maxid != TXN_MAXIMUM)
 		region->last_txnid = TXN_MINIMUM - 1;
 
-	if ((region->last_txnid + 1) == region->cur_maxid) {
+	if (prepared_txnid || ((region->last_txnid + 1) == region->cur_maxid)) {
 		if ((ret = __os_malloc(dbenv,
-			sizeof(u_int32_t) * region->maxtxns, &ids)) != 0)
+			sizeof(u_int32_t) * (region->maxtxns + 1), &ids)) != 0)
 			goto err;
 		nids = 0;
 		for (td = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
 			td != NULL;
-			td = SH_TAILQ_NEXT(td, links, __txn_detail))
+			td = SH_TAILQ_NEXT(td, links, __txn_detail)) {
 			ids[nids++] = td->txnid;
+			if (prepared_txnid == td->txnid) {
+				logmsg(LOGMSG_FATAL, "%s prepared txnid %"PRIu32" already in txnlist\n",
+					__func__, prepared_txnid); 
+				abort();
+			}
+		}
+		if (prepared_txnid) {
+			ids[nids++] = prepared_txnid;
+		}
+
 		region->last_txnid = TXN_MINIMUM - 1;
 		region->cur_maxid = TXN_MAXIMUM;
 		if (nids != 0)
@@ -624,7 +638,8 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	/* Place transaction on active transaction list. */
 	SH_TAILQ_INSERT_HEAD(&region->active_txn, td, links, __txn_detail);
 
-	id = ++region->last_txnid;
+	id = prepared_txnid ? prepared_txnid : ++region->last_txnid;
+
 	++region->stat.st_nbegins;
 	if (++region->stat.st_nactive > region->stat.st_maxnactive)
 		region->stat.st_maxnactive = region->stat.st_nactive;
@@ -639,7 +654,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	td->status = TXN_RUNNING;
 	td->flags = 0;
 	td->xa_status = 0;
-    td->tid = pthread_self();
+	td->tid = pthread_self();
 
 	off = R_OFFSET(&mgr->reginfo, td);
 	R_UNLOCK(dbenv, &mgr->reginfo);
@@ -1029,7 +1044,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
 	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
-	//int apply_forward = F_ISSET(txnp, TXN_DIST_REC_PREPARED);
 	u_int64_t dist_txnid = 0;
 
 	if (is_prepare) {
@@ -1039,11 +1053,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			return EINVAL;
 		}
 	}
-
-/*
-	if (apply_forward) {
-	}
-*/
 
 	/*
 	 * This was written to run on replicants, thus the rep_* calls
@@ -1684,13 +1693,17 @@ __txn_abort(txnp)
 	 */
 	SET_LOG_FLAGS(dbenv, txnp, lflags);
 
-	if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
+	if (DBENV_LOGGING(dbenv) && F_ISSET(txnp, TXN_DIST_PREPARED)) {
+		if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
+			TXN_COMMIT, txnp->dist_txnid, &txnp->blkseq_key) != 0))
+			return (__db_panic(dbenv, ret));
+	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
 			lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 

@@ -1099,6 +1099,7 @@ struct __db_txn {
 struct __db_txn_prepared {
 	u_int64_t dist_txnid;
 	DB_LSN prepare_lsn;
+	DB_LSN prev_lsn;
 	DBT blkseq_key;
 	u_int32_t coordinator_gen;
 	DBT coordinator_name;
@@ -1106,7 +1107,7 @@ struct __db_txn_prepared {
 	struct __db_txn *txnp;
 	void *pglogs;
 	u_int32_t keycnt;
-    int is_prepared;
+	int is_prepared;
 	int have_schema_lock;
 };
 

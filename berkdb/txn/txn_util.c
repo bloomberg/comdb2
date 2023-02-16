@@ -27,6 +27,8 @@ static const char revid[] = "$Id: txn_util.c,v 11.25 2003/12/03 14:33:07 bostic 
 #include "dbinc/log.h"
 #include "dbinc/db_swap.h"
 #include "schema_lk.h"
+#include "txn_properties.h"
+#include "epochlib.h"
 
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
@@ -338,7 +340,6 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 		__os_free(dbenv, p->coordinator_name.data);
 	if (p->coordinator_tier.data != NULL)
 		__os_free(dbenv, p->coordinator_tier.data);
-	/* This better not have locks or schema-lock */
 	if (p->txnp)
 		__txn_discard(p->txnp, 0);
 	if (p->pglogs)
@@ -497,17 +498,24 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 		abort();
 	}
 
-	/* TODO: I guess I need to force it to use the txnid listed in the log so
-	 * that it's not re-allocated to a different txn.  Maybe straightforward? */
-	if ((ret = __txn_begin_with_prop(dbenv, NULL, &txnp, 0, NULL)) != 0) {
+	/* Use the txnid in the log */
+	struct txn_properties prop = {.prepared_txnid = prepare->txnid->txnid,
+								  .begin_lsn = prepare->begin_lsn };
+	if ((ret = __txn_begin_with_prop(dbenv, NULL, &txnp, 0, &prop)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s error %d creating txn at %d:%d\n",
 			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
 		abort();
 	}
 
+	/* Set the prepared flag & begin_lsn */
+	F_SET(txnp, TXN_DIST_PREPARED);
+
+	assert(txnp->txnid == prepare->txnid->txnid);
+
 	/* TODO: consider collecting & storing lc-colleciton in prepared-txn */
 	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
-		wrlock_schema_lk(); p->have_schema_lock = 1;
+		wrlock_schema_lk(); 
+		p->have_schema_lock = 1;
 	}
 
 	/* Acquire locks/pglogs from prepare record */
@@ -519,9 +527,9 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 		abort();
 	}
 
-	/* Set the 'apply-forward' flag.. on second thought i dont need it */
-	//F_SET(txnp, TXN_DIST_REC_PREPARED);
 	p->txnp = txnp;
+	p->prev_lsn = prepare->prev_lsn;
+    txnp->last_lsn = p->prepare_lsn;
 	p->is_prepared = 1;
 
 	__os_free(dbenv, prepare);
@@ -565,7 +573,7 @@ int __txn_upgrade_all_prepared(dbenv)
 /* 
  * __txn_abort_prepared --
  *
- * Write a dist_abort record for this prepared txnid.  
+ * Write a dist_abort record for this prepared txnid & release locks.
  *
  * PUBLIC: int __txn_abort_prepared __P((DB_ENV *, u_int64_t));
  */
@@ -573,8 +581,50 @@ int __txn_abort_prepared(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+	DB_TXN_PREPARED *p;
+	int ret;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		if (!p->is_prepared) {
+			logmsg(LOGMSG_INFO, "%s unable to abort unprepared dist-txn %"PRIu64"\n", __func__, dist_txnid);
+			p = NULL;
+		} else {
+			hash_del(dbenv->prepared_txn_hash, p);
+		}
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	if (p == NULL) {
+		logmsg(LOGMSG_INFO, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
+		return -1;
+	}
+
+	if ((ret = __txn_dist_abort_log(dbenv, p->txnp, &p->txnp->last_lsn, 0, TXN_COMMIT, p->dist_txnid,
+            &p->blkseq_key)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error writing dist-abort for txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+			p->prev_lsn.file, p->prev_lsn.offset);
+		abort();
+    }
+
+	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
+
+	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+		p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	p->is_prepared = 0;
+	__free_prepared_txn(dbenv, p);
+
 	return 0;
 }
+
+extern int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
+		unsigned int nkeys, int is_logical_commit,
+		unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
+		int32_t timestamp, unsigned long long context);
+
+extern int __rep_lsn_cmp __P((const void *, const void *));
 
 int __txn_commit_prepared(dbenv, dist_txnid)
 	DB_ENV *dbenv;
@@ -595,9 +645,91 @@ int __txn_commit_prepared(dbenv, dist_txnid)
 		logmsg(LOGMSG_INFO, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
 		return -1;
 	}
-	/* Collect txn */
-	/* Then 'roll-forward' */
-	/* Then 'commit' */
 
+	/* Write the commit record now to get commit-context */
+	u_int64_t context = 0;
+	int32_t timestamp = comdb2_time_epoch();
+	u_int32_t gen = 0;
+	u_int32_t lflags = DB_LOG_COMMIT | DB_LOG_PERM;
+	DB_LSN lsn_out;
+	DB_REP *db_rep = dbenv->rep_handle;
+	REP *rep = db_rep->region;
+	int ret;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	gen = rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+	if ((ret = __txn_dist_commit_log(dbenv, p->txnp, &lsn_out, &context, lflags, TXN_COMMIT,
+			p->dist_txnid, gen, timestamp, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error writing dist-commit for txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+			p->prev_lsn.file, p->prev_lsn.offset);
+		abort();
+	}
+
+	assert(context != 0);
+
+	bdb_transfer_pglogs_to_queues(dbenv->app_private, p->pglogs, p->keycnt, 0,
+		0, lsn_out, gen, timestamp, context);
+
+	/* Collect txn, roll-forward, call txn_commit */
+	LSN_COLLECTION lc = {0};
+	DBT data_dbt = {0};
+	DB_LOGC *logc = NULL;
+	int had_serializable_records = 0;
+	uint32_t rectype = 0;
+	void *txninfo = NULL;
+
+	if ((ret = __rep_collect_txn(dbenv, &p->prev_lsn, &lc, &had_serializable_records, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error collecting dist-txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+		p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	qsort(lc.array, lc.nlsns, sizeof(struct logrecord), __rep_lsn_cmp);
+
+	if ((ret = __db_txnlist_init(dbenv, 0, 0, NULL, &txninfo)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error initing txnlist, %d\n", ret);
+		abort();
+	}
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error getting log-cursor, %d\n", ret);
+		abort();
+	}
+
+	F_SET(&data_dbt, DB_DBT_REALLOC);
+
+	for (int i = 0; i < lc.nlsns; i++) {
+		DBT lcin_dbt = { 0 };
+		uint32_t rectype = 0;
+		DB_LSN lsn = lc.array[i].lsn, *lsnp = &lsn;
+
+		if ((ret = __log_c_get(logc, lsnp, &data_dbt, DB_SET)) != 0) {
+			logmsg(LOGMSG_FATAL, "Error getting %d:%d for prepared txn, %d\n",
+				lsnp->file, lsnp->offset, ret);
+			abort();
+		}
+		assert(data_dbt.size >= sizeof(uint32_t));
+		LOGCOPY_32(&rectype, data_dbt.data);
+		data_dbt.app_data = &context;
+
+		if ((ret = __db_dispatch(dbenv, dbenv->recover_dtab, dbenv->recover_dtab_size,
+				&data_dbt, lsnp, DB_TXN_APPLY, txninfo)) != 0) {
+			logmsg(LOGMSG_FATAL, "Error applying %d:%d for prepared txn, %d\n",
+				lsnp->file, lsnp->offset, ret);
+			abort();
+		}
+	}
+
+	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
+
+	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+		p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+	p->is_prepared = 0;
+	__free_prepared_txn(dbenv, p);
 	return 0;
 }
