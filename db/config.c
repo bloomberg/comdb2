@@ -764,7 +764,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         }
     } else if (tokcmp(tok, ltok, "port") == 0) {
         char hostname[255];
-        int port;
+        int port1 = 0;
+        int port2 = 0;
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR,
@@ -784,16 +785,25 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                    "Expected hostname port for \"port\" directive\n");
             return -1;
         }
-        port = toknum(tok, ltok);
-        if (port <= 0 || port >= 65536) {
+        port1 = toknum(tok, ltok);
+        if (port1 <= 0 || port1 >= 65536) {
             logmsg(LOGMSG_ERROR, "Port out of range for \"port\" directive\n");
             return -1;
+        }
+        /* optional port2, defaults to 0 */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok != 0) {
+            port2 = toknum(tok, ltok);
+            if (port2 <= 0 || port2 >= 65536) {
+                logmsg(LOGMSG_ERROR, "Port out of range for \"port\" directive\n");
+                return -1;
+            }
         }
         if (dbenv->nsiblings > 1) {
             for (ii = 0; ii < dbenv->nsiblings; ii++) {
                 if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
-                    dbenv->sibling_port[ii][NET_REPLICATION] = port;
-                    dbenv->sibling_port[ii][NET_SQL] = port;
+                    dbenv->sibling_port[ii][NET_REPLICATION] = port1;
+                    dbenv->sibling_port[ii][NET_SQL] = port2;
                     break;
                 }
             }
@@ -806,8 +816,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             }
         } else if (strcmp(hostname, "localhost") == 0) {
             /* nsiblings == 1 means there's no other nodes in the cluster */
-            dbenv->sibling_port[0][NET_REPLICATION] = port;
-            dbenv->sibling_port[0][NET_SQL] = port;
+            dbenv->sibling_port[0][NET_REPLICATION] = port1;
+            dbenv->sibling_port[0][NET_SQL] = port2;
         }
     } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
         /* expected parse line: remsql_whitelist db1 db2 ...  */

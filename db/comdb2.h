@@ -836,7 +836,7 @@ struct dbenv {
     /*sibling info*/
     int nsiblings;
     char *sibling_hostname[REPMAX];
-    short sibling_port[REPMAX][NET_MAX];
+    unsigned short sibling_port[REPMAX][NET_MAX];
     int listen_fds[NET_MAX];
     /* banckend db engine handle for replication */
     void *handle_sibling;
