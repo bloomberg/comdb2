@@ -495,7 +495,7 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
             } else if (rectype == DB___txn_dist_commit) {
                 rc = __txn_dist_commit_read(bdb_state->dbenv, logdta.data,
                                           &argdist);
-                prevlsn = arggenp->prev_lsn;
+                prevlsn = argdist->prev_lsn;
                 free(logdta.data);
                 logdta.data = NULL;
                 rc = prevcur->get(prevcur, &prevlsn, &logdta, DB_SET);
