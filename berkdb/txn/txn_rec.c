@@ -77,112 +77,49 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 	db_recops op;
 	void *info;
 {
-    /* XXX TODO */
-    return 0;
-#if 0
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
-	__txn_dist_commit_args *argp;
+	__txn_dist_abort_args *argp;
 	int ret;
 
 #ifdef DEBUG_RECOVER
-	(void)__txn_dist_commit_print(dbenv, dbtp, lsnp, op, info);
+	(void)__txn_dist_abort_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
-	if ((ret = __txn_dist_commit_read(dbenv, dbtp->data, &argp)) != 0)
+	if ((ret = __txn_dist_abort_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
 
 	headp = info;
 	/*
-	 * We are only ever called during FORWARD_ROLL or BACKWARD_ROLL.
-	 * We check for the former explicitly and the last two clauses
-	 * apply to the BACKWARD_ROLL case.
+	 * We are only ever called during BACKWARD_ROLL.
 	 */
 
 	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
 		abort();
-		/* 
-		 * Don't bother resetting rep->committed_gen to the previous value: if we are undoing this,
-		 * then it wasn't replicated to a majority of the nodes.  We'll be writing a new commit 
-		 * history with logs that (potentially) were replicated to a majority of nodes.  
-		 */
 	} else if (op == DB_TXN_FORWARD_ROLL) {
-		/*
-		 * If this was a 2-phase-commit transaction, then it
-		 * might already have been removed from the list, and
-		 * that's OK.  Ignore the return code from remove.
-		 */
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		rep->committed_gen = argp->generation;
-        rep->committed_lsn = *lsnp;
-        if (argp->generation > rep->gen)
-            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	} else if ((dbenv->tx_timestamp != 0 &&
-		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
-	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
+		/* abort should never be called during forward roll */
+		abort();
+	} else if ((!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
-		/*
-		 * We failed either the timestamp check or the trunc_lsn check,
-		 * so we treat this as an abort even if it was a commit record.
-		 */
-		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, TXN_ABORT, NULL);
-
-		if (ret == TXN_IGNORE)
-			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
-			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
-		else if (ret != TXN_OK)
-			goto err;
-		/* else ret = 0; Not necessary because TXN_OK == 0 */
+		/* We are truncating to a point where we don't see the
+		 * abort record .. & possibly dont see prepare record either.
+		 * Ignore */
 	} else {
-		/* This is a normal commit; mark it appropriately. */
-		assert(op == DB_TXN_BACKWARD_ROLL);
-		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
-
-		if (ret == TXN_IGNORE)
-			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
-			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid,
-			    argp->opcode == TXN_ABORT ?
-			    TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK) {
-			__db_txnlist_update(dbenv,
-					info, argp->txnid->txnid, argp->opcode, lsnp);
-			goto err;
-		}
-		/* else ret = 0; Not necessary because TXN_OK == 0 */
+		__txn_recover_dist_abort(dbenv, argp->dist_txnid);
 	}
 
-    /* TODO */
 	if (ret == 0) {
-		if (argp->context)
-			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
-				DB___txn_dist_abort);
 		*lsnp = argp->prev_lsn;
 	}
 
-	if (0) {
-err:		__db_err(dbenv,
-		    "txnid %lx commit record found, already on commit list",
-		    (u_long) argp->txnid->txnid);
-		ret = EINVAL;
-	}
 	__os_free(dbenv, argp);
 
 	return (ret);
-#endif
 }
-
 
 
 /*
@@ -240,26 +177,26 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
-        rep->committed_lsn = *lsnp;
-        if (argp->generation > rep->gen)
-            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+		rep->committed_lsn = *lsnp;
+		if (argp->generation > rep->gen)
+			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
-	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
+		(!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 		/*
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
 		 */
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, TXN_ABORT, NULL);
+			info, argp->txnid->txnid, TXN_ABORT, NULL);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
+				info, argp->txnid->txnid, TXN_IGNORE, NULL);
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
@@ -267,19 +204,19 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
 		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
+			info, argp->txnid->txnid, argp->opcode, lsnp);
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND)
 			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid,
-			    argp->opcode == TXN_ABORT ?
-			    TXN_IGNORE : argp->opcode, lsnp);
+				info, argp->txnid->txnid,
+				argp->opcode == TXN_ABORT ?
+				TXN_IGNORE : argp->opcode, lsnp);
 		else if (ret != TXN_OK) {
 			__db_txnlist_update(dbenv,
 					info, argp->txnid->txnid, argp->opcode, lsnp);
-            abort();
+			abort();
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
@@ -294,8 +231,8 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 
 	if (0) {
 err:		__db_err(dbenv,
-		    "txnid %lx commit record found, already on commit list",
-		    (u_long) argp->txnid->txnid);
+			"txnid %lx commit record found, already on commit list",
+			(u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
 	__os_free(dbenv, argp);
@@ -320,9 +257,6 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	db_recops op;
 	void *info;
 {
-    /* XXX TODO */
-    return 0;
-#if 0
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
@@ -340,97 +274,27 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		return (ret);
 
 	headp = info;
-	/*
-	 * We are only ever called during FORWARD_ROLL or BACKWARD_ROLL.
-	 * We check for the former explicitly and the last two clauses
-	 * apply to the BACKWARD_ROLL case.
-	 */
 
 	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
 		abort();
-		/* 
-		 * Don't bother resetting rep->committed_gen to the previous value: if we are undoing this,
-		 * then it wasn't replicated to a majority of the nodes.  We'll be writing a new commit 
-		 * history with logs that (potentially) were replicated to a majority of nodes.  
-		 */
-	} else if (op == DB_TXN_FORWARD_ROLL) {
-		/*
-		 * If this was a 2-phase-commit transaction, then it
-		 * might already have been removed from the list, and
-		 * that's OK.  Ignore the return code from remove.
-		 */
-         /*
-		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		rep->committed_gen = argp->generation;
-        rep->committed_lsn = *lsnp;
-        if (argp->generation > rep->gen)
-            __rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-        */
-	} else if ((dbenv->tx_timestamp != 0 &&
-		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
-	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
+   	} else if (op == DB_TXN_FORWARD_ROLL) {
+		/* If we are here then we already know that this committed. */
+	} else if ((!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
-		/*
-		 * We failed either the timestamp check or the trunc_lsn check,
-		 * so we treat this as an abort even if it was a commit record.
-		 */
-/*
-		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, TXN_ABORT, NULL);
-
-		if (ret == TXN_IGNORE)
-			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
-			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
-		else if (ret != TXN_OK)
-			goto err;
-*/
-		/* else ret = 0; Not necessary because TXN_OK == 0 */
+		/* Backwards roll to a point before the prepare .. we can ignore */
 	} else {
-		/* This is a normal commit; mark it appropriately. */
-/*
-		assert(op == DB_TXN_BACKWARD_ROLL);
-		ret = __db_txnlist_update(dbenv,
-		    info, argp->txnid->txnid, argp->opcode, lsnp);
-
-		if (ret == TXN_IGNORE)
-			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
-			ret = __db_txnlist_add(dbenv,
-			    info, argp->txnid->txnid,
-			    argp->opcode == TXN_ABORT ?
-			    TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK) {
-			__db_txnlist_update(dbenv,
-					info, argp->txnid->txnid, argp->opcode, lsnp);
-			goto err;
-		}
-*/
-		/* else ret = 0; Not necessary because TXN_OK == 0 */
+		/* Either aborted or unresolved */
+		ret = __txn_recover_prepared(dbenv, argp->dist_txnid, lsnp, &argp->blkseq_key,
+			argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier);
 	}
 
 	if (ret == 0) {
-    /*
-		if (argp->context)
-			set_commit_context(argp->context, &(argp->generation), lsnp, argp,
-				DB___txn_regop_gen);
 		*lsnp = argp->prev_lsn;
-        */
 	}
 
-	if (0) {
-err:		__db_err(dbenv,
-		    "txnid %lx commit record found, already on commit list",
-		    (u_long) argp->txnid->txnid);
-		ret = EINVAL;
-	}
 	__os_free(dbenv, argp);
 
 	return (ret);
-#endif
 }
 
 

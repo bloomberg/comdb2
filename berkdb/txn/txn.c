@@ -297,7 +297,7 @@ __txn_begin_main(dbenv, parent, txnpp, flags, prop)
 	DB_ENV *dbenv;
 	DB_TXN *parent, **txnpp;
 	u_int32_t flags;
-    struct txn_properties *prop;
+	struct txn_properties *prop;
 {
 	DB_LOCKREGION *region;
 	DB_TXN *txn;
@@ -479,7 +479,7 @@ static void __txn_assert_notran(dbenv)
 {
 	if (txncnt > 0) {
 		logmsg(LOGMSG_FATAL, "%s td has open txns\n", __func__);
-        abort();
+		abort();
 	}
 }
 
@@ -500,7 +500,7 @@ int __txn_assert_notran_pp(dbenv)
 	__txn_assert_notran(dbenv);
 	if (rep_check)
 		__env_rep_exit(dbenv);
-    return 0;
+	return 0;
 }
 
 /*
@@ -705,8 +705,8 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 err:
 	R_UNLOCK(dbenv, &mgr->reginfo);
 	if (!recovery) {
-        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
-    }
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+	}
 	return (ret);
 }
 
@@ -1570,7 +1570,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	DBT *rlocks;
 	DB_LOCK *lks;
 	u_int32_t nrlocks;
-    u_int64_t *logbytes;
+	u_int64_t *logbytes;
 	DB_LSN *begin_lsn;
 	DB_LSN *lsn_out;
 	void *usr_ptr;
@@ -1695,7 +1695,7 @@ __txn_abort(txnp)
 
 	if (DBENV_LOGGING(dbenv) && F_ISSET(txnp, TXN_DIST_PREPARED)) {
 		if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
-			TXN_COMMIT, txnp->dist_txnid, &txnp->blkseq_key) != 0))
+			TXN_COMMIT, txnp->dist_txnid) != 0))
 			return (__db_panic(dbenv, ret));
 	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
@@ -2546,7 +2546,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	}
 
 do_ckp:	
-    dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
+	dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
 
 	/* Retrieve lsn again after locking */
 	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
@@ -2583,7 +2583,7 @@ do_ckp:
 		__db_err(dbenv,
 			"txn_checkpoint: failed to flush the buffer cache %s",
 			db_strerror(ret));
-        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		return (ret);
 	}
 
@@ -2629,7 +2629,7 @@ do_ckp:
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
 		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
-            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return (0);
 		}
 
@@ -2653,7 +2653,7 @@ do_ckp:
 		if (ret) {
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return ret;
 		}
 
@@ -2693,7 +2693,7 @@ do_ckp:
 				db_strerror(ret));
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return (ret);
 		}
 		Pthread_rwlock_unlock(&dbenv->dbreglk);
@@ -2721,7 +2721,7 @@ do_ckp:
 			logmsg(LOGMSG_ERROR, 
 				"%s: failed to push to checkpoint list, ret %d\n",
 				__func__, ret);
-            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return ret;
 		}
 
@@ -2729,7 +2729,7 @@ do_ckp:
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
-    dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+	dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	return (ret);
 }
 

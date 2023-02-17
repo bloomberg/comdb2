@@ -87,7 +87,7 @@ __txn_closeevent(dbenv, txn, dbp)
  * Creates a remove event that can be added to the commit list.
  *
  * PUBLIC: int __txn_remevent __P((DB_ENV *,
- * PUBLIC:       DB_TXN *, const char *, u_int8_t*));
+ * PUBLIC:	   DB_TXN *, const char *, u_int8_t*));
  */
 int
 __txn_remevent(dbenv, txn, name, fileid)
@@ -108,7 +108,7 @@ __txn_remevent(dbenv, txn, name, fileid)
 
 	if (fileid != NULL) {
 		if ((ret = __os_calloc(dbenv,
-		    1, DB_FILE_ID_LEN, &e->u.r.fileid)) != 0)
+			1, DB_FILE_ID_LEN, &e->u.r.fileid)) != 0)
 			return (ret);
 		memcpy(e->u.r.fileid, fileid, DB_FILE_ID_LEN);
 	}
@@ -159,7 +159,7 @@ __txn_remrem(dbenv, txn, name)
  * trade.
  *
  * PUBLIC: int __txn_lockevent __P((DB_ENV *,
- * PUBLIC:     DB_TXN *, DB *, DB_LOCK *, u_int32_t));
+ * PUBLIC:	 DB_TXN *, DB *, DB_LOCK *, u_int32_t));
  */
 int
 __txn_lockevent(dbenv, txn, dbp, lock, locker)
@@ -207,7 +207,7 @@ __txn_remlock(dbenv, txn, lock, locker)
 	for (e = TAILQ_FIRST(&txn->events); e != NULL; e = next_e) {
 		next_e = TAILQ_NEXT(e, links);
 		if ((e->op != TXN_TRADE && e->op != TXN_TRADED) ||
-		    (e->u.t.lock.off != lock->off && e->u.t.locker != locker))
+			(e->u.t.lock.off != lock->off && e->u.t.locker != locker))
 			continue;
 		TAILQ_REMOVE(&txn->events, e, links);
 		__os_free(dbenv, e);
@@ -258,7 +258,7 @@ __txn_doevents(dbenv, txn, opcode, preprocess)
 	 */
 	if (preprocess) {
 		for (e = TAILQ_FIRST(&txn->events);
-		    e != NULL; e = TAILQ_NEXT(e, links)) {
+			e != NULL; e = TAILQ_NEXT(e, links)) {
 			if (e->op != TXN_TRADE)
 				continue;
 			DO_TRADE;
@@ -287,17 +287,17 @@ __txn_doevents(dbenv, txn, opcode, preprocess)
 			/* If we didn't abort this txn, we screwed up badly. */
 			DB_ASSERT(opcode == TXN_ABORT);
 			if ((t_ret =
-			    __db_close(e->u.c.dbp, NULL, 0)) != 0 && ret == 0)
+				__db_close(e->u.c.dbp, NULL, 0)) != 0 && ret == 0)
 				ret = t_ret;
 			break;
 		case TXN_REMOVE:
 			if (e->u.r.fileid != NULL) {
 				if ((t_ret = __memp_nameop(dbenv,
-				    e->u.r.fileid,
-				    NULL, e->u.r.name, NULL)) != 0 && ret == 0)
+					e->u.r.fileid,
+					NULL, e->u.r.name, NULL)) != 0 && ret == 0)
 					ret = t_ret;
 			} else if ((t_ret =
-			    __os_unlink(dbenv, e->u.r.name)) != 0 && ret == 0)
+				__os_unlink(dbenv, e->u.r.name)) != 0 && ret == 0)
 				ret = t_ret;
 			break;
 		case TXN_TRADE:
@@ -306,7 +306,7 @@ __txn_doevents(dbenv, txn, opcode, preprocess)
 		case TXN_TRADED:
 			/* Downgrade the lock. */
 			if ((t_ret = __lock_downgrade(dbenv,
-			    &e->u.t.lock, DB_LOCK_READ, 0)) != 0 && ret == 0)
+				&e->u.t.lock, DB_LOCK_READ, 0)) != 0 && ret == 0)
 				ret = t_ret;
 			break;
 		default:
@@ -333,7 +333,7 @@ dofree:
 
 static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 {
-	assert(p->is_prepared == 0);
+	assert(!F_ISSET(p, DB_DIST_HAVELOCKS));
 	if (p->blkseq_key.data != NULL)
 		__os_free(dbenv, p->blkseq_key.data);
 	if (p->coordinator_name.data != NULL)
@@ -348,12 +348,45 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 }
 
 /*
+ * __txn_recover_dist_abort --
+ *
+ * Add dist_txn to prepared-txn hash as an aborted txn.  No need to handle 
+ * dist-commits: they will be rolled forward.  TODO: add the blkseq key.
+ *
+ * PUBLIC: int __txn_recover_dist_abort __P((DB_ENV *, u_int64_t dist_txnid));
+ */
+int __txn_recover_dist_abort(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	int ret;
+	DB_TXN_PREPARED *p, *fnd;
+
+	if ((ret = __os_calloc(dbenv, 1, sizeof(DB_TXN_PREPARED), &p)) != 0) {
+		return (ret);
+	}
+
+	p->dist_txnid = dist_txnid;
+	F_SET(p, DB_DIST_ABORTED);
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((fnd = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		logmsg(LOGMSG_FATAL, "Recovery found multiple prepared records with dist-txnid %"PRIu64"\n",
+			dist_txnid);
+		abort();
+	}
+	hash_add(dbenv->prepared_txn_hash, p);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return 0;
+}
+
+/*
  * __txn_recover_prepared --
  *
- * Collect prepared transactions during recovery's forward-pass (openfiles).
+ * Collect prepared transactions during recovery's backward-pass.  We should
+ * only run this for aborted and unresolved dist-txns.
  *
  * PUBLIC: int __txn_recover_prepared __P((DB_ENV *,
- * PUBLIC:     u_int64_t, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
+ * PUBLIC:	  u_int64_t, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
  */
 int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_gen,
 		coordinator_name, coordinator_tier)
@@ -367,6 +400,22 @@ int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_
 {
 	int ret;
 	DB_TXN_PREPARED *p, *fnd;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		if(!F_ISSET(p, DB_DIST_ABORTED)) {
+			logmsg(LOGMSG_FATAL, "Non-aborted prepared record, dist-txnid %"PRIu64"\n",
+				dist_txnid);
+			abort();
+		}
+		hash_del(dbenv->prepared_txn_hash, p);
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	if (p) {
+		/* This is the 'aborted' case: TODO write dist-abort blkseq  */
+		__free_prepared_txn(dbenv, p);
+		return (0);
+	}
 
 	if ((ret = __os_calloc(dbenv, 1, sizeof(DB_TXN_PREPARED), &p)) != 0) {
 		return (ret);
@@ -428,7 +477,7 @@ static int __free_prepared(void *obj, void *arg)
  *
  * Clear all prepared transactions
  *
- * PUBLIC: int __txn_recover_prepared __P((DB_ENV *));
+ * PUBLIC: int __txn_clear_all_prepared __P((DB_ENV *));
  */
 int __txn_clear_all_prepared(dbenv)
 	DB_ENV *dbenv;
@@ -443,9 +492,10 @@ int __txn_clear_all_prepared(dbenv)
 /* 
  * __txn_clear_prepared --
  *
- * Remove a prepared transaction, optionally update it's blkseq 
+ * Remove a prepared transaction, optionally update it's blkseq.  Called
+ * When we recover a dist_abort record.
  *
- * PUBLIC: int __txn_clear_prepared __P((DB_ENV *, u_int64_t, int ));
+ * PUBLIC: int __txn_clear_prepared __P((DB_ENV *, u_int64_t, int));
  */
 int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
 	DB_ENV *dbenv;
@@ -460,15 +510,14 @@ int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 
 	if (p == NULL) {
-		logmsg(LOGMSG_INFO, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
+		logmsg(LOGMSG_DEBUG, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
 		return -1;
 	}
 
-	/* TODO */
 	if (update_blkseq) {
 	}
-	__free_prepared_txn(dbenv, p);
 
+	__free_prepared_txn(dbenv, p);
 	return 0;
 }
 
@@ -481,7 +530,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	DB_TXN *txnp = NULL;
 	int ret;
 
-	assert(p->is_prepared == 0);
+	assert(!F_ISSET(p, DB_DIST_HAVELOCKS));
 
 	if ((ret = __log_c_get(logc, &p->prepare_lsn, &dbt, DB_SET)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s error %d retrieving prepare record at %d:%d\n",
@@ -515,7 +564,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	/* TODO: consider collecting & storing lc-colleciton in prepared-txn */
 	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
 		wrlock_schema_lk(); 
-		p->have_schema_lock = 1;
+		F_SET(p, DB_DIST_SCHEMA_LK);
 	}
 
 	/* Acquire locks/pglogs from prepare record */
@@ -529,12 +578,11 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 
 	p->txnp = txnp;
 	p->prev_lsn = prepare->prev_lsn;
-    txnp->last_lsn = p->prepare_lsn;
-	p->is_prepared = 1;
+	txnp->last_lsn = p->prepare_lsn;
+	F_SET(p, DB_DIST_HAVELOCKS);
 
 	__os_free(dbenv, prepare);
 	__os_free(dbenv, dbt.data);
-
 	return 0;
 }
 
@@ -543,6 +591,44 @@ static int __upgrade_prepared(void *obj, void *arg)
 	DB_LOGC *logc = (DB_LOGC *)arg;
 	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
 	__upgrade_prepared_txn(logc->dbenv, logc, p);
+	return 0;
+}
+
+static int __downgrade_prepared(void *obj, void *arg)
+{
+	DB_ENV *dbenv = (DB_ENV *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
+	int ret;
+
+	assert(F_ISSET(p, DB_DIST_HAVELOCKS));
+
+	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+		p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+	F_CLR(p, DB_DIST_HAVELOCKS);
+	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
+		unlock_schema_lk();
+		F_CLR(p, DB_DIST_SCHEMA_LK);
+	}
+	return 0;
+}
+
+/* 
+ * __txn_downgrade_all_prepared --
+ *
+ * Release locks for all prepared txns.
+ *
+ * PUBLIC: int __txn_downgrade_all_prepared __P((DB_ENV *));
+ */
+int __txn_downgrade_all_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __downgrade_prepared, dbenv);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
 
@@ -585,7 +671,7 @@ int __txn_abort_prepared(dbenv, dist_txnid)
 	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
-		if (!p->is_prepared) {
+		if (!F_ISSET(p, DB_DIST_HAVELOCKS)) {
 			logmsg(LOGMSG_INFO, "%s unable to abort unprepared dist-txn %"PRIu64"\n", __func__, dist_txnid);
 			p = NULL;
 		} else {
@@ -598,12 +684,11 @@ int __txn_abort_prepared(dbenv, dist_txnid)
 		return -1;
 	}
 
-	if ((ret = __txn_dist_abort_log(dbenv, p->txnp, &p->txnp->last_lsn, 0, TXN_COMMIT, p->dist_txnid,
-            &p->blkseq_key)) != 0) {
+	if ((ret = __txn_dist_abort_log(dbenv, p->txnp, &p->txnp->last_lsn, 0, TXN_COMMIT, p->dist_txnid)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error writing dist-abort for txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
 			p->prev_lsn.file, p->prev_lsn.offset);
 		abort();
-    }
+	}
 
 	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
 
@@ -613,9 +698,12 @@ int __txn_abort_prepared(dbenv, dist_txnid)
 		abort();
 	}
 
-	p->is_prepared = 0;
+	F_CLR(p, DB_DIST_HAVELOCKS);
+	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
+		unlock_schema_lk();
+		F_CLR(p, DB_DIST_SCHEMA_LK);
+	}
 	__free_prepared_txn(dbenv, p);
-
 	return 0;
 }
 
@@ -626,6 +714,45 @@ extern int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 
 extern int __rep_lsn_cmp __P((const void *, const void *));
 
+int __txn_discard_prepared(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	DB_TXN_PREPARED *p;
+	int ret;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
+		if (!F_ISSET(p, DB_DIST_HAVELOCKS)) {
+			logmsg(LOGMSG_INFO, "%s unable to commit unprepared dist-txn %"PRIu64"\n", __func__, dist_txnid);
+			p = NULL;
+		} else {
+			hash_del(dbenv->prepared_txn_hash, p);
+		}
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	if (p == NULL) {
+		logmsg(LOGMSG_INFO, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
+		return -1;
+	}
+
+	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
+
+	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
+		p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	F_CLR(p, DB_DIST_HAVELOCKS);
+	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
+		unlock_schema_lk();
+		F_CLR(p, DB_DIST_SCHEMA_LK);
+	}
+
+	__free_prepared_txn(dbenv, p);
+	return 0;
+}
+
 int __txn_commit_prepared(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
@@ -633,7 +760,7 @@ int __txn_commit_prepared(dbenv, dist_txnid)
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
-		if (!p->is_prepared) {
+		if (!F_ISSET(p, DB_DIST_HAVELOCKS)) {
 			logmsg(LOGMSG_INFO, "%s unable to commit unprepared dist-txn %"PRIu64"\n", __func__, dist_txnid);
 			p = NULL;
 		} else {
@@ -729,7 +856,13 @@ int __txn_commit_prepared(dbenv, dist_txnid)
 		p->prepare_lsn.file, p->prepare_lsn.offset);
 		abort();
 	}
-	p->is_prepared = 0;
+	F_CLR(p, DB_DIST_HAVELOCKS);
+
+	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
+		unlock_schema_lk();
+		F_CLR(p, DB_DIST_SCHEMA_LK);
+	}
+
 	__free_prepared_txn(dbenv, p);
 	return 0;
 }

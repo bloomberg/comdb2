@@ -143,6 +143,7 @@ __txn_dbenv_create(dbenv)
 		dbenv->set_logical_start = __txn_set_logical_start;
 		dbenv->set_logical_commit = __txn_set_logical_commit;
 		dbenv->txn_begin_with_prop = __txn_begin_with_prop_pp;
+		dbenv->collect_prepared = __txn_prepared_collect_pp;
 	}
 
 	/* If we lazily initialize the key in __txn_begin(), Operations outside
