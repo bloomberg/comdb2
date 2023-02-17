@@ -1205,6 +1205,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 									txnp, lsn_out, &context, lflags,
 									TXN_COMMIT, txnp->dist_txnid, gen,
 									timestamp, usr_ptr);
+						if ((ret = __txn_discard_prepared(dbenv, txnp->dist_txnid)) != 0) {
+							abort();
+						}
 					} else {
 						ret =
 							__txn_regop_rowlocks_log(dbenv,
@@ -1257,6 +1260,10 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							TXN_COMMIT, &tp->begin_lsn, txnp->dist_txnid, ltranflags,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
+						if ((ret = __txn_master_prepared(dbenv, txnp->dist_txnid, &txnp->last_lsn,
+							&txnp->blkseq_key, txnp->coordinator_gen, &coordinator, &tier))!=0) {
+							abort();
+						}
 					} else if (elect_highest_committed_gen) {
 
 						MUTEX_LOCK(dbenv,
@@ -1270,6 +1277,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 									&txnp->last_lsn, &context, lflags,
 									TXN_COMMIT, txnp->dist_txnid, gen,
 									timestamp, usr_ptr);
+							if ((ret = __txn_discard_prepared(dbenv, txnp->dist_txnid)) != 0) {
+								abort();
+							}
 						} else {
 							ret =
 								__txn_regop_gen_log(dbenv,
@@ -1696,6 +1706,8 @@ __txn_abort(txnp)
 	if (DBENV_LOGGING(dbenv) && F_ISSET(txnp, TXN_DIST_PREPARED)) {
 		if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
 			TXN_COMMIT, txnp->dist_txnid) != 0))
+			return (__db_panic(dbenv, ret));
+		if ((ret = __txn_discard_prepared(dbenv, txnp->dist_txnid)) != 0)
 			return (__db_panic(dbenv, ret));
 	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
@@ -2368,6 +2380,82 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 }
 
 /*
+ * __txn_commit_prepared_pp --
+ *	DB_ENV->txn_dist_commit pre/post processing.
+ *
+ * PUBLIC: int __txn_commit_prepared_pp
+ * PUBLIC:	 __P((DB_ENV *, u_int64_t));
+ */
+ int
+ __txn_commit_prepared_pp(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	int rep_check, ret;
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (IS_REP_CLIENT(dbenv))
+		return (0);
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __txn_commit_prepared(dbenv, dist_txnid);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+/*
+ * __txn_abort_prepared_pp --
+ *	DB_ENV->txn_dist_abort pre/post processing.
+ *
+ * PUBLIC: int __txn_abort_prepared_pp
+ * PUBLIC:	 __P((DB_ENV *, u_int64_t));
+ */
+int
+ __txn_abort_prepared_pp(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	int rep_check, ret;
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (IS_REP_CLIENT(dbenv))
+		return (0);
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __txn_abort_prepared(dbenv, dist_txnid);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+/*
+ * __txn_discard_prepared_pp --
+ *	DB_ENV->txn_dist_discard pre/post processing.
+ *
+ * PUBLIC: int __txn_discard_prepared_pp
+ * PUBLIC:	 __P((DB_ENV *, u_int64_t));
+ */
+int
+ __txn_discard_prepared_pp(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	int rep_check, ret;
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (IS_REP_CLIENT(dbenv))
+		return (0);
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __txn_discard_prepared(dbenv, dist_txnid);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return (ret);
+}
+
+
+/*
  * __txn_checkpoint_pp --
  *	DB_ENV->txn_checkpoint pre/post processing.
  *
@@ -2380,8 +2468,6 @@ __txn_checkpoint_pp(dbenv, kbytes, minutes, flags)
 	u_int32_t kbytes, minutes, flags;
 {
 	int rep_check, ret;
-
-
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,

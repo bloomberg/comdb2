@@ -31,7 +31,8 @@ static sqlite3_module systblPreparedModule = {
 
 typedef struct systable_prepared {
     int64_t dist_txnid;
-    uint32_t flags;
+    //uint32_t flags;
+    char *flags;
     char *lsn;
     uint32_t coordinator_gen;
     char *coordinator_name;
@@ -50,6 +51,38 @@ static inline void prepared_lsn_to_str(char *st, DB_LSN *lsn)
     sprintf(st, "{%d:%d}", lsn->file, lsn->offset);
 }
 
+static inline char *dist_flags_to_str(uint32_t flags)
+{
+    char *r = (char *)calloc(128, 1);
+    int first = 0;
+    if (flags & DB_DIST_INFLIGHT) {
+        if (first) strcat(r, "|");
+        strcat(r, "INFLIGHT");
+        first = 1;
+    }
+    if (flags & DB_DIST_RECOVERED) {
+        if (first) strcat(r, "|");
+        strcat(r, "RECOVERED");
+        first = 1;
+    }
+    if (flags & DB_DIST_HAVELOCKS) {
+        if (first) strcat(r, "|");
+        strcat(r, "HAVELOCKS");
+        first = 1;
+    }
+    if (flags & DB_DIST_ABORTED) {
+        if (first) strcat(r, "|");
+        strcat(r, "ABORTED");
+        first = 1;
+    }
+    if (flags & DB_DIST_SCHEMA_LK) {
+        if (first) strcat(r, "|");
+        strcat(r, "SCHEMA_LK");
+        first = 1;
+    }
+    return r;
+}
+
 static int collect_prepared(void *args, uint64_t dist_txnid, uint32_t flags, DB_LSN *lsn, 
     uint32_t coordinator_gen, char *coordinator_name, char *coordinator_tier, uint32_t txnid)
 {
@@ -63,12 +96,13 @@ static int collect_prepared(void *args, uint64_t dist_txnid, uint32_t flags, DB_
     }
     r = &p->records[p->count - 1];
     r->dist_txnid = dist_txnid;
-    r->flags = flags;
+    r->flags = dist_flags_to_str(flags);
     r->lsn = (char *)calloc(32, 1);
     prepared_lsn_to_str(r->lsn, lsn);
     r->coordinator_gen = coordinator_gen;
     r->coordinator_name = strdup(coordinator_name);
     r->coordinator_tier = strdup(coordinator_tier);
+    r->txnid = txnid;
     return 0;
 }
 
@@ -87,6 +121,7 @@ static void free_prepared(void *p, int n)
     systable_prepared_t *a, *begin = p;
     systable_prepared_t *end = begin + n;
     for (a = begin; a < end; ++a) {
+        free(a->flags);
         free(a->lsn);
         free(a->coordinator_name);
         free(a->coordinator_tier);
@@ -99,7 +134,8 @@ int systblPreparedInit(sqlite3 *db)
     return create_system_table(db, "comdb2_dist_prepared", &systblPreparedModule,
         get_prepared, free_prepared, sizeof(systable_prepared_t),
         CDB2_INTEGER, "dist_txnid", -1, offsetof(systable_prepared_t, dist_txnid),
-        CDB2_INTEGER, "flags", -1, offsetof(systable_prepared_t, flags),
+        CDB2_INTEGER, "txnid", -1, offsetof(systable_prepared_t, txnid),
+        CDB2_CSTRING, "flags", -1, offsetof(systable_prepared_t, flags),
         CDB2_CSTRING, "prepare_lsn", -1, offsetof(systable_prepared_t, lsn),
         CDB2_CSTRING, "coordinator_name", -1, offsetof(systable_prepared_t, coordinator_name),
         CDB2_CSTRING, "coordinator_tier", -1, offsetof(systable_prepared_t, coordinator_tier),

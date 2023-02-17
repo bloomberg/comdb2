@@ -1444,7 +1444,25 @@ static int update_logical_redo_lsn(void *obj, void *arg)
 }
 
 int gbl_random_prepare_commit = 0;
-int gbl_all_prepare_commit = 1;
+int gbl_all_prepare_commit = 0;
+int gbl_all_prepare_abort = 0;
+int gbl_all_prepare_leak = 0;
+
+static inline int debug_should_prepare()
+{
+    return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak ||
+           (gbl_random_prepare_commit && rand()%2);
+}
+
+static inline int debug_prepared_should_commit()
+{
+    return (!gbl_all_prepare_leak && !gbl_all_prepare_abort);
+}
+
+static inline int debug_prepared_should_abort()
+{
+    return gbl_all_prepare_abort;
+}
 
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                                     seqnum_type *seqnum, int *bdberr,
@@ -1588,17 +1606,27 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
+        int prepared = 0;
 
-        if (tran->tid->parent == NULL && (gbl_all_prepare_commit || (gbl_random_prepare_commit && rand()%2))) {
-            int prepare_rc = tran->tid->dist_prepare(tran->tid, 1234567890, "test-coordinator",
+        if (tran->tid->parent == NULL && debug_should_prepare())
+        {
+            u_int64_t dist_txnid = get_genid(bdb_state, 0);
+            int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, "test-coordinator",
                     "test-tier", rand() % 100, NULL, flags);
             if (prepare_rc) {
                 abort();
             }
-            rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
-        } else {
-            rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+            prepared = 1;
         }
+        if (!prepared || debug_prepared_should_commit())
+        {
+            rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
+        } 
+        else if (prepared && debug_prepared_should_abort()) 
+        {
+            rc = tran->tid->abort(tran->tid);
+        }
+
         bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 

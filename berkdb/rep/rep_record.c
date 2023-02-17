@@ -144,7 +144,8 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 
 #define	IS_SIMPLE(R)	((R) != DB___txn_regop && (R) != DB___txn_xa_regop && \
 	(R) != DB___txn_regop_rowlocks && (R) != DB___txn_regop_gen && \
-	(R) != DB___txn_dist_commit && DB___txn_ckp && (R) != DB___dbreg_register)
+	(R) != DB___txn_dist_commit && DB___txn_ckp && (R) != DB___dbreg_register && \
+    (R) != DB___txn_dist_prepare && (R) != DB___txn_dist_abort)
 
 int gbl_rep_process_msg_print_rc;
 
@@ -2918,6 +2919,8 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 {
 	__dbreg_register_args dbreg_args;
 	__txn_ckp_args *ckp_args = NULL;
+	__txn_dist_prepare_args *dist_prepare_args = NULL;
+	__txn_dist_abort_args *dist_abort_args = NULL;
 	static int count_in_func = 0;
 	DB_REP *db_rep;
 	DBT control_dbt, key_dbt, lsn_dbt;
@@ -3543,6 +3546,28 @@ gap_check:		max_lsn_dbtp = NULL;
 	 * we need to process.
 	 */
 	switch (rectype) {
+	case DB___txn_dist_prepare:
+		if ((ret = __txn_dist_prepare_read(dbenv, rec->data, &dist_prepare_args)) != 0) {
+			goto err;
+		}
+		if ((ret = __txn_recover_prepared(dbenv, dist_prepare_args->dist_txnid, &rp->lsn,
+			&dist_prepare_args->blkseq_key, dist_prepare_args->coordinator_gen,
+			&dist_prepare_args->coordinator_name, &dist_prepare_args->coordinator_tier)) != 0) {
+			goto err;
+		}
+		__os_free(dbenv, dist_prepare_args);
+		dist_prepare_args = NULL;
+		break;
+	case DB___txn_dist_abort:
+		if ((ret = __txn_dist_abort_read(dbenv, rec->data, &dist_abort_args)) != 0) {
+			goto err;
+		}
+		if ((ret = __txn_abort_prepared(dbenv, dist_abort_args->dist_txnid)) != 0) {
+			goto err;
+		}
+		__os_free(dbenv, dist_abort_args);
+		dist_abort_args = NULL;
+		break;
 	case DB___dbreg_register:
 		/*
 		 * DB opens occur in the context of a transaction, so we can
@@ -4571,6 +4596,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	u_int32_t rectype;
 	int i, ret, t_ret, line = 0;
 	u_int32_t txnid = 0;
+    u_int64_t dist_txnid = 0;
 	int got_txns = 0, free_lc = 0;
 	void *txninfo;
 	unsigned long long context = 0;
@@ -4756,6 +4782,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			   we got the schemalk already- we should release it. */
 			release_schema_lock = 1;
 		}
+        dist_txnid = txn_dist_commit_args->dist_txnid;
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -4940,6 +4967,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		}
 	}
 
+	if (dist_txnid && (ret = __txn_discard_prepared(dbenv, dist_txnid)) != 0) {
+		abort();
+	}
 
 #ifndef NDEBUG
 	if (txn_rl_args) {
@@ -5315,7 +5345,8 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 {
 	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
 	int32_t timestamp = 0;
-    int collect_before_locking = gbl_collect_before_locking;
+	u_int64_t dist_txnid = 0;
+	int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
 	DB_REP *db_rep;
@@ -5553,7 +5584,7 @@ bad_resize:	;
 		rp->context = txn_dist_commit_args->context;
 
 		txnid = txn_dist_commit_args->txnid->txnid;
-        rp->ltrans = NULL;
+		rp->ltrans = NULL;
 
 		prev_lsn = txn_dist_commit_args->prev_lsn;
 		u_int32_t lflags = 0;
@@ -5571,6 +5602,7 @@ bad_resize:	;
 		if (lflags & DB_TXN_SCHEMA_LOCK) {
 			get_schema_lk = 1;
 		}
+		dist_txnid = txn_dist_commit_args->dist_txnid;
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -5805,6 +5837,10 @@ bad_resize:	;
 		return ret;
 	}
 	gbl_rep_trans_parallel++;
+
+	if (dist_txnid && (ret = __txn_discard_prepared(dbenv, txn_dist_commit_args->dist_txnid)) != 0) {
+		abort();
+	}
 
 	rp->lockid = lockid;
 
@@ -6693,6 +6729,16 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 			return -1;
 		}
 		truncate_count++;
+	}
+
+	if ((ret = __txn_clear_all_prepared(dbenv)) != 0) {
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		logmsg(LOGMSG_ERROR, "%s error clearing prepared txns\n", __func__);
+		if (i_am_master) {
+			truncate_count--;
+			assert(truncate_count == 0);
+		}
+		return (ret);
 	}
 
 	/* Figure out if we are backing out any commited transactions. */
@@ -7931,7 +7977,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 	done = rp->lsn.file == lp->lsn.file &&
 		rp->lsn.offset + lp->len == lp->lsn.offset;
-	if (done && dbenv->attr.always_run_recovery) {
+	/* Always need to run recovery to acquire prepared-txn list */
+	if (1 || (done && dbenv->attr.always_run_recovery)) {
 		ctrace("Wasn't going to run recovery, but running anyway\n");
 		done = 0;
 	}

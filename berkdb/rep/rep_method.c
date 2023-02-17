@@ -303,9 +303,9 @@ __rep_start(dbenv, dbt, gen, flags)
 				snprintf(cmd, sizeof(cmd), "pstack %d", (int)pid);
 				int rc = system(cmd);
 				if (rc == -1)
-                    logmsg(LOGMSG_ERROR,
-                           "ERROR: %s:%d system() returns rc = %d\n",
-                           __FILE__,__LINE__, rc);
+					logmsg(LOGMSG_ERROR,
+						   "ERROR: %s:%d system() returns rc = %d\n",
+						   __FILE__,__LINE__, rc);
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -333,8 +333,8 @@ __rep_start(dbenv, dbt, gen, flags)
 			 * we become a client and the original master
 			 * that opened them becomes a master again.
 			 */
-            if (!gbl_is_physical_replicant && ((ret = __rep_preclose(dbenv, 1)) != 0))
-                goto errunlock;
+			if (!gbl_is_physical_replicant && ((ret = __rep_preclose(dbenv, 1)) != 0))
+				goto errunlock;
 		}
 
 		redo_prepared = 0;
@@ -402,10 +402,10 @@ __rep_start(dbenv, dbt, gen, flags)
 		 * We need to perform all actions below no master what
 		 * regarding errors.
 		 */
-        logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
-                __func__, __LINE__);
+		logmsg(LOGMSG_DEBUG, "%s line %d sending REP_NEWMASTER\n", 
+				__func__, __LINE__);
 		(void)__rep_send_message(dbenv,
-		    db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, NULL);
+			db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 		ret = 0;
 		if (role_chg) {
 			ret = __txn_reset(dbenv);
@@ -413,20 +413,24 @@ __rep_start(dbenv, dbt, gen, flags)
 			F_CLR(rep, REP_F_READY);
 			rep->in_recovery = 0;
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+			//ret = __txn_upgrade_all_prepared(dbenv);
 		}
 		/*
 		 * Take a transaction checkpoint so that our new generation
 		 * number get written to the log.
 		 */
-        if (!gbl_is_physical_replicant)
-        {
-            if ((t_ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0 &&
-                    ret == 0)
-                ret = t_ret;
-            if (redo_prepared &&
-                    (t_ret = __rep_restore_prepared(dbenv)) != 0 && ret == 0)
-                ret = t_ret;
-        }
+		if (!gbl_is_physical_replicant)
+		{
+			if ((t_ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0 &&
+					ret == 0)
+				ret = t_ret;
+			if (redo_prepared) {
+				if ((t_ret = __txn_upgrade_all_prepared(dbenv)) != 0 && ret == 0)
+					ret = t_ret;
+				if ((t_ret = __rep_restore_prepared(dbenv)) != 0 && ret == 0)
+					ret = t_ret;
+			}
+		}
 	} else {
 		init_db = 0;
 		announce = role_chg || rep->master_id == db_eid_invalid;
@@ -449,7 +453,7 @@ __rep_start(dbenv, dbt, gen, flags)
 
 		rep->flags = repflags;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-        Pthread_mutex_unlock(&rep_candidate_lock);
+		Pthread_mutex_unlock(&rep_candidate_lock);
 
 		/*
 		 * Abort any prepared transactions that were restored
@@ -460,6 +464,9 @@ __rep_start(dbenv, dbt, gen, flags)
 		 * records come in.  Aborts will simply be ignored.
 		 */
 		if ((ret = __rep_abort_prepared(dbenv)) != 0)
+			goto errlock;
+
+		if ((ret = __txn_downgrade_and_free_all_prepared(dbenv)) != 0)
 			goto errlock;
 
 		if ((ret = __rep_client_dbinit(dbenv, init_db)) != 0)

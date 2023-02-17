@@ -340,6 +340,8 @@ int comdb2SystblInit(
     rc = systblTransactionStateInit(db);
   if (rc == SQLITE_OK)  
     rc = systblStacks(db);
+  if (rc == SQLITE_OK)  
+    rc = systblPreparedInit(db);
 #endif
   return rc;
 }
