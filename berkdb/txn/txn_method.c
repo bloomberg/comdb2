@@ -144,6 +144,9 @@ __txn_dbenv_create(dbenv)
 		dbenv->set_logical_commit = __txn_set_logical_commit;
 		dbenv->txn_begin_with_prop = __txn_begin_with_prop_pp;
 		dbenv->collect_prepared = __txn_prepared_collect_pp;
+        dbenv->txn_dist_commit = __txn_commit_prepared_pp;
+        dbenv->txn_dist_abort = __txn_abort_prepared_pp;
+        dbenv->txn_dist_discard = __txn_discard_prepared_pp;
 	}
 
 	/* If we lazily initialize the key in __txn_begin(), Operations outside

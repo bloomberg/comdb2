@@ -5877,7 +5877,9 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
-    bdb_assert_notran(thedb->bdb_env);
+    extern int gbl_all_prepare_leak;
+    if (!gbl_all_prepare_leak)
+        bdb_assert_notran(thedb->bdb_env);
 
     if (rc == 0) {
         osql_postcommit_handle(iq);

@@ -3244,6 +3244,22 @@ clipper_usage:
             thdpool_process_message(gbl_verify_thdpool, line, lline, st);
         else
             logmsg(LOGMSG_WARN, "verifypool is not initialized\n");
+    } else if (tokcmp(tok, ltok, "disttxn") == 0) {
+        uint64_t dist_txnid = 0;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 0) {
+            dist_txnid = toknumull(tok, ltok);
+        }
+        tok = segtok(line, lline, &st, &ltok);
+        if ((tokcmp(tok, ltok, "commit") == 0) && dist_txnid) {
+            dbenv->bdb_env->dbenv->txn_dist_commit(dbenv->bdb_env->dbenv, dist_txnid);
+        } else if ((tokcmp(tok, ltok, "abort") == 0) && dist_txnid) {
+            dbenv->bdb_env->dbenv->txn_dist_abort(dbenv->bdb_env->dbenv, dist_txnid);
+        } else if ((tokcmp(tok, ltok, "discard") == 0) && dist_txnid) {
+            dbenv->bdb_env->dbenv->txn_dist_discard(dbenv->bdb_env->dbenv, dist_txnid);
+        } else {
+            logmsg(LOGMSG_ERROR, "Expected <dist-txnid> 'commit', 'abort', or 'discard'\n");
+        }
     } else if (tokcmp(tok, ltok, "oldestgenids") == 0) {
         int i, stripe;
         void *buf = malloc(64 * 1024);

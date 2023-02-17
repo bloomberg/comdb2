@@ -1097,14 +1097,16 @@ struct __db_txn {
 };
 
 typedef enum {
-	DB_DIST_HAVELOCKS = 0x00000001,
-	DB_DIST_ABORTED = 0x00000002,
-    DB_DIST_SCHEMA_LK = 0x00000004
+	DB_DIST_HAVELOCKS   = 0x00000001,
+	DB_DIST_ABORTED		= 0x00000002,
+	DB_DIST_SCHEMA_LK   = 0x00000004,
+	DB_DIST_INFLIGHT	= 0x00000008,
+	DB_DIST_RECOVERED   = 0x00000010
 } db_dist_state;
 
 struct __db_txn_prepared {
 	u_int64_t dist_txnid;
-    u_int32_t flags;
+	u_int32_t flags;
 	DB_LSN prepare_lsn;
 	DB_LSN prev_lsn;
 	DBT blkseq_key;
@@ -2569,6 +2571,9 @@ struct __db_env {
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
 	int  (*txn_stat) __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
+	int  (*txn_dist_commit) __P((DB_ENV *, u_int64_t));
+	int  (*txn_dist_abort) __P((DB_ENV *, u_int64_t));
+	int  (*txn_dist_discard) __P((DB_ENV *, u_int64_t));
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));

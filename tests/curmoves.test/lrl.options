@@ -1,8 +1,12 @@
 table t t.csc2
 
-dtastripe 4
+#dtastripe 4
+dtastripe 1
 #maxt 1
 #maxwt 1
 #handle_buf_latency_ms 50
 appsockslimit 10
 maxappsockslimit 10
+stack_at_lock_get 1
+rep_printlock 1
+#debug_all_prepare_commit 1
