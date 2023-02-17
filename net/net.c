@@ -118,6 +118,7 @@ extern int gbl_net_portmux_register_interval;
 int gbl_verbose_net = 0;
 int gbl_dump_net_queue_on_partial_write = 0;
 int gbl_debug_partial_write = 0;
+int gbl_net_connect_timeout = 100;
 int subnet_blackout_timems = 5000;
 
 int gbl_net_maxconn = 0;
@@ -4937,7 +4938,7 @@ static void *connect_thread(void *arg)
 
             /*fprintf(stderr, "sleeping for 100ms\n");*/
 
-            rc = poll(&pfd, 1, 100);
+            rc = poll(&pfd, 1, gbl_net_connect_timeout);
 
             if (rc == 0) {
                 /*timeout*/

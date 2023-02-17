@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=969)
+(TUNABLES_COUNT=970)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -507,6 +507,7 @@
 (name='move_deadlock_max_attempt', description='', type='INTEGER', value='500', read_only='N')
 (name='msgwaittime', description='Network timeout for pushnext & queue changes.  (Default: 10000)', type='INTEGER', value='10000', read_only='N')
 (name='natural_types', description='Same as 'nosurprise'', type='BOOLEAN', value='OFF', read_only='Y')
+(name='net_connect_timeout', description='Max time to wait for a connection attempt between nodes (Default: 100)', type='INTEGER', value='100', read_only='N')
 (name='net_explicit_flush_trace', description='Produce a stack dump for long network flushes. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='net_inorder_logputs', description='Attempt to order messages to ensure they go out in LSN order.', type='BOOLEAN', value='OFF', read_only='N')
 (name='net_lmt_upd_incoherent_nodes', description='', type='INTEGER', value='70', read_only='N')
