@@ -1096,8 +1096,15 @@ struct __db_txn {
 	DBT blkseq_key;
 };
 
+typedef enum {
+	DB_DIST_HAVELOCKS = 0x00000001,
+	DB_DIST_ABORTED = 0x00000002,
+    DB_DIST_SCHEMA_LK = 0x00000004
+} db_dist_state;
+
 struct __db_txn_prepared {
 	u_int64_t dist_txnid;
+    u_int32_t flags;
 	DB_LSN prepare_lsn;
 	DB_LSN prev_lsn;
 	DBT blkseq_key;
@@ -1107,8 +1114,6 @@ struct __db_txn_prepared {
 	struct __db_txn *txnp;
 	void *pglogs;
 	u_int32_t keycnt;
-	int is_prepared;
-	int have_schema_lock;
 };
 
 /*
@@ -2221,6 +2226,10 @@ typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype, int stackid);
 
+typedef int (*collect_prepared_f)(void *args, uint64_t dist_txnid, uint32_t flags,
+		DB_LSN *lsn, uint32_t coordinator_gen, char *coordinator_name,
+		char *coordinator_tier, uint32_t txnid);
+
 /* Database Environment handle. */
 struct __db_env {
 	/*******************************************************
@@ -2486,6 +2495,7 @@ struct __db_env {
 	int  (*lock_id_set_logical_abort) __P((DB_ENV *, u_int32_t));
 	int  (*lock_stat) __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
 	int  (*collect_locks) __P((DB_ENV *, collect_locks_f, void *arg));
+	int  (*collect_prepared) __P((DB_ENV *, collect_prepared_f, void *arg));
 	int  (*lock_locker_lockcount)
 		__P((DB_ENV *, u_int32_t id, u_int32_t *nlocks));
 	int  (*lock_locker_pagelockcount)

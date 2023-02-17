@@ -802,6 +802,17 @@ void replay_stat(void)
 
 void flush_db(void);
 
+/* I need to be able to create a blkseq key & data for prepared txns that have
+ * been aborted by the coordinator.  This will be added outside of the block
+ * processor if the master crashed while holding prepared transactions.
+ *
+ * Will defer writing until after I have written aborted dist-txn from toblock */
+int prepare_dist_abort_blkseq()
+{
+    /* TODO */
+    return 0;
+}
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
