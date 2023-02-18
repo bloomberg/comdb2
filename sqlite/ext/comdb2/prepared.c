@@ -131,7 +131,7 @@ static void free_prepared(void *p, int n)
 
 int systblPreparedInit(sqlite3 *db)
 {
-    return create_system_table(db, "comdb2_dist_prepared", &systblPreparedModule,
+    return create_system_table(db, "comdb2_prepared", &systblPreparedModule,
         get_prepared, free_prepared, sizeof(systable_prepared_t),
         CDB2_INTEGER, "dist_txnid", -1, offsetof(systable_prepared_t, dist_txnid),
         CDB2_INTEGER, "txnid", -1, offsetof(systable_prepared_t, txnid),

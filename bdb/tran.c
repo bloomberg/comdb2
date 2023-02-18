@@ -1625,6 +1625,10 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         else if (prepared && debug_prepared_should_abort()) 
         {
             rc = tran->tid->abort(tran->tid);
+        } 
+        else {
+            tran->tid->flags |= TXN_DIST_DISCARD;
+            rc = tran->tid->abort(tran->tid);
         }
 
         bdb_osql_trn_repo_unlock();
@@ -2665,6 +2669,13 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
         rc = -1;
     }
     return rc;
+}
+
+void bdb_upgrade_all_prepared(bdb_state_type *bdb_state)
+{
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    bdb_state->dbenv->txn_upgrade_all_prepared(bdb_state->dbenv);
 }
 
 unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,

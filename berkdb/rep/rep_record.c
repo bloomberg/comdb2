@@ -3562,7 +3562,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		if ((ret = __txn_dist_abort_read(dbenv, rec->data, &dist_abort_args)) != 0) {
 			goto err;
 		}
-		if ((ret = __txn_abort_prepared(dbenv, dist_abort_args->dist_txnid)) != 0) {
+		if ((ret = __txn_rep_abort_recovered(dbenv, dist_abort_args->dist_txnid)) != 0) {
 			goto err;
 		}
 		__os_free(dbenv, dist_abort_args);
@@ -4967,7 +4967,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		}
 	}
 
-	if (dist_txnid && (ret = __txn_discard_prepared(dbenv, dist_txnid)) != 0) {
+	if (dist_txnid && (ret = __txn_rep_discard_recovered(dbenv, dist_txnid)) != 0) {
 		abort();
 	}
 
@@ -5838,7 +5838,7 @@ bad_resize:	;
 	}
 	gbl_rep_trans_parallel++;
 
-	if (dist_txnid && (ret = __txn_discard_prepared(dbenv, txn_dist_commit_args->dist_txnid)) != 0) {
+	if (dist_txnid && (ret = __txn_discard_recovered(dbenv, txn_dist_commit_args->dist_txnid)) != 0) {
 		abort();
 	}
 

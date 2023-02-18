@@ -3252,11 +3252,11 @@ clipper_usage:
         }
         tok = segtok(line, lline, &st, &ltok);
         if ((tokcmp(tok, ltok, "commit") == 0) && dist_txnid) {
-            dbenv->bdb_env->dbenv->txn_dist_commit(dbenv->bdb_env->dbenv, dist_txnid);
+            dbenv->bdb_env->dbenv->txn_commit_recovered(dbenv->bdb_env->dbenv, dist_txnid);
         } else if ((tokcmp(tok, ltok, "abort") == 0) && dist_txnid) {
-            dbenv->bdb_env->dbenv->txn_dist_abort(dbenv->bdb_env->dbenv, dist_txnid);
+            dbenv->bdb_env->dbenv->txn_abort_recovered(dbenv->bdb_env->dbenv, dist_txnid);
         } else if ((tokcmp(tok, ltok, "discard") == 0) && dist_txnid) {
-            dbenv->bdb_env->dbenv->txn_dist_discard(dbenv->bdb_env->dbenv, dist_txnid);
+            dbenv->bdb_env->dbenv->txn_discard_recovered(dbenv->bdb_env->dbenv, dist_txnid);
         } else {
             logmsg(LOGMSG_ERROR, "Expected <dist-txnid> 'commit', 'abort', or 'discard'\n");
         }

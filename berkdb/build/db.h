@@ -1080,7 +1080,7 @@ struct __db_txn {
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 #define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
 #define TXN_DIST_PREPARED	0x800 /* Dist-txn has written prepare record */
-#define TXN_DIST_REC_PREPARED	0x1000 /* Prepared dist-txn collected by recovery XXX dont think its needed*/
+#define TXN_DIST_DISCARD	0x1000 /* Discard a repared dist-txn */
 	u_int32_t	flags;
 
 	void	 *app_private;		/* pointer to bdb transaction object */
@@ -2571,9 +2571,10 @@ struct __db_env {
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
 	int  (*txn_stat) __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
-	int  (*txn_dist_commit) __P((DB_ENV *, u_int64_t));
-	int  (*txn_dist_abort) __P((DB_ENV *, u_int64_t));
-	int  (*txn_dist_discard) __P((DB_ENV *, u_int64_t));
+	int  (*txn_commit_recovered) __P((DB_ENV *, u_int64_t));
+	int  (*txn_abort_recovered) __P((DB_ENV *, u_int64_t));
+	int  (*txn_discard_recovered) __P((DB_ENV *, u_int64_t));
+	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));

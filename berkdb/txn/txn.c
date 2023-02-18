@@ -1205,7 +1205,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 									txnp, lsn_out, &context, lflags,
 									TXN_COMMIT, txnp->dist_txnid, gen,
 									timestamp, usr_ptr);
-						if ((ret = __txn_discard_prepared(dbenv, txnp->dist_txnid)) != 0) {
+						if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 							abort();
 						}
 					} else {
@@ -1277,7 +1277,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 									&txnp->last_lsn, &context, lflags,
 									TXN_COMMIT, txnp->dist_txnid, gen,
 									timestamp, usr_ptr);
-							if ((ret = __txn_discard_prepared(dbenv, txnp->dist_txnid)) != 0) {
+							if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 								abort();
 							}
 						} else {
@@ -1695,8 +1695,8 @@ __txn_abort(txnp)
 	if ((ret = __txn_undo(txnp)) != 0)
 		return (__db_panic(dbenv, ret));
 
-	/*
-	 * Normally, we do not need to log aborts.  However, if we
+    /*
+     * Normally, we do not need to log aborts.  However, if we
 	 * are a distributed transaction (i.e., we have a prepare),
 	 * then we log the abort so we know that this transaction
 	 * was actually completed.
@@ -1704,11 +1704,11 @@ __txn_abort(txnp)
 	SET_LOG_FLAGS(dbenv, txnp, lflags);
 
 	if (DBENV_LOGGING(dbenv) && F_ISSET(txnp, TXN_DIST_PREPARED)) {
-		if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
-			TXN_COMMIT, txnp->dist_txnid) != 0))
-			return (__db_panic(dbenv, ret));
-		if ((ret = __txn_discard_prepared(dbenv, txnp->dist_txnid)) != 0)
-			return (__db_panic(dbenv, ret));
+		if (!F_ISSET(txnp, TXN_DIST_DISCARD)) {
+			if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
+							TXN_COMMIT, txnp->dist_txnid) != 0))
+				return (__db_panic(dbenv, ret));
+		}
 	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
 			lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
@@ -2026,7 +2026,7 @@ __txn_isvalid(txnp, tdp, op)
 		 * restored transaction.
 		 */
 		if (tp->status != TXN_PREPARED &&
-			!F_ISSET(tp, TXN_DTL_RESTORED)) {
+			!F_ISSET(tp, TXN_DTL_RESTORED) && !F_ISSET(txnp, TXN_DIST_PREPARED)) {
 			__db_err(mgrp->dbenv, "not a restored transaction");
 			return (__db_panic(mgrp->dbenv, EINVAL));
 		}
@@ -2380,14 +2380,14 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 }
 
 /*
- * __txn_commit_prepared_pp --
- *	DB_ENV->txn_dist_commit pre/post processing.
+ * __txn_commit_recovered_pp --
+ *	DB_ENV->txn_commit_recovered pre/post processing.
  *
- * PUBLIC: int __txn_commit_prepared_pp
+ * PUBLIC: int __txn_commit_recovered_pp
  * PUBLIC:	 __P((DB_ENV *, u_int64_t));
  */
  int
- __txn_commit_prepared_pp(dbenv, dist_txnid)
+ __txn_commit_recovered_pp(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
@@ -2398,21 +2398,21 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		return (0);
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __txn_commit_prepared(dbenv, dist_txnid);
+	ret = __txn_commit_recovered(dbenv, dist_txnid);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
 }
 
 /*
- * __txn_abort_prepared_pp --
- *	DB_ENV->txn_dist_abort pre/post processing.
+ * __txn_abort_recovered_pp --
+ *	DB_ENV->txn_abort_recovered pre/post processing.
  *
- * PUBLIC: int __txn_abort_prepared_pp
+ * PUBLIC: int __txn_abort_recovered_pp
  * PUBLIC:	 __P((DB_ENV *, u_int64_t));
  */
 int
- __txn_abort_prepared_pp(dbenv, dist_txnid)
+ __txn_abort_recovered_pp(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
@@ -2423,21 +2423,21 @@ int
 		return (0);
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __txn_abort_prepared(dbenv, dist_txnid);
+	ret = __txn_abort_recovered(dbenv, dist_txnid);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
 }
 
 /*
- * __txn_discard_prepared_pp --
+ * __txn_discard_recovered_pp --
  *	DB_ENV->txn_dist_discard pre/post processing.
  *
- * PUBLIC: int __txn_discard_prepared_pp
+ * PUBLIC: int __txn_discard_recovered_pp
  * PUBLIC:	 __P((DB_ENV *, u_int64_t));
  */
 int
- __txn_discard_prepared_pp(dbenv, dist_txnid)
+ __txn_discard_recovered_pp(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
@@ -2448,7 +2448,7 @@ int
 		return (0);
 	if (rep_check)
 		__env_rep_enter(dbenv);
-	ret = __txn_discard_prepared(dbenv, dist_txnid);
+	ret = __txn_discard_recovered(dbenv, dist_txnid);
 	if (rep_check)
 		__env_rep_exit(dbenv);
 	return (ret);
