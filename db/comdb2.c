@@ -4084,6 +4084,10 @@ static int init(int argc, char **argv)
 
     gbl_backend_opened = 1;
 
+    if (!gbl_exit && !gbl_create_mode && thedb->nsiblings == 1) {
+        bdb_upgrade_all_prepared(thedb->bdb_env);
+    }
+
     sqlinit();
     rc = create_datacopy_arrays();
     if (rc) {

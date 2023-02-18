@@ -207,7 +207,7 @@ __rep_start(dbenv, dbt, gen, flags)
 	REP *rep;
 	u_int32_t repflags;
 	int announce, init_db, redo_prepared, ret, role_chg;
-	int sleep_cnt, t_ret;
+	int sleep_cnt, t_ret, upgrade_prepared = 0;
 	void *bdb_state = dbenv->app_private;
 
 	PANIC_CHECK(dbenv);
@@ -413,7 +413,6 @@ __rep_start(dbenv, dbt, gen, flags)
 			F_CLR(rep, REP_F_READY);
 			rep->in_recovery = 0;
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-			//ret = __txn_upgrade_all_prepared(dbenv);
 		}
 		/*
 		 * Take a transaction checkpoint so that our new generation
@@ -425,8 +424,11 @@ __rep_start(dbenv, dbt, gen, flags)
 					ret == 0)
 				ret = t_ret;
 			if (redo_prepared) {
+				upgrade_prepared = 1;
+/*
 				if ((t_ret = __txn_upgrade_all_prepared(dbenv)) != 0 && ret == 0)
 					ret = t_ret;
+*/
 				if ((t_ret = __rep_restore_prepared(dbenv)) != 0 && ret == 0)
 					ret = t_ret;
 			}
@@ -511,6 +513,10 @@ errunlock:
 		}
 err:		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
+	extern int backend_opened(void);
+	if (backend_opened() && upgrade_prepared && 
+		(t_ret = __txn_upgrade_all_prepared(dbenv)) != 0 && ret == 0)
+		ret = t_ret;
 
 	BDB_RELLOCK();
 	return (ret);

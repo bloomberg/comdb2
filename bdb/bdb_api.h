@@ -1823,6 +1823,8 @@ extern void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out);
 int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
                      int seqno, void *blob, int sz, int *bdberr);
 
+void bdb_upgrade_all_prepared(bdb_state_type *bdb_state);
+
 const char *bdb_get_tmpdir(bdb_state_type *bdb_state);
 
 int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
