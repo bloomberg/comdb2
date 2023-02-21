@@ -4201,7 +4201,8 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     }
     ++inlen;
     set_data_int(out, in, inlen, hdr);
-    memset(out + inlen, 0, outlen - inlen);
+    char *cout = (char *)out;
+    memset(cout + inlen, 0, outlen - inlen);
     *outdtsz = inlen;
 
     if ((unsigned int)olen > (unsigned int)outlen - 1) {
@@ -10143,6 +10144,7 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
     decContextTestEndian(0);
 
     *outnull = 0;
+    char *cout = (char *)out;
 
     switch (inlen) {
     case sizeof(server_decimal32_t):
@@ -10153,10 +10155,6 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
         decimal32_ondisk_to_single((server_decimal32_t *)in, &dfp_single);
 
         decSingleToString(&dfp_single, (char *)out);
-        slen = strlen((char *)out) + 1;
-        if (slen < outlen) {
-            memset(out + slen, 0, outlen - slen);
-        }
         break;
     case sizeof(server_decimal64_t):
 
@@ -10166,10 +10164,6 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
         decimal64_ondisk_to_double((server_decimal64_t *)in, &dfp_double);
 
         decDoubleToString(&dfp_double, (char *)out);
-        slen = strlen((char *)out) + 1;
-        if (slen < outlen) {
-            memset(out + slen, 0, outlen - slen);
-        }
         break;
     case sizeof(server_decimal128_t):
 
@@ -10179,11 +10173,12 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
         decimal128_ondisk_to_quad((server_decimal128_t *)in, &dfp_quad);
 
         decQuadToString(&dfp_quad, (char *)out);
-        slen = strlen((char *)out) + 1;
-        if (slen < outlen) {
-            memset(out + slen, 0, outlen - slen);
-        }
         break;
+    }
+
+    slen = strlen(cout) + 1;
+    if (slen < outlen) {
+        memset(cout + slen, 0, outlen - slen);
     }
 
     return 0;
@@ -10324,9 +10319,10 @@ int SERVER_INTVYM_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
 
     rc = _intv_srv2string(in, INTV_YM, out, outlen);
     if (!rc) {
-        *outdtsz = strlen(out) + 1;
+        char *cout = (char *)out;
+        *outdtsz = strlen(cout) + 1;
         if (*outdtsz < outlen) {
-            memset(out + *outdtsz, 0, outlen - *outdtsz);
+            memset(cout + *outdtsz, 0, outlen - *outdtsz);
         }
     }
 
@@ -10474,9 +10470,10 @@ int SERVER_INTVDS_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
 
     rc = _intv_srv2string(in, INTV_DS, out, outlen);
     if (!rc) {
-        *outdtsz = strlen(out) + 1;
+        char *cout = (char *)out;
+        *outdtsz = strlen(cout) + 1;
         if (*outdtsz < outlen) {
-            memset(out + *outdtsz, 0, outlen - *outdtsz);
+            memset(cout + *outdtsz, 0, outlen - *outdtsz);
         }
     }
 
@@ -10496,9 +10493,10 @@ int SERVER_INTVDSUS_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
 
     rc = _intv_srv2string(in, INTV_DSUS, out, outlen);
     if (!rc) {
-        *outdtsz = strlen(out) + 1;
+        char *cout = (char *)out;
+        *outdtsz = strlen(cout) + 1;
         if (*outdtsz < outlen) {
-            memset(out + *outdtsz, 0, outlen - *outdtsz);
+            memset(cout + *outdtsz, 0, outlen - *outdtsz);
         }
     }
 
@@ -12117,7 +12115,7 @@ int SERVER_INTVYM_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
 
     *outdtsz = strlen((char *)out + 1) + 2;
     if (*outdtsz < outlen) {
-        memset(out + *outdtsz, 0, outlen - *outdtsz);
+        memset((char *)out + *outdtsz, 0, outlen - *outdtsz);
     }
     return 0;
 }
@@ -12189,7 +12187,7 @@ int SERVER_INTVDS_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
 
     *outdtsz = strlen((char *)out + 1) + 2;
     if (*outdtsz < outlen) {
-        memset(out + *outdtsz, 0, outlen - *outdtsz);
+        memset((char *)out + *outdtsz, 0, outlen - *outdtsz);
     }
 
     return 0;
@@ -12213,7 +12211,7 @@ int SERVER_INTVDSUS_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
 
     *outdtsz = strlen((char *)out + 1) + 2;
     if (*outdtsz < outlen) {
-        memset(out + *outdtsz, 0, outlen - *outdtsz);
+        memset((char *)out + *outdtsz, 0, outlen - *outdtsz);
     }
 
     return 0;
