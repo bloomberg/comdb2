@@ -6656,7 +6656,7 @@ int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat) {
 
     Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next)
-        stat->num_drops = ptr->num_queue_full;
+        stat->num_drops += ptr->num_queue_full;
 
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
