@@ -1761,42 +1761,42 @@ static char *no_such_procedure(const char *name, struct spversion_t *spversion)
 }
 
 const char comdb2_trigger_main[] =
-"                                                           \n\
-local function comdb2_trigger_main()                        \n\
-    local sp = db:spname()                                  \n\
-    db:ctrace('trigger:'..sp..' send register')             \n\
-    local c = db:trigger({register_timeout = 1000})         \n\
-    if c == nil then                                        \n\
-        db:ctrace('trigger:'..sp..' register failed')       \n\
-        return                                              \n\
-    end                                                     \n\
-    db:ctrace('trigger:'..sp..' assigned; now running')     \n\
-    local e = c:get()                                       \n\
-    while e do                                              \n\
-        db:trigger_version_check()                          \n\
-        db:trigger_begin()                                  \n\
-        local rc = main(e)                                  \n\
-        if rc ~= 0 then                                     \n\
-            db:ctrace('trigger:'..sp..' main rc:'..rc)      \n\
-            db:trigger_rollback()                           \n\
-            break                                           \n\
-        end                                                 \n\
-        rc = c:consume()                                    \n\
-        if rc ~= 0 then                                     \n\
-            db:ctrace('trigger:'..sp..' consume rc:'..rc)   \n\
-            db:trigger_rollback()                           \n\
-            break                                           \n\
-        end                                                 \n\
-        rc = db:trigger_commit()                            \n\
-        if rc ~= 0 then                                     \n\
-            db:ctrace('trigger:'..sp..' commit rc:'..rc)    \n\
-            break                                           \n\
-        end                                                 \n\
-        e = c:get()                                         \n\
-    end                                                     \n\
-    if e == nil then                                        \n\
-        db:ctrace('trigger'..sp..' nil event')              \n\
-    end                                                     \n\
+"                                                                              \n\
+local function comdb2_trigger_main()                                           \n\
+    local sp = db:spname()                                                     \n\
+    db:ctrace('trigger:'..sp..' send register')                                \n\
+    local c = db:trigger({register_timeout = 1000})                            \n\
+    if c == nil then                                                           \n\
+        db:ctrace('trigger:'..sp..' register failed')                          \n\
+        return                                                                 \n\
+    end                                                                        \n\
+    db:ctrace('trigger:'..sp..' assigned; now running')                        \n\
+    local e = c:get()                                                          \n\
+    while e do                                                                 \n\
+        db:trigger_version_check()                                             \n\
+        db:trigger_begin()                                                     \n\
+        local rc = main(e)                                                     \n\
+        if rc ~= 0 then                                                        \n\
+            db:ctrace('trigger:'..sp..' main rc:'..rc..' err:'..db:error())    \n\
+            db:trigger_rollback()                                              \n\
+            break                                                              \n\
+        end                                                                    \n\
+        rc = c:consume()                                                       \n\
+        if rc ~= 0 then                                                        \n\
+            db:ctrace('trigger:'..sp..' consume rc:'..rc..' err:'..db:error()) \n\
+            db:trigger_rollback()                                              \n\
+            break                                                              \n\
+        end                                                                    \n\
+        rc = db:trigger_commit()                                               \n\
+        if rc ~= 0 then                                                        \n\
+            db:ctrace('trigger:'..sp..' commit rc:'..rc..' err:'..db:error())  \n\
+            break                                                              \n\
+        end                                                                    \n\
+        e = c:get()                                                            \n\
+    end                                                                        \n\
+    if e == nil then                                                           \n\
+        db:ctrace('trigger'..sp..' nil event')                                 \n\
+    end                                                                        \n\
 end";
 
 static char bootstrap_src[] =
