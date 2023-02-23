@@ -3718,6 +3718,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
                                       blob_buffer_t *outblob, int *outdtsz)
 {
     int valid_len;
+    if (out_len > 0)
+        memset(out, 0, out_len);
 
     /* if the string was too large to be stored in the in buffer and won't fit
      * in the out buffer, then the string will just be transfered from one blob
@@ -3770,9 +3772,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             return -1;
 
         memcpy(out, in, len);
-        if (len < out_len) {
-            memset(out + len, 0, out_len - len);
-        }
         *outdtsz += len;
 
         if (outblob) {
@@ -3838,9 +3837,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
                 return -1;
 
             memcpy(out, inblob->data, len);
-            if (len < out_len) {
-                memset(out + len, 0, out_len - len);
-            }
             *outdtsz += len;
 
             free_blob_buffers(inblob, 1);
@@ -5529,6 +5525,9 @@ TYPES_INLINE int CLIENT_BLOB_to_SERVER_BLOB2(
     } else {
         set_data(out, &blob->length, BLOB_ON_DISK_LEN);
         *outdtsz = BLOB_ON_DISK_LEN;
+        char *cout = (char *)out;
+        if (outlen - BLOB_ON_DISK_LEN > 0)
+            memset(cout + BLOB_ON_DISK_LEN, 0, outlen - BLOB_ON_DISK_LEN);
         if (outblob && !outblob->exists) {
             /* shouldn't happen */
             logmsg(LOGMSG_ERROR, "CLIENT_BLOB_to_SERVER_BLOB: missing blob!\n");
@@ -5564,18 +5563,17 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BLOB2(
     tmp = htonl(inlen);
     set_data(out, &tmp, BLOB_ON_DISK_LEN);
     *outdtsz = BLOB_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - BLOB_ON_DISK_LEN > 0)
+        memset(cout + BLOB_ON_DISK_LEN, 0, outlen - BLOB_ON_DISK_LEN);
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - BLOB_ON_DISK_LEN) {
-        char *cout = (char *)out;
         if (inlen > 0) {
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, in, inlen);
             *outdtsz += inlen;
-        }
-        if (inlen < outlen - BLOB_ON_DISK_LEN) {
-            memset(cout + BLOB_ON_DISK_LEN + inlen, 0, outlen - inlen - BLOB_ON_DISK_LEN);
         }
     } else if (outblob) {
         if (inlen > gbl_blob_sz_thresh_bytes)
@@ -5626,19 +5624,18 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_VUTF8(
     tmp = htonl(inlen);
     set_data(out, &tmp, VUTF8_ON_DISK_LEN);
     *outdtsz = VUTF8_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - VUTF8_ON_DISK_LEN > 0)
+        memset(cout + VUTF8_ON_DISK_LEN, 0, outlen - VUTF8_ON_DISK_LEN);
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - VUTF8_ON_DISK_LEN) {
-        char *cout = (char *)out;
         if (inlen > 0) {
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + VUTF8_ON_DISK_LEN, in, inlen - 1);
             cout[VUTF8_ON_DISK_LEN + inlen - 1] = '\0';
             *outdtsz += inlen;
-        }
-        if (inlen < outlen - VUTF8_ON_DISK_LEN) {
-            memset(cout + VUTF8_ON_DISK_LEN + inlen, 0, outlen - inlen - VUTF8_ON_DISK_LEN);
         }
     } else if (outblob) {
         assert(inlen > 0);
@@ -5649,7 +5646,7 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_VUTF8(
             outblob->data = malloc(inlen);
 
         if (outblob->data == NULL) {
-            logmsg(LOGMSG_ERROR, "CLIENT_PSTR2_to_SERVER_VUTF8: malloc %u failed\n",
+            logmsg(LOGMSG_ERROR, "CLIENT_BYTEARRAY_to_SERVER_VUTF8: malloc %u failed\n",
                     inlen);
             return -1;
         }
@@ -5694,6 +5691,9 @@ static TYPES_INLINE int CLIENT_PSTR2_to_SERVER_VUTF8(
     tmp = htonl(inlen);
     set_data(out, &tmp, VUTF8_ON_DISK_LEN);
     *outdtsz = VUTF8_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - VUTF8_ON_DISK_LEN > 0)
+        memset(cout + VUTF8_ON_DISK_LEN, 0, outlen - VUTF8_ON_DISK_LEN);
 
     /*TODO can't use this here because doesn't handle non-NUL term case */
     /*return vutf8_convert(inlen,*/
@@ -5704,16 +5704,12 @@ static TYPES_INLINE int CLIENT_PSTR2_to_SERVER_VUTF8(
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - VUTF8_ON_DISK_LEN) {
-        char *cout = (char *)out;
         if (inlen > 0) {
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + VUTF8_ON_DISK_LEN, in, inlen - 1);
             cout[VUTF8_ON_DISK_LEN + inlen - 1] = '\0';
             *outdtsz += inlen;
-        }
-        if (inlen < outlen - VUTF8_ON_DISK_LEN) {
-            memset(cout + VUTF8_ON_DISK_LEN + inlen, 0, outlen - inlen - VUTF8_ON_DISK_LEN);
         }
     } else if (outblob) {
         if (inlen <= 0) {
@@ -6475,6 +6471,8 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len, void 
                                       blob_buffer_t *inblob, blob_buffer_t *outblob, int *outdtsz, int intype,
                                       int outtype)
 {
+    if (out_len > 0)
+        memset(out, 0, out_len);
     /* if the string was too large to be stored in the in buffer and won't fit
      * in the out buffer, then the string will just be transfered from one blob
      * to another */
@@ -6532,9 +6530,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len, void 
         }
 
         memcpy(out, in, len);
-        if (len < out_len) {
-            memset(((char*) out) + len, 0, out_len - len);
-        }
         *outdtsz += len;
 
         if (outblob) {
@@ -6590,9 +6585,6 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len, void 
             }
 
             memcpy(out, inblob->data, len);
-            if (len < out_len) {
-                memset(((char*) out) + len, 0, out_len - len);
-            }
             *outdtsz += len;
 
             free_blob_buffers(inblob, 1);
@@ -6629,20 +6621,17 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
     tmp = htonl(inlen - 1);
     set_data(out, &tmp, BLOB_ON_DISK_LEN);
     *outdtsz = BLOB_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - BLOB_ON_DISK_LEN > 0)
+        memset(cout + BLOB_ON_DISK_LEN, 0, outlen - BLOB_ON_DISK_LEN);
 
     /* if there is enough room in the out buffer to store */
     if (inlen <= outlen - BLOB_ON_DISK_LEN + 1) {
-        char *cout = (char *)out;
         if (inlen > 0) {
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, cin, inlen - 1);
             *outdtsz += (inlen - 1);
-
-            // looks like for this function inlen is always > 0 so should always reach this conditional
-            if (inlen < outlen - BLOB_ON_DISK_LEN + 1) {
-                memset(cout + BLOB_ON_DISK_LEN + inlen - 1, 0, outlen - inlen - BLOB_ON_DISK_LEN + 1);
-            }
         }
     } else if (outblob) {
         if (inlen > gbl_blob_sz_thresh_bytes)
@@ -6652,7 +6641,7 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
 
         if (outblob->data == NULL) {
             logmsg(LOGMSG_ERROR, 
-                    "CLIENT_BYTEARRAY_to_SERVER_BLOB2: malloc %u failed\n",
+                    "SERVER_BYTEARRAY_to_SERVER_BLOB: malloc %u failed\n",
                     inlen);
             return -1;
         }
