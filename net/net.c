@@ -1698,17 +1698,10 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
             goto end;
         }
 
-        /*
-        fprintf(stderr, "waiting for ack from %s\n", host_node_ptr->host);
-        */
-
-        rc = pthread_cond_timedwait(&(host_node_ptr->ack_wakeup),
-                                    &(host_node_ptr->wait_mutex), &waittime);
-
-        if (rc == EINVAL)
-            goto end;
-
-        /*fprintf(stderr, "got ack\n");*/
+        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+        rc = pthread_cond_timedwait(&(host_node_ptr->ack_wakeup), &(host_node_ptr->wait_mutex), &waittime);
+        if (rc == EINVAL) goto end;
+        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     }
 
 end:
