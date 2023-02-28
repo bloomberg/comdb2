@@ -113,6 +113,7 @@ static int curr_udp_cnt = 0;
 
 extern int gbl_pmux_route_enabled;
 extern int gbl_exit;
+extern int gbl_ready;
 extern int gbl_net_portmux_register_interval;
 
 int gbl_verbose_net = 0;
@@ -5619,6 +5620,10 @@ int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, 
       /* appsock reqs have a non-0 first byte */
       if (firstbyte > 0)
       {
+         if (!gbl_ready) {
+             sbuf2close(sb);
+             return -1;
+         }
          APPSOCKFP *rtn = NULL;
 
          *is_admin = 0;

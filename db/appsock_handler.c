@@ -338,7 +338,7 @@ int appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, struct sockaddr_in cli
     now = time(NULL);
 
     /* reject requests if we're not up, going down, or not interested */
-    if (dbenv->stopped || gbl_exit || !gbl_ready) {
+    if (dbenv->stopped || gbl_exit || !gbl_appsock_thdpool) {
         if (header_read) {
             total_appsock_rejections++;
             sbuf2close(sb);
