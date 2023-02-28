@@ -2231,4 +2231,7 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 /* Return 1 if this node is master, 0 otherwise */
 int bdb_iam_master(bdb_state_type *bdb_state);
 int bdb_rep_deadlocks(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
+
+int bdb_can_get_lock(bdb_state_type *bdb_state);
+
 #endif

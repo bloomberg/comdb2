@@ -1902,4 +1902,5 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
                                   DBT *data, DBT *data2, int updateid,
                                   void **freeptr, void *stackbuf, int odhready);
+
 #endif /* __bdb_int_h__ */

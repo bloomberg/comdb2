@@ -2342,6 +2342,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     dbenv = arg->dbenv;
     sb = arg->sb;
 
+    if (dbenv == NULL || dbenv->bdb_env == NULL || !bdb_can_get_lock(dbenv->bdb_env))
+        return APPSOCK_RETURN_OK;
+
+
     if (incoh_reject(arg->admin, dbenv->bdb_env)) {
         return APPSOCK_RETURN_OK;
     }
