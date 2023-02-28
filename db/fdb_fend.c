@@ -63,7 +63,7 @@ extern int gbl_expressions_indexes;
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
-int gbl_fdb_push_remote = 1;
+int gbl_fdb_push_remote = 0;
 
 struct fdb_tbl;
 struct fdb;
