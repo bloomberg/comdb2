@@ -63,7 +63,7 @@ extern int gbl_expressions_indexes;
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
-int gbl_fdb_push_remote = 0;
+int gbl_fdb_push_remote = 1;
 
 struct fdb_tbl;
 struct fdb;
@@ -120,6 +120,7 @@ struct fdb {
     int dbname_len; /* excluding terminal 0 */
     enum mach_class class
         ;      /* what class is the cluster CLASS_PROD, CLASS_TEST, ... */
+    int class_override; /* set if class is part of table name at creation */
     int local; /* was this added by a LOCAL access ?*/
     int dbnum; /* cache dbnum for db, needed by current dbt_handl_alloc* */
 
@@ -469,7 +470,7 @@ fdb_t *get_fdb(const char *dbname)
  *
  */
 static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
-                      int local)
+                      int local, int class_override)
 {
     int rc = 0;
     fdb_t *fdb;
@@ -492,6 +493,7 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
 
     fdb->dbname = strdup(dbname);
     fdb->class = class;
+    fdb->class_override = class_override;
     /*
        default remote version we expect
 
@@ -1096,7 +1098,8 @@ done:
     return rc;
 }
 
-static enum mach_class get_fdb_class(const char **p_dbname, int *local)
+static enum mach_class get_fdb_class(const char **p_dbname, int *local,
+                                     int *lvl_override)
 {
     const char *dbname = *p_dbname;
     enum mach_class my_lvl = CLASS_UNKNOWN;
@@ -1121,9 +1124,13 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         }
         free(class); /* class is strndup'd */
         *p_dbname = dbname;
+        if (lvl_override)
+            *lvl_override = 1;
     } else {
         /* implicit is same class */
         remote_lvl = my_lvl;
+        if (lvl_override)
+            *lvl_override = 0;
     }
 
     /* override local */
@@ -1150,7 +1157,7 @@ int comdb2_fdb_check_class(const char *dbname)
     int local;
     int rc = 0;
 
-    requested_lvl = get_fdb_class(&dbname, &local);
+    requested_lvl = get_fdb_class(&dbname, &local, NULL);
     if (requested_lvl == CLASS_UNKNOWN) {
         return -1;
     }
@@ -1267,7 +1274,9 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
  *
  */
 int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
-                           int *version, int in_analysis_load)
+                           int *version, int in_analysis_load,
+                           int *out_class, int *out_local,
+                           int *out_class_override)
 {
     fdb_t *fdb;
     int rc = FDB_NOERR;
@@ -1276,8 +1285,9 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     enum mach_class lvl = 0;
     char errstr[256];
     char *perrstr;
+    int lvl_override;
 
-    lvl = get_fdb_class(&dbname, &local);
+    lvl = get_fdb_class(&dbname, &local, &lvl_override);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
         return _failed_AddAndLockTable(
             dbname,
@@ -1286,7 +1296,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 retry_fdb_creation:
-    fdb = new_fdb(dbname, &created, lvl, local);
+    fdb = new_fdb(dbname, &created, lvl, local, lvl_override);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
         return _failed_AddAndLockTable(dbname, FDB_ERR_MALLOC,
@@ -1416,6 +1426,10 @@ retry_fdb_creation:
     /* we return SQLITE_OK here, which tells the caller that the db is still
        READ locked!
        the caller will have to release that */
+
+    *out_class = lvl;
+    *out_local = local;
+    *out_class_override = lvl_override;
 
     return SQLITE_OK; /* speaks sqlite */
 }
@@ -5014,7 +5028,7 @@ int fdb_validate_existing_table(const char *zDatabase)
     int local;
     int cls;
 
-    cls = get_fdb_class(&dbName, &local);
+    cls = get_fdb_class(&dbName, &local, NULL);
 
     Pthread_rwlock_rdlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbName, NULL);

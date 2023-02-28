@@ -19,6 +19,9 @@
 
 struct fdb_push_connector {
     char *remotedb; /* name of the remote db; class matches stored fdb */
+    enum mach_class class; /* what stage this db lives on */
+    int class_override; /* class was explicit in the remdb name */
+    int local;      /* is this a local db */
     int ncols;
     int rowlen;  /* current row len returned from remote */
     void *row;   /* current row returned from remote */
@@ -37,6 +40,7 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
 {
     GET_CLNT;
     fdb_push_connector_t *push = NULL;
+    struct Db *pDb;
 
     if (!gbl_fdb_push_remote)
         return -1;
@@ -49,12 +53,16 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
         logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
         return -1;
     }
-    push->remotedb = strdup(pParse->db->aDb[node->remotedb].zDbSName);
+    pDb = &pParse->db->aDb[node->remotedb];
+    push->remotedb = strdup(pDb->zDbSName);
     if (!push->remotedb) {
         logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
         free(push);
         return -1;
     }
+    push->class =  pDb->class;
+    push->local = pDb->local;
+    push->class_override = pDb->class_override;
 
     push->ncols = node->ncols;
 
@@ -161,9 +169,15 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
     if (conf)
         cdb2_set_comdb2db_config(conf);
 
-    rc = cdb2_open(&hndl, push->remotedb, /*"default"*/ "local", CDB2_SQL_ROWS);
+    if (push->local)
+        rc = cdb2_open(&hndl, push->remotedb, "local", CDB2_SQL_ROWS);
+    else if (push->class_override) {
+        const char *cls_ovrr = mach_class_class2name(push->class);
+        rc = cdb2_open(&hndl, push->remotedb, cls_ovrr, CDB2_SQL_ROWS);
+    } else /* default */
+        rc = cdb2_open(&hndl, push->remotedb, "default", CDB2_SQL_ROWS);
     if (rc) {
-        errstat_set_rcstrf(err, rc, "Failed to open db %s", push->remotedb);
+        errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
         return -1;
     }
 
