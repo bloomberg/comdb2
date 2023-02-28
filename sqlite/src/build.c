@@ -538,8 +538,9 @@ retry_after_fdb_creation:
       logmsg(LOGMSG_USER, "Trying to locate \"%s:%s\"\n", fqDbname, zName);
     }
 
+    int lvl, local, lvl_override;
     rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-          in_analysis_load);
+          in_analysis_load, &lvl, &local, &lvl_override);
     if( rc ){
         if( gbl_fdb_track )
             logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
@@ -559,7 +560,7 @@ retry_after_fdb_creation:
     ** attached from two different databases
     */
     rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
-        &zErrDyn, version);
+        &zErrDyn, version, lvl, local, lvl_override);
 
     if( sqlite3UnlockTable(dbName, zName) ){
       logmsg(LOGMSG_ERROR, "%s: failed to unlock %s.%s\n", __func__,
