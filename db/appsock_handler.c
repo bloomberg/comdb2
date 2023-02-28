@@ -32,6 +32,8 @@
 #include "comdb2_atomic.h"
 #include "perf.h"
 
+#include <sys/socket.h>
+
 #ifdef DEBUG
 // was crashing because of the small stack size when debug was on
 #define GBL_APPSOCK_THDPOOL_STCKSZ 512 * 1024
@@ -339,12 +341,15 @@ int appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, struct sockaddr_in cli
 
     /* reject requests if we're not up, going down, or not interested */
     if (dbenv->stopped || gbl_exit || !gbl_ready) {
-        if (header_read) {
+        char firstbyte = 1;
+        if (!header_read) {
+            recv(sbuf2fileno(sb), &firstbyte, 1, MSG_PEEK);
+        }
+        if (firstbyte > 0 || header_read) {
             total_appsock_rejections++;
             sbuf2close(sb);
             return HANDLE_SOCKET_FAILURE;
         }
-        return HANDLE_SOCKET_FAIL_DISPATCH;
     }
 
     time_metric_add(dbenv->connections, thdpool_get_nthds(gbl_appsock_thdpool));
