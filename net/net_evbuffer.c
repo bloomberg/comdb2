@@ -2275,7 +2275,7 @@ static int validate_host(struct accept_info *a)
     }
 #   endif
     int check_port = 1;
-    int port = a->c.my_portnum;
+    int port = a->c.from_portnum;
     int netnum = port >> 16;
     a->from_port = port &= 0xffff;
     if (netnum > 0 && netnum < a->netinfo_ptr->num_child_nets) {
@@ -2286,7 +2286,7 @@ static int validate_host(struct accept_info *a)
     if (netinfo_ptr == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s failed node:%d host:%s netnum:%d (%d) failed\n", __func__,
-               a->c.my_nodenum, a->from_host, netnum, a->netinfo_ptr->netnum);
+               a->c.from_nodenum, a->from_host, netnum, a->netinfo_ptr->netnum);
         return -1;
     }
     if (check_port && a->c.to_portnum != netinfo_ptr->myport) {
@@ -2299,7 +2299,7 @@ static int validate_host(struct accept_info *a)
     char *host = a->from_host_interned = intern(a->from_host);
     if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, host)) { /* net_allow_node */
         logmsg(LOGMSG_ERROR, "connection from node:%d host:%s not allowed\n",
-               a->c.my_nodenum, host);
+               a->c.from_nodenum, host);
         return -1;
     }
     if (a->c.flags & CONNECT_MSG_SSL) {
@@ -2369,7 +2369,7 @@ static int process_connect_message(struct accept_info *a)
     }
     net_connect_message_get(&a->c, buf, buf + NET_CONNECT_MESSAGE_TYPE_LEN);
     evbuffer_drain(input, NET_CONNECT_MESSAGE_TYPE_LEN);
-    if (read_hostname(&a->from_host, &a->from_len, a->c.my_hostname) != 0) {
+    if (read_hostname(&a->from_host, &a->from_len, a->c.from_hostname) != 0) {
         return -1;
     }
     if (read_hostname(&a->to_host, &a->to_len, a->c.to_hostname) != 0) {
@@ -2414,7 +2414,7 @@ static int process_connect_message_proto(struct accept_info *a)
         bad = 1;
     }
     if (c->has_from_portnum)
-        a->c.my_portnum = c->from_portnum;
+        a->c.from_portnum = c->from_portnum;
     else {
         logmsg(LOGMSG_ERROR, "%s from_portnum\n", missing);
         bad = 1;

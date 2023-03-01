@@ -71,9 +71,9 @@ typedef struct {
     char to_hostname[HOSTNAME_LEN];
     int to_portnum;
     int flags; /* was `int to_nodenum` */
-    char my_hostname[HOSTNAME_LEN];
-    int my_portnum;
-    int my_nodenum;
+    char from_hostname[HOSTNAME_LEN];
+    int from_portnum;
+    int from_nodenum;
 } connect_message_type;
 
 /* flags for connect_message_typs */
