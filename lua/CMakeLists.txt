@@ -43,6 +43,10 @@ set(module lua)
 set(MODULE LUA)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_lua.h @ONLY)
 
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/trigger_main.lua trigger_main)
+string(REPLACE "\n" "\\n\\\n" trigger_main ${trigger_main})
+configure_file(trigger_main.h.in trigger_main.h @ONLY)
+
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   -DLUASP
