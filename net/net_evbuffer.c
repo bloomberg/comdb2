@@ -2407,16 +2407,16 @@ static int process_connect_message_proto(struct accept_info *a)
         logmsg(LOGMSG_ERROR, "%s to_portnum\n", missing);
         bad = 1;
     }
-    if (c->my_hostname)
-        a->from_host = strdup(c->my_hostname);
+    if (c->from_hostname)
+        a->from_host = strdup(c->from_hostname);
     else {
-        logmsg(LOGMSG_ERROR, "%s my_hostname\n", missing);
+        logmsg(LOGMSG_ERROR, "%s from_hostname\n", missing);
         bad = 1;
     }
-    if (c->has_my_portnum)
-        a->c.my_portnum = c->my_portnum;
+    if (c->has_from_portnum)
+        a->c.my_portnum = c->from_portnum;
     else {
-        logmsg(LOGMSG_ERROR, "%s my_portnum\n", missing);
+        logmsg(LOGMSG_ERROR, "%s from_portnum\n", missing);
         bad = 1;
     }
     if (c->dbname)
@@ -2464,12 +2464,12 @@ static int write_connect_message_proto(netinfo_type *netinfo_ptr, host_node_type
     connect_message.to_hostname = host_node_ptr->host;
     connect_message.has_to_portnum = 1;
     connect_message.to_portnum = host_node_ptr->port;
-    connect_message.my_hostname = netinfo_ptr->myhostname;
-    connect_message.has_my_portnum = 1;
+    connect_message.from_hostname = netinfo_ptr->myhostname;
+    connect_message.has_from_portnum = 1;
     if (gbl_accept_on_child_nets || !netinfo_ptr->ischild) {
-        connect_message.my_portnum = netinfo_ptr->myport;
+        connect_message.from_portnum = netinfo_ptr->myport;
     } else {
-        connect_message.my_portnum = netinfo_ptr->parent->myport | (netinfo_ptr->netnum << 16);
+        connect_message.from_portnum = netinfo_ptr->parent->myport | (netinfo_ptr->netnum << 16);
     }
     connect_message.dbname = gbl_dbname;
     if (gbl_debug_pb_connectmsg_dbname_check) {
