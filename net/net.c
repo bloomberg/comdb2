@@ -197,11 +197,11 @@ static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
                     p_buf_end);
     p_buf =
         buf_put(&(msg_ptr->flags), sizeof(msg_ptr->flags), p_buf, p_buf_end);
-    p_buf = buf_no_net_put(&(msg_ptr->my_hostname),
-                           sizeof(msg_ptr->my_hostname), p_buf, p_buf_end);
-    p_buf = buf_put(&(msg_ptr->my_portnum), sizeof(msg_ptr->my_portnum), p_buf,
+    p_buf = buf_no_net_put(&(msg_ptr->from_hostname),
+                           sizeof(msg_ptr->from_hostname), p_buf, p_buf_end);
+    p_buf = buf_put(&(msg_ptr->from_portnum), sizeof(msg_ptr->from_portnum), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&node, sizeof(msg_ptr->my_nodenum), p_buf, p_buf_end);
+    p_buf = buf_put(&node, sizeof(msg_ptr->from_nodenum), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -220,11 +220,11 @@ const uint8_t *net_connect_message_get(connect_message_type *msg_ptr,
                     p_buf_end);
     p_buf =
         buf_get(&(msg_ptr->flags), sizeof(msg_ptr->flags), p_buf, p_buf_end);
-    p_buf = buf_no_net_get(&(msg_ptr->my_hostname),
-                           sizeof(msg_ptr->my_hostname), p_buf, p_buf_end);
-    p_buf = buf_get(&(msg_ptr->my_portnum), sizeof(msg_ptr->my_portnum), p_buf,
+    p_buf = buf_no_net_get(&(msg_ptr->from_hostname),
+                           sizeof(msg_ptr->from_hostname), p_buf, p_buf_end);
+    p_buf = buf_get(&(msg_ptr->from_portnum), sizeof(msg_ptr->from_portnum), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&node, sizeof(msg_ptr->my_nodenum), p_buf, p_buf_end);
+    p_buf = buf_get(&node, sizeof(msg_ptr->from_nodenum), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -865,7 +865,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
     int rc;
     int hosteq = 0;
-    char my_hostname[256];
+    char from_hostname[256];
     char to_hostname[256];
     int namelen;
 
@@ -884,18 +884,18 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     /* If the hostname doesn't fit in HOSTNAME_LEN (16) characters,
      * the first byte of host will be '.' followed by the name length,
      * and the real hostname follows. */
-    if (connect_message.my_hostname[0] == '.') {
-        connect_message.my_hostname[HOSTNAME_LEN - 1] = 0;
-        namelen = atoi(&connect_message.my_hostname[1]);
-        if (namelen < 0 || namelen > sizeof(my_hostname)) {
+    if (connect_message.from_hostname[0] == '.') {
+        connect_message.from_hostname[HOSTNAME_LEN - 1] = 0;
+        namelen = atoi(&connect_message.from_hostname[1]);
+        if (namelen < 0 || namelen > sizeof(from_hostname)) {
             logmsg(LOGMSG_WARN, "Invalid hostname length %d\n", namelen);
             return 1;
         }
-        rc = read_stream(netinfo_ptr, NULL, sb, my_hostname, namelen);
+        rc = read_stream(netinfo_ptr, NULL, sb, from_hostname, namelen);
         if (rc != namelen)
             return -1;
     } else {
-        strncpy0(my_hostname, connect_message.my_hostname, HOSTNAME_LEN);
+        strncpy0(from_hostname, connect_message.from_hostname, HOSTNAME_LEN);
     }
 
     if (connect_message.to_hostname[0] == '.') {
@@ -924,24 +924,24 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                 "netinfo_ptr->myport != connect_message.to_portnum %d %d\n",
                 netinfo_ptr->myport, connect_message.to_portnum);
         logmsg(LOGMSG_ERROR, "origin: from=hostname=%s node=%d port=%d\n",
-               my_hostname, connect_message.my_nodenum,
-               connect_message.my_portnum);
+               from_hostname, connect_message.from_nodenum,
+               connect_message.from_portnum);
         logmsg(LOGMSG_ERROR, "service: %s\n", netinfo_ptr->service);
 
         return -1;
     }
 
     if (netinfo_ptr->allow_rtn &&
-        !netinfo_ptr->allow_rtn(netinfo_ptr, intern(my_hostname))) {
+        !netinfo_ptr->allow_rtn(netinfo_ptr, intern(from_hostname))) {
         logmsg(LOGMSG_ERROR,
                "received connection from node %d, hostname %s which is not "
                "allowed\n",
-               connect_message.my_nodenum, my_hostname);
+               connect_message.from_nodenum, from_hostname);
         return -2;
     }
 
-    strncpy(hostname, my_hostname, hostnamel);
-    *portnum = connect_message.my_portnum;
+    strncpy(hostname, from_hostname, hostnamel);
+    *portnum = connect_message.from_portnum;
 
     if (connect_message.flags & CONNECT_MSG_SSL) {
         if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
@@ -1027,23 +1027,23 @@ int write_connect_message(netinfo_type *netinfo_ptr,
         connect_message.flags |= CONNECT_MSG_SSL;
 
     if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
-        snprintf(connect_message.my_hostname,
-                 sizeof(connect_message.my_hostname), ".%d",
+        snprintf(connect_message.from_hostname,
+                 sizeof(connect_message.from_hostname), ".%d",
                  netinfo_ptr->myhostname_len);
         append_from = 1;
     } else {
-        strncpy0(connect_message.my_hostname, netinfo_ptr->myhostname,
-                 sizeof(connect_message.my_hostname));
+        strncpy0(connect_message.from_hostname, netinfo_ptr->myhostname,
+                 sizeof(connect_message.from_hostname));
     }
 
     if (gbl_accept_on_child_nets || !netinfo_ptr->ischild) {
-        connect_message.my_portnum = netinfo_ptr->myport;
+        connect_message.from_portnum = netinfo_ptr->myport;
     } else {
-        connect_message.my_portnum =
+        connect_message.from_portnum =
             netinfo_ptr->parent->myport | (netinfo_ptr->netnum << 16);
     }
 
-    connect_message.my_nodenum = 0;
+    connect_message.from_nodenum = 0;
 
     p_buf = conndata;
     p_buf_end = (conndata + sizeof(conndata));
