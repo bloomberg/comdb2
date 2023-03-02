@@ -2,7 +2,6 @@
 
 function waitmach
 {
-    set -x
     [[ "$debug" == 1 ]] && set -x
     typeset func="waitmach"
     write_prompt $func "Running $func"
