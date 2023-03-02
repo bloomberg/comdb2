@@ -1638,6 +1638,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
              * flush the log & exit */
             logmsg(LOGMSG_USER, "%s leak-all-prepare tunable is set: exiting..\n", __func__);
             bdb_flush(bdb_state, bdberr);
+            logmsg(LOGMSG_USER, "%s sleep a bit as master before exiting / propogate prepare", __func__);
+            sleep(10);
             exit(1);
         }
 
