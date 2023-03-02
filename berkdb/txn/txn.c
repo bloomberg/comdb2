@@ -1248,6 +1248,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					timestamp = comdb2_time_epoch();
 
 					if (is_prepare) {
+						MUTEX_LOCK(dbenv,
+							db_rep->rep_mutexp);
+						gen = rep->gen;
+						MUTEX_UNLOCK(dbenv,
+							db_rep->rep_mutexp);
 						DBT coordinator = {0}, tier = {0};
 						coordinator.data = txnp->coordinator_name;
 						coordinator.size = strlen(txnp->coordinator_name);
@@ -1258,7 +1263,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
 
 						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
-							TXN_COMMIT, &tp->begin_lsn, txnp->dist_txnid, ltranflags,
+							TXN_COMMIT, gen, &tp->begin_lsn, txnp->dist_txnid, ltranflags,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
 						if ((ret = __txn_master_prepared(dbenv, txnp->dist_txnid, &txnp->last_lsn,
