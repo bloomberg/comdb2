@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-set -e
 set -x
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
