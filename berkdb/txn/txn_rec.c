@@ -290,8 +290,15 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 			argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier);
 	} else{
 		/* Either aborted or unresolved */
-		ret = __txn_recover_prepared(dbenv, argp->dist_txnid, lsnp, &argp->blkseq_key,
-			argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier);
+   		assert(op == DB_TXN_BACKWARD_ROLL);
+		if ((!IS_ZERO_LSN(headp->trunc_lsn) &&  log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
+		} else {
+			logmsg(LOGMSG_DEBUG, "Recovering prepared txn\n");
+			if ((ret = __txn_recover_prepared(dbenv, argp->txnid, argp->dist_txnid, lsnp, &argp->begin_lsn,
+				&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
+				abort();
+		}
 	}
 
 	if (ret == 0) {
@@ -999,7 +1006,9 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		ret = __db_txnlist_lsnadd(dbenv, info,
 			&argp->c_lsn, TXNLIST_NEW);
 	} else if (op == DB_TXN_BACKWARD_ROLL) {
+		/* Remember if this is a prepared but unresolved transaction */
 		/* Child might exist -- look for it. */
+		__txn_add_prepared_child(dbenv, argp->child, argp->txnid->txnid);
 		c_stat = __db_txnlist_find(dbenv, info, argp->child);
 		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid);
 		if (c_stat == TXN_EXPECTED) {

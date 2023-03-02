@@ -3550,9 +3550,10 @@ gap_check:		max_lsn_dbtp = NULL;
 		if ((ret = __txn_dist_prepare_read(dbenv, rec->data, &dist_prepare_args)) != 0) {
 			goto err;
 		}
-		if ((ret = __txn_recover_prepared(dbenv, dist_prepare_args->dist_txnid, &rp->lsn,
-			&dist_prepare_args->blkseq_key, dist_prepare_args->coordinator_gen,
-			&dist_prepare_args->coordinator_name, &dist_prepare_args->coordinator_tier)) != 0) {
+		if ((ret = __txn_recover_prepared(dbenv, dist_prepare_args->txnid, dist_prepare_args->dist_txnid,
+			&rp->lsn, &dist_prepare_args->begin_lsn, &dist_prepare_args->blkseq_key, 
+			dist_prepare_args->coordinator_gen, &dist_prepare_args->coordinator_name,
+			&dist_prepare_args->coordinator_tier)) != 0) {
 			goto err;
 		}
 		__os_free(dbenv, dist_prepare_args);
@@ -6826,7 +6827,6 @@ restart:
                 __txn_dist_prepare_read(dbenv, mylog.data, &txnprep)) != 0)
                     goto err;
 
-            /* TODO XXX locks are in previous record */
 			if (online) {
 				ret = recovery_getlocks(dbenv, lockid, &txnprep->locks, lsn);
             }
@@ -7975,28 +7975,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 	prevlsn = lp->lsn;
 
-	done = rp->lsn.file == lp->lsn.file &&
-		rp->lsn.offset + lp->len == lp->lsn.offset;
-	/* Always need to run recovery to acquire prepared-txn list */
-	if (1 || (done && dbenv->attr.always_run_recovery)) {
-		ctrace("Wasn't going to run recovery, but running anyway\n");
-		done = 0;
-	}
-	if (done) {
-		purge_lsn = lp->ready_lsn = lp->lsn;
-		/*
-		 * fprintf(stderr, "Set ready_lsn file %s line %d to %d:%d\n", 
-		 * __FILE__, __LINE__, lp->ready_lsn.file, 
-		 * lp->ready_lsn.offset);
-		 */
-		ZERO_LSN(lp->waiting_lsn);
-	}
 	R_UNLOCK(dbenv, &dblp->reginfo);
-	if (done) {
-		ctrace("%s matched current log [%d:%d] no truncate\n",
-			__func__, lp->lsn.file, lp->lsn.offset);
-		goto finish;	/* Yes, holding the mutex. */
-	}
 	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
 	/* We sniffed out rep_verify in rep.c, & grabbed the writelock there. */

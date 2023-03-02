@@ -23,6 +23,7 @@ static const char revid[] = "$Id: db_rec.c,v 11.48 2003/08/27 03:54:18 ubell Exp
 #include "dbinc/mp.h"
 #include "dbinc/hash.h"
 #include "dbinc/db_swap.h"
+#include "dbinc/txn.h"
 #include "logmsg.h"
 
 static int __db_pg_free_recover_int __P((DB_ENV *,
@@ -725,6 +726,8 @@ out:	if (pagep != NULL)
 	REC_CLOSE;
 }
 
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+
 /*
  * __db_pg_alloc_recover --
  *	Recovery function for pg_alloc.
@@ -849,14 +852,14 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 		 * link its next pointer to the free list.
 		 */
 		P_INIT(pagep, file_dbp->pgsize,
-		    argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
+			argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
 
 		pagep->lsn = argp->page_lsn;
 		modified = 1;
 	}
 #if defined (UFID_HASH_DEBUG)
 	logmsg(LOGMSG_USER, "%s [%d:%d] %s dbp %p set pagelsn to [%d:%d]\n",
-            __func__, lsnp->file, lsnp->offset, DB_REDO(op) ? "REDO" : "UNDO",
+			__func__, lsnp->file, lsnp->offset, DB_REDO(op) ? "REDO" : "UNDO",
 			file_dbp, LSN(pagep).file, LSN(pagep).offset);
 #endif
 
@@ -864,9 +867,19 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	 * If the page was newly created, put it on the limbo list.
 	 */
 	if (IS_ZERO_LSN(LSN(pagep)) &&
-	    IS_ZERO_LSN(argp->page_lsn) && DB_UNDO(op)) {
-		/* Put the page in limbo.*/
-		if (argp->type > 1000) {
+		IS_ZERO_LSN(argp->page_lsn) && DB_UNDO(op)) {
+		int found_prepared = __txn_is_prepared(dbenv, argp->txnid->txnid);
+		int is_prepared = (op == DB_TXN_BACKWARD_ROLL && found_prepared);
+
+#if defined (DEBUG_PREPARE)
+		comdb2_cheapstack_sym(stderr, "op is %d", op);
+		logmsg(LOGMSG_USER, "is_prepared is %d, op == %d, txnid=%x, found-prepared=%d\n",
+			is_prepared, op, argp->txnid->txnid, found_prepared);
+#endif
+		if (is_prepared) {
+			logmsg(LOGMSG_INFO, "%s ignoring unresolved prepared txn %u\n", __func__,
+                argp->txnid->txnid);
+		} else if (argp->type > 1000) {
 			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
 					argp->pgno, 1);
 		} else {
