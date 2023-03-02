@@ -4084,7 +4084,8 @@ static int init(int argc, char **argv)
 
     gbl_backend_opened = 1;
 
-    if (!gbl_exit && !gbl_create_mode && thedb->nsiblings == 1) {
+    if (!gbl_exit && !gbl_create_mode && (thedb->nsiblings == 1 ||
+        thedb->master == gbl_myhostname)) {
         bdb_upgrade_all_prepared(thedb->bdb_env);
     }
 
