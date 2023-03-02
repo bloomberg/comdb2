@@ -262,6 +262,7 @@ typedef struct {
     int trans_has_sp;     /* running a stored procedure */
     int maxchunksize;     /* multi-transaction bulk mode */
     int crtchunksize;     /* how many rows are processed already */
+    int nchunks;          /* number of chunks. 0 for a non-chunked transaction. */
 } dbtran_type;
 typedef dbtran_type trans_t;
 
@@ -730,8 +731,24 @@ struct sqlclntstate {
     int have_query_limits;
     struct query_limits limits;
 
+    /* effects:       per txn. keeps track of replicant effects when in-txn, and master effects when committed.
+     * log_effects:   per chunked-txn. keeps track of replicant effects of all chunks,
+     *                including the current chunk which hasn't committed yet.
+     * chunk_effects: per chunked-txn. keeps track of master effects of all committed chunks.
+     *
+     * I hope the example below explains these effects a little better.
+     *
+     *   CREATE TABLE t (i INTEGER)$$
+     *   SET TRANSACTION CHUNK 1
+     *   BEGIN
+     *   INSERT INTO t VALUES(1) -- Nothing is committed yet. effects: 1; log_effects: 1; chunk_effects: 0.
+     *   INSERT INTO t VALUES(2) -- (1) is committed.         effects: 1; log_effects: 2; chunk_effects: 1;
+     *   INSERT INTO t VALUES(3) -- (2) is committed.         effects: 1; log_effects: 3; chunk_effects: 2;
+     *   COMMIT                  -- (3) is committed.         effects: 1; log_effects: 3; chunk_effects: 3;
+     */
     struct query_effects effects;
     struct query_effects log_effects;
+    struct query_effects chunk_effects;
     int64_t nsteps;
 
     struct user current_user;

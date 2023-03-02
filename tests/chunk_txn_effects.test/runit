@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# Verify that a chunked transaction returns total query effects from all chunks
+
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+cat << EOF | cdb2sql --showeffects ${CDB2_OPTIONS} -s --tabs $dbnm default - >output.actual 2>&1
+DROP TABLE IF EXISTS t1
+CREATE TABLE t1 (i INT PRIMARY KEY)\$\$
+SELECT "---------------- INSERT -----------------"
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO t1 VALUES(1)
+INSERT INTO t1 VALUES(2)
+INSERT INTO t1 VALUES(3)
+INSERT INTO t1 VALUES(4)
+COMMIT
+SELECT "---------------- ON-CONFLICT-DO-UPDATE -----------------"
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO t1 VALUES(1) ON CONFLICT(i) DO UPDATE SET i = 11
+INSERT INTO t1 VALUES(2) ON CONFLICT(i) DO UPDATE SET i = 12
+INSERT INTO t1 VALUES(3) ON CONFLICT(i) DO UPDATE SET i = 13
+INSERT INTO t1 VALUES(4) ON CONFLICT(i) DO UPDATE SET i = 14
+COMMIT
+SELECT "---------------- ON-CONFLICT-DO-NOTHING -----------------"
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO t1 VALUES(11) ON CONFLICT(i) DO NOTHING
+INSERT INTO t1 VALUES(12) ON CONFLICT(i) DO NOTHING
+INSERT INTO t1 VALUES(13) ON CONFLICT(i) DO NOTHING
+INSERT INTO t1 VALUES(14) ON CONFLICT(i) DO NOTHING
+COMMIT
+SELECT i FROM t1
+EOF
+
+diff output.actual output.expected
