@@ -288,7 +288,8 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		/* Either aborted or unresolved */
 		ret = __txn_recover_abort_prepared(dbenv, argp->dist_txnid, lsnp, &argp->blkseq_key,
 			argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier);
-	} else{
+	} else if (op == DB_TXN_APPLY) {
+	} else {
 		/* Either aborted or unresolved */
    		assert(op == DB_TXN_BACKWARD_ROLL);
 		if ((!IS_ZERO_LSN(headp->trunc_lsn) &&  log_compare(&headp->trunc_lsn, lsnp) < 0)) {
