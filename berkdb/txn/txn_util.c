@@ -383,7 +383,8 @@ int __txn_recover_dist_abort(dbenv, dist_txnid)
 	}
 	hash_add(dbenv->prepared_txn_hash, p);
 #if defined (DEBUG_PREPARE)
-	logmsg(LOGMSG_USER, "%s adding aborted prepared txnid to list\n", __func__);
+	logmsg(LOGMSG_USER, "%s adding aborted prepare dist-txnid %"PRIu64" to list\n",
+		__func__, dist_txnid);
 #endif
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
@@ -550,7 +551,7 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 		/* 'aborted-from-recovery': we assert that ABORTED flag is lit above:
 		   !!! TODO !!! need to write dist-abort to blkseq  */
 #if defined (DEBUG_PREPARE)
-		logmsg(LOGMSG_USER, "Removing aborted prepare from recovered txn list\n");
+		logmsg(LOGMSG_USER, "Removing aborted prepare %"PRIu64" from recovered txn list\n", dist_txnid);
 #endif
 		__free_prepared_txn(dbenv, p);
 		return (0);
@@ -682,7 +683,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	DB_TXN *txnp = NULL;
 	int ret;
 
-	assert(!F_ISSET(p, DB_DIST_HAVELOCKS));
+	assert(!F_ISSET(p, DB_DIST_HAVELOCKS) && !F_ISSET(p, DB_DIST_ABORTED));
 
 	if ((ret = __log_c_get(logc, &p->prepare_lsn, &dbt, DB_SET)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s error %d retrieving prepare record at %d:%d\n",
@@ -818,6 +819,26 @@ int __txn_downgrade_and_free_all_prepared(dbenv)
 	return 0;
 }
 
+static void __txn_prune_aborted_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	unsigned int bkt;
+	void *ent;
+	DB_TXN_PREPARED *prev = NULL;
+	DB_TXN_PREPARED *p = hash_first(dbenv->prepared_txn_hash, &ent, &bkt);
+	while (p || prev) {
+		if (prev && F_ISSET(prev, DB_DIST_ABORTED)) {
+			hash_del(dbenv->prepared_txn_hash, prev);
+			__free_prepared_txn(dbenv, prev);
+		}
+		prev = p;
+        if (p) p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt);
+	}
+}
+
 /* 
  * __txn_upgrade_all_prepared --
  *
@@ -839,6 +860,7 @@ int __txn_upgrade_all_prepared(dbenv)
 		abort();
 	}
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	__txn_prune_aborted_prepared(dbenv);
 	hash_for(dbenv->prepared_txn_hash, __upgrade_prepared, logc);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	logc->close(logc, 0);

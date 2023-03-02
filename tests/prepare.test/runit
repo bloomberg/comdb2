@@ -134,9 +134,174 @@ function start_cluster
     done
 }
 
-function prepare_and_bounce_block
+function prepare_and_commit
 {
-    typeset func="prepare_and_bounce_block"
+    typeset func="prepare_and_commit"
+    typeset master=$(findmaster)
+
+    write_prompt $func "Inserting records"
+    insert_t1
+
+    # TODO this will change when bdb-hooks are done
+    write_prompt $func "Tell master to prepare and leak"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable 'debug_all_prepare_leak' 1"
+
+    write_prompt $func "Insert 1000 more records this should force master exit"
+    insert_t1 &
+    leaked_pid=$!
+
+    write_prompt $func "Sleep a bit to make sure prepare record has propogated"
+    sleep 4
+
+    write_prompt $func "Kill the leaked pid so it's not retried"
+    kill -9 $leaked_pid
+
+    write_prompt $func "Explicitly kill old master, it should be exiting though"
+    kill_restart_node $master
+
+    write_prompt $func "Waiting for election / new master"
+    wait_for_election
+
+    write_prompt $func "Sleep for 5"
+    sleep 5
+
+    write_prompt $func "Performing another insert- this should block on the prepared insert"
+    insert_t1 &
+    insert_pid=$!
+    write_prompt $func "Insert pid is $insert_pid"
+
+    write_prompt $func "Verify that insert sql is blocked"
+    check_blocked $insert_pid
+
+    master=$(findmaster)
+    write_prompt $func "Verify that replicant has seen prepared record"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select flags from comdb2_prepared")
+    [[ -z "$x" ]] && failexit "Replicant did not recover the prepared txn"
+    [[ "$x" -ne "RECOVERED" ]] && failexit "Error locating prepared record"
+
+    write_prompt $func "Verify that master has seen prepared record and has locks"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master  "select flags from comdb2_prepared")
+    [[ -z "$x" ]] && failexit "Master did not recover the prepared txn"
+    [[ "$x" -ne "RECOVERED|HAVELOCKS" ]] && failexit "Master prepared txn should have acquired locks"
+
+    write_prompt $func "Verify that master has pagelocks, one for new insert should be waiting"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master  "select count(*) from comdb2_locks where mode='READ' and status='WAIT' and locktype='PAGE'")
+    [[ "$x" -lt "1" ]] && failexit "Outstanding insert isn't blocked on prepared txn"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master  "select * from comdb2_locks where mode='READ' and status='WAIT' and locktype='PAGE'")
+    write_prompt $func "$x"
+
+    write_prompt $func "Verify that reading on replicant is not blocked.. this will time-out if it is"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default  "select count(*) from t1")
+    write_prompt $func "Make sure that there are only 1000 records on the replicant"
+    write_prompt $func "Count is $x records"
+    [[ "$x" -ne "1000" ]] && failexit "There should be 1000 records, not $x"
+
+    write_prompt $func "Get the dist-txnid"
+    dist_txnid=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select dist_txnid from comdb2_prepared")
+    [[ -z "$dist_txnid" ]] && failexit "Master does not have dist-txnid"
+    write_prompt $func "Dist-txnid is $dist_txnid"
+    write_prompt $func "Commit prepared dist-txn:"
+    write_prompt $func "send disttxn $dist_txnid commit"
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('disttxn $dist_txnid commit')"
+
+    sleep 5
+    write_prompt $func "New insert should have resolved(1):"
+    check_notblocked $insert_pid
+
+    write_prompt $func "New insert is resolved: $(ps -ef | egrep $insert_pid)"
+    write_prompt $func "Verify that t1 has 2000 records"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    write_prompt $func "Count is $x records"
+
+    [[ "$x" -ne "2000" ]] && failexit "Found only $x records, should be 2000"
+
+    write_prompt $func "Single-master bounce succeeded!"
+    write_prompt $func "Checking cluster"
+    check_cluster
+
+    master=$(findmaster)
+    write_prompt $func "Master is $master"
+    
+    write_prompt $func "Tell master to prepare and leak"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable 'debug_all_prepare_leak' 1"
+
+    write_prompt $func "Insert 1000 more records"
+    insert_t1 &
+    leaked_pid=$!
+
+    write_prompt $func "Sleep for 5"
+    sleep 5
+
+    write_prompt $func "Killing the cluster"
+    kill_cluster
+
+    write_prompt $func "Starting the cluster"
+    start_cluster
+
+    write_prompt $func "Waiting for election / new master"
+
+    for node in $CLUSTER; do 
+        verify_up $node
+    done
+
+    write_prompt $func "Background insert after cluster bounce"
+    write_prompt $func "This should block on leaked prepared we did before cluster bounce"
+    insert_t1 &
+    insert_pid=$!
+
+    master=$(findmaster)
+
+    write_prompt $func "Verify that insert sql is blocked after cluster bounce"
+    check_blocked $insert_pid
+
+    write_prompt $func "Verify that replicant has recovered prepared record"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select flags from comdb2_prepared")
+    [[ -z "$x" ]] && failexit "Replicant did not recover the prepared txn"
+    [[ "$x" -ne "RECOVERED" ]] && failexit "Error locating prepared record"
+
+    write_prompt $func "Verify that master has recovered & re-acquired prepared locks"
+    flags=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select flags from comdb2_prepared")
+    [[ -z "$flags" ]] && failexit "Master did not recover the prepared txn"
+    [[ "$flags" -ne "RECOVERED|HAVELOCKS" ]] && failexit "Master did not reaquire locks"
+    write_prompt $func "Select the locks"
+    locks=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select * from comdb2_locks where locktype='PAGE'")
+    write_prompt $func "$locks"
+
+    write_prompt $func "Verify that select against replicant returns 2000 records"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default  "select count(*) from t1")
+    [[ "$x" -ne "2000" ]] && failexit "There should be 2000 records, not $x"
+
+    write_prompt $func "Get the dist-txnid"
+    dist_txnid=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select dist_txnid from comdb2_prepared")
+
+    write_prompt $func "Dist-txnid is $dist_txnid"
+
+    check_blocked $insert_pid
+    write_prompt $func "New insert is blocked:"
+
+    write_prompt $func "Commit prepared dist-txn:"
+    write_prompt $func "send disttxn $dist_txnid commit"
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('disttxn $dist_txnid commit')"
+
+    sleep 5
+    write_prompt $func "New insert should have resolved(2):"
+    #check_notblocked $leaked_pid
+    check_notblocked $insert_pid
+
+    write_prompt $func "New insert is resolved: $(ps -ef | egrep $insert_pid)"
+    write_prompt $func "Verify that t1 has 3000 records"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    write_prompt $func "Count is $x records"
+
+    [[ "$x" != "3000" ]] && failexit "Select returned incorrect number of records, $x vs 3000"
+
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "truncate t1"
+}
+
+function prepare_and_abort
+{
+    typeset func="prepare_and_abort"
     typeset master=$(findmaster)
 
     write_prompt $func "Inserting records"
@@ -309,7 +474,8 @@ function run_test
     rm $stopfile >/dev/null 2>&1
     create_table
 
-    prepare_and_bounce_block
+    prepare_and_abort
+    #prepare_and_commit
 }
 
 [[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"
