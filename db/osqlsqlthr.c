@@ -1507,6 +1507,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     int rc = 0;
     int restarted;
     snap_uid_t snap_info, *snap_info_p = NULL;
+    snap_uid_t zero_snap_info = {0};
 
     /* reset the tablename */
     if (osql->tablename) {
@@ -1519,24 +1520,27 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     osql->tran_ops = 0; /* reset transaction size counter*/
 
     extern int gbl_always_send_cnonce;
-    if (osql->rqid == OSQL_RQID_USE_UUID && clnt->dbtran.maxchunksize == 0 &&
-        !clnt->dbtran.trans_has_sp &&
+    if (osql->rqid == OSQL_RQID_USE_UUID && !clnt->dbtran.trans_has_sp &&
         (gbl_always_send_cnonce || has_high_availability(clnt))) {
-        // Pass to master the state of verify retry.
-        // If verify retry is ON and error is retryable, don't write to
-        // blkseq on master because replicant will retry.
-
-        snap_info.replicant_is_able_to_retry = replicant_is_able_to_retry(clnt);
-        snap_info.effects = clnt->effects;
-
-        if (get_cnonce(clnt, &snap_info) == 0) {
-            comdb2uuidcpy(snap_info.uuid, osql->uuid);
+        if (clnt->dbtran.maxchunksize > 0) {
+            snap_info_p = &zero_snap_info;
         } else {
-            // Add dummy snap_info to let master know that the replicant wants
-            // query effects. (comdb2api does not send cnonce)
-            snap_info.keylen = 0;
+            // Pass to master the state of verify retry.
+            // If verify retry is ON and error is retryable, don't write to
+            // blkseq on master because replicant will retry.
+
+            snap_info.replicant_is_able_to_retry = replicant_is_able_to_retry(clnt);
+            snap_info.effects = clnt->effects;
+
+            if (get_cnonce(clnt, &snap_info) == 0) {
+                comdb2uuidcpy(snap_info.uuid, osql->uuid);
+            } else {
+                // Add dummy snap_info to let master know that the replicant wants
+                // query effects. (comdb2api does not send cnonce)
+                snap_info.keylen = 0;
+            }
+            snap_info_p = &snap_info;
         }
-        snap_info_p = &snap_info;
     }
 
     do {

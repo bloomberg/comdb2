@@ -4970,6 +4970,9 @@ int sqlite3BtreeCommit(Btree *pBt)
         return SQLITE_ABORT;
     }
     clnt->intrans = 0;
+    /* This is the last chunk; count it in. */
+    if (clnt->dbtran.maxchunksize > 0 && clnt->dbtran.mode == TRANLEVEL_SOSQL)
+        ++clnt->dbtran.nchunks;
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
 
 #ifdef DEBUG_TRAN
@@ -8627,6 +8630,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         }
 
         /* commit current transaction */
+        ++clnt->dbtran.nchunks;
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
         rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
         if (rc) {

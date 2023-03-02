@@ -1772,6 +1772,7 @@ void reset_query_effects(struct sqlclntstate *clnt)
 {
     bzero(&clnt->effects, sizeof(clnt->effects));
     bzero(&clnt->log_effects, sizeof(clnt->effects));
+    bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
 }
 
 static char *sqlenginestate_tostr(int state)
@@ -5268,6 +5269,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
     /* start off in comdb2 mode till we're told otherwise */
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.nchunks = 0;
     clnt->heartbeat = 0;
     clnt->limits.maxcost = gbl_querylimits_maxcost;
     clnt->limits.tablescans_ok = gbl_querylimits_tablescans_ok;

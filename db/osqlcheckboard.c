@@ -340,6 +340,14 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, 
 
     if (gbl_master_sends_query_effects && effects) {
         memcpy(&entry->clnt->effects, effects, sizeof(struct query_effects));
+        if (entry->clnt->dbtran.nchunks > 0) { /* chunked */
+            struct query_effects *ep = &entry->clnt->chunk_effects;
+            ep->num_affected += effects->num_affected;
+            ep->num_selected += effects->num_selected;
+            ep->num_updated += effects->num_updated;
+            ep->num_deleted += effects->num_deleted;
+            ep->num_inserted += effects->num_inserted;
+        }
     }
 
     Pthread_cond_signal(&entry->cond);
