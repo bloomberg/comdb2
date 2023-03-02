@@ -221,8 +221,6 @@ function prepare_and_bounce_block
 
     master=$(findmaster)
     write_prompt $func "Master is $master"
-    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_cluster")
-    write_prompt $func "$x"
     
     write_prompt $func "Tell master to prepare and leak"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable 'debug_all_prepare_leak' 1"
