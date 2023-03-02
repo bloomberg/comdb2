@@ -31,9 +31,9 @@ static sqlite3_module systblPreparedModule = {
 
 typedef struct systable_prepared {
     int64_t dist_txnid;
-    //uint32_t flags;
     char *flags;
     char *lsn;
+    char *begin_lsn;
     uint32_t coordinator_gen;
     char *coordinator_name;
     char *coordinator_tier;
@@ -84,7 +84,8 @@ static inline char *dist_flags_to_str(uint32_t flags)
 }
 
 static int collect_prepared(void *args, uint64_t dist_txnid, uint32_t flags, DB_LSN *lsn, 
-    uint32_t coordinator_gen, char *coordinator_name, char *coordinator_tier, uint32_t txnid)
+    DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name, char *coordinator_tier,
+    uint32_t txnid)
 {
     getprepared_t *p = (getprepared_t *)args;
     systable_prepared_t *r;
@@ -99,6 +100,8 @@ static int collect_prepared(void *args, uint64_t dist_txnid, uint32_t flags, DB_
     r->flags = dist_flags_to_str(flags);
     r->lsn = (char *)calloc(32, 1);
     prepared_lsn_to_str(r->lsn, lsn);
+    r->begin_lsn = (char *)calloc(32, 1);
+    prepared_lsn_to_str(r->begin_lsn, begin_lsn);
     r->coordinator_gen = coordinator_gen;
     r->coordinator_name = strdup(coordinator_name);
     r->coordinator_tier = strdup(coordinator_tier);
@@ -123,6 +126,7 @@ static void free_prepared(void *p, int n)
     for (a = begin; a < end; ++a) {
         free(a->flags);
         free(a->lsn);
+        free(a->begin_lsn);
         free(a->coordinator_name);
         free(a->coordinator_tier);
     }
@@ -137,6 +141,7 @@ int systblPreparedInit(sqlite3 *db)
         CDB2_INTEGER, "txnid", -1, offsetof(systable_prepared_t, txnid),
         CDB2_CSTRING, "flags", -1, offsetof(systable_prepared_t, flags),
         CDB2_CSTRING, "prepare_lsn", -1, offsetof(systable_prepared_t, lsn),
+        CDB2_CSTRING, "begin_lsn", -1, offsetof(systable_prepared_t, begin_lsn),
         CDB2_CSTRING, "coordinator_name", -1, offsetof(systable_prepared_t, coordinator_name),
         CDB2_CSTRING, "coordinator_tier", -1, offsetof(systable_prepared_t, coordinator_tier),
         CDB2_INTEGER, "coordinator_generation", -1, offsetof(systable_prepared_t, coordinator_gen),

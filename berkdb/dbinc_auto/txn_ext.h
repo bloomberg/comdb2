@@ -110,10 +110,12 @@ int __txn_stat_pp __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
 int __txn_closeevent __P((DB_ENV *, DB_TXN *, DB *));
 int __txn_recover_abort_prepared __P((DB_ENV *, u_int64_t dist_txnid, DB_LSN *prep_lsn,
 		DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name, DBT *coordinator_tier));
-int __txn_recover_prepared __P((DB_ENV *, u_int64_t dist_txnid, DB_LSN *prep_lsn,
-		DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name, DBT *coordinator_tier));
+int __txn_recover_prepared __P((DB_ENV *, DB_TXN *, u_int64_t dist_txnid, DB_LSN *prep_lsn,
+		DB_LSN *begin_lsn, DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name,
+		DBT *coordinator_tier));
 int __txn_master_prepared __P((DB_ENV *, u_int64_t dist_txnid, DB_LSN *prep_lsn,
-		DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name, DBT *coordinator_tier));
+		DB_LSN *begin_lsn, DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name,
+		DBT *coordinator_tier));
 int __txn_recover_dist_abort __P((DB_ENV *, u_int64_t));
 int __txn_clear_prepared __P((DB_ENV *, u_int64_t dist_txnid, int update_blkseq));
 int __txn_clear_all_prepared __P((DB_ENV *));
@@ -121,14 +123,18 @@ int __txn_upgrade_all_prepared __P((DB_ENV *));
 int __txn_downgrade_all_prepared __P((DB_ENV *));
 int __txn_downgrade_and_free_all_prepared __P((DB_ENV *));
 int __txn_abort_recovered_pp __P((DB_ENV *, u_int64_t dist_txnid));
+int __txn_is_prepared __P((DB_ENV *, u_int32_t txnid));
+int __txn_add_prepared_child __P((DB_ENV *, u_int32_t ptxnid, u_int32_t ctxnid));
 int __txn_abort_recovered __P((DB_ENV *, u_int64_t dist_txnid));
 int __txn_rep_abort_recovered __P((DB_ENV *, u_int64_t dist_txnid));
 int __txn_rep_discard_recovered __P((DB_ENV *, u_int64_t dist_txnid));
 int __txn_commit_recovered_pp __P((DB_ENV *, u_int64_t dist_txnid));
 int __txn_commit_recovered __P((DB_ENV *, u_int64_t dist_txnid));
 int __txn_discard_recovered_pp __P((DB_ENV *, u_int64_t dist_txnid));
+int __txn_add_prepared_child __P((DB_ENV *, u_int32_t ctxnid, u_int32_t ptxnid));
 int __txn_discard_recovered __P((DB_ENV *, u_int64_t dist_txnid));
 int __txn_prepared_collect_pp __P((DB_ENV *, collect_prepared_f, void *));
+int __txn_lowest_prepared_lsn __P((DB_ENV *, DB_LSN *lsn));
 
 int __txn_remevent __P((DB_ENV *, DB_TXN *, const char *, u_int8_t*));
 void __txn_remrem __P((DB_ENV *, DB_TXN *, const char *));

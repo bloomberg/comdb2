@@ -68,12 +68,13 @@ static int __prepared_collect_hashfor(void *obj, void *arg)
 	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
 	u_int32_t txnid = p->txnp ? p->txnp->txnid : 0;
 	char *name = alloca(p->coordinator_name.size + 1);
-    char *tier = alloca(p->coordinator_tier.size + 1);
+	char *tier = alloca(p->coordinator_tier.size + 1);
 	memcpy(name, p->coordinator_name.data, p->coordinator_name.size);
-    name[p->coordinator_name.size] = '\0';
+	name[p->coordinator_name.size] = '\0';
 	memcpy(tier, p->coordinator_tier.data, p->coordinator_tier.size);
-    tier[p->coordinator_tier.size] = '\0';
-	return (*c->func)(c->arg, p->dist_txnid, p->flags, &p->prepare_lsn, p->coordinator_gen, name, tier, txnid);
+	tier[p->coordinator_tier.size] = '\0';
+	return (*c->func)(c->arg, p->dist_txnid, p->flags, &p->prepare_lsn,
+		&p->begin_lsn, p->coordinator_gen, name, tier, txnid);
 }
 
 static int

@@ -425,10 +425,6 @@ __rep_start(dbenv, dbt, gen, flags)
 				ret = t_ret;
 			if (redo_prepared) {
 				upgrade_prepared = 1;
-/*
-				if ((t_ret = __txn_upgrade_all_prepared(dbenv)) != 0 && ret == 0)
-					ret = t_ret;
-*/
 				if ((t_ret = __rep_restore_prepared(dbenv)) != 0 && ret == 0)
 					ret = t_ret;
 			}
@@ -468,7 +464,7 @@ __rep_start(dbenv, dbt, gen, flags)
 		if ((ret = __rep_abort_prepared(dbenv)) != 0)
 			goto errlock;
 
-		if ((ret = __txn_downgrade_and_free_all_prepared(dbenv)) != 0)
+		if ((ret = __txn_downgrade_all_prepared(dbenv)) != 0)
 			goto errlock;
 
 		if ((ret = __rep_client_dbinit(dbenv, init_db)) != 0)

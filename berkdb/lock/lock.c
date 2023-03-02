@@ -2122,7 +2122,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	DB_LOCKER *sh_locker, *master_locker;
 	DB_LOCKOBJ *sh_obj;
 	DB_LOCKREGION *region;
-	u_int32_t holder, obj_ndx, ihold, *holdarr, holdix, holdsz;
+	u_int32_t holder, obj_ndx, ihold, *holdarr = NULL, holdix, holdsz;
 	extern int gbl_lock_get_verbose_waiter;
 	int verbose_waiter = gbl_lock_get_verbose_waiter;;
 	int grant_dirty, no_dd, ret, t_ret;
@@ -3813,7 +3813,9 @@ __lock_freefamilylocker(lt, locker)
 		unlock_locker_partition(region, partition);
 		unlock_lockers(region);
 		__db_err(dbenv, "Freeing locker with locks");
+#if defined (DEBUG_PREPARE)
         abort();
+#endif
 		return EINVAL;
 	}
 

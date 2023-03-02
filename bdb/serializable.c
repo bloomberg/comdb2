@@ -29,6 +29,7 @@
 #include <list.h>
 #include <fsnapf.h>
 
+#include <logmsg.h>
 #include <bdb_osqllog.h>
 #include <bdb_osqltrn.h>
 #include <bdb_int.h>
@@ -92,8 +93,8 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
     if (!rc)
         LOGCOPY_32(&rectype, logdta.data);
     else {
-        fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-        fprintf(stderr, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
+        logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+        logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
         return 1;
     }
     while (rc == 0 && rectype != DB_llog_ltran_start) {
@@ -274,7 +275,7 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
             break;
 
         default:
-            fprintf(stderr, "Unknown log entry type %d\n", rectype);
+            logmsg(LOGMSG_ERROR, "Unknown log entry type %d\n", rectype);
             abort();
             rc = -1;
             break;
@@ -304,8 +305,8 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
         if (!rc)
             LOGCOPY_32(&rectype, logdta.data);
         else {
-            fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-            fprintf(stderr, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
+            logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+            logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
             return 1;
         }
     }
@@ -419,8 +420,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
             rc = 0;
             break;
         } else {
-            fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-            fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+            logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+            logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                     seriallsn.offset);
             goto done;
         }
@@ -450,8 +451,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 *offset = seriallsn.offset;
                 break;
             } else {
-                fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
-                fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                         seriallsn.offset);
                 goto done;
             }
@@ -464,9 +465,9 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 if (!rc)
                     LOGCOPY_32(&rectype, logdta.data);
                 else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                             seriallsn.offset);
                     goto done;
                 }
@@ -483,9 +484,9 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 if (!rc)
                     LOGCOPY_32(&rectype, logdta.data);
                 else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                             seriallsn.offset);
                     goto done;
                 }
@@ -502,16 +503,16 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 if (!rc)
                     LOGCOPY_32(&rectype, logdta.data);
                 else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                             seriallsn.offset);
                     goto done;
                 }
                 if (rectype != DB___txn_dist_prepare) {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                             seriallsn.offset);
                     goto done;
                 }
@@ -525,9 +526,9 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 if (!rc)
                     LOGCOPY_32(&rectype, logdta.data);
                 else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                             seriallsn.offset);
                     goto done;
                 }
@@ -544,9 +545,8 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 if (!rc)
                     LOGCOPY_32(&rectype, logdta.data);
                 else {
-                    fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
-                            rc);
-                    fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
+                    logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn, rc %d\n", rc);
+                    logmsg(LOGMSG_ERROR, "@ file: %d, offset %d\n", seriallsn.file,
                             seriallsn.offset);
                     goto done;
                 }

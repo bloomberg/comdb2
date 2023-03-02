@@ -6,7 +6,6 @@ BERK_DEF_ATTR(skip_sync_if_direct, "Don't fsync files if directio enabled", BERK
 BERK_DEF_ATTR(warn_on_replicant_log_write, "Warn if replicant is writing to logs", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(abort_on_replicant_log_write , "Abort if replicant is writing to logs", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(debug_deadlock_replicant_percent , "Percent of replicant events getting deadlocks", BERK_ATTR_TYPE_PERCENT, 0)
-BERK_DEF_ATTR(always_run_recovery, "Replicant always runs recovery after rep_verify", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(debug_addrem_dbregs, "Generate debug records for addrems", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(start_recovery_at_dbregs, "Start recovery at dbregs", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(apprec_track_lsn_ranges, "During recovery track lsn ranges", BERK_ATTR_TYPE_BOOLEAN, 1)

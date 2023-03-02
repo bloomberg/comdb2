@@ -144,6 +144,12 @@ if(DEBUG_SC)
     add_definitions(-DDEBUG_SC)
 endif()
 
+option(DEBUG_PREPARE "Enable prepare debug trace" ON)
+mark_as_advanced(DEBUG_PREPARE)
+if(DEBUG_PREPARE)
+    add_definitions(-DDEBUG_PREPARE)
+endif()
+
 option(UFID_HASH_DEBUG "Enable ufid-hash debug trace" OFF)
 mark_as_advanced(UFID_HASH_DEBUG)
 if(UFID_HASH_DEBUG)

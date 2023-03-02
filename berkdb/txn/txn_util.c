@@ -30,6 +30,8 @@ static const char revid[] = "$Id: txn_util.c,v 11.25 2003/12/03 14:33:07 bostic 
 #include "txn_properties.h"
 #include "epochlib.h"
 
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
 	TXN_EVENT_T op;
@@ -344,6 +346,8 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 		__txn_discard(p->txnp, 0);
 	if (p->pglogs)
 		free(p->pglogs);
+	if (p->children)
+		free(p->children);
 	__os_free(dbenv, p);
 }
 
@@ -359,6 +363,9 @@ int __txn_recover_dist_abort(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	int ret;
 	DB_TXN_PREPARED *p, *fnd;
 
@@ -375,20 +382,27 @@ int __txn_recover_dist_abort(dbenv, dist_txnid)
 		abort();
 	}
 	hash_add(dbenv->prepared_txn_hash, p);
+#if defined (DEBUG_PREPARE)
+	logmsg(LOGMSG_USER, "%s adding aborted prepared txnid to list\n", __func__);
+#endif
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
 
-int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_gen,
+int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, begin_lsn, blkseq_key, coordinator_gen,
 		coordinator_name, coordinator_tier)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 	DB_LSN *prep_lsn;
+	DB_LSN *begin_lsn;
 	DBT *blkseq_key;
 	u_int32_t coordinator_gen;
 	DBT *coordinator_name;
 	DBT *coordinator_tier;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	int ret;
 	DB_TXN_PREPARED *p, *fnd;
 
@@ -406,6 +420,7 @@ int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_g
 
 	p->dist_txnid = dist_txnid;
 	p->prepare_lsn = *prep_lsn;
+    p->begin_lsn = *begin_lsn;
 
 	if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &p->blkseq_key.data)) != 0) {
 		__free_prepared_txn(dbenv, p);
@@ -468,6 +483,9 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
 	DBT *coordinator_name;
 	DBT *coordinator_tier;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	int ret;
 	DB_TXN_PREPARED *p, *fnd;
 
@@ -489,26 +507,30 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
 	return 0;
 }
 
-
 /*
  * __txn_recover_prepared --
  *
  * Collect prepared transactions during recovery's backward-pass.  We should
  * only run this for aborted and unresolved dist-txns.
  *
- * PUBLIC: int __txn_recover_prepared __P((DB_ENV *,
- * PUBLIC:	  u_int64_t, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
+ * PUBLIC: int __txn_recover_prepared __P((DB_ENV *, DB_TXN *txnid,
+ * PUBLIC:	  u_int64_t, DB_LSN *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
  */
-int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_gen,
-		coordinator_name, coordinator_tier)
+int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq_key,
+		coordinator_gen, coordinator_name, coordinator_tier)
 	DB_ENV *dbenv;
+	DB_TXN *txnid;
 	u_int64_t dist_txnid;
 	DB_LSN *prep_lsn;
+	DB_LSN *begin_lsn;
 	DBT *blkseq_key;
 	u_int32_t coordinator_gen;
 	DBT *coordinator_name;
 	DBT *coordinator_tier;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	int ret;
 	DB_TXN_PREPARED *p, *fnd;
 
@@ -527,7 +549,9 @@ int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_
 	if (p) {
 		/* 'aborted-from-recovery': we assert that ABORTED flag is lit above:
 		   !!! TODO !!! need to write dist-abort to blkseq  */
-		logmsg(LOGMSG_DEBUG, "Removing aborted prepare from recovered txn list\n");
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "Removing aborted prepare from recovered txn list\n");
+#endif
 		__free_prepared_txn(dbenv, p);
 		return (0);
 	}
@@ -538,6 +562,8 @@ int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_
 
 	p->dist_txnid = dist_txnid;
 	p->prepare_lsn = *prep_lsn;
+	p->begin_lsn = *begin_lsn;
+	p->txnid = txnid->txnid;
 
 	if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &p->blkseq_key.data)) != 0) {
 		__free_prepared_txn(dbenv, p);
@@ -575,8 +601,10 @@ int __txn_recover_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_
 		abort();
 	}
 	F_SET(p, DB_DIST_RECOVERED);
+
 	hash_add(dbenv->prepared_txn_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	logmsg(LOGMSG_DEBUG, "%s added unresolved prepared txn %"PRIu64"\n", __func__, dist_txnid);
 	return 0;
 }
 
@@ -598,13 +626,15 @@ static int __free_prepared(void *obj, void *arg)
 int __txn_clear_all_prepared(dbenv)
 	DB_ENV *dbenv;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	hash_for(dbenv->prepared_txn_hash, __free_prepared, dbenv);
 	hash_clear(dbenv->prepared_txn_hash);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
-
 
 /* 
  * __txn_clear_prepared --
@@ -619,6 +649,9 @@ int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
 	u_int64_t dist_txnid;
 	int update_blkseq;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
@@ -627,7 +660,9 @@ int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 
 	if (p == NULL) {
-		logmsg(LOGMSG_DEBUG, "%s unable to locate txnid %"PRIu64"\n", __func__, dist_txnid);
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s unable to locate prepared txnid %"PRIu64"\n", __func__, dist_txnid);
+#endif
 		return -1;
 	}
 
@@ -685,9 +720,11 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	}
 
 	/* Acquire locks/pglogs from prepare record */
-	if ((ret = __lock_get_list(dbenv, txnp->txnid, LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PRINTLOCK,
-		DB_LOCK_WRITE, &prepare->locks, &p->prepare_lsn, &p->pglogs,
-		&p->keycnt, stdout)) != 0) {
+	//u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PRINTLOCK | LOCK_GET_LIST_PREPARE);
+	u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PRINTLOCK);
+
+	if ((ret = __lock_get_list(dbenv, txnp->txnid, flags, DB_LOCK_WRITE, &prepare->locks,
+		&p->prepare_lsn, &p->pglogs, &p->keycnt, stdout)) != 0) {
 		logmsg(LOGMSG_FATAL, "%s error %d acquiring locks for prepare at %d:%d\n",
 			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
 		abort();
@@ -744,6 +781,9 @@ static int __downgrade_prepared(void *obj, void *arg)
 int __txn_downgrade_all_prepared(dbenv)
 	DB_ENV *dbenv;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	hash_for(dbenv->prepared_txn_hash, __downgrade_prepared, dbenv);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
@@ -768,6 +808,9 @@ static int __downgrade_and_free_prepared(void *obj, void *arg)
 int __txn_downgrade_and_free_all_prepared(dbenv)
 	DB_ENV *dbenv;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	hash_for(dbenv->prepared_txn_hash, __downgrade_and_free_prepared, dbenv);
 	hash_clear(dbenv->prepared_txn_hash);
@@ -786,6 +829,9 @@ int __txn_downgrade_and_free_all_prepared(dbenv)
 int __txn_upgrade_all_prepared(dbenv)
 	DB_ENV *dbenv;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_LOGC *logc = NULL;
 	int ret;
 	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
@@ -809,6 +855,9 @@ int __txn_rep_abort_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_TXN_PREPARED *p;
 	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
@@ -829,10 +878,48 @@ int __txn_rep_abort_recovered(dbenv, dist_txnid)
 	return 0;
 }
 
+static int __find_txn(void *obj, void *arg)
+{
+	u_int32_t *txnid = (u_int32_t *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	if (p->txnid == *txnid) {
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s found prepared %u returning 1\n", __func__, p->txnid);
+#endif
+		return 1;
+	}
+	for (int i = 0; i < p->numchildren; i++) {
+		if (p->children[i] == *txnid) {
+#if defined (DEBUG_PREPARE)
+			logmsg(LOGMSG_USER, "%s found prepared child %u returning 1\n", __func__, p->txnid);
+#endif
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int __txn_is_prepared(dbenv, txnid)
+	DB_ENV *dbenv;
+	u_int32_t txnid;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	int found;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	found = hash_for(dbenv->prepared_txn_hash, __find_txn, &txnid);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return found;
+}
+
 int __txn_abort_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_TXN_PREPARED *p;
 	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
@@ -884,6 +971,9 @@ int __txn_rep_discard_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_TXN_PREPARED *p;
 	int ret;
 
@@ -905,11 +995,99 @@ int __txn_rep_discard_recovered(dbenv, dist_txnid)
 	return 0;
 }
 
+static int __lowest_prepared_lsn(void *obj, void *arg)
+{
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	DB_LSN *lsn = (DB_LSN *)arg;
+	if (IS_ZERO_LSN(*lsn) || log_compare(&p->begin_lsn, lsn) < 0) {
+		*lsn = p->begin_lsn;
+	}
+	return 0;
+}
+
+int __txn_lowest_prepared_lsn(dbenv, lsn)
+	DB_ENV *dbenv;
+	DB_LSN *lsn;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	DB_LSN local_lsn = {0};
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __lowest_prepared_lsn, &local_lsn);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	*lsn = local_lsn;
+#if defined (DEBUG_PREPARE)
+	logmsg(LOGMSG_USER, "%s returns [%d:%d]\n", __func__, lsn->file, lsn->offset);
+#endif
+	return 0;
+}
+
+struct parent_child {
+	DB_ENV *dbenv;
+	u_int32_t ptxnid;
+	u_int32_t ctxnid;
+};
+
+static void add_child(DB_ENV *dbenv, DB_TXN_PREPARED *p, u_int32_t ctxnid)
+{
+	int ret = 0;
+	for (int i = 0; i < p->numchildren; i++) {
+		if (p->children[i] == ctxnid) {
+#if defined (DEBUG_PREPARE)
+			logmsg(LOGMSG_USER, "%s prepared child %u already in child-list\n", __func__, ctxnid);
+#endif
+			return;
+		}
+	}
+	if (p->numchildren + 1 > p->childrensz) {
+		p->childrensz = p->childrensz ? p->childrensz * 2 : 16;
+		if ((ret = __os_realloc(dbenv, p->childrensz * sizeof(u_int32_t),
+			&p->children)) != 0) {
+			logmsg(LOGMSG_FATAL, "Error realloc'ing children array, %d\n", ret);
+			abort();
+		}
+	}
+#if defined (DEBUG_PREPARE)
+	logmsg(LOGMSG_USER, "%s adding prepared child %u to child-list for %"PRIu64"\n",
+		__func__, ctxnid, p->dist_txnid);
+#endif
+	p->children[p->numchildren++] = ctxnid;
+}
+
+static int __add_prepared_child(void *obj, void *arg)
+{
+	struct parent_child *pc = (struct parent_child *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	if (p->txnid == pc->ptxnid && !F_ISSET(p, DB_DIST_ABORTED)) {
+#if defined (DEBUG_PREPARE)
+		comdb2_cheapstack_sym(stderr, "add_prepared_child");
+#endif
+		add_child(pc->dbenv, p, pc->ctxnid);
+		return 1;
+	}
+	return 0;
+}
+
+int __txn_add_prepared_child(dbenv, ctxnid, ptxnid)
+	DB_ENV *dbenv;
+	u_int32_t ctxnid;
+	u_int32_t ptxnid;
+{
+	struct parent_child pc = { .dbenv = dbenv, .ptxnid = ptxnid, .ctxnid = ctxnid };
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __add_prepared_child, &pc);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return 0;
+}
 
 int __txn_discard_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_TXN_PREPARED *p;
 	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
@@ -946,6 +1124,9 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	u_int64_t dist_txnid;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {

@@ -590,6 +590,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 		region->cur_maxid != TXN_MAXIMUM)
 		region->last_txnid = TXN_MINIMUM - 1;
 
+	/* Every recovered prepare emits txn_recycle */
 	if (prepared_txnid || ((region->last_txnid + 1) == region->cur_maxid)) {
 		if ((ret = __os_malloc(dbenv,
 			sizeof(u_int32_t) * (region->maxtxns + 1), &ids)) != 0)
@@ -1261,7 +1262,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
 						if ((ret = __txn_master_prepared(dbenv, txnp->dist_txnid, &txnp->last_lsn,
-							&txnp->blkseq_key, txnp->coordinator_gen, &coordinator, &tier))!=0) {
+							&tp->begin_lsn, &txnp->blkseq_key, txnp->coordinator_gen, &coordinator, &tier))!=0) {
 							abort();
 						}
 					} else if (elect_highest_committed_gen) {
@@ -1352,7 +1353,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				goto err;
 			}
 		} else {
-
 			/* Log the commit in the parent! */
 			timestamp = comdb2_time_epoch();
 			if (!IS_ZERO_LSN(txnp->last_lsn)) {
@@ -1662,9 +1662,12 @@ __txn_abort(txnp)
 	 * see any failure, we just get out of here and return the panic
 	 * up.
 	 */
-	while ((kid = TAILQ_FIRST(&txnp->kids)) != NULL)
+	while ((kid = TAILQ_FIRST(&txnp->kids)) != NULL) {
+		if (F_ISSET(txnp, TXN_DIST_DISCARD))
+			F_SET(kid, TXN_DIST_DISCARD);
 		if ((ret = __txn_abort(kid)) != 0)
 			return (ret);
+	}
 
 	if (LOCKING_ON(dbenv)) {
 		/*
@@ -1695,8 +1698,8 @@ __txn_abort(txnp)
 	if ((ret = __txn_undo(txnp)) != 0)
 		return (__db_panic(dbenv, ret));
 
-    /*
-     * Normally, we do not need to log aborts.  However, if we
+	/*
+	 * Normally, we do not need to log aborts.  However, if we
 	 * are a distributed transaction (i.e., we have a prepare),
 	 * then we log the abort so we know that this transaction
 	 * was actually completed.
@@ -1838,12 +1841,12 @@ __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coor
 	txnp->blkseq_key.size = 0;
 
 	if (blkseq_key != NULL) {
-	if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &txnp->blkseq_key.data)) != 0) {
-		__db_err(dbenv, "failed malloc");
-		return ret;
-	}
-	txnp->blkseq_key.size = blkseq_key->size;
-	memcpy(txnp->blkseq_key.data, blkseq_key->data, blkseq_key->size);
+		if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &txnp->blkseq_key.data)) != 0) {
+			__db_err(dbenv, "failed malloc");
+			return ret;
+		}
+		txnp->blkseq_key.size = blkseq_key->size;
+		memcpy(txnp->blkseq_key.data, blkseq_key->data, blkseq_key->size);
 	}
 
 	lflags |= DB_TXN_DIST_PREPARE;
@@ -2369,7 +2372,10 @@ __txn_undo(txnp)
 		}
 	}
 
-	ret = __db_do_the_limbo(dbenv, ptxn, txnp, txnlist, LIMBO_NORMAL);
+	/* Dont recover pages for prepare & discarded txns */
+	if (!F_ISSET(txnp, TXN_DIST_DISCARD)) {
+		ret = __db_do_the_limbo(dbenv, ptxn, txnp, txnlist, LIMBO_NORMAL);
+	}
 
 err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -2557,7 +2563,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	u_int32_t kbytes, minutes, flags;
 {
 	struct mintruncate_entry *mt, *newmt;
-	DB_LSN ckp_lsn, last_ckp, ltrans_ckp_lsn, ckp_lsn_sav;
+	DB_LSN ckp_lsn, last_ckp, ltrans_ckp_lsn, ckp_lsn_sav, prepared;
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
 	TXN_DETAIL *txnp;
@@ -2657,6 +2663,11 @@ do_ckp:
 	if (!IS_ZERO_LSN(ltrans_ckp_lsn) &&
 		log_compare(&ltrans_ckp_lsn, &ckp_lsn) < 0)
 		ckp_lsn = ltrans_ckp_lsn;
+
+	__txn_lowest_prepared_lsn(dbenv, &prepared);
+	if (!IS_ZERO_LSN(prepared) &&
+		log_compare(&prepared, &ckp_lsn) < 0)
+		ckp_lsn = prepared;
 
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);

@@ -1627,8 +1627,18 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             rc = tran->tid->abort(tran->tid);
         } 
         else {
+            assert(gbl_all_prepare_leak);
+            /* TXN_DIST_DISCARD doesn't write abort or recover alloc'd pages */
+#if DEBUG_PREPARE_TRY1
             tran->tid->flags |= TXN_DIST_DISCARD;
             rc = tran->tid->abort(tran->tid);
+#endif
+            /* HOWEVER ..  we can't remove this txn & have a reliable test: a checkpoint
+             * right after this can cause recover to ignore the prepared txn.  So just 
+             * flush the log & exit */
+            logmsg(LOGMSG_USER, "%s leak-all-prepare tunable is set: exiting..\n", __func__);
+            bdb_flush(bdb_state, bdberr);
+            exit(1);
         }
 
         bdb_osql_trn_repo_unlock();
