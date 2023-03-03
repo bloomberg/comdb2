@@ -345,34 +345,23 @@ set all_graphs {
   }
   create-table {stack
     {line CREATE TABLE {opt IF NOT EXISTS}}
-    {line /table-name {opt table-options}}
+    {line /table-name {opt {line OPTIONS table-options}}}
     {line lbrc /table-schema rbrc }
   }
   alter-table {stack
-    {line ALTER TABLE /table-name {opt table-options}}
+    {line ALTER TABLE /table-name {opt OPTIONS table-options}}
     {line lbrc /table-schema rbrc }
   }
 
   table-options {
-    line OPTIONS {loop {or 
-      {line ODH OFF}
-      {line IPU OFF}
-      {line ISC OFF}
-      {line REBUILD}
-      {line REC {or NONE CRLE LZ4 RLE ZLIB}}
-      {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
-    } ,} 
-  }
-
-  alter-table-options {
-    line OPTIONS ( {loop {or 
-      {line ODH OFF}
-      {line IPU OFF}
-      {line ISC OFF}
-      {line REBUILD}
-      {line REC {or NONE CRLE LZ4 RLE ZLIB}}
-      {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
-    } ,} ) 
+    line {loop {or
+        {line ODH OFF}
+        {line IPU OFF}
+        {line ISC OFF}
+        {line REBUILD}
+        {line REC {or NONE CRLE LZ4 RLE ZLIB}}
+        {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
+    } ,}
   }
 
   create-proc {stack
@@ -713,7 +702,7 @@ stack
                   }
                   {line ) }
               }
-              {line {opt table-options }}
+              {line {opt OPTIONS table-options }}
           }
       }
   }
@@ -829,7 +818,7 @@ stack
                                       }
                                   }
                               }
-                              {line alter-table-options }
+                              {line OPTIONS ( table-options ) }
                           }
                       }
                       {line DROP
