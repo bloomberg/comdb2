@@ -340,7 +340,7 @@
 (name='force_highslot', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='force_old_cursors', description='Replicant will use old cursors', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_allow_cross_class', description='', type='BOOLEAN', value='OFF', read_only='Y')
-(name='foreign_db_push_remote', description='', type='BOOLEAN', value='ON', read_only='N')
+(name='foreign_db_push_remote', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_resolve_local', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='foreign_metadb', description='Forces metadb for fdb queries to the one specified (Default:NULL)', type='STRING', value=NULL, read_only='Y')
 (name='foreign_metadb_class', description='Forces metadb for fdb queries to class specified (Default:NULL)', type='STRING', value=NULL, read_only='Y')
