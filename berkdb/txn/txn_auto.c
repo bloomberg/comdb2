@@ -2949,12 +2949,12 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
 
 /*
  * PUBLIC: int __txn_dist_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
- * PUBLIC:	 u_int32_t, u_int32_t, u_int32_t, DB_LSN *, u_int64_t, u_int32_t, u_int32_t, 
+ * PUBLIC:	 u_int32_t, u_int32_t, u_int32_t, DB_LSN *, u_int64_t, u_int64_t, u_int32_t, u_int32_t, 
  * PUBLIC:	 const DBT *, const DBT *));
  */
 int
 __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, generation, begin_lsn, dist_txnid,
-		lflags, coordinator_gen, coordinator_name, coordinator_tier, blkseq_key, locks)
+		genid, lflags, coordinator_gen, coordinator_name, coordinator_tier, blkseq_key, locks)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
@@ -2963,6 +2963,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, generation, begin_
 	u_int32_t generation;
 	DB_LSN *begin_lsn;
 	u_int64_t dist_txnid;
+    u_int64_t genid;
 	u_int32_t lflags;
 	u_int32_t coordinator_gen;
 	const DBT *coordinator_name;
@@ -3015,6 +3016,7 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, generation, begin_
 		+ sizeof(DB_LSN)	/* begin_lsn */
 		+ sizeof(u_int32_t) /* generation */
 		+ sizeof(u_int64_t) /* dist-txnid */
+		+ sizeof(u_int64_t) /* current-genid */
 		+ sizeof(u_int32_t) /* lflags */
 		+ sizeof(u_int32_t) /* coordinator-gen */
 		+ sizeof(u_int32_t) + (coordinator_name == NULL ? 0 : coordinator_name->size)
@@ -3090,6 +3092,10 @@ do_malloc:
 	bp += sizeof(DB_LSN);
 
 	uint64tmp = (u_int64_t)dist_txnid;
+	LOGCOPY_64(bp, &uint64tmp);
+	bp += sizeof(uint64tmp);
+
+	uint64tmp = (u_int64_t)genid;
 	LOGCOPY_64(bp, &uint64tmp);
 	bp += sizeof(uint64tmp);
 
@@ -3327,6 +3333,10 @@ __txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->dist_txnid = (u_int64_t)uint64tmp;
 	bp += sizeof(uint64tmp);
 
+	LOGCOPY_64(&uint64tmp, bp);
+	argp->genid = (u_int64_t)uint64tmp;
+	bp += sizeof(uint64tmp);
+
 	LOGCOPY_32(&uinttmp, bp);
 	argp->lflags = uinttmp;
 	bp += sizeof(uinttmp);
@@ -3412,6 +3422,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->begin_lsn.file,
 		(u_long)argp->begin_lsn.offset);
 	(void)printf("\tdist-txnid: %"PRIx64"\n", argp->dist_txnid);
+	(void)printf("\tcurrent-genid: %"PRIx64"\n", argp->genid);
 	/* Need schema-lk to support 2pc-sc */
 	(void)printf("\tlflags: 0x%08x ", argp->lflags);
 	if (argp->lflags & DB_TXN_LOGICAL_BEGIN)

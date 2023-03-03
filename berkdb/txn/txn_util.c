@@ -32,6 +32,9 @@ static const char revid[] = "$Id: txn_util.c,v 11.25 2003/12/03 14:33:07 bostic 
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
+extern int set_commit_context(unsigned long long context, uint32_t *generation,
+	void *plsn, void *args, unsigned int rectype);
+
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
 	TXN_EVENT_T op;
@@ -731,6 +734,9 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 		abort();
 	}
 
+	/* Make sure new master doesn't allocate prepared genids */
+	set_commit_context(prepare->genid, NULL, NULL, NULL, 0);
+
 	p->txnp = txnp;
 	p->prev_lsn = prepare->prev_lsn;
 	txnp->last_lsn = p->prepare_lsn;
@@ -1199,7 +1205,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	uint32_t rectype = 0;
 	void *txninfo = NULL;
 
-	if ((ret = __rep_collect_txn(dbenv, &p->prev_lsn, &lc, &had_serializable_records, NULL)) != 0) {
+	if ((ret = __rep_collect_txn(dbenv, &p->prepare_lsn, &lc, &had_serializable_records, NULL)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error collecting dist-txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
 		p->prepare_lsn.file, p->prepare_lsn.offset);
 		abort();

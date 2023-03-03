@@ -84,6 +84,7 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 
 #ifndef TESTSUITE
 #include <thread_util.h>
+extern unsigned long long get_commit_context(const void *, uint32_t generation);
 void bdb_get_writelock(void *bdb_state,
 	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
@@ -1261,9 +1262,10 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags);
 
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
+						u_int64_t genid = get_commit_context(NULL, 0);
 
 						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
-							TXN_COMMIT, gen, &tp->begin_lsn, txnp->dist_txnid, ltranflags,
+							TXN_COMMIT, gen, &tp->begin_lsn, txnp->dist_txnid, genid, ltranflags,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
 						if ((ret = __txn_master_prepared(dbenv, txnp->dist_txnid, &txnp->last_lsn,

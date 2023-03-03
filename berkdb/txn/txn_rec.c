@@ -60,6 +60,7 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 int set_commit_context(unsigned long long context, uint32_t *generation,
 		void *plsn, void *args, unsigned int rectype);
 
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 /*
  * PUBLIC: int __txn_dist_abort_recover
@@ -77,6 +78,9 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 	db_recops op;
 	void *info;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s - opcode is %d", __func__, op);
+#endif
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
@@ -138,6 +142,9 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 	db_recops op;
 	void *info;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s - opcode is %d", __func__, op);
+#endif
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
@@ -257,6 +264,9 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	db_recops op;
 	void *info;
 {
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s - opcode is %d", __func__, op);
+#endif
 	DB_REP *db_rep;
 	REP *rep;
 	DB_TXNHEAD *headp;
