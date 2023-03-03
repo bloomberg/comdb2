@@ -94,6 +94,7 @@ typedef struct __txn_dist_prepare_args {
 	u_int32_t generation;
 	DB_LSN begin_lsn;
 	u_int64_t dist_txnid;
+    u_int64_t genid;
 	u_int32_t lflags;
 	u_int32_t coordinator_gen;
 	DBT coordinator_name;
