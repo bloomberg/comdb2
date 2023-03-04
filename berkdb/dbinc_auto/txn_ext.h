@@ -121,6 +121,7 @@ int __txn_recover_dist_commit __P((DB_ENV *, u_int64_t));
 int __txn_is_dist_committed __P((DB_ENV *, u_int64_t));
 int __txn_clear_prepared __P((DB_ENV *, u_int64_t dist_txnid, int update_blkseq));
 int __txn_clear_all_prepared __P((DB_ENV *));
+void __txn_prune_resolved_prepared __P((DB_ENV *));
 int __txn_upgrade_all_prepared __P((DB_ENV *));
 int __txn_downgrade_all_prepared __P((DB_ENV *));
 int __txn_downgrade_and_free_all_prepared __P((DB_ENV *));

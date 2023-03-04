@@ -680,6 +680,10 @@ tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
 
 /* return log bytes written so far for this transaction */
 uint64_t bdb_tran_logbytes(tran_type *tran);
+/* Write a prepare record */
+int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, u_int64_t dist_txnid,
+        const char *coordinator_name, const char *coordinator_tier, u_int32_t coordinator_gen,
+        void *blkseq_key, int blkseq_key_len, int *bdberr);
 
 /* commit the transaction referenced by the tran handle */
 int bdb_tran_commit(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);

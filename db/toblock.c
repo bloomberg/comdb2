@@ -2676,7 +2676,26 @@ static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
         } \
     }
 
+int gbl_random_prepare_commit = 0;
+int gbl_all_prepare_commit = 0;
+int gbl_all_prepare_abort = 0;
+int gbl_all_prepare_leak = 0;
 
+static inline int debug_should_prepare()
+{
+    return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak ||
+           (gbl_random_prepare_commit && rand()%2);
+}
+
+static inline int debug_prepared_should_commit()
+{
+    return (!gbl_all_prepare_leak && !gbl_all_prepare_abort);
+}
+
+static inline int debug_prepared_should_abort()
+{
+    return gbl_all_prepare_abort;
+}
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
@@ -5480,8 +5499,35 @@ add_blkseq:
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
-                    irc = trans_commit_adaptive(iq, parent_trans, source_host);
-                    parent_trans = NULL;
+					int prepared = 0, bdberr = 0;
+					u_int64_t dist_txnid = 0;
+
+					/* Prepare tests */
+					if (debug_should_prepare()) {
+						dist_txnid = get_genid(thedb->bdb_env, 0);
+						int prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, 
+                            "test-coordinator", "test-tier", rand() % 10000, bskey, bskeylen, &bdberr);
+                        if (prepare_rc) {
+                            logmsg(LOGMSG_FATAL, "%s got weird error from prepare, %d??\n",
+                                __func__, prepare_rc);
+                            abort();
+                        }
+						prepared = 1;
+					}
+					if (!prepared || debug_prepared_should_commit()) {
+                    	irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                    	parent_trans = NULL;
+					} else if (prepared && debug_prepared_should_abort()) {
+						irc = trans_abort(iq, parent_trans);
+						parent_trans = NULL;
+					} else {
+						assert(gbl_all_prepare_leak);
+						logmsg(LOGMSG_USER, "%s leaking a prepared txn %"PRIu64"\n",
+							__func__, dist_txnid);
+						bdb_flush(thedb->bdb_env, &bdberr);
+						sleep(2);
+						exit(1);
+					}
                 }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:

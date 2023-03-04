@@ -6915,6 +6915,8 @@ restart:
 	dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	have_recover_lk = 0;
 
+	__txn_prune_resolved_prepared(dbenv);
+
 	if (online) {
 		recovery_release_locks(dbenv, lockid);
 		lockid = DB_LOCK_INVALIDID;
