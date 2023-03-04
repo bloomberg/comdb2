@@ -401,8 +401,8 @@ int __txn_recover_dist_commit(dbenv, dist_txnid)
 		if ((ret = __os_calloc(dbenv, 1, sizeof(DB_TXN_PREPARED), &p)) != 0) {
 			return (ret);
 		}
-        p->dist_txnid = dist_txnid;
-        hash_add(dbenv->prepared_txn_hash, p);
+		p->dist_txnid = dist_txnid;
+		hash_add(dbenv->prepared_txn_hash, p);
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	F_SET(p, DB_DIST_COMMITTED);
@@ -483,7 +483,7 @@ int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, begin_lsn, blkseq_key, co
 
 	p->dist_txnid = dist_txnid;
 	p->prepare_lsn = *prep_lsn;
-    p->begin_lsn = *begin_lsn;
+	p->begin_lsn = *begin_lsn;
 
 	if ((ret = __os_calloc(dbenv, 1, blkseq_key->size, &p->blkseq_key.data)) != 0) {
 		__free_prepared_txn(dbenv, p);
@@ -837,7 +837,7 @@ static int __downgrade_prepared(void *obj, void *arg)
 	return 0;
 }
 
-static void __txn_prune_resolved_prepared(dbenv)
+void __txn_prune_resolved_prepared(dbenv)
 	DB_ENV *dbenv;
 {
 #if defined (DEBUG_PREPARE)
@@ -853,7 +853,7 @@ static void __txn_prune_resolved_prepared(dbenv)
 			__free_prepared_txn(dbenv, prev);
 		}
 		prev = p;
-        if (p) p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt);
+		if (p) p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt);
 	}
 }
 

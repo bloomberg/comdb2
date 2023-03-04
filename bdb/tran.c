@@ -1443,25 +1443,28 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
-int gbl_random_prepare_commit = 0;
-int gbl_all_prepare_commit = 0;
-int gbl_all_prepare_abort = 0;
-int gbl_all_prepare_leak = 0;
-
-static inline int debug_should_prepare()
+int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, u_int64_t dist_txnid,
+    const char *coordinator_name, const char *coordinator_tier, u_int32_t coordinator_gen,
+    void *blkseq_key, int blkseq_key_len, int *bdberr)
 {
-    return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak ||
-           (gbl_random_prepare_commit && rand()%2);
-}
+    u_int32_t flags = (DB_TXN_DONT_GET_REPO_MTX | (tran->request_ack) ? DB_TXN_REP_ACK : 0);
+    *bdberr = BDBERR_NOERROR;
+    DBT blkseq = {.data = blkseq_key, .size = blkseq_key_len}; 
 
-static inline int debug_prepared_should_commit()
-{
-    return (!gbl_all_prepare_leak && !gbl_all_prepare_abort);
-}
+    if  (tran->tranclass != TRANCLASS_BERK) {
+        logmsg(LOGMSG_FATAL, "%s preparing incorrect tranclass: %d\n", __func__, tran->tranclass);
+        abort();
+    }
 
-static inline int debug_prepared_should_abort()
-{
-    return gbl_all_prepare_abort;
+    if  (tran->tid->parent) {
+        logmsg(LOGMSG_FATAL, "%s preparing child transaction\n", __func__);
+        abort();
+    }
+
+    int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, coordinator_name,
+        coordinator_tier, dist_txnid, &blkseq, flags);
+
+    return prepare_rc;
 }
 
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -1606,43 +1609,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
-        int prepared = 0;
-
-        if (tran->tid->parent == NULL && debug_should_prepare())
-        {
-            u_int64_t dist_txnid = get_genid(bdb_state, 0);
-            int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, "test-coordinator",
-                    "test-tier", rand() % 100, NULL, flags);
-            if (prepare_rc) {
-                abort();
-            }
-            prepared = 1;
-        }
-        if (!prepared || debug_prepared_should_commit())
-        {
-            rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
-        } 
-        else if (prepared && debug_prepared_should_abort()) 
-        {
-            rc = tran->tid->abort(tran->tid);
-        } 
-        else {
-            assert(gbl_all_prepare_leak);
-            /* TXN_DIST_DISCARD doesn't write abort or recover alloc'd pages */
-#if DEBUG_PREPARE_TRY1
-            tran->tid->flags |= TXN_DIST_DISCARD;
-            rc = tran->tid->abort(tran->tid);
-#endif
-            /* HOWEVER ..  we can't remove this txn & have a reliable test: a checkpoint
-             * right after this can cause recover to ignore the prepared txn.  So just 
-             * flush the log & exit */
-            logmsg(LOGMSG_USER, "%s leak-all-prepare tunable is set: exiting..\n", __func__);
-            bdb_flush(bdb_state, bdberr);
-            logmsg(LOGMSG_USER, "%s sleep a bit as master before exiting / propogate prepare", __func__);
-            sleep(10);
-            exit(1);
-        }
-
+        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
         bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
