@@ -209,11 +209,11 @@ function prepare_and_commit
     check_notblocked $insert_pid
 
     write_prompt $func "New insert is resolved: $(ps -ef | egrep $insert_pid)"
-    write_prompt $func "Verify that t1 has 2000 records"
+    write_prompt $func "Verify that t1 has 3000 records"
     x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
     write_prompt $func "Count is $x records"
 
-    [[ "$x" -ne "2000" ]] && failexit "Found only $x records, should be 2000"
+    [[ "$x" -ne "3000" ]] && failexit "Found only $x records, should be 3000"
 
     write_prompt $func "Single-master bounce succeeded!"
     write_prompt $func "Checking cluster"
@@ -267,9 +267,9 @@ function prepare_and_commit
     locks=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select * from comdb2_locks where locktype='PAGE'")
     write_prompt $func "$locks"
 
-    write_prompt $func "Verify that select against replicant returns 2000 records"
+    write_prompt $func "Verify that select against replicant returns 3000 records"
     x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default  "select count(*) from t1")
-    [[ "$x" -ne "2000" ]] && failexit "There should be 2000 records, not $x"
+    [[ "$x" -ne "3000" ]] && failexit "There should be 2000 records, not $x"
 
     write_prompt $func "Get the dist-txnid"
     dist_txnid=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select dist_txnid from comdb2_prepared")
@@ -294,7 +294,7 @@ function prepare_and_commit
     x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
     write_prompt $func "Count is $x records"
 
-    [[ "$x" != "3000" ]] && failexit "Select returned incorrect number of records, $x vs 3000"
+    [[ "$x" != "5000" ]] && failexit "Select returned incorrect number of records, $x vs 5000"
 
     $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "truncate t1"
 }
@@ -474,8 +474,8 @@ function run_test
     rm $stopfile >/dev/null 2>&1
     create_table
 
-    prepare_and_abort
-    #prepare_and_commit
+    #prepare_and_abort
+    prepare_and_commit
 }
 
 [[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"
