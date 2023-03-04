@@ -75,6 +75,11 @@ static inline char *dist_flags_to_str(uint32_t flags)
         strcat(r, "ABORTED");
         first = 1;
     }
+    if (flags & DB_DIST_COMMITTED) {
+        if (first) strcat(r, "|");
+        strcat(r, "COMMITTED");
+        first = 1;
+    }
     if (flags & DB_DIST_SCHEMA_LK) {
         if (first) strcat(r, "|");
         strcat(r, "SCHEMA_LK");

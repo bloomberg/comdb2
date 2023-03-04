@@ -17,3 +17,4 @@ dtastripe 1
 
 # Prepare requires ufid-log
 ufid_log on
+block_set_commit_genid_trace 1
