@@ -96,9 +96,7 @@ static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
 #include "dbinc_auto/qam_auto.h"
 #include "dbinc_auto/txn_auto.h"
 
-#if defined (UFID_HASH_DEBUG)
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
-#endif
 
 static int log_event_counts[10000] = { 0 };
 
@@ -593,17 +591,24 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 				}
 				make_call = 1;
 				if (ret == TXN_OK) {
-					ret = __db_txnlist_update(dbenv, info, txnid,
-							rectype == DB___txn_xa_regop ?
-							TXN_PREPARE : TXN_ABORT, NULL);
+					/* Dist-prepared transactions can be committed in a later generation.  
+					 * If its a committed dist-prepare then this has rolled forward: add
+					 * the txnid txnlist as committed. */
+					if (rectype == DB___txn_dist_prepare) {
+						redo = DB_TXN_DIST_ADD_TXNLIST;
+					} else  {
+						ret = __db_txnlist_update(dbenv, info, txnid,
+								rectype == DB___txn_xa_regop ?
+								TXN_PREPARE : TXN_ABORT, NULL);
 #if defined (UFID_HASH_DEBUG)
-					comdb2_cheapstack_sym(stderr, "db_txnlist_update line %d for "
-						"[%d:%d] to %d:", __LINE__, lsnp->file, lsnp->offset,
-						rectype == DB___txn_xa_regop ?
-						TXN_PREPARE : TXN_ABORT);
+						comdb2_cheapstack_sym(stderr, "db_txnlist_update line %d for "
+							"[%d:%d] to %d:", __LINE__, lsnp->file, lsnp->offset,
+							rectype == DB___txn_xa_regop ?
+							TXN_PREPARE : TXN_ABORT);
 #endif
-					if (ret != 0)
-						return ret;
+						if (ret != 0)
+							return ret;
+					}
 				}
 			}
 		}
@@ -876,6 +881,10 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 	DB_TXNLIST *elp, *fnd;
 	int ret;
 
+#if defined (DEBUG_PREPARE_TXNLIST)
+	comdb2_cheapstack_sym(stderr, "%s txnid %u/%x, status %d lsn [%d:%d]\n",
+		__func__, txnid, txnid, status, lsn ? lsn->file : -1, lsn ? lsn->offset : -1);
+#endif
 	if ((ret = __os_malloc(dbenv, sizeof(DB_TXNLIST), &elp)) != 0)
 		return (ret);
 	memset(elp, 0, sizeof(DB_TXNLIST));
@@ -924,6 +933,10 @@ __db_txnlist_remove(dbenv, listp, txnid)
 	u_int32_t txnid;
 {
 	DB_TXNLIST *entry;
+
+#if defined (DEBUG_PREPARE_TXNLIST)
+	comdb2_cheapstack_sym(stderr, "%s txnid %u/%x\n", __func__, txnid, txnid);
+#endif
 
 	return (__db_txnlist_find_internal(dbenv,
 	    listp, TXNLIST_TXNID, txnid,
@@ -1084,6 +1097,10 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 	int32_t status;
 	DB_LSN *lsn;
 {
+#if defined (DEBUG_PREPARE_TXNLIST)
+	comdb2_cheapstack_sym(stderr, "%s txnid %u/%x, status %d lsn [%d:%d]\n",
+		__func__, txnid, txnid, status, lsn ? lsn->file : -1, lsn ? lsn->offset : -1);
+#endif
 	DB_TXNHEAD *hp;
 	DB_TXNLIST *elp;
 	int ret;

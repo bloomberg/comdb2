@@ -32,8 +32,7 @@ static const char revid[] = "$Id: txn_util.c,v 11.25 2003/12/03 14:33:07 bostic 
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
-extern int set_commit_context(unsigned long long context, uint32_t *generation,
-	void *plsn, void *args, unsigned int rectype);
+extern int set_commit_context_prepared(unsigned long long context);
 
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
@@ -355,10 +354,70 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 }
 
 /*
+ * __txn_is_dist_committed --
+ *
+ * Add dist_txn to prepared-txn hash as a committed txn.  This is needed 
+ * to accommodate a commit from a different master.
+ *
+ * PUBLIC: int __txn_is_dist_committed __P((DB_ENV *, u_int64_t dist_txnid));
+ */
+int __txn_is_dist_committed(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+	int ret = 0;
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	DB_TXN_PREPARED *p;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) && F_ISSET(p, DB_DIST_COMMITTED))
+		ret = 1;
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return ret;
+}
+
+/*
+ * __txn_recover_dist_commit --
+ *
+ * Add dist_txn to prepared-txn hash as a committed txn.  This is needed 
+ * to accommodate a commit from a different master.
+ *
+ * PUBLIC: int __txn_recover_dist_commit __P((DB_ENV *, u_int64_t dist_txnid));
+ */
+int __txn_recover_dist_commit(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	u_int64_t dist_txnid;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	int ret;
+	DB_TXN_PREPARED *p;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
+
+		if ((ret = __os_calloc(dbenv, 1, sizeof(DB_TXN_PREPARED), &p)) != 0) {
+			return (ret);
+		}
+        p->dist_txnid = dist_txnid;
+        hash_add(dbenv->prepared_txn_hash, p);
+	}
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	F_SET(p, DB_DIST_COMMITTED);
+#if defined (DEBUG_PREPARE)
+	logmsg(LOGMSG_USER, "%s adding committed prepare dist-txnid %"PRIu64" to list\n",
+		__func__, dist_txnid);
+#endif
+	return 0;
+}
+
+/*
  * __txn_recover_dist_abort --
  *
- * Add dist_txn to prepared-txn hash as an aborted txn.  No need to handle 
- * dist-commits: they will be rolled forward.  TODO: add the blkseq key.
+ * Add dist_txn to prepared-txn hash as an aborted txn.  
+ * TODO: add the blkseq key.
  *
  * PUBLIC: int __txn_recover_dist_abort __P((DB_ENV *, u_int64_t dist_txnid));
  */
@@ -735,7 +794,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	}
 
 	/* Make sure new master doesn't allocate prepared genids */
-	set_commit_context(prepare->genid, NULL, NULL, NULL, 0);
+	set_commit_context_prepared(prepare->genid);
 
 	p->txnp = txnp;
 	p->prev_lsn = prepare->prev_lsn;
@@ -778,6 +837,26 @@ static int __downgrade_prepared(void *obj, void *arg)
 	return 0;
 }
 
+static void __txn_prune_resolved_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	unsigned int bkt;
+	void *ent;
+	DB_TXN_PREPARED *prev = NULL;
+	DB_TXN_PREPARED *p = hash_first(dbenv->prepared_txn_hash, &ent, &bkt);
+	while (p || prev) {
+		if (prev && F_ISSET(prev, DB_DIST_ABORTED|DB_DIST_COMMITTED)) {
+			hash_del(dbenv->prepared_txn_hash, prev);
+			__free_prepared_txn(dbenv, prev);
+		}
+		prev = p;
+        if (p) p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt);
+	}
+}
+
 /* 
  * __txn_downgrade_all_prepared --
  *
@@ -792,6 +871,7 @@ int __txn_downgrade_all_prepared(dbenv)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	__txn_prune_resolved_prepared(dbenv);
 	hash_for(dbenv->prepared_txn_hash, __downgrade_prepared, dbenv);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
@@ -825,26 +905,6 @@ int __txn_downgrade_and_free_all_prepared(dbenv)
 	return 0;
 }
 
-static void __txn_prune_aborted_prepared(dbenv)
-	DB_ENV *dbenv;
-{
-#if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s", __func__);
-#endif
-	unsigned int bkt;
-	void *ent;
-	DB_TXN_PREPARED *prev = NULL;
-	DB_TXN_PREPARED *p = hash_first(dbenv->prepared_txn_hash, &ent, &bkt);
-	while (p || prev) {
-		if (prev && F_ISSET(prev, DB_DIST_ABORTED)) {
-			hash_del(dbenv->prepared_txn_hash, prev);
-			__free_prepared_txn(dbenv, prev);
-		}
-		prev = p;
-        if (p) p = hash_next(dbenv->prepared_txn_hash, &ent, &bkt);
-	}
-}
-
 /* 
  * __txn_upgrade_all_prepared --
  *
@@ -866,7 +926,7 @@ int __txn_upgrade_all_prepared(dbenv)
 		abort();
 	}
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	__txn_prune_aborted_prepared(dbenv);
+	__txn_prune_resolved_prepared(dbenv);
 	hash_for(dbenv->prepared_txn_hash, __upgrade_prepared, logc);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	logc->close(logc, 0);

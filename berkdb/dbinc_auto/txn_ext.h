@@ -117,6 +117,8 @@ int __txn_master_prepared __P((DB_ENV *, u_int64_t dist_txnid, DB_LSN *prep_lsn,
 		DB_LSN *begin_lsn, DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name,
 		DBT *coordinator_tier));
 int __txn_recover_dist_abort __P((DB_ENV *, u_int64_t));
+int __txn_recover_dist_commit __P((DB_ENV *, u_int64_t));
+int __txn_is_dist_committed __P((DB_ENV *, u_int64_t));
 int __txn_clear_prepared __P((DB_ENV *, u_int64_t dist_txnid, int update_blkseq));
 int __txn_clear_all_prepared __P((DB_ENV *));
 int __txn_upgrade_all_prepared __P((DB_ENV *));
