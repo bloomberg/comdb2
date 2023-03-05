@@ -3154,7 +3154,7 @@ static int bdb_update_relinks_fileid_queues(void *bdb_state,
     return 0;
 }
 
-static int bdb_update_pglogs_fileid_queues(void *bdb_state,
+static int bdb_update_pglogs_fileid_queues(void *in_bdb_state,
                                            unsigned long long logical_tranid,
                                            int is_logical_commit,
                                            DB_LSN commit_lsn, uint32_t gen,
@@ -3162,6 +3162,7 @@ static int bdb_update_pglogs_fileid_queues(void *bdb_state,
                                            unsigned int nkeys)
 {
     int j;
+    bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
     struct fileid_pglogs_queue *fileid_queue = NULL;
     struct pglogs_queue_key **qearray = NULL, *qe, *chk;
     struct page_logical_lsn_key *key;
@@ -3183,8 +3184,10 @@ static int bdb_update_pglogs_fileid_queues(void *bdb_state,
         qe->lsn = key->lsn;
         qe->commit_lsn = key->commit_lsn;
 
-        if (log_compare(&key->commit_lsn, &commit_lsn))
+        if (log_compare(&key->commit_lsn, &commit_lsn)) {
+            bdb_state->dbenv->log_flush(bdb_state->dbenv, NULL);
             abort();
+        }
     }
 
     for (j = nkeys - 1; j >= 0; j--) {
@@ -3280,6 +3283,21 @@ struct pglog_queue_heads {
     int index;
     struct fileid_pglogs_queue **queue_heads;
 };
+
+/* Pagelogs which appear in prepare record need actual commit */
+int bdb_update_pglogs_commitlsn(void *bdb_state, void *pglogs,
+                                unsigned int nkeys, DB_LSN commit_lsn)
+{
+    struct page_logical_lsn_key *keylist =
+        (struct page_logical_lsn_key *)pglogs;
+
+
+    for (int i = 0; i < nkeys; i++) {
+        struct page_logical_lsn_key *key = &keylist[i];
+        key->commit_lsn = commit_lsn;
+    }
+    return 0;
+}
 
 int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
                                   unsigned int nkeys, int is_logical_commit,

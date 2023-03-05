@@ -85,6 +85,11 @@ static inline char *dist_flags_to_str(uint32_t flags)
         strcat(r, "SCHEMA_LK");
         first = 1;
     }
+    if (flags & DB_DIST_UPDSHADOWS) {
+        if (first) strcat(r, "|");
+        strcat(r, "UPDSHADOWS");
+        first = 1;
+    }
     return r;
 }
 

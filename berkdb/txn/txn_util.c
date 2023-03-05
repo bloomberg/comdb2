@@ -776,15 +776,20 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 
 	assert(txnp->txnid == prepare->txnid->txnid);
 
-	/* TODO: consider collecting & storing lc-colleciton in prepared-txn */
 	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
 		wrlock_schema_lk(); 
 		F_SET(p, DB_DIST_SCHEMA_LK);
 	}
 
+	if (prepare->lflags & DB_DIST_UPDSHADOWS) {
+		F_SET(p, DB_DIST_UPDSHADOWS);
+	}
+
 	/* Acquire locks/pglogs from prepare record */
-	//u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PRINTLOCK | LOCK_GET_LIST_PREPARE);
-	u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PRINTLOCK);
+	/* TODO: GET_LIST_PREPARE should acquire a READLOCK against every table 
+	 * to block schema-change */
+	//u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PREPARE);
+	u_int32_t flags = (LOCK_GET_LIST_GETLOCK);
 
 	if ((ret = __lock_get_list(dbenv, txnp->txnid, flags, DB_LOCK_WRITE, &prepare->locks,
 		&p->prepare_lsn, &p->pglogs, &p->keycnt, stdout)) != 0) {
@@ -1048,6 +1053,13 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	return 0;
 }
 
+
+extern void bdb_osql_trn_repo_lock();
+extern void bdb_osql_trn_repo_unlock();
+extern int update_shadows_beforecommit(void *bdb_state, DB_LSN *last_logical_lsn,
+		unsigned long long *commit_genid, int is_master);
+extern int bdb_update_pglogs_commitlsn(void *bdb_state, void *pglogs, unsigned int nkeys,
+		DB_LSN commit_lsn);
 extern int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 		unsigned int nkeys, int is_logical_commit,
 		unsigned long long logical_tranid, DB_LSN logical_commit_lsn, uint32_t gen,
@@ -1231,6 +1243,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 		return -1;
 	}
 
+
 	/* Write the commit record now to get commit-context */
 	u_int64_t context = 0;
 	int32_t timestamp = comdb2_time_epoch();
@@ -1245,6 +1258,10 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	gen = rep->gen;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
+	if (F_ISSET(p, DB_DIST_UPDSHADOWS)) {
+		bdb_osql_trn_repo_lock();
+	}
+
 	if ((ret = __txn_dist_commit_log(dbenv, p->txnp, &lsn_out, &context, lflags, TXN_COMMIT,
 			p->dist_txnid, gen, timestamp, NULL)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error writing dist-commit for txn %"PRIu64", LSN %d:%d\n", p->dist_txnid,
@@ -1254,8 +1271,21 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	assert(context != 0);
 
+    bdb_update_pglogs_commitlsn(dbenv->app_private, p->pglogs, p->keycnt, lsn_out);
 	bdb_transfer_pglogs_to_queues(dbenv->app_private, p->pglogs, p->keycnt, 0,
 		0, lsn_out, gen, timestamp, context);
+
+	if (F_ISSET(p, DB_DIST_UPDSHADOWS)) {
+#if defined (DEBUG_PREPARE)
+		comdb2_cheapstack_sym(stderr, "update_shadows_beforecommit", __func__);
+#endif
+		if ((ret = update_shadows_beforecommit(dbenv->app_private, &p->prev_lsn, NULL, 1)) !=0 ) {
+			logmsg(LOGMSG_FATAL, "Error %d updating shadows before commit for txn %"PRIu64", LSN %d:%d\n",
+				ret, p->dist_txnid, p->prepare_lsn.file, p->prepare_lsn.offset);
+			abort();
+		}
+		bdb_osql_trn_repo_unlock();
+	}
 
 	/* Collect txn, roll-forward, call txn_commit */
 	LSN_COLLECTION lc = {0};
