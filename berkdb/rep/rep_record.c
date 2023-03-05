@@ -3959,7 +3959,7 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			__db_err(dbenv, "transaction failed at %lu:%lu rc=%d",
 				(u_long)rr->lsn.file, (u_long)rr->lsn.offset, rc);
 			/* and now? */
-            __log_flush(dbenv, NULL);
+			__log_flush(dbenv, NULL);
 			abort();
 		}
 
@@ -4522,20 +4522,24 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 
 	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
 		logmsg(LOGMSG_ERROR, "Error getting log cursor, %d\n", ret);
+		__log_flush(dbenv, NULL);
 		abort();
 	}
 	
 	if ((ret = __log_c_get(logc, lsn, &mylog, DB_SET)) != 0) {
 		logmsg(LOGMSG_ERROR, "Error putting log cursor at %d:%d, %d\n", lsn->file, lsn->offset, ret);
+		__log_flush(dbenv, NULL);
 		abort();
 	}
 	LOGCOPY_32(&rectype, mylog.data);
 	if (rectype != DB___txn_dist_prepare) {
 		logmsg(LOGMSG_ERROR, "Previous record is not prepare: %u\n", rectype);
+		__log_flush(dbenv, NULL);
 		abort();
 	}
 	if ((ret = __txn_dist_prepare_read(dbenv, mylog.data, &argpp)) != 0) {
 		logmsg(LOGMSG_ERROR, "Error reading prepare txn, %d\n", ret);
+		__log_flush(dbenv, NULL);
 		abort();
 	}
 	void *locksmem = NULL;
@@ -4546,7 +4550,7 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 	memcpy(locksmem, argpp->locks.data, argpp->locks.size);
 	locks->data = locksmem;
 	locks->size = argpp->locks.size;
-    (*lflags) = argpp->lflags;
+	(*lflags) = argpp->lflags;
 	ret = 0;
 
 done:		

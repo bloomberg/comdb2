@@ -1451,20 +1451,50 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, u_int64_t dist_
     *bdberr = BDBERR_NOERROR;
     DBT blkseq = {.data = blkseq_key, .size = blkseq_key_len}; 
 
-    if  (tran->tranclass != TRANCLASS_BERK) {
+    if (tran->tranclass != TRANCLASS_BERK) {
         logmsg(LOGMSG_FATAL, "%s preparing incorrect tranclass: %d\n", __func__, tran->tranclass);
         abort();
     }
 
-    if  (tran->tid->parent) {
+    if (tran->parent != NULL) {
+        logmsg(LOGMSG_FATAL, "%s cannot prepare child txns\n", __func__);
+        abort();
+    }
+
+    if (tran->tid->parent) {
         logmsg(LOGMSG_FATAL, "%s preparing child transaction\n", __func__);
         abort();
+    }
+
+    if (tran->is_prepared) {
+        logmsg(LOGMSG_FATAL, "%s re-preparing an already prepared txn\n", __func__);
+        abort();
+    }
+
+    if ((add_snapisol_logging(bdb_state, tran) || tran->force_logical_commit) &&
+        !(tran->flags & BDB_TRAN_NOLOG)) {
+        unsigned long long ctx = get_gblcontext(bdb_state);
+        int rc, isabort = (tran->committed_child) ? 0 : 1;
+        rc = llog_ltran_commit_log_wrap(bdb_state->dbenv, tran->tid, &tran->commit_lsn, 0,
+                tran->logical_tranid, &tran->last_logical_lsn, ctx, isabort);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s error writing logical commit, %d\n", __func__, rc);
+            abort();
+        }
+        memcpy(&tran->last_logical_lsn, &tran->commit_lsn, sizeof(DB_LSN));
+        flags |= DB_TXN_DIST_UPD_SHADOWS;
     }
 
     int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, coordinator_name,
         coordinator_tier, dist_txnid, &blkseq, flags);
 
-    return prepare_rc;
+    if (prepare_rc != 0) {
+        logmsg(LOGMSG_FATAL, "%s error preparing txn: %d\n", __func__, prepare_rc);
+        abort();
+    }
+    tran->is_prepared = 1;
+
+    return 0;
 }
 
 int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -1555,20 +1585,21 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
              tran->force_logical_commit) &&
             !(tran->flags & BDB_TRAN_NOLOG)) {
             tran_type *parent = (tran->parent) ? tran->parent : tran; /*nop*/
-            int iirc;
+            int iirc = 0;
             int isabort;
             unsigned long long ctx = get_gblcontext(bdb_state);
 
             /* If the child didn't commit, this is a logical abort. */
             isabort = (tran->committed_child) ? 0 : 1;
 
-            iirc = llog_ltran_commit_log_wrap(
-                bdb_state->dbenv, tran->tid, &parent->commit_lsn, 0,
-                parent->logical_tranid, &parent->last_logical_lsn, ctx,
-                isabort);
-
-            memcpy(&parent->last_logical_lsn, &parent->commit_lsn,
-                   sizeof(DB_LSN));
+            if (!tran->is_prepared) {
+                iirc = llog_ltran_commit_log_wrap(
+                        bdb_state->dbenv, tran->tid, &parent->commit_lsn, 0,
+                        parent->logical_tranid, &parent->last_logical_lsn, ctx,
+                        isabort);
+                memcpy(&parent->last_logical_lsn, &parent->commit_lsn,
+                        sizeof(DB_LSN));
+            }
 
             if (iirc) {
                 tran->tid->abort(tran->tid);

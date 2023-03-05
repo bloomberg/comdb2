@@ -1023,7 +1023,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		"DB_TXN->commit", flags,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
-		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE) != 0)
+		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE |
+        DB_TXN_DIST_UPD_SHADOWS) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1260,6 +1261,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						tier.data = txnp->coordinator_tier;
 						tier.size = strlen(txnp->coordinator_tier);
 						SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags);
+                        ltranflags |= LF_ISSET(DB_TXN_DIST_UPD_SHADOWS);
 
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
 						u_int64_t genid = get_commit_context(NULL, 0);

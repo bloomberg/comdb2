@@ -286,6 +286,7 @@ struct txn_properties;
 #define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
 #define DB_TXN_FOP_NOBLOCK         0x0400000 /* Don't block on fop operations */
 #define DB_TXN_DIST_PREPARE        0x0800000 /* Write a prepare record for this txn */
+#define DB_TXN_DIST_UPD_SHADOWS    0x1000000 /* Set update-shadows in dist-commit */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
@@ -1103,7 +1104,8 @@ typedef enum {
 	DB_DIST_ABORTED		= 0x00000004,
 	DB_DIST_SCHEMA_LK   = 0x00000008,
 	DB_DIST_INFLIGHT	= 0x00000010,
-	DB_DIST_RECOVERED   = 0x00000020
+	DB_DIST_RECOVERED   = 0x00000020,
+	DB_DIST_UPDSHADOWS  = 0x00000040
 } db_dist_state;
 
 struct __db_txn_prepared {

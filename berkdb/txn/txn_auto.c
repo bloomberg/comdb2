@@ -2989,6 +2989,14 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, generation, begin_
 	rectype = DB___txn_dist_prepare;
 	npad = 0;
 
+#if defined (DEBUG_PREPARE)
+	extern int gbl_ufid_log;
+	if (!gbl_ufid_log) {
+		logmsg(LOGMSG_FATAL, "%s: prepare requires ufid log\n", __func__);
+		abort();
+	}
+#endif
+
 	is_durable = 1;
 	if (LF_ISSET(DB_LOG_NOT_DURABLE) ||
 		F_ISSET(dbenv, DB_ENV_TXN_NOT_DURABLE)) {
