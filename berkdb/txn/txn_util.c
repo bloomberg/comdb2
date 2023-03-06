@@ -559,6 +559,7 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
 		abort();
 	}
 	hash_del(dbenv->prepared_txn_hash, p);
+	hash_del(dbenv->prepared_txnid_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	if (F_ISSET(p, DB_DIST_RECOVERED) || p->txnp != NULL) {
 		 logmsg(LOGMSG_FATAL, "%s aborting a recovered transaction %"PRIu64"\n", 
@@ -607,6 +608,7 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 			abort();
 		}
 		hash_del(dbenv->prepared_txn_hash, p);
+		hash_del(dbenv->prepared_txnid_hash, p);
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	if (p) {
@@ -666,6 +668,7 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 	F_SET(p, DB_DIST_RECOVERED);
 
 	hash_add(dbenv->prepared_txn_hash, p);
+    hash_add(dbenv->prepared_txnid_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	logmsg(LOGMSG_DEBUG, "%s added unresolved prepared txn %"PRIu64"\n", __func__, dist_txnid);
 	return 0;
@@ -719,6 +722,7 @@ int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		hash_del(dbenv->prepared_txn_hash, p);
+		hash_del(dbenv->prepared_txnid_hash, p);
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 
@@ -855,6 +859,7 @@ void __txn_prune_resolved_prepared(dbenv)
 	while (p || prev) {
 		if (prev && F_ISSET(prev, DB_DIST_ABORTED|DB_DIST_COMMITTED)) {
 			hash_del(dbenv->prepared_txn_hash, prev);
+			hash_del(dbenv->prepared_txnid_hash, prev);
 			__free_prepared_txn(dbenv, prev);
 		}
 		prev = p;
@@ -960,6 +965,7 @@ int __txn_rep_abort_recovered(dbenv, dist_txnid)
 		abort();
 	}
 	hash_del(dbenv->prepared_txn_hash, p);
+	hash_del(dbenv->prepared_txnid_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 
 	if (F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp != NULL) {
@@ -1022,6 +1028,7 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 			p = NULL;
 		} else {
 			hash_del(dbenv->prepared_txn_hash, p);
+			hash_del(dbenv->prepared_txnid_hash, p);
 		}
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
@@ -1084,6 +1091,7 @@ int __txn_rep_discard_recovered(dbenv, dist_txnid)
 		abort();
 	}
 	hash_del(dbenv->prepared_txn_hash, p);
+	hash_del(dbenv->prepared_txnid_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 
 	if (F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp != NULL) {
@@ -1099,6 +1107,9 @@ static int __lowest_prepared_lsn(void *obj, void *arg)
 {
 	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
 	DB_LSN *lsn = (DB_LSN *)arg;
+	if (F_ISSET(p, DB_DIST_ABORTED | DB_DIST_COMMITTED)) {
+		return 0;
+	}
 	if (IS_ZERO_LSN(*lsn) || log_compare(&p->begin_lsn, lsn) < 0) {
 		*lsn = p->begin_lsn;
 	}
@@ -1122,12 +1133,6 @@ int __txn_lowest_prepared_lsn(dbenv, lsn)
 #endif
 	return 0;
 }
-
-struct parent_child {
-	DB_ENV *dbenv;
-	u_int32_t ptxnid;
-	u_int32_t ctxnid;
-};
 
 static void add_child(DB_ENV *dbenv, DB_TXN_PREPARED *p, u_int32_t ctxnid)
 {
@@ -1155,28 +1160,21 @@ static void add_child(DB_ENV *dbenv, DB_TXN_PREPARED *p, u_int32_t ctxnid)
 	p->children[p->numchildren++] = ctxnid;
 }
 
-static int __add_prepared_child(void *obj, void *arg)
-{
-	struct parent_child *pc = (struct parent_child *)arg;
-	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
-	if (p->txnid == pc->ptxnid && !F_ISSET(p, DB_DIST_ABORTED)) {
-#if defined (DEBUG_PREPARE)
-		comdb2_cheapstack_sym(stderr, "add_prepared_child");
-#endif
-		add_child(pc->dbenv, p, pc->ctxnid);
-		return 1;
-	}
-	return 0;
-}
-
 int __txn_add_prepared_child(dbenv, ctxnid, ptxnid)
 	DB_ENV *dbenv;
 	u_int32_t ctxnid;
 	u_int32_t ptxnid;
 {
-	struct parent_child pc = { .dbenv = dbenv, .ptxnid = ptxnid, .ctxnid = ctxnid };
+	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	hash_for(dbenv->prepared_txn_hash, __add_prepared_child, &pc);
+	if ((p = hash_find(dbenv->prepared_txnid_hash, &ctxnid)) != NULL &&
+		!F_ISSET(p, DB_DIST_ABORTED|DB_DIST_COMMITTED)) {
+		add_child(dbenv, p, ctxnid);
+	}
+	if ((p = hash_find(dbenv->prepared_txnid_hash, &ptxnid)) != NULL &&
+		!F_ISSET(p, DB_DIST_ABORTED|DB_DIST_COMMITTED)) {
+		add_child(dbenv, p, ptxnid);
+	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
@@ -1193,6 +1191,7 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		hash_del(dbenv->prepared_txn_hash, p);
+		hash_del(dbenv->prepared_txnid_hash, p);
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	if (p == NULL) {
@@ -1235,6 +1234,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 			p = NULL;
 		} else {
 			hash_del(dbenv->prepared_txn_hash, p);
+			hash_del(dbenv->prepared_txnid_hash, p);
 		}
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);

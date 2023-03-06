@@ -2678,6 +2678,7 @@ struct __db_env {
 
 	/* prepared transactions */
 	hash_t *prepared_txn_hash;
+	hash_t *prepared_txnid_hash;
 	pthread_mutex_t prepared_txn_lk;
 
 	/* Parallel recovery.  These are only valid on replicants. */
