@@ -492,4 +492,7 @@ void partition_unpublish(struct schema_change_type *sc);
 /* called for a truncate rollout before finalize commits the tran */
 int partition_truncate_callback(tran_type *tran, struct schema_change_type *s);
 
+/* return the default value for a manual partition */
+int logical_partition_next_rollout(const char *name);
+
 #endif

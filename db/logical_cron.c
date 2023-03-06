@@ -105,7 +105,6 @@ static char *logical_cron_describe(sched_if_t *impl)
     return strdup(msg);
 }
 
-#define LOGICAL_CRON_SYSTABLE "comdb2_logical_cron"
 #define LOGICAL_CRON_THREAD_MEMORY 1048576
 
 static void *logical_cron_kickoff(struct cron_event *event, struct errstat *err)

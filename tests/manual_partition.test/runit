@@ -51,11 +51,6 @@ function timepart_stats
 
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 
-echo "Creating comdb2_logical_cron table"
-echo "Creating comdb2_logical_cron table" > $output
-gorun "create table comdb2_logical_cron (name cstring(128) primary key, value int)"
-gorun "select * from comdb2_logical_cron"
-
 echo "Creating partition 1 and 2"
 echo "Creating partition 1 and 2" >> $output
 gorun "create table testpart1(a int, alltypes_vutf8 text) partitioned by manual retention 2 start 1"
