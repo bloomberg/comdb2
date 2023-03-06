@@ -19,6 +19,8 @@
 
 #include "cron.h"
 
+#define LOGICAL_CRON_SYSTABLE "comdb2_logical_cron"
+
 /**
  * Move logical clock one step forward
  *

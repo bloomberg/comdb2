@@ -1,4 +1,3 @@
-Creating comdb2_logical_cron table
 Creating partition 1 and 2
 XXXXX we should see to empty partitions with no counters
 [
@@ -116,11 +115,11 @@ XXXXX we should see the data in part1, and the counter, no rollout yet
 (name='testpart2', shardname='$1_4580E96D')
 (name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
 (name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
-(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 1')
 (name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
-(name='Truncate', type='testpart1', epoch=1, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='Truncate', type='testpart1', epoch=2, arg1='testpart1', arg2=NULL, arg3=NULL)
 (name='Truncate', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
-(name='testpart1', value=0)
+(name='testpart1', value=1)
 XXXXX we should see additional counter for part2
 (a=1, alltypes_vutf8='hi')
 (a=2, alltypes_vutf8='ho')
@@ -141,8 +140,8 @@ XXXXX we should see additional counter for part2
   },
   {
    "TABLENAME"    : "$1_7DA96DB",
-   "LOW"          : 2147483647,
-   "HIGH"         : 2147483647
+   "LOW"          : 1,
+   "HIGH"         : 2
   }
   ]
  }
@@ -177,11 +176,11 @@ XXXXX we should see additional counter for part2
 (name='testpart2', shardname='$1_4580E96D')
 (name='timepart_cron', type='WALLTIME', running=0, nevents=0, description='Time partition scheduler')
 (name='Global Job Scheduler', type='WALLTIME', running=0, nevents=1, description='Default cron scheduler')
-(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 0')
+(name='testpart1', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart1 clock 1')
 (name='testpart2', type='LOGICAL', running=0, nevents=1, description='Logical cron testpart2 clock 0')
-(name='Truncate', type='testpart1', epoch=1, arg1='testpart1', arg2=NULL, arg3=NULL)
+(name='Truncate', type='testpart1', epoch=2, arg1='testpart1', arg2=NULL, arg3=NULL)
 (name='Truncate', type='testpart2', epoch=10, arg1='testpart2', arg2=NULL, arg3=NULL)
-(name='testpart1', value=0)
+(name='testpart1', value=1)
 (name='testpart2', value=0)
 sleeping
 (a=1, alltypes_vutf8='hi')

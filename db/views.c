@@ -2952,6 +2952,11 @@ static int _view_restart_new_rollout(timepart_view_t *view, struct errstat *err)
     int rc = 0;
 
     assert(view->rolltype == TIMEPART_ROLLOUT_TRUNCATE);
+    if (view->period == VIEW_PARTITION_MANUAL) {
+        rc = logical_cron_init(view->name, err);
+        if (rc)
+            return rc;
+    }
 
     print_dbg_verbose(view->name, &view->source_id, "III",
                       "Restart new rollout mode\n");
@@ -3332,6 +3337,32 @@ void partition_unpublish(struct schema_change_type *sc)
     }
 }
 
+
+/* return the default value for a manual partition */
+int logical_partition_next_rollout(const char *name)
+{
+    int ret = -1;
+    Pthread_rwlock_rdlock(&views_lk);
+    timepart_view_t *view = _get_view(thedb->timepart_views, name);
+    if (!view) {
+        logmsg(LOGMSG_ERROR, "Partition %s does not exist!\n", name);
+        ret = 0;
+        goto done;
+    }
+    ret = view->shards[view->current_shard].high;
+    /* legacy manual impementation has high set to INT_MAX */
+    if (ret == INT_MAX) {   
+        ret = view->shards[view->current_shard].low;
+        if (ret == INT_MIN) {
+            ret = 0;
+        } else {
+            ret += 1;
+        }
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    return ret;
+}
 
 #include "views_systable.c"
 

@@ -1421,7 +1421,9 @@ static int comdb2GetManualPartitionParams(Parse* pParse, Token *retention,
         setError(pParse, SQLITE_MISUSE, "Invalid manual retention");
         return -1;
     }
-    if (_get_integer(start, oStart)) {
+    if (!start)  {
+        *oStart = 0;
+    } else if (_get_integer(start, oStart)) {
         setError(pParse, SQLITE_MISUSE, "Invalid manual start");
         return -1;
     }
@@ -2611,6 +2613,9 @@ static void comdb2CounterInt(Parse *pParse, Token *nm, Token *lnm,
 
     if (chkAndCopyPartitionTokens(pParse, name, nm, lnm))
         goto err;
+
+    if (isset == 0)
+        value = logical_partition_next_rollout(name);
 
     query = logical_cron_update_sql(name, value, isset==0);
 

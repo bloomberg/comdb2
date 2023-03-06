@@ -247,6 +247,9 @@ partition_options ::= NONE. {
 partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
     comdb2CreateManualPartition(pParse, &R, &S);
 }
+partition_options ::= MANUAL RETENTION INTEGER(R). {
+    comdb2CreateManualPartition(pParse, &R, 0);
+}
 merge ::= .
 merge ::= merge_with.
 merge_with ::= MERGE nm(Y) dbnm(Z). {

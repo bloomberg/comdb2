@@ -53,6 +53,7 @@
 #include "osqlsqlnet.h"
 #include "osqlsqlsocket.h"
 #include "sc_global.h"
+#include "logical_cron.h"
 
 
 #define MAX_CLUSTER REPMAX
@@ -5905,6 +5906,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     return rc;
 }
 
+static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
+
 static int _process_single_table_sc_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
@@ -5987,8 +5990,54 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     }
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
+
+    if (!rc&& sc->partition.type == PARTITION_ADD_MANUAL) {
+        if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
+            struct schema_change_type *lcsc = _create_logical_cron_systable(LOGICAL_CRON_SYSTABLE);
+            if (!lcsc)
+                return -1;
+
+            iq->sc = lcsc;
+            iq->sc->iq = iq;
+
+            rc = start_schema_change_tran(iq, NULL);
+            iq->sc->sc_next = iq->sc_pending;
+            iq->sc_pending = iq->sc;
+        }
+    }
 out:
     return rc;
+}
+
+static struct schema_change_type* _create_logical_cron_systable(const char *tblname)
+{
+    struct schema_change_type *sc;
+
+    sc = new_schemachange_type();
+    if (!sc) {
+        logmsg(LOGMSG_ERROR, "Failed to create a new schema change object\n");
+        return NULL;
+    }
+
+    strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
+    sc->tablename_len = strlen(sc->tablename) + 1;
+    sc->kind = SC_ADDTABLE;
+    sc->nothrevent = 1;
+    sc->live = 1;
+    sc->is_osql = 1;
+
+
+    sc->newcsc2 = strdup(
+        "schema {\n"
+        "        cstring name[128]\n"
+        "        int value null = yes\n"
+        "}\n"
+        "keys\n"
+        "{\n"
+        "        uniqnulls \"COMDB2_PK\" = name\n"
+        "}\n"
+        );
+    return sc;
 }
 
 static int _process_partition_alter_and_drop(struct ireq *iq)
