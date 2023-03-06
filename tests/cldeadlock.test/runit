@@ -70,6 +70,7 @@ function print_locks
 function core_all_nodes
 {
     [[ $debug == "1" ]] && set -x
+    debug=1
     typeset func="core_all_nodes"
     write_prompt $func "executing $func"
     local node
