@@ -781,7 +781,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 		F_SET(p, DB_DIST_SCHEMA_LK);
 	}
 
-	if (prepare->lflags & DB_DIST_UPDSHADOWS) {
+	if (prepare->lflags & DB_TXN_DIST_UPD_SHADOWS) {
 		F_SET(p, DB_DIST_UPDSHADOWS);
 	}
 
@@ -1271,7 +1271,8 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	assert(context != 0);
 
-    bdb_update_pglogs_commitlsn(dbenv->app_private, p->pglogs, p->keycnt, lsn_out);
+	/* We use the (incorrect) 'prepare' lsn collecting pglogs above */
+	bdb_update_pglogs_commitlsn(dbenv->app_private, p->pglogs, p->keycnt, lsn_out);
 	bdb_transfer_pglogs_to_queues(dbenv->app_private, p->pglogs, p->keycnt, 0,
 		0, lsn_out, gen, timestamp, context);
 
