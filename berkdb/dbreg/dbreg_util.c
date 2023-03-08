@@ -494,7 +494,7 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 		logmsg(LOGMSG_INFO, "__dbreg_fid_to_fname error opening db:%s\n", name);
 		ret = ENOENT;
 	}
-	(*dbpp) = dbp;
+	if (!ret) (*dbpp) = dbp;
 	return ret;
 }
 
@@ -526,6 +526,12 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 			} else if (ufid->dbp != dbp) {
 				close_dbp = dbp;
 			}
+		}
+		if (ret == ENOENT) {
+			if (gbl_abort_on_missing_ufid) {
+				abort();
+			}
+			ret = DB_DELETED;
 		}
 		ret = ret ? ret : (ufid->ignore ? DB_IGNORED : 0);
 		(*dbpp) = ufid->dbp;
