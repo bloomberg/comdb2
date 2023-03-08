@@ -965,6 +965,8 @@ REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("parallel_recovery", NULL, TUNABLE_INTEGER,
                  &gbl_parallel_recovery_threads, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("partial_datacopies", "If set, allows partial datacopy definitions in table schema. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_partial_datacopies, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
                  &gbl_penaltyincpercent, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,

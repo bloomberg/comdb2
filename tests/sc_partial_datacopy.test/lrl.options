@@ -1,3 +1,4 @@
 maxosqltransfer 500000
 logmsg level info
 dont_forbid_ulonglong
+partial_datacopies on

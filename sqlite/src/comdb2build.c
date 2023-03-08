@@ -38,6 +38,7 @@ extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
+extern int gbl_partial_datacopies;
 
 int gbl_view_feature = 1;
 
@@ -5366,6 +5367,10 @@ static void comdb2AddIndexInt(
     }
 
     if (pdList) { // partial datacopy
+        if (!gbl_partial_datacopies) {
+            sqlite3ErrorMsg(pParse, "Partial datacopy disabled.");
+            goto cleanup;
+        }
         if (key->flags & KEY_DATACOPY) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "Cannot have datacopy and partial datacopy.");

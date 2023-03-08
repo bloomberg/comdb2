@@ -647,6 +647,7 @@
 (name='parallel_count', description='When 'direct_count' is on, enable thread-per-stripe', type='BOOLEAN', value='OFF', read_only='N')
 (name='parallel_recovery', description='', type='INTEGER', value='0', read_only='Y')
 (name='parallel_sync', description='Run checkpoint/memptrickle code with parallel writes', type='BOOLEAN', value='ON', read_only='N')
+(name='partial_datacopies', description='If set, allows partial datacopy definitions in table schema. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='participantid_bits', description='Number of bits allocated for the participant stripe ID (remaining bits are used for the update ID).', type='INTEGER', value='0', read_only='N')
 (name='partitioned_table_enabled', description='Allow syntax create/alter table ... partitioned by ...', type='BOOLEAN', value='ON', read_only='N')
 (name='pause_moveto', description='pause_moveto', type='BOOLEAN', value='OFF', read_only='N')

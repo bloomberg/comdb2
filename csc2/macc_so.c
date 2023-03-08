@@ -51,6 +51,7 @@ int compute_all_data(int tidx);
 int comdb2_iam_master();
 
 extern int gbl_ready;
+extern int gbl_partial_datacopies;
 
 char *revision = "$Revision: 1.24 $";
 int unionflag = 0;
@@ -922,7 +923,14 @@ void key_setdatakey(void)
 
 void key_setpartialdatakey(void)
 {
-    if (macc_globals->workkeyflag & DATAKEY) {
+    if (!gbl_partial_datacopies) {
+        csc2_error("Error at line %3d: PARTIAL DATACOPY DISABLED.\n",
+                    current_line);
+        csc2_syntax_error("Error at line %3d: PARTIAL DATACOPY DISABLED.",
+                          current_line);
+        any_errors++;
+        return;
+    } else if (macc_globals->workkeyflag & DATAKEY) {
         csc2_error("Error at line %3d: CANNOT HAVE DATACOPY AND PARTIAL DATACOPY.\n",
                     current_line);
         csc2_syntax_error("Error at line %3d: CANNOT HAVE DATACOPY AND PARTIAL DATACOPY.",
