@@ -6,3 +6,4 @@ select * from t2 where a < 40; // increment num executions
 drop index a on t2;
 select * from t2 where a < 40; // use worse query plan
 select * from comdb2_query_plans where fingerprint='f57a9e3c17f13606af3630d8ebb27f3f';
+select * from comdb2_query_plans where fingerprint='bb1b8ba88d815c2bac18af4618bae9dc'; // check NULL plan

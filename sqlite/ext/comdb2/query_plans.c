@@ -32,6 +32,7 @@ sqlite3_module systblQueryPlansModule = {
 
 typedef struct systable_query_plans {
     char *fingerprint;
+    char *plan_fingerprint;
     char *zNormSql;
     char *plan;
     double total_cost_per_row;
@@ -47,8 +48,8 @@ int query_plans_systable_collect(void **data, int *nrecords)
     unsigned int bkt, bkt2;
     struct query_plan_item *q;
     struct fingerprint_track *f;
-    int current_plans_count;
     char fp[FINGERPRINTSZ*2+1];
+    char fp2[FINGERPRINTSZ*2+1];
 
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (!gbl_fingerprint_hash) {
@@ -62,8 +63,7 @@ int query_plans_systable_collect(void **data, int *nrecords)
         if (!f->query_plan_hash) {
             continue;
         }
-        hash_info(f->query_plan_hash, NULL, NULL, NULL, NULL, &current_plans_count, NULL, NULL);
-        *nrecords += current_plans_count;
+        *nrecords += hash_get_num_entries(f->query_plan_hash);
     }
 
     int idx = 0;
@@ -77,15 +77,18 @@ int query_plans_systable_collect(void **data, int *nrecords)
         util_tohex(fp, (char *)f->fingerprint, FINGERPRINTSZ);
         for (q = (struct query_plan_item *)hash_first(f->query_plan_hash, &ent2, &bkt2); q;
              q = (struct query_plan_item *)hash_next(f->query_plan_hash, &ent2, &bkt2)) {
-                arr[idx].fingerprint = strdup(fp);
-                if (f->zNormSql) {
-                    arr[idx].zNormSql = strdup(f->zNormSql);
-                }
+            util_tohex(fp2, (char *)q->plan_fingerprint, FINGERPRINTSZ);
+            arr[idx].fingerprint = strdup(fp);
+            arr[idx].plan_fingerprint = strdup(fp2);
+            if (f->zNormSql) {
+                arr[idx].zNormSql = strdup(f->zNormSql);
+            }
+            if (q->plan)
                 arr[idx].plan = strdup(q->plan);
-                arr[idx].total_cost_per_row = q->total_cost_per_row;
-                arr[idx].nexecutions = q->nexecutions;
-                arr[idx].avg_cost_per_row = q->avg_cost_per_row;
-                idx++;
+            arr[idx].total_cost_per_row = q->total_cost_per_row;
+            arr[idx].nexecutions = q->nexecutions;
+            arr[idx].avg_cost_per_row = q->avg_cost_per_row;
+            idx++;
         }
     }
 
@@ -101,6 +104,7 @@ void query_plans_systable_free(void *arr, int nrecords)
 
     for (i = 0; i < nrecords; i++) {
         free(parr[i].fingerprint);
+        free(parr[i].plan_fingerprint);
         free(parr[i].zNormSql);
         free(parr[i].plan);
     }
@@ -114,6 +118,7 @@ int systblQueryPlansInit(sqlite3*db)
         query_plans_systable_collect, query_plans_systable_free,
         sizeof(systable_query_plans_t),
         CDB2_CSTRING, "fingerprint", -1, offsetof(systable_query_plans_t, fingerprint),
+        CDB2_CSTRING, "plan_fingerprint", -1, offsetof(systable_query_plans_t, plan_fingerprint),
         CDB2_CSTRING, "normalized_sql", -1, offsetof(systable_query_plans_t, zNormSql),
         CDB2_CSTRING, "plan", -1, offsetof(systable_query_plans_t, plan),
         CDB2_REAL, "total_cost_per_row", -1, offsetof(systable_query_plans_t, total_cost_per_row),
