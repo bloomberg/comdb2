@@ -26,6 +26,7 @@ extern double gbl_query_plan_percentage;
 extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
+// return NULL if no plan
 static char *form_query_plan(const struct client_query_stats *query_stats)
 {
     struct strbuf *query_plan_buf;
@@ -54,8 +55,12 @@ static char *form_query_plan(const struct client_query_stats *query_stats)
 // assume t->query_plan_hash is not NULL
 static void add_query_plan_int(struct fingerprint_track *t, const char *query_plan, int64_t cost, int64_t nrows)
 {
+    size_t temp;
+    unsigned char plan_fingerprint[FINGERPRINTSZ];
     double current_cost_per_row = (double)cost / nrows;
-    struct query_plan_item *q = hash_find(t->query_plan_hash, &query_plan);
+
+    calc_fingerprint(query_plan, &temp, plan_fingerprint);
+    struct query_plan_item *q = hash_find(t->query_plan_hash, plan_fingerprint);
     char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
     *fp = '\0';
     if (q == NULL) {
@@ -72,7 +77,8 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
             return;
         } else {
             q = calloc(1, sizeof(struct query_plan_item));
-            q->plan = strdup(query_plan);
+            memcpy(q->plan_fingerprint, plan_fingerprint, FINGERPRINTSZ);
+            q->plan = query_plan ? strdup(query_plan) : NULL;
             q->total_cost_per_row = current_cost_per_row;
             q->nexecutions = 1;
             q->alert_once_cost = 1;
@@ -90,6 +96,9 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
     }
 
     // compare query plans
+    if (!query_plan)
+        return;
+
     double current_avg = q->avg_cost_per_row;
     void *ent;
     unsigned int bkt;
@@ -98,7 +107,7 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
     double significance = 1 + gbl_query_plan_percentage / 100;
     for (q = (struct query_plan_item *)hash_first(t->query_plan_hash, &ent, &bkt); q;
          q = (struct query_plan_item *)hash_next(t->query_plan_hash, &ent, &bkt)) {
-        if (q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
+        if (q->plan && q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
             current_diff = current_avg - q->avg_cost_per_row;
             if (t->alert_once_query_plan && current_diff > max_diff)
                 max_diff = current_diff;
@@ -134,7 +143,7 @@ void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, 
                     struct fingerprint_track *t)
 {
     char *query_plan = form_query_plan(query_stats);
-    if (!query_plan || nrows <= 0) { // can't calculate cost per row if 0 rows
+    if (nrows <= 0) { // can't calculate cost per row if 0 rows
         return;
     }
 
