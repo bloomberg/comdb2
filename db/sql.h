@@ -1434,6 +1434,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                                 struct errstat *err);
 
 struct query_plan_item {
+    unsigned char plan_fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
     char *plan;
     double avg_cost_per_row;
     double total_cost_per_row;
