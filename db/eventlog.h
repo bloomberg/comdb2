@@ -4,7 +4,7 @@
 struct reqlogger;
 struct cson_array;
 
-struct cson_array *get_bind_array(struct reqlogger *logger, int nfields);
+struct cson_array *get_bind_array(struct reqlogger *logger, int nfields, int sample_queries);
 
 void eventlog_bind_null(struct cson_array *, const char *);
 void eventlog_bind_int64(struct cson_array *, const char *, int64_t, int);

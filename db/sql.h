@@ -1439,8 +1439,8 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 int clear_fingerprints(int *plans_count);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *, unsigned char *fingerprint_out, int is_lua);
+void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, struct string_ref *, const char *, int64_t, int64_t,
+                     int64_t, int64_t, struct reqlogger *, unsigned char *fingerprint_out, int is_lua);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1448,7 +1448,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
 
 struct query_plan_item {
     unsigned char plan_fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
-    char *plan;
+    struct string_ref *plan_ref;
     double avg_cost_per_row;
     double total_cost_per_row;
     int nexecutions;
@@ -1456,8 +1456,22 @@ struct query_plan_item {
 };
 int free_query_plan_hash(hash_t *query_plan_hash);
 int clear_query_plans();
-void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, int64_t nrows,
-                    struct fingerprint_track *t);
+struct string_ref *form_query_plan(const struct client_query_stats *query_stats);
+void add_query_plan(int64_t cost, int64_t nrows, struct fingerprint_track *t, struct string_ref *zSql_ref,
+                    struct string_ref *query_plan_ref, unsigned char *plan_fingerprint, char *params);
+
+struct query_field {
+    unsigned char fingerprint[FINGERPRINTSZ];
+    unsigned char plan_fingerprint[FINGERPRINTSZ];
+    struct string_ref *zSql_ref;
+    struct string_ref *query_plan_ref;
+    char *params;
+    time_t timestamp; /* fingerprints last updated time */
+};
+char *get_params_string(struct sqlclntstate *clnt);
+int clear_sample_queries();
+void add_query_to_samples_queries(const unsigned char *fingerprint, const unsigned char *plan_fingerprint,
+                                  struct string_ref *zSql_ref, struct string_ref *query_plan_ref, char *params);
 
 /* Connection tracking */
 int gather_connection_info(struct connection_info **info, int *num_connections);

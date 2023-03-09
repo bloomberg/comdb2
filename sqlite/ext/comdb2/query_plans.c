@@ -20,6 +20,7 @@
 #include "comdb2systblInt.h"
 #include "ezsystables.h"
 #include "sql.h"
+#include "string_ref.h"
 #include "plhash.h"
 #include "tohex.h"
 
@@ -83,8 +84,8 @@ int query_plans_systable_collect(void **data, int *nrecords)
             if (f->zNormSql) {
                 arr[idx].zNormSql = strdup(f->zNormSql);
             }
-            if (q->plan)
-                arr[idx].plan = strdup(q->plan);
+            if (q->plan_ref)
+                arr[idx].plan = strdup(string_ref_cstr(q->plan_ref));
             arr[idx].total_cost_per_row = q->total_cost_per_row;
             arr[idx].nexecutions = q->nexecutions;
             arr[idx].avg_cost_per_row = q->avg_cost_per_row;

@@ -257,6 +257,7 @@
 (candidate='comdb2_queues')
 (candidate='comdb2_repl_stats')
 (candidate='comdb2_replication_netqueue')
+(candidate='comdb2_sample_queries')
 (candidate='comdb2_sc_history')
 (candidate='comdb2_sc_status')
 (candidate='comdb2_schemaversions')

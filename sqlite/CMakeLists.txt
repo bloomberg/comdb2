@@ -39,6 +39,7 @@ add_library(sqlite
   ext/comdb2/queues.c
   ext/comdb2/repl_stats.c
   ext/comdb2/repnetqueue.c
+  ext/comdb2/sample_queries.c
   ext/comdb2/schistory.c
   ext/comdb2/scstatus.c
   ext/comdb2/sqlclientstats.c

@@ -52,6 +52,7 @@ unknown @ls sub-command foo
 (name='comdb2_queues')
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')
+(name='comdb2_sample_queries')
 (name='comdb2_sc_history')
 (name='comdb2_sc_status')
 (name='comdb2_schemaversions')

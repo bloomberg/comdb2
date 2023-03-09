@@ -1998,6 +1998,14 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("sample_queries", "Sample queries and query plans to table comdb2_sample_queries. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sample_queries, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("max_query_sample_queries",
+                 "Maximum number of queries to be placed into the sample "
+                 "queries hash (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_sample_queries_max_queries, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_pb_connectmsg, 0, NULL, NULL, NULL, NULL);
 
