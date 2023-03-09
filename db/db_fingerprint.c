@@ -26,6 +26,7 @@
 #include "sql.h"
 #include "util.h"
 #include "tohex.h"
+#include "string_ref.h"
 #include <ctrace.h>
 
 extern int gbl_old_column_names;
@@ -35,6 +36,8 @@ pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 
 extern int gbl_fingerprint_queries;
 extern int gbl_query_plans;
+extern int gbl_sample_queries;
+extern hash_t *gbl_sample_queries_hash;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000;
 int gbl_warn_on_equiv_type_mismatch;
@@ -187,18 +190,41 @@ static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     strbuf_free(newtypes);
 }
 
-void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct string_ref *zSql_ref, const char *zNormSql,
                      int64_t cost, int64_t time, int64_t prepTime, int64_t nrows, struct reqlogger *logger,
                      unsigned char *fingerprint_out, int is_lua)
 {
     size_t nNormSql = 0;
+    size_t temp;
     unsigned char fingerprint[FINGERPRINTSZ];
+    unsigned char plan_fingerprint[FINGERPRINTSZ];
 
-    assert(zSql);
+    assert(zSql_ref);
     assert(zNormSql);
 
     /* Calculate fingerprint */
     calc_fingerprint(zNormSql, &nNormSql, fingerprint);
+    struct string_ref *query_plan_ref = NULL;
+    char *params = NULL;
+    int calc_query_plan = gbl_query_plans && !is_lua;
+    if (calc_query_plan) {
+        query_plan_ref = form_query_plan(clnt->query_stats);
+        calc_fingerprint(query_plan_ref ? string_ref_cstr(query_plan_ref) : NULL, &temp, plan_fingerprint);
+        if (gbl_sample_queries && param_count(clnt) > 0) {
+            // only get params string if we need it
+            // check if fingerprint + plan fingerprint combo already exists
+            int need_params = 0;
+            unsigned char key[2 * FINGERPRINTSZ];
+            memcpy(key, fingerprint, FINGERPRINTSZ);
+            memcpy(key + FINGERPRINTSZ, plan_fingerprint, FINGERPRINTSZ);
+            Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+            if (!gbl_sample_queries_hash || hash_find(gbl_sample_queries_hash, key) == NULL)
+                need_params = 1;
+            Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+            if (need_params)
+                params = get_params_string(clnt);
+        }
+    }
 
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
@@ -229,11 +255,11 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
-        if (gbl_query_plans && !is_lua) {
+        if (calc_query_plan) {
             t->query_plan_hash = hash_init(FINGERPRINTSZ);
             t->alert_once_query_plan = 1;
             t->alert_once_query_plan_max = 1;
-            add_query_plan(clnt->query_stats, cost, nrows, t);
+            add_query_plan(cost, nrows, t, zSql_ref, query_plan_ref, plan_fingerprint, params);
         } else {
             t->query_plan_hash = NULL;
         }
@@ -250,8 +276,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         reqlog_free(statlogger);
 
         if (gbl_verbose_normalized_queries) {
-            logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
-                   fp, zSql, t->zNormSql);
+            logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n", fp, string_ref_cstr(zSql_ref), t->zNormSql);
         }
 
         if (gbl_old_column_names && stmt) {
@@ -278,13 +303,13 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         t->time += time;
         t->prepTime += prepTime;
         t->rows += nrows;
-        if (gbl_query_plans && !is_lua) {
+        if (calc_query_plan) {
             if (!t->query_plan_hash) {
                 t->query_plan_hash = hash_init(FINGERPRINTSZ);
                 t->alert_once_query_plan = 1;
                 t->alert_once_query_plan_max = 1;
             }
-            add_query_plan(clnt->query_stats, cost, nrows, t);
+            add_query_plan(cost, nrows, t, zSql_ref, query_plan_ref, plan_fingerprint, params);
         }
 
         /* Do a check after an interval */
@@ -322,4 +347,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
 done:
     if (fingerprint_out)
         memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);
+    if (query_plan_ref)
+        put_ref(&query_plan_ref);
+    free(params);
 }

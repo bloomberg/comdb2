@@ -345,9 +345,10 @@ List all stored procedures in the database.
 
 List all query plans for each fingerprint/query in the database.
 
-    comdb2_query_plans(fingerprint, normalized_sql, plan, total_cost_per_row, num_executions, avg_cost_per_row)
+    comdb2_query_plans(fingerprint, plan_fingerprint, normalized_sql, plan, total_cost_per_row, num_executions, avg_cost_per_row)
 
 * `fingerprint` - Fingerprint of the query
+* `plan_fingerprint` - Fingerprint of the query plan
 * `normalized_sql` - Query associated with the fingerprint
 * `plan` - Query plan for this fingerprint that includes the tables and indices traversed
 * `total_cost_per_row` - The sum of all of the cost per rows (in results set) each time this query plan is executed for this query
@@ -433,6 +434,19 @@ This table lists the current state of the replication network queue per node.
 * `log_fill` - Number of log_fill messages
 * `uncategorized` - Number of 'uncategorized' messages
 * `unknown` - Number of 'unknown' messages
+
+## comdb2_sample_queries
+
+A collection of unnormalized queries run in the db. Only the earliest unnormalized query associated with a fingerprint, plan fingerprint combo will be present in the table.
+
+    comdb2_sample_queries(fingerprint, plan_fingerprint, query, query_plan, params, timestamp)
+
+* `fingerprint` - Fingerprint of the query
+* `plan_fingerprint` - Fingerprint of the query plan
+* `query` - Unnormalized query associated with the fingerprint
+* `query_plan` - Query plan for this fingerprint that includes the tables and indices traversed
+* `params` - Parameters associated with query
+* `timestamp` - Timestamp that this query was run (time that it was added to this table)
 
 ## comdb2_sqlpool_queue
 
