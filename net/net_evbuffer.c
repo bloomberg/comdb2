@@ -75,7 +75,7 @@
 
 #define TCP_BUFSZ MB(8)
 #define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
-#define MAX_DISTRESS_COUNT 10
+#define MAX_DISTRESS_COUNT 3
 
 #define hprintf_lvl LOGMSG_USER
 #define hprintf_format(a) "[%.3s %-8s fd:%-3d %20s] " a, e->service, e->host, e->fd, __func__
