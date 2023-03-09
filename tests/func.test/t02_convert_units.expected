@@ -1,0 +1,13 @@
+(t='== test for convert_units ==')
+[select convert_units('hi', 2, 3)] failed with rc 300 Expected numeric type as first argument to convert_units
+[select convert_units(1, 2, 3)] failed with rc 300 Expected string type as second argument to convert_units
+[select convert_units(1, 'hi', 3)] failed with rc 300 Expected string type as second argument to convert_units
+[select convert_units(1, 'hi', 'hi')] failed with rc 300 Expected string type as second argument to convert_units
+(convert_units(1, null, 'bytes')='1.000000')
+(bytes='1000.000000')
+(bytes='1.953125 KiB')
+(bytes='9.765625 KiB')
+(bytes='10.000000 MiB')
+(bytes='10.000000 GiB')
+(bytes='10.000000 TiB')
+(bytes='10.000000 PiB')
