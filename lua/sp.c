@@ -151,6 +151,7 @@ typedef struct {
 
 struct dbconsumer_t {
     DBTYPES_COMMON;
+    int osql_max_trans;
     struct ireq iq;
     struct bdb_queue_cursor last;
     struct bdb_queue_cursor fnd;
@@ -838,9 +839,11 @@ static const char * db_begin_int(Lua, int *);
 static const char * db_commit_int(Lua, int *);
 static const char * db_rollback_int(Lua, int *);
 
-static void reset_consumer_cursor(struct dbconsumer_t *q)
+static void reset_consumer_cursor(SP sp)
 {
+    struct dbconsumer_t *q = sp->consumer;
     if (!q) return;
+    sp->clnt->osql_max_trans = q->osql_max_trans;
     q->genid = 0;
     memset(&q->fnd, 0, sizeof(q->fnd));
     memset(&q->last, 0, sizeof(q->last));
@@ -898,7 +901,7 @@ static int dbconsumer_consume(Lua L)
                        __func__, clnt->intrans, err, rc);
         }
     }
-    reset_consumer_cursor(q);
+    reset_consumer_cursor(sp);
     return push_and_return(L, rc);
 }
 
@@ -924,9 +927,14 @@ static int dbconsumer_next(Lua L)
         clnt->intrans = 1;
     }
     Q4SP(qname, q->info.spname);
+    ++clnt->osql_max_trans;
     rc = osql_delrec_qdb(clnt, qname, q->genid);
     if (rc) {
-        return luaL_error(L, "%s osql_delrec_qdb rc:%d", __func__, rc);
+        if (errstat_get_rc(&clnt->osql.xerr)) {
+            return luaL_error(L, "%s osql_delrec_qdb rc:%d err:%s", __func__, rc, errstat_get_str(&clnt->osql.xerr));
+        } else  {
+            return luaL_error(L, "%s osql_delrec_qdb rc:%d", __func__, rc);
+        }
     }
     q->last = q->fnd;
     return push_and_return(L, 0);
@@ -962,6 +970,8 @@ static int dbconsumer_free(Lua L)
     ctrace("%s:%s %016" PRIx64 " unregister req\n", q->type, q->info.spname, q->info.trigger_cookie);
     luabb_trigger_unregister(L, q);
     ctrace("%s:%s %016" PRIx64 " unregister done\n", q->type, q->info.spname, q->info.trigger_cookie);
+    SP sp = getsp(L);
+    sp->clnt->osql_max_trans = q->osql_max_trans;
     return 0;
 }
 
@@ -2688,7 +2698,7 @@ static int db_commit(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
     SP sp = getsp(L);
-    reset_consumer_cursor(sp->consumer);
+    reset_consumer_cursor(sp);
     if (sp->in_parent_trans) { // explicit commit w/o begin
         return luaL_error(L, no_transaction());
     }
@@ -2702,7 +2712,7 @@ static int db_rollback(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
     SP sp = getsp(L);
-    reset_consumer_cursor(sp->consumer);
+    reset_consumer_cursor(sp);
     if (sp->in_parent_trans) { // explicit commit w/o begin
         return luaL_error(L, no_transaction());
     }
@@ -4760,6 +4770,7 @@ static int register_queue_with_berkdb_and_master(Lua L, const char *type)
     sp->consumer = consumer;
     consumer->type = type;
     consumer->emit_timeoutms = 60000; /* emit times-out after 1 min */
+    consumer->osql_max_trans = clnt->osql_max_trans;
 
     if (lua_gettop(L) == 2) {
         lua_insert(L, 1); /* move dbconsumer to bottom of stack */
@@ -7321,7 +7332,9 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     clnt->ready_for_heartbeats = 1;
     clnt->recover_ddlk = recover_ddlk_sp;
     clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
+    int osql_max_trans = clnt->osql_max_trans;
     int rc = exec_procedure_int(thd, clnt, err, 0);
+    clnt->osql_max_trans = osql_max_trans;
     clnt->recover_ddlk = NULL;
     clnt->recover_ddlk_fail = NULL;
     if (clnt->sp) {
