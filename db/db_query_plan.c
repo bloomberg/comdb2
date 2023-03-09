@@ -16,6 +16,7 @@
 
 #include "sql.h"
 #include "tohex.h"
+#include "string_ref.h"
 
 #include <math.h>
 #include <ctrace.h>
@@ -23,15 +24,16 @@
 
 int gbl_query_plan_max_plans = 20;
 extern double gbl_query_plan_percentage;
+extern int gbl_sample_queries;
 extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
 // return NULL if no plan
-static char *form_query_plan(const struct client_query_stats *query_stats)
+static struct string_ref *form_query_plan(const struct client_query_stats *query_stats)
 {
     struct strbuf *query_plan_buf;
     const struct client_query_path_component *c;
-    char *query_plan;
+    struct string_ref *query_plan_ref;
 
     if (query_stats->n_components == 0) {
         return NULL;
@@ -46,20 +48,21 @@ static char *form_query_plan(const struct client_query_stats *query_stats)
         strbuf_appendf(query_plan_buf, "table %s index %d", c->table, c->ix);
     }
 
-    query_plan = strdup((char *)strbuf_buf(query_plan_buf));
+    query_plan_ref = create_string_ref((char *)strbuf_buf(query_plan_buf));
     strbuf_free(query_plan_buf);
-    return query_plan;
+    return query_plan_ref;
 }
 
 // assumed to have fingerprint lock
 // assume t->query_plan_hash is not NULL
-static void add_query_plan_int(struct fingerprint_track *t, const char *query_plan, int64_t cost, int64_t nrows)
+static void add_query_plan_int(struct fingerprint_track *t, struct string_ref *query_plan_ref, int64_t cost, int64_t nrows,
+                               struct string_ref *zSql_ref, struct sqlclntstate *clnt)
 {
     size_t temp;
     unsigned char plan_fingerprint[FINGERPRINTSZ];
     double current_cost_per_row = (double)cost / nrows;
 
-    calc_fingerprint(query_plan, &temp, plan_fingerprint);
+    calc_fingerprint(query_plan_ref ? string_ref_cstr(query_plan_ref) : NULL, &temp, plan_fingerprint);
     struct query_plan_item *q = hash_find(t->query_plan_hash, plan_fingerprint);
     char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
     *fp = '\0';
@@ -78,7 +81,7 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
         } else {
             q = calloc(1, sizeof(struct query_plan_item));
             memcpy(q->plan_fingerprint, plan_fingerprint, FINGERPRINTSZ);
-            q->plan = query_plan ? strdup(query_plan) : NULL;
+            q->plan_ref = query_plan_ref ? get_ref(query_plan_ref) : NULL;
             q->total_cost_per_row = current_cost_per_row;
             q->nexecutions = 1;
             q->alert_once_cost = 1;
@@ -95,8 +98,12 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
         }
     }
 
+    // add to queries sample
+    if (gbl_sample_queries)
+        add_query_to_samples_queries(t->fingerprint, q->plan_fingerprint, zSql_ref, q->plan_ref, clnt);
+
     // compare query plans
-    if (!query_plan)
+    if (!query_plan_ref)
         return;
 
     double current_avg = q->avg_cost_per_row;
@@ -107,7 +114,7 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
     double significance = 1 + gbl_query_plan_percentage / 100;
     for (q = (struct query_plan_item *)hash_first(t->query_plan_hash, &ent, &bkt); q;
          q = (struct query_plan_item *)hash_next(t->query_plan_hash, &ent, &bkt)) {
-        if (q->plan && q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
+        if (q->plan_ref && q->avg_cost_per_row * significance < current_avg) { // should be at least equal if same query plan
             current_diff = current_avg - q->avg_cost_per_row;
             if (t->alert_once_query_plan && current_diff > max_diff)
                 max_diff = current_diff;
@@ -119,7 +126,7 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
                 ctrace("For query %s with fingerprint %s:\n"
                        "Currently using query plan %s, which has an average cost per row of %f.\n"
                        "But query plan %s has a lower average cost per row of %f.\n",
-                       t->zNormSql, fp, query_plan, current_avg, q->plan, q->avg_cost_per_row);
+                       t->zNormSql, fp, string_ref_cstr(query_plan_ref), current_avg, string_ref_cstr(q->plan_ref), q->avg_cost_per_row);
 
                 q->alert_once_cost = 0;
             }
@@ -139,18 +146,20 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
 
 // assumed to have fingerprint lock
 // assume t->query_plan_hash is not NULL
-void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, int64_t nrows,
-                    struct fingerprint_track *t)
+void add_query_plan(struct sqlclntstate *clnt, int64_t cost, int64_t nrows,
+                    struct fingerprint_track *t, struct string_ref *zSql_ref)
 {
-    char *query_plan = form_query_plan(query_stats);
+    const struct client_query_stats *query_stats = clnt->query_stats;
+    struct string_ref *query_plan_ref = form_query_plan(query_stats);
     if (nrows < 0) {
         return;
     } else if (nrows == 0) {  // can't calculate cost per row if 0 rows, make 1 row
         nrows = 1;
     }
 
-    add_query_plan_int(t, query_plan, cost, nrows);
-    free(query_plan);
+    add_query_plan_int(t, query_plan_ref, cost, nrows, zSql_ref, clnt);
+    if (query_plan_ref)
+        put_ref(&query_plan_ref);
 }
 
 // assumed to have fingerprint lock
@@ -167,7 +176,8 @@ int free_query_plan_hash(hash_t *query_plan_hash)
     // free query plan hash
     for (q = (struct query_plan_item *)hash_first(query_plan_hash, &ent, &bkt); q;
          q = (struct query_plan_item *)hash_next(query_plan_hash, &ent, &bkt)) {
-        free(q->plan);
+        if (q->plan_ref)
+            put_ref(&q->plan_ref);
         free(q);
     }
     hash_clear(query_plan_hash);

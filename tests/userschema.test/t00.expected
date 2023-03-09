@@ -35,6 +35,7 @@
 (tablename='comdb2_plugins', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_prepared', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_procedures', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_queries', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_query_plans', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_queues', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_repl_stats', username='mohit', READ='Y', WRITE='Y', DDL='Y')
