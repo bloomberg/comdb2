@@ -363,11 +363,11 @@ int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, con
 ```
 
 Description:
-`Carray` is a table-valued function with a single column (named "value") and zero or more rows, corresponding to the values in the array. The "value" of each row in the carray() is taken from a C-language array supplied by the application via parameter binding by calling `cdb2_bind_array`. In this way, the carray() function provides a convenient mechanism to bind C-language arrays to SQL queries. There can only be a single `carray` parameter in a given SQL statement. This means only one array parameter can be used in a single SQL statement.
+`cdb2_bind_array` enables passing C-language array of values to a SQL query or to a stored procedure. In a SQL query, the parameter is passed to `carray` table valued function. `Carray` has a single column (named "value") and zero or more rows, corresponding to the values in the array. The "value" of each row in the carray() is taken from a C-language array supplied by the application.
 
-`cdb2_bind_array` is also used to bind an array of values passed to a stored procedure (without the `carray` keyword.) The `main` function in the procedure will receive a Lua array with corresponding values for every array parameter. User can pass multiple array arguments to a procedure.
+`cdb2_bind_array` is also used to bind an array of values passed to a stored procedure (without the `carray` keyword.) The `main` function in the procedure will receive a Lua array with corresponding values for every array parameter.
 
-This routine supports binding CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING and CDB2_BLOB values. The maximum number of elements in the array is `INT16_MAX`. For CDB2_INTEGER arrays, application must provide size of elements (`sizeof(int32_t)` or `sizeof(int64_t)`). The pointer `varaddr` accepts following types: `int32_t *` (or `int64_t *`) for `CDB2_INTEGER`, `double *` for `CDB2_REAL` and `char **` for `CDB2_STRING`. For `CDB2_BLOB`, the pointer should point to array of structures defined as:
+`cdb2_bind_array` supports binding CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING and CDB2_BLOB values. The maximum number of elements in the array is `INT16_MAX`. The pointer `varaddr` accepts following types: `int32_t *` (or `int64_t *`) for `CDB2_INTEGER`, `double *` for `CDB2_REAL` and `char **` for `CDB2_STRING`. For `CDB2_BLOB`, the pointer should point to array of structures defined as:
 
 ```c
 struct {
@@ -376,6 +376,7 @@ struct {
 };
 ```
 
+For CDB2_INTEGER arrays, application must provide size of elements (`sizeof(int32_t)` or `sizeof(int64_t)`).
 
 Examples:
 
@@ -384,9 +385,16 @@ Examples:
 int arr[10] = {1,2,3,4...};
 cdb2_bind_array(hndl, "arr", CDB2_INTEGER, arr, 10, sizeof(int));
 
-
 //Run the SQL statement:
 cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)”);
+
+
+//Pass multiple arrays:
+int64_t ids0[] = {...};
+int64_t ids1[] = {...};
+cdb2_bind_array(hndl, "arr0", CDB2_INTEGER, ids0, count0, sizeof(int64_t));
+cdb2_bind_array(hndl, "arr1", CDB2_INTEGER, ids1, count1, sizeof(int64_t));
+cdb2_run_statement(db, "SELECT * FROM a WHERE id IN CARRAY(@arr0) UNION SELECT * FROM b WHERE id IN CARRAY(@arr1)”);
 
 
 //bind cstrings:
@@ -412,9 +420,13 @@ cdb2_bind_array(hndle, "blobs", CDB2_BLOB, b, 2, 0);
 //Pass array to stored procedure:
 cdb2_run_statement(db, "exec procedure sp(@arr)");
 
-//or pass multiple array parameters:
+//Or pass multiple array parameters:
 cdb2_run_statement(db, "exec procedure sp(@arr, @strings, @blobs)");
 
+//In Lua procedure:
+local function main(a, b, c)
+    --a, b, c are Lua arrays corresponding to arr, strs, b respectively.
+end
 
 ```
 
