@@ -652,6 +652,8 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 		data_dbt.ulen = 0;
 
 		if ((ret = __log_c_get(logc, &last_ckp, &data_dbt, DB_SET)) == 0) {
+			/* checkpoint save asserts that this is on-disk */
+			__log_flush(dbenv, NULL);
 			__checkpoint_save(dbenv, &last_ckp, 1);
 			region->last_ckp = argp->last_ckp;
 		} else {
