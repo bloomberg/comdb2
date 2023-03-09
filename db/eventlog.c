@@ -193,9 +193,9 @@ static char *eventlog_fname(const char *dbname)
                            comdb2_time_epochus());
 }
 
-cson_array *get_bind_array(struct reqlogger *logger, int nfields)
+cson_array *get_bind_array(struct reqlogger *logger, int nfields, int sample_queries)
 {
-    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
+    if (!sample_queries && (eventlog == NULL || !eventlog_enabled || !eventlog_detailed))
         return NULL;
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;

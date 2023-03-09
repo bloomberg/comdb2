@@ -1975,6 +1975,15 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("sample_queries", "Sample queries and query plans to table comdb2_queries. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sample_queries, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sample_queries_dbname_tier", "Database name and tier to store sample queries and query plans, in format 'dbname:tier'. If blank then use same db. (Default: ':')",
+                 TUNABLE_STRING, NULL, 0, sample_queries_dbname_tier_value, NULL, sample_queries_dbname_tier_update, NULL);
+
+REGISTER_TUNABLE("sample_queries_wait_time", "Time in seconds to wait to sample queries and query plans. (Default: 3600)",
+                 TUNABLE_INTEGER, &gbl_sample_queries_wait_time, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_pb_connectmsg, 0, NULL, NULL, NULL, NULL);
 

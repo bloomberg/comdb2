@@ -82,5 +82,7 @@ int lock_client_write_lock(struct sqlclntstate *clnt);
 void unlock_client_write_lock(struct sqlclntstate *clnt);
 struct param_data *clnt_find_param(struct sqlclntstate *clnt, const char *name,
                                    int index);
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                           struct sqlclntstate *clnt, char **err, int sample_queries);
 
 #endif

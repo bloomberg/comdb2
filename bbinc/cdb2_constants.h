@@ -95,6 +95,8 @@
 /* Access to sqlite_statN & sqlite_master tables is considered free */
 #define CDB2_SQLITE_STAT_COST 0.0
 
+#define SAMPLE_QUERIES_TIER_LENGTH 20
+
 enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_MAX };
 
 #endif /* INCLUDED_UTIL_CDB2_CONSTANTS_H */

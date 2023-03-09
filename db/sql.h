@@ -1419,7 +1419,7 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 int clear_fingerprints(int *plans_count);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *, const char *, int64_t, int64_t, int64_t,
+void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, struct string_ref *, const char *, int64_t, int64_t, int64_t,
                      int64_t, struct reqlogger *, unsigned char *fingerprint_out, int is_lua);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
@@ -1428,7 +1428,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
 
 struct query_plan_item {
     unsigned char plan_fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
-    char *plan;
+    struct string_ref *plan_ref;
     double avg_cost_per_row;
     double total_cost_per_row;
     int nexecutions;
@@ -1436,8 +1436,20 @@ struct query_plan_item {
 };
 int free_query_plan_hash(hash_t *query_plan_hash);
 int clear_query_plans();
-void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, int64_t nrows,
-                    struct fingerprint_track *t);
+void add_query_plan(struct sqlclntstate *clnt, int64_t cost, int64_t nrows,
+                    struct fingerprint_track *t, struct string_ref *zSql_ref);
+
+struct query_field {
+    unsigned char fingerprint[FINGERPRINTSZ];
+    unsigned char plan_fingerprint[FINGERPRINTSZ];
+    struct string_ref *zSql_ref;
+    struct string_ref *query_plan_ref;
+    char *params;
+    time_t timestamp; /* fingerprints last updated time */
+};
+int clear_sample_queries_queue();
+void add_query_to_samples_queries(const unsigned char *fingerprint, const unsigned char *plan_fingerprint,
+                                  struct string_ref *zSql_ref, struct string_ref *query_plan_ref, struct sqlclntstate *clnt);
 
 /* Connection tracking */
 int gather_connection_info(struct connection_info **info, int *num_connections);

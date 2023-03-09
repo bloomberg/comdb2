@@ -26,6 +26,7 @@
 #include "sql.h"
 #include "util.h"
 #include "tohex.h"
+#include "string_ref.h"
 #include <ctrace.h>
 
 extern int gbl_old_column_names;
@@ -187,14 +188,14 @@ static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     strbuf_free(newtypes);
 }
 
-void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct string_ref *zSql_ref, const char *zNormSql,
                      int64_t cost, int64_t time, int64_t prepTime, int64_t nrows, struct reqlogger *logger,
                      unsigned char *fingerprint_out, int is_lua)
 {
     size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
 
-    assert(zSql);
+    assert(zSql_ref);
     assert(zNormSql);
 
     /* Calculate fingerprint */
@@ -233,7 +234,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
             t->query_plan_hash = hash_init(FINGERPRINTSZ);
             t->alert_once_query_plan = 1;
             t->alert_once_query_plan_max = 1;
-            add_query_plan(clnt->query_stats, cost, nrows, t);
+            add_query_plan(clnt, cost, nrows, t, zSql_ref);
         } else {
             t->query_plan_hash = NULL;
         }
@@ -251,7 +252,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
 
         if (gbl_verbose_normalized_queries) {
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
-                   fp, zSql, t->zNormSql);
+                   fp, string_ref_cstr(zSql_ref), t->zNormSql);
         }
 
         if (gbl_old_column_names && stmt) {
@@ -284,7 +285,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
                 t->alert_once_query_plan = 1;
                 t->alert_once_query_plan_max = 1;
             }
-            add_query_plan(clnt->query_stats, cost, nrows, t);
+            add_query_plan(clnt, cost, nrows, t, zSql_ref);
         }
 
         /* Do a check after an interval */

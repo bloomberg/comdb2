@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <sys/resource.h>
 #include <stdlib.h>
+#include <str0.h>
 #include <string.h>
 #include <unistd.h>
 #include "comdb2.h"
@@ -109,6 +110,11 @@ extern int gbl_replicant_latches;
 extern int gbl_return_long_column_names;
 extern int gbl_round_robin_stripes;
 extern int skip_clear_queue_extents;
+extern int gbl_sample_queries;
+extern char gbl_sample_queries_dbname[MAX_DBNAME_LENGTH];
+extern char gbl_sample_queries_tier[SAMPLE_QUERIES_TIER_LENGTH];
+extern int gbl_sample_queries_wait_time;
+extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_slow_rep_process_txn_freq;
 extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
@@ -1046,6 +1052,45 @@ static void *portmux_bind_path_get(void *dum)
 static int portmux_bind_path_set(void *dum, void *path)
 {
     return set_portmux_bind_path(path);
+}
+
+static void *sample_queries_dbname_tier_value(void *context) {
+    static char sample_queries_val[sizeof(gbl_sample_queries_dbname) + sizeof(gbl_sample_queries_tier)];
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    snprintf0(sample_queries_val, sizeof(sample_queries_val), "%s:%s", gbl_sample_queries_dbname, gbl_sample_queries_tier);
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+    return sample_queries_val;
+}
+
+static int sample_queries_dbname_tier_update(void *context, void *value)
+{
+    char newValue[sizeof(gbl_sample_queries_dbname) + sizeof(gbl_sample_queries_tier)];
+    strncpy0(newValue, (char*)value, sizeof(newValue));
+    char *delim = strchr(newValue, ':');
+    if (!delim) {
+        logmsg(LOGMSG_ERROR, "%s: Could not find delimiter ':'\n", __func__);
+        return 1;
+    }
+    *delim = '\0';
+    char *dbname = newValue;
+    char *tier = delim + 1;
+    if (strlen(dbname) >= sizeof(gbl_sample_queries_dbname)) {
+        logmsg(LOGMSG_ERROR, "%s: dbname too big\n", __func__);
+        return 1;
+    } else if (strlen(tier) >= sizeof(gbl_sample_queries_tier)) {
+        logmsg(LOGMSG_ERROR, "%s: tier too big\n", __func__);
+        return 1;
+    } else if ((*dbname && !*tier) || (!*dbname && *tier)) {
+        logmsg(LOGMSG_ERROR, "%s: Only specified one of dbname (%s) and tier (%s). Either specify both or none\n", __func__, dbname, tier);
+        return 1;
+    }
+    
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    strncpy0(gbl_sample_queries_dbname, dbname, sizeof(gbl_sample_queries_dbname));
+    strncpy0(gbl_sample_queries_tier, tier, sizeof(gbl_sample_queries_tier));
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+
+    return 0;
 }
 
 static int test_log_file_update(void *context, void *value)
