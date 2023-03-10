@@ -40,12 +40,18 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
 {
     GET_CLNT;
     fdb_push_connector_t *push = NULL;
-    struct Db *pDb;
+    struct Db *pDb = &pParse->db->aDb[node->remotedb];
 
     if (!gbl_fdb_push_remote)
         return -1;
 
+    if (clnt->disable_fdb_push)
+        return -1;
+
     if (clnt->intrans)
+        return -1;
+
+    if (pDb->version < FDB_VER_PROXY)
         return -1;
 
     push = calloc(1, sizeof(fdb_push_connector_t));
@@ -53,7 +59,6 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
         logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
         return -1;
     }
-    pDb = &pParse->db->aDb[node->remotedb];
     push->remotedb = strdup(pDb->zDbSName);
     if (!push->remotedb) {
         logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
@@ -157,6 +162,14 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
 
 static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl);
 
+/**
+ * Proxy receiving sqlite rows from remote and forwarding them to
+ * client after conversion to comdb2 format
+ *
+ * Returns: 0 if ok
+ *          -1 if unrecoverable error
+ *          -2 if remote is too old (7.0 or older)
+ */
 int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
@@ -188,14 +201,19 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
 
     rc = cdb2_run_statement(hndl, clnt->sql);
     if (rc) {
-        errstat_set_rcstrf(err, rc, "Failed to run query", clnt->sql);
-        goto closing;
+        const char *errstr = cdb2_errstr(hndl);
+        if (errstr &&
+            strncasecmp("remote is R7 or lower", errstr, strlen(errstr)) == 0) {
+            rc = -2;
+            goto closing;
+        }
+        errstat_set_rcstrf(err, rc = -1, "Failed to run query", clnt->sql);
+        goto send_error;
     }
 
     int ncols = cdb2_numcolumns(hndl);
 
     rc = cdb2_next_record(hndl);
-    errstat_set_rcstrf(err, rc, "next_record failed");
     while (rc == CDB2_OK) {
         push->row = cdb2_column_value(hndl, 0);
         push->rowlen = cdb2_column_size(hndl, 0);
@@ -227,11 +245,17 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
 
         /* next row */
         rc = cdb2_next_record(hndl);
+        if (rc != CDB2_OK && rc != CDB2_OK_DONE) {
+            errstat_set_rcstrf(err, rc = -1, "Next record error %d", irc);
+        }
     }
+send_error:
     if (rc != CDB2_OK_DONE) {
         /* send error */
-        errstat_set_rcstrf(err, rc = -1, "Query push failed");
+        logmsg(LOGMSG_ERROR, "Query push failed \"%s\"\n",
+               err->errstr);
         write_response(clnt, RESPONSE_ERROR, err->errstr, 0);
+        rc = -1;
         goto closing;
     }
 
@@ -252,6 +276,8 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
             logmsg(LOGMSG_ERROR, "Failed to save remote cost rc %d\n", rc);
             goto closing;
         }
+    } else {
+        rc = 0;
     }
 
 closing:

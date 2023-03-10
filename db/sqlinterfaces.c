@@ -3921,6 +3921,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     char *allocd_str = NULL;
 
     do {
+retry_legacy_remote:
         /* clean old stats */
         clear_cost(thd->sqlthd);
 
@@ -3938,6 +3939,11 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         }
         if (rc == SQLITE_SCHEMA_PUSH_REMOTE) {
             rc = handle_fdb_push(clnt, &err);
+            if (rc == -2) {
+                /* remote server does not support proxy, retry without */
+                clnt->disable_fdb_push = 1;
+                goto retry_legacy_remote;
+            }
             goto done;
         }
 

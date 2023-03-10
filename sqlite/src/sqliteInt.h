@@ -1271,6 +1271,7 @@ struct Db {
   int class;           /* what class for this cluster */
   int class_override;  /* was class explicit at the discovery time */
   int local;           /* is this a local db */
+  int version;         /* which protocol it supports */ 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -5016,11 +5017,12 @@ void sqlite3_set_tunable_by_name(char *tname, char *val);
 
 extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
       const char *table, int *version, int in_analysis_load,
-      int *out_class, int *out_local, int *out_class_override);
+      int *out_class, int *out_local, int *out_class_override,
+      int *proto_version);
 extern int sqlite3UnlockTable(const char *dbname, const char *table);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, int argc, sqlite3_value **argv,
       const char *zName, const char *zFile, char **pzErrDyn, int version,
-      int class, int local, int class_override);
+      int class, int local, int class_override, int proto_version);
 extern void comdb2_dynamic_detach(sqlite3 *db, int idx);  
 extern int comdb2_fdb_check_class(const char *dbname);
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);

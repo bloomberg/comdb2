@@ -68,8 +68,10 @@
 #define FDB_VER_SOURCE_ID 2
 #define FDB_VER_WR_NAMES 3
 #define FDB_VER_SSL 4
+#define FDB_VER_PROXY 5
 
-#define FDB_VER FDB_VER_SSL
+
+#define FDB_VER FDB_VER_PROXY
 
 /* cc2 ftw */
 #define fdb_ver_encoded(ver) (-(ver + 1))

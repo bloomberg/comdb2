@@ -532,6 +532,7 @@ retry_after_fdb_creation:
   */
   if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
     int        version = 0;
+    int        server_version = 0;
     char       *zErrDyn = NULL;
 
     if( gbl_fdb_track ){
@@ -540,7 +541,7 @@ retry_after_fdb_creation:
 
     int lvl, local, lvl_override;
     rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-          in_analysis_load, &lvl, &local, &lvl_override);
+          in_analysis_load, &lvl, &local, &lvl_override, &server_version);
     if( rc ){
         if( gbl_fdb_track )
             logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
@@ -560,7 +561,7 @@ retry_after_fdb_creation:
     ** attached from two different databases
     */
     rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
-        &zErrDyn, version, lvl, local, lvl_override);
+        &zErrDyn, version, lvl, local, lvl_override, server_version);
 
     if( sqlite3UnlockTable(dbName, zName) ){
       logmsg(LOGMSG_ERROR, "%s: failed to unlock %s.%s\n", __func__,
