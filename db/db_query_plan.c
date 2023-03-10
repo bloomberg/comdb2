@@ -143,8 +143,10 @@ void add_query_plan(const struct client_query_stats *query_stats, int64_t cost, 
                     struct fingerprint_track *t)
 {
     char *query_plan = form_query_plan(query_stats);
-    if (nrows <= 0) { // can't calculate cost per row if 0 rows
+    if (nrows < 0) {
         return;
+    } else if (nrows == 0) {  // can't calculate cost per row if 0 rows, make 1 row
+        nrows = 1;
     }
 
     add_query_plan_int(t, query_plan, cost, nrows);
