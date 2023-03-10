@@ -385,7 +385,9 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
 
 #ifndef OPENSSL_NO_ECDH
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L
-    SSL_CTX_set_ecdh_auto(myctx, 1);
+    if (!SSL_CTX_set_ecdh_auto(myctx, 1)) {
+        my_ssl_eprintln("SSL_CTX_set_ecdh_auto failed. ECDHE ciphers will be disabled.");
+    }
 #else
     EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (ecdh == NULL) {
