@@ -83,7 +83,8 @@ static void attachFunc(
   int version,
   int class,
   int local,
-  int class_override
+  int class_override,
+  int proto_version
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   int i;
@@ -254,6 +255,7 @@ static void attachFunc(
     pNew->class = class;
     pNew->class_override = class_override;
     pNew->local = local;
+    pNew->version = proto_version;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pNew->zDbSName = sqlite3DbStrDup(db, zName);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -437,7 +439,7 @@ static void attachFunc(
   if( zName==0 ) zName = "";
 
   zErrDyn = NULL;
-  rc = comdb2_dynamic_attach(db, context, 0, argv, zName, zFile, &zErrDyn, 0, 0, 0, 0);
+  rc = comdb2_dynamic_attach(db, context, 0, argv, zName, zFile, &zErrDyn, 0, 0, 0, 0, 0);
   if( zErrDyn ){
     sqlite3_result_error(context, zErrDyn, -1);
     sqlite3DbFree(db, zErrDyn);

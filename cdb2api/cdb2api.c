@@ -3218,6 +3218,14 @@ retry_next_record:
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
+    if (hndl->flags & CDB2_SQL_ROWS &&
+        hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW &&
+        !hndl->lastresponse->has_sqlite_row) {
+        debugprint("received regular row when asked for sqlite format\n");
+        sprintf(hndl->errstr, "remote is R7 or lower");
+        return -1;
+    }
+
     if (hndl->lastresponse->snapshot_info &&
         hndl->lastresponse->snapshot_info->file) {
         hndl->snapshot_file = hndl->lastresponse->snapshot_info->file;

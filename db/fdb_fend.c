@@ -1276,7 +1276,7 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
 int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
                            int *version, int in_analysis_load,
                            int *out_class, int *out_local,
-                           int *out_class_override)
+                           int *out_class_override, int *out_proto_version)
 {
     fdb_t *fdb;
     int rc = FDB_NOERR;
@@ -1430,6 +1430,7 @@ retry_fdb_creation:
     *out_class = lvl;
     *out_local = local;
     *out_class_override = lvl_override;
+    *out_proto_version = fdb->server_version;
 
     return SQLITE_OK; /* speaks sqlite */
 }
@@ -2962,6 +2963,15 @@ static void _update_fdb_version(BtCursor *pCur, char *errstr)
            pCur->bt->fdb->server_version);
 
     pCur->bt->fdb->server_version = protocol_version;
+    /* this socket is possible dirty, because the old version
+     * is detected in the first replay; but we have probably sent
+     * async requests already to the target.
+     *
+     * we cannot close and cache it in sockpool;
+     * to make sure it is not cached, we mark the socket as
+     * "in-the-middle-of-streaming-rows"
+     */
+    pCur->fdbc->impl->streaming = FDB_CUR_STREAMING;
 }
 
 #define RETRY_GET_ROW 16
