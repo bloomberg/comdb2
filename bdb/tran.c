@@ -1430,7 +1430,8 @@ static int update_logical_redo_lsn(void *obj, void *arg)
 
     last = LISTC_BOT(&bdb_state->sc_redo_list);
     /* Add in order */
-    if (!last || log_compare(&last->lsn, &redo->lsn) <= 0)
+    /* 'Logical commits' can be out-of-order for prepared txns */
+    if (!last || (log_compare(&last->lsn, &redo->lsn) <= 0) || tran->is_prepared)
         listc_abl(&bdb_state->sc_redo_list, redo);
     else {
         logmsg(LOGMSG_FATAL, "%s: logical commit lsn should be in order\n",

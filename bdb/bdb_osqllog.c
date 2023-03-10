@@ -4574,9 +4574,9 @@ static int create_logical_payload(bdb_llog_cursor *pCur, DB_LSN regop_lsn,
     return 0;
 }
 
-static int bdb_llog_cursor_move(bdb_llog_cursor *pCur)
+static int bdb_llog_cursor_move(bdb_llog_cursor *pCur, u_int32_t flags)
 {
-    u_int32_t rectype = 0;
+    u_int32_t rectype = 0, first_txnid = 0, txnid = 0;
     int rc = 0;
 
 again:
@@ -4587,16 +4587,19 @@ again:
         } else
             pCur->hitLast = 0;
         pCur->getflags = DB_NEXT;
-        if (pCur->data.data)
+        if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data);
-        else
+            LOGCOPY_32(&txnid, (u_int8_t *)pCur->data.data + sizeof(u_int32_t));
+            if (!first_txnid)
+                first_txnid = txnid;
+        } else
             rectype = 0;
         if (pCur->maxLsn.file > 0 &&
             log_compare(&pCur->curLsn, &pCur->maxLsn) > 0) {
             /* traverse upto maxLsn */
             return 0;
         }
-    } while (!pCur->hitLast && !is_commit(rectype));
+    } while (!pCur->hitLast && (!is_commit(rectype) || !flags || first_txnid != txnid));
 
     if (!pCur->hitLast) {
         /* Can happen if we're missing the beginning of the transaction */
@@ -4647,7 +4650,7 @@ int bdb_llog_cursor_first(bdb_llog_cursor *pCur)
         }
     }
 
-    return bdb_llog_cursor_move(pCur);
+    return bdb_llog_cursor_move(pCur, 0);
 }
 
 int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
@@ -4664,7 +4667,7 @@ int bdb_llog_cursor_next(bdb_llog_cursor *pCur)
         pCur->getflags = DB_NEXT;
     }
 
-    return bdb_llog_cursor_move(pCur);
+    return bdb_llog_cursor_move(pCur, 0);
 }
 
 int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
@@ -4683,7 +4686,7 @@ int bdb_llog_cursor_find(bdb_llog_cursor *pCur, DB_LSN *lsn)
     pCur->curLsn = pCur->minLsn;
     pCur->getflags = DB_SET;
 
-    return bdb_llog_cursor_move(pCur);
+    return bdb_llog_cursor_move(pCur, 1);
 }
 
 void bdb_llog_cursor_reset(bdb_llog_cursor *pCur)
