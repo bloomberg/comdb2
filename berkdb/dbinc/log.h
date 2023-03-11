@@ -293,14 +293,14 @@ struct __db_commit {
 		    (u_long)(lsn)->file, (u_long)(lsn)->offset,		                      \
 		    (u_long)(prev)->file, (u_long)(prev)->offset);	                      \
 		ret = EINVAL;						                                      \
-        extern void __pgdump(DB_ENV *dbenv, int32_t _fileid, db_pgno_t _pgno);    \
-        extern void __pgdumpall(DB_ENV *dbenv, int32_t _fileid, db_pgno_t _pgno); \
+        extern void __pgdump(DB_ENV *dbenv, int32_t _fileid, uint8_t *ufid, db_pgno_t _pgno);    \
+        extern void __pgdumpall(DB_ENV *dbenv, int32_t _fileid, uint8_t *ufid, db_pgno_t _pgno); \
         if (dbenv->attr.lsnerr_logflush)                                          \
             __log_flush(dbenv, NULL);                                             \
         if (dbenv->attr.lsnerr_pgdump)                                            \
-             __pgdump(dbenv, fileid, pgno);                                       \
+             __pgdump(dbenv, fileid, argp->ufid_fileid, pgno);                    \
         if (dbenv->attr.lsnerr_pgdump_all) {                                      \
-             __pgdumpall(dbenv, fileid, pgno);                                    \
+             __pgdumpall(dbenv, fileid, argp->ufid_fileid, pgno);                 \
              extern unsigned int sleep(unsigned int);                             \
             sleep(3); /* TODO: tunable? give time for replicated pgdumpall to make it everywhere */  \
         }                                                                         \
