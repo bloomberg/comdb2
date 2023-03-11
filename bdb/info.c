@@ -47,7 +47,7 @@
 extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
 extern void __test_last_checkpoint(DB_ENV *dbenv);
-extern void __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno);
 extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
@@ -1876,7 +1876,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        __pgdump(bdb_state->dbenv, fileid, pgno);
+        /* Can probably extend the trap to also accept a ufid. But for now pass a NULL. */
+        __pgdump(bdb_state->dbenv, fileid, NULL, pgno);
     } else if (tokcmp(tok, ltok, "pgtrash") == 0) {
         int fileid, pgno;
         tok = segtok(line, lline, &st, &ltok);
