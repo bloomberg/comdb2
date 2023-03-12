@@ -339,7 +339,6 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	} else {
 		/* Either aborted or unresolved */
    		assert(op == DB_TXN_BACKWARD_ROLL);
-backroll:
 		if ((!IS_ZERO_LSN(headp->trunc_lsn) &&  log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
 		} else {
