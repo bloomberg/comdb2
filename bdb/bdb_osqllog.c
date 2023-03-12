@@ -4599,7 +4599,7 @@ again:
             /* traverse upto maxLsn */
             return 0;
         }
-    } while (!pCur->hitLast && (!is_commit(rectype) || !flags || first_txnid != txnid));
+    } while (!pCur->hitLast && (!is_commit(rectype) || (flags && first_txnid != txnid)));
 
     if (!pCur->hitLast) {
         /* Can happen if we're missing the beginning of the transaction */
