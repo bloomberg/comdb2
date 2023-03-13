@@ -2936,7 +2936,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int cmp, do_req, gap, ret, t_ret, rc;
 	int num_retries;
 	int disabled_minwrite_noread = 0;
-	char *eid;
+	char *eid, *dist_txnid = NULL;
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -3550,7 +3550,10 @@ gap_check:		max_lsn_dbtp = NULL;
 		if ((ret = __txn_dist_prepare_read(dbenv, rec->data, &dist_prepare_args)) != 0) {
 			goto err;
 		}
-		if ((ret = __txn_recover_prepared(dbenv, dist_prepare_args->txnid, dist_prepare_args->dist_txnid,
+		dist_txnid = alloca(dist_prepare_args->dist_txnid.size + 1);
+		memcpy(dist_txnid, dist_prepare_args->dist_txnid.data, dist_prepare_args->dist_txnid.size);
+		dist_txnid[dist_prepare_args->dist_txnid.size] = '\0';
+		if ((ret = __txn_recover_prepared(dbenv, dist_prepare_args->txnid, dist_txnid,
 			&rp->lsn, &dist_prepare_args->begin_lsn, &dist_prepare_args->blkseq_key, 
 			dist_prepare_args->coordinator_gen, &dist_prepare_args->coordinator_name,
 			&dist_prepare_args->coordinator_tier)) != 0) {
@@ -3565,7 +3568,10 @@ gap_check:		max_lsn_dbtp = NULL;
 		if ((ret = __txn_dist_abort_read(dbenv, rec->data, &dist_abort_args)) != 0) {
 			goto err;
 		}
-		if ((ret = __txn_rep_abort_recovered(dbenv, dist_abort_args->dist_txnid)) != 0) {
+		dist_txnid = alloca(dist_abort_args->dist_txnid.size + 1);
+		memcpy(dist_txnid, dist_abort_args->dist_txnid.data, dist_abort_args->dist_txnid.size);
+		dist_txnid[dist_abort_args->dist_txnid.size] = '\0';
+		if ((ret = __txn_rep_abort_recovered(dbenv, dist_txnid)) != 0) {
 			goto err;
 		}
 		__os_free(dbenv, dist_abort_args);
@@ -4603,7 +4609,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	u_int32_t rectype;
 	int i, ret, t_ret, line = 0;
 	u_int32_t txnid = 0;
-    u_int64_t dist_txnid = 0;
+    char *dist_txnid = NULL;
 	int got_txns = 0, free_lc = 0;
 	void *txninfo;
 	unsigned long long context = 0;
@@ -4789,7 +4795,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			   we got the schemalk already- we should release it. */
 			release_schema_lock = 1;
 		}
-        dist_txnid = txn_dist_commit_args->dist_txnid;
+		dist_txnid = alloca(txn_dist_commit_args->dist_txnid.size + 1);
+		memcpy(dist_txnid, txn_dist_commit_args->dist_txnid.data, txn_dist_commit_args->dist_txnid.size);
+		dist_txnid[txn_dist_commit_args->dist_txnid.size] = '\0';
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -5352,7 +5360,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 {
 	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
 	int32_t timestamp = 0;
-	u_int64_t dist_txnid = 0;
+	char *dist_txnid = NULL;
 	int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
@@ -5609,7 +5617,9 @@ bad_resize:	;
 		if (lflags & DB_TXN_SCHEMA_LOCK) {
 			get_schema_lk = 1;
 		}
-		dist_txnid = txn_dist_commit_args->dist_txnid;
+		dist_txnid = alloca(txn_dist_commit_args->dist_txnid.size + 1);
+		memcpy(dist_txnid, txn_dist_commit_args->dist_txnid.data, txn_dist_commit_args->dist_txnid.size);
+		dist_txnid[txn_dist_commit_args->dist_txnid.size] = '\0';
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -5845,7 +5855,7 @@ bad_resize:	;
 	}
 	gbl_rep_trans_parallel++;
 
-	if (dist_txnid && (ret = __txn_discard_recovered(dbenv, txn_dist_commit_args->dist_txnid)) != 0) {
+	if (dist_txnid && (ret = __txn_discard_recovered(dbenv, dist_txnid)) != 0) {
 		abort();
 	}
 

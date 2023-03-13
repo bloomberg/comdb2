@@ -113,7 +113,10 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 		 * abort record .. & possibly dont see prepare record either.
 		 * Ignore */
 	} else {
-		__txn_recover_dist_abort(dbenv, argp->dist_txnid);
+		char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+		memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+		dist_txnid[argp->dist_txnid.size] = '\0';
+		__txn_recover_dist_abort(dbenv, dist_txnid);
 	}
 
 	if (ret == 0) {
@@ -158,8 +161,12 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 	if ((ret = __txn_dist_commit_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
 
+	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+	dist_txnid[argp->dist_txnid.size] = '\0';
+
 #if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s opcode %d, dist-txnid=%"PRIu64"", __func__, op, argp->dist_txnid);
+	comdb2_cheapstack_sym(stderr, "%s opcode %d, dist-txnid=%s", __func__, op, dist_txnid);
 #endif
 
 	headp = info;
@@ -190,10 +197,10 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 #if defined (DEBUG_PREPARE)
-		logmsg(LOGMSG_USER, "%s op %d removed %"PRIu64" from txnlist\n",
-			__func__, op, argp->dist_txnid);
+		logmsg(LOGMSG_USER, "%s op %d removed %s from txnlist\n",
+			__func__, op, dist_txnid);
 #endif
-		__txn_recover_dist_commit(dbenv, argp->dist_txnid);
+		__txn_recover_dist_commit(dbenv, dist_txnid);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
 		(!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -206,8 +213,8 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			info, argp->txnid->txnid, TXN_ABORT, NULL);
 
 #if defined (DEBUG_PREPARE)
-		logmsg(LOGMSG_USER, "%s op %d updated %"PRIu64" to abort\n",
-			__func__, op, argp->dist_txnid);
+		logmsg(LOGMSG_USER, "%s op %d updated %s to abort\n",
+			__func__, op, dist_txnid);
 #endif
 
 		if (ret == TXN_IGNORE)
@@ -216,8 +223,8 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			ret = __db_txnlist_add(dbenv,
 				info, argp->txnid->txnid, TXN_IGNORE, NULL);
 #if defined (DEBUG_PREPARE)
-			logmsg(LOGMSG_USER, "%s op %d updated %"PRIu64" to ignore\n",
-				__func__, op, argp->dist_txnid);
+			logmsg(LOGMSG_USER, "%s op %d updated %s to ignore\n",
+				__func__, op, dist_txnid);
 #endif
 		} else if (ret != TXN_OK)
 			goto err;
@@ -229,8 +236,8 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			info, argp->txnid->txnid, argp->opcode, lsnp);
 
 #if defined (DEBUG_PREPARE)
-		logmsg(LOGMSG_USER, "%s op %d updated %"PRIu64" to %d\n",
-			__func__, op, argp->dist_txnid, argp->opcode);
+		logmsg(LOGMSG_USER, "%s op %d updated %s to %d\n",
+			__func__, op, dist_txnid, argp->opcode);
 #endif
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
@@ -247,7 +254,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
-		__txn_recover_dist_commit(dbenv, argp->dist_txnid);
+		__txn_recover_dist_commit(dbenv, dist_txnid);
 	}
 
 	if (ret == 0) {
@@ -301,8 +308,12 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	if ((ret = __txn_dist_prepare_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
 
+	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+	dist_txnid[argp->dist_txnid.size] = '\0';
+
 #if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s opcode %d, dist-txnid=%"PRIu64"", __func__, op, argp->dist_txnid);
+	comdb2_cheapstack_sym(stderr, "%s opcode %d, dist-txnid=%s", __func__, op, dist_txnid);
 #endif
 
 	headp = info;
@@ -318,7 +329,7 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 #endif
 	} else if (op == DB_TXN_ABORT) {
 		/* Either aborted or unresolved */
-		ret = __txn_recover_abort_prepared(dbenv, argp->dist_txnid, lsnp, &argp->blkseq_key,
+		ret = __txn_recover_abort_prepared(dbenv, dist_txnid, lsnp, &argp->blkseq_key,
 			argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier);
 	} else if (op == DB_TXN_APPLY) {
 	} else if (op == DB_TXN_DIST_ADD_TXNLIST) {
@@ -327,11 +338,11 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		if ((!IS_ZERO_LSN(headp->trunc_lsn) &&  log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
 		} else {
-			if ((ret = __txn_is_dist_committed(dbenv, argp->dist_txnid))) {
+			if ((ret = __txn_is_dist_committed(dbenv, dist_txnid))) {
 				ret = __db_txnlist_add(dbenv, info, argp->txnid->txnid, TXN_COMMIT, NULL);
 			} else {
-				logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %"PRIu64"\n", __func__, argp->dist_txnid);
-				if ((ret = __txn_recover_prepared(dbenv, argp->txnid, argp->dist_txnid, lsnp, &argp->begin_lsn,
+				logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
+				if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
 								&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
 					abort();
 			}
@@ -342,8 +353,8 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		if ((!IS_ZERO_LSN(headp->trunc_lsn) &&  log_compare(&headp->trunc_lsn, lsnp) < 0)) {
 			logmsg(LOGMSG_DEBUG, "Ignoring truncated prepared txn\n");
 		} else {
-			logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %"PRIu64"\n", __func__, argp->dist_txnid);
-			if ((ret = __txn_recover_prepared(dbenv, argp->txnid, argp->dist_txnid, lsnp, &argp->begin_lsn,
+			logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
+			if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
 				&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
 				abort();
 		}

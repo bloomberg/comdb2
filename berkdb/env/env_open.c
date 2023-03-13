@@ -394,7 +394,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	}
 	dbenv->ufid_to_db_hash = hash_init(DB_FILE_ID_LEN);
 	Pthread_mutex_init(&dbenv->ufid_to_db_lk, NULL);
-	dbenv->prepared_txn_hash = hash_init(sizeof(u_int64_t));
+	dbenv->prepared_txn_hash = hash_init_strptr(offsetof(struct __db_txn_prepared, dist_txnid));
 	dbenv->prepared_txnid_hash = hash_init_o(offsetof(struct __db_txn_prepared, txnid), sizeof(u_int32_t));
 	Pthread_mutex_init(&dbenv->prepared_txn_lk, NULL);
 	dbenv->mintruncate_state = MINTRUNCATE_START;

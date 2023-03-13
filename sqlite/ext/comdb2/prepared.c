@@ -30,7 +30,7 @@ static sqlite3_module systblPreparedModule = {
 };
 
 typedef struct systable_prepared {
-    int64_t dist_txnid;
+    char *dist_txnid;
     char *flags;
     char *lsn;
     char *begin_lsn;
@@ -93,7 +93,7 @@ static inline char *dist_flags_to_str(uint32_t flags)
     return r;
 }
 
-static int collect_prepared(void *args, uint64_t dist_txnid, uint32_t flags, DB_LSN *lsn, 
+static int collect_prepared(void *args, char *dist_txnid, uint32_t flags, DB_LSN *lsn, 
     DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name, char *coordinator_tier,
     uint32_t txnid)
 {
@@ -106,7 +106,7 @@ static int collect_prepared(void *args, uint64_t dist_txnid, uint32_t flags, DB_
         p->records = realloc(p->records, p->alloc * sizeof(systable_prepared_t));
     }
     r = &p->records[p->count - 1];
-    r->dist_txnid = dist_txnid;
+    r->dist_txnid = strdup(dist_txnid);
     r->flags = dist_flags_to_str(flags);
     r->lsn = (char *)calloc(32, 1);
     prepared_lsn_to_str(r->lsn, lsn);
@@ -147,7 +147,7 @@ int systblPreparedInit(sqlite3 *db)
 {
     return create_system_table(db, "comdb2_prepared", &systblPreparedModule,
         get_prepared, free_prepared, sizeof(systable_prepared_t),
-        CDB2_INTEGER, "dist_txnid", -1, offsetof(systable_prepared_t, dist_txnid),
+        CDB2_CSTRING, "dist_txnid", -1, offsetof(systable_prepared_t, dist_txnid),
         CDB2_INTEGER, "txnid", -1, offsetof(systable_prepared_t, txnid),
         CDB2_CSTRING, "flags", -1, offsetof(systable_prepared_t, flags),
         CDB2_CSTRING, "prepare_lsn", -1, offsetof(systable_prepared_t, lsn),

@@ -5500,11 +5500,12 @@ add_blkseq:
                     iq->sc_logical_tran = NULL;
                 } else {
 					int prepared = 0, bdberr = 0;
-					u_int64_t dist_txnid = 0;
+                    char dist_txnid[64] = {0};
 
 					/* Prepare tests */
 					if (debug_should_prepare()) {
-						dist_txnid = get_genid(thedb->bdb_env, 0);
+                        uint64_t g = get_genid(thedb->bdb_env, 0);
+                        snprintf(dist_txnid, sizeof(dist_txnid), "test-%"PRIu64, g);
 						int prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, 
                             "test-coordinator", "test-tier", rand() % 10000, bskey, bskeylen, &bdberr);
                         if (prepare_rc) {
@@ -5522,7 +5523,7 @@ add_blkseq:
 						parent_trans = NULL;
 					} else {
 						assert(gbl_all_prepare_leak);
-						logmsg(LOGMSG_USER, "%s leaking a prepared txn %"PRIu64"\n",
+						logmsg(LOGMSG_USER, "%s leaking a prepared txn %s\n",
 							__func__, dist_txnid);
 						bdb_flush(thedb->bdb_env, &bdberr);
 						sleep(2);

@@ -1063,7 +1063,7 @@ struct __db_txn {
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
 			  u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
-	int   (*dist_prepare) __P((DB_TXN *, u_int64_t, const char *, const char *, u_int32_t, DBT *, u_int32_t));
+	int   (*dist_prepare) __P((DB_TXN *, const char *, const char *, const char *, u_int32_t, DBT *, u_int32_t));
 	int   (*getlogbytes) __P((DB_TXN *, u_int64_t *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
@@ -1091,7 +1091,7 @@ struct __db_txn {
 					 * this is a new one */
 	void			*pglogs_hashtbl;
 	pthread_mutex_t pglogs_mutex;
-	u_int64_t dist_txnid;
+	char *dist_txnid;
 	char *coordinator_name;
 	char *coordinator_tier;
 	u_int32_t coordinator_gen;
@@ -1109,7 +1109,8 @@ typedef enum {
 } db_dist_state;
 
 struct __db_txn_prepared {
-	u_int64_t dist_txnid;
+	char *dist_txnid;
+	//u_int64_t dist_txnid;
 	u_int32_t txnid;
 	u_int32_t flags;
 	DB_LSN prepare_lsn;
@@ -2237,7 +2238,7 @@ typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype, int stackid);
 
-typedef int (*collect_prepared_f)(void *args, uint64_t dist_txnid, uint32_t flags,
+typedef int (*collect_prepared_f)(void *args, char *dist_txnid, uint32_t flags,
 		DB_LSN *lsn, DB_LSN *begin_lsn, uint32_t coordinator_gen, char *coordinator_name,
 		char *coordinator_tier, uint32_t txnid);
 
@@ -2580,9 +2581,9 @@ struct __db_env {
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
 	int  (*txn_stat) __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
-	int  (*txn_commit_recovered) __P((DB_ENV *, u_int64_t));
-	int  (*txn_abort_recovered) __P((DB_ENV *, u_int64_t));
-	int  (*txn_discard_recovered) __P((DB_ENV *, u_int64_t));
+	int  (*txn_commit_recovered) __P((DB_ENV *, const char *));
+	int  (*txn_abort_recovered) __P((DB_ENV *, const char *));
+	int  (*txn_discard_recovered) __P((DB_ENV *, const char *));
 	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));

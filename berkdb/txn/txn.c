@@ -178,7 +178,7 @@ static int __txn_logbytes_pp __P((DB_TXN *, u_int64_t *));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
-static int __txn_dist_prepare_pp __P((DB_TXN *, u_int64_t, const char *, const char*, u_int32_t, DBT *, u_int32_t));
+static int __txn_dist_prepare_pp __P((DB_TXN *, const char *, const char *, const char*, u_int32_t, DBT *, u_int32_t));
 static int __txn_discard_pp __P((DB_TXN *, u_int32_t));
 static int __txn_end __P((DB_TXN *, int));
 static int __txn_isvalid __P((const DB_TXN *, TXN_DETAIL **, txnop_t));
@@ -1024,7 +1024,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		DB_TXN_LOGICAL_BEGIN | DB_TXN_LOGICAL_COMMIT | DB_TXN_NOSYNC |
 		DB_TXN_SYNC | DB_TXN_REP_ACK | DB_TXN_DONT_GET_REPO_MTX |
 		DB_TXN_SCHEMA_LOCK | DB_TXN_LOGICAL_GEN | DB_TXN_DIST_PREPARE |
-        DB_TXN_DIST_UPD_SHADOWS) != 0)
+		DB_TXN_DIST_UPD_SHADOWS) != 0)
 		flags = DB_TXN_SYNC;
 	if (__db_fcchk(dbenv,
 		"DB_TXN->commit", flags, DB_TXN_NOSYNC, DB_TXN_SYNC) != 0)
@@ -1047,7 +1047,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	int is_prepare = LF_ISSET(DB_TXN_DIST_PREPARE);
 	int commit_prepared = F_ISSET(txnp, TXN_DIST_PREPARED);
-	u_int64_t dist_txnid = 0;
 
 	if (is_prepare) {
 		if (commit_prepared) {
@@ -1203,10 +1202,14 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						gen = 0;
 
 					if (commit_prepared) {
-						/* No need for locks */
+
+						DBT dist_txnid = {0};
+						dist_txnid.data = txnp->dist_txnid;
+						dist_txnid.size = strlen(txnp->dist_txnid);
+
 						ret = __txn_dist_commit_log(dbenv,
 									txnp, lsn_out, &context, lflags,
-									TXN_COMMIT, txnp->dist_txnid, gen,
+									TXN_COMMIT, &dist_txnid, gen,
 									timestamp, usr_ptr);
 						if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 							abort();
@@ -1255,19 +1258,21 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						gen = rep->gen;
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
-						DBT coordinator = {0}, tier = {0};
+						DBT coordinator = {0}, tier = {0}, dist_txnid = {0};
 						coordinator.data = txnp->coordinator_name;
 						coordinator.size = strlen(txnp->coordinator_name);
 						tier.data = txnp->coordinator_tier;
 						tier.size = strlen(txnp->coordinator_tier);
+						dist_txnid.data = txnp->dist_txnid;
+						dist_txnid.size = strlen(txnp->dist_txnid);
 						SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags);
-                        ltranflags |= LF_ISSET(DB_TXN_DIST_UPD_SHADOWS);
+						ltranflags |= LF_ISSET(DB_TXN_DIST_UPD_SHADOWS);
 
 						TXN_DETAIL *tp = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->off);
 						u_int64_t genid = get_commit_context(NULL, 0);
 
 						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
-							TXN_COMMIT, gen, &tp->begin_lsn, txnp->dist_txnid, genid, ltranflags,
+							TXN_COMMIT, gen, &tp->begin_lsn, &dist_txnid, genid, ltranflags,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
 						if ((ret = __txn_master_prepared(dbenv, txnp->dist_txnid, &txnp->last_lsn,
@@ -1283,10 +1288,15 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							db_rep->rep_mutexp);
 
 						if (commit_prepared) {
+							DBT dist_txnid = {0};
+							dist_txnid.data = txnp->dist_txnid;
+							dist_txnid.size = strlen(txnp->dist_txnid);
+
 							ret = __txn_dist_commit_log(dbenv, txnp, 
 									&txnp->last_lsn, &context, lflags,
-									TXN_COMMIT, txnp->dist_txnid, gen,
+									TXN_COMMIT, &dist_txnid, gen,
 									timestamp, usr_ptr);
+							/* XXX better name for this ? */
 							if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 								abort();
 							}
@@ -1717,8 +1727,13 @@ __txn_abort(txnp)
 
 	if (DBENV_LOGGING(dbenv) && F_ISSET(txnp, TXN_DIST_PREPARED)) {
 		if (!F_ISSET(txnp, TXN_DIST_DISCARD)) {
+
+			DBT dist_txnid = {0};
+			dist_txnid.data = txnp->dist_txnid;
+			dist_txnid.size = strlen(txnp->dist_txnid);
+
 			if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
-							TXN_COMMIT, txnp->dist_txnid) != 0))
+							TXN_COMMIT, &dist_txnid) != 0))
 				return (__db_panic(dbenv, ret));
 		}
 	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
@@ -1811,7 +1826,7 @@ __txn_discard(txnp, flags)
 static int
 __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen, blkseq_key, lflags)
 	DB_TXN *txnp;
-	u_int64_t dist_txnid;
+	const char *dist_txnid;
 	const char *coordinator_name;
 	const char *coordinator_tier;
 	u_int32_t coordinator_gen;
@@ -1840,12 +1855,18 @@ __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coor
 		__db_err(dbenv, "failed malloc");
 		return ret;
 	}
-
 	memcpy(txnp->coordinator_tier, coordinator_tier, strlen(coordinator_tier));
-	txnp->coordinator_gen = coordinator_gen;
-	txnp->dist_txnid = dist_txnid;
+	if ((ret = __os_calloc(dbenv, 1, strlen(dist_txnid) + 1, &txnp->dist_txnid)) != 0) {
+		__db_err(dbenv, "failed malloc");
+		return ret;
+	}
+	memcpy(txnp->dist_txnid, dist_txnid, strlen(dist_txnid));
 
-	__os_free(dbenv, txnp->blkseq_key.data);
+	txnp->coordinator_gen = coordinator_gen;
+
+	if (txnp->blkseq_key.data != NULL) {
+		__os_free(dbenv, txnp->blkseq_key.data);
+	}
 	txnp->blkseq_key.data = NULL;
 	txnp->blkseq_key.size = 0;
 
@@ -2183,6 +2204,8 @@ __txn_end(txnp, is_commit)
 	if (txnp->coordinator_name) {
 		__os_free(dbenv, txnp->coordinator_name);
 		__os_free(dbenv, txnp->coordinator_tier);
+		__os_free(dbenv, txnp->dist_txnid);
+		__os_free(dbenv, txnp->blkseq_key.data);
 	}
 
 	if (F_ISSET(txnp, TXN_MALLOC)) {
@@ -2404,7 +2427,7 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
  int
  __txn_commit_recovered_pp(dbenv, dist_txnid)
 	DB_ENV *dbenv;
-	u_int64_t dist_txnid;
+	const char *dist_txnid;
 {
 	int rep_check, ret;
 
@@ -2424,12 +2447,12 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
  *	DB_ENV->txn_abort_recovered pre/post processing.
  *
  * PUBLIC: int __txn_abort_recovered_pp
- * PUBLIC:	 __P((DB_ENV *, u_int64_t));
+ * PUBLIC:	 __P((DB_ENV *, const char *));
  */
 int
  __txn_abort_recovered_pp(dbenv, dist_txnid)
 	DB_ENV *dbenv;
-	u_int64_t dist_txnid;
+	const char *dist_txnid;
 {
 	int rep_check, ret;
 
@@ -2449,12 +2472,12 @@ int
  *	DB_ENV->txn_dist_discard pre/post processing.
  *
  * PUBLIC: int __txn_discard_recovered_pp
- * PUBLIC:	 __P((DB_ENV *, u_int64_t));
+ * PUBLIC:	 __P((DB_ENV *, const char *));
  */
 int
  __txn_discard_recovered_pp(dbenv, dist_txnid)
 	DB_ENV *dbenv;
-	u_int64_t dist_txnid;
+	const char *dist_txnid;
 {
 	int rep_check, ret;
 

@@ -1444,7 +1444,7 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
-int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, uint64_t dist_txnid,
+int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dist_txnid,
     const char *coordinator_name, const char *coordinator_tier, uint32_t coordinator_gen,
     void *blkseq_key, int blkseq_key_len, int *bdberr)
 {
@@ -1487,7 +1487,7 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, uint64_t dist_t
     }
 
     int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, coordinator_name,
-        coordinator_tier, dist_txnid, &blkseq, flags);
+        coordinator_tier, coordinator_gen, &blkseq, flags);
 
     if (prepare_rc != 0) {
         logmsg(LOGMSG_FATAL, "%s error preparing txn: %d\n", __func__, prepare_rc);
