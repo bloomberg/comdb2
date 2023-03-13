@@ -1381,21 +1381,23 @@ static void add_host_from_hello_msg(void *data)
 
 static int hello_msg_common(struct event_info *e)
 {
+    int rc = -1;
     uint32_t hello_recv = e->need;
     uint32_t start_sz = evbuffer_get_length(e->rd_buf);
-    uint32_t n;
-    evbuffer_remove(e->rd_buf, &n, sizeof(uint32_t));
-    n = htonl(n);
+    uint32_t nn;
+    evbuffer_remove(e->rd_buf, &nn, sizeof(uint32_t));
+    const uint32_t n = htonl(nn);
     if (n > REPMAX) {
         hprintf("RECV'd BAD COUNT OF HOSTS:%u (max:%d)\n", n, REPMAX);
         return -1;
     }
-    char hosts[n][HOSTNAME_LEN + 1];
+    char **hosts = malloc(sizeof(char *) * n);
     for (uint32_t i = 0; i < n; ++i) {
+        hosts[i] = malloc(HOSTNAME_LEN + 1);
         evbuffer_remove(e->rd_buf, hosts[i], HOSTNAME_LEN);
         hosts[i][HOSTNAME_LEN] = 0;
     }
-    uint32_t ports[n];
+    uint32_t *ports = malloc(sizeof(uint32_t) * n);
     for (uint32_t i = 0; i < n; ++i) {
         evbuffer_remove(e->rd_buf, &ports[i], sizeof(uint32_t));
         ports[i] = htonl(ports[i]);
@@ -1403,26 +1405,31 @@ static int hello_msg_common(struct event_info *e)
     /* We have no use for node numbers */
     evbuffer_drain(e->rd_buf, n * sizeof(uint32_t));
     for (uint32_t i = 0; i < n; ++i) {
+        int need_free = 0;
         char *host = hosts[i];
         if (*host == '.') {
             ++host;
             uint32_t s = atoi(host);
             if (s > HOST_NAME_MAX) {
                 hprintf("RECV'd BAD HOSTNAME len:%u (max:%d)\n", s, HOST_NAME_MAX);
-                return -1;
+                goto out;
             }
-            host = alloca(s + 1);
+            need_free = 1;
+            host = malloc(s + 1);
             evbuffer_remove(e->rd_buf, host, s);
             host[s] = 0;
         }
         if (strcmp(host, gbl_myhostname) == 0) {
+            if (need_free) free(host);
             continue;
         }
         struct host_info *hi = host_info_find(host);
         if (hi && event_info_find(e->net_info, hi)) {
+            if (need_free) free(host);
             continue;
         }
         char *ihost = intern(host);
+        if (need_free) free(host);
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
         if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, ihost)) { /* net_allow_node */
             logmsg(LOGMSG_ERROR, "connection to host:%s not allowed\n", ihost);
@@ -1439,7 +1446,13 @@ static int hello_msg_common(struct event_info *e)
         evbuffer_drain(e->rd_buf, fluff);
     }
     set_hello_message(e);
-    return 0;
+    rc = 0;
+out:free(ports);
+    for (uint32_t i = 0; i < n; ++i) {
+        free(hosts[i]);
+    }
+    free(hosts);
+    return rc;
 }
 
 static void check_distress(struct event_info *e)
