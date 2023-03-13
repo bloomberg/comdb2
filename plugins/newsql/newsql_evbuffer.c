@@ -351,6 +351,8 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     response.n_nodes = num_hosts;
     response.master = master;
     response.nodes = nodes;
+    response.has_sync_mode = 1;
+    response.sync_mode = sync_state_to_protobuf(thedb->rep_sync);
 
     int len = cdb2__dbinforesponse__get_packed_size(&response);
     struct newsqlheader hdr = {0};
