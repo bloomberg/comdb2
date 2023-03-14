@@ -688,9 +688,11 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 				txn->parent->txnid, txn->txnid, prop)) != 0)
 			return (ret);
 
+	/* TODO : this isn't valid when we recover prepared txns */
 	if (txncnt >= TXN_TD_MAX) {
 		logmsg(LOGMSG_FATAL, "%s insane number of open txns for this td\n",
 				__func__);
+		__log_flush(dbenv, NULL);
 		abort();
 	}
 
@@ -1319,13 +1321,35 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						MUTEX_UNLOCK(dbenv,
 							db_rep->rep_mutexp);
 					} else {
-						ret =
-							__txn_regop_log_commit
-							(dbenv, txnp,
-							&txnp->last_lsn, &context,
-							lflags, TXN_COMMIT,
-							timestamp, request.obj,
-							usr_ptr);
+						if (commit_prepared) {
+							DBT dist_txnid = {0};
+							dist_txnid.data = txnp->dist_txnid;
+							dist_txnid.size = strlen(txnp->dist_txnid);
+							MUTEX_LOCK(dbenv,
+									db_rep->rep_mutexp);
+							gen = rep->gen;
+							MUTEX_UNLOCK(dbenv,
+									db_rep->rep_mutexp);
+
+							ret = __txn_dist_commit_log(dbenv, txnp, 
+									&txnp->last_lsn, &context, lflags,
+									TXN_COMMIT, &dist_txnid, gen,
+									timestamp, usr_ptr);
+							/* XXX better name for this ? */
+							if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
+								abort();
+							}
+
+
+						} else {
+							ret =
+								__txn_regop_log_commit
+								(dbenv, txnp,
+								 &txnp->last_lsn, &context,
+								 lflags, TXN_COMMIT,
+								 timestamp, request.obj,
+								 usr_ptr);
+						}
 #if defined DEBUG_STACK_AT_TXN_LOG
 						comdb2_cheapstack_sym(stderr, "TXN-COMMIT TXNID %x LSN [%d:%d]",
 							txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);
