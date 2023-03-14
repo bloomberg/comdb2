@@ -317,6 +317,8 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     CDB2DBINFORESPONSE__Nodeinfo *nodes[REPMAX];
     CDB2DBINFORESPONSE__Nodeinfo same_dc[REPMAX], diff_dc[REPMAX];
     CDB2DBINFORESPONSE__Nodeinfo no_master = CDB2__DBINFORESPONSE__NODEINFO__INIT, *master = &no_master;
+    no_master.name = db_eid_invalid;
+    no_master.number = -1;
     int num_same_dc = 0, num_diff_dc = 0;
     host_node_type *hosts[REPMAX];
     int num_hosts = get_hosts_evbuffer(REPMAX, hosts);
