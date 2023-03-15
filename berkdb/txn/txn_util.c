@@ -808,10 +808,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	}
 
 	/* Acquire locks/pglogs from prepare record */
-	/* TODO: GET_LIST_PREPARE should acquire a READLOCK against every table 
-	 * to block schema-change */
-	//u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PREPARE);
-	u_int32_t flags = (LOCK_GET_LIST_GETLOCK);
+	u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PREPARE);
 
 	if ((ret = __lock_get_list(dbenv, txnp->txnid, flags, DB_LOCK_WRITE, &prepare->locks,
 		&p->prepare_lsn, &p->pglogs, &p->keycnt, stdout)) != 0) {

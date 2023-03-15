@@ -5714,6 +5714,9 @@ ilock_type_str(int type)
 	}
 }
 
+#include "cdb2_constants.h"
+void form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out);
+
 static int
 __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
     pglogs, keycnt, get_lock, ret_dp, fp)
@@ -5788,21 +5791,53 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 		save_pgno = lock->pgno;
 		obj_dbt.data = dp;
 		obj_dbt.size = size;
+		int first_fid = 1;
 		dp = ((u_int8_t *)dp) + ALIGN(size, sizeof(u_int32_t));
 		do {
 			if (LF_ISSET(LOCK_GET_LIST_GETLOCK)) {
 				uint32_t lflags =
-				    (flags & (~(LOCK_GET_LIST_GETLOCK |
-					    LOCK_GET_LIST_PRINTLOCK)));
+					(flags & (~(LOCK_GET_LIST_GETLOCK |
+						LOCK_GET_LIST_PRINTLOCK | LOCK_GET_LIST_PREPARE)));
 				if (get_lock &&
-				    (ret =
+					(ret =
 					__lock_get_internal(lt, locker,
-					    sh_locker, lflags, &obj_dbt,
-					    lock_mode, 0, &ret_lock)) != 0) {
+						sh_locker, lflags, &obj_dbt,
+						lock_mode, 0, &ret_lock)) != 0) {
 					lock->pgno = save_pgno;
 					goto err;
 				}
+				if (get_lock && LF_ISSET(LOCK_GET_LIST_PREPARE) && obj_dbt.size == 
+					sizeof(struct __db_ilock) && first_fid) {
+					char *filename = NULL;
+					if ((__ufid_to_fname(dbenv, &filename, lock->fileid)) != 0) {
+						/* Maybe ufid logging not enabled? */
+						char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+						fileid_str(lock->fileid, fid_str);
+						logmsg(LOGMSG_ERROR, "Error resolving btree from ufid %s\n", fid_str);
+					} else {
+						char *start = (char *)&filename[4];
+						char *end = (char *)&filename[strlen(filename) - 1];
+						while (end > start && *end != '\0' && *end != '.') {
+							end--;
+						}
+						end -= 17;
+						if (end <= start) {
+							logmsg(LOGMSG_ERROR, "%s: unrecognized file format for %s\n", __func__, filename);
+							return 0;
+						}
+						char t[MAXTABLELEN + 1] = {0};
+						memcpy(t, start, (end - start));
+						char name[32]; /* TABLELOCK_KEY_SIZE */
+						DBT lk = {0};
+						form_tablelock_keyname(t, name, &lk);
+						if ((ret = __lock_get_internal(lt, locker, sh_locker, lflags, &lk,
+								DB_LOCK_READ, 0, &ret_lock)) != 0) {
+							goto err;
+						}
+					}
+				}
 			}
+			first_fid = 0;
 
 			GET_LSNCOUNT(dp, nlsns);
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
@@ -5975,31 +6010,63 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			save_pgno = lock->pgno;
 			obj_dbt.data = dp;
 			obj_dbt.size = size;
+			int first_fid = 1;
 			dp = ((u_int8_t *)dp) + ALIGN(size, sizeof(u_int32_t));
-            /* 
-             * Comdb2 early locking in replication does not support 
-             * handle locks in write mode for opened file.  We rely
-             * on table locks instead.
-             *
-             */
-            if (size == sizeof(DB_LOCK_ILOCK) && 
-                    IS_WRITELOCK(lock_mode) &&
-                    ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
-                continue;
-            }
+			/* 
+			 * Comdb2 early locking in replication does not support 
+			 * handle locks in write mode for opened file.  We rely
+			 * on table locks instead.
+			 *
+			 */
+			if (size == sizeof(DB_LOCK_ILOCK) && 
+					IS_WRITELOCK(lock_mode) &&
+					((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
+				continue;
+			}
 			do {
 				if (LF_ISSET(LOCK_GET_LIST_GETLOCK)) {
 					uint32_t lflags =
-					    (flags & (~(LOCK_GET_LIST_GETLOCK |
-						    LOCK_GET_LIST_PRINTLOCK)));
+						(flags & (~(LOCK_GET_LIST_GETLOCK |
+							LOCK_GET_LIST_PRINTLOCK | LOCK_GET_LIST_PREPARE)));
 					if ((ret =
 						__lock_get_internal(lt, locker,
-						    sh_locker, lflags, &obj_dbt,
-						    lock_mode, 0,
-						    &ret_lock)) != 0) {
+							sh_locker, lflags, &obj_dbt,
+							lock_mode, 0,
+							&ret_lock)) != 0) {
 						lock->pgno = save_pgno;
 						goto err;
 					}
+					if (LF_ISSET(LOCK_GET_LIST_PREPARE) && obj_dbt.size == 
+						sizeof(struct __db_ilock) && first_fid) {
+						char *filename = NULL;
+						if ((__ufid_to_fname(dbenv, &filename, lock->fileid)) != 0) {
+							/* Maybe ufid logging not enabled? */
+							char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+							fileid_str(lock->fileid, fid_str);
+							logmsg(LOGMSG_ERROR, "Error resolving btree from ufid %s\n", fid_str);
+						} else {
+							char *start = (char *)&filename[4];
+							char *end = (char *)&filename[strlen(filename) - 1];
+							while (end > start && *end != '\0' && *end != '.') {
+								end--;
+							}
+							end -= 17;
+							if (end <= start) {
+								logmsg(LOGMSG_ERROR, "%s: unrecognized file format for %s\n", __func__, filename);
+								return 0;
+							}
+							char t[MAXTABLELEN + 1] = {0};
+							memcpy(t, start, (end - start));
+							char name[32]; /* TABLELOCK_KEY_SIZE */
+							DBT lk = {0};
+							form_tablelock_keyname(t, name, &lk);
+							if ((ret = __lock_get_internal(lt, locker, sh_locker, lflags, &lk,
+											DB_LOCK_READ, 0, &ret_lock)) != 0) {
+								goto err;
+							}
+						}
+					}
+					first_fid = 0;
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
 					switch(obj_dbt.size) {

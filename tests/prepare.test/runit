@@ -355,6 +355,11 @@ function prepare_and_abort
     x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master  "select * from comdb2_locks where mode='READ' and status='WAIT' and locktype='PAGE'")
     write_prompt $func "$x"
 
+    write_prompt $func "Verify that we have acquired the tablelock"
+    table_lock=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select * from comdb2_locks where locktype='TABLELOCK t1'")
+    [[ -z "$table_lock" ]] && failexit "Master did not recover the tablelock"
+    write_prompt $func "$table_lock"
+
     write_prompt $func "Verify that reading on replicant is not blocked.. this will time-out if it is"
     x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default  "select count(*) from t1")
     write_prompt $func "Make sure that there are only 1000 records on the replicant"
@@ -432,6 +437,11 @@ function prepare_and_abort
     locks=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select * from comdb2_locks where locktype='PAGE'")
     write_prompt $func "$locks"
 
+    write_prompt $func "Verify that we have acquired the tablelock"
+    table_lock=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $master "select * from comdb2_locks where locktype='TABLELOCK t1'")
+    [[ -z "$table_lock" ]] && failexit "Master did not recover the tablelock"
+    write_prompt $func "$table_lock"
+
     write_prompt $func "Verify that select against replicant returns 2000 records"
     x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default  "select count(*) from t1")
     [[ "$x" -ne "2000" ]] && failexit "There should be 2000 records, not $x"
@@ -474,7 +484,7 @@ function run_test
     rm $stopfile >/dev/null 2>&1
     create_table
 
-    #prepare_and_abort
+    prepare_and_abort
     prepare_and_commit
 }
 
