@@ -6,7 +6,7 @@ enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1
 init_with_genid48
 
-#reorder_socksql_no_deadlock on
+reorder_socksql_no_deadlock on
 #reorder_idx_writes on
 
 #selectv_writelock_on_update is enabled by default
