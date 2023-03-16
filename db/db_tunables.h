@@ -2224,6 +2224,9 @@ REGISTER_TUNABLE("debug_sleep_in_analyze", "Sleep analyze sql tick.  (Default: o
 REGISTER_TUNABLE("debug_sleep_in_summarize", "Sleep analyze summarize.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_summarize, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_trigger_info", "Sleep trigger info.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_trigger_info, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_consumer_lock",
                  "Enable debug-trace for consumer lock.  "
                  "(Default: off)",

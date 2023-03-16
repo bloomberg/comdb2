@@ -388,6 +388,7 @@ extern int gbl_permit_small_sequences;
 extern int gbl_debug_sleep_in_sql_tick;
 extern int gbl_debug_sleep_in_analyze;
 extern int gbl_debug_sleep_in_summarize;
+extern int gbl_debug_sleep_in_trigger_info;
 extern int gbl_protobuf_prealloc_buffer_size;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_internal_sql_stmt_caching;

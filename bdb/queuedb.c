@@ -137,9 +137,9 @@ static int bdb_queuedb_is_db_full(DB *db)
 
 static int start_qdb_schemachange(struct schema_change_type *sc)
 {
-    javasp_do_procedure_wrlock();
+    javasp_splock_wrlock();
     int rc = start_schema_change(sc);
-    javasp_do_procedure_unlock();
+    javasp_splock_unlock();
     return rc;
 }
 

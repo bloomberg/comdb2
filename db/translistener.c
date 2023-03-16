@@ -959,12 +959,17 @@ int javasp_do_procedure_op(int op, const char *name, const char *param, const ch
     }
 }
 
-void javasp_do_procedure_wrlock(void)
+void javasp_splock_rdlock(void)
+{
+    SP_READLOCK();
+}
+
+void javasp_splock_wrlock(void)
 {
     SP_WRITELOCK();
 }
 
-void javasp_do_procedure_unlock(void)
+void javasp_splock_unlock(void)
 {
     SP_RELLOCK();
 }
@@ -1447,9 +1452,20 @@ static void get_trigger_info_int(const char *name, trigger_info *info)
     }
 }
 
+#include <sys/poll.h>
+int gbl_debug_sleep_in_trigger_info = 0;
+
+void get_trigger_info_lk(const char *name, trigger_info *info)
+{
+    if (gbl_debug_sleep_in_trigger_info && !(rand() % 5)) {
+        poll(NULL, 0, 10);
+    }
+    get_trigger_info_int(name, info);
+}
+
 void get_trigger_info(const char *name, trigger_info *info)
 {
     SP_READLOCK();
-    get_trigger_info_int(name, info);
+    get_trigger_info_lk(name, info);
     SP_RELLOCK();
 }
