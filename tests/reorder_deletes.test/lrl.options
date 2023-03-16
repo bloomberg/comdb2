@@ -2,4 +2,5 @@ table t1 t1.csc2
 print_deadlock_cycles 1
 round_robin_stripes
 
+reorder_socksql_no_deadlock on
 reorder_idx_writes on
