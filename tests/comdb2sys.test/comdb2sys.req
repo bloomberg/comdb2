@@ -16,3 +16,7 @@ SELECT COUNT(*)=1 FROM comdb2_appsock_handlers WHERE name = 'newsql';
 SELECT COUNT(*)=1 FROM comdb2_opcode_handlers WHERE name = 'blockop';
 SELECT type FROM comdb2_temporary_file_sizes ORDER BY type;
 SELECT * FROM comdb2_systables ORDER BY name;
+DROP TABLE IF EXISTS base_tbl;
+CREATE TABLE base_tbl (i INTEGER);$$
+CREATE TIME PARTITION ON base_tbl AS tbl_v PERIOD 'YEARLY' RETENTION 1 START '2038-01-01T00:00:00 UTC'
+SELECT COUNT(*) FROM comdb2_timepartshards m JOIN comdb2_tablesizes n WHERE m.shardname = n.tablename

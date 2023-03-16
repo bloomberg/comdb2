@@ -57,6 +57,8 @@ struct systbl_tblsize_cursor {
   sqlite3_int64 iRowid;      /* The rowid */
 };
 
+extern int comdb2_next_allowed_table_or_shard(sqlite3_int64 *, int);
+
 static int systblTblSizeConnect(
   sqlite3 *db,
   void *pAux,
@@ -101,7 +103,7 @@ static int systblTblSizeOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
   *ppCursor = &pCur->base;
 
-  comdb2_next_allowed_table(&pCur->iRowid);
+  comdb2_next_allowed_table_or_shard(&pCur->iRowid, 0);
 
   return SQLITE_OK;
 }
@@ -120,7 +122,7 @@ static int systblTblSizeClose(sqlite3_vtab_cursor *cur){
 static int systblTblSizeNext(sqlite3_vtab_cursor *cur){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
   pCur->iRowid++;
-  comdb2_next_allowed_table(&pCur->iRowid);
+  comdb2_next_allowed_table_or_shard(&pCur->iRowid, 0);
   return SQLITE_OK;
 }
 
@@ -187,7 +189,7 @@ static int systblTblSizeFilter(
 ){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)pVtabCursor;
   pCur->iRowid = 0;
-  comdb2_next_allowed_table(&pCur->iRowid);
+  comdb2_next_allowed_table_or_shard(&pCur->iRowid, 0);
   return SQLITE_OK;
 }
 
