@@ -2485,6 +2485,8 @@ int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
     return 0;
 }
 
+extern void javasp_splock_unlock(void);
+
 int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                        uint32_t flags, int *bdberr)
 {
@@ -2502,6 +2504,11 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
         logmsg(LOGMSG_DEBUG, "bdb_put_cursortran called with null curtran\n");
         *bdberr = BDBERR_BADARGS;
         return -1;
+    }
+
+    if (curtran->flags) {
+        javasp_splock_unlock();
+        curtran->flags = 0;
     }
 
     rc = bdb_free_curtran_locks(bdb_state, curtran, bdberr);

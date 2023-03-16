@@ -107,6 +107,7 @@
 #include "comdb2_query_preparer.h"
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
+#include <translistener.h>
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -7636,6 +7637,11 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
+    }
+
+    if (p->vTableFlags && clnt->dbtran.cursor_tran->flags == 0) {
+        javasp_splock_rdlock();
+        clnt->dbtran.cursor_tran->flags = 1;
     }
 
     for (int i = 0; i < p->numVTableLocks; i++) {
