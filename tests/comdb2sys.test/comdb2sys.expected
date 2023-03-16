@@ -417,3 +417,8 @@
 (name='comdb2_users')
 (name='comdb2_views')
 [SELECT * FROM comdb2_systables ORDER BY name] rc 0
+[DROP TABLE IF EXISTS base_tbl] rc 0
+[CREATE TABLE base_tbl (i INTEGER)] rc 0
+[CREATE TIME PARTITION ON base_tbl AS tbl_v PERIOD 'DAILY' RETENTION 1 START '2023-01-01T00:00:00 UTC'] rc 0
+(COUNT(*)=1)
+[SELECT COUNT(*) FROM comdb2_timepartshards m JOIN comdb2_tablesizes n WHERE m.shardname = n.tablename] rc 0
