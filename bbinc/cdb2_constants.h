@@ -74,8 +74,8 @@
     {                                                                          \
         int ret;                                                               \
         ret = snprintf(str + off, size - off, fmt, __VA_ARGS__);               \
-        if (ret >= size) {                                                     \
-            off += size;                                                       \
+        if (ret >= size - off) {                                               \
+            off += size - off;                                                 \
             goto done;                                                         \
         }                                                                      \
         off += ret;                                                            \
