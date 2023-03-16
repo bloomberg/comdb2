@@ -1802,12 +1802,11 @@ REGISTER_TUNABLE("random_fail_client_write_lock",
                  TUNABLE_INTEGER, &gbl_fail_client_write_lock,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("reorder_socksql_no_deadlock",
-                 "Reorder sock sql to have no deadlocks ", TUNABLE_BOOLEAN,
-                 &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL,
+REGISTER_TUNABLE("reorder_socksql_no_deadlock", "Reorder sock sql to have no deadlocks ",
+                 TUNABLE_BOOLEAN, &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
+REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
