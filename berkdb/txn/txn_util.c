@@ -716,6 +716,7 @@ int __txn_clear_all_prepared(dbenv)
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	hash_for(dbenv->prepared_txn_hash, __free_prepared, dbenv);
 	hash_clear(dbenv->prepared_txn_hash);
+	hash_clear(dbenv->prepared_txnid_hash);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
@@ -824,6 +825,7 @@ static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED 
 	p->prev_lsn = prepare->prev_lsn;
 	txnp->last_lsn = p->prepare_lsn;
 	F_SET(p, DB_DIST_HAVELOCKS);
+	logmsg(LOGMSG_INFO, "Upgraded prepared txn %s\n", p->dist_txnid);
 
 	__os_free(dbenv, prepare);
 	__os_free(dbenv, dbt.data);
@@ -926,6 +928,7 @@ int __txn_downgrade_and_free_all_prepared(dbenv)
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	hash_for(dbenv->prepared_txn_hash, __downgrade_and_free_prepared, dbenv);
 	hash_clear(dbenv->prepared_txn_hash);
+	hash_clear(dbenv->prepared_txnid_hash);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
