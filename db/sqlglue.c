@@ -7639,9 +7639,9 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         return 0;
     }
 
-    if (p->vTableFlags && clnt->dbtran.cursor_tran->flags == 0) {
+    if ((p->vTableFlags & VTABLE_FLAGS_GETSPLOCK) && !(clnt->dbtran.cursor_tran->flags & CURTRAN_HOLDS_SPLOCK)) {
         javasp_splock_rdlock();
-        clnt->dbtran.cursor_tran->flags = 1;
+        clnt->dbtran.cursor_tran->flags |= CURTRAN_HOLDS_SPLOCK;
     }
 
     for (int i = 0; i < p->numVTableLocks; i++) {

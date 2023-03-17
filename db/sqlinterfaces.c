@@ -3122,8 +3122,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         if (rec->stmt) {
-            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks,
-                thd->authState.flags & PREPARE_ACQUIRE_SPLOCK);
+            int flags = (thd->authState.flags & PREPARE_ACQUIRE_SPLOCK) ? VTABLE_FLAGS_GETSPLOCK : 0;
+            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks, flags);
             thd->authState.numVTableLocks = 0;
             thd->authState.vTableLocks = NULL;
         } else {
