@@ -29,6 +29,12 @@ enum {
     SQLITE_BLOB,
     SQLITE_NULL,
     SQLITE_TEXT,
+    SQLITE_DATETIME,
+    SQLITE_DATETIMEUS,
+    SQLITE_INTERVAL_YM,
+    SQLITE_INTERVAL_DS,
+    SQLITE_INTERVAL_DSUS,
+    SQLITE_DECIMAL,
 
     SQLITE_OK = 0,
     SQLITE_NOMEM = 7,
@@ -98,6 +104,7 @@ static void *cson__not_reached_void_ptr(intptr_t, ...);
 #define SQLITE3_H
 #define SQLITEINT_H
 #define SQLITE_API
+#define SQLITE_BUILDING_FOR_COMDB2
 #define SQLITE_CORE
 #define SQLITE_ENABLE_JSON1
 #define SQLITE_EXTENSION_INIT1
