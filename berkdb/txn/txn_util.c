@@ -1059,7 +1059,16 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	dtxnid.data = p->dist_txnid;
 	dtxnid.size = strlen(p->dist_txnid);
 
-	if ((ret = __txn_dist_abort_log(dbenv, p->txnp, &p->txnp->last_lsn, 0, TXN_COMMIT, &dtxnid)) != 0) {
+	DB_REP *db_rep = dbenv->rep_handle;
+	REP *rep = db_rep->region;
+
+	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+	u_int32_t gen = rep->gen;
+	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+
+	u_int64_t timestamp = comdb2_time_epoch();
+
+	if ((ret = __txn_dist_abort_log(dbenv, p->txnp, &p->txnp->last_lsn, 0, gen, timestamp, &dtxnid)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error writing dist-abort for txn %s, LSN %d:%d\n", p->dist_txnid,
 			p->prev_lsn.file, p->prev_lsn.offset);
 		abort();
@@ -1268,7 +1277,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 
 	/* Write the commit record now to get commit-context */
 	u_int64_t context = 0;
-	int32_t timestamp = comdb2_time_epoch();
+	u_int64_t timestamp = comdb2_time_epoch();
 	u_int32_t gen = 0;
 	u_int32_t lflags = DB_LOG_COMMIT | DB_LOG_PERM;
 	DB_LSN lsn_out;
@@ -1288,8 +1297,8 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	dtxnid.data = p->dist_txnid;
 	dtxnid.size = strlen(p->dist_txnid);
 
-	if ((ret = __txn_dist_commit_log(dbenv, p->txnp, &lsn_out, &context, lflags, TXN_COMMIT,
-			&dtxnid, gen, timestamp, NULL)) != 0) {
+	if ((ret = __txn_dist_commit_log(dbenv, p->txnp, &lsn_out, &context, lflags, &dtxnid, 
+		gen, timestamp, NULL)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error writing dist-commit for txn %s, LSN %d:%d\n", p->dist_txnid,
 			p->prev_lsn.file, p->prev_lsn.offset);
 		abort();

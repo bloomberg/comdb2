@@ -4421,15 +4421,6 @@ static inline int retrieve_start_lsn(DBT *data, u_int32_t rectype, DB_LSN *lsn)
                    __func__, __LINE__, rc, lsn->file, lsn->offset);
             return 1;
         }
-        if (txn_dist_args->opcode != TXN_COMMIT) {
-            logmsg(LOGMSG_ERROR,
-                   "%s line %d regop opcode not commit, %d "
-                   "for %d:%d\n",
-                   __func__, __LINE__, txn_dist_args->opcode, lsn->file,
-                   lsn->offset);
-            free(txn_dist_args);
-            return 1;
-        }
         DB_LSN prevlsn = txn_dist_args->prev_lsn;
         free(txn_dist_args);
 

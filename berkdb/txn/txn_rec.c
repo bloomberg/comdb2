@@ -233,23 +233,22 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
 		ret = __db_txnlist_update(dbenv,
-			info, argp->txnid->txnid, argp->opcode, lsnp);
+			info, argp->txnid->txnid, TXN_COMMIT, lsnp);
 
 #if defined (DEBUG_PREPARE)
 		logmsg(LOGMSG_USER, "%s op %d updated %s to %d\n",
-			__func__, op, dist_txnid, argp->opcode);
+			__func__, op, dist_txnid, TXN_COMMIT);
 #endif
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
 		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 				info, argp->txnid->txnid,
-				argp->opcode == TXN_ABORT ?
-				TXN_IGNORE : argp->opcode, lsnp);
+				TXN_COMMIT, lsnp);
 		}
 		else if (ret != TXN_OK) {
 			__db_txnlist_update(dbenv,
-					info, argp->txnid->txnid, argp->opcode, lsnp);
+					info, argp->txnid->txnid, TXN_COMMIT, lsnp);
 			abort();
 			goto err;
 		}

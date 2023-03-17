@@ -1211,8 +1211,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 						ret = __txn_dist_commit_log(dbenv,
 									txnp, lsn_out, &context, lflags,
-									TXN_COMMIT, &dist_txnid, gen,
-									timestamp, usr_ptr);
+									&dist_txnid, gen, timestamp, usr_ptr);
 						if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 							abort();
 						}
@@ -1274,7 +1273,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						u_int64_t genid = get_commit_context(NULL, 0);
 
 						ret = __txn_dist_prepare_log(dbenv, txnp, &txnp->last_lsn, lflags,
-							TXN_COMMIT, gen, &tp->begin_lsn, &dist_txnid, genid, ltranflags,
+							gen, &tp->begin_lsn, &dist_txnid, genid, ltranflags,
 							txnp->coordinator_gen, &coordinator, &tier, &txnp->blkseq_key, request.obj);
 						F_SET(txnp, TXN_DIST_PREPARED);
 						if ((ret = __txn_master_prepared(dbenv, txnp->dist_txnid, &txnp->last_lsn,
@@ -1296,8 +1295,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 							ret = __txn_dist_commit_log(dbenv, txnp, 
 									&txnp->last_lsn, &context, lflags,
-									TXN_COMMIT, &dist_txnid, gen,
-									timestamp, usr_ptr);
+									&dist_txnid, gen, timestamp, usr_ptr);
 							/* XXX better name for this ? */
 							if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 								abort();
@@ -1333,8 +1331,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 							ret = __txn_dist_commit_log(dbenv, txnp, 
 									&txnp->last_lsn, &context, lflags,
-									TXN_COMMIT, &dist_txnid, gen,
-									timestamp, usr_ptr);
+									&dist_txnid, gen, timestamp, usr_ptr);
 							/* XXX better name for this ? */
 							if ((ret = __txn_discard_recovered(dbenv, txnp->dist_txnid)) != 0) {
 								abort();
@@ -1756,8 +1753,16 @@ __txn_abort(txnp)
 			dist_txnid.data = txnp->dist_txnid;
 			dist_txnid.size = strlen(txnp->dist_txnid);
 
+			DB_REP *db_rep = dbenv->rep_handle;
+			REP *rep = db_rep->region;
+
+			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+			u_int32_t gen = rep->gen;
+			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+			u_int64_t timestamp = comdb2_time_epoch();
+
 			if ((ret = __txn_dist_abort_log(dbenv, txnp, &txnp->last_lsn, 0,
-							TXN_COMMIT, &dist_txnid) != 0))
+							gen, timestamp, &dist_txnid) != 0))
 				return (__db_panic(dbenv, ret));
 		}
 	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&

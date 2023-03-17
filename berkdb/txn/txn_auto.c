@@ -2953,13 +2953,12 @@ __txn_regop_gen_read(dbenv, recbuf, argpp)
  * PUBLIC:	 const DBT *, const DBT *));
  */
 int
-__txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, generation, begin_lsn, dist_txnid,
+__txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, generation, begin_lsn, dist_txnid,
 		genid, lflags, coordinator_gen, coordinator_name, coordinator_tier, blkseq_key, locks)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int32_t flags;
-	u_int32_t opcode;
 	u_int32_t generation;
 	DB_LSN *begin_lsn;
 	const DBT *dist_txnid;
@@ -3020,7 +3019,6 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, opcode, generation, begin_
 	}
 
 	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN)
-		+ sizeof(u_int32_t) /* opcode */
 		+ sizeof(DB_LSN)	/* begin_lsn */
 		+ sizeof(u_int32_t) /* generation */
 		+ sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size)
@@ -3088,10 +3086,6 @@ do_malloc:
 
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
-
-	uinttmp = (u_int32_t)opcode;
-	LOGCOPY_32(bp, &uinttmp);
-	bp += sizeof(uinttmp);
 
 	uinttmp = (u_int32_t)generation;
 	LOGCOPY_32(bp, &uinttmp);
@@ -3338,10 +3332,6 @@ __txn_dist_prepare_read_int(dbenv, recbuf, do_pgswp, argpp)
 	bp += sizeof(DB_LSN);
 
 	LOGCOPY_32(&uinttmp, bp);
-	argp->opcode = (u_int32_t)uinttmp;
-	bp += sizeof(uinttmp);
-
-	LOGCOPY_32(&uinttmp, bp);
 	argp->generation = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
 
@@ -3436,7 +3426,6 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset);
-	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	(void)printf("\tgeneration: %lu\n", (u_long)argp->generation);
 	fflush(stdout);
 	(void)printf("\tbegin-lsn: [%lu][%lu]\n",
@@ -3481,15 +3470,16 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 
 
 /*
- * PUBLIC: int __txn_dist_abort_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t, const DBT *, DBT *));
+ * PUBLIC: int __txn_dist_abort_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t, u_int64_t, const DBT *, DBT *));
  */
  int
- __txn_dist_abort_log(dbenv, txnid, ret_lsnp, flags, opcode, dist_txnid)
+ __txn_dist_abort_log(dbenv, txnid, ret_lsnp, flags, generation, timestamp, dist_txnid)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int32_t flags;
-	u_int32_t opcode;
+	u_int32_t generation;
+	u_int64_t timestamp;
 	const DBT *dist_txnid;
 {
 	DBT logrec;
@@ -3515,7 +3505,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	lsnp = &txnid->last_lsn;
 
 	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + sizeof(u_int32_t)
-		+ sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size);
+		+ sizeof(u_int64_t) + sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size);
 
 	if (CRYPTO_ON(dbenv)) {
 		npad =
@@ -3574,9 +3564,13 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	uinttmp = (u_int32_t)opcode;
+	uinttmp = (u_int32_t)generation;
 	LOGCOPY_32(bp, &uinttmp);
 	bp += sizeof(uinttmp);
+
+	uint64tmp = (u_int64_t)timestamp;
+	LOGCOPY_64(bp, &uint64tmp);
+	bp += sizeof(uint64tmp);
 
     if (dist_txnid == NULL)
     {
@@ -3742,8 +3736,12 @@ __txn_dist_abort_read_int(dbenv, recbuf, do_pgswp, argpp)
 	bp += sizeof(DB_LSN);
 
 	LOGCOPY_32(&uinttmp, bp);
-	argp->opcode = (u_int32_t)uinttmp;
+	argp->generation = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
+
+	LOGCOPY_64(&uint64tmp, bp);
+	argp->timestamp = (u_int32_t)uint64tmp;
+	bp += sizeof(uint64tmp);
 
 	memset(&argp->dist_txnid, 0, sizeof(argp->dist_txnid));
 	LOGCOPY_32(&argp->dist_txnid.size, bp);
@@ -3768,6 +3766,7 @@ __txn_dist_abort_print(dbenv, dbtp, lsnp, notused2, notused3)
 	void *notused3;
 {
 	__txn_dist_abort_args *argp;
+	struct tm *lt;
 	int ret;
 
 	notused2 = DB_TXN_ABORT;
@@ -3785,8 +3784,27 @@ __txn_dist_abort_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset);
-	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
-	(void)printf("\tdist-txnid: %*s\n", argp->dist_txnid.size, (char *)argp->dist_txnid.data);
+
+	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+	dist_txnid[argp->dist_txnid.size] = '\0';
+	(void)printf("\tdist-txnid: %s\n", dist_txnid);
+
+	(void)printf("\tgeneration: %lu\n", (u_long)argp->generation);
+	lt = localtime((time_t *)&argp->timestamp);
+	if (lt)
+	{
+		(void)printf(
+				"\ttimestamp: %ld (%.24s, 20%02lu%02lu%02lu%02lu%02lu.%02lu)\n",
+				(long)argp->timestamp, ctime((time_t *)&argp->timestamp),
+				(u_long)lt->tm_year - 100, (u_long)lt->tm_mon+1,
+				(u_long)lt->tm_mday, (u_long)lt->tm_hour,
+				(u_long)lt->tm_min, (u_long)lt->tm_sec);
+	}
+	else
+	{
+		(void)printf("\ttimestamp: %ld\n", (long)argp->timestamp);
+	}
 	fflush(stdout);
 
 	(void)printf("\n");
@@ -3810,20 +3828,19 @@ __txn_dist_abort_read(dbenv, recbuf, argpp)
 
 /*
  * PUBLIC: int __txn_dist_commit_log __P((DB_ENV *, DB_TXN *, DB_LSN *, 
- * PUBLIC:	  u_int64_t *ret_contextp, u_int32_t flags, u_int32_t opcode,
+ * PUBLIC:	  u_int64_t *ret_contextp, u_int32_t flags,
  * PUBLIC:	  const DBT *dist_txnid, u_int32_t generation, u_int64_t timestamp,
  * PUBLIC:	  void *usr_ptr));
  */
 
 int
 __txn_dist_commit_log(dbenv, txnid, ret_lsnp, ret_contextp, flags, 
-		opcode, dist_txnid, generation, timestamp, usr_ptr)
+		dist_txnid, generation, timestamp, usr_ptr)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int64_t *ret_contextp;
 	u_int32_t flags;
-	u_int32_t opcode;
 	const DBT *dist_txnid;
 	u_int32_t generation;
 	u_int64_t timestamp;
@@ -3870,7 +3887,6 @@ __txn_dist_commit_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	}
 
 	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN)
-		+ sizeof(u_int32_t)	/* opcode */
 		+ sizeof(u_int32_t) + (dist_txnid == NULL ? 0 : dist_txnid->size)
 		+ sizeof(u_int32_t)	/* generation */
 		+ sizeof(u_int64_t)	/* context */
@@ -3932,9 +3948,18 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	uinttmp = (u_int32_t)opcode;
+	uinttmp = (u_int32_t)generation;
 	LOGCOPY_32(bp, &uinttmp);
 	bp += sizeof(uinttmp);
+
+	off_context = (u_int8_t*)bp-((u_int8_t*)(logrec.data));
+
+	memset(bp, 0, sizeof(u_int64_t));
+	bp += sizeof(u_int64_t);
+
+	uint64tmp = (u_int64_t)timestamp;
+	LOGCOPY_64(bp, &uint64tmp);
+	bp += sizeof(uint64tmp);
 
     if (dist_txnid == NULL)
     {
@@ -3949,19 +3974,6 @@ do_malloc:
 		memcpy(bp, dist_txnid->data, dist_txnid->size);
 		bp += dist_txnid->size;
     }
-
-	uinttmp = (u_int32_t)generation;
-	LOGCOPY_32(bp, &uinttmp);
-	bp += sizeof(uinttmp);
-
-	off_context = (u_int8_t*)bp-((u_int8_t*)(logrec.data));
-
-	memset(bp, 0, sizeof(u_int64_t));
-	bp += sizeof(u_int64_t);
-
-	uint64tmp = (u_int64_t)timestamp;
-	LOGCOPY_64(bp, &uint64tmp);
-	bp += sizeof(uint64tmp);
 
 	DB_ASSERT((u_int32_t)(bp - (u_int8_t *)logrec.data) <= logrec.size);
 
@@ -4113,16 +4125,6 @@ __txn_dist_commit_read_int(dbenv, recbuf, do_pgswp, argpp)
 	bp += sizeof(DB_LSN);
 
 	LOGCOPY_32(&uinttmp, bp);
-	argp->opcode = (u_int32_t)uinttmp;
-	bp += sizeof(uinttmp);
-
-	memset(&argp->dist_txnid, 0, sizeof(argp->dist_txnid));
-	LOGCOPY_32(&argp->dist_txnid.size, bp);
-	bp += sizeof(u_int32_t);
-	argp->dist_txnid.data = bp;
-	bp += argp->dist_txnid.size;
-
-	LOGCOPY_32(&uinttmp, bp);
 	argp->generation = uinttmp;
 	bp += sizeof(uinttmp);
 
@@ -4133,6 +4135,12 @@ __txn_dist_commit_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_64(&uint64tmp, bp);
 	argp->timestamp = uint64tmp;
 	bp += sizeof(uint64tmp);
+
+	memset(&argp->dist_txnid, 0, sizeof(argp->dist_txnid));
+	LOGCOPY_32(&argp->dist_txnid.size, bp);
+	bp += sizeof(u_int32_t);
+	argp->dist_txnid.data = bp;
+	bp += argp->dist_txnid.size;
 
 	*argpp = argp;
 	return (0);
@@ -4168,7 +4176,6 @@ __txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset);
-	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	(void)printf("\tdist-txnid: %*s\n", argp->dist_txnid.size, (char *)argp->dist_txnid.data);
 	(void)printf("\tgeneration: %u\n", argp->generation);
 

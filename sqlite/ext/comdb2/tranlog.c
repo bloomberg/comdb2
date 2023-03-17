@@ -289,14 +289,28 @@ static u_int32_t get_generation_from_regop_gen_record(char *data)
 static u_int32_t get_generation_from_dist_commit_record(char *data)
 {
     u_int32_t generation;
-    LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4 + 8] );
+    LOGCOPY_32( &generation, &data[4 + 4 + 8] );
     return generation;
 }
 
 static u_int32_t get_timestamp_from_dist_commit_record(char *data)
 {
     u_int64_t timestamp;
-    LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 4 + 8 + 4 + 8] );
+    LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8] );
+    return timestamp;
+}
+
+static u_int32_t get_generation_from_dist_abort_record(char *data)
+{
+    u_int32_t generation;
+    LOGCOPY_32( &generation, &data[4 + 4 + 8] );
+    return generation;
+}
+
+static u_int32_t get_timestamp_from_dist_abort_record(char *data)
+{
+    u_int64_t timestamp;
+    LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4] );
     return timestamp;
 }
 
@@ -357,6 +371,10 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
 
     if (rectype == DB___txn_dist_commit) {
         return get_timestamp_from_dist_commit_record(data);
+    }
+
+    if (rectype == DB___txn_dist_abort) {
+        return get_timestamp_from_dist_abort_record(data);
     }
 
     if (rectype == DB___txn_regop_rowlocks) {
@@ -433,6 +451,10 @@ static int tranlogColumn(
             generation = get_generation_from_dist_commit_record(pCur->data.data);
         }
 
+        if (rectype == DB___txn_dist_abort){
+            generation = get_generation_from_dist_abort_record(pCur->data.data);
+        }
+
         if (rectype == DB___txn_regop_rowlocks) {
             generation = get_generation_from_regop_rowlocks_record(pCur->data.data);
         }
@@ -458,6 +480,10 @@ static int tranlogColumn(
 
         if (rectype == DB___txn_dist_commit){
             timestamp = get_timestamp_from_dist_commit_record(pCur->data.data);
+        }
+
+        if (rectype == DB___txn_dist_abort){
+            timestamp = get_timestamp_from_dist_abort_record(pCur->data.data);
         }
 
         if (rectype == DB___txn_regop_rowlocks) {

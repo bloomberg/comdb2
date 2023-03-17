@@ -404,6 +404,7 @@ matchable_log_type(int rectype)
 		ret = (rectype == DB___txn_regop ||
 			rectype == DB___txn_regop_gen ||
 			rectype == DB___txn_dist_commit ||
+			rectype == DB___txn_dist_abort ||
 			rectype == DB___txn_regop_rowlocks ||
 			(gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
@@ -4768,10 +4769,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
 		}
-		if (txn_dist_commit_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_dist_commit_args);
-			return (0);
-		}
 		args = txn_dist_commit_args;
 		context = txn_dist_commit_args->context;
 		txnid = txn_dist_commit_args->txnid->txnid;
@@ -5590,10 +5587,6 @@ bad_resize:	;
 		if ((ret = __txn_dist_commit_read(dbenv, rec->data, &txn_dist_commit_args)) != 0) {
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
 			return (ret);
-		}
-		if (txn_dist_commit_args->opcode != TXN_COMMIT) {
-			__os_free(dbenv, txn_dist_commit_args);
-			return (0);
 		}
 		args = txn_dist_commit_args;
 		rp->context = txn_dist_commit_args->context;
@@ -6821,9 +6814,6 @@ restart:
 				__txn_dist_commit_read(dbenv, mylog.data,
 					&txndist)) != 0)
 				goto err;
-			if (txndist->opcode != TXN_ABORT) {
-				undo = 1;
-			}
 
             if (logc_dist == NULL) {
                 if ((ret = __log_cursor(dbenv, &logc_dist)) != 0) {
@@ -7201,12 +7191,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 				}
 
 				if (txn_dist_commit_args->timestamp < epoch) {
-#if 0
-					fprintf(stderr,
-						"%s:%d stopped at epoch %u < %u\n",
-						__FILE__, __LINE__,
-						txn_gen_args->timestamp, epoch);
-#endif
 						if (gbl_extended_sql_debug_trace) {
 							logmsg(LOGMSG_USER, "td %p %s line %d lsn %d:%d "
 												"break-loop because timestamp "
@@ -7218,82 +7202,63 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 						__os_free(dbenv, txn_dist_commit_args);
 						done = 1;
 						break;
+				}
+
+				ret = __log_c_get(logc, &txn_dist_commit_args->prev_lsn, &mylog, DB_SET);
+				if (ret) {
+					logmsg(LOGMSG_ERROR, "%s:%d, %u:%u failed to get last log entry, ret=%d\n",
+							__FILE__, __LINE__, lsn.file, lsn.offset, ret);
+					goto err;
+				}
+				LOGCOPY_32(&rectype, mylog.data);
+				if (rectype != DB___txn_dist_prepare) {
+					logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, prev-log not a PREPARE\n",
+							__FILE__, __LINE__, lsn.file, lsn.offset);
+
+					goto err;
+				}
+
+				if ((ret = __txn_dist_prepare_read(dbenv, mylog.data,
+								&txn_dist_prepare_args)) != 0) {
+					logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, error reading PREPARE\n",
+							__FILE__, __LINE__, lsn.file, lsn.offset);
+					goto err;
+				}
+				// Go to PREVIOUS LSN
+				if (*n_lsns + 1 >= curlim) {
+					curlim = (!curlim) ? 1000 : 2 * curlim;
+					if (!(newlsns = (DB_LSN *) realloc(lsns, curlim * sizeof(DB_LSN)))) {
+						logmsg(LOGMSG_ERROR, "%s:%d Too complex snapshot (realloc failure at trns %d)\n",
+							__FILE__, __LINE__, *n_lsns);
+						ret = ENOMEM;
+						if (lsns) free(lsns);
+						lsns = NULL;
+						__os_free(dbenv, txn_dist_commit_args);
+						__os_free(dbenv, txn_dist_prepare_args);
+						goto err;
 					}
+					lsns = newlsns;
+				}
 
-					if (txn_dist_commit_args->opcode == TXN_COMMIT) {
-                        ret = __log_c_get(logc, &txn_dist_commit_args->prev_lsn, &mylog, DB_SET);
-                        if (ret) {
-                            logmsg(LOGMSG_ERROR, "%s:%d, %u:%u failed to get last log entry, ret=%d\n",
-                                    __FILE__, __LINE__, lsn.file, lsn.offset, ret);
-                            goto err;
-                        }
-                        LOGCOPY_32(&rectype, mylog.data);
-                        if (rectype != DB___txn_dist_prepare) {
-                            logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, prev-log not a PREPARE\n",
-                                    __FILE__, __LINE__, lsn.file, lsn.offset);
+				if (gbl_extended_sql_debug_trace) {
+					logmsg(
+						LOGMSG_USER,
+						"td %" PRIxPTR "%s line %d lsn %d:%d "
+						"adding prev-lsn %d:%d at "
+						"index %d\n",
+						(intptr_t)pthread_self(),
+						__func__, __LINE__, lsn.file,
+						lsn.offset,
+						txn_dist_commit_args->prev_lsn.file,
+						txn_dist_commit_args->prev_lsn.offset,
+						*n_lsns);
+				}
 
-                            goto err;
-                        }
-
-                        if ((ret = __txn_dist_prepare_read(dbenv, mylog.data,
-                                        &txn_dist_prepare_args)) != 0) {
-                            logmsg(LOGMSG_ERROR, "%s:%d, %u:%u, error reading PREPARE\n",
-                                    __FILE__, __LINE__, lsn.file, lsn.offset);
-                            goto err;
-                        }
-                    // Go to PREVIOUS LSN
-#if 0
-					ret = __db_txnlist_add(dbenv,
-						txninfo, txn_gen_args.txnid->txnid,
-						TXN_COMMIT, NULL);
-#endif
-					if (*n_lsns + 1 >= curlim) {
-						curlim =
-							(!curlim) ? 1000 : 2 *
-							curlim;
-						if (!(newlsns =
-							(DB_LSN *) realloc(lsns,
-								curlim *
-								sizeof(DB_LSN)))) {
-							logmsg(LOGMSG_ERROR, 
-								"%s:%d Too complex snapshot (realloc failure at trns %d)\n",
-								__FILE__, __LINE__,
-								*n_lsns);
-														ret = ENOMEM;
-														if (lsns) free(lsns);
-														lsns = NULL;
-														__os_free(dbenv,
-																  txn_dist_commit_args);
-														__os_free(dbenv,
-																  txn_dist_prepare_args);
-														goto err;
-												}
-												lsns = newlsns;
-										}
-
-										if (gbl_extended_sql_debug_trace) {
-											logmsg(
-												LOGMSG_USER,
-												"td %" PRIxPTR "%s line %d lsn %d:%d "
-												"adding prev-lsn %d:%d at "
-												"index %d\n",
-												(intptr_t)pthread_self(),
-												__func__, __LINE__, lsn.file,
-												lsn.offset,
-												txn_dist_commit_args->prev_lsn.file,
-												txn_dist_commit_args->prev_lsn.offset,
-												*n_lsns);
-										}
-
-										lsns[*n_lsns] = txn_dist_prepare_args->prev_lsn;
-										*n_lsns += 1;
-					}
-					__os_free(dbenv, txn_dist_commit_args);
-					__os_free(dbenv, txn_dist_prepare_args);
-				} break;
-
-
-
+				lsns[*n_lsns] = txn_dist_prepare_args->prev_lsn;
+				*n_lsns += 1;
+				__os_free(dbenv, txn_dist_commit_args);
+				__os_free(dbenv, txn_dist_prepare_args);
+			} break;
 
 				case DB___txn_regop: {
 					if ((ret = __txn_regop_read(dbenv, mylog.data,

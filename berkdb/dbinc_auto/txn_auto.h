@@ -90,7 +90,6 @@ typedef struct __txn_dist_prepare_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
-	u_int32_t opcode;
 	u_int32_t generation;
 	DB_LSN begin_lsn;
 	DBT dist_txnid;
@@ -108,7 +107,8 @@ typedef struct __txn_dist_abort_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
-	u_int32_t opcode;
+	u_int32_t	generation;
+	u_int64_t	timestamp;
 	DBT dist_txnid;
 } __txn_dist_abort_args;
 
@@ -117,10 +117,9 @@ typedef struct __txn_dist_commit_args {
 	u_int32_t type;
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
-	u_int32_t	opcode;
-	DBT	dist_txnid;
 	u_int32_t	generation;
 	u_int64_t	context;
 	u_int64_t	timestamp;
+	DBT	dist_txnid;
 } __txn_dist_commit_args;
 #endif
