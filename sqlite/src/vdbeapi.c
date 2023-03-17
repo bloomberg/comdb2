@@ -240,12 +240,7 @@ void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks,
   stmt_free_vtable_locks(pStmt);
   vdbe->numVTableLocks = numVTableLocks;
   vdbe->vTableLocks = vTableLocks;
-/*
-** Only a single flag so far: acquire the sp-lock prior to any berkley lock.
-*/
-  if (flags) {
-    vdbe->vTableFlags = 1;
-  }
+  vdbe->vTableFlags = flags;
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -58,6 +58,7 @@ typedef unsigned Bool;
 enum { VDBESORTER_FIND, VDBESORTER_MOVE, VDBESORTER_WRITE };
 /* moved vdbesorter here because is needed in sqlglue.c */
 /* Opaque type used by code in vdbesort.c */
+enum { VTABLE_FLAGS_GETSPLOCK = 1 };
 typedef struct PmaReader PmaReader;
 typedef struct MergeEngine MergeEngine;
 typedef struct SorterRecord SorterRecord;
