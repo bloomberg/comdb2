@@ -150,6 +150,12 @@ if(DEBUG_PREPARE)
     add_definitions(-DDEBUG_PREPARE)
 endif()
 
+option(DEBUG_RECOVERY_LOCK "Enable recovery-lock debug trace" OFF)
+mark_as_advanced(DEBUG_RECOVERY_LOCK)
+if(DEBUG_RECOVERY_LOCK)
+    add_definitions(-DDEBUG_RECOVERY_LOCK)
+endif()
+
 option(UFID_HASH_DEBUG "Enable ufid-hash debug trace" OFF)
 mark_as_advanced(UFID_HASH_DEBUG)
 if(UFID_HASH_DEBUG)

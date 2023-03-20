@@ -855,11 +855,21 @@ static int __downgrade_prepared(void *obj, void *arg)
 		p->prepare_lsn.file, p->prepare_lsn.offset);
 		abort();
 	}
+
+	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		F_CLR(p->txnp, TXN_RECOVER_LOCK);
+	}
+
+	__txn_discard(p->txnp, 0);
+	p->txnp = NULL;
+
 	F_CLR(p, DB_DIST_HAVELOCKS);
 	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
 		unlock_schema_lk();
 		F_CLR(p, DB_DIST_SCHEMA_LK);
 	}
+
 	return 0;
 }
 
@@ -1082,6 +1092,11 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 		abort();
 	}
 
+	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		F_CLR(p->txnp, TXN_RECOVER_LOCK);
+	}
+
 	F_CLR(p, DB_DIST_HAVELOCKS);
 	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
 		unlock_schema_lk();
@@ -1244,6 +1259,11 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 			unlock_schema_lk();
 			F_CLR(p, DB_DIST_SCHEMA_LK);
 		}
+
+		if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
+			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+			F_CLR(p->txnp, TXN_RECOVER_LOCK);
+		}
 	}
 
 	__free_prepared_txn(dbenv, p);
@@ -1385,6 +1405,11 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
 		unlock_schema_lk();
 		F_CLR(p, DB_DIST_SCHEMA_LK);
+	}
+
+	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		F_CLR(p->txnp, TXN_RECOVER_LOCK);
 	}
 
 	__free_prepared_txn(dbenv, p);
