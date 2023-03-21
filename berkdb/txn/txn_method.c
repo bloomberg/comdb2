@@ -148,6 +148,7 @@ __txn_dbenv_create(dbenv)
         dbenv->txn_abort_recovered = __txn_abort_recovered_pp;
         dbenv->txn_discard_recovered = __txn_discard_recovered_pp;
         dbenv->txn_upgrade_all_prepared = __txn_upgrade_all_prepared;
+        dbenv->txn_abort_prepared_waiters = __txn_abort_prepared_waiters;
 	}
 
 	/* If we lazily initialize the key in __txn_begin(), Operations outside

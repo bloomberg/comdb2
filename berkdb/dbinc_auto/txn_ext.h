@@ -123,6 +123,7 @@ int __txn_clear_prepared __P((DB_ENV *, const char *dist_txnid, int update_blkse
 int __txn_clear_all_prepared __P((DB_ENV *));
 void __txn_prune_resolved_prepared __P((DB_ENV *));
 int __txn_upgrade_all_prepared __P((DB_ENV *));
+int __txn_abort_prepared_waiters __P((DB_ENV *));
 int __txn_downgrade_all_prepared __P((DB_ENV *));
 int __txn_downgrade_and_free_all_prepared __P((DB_ENV *));
 int __txn_abort_recovered_pp __P((DB_ENV *, const char *dist_txnid));

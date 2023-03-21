@@ -6372,9 +6372,8 @@ __lock_to_dbt(dbenv, lock, dbt)
 	return rc;
 }
 
-
 static int
-__lock_abort_logical_waiters(dbenv, locker, flags)
+__lock_abort_waiters(dbenv, locker, flags)
 	DB_ENV *dbenv;
 	u_int32_t locker;
 	u_int32_t flags;
@@ -6436,7 +6435,7 @@ __lock_abort_logical_waiters(dbenv, locker, flags)
 		lock_obj_partition(region, part);
 
 		/* Abort anything blocked on its rowlocks */
-		if (is_comdb2_rowlock(lockobj->lockobj.size)) {
+		if (!LF_ISSET(DB_LOCK_ABORT_LOGICAL) || is_comdb2_rowlock(lockobj->lockobj.size)) {
 			/* This releases the lockobj */
 			if ((ret = __dd_abort_waiters(dbenv, lockobj)) != 0) {
 				__db_err(dbenv, "Error aborting waiters\n");
@@ -6454,9 +6453,9 @@ err:
 }
 
 
-// PUBLIC: int __lock_abort_logical_waiters_pp __P((DB_ENV *, u_int32_t, u_int32_t));
+// PUBLIC: int __lock_abort_waiters_pp __P((DB_ENV *, u_int32_t, u_int32_t));
 int
-__lock_abort_logical_waiters_pp(dbenv, locker, flags)
+__lock_abort_waiters_pp(dbenv, locker, flags)
 	DB_ENV *dbenv;
 	u_int32_t locker;
 	u_int32_t flags;
@@ -6465,11 +6464,11 @@ __lock_abort_logical_waiters_pp(dbenv, locker, flags)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-	    dbenv->lk_handle, "DB_ENV->lock_abort_logical_waiters",
+	    dbenv->lk_handle, "DB_ENV->lock_abort_waiters",
 	    DB_INIT_LOCK);
 
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
-	ret = __lock_abort_logical_waiters(dbenv, locker, flags);
+	ret = __lock_abort_waiters(dbenv, locker, flags);
 	UNLOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	return (ret);
 }

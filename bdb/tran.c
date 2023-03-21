@@ -61,6 +61,7 @@
 #include "nodemap.h"
 #include "logmsg.h"
 #include "txn_properties.h"
+#include <build/db.h>
 
 static unsigned int curtran_counter = 0;
 extern int gbl_debug_txn_sleep;
@@ -409,8 +410,8 @@ int bdb_abort_logical_waiters(bdb_state_type *bdb_state)
                             tranlist_lnk)
         {
             if (ltran->logical_lid) {
-                rc = bdb_state->dbenv->lock_abort_logical_waiters(
-                    bdb_state->dbenv, ltran->logical_lid, 0);
+                rc = bdb_state->dbenv->lock_abort_waiters(
+                    bdb_state->dbenv, ltran->logical_lid, DB_LOCK_ABORT_LOGICAL);
                 if (rc)
                     abort();
             }

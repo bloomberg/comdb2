@@ -1270,6 +1270,35 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 	return 0;
 }
 
+static int __abort_waiters(void *obj, void *arg)
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	DB_ENV *dbenv = (DB_ENV *)arg;
+	if (F_ISSET(p, DB_DIST_HAVELOCKS)) {
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s abort waiters on %s\n", __func__, p->dist_txnid);
+#endif
+		dbenv->lock_abort_waiters(dbenv, p->txnp->txnid, 0);
+	}
+	return 0;
+}
+
+/* Abort lockids blocked on any unresolved prepare */
+int __txn_abort_prepared_waiters(dbenv)
+	DB_ENV *dbenv;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_txn_hash, __abort_waiters, dbenv);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	return 0;
+}
+
 int __txn_commit_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	const char *dist_txnid;

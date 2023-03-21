@@ -428,6 +428,9 @@ struct txn_properties;
 #define DB_LOCK_ID_TRACK    0x002	/* Track this lockid */
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
 
+/* Flag values for lock_abort_waiters */
+#define DB_LOCK_ABORT_LOGICAL   0x0001 /* Only abort logical waiters */
+
 /*
  * Simple R/W lock modes and for multi-granularity intention locking.
  *
@@ -2495,7 +2498,7 @@ struct __db_env {
 	int  (*set_lk_max_objects) __P((DB_ENV *, u_int32_t));
 	int  (*lock_detect) __P((DB_ENV *, u_int32_t, u_int32_t, int *));
 	int  (*lock_dump_region) __P((DB_ENV *, const char *, FILE *));
-	int  (*lock_abort_logical_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
+	int  (*lock_abort_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
 	int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
@@ -2585,6 +2588,7 @@ struct __db_env {
 	int  (*txn_abort_recovered) __P((DB_ENV *, const char *));
 	int  (*txn_discard_recovered) __P((DB_ENV *, const char *));
 	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
+	int  (*txn_abort_prepared_waiters) __P((DB_ENV *));
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));
