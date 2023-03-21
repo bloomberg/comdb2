@@ -48,6 +48,30 @@ assert_schema()
     fi
 }
 
+populate_t2() {
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "DROP TABLE IF EXISTS t2" > t2.out
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t2 {`cat t2.csc2`}" >> t2.out
+    echo "begin" > t2.ins
+    local j=0
+    while [[ $j -lt 10 ]] ; do
+        echo "insert into t2 values('1','${j}')" >> t2.ins
+	let j=j+1
+    done
+    echo "commit" >> t2.ins
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default -f t2.ins >> t2.out 
+    assertcnt t2 10
+}
+
+basic_updates() {
+    populate_t2
+    echo "begin" > t2.ins
+    echo "update t2 set text1='2' where text1='1'" >> t2.ins
+    echo "commit" >> t2.ins
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default -f t2.ins >> t2.out
+    count=`cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t2 where text1='2'"` >> t2.out
+    assertres $count 10
+}
+
 
 do_updates()
 {
@@ -83,6 +107,7 @@ NUM=10000
 TRANSZ=20
 UPDATERS=20
 
+basic_updates
 cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (a,b,c,d) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $NUM) SELECT x,(random()+1)%100000,(random()+2)%100000,(random()+3)%100000 FROM i" > ins1.out
 
 assertcnt t1 $NUM

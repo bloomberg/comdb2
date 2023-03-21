@@ -65,6 +65,29 @@ insert_records()
     echo "done inserting round $nout"
 }
 
+populate_t2() {
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "DROP TABLE IF EXISTS t2" > t2.out
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t2 {`cat t2.csc2`}" >> t2.out
+    echo "begin" > t2.ins
+    local j=0
+    while [[ $j -lt 10 ]] ; do
+        echo "insert into t2 values('1','${j}')" >> t2.ins
+	let j=j+1
+    done
+    echo "commit" >> t2.ins
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default -f t2.ins >> t2.out 
+    assertcnt t2 10
+}
+
+basic_deletes() {
+    populate_t2
+    echo "begin" > t2.ins
+    echo "delete from t2 where text1='1'" >> t2.ins
+    echo "commit" >> t2.ins
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default -f t2.ins >> t2.out
+    count=`cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t2 where text1='1'"` >> t2.out
+    assertres $count 0
+}
 
 
 do_deletes()
@@ -99,6 +122,7 @@ do_deletes()
     echo "done updater $updater"
 }
 
+basic_deletes
 NUM=10000
 TRANSZ=15
 CONCURRENT=20
