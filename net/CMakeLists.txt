@@ -17,6 +17,10 @@ set_source_files_properties(
   PROPERTIES GENERATED TRUE
 )
 
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  set_source_files_properties(net_evbuffer.c PROPERTIES COMPILE_FLAGS "-O0")
+endif()
+
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
