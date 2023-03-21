@@ -355,6 +355,125 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 	__os_free(dbenv, p);
 }
 
+static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED *p)
+{
+	DBT dbt = { 0 };
+	__txn_dist_prepare_args *prepare = NULL;
+	u_int32_t type;
+	dbt.flags = DB_DBT_REALLOC;
+	DB_TXN *txnp = NULL;
+	int ret;
+
+	assert(!F_ISSET(p, DB_DIST_HAVELOCKS) && !F_ISSET(p, DB_DIST_ABORTED));
+
+	if ((ret = __log_c_get(logc, &p->prepare_lsn, &dbt, DB_SET)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d retrieving prepare record at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	LOGCOPY_32(&type, dbt.data);
+	assert(type == DB___txn_dist_prepare);
+
+	if ((ret = __txn_dist_prepare_read(dbenv, dbt.data, &prepare)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d unpacking prepare record at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	/* Use the txnid in the log */
+	struct txn_properties prop = {.prepared_txnid = prepare->txnid->txnid,
+								  .begin_lsn = prepare->begin_lsn };
+	if ((ret = __txn_begin_with_prop(dbenv, NULL, &txnp, 0, &prop)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d creating txn at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	/* Set the prepared flag & begin_lsn */
+	F_SET(txnp, TXN_DIST_PREPARED);
+
+	assert(txnp->txnid == prepare->txnid->txnid);
+
+	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
+		wrlock_schema_lk(); 
+		F_SET(p, DB_DIST_SCHEMA_LK);
+	}
+
+	if (prepare->lflags & DB_TXN_DIST_UPD_SHADOWS) {
+		F_SET(p, DB_DIST_UPDSHADOWS);
+	}
+
+	/* Acquire locks/pglogs from prepare record */
+	u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PREPARE);
+
+	if ((ret = __lock_get_list(dbenv, txnp->txnid, flags, DB_LOCK_WRITE, &prepare->locks,
+		&p->prepare_lsn, &p->pglogs, &p->keycnt, stdout)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error %d acquiring locks for prepare at %d:%d\n",
+			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	/* Make sure new master doesn't allocate prepared genids */
+	set_commit_context_prepared(prepare->genid);
+
+	p->txnp = txnp;
+	p->prev_lsn = prepare->prev_lsn;
+	txnp->last_lsn = p->prepare_lsn;
+	F_SET(p, DB_DIST_HAVELOCKS);
+	logmsg(LOGMSG_INFO, "Upgraded prepared txn %s\n", p->dist_txnid);
+
+	__os_free(dbenv, prepare);
+	__os_free(dbenv, dbt.data);
+	return 0;
+}
+
+static int __upgrade_prepared(void *obj, void *arg)
+{
+	DB_LOGC *logc = (DB_LOGC *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	__upgrade_prepared_txn(logc->dbenv, logc, p);
+	return 0;
+}
+
+static int __downgrade_prepared_int(DB_ENV *dbenv, DB_TXN_PREPARED *p)
+{
+	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
+	int ret;
+
+	if (!F_ISSET(p, DB_DIST_HAVELOCKS))
+		return 0;
+
+	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
+		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %s, LSN %d:%d\n", p->dist_txnid,
+		p->prepare_lsn.file, p->prepare_lsn.offset);
+		abort();
+	}
+
+	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		F_CLR(p->txnp, TXN_RECOVER_LOCK);
+	}
+
+	__txn_discard(p->txnp, 0);
+	p->txnp = NULL;
+
+	F_CLR(p, DB_DIST_HAVELOCKS);
+	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
+		unlock_schema_lk();
+		F_CLR(p, DB_DIST_SCHEMA_LK);
+	}
+
+	return 0;
+}
+
+static int __downgrade_prepared(void *obj, void *arg)
+{
+	DB_ENV *dbenv = (DB_ENV *)arg;
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	return __downgrade_prepared_int(dbenv, p);
+}
+
 /*
  * __txn_is_dist_committed --
  *
@@ -384,6 +503,11 @@ int __txn_is_dist_committed(dbenv, dist_txnid)
  *
  * Add dist_txn to prepared-txn hash as a committed txn.  This is needed 
  * to accommodate a commit from a different master.
+ *
+ * We allocate a dist_txnid structure and in dist_abort as a place holders so that
+ * recovery can discriminate between resolved and unresolved prepares.  We mark these
+ * with either the DIST_COMMITTED or DIST_ABORTED flag.  After recovery all resolved
+ * prepares will pruned.
  *
  * PUBLIC: int __txn_recover_dist_commit __P((DB_ENV *, const char *dist_txnid));
  */
@@ -423,6 +547,9 @@ int __txn_recover_dist_commit(dbenv, dist_txnid)
  * __txn_recover_dist_abort --
  *
  * Add dist_txn to prepared-txn hash as an aborted txn.  
+ * This is similar to the dist-committed function above.  This will be removed 
+ * when we undo the prepare record, or when the prepared-txn list is pruned.
+ *
  * TODO: add the blkseq key.
  *
  * PUBLIC: int __txn_recover_dist_abort __P((DB_ENV *, const char *dist_txnid));
@@ -544,7 +671,9 @@ int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, begin_lsn, blkseq_key, co
  * __txn_recover_abort_prepared --
  *
  * Remove an aborted transaction from the distributed transaction list.
- * This is run on the master when a prepared transaction aborts.
+ * This is db_dispatch with the DB_TXN_ABORT flag- it's called both for a normal 
+ * txn->abort, and from txn_dbenv_refresh.  This later could abort a recovered
+ * prepare.
  *
  * PUBLIC: int __txn_recover_abort_prepared __P((DB_ENV *,
  * PUBLIC:	  u_int64_t, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
@@ -575,10 +704,9 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
 	hash_del(dbenv->prepared_txn_hash, p);
 	hash_del(dbenv->prepared_txnid_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-	if (F_ISSET(p, DB_DIST_RECOVERED) || p->txnp != NULL) {
-		 logmsg(LOGMSG_FATAL, "%s aborting a recovered transaction %s\n", 
-			__func__, dist_txnid);
-		abort();
+
+	if (F_ISSET(p, DB_DIST_RECOVERED) && F_ISSET(p, DB_DIST_HAVELOCKS)) {
+		__downgrade_prepared_int(dbenv, p);
 	}
 
 	__free_prepared_txn(dbenv, p);
@@ -759,120 +887,6 @@ int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
 	return 0;
 }
 
-static int __upgrade_prepared_txn(DB_ENV *dbenv, DB_LOGC *logc, DB_TXN_PREPARED *p)
-{
-	DBT dbt = { 0 };
-	__txn_dist_prepare_args *prepare = NULL;
-	u_int32_t type;
-	dbt.flags = DB_DBT_REALLOC;
-	DB_TXN *txnp = NULL;
-	int ret;
-
-	assert(!F_ISSET(p, DB_DIST_HAVELOCKS) && !F_ISSET(p, DB_DIST_ABORTED));
-
-	if ((ret = __log_c_get(logc, &p->prepare_lsn, &dbt, DB_SET)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error %d retrieving prepare record at %d:%d\n",
-			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
-		abort();
-	}
-
-	LOGCOPY_32(&type, dbt.data);
-	assert(type == DB___txn_dist_prepare);
-
-	if ((ret = __txn_dist_prepare_read(dbenv, dbt.data, &prepare)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error %d unpacking prepare record at %d:%d\n",
-			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
-		abort();
-	}
-
-	/* Use the txnid in the log */
-	struct txn_properties prop = {.prepared_txnid = prepare->txnid->txnid,
-								  .begin_lsn = prepare->begin_lsn };
-	if ((ret = __txn_begin_with_prop(dbenv, NULL, &txnp, 0, &prop)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error %d creating txn at %d:%d\n",
-			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
-		abort();
-	}
-
-	/* Set the prepared flag & begin_lsn */
-	F_SET(txnp, TXN_DIST_PREPARED);
-
-	assert(txnp->txnid == prepare->txnid->txnid);
-
-	if (prepare->lflags & DB_TXN_SCHEMA_LOCK) {
-		wrlock_schema_lk(); 
-		F_SET(p, DB_DIST_SCHEMA_LK);
-	}
-
-	if (prepare->lflags & DB_TXN_DIST_UPD_SHADOWS) {
-		F_SET(p, DB_DIST_UPDSHADOWS);
-	}
-
-	/* Acquire locks/pglogs from prepare record */
-	u_int32_t flags = (LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PREPARE);
-
-	if ((ret = __lock_get_list(dbenv, txnp->txnid, flags, DB_LOCK_WRITE, &prepare->locks,
-		&p->prepare_lsn, &p->pglogs, &p->keycnt, stdout)) != 0) {
-		logmsg(LOGMSG_FATAL, "%s error %d acquiring locks for prepare at %d:%d\n",
-			__func__, ret, p->prepare_lsn.file, p->prepare_lsn.offset);
-		abort();
-	}
-
-	/* Make sure new master doesn't allocate prepared genids */
-	set_commit_context_prepared(prepare->genid);
-
-	p->txnp = txnp;
-	p->prev_lsn = prepare->prev_lsn;
-	txnp->last_lsn = p->prepare_lsn;
-	F_SET(p, DB_DIST_HAVELOCKS);
-	logmsg(LOGMSG_INFO, "Upgraded prepared txn %s\n", p->dist_txnid);
-
-	__os_free(dbenv, prepare);
-	__os_free(dbenv, dbt.data);
-	return 0;
-}
-
-static int __upgrade_prepared(void *obj, void *arg)
-{
-	DB_LOGC *logc = (DB_LOGC *)arg;
-	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
-	__upgrade_prepared_txn(logc->dbenv, logc, p);
-	return 0;
-}
-
-static int __downgrade_prepared(void *obj, void *arg)
-{
-	DB_ENV *dbenv = (DB_ENV *)arg;
-	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
-	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
-	int ret;
-
-	if (!F_ISSET(p, DB_DIST_HAVELOCKS))
-		return 0;
-
-	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
-		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %s, LSN %d:%d\n", p->dist_txnid,
-		p->prepare_lsn.file, p->prepare_lsn.offset);
-		abort();
-	}
-
-	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
-		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
-		F_CLR(p->txnp, TXN_RECOVER_LOCK);
-	}
-
-	__txn_discard(p->txnp, 0);
-	p->txnp = NULL;
-
-	F_CLR(p, DB_DIST_HAVELOCKS);
-	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
-		unlock_schema_lk();
-		F_CLR(p, DB_DIST_SCHEMA_LK);
-	}
-
-	return 0;
-}
-
 void __txn_prune_resolved_prepared(dbenv)
 	DB_ENV *dbenv;
 {
@@ -970,6 +984,37 @@ int __txn_upgrade_all_prepared(dbenv)
 	logc->close(logc, 0);
 	return 0;
 }
+
+int __txn_rep_commit_recovered(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	DB_TXN_PREPARED *p;
+	int ret;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
+		logmsg(LOGMSG_FATAL, "%s unable to find dist-txn %s in recovered txnlist\n", 
+			__func__, dist_txnid);
+		abort();
+	}
+	hash_del(dbenv->prepared_txn_hash, p);
+	hash_del(dbenv->prepared_txnid_hash, p);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+
+	if (F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp != NULL) {
+		logmsg(LOGMSG_FATAL, "%s recovered txnsaction holding locks, %s\n", 
+			__func__, dist_txnid);
+		abort();
+	}
+	__free_prepared_txn(dbenv, p);
+	return 0;
+}
+
+
 
 /*
  * __txn_rep_abort_recovered --
@@ -1106,7 +1151,6 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	return 0;
 }
 
-
 extern void bdb_osql_trn_repo_lock();
 extern void bdb_osql_trn_repo_unlock();
 extern int update_shadows_beforecommit(void *bdb_state, DB_LSN *last_logical_lsn,
@@ -1119,35 +1163,6 @@ extern int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 		int32_t timestamp, unsigned long long context);
 
 extern int __rep_lsn_cmp __P((const void *, const void *));
-
-int __txn_rep_discard_recovered(dbenv, dist_txnid)
-	DB_ENV *dbenv;
-	const char *dist_txnid;
-{
-#if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s", __func__);
-#endif
-	DB_TXN_PREPARED *p;
-	int ret;
-
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
-		logmsg(LOGMSG_FATAL, "%s unable to find dist-txn %s in recovered txnlist\n", 
-			__func__, dist_txnid);
-		abort();
-	}
-	hash_del(dbenv->prepared_txn_hash, p);
-	hash_del(dbenv->prepared_txnid_hash, p);
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-
-	if (F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp != NULL) {
-		logmsg(LOGMSG_FATAL, "%s recovered txnsaction holding locks, %s\n", 
-			__func__, dist_txnid);
-		abort();
-	}
-	__free_prepared_txn(dbenv, p);
-	return 0;
-}
 
 static int __lowest_prepared_lsn(void *obj, void *arg)
 {

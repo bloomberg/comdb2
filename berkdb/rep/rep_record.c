@@ -4979,7 +4979,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		}
 	}
 
-	if (dist_txnid && (ret = __txn_rep_discard_recovered(dbenv, dist_txnid)) != 0) {
+	if (dist_txnid && (ret = __txn_rep_commit_recovered(dbenv, dist_txnid)) != 0) {
 		abort();
 	}
 

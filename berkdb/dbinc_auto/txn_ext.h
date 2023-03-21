@@ -131,7 +131,7 @@ int __txn_is_prepared __P((DB_ENV *, u_int32_t txnid));
 int __txn_add_prepared_child __P((DB_ENV *, u_int32_t ptxnid, u_int32_t ctxnid));
 int __txn_abort_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_rep_abort_recovered __P((DB_ENV *, const char *dist_txnid));
-int __txn_rep_discard_recovered __P((DB_ENV *, const char *dist_txnid));
+int __txn_rep_commit_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_commit_recovered_pp __P((DB_ENV *, const char *dist_txnid));
 int __txn_commit_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_recovered_pp __P((DB_ENV *, const char *dist_txnid));
