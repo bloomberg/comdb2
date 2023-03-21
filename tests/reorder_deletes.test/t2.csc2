@@ -1,0 +1,10 @@
+schema
+{
+    cstring text1[512]
+    cstring text2[512]
+}
+
+keys {
+    dup "PK1"=text1
+    datacopy "PK2"=text2
+}
