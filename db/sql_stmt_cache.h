@@ -94,10 +94,8 @@ int stmt_cache_put(struct sqlthdstate *, struct sqlclntstate *,
                    struct sql_state *, int);
 int stmt_cache_put_distributed(struct sqlthdstate *, struct sqlclntstate *,
                                struct sql_state *, int, int);
-int stmt_cache_find_entry(stmt_cache_t *stmt_cache, const char *sql,
-                          stmt_cache_entry_t **entry);
-int stmt_cache_add_entry(stmt_cache_t *stmt_cache, const char *sql,
-                         const char *actual_sql, sqlite3_stmt *stmt,
-                         struct sqlclntstate *clnt);
-
+int stmt_cache_find_and_remove_entry(stmt_cache_t *stmt_cache, const char *sql, stmt_cache_entry_t **entry);
+int stmt_cache_add_new_entry(stmt_cache_t *stmt_cache, const char *sql, const char *actual_sql, sqlite3_stmt *stmt,
+                             struct sqlclntstate *clnt);
+int stmt_cache_requeue_old_entry(stmt_cache_t *, stmt_cache_entry_t *);
 #endif /* !__INCLUDED_SQL_STMT_CACHE_H */

@@ -4496,6 +4496,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
 {
     int rc;
+    stmt_cache_entry_t *cached_entry = NULL;
     if (thd->sqldb == NULL) {
         /* open sqlite db without copying rootpages */
         rc = sqlite3_open_serial("db", &thd->sqldb, thd);
@@ -4518,9 +4519,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
             thd->stmt_cache = stmt_cache_new(NULL);
         }
 
-        stmt_cache_entry_t *cached_entry;
-        if ((stmt_cache_find_entry(thd->stmt_cache, clnt->sql,
-                                   &cached_entry)) == 0) {
+        if ((stmt_cache_find_and_remove_entry(thd->stmt_cache, clnt->sql, &cached_entry)) == 0) {
             stmt = cached_entry->stmt;
         }
     }
@@ -4539,7 +4538,10 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
         clnt->has_sqliterow = 1;
         rc = verify_indexes_column_value(stmt, clnt->schema_mems);
         if (gbl_enable_internal_sql_stmt_caching) {
-            stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
+            if (cached_entry)
+                stmt_cache_requeue_old_entry(thd->stmt_cache, cached_entry);
+            else
+                stmt_cache_add_new_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
         } else {
             sqlite3_finalize(stmt);
         }
@@ -4547,7 +4549,10 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
 
     if (gbl_enable_internal_sql_stmt_caching) {
-        stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
+        if (cached_entry)
+            stmt_cache_requeue_old_entry(thd->stmt_cache, cached_entry);
+        else
+            stmt_cache_add_new_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
     } else {
         sqlite3_finalize(stmt);
     }

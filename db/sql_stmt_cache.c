@@ -101,8 +101,7 @@ stmt_cache_t *stmt_cache_new(stmt_cache_t *in_stmt_cache)
  * stmt_cache_remove_entry(). Called by put_prepared_stmt_int() after we are
  * done running stmt and by add_stmt_table() after it allocates the new entry.
  */
-static int stmt_cache_requeue_entry(stmt_cache_t *stmt_cache,
-                                    stmt_cache_entry_t *entry)
+int stmt_cache_requeue_old_entry(stmt_cache_t *stmt_cache, stmt_cache_entry_t *entry)
 {
     int rc = sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
     if (rc != SQLITE_OK) {
@@ -185,12 +184,12 @@ static int stmt_cache_remove_entry(stmt_cache_t *stmt_cache,
     return 0;
 }
 
-/* This will call stmt_cache_requeue_entry() after it has allocated memory for
+/* This will call stmt_cache_requeue_old_entry() after it has allocated memory for
  * the new entry. On error will return non zero and caller will need to
  * finalize_stmt(). */
-int stmt_cache_add_entry(stmt_cache_t *stmt_cache, const char *sql,
-                         const char *actual_sql, sqlite3_stmt *stmt,
-                         struct sqlclntstate *clnt)
+int stmt_cache_add_new_entry(stmt_cache_t *stmt_cache, const char *sql,
+                             const char *actual_sql, sqlite3_stmt *stmt,
+                             struct sqlclntstate *clnt)
 {
     if (!stmt_cache) {
         return 0;
@@ -230,11 +229,10 @@ int stmt_cache_add_entry(stmt_cache_t *stmt_cache, const char *sql,
     else
         entry->query = NULL;
 
-    return stmt_cache_requeue_entry(stmt_cache, entry);
+    return stmt_cache_requeue_old_entry(stmt_cache, entry);
 }
 
-int stmt_cache_find_entry(stmt_cache_t *stmt_cache, const char *sql,
-                          stmt_cache_entry_t **entry)
+int stmt_cache_find_and_remove_entry(stmt_cache_t *stmt_cache, const char *sql, stmt_cache_entry_t **entry)
 {
     if (stmt_cache->hash == NULL)
         return -1;
@@ -454,8 +452,7 @@ int stmt_cache_get(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         return 0;
     if (extract_sqlcache_hint(rec->sql, rec->cache_hint, HINT_LEN)) {
         rec->status = CACHE_HAS_HINT;
-        if (stmt_cache_find_entry(thd->stmt_cache, rec->cache_hint,
-                                  &rec->stmt_entry) == 0) {
+        if (stmt_cache_find_and_remove_entry(thd->stmt_cache, rec->cache_hint, &rec->stmt_entry) == 0) {
             rec->status |= CACHE_FOUND_STMT;
             rec->stmt = rec->stmt_entry->stmt;
             query_data_func(clnt, &rec->stmt_entry->stmt_data,
@@ -473,8 +470,7 @@ int stmt_cache_get(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             }
         }
     } else {
-        if (stmt_cache_find_entry(thd->stmt_cache, rec->sql,
-                                  &rec->stmt_entry) == 0) {
+        if (stmt_cache_find_and_remove_entry(thd->stmt_cache, rec->sql, &rec->stmt_entry) == 0) {
             rec->status = CACHE_FOUND_STMT;
             rec->stmt = rec->stmt_entry->stmt;
         }
@@ -553,7 +549,7 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 /* Leave the ownership of stmt data. */
                 query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
             }
-            if (stmt_cache_requeue_entry(thd->stmt_cache, rec->stmt_entry)) { /* put back in queue... */
+            if (stmt_cache_requeue_old_entry(thd->stmt_cache, rec->stmt_entry)) { /* put back in queue... */
                 stmt_cache_finalize_entry(rec->stmt_entry);                   /* ...and on error, cleanup */
             }
             return 0;
@@ -575,9 +571,8 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
 
-    return stmt_cache_add_entry(thd->stmt_cache, sqlptr,
-                                gbl_debug_temptables ? rec->sql : NULL, stmt,
-                                clnt);
+    return stmt_cache_add_new_entry(thd->stmt_cache, sqlptr,
+                                    gbl_debug_temptables ? rec->sql : NULL, stmt, clnt);
 cleanup:
     if (rec->stmt_entry != NULL) {
         stmt_cache_remove_entry(thd->stmt_cache, rec->stmt_entry, 1);
