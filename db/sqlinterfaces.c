@@ -758,7 +758,7 @@ static int vtable_search(char **vtables, int ntables, const char *table)
 static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const char *table)
 {
     const char *vtable_lock = vtable_lockname(pAuthState->db, table);
-    if ((strcmp(table, "comdb2_triggers") == 0)) {
+    if (table != NULL && (strcmp(table, "comdb2_triggers") == 0)) {
         pAuthState->flags |= PREPARE_ACQUIRE_SPLOCK;
     }
     if (vtable_lock && !vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_lock)) {
