@@ -18,6 +18,7 @@ int __txn_compensate_begin __P((DB_ENV *, DB_TXN **txnp));
 int __txn_commit __P((DB_TXN *, u_int32_t));
 int __txn_abort __P((DB_TXN *));
 int __txn_discard __P((DB_TXN *, u_int32_t flags));
+int __txn_free_recovered __P((DB_TXN *));
 int __txn_prepare __P((DB_TXN *, u_int8_t *));
 u_int32_t __txn_id __P((DB_TXN *));
 int  __txn_set_timeout __P((DB_TXN *, db_timeout_t, u_int32_t));

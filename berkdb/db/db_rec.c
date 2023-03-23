@@ -873,7 +873,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 
 #if defined (DEBUG_PREPARE)
 		comdb2_cheapstack_sym(stderr, "op is %d", op);
-		logmsg(LOGMSG_USER, "is_prepared is %d, op == %d, txnid=%x, found-prepared=%d\n",
+		logmsg(LOGMSG_USER, "is_prepared=%d, op=%d, txnid=%x, found-prepared=%d\n",
 			is_prepared, op, argp->txnid->txnid, found_prepared);
 #endif
 		if (is_prepared) {

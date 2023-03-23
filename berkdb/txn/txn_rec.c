@@ -112,11 +112,14 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 		/* We are truncating to a point where we don't see the
 		 * abort record .. & possibly dont see prepare record either.
 		 * Ignore */
-	} else {
+	} else if (op == DB_TXN_BACKWARD_ROLL){
 		char *dist_txnid = alloca(argp->dist_txnid.size + 1);
 		memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
 		dist_txnid[argp->dist_txnid.size] = '\0';
 		__txn_recover_dist_abort(dbenv, dist_txnid);
+	} else {
+		/* Master aborting prepared transaction: nothing to do */
+		assert(op == DB_TXN_ABORT);
 	}
 
 	if (ret == 0) {

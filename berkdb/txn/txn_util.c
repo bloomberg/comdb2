@@ -347,7 +347,7 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 	if (p->coordinator_tier.data != NULL)
 		__os_free(dbenv, p->coordinator_tier.data);
 	if (p->txnp)
-		__txn_discard(p->txnp, 0);
+		__txn_free_recovered(p->txnp);
 	if (p->pglogs)
 		free(p->pglogs);
 	if (p->children)
@@ -450,12 +450,7 @@ static int __downgrade_prepared_int(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 		abort();
 	}
 
-	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
-		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
-		F_CLR(p->txnp, TXN_RECOVER_LOCK);
-	}
-
-	__txn_discard(p->txnp, 0);
+	__txn_free_recovered(p->txnp);
 	p->txnp = NULL;
 
 	F_CLR(p, DB_DIST_HAVELOCKS);
@@ -911,7 +906,8 @@ void __txn_prune_resolved_prepared(dbenv)
 /* 
  * __txn_downgrade_all_prepared --
  *
- * Release locks for all prepared txns.
+ * Release locks for all prepared txns, but maintain entries in the
+ * dist-txn list.  This is called on a role-change to replicant.
  *
  * PUBLIC: int __txn_downgrade_all_prepared __P((DB_ENV *));
  */
@@ -1071,6 +1067,7 @@ static int __find_txn(void *obj, void *arg)
 	return 0;
 }
 
+/* TODO: this is too expensive .. */
 int __txn_is_prepared(dbenv, txnid)
 	DB_ENV *dbenv;
 	u_int32_t txnid;
@@ -1135,11 +1132,6 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %s, LSN %d:%d\n", p->dist_txnid,
 		p->prepare_lsn.file, p->prepare_lsn.offset);
 		abort();
-	}
-
-	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
-		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
-		F_CLR(p->txnp, TXN_RECOVER_LOCK);
 	}
 
 	F_CLR(p, DB_DIST_HAVELOCKS);
@@ -1228,13 +1220,18 @@ int __txn_add_prepared_child(dbenv, ctxnid, ptxnid)
 {
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	if ((p = hash_find(dbenv->prepared_txnid_hash, &ctxnid)) != NULL &&
-		!F_ISSET(p, DB_DIST_ABORTED|DB_DIST_COMMITTED)) {
-		add_child(dbenv, p, ctxnid);
-	}
-	if ((p = hash_find(dbenv->prepared_txnid_hash, &ptxnid)) != NULL &&
-		!F_ISSET(p, DB_DIST_ABORTED|DB_DIST_COMMITTED)) {
-		add_child(dbenv, p, ptxnid);
+	if ((p = hash_find(dbenv->prepared_txnid_hash, &ptxnid)) != NULL) {
+		if (F_ISSET(p, DB_DIST_COMMITTED)) {
+			logmsg(LOGMSG_USER, "%s backward rolling a committed txn?\n",
+				__func__);
+			abort();
+		}
+
+		if (!F_ISSET(p, DB_DIST_ABORTED)) {
+			logmsg(LOGMSG_INFO, "%s: adding child-txn %u for prepared dist-txn %s\n",
+				__func__, ctxnid, p->dist_txnid);
+			add_child(dbenv, p, ctxnid);
+		}
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
@@ -1273,11 +1270,6 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 		if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
 			unlock_schema_lk();
 			F_CLR(p, DB_DIST_SCHEMA_LK);
-		}
-
-		if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
-			dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
-			F_CLR(p->txnp, TXN_RECOVER_LOCK);
 		}
 	}
 
@@ -1449,11 +1441,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	if (F_ISSET(p, DB_DIST_SCHEMA_LK)) {
 		unlock_schema_lk();
 		F_CLR(p, DB_DIST_SCHEMA_LK);
-	}
-
-	if (F_ISSET(p->txnp, TXN_RECOVER_LOCK)) {
-		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
-		F_CLR(p->txnp, TXN_RECOVER_LOCK);
 	}
 
 	__free_prepared_txn(dbenv, p);

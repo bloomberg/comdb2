@@ -1662,6 +1662,31 @@ __txn_abort_pp(txnp)
 }
 
 /*
+ * __txn_free_recovered --
+ *	Abort a transaction.
+ *
+ * PUBLIC: int __txn_free_recovered __P((DB_TXN *));
+ */
+int
+__txn_free_recovered(txnp)
+	DB_TXN *txnp;
+{
+	TXN_DETAIL *td;
+	int ret;
+	DB_ENV *dbenv = txnp->mgrp->dbenv;
+	if ((ret = __txn_isvalid(txnp, &td, TXN_OP_ABORT)) != 0) {
+		abort();
+	}
+
+	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
+
+	return (__txn_end(txnp, 0));
+}
+
+/*
  * __txn_abort --
  *	Abort a transaction.
  *
@@ -1735,17 +1760,11 @@ __txn_abort(txnp)
 			dbenv, txnp->txnid, 0, &request, 1, NULL)) != 0)
 			return (__db_panic(dbenv, ret));
 	}
-	if ((ret = __txn_undo(txnp)) != 0)
-		return (__db_panic(dbenv, ret));
-
 	/*
-	 * Normally, we do not need to log aborts.  However, if we
-	 * are a distributed transaction (i.e., we have a prepare),
-	 * then we log the abort so we know that this transaction
-	 * was actually completed.
+	 * __txn_undo will reclaim allocated pages.  If this is a
+     * dist_prepared txn, write the abort record now, as the 
+     * compensating txn's locks will overlap the prepare's
 	 */
-	SET_LOG_FLAGS(dbenv, txnp, lflags);
-
 	if (DBENV_LOGGING(dbenv) && F_ISSET(txnp, TXN_DIST_PREPARED)) {
 		if (!F_ISSET(txnp, TXN_DIST_DISCARD)) {
 
@@ -1765,7 +1784,20 @@ __txn_abort(txnp)
 							gen, timestamp, &dist_txnid) != 0))
 				return (__db_panic(dbenv, ret));
 		}
-	} else if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
+	}
+
+	if ((ret = __txn_undo(txnp)) != 0)
+		return (__db_panic(dbenv, ret));
+
+	/*
+	 * Normally, we do not need to log aborts.  However, if we
+	 * are a distributed transaction (i.e., we have a prepare),
+	 * then we log the abort so we know that this transaction
+	 * was actually completed.
+	 */
+	SET_LOG_FLAGS(dbenv, txnp, lflags);
+
+	if (DBENV_LOGGING(dbenv) && td->status == TXN_PREPARED &&
 		(ret = __txn_regop_log(dbenv, txnp, &txnp->last_lsn, NULL,
 			lflags, TXN_ABORT, (int32_t)comdb2_time_epoch(), NULL)) != 0)
 		 return (__db_panic(dbenv, ret));
