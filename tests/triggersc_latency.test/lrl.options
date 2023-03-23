@@ -2,3 +2,10 @@ logmsg level info
 debug_add_replication_latency on
 # uncomment to see bug
 #javasp_early_release off
+
+# The writer-penalty must stay disabled on the master:
+# otherwise deadlocking write-schedules can set the 
+# 'write-penalty' flag, which can prevent a queue-sc 
+# from being dispatched.  This causes spurious & 
+# incorrect failures
+disable_writer_penalty_deadlock 1
