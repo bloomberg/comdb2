@@ -5295,7 +5295,7 @@ static void abort_prepared_waiters(bdb_state_type *bdb_state)
     pthread_attr_t thd_attr;
     Pthread_attr_init(&thd_attr);
     Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-    Pthread_create(&abort_prepared_td, &thd_attr, bdb_abort_prepared_thd, bdb_state);
+    Pthread_create(&abort_prepared_td, &thd_attr, bdb_abort_prepared_thd, b);
 }
 
 static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
