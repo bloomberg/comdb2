@@ -36,6 +36,8 @@
 #include "rtcpu.h"
 #include "config.h"
 #include "phys_rep.h"
+#include "phys_rep_lsn.h"
+#include "macc_glue.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -46,6 +48,7 @@ extern int gbl_recovery_lsn_offset;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
+extern int gbl_server_admin_mode;
 
 int gbl_disable_access_controls;
 
@@ -74,6 +77,7 @@ static struct option long_options[] = {
     {"tunable", required_argument, NULL, 0},
     {"version", no_argument, NULL, 'v'},
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
+    {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text =
@@ -386,7 +390,6 @@ static char *legacy_options[] = {
     "dont_superset_foreign_keys",
     "enable_sql_stmt_caching none",
     "enable_tagged_api",
-    "env_messages",
     "init_with_time_based_genids",
     "legacy_schema on",
     "logmsg level info",
@@ -394,7 +397,6 @@ static char *legacy_options[] = {
     "logmsg skiplevel",
     "logput window 1",
     "mask_internal_tunables 0",
-    "master_sends_query_effects 0",
     "noblobstripe",
     "nochecksums",
     "nocrc32c",
@@ -411,7 +413,6 @@ static char *legacy_options[] = {
     "on disable_etc_services_lookup",
     "online_recovery off",
     "osql_send_startgen off",
-    "queuedb_genid_filename off",
     "reorder_socksql_no_deadlock off",
     "setattr DIRECTIO 0",
     "setattr ENABLE_SEQNUM_GENERATIONS 0",
@@ -420,10 +421,12 @@ static char *legacy_options[] = {
     "setattr SC_DONE_SAME_TRAN 0",
     "sqlsortermaxmmapsize 268435456",
     "unnatural_types 1",
+    "wal_osync 1",
     "init_with_queue_ondisk_header off",
     "init_with_queue_compr off",
     "init_with_queue_persistent_sequence off",
     "usenames",
+    "setattr max_sql_idle_time 864000",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
@@ -625,43 +628,31 @@ static int lrltokignore(char *tok, int ltok)
 static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
                                  char *fname, int dbnum, char *tok)
 {
-    int rc;
     struct dbtable *db;
-    rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
+    char *csc2;
+
+    csc2 = load_text_file(fname);
+    if (!csc2) {
+        logmsg(LOGMSG_ERROR, "Error loading text from file %s\n", fname);
         return -1;
     }
 
-    /* create one */
-    db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs);
-    if (db == NULL) {
+    struct errstat err = {0};
+    db = create_new_dbtable(dbenv, tblname, csc2, dbnum, dbenv->num_dbs, 0, 0,
+                            0, &err);
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s\ncsc2:\"%s\"\n", err.errstr, csc2);
+        free(csc2);
         return -1;
     }
 
+    db->csc2_schema = csc2;
     db->dbs_idx = dbenv->num_dbs;
     dbenv->dbs[dbenv->num_dbs++] = db;
 
     /* Add table to the hash. */
     hash_add(dbenv->db_hash, db);
 
-    /* just got a bunch of data. remember it so key forming
-       routines and SQL can get at it */
-    struct errstat err = {0};
-    rc = add_cmacc_stmt(db, 0, 0, &err);
-    if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "Failed to load schema: can't process schema file %s\n%s\n", tok,
-               err.errstr);
-        return -1;
-    }
-
-    /* Initialize table's check constraint members. */
-    if (init_check_constraints(db)) {
-        logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
-               db->tablename);
-        return -1;
-    }
     return 0;
 }
 
@@ -773,7 +764,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         }
     } else if (tokcmp(tok, ltok, "port") == 0) {
         char hostname[255];
-        int port;
+        int port1 = 0;
+        int port2 = 0;
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR,
@@ -793,16 +785,25 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                    "Expected hostname port for \"port\" directive\n");
             return -1;
         }
-        port = toknum(tok, ltok);
-        if (port <= 0 || port >= 65536) {
+        port1 = toknum(tok, ltok);
+        if (port1 <= 0 || port1 >= 65536) {
             logmsg(LOGMSG_ERROR, "Port out of range for \"port\" directive\n");
             return -1;
+        }
+        /* optional port2, defaults to 0 */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok != 0) {
+            port2 = toknum(tok, ltok);
+            if (port2 <= 0 || port2 >= 65536) {
+                logmsg(LOGMSG_ERROR, "Port out of range for \"port\" directive\n");
+                return -1;
+            }
         }
         if (dbenv->nsiblings > 1) {
             for (ii = 0; ii < dbenv->nsiblings; ii++) {
                 if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
-                    dbenv->sibling_port[ii][NET_REPLICATION] = port;
-                    dbenv->sibling_port[ii][NET_SQL] = port;
+                    dbenv->sibling_port[ii][NET_REPLICATION] = port1;
+                    dbenv->sibling_port[ii][NET_SQL] = port2;
                     break;
                 }
             }
@@ -815,8 +816,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             }
         } else if (strcmp(hostname, "localhost") == 0) {
             /* nsiblings == 1 means there's no other nodes in the cluster */
-            dbenv->sibling_port[0][NET_REPLICATION] = port;
-            dbenv->sibling_port[0][NET_SQL] = port;
+            dbenv->sibling_port[0][NET_REPLICATION] = port1;
+            dbenv->sibling_port[0][NET_SQL] = port2;
         }
     } else if (tokcmp(tok, ltok, "remsql_whitelist") == 0) {
         /* expected parse line: remsql_whitelist db1 db2 ...  */
@@ -1061,9 +1062,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
             }
 
-            dyns_init_globals();
             rc = new_table_from_schema(dbenv, tblname, fname, dbnum, tok);
-            dyns_cleanup_globals();
             if (rc)
                 return rc;
 
@@ -1363,6 +1362,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         free(type);
         start_replication();
 
+    } else if (tokcmp(tok, ltok, "physrep_ignore") == 0) {
+        /* Tables that should ignore replication */
+        while ((tok = segtok(line, len, &st, &ltok)) != NULL && ltok > 0) {
+            char *table = tokdup(tok, ltok);
+            logmsg(LOGMSG_INFO, "Physrep ignoring table %s\n", table);
+            physrep_add_ignore_table(table);
+        }
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
         tok = segtok(line, len, &st, &ltok);
 
@@ -1379,6 +1385,23 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
                gbl_deferred_phys_update);
         free(wait);
+    } else if (tokcmp(tok, ltok, "remap_machine_class_to_fdb_tier") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected argument for remap_machine_class_to_fdb_tier\n");
+            return -1;
+        }
+        const char *cls = tokdup(tok, ltok);
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected argument for remap_machine_class_to_fdb_tier\n");
+            return -1;
+        }
+        const char *tier = tokdup(tok, ltok);
+        if (mach_class_remap_fdb_tier(cls, tier) == 0)
+            logmsg(LOGMSG_USER, "Successfully remapped machine class '%s' to fdb tier '%s'\n", cls, tier);
+        else
+            logmsg(LOGMSG_USER, "Failed remapping machine class '%s' to fdb tier '%s'\n", cls, tier);
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;

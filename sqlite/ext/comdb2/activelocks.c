@@ -24,18 +24,19 @@
 #include "ezsystables.h"
 #include "cdb2api.h"
 #include "str0.h"
+#include <stackutil.h>
 
 typedef struct systable_activelocks {
     int64_t                 threadid;
     uint32_t                lockerid;
     const char              *mode;
     const char              *status;
-    char                    object_str[64];
     char                    *object;
-    char                    type_str[80];
     char                    *type;
     int64_t                 page;
     int                     page_isnull;
+    int                     frames;
+    char                    *stack;
 } systable_activelocks_t;
 
 typedef struct getactivelocks {
@@ -46,8 +47,11 @@ typedef struct getactivelocks {
 
 static int collect(void *args, int64_t threadid, int32_t lockerid,
         const char *mode, const char *status, const char *object,
-        int64_t page, const char *rectype)
+        int64_t page, const char *rectype, int stackid)
 {
+    int64_t hits;
+    int nframes;
+    char *type;
     getactivelocks_t *a = (getactivelocks_t *)args;
     systable_activelocks_t *l;
     a->count++;
@@ -67,18 +71,13 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
         l->page = page;
         l->page_isnull = 0;
     }
-    if (object)
-        strncpy0(l->object_str, object, sizeof(l->object_str));
-    else
-        l->object_str[0] = '\0';
-    l->object = l->object_str;
+    l->object = strdup(object ? object : "");
+    l->type = strdup(rectype ? rectype : "");
 
-    if (rectype)
-        strncpy0(l->type_str, rectype, sizeof(l->type_str));
-    else 
-        l->type_str[0] = '\0';
-    l->type = l->type_str;
-
+    if ((l->stack = stackutil_get_stack_str(stackid, &type, &nframes, &hits)) == NULL) {
+        l->stack = strdup("(no-stack)");
+        free(type);
+    }
     return 0;
 }
 
@@ -94,6 +93,13 @@ static int get_activelocks(void **data, int *records)
 
 static void free_activelocks(void *p, int n)
 {
+    systable_activelocks_t *a, *begin = p;
+    systable_activelocks_t *end = begin + n;
+    for (a = begin; a < end; ++a) {
+        free(a->object);
+        free(a->type);
+        free(a->stack);
+    }
     free(p);
 }
 
@@ -111,5 +117,6 @@ int systblActivelocksInit(sqlite3 *db) {
             CDB2_CSTRING, "object", -1, offsetof(systable_activelocks_t, object),
             CDB2_CSTRING, "locktype", -1, offsetof(systable_activelocks_t, type),
             CDB2_INTEGER, "page", offsetof(systable_activelocks_t, page_isnull), offsetof(systable_activelocks_t, page),
+            CDB2_CSTRING, "stack", -1, offsetof(systable_activelocks_t, stack),
             SYSTABLE_END_OF_FIELDS);
 }

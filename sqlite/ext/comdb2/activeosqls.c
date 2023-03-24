@@ -120,7 +120,7 @@ static int collect_bplog_session(void *obj, void *arg)
     o->type = bplogtype;
     o->origin = sess->target.host? strdup(sess->target.host) : NULL;
     o->where = iq && iq->where ? strdup(iq->where) : NULL;
-    if (iq && IQ_HAS_SNAPINFO(iq)) {
+    if (iq && IQ_HAS_SNAPINFO_KEY(iq)) {
         o->cnonce = malloc(IQ_SNAPINFO(iq)->keylen + 1);
         memcpy(o->cnonce, IQ_SNAPINFO(iq)->key, IQ_SNAPINFO(iq)->keylen);
         o->cnonce[IQ_SNAPINFO(iq)->keylen] = '\0';

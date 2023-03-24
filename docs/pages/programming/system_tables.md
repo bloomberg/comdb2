@@ -195,7 +195,7 @@ Describes all the components of the keys.
 Describes all of the keys in the database.
 
     comdb2_keys(tablename, keyname, keynumber, isunique, isdatacopy,
-    isrecnum, condition)
+    isrecnum, condition, ispartialdatacopy)
 
 * `tablename` - Name of the table
 * `keyname` - Name of the key
@@ -204,6 +204,7 @@ Describes all of the keys in the database.
 * `isrecnum` - `Y` if this key has recnums
 * `condition` - Where condition for this index
 * `uniqnulls` - `Y` if this key treats NULL values as unique
+* `ispartialdatacopy` - `Y` if some subset of the data is inlined with this key
 
 ## comdb2_keywords
 
@@ -292,6 +293,16 @@ Lists all opcode handlers available in Comdb2.
 * `opcode` - Number assigned to the opcode handler
 * `name` - Name of the opcode handler
 
+## comdb2_partial_datacopies
+
+Lists all of the partial datacopy columns for each relevant key in the database.
+
+    comdb2_partial_datacopies(tablename, keyname, columnname)
+
+* `tablename` - Name of the table with partial datacopy
+* `keyname` - Name of the key with partial datacopy
+* `columnname` - Name of the column included in partial datacopy for `keyname`
+
 ## comdb2_plugins
 
 Lists all plugins currently available in Comdb2.
@@ -315,6 +326,19 @@ List all stored procedures in the database.
 * `client_versioned` -  Is client versioned?
 * `default` - Is default?
 * `src` - Source
+
+## comdb2_query_plans
+
+List all query plans for each fingerprint/query in the database.
+
+    comdb2_query_plans(fingerprint, normalized_sql, plan, total_cost_per_row, num_executions, avg_cost_per_row)
+
+* `fingerprint` - Fingerprint of the query
+* `normalized_sql` - Query associated with the fingerprint
+* `plan` - Query plan for this fingerprint that includes the tables and indices traversed
+* `total_cost_per_row` - The sum of all of the cost per rows (in results set) each time this query plan is executed for this query
+* `num_executions` - The number of times this query plan is executed for this query
+* `avg_cost_per_row` - Average cost per row (in results set), calculated by `total_cost_per_row` / `num_executions`
 
 ## comdb2_queues
 
@@ -588,6 +612,18 @@ Lists all the transaction log records.
 * `timestamp` - Timestamp
 * `payload` - Paylod
 
+## comdb2_transaction_state
+
+Lists the state of all threads processing transactions.
+
+    comdb2_transaction_state(state, time, machine, opcode, function)
+
+* `state` - Thread state ('busy' or 'idle')
+* `time` - The amount of time (ms) that the thread has been processing this request 
+* `machine` - The ID of the machine that the thread is running on
+* `opcode` - The opcode that the thread is processing
+* `function` - The backend function that the thread is running
+
 ## comdb2_triggers
 
 Lists triggers in the database.
@@ -679,4 +715,27 @@ List of views in the database.
 
 * `name` - Name of the view
 * `definition` - View definition
+
+## comdb2_memstats
+
+Heap memory usage
+
+    comdb2_memstats(name, scope, total, used, unused, peak)
+
+* `name` - name of the allocator.
+* `scope` - thread type of the allocator.
+* `total` - total number of bytes (`used` + `unused`) in the allocator
+* `used` - number of used bytes in the allocator
+* `unused` - number of unused bytes in the allocator
+* `peak` - maximum number of bytes used by the allocator since it was created
+
+## comdb2_stacks
+
+Generic stack collection
+
+    comdb2_stacks(id, hits, stack)
+
+* `id` - index of this stack.
+* `hits` - number of times this stack has been collected.
+* `stack` - flattened stack.
 

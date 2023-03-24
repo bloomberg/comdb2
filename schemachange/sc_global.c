@@ -557,7 +557,7 @@ uint64_t sc_get_seed_table(char *table)
 
 void add_ongoing_alter(struct schema_change_type *sc)
 {
-    assert(sc->alteronly != SC_ALTER_NONE);
+    assert(IS_ALTERTABLE(sc));
     Pthread_mutex_lock(&ongoing_alter_mtx);
     if (ongoing_alters == NULL) {
         ongoing_alters =
@@ -569,7 +569,7 @@ void add_ongoing_alter(struct schema_change_type *sc)
 
 void remove_ongoing_alter(struct schema_change_type *sc)
 {
-    assert(sc->alteronly != SC_ALTER_NONE);
+    assert(IS_ALTERTABLE(sc));
     Pthread_mutex_lock(&ongoing_alter_mtx);
     if (ongoing_alters != NULL) {
         hash_del(ongoing_alters, sc);
@@ -602,8 +602,8 @@ struct schema_change_type *preempt_ongoing_alter(char *table, int action)
             case SC_ACTION_PAUSE:
                 if (s->preempted != SC_ACTION_PAUSE)
                     ok = 1;
-                if (s->alteronly == SC_ALTER_PENDING)
-                    s->alteronly = SC_ALTER_ONLY;
+                if (s->kind == SC_ALTERTABLE_PENDING)
+                    s->kind = SC_ALTERTABLE;
                 break;
             case SC_ACTION_RESUME:
                 if (s->preempted == SC_ACTION_PAUSE)
@@ -613,15 +613,15 @@ struct schema_change_type *preempt_ongoing_alter(char *table, int action)
                 if (s->preempted == SC_ACTION_PAUSE ||
                     s->preempted == SC_ACTION_RESUME)
                     ok = 1;
-                else if (s->alteronly == SC_ALTER_PENDING) {
-                    s->alteronly = SC_ALTER_ONLY;
+                else if (s->kind == SC_ALTERTABLE_PENDING) {
+                    s->kind = SC_ALTERTABLE;
                     ok = 1;
                 }
                 break;
             case SC_ACTION_ABORT:
                 ok = 1;
-                if (s->alteronly == SC_ALTER_PENDING)
-                    s->alteronly = SC_ALTER_ONLY;
+                if (s->kind == SC_ALTERTABLE_PENDING)
+                    s->kind = SC_ALTERTABLE;
                 break;
             }
             if (ok) {

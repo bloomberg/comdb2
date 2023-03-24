@@ -23,6 +23,7 @@
 #include "endian_core.h"
 #include <flibc.h>
 #include "str0.h"
+#include "dynschematypes.h"
 
 typedef struct {
     char name[32];    /* name of field as a \0 terminated string */
@@ -254,8 +255,8 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                         rc = OP_FAILED_INTERNAL;
                         goto err;
                     }
-                    /* null terminate if 0-length */
-                    if (inline_len == 0)
+                    /* null terminate if 0-length and has an inline len */
+                    if (inline_len == 0 && fields[i].len > 0)
                         p[0] = 0;
 
                     p += server_schema->member[i].len - 5;
@@ -601,8 +602,8 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                         rc = OP_FAILED_INTERNAL;
                         goto err;
                     }
-                    /* null terminate if 0-length */
-                    if (inline_len == 0)
+                    /* null terminate if 0-length and has an inline len */
+                    if (inline_len == 0 && fields[i].len > 0)
                         p[0] = 0;
 
                     p += server_schema->member[i].len - 5;

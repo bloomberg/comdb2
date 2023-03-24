@@ -69,7 +69,7 @@
 #include <cdb2api.h>
 #include <dlmalloc.h>
 
-#include "sqloffload.h"
+#include <osqlrepository.h>
 #include "osqlcomm.h"
 
 #include <flibc.h>
@@ -94,6 +94,7 @@
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
+#include <comdb2_atomic.h>
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -178,6 +179,9 @@ static int syncmode_callback(bdb_state_type *bdb_state);
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
 
+/* Dont block when removing old files */
+int gbl_txn_fop_noblock = 0;
+
 static void *get_bdb_handle(struct dbtable *db, int auxdb)
 {
     void *bdb_handle;
@@ -245,6 +249,11 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
     iq->dbenv = dbenv;
     iq->is_fake = 1;
     iq->helper_thread = -1;
+}
+
+void set_tran_verify_updateid(tran_type *tran)
+{
+    bdb_set_tran_verify_updateid(tran);
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -348,8 +357,14 @@ int trans_start_sc(struct ireq *iq, tran_type *parent_trans,
 
 int trans_start_sc_lowpri(struct ireq *iq, tran_type **out_trans)
 {
-    struct txn_properties p = { .flags = DB_LOCK_ID_LOWPRI };
+    struct txn_properties p = {.flags = DB_LOCK_ID_LOWPRI};
     return trans_start_int(iq, NULL, out_trans, 0, 0, &p, 0);
+}
+
+int trans_start_sc_fop(struct ireq *iq, tran_type **out_trans)
+{
+    struct txn_properties p = {.flags = DB_TXN_FOP_NOBLOCK};
+    return trans_start_int(iq, NULL, out_trans, 0, 0, gbl_txn_fop_noblock ? &p : NULL, 0);
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
@@ -377,7 +392,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called\n", (intptr_t)pthread_self(), __func__);
     }
     out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
@@ -397,7 +412,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called\n", (intptr_t)pthread_self(), __func__);
     }
 
     out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
@@ -421,8 +436,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     iq->gluewhere = "bdb_tran_begin_snapisol";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
-               (int)pthread_self(), __func__, epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called with epoch=%d file=%d offset=%d\n",
+               (intptr_t)pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file,
                                         offset, is_ha_retry);
@@ -447,8 +462,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
     iq->gluewhere = "bdb_tran_begin";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
-               (int)pthread_self(), __func__, epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called with epoch=%d file=%d offset=%d\n",
+               (intptr_t)pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch,
                                             file, offset, is_ha_retry);
@@ -517,7 +532,7 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     else {
         bdb_tran_commit_logical_with_seqnum_size(
             bdb_handle, trans, blkseq, blklen, blkkey, blkkeylen,
-            (seqnum_type *)seqnum, &iq->txnsize, &bdberr);
+            (seqnum_type*)seqnum, &iq->txnsize, &bdberr);
     }
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size done";
     if (bdberr != 0) {
@@ -705,6 +720,10 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
         bdberr);
 }
 
+int gbl_javasp_early_release = 1;
+int gbl_debug_add_replication_latency = 0;
+uint32_t gbl_written_rows_warn = 0;
+
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey,
@@ -718,10 +737,16 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 
     memset(&ss, -1, sizeof(ss));
 
+    if (release_schema_lk && gbl_written_rows_warn > 0 && iq->written_row_count >= gbl_written_rows_warn) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] modified %u rows\n", iq->sorese->rqid,
+               comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
+    }
+
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
 
-    if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO(iq)) {
+    if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO_KEY(iq)) {
         cn_len = IQ_SNAPINFO(iq)->keylen;
         cnonce = alloca(cn_len + 1);
         memcpy(cnonce, IQ_SNAPINFO(iq)->key, cn_len);
@@ -735,12 +760,22 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         iq->sc_locked = 0;
     }
 
+    /* release_schema_lk == parent-tran */
+    if (release_schema_lk && iq->jsph && gbl_javasp_early_release) {
+        javasp_trans_release(iq->jsph);
+    }
+
     if (rc != 0) {
         return rc;
     }
 
     rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
                                    timeoutms, adaptive, &ss);
+
+    if (release_schema_lk && gbl_debug_add_replication_latency) {
+        logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
+        sleep(5);
+    }
 
     if (cnonce) {
         DB_LSN *lsn = (DB_LSN *)&ss;
@@ -2866,83 +2901,78 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
     return -1;
 }
 
-/* callback to report new master */
-static int new_master_callback(void *bdb_handle, char *host,
-                               int assert_sc_clear)
+static void thedb_set_master_int(char *master)
 {
-    ++gbl_master_changes;
-    struct dbenv *dbenv;
-    char *oldmaster, *newmaster;
-    uint32_t oldgen, gen, egen;
-    int trigger_timepart = 0;
-    dbenv = bdb_get_usr_ptr(bdb_handle);
-    oldmaster = dbenv->master;
-    oldgen = dbenv->gen;
-    dbenv->master = host;
+    thedb->master = master;
+}
 
+static pthread_mutex_t new_master_lk = PTHREAD_MUTEX_INITIALIZER;
+void thedb_set_master(char *master)
+{
+    if (gbl_create_mode) return;
+    Pthread_mutex_lock(&new_master_lk);
+    char *old = thedb->master;
+    thedb_set_master_int(master);
+    logmsg(LOGMSG_USER, "%s: %s -> %s\n", __func__, old, master);
+    Pthread_mutex_unlock(&new_master_lk);
+}
+
+static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
+{
+    char *host;
+    uint32_t gen, egen;
+    bdb_get_rep_master(bdb_handle, &host, &gen, &egen);
+    logmsg(LOGMSG_USER,
+           "%s: old old-master:%s old-gen:%d old-egen:%d\n"
+           "%s: new rep-master:%s rep-gen:%d rep-egen:%d\n"
+           ,__func__, thedb->master, thedb->gen, thedb->egen
+           ,__func__, host, gen, egen);
+    if (host == db_eid_invalid) {
+        logmsg(LOGMSG_USER, "%s: skipping callback\n", __func__);
+        return;
+    }
+    char *oldmaster = thedb->master;
+    thedb_set_master_int(host);
+    thedb->egen = egen;
+    thedb->gen = gen;
+    ATOMIC_ADD32(gbl_master_changes, 1);
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
-        if (oldmaster == gbl_myhostname && host != gbl_myhostname)
+        if (oldmaster == gbl_myhostname && host != gbl_myhostname) {
             sc_assert_clear(__func__, __LINE__);
+        }
     }
-
-    bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
-    if (gbl_master_swing_osql_verbose)
-        logmsg(LOGMSG_INFO,
-               "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
-               __func__, __LINE__, host ? host : "NULL",
-               newmaster ? newmaster : "NULL", egen);
-    dbenv->gen = gen;
-    /*this is only used when handle not established yet. */
     if (host == gbl_myhostname) {
-
         trigger_clear_hash();
-
         if (oldmaster != host) {
-            logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
-            gbl_master_changes++;
-
-            /* if there is an active schema changes, resume it */
+            logmsg(LOGMSG_USER, "I AM NEW MASTER NODE %s\n", host);
             if (gbl_ready && resume_schema_change()) {
-                logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if "
-                        "one was in progress it will have to be restarted\n");
+                logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if one was in progress it will have to be restarted\n");
             }
             load_auto_analyze_counters();
-            trigger_timepart = 1;
-
-            if (oldgen != gen) {
-                osql_repository_cancelall();
-            }
+            XCHANGE32(gbl_trigger_timepart, 1);
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
-        /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
-
-        /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
-        if (oldmaster != host && !gbl_create_mode) {
-            logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
+        if (oldmaster != host) {
+            logmsg(LOGMSG_USER, "NEW MASTER NODE %s\n", host);
         }
-
         osql_repository_cancelall();
     }
-
-    /* poke master in comdb2 shm */
     if (!gbl_exit && comdb2_ipc_master_set) {
         comdb2_ipc_master_set(host);
     }
+    gbl_lost_master_time = 0;
+    osql_checkboard_for_each(thedb->master, osql_checkboard_master_changed);
+}
 
-    gbl_lost_master_time = 0; /* reset this */
-
-    /* fudge around my lockless access to gbl_master_changes */
-    MEMORY_SYNC;
-
-    osql_checkboard_for_each(dbenv->master, osql_checkboard_master_changed);
-
-    /* inform watcher that we have a new master !*/
-    if(trigger_timepart)
-        gbl_trigger_timepart = 1;
-
+static int new_master_callback(void *bdb_handle, char *host, int assert_sc_clear)
+{
+    if (gbl_create_mode) return 0;
+    Pthread_mutex_lock(&new_master_lk);
+    new_master_callback_int(bdb_handle, assert_sc_clear);
+    Pthread_mutex_unlock(&new_master_lk);
     return 0;
 }
 
@@ -3347,8 +3377,8 @@ int send_to_all_nodes(void *dta, int len, int type, int waittime)
     return failed;
 }
 
-#define MSGWAITTIME 300000 /* tunable? */
-#define SCWAITTIME 1000
+int gbl_msgwaittime = 10000;
+int gbl_scwaittime = 1000;
 
 /* Send an async message to the master node reminding it that I appear to be
  * incoherent and would it kindly let me know if this isn't th case anymore. */
@@ -3364,7 +3394,7 @@ int send_forgetmenot(void)
 
 int broadcast_close_all_dbs(void)
 {
-    return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, MSGWAITTIME);
+    return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, gbl_msgwaittime);
 }
 
 int broadcast_sc_end(const char *table, uint64_t seed)
@@ -3380,7 +3410,7 @@ int broadcast_sc_end(const char *table, uint64_t seed)
         sc->table[0] = '\0';
     sc->seed = flibc_htonll(seed);
 
-    return send_to_all_nodes(sc, len, NET_STOP_SC, SCWAITTIME);
+    return send_to_all_nodes(sc, len, NET_STOP_SC, gbl_scwaittime);
 }
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
@@ -3405,12 +3435,12 @@ int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
     sc->time = flibc_htonll(t);
     strcpy(sc->host, intern(from));
 
-    return send_to_all_nodes(sc, len, NET_START_SC, SCWAITTIME);
+    return send_to_all_nodes(sc, len, NET_START_SC, gbl_scwaittime);
 }
 
 int broadcast_sc_ok(void)
 {
-    return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, SCWAITTIME);
+    return send_to_all_nodes(NULL, 0, NET_CHECK_SC_OK, gbl_scwaittime);
 }
 
 int broadcast_procedure_op(int op, const char *name, const char *param)
@@ -3437,7 +3467,7 @@ int broadcast_procedure_op(int op, const char *name, const char *param)
     memcpy(ptr, param, paramlen);
     ptr += paramlen;
 
-    return send_to_all_nodes(msg, len, NET_JAVASP_OP, MSGWAITTIME);
+    return send_to_all_nodes(msg, len, NET_JAVASP_OP, gbl_msgwaittime);
 }
 
 int broadcast_add_new_queue(char *table, int avgitemsz)
@@ -3450,13 +3480,13 @@ int broadcast_add_new_queue(char *table, int avgitemsz)
     msg.reserved = 0;
     strncpy0(msg.name, table, sizeof(msg.name));
     msg.avgitemsz = avgitemsz;
-    return send_to_all_nodes(&msg, sizeof(msg), NET_NEW_QUEUE, MSGWAITTIME);
+    return send_to_all_nodes(&msg, sizeof(msg), NET_NEW_QUEUE, gbl_msgwaittime);
 }
 
 int broadcast_flush_all(void)
 {
     int i = 0;
-    return send_to_all_nodes(&i, sizeof(int), NET_FLUSH_ALL, MSGWAITTIME);
+    return send_to_all_nodes(&i, sizeof(int), NET_FLUSH_ALL, gbl_msgwaittime);
 }
 
 int broadcast_add_consumer(const char *queuename, int consumern,
@@ -3467,7 +3497,7 @@ int broadcast_add_consumer(const char *queuename, int consumern,
     msg.consumern = consumern;
     strncpy0(msg.name, queuename, sizeof(msg.name));
     strncpy0(msg.method, method, sizeof(msg.method));
-    return send_to_all_nodes(&msg, sizeof(msg), NET_ADD_CONSUMER, MSGWAITTIME);
+    return send_to_all_nodes(&msg, sizeof(msg), NET_ADD_CONSUMER, gbl_msgwaittime);
 }
 
 /* Return 1 if we should allow connections from/to the given node, return 0
@@ -3489,6 +3519,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
     signed char ixdups[1];
     signed char ixrecnum[1];
     signed char ixdta[1];
+    int ixdtalen[1];
     char name[100];
     char litename[100];
     int bdberr;
@@ -3500,13 +3531,8 @@ int open_auxdbs(struct dbtable *db, int force_create)
     /* meta information dbs.  we need to make sure that lite meta tables
      * are named differently to heavy meta tables otherwise we can't tell
      * them apart at startup.. */
-    if (gbl_nonames) {
-        snprintf(name, sizeof(name), "comdb2_meta");
-        snprintf(litename, sizeof(litename), "comdb2_metalite");
-    } else {
-        snprintf(name, sizeof(name), "%s.meta", db->tablename);
-        snprintf(litename, sizeof(litename), "%s.metalite", db->tablename);
-    }
+    snprintf(name, sizeof(name), "%s.meta", db->tablename);
+    snprintf(litename, sizeof(litename), "%s.metalite", db->tablename);
 
     ctrace("bdb_open_more: opening <%s>\n", name);
     numdtafiles = 1;
@@ -3517,6 +3543,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
     ixdups[0] = 0;
     ixrecnum[0] = 0;
     ixdta[0] = 0;
+    ixdtalen[0] = 0;
 
     if (force_create) {
         if (gbl_meta_lite)
@@ -3525,7 +3552,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
                                      0, db->dbenv->bdb_env, &bdberr);
         else
             db->meta = bdb_create(name, db->dbenv->basedir, 0, numix, ixlen,
-                                  ixdups, ixrecnum, ixdta, NULL, NULL,
+                                  ixdups, ixrecnum, ixdta, ixdtalen, NULL, NULL,
                                   numdtafiles, db->dbenv->bdb_env, 0, &bdberr);
     } else {
         /* see if we have a lite meta table - if so use that.  otherwise
@@ -3537,7 +3564,7 @@ int open_auxdbs(struct dbtable *db, int force_create)
                 ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
                        bdberr);
             db->meta = bdb_open_more(name, db->dbenv->basedir, 0, numix, ixlen,
-                                     ixdups, ixrecnum, ixdta, NULL, NULL,
+                                     ixdups, ixrecnum, ixdta, ixdtalen, NULL, NULL,
                                      numdtafiles, db->dbenv->bdb_env, &bdberr);
         }
     }
@@ -3851,8 +3878,7 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
 
 static void get_disable_skipscan(struct dbtable *tbl, tran_type *tran)
 {
-    if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
-        tbl->dbtype != DBTYPE_TAGGED_TABLE)
+    if (tbl->dbtype != DBTYPE_TAGGED_TABLE)
         return;
 
     char *str = NULL;
@@ -3903,7 +3929,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
         db->handle = bdb_open_more_tran(
             db->tablename, dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+            db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* main record + n blobs */
             dbenv->bdb_env, tran, flags, &bdberr);
 
@@ -5123,7 +5149,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
 {
     int bdberr;
     void *bdb_handle;
-    unsigned long long genid;
+    unsigned long long genid = 0;
     bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -5152,7 +5178,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     recorded_hit:
         /* Add this genid to the replication list; queue consumers will block
          * on this until it has replicated. */
-        iq->repl_list = add_genid_to_repl_list(genid, iq->repl_list);
+        if (genid) iq->repl_list = add_genid_to_repl_list(genid, iq->repl_list);
         return 0;
     }
     if (bdberr == BDBERR_DEADLOCK)
@@ -5414,10 +5440,19 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
     void *bdb_handle;
     int retries = 0;
     int rc;
+    int created_tran = 0;
     bbuint32_t lastitem = 0;
     bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
+
+    if (tran == NULL) {
+        // int trans_start(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
+        rc = trans_start(iq, NULL, &tran);;
+        if (rc)
+            goto done;
+        created_tran = 1;
+    }
 
     flags &= ~BDB_QUEUE_WALK_RESTART;
 
@@ -5426,6 +5461,7 @@ retry:
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
                         (bdb_queue_walk_callback_t)callback, tran, userptr,
                         &bdberr);
+done:
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5442,6 +5478,9 @@ retry:
             return IX_NOTFND;
         }
         return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
+    }
+    if (created_tran && tran != NULL) {
+        trans_abort(iq, tran);
     }
     return rc;
 }
@@ -5492,8 +5531,7 @@ uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blob
     uint64_t size_without_blobs = 0;
     db->totalsize = 0;
 
-    if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
-        db->dbtype == DBTYPE_TAGGED_TABLE) {
+    if (db->dbtype == DBTYPE_TAGGED_TABLE) {
         for (ii = 0; ii < db->nix; ii++) {
             db->ixsizes[ii] = bdb_index_size_tran(db->handle, tran, ii);
             db->totalsize += db->ixsizes[ii];
@@ -5525,16 +5563,12 @@ uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
     return calc_table_size_tran(NULL, db, skip_blobs);
 }
 
-void compr_print_stats()
-{
+void compr_print_stats_int(struct dbtable **dbs, int num_dbs){
     int ii;
     int odh, compr, blob_compr;
 
-    logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
-    logmsg(LOGMSG_USER, "These apply to new records only!\n");
-
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        struct dbtable *db = thedb->dbs[ii];
+    for (ii = 0; ii < num_dbs; ii++) {
+        struct dbtable *db = dbs[ii];
         bdb_get_compr_flags(db->handle, &odh, &compr, &blob_compr);
 
         logmsg(LOGMSG_USER, "[%-16s] ", db->tablename);
@@ -5545,6 +5579,22 @@ void compr_print_stats()
                db->instant_schema_change ? "yes" : "no");
 
         logmsg(LOGMSG_USER, "\n");
+    }
+}
+void compr_print_stats()
+{
+    if (thedb->num_dbs == 0 && thedb->num_qdbs == 0) {
+        return;
+    }
+    logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
+    logmsg(LOGMSG_USER, "These apply to new records only!\n");
+
+    if (thedb->num_dbs) {
+        compr_print_stats_int(thedb->dbs, thedb->num_dbs);
+    }
+
+    if (thedb->num_qdbs) {
+        compr_print_stats_int(thedb->qdbs, thedb->num_qdbs);
     }
 }
 
@@ -5669,7 +5719,7 @@ long long get_unique_longlong(struct dbenv *env)
     if (gbl_use_fastseed_for_comdb2_seqno) {
         uint64_t uid;
 
-        uid = comdb2fastseed();
+        uid = comdb2fastseed(3);
         uid = flibc_htonll(uid);
         memcpy(&id, &uid, sizeof(uid));
     } else {
@@ -6163,7 +6213,7 @@ int comdb2_iam_master() {
     return (thedb->master == gbl_myhostname) ? 1 : 0;
 }
 
-static int sync_state_to_protobuf(int sync) {
+int sync_state_to_protobuf(int sync) {
     switch (sync) {
         case REP_SYNC_FULL:
             return CDB2_SYNC_MODE__SYNC;

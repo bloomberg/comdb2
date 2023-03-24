@@ -23,7 +23,7 @@ ALTER TABLE t5 ADD COLUMN j INT DEFAULT 1 $$
 
 CREATE TABLE t6(i INT) OPTIONS REC ZLIB, BLOBFIELD ZLIB $$
 ALTER TABLE t6 ADD COLUMN j INT NULL $$
-CREATE TABLE t7(i INT) OPTIONS REC ZLIB, REBUILD $$
+CREATE TABLE t7(i INT) OPTIONS REC ZLIB $$
 ALTER TABLE t7 ADD COLUMN j INT NULL $$
 
 CREATE TABLE t8(i BLOB) $$
@@ -72,6 +72,7 @@ ALTER TABLE t1 ADD UNIQUE INDEX idx1 (i,j) $$
 ALTER TABLE t1 ADD UNIQUE INDEX idx2 (i) $$
 ALTER TABLE t1 ADD INDEX idx3(j,i) $$
 ALTER TABLE t1 ADD INDEX idx4(i) $$
+ALTER TABLE t1 ADD INDEX idx5(i) INCLUDE (j, k) $$
 ALTER TABLE t1 ADD PRIMARY KEY (k) $$
 ALTER TABLE t2 ADD UNIQUE INDEX idx1 (i,j) $$
 ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
@@ -79,6 +80,7 @@ ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_partial_datacopies WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 

@@ -59,7 +59,7 @@ struct fdb_affinity {
 static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      int maxnodes,
                                      /* out: */ char *nodes[REPMAX],
-                                     int *nnodes, int room[REPMAX]);
+                                     int *nnodes, int *room);
 
 /**
  * Retrieves node location from comdb2db for "dbname" of class "class"
@@ -78,7 +78,7 @@ static int _fdb_refresh_location(const char *dbname, fdb_location_t *loc)
 
     assert(loc);
 
-    lvl = mach_class_class2name(loc->class);
+    lvl = mach_class_class2tier(loc->class);
     if (strncasecmp(lvl, "unknown", 7) == 0) {
         return FDB_ERR_CLASS_UNKNOWN;
     }
@@ -392,8 +392,8 @@ done:
     return host;
 }
 
-char* gbl_foreign_metadb = "comdb2db";
-char* gbl_foreign_metadb_class = "prod";
+char *gbl_foreign_metadb = NULL;
+char *gbl_foreign_metadb_class = NULL;
 static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      int maxnodes,
                                      /* out: */ char *nodes[REPMAX],

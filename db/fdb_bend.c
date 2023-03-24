@@ -64,7 +64,6 @@
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
-#include "fdb_util.h"
 #include "fdb_fend.h"
 #include <flibc.h>
 #include "comdb2uuid.h"
@@ -107,7 +106,8 @@ static svc_center_t *center;
 
 static int fdb_convert_data(svc_cursor_t *cur, unsigned long long *genid,
                             char **data, int *datalen);
-
+static int fdb_unp_to_p(Mem *m, int ncols, int hdrsz, int datasz, char *out,
+                        int outlen);
 /**
    ======== API ===========
 
@@ -993,82 +993,12 @@ static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
 
     *reqsize = 0;
 
-#if 0
-    int sz;
-    int fnum;
-   for (fnum = 0; fnum < nField; fnum++) {
-      bzero(&m[fnum], sizeof(Mem));
-      rc = fdb_get_data_int(cur, s, in, fnum, &m[fnum], 1, genid);
-      if (rc) goto done;
-      type = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-      sz = sqlite3VdbeSerialTypeLen(type);
-      datasz += sz;
-      hdrsz += sqlite3VarintLen(type);
-      /*fprintf( stderr, "%s:%d type=%d size=%d datasz=%d hdrsz=%d\n",
-        __FILE__, __LINE__, type, sz, datasz, hdrsz);*/
-   }
-   ncols = fnum;
-
-   if (genid)
-   {
-      bzero(&m[fnum], sizeof(Mem));
-      m[fnum].u.i = genid;
-      m[fnum].flags = MEM_Int;
-
-      type = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-      sz = sqlite3VdbeSerialTypeLen(type);
-      datasz += sz;
-      hdrsz += sqlite3VarintLen(sz);
-      ncols++;
-   }
-
-   /* to account for size of header in header */
-   hdrsz += sqlite3VarintLen(hdrsz);
-
-#endif
-
     rc = fdb_ondisk_to_unpacked(db, s, cur, in, genid, m, nField + 1, &hdrsz,
                                 &datasz, &ncols);
 
 /*
    fprintf( stderr, "%s:%d hdrsz=%d ncols=%d maxout=%d\n",
    __FILE__, __LINE__, hdrsz, ncols, maxout);*/
-
-#if 0
-    unsigned char *hdrbuf, *dtabuf;
-    hdrbuf = out;
-    dtabuf = out + hdrsz;
-
-    /* enough room? */
-   if (maxout > 0 && (datasz + hdrsz) > maxout) {
-      fprintf (stderr, "AAAAA!?!?\n");
-      rc = -2;
-      *reqsize = datasz + hdrsz;
-      goto done;
-   }
-
-   /* put header size in header */
-
-   sz = sqlite3PutVarint(hdrbuf, hdrsz);
-   hdrbuf += sz;
-
-    int remainingsz = 0;
-   /* keep track of the size remaining */
-   remainingsz = datasz;
-
-   for (fnum = 0; fnum < ncols; fnum++) {
-      sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
-      dtabuf += sz;
-      remainingsz -= sz;
-      sz = sqlite3PutVarint(hdrbuf, sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
-      hdrbuf += sz;
-      assert( hdrbuf <= (out + hdrsz) );
-   }
-   
-   /* return real length */
-   *reqsize = datasz + hdrsz;
-   rc = 0;
-#endif
 
     /* return real length */
     *reqsize = datasz + hdrsz;
@@ -1384,3 +1314,38 @@ void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
     trans->seq++;
 }
 
+/* pack an sqlite unpacked row to a packed row */
+static int fdb_unp_to_p(Mem *m, int ncols, int hdrsz, int datasz, char *out,
+                        int outlen)
+{
+    char *hdrbuf, *dtabuf;
+    int fnum;
+    int sz;
+    u32 len;
+
+    hdrbuf = out;
+    dtabuf = out + hdrsz;
+
+    /* enough room? */
+    if ((datasz + hdrsz) > outlen) {
+        return -1;
+    }
+
+    /* put header size in header */
+    sz = sqlite3PutVarint((unsigned char *)hdrbuf, hdrsz);
+    hdrbuf += sz;
+
+    for (fnum = 0; fnum < ncols; fnum++) {
+        sz = sqlite3VdbeSerialPut(
+            (unsigned char *)dtabuf, &m[fnum],
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
+        dtabuf += sz;
+        sz = sqlite3PutVarint(
+            (unsigned char *)hdrbuf,
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
+        hdrbuf += sz;
+        assert(hdrbuf <= (out + hdrsz));
+    }
+
+    return 0;
+}

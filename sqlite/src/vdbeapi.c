@@ -185,6 +185,7 @@ static void stmt_free_vtable_locks(sqlite3_stmt *pStmt) {
   free(vdbe->vTableLocks);
   vdbe->vTableLocks = 0;
   vdbe->numVTableLocks = 0;
+  vdbe->vTableFlags = 0;
 }
 
 void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
@@ -234,11 +235,12 @@ int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt) {
 }
 
 void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks,
-        int numVTableLocks) {
+        int numVTableLocks, int flags) {
   Vdbe *vdbe = (Vdbe *)pStmt;
   stmt_free_vtable_locks(pStmt);
   vdbe->numVTableLocks = numVTableLocks;
   vdbe->vTableLocks = vTableLocks;
+  vdbe->vTableFlags = flags;
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

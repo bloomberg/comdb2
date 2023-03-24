@@ -1120,6 +1120,7 @@ typedef struct FuncDef FuncDef;
 typedef struct FuncDefHash FuncDefHash;
 typedef struct IdList IdList;
 typedef struct Index Index;
+typedef struct IndexedExpr IndexedExpr;
 typedef struct IndexSample IndexSample;
 typedef struct KeyClass KeyClass;
 typedef struct KeyInfo KeyInfo;
@@ -1266,6 +1267,11 @@ struct Db {
   u8 safety_level;     /* How aggressive at syncing data to disk */
   u8 bSyncSet;         /* True if "PRAGMA synchronous=N" has been run */
   Schema *pSchema;     /* Pointer to database schema (possibly shared) */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int class;           /* what class for this cluster */
+  int class_override;  /* was class explicit at the discovery time */
+  int local;           /* is this a local db */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /*
@@ -2140,6 +2146,7 @@ struct Table {
                                      ** Index.aiRowLogEst[] values */
 #define TF_HasNotNull      0x0200    /* Contains NOT NULL constraints */
 #define TF_Shadow          0x0400    /* True for a shadow table */
+#define TF_HasStat4        0x2000    /* STAT4 info available for this table */
 
 /*
 ** Test to see whether or not a table is a virtual table.  This is
@@ -2386,6 +2393,8 @@ struct Index {
   unsigned noSkipScan:1;   /* Do not try to use skip-scan if true */
   unsigned hasStat1:1;     /* aiRowLogEst values come from sqlite_stat1 */
   unsigned bNoQuery:1;     /* Do not use this index to optimize queries */
+  unsigned bHasExpr:1;     /* Index contains an expression, either a literal
+                           ** expression, or a reference to a VIRTUAL column */
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
   int nSample;             /* Number of elements in aSample[] */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -3032,6 +3041,7 @@ struct Select {
 #define SF_Converted      0x10000  /* By convertCompoundSelectToSubquery() */
 #define SF_IncludeHidden  0x20000  /* Include hidden columns in output */
 #define SF_ComplexResult  0x40000  /* Result contains subquery or function */
+#define SF_NoopOrderBy   0x0400000 /* ORDER BY is ignored for this query */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SF_ASTIncluded  0x1000000  /* AST Generated */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3204,6 +3214,28 @@ struct TriggerPrg {
 #endif
 
 /*
+** For each index X that has as one of its arguments either an expression
+** or the name of a virtual generated column, and if X is in scope such that
+** the value of the expression can simply be read from the index, then
+** there is an instance of this object on the Parse.pIdxExpr list.
+**
+** During code generation, while generating code to evaluate expressions,
+** this list is consulted and if a matching expression is found, the value
+** is read from the index rather than being recomputed.
+*/
+struct IndexedExpr {
+  Expr *pExpr;            /* The expression contained in the index */
+  int iDataCur;           /* The data cursor associated with the index */
+  int iIdxCur;            /* The index cursor */
+  int iIdxCol;            /* The index column that contains value of pExpr */
+  u8 bMaybeNullRow;       /* True if we need an OP_IfNullRow check */
+  IndexedExpr *pIENext;   /* Next in a list of all indexed expressions */
+#ifdef SQLITE_ENABLE_EXPLAIN_COMMENTS
+  const char *zIdxName;   /* Name of index, used only for bytecode comments */
+#endif
+};
+
+/*
 ** An SQL parser context.  A copy of this structure is passed through
 ** the parser and down into all the parser action routine in order to
 ** carry around information that is global to the entire parse.
@@ -3250,6 +3282,7 @@ struct Parse {
   int nLabelAlloc;     /* Number of slots in aLabel */
   int *aLabel;         /* Space to hold the labels */
   ExprList *pConstExpr;/* Constant expressions */
+  IndexedExpr *pIdxExpr;/* List of expressions used by active indexes */
   Token constraintName;/* Name of the constraint currently being parsed */
   yDbMask writeMask;   /* Start a write transaction on these databases */
   yDbMask cookieMask;  /* Bitmask of schema verified databases */
@@ -3345,6 +3378,7 @@ struct Parse {
   char **azSrcListOnly;     /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
                              * enabled, this will contain the table names
                              * which were discovered in the SELECT query. */
+  u8 isDryrun;              /* Is a dryrun command */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4549,7 +4583,7 @@ extern sqlite3_uint64 sqlite3NProfileCnt;
 void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-void sqlite3AlterRenameTable(Parse*, Token*, Token*, int);
+void sqlite3AlterRenameTable(Parse*, Token*, Token*);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3AlterFunctions(void);
 void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
@@ -4981,11 +5015,12 @@ void sqlite3_dump_tunables(void);
 void sqlite3_set_tunable_by_name(char *tname, char *val);
 
 extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
-      const char *table,
-      int *version, int in_analysis_load);
+      const char *table, int *version, int in_analysis_load,
+      int *out_class, int *out_local, int *out_class_override);
 extern int sqlite3UnlockTable(const char *dbname, const char *table);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, int argc, sqlite3_value **argv,
-      const char *zName, const char *zFile, char **pzErrDyn, int version);
+      const char *zName, const char *zFile, char **pzErrDyn, int version,
+      int class, int local, int class_override);
 extern void comdb2_dynamic_detach(sqlite3 *db, int idx);  
 extern int comdb2_fdb_check_class(const char *dbname);
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);
@@ -4994,7 +5029,7 @@ char* sqlite3ExprDescribe(Vdbe *v, const Expr *pExpr);
 char* sqlite3ExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr);
 struct params_info;
 char* sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, 
-      struct params_info **pParamsOut);
+      struct params_info **pParamsOut, int useFullColnames);
 char *sqlite3DescribeIndexOrder(sqlite3 *db, 
       const char *zName, const char *zDb, 
       Mem *m, int nfields, int *hasCondition,
@@ -5026,6 +5061,7 @@ struct Cdb2TrigTables {
   Cdb2TrigEvents *events;
   Cdb2TrigTables *next;
 };
+struct schema_change_type;
 Cdb2TrigEvents *comdb2AddTriggerEvent(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
 void comdb2DropTrigger(Parse*,int,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
@@ -5035,13 +5071,17 @@ void comdb2CreateScalarFunc(Parse *, Token *, int flags);
 void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
+int comdb2IsDryrun(Parse *);
+int comdb2SCIsDryRunnable(struct schema_change_type *);
 
 void comdb2WriteTransaction(Parse*);
 
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
 int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
-Mem* sqlite3CloneResult(sqlite3_stmt *pStmt, Mem *cols, long long *pSize);
-void sqlite3CloneResultFree(sqlite3_stmt *pStmt, Mem **cols, long long *pSize);
+char *sqlite3PackedResult(sqlite3_stmt *pStmt, long long *size);
+Mem *sqlite3UnpackedResult(sqlite3_stmt *pStmt, int ncols, char *packed, int packed_len);
+void sqlite3UnpackedResultFree(Mem **ppMem, int nCols);
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 int sqlite3ExprVectorSize(Expr *pExpr);

@@ -254,9 +254,7 @@ public class SSLIO extends SockIO {
     }
 
     private boolean verify(StringBuilder err, String dbname, String nidDbName) {
-        if (sslmode != SSL_MODE.VERIFY_CA &&
-            sslmode != SSL_MODE.VERIFY_HOSTNAME &&
-            sslmode != SSL_MODE.VERIFY_DBNAME)
+        if (!SSL_MODE.needsVerification(sslmode))
             return true;
 
         SSLSession sess = ((SSLSocket)sock).getSession();
@@ -274,7 +272,7 @@ public class SSLIO extends SockIO {
             return false;
         }
 
-        if (sslmode == SSL_MODE.VERIFY_CA)
+        if (sslmode == SSL_MODE.VERIFY_CA || sslmode == SSL_MODE.PREFER_VERIFY_CA)
             return true;
 
         /* Validate PTR record. */
@@ -344,7 +342,7 @@ public class SSLIO extends SockIO {
             return false;
         }
 
-        if (sslmode == SSL_MODE.VERIFY_HOSTNAME)
+        if (sslmode == SSL_MODE.VERIFY_HOSTNAME || sslmode == SSL_MODE.PREFER_VERIFY_HOSTNAME)
             return true;
 
         String dbnameInCert = null;
@@ -372,10 +370,7 @@ public class SSLIO extends SockIO {
             String cert, String certtype, String certpasswd,
             String ca, String catype, String capasswd,
             String crl) throws SSLException {
-        if ((mode == SSL_MODE.VERIFY_CA ||
-             mode == SSL_MODE.VERIFY_HOSTNAME ||
-             mode == SSL_MODE.VERIFY_DBNAME)
-                && (ca == null || ca.length() == 0))
+        if (SSL_MODE.needsVerification(mode) && (ca == null || ca.length() == 0))
             throw new SSLException("Trust store required "
                     + "for server verification.");
         /* We require that the socket must be open first such that we know
@@ -401,7 +396,7 @@ public class SSLIO extends SockIO {
         if (rc < 0) /* socket broken */
             throw new SSLException("Could not negotiate SSL with server.");
         if (rc > 0) {
-            if (sslmode == SSL_MODE.ALLOW)
+            if (SSL_MODE.isOptional(sslmode))
                 return;
             throw new SSLHandshakeException("Server does not support SSL.");
         }
@@ -456,7 +451,7 @@ public class SSLIO extends SockIO {
         if (rc < 0) /* socket broken */
             return false;
         if (rc > 0) /* plaintext server */
-            return (sslmode == SSL_MODE.ALLOW);
+            return SSL_MODE.isOptional(sslmode);
 
         SSLSocket sslsock;
         try {

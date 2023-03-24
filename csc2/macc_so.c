@@ -103,11 +103,20 @@ int gbl_sequence_feature = 1;
 void csc2_error(const char *fmt, ...);
 void csc2_syntax_error(const char *fmt, ...);
 
-void dyns_allow_bools(void) { allow_bools = 1; }
+void csc2_allow_bools(void)
+{
+    allow_bools = 1;
+}
 
-void dyns_disallow_bools(void) { allow_bools = 0; }
+void csc2_disallow_bools(void)
+{
+    allow_bools = 0;
+}
 
-int dyns_used_bools(void) { return used_bools; }
+int csc2_used_bools(void)
+{
+    return used_bools;
+}
 
 #define CHECK_LEGACY_SCHEMA(A)                                                 \
     do {                                                                       \
@@ -900,7 +909,51 @@ void key_setprimary(void)
 
 void key_setdatakey(void)
 {
+    if (macc_globals->workkeyflag & PARTIALDATAKEY) {
+        csc2_error("Error at line %3d: CANNOT HAVE DATACOPY AND PARTIAL DATACOPY.\n",
+                current_line);
+        csc2_syntax_error("Error at line %3d: CANNOT HAVE DATACOPY AND PARTIAL DATACOPY.",
+                          current_line);
+        any_errors++;
+        return;
+    }
     macc_globals->workkeyflag |= DATAKEY;
+}
+
+void key_setpartialdatakey(void)
+{
+    if (macc_globals->workkeyflag & DATAKEY) {
+        csc2_error("Error at line %3d: CANNOT HAVE DATACOPY AND PARTIAL DATACOPY.\n",
+                    current_line);
+        csc2_syntax_error("Error at line %3d: CANNOT HAVE DATACOPY AND PARTIAL DATACOPY.",
+                          current_line);
+        any_errors++;
+        return;
+    } else if (macc_globals->workkeyflag & PARTIALDATAKEY) {
+        csc2_error("Error at line %3d: CANNOT HAVE MULTIPLE PARTIAL DATACOPIES.\n",
+                    current_line);
+        csc2_syntax_error("Error at line %3d: CANNOT HAVE MULTIPLE PARTIAL DATACOPIES.",
+                          current_line);
+        any_errors++;
+        return;
+    }
+
+    // check for decimal columns (currently not supported)
+    struct table *tbl = &macc_globals->tables[macc_globals->ntables - 1];
+    int type;
+    for (int i = 0; i < tbl->nsym; i++) {
+        type = tbl->sym[i].type;
+        if (type == T_DECIMAL32 || type == T_DECIMAL64 || type == T_DECIMAL128) {
+            csc2_error("Error at line %3d: CURRENTLY CANNOT HAVE PARTIAL DATACOPY WITH DECIMAL COLUMNS.\n",
+                        current_line);
+            csc2_syntax_error("Error at line %3d: CURRENTLY CANNOT HAVE PARTIAL DATACOPY WITH DECIMAL COLUMNS.",
+                        current_line);
+            any_errors++;
+            return;
+        }
+    }
+
+    macc_globals->workkeyflag |= PARTIALDATAKEY;
 }
 
 void key_setuniqnulls(void)
@@ -914,6 +967,8 @@ void key_piece_clear() /* used by parser, clears work key */
     macc_globals->workkey = 0;          /* clear work key */
     macc_globals->workkeyflag = 0;      /* clear flag for work key */
     macc_globals->workkeypieceflag = 0; /* clear key piece's flags */
+    macc_globals->head_pd = 0;          /* clear partial datacopy */
+    macc_globals->tail_pd = 0;          /* clear partial datacopy */
 }
 
 void key_piece_setdescend()
@@ -1102,6 +1157,19 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     } else {
         macc_globals->keys[ii]->where = NULL;
     }
+
+    if (macc_globals->workkeyflag & PARTIALDATAKEY) {
+        if (!macc_globals->head_pd) {
+            csc2_error("ERROR: PARTIAL DATACOPY FAILED\n");
+            any_errors++;
+            return;
+        }
+
+        macc_globals->keys[ii]->pd = macc_globals->head_pd;
+    } else {
+        macc_globals->keys[ii]->pd = NULL;
+    }
+
     macc_globals->nkeys++; /* next key */
 }
 
@@ -1135,11 +1203,31 @@ void key_exprtype_add(int type, int arraysz)
     expridx_arraysz = arraysz;
 }
 
+static int find_symbol(char *buf, int *tidx) {
+    char *tag = ONDISKTAG;
+    int i = getsymbol(tag, buf, tidx);
+
+    if (i == -1) {
+        tag = (macc_globals->ntables > 1) ? ONDISKTAG : DEFAULTTAG;
+        i = getsymbol(tag, buf, tidx);
+    }
+    if (i == -1) {
+        csc2_error("Error at line %3d: SYMBOL NOT FOUND: %s.\n",
+                current_line, buf);
+        csc2_syntax_error("Error at line %3d: SYMBOL NOT FOUND: %s.",
+                          current_line, buf);
+        csc2_error("IF IN MULTI-TABLE MODE MAKE SURE %s TAG IS DEFINED\n",
+                ONDISKTAG);
+        any_errors++;
+    }
+    return i;
+}
+
 void key_piece_add(char *buf,
                    int is_expr) /* used by parser, adds a piece of a key */
 {
     int el[6], rg[2], i, t, tidx = 0;
-    char *cp, *tag;
+    char *cp;
 
     if (is_expr) {
         CHECK_LEGACY_SCHEMA(1);
@@ -1185,21 +1273,8 @@ void key_piece_add(char *buf,
     if (cp)
         *cp = 0;
 
-    tag = ONDISKTAG;
-    i = getsymbol(tag, buf, &tidx);
-
-    if (i == -1) {
-        tag = (macc_globals->ntables > 1) ? ONDISKTAG : DEFAULTTAG;
-        i = getsymbol(tag, buf, &tidx);
-    }
-    if (i == -1) {
-        csc2_error("Error at line %3d: SYMBOL NOT FOUND: %s.\n",
-                current_line, buf);
-        csc2_syntax_error("Error at line %3d: SYMBOL NOT FOUND: %s.",
-                          current_line, buf);
-        csc2_error("IF IN MULTI-TABLE MODE MAKE SURE %s TAG IS DEFINED\n",
-                ONDISKTAG);
-        any_errors++;
+    i = find_symbol(buf, &tidx);
+    if (i == -1) { // will error
         return;
     } else {
         struct table *tables = macc_globals->tables;
@@ -1263,6 +1338,48 @@ void key_piece_add(char *buf,
         addtokey(i, tidx, el, rg); /* add this key to compound key */
     }
     macc_globals->workkeypieceflag = 0;
+}
+
+void datakey_piece_add(char *buf) {
+    int tidx = 0;
+    struct partial_datacopy *temp;
+
+    strlower(buf, strlen(buf));
+    int i = find_symbol(buf, &tidx);
+    if (i == -1) { // will error
+        return;
+    }
+
+    // check if field already present
+    if (macc_globals->head_pd) {
+        temp = macc_globals->head_pd;
+        while (temp) {
+            if (strcmp(buf, temp->field) == 0) {
+                csc2_error("Error at line %3d: DUPLICATE FIELD: %s.\n", current_line, buf);
+                csc2_syntax_error("Error at line %3d: DUPLICATE FIELD: %s.", current_line, buf);
+                any_errors++;
+                return;
+            }
+            temp = temp->next;
+        }
+    }
+
+    struct partial_datacopy *pd = (struct partial_datacopy *)csc2_malloc(sizeof(struct partial_datacopy));
+    if (!pd) {
+        csc2_error("ERROR: OUT OF MEM: %s - ABORTING\n", strerror(errno));
+        any_errors++;
+        return;
+    }
+
+    pd->field = csc2_strdup(buf);
+    pd->next = NULL;
+    if (!macc_globals->head_pd) {
+        macc_globals->head_pd = pd; /* empty list */
+        macc_globals->tail_pd = macc_globals->head_pd;
+    } else {
+        macc_globals->tail_pd->next = pd;
+        macc_globals->tail_pd = macc_globals->tail_pd->next;
+    }
 }
 
 extern int is_valid_datetime(const char *str, const char *tz);
@@ -2592,6 +2709,12 @@ int dyns_is_idx_datacopy(int index)
     return dyns_is_idx_flagged(index, DATAKEY);
 }
 
+/* is key copy-data key (partially)? */
+int dyns_is_idx_partial_datacopy(int index)
+{
+    return dyns_is_idx_flagged(index, PARTIALDATAKEY);
+}
+
 /* is key duplicate? */
 int dyns_is_idx_primary(int index)
 {
@@ -2608,6 +2731,24 @@ int dyns_is_idx_recnum(int index)
 int dyns_is_idx_uniqnulls(int index)
 {
     return dyns_is_idx_flagged(index, UNIQNULLS);
+}
+
+int dyns_get_idx_partial_datacopy(int index, struct partial_datacopy **partial_datacopy) {
+    int lastix, i;
+    if (index < 0 || index >= numix()) {
+        return -1;
+    }
+    for (lastix = -1, i = 0; i < numkeys(); i++) {
+        if (lastix == macc_globals->keyixnum[i])
+            continue;
+        lastix = macc_globals->keyixnum[i];
+        if (macc_globals->keyixnum[i] != index)
+            continue;
+        *partial_datacopy = macc_globals->keys[i]->pd;
+        return 0;
+    }
+
+    return -1;
 }
 
 int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)

@@ -126,6 +126,8 @@ typedef struct table_descriptor {
     int override_llmeta;
     index_descriptor_t index[MAXINDEX];
     struct user current_user;
+    void *appdata;
+    void *get_authdata;
 } table_descriptor_t;
 
 /* loadStat4 (analyze.c) will ignore all stat entries
@@ -290,6 +292,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
 /* spawn a thread to sample an index */
 static void *sampling_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     index_descriptor_t *ix_des = (index_descriptor_t *)arg;
 
@@ -735,7 +738,11 @@ static int analyze_table_int(table_descriptor_t *td,
     clnt.osql_max_trans = 0; // allow large transactions
     int sampled_table = 0;
 
-    clnt.current_user = td->current_user;
+    clnt.current_user        = td->current_user;
+    if (td->appdata != NULL)
+        clnt.appdata = td->appdata;
+    if (td->get_authdata != NULL)
+        clnt.plugin.get_authdata = td->get_authdata;
 
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
@@ -882,6 +889,7 @@ error:
 /* spawn thread to analyze a table */
 static void *table_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     table_descriptor_t *td = (table_descriptor_t *)arg;
     struct thr_handle *thd_self;
@@ -935,12 +943,27 @@ static void *table_thread(void *arg)
 static int dispatch_table_thread(table_descriptor_t *td)
 {
     int rc;
+    struct timespec timeout;
     /* grab lock */
     Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for thread availability */
     while (analyze_cur_table_threads >= analyze_max_table_threads) {
-        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        ++timeout.tv_sec; // 1 second timeout
+        rc = pthread_cond_timedwait(&table_thd_cond, &table_thd_mutex, &timeout);
+        if (rc == ETIMEDOUT) {
+            if (pthread_getspecific(query_info_key) && bdb_lock_desired(thedb->bdb_env)) {
+                rc = recover_deadlock_simple(thedb->bdb_env);
+                if (rc) {
+                    logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc);
+                }
+            }
+        } else if (rc) {
+            logmsg(LOGMSG_FATAL, "pthread_cond_timedwait:%d rc:%d (%s) thd:%p\n", __LINE__, rc, strerror(rc),
+                   (void *)pthread_self());
+            abort();
+        }
     }
 
     /* grab table thread */
@@ -960,19 +983,35 @@ static int dispatch_table_thread(table_descriptor_t *td)
 /* wait for table to complete */
 static int wait_for_table(table_descriptor_t *td)
 {
+    int rc;
+    struct timespec timeout;
     /* lock table mutex */
     Pthread_mutex_lock(&table_thd_mutex);
 
     /* wait for the state to change */
     while (td->table_state == TABLE_STARTUP ||
            td->table_state == TABLE_RUNNING) {
-        Pthread_cond_wait(&table_thd_cond, &table_thd_mutex);
+        clock_gettime(CLOCK_REALTIME, &timeout);
+        ++timeout.tv_sec; // 1 second timeout
+        rc = pthread_cond_timedwait(&table_thd_cond, &table_thd_mutex, &timeout);
+        if (rc == ETIMEDOUT) {
+            if (pthread_getspecific(query_info_key) && bdb_lock_desired(thedb->bdb_env)) {
+                rc = recover_deadlock_simple(thedb->bdb_env);
+                if (rc) {
+                    logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc);
+                }
+            }
+        } else if (rc) {
+            logmsg(LOGMSG_FATAL, "pthread_cond_timedwait:%d rc:%d (%s) thd:%p\n", __LINE__, rc, strerror(rc),
+                   (void *)pthread_self());
+            abort();
+        }
     }
 
     /* release */
     Pthread_mutex_unlock(&table_thd_mutex);
 
-    int rc = 0;
+    rc = 0;
     if (TABLE_COMPLETE == td->table_state) {
         sbuf2printf(td->sb, ">Analyze table '%s' is complete\n", td->table);
     } else if (TABLE_SKIPPED == td->table_state) {
@@ -1066,6 +1105,8 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
 
     if (clnt) {
         td.current_user = clnt->current_user;
+        td.appdata      = clnt->appdata;
+        td.get_authdata = clnt->plugin.get_authdata;
     }
     td.current_user.bypass_auth = bypass_auth;
 
@@ -1149,6 +1190,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
     /* tell comdb2sc the results */
     if (failed) {
         sbuf2printf(sb, "FAILED\n");
+        rc = -1;
     } else {
         sbuf2printf(sb, "SUCCESS\n");
         cleanup_stats(sb);

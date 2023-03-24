@@ -1,0 +1,60 @@
+create procedure emit_schema version 'sptest' {
+local function main(cols)
+    db:num_columns(cols)
+    for i = 1, cols do
+        db:column_type("int", i)
+        db:column_name('col'..i, i)
+    end
+end
+}$$
+
+create procedure single_row version 'sptest' {
+local function main()
+    local csv1 = [[10,20,30,40,50]]
+    local csv2 = [[11,22,33,44,55
+]]
+    local tbl1 = db:csv_to_table(csv1)
+    local tbl2 = db:csv_to_table(csv2)
+
+    if #tbl1 ~= #tbl2 then
+        return -246, "found different number of columns "..#tbl1.." vs "..#tbl2
+    end
+
+    local emit_schema = db:sp('emit_schema')
+    emit_schema(#tbl1)
+
+    db:emit(unpack(tbl1))
+    db:emit(unpack(tbl2))
+end
+}$$
+exec procedure single_row()
+
+create procedure multi_row version 'sptest' {
+local function main()
+    local csv1 =
+[[1,2,3,4,5,6
+10,20,30,40,50,60]]
+    local csv2 =
+[[11,22,33,44,55,66
+111,222,333,444,555,666
+]]
+    local tbl1 = db:csv_to_table(csv1)
+    local tbl2 = db:csv_to_table(csv2)
+
+    if #tbl1[1] ~= #tbl2[1] then
+        return -246, "found different number of columns "..#tbl1[1].." vs "..#tbl2[1]
+    end
+
+    local emit_schema = db:sp('emit_schema')
+    emit_schema(#tbl1[1])
+
+    for i, v in ipairs(tbl1) do
+        db:emit(unpack(v))
+    end
+
+    for i, v in ipairs(tbl2) do
+        db:emit(unpack(v))
+    end
+end
+}$$
+exec procedure multi_row()

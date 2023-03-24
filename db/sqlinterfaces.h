@@ -39,9 +39,6 @@
 #include "types.h"
 #include "tag.h"
 
-#include <dynschematypes.h>
-#include <dynschemaload.h>
-
 #include <sqlite3.h>
 #include "comdb2uuid.h"
 
@@ -77,7 +74,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt);
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
 void end_internal_sql_clnt(struct sqlclntstate *clnt);
 void reset_clnt_flags(struct sqlclntstate *);
-void thr_set_user(const char *label, int id);
+void thr_set_user(const char *label, intptr_t id);
 void sql_reset_sqlthread(struct sql_thread *thd);
 void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt);
 int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt);

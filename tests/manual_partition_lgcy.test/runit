@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+#set -e
+
+dbnm=$1
+output=run.log
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+function gorun
+{
+    echo cdb2sql ${CDB2_OPTIONS} $dbnm default "$1"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "$1" >> $output 2>&1
+}
+
+function gorun_master
+{
+    echo cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1"
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbnm default "$1" | grep -v "Module memory stats update" >> $output 2>&1
+}
+
+function gorun_filter
+{
+    filter=$2
+    echo cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1" | egrep -v "$filter"
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "$1" |egrep -v "$filter" >> $output 2>&1
+}
+
+function timepart_stats
+{
+    # check the current partitions 
+    gorun_filter "exec procedure sys.cmd.send('partitions')" "SOURCE_ID"
+
+    gorun "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions "
+
+    gorun "select name, shardname from comdb2_timepartshards"
+
+    #randomly we catch a drop event here; sleep to skip the deterministically
+    sleep 6
+    gorun_master "select name, arg1, arg2, arg3 from comdb2_timepartevents"
+
+    gorun_master "select * from comdb2_cron_schedulers where name not like 'QueueDB %'"
+    gorun_master "select name,type,epoch,arg1,arg2,arg3 from comdb2_cron_events where name not like 'QueueDB %'"
+    gorun "select * from comdb2_logical_cron"
+}
+
+master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+echo "Creating comdb2_logical_cron table"
+echo "Creating comdb2_logical_cron table" > $output
+gorun "create table comdb2_logical_cron (name cstring(128) primary key, value int)"
+gorun "select * from comdb2_logical_cron"
+
+echo "Creating partition 1 and 2"
+echo "Creating partition 1 and 2" >> $output
+gorun "create partition on t1 as testpart1 period 'manual' retention 2 start '1'"
+gorun "create partition on t2 as testpart2 period 'manual' retention 2 start '10'"
+
+echo "XXXXX we should see to empty partitions with no counters" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+gorun "put counter testpart1 increment"
+gorun "insert into testpart1 values (1, 'hi')"
+gorun "insert into testpart1 values (2, 'ho')"
+
+echo "XXXXX we should see the data in part1, and the counter, no rollout yet" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+gorun "put counter testpart2 set 0"
+
+echo "XXXXX we should see additional counter for part2" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+gorun "put counter testpart1 set 1"
+echo "sleeping" >> $output
+sleep 10
+
+gorun "select * from testpart1 order by a"
+gorun "insert into testpart1 values (10, 'hihi')"
+gorun "insert into testpart1 values (20, 'hoho')"
+gorun "insert into testpart1 values (30, 'hehe')"
+
+echo "XXXXX we should see 5 rows in two shards in part1" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+gorun "delete from comdb2_logical_cron where name = 'testpart1'"
+
+echo "XXXXX we should see the counter for part1 reset" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+gorun "put counter testpart1 set 2"
+echo "sleeping" >> $output
+sleep 10
+
+echo "XXXXX we should see the counter back to next value, and first 2 rows gone" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+gorun "put counter testpart1 increment"
+
+echo "XXXXX we should see an empty part1" >> $output
+gorun "select * from testpart1 order by a"
+timepart_stats
+
+echo "verify" >> $output
+testcase_output=$(cat $output)
+expected_output=$(cat $output.exp)
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+    echo "  ^^^^^^^^^^^^"
+    echo "The testcase has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/{$output.exp,$output}"
+    echo " "
+    diff $output.exp $output
+    echo " "
+    exit 1
+
+fi
+
+echo "Testcase passed." >> $output
+echo "Testcase passed."

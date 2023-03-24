@@ -1,5 +1,5 @@
 SELECT "== UPSERT isn't supported, expect meaningful error ==" as test;
-CREATE TABLE t1{ schema { int i } keys { "idx1" = i } }$$
+CREATE TABLE t1 options blobfield none, rec none { schema { int i } keys { "idx1" = i } }$$
 INSERT INTO t1 VALUES(1);
 INSERT INTO t1 VALUES(1);
 INSERT INTO t1 VALUES(1) ON CONFLICT DO NOTHING;

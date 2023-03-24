@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export stopfile=./stopfile.txt
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    touch $stopfile
+    echo "Failed: $1"
+    exit -1
+}
+
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table comdb2_logical_cron (name cstring(128) primary key, value int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index ix1 on t1(a)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create partition on t1 as testpart1 period 'manual' retention 5 start '1'"
+}
+
+function increment_counter_loop
+{
+    [[ $debug == "1" ]] && set -x
+    while [[ ! -f $stopfile ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put counter testpart1 increment" >/dev/null 2>&1
+        sleep 1
+    done
+}
+
+function insert_loop
+{
+    [[ $debug == "1" ]] && set -x
+    while [[ ! -f $stopfile ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into testpart1 select * from generate_series(1, 1000)" > /dev/null 2>&1
+    done
+}
+
+function update_loop
+{
+    [[ $debug == "1" ]] && set -x
+    while [[ ! -f $stopfile ]]; do
+        r=$(( RANDOM % 500 ))
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "update testpart1 set a = a where a > $r limit 1000" >/dev/null 2>&1
+    done
+}
+
+function delete_loop
+{
+    [[ $debug == "1" ]] && set -x
+    while [[ ! -f $stopfile ]]; do
+        r=$(( RANDOM % 500 ))
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from testpart1 where a > $r limit 100" >/dev/null 2>&1
+    done
+}
+
+function print_count
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="print_count"
+    while [[ ! -f $stopfile ]]; do
+        c=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from testpart1" 2>&1)
+        r=$?
+        if [[ "$r" == 0 ]]; then
+            write_prompt $func "testpart1 count is $c"
+        else
+            write_prompt $func "error $r while accessing testpart, output $c"
+        fi
+        sleep 1
+    done
+}
+
+function verify_up
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="verify_up"
+    typeset node=$1
+    typeset count=0
+    typeset r=1
+    while [[ "$r" -ne "0" && "$count" -lt 2000 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null 2>&1
+        r=$?
+        [[ $r != 0 ]] && sleep 1
+        let count=count+1
+    done
+    [[ $r != 0 ]] && failexit "node $node did not recover in time"
+}
+
+function run_test
+{
+    typeset func="run_test"
+    typeset maxtime=300
+    typeset now=$(date +%s)
+    typeset endtime=$(( now + maxtime ))
+
+    setup
+
+    insert_loop &
+    update_loop &
+    delete_loop &
+    print_count &
+    increment_counter_loop &
+
+    while [[ ! -f $stopfile && "$(date +%s)" -lt $endtime ]]; do
+        for node in $CLUSTER; do
+            verify_up $node
+        done
+        sleep 1
+    done
+
+    [[ -f "$stopfile" ]] && failexit "testcase failed"
+
+    touch "$stopfile"
+    wait
+}
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"
+
+run_test
+echo "Success"

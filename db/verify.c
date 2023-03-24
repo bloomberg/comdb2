@@ -252,6 +252,11 @@ static int verify_formkey_callback(const dbtable *tbl, void *dta,
     return create_key_from_schema_simple(tbl, NULL, ix, dta, keyout, blob_parm, MAXBLOBS);
 }
 
+static int convert_to_partial_datacopy(const struct dbtable *tbl, const int pd_ix, const void *inbuf, void *outbuf)
+{
+    return stag_to_stag_buf_schemas(tbl->schema, tbl->schema->ix[pd_ix]->partial_datacopy, inbuf, outbuf, NULL);
+}
+
 static int verify_add_blob_buffer_callback(void *parm, void *dta, int dtasz,
                                            int blobno)
 {
@@ -325,6 +330,7 @@ int verify_table(const char *table, int progress_report_seconds,
     pthread_once(&once, init_verify_thdpool);
     verify_common_t par = {
         .tablename = table,
+        .partial_datacopy_callback = convert_to_partial_datacopy,
         .formkey_callback = verify_formkey_callback,
         .get_blob_sizes_callback = verify_blobsizes_callback,
         .vtag_callback = (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,

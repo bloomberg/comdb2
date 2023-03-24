@@ -456,6 +456,8 @@ struct tran_tag {
 
     int micro_commit;
 
+    unsigned verify_updateid : 1;
+
     /* Rowlocks commit support */
     pool_t *rc_pool;
     DBT **rc_list;
@@ -830,6 +832,7 @@ struct bdb_state_tag {
     short numix;        /* number of indexes */
     short ixlen[MAXINDEX];            /* size of each index */
     signed char ixdta[MAXINDEX];      /* does this index contain the dta? */
+    int ixdtalen[MAXINDEX];           /* dta len in bytes (0 if index does not contain the dta or is full datacopy) */
     signed char ixcollattr[MAXINDEX]; /* does this index contain the column
                                          attributes? */
     signed char ixnulls[MAXINDEX];    /*does this index contain any columns that
@@ -1044,6 +1047,7 @@ struct bdb_state_tag {
 
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
+    uint16_t *fld_hints_pd[MAXINDEX]; /* field hints for partial datacopies */
 
     int logical_live_sc;
     pthread_mutex_t sc_redo_lk;
@@ -1227,7 +1231,8 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
               size_t reclen, int dtanum);
 
 int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
-             size_t tolen, void **recptr, uint32_t *recsize, void **freeptr);
+             size_t tolen, void **recptr, uint32_t *recsize, void **freeptr,
+             int pd_index);
 
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);
@@ -1679,11 +1684,15 @@ int bdb_lock_row_fromlid(bdb_state_type *bdb_state, int lid, int idx,
 int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
                              unsigned long long genid, int how, DB_LOCK *dblk,
                              DBT *lkname, int trylock, int flags);
+enum {
+    CURTRAN_HOLDS_SPLOCK    = 1
+};
 
 /* we use this structure to create a dummy cursor to be used for all
  * non-transactional cursors. it is defined below */
 struct cursor_tran {
     uint32_t lockerid;
+    uint32_t flags;
     int id; /* debugging */
 };
 
@@ -1743,6 +1752,7 @@ void udp_backup(int, short, void *);
 void auto_analyze(int, short, void *);
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
+void net_rep_throttle_init(netinfo_type *netinfo_ptr);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
 void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
@@ -1848,10 +1858,14 @@ char *bdb_coherent_state_string(const char *);
 int osql_process_message_decom(char *);
 void osql_net_exiting(void);
 void osql_cleanup_netinfo(void);
+int osql_repository_cancelall(void);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
                                   DBT *data, DBT *data2, int updateid,
                                   void **freeptr, void *stackbuf, int odhready);
+
+int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype);
+
 #endif /* __bdb_int_h__ */

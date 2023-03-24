@@ -23,7 +23,7 @@ done
 cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm 'select max(rootpage) from sqlite_master'
 
 
-numberbefore=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("memstat uncategorized")' | grep total | tail -1 | awk '{print $4}'`
+numberbefore=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm 'SELECT SUM(total) FROM comdb2_memstats WHERE name = "uncategorized"'`
 echo numberbefore $numberbefore
 
 # 10 Clients
@@ -34,7 +34,7 @@ done
 wait
 sleep 10
 
-numberafter=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("memstat uncategorized")' | grep total | tail -1 | awk '{print $4}'`
+numberafter=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm 'SELECT SUM(total) FROM comdb2_memstats WHERE name = "uncategorized"'`
 echo numberafter $numberafter
 numberdelta=$((numberafter-numberbefore))
 

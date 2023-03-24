@@ -10,6 +10,8 @@
 #include <cdb2api.h>
 #include <parse_lsn.h>
 #include "locks.h"
+#include <lockmacros.h>
+#include <tohex.h>
 
 int matchable_log_type(int rectype);
 
@@ -354,4 +356,84 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
         logrec.data = NULL;
     }
     return info;
+}
+
+/* physrep logic to ignore replication traffic for some tables */
+static hash_t *table_hash = NULL;
+static pthread_mutex_t ignore_lk = PTHREAD_MUTEX_INITIALIZER;
+
+static hash_t *ignore_table_hash()
+{
+    if (table_hash == NULL) {
+        table_hash = hash_init_str(0);
+    }
+    return table_hash;
+}
+
+int physrep_add_ignore_table(char *tablename)
+{
+    Pthread_mutex_lock(&ignore_lk);
+    hash_t *th = ignore_table_hash();
+    if (hash_find(th, tablename) == NULL) {
+        hash_add(th, tablename);
+    } else {
+        free(tablename);
+    }
+    Pthread_mutex_unlock(&ignore_lk);
+    return 0;
+}
+
+int physrep_ignore_table(const char *tablename)
+{
+    int ret = 0;
+    Pthread_mutex_lock(&ignore_lk);
+    hash_t *th = ignore_table_hash();
+    if (hash_find(th, tablename) != NULL) {
+        ret = 1;
+    }
+    Pthread_mutex_unlock(&ignore_lk);
+    return ret;
+}
+
+static int physrep_print_table(void *obj, void *arg)
+{
+    char *table = (char *)obj;
+    logmsg(LOGMSG_INFO, "%s\n", table);
+    return 0;
+}
+
+int physrep_list_ignored_tables(void)
+{
+    Pthread_mutex_lock(&ignore_lk);
+    hash_t *th = ignore_table_hash();
+    hash_for(th, physrep_print_table, NULL);
+    Pthread_mutex_unlock(&ignore_lk);
+    return 0;
+}
+
+int physrep_ignore_table_count()
+{
+    int count = 0;
+    Pthread_mutex_lock(&ignore_lk);
+    hash_t *th = ignore_table_hash();
+    hash_info(th, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+    Pthread_mutex_unlock(&ignore_lk);
+    return count;
+}
+
+int physrep_ignore_btree(const char *filename)
+{
+    char *start = (char *)&filename[4];
+    char *end = (char *)&filename[strlen(filename) - 1];
+    while (end > start && *end != '\0' && *end != '.') {
+        end--;
+    }
+    end -= 17;
+    if (end <= start) {
+        logmsg(LOGMSG_ERROR, "%s: unrecognized file format for %s\n", __func__, filename);
+        return 0;
+    }
+    char t[MAXTABLELEN + 1] = {0};
+    memcpy(t, start, (end - start));
+    return physrep_ignore_table(t);
 }

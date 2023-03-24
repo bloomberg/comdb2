@@ -2622,8 +2622,8 @@ static void dbglogCookieFunc(
   sqlite3_value **NotUsed2
 ){
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  uint64_t comdb2fastseed(void);
-  sqlite3_result_int64(context, (i64)comdb2fastseed());
+  uint64_t comdb2fastseed(int);
+  sqlite3_result_int64(context, (i64)comdb2fastseed(4));
 }
 
 static void dbglogBeginFunc(
@@ -2662,6 +2662,20 @@ static void dbglogEndFunc(
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG) */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern i64 comdb2_last_stmt_cost(void);
+static void comdb2LastCostFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  i64 cost;
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  cost = comdb2_last_stmt_cost();
+  sqlite3_result_int64(context, cost);
+}
+#endif
 
 /*
 ** All of the FuncDef structures in the aBuiltinFunc[] array above
@@ -2804,6 +2818,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
+    FUNCTION(comdb2_last_cost,      0, 0, 0, comdb2LastCostFunc),
 
     FUNCTION(checksum_md5,          1, 0, 0, md5Func),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)

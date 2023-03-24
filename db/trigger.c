@@ -22,6 +22,7 @@
 #include <compat.h>
 #include <intern_strings.h>
 #include <ctrace.h>
+#include <comdb2_atomic.h>
 
 /*
 ** Master node will maintain client subscription info.
@@ -165,9 +166,10 @@ static int trigger_unregister_int(trigger_reg_t *t)
     trigger_info_t *info;
     if ((info = hash_find(trigger_hash, t->spname)) != NULL &&
         strcmp(info->host, trigger_hostname(t)) == 0 &&
-        info->trigger_cookie == t->trigger_cookie) {
-        trigger_hash_del(info);
+        info->trigger_cookie == t->trigger_cookie
+    ){
         ctrace("TRIGGER:%s %016" PRIx64 " UNASSIGNED\n", info->spname, info->trigger_cookie);
+        trigger_hash_del(info);
         return CDB2_TRIG_REQ_SUCCESS;
     }
     return CDB2_TRIG_ASSIGNED_OTHER;
@@ -190,37 +192,11 @@ int trigger_unregister(trigger_reg_t *t)
     return rc;
 }
 
-static void *trigger_start_int(void *name_)
+static void *trigger_start_int(void *name)
 {
-    GET_BDB_STATE_CAST(bdb_state, void *);
-    char name[strlen(name_) + 1];
-    strcpy(name, name_);
-    free(name_);
-    trigger_reg_t *reg;
-    trigger_reg_init(reg, name, 0);
-    ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
-    int rc, retry = 10;
-    while (--retry > 0) {
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-        rc = trigger_register_req(reg);
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        if (rc == CDB2_TRIG_REQ_SUCCESS)
-            break;
-        if (rc == CDB2_TRIG_ASSIGNED_OTHER)
-            goto done;
-        sleep(1);
-    }
-    if (rc != CDB2_TRIG_REQ_SUCCESS) {
-        ctrace("trigger:%s %016" PRIx64 " register failed rc:%d\n", reg->spname,
-               reg->trigger_cookie, rc);
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-        force_unregister(NULL, reg);
-        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        goto done;
-    }
-    ctrace("trigger:%s %016" PRIx64 " register success\n", reg->spname, reg->trigger_cookie);
-    exec_trigger(reg);
-done:
+    comdb2_name_thread(__func__);
+    exec_trigger(name);
+    free(name);
     Pthread_mutex_lock(&trig_thd_cnt_lk);
     num_trigger_threads--;
     Pthread_mutex_unlock(&trig_thd_cnt_lk);
@@ -282,6 +258,7 @@ int trigger_unregister_node(const char *host)
 void trigger_clear_hash()
 {
     Pthread_mutex_lock(&trighash_lk);
+    ATOMIC_ADD32(gbl_master_changes, 1);
     hash_t *old = trigger_hash;
     trigger_hash = NULL;
     Pthread_mutex_unlock(&trighash_lk);
@@ -321,6 +298,11 @@ int trigger_stat()
     for (int i = 0; i < thedb->num_qdbs; ++i) {
         struct dbtable *qdb = thedb->qdbs[i];
         consumer_lock_read(qdb);
+        /* protect us from incomplete triggers (e.g., an old-style queue without a consumer */
+        if (qdb->consumers[0] == NULL) {
+            consumer_unlock(qdb);
+            continue;
+        }
         int ctype = dbqueue_consumer_type(qdb->consumers[0]);
         if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA) {
             consumer_unlock(qdb);
@@ -374,7 +356,7 @@ int trigger_register_req(trigger_reg_t *reg)
     GET_BDB_STATE(bdb_state);
     size_t sz;
     uint8_t buf[TRIGGER_REG_MAX];
-    reg->elect_cookie = gbl_master_changes;
+    reg->elect_cookie = ATOMIC_LOAD32(gbl_master_changes);
     trigger_reg_t *t = trigger_send(buf, reg, &sz);
     if (bdb_amimaster(bdb_state)) {
         return trigger_register(t);
@@ -383,8 +365,7 @@ int trigger_register_req(trigger_reg_t *reg)
     if (thedb->handle_sibling == NULL || master == NULL) {
         return NET_SEND_FAIL_INTERNAL; // fake internal retry
     }
-    return net_send_message(thedb->handle_sibling, master, NET_TRIGGER_REGISTER,
-                            t, sz, 1, 1000);
+    return net_send_message(thedb->handle_sibling, master, NET_TRIGGER_REGISTER, t, sz, 1, 1000);
 }
 
 int trigger_unregister_req(trigger_reg_t *reg)
@@ -400,6 +381,5 @@ int trigger_unregister_req(trigger_reg_t *reg)
     if (thedb->handle_sibling == NULL || master == NULL) {
         return NET_SEND_FAIL_INTERNAL; // fake internal retry
     }
-    return net_send_message(thedb->handle_sibling, master,
-                            NET_TRIGGER_UNREGISTER, t, sz, 1, 1000);
+    return net_send_message(thedb->handle_sibling, master, NET_TRIGGER_UNREGISTER, t, sz, 1, 1000);
 }

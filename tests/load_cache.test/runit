@@ -253,6 +253,39 @@ function autocache_enabled
     fi
 }
 
+function wait_online
+{
+    [[ $debug == "1" ]] && set -x
+    typeset timeout=${1:-60}
+    typeset func="wait_online"
+    j=0
+    if [[ -z "$CLUSTER" ]]; then
+        incoherent=1
+        while [[ $incoherent -eq 1 && $j -lt $timeout ]]; do
+            let incoherent=0
+            $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select 1" >/dev/null 2>/dev/null
+            if [[ $? -ne 0 ]]; then
+                let incoherent=1
+            fi
+            sleep 1
+            let j=j+1
+        done
+    else
+        incoherent=1
+        while [[ incoherent -eq 1 && $j -lt $timeout ]]; do
+            let incoherent=0
+            for node in $CLUSTER; do
+                $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null 2>/dev/null
+                if [[ $? -ne 0 ]]; then
+                    let incoherent=1
+                fi
+            done
+            sleep 1
+            let j=j+1
+        done
+    fi
+}
+
 function run_test
 {
     [[ $debug == "1" ]] && set -x
@@ -267,6 +300,8 @@ function run_test
     sleep $sleeptime
     dump_cache $orig $DBNAME $dump_max_pages
     bounce_database $sleeptime
+    wait_online
+
     sleep $(( sleeptime + 10 ))
     # Should load automatically if autocache is enabled
     if [[ "$autocache" != "ON" ]] ; then

@@ -23,7 +23,7 @@ struct ireq;
 int do_rename_table(struct ireq *, struct schema_change_type *, tran_type *);
 int finalize_rename_table(struct ireq *, struct schema_change_type *,
                           tran_type *);
-int finalize_rename_table_alias(struct ireq *, struct schema_change_type *,
-                                tran_type *);
+int finalize_alias_table(struct ireq *, struct schema_change_type *,
+                         tran_type *);
 
 #endif

@@ -19,7 +19,6 @@
 
 /* MOVE THESE TO COMDB2_API.H */
 
-#define SQLHERR_LIMIT (-107)
 #define SQLHERR_ROLLBACKTOOLARGE (-108)
 #define SQLHERR_ROLLBACK_TOOOLD (-109)
 #define SQLHERR_ROLLBACK_NOLOG (-110)
@@ -99,6 +98,7 @@ typedef long long tranid_t;
 #include "perf.h"
 #include "constraints.h"
 #include "osqlrpltypes.h"
+#include "macc_glue.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -353,6 +353,7 @@ enum RCODES {
     ERR_NULL_CONSTRAINT = 318,
     ERR_VERIFY_PI = 319,
     ERR_CHECK_CONSTRAINT = 320,
+    ERR_INDEX_CONFLICT = 330,
     ERR_UNCOMMITABLE_TXN = 404, /* txn is uncommitable, returns ERR_VERIFY
                                    rather than retry */
     ERR_QUERY_REJECTED = 451,
@@ -425,11 +426,12 @@ enum CONSTRAINT_FLAGS {
     CT_DEL_SETNULL = 0x00000008,
 };
 
+/* dbtable type specifier, please do not use for schema change type */
 enum {
-    DBTYPE_UNTAGGED_TABLE = 0,
+    UNUSED_1 = 0,
     DBTYPE_TAGGED_TABLE = 1,
     DBTYPE_QUEUE = 2,
-    DBTYPE_MORESTRIPE = 3, /* fake type used in schema change code */
+    UNUSED_2 = 3,
     DBTYPE_QUEUEDB = 4
 };
 
@@ -475,8 +477,6 @@ enum RECOVER_DEADLOCK_FLAGS {
     RECOVER_DEADLOCK_FORCE_FAIL = 0x00000002,
     RECOVER_DEADLOCK_IGNORE_DESIRED= 0x00000004
 };
-
-enum { SC_RENAME_LEGACY = 1, SC_RENAME_ALIAS = 2 };
 
 enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 
@@ -612,6 +612,7 @@ typedef struct dbtable {
     signed char ix_dupes[MAXINDEX];
     signed char ix_recnums[MAXINDEX];
     signed char ix_datacopy[MAXINDEX];
+    int ix_datacopylen[MAXINDEX]; /* datacopy len in bytes (0 if full datacopy) */
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
 
@@ -824,7 +825,8 @@ struct dbenv {
     void *bdb_callback; /*engine callbacks */
 
     char *master; /*current master node, from callback*/
-    int gen;      /*election generation for current master node*/
+    int gen;      /*generation for current master node*/
+    int egen;     /*election generation for current master node*/
 
     int cacheszkb;
     int cacheszkbmin;
@@ -834,7 +836,7 @@ struct dbenv {
     /*sibling info*/
     int nsiblings;
     char *sibling_hostname[REPMAX];
-    short sibling_port[REPMAX][NET_MAX];
+    unsigned short sibling_port[REPMAX][NET_MAX];
     int listen_fds[NET_MAX];
     /* banckend db engine handle for replication */
     void *handle_sibling;
@@ -1196,9 +1198,9 @@ enum OSQL_REQ_TYPE {
     OSQL_MAX_REQ = 9,
 };
 
-#define IQ_HAS_SNAPINFO(iq) ((iq)->sorese && (iq)->sorese->snap_info)
-
 #define IQ_SNAPINFO(iq) ((iq)->sorese->snap_info)
+#define IQ_HAS_SNAPINFO(iq) ((iq)->sorese && (iq)->sorese->snap_info)
+#define IQ_HAS_SNAPINFO_KEY(iq) (IQ_HAS_SNAPINFO(iq) && IQ_SNAPINFO(iq)->keylen > 0)
 
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
@@ -1250,6 +1252,7 @@ struct osql_sess {
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
     int is_tranddl;
+    int is_tptlock;   /* needs tpt locking */
     int is_cancelled; /* 1 if session is cancelled */
 };
 typedef struct osql_sess osql_sess_t;
@@ -1401,6 +1404,7 @@ struct ireq {
     int osql_flags;
     uint32_t priority;
     int tranddl;
+    int tptlock; /* need to know if we need to wrap whole txn in a view_lock */
     uint32_t written_row_count;
     uint32_t cascaded_row_count;
 
@@ -1553,8 +1557,11 @@ extern int gbl_penaltyincpercent;
 extern int gbl_maxwthreadpenalty;
 
 extern int gbl_uses_password;
+extern int gbl_unauth_tag_access;
 extern int gbl_uses_externalauth;
+extern int gbl_uses_externalauth_connect;
 extern int gbl_externalauth_warn;
+extern int gbl_identity_cache_max;
 extern int gbl_uses_accesscontrol_tableXnode;
 extern char* gbl_foreign_metadb;
 extern char* gbl_foreign_metadb_class;
@@ -1830,7 +1837,7 @@ extern int gbl_sockbplog_sockpool;
 extern int gbl_logical_live_sc;
 
 extern int gbl_test_io_errors;
-
+extern uint64_t gbl_sc_headroom;
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -2020,6 +2027,7 @@ void backend_sync_stat(struct dbenv *dbenv);
 
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb);
 void init_fake_ireq(struct dbenv *, struct ireq *);
+void set_tran_verify_updateid(tran_type *tran);
 
 /* long transaction routines */
 
@@ -2030,6 +2038,7 @@ void tran_dump(struct long_trn_stat *tstats);
 /* transactional stuff */
 int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_sc_fop(struct ireq *, tran_type **out);
 int trans_start_sc_lowpri(struct ireq *, tran_type **out);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             uint32_t retries, uint32_t priority);
@@ -2364,30 +2373,16 @@ int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
                         int stay_in_stripe, void *dta, void *trans, int dtalen,
                         int *reqdtalen, int *ver);
 
-int check_table_schema(struct dbenv *dbenv, const char *table,
-                       const char *csc2file);
-
-struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int indx,
-                                   int sc_alt_tablename, int allow_ull,
-                                   struct errstat *err);
-
 struct dbtable *find_table(const char *table);
 int bt_hash_table(char *table, int szkb);
 int del_bt_hash_table(char *table);
 int stat_bt_hash_table(char *table);
 int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
-int add_cmacc_stmt(struct dbtable *db, int is_sc_name, int allow_ull,
-                   struct errstat *err);
-int add_cmacc_stmt_no_side_effects(struct dbtable *db, int is_sc_name);
 
 void cleanup_newdb(struct dbtable *);
-struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                                  int dbnum, int dbix);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
-int init_check_constraints(struct dbtable *tbl);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
@@ -2628,10 +2623,10 @@ int process_allow_command(char *line, int lline);
 int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
                      const char *to_tag);
 int gather_blob_data_byname(const char *dbname, const char *tag,
-                            blob_status_t *b);
+                            blob_status_t *b, struct schema *pd);
 int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
-                               int blob_index, int cblob);
+                               int blob_index, int cblob, struct schema *pd);
 int check_blob_consistency(struct ireq *iq, const char *table, const char *tag,
                            blob_status_t *b, const void *record);
 int check_and_repair_blob_consistency(struct ireq *iq, const char *table,
@@ -2867,6 +2862,7 @@ int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
                    const char *fmt, ...);
 
 enum { LOG_DEL_ABS_ON, LOG_DEL_ABS_OFF, LOG_DEL_REFRESH };
+int log_delete_is_stopped(void);
 void log_delete_counter_change(struct dbenv *dbenv, int action);
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state);
 void log_delete_rem_state(struct dbenv *dbenv, struct log_delete_state *state);
@@ -3629,5 +3625,13 @@ extern int gbl_rcache;
 extern int gbl_throttle_txn_chunks_msec;
 extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_fail_client_write_lock;
+extern int gbl_server_admin_mode;
+
+void csc2_free_all(void);
+
+/* hack to temporary allow bools on production stage */
+void csc2_allow_bools(void);
+void csc2_disallow_bools(void);
+int csc2_used_bools(void);
 
 #endif /* !INCLUDED_COMDB2_H */

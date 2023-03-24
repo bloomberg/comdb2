@@ -150,6 +150,11 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
     if (comdb2IsPrepareOnly(parse))
         return;
 
+    if (comdb2IsDryrun(parse)) {
+        sqlite3ErrorMsg(parse, "DRYRUN not supported for this operation");
+        parse->rc = SQLITE_MISUSE;
+        return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, dynamic ? SQLITE_CREATE_LUA_CONSUMER :
@@ -222,8 +227,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 
 	// trigger add table:qname dest:method
 	struct schema_change_type *sc = new_schemachange_type();
-	sc->is_trigger = 1;
-	sc->addonly = 1;
+	sc->kind = SC_ADD_TRIGGER;
     sc->persistent_seq = seq;
 	strcpy(sc->tablename, qname);
 	struct dest *d = malloc(sizeof(struct dest));
@@ -234,6 +238,8 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 	Vdbe *v = sqlite3GetVdbe(parse);
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+    free_schema_change_type(sc);
 }
 
 void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
@@ -270,17 +276,29 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 
 	// trigger drop table:qname
 	struct schema_change_type *sc = new_schemachange_type();
-	sc->is_trigger = 1;
-	sc->drop_table = 1;
+	sc->kind = SC_DEL_TRIGGER;
 	strcpy(sc->tablename, qname);
 	Vdbe *v = sqlite3GetVdbe(parse);
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
 }
 
-#define comdb2CreateFunc(parse, proc, pfx, type, flags)                        \
+#define comdb2CreateFunc(parse, proc, pfx, PFX, type, flags)                   \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
+        struct schema_change_type *sc = new_schemachange_type();               \
+        sc->kind = SC_ADD_##PFX##FUNC;                                         \
+        if(comdb2IsDryrun(parse)){                                             \
+            if(comdb2SCIsDryRunnable(sc)){                                     \
+                (sc)->dryrun = 1;                                              \
+            } else {                                                           \
+                sqlite3ErrorMsg(parse, "DRYRUN not supported "                 \
+                            "for this operation");                             \
+                (parse)->rc = SQLITE_MISUSE;                                   \
+                free_schema_change_type(sc);                                   \
+                return;                                                        \
+            }                                                                  \
+        }                                                                      \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
             sqlite3ErrorMsg(parse, "Procedure name is too long");              \
             return;                                                            \
@@ -293,10 +311,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
                             spname);                                           \
             return;                                                            \
         }                                                                      \
-        struct schema_change_type *sc = new_schemachange_type();               \
-        sc->is_##pfx##func = 1;                                                \
         sc->lua_func_flags |= flags;                                           \
-        sc->addonly = 1;                                                       \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
@@ -321,7 +336,7 @@ void comdb2CreateScalarFunc(Parse *parse, Token *proc, int flags)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, s, scalar, flags);
+    comdb2CreateFunc(parse, proc, s, S, scalar, flags);
 }
 
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
@@ -342,10 +357,10 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, a, aggregate, 0);
+    comdb2CreateFunc(parse, proc, a, A, aggregate, 0);
 }
 
-#define comdb2DropFunc(parse, proc, pfx, type)                                 \
+#define comdb2DropFunc(parse, proc, pfx, PFX, type)                            \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
@@ -357,8 +372,17 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
             return;                                                            \
         }                                                                      \
         struct schema_change_type *sc = new_schemachange_type();               \
-        sc->is_##pfx##func = 1;                                                \
-        sc->addonly = 0;                                                       \
+        sc->kind = SC_DEL_##PFX##FUNC;                                         \
+        if(comdb2IsDryrun(parse)){                                             \
+            if(comdb2SCIsDryRunnable(sc)){                                     \
+                (sc)->dryrun = 1;                                              \
+            } else {                                                           \
+                sqlite3ErrorMsg(parse, "DRYRUN not supported"                  \
+                                            "for this operation");             \
+                (parse)->rc = SQLITE_MISUSE;                                   \
+                return;                                                        \
+            }                                                                  \
+        }                                                                      \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
         comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,      \
@@ -389,13 +413,18 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
         return;
     }
 
+    // Even though we know that we can't drop the lua scalar function here
+    // , we let this go through and check the error in do_lua_sfunc to have
+    // a homogenous rcode
+#ifdef SFUNC_USAGE_CHECK_WHEN_PARSE
     char *tbl = 0;
     if (lua_sfunc_used(spname, &tbl)) {
         sqlite3ErrorMsg(parse, "Can't drop. %s is in use by %s", spname, tbl);
         return;
     }
+#endif
 
-    comdb2DropFunc(parse, proc, s, scalar);
+    comdb2DropFunc(parse, proc, s, S, scalar);
 }
 
 void comdb2DropAggFunc(Parse *parse, Token *proc)
@@ -416,6 +445,6 @@ void comdb2DropAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2DropFunc(parse, proc, a, aggregate);
+    comdb2DropFunc(parse, proc, a, A, aggregate);
 }
 

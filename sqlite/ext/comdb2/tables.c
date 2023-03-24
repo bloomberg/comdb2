@@ -281,6 +281,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_systables", &systblSystabsModule, 0);
   if (rc == SQLITE_OK)
+    rc = systblPartialDatacopiesInit(db);
+  if (rc == SQLITE_OK)
     rc = systblTablePropertiesInit(db);
   if (rc == SQLITE_OK)
     rc = systblTimepartInit(db);
@@ -304,6 +306,8 @@ int comdb2SystblInit(
     rc = systblBlkseqInit(db);
   if (rc == SQLITE_OK)
     rc = systblFingerprintsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblQueryPlansInit(db);
   if (rc == SQLITE_OK)
     rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
@@ -330,6 +334,12 @@ int comdb2SystblInit(
     rc = systblFdbInfoInit(db);
   if (rc == SQLITE_OK)
     rc = sqlite3_carray_init(db, 0, 0);
+  if (rc == SQLITE_OK)
+    rc = systblMemstatsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTransactionStateInit(db);
+  if (rc == SQLITE_OK)  
+    rc = systblStacks(db);
 #endif
   return rc;
 }

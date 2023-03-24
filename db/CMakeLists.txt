@@ -11,6 +11,7 @@ set(src
   db_access.c
   db_fingerprint.c
   db_metrics.c
+  db_query_plan.c
   db_tunables.c
   db_util.c
   dbglog_iface.c
@@ -26,7 +27,7 @@ set(src
   fdb_boots.c
   fdb_fend.c
   fdb_fend_cache.c
-  fdb_util.c
+  fdb_push.c
   glue.c
   handle_buf.c
   history.c
@@ -101,6 +102,7 @@ set(src
   dohast.c
   machclass.c
   osqluprec.c
+  macc_glue.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
@@ -108,6 +110,7 @@ set(src
   ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/comdb2_dbprintlog.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_verify/cdb2_verify.c
+  ${PROJECT_SOURCE_DIR}/tools/cdb2_pgdump/cdb2_pgdump.c
 )
 
 option(DEBUG_TYPES "Build types.c independent of sqlglue.c" OFF)
@@ -193,6 +196,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/schemachange
   ${PROJECT_SOURCE_DIR}/sockpool
   ${PROJECT_SOURCE_DIR}/sqlite/ext/expert
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/misc
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}
@@ -244,7 +248,7 @@ endif()
 configure_file(copycomdb2 copycomdb2 @ONLY)
 
 install(TARGETS comdb2 RUNTIME DESTINATION bin)
-foreach(tool dump load printlog stat verify)
+foreach(tool dump load printlog stat verify pgdump)
   add_custom_command(
     TARGET comdb2 POST_BUILD
     COMMAND ln -f comdb2 cdb2_${tool}

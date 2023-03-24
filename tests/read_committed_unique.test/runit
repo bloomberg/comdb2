@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+dbnm=$1
+set -e
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - > out0 <<'EOF'
+drop table if exists t
+create table t(i int unique, j int)$$
+insert into t values(1, 10)
+set transaction read committed
+begin
+insert into t values(1, 100)
+select * from t where i = 1
+rollback
+EOF
+
+diff out0 expected0
+
+
+for idx in 'create unique index t2_i_asc on t2(i asc)' 'create unique index t2_i_desc on t2(i desc)'; do
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+drop table if exists t1
+drop table if exists t2
+create table t1(i int primary key)\$\$
+create table t2(i int)\$\$
+${idx}
+EOF
+
+if [[ -f out1 ]]; then
+    mv out1 out1.asc
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - > out1 <<'EOF' &
+insert into t2 values(11);
+select * from t2 where i = 11
+
+set transaction read committed
+begin
+insert into t2 values(11);
+select * from t2 where i = 11
+select * from t2 where i = 11 order by i asc
+select * from t2 where i = 11 order by i desc
+
+insert into t2 values(11);
+select * from t2 where i = 11
+select * from t2 where i = 11 order by i asc
+select * from t2 where i = 11 order by i desc
+
+select sleep(10)
+select * from t2 where i = 11
+select * from t2 where i = 11 order by i asc
+select * from t2 where i = 11 order by i desc
+
+rollback
+EOF
+first_pid=$!
+
+sleep 3
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+
+wait $first_pid
+diff out1 expected1
+done

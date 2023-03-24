@@ -149,8 +149,14 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
     if (num >= sc->nmembers && sc->datacopy) /* datacopy */
     {
         num = sc->datacopy[num - sc->nmembers];
-        sc = db->schema;
-        sprintf(buf, "\"%s\" (datacopy)", sc->member[num].name);
+        char *datacopy_string = "datacopy";
+        if (sc->partial_datacopy) {
+            sc = sc->partial_datacopy;
+            datacopy_string = "partial datacopy";
+        } else {
+            sc = db->schema;
+        }
+        sprintf(buf, "\"%s\" (%s)", sc->member[num].name, datacopy_string);
     } else if (num < sc->nmembers) {
         sprintf(buf, "\"%s\"", sc->member[num].name);
     } else {
@@ -882,6 +888,15 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_Close:
         strbuf_appendf(out, "Close cursor [%d]", op->p1);
         break;
+    case OP_SeekScan: {
+        if (pc+1 >= v->nOp) {
+            strbuf_appendf(out, "Huh?  SeekScan not followed by OP_Seek*?\n");
+            return;
+        }
+        Op *seek = &v->aOp[pc+1];
+        strbuf_appendf(out, "Walk the next %d rows of cursor [%d] to see if it matches the key in [R%d..R%d]\n", op->p2, seek->p1, seek->p3, seek->p4);
+        break;
+    }
     case OP_SeekLT:
     case OP_SeekLE:
     case OP_SeekGE:

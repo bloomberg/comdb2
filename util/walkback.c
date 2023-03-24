@@ -893,9 +893,11 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern char **backtrace_symbols(void *const *, int);
+void backtrace_symbols_fd(void *const *, int, int);
 #else
 #define backtrace(A, B) 0
 #define backtrace_symbols(A, B) NULL
+#define backtrace_symbols_fd(A, B, C)
 #endif
 
 static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)
@@ -922,8 +924,41 @@ static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...)
 {
+/* Generate non-interleaved cheapstacks */
+#if defined CHEAPSTACK_LOCK
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&lk);
+#endif
     va_list args;
     va_start(args, fmt);
     comdb2_cheapstack_sym_valist(f, fmt, args);
     va_end(args);
+#if defined CHEAPSTACK_LOCK
+    pthread_mutex_unlock(&lk);
+#endif
 }
+
+void comdb2_cheapstack_sym_char_array(char *str, int maxln)
+{
+    void *buf[MAXFRAMES];
+    (void)buf;
+    unsigned int frames;
+    char **strings;
+    char *cur = str;
+
+    frames = backtrace(buf, MAXFRAMES);
+    strings = backtrace_symbols(buf, frames);
+    for (int j = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            int ccount;
+            ccount = snprintf(cur, maxln, "%s", &p[1]);
+            cur += ccount;
+            maxln -= ccount;
+        }
+    }
+    if (strings)
+        free(strings);
+}
+

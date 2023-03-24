@@ -34,6 +34,7 @@ struct dohsql_node {
     int order_size;
     int *order_dir;
     int nparams;
+    int remotedb;
     struct params_info *params;
 };
 typedef struct dohsql_node dohsql_node_t;

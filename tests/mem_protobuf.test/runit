@@ -6,4 +6,9 @@ set -e
 
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
-cdb2sql $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat")' | grep 'protobuf.*appsockpool'
+result=$(cdb2sql --tabs $dbnm --host $host "select case when count(*) > 0 then 'pass' else 'fail' end as result from comdb2_memstats where scope in ('appsockpool', 'appsock')")
+if [[ "$result" == "pass" ]]; then
+    exit 0
+else
+    exit 1
+fi

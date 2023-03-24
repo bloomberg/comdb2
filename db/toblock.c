@@ -78,6 +78,7 @@
 #include "comdb2_atomic.h"
 #include "str0.h"
 #include "schemachange.h"
+#include "views.h"
 
 #if 0
 #define TEST_OSQL
@@ -1106,7 +1107,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     }
 
     char *cnonce = NULL;
-    if (IQ_HAS_SNAPINFO(iq)) {
+    if (IQ_HAS_SNAPINFO_KEY(iq)) {
         cnonce = alloca(IQ_SNAPINFO(iq)->keylen + 1);
         memcpy(cnonce, IQ_SNAPINFO(iq)->key, IQ_SNAPINFO(iq)->keylen);
         cnonce[IQ_SNAPINFO(iq)->keylen] = '\0';
@@ -1123,7 +1124,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     extern int gbl_replicant_retry_on_not_durable;
     if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable) &&
         !bdb_latest_commit_is_durable(thedb->bdb_env)) {
-        if (IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO_KEY(iq)) {
             logmsg(LOGMSG_ERROR,
                    "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
                    line, outrc, cnonce);
@@ -1131,7 +1132,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         outrc = ERR_NOT_DURABLE;
     }
 
-    if (gbl_dump_blkseq && IQ_HAS_SNAPINFO(iq)) {
+    if (gbl_dump_blkseq && IQ_HAS_SNAPINFO_KEY(iq)) {
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
@@ -1211,6 +1212,311 @@ static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
     return RC_OK;
 }
 
+static int process_long_trn(struct ireq *iq, longblk_trans_type *blklong_trans, struct longblock_req_hdr *hdr,
+                            block_state_t *blkstate)
+{
+    int in_dataszw = 0;
+    int ii = 0;
+    int rc = 0;
+    int check_auxdb = 0;
+    int gotsequence = 0;
+    int gotsequence2 = 0;
+    fstblkseq_t sequence;
+    uuid_t blkseq_uuid;
+
+    if (blklong_trans == NULL) {
+        if (!hdr->docommit) {
+            return RC_TRAN_CLIENT_RETRY;
+        }
+        check_auxdb = 1;
+    }
+    /* if expected piece lower than sent one, something arrived out of
+     * sequence, so we need to replay the transaction */
+    else {
+        /* allocator memory from blobmem first before Pthread_mutex_lock
+           otherwise there might be deadlocks */
+        in_dataszw = hdr->offset - (((REQ_HDR_LEN + LONGBLOCK_REQ_PRE_HDR_LEN + LONGBLOCK_REQ_HDR_LEN) + 3) / 4);
+
+        if (blobmem == NULL)
+            blklong_trans->trn_data =
+                realloc(blklong_trans->trn_data, (blklong_trans->datasz + in_dataszw) * sizeof(int));
+        else {
+            blklong_trans->trn_data =
+                comdb2_brealloc(blobmem, blklong_trans->trn_data, (blklong_trans->datasz + in_dataszw) * sizeof(int));
+        }
+
+        Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
+        if (blklong_trans->expseg < hdr->curpiece) {
+            hash_del(iq->dbenv->long_trn_table, blklong_trans);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            free(blklong_trans->trn_data);
+            free(blklong_trans);
+            blklong_trans = NULL;
+            if (!hdr->docommit) {
+                return RC_TRAN_CLIENT_RETRY; /* replay the transaction */
+            }
+            check_auxdb = 1;
+        } else if (blklong_trans->expseg > hdr->curpiece) {
+            struct longblock_rsp rsp;
+
+            /* starting writes, no more reads */
+            iq->p_buf_in = NULL;
+            iq->p_buf_in_end = NULL;
+
+            /* we already received that piece...just drop the packet */
+            memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
+            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+            rsp.rc = 0;
+            memset(rsp.reserved, 0, sizeof(rsp.reserved));
+
+            if (!(iq->p_buf_out = longblock_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
+                return ERR_INTERNAL;
+
+            return 0;
+        }
+    }
+
+    /* loop to adjust all new offsets to account for already existing
+     * ones, this is a pre-loop, we want to jump back to the begining after
+     * it's done */
+    for (ii = 0; ii < hdr->num_reqs; ++ii, block_state_next(iq, blkstate)) {
+        struct packedreq_hdr op_hdr;
+        uint8_t *p_buf_op_start;
+
+        p_buf_op_start = (uint8_t *)iq->p_buf_in;
+        if (!(iq->p_buf_in = packedreq_hdr_get(&op_hdr, iq->p_buf_in, blkstate->p_buf_req_end, 0)) ||
+            block_state_set_next(iq, blkstate, op_hdr.nxt))
+            break;
+
+        /* IF BLKLONG_TRANS IS NULL, IT MEANS WE'RE SEARCHING FOR FASTBLOCK
+           AND SIMPLY NEED TO GET SEQUENCE NUMBER FROM THIS BUFFER..DON'T
+           CARE IF THE POINTERS GET UPDATED IN THIS CASE */
+        if (blklong_trans != NULL) {
+            op_hdr.nxt +=
+                (blklong_trans->datasz - (((REQ_HDR_LEN + LONGBLOCK_REQ_PRE_HDR_LEN + LONGBLOCK_REQ_HDR_LEN) + 3) / 4));
+            if (packedreq_hdr_put(&op_hdr, p_buf_op_start, iq->p_buf_in) != iq->p_buf_in) {
+                /* we are still locked here UNLESS
+                 * hdr.docommit&&check_auxdb */
+                if (!hdr->docommit || !check_auxdb)
+                    Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                return ERR_INTERNAL;
+            }
+        }
+        switch (op_hdr.opcode) {
+        case BLOCK_SEQ: {
+            struct packedreq_seq seq;
+
+            if (gotsequence || !hdr->docommit) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: longblock err gotsequence=%d "
+                       "docommit=%d\n",
+                       __func__, gotsequence, hdr->docommit);
+                /* we are still locked here UNLESS
+                 * hdr.docommit&&check_auxdb */
+                if (!hdr->docommit || !check_auxdb)
+                    Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                return ERR_INTERNAL;
+            }
+            gotsequence = 1;
+            if (!(iq->p_buf_in = packedreq_seq_get(&seq, iq->p_buf_in, blkstate->p_buf_next_start))) {
+                /* we are still locked here UNLESS
+                 * hdr.docommit&&check_auxdb */
+                if (!hdr->docommit || !check_auxdb)
+                    Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                return ERR_INTERNAL;
+            }
+
+            /* reorder the sequence number */
+            sequence.int3[0] = seq.seq3;
+            sequence.int3[1] = seq.seq1;
+            sequence.int3[2] = seq.seq2;
+            break;
+        }
+        case BLOCK2_SEQV2: {
+            struct packedreq_seq2 seq;
+            gotsequence2 = 1;
+
+            if (!(iq->p_buf_in = packedreq_seq2_get(&seq, iq->p_buf_in, blkstate->p_buf_next_start))) {
+                if (!hdr->docommit || !check_auxdb)
+                    Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+                return ERR_INTERNAL;
+            }
+            comdb2uuidcpy(blkseq_uuid, seq.seq);
+            break;
+        }
+
+        default:
+            break;
+        }
+        if (blklong_trans != NULL)
+            blklong_trans->numreqs++;
+    }
+    /* unknown transaction..check auxilary db for incoming SEQ # */
+    if (check_auxdb && hdr->docommit) {
+        /* long_trn_mutex lock must already be released at this point */
+        if (gotsequence)
+            return do_replay_case(iq, &sequence, sizeof(sequence), hdr->tot_reqs, 1, NULL, 0, __LINE__);
+        else if (gotsequence2)
+            return do_replay_case(iq, blkseq_uuid, sizeof(uuid_t), hdr->tot_reqs, 1, NULL, 0, __LINE__);
+        else
+            return RC_TRAN_CLIENT_RETRY;
+    }
+    /* we should still be locked down here */
+    /* just in case...this is a check that should never happen */
+    if (blklong_trans == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: blklong_trans==NULL unexpectedly!!\n", __func__);
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        return ERR_INTERNAL;
+    }
+
+    /* allocation is done before grabbing long_trn_mtx */
+    if (blklong_trans->trn_data == NULL) {
+        hash_del(iq->dbenv->long_trn_table, blklong_trans);
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        free(blklong_trans->trn_data);
+        free(blklong_trans);
+        return ERR_INTERNAL;
+    }
+    memcpy((char *)blklong_trans->trn_data + (blklong_trans->datasz) * sizeof(int),
+           blkstate->p_buf_req_start + (LONGBLOCK_REQ_PRE_HDR_LEN + LONGBLOCK_REQ_HDR_LEN), in_dataszw * sizeof(int));
+    blklong_trans->datasz += in_dataszw;
+    blklong_trans->numsegs++;
+    blklong_trans->expseg++;
+
+    if (!hdr->docommit) {
+        struct longblock_rsp rsp;
+
+        /* starting writes, no more reads */
+        iq->p_buf_in = NULL;
+        iq->p_buf_in_end = NULL;
+
+        /* we already received that piece...just drop the packet */
+        memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        rsp.rc = 0;
+        memset(rsp.reserved, 0, sizeof(rsp.reserved));
+
+        if (!(iq->p_buf_out = longblock_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
+            return ERR_INTERNAL;
+    } else {
+        /* do not free data until execution is done */
+        uint8_t *p_rawdata = (uint8_t *)blklong_trans->trn_data;
+        int trnsegs = blklong_trans->numsegs;
+        int retries = 0;
+
+        int totpen = 0;
+        int penaltyinc;
+        double gbl_penaltyincpercent_d;
+
+        blkstate->p_buf_req_start = p_rawdata + REQ_HDR_LEN;
+        blkstate->p_buf_req_end = p_rawdata + (blklong_trans->datasz * sizeof(int));
+        blkstate->numreq = blklong_trans->numreqs;
+
+        MEMORY_SYNC;
+
+        hash_del(iq->dbenv->long_trn_table, blklong_trans);
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        free(blklong_trans);
+
+        totpen = 0;
+
+        gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
+
+    retrylong:
+        rc = toblock_outer(iq, blkstate);
+        if (rc == RC_INTERNAL_RETRY) {
+            iq->retries++;
+            if (++retries < gbl_maxretries) {
+                if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
+                    Pthread_mutex_lock(&delay_lock);
+
+                    penaltyinc =
+                        (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) * (gbl_penaltyincpercent_d / iq->retries);
+
+                    if (penaltyinc <= 0) {
+                        /* at least one less writer */
+                        penaltyinc = 1;
+                    }
+
+                    if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
+                        penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
+
+                    gbl_maxwthreadpenalty += penaltyinc;
+                    totpen += penaltyinc;
+
+                    Pthread_mutex_unlock(&delay_lock);
+                }
+
+                n_retries++;
+                poll(0, 0, (rand() % 25 + 1));
+                goto retrylong;
+            }
+
+            logmsg(LOGMSG_ERROR, "*ERROR* [%d] tolongblock too much contention %d\n", __LINE__, retries);
+            thd_dump();
+        }
+
+        /* we need this in rare case when the request is retried
+           500 times; this is happening due to other bugs usually
+           this ensures no requests replays will be left stuck
+           papers around other short returns in toblock jic
+         */
+        osql_blkseq_unregister(iq);
+
+        Pthread_mutex_lock(&delay_lock);
+
+        gbl_maxwthreadpenalty -= totpen;
+
+        Pthread_mutex_unlock(&delay_lock);
+
+        block_state_free(blkstate);
+
+        free(p_rawdata);
+        iq->dbenv->long_trn_stats.ltrn_fulltrans++;
+        if (iq->dbenv->long_trn_stats.ltrn_maxnseg < trnsegs)
+            iq->dbenv->long_trn_stats.ltrn_maxnseg = trnsegs;
+        if ((iq->dbenv->long_trn_stats.ltrn_minnseg > trnsegs) || iq->dbenv->long_trn_stats.ltrn_minnseg == 0)
+            iq->dbenv->long_trn_stats.ltrn_minnseg = trnsegs;
+        if (iq->dbenv->long_trn_stats.ltrn_fulltrans == 1)
+            iq->dbenv->long_trn_stats.ltrn_avgnseg = trnsegs;
+        else {
+            iq->dbenv->long_trn_stats.ltrn_avgnseg =
+                ((iq->dbenv->long_trn_stats.ltrn_avgnseg * (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) + trnsegs) /
+                 iq->dbenv->long_trn_stats.ltrn_fulltrans);
+        }
+
+        if (iq->dbenv->long_trn_stats.ltrn_maxsize < blkstate->p_buf_req_end - blkstate->p_buf_req_end)
+            iq->dbenv->long_trn_stats.ltrn_maxsize = blkstate->p_buf_req_end - blkstate->p_buf_req_end;
+        if ((iq->dbenv->long_trn_stats.ltrn_minsize > blkstate->p_buf_req_end - blkstate->p_buf_req_end) ||
+            iq->dbenv->long_trn_stats.ltrn_minsize == 0)
+            iq->dbenv->long_trn_stats.ltrn_minsize = blkstate->p_buf_req_end - blkstate->p_buf_req_end;
+        if (iq->dbenv->long_trn_stats.ltrn_fulltrans == 1)
+            iq->dbenv->long_trn_stats.ltrn_avgsize = blkstate->p_buf_req_end - blkstate->p_buf_req_end;
+        else {
+            iq->dbenv->long_trn_stats.ltrn_avgsize =
+                (((long)iq->dbenv->long_trn_stats.ltrn_avgsize * (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
+                  (blkstate->p_buf_req_end - blkstate->p_buf_req_end)) /
+                 iq->dbenv->long_trn_stats.ltrn_fulltrans);
+        }
+
+        if (iq->dbenv->long_trn_stats.ltrn_maxnreq < blkstate->numreq)
+            iq->dbenv->long_trn_stats.ltrn_maxnreq = blkstate->numreq;
+        if ((iq->dbenv->long_trn_stats.ltrn_minnreq > blkstate->numreq) || iq->dbenv->long_trn_stats.ltrn_minnreq == 0)
+            iq->dbenv->long_trn_stats.ltrn_minnreq = blkstate->numreq;
+        if (iq->dbenv->long_trn_stats.ltrn_fulltrans == 1)
+            iq->dbenv->long_trn_stats.ltrn_avgnreq = blkstate->numreq;
+        else {
+            iq->dbenv->long_trn_stats.ltrn_avgnreq =
+                (((long)iq->dbenv->long_trn_stats.ltrn_avgnreq * (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
+                  blkstate->numreq) /
+                 iq->dbenv->long_trn_stats.ltrn_fulltrans);
+        }
+
+        return rc;
+    }
+    return 0;
+}
+
 /* this is used in bb-plugins */
 int tolongblock(struct ireq *iq)
 {
@@ -1219,7 +1525,6 @@ int tolongblock(struct ireq *iq)
     longblk_trans_type *blklong_trans = NULL;
     block_state_t blkstate;
     struct longblock_req_hdr hdr;
-    uuid_t blkseq_uuid;
 
     /* fill blkstate's common fields */
     blkstate.p_buf_req_start = iq->p_buf_in;
@@ -1393,356 +1698,26 @@ int tolongblock(struct ireq *iq)
         }
 #endif
     } else if (tranid != 0LL) {
-        int in_dataszw = 0;
-        int ii = 0;
-        int check_auxdb = 0;
-        int gotsequence = 0;
-        int gotsequence2 = 0;
-        fstblkseq_t sequence;
-
         memcpy(&tranid, hdr.trnid, sizeof(int) * 2);
 
         Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
         blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
+        /* mark the in-use flag to prevent the transaction
+           from being purged by purge_expired_long_transactions() */
+        if (blklong_trans != NULL)
+            blklong_trans->inuse = 1;
         Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
 
-        if (blklong_trans == NULL) {
-            if (!hdr.docommit) {
-                return RC_TRAN_CLIENT_RETRY;
-            }
-            check_auxdb = 1;
-        }
-        /* if expected piece lower than sent one, something arrived out of
-         * sequence, so we need to replay the transaction */
-        else {
-            /* allocator memory from blobmem first before Pthread_mutex_lock
-               otherwise there might be deadlocks */
-            in_dataszw =
-                hdr.offset - (((REQ_HDR_LEN + LONGBLOCK_REQ_PRE_HDR_LEN +
-                                LONGBLOCK_REQ_HDR_LEN) +
-                               3) /
-                              4);
+        int ltrnrc = process_long_trn(iq, blklong_trans, &hdr, &blkstate);
 
-            if (blobmem == NULL)
-                blklong_trans->trn_data =
-                    realloc(blklong_trans->trn_data,
-                            (blklong_trans->datasz + in_dataszw) * sizeof(int));
-            else {
-                /* mark the flag to prevent the transaction
-                   from being purged by purge_expired_long_transactions() */
-                blklong_trans->blocking = 1;
-                blklong_trans->trn_data = comdb2_brealloc(
-                    blobmem, blklong_trans->trn_data,
-                    (blklong_trans->datasz + in_dataszw) * sizeof(int));
-                blklong_trans->blocking = 0;
-            }
-
-            Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
-            if (blklong_trans->expseg < hdr.curpiece) {
-                hash_del(iq->dbenv->long_trn_table, blklong_trans);
-                Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-                free(blklong_trans->trn_data);
-                free(blklong_trans);
-                blklong_trans = NULL;
-                if (!hdr.docommit) {
-                    return RC_TRAN_CLIENT_RETRY; /* replay the transaction */
-                }
-                check_auxdb = 1;
-            } else if (blklong_trans->expseg > hdr.curpiece) {
-                struct longblock_rsp rsp;
-
-                /* starting writes, no more reads */
-                iq->p_buf_in = NULL;
-                iq->p_buf_in_end = NULL;
-
-                /* we already received that piece...just drop the packet */
-                memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
-                Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-                rsp.rc = 0;
-                memset(rsp.reserved, 0, sizeof(rsp.reserved));
-
-                if (!(iq->p_buf_out = longblock_rsp_put(&rsp, iq->p_buf_out,
-                                                        iq->p_buf_out_end)))
-                    return ERR_INTERNAL;
-
-                return 0;
-            }
-        }
-
-        /* loop to adjust all new offsets to account for already existing
-         * ones, this is a pre-loop, we want to jump back to the begining after
-         * it's done */
-        for (ii = 0; ii < hdr.num_reqs; ++ii, block_state_next(iq, &blkstate)) {
-            struct packedreq_hdr op_hdr;
-            uint8_t *p_buf_op_start;
-
-            p_buf_op_start = (uint8_t *)iq->p_buf_in;
-            if (!(iq->p_buf_in = packedreq_hdr_get(&op_hdr, iq->p_buf_in,
-                                                   blkstate.p_buf_req_end, 0)) ||
-                block_state_set_next(iq, &blkstate, op_hdr.nxt))
-                break;
-
-            /* IF BLKLONG_TRANS IS NULL, IT MEANS WE'RE SEARCHING FOR FASTBLOCK
-               AND SIMPLY NEED TO GET SEQUENCE NUMBER FROM THIS BUFFER..DON'T
-               CARE IF THE POINTERS GET UPDATED IN THIS CASE */
-            if (blklong_trans != NULL) {
-                op_hdr.nxt += (blklong_trans->datasz -
-                               (((REQ_HDR_LEN + LONGBLOCK_REQ_PRE_HDR_LEN +
-                                  LONGBLOCK_REQ_HDR_LEN) +
-                                 3) /
-                                4));
-                if (packedreq_hdr_put(&op_hdr, p_buf_op_start, iq->p_buf_in) !=
-                    iq->p_buf_in) {
-                    /* we are still locked here UNLESS
-                     * hdr.docommit&&check_auxdb */
-                    if (!hdr.docommit || !check_auxdb)
-                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-                    return ERR_INTERNAL;
-                }
-            }
-            switch (op_hdr.opcode) {
-            case BLOCK_SEQ: {
-                struct packedreq_seq seq;
-
-                if (gotsequence || !hdr.docommit) {
-                    logmsg(LOGMSG_ERROR, "%s: longblock err gotsequence=%d "
-                                    "docommit=%d\n",
-                            __func__, gotsequence, hdr.docommit);
-                    /* we are still locked here UNLESS
-                     * hdr.docommit&&check_auxdb */
-                    if (!hdr.docommit || !check_auxdb)
-                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-                    return ERR_INTERNAL;
-                }
-                gotsequence = 1;
-                if (!(iq->p_buf_in = packedreq_seq_get(
-                          &seq, iq->p_buf_in, blkstate.p_buf_next_start))) {
-                    /* we are still locked here UNLESS
-                     * hdr.docommit&&check_auxdb */
-                    if (!hdr.docommit || !check_auxdb)
-                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-                    return ERR_INTERNAL;
-                }
-
-                /* reorder the sequence number */
-                sequence.int3[0] = seq.seq3;
-                sequence.int3[1] = seq.seq1;
-                sequence.int3[2] = seq.seq2;
-                break;
-            }
-            case BLOCK2_SEQV2: {
-                struct packedreq_seq2 seq;
-                gotsequence2 = 1;
-
-                if (!(iq->p_buf_in = packedreq_seq2_get(
-                          &seq, iq->p_buf_in, blkstate.p_buf_next_start))) {
-                    if (!hdr.docommit || !check_auxdb)
-                        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-                    return ERR_INTERNAL;
-                }
-                comdb2uuidcpy(blkseq_uuid, seq.seq);
-                break;
-            }
-
-            default:
-                break;
-            }
-            if (blklong_trans != NULL)
-                blklong_trans->numreqs++;
-        }
-        /* unknown transaction..check auxilary db for incoming SEQ # */
-        if (check_auxdb && hdr.docommit) {
-            /* long_trn_mutex lock must already be released at this point */
-            if (gotsequence)
-                return do_replay_case(iq, &sequence, sizeof(sequence),
-                                      hdr.tot_reqs, 1, NULL, 0, __LINE__);
-            else if (gotsequence2)
-                return do_replay_case(iq, blkseq_uuid, sizeof(uuid_t),
-                                      hdr.tot_reqs, 1, NULL, 0, __LINE__);
-            else
-                return RC_TRAN_CLIENT_RETRY;
-        }
-        /* we should still be locked down here */
-        if (blklong_trans == NULL) /* just in case...this is a check that
-                                      should never happen */
-        {
-            logmsg(LOGMSG_ERROR, "%s: blklong_trans==NULL unexpectedly!!\n",
-                    __func__);
-            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-            return ERR_INTERNAL;
-        }
-
-        /* allocation is done before grabbing long_trn_mtx */
-        if (blklong_trans->trn_data == NULL) {
-            hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-            free(blklong_trans->trn_data);
-            free(blklong_trans);
-            return ERR_INTERNAL;
-        }
-        memcpy((char *)blklong_trans->trn_data +
-                   (blklong_trans->datasz) * sizeof(int),
-               blkstate.p_buf_req_start +
-                   (LONGBLOCK_REQ_PRE_HDR_LEN + LONGBLOCK_REQ_HDR_LEN),
-               in_dataszw * sizeof(int));
-        /*blklong_trans->numreqs+=hdr.num_reqs;*/
-        blklong_trans->datasz += in_dataszw;
-        blklong_trans->numsegs++;
-        blklong_trans->expseg++;
-        /*fprintf(stderr, "calling tolongbloc fadd trn %llu %d %d %d %d %d "
-         * "%d\n",blklong_trans->tranid,blklong_trans->timestamp,
-         * blklong_trans->datasz,blklong_trans->numreqs, blklong_trans->numsegs,
-         * blklong_trans->expseg, hdr.docommit);*/
-
-        if (!hdr.docommit) {
-            struct longblock_rsp rsp;
-
-            /* starting writes, no more reads */
-            iq->p_buf_in = NULL;
-            iq->p_buf_in_end = NULL;
-
-            /* we already received that piece...just drop the packet */
-            memcpy(rsp.trnid, &blklong_trans->tranid, sizeof(int) * 2);
-            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-            rsp.rc = 0;
-            memset(rsp.reserved, 0, sizeof(rsp.reserved));
-
-            if (!(iq->p_buf_out = longblock_rsp_put(&rsp, iq->p_buf_out,
-                                                    iq->p_buf_out_end)))
-                return ERR_INTERNAL;
-        } else {
-            /* do not free data until execution is done */
-            uint8_t *p_rawdata = (uint8_t *)blklong_trans->trn_data;
-            int trnsegs = blklong_trans->numsegs;
-            int retries = 0;
-
-            int totpen = 0;
-            int penaltyinc;
-            double gbl_penaltyincpercent_d;
-
-            blkstate.p_buf_req_start = p_rawdata + REQ_HDR_LEN;
-            blkstate.p_buf_req_end =
-                p_rawdata + (blklong_trans->datasz * sizeof(int));
-            blkstate.numreq = blklong_trans->numreqs;
-
-            MEMORY_SYNC;
-
-            hash_del(iq->dbenv->long_trn_table, blklong_trans);
-            Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
-            free(blklong_trans);
-
-            totpen = 0;
-
-            gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
-
-        retrylong:
-            rc = toblock_outer(iq, &blkstate);
-            if (rc == RC_INTERNAL_RETRY) {
-                iq->retries++;
-                if (++retries < gbl_maxretries) {
-                    if (!bdb_attr_get(
-                            thedb->bdb_attr,
-                            BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                        Pthread_mutex_lock(&delay_lock);
-
-                        penaltyinc =
-                            (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
-                            (gbl_penaltyincpercent_d / iq->retries);
-
-                        if (penaltyinc <= 0) {
-                            /* at least one less writer */
-                            penaltyinc = 1;
-                        }
-
-                        if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
-                            penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
-
-                        gbl_maxwthreadpenalty += penaltyinc;
-                        totpen += penaltyinc;
-
-                        Pthread_mutex_unlock(&delay_lock);
-                    }
-
-                    n_retries++;
-                    poll(0, 0, (rand() % 25 + 1));
-                    goto retrylong;
-                }
-
-                logmsg(LOGMSG_ERROR, 
-                        "*ERROR* [%d] tolongblock too much contention %d\n",
-                        __LINE__, retries);
-                thd_dump();
-            }
-
-            /* we need this in rare case when the request is retried
-               500 times; this is happening due to other bugs usually
-               this ensures no requests replays will be left stuck
-               papers around other short returns in toblock jic
-            */
-            osql_blkseq_unregister(iq);
-
-            Pthread_mutex_lock(&delay_lock);
-
-            gbl_maxwthreadpenalty -= totpen;
-
-            Pthread_mutex_unlock(&delay_lock);
-
-            block_state_free(&blkstate);
-
-            free(p_rawdata);
-            iq->dbenv->long_trn_stats.ltrn_fulltrans++;
-            if (iq->dbenv->long_trn_stats.ltrn_maxnseg < trnsegs)
-                iq->dbenv->long_trn_stats.ltrn_maxnseg = trnsegs;
-            if ((iq->dbenv->long_trn_stats.ltrn_minnseg > trnsegs) ||
-                iq->dbenv->long_trn_stats.ltrn_minnseg == 0)
-                iq->dbenv->long_trn_stats.ltrn_minnseg = trnsegs;
-            if (iq->dbenv->long_trn_stats.ltrn_fulltrans == 1)
-                iq->dbenv->long_trn_stats.ltrn_avgnseg = trnsegs;
-            else {
-                iq->dbenv->long_trn_stats.ltrn_avgnseg =
-                    ((iq->dbenv->long_trn_stats.ltrn_avgnseg *
-                          (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
-                      trnsegs) /
-                     iq->dbenv->long_trn_stats.ltrn_fulltrans);
-            }
-
-            if (iq->dbenv->long_trn_stats.ltrn_maxsize <
-                blkstate.p_buf_req_end - blkstate.p_buf_req_end)
-                iq->dbenv->long_trn_stats.ltrn_maxsize =
-                    blkstate.p_buf_req_end - blkstate.p_buf_req_end;
-            if ((iq->dbenv->long_trn_stats.ltrn_minsize >
-                 blkstate.p_buf_req_end - blkstate.p_buf_req_end) ||
-                iq->dbenv->long_trn_stats.ltrn_minsize == 0)
-                iq->dbenv->long_trn_stats.ltrn_minsize =
-                    blkstate.p_buf_req_end - blkstate.p_buf_req_end;
-            if (iq->dbenv->long_trn_stats.ltrn_fulltrans == 1)
-                iq->dbenv->long_trn_stats.ltrn_avgsize =
-                    blkstate.p_buf_req_end - blkstate.p_buf_req_end;
-            else {
-                iq->dbenv->long_trn_stats.ltrn_avgsize =
-                    (((long)iq->dbenv->long_trn_stats.ltrn_avgsize *
-                          (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
-                      (blkstate.p_buf_req_end - blkstate.p_buf_req_end)) /
-                     iq->dbenv->long_trn_stats.ltrn_fulltrans);
-            }
-
-            if (iq->dbenv->long_trn_stats.ltrn_maxnreq < blkstate.numreq)
-                iq->dbenv->long_trn_stats.ltrn_maxnreq = blkstate.numreq;
-            if ((iq->dbenv->long_trn_stats.ltrn_minnreq > blkstate.numreq) ||
-                iq->dbenv->long_trn_stats.ltrn_minnreq == 0)
-                iq->dbenv->long_trn_stats.ltrn_minnreq = blkstate.numreq;
-            if (iq->dbenv->long_trn_stats.ltrn_fulltrans == 1)
-                iq->dbenv->long_trn_stats.ltrn_avgnreq = blkstate.numreq;
-            else {
-                iq->dbenv->long_trn_stats.ltrn_avgnreq =
-                    (((long)iq->dbenv->long_trn_stats.ltrn_avgnreq *
-                          (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
-                      blkstate.numreq) /
-                     iq->dbenv->long_trn_stats.ltrn_fulltrans);
-            }
-
-            return rc;
-        }
+        Pthread_mutex_lock(&iq->dbenv->long_trn_mtx);
+        /* If we still find the transaction, mark back its in-use flag so
+           this can be safely timed out by purge_expired_long_transactions(). */
+        blklong_trans = hash_find(iq->dbenv->long_trn_table, &tranid);
+        if (blklong_trans != NULL)
+            blklong_trans->inuse = 0;
+        Pthread_mutex_unlock(&iq->dbenv->long_trn_mtx);
+        return ltrnrc;
     } else {
         /*fprintf(stderr, "calling tolongbloc one trn\n");*/
         int retries = 0;
@@ -2055,8 +2030,8 @@ static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
         }
 
         if (verbose_deadlocks)
-            logmsg(LOGMSG_DEBUG, "%x %s:%d Using iq %p priority %d\n",
-                   (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+            logmsg(LOGMSG_DEBUG, "%" PRIxPTR "%s:%d Using iq %p priority %d\n",
+                   (intptr_t)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
         irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries, iq->priority);
     } else {
         irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries, 0);
@@ -2889,7 +2864,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
-        if (got_osql && IQ_HAS_SNAPINFO(iq)) {
+        if (got_osql && IQ_HAS_SNAPINFO_KEY(iq)) {
             if (gbl_osql_snap_info_hashcheck) {
                 // the goal here is to stall until the original transaction
                 // has finished that way we can retrieve the outcome from blkseq
@@ -3021,8 +2996,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     if (iq->debug) {
         /* TODO print trans twice? No parent_trans? */
-        reqprintf(iq, "%x:START TRANSACTION ID %p DB %d '%s'",
-                  (int)pthread_self(), trans, iq->usedb->dbnum,
+        reqprintf(iq, "%" PRIxPTR ":START TRANSACTION ID %p DB %d '%s'",
+                  (intptr_t)pthread_self(), trans, iq->usedb->dbnum,
                   iq->usedb->tablename);
     }
 
@@ -3045,6 +3020,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     clear_constraints_tables();
 
+    // Reset query effects
+    if (IQ_HAS_SNAPINFO(iq))
+        memset(&iq->sorese->snap_info->effects, 0, sizeof(struct query_effects));
+
     /* THE BLOCK PROCESSOR FOR LOOP */
     for (opnum = 0; opnum < num_reqs;
          ++opnum, block_state_next(iq, p_blkstate)) {
@@ -3063,7 +3042,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             /* remove all prefixes tothe debug trace and put in the transaction
              * and operation name prefix. */
             reqpopprefixes(iq, -1);
-            reqpushprefixf(iq, "%x:tran %p:%s ", (int)pthread_self(), trans,
+            reqpushprefixf(iq, "%" PRIxPTR ":tran %p:%s ", (intptr_t)pthread_self(), trans,
                            breq2a(hdr.opcode));
 
             reqprintflush(iq);
@@ -3952,10 +3931,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
-
-            int updflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
-            if (iq->comdbg_flags)
-                updflags |= RECFLAGS_COMDBG_FROM_LE;
 
             rc = upd_record(iq, trans, NULL, /*primkey - will be formed from
                                                verification data*/
@@ -5024,8 +4999,6 @@ backout:
                                                      &(iq->arr->file),
                                                      &(iq->arr->offset), 0))) {
             numerrs = 1;
-            currangearr_free(iq->arr);
-            iq->arr = NULL;
             rc = ERR_NOTSERIAL;
             reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
         }
@@ -5035,9 +5008,6 @@ backout:
                                   &(iq->selectv_arr->file),
                                   &(iq->selectv_arr->offset), 0)) {
             numerrs = 1;
-            currangearr_free(iq->selectv_arr);
-            iq->selectv_arr = NULL;
-
             /* verify error */
             err.ixnum = -1; /* data */
             err.errcode = ERR_CONSTR;
@@ -5046,6 +5016,12 @@ backout:
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "selectv constraints");
         } 
     }
+
+    /* Cursor ranges need freeing on error, too. */
+    currangearr_free(iq->arr);
+    iq->arr = NULL;
+    currangearr_free(iq->selectv_arr);
+    iq->selectv_arr = NULL;
 
     /* starting writes, no more reads */
     iq->p_buf_in = NULL;
@@ -5125,8 +5101,8 @@ backout:
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                 if (verbose_deadlocks)
                     logmsg(LOGMSG_ERROR,
-                           "%x %s:%d Setting iq %p priority from %d to %d\n",
-                           (int)pthread_self(), __FILE__, __LINE__, iq,
+                           "%" PRIxPTR "%s:%d Setting iq %p priority from %d to %d\n",
+                           (intptr_t)pthread_self(), __FILE__, __LINE__, iq,
                            iq->priority, priority);
 
                 if (((unsigned)priority) == UINT_MAX) {
@@ -5238,9 +5214,9 @@ backout:
        gonna execute fine */
     if (rc == ERR_NOMASTER && have_blkseq) {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%x %s:%d Skipping add blkseq due to early "
+            logmsg(LOGMSG_USER, "%" PRIxPTR "%s:%d Skipping add blkseq due to early "
                                 "bplog termination\n",
-                   (int)pthread_self(), __FILE__, __LINE__);
+                   (intptr_t)pthread_self(), __FILE__, __LINE__);
 
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
@@ -5417,7 +5393,7 @@ add_blkseq:
         void *bskey;
         int bskeylen;
         /* Snap_info is our blkseq key */
-        if (IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO_KEY(iq)) {
             bskey = IQ_SNAPINFO(iq)->key;
             bskeylen = IQ_SNAPINFO(iq)->keylen;
         } else {
@@ -5510,7 +5486,7 @@ add_blkseq:
                     Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
-                if (gbl_dump_blkseq && IQ_HAS_SNAPINFO(iq)) {
+                if (gbl_dump_blkseq && IQ_HAS_SNAPINFO_KEY(iq)) {
                     char *bskey = alloca(IQ_SNAPINFO(iq)->keylen + 1);
                     memcpy(bskey, IQ_SNAPINFO(iq)->key,
                            IQ_SNAPINFO(iq)->keylen);
@@ -5537,15 +5513,15 @@ add_blkseq:
                 }
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
-                    logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
-                           (int)pthread_self(), __FILE__, __LINE__);
+                    logmsg(LOGMSG_WARN, "%" PRIxPTR "%s:%d replay detected!\n",
+                           (intptr_t)pthread_self(), __FILE__, __LINE__);
                     outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                            replay_data, replay_len, __LINE__);
 #if DEBUG_DID_REPLAY
                     did_replay = 1;
 #endif
-                    logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
-                           (int)pthread_self(), __FILE__, __LINE__, outrc);
+                    logmsg(LOGMSG_DEBUG, "%" PRIxPTR "%s:%d replay returned %d!\n",
+                           (intptr_t)pthread_self(), __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
 
                     goto cleanup;
@@ -5642,15 +5618,15 @@ add_blkseq:
             /* if it's a logical transaction and the commit fails we abort
              * inside the commit call */
             if (rc == IX_DUP) {
-                logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
-                       (int)pthread_self(), __FILE__, __LINE__);
+                logmsg(LOGMSG_WARN, "%" PRIxPTR "%s:%d replay detected!\n",
+                       (intptr_t)pthread_self(), __FILE__, __LINE__);
                 outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
 #if DEBUG_DID_REPLAY
                 did_replay = 1;
 #endif
-                logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
-                       (int)pthread_self(), __FILE__, __LINE__, outrc);
+                logmsg(LOGMSG_DEBUG, "%" PRIxPTR "%s:%d replay returned %d!\n",
+                       (intptr_t)pthread_self(), __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
 
                 goto cleanup;
@@ -5848,6 +5824,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     static uint64_t lastpr = 0;
 
     uint64_t start = gettimeofday_ms();
+    uint64_t end;
 
     Pthread_mutex_lock(&blklk);
     blkcnt++;
@@ -5869,8 +5846,25 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                prmax);
     }
 
+    if (iq->tptlock) {
+        if (iq->tranddl) {
+            /* avoid a lock inversion here; simply forbit mixing bpfunc that
+             * requires tpt lock with other schema changes
+             */
+            reqlog_set_error(
+                iq->reqlogger,
+                "Error cannot mix tpt retention with other schema changes",
+                rc = -1);
+            logmsg(
+                LOGMSG_ERROR,
+                "Error cannot mix tpt retention with other schema changes\n");
+            end = gettimeofday_ms();
+            goto done;
+        }
+        views_lock();
+    }
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
-    uint64_t end = gettimeofday_ms();
+    end = gettimeofday_ms();
 
     bdb_assert_notran(thedb->bdb_env);
 
@@ -5881,6 +5875,11 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
     }
+
+    if (iq->tptlock)
+        views_unlock();
+
+done:
 
     assert(iq->sc_running == 0);
 

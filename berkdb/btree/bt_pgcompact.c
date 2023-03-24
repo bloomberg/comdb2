@@ -21,12 +21,10 @@
 #include <alloca.h>
 #include <assert.h>
 #include <errno.h>
+#include <libgen.h>
 #include <string.h>
 #include <stdint.h>
-
-#ifdef PGCOMP_DBG
 #include <pthread.h>
-#endif
 
 #endif
 
@@ -46,6 +44,8 @@
 
 #include <lz4.h>
 #include "thdpool.h"
+#include "logmsg.h"
+#include "ctrace.h"
 
 #if LZ4_VERSION_NUMBER < 10701
 #define LZ4_compress_default LZ4_compress_limitedOutput
@@ -58,7 +58,6 @@
 #define P_BI      0x04	/* Bi-directional - L2R then R2L */
 #define NUM_MAX_RETRIES 5
 
-#ifdef PGCOMP_DBG
 enum {
 	 REASON_EXIT = 0
 	,REASON_OFF
@@ -95,7 +94,7 @@ static const char *reasons[] = {
 	,"Key is deleted"
 	,"Page is internal"
 	,"Page is empty"
-	,"Page is full"
+	,"Page is not sparse"
 	,"Parent has too few children"
 	,"Reached leftmost/rightmost"
 	,"Does not fit"
@@ -112,15 +111,31 @@ static const char *reasons[] = {
 	,"WHOAH!!! Merged 2 compressed pages"
 	,"WHOAH!!! Moved prefix'd records"
 };
-static int lcl_pgcompact_dryrun = 0;
-#define REASON(i) fprintf(stderr, "(!) (0x%x) %s %d: %s() - %s.\n",	\
-		pthread_self(), __FILE__, __LINE__, __func__, reasons[i])
 
-#define TRACE(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define REASON(i)
-#define TRACE(...)
-#endif
+int gbl_pgcomp_dryrun = 0; /* dry-run */
+int gbl_pgcomp_dbg_stdout = 0;
+int gbl_pgcomp_dbg_ctrace = 0;
+
+#define REASON(i)																		            \
+	do {																				            \
+		if (gbl_pgcomp_dbg_stdout)														            \
+			logmsg(LOGMSG_INFO, "(!) (thd %p) %s %d: %s() - %s.\n",						            \
+					(void *)pthread_self(), basename(__FILE__), __LINE__, __func__, reasons[i]);	\
+        if (gbl_pgcomp_dbg_ctrace)                                                                  \
+			ctrace("(!) (thd %p) %s %d: %s() - %s.\n",						                        \
+					(void *)pthread_self(), basename(__FILE__), __LINE__, __func__, reasons[i]);	\
+	} while (0)
+
+#define TRACE(fmt, ...)																		            \
+	do {																					            \
+		if (gbl_pgcomp_dbg_stdout)																	    \
+			logmsg(LOGMSG_INFO, "(!) (thd %p) %s %d: %s() " fmt,							            \
+					(void *)pthread_self(), basename(__FILE__), __LINE__, __func__, ## __VA_ARGS__);	\
+        if (gbl_pgcomp_dbg_ctrace)                                                                      \
+			ctrace("(!) (thd %p) %s %d: %s() " fmt,							                            \
+					(void *)pthread_self(), basename(__FILE__), __LINE__, __func__, ## __VA_ARGS__);	\
+	} while (0)
+
 
 static int
 __bam_validate_subtree(dbc, nfb, direct)
@@ -132,10 +147,12 @@ __bam_validate_subtree(dbc, nfb, direct)
 	db_pgno_t pgno;
 	BTREE_CURSOR *cp;
 	EPG *epg;
+	DB *dbp;
 
 	cp = (BTREE_CURSOR *)dbc->internal;
 	h = cp->csp->page;
 	pgno = PGNO(h);
+	dbp = dbc->dbp;
 
 	if (TYPE(h) != P_LBTREE) { /* Page is not leaft. Done. */
 		REASON(REASON_NLEAF);
@@ -152,9 +169,10 @@ __bam_validate_subtree(dbc, nfb, direct)
 		return (1);
 	}
 	
-	if (P_FREESPACE(dbc->dbp, h) <= nfb) {
+	if (P_FREESPACE(dbp, h) <= nfb) {
 		/* Page has a good fill ratio. Done. */
 		REASON(REASON_FULL);
+		TRACE("pgno %d ff %.2f\n", pgno, 1 - P_FREESPACE(dbp, h) / (double)(dbp->pgsize - SIZEOF_PAGE));
 		return (1);
 	}
 
@@ -267,8 +285,10 @@ int gbl_compress_page_compact_log = 1;
 } while (0)
 
 #define ALLOCA_UNLZ4_BUFFER() do {				\
-	hdrdbtdata = argp->hdr.data;				\
-	hdrdbtsize = argp->hdr.size;				\
+	hdrdbtdata = argp->hdr.data;                \
+	hdrdbtsize = argp->hdr.size;                \
+    (void) hdrdbtdata;                          \
+    (void) hdrdbtsize;                          \
 	if (argp->data.size != argp->dtaoriglen) {	\
 		unlz4dta = alloca(argp->dtaoriglen);	\
 		dtadbtdata = (void *)unlz4dta;			\
@@ -276,7 +296,9 @@ int gbl_compress_page_compact_log = 1;
 	} else {									\
 		dtadbtdata = argp->data.data;			\
 		dtadbtsize = argp->data.size;			\
-	}											\
+	}                                           \
+    (void) dtadbtsize;                          \
+    (void) dtadbtdata;                          \
 } while (0)
 
 /* Try to compress page image. Return 1 if successfully lz'd. */
@@ -687,8 +709,7 @@ __bam_pgcompact(dbc, dbt, ff, tgtff)
 	local_disable_backward = gbl_disable_backward_scan;
 	local_max_np_per_txn = gbl_max_num_compact_pages_per_txn;
 
-	TRACE("(!) 0x%x %s %d: %s() begins.\n",
-			pthread_self(), __FILE__, __LINE__, __func__);
+	TRACE("begins.\n");
 
 	if (F_ISSET(dbc, DBC_OPD)) {
 		REASON(REASON_DUP);
@@ -717,15 +738,12 @@ __bam_pgcompact(dbc, dbt, ff, tgtff)
 	nfb = ntb - nub;                    /* expected free */
 	//nsfb = (u_int32_t)((1 - tgtff) * (double)ntb); /* target free */
 
-	TRACE("(!) 0x%x %s %d: %s() I'm looking at pgno %d file %s.\n",
-			pthread_self(), __FILE__, __LINE__, __func__, PGNO(h), dbp->fname);
+	TRACE("I'm looking at pgno %d file %s.\n", PGNO(h), dbp->fname);
 
-#ifdef PGCOMP_DBG
-	if (lcl_pgcompact_dryrun) {
+	if (gbl_pgcomp_dryrun) {
 		REASON(REASON_DRYRUN);
 		goto done;
 	}
-#endif
 
 	if (__bam_validate_subtree(dbc, nfb, &direct) != 0)
 		goto done;
@@ -1448,6 +1466,7 @@ __bam_ispgcompactible(dbc, pgno, dbt, ff)
 	pgff = P_FREESPACE(dbp, h) / (double)(dbp->pgsize - SIZEOF_PAGE);
 	if (pgff < (1 - ff)) { /* #5 */
 		REASON(REASON_FULL);
+		TRACE("pgno %d ff %.2f\n", pgno, 1 - pgff);
 		goto error_out;
 	}
 

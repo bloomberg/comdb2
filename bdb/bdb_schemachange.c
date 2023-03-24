@@ -85,7 +85,7 @@ static const char *const bdb_scdone_type_names[] = {
     "user_view",               // 21
     "add_queue_file",          // 22
     "del_queue_file",          // 23
-    "rename_table_alias"       // 24
+    "alias_table"              // 24
 };
 
 const char *bdb_get_scdone_str(scdone_t type)
@@ -182,7 +182,7 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
                                         TABLENAME_LOCKED_WRITE));
     }
 
-    if (sctype == rename_table || sctype == rename_table_alias) {
+    if (sctype == rename_table || sctype == alias_table) {
         assert(strlen(table) + 1 < scdoneop->table.size);
         newtable = &table[strlen(table) + 1];
     }
@@ -257,10 +257,10 @@ retry:
         return -1;
     }
 
-    if ((sctype == alter || sctype == fastinit || sctype == bulkimport) &&
-        (strncmp(tbl, "sqlite_stat",
-                 sizeof("sqlite_stat") - 1) != 0))
+    if ((sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop) &&
+        (strncmp(tbl, "sqlite_stat", sizeof("sqlite_stat") - 1) != 0)) {
         bdb_lock_tablename_write(bdb_state, tbl, tran);
+    }
     /* analyze does NOT need schema_lk */
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;
@@ -482,8 +482,9 @@ int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock)
         return -1;
     }
 
-    if (bdb_state->logical_live_sc == 0)
+    if (bdb_state->logical_live_sc == 0) {
         return 0;
+    }
 
     if (lock) {
         trans = bdb_tran_begin(bdb_state, NULL, &bdberr);

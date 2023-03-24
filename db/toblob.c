@@ -828,8 +828,24 @@ int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
     return 0;
 }
 
+/* helper function for gather_blob_data_byname
+ * to convert index of blob in full table schema
+ * to index in partial datacopy schema
+ */
+static int convert_idx_partial_datacopy(int blob_idx, struct schema *pd) {
+    for (int piece = 0; piece < pd->nmembers; piece++) {
+        if (pd->member[piece].idx == blob_idx) {
+            return piece;
+        }
+    }
+
+    return -1;
+}
+
+/* pd == NULL if not using partial datacopy fields
+ */
 int gather_blob_data_byname(const char *dbname, const char *tag,
-                            blob_status_t *b)
+                            blob_status_t *b, struct schema *pd)
 {
     int cblob;
     memset(b, 0, sizeof(*b));
@@ -838,6 +854,9 @@ int gather_blob_data_byname(const char *dbname, const char *tag,
         int diskblob, blob_idx;
         diskblob = blob_no_to_blob_no(dbname, tag, cblob, ".ONDISK");
         blob_idx = get_schema_blob_field_idx(dbname, tag, cblob);
+        if (pd) { // convert to index in partial datacopy schema
+            blob_idx = convert_idx_partial_datacopy(blob_idx, pd);
+        }
         if (diskblob < 0 || blob_idx < 0) {
             logmsg(LOGMSG_ERROR, "BLOB LOOKUP ERR SORTING CLIENT BLOB %d DISKBLOB "
                             "%d SCHEMA IDX %d",
@@ -1086,12 +1105,16 @@ static int check_blob_consistency_int(struct ireq *iq, const char *table,
 
 /* do what we do in check_blob_consistency_int(iq, table, tag, b, record, 0);
  * but for one blob only.
+ * pd == NULL if not using partial datacopy fields
  */
 int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
-                               int blob_index, int cblob)
+                               int blob_index, int cblob, struct schema *pd)
 {
-    struct schema *schema = find_tag_schema(table, tag);
+    struct schema *schema = pd;
+    if (!schema) {
+        schema = find_tag_schema(table, tag);
+    }
     int isondisk = is_tag_ondisk_sc(schema);
 
     b->total_length = 0;

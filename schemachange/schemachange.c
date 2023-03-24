@@ -35,6 +35,7 @@
 #include "crc32c.h"
 #include "comdb2_atomic.h"
 #include "bdb_api.h"
+#include "macc_glue.h"
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
@@ -95,15 +96,15 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         s->finalize = 0;
         Pthread_mutex_unlock(&s->mtx);
     }
-    if (s->alteronly == SC_ALTER_PENDING) {
+    if (s->kind == SC_ALTERTABLE_PENDING) {
         s->nothrevent = 0;
         s->finalize = 0;
     }
 
     /* This section looks for resumed / resuming schema changes:
      * if there is one, then we attach to it here */
-    if (!s->resume && (s->addonly || s->drop_table || s->fastinit ||
-                       s->alteronly != SC_ALTER_NONE)) {
+    if (!s->resume &&
+        (s->kind == SC_ADDTABLE || IS_FASTINIT(s) || IS_ALTERTABLE(s))) {
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
 
@@ -118,8 +119,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                        "Found ongoing schema change: rqid [%llx %s] "
                        "table %s, add %d, drop %d, fastinit %d, alter %d\n",
                        stored_sc->rqid, us, stored_sc->tablename,
-                       stored_sc->addonly, stored_sc->drop_table,
-                       stored_sc->fastinit, stored_sc->alteronly);
+                       stored_sc->kind == SC_ADDTABLE,
+                       stored_sc->kind == SC_DROPTABLE, IS_FASTINIT(stored_sc),
+                       IS_ALTERTABLE(stored_sc));
                 if (stored_sc->rqid == iq->sorese->rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     if (last_sc)
@@ -162,8 +164,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                    "Resuming schema change: rqid [%llx %s] "
                    "table %s, add %d, drop %d, fastinit %d, alter "
                    "%d, finalize_only %d\n",
-                   s->rqid, us, s->tablename, s->addonly, s->drop_table,
-                   s->fastinit, s->alteronly, s->finalize_only);
+                   s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
+                   s->kind == SC_DROPTABLE, IS_FASTINIT(s), IS_ALTERTABLE(s),
+                   s->finalize_only);
 
         } else {
             int bdberr;
@@ -196,9 +199,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 free(packed_sc_data);
                 packed_sc_data = NULL;
             }
-            if (stored_sc && !stored_sc->fulluprecs &&
-                !stored_sc->partialuprecs &&
-                stored_sc->type == DBTYPE_TAGGED_TABLE) {
+            if (stored_sc && !IS_UPRECS(stored_sc) &&
+                IS_SC_DBTYPE_TAGGED_TABLE(stored_sc)) {
                 if (stored_sc->rqid && stored_sc->rqid == iq->sorese->rqid &&
                     comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     s->rqid = stored_sc->rqid;
@@ -209,8 +211,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                     logmsg(LOGMSG_INFO,
                            "Resuming schema change: rqid [%llx %s] "
                            "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                           s->rqid, us, s->tablename, s->addonly, s->drop_table,
-                           s->fastinit, s->alteronly);
+                           s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
+                           s->kind == SC_DROPTABLE, IS_FASTINIT(s),
+                           IS_ALTERTABLE(s));
                 }
                 free_schema_change_type(stored_sc);
             }
@@ -233,8 +236,10 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             free_schema_change_type(s);
             return rc;
         }
-        if (seed == 0 && host == 0)
+        if (seed == 0 && host == 0) {
+            logmsg(LOGMSG_ERROR, "Failed to determine host and seed!\n");
             return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
+        }
         logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
                seed, host);
         logmsg(
@@ -264,8 +269,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
-        if (s->fulluprecs || s->partialuprecs || !s->db ||
-            !s->db->doing_upgrade) {
+        if (IS_UPRECS(s) || !s->db || !s->db->doing_upgrade) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
         } else {
             // upgrade can be preempted by other "real" schemachanges
@@ -310,7 +314,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->sc = iq->sc;
     s->started = 0;
 
-    if (s->resume && s->alteronly != SC_ALTER_NONE && !s->finalize_only) {
+    if (s->resume && IS_ALTERTABLE(s) && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
@@ -319,18 +323,19 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         ATOMIC_ADD32(gbl_sc_resume_start, 1);
     }
     /*
-    ** if s->partialuprecs, we're going radio silent from this point forward
+    ** if s->kind == SC_PARTIALUPRECS, we're going radio silent from this point
+    *forward
     ** in order to produce minimal spew
     */
     if (s->nothrevent) {
-        if (!s->partialuprecs)
+        if (s->kind != SC_PARTIALUPRECS)
             logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
         rc = do_schema_change_tran(arg);
     } else {
         int max_threads =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
         Pthread_mutex_lock(&sc_async_mtx);
-        while (!s->resume && max_threads > 0 &&
+        while (!s->must_resume && !s->resume && max_threads > 0 &&
                sc_async_threads >= max_threads) {
             logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
             Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
@@ -338,11 +343,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         sc_async_threads++;
         Pthread_mutex_unlock(&sc_async_mtx);
 
-        if (!s->partialuprecs)
+        if (s->kind != SC_PARTIALUPRECS)
             logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
 
-        if (s->alteronly == SC_ALTER_PENDING ||
+        if (s->kind == SC_ALTERTABLE_PENDING ||
             s->preempted == SC_ACTION_RESUME) {
             free(arg);
             arg = NULL;
@@ -431,6 +436,7 @@ typedef struct {
 
 static void *finalize_schema_change_thd_tran(void *varg)
 {
+    comdb2_name_thread(__func__);
     finalize_t *arg = varg;
     void *trans = arg->trans;
     struct ireq *iq = arg->iq;
@@ -470,7 +476,6 @@ int change_schema(char *table, char *fname, int odh, int compress,
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = DBTYPE_TAGGED_TABLE;
     strncpy0(s->tablename, table, sizeof(s->tablename));
     strncpy0(s->fname, fname, sizeof(s->fname));
 
@@ -488,7 +493,7 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = DBTYPE_MORESTRIPE;
+    s->kind = SC_LEGACY_MORESTRIPE;
     s->newdtastripe = newstripe;
     s->blobstripe = blobstripe;
 
@@ -496,14 +501,14 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 }
 
 int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
-                 int pagesize, int isqueuedb)
+                 int pagesize)
 {
     struct schema_change_type *s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    s->type = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
+    s->kind = SC_LEGACY_QUEUE;
     strncpy0(s->tablename, queuename, sizeof(s->tablename));
     s->avgitemsz = avgitem;
     s->pagesize = pagesize;
@@ -539,7 +544,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
 
     s->nothrevent = 1;
     s->finalize = 1;
-    s->fastinit = 1;
+    s->kind = SC_TRUNCATETABLE;
     s->same_schema = 1;
     s->headers = -1;
     s->compress = -1;
@@ -562,42 +567,45 @@ int do_dryrun(struct schema_change_type *s)
     // not sure if useful to print: sc_printf(s, "starting dryrun\n");
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        if (s->alteronly != SC_ALTER_NONE) {
+        if (IS_ALTERTABLE(s)) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;
-        } else if (s->fastinit) {
+        } else if (IS_FASTINIT(s)) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;
         }
     } else {
-        if (s->addonly) {
+        if (s->kind == SC_ADDTABLE) {
             sbuf2printf(s->sb, ">Table %s already exists\n", s->tablename);
             rc = -1;
             goto done;
-        } else if (s->fastinit) {
+        } else if (IS_FASTINIT(s)) {
             sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
+            goto done;
+        } else if (s->kind == SC_DROPTABLE) {
+            if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
+                sc_client_error(s, "Can't drop a table referenced by a foreign key");
+                rc = -1;
+            } else {
+                sbuf2printf(s->sb, ">Table %s will be dropped\n", s->tablename);
+            }
             goto done;
         }
     }
-
-    dyns_init_globals();
-    if (dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename)) {
-        char *err;
-        err = csc2_get_errors();
-        sc_errf(s, "%s", err);
-        rc = -1;
-        goto done;
-    }
-
+    
     if (db == NULL) {
         sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
         goto done;
     }
 
-    newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0);
+
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, 0, 0,
+                               &err);
     if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
         rc = -1;
         goto done;
     }
@@ -607,15 +615,6 @@ int do_dryrun(struct schema_change_type *s)
 
     newdb->odh = s->headers;
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
-
-    struct errstat err = {0};
-    rc = add_cmacc_stmt(newdb, 1, 0, &err);
-    if (rc)
-        sc_client_error(s, "%s", err.errstr);
-    if (rc || (init_check_constraints(newdb))) {
-        rc = -1;
-        goto done;
-    }
 
     if (dryrun_int(s, db, newdb, &scinfo)) {
         rc = -1;
@@ -633,7 +632,6 @@ done:
         newdb->schema = NULL;
         freedb(newdb);
     }
-    dyns_cleanup_globals();
     return rc;
 }
 
@@ -971,7 +969,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     }
 
     /* Shouldn't get here */
-    if (s->addonly) {
+    if (s->kind == SC_ADDTABLE) {
         logmsg(LOGMSG_FATAL, "table '%s' already exists\n", s->tablename);
         abort();
         return -1;
@@ -984,28 +982,23 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
     }
 
-    rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
-    if (rc != 0) {
-        char *err;
-        err = csc2_get_errors();
-        sc_errf(s, "%s", err);
-        logmsg(LOGMSG_FATAL, "Shouldn't happen in this piece of code.\n");
-        abort();
-    }
-
     if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
         logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         abort();
     }
 
-    if (s->dbnum != -1) db->dbnum = s->dbnum;
-
-    db->sc_to = newdb =
-        newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix);
-
-    if (newdb == NULL) {
-        return -1;
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2,
+                               (s->dbnum != -1) ? s->dbnum : 0, foundix, 1, 1,
+                               0, &err);
+    if (!newdb) {
+        logmsg(LOGMSG_FATAL, "Shouldn't happen in this piece of code %s:%d.\n",
+               __FILE__, __LINE__);
+        sc_client_error(s, "%s", err.errstr);
+        backout_schemas(newdb->tablename);
+        abort();
     }
+    db->sc_to = newdb;
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->odh = s->headers;
@@ -1013,15 +1006,6 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
-
-    struct errstat err = {0};
-    rc = add_cmacc_stmt(newdb, 1, 1, &err);
-    if (rc)
-        sc_client_error(s, "%s", err.errstr);
-    if (rc || (init_check_constraints(newdb))) {
-        backout_schemas(newdb->tablename);
-        abort();
-    }
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout_schemas(newdb->tablename);
@@ -1117,15 +1101,13 @@ int add_schema_change_tables()
 
             MEMORY_SYNC;
 
-            if (s->fastinit || s->type != DBTYPE_TAGGED_TABLE) {
+            if (IS_FASTINIT(s) || !IS_SC_DBTYPE_TAGGED_TABLE(s)) {
                 free_schema_change_type(s);
                 return 0;
             }
 
             iq.sc = s;
-            dyns_init_globals();
             rc = add_table_for_recovery(&iq, s);
-            dyns_cleanup_globals();
             iq.sc = NULL;
 
             free_schema_change_type(s);
@@ -1146,7 +1128,6 @@ int sc_timepart_add_table(const char *existingTableName,
     init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
-    sc.type = DBTYPE_TAGGED_TABLE;
     sc.views_locked = 1;
 
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", newTableName);
@@ -1158,7 +1139,7 @@ int sc_timepart_add_table(const char *existingTableName,
     sc.use_plan = 1;
 
     /* this is a table add */
-    sc.addonly = 1;
+    sc.kind = SC_ADDTABLE;
     sc.finalize = 1;
 
     /* get new schema */
@@ -1247,7 +1228,6 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     init_schemachange_type(&sc);
     /* prepare sc */
     sc.onstack = 1;
-    sc.type = DBTYPE_TAGGED_TABLE;
 
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", tableName);
     sc.tablename[sizeof(sc.tablename) - 1] = '\0';
@@ -1258,8 +1238,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     sc.use_plan = 1;
 
     /* this is a table add */
-    sc.drop_table = 1;
-    sc.fastinit = 1;
+    sc.kind = SC_DROPTABLE;
     sc.finalize = 1;
 
     /* get new schema */
@@ -1330,7 +1309,7 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
     init_schemachange_type(&sc);
     strncpy0(sc.tablename, tableName, MAXTABLELEN);
     sc.onstack = 1;
-    sc.fastinit = 1;
+    sc.kind = SC_TRUNCATETABLE;
     sc.nothrevent = 1;
     sc.same_schema = 1;
     sc.finalize = 1;
@@ -1381,7 +1360,7 @@ int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
     sc->instant_sc = 1;
     sc->nothrevent = sync;
     strncpy0(sc->tablename, tbl, sizeof(sc->tablename));
-    sc->fulluprecs = full;
+    sc->kind = full ? SC_FULLUPRECS : SC_PARTIALUPRECS;
     sc->partialuprecs = partial;
     sc->start_genid = genid;
 
@@ -1509,7 +1488,7 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    if (s && s->partialuprecs) {
+    if (s && s->kind == SC_PARTIALUPRECS) {
         va_end(args);
         return;
     }
@@ -1531,7 +1510,7 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    if (s && s->partialuprecs) {
+    if (s && s->kind == SC_PARTIALUPRECS) {
         va_end(args);
         return;
     }

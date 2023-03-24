@@ -4,16 +4,6 @@ bash -n "$0" | exit 1
 set -x
 
 dbnm=$1
-cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
-insert into t values (40)
-insert into t values (20)
-insert into t values (30)
-insert into t values (10)
-insert into t values (50)
-select * from t order by id limit 4
-set readonly on
-select * from t order by id limit 4
-EOF
 
 check_diff()
 {
@@ -34,7 +24,22 @@ check_diff()
     fi 
 }
 
+#### test-1 ####
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
+insert into t values (40)
+insert into t values (20)
+insert into t values (30)
+insert into t values (10)
+insert into t values (50)
+select * from t order by id limit 4
+set readonly on
+select * from t order by id limit 4
+EOF
+
 check_diff output.txt reqoutput.txt
+
+#### test-2 ####
 
 cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output2.txt 2>&1
 set readonly on
@@ -43,6 +48,8 @@ update t set id=id+1 limit 1
 EOF
 
 check_diff output2.txt reqoutput2.txt
+
+#### test-3 ####
 
 cluster=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do 
@@ -56,6 +63,77 @@ insert into t values (1)
 update t set id=id+1 limit 1
 EOF
 
+for node in $cluster ; do 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("readwrite")'
+done
+
 check_diff output3.txt reqoutput3.txt
+
+#### test-4: Test PUT/GRANT/REVOKE commands when connection is in readonly mode ####
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output4.txt 2>&1
+put password 'foo' for 'foo'
+put password 'bar' for 'bar'
+grant op to 'foo'
+set user foo
+set password foo
+# The current user is OP now
+set readonly on
+# All following commands must fail
+put authentication on
+put password 'baz' for 'baz'
+put tunable 'logmsg.level' 'debug'
+grant op to 'foo'
+grant read on t to 'bar'
+revoke read on t to 'bar'
+EOF
+
+check_diff output4.txt reqoutput4.txt
+
+#### test-5: Test PUT/GRANT/REVOKE commands when comdb2 is in readonly mode ####
+
+for node in $cluster ; do 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("readonly")'
+done
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output5.txt 2>&1
+set user foo
+set password foo
+# The current user is OP now; all following commands must fail
+put authentication on
+put password 'baz' for 'baz'
+put tunable 'logmsg.level' 'debug'
+grant op to 'foo'
+grant read on t to 'bar'
+revoke read on t to 'bar'
+EOF
+
+for node in $cluster ; do 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("readwrite")'
+done
+
+check_diff output5.txt reqoutput5.txt
+
+#### test-5: Global should override clnt's readonly setting ####
+
+for node in $cluster ; do 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("readonly")'
+done
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output6.txt 2>&1
+insert into t values (60)
+set readonly off
+insert into t values (60)
+set readonly on
+insert into t values (60)
+set readonly off
+insert into t values (60)
+EOF
+
+for node in $cluster ; do 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm --host $node 'exec procedure sys.cmd.send("readwrite")'
+done
+
+check_diff output6.txt reqoutput6.txt
 
 echo "Success"

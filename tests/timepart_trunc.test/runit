@@ -358,6 +358,106 @@ fi
 
 timepart_stats 0
 
+header 13 "Create table and merge existing table in it"
+echo $cmd "CREATE TABLE t10(a int, b int)"
+$cmd "CREATE TABLE t10(a int, b int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table t10"
+   exit 1
+fi
+
+echo $cmd "insert into t10 values (1,2), (3,4), (5,6)"
+$cmd "insert into t10 values (1,2), (3,4), (5,6)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t10"
+   exit 1
+fi
+
+echo $cmd "CREATE TABLE t11(a int) MERGE t10"
+$cmd "CREATE TABLE t11(a int) MERGE t10"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create t11 merge t10"
+   exit 1
+fi
+
+echo $cmd "select * from t11 order by a"
+$cmd "select * from t11 order by a" >> $OUT
+
+header 14 "Create partitioned table, add records, drop partitiong and check table"
+echo $cmd "CREATE TABLE t14(a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
+$cmd "CREATE TABLE t14(a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create partition t14"
+   exit 1
+fi
+
+echo $cmd "insert into t14 values (10,20), (30,40), (50,60)"
+$cmd "insert into t14 values (10,20), (30,40), (50,60)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t14"
+   exit 1
+fi
+
+echo $cmd "select * from t14 order by 1"
+echo $cmd "select * from t14 order by 1" >> $OUT
+$cmd "select * from t14 order by 1" >> $OUT
+
+timepart_stats 0
+
+echo $cmd "ALTER TABLE t14 PARTITIONED BY NONE"
+$cmd "ALTER TABLE t14 PARTITIONED BY NONE"
+if (( $? != 0 )) ; then
+   echo "FAILURE to remote partitioning for t14"
+   exit 1
+fi
+
+echo $cmd "select * from t14 order by 1"
+echo $cmd "select * from t14 order by 1" >> $OUT
+$cmd "select * from t14 order by 1" >> $OUT
+
+timepart_stats 0
+
+header 15 "Test ALTER table MERGE"
+echo $cmd "CREATE TABLE t15(a int, b int)"
+$cmd "CREATE TABLE t15(a int, b int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table t15"
+   exit 1
+fi
+echo $cmd "CREATE TABLE t16(a int)"
+$cmd "CREATE TABLE t16(a int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table t16"
+   exit 1
+fi
+
+echo $cmd "insert into t15 values (11,12), (22,23), (33,34)"
+$cmd "insert into t15 values (11,12), (22,23), (33,34)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t15"
+   exit 1
+fi
+
+echo $cmd "insert into t16 values (100), (200)"
+$cmd "insert into t16 values (100), (200)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t16"
+   exit 1
+fi
+
+echo $cmd "alter table t15 drop column b, merge t16"
+$cmd "alter table t15 drop column b, merge t16"
+if (( $? != 0 )) ; then
+   echo "FAILURE to alter merge"
+   exit 1
+fi
+
+echo $cmd "select * from t15 order by a"
+$cmd "select * from t15 order by a" >> $OUT
+
+echo $cmd "select * from t16 order by a"
+$cmd "select * from t16 order by a" >> $OUT 2>&1
+
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
 

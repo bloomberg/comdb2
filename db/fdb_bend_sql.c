@@ -162,8 +162,8 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         return 0;
     }
 
-    /* if this is a datacopy index, do not do anything */
-    if (db->ix_datacopy[ixnum]) {
+    /* if this is a full datacopy index, do not do anything */
+    if (db->ix_datacopy[ixnum] && db->ix_datacopylen[ixnum] == 0) {
         return 0;
     }
 
@@ -171,12 +171,12 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     tblschema = db->schema;
     ixschema = db->ixschema[ixnum];
 
-    /* already datacopy indexes are ok */
+    /* already full datacopy indexes are ok */
     if (ixschema->flags & SCHEMA_DATACOPY) {
         return 0;
     }
 
-    /* we got a non datacopy index, export it as covered index */
+    /* we got a non full datacopy index, export it as covered index */
 
     /* get the sql create */
     pMem = &upr->aMem[4];
@@ -361,7 +361,10 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
         return rc;
 
-    return osql_sock_start_deferred(clnt);
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->osql.sock_started)
+        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 1);
+
+    return rc;
 }
 
 /**
@@ -826,7 +829,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
     clnt->nrows++;
 
 done:
-
+    free_blob_buffers(rowblobs, MAXBLOBS);
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
@@ -965,7 +968,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     clnt->nrows++;
 
 done:
-
+    free_blob_buffers(rowblobs, MAXBLOBS);
     rc2 = _fdb_svc_cursor_end(&bCur, clnt, standalone);
     if (!rc) {
         rc = rc2;
@@ -1021,3 +1024,29 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
     return clnt;
 }
 
+/**
+ * Pack an sqlite result to be send to a remote db
+ *
+ */
+void fdb_sqlite_row(sqlite3_stmt *stmt, Mem *res)
+{
+    UnpackedRecord upr;
+    int nField;
+
+    bzero(&upr, sizeof(upr));
+    upr.aMem = sqlite3GetCachedResultRow(stmt, &nField);
+    assert(upr.aMem);
+    upr.nField = nField;
+
+    bzero(res, sizeof(*res));
+    sqlite3VdbeRecordPack(&upr, res);
+}
+
+/**
+ * Free a packed sqlite row after being used
+ *
+ */
+void fdb_sqlite_row_free(Mem *res)
+{
+    sqlite3VdbeMemRelease(res);
+}

@@ -43,6 +43,9 @@ static int whereLoopResize(sqlite3*, WhereLoop*, int);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_TEST) || defined(SQLITE_DEBUG) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+int gbl_disable_seekscan_optimization = 0;
+int gbl_sqlite_stat4_scan = 0;
+
 int shard_check_parallelism(int iTable);
 int comdb2_shard_table_constraints(Parse *pParse, 
         const char *zName, const char *zDatabase, Expr **pWhere);
@@ -1288,7 +1291,7 @@ static int whereKeyStats(
     ** is larger than all samples in the array. */
     tRowcnt iUpper, iGap;
     if( i>=pIdx->nSample ){
-      iUpper = sqlite3LogEstToInt(pIdx->aiRowLogEst[0]);
+      iUpper = pIdx->nRowEst0;
     }else{
       iUpper = aSample[i].anLt[iCol];
     }
@@ -2593,7 +2596,8 @@ static int whereLoopAddBtreeIndex(
              saved_nEq, M, logK, nIn, rLogSize, x));
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         /* NC: Skip SEEKSCAN for remote tables */
-        }else if( nInMul<2 && pProbe->pTable->iDb <= 1 ){
+        }else if( gbl_disable_seekscan_optimization == 0 && nInMul<2 &&
+                  pProbe->pTable->iDb <= 1 ){
 #else /* SQLITE_BUILDING_FOR_COMDB2 */
         }else if( nInMul<2 ){
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */
@@ -3057,8 +3061,34 @@ static int whereLoopAddBtree(
 
       /* Full table scan */
       pNew->iSortIdx = b ? iSortIdx : 0;
-      /* TUNING: Cost of full table scan is (N*3.0). */
+      /* TUNING: Cost of full table scan is 3.0*N.  The 3.0 factor is an
+      ** extra cost designed to discourage the use of full table scans,
+      ** since index lookups have better worst-case performance if our
+      ** stat guesses are wrong.  Reduce the 3.0 penalty slightly
+      ** (to 2.75) if we have valid STAT4 information for the table.
+      ** At 2.75, a full table scan is preferred over using an index on
+      ** a column with just two distinct values where each value has about
+      ** an equal number of appearances.  Without STAT4 data, we still want
+      ** to use an index in that case, since the constraint might be for
+      ** the scarcer of the two values, and in that case an index lookup is
+      ** better.
+      */
+#ifdef SQLITE_ENABLE_STAT4
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( gbl_sqlite_stat4_scan ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      pNew->rRun = rSize + 16 - 2*((pTab->tabFlags & TF_HasStat4)!=0);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      }else{
       pNew->rRun = rSize + 16;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#else
+      pNew->rRun = rSize + 16;
+#endif
+      if( (pTab->tabFlags & TF_Ephemeral)!=0 ){
+        pNew->wsFlags |= WHERE_VIEWSCAN;
+      }
       ApplyCostMultiplier(pNew->rRun, pTab->costMult);
       whereLoopOutputAdjust(pWC, pNew, rSize);
       rc = whereLoopInsert(pBuilder, pNew);
@@ -4241,6 +4271,13 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
           rUnsorted -= 2;  /* TUNING:  Slight bias in favor of no-sort plans */
         }
 
+        /* TUNING:  A full-scan of a VIEW or subquery in the outer loop
+        ** is not so bad. */
+        if( iLoop==0 && (pWLoop->wsFlags & WHERE_VIEWSCAN)!=0 ){
+          rCost += -10;
+          nOut += -30;
+        }
+
         /* Check to see if pWLoop should be added to the set of
         ** mxChoice best-so-far paths.
         **
@@ -4586,6 +4623,50 @@ static int exprIsDeterministic(Expr *p){
   w.xSelectCallback = sqlite3SelectWalkFail;
   sqlite3WalkExpr(&w, p);
   return w.eCode;
+}
+
+/*
+** The index pIdx is used by a query and contains one or more expressions.
+** In other words pIdx is an index on an expression.  iIdxCur is the cursor
+** number for the index and iDataCur is the cursor number for the corresponding
+** table.
+**
+** This routine adds IndexedExpr entries to the Parse->pIdxExpr field for
+** each of the expressions in the index so that the expression code generator
+** will know to replace occurrences of the indexed expression with
+** references to the corresponding column of the index.
+*/
+static SQLITE_NOINLINE void whereAddIndexedExpr(
+  Parse *pParse,     /* Add IndexedExpr entries to pParse->pIdxExpr */
+  Index *pIdx,       /* The index-on-expression that contains the expressions */
+  int iIdxCur,       /* Cursor number for pIdx */
+  struct SrcList_item *pTabItem  /* The FROM clause entry for the table */
+){
+  int i;
+  IndexedExpr *p;
+  assert( pIdx->bHasExpr );
+  for(i=0; i<pIdx->nColumn; i++){
+    Expr *pExpr;
+    int j = pIdx->aiColumn[i];
+    if( j==XN_EXPR ){
+      pExpr = pIdx->aColExpr->a[i].pExpr;
+    }else{
+      continue;
+    }
+    if( sqlite3ExprIsConstant(pExpr) ) continue;
+    p = sqlite3DbMallocRaw(pParse->db,  sizeof(IndexedExpr));
+    if( p==0 ) break;
+    p->pIENext = pParse->pIdxExpr;
+    p->pExpr = sqlite3ExprDup(pParse->db, pExpr, 0);
+    p->iDataCur = pTabItem->iCursor;
+    p->iIdxCur = iIdxCur;
+    p->iIdxCol = i;
+    p->bMaybeNullRow = (pTabItem->fg.jointype & JT_LEFT)!=0;
+#ifdef SQLITE_ENABLE_EXPLAIN_COMMENTS
+    p->zIdxName = pIdx->zName;
+#endif
+    pParse->pIdxExpr = p;
+  }
 }
 
 /*
@@ -5151,6 +5232,9 @@ WhereInfo *sqlite3WhereBegin(
         op = OP_ReopenIdx;
       }else{
         iIndexCur = pParse->nTab++;
+        if( pIx->bHasExpr ){
+          whereAddIndexedExpr(pParse, pIx, iIndexCur, pTabItem);
+        }
       }
       pLevel->iIdxCur = iIndexCur;
       assert( pIx->pSchema==pTab->pSchema );
@@ -5474,6 +5558,16 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
         last = iEnd;
       }else{
         last = pWInfo->iEndWhere;
+      }
+      if( pIdx->bHasExpr ){
+        IndexedExpr *p = pParse->pIdxExpr;
+        while( p ){
+          if( p->iIdxCur==pLevel->iIdxCur ){
+            p->iDataCur = -1;
+            p->iIdxCur = -1;
+          }
+          p = p->pIENext;
+        }
       }
       k = pLevel->addrBody + 1;
 #ifdef SQLITE_DEBUG

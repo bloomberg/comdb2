@@ -169,6 +169,8 @@ typedef enum {
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
     LLMETA_SEQUENCE_VALUE = 53,
     LLMETA_LUA_SFUNC_FLAG = 54,
+    LLMETA_NEWSC_REDO_GENID = 55, /* 55 + TABLENAME + GENID -> MAX-LSN */
+    LLMETA_SCHEMACHANGE_STATUS_V2 = 56,
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -190,6 +192,7 @@ static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr);
 static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
                      void ***values, int *num, int *bdberr);
+static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v, size_t vlen, int *bdberr);
 
 static uint8_t *
 llmeta_file_type_key_put(const struct llmeta_file_type_key *p_file_type_key,
@@ -1384,7 +1387,7 @@ int bdb_llmeta_set_tables(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         goto cleanup;
     }
@@ -1530,7 +1533,7 @@ retry:
     /* handle return codes */
     if (rc && *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -1676,7 +1679,7 @@ static int bdb_new_file_version(
 
 retry:
 
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_INFO, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -1892,7 +1895,7 @@ int bdb_chg_file_versions(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2057,7 +2060,7 @@ static int bdb_del_file_version(
 
 retry:
 
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_INFO, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2240,7 +2243,7 @@ bdb_set_pagesize(tran_type *input_trans, /* if this is !NULL it will be used as
         buf_put(&pagesize, sizeof(pagesize), p_pgsz_buf, p_pgsz_buf_end);
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2405,7 +2408,7 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -2577,7 +2580,7 @@ retry:
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -2808,7 +2811,7 @@ retry:
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK && !tran) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -2878,7 +2881,7 @@ int bdb_add_dummy_llmeta_wait(int wait_for_seqnum)
     tran_type *tran;
     int rc;
     int bdberr;
-    int retries = 500;
+    int retries = gbl_maxretries;
     uint8_t key[LLMETA_IXLEN] = {0};
 
     if (!bdb_have_llmeta()) {
@@ -3042,7 +3045,7 @@ int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
 /* csc2_vers added to key below */
 retry:
 
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -3207,7 +3210,7 @@ retry:
             if (trans)
                 return -1;
 
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
@@ -3359,7 +3362,7 @@ retry:
         rc = bdb_get_csc2_highest(tran, db_name, &csc2_vers, bdberr);
         if (rc || *bdberr != BDBERR_NOERROR) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                if (++retries < 500 /*gbl_maxretries*/)
+                if (++retries < gbl_maxretries)
                     goto retry;
 
                 logmsg(LOGMSG_ERROR, "%s:*ERROR* bdb_get_csc2_highest too much "
@@ -3392,7 +3395,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -3633,7 +3636,7 @@ int bdb_set_in_schema_change(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d "
                         "retries\n",
                 __func__, retries);
@@ -3772,7 +3775,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -3889,6 +3892,145 @@ int bdb_check_and_set_sequence(tran_type *t, const char *tablename, const char *
     if (!rc && sequence > s) {
         rc = bdb_set_sequence(t, tablename, columnname, sequence, bdberr);
     }
+    return rc;
+}
+
+typedef struct {
+    int file_type;
+    char tablename[LLMETA_TBLLEN + 1];
+    char padding[3];
+    uint64_t genid;
+} llmeta_newsc_redo_genid_key;
+
+enum { LLMETA_NEWSC_REDO_GENID_KEY_LEN = 4 + 32 + 1 + 3 + 8 };
+BB_COMPILE_TIME_ASSERT(llmeta_newsc_redo_genid_key_len,
+                       sizeof(llmeta_newsc_redo_genid_key) == LLMETA_NEWSC_REDO_GENID_KEY_LEN);
+
+static uint8_t *llmeta_newsc_redo_genid_key_put(const llmeta_newsc_redo_genid_key *p_redo_genid, uint8_t *p_buf,
+                                                const uint8_t *p_buf_end)
+{
+    p_buf = buf_put(&(p_redo_genid->file_type), sizeof(p_redo_genid->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_redo_genid->tablename), sizeof(p_redo_genid->tablename), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_redo_genid->padding), sizeof(p_redo_genid->padding), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&(p_redo_genid->genid), sizeof(p_redo_genid->genid), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *llmeta_newsc_redo_genid_key_get(llmeta_newsc_redo_genid_key *p_redo_genid, const uint8_t *p_buf,
+                                                      const uint8_t *p_buf_end)
+{
+    p_buf = buf_get(&(p_redo_genid->file_type), sizeof(p_redo_genid->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_redo_genid->tablename), sizeof(p_redo_genid->tablename), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_redo_genid->padding), sizeof(p_redo_genid->padding), p_buf, p_buf_end);
+    p_buf = buf_no_net_get(&(p_redo_genid->genid), sizeof(p_redo_genid->genid), p_buf, p_buf_end);
+    return p_buf;
+}
+
+int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmeta_sc_redo_data **redo_out, int *num,
+                                      int *bdberr)
+{
+    void **data = NULL;
+    void **keys = NULL;
+    int nkey = 0, rc = 1;
+    llmeta_sc_redo_data *sc_redo = NULL;
+
+    *num = 0;
+    *redo_out = NULL;
+
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    int sz = offsetof(llmeta_newsc_redo_genid_key, padding);
+
+    rc = kv_get_kv(t, &u, sz, &keys, &data, &nkey, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
+        return -1;
+    }
+    if (nkey == 0)
+        return 0;
+    sc_redo = calloc(nkey, sizeof(llmeta_sc_redo_data) * nkey);
+    if (sc_redo == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
+        *bdberr = BDBERR_MALLOC;
+        return -1;
+    }
+
+    for (int i = 0; i < nkey; i++) {
+        llmeta_newsc_redo_genid_key k = {0};
+        struct llmeta_db_lsn_data_type d = {{0}};
+        llmeta_newsc_redo_genid_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(llmeta_newsc_redo_genid_key));
+        sc_redo[i].genid = k.genid;
+        llmeta_db_lsn_data_type_get(&d, data[i], (uint8_t *)(data[i]) + sizeof(struct llmeta_db_lsn_data_type));
+        sc_redo[i].file = d.lsn.file;
+        sc_redo[i].offset = d.lsn.offset;
+    }
+
+    for (int i = 0; i < nkey; i++) {
+        free(keys[i]);
+        free(data[i]);
+    }
+
+    free(data);
+    free(keys);
+    *num = nkey;
+    *redo_out = sc_redo;
+
+    return 0;
+}
+
+int bdb_newsc_del_redo_genid(tran_type *t, const char *tablename, uint64_t genid, int *bdberr)
+{
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    u.key.genid = genid;
+    *bdberr = BDBERR_NOERROR;
+    int rc = kv_del(t, &u, bdberr);
+    return rc;
+}
+
+int bdb_newsc_del_all_redo_genids(tran_type *t, const char *tablename, int *bdberr)
+{
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    int rc = kv_del_by_value(t, &u, offsetof(llmeta_newsc_redo_genid_key, padding), NULL, 0, bdberr);
+    return rc;
+}
+
+int bdb_newsc_set_redo_genid(tran_type *t, const char *tablename, uint64_t genid, unsigned int file,
+                             unsigned int offset, int *bdberr)
+{
+    union {
+        llmeta_newsc_redo_genid_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.key.file_type = htonl(LLMETA_NEWSC_REDO_GENID);
+    strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
+    u.key.genid = genid;
+    struct llmeta_db_lsn_data_type newsc_lsn = {.lsn.file = file, .lsn.offset = offset};
+
+    uint8_t *p_buf_start, *p_buf_end;
+    p_buf_start = alloca(sizeof(struct llmeta_db_lsn_data_type));
+    p_buf_end = p_buf_start + sizeof(struct llmeta_db_lsn_data_type);
+    llmeta_db_lsn_data_type_put(&newsc_lsn, p_buf_start, p_buf_end);
+
+    *bdberr = BDBERR_NOERROR;
+    int rc = kv_put(t, &u, p_buf_start, sizeof(struct llmeta_db_lsn_data_type), bdberr);
     return rc;
 }
 
@@ -4100,9 +4242,8 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
     }
 
     for (int i = 0; i < nkey; i++) {
-        struct llmeta_hist_key k;
-        llmeta_sc_hist_key_get(
-            &k, keys[i], (uint8_t *)(keys[i]) + sizeof(struct llmeta_hist_key));
+        struct llmeta_hist_key k = {0};
+        llmeta_sc_hist_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(struct llmeta_hist_key));
         strcpy(hist[i].tablename, k.tablename);
         hist[i].seed = k.seed;
         llmeta_sc_hist_data_get(&hist[i], data[i],
@@ -4210,7 +4351,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
     }
 
     /*add the key type */
-    schema_change.file_type = LLMETA_SCHEMACHANGE_STATUS;
+    schema_change.file_type = LLMETA_SCHEMACHANGE_STATUS_V2;
 
     /*copy the table name and check its length so that we have a clean key*/
     strncpy0(schema_change.dbname, db_name, sizeof(schema_change.dbname));
@@ -4229,7 +4370,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                retries);
         return -1;
@@ -4373,9 +4514,7 @@ backout:
 int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status_out, void ***sc_data_out, int *num,
                                  int *bdberr)
 {
-    void **data = NULL;
-    int nkey = 0, rc = 1;
-    llmetakey_t k = htonl(LLMETA_SCHEMACHANGE_STATUS);
+    int rc = 1;
     llmeta_sc_status_data *status = NULL;
     void **sc_data = NULL;
 
@@ -4383,13 +4522,31 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
     *status_out = NULL;
     *sc_data_out = NULL;
 
-    rc = kv_get(tran, &k, sizeof(k), &data, &nkey, bdberr);
+    /* Extract old (v1) sc status data */
+    llmetakey_t k_v1 = htonl(LLMETA_SCHEMACHANGE_STATUS);
+    int nkey_v1 = 0;
+    void **data_v1 = NULL;
+    rc = kv_get(tran, &k_v1, sizeof(k_v1), &data_v1, &nkey_v1, bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
         return -1;
     }
+
+    /* Extract new (v2) sc status data */
+    llmetakey_t k_v2 = htonl(LLMETA_SCHEMACHANGE_STATUS_V2);
+    int nkey_v2 = 0;
+    void **data_v2 = NULL;
+    rc = kv_get(tran, &k_v2, sizeof(k_v2), &data_v2, &nkey_v2, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
+        return -1;
+    }
+
+    int nkey = nkey_v1 + nkey_v2;
+
     if (nkey == 0)
         return 0;
+
     status = calloc(nkey, sizeof(llmeta_sc_status_data) * nkey);
     if (status == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
@@ -4405,10 +4562,10 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
         return -1;
     }
 
-    for (int i = 0; i < nkey; i++) {
+    for (int i = 0; i < nkey_v1; i++) {
         const uint8_t *p_buf;
-        p_buf = llmeta_sc_status_data_get(&status[i], data[i],
-                                          (uint8_t *)(data[i]) +
+        p_buf = llmeta_sc_status_data_get(&status[i], data_v1[i],
+                                          (uint8_t *)(data_v1[i]) +
                                               sizeof(llmeta_sc_status_data));
         sc_data[i] = malloc(status[i].sc_data_len);
         if (sc_data[i] == NULL) {
@@ -4420,11 +4577,32 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
         memcpy(sc_data[i], p_buf, status[i].sc_data_len);
     }
 
-    for (int i = 0; i < nkey; i++) {
-        if (data[i])
-            free(data[i]);
+    for (int i = 0; i < nkey_v1; i++) {
+        if (data_v1[i])
+            free(data_v1[i]);
     }
-    free(data);
+    free(data_v1);
+
+    for (int i = 0; i < nkey_v2; i++) {
+        const uint8_t *p_buf;
+        p_buf = llmeta_sc_status_data_get(&status[nkey_v1+i], data_v2[i],
+                                          (uint8_t *)(data_v2[i]) +
+                                              sizeof(llmeta_sc_status_data));
+        sc_data[nkey_v1 + i] = malloc(status[nkey_v1 + i].sc_data_len);
+        if (sc_data[nkey_v1 + i] == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
+            *bdberr = BDBERR_MALLOC;
+            goto err;
+        }
+
+        memcpy(sc_data[nkey_v1 + i], p_buf, status[nkey_v1 + i].sc_data_len);
+    }
+
+    for (int i = 0; i < nkey_v2; i++) {
+        if (data_v2[i])
+            free(data_v2[i]);
+    }
+    free(data_v2);
 
     *num = nkey;
     *status_out = status;
@@ -4432,13 +4610,22 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
     return 0;
 
 err:
-    for (int i = 0; i < nkey; i++) {
-        if (data[i])
-            free(data[i]);
+    for (int i = 0; i < nkey_v1; i++) {
+        if (data_v1[i])
+            free(data_v1[i]);
         if (sc_data[i])
             free(sc_data[i]);
     }
-    free(data);
+    free(data_v1);
+
+    for (int i = 0; i < nkey_v2; i++) {
+        if (data_v2[i])
+            free(data_v2[i]);
+        if (sc_data[nkey_v1 + i])
+            free(sc_data[nkey_v1 + i]);
+    }
+    free(data_v2);
+
     free(status);
     free(sc_data);
     return -1;
@@ -4522,7 +4709,7 @@ static int bdb_set_high_genid_int(
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -4707,7 +4894,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -4863,7 +5050,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
@@ -4946,7 +5133,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
@@ -5766,7 +5953,7 @@ static int bdb_tbl_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -5888,7 +6075,7 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -6016,7 +6203,7 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -6085,7 +6272,7 @@ backout:
 int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
                         int *bdberr, int add, int file_type)
 {
-    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t key[LLMETA_IXLEN+sizeof(uint8_t)] = {0};
     int rc;
     struct llmeta_authentication authentication_data = {0};
     uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;
@@ -6107,7 +6294,7 @@ int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -6385,7 +6572,7 @@ static int bdb_tbl_access_delete(bdb_state_type *bdb_state,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -6581,6 +6768,21 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                schema_change.dbname, sc_status_data.start,
                sc_status_data.status, sc_status_data.last,
                sc_status_data.errstr);
+    } break;
+
+    case LLMETA_NEWSC_REDO_GENID: {
+        if (keylen < sizeof(llmeta_newsc_redo_genid_key) || datalen < sizeof(struct llmeta_db_lsn_data_type)) {
+            logmsg(LOGMSG_USER, "%s:%d: wrong LLMETA_NEWSC_REDO_GENID entry\n", __FILE__, __LINE__);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
+        llmeta_newsc_redo_genid_key k;
+        struct llmeta_db_lsn_data_type newsc_lsn = {{0}};
+        llmeta_newsc_redo_genid_key_get(&k, p_buf_key, p_buf_end_key);
+        llmeta_db_lsn_data_type_get(&newsc_lsn, p_buf_data, p_buf_end_data);
+
+        logmsg(LOGMSG_USER, "LLMETA_NEWSC_REDO_GENID: table=\"%s\" genid=%0#16" PRIx64 " LSN: [%u:%u]\n", k.tablename,
+               k.genid, newsc_lsn.lsn.file, newsc_lsn.lsn.offset);
     } break;
 
     case LLMETA_SCHEMACHANGE_HISTORY: {
@@ -6881,7 +7083,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -6967,7 +7169,7 @@ int bdb_set_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -7120,7 +7322,7 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -7185,7 +7387,7 @@ retry:
 
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -7255,7 +7457,7 @@ int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr)
     llmeta_rowlocks_state_data_type_put(&rowlocks_data, p_buf, p_buf_end);
 
 retry:
-    if (++retries >= 500) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -7372,7 +7574,7 @@ int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
     }
 
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         return -1;
     }
@@ -7682,10 +7884,10 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
 
     retries = 0;
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
         if (errstr)
-            *errstr = strdup("failed to commit transaction, tried 500 times");
+            *errstr = strdup("failed to commit transaction, hit max retries");
         return -1;
     }
 
@@ -7779,13 +7981,13 @@ retry:
                                    &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                     retries);
             if (errstr)
-                *errstr = strdup("failed to read record, tried 500 times");
+                *errstr = strdup("failed to read record, hit max retries");
 
             free(data_buf);
             return NULL;
@@ -7834,11 +8036,11 @@ int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr)
 
     retries = 0;
 retry:
-    if (++retries >= 500 /*gbl_maxretries*/) {
+    if (++retries >= gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "%s:%d giving up after %d retries\n", __func__,
                 __LINE__, retries);
         if (errstr)
-            *errstr = strdup("failed to commit transaction, tried 500 times");
+            *errstr = strdup("failed to commit transaction, hit max retries");
         return -1;
     }
 
@@ -8230,7 +8432,7 @@ retry:
 
         /* errored case */
         if (tran == NULL && *bdberr == BDBERR_DEADLOCK) {
-            if (++retries < 500 /*gbl_maxretries*/)
+            if (++retries < gbl_maxretries)
                 goto retry;
 
             logmsg(LOGMSG_ERROR, 
@@ -9290,13 +9492,15 @@ int bdb_llmeta_get_lua_sfuncs(void *sfuncs, int *bdberr)
     int rc = bdb_kv_get(LLMETA_LUA_SFUNC, &funcs, &num, bdberr);
 
     for (int i = 0; i < num; ++i) {
-        if ((rc = bdb_llmeta_get_lua_sfunc_flags(funcs[i], &flags, bdberr) != 0) || !flags) {
-            logmsg(LOGMSG_ERROR, "%s: failed fetching lua sfuncs %d\n", __func__, rc);
-            break;
-        }
         struct lua_func_t *sfunc = malloc(sizeof(struct lua_func_t));
         sfunc->name = funcs[i];
-        sfunc->flags = *flags;
+        sfunc->flags = 0;
+        /** Note: Can't fetch flags failure is being ignored to maintain backward compatibility. **/
+        if ((bdb_llmeta_get_lua_sfunc_flags(funcs[i], &flags, bdberr) != 0) || !flags) {
+            logmsg(LOGMSG_WARN, "%s: failed fetching flags for lua sfunc %d\n", __func__, rc);
+        } else {
+            sfunc->flags = *flags;
+        }
         listc_atl(sfuncs, sfunc);
     }
     return rc;
@@ -10518,4 +10722,54 @@ int bdb_del_view(tran_type *t, const char *view_name)
         logmsg(LOGMSG_INFO, "View '%s' deleted\n", view_name);
     }
     return rc;
+}
+
+#include "schemachange.h"
+
+/*
+  DRQS-170879936:
+
+  In version R8, some backwards incompatible changes got introduced into
+  the schema change object that broke the object's original deserializer
+  function (buf_get_schemachange()). As a result, reading an sc status object
+  created by R7 would fail if read by R8 (via comdb2_sc_status).
+
+  The fix was to keep the both the versions of the deserializer functions and
+  invoke them appropriately.
+
+  The current (potential hackish) method to pick the right version on the
+  deserializer function is based on the content of the first 4 bytes of the
+  LLMETA_SCHEMACHANGE_STATUS payload, where it is assumed that the valid
+  values of s->kind (between SC_INVALID and SC_LAST, exclusive) will not
+  coincide with the first 4 bytes of the rqid (fastseed) stored as the first
+  member in old (7.0's) LLMETA_SCHEMACHANGE_STATUS payload.
+*/
+static int buf_get_schemachange_key_type(void *p_buf, void *p_buf_end)
+{
+    int first = 0;
+
+    if (p_buf >= p_buf_end) return -1;
+
+    buf_get(&first, sizeof(first), p_buf, p_buf_end);
+
+    if (first > SC_INVALID && first < SC_LAST) {
+        return LLMETA_SCHEMACHANGE_STATUS_V2;
+    }
+    return LLMETA_SCHEMACHANGE_STATUS;
+}
+
+void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
+                           void *p_buf_end)
+{
+    int sc_key_type = buf_get_schemachange_key_type(p_buf, p_buf_end);
+
+    switch (sc_key_type) {
+    case LLMETA_SCHEMACHANGE_STATUS:
+        return buf_get_schemachange_v1(s, (void *)p_buf, (void *)p_buf_end);
+    case LLMETA_SCHEMACHANGE_STATUS_V2:
+        return buf_get_schemachange_v2(s, (void *)p_buf, (void *)p_buf_end);
+    default:
+        break;
+    }
+    return NULL;
 }

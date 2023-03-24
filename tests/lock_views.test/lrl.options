@@ -1,0 +1,47 @@
+nowatch
+logmsg level info
+disable_new_snapshot
+init_with_genid48
+decoupled_logputs off
+verbose_set_sc_in_progress on
+setattr REP_PROCESSORS 0
+setattr REP_WORKERS 0
+cache 512 mb
+
+dtastripe 16
+blobstripe
+nullsort low
+sort_nulls_with_header
+singlemeta
+checksums
+sql_tranlevel_default block
+sql_tranlevel_default blocksock
+sql_tranlevel_default prefer_blocksock
+on fix_cstr
+enable_good_sql_return_codes
+static_tag_blob_fix
+
+init_with_ondisk_header
+init_with_instant_schema_change
+init_with_inplace_updates
+setattr DEADLOCK_WRITERS_WITH_LEAST_WRITES 1
+prefix_foreign_keys
+superset_foreign_keys
+enable_inplace_blobs
+enable_inplace_blob_optimization
+enable_osql_blob_optimization
+
+use_llmeta
+
+sqlenginepool maxq 200
+
+setattr maxsockcached 3500
+nonames
+
+berkattr elect_highest_committed_gen 1
+
+null_blob_fix
+
+ufid_log 1
+ufid_remove_dbp 1
+ufid_add_on_collect 1

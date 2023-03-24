@@ -3,6 +3,8 @@
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include <ctrace.h>
+#include <poll.h>
+#include <phys_rep_lsn.h>
 
 /**
  * sqlite master global entries
@@ -53,6 +55,8 @@ void cleanup_sqlite_master()
     sqlmaster_nentries = 0;
 }
 
+int gbl_debug_create_master_entry = 0;
+
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           hash_t *view_hash, int *nents)
 {
@@ -79,6 +83,9 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
     }
 
     for (i = 0, tblnum = 0; tblnum < num_dbs; tblnum++) {
+        if (gbl_debug_create_master_entry) {
+            poll(NULL, 0, 10);
+        }
         master_entry_t *ent = &new_arr[i];
         struct dbtable *tbl = dbs[tblnum];
         ent->tblname = strdup(tbl->tablename);
@@ -124,6 +131,10 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
     }
 
     assert(i == local_nentries);
+    if (gbl_debug_create_master_entry && i != local_nentries) {
+        logmsg(LOGMSG_FATAL, "%s entry count changed on init?\n", __func__);
+        abort();
+    }
 
     *nents = local_nentries;
 
@@ -320,6 +331,10 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
 
     tbl = get_dbtable_by_name(tblname);
     if (!tbl)
+        return NULL;
+
+    extern int gbl_is_physical_replicant;
+    if (gbl_is_physical_replicant && physrep_ignore_table(tblname))
         return NULL;
 
     if (ixnum)

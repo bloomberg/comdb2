@@ -45,6 +45,7 @@
 #include "osqlblockproc.h"
 #include "intern_strings.h"
 #include "logmsg.h"
+#include "transactionstate_systable.h"
 #include <poll.h>
 
 #ifdef MONITOR_STACK
@@ -406,6 +407,52 @@ void thd_dump(void)
         logmsg(LOGMSG_USER, "no active threads\n");
 }
 
+int get_thd_info(thd_info **data, int *npoints) {
+    struct thd_info *tinfo;
+    struct thd *thd;
+    uint64_t nowus;
+    nowus = comdb2_time_epochus();
+    LOCK(&lock)
+    {
+        *npoints = busy.count + idle.count;
+        *data = tinfo = malloc((*npoints)*sizeof(thd_info));
+
+        LISTC_FOR_EACH(&busy, thd, lnk) 
+        {
+            tinfo->state = strdup("busy");
+            tinfo->time = U2M(nowus - thd->iq->nowus);
+            tinfo->machine = strdup(thd->iq->frommach);
+            tinfo->opcode = strdup(thd->iq->where);
+            tinfo->function = strdup(thd->iq->gluewhere);
+            tinfo->isIdle = 0;
+            ++tinfo;
+        }
+
+        LISTC_FOR_EACH(&idle, thd, lnk)
+        {
+            tinfo->state = strdup("idle");
+            tinfo->isIdle = 1;
+            ++tinfo;
+        }
+    }
+    UNLOCK(&lock);
+    return 0;
+}
+
+void free_thd_info(thd_info *data, int npoints) {
+    thd_info *tinfo = data;
+    for (int i=0; i<npoints; ++i) {
+        if (!tinfo->isIdle) {
+            free(tinfo->machine);
+            free(tinfo->opcode);
+            free(tinfo->function);
+        }
+        free(tinfo->state);
+        ++tinfo;
+    }
+    free(data);
+}
+
 uint8_t *get_bigbuf()
 {
     uint8_t *p_buf = NULL;
@@ -442,6 +489,7 @@ int signal_buflock(struct buf_lock_t *p_slock)
 /* request handler */
 static void *thd_req(void *vthd)
 {
+    comdb2_name_thread(__func__);
     struct thd *thd = (struct thd *)vthd;
     struct dbenv *dbenv;
     struct timespec ts;
@@ -924,6 +972,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         iq->timings.req_received = osql_log_time();
         /* cache these things so we don't change too much code */
         iq->tranddl = iq->sorese->is_tranddl;
+        iq->tptlock = iq->sorese->is_tptlock;
         iq->sorese->iq = iq;
         if (!iq->debug) {
             if (gbl_who > 0) {
@@ -969,6 +1018,9 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
     if (db_is_exiting()) {
         return ERR_REJECTED;
     }
+
+    if (qtype != REQ_OFFLOAD && gbl_server_admin_mode)
+        return ERR_REJECTED;
 
     net_delay(frommach);
 

@@ -39,17 +39,18 @@ void sql_disable_timeout(struct sqlwriter *);
 //void sql_enable_trickle(struct sqlwriter *);
 //void sql_disable_trickle(struct sqlwriter *);
 
-int sql_write(struct sqlwriter *, int, void *, int);
+int sql_write(struct sqlwriter *, void *, int);
 int sql_writev(struct sqlwriter *, struct iovec *, int);
 int sql_write_buffer(struct sqlwriter *, struct evbuffer *);
+int sql_append_packed(struct sqlwriter *, const void *, size_t);
 
-typedef int(sql_pack_fn)(uint8_t *out, void *pack_arg);
+typedef int(sql_pack_fn)(struct sqlwriter *, void *pack_arg);
 struct sqlwriter_arg {
     int fd;
     struct sqlclntstate *clnt;
+    struct event_base *timer_base;
     sql_pack_fn *pack;
     sql_pack_fn *pack_hb;
-    size_t hb_sz;
 };
 struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *);
 void sqlwriter_free(struct sqlwriter *);
@@ -61,6 +62,10 @@ int sql_peer_check(struct sqlwriter *);
 struct event_base *sql_wrbase(struct sqlwriter *);
 struct evbuffer *sql_wrbuf(struct sqlwriter *);
 
+int done_cb_evbuffer(struct sqlclntstate *);
 int recover_deadlock_evbuffer(struct sqlclntstate *);
+
+void sql_enable_ssl(struct sqlwriter *, SSL *);
+void sql_disable_ssl(struct sqlwriter *);
 
 #endif /* INCLUDED_SQLWRITER_H */

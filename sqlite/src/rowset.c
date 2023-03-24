@@ -63,6 +63,14 @@
 */
 #include "sqliteInt.h"
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#include <bdb_api.h>
+#include <comdb2.h>
+#include <logmsg.h>
+
+int gbl_sqlite_use_temptable_for_rowset = 1;
+extern struct dbenv *thedb;
+#endif
 
 /*
 ** Target size for allocation chunks.
@@ -106,6 +114,11 @@ struct RowSetChunk {
 ** A typedef of this structure if found in sqliteInt.h.
 */
 struct RowSet {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  bdb_state_type *bdb_state;     /* points to thedb->bdb_env */
+  struct temp_table *tmptbl;     /* temp table */
+  struct temp_cursor *tmpcur;    /* temp cursor */
+#endif
   struct RowSetChunk *pChunk;    /* List of all chunk allocations */
   sqlite3 *db;                   /* The database connection */
   struct RowSetEntry *pEntry;    /* List of entries using pRight */
@@ -130,6 +143,30 @@ struct RowSet {
 RowSet *sqlite3RowSetInit(sqlite3 *db){
   RowSet *p = sqlite3DbMallocRawNN(db, sizeof(*p));
   if( p ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( gbl_sqlite_use_temptable_for_rowset ){
+      memset(p, 0, sizeof(RowSet));
+      int bdberr;
+      p->bdb_state = thedb->bdb_env;
+      p->tmptbl = bdb_temp_array_create(p->bdb_state, &bdberr);
+      if( p->tmptbl==NULL ){
+        sqlite3DbFree(db, p);
+        return NULL;
+      }
+      p->tmpcur = bdb_temp_table_cursor(p->bdb_state, p->tmptbl, NULL, &bdberr);
+      if( p->tmpcur==NULL ){
+        bdb_temp_table_close(thedb->bdb_env, p->tmptbl, &bdberr);
+        sqlite3DbFree(db, p);
+        return NULL;
+      }
+      p->db = db;
+      return p;
+    }else{
+      p->bdb_state = NULL;
+      p->tmptbl = NULL;
+      p->tmpcur = NULL;
+    }
+#endif
     int N = sqlite3DbMallocSize(db, p);
     p->pChunk = 0;
     p->db = db;
@@ -151,6 +188,13 @@ RowSet *sqlite3RowSetInit(sqlite3 *db){
 */
 void sqlite3RowSetClear(void *pArg){
   RowSet *p = (RowSet*)pArg;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int bdberr;
+  if( p->tmpcur!=NULL )
+    bdb_temp_table_close_cursor(p->bdb_state, p->tmpcur, &bdberr);
+  if( p->tmptbl!=NULL )
+    bdb_temp_table_close(p->bdb_state, p->tmptbl, &bdberr);
+#endif
   struct RowSetChunk *pChunk, *pNextChunk;
   for(pChunk=p->pChunk; pChunk; pChunk = pNextChunk){
     pNextChunk = pChunk->pNextChunk;
@@ -184,6 +228,10 @@ void sqlite3RowSetDelete(void *pArg){
 */
 static struct RowSetEntry *rowSetEntryAlloc(RowSet *p){
   assert( p!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( p->bdb_state!=NULL )
+    return sqlite3DbMallocRawNN(p->db, sizeof(i64));
+#endif
   if( p->nFresh==0 ){  /*OPTIMIZATION-IF-FALSE*/
     /* We could allocate a fresh RowSetEntry each time one is needed, but it
     ** is more efficient to pull a preallocated entry from the pool */
@@ -214,6 +262,17 @@ void sqlite3RowSetInsert(RowSet *p, i64 rowid){
   /* This routine is never called after sqlite3RowSetNext() */
   assert( p!=0 && (p->rsFlags & ROWSET_NEXT)==0 );
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int rc, bdberr;
+  if( p->bdb_state!=NULL ){
+    rc = bdb_temp_table_insert(p->bdb_state, p->tmpcur, &rowid, sizeof(i64), NULL, 0, &bdberr);
+    if( rc!=0 ) {
+      logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert unexpected rcode %d bdberr %d\n", __func__, rc, bdberr);
+      sqlite3_interrupt(p->db);
+    }
+    return;
+  }
+#endif
   pEntry = rowSetEntryAlloc(p);
   if( pEntry==0 ) return;
   pEntry->v = rowid;
@@ -409,6 +468,36 @@ int sqlite3RowSetNext(RowSet *p, i64 *pRowid){
   assert( p!=0 );
   assert( p->pForest==0 );  /* Cannot be used with sqlite3RowSetText() */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int rc, bdberr;
+  i64 *key;
+  if( p->bdb_state!=NULL ){
+    if( (p->rsFlags & ROWSET_NEXT)==0 ){
+      rc = bdb_temp_table_first(p->bdb_state, p->tmpcur, &bdberr);
+      p->rsFlags |= ROWSET_SORTED|ROWSET_NEXT;
+    }else{
+      rc = bdb_temp_table_next(p->bdb_state, p->tmpcur, &bdberr);
+    }
+    if ( rc==IX_FND ){
+      key = bdb_temp_table_key(p->tmpcur);
+      if( key!=NULL ){
+        *pRowid = *key;
+        return 1;
+      }else{
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_next bad value (nil)\n", __func__);
+        sqlite3_interrupt(p->db);
+        return 0;
+      }
+    }else if( rc==IX_PASTEOF || rc==IX_EMPTY ){
+      return 0;
+    }else{
+      logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_next unexpected rcode %d bdberr %d\n", __func__, rc, bdberr);
+      sqlite3_interrupt(p->db);
+      return 0;
+    }
+  }
+#endif
+
   /* Merge the forest into a single sorted list on first call */
   if( (p->rsFlags & ROWSET_NEXT)==0 ){  /*OPTIMIZATION-IF-FALSE*/
     if( (p->rsFlags & ROWSET_SORTED)==0 ){  /*OPTIMIZATION-IF-FALSE*/
@@ -444,6 +533,22 @@ int sqlite3RowSetTest(RowSet *pRowSet, int iBatch, sqlite3_int64 iRowid){
 
   /* This routine is never called after sqlite3RowSetNext() */
   assert( pRowSet!=0 && (pRowSet->rsFlags & ROWSET_NEXT)==0 );
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int rc, bdberr;
+  if( pRowSet->bdb_state!=NULL ){
+    rc = bdb_temp_table_find_exact(pRowSet->bdb_state, pRowSet->tmpcur, &iRowid, sizeof(sqlite3_int64), &bdberr);
+    if( rc==IX_FND ){
+      return 1;
+    }else if( rc==IX_NOTFND || rc==IX_EMPTY || rc==IX_PASTEOF){
+      return 0;
+    }else{
+      logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert unexpected rcode %d bdberr %d\n", __func__, rc, bdberr);
+      sqlite3_interrupt(pRowSet->db);
+      return 0;
+    }
+  }
+#endif
 
   /* Sort entries into the forest on the first test of a new batch.
   ** To save unnecessary work, only do this when the batch number changes.

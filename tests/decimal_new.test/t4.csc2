@@ -1,0 +1,10 @@
+schema // this test really isn't needed. Just created so wouldn't have to modify runit
+{
+   int         id
+   decimal32   d32
+}
+
+keys
+{
+   "ID"         = id
+}

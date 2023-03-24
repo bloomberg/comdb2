@@ -134,6 +134,12 @@ int main( int argc, char **argv)
          break;
       } 
 
+      if (strcmp(query, "DoNe") == 0) {
+         clnt_close(clnt);  
+         continue;
+      }
+
+
       if (debug)
          fprintf( out, "%d [%s]\n", id, query);
       rc = clnt_run_query(clnt, query, out);
@@ -210,3 +216,8 @@ static int parse_line( char *line, char **query)
    *query = sp;
    return id;
 }
+
+// TODO: not sure why this is only undefined on MacOS
+#ifdef _DARWIN_C_SOURCE
+int gbl_ssl_allow_localhost = 0;
+#endif

@@ -32,6 +32,12 @@ struct common_members {
     uint32_t total_lasttime;     // last time we computed total stats
 };
 
+struct redo_genid_lsns {
+    unsigned long long genid;
+    DB_LSN lsn;
+    LINKC_T(struct redo_genid_lsns) linkv;
+};
+
 /* for passing state data to schema change threads/functions */
 struct convert_record_data {
     pthread_t tid;
@@ -77,6 +83,8 @@ struct convert_record_data {
                            converting the records */
     unsigned long long cv_genid; /* the genid of the record that we get
                                     constraint violation on */
+    LISTC_T(struct redo_genid_lsns) redo_lsns;
+    hash_t *redo_genids;
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,

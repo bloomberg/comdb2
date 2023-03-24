@@ -25,14 +25,10 @@
 #include <pb_alloc.h>
 #include <mem_protobuf.h> /* comdb2_malloc_protobuf */
 #include <sql.h>
+#include <ssl_glue.h>
 #include <str0.h>
 
 #include <newsql.h>
-
-#ifndef container_of
-/* I'm requiring that pointer variable and struct member have the same name */
-#define container_of(ptr, type) (type *)((uint8_t *)ptr - offsetof(type, ptr))
-#endif
 
 extern int gbl_sqlwrtimeoutms;
 
@@ -40,7 +36,8 @@ extern ssl_mode gbl_client_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_nid_dbname;
-void ssl_set_clnt_user(struct sqlclntstate *clnt);
+extern unsigned long long gbl_ssl_num_full_handshakes;
+extern unsigned long long gbl_ssl_num_partial_handshakes;
 
 int gbl_protobuf_prealloc_buffer_size = 8192;
 
@@ -310,6 +307,10 @@ static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
     int pre_enabled = 0;
     int was_timeout = 0;
 
+    /* reset here, if query has this feature,
+    it will be enabled before returning */
+    clnt->sqlite_row_format = 0;
+
 retry_read:
     rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
     if (rc != 1) {
@@ -333,21 +334,31 @@ retry_read:
               actual status of this node;
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
-        char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+        char ssl_able = SSL_IS_ABLE(gbl_client_ssl_mode) ? 'Y' : 'N';
         if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
             return NULL;
         }
+
+        if (ssl_able == 'N')
+            goto retry_read;
+
         /* Don't close the connection if SSL verify fails so that we can
            send back an error to the client. */
-        if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname, gbl_nid_dbname, 0) != 1) {
-            write_response(clnt, RESPONSE_ERROR, "Client certificate authentication failed.", CDB2ERR_CONNECT_ERROR);
+        if (sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname, gbl_nid_dbname, 0) != 1) {
+            write_response(clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
             /* Print the error message in the sbuf2. */
             char err[256];
             sbuf2lasterror(sb, err, sizeof(err));
             logmsg(LOGMSG_ERROR, "%s\n", err);
             return NULL;
         }
+
+        /* keep track of number of full and partial handshakes */
+        if (SSL_session_reused(sslio_get_ssl(sb)))
+            ATOMIC_ADD64(gbl_ssl_num_partial_handshakes, 1);
+        else
+            ATOMIC_ADD64(gbl_ssl_num_full_handshakes, 1);
+
         /* Extract the user from the certificate. */
         ssl_set_clnt_user(clnt);
         goto retry_read;
@@ -472,7 +483,7 @@ retry_read:
        The check must be done for every query, otherwise
        attackers could bypass it by using pooled connections
        from sockpool. The overhead of the check is negligible. */
-    if (gbl_client_ssl_mode >= SSL_REQUIRE && !sslio_has_ssl(sb)) {
+    if (SSL_IS_PREFERRED(gbl_client_ssl_mode) && !sslio_has_ssl(sb)) {
         /* The code block does 2 things:
            1. Return an error to outdated clients;
            2. Send dbinfo to new clients to trigger SSL.
@@ -491,12 +502,24 @@ retry_read:
             cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
             query = NULL;
             goto retry_read;
+        } else if (ssl_whitelisted(clnt->origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode))) {
+            /* allow plaintext local connections, or server is configured to prefer (but not disallow) SSL clients. */
+            return query;
         } else {
             write_response(clnt, RESPONSE_ERROR, "The database requires SSL connections.", CDB2ERR_CONNECT_ERROR);
         }
         cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         return NULL;
     }
+
+    for (int ii = 0; ii < query->sqlquery->n_features; ++ii) {
+        if (CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT ==
+            query->sqlquery->features[ii]) {
+            clnt->sqlite_row_format = 1;
+            break;
+        }
+    }
+
     return query;
 }
 
@@ -528,8 +551,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
         dbenv->master != gbl_myhostname) {
         logmsg(LOGMSG_DEBUG,
-               "%s:%d td %u new query on replicant with sync none, dropping\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
+               "%s:%d td %" PRIxPTR "new query on replicant with sync none, dropping\n",
+               __func__, __LINE__, (intptr_t)pthread_self());
         return APPSOCK_RETURN_OK;
     }
 
@@ -645,12 +668,14 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (appdata->query) {
             /* cleanup if we did not add to history (single stmt or select inside a tran) */
             cdb2__query__free_unpacked(appdata->query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-            appdata->query = NULL;
             /* clnt.sql points into the protobuf unpacked buffer, which becomes
              * invalid after cdb2__query__free_unpacked. Reset the pointer here.
              */
+            Pthread_mutex_lock(&clnt.sql_lk);
             clnt.sql = NULL;
+            Pthread_mutex_unlock(&clnt.sql_lk);
         }
+        appdata->query = NULL;
 
         query = read_newsql_query(dbenv, &clnt, sb);
     }

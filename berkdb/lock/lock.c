@@ -36,10 +36,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <sys/types.h>
 #endif
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-#include <execinfo.h>
-#include <walkback.h>
-#endif
+#include <stackutil.h>
 #include "dbinc/txn.h"
 #include "logmsg.h"
 #include "util.h"
@@ -56,15 +53,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #define PRINTF(...)
 #endif
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-extern void backtrace_symbols_fd(void *const *, int, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols_fd(A, B, C)
-#endif
-#endif
+
 
 extern int verbose_deadlocks;
 extern int gbl_rowlocks;
@@ -1928,35 +1917,24 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 	return (ret);
 }
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-static void inline
-get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
-{
-	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
-
-	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
-		abort();
-	}
-	lockp->stack_gen = lockp->gen;
-	lockp->tid = pthread_self();
-	lockp->lock = lock;
-}
-#endif
+int gbl_stack_at_lock_get = 0;
+int gbl_stack_at_lock_handle = 0;
+int gbl_stack_at_write_lock = 0;
+int gbl_stack_at_lock_gen_increment = 0;
 
 static void inline
 stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
 {
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
-	get_stack(lockp, lock, 1);
-#endif
+	lockp->stackid = gbl_stack_at_lock_gen_increment ? stackutil_get_stack_id("getlock") : -1;
 }
 
 static void inline
-stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock)
+stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock, int ishandle, int iswrite)
 {
-#ifdef STACK_AT_GET_LOCK
-	get_stack(lockp, lock, 0);
-#endif
+	lockp->stackid = (gbl_stack_at_lock_get ||
+					 (gbl_stack_at_lock_handle && ishandle) ||
+					 (gbl_stack_at_write_lock && iswrite)) ?
+					 stackutil_get_stack_id("getlock") : -1;
 }
 
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */
@@ -2113,15 +2091,18 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	db_timeout_t timeout;
 	DB_LOCK *lock;
 {
-	if (unlikely(gbl_ddlk && !LF_ISSET(DB_LOCK_NOWAIT) &&
+	extern __thread int disable_random_deadlocks;
+	if (disable_random_deadlocks == 0 && 
+		unlikely(gbl_ddlk && !LF_ISSET(DB_LOCK_NOWAIT) &&
 		rand() % gbl_ddlk == 0)) {
 		return DB_LOCK_DEADLOCK;
 	}
 	u_int32_t partition = gbl_lk_parts, lpartition = gbl_lkr_parts;
+	int handlelock = 0, writelock = 0;
 	uint64_t x1 = 0, x2;
 	struct __db_lock *newl, *lp, *firstlp, *wwrite;
 	DB_ENV *dbenv;
-	DB_LOCKER *sh_locker;
+	DB_LOCKER *sh_locker, *master_locker;
 	DB_LOCKOBJ *sh_obj;
 	DB_LOCKREGION *region;
 	u_int32_t holder, obj_ndx, ihold, *holdarr, holdix, holdsz;
@@ -2758,10 +2739,9 @@ upgrade:
 
 		/* set waiting status for master_locker */
 		if (sh_locker->master_locker == INVALID_ROFF)
-			sh_locker->wstatus = 1;
+			master_locker = sh_locker;
 		else
-			((DB_LOCKER *)R_ADDR(&lt->reginfo,
-				sh_locker->master_locker))->wstatus = 1;
+			master_locker = ((DB_LOCKER *)R_ADDR(&lt->reginfo, sh_locker->master_locker));
 
 		unlock_locker_partition(region, lpartition);
 
@@ -2811,6 +2791,16 @@ upgrade:
 			}
 			__os_free(dbenv, holdarr);
 			holdarr = NULL;
+		}
+
+		/* Add the locker to the waiting list before calling the deadlock detector. */
+		if (!master_locker->dd_in_wlockers) {
+			lock_detector(region);
+			if (!master_locker->dd_in_wlockers) {
+				SH_TAILQ_INSERT_HEAD(&region->wlockers, master_locker, wlinks, __db_locker);
+				master_locker->dd_in_wlockers = 1;
+			}
+			unlock_detector(region);
 		}
 
 		/*
@@ -2918,24 +2908,33 @@ expired:			obj_ndx = sh_obj->index;
 	lock->off = R_OFFSET(&lt->reginfo, newl);
 	lock->gen = newl->gen;
 	lock->mode = newl->mode;
-	stack_at_get_lock(newl, lock);
 	sh_locker->nlocks++;
 
 
 	/* clear waiting status for master_locker */
 	if (sh_locker->master_locker == INVALID_ROFF)
-		sh_locker->wstatus = 0;
+		master_locker = sh_locker;
 	else
-		((DB_LOCKER *)R_ADDR(&lt->reginfo,
-			sh_locker->master_locker))->wstatus = 0;
+		master_locker = ((DB_LOCKER *)R_ADDR(&lt->reginfo, sh_locker->master_locker));
+
+	if (master_locker->dd_in_wlockers) {
+		lock_detector(region);
+		if (master_locker->dd_in_wlockers) {
+			SH_TAILQ_REMOVE(&region->wlockers, master_locker, wlinks, __db_locker);
+			master_locker->dd_in_wlockers = 0;
+		}
+		unlock_detector(region);
+	}
 
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
-	if (is_handlelock(sh_obj))
-        sh_locker->nhandlelocks++;
-
-	if (IS_WRITELOCK(newl->mode))
+	if ((handlelock = is_handlelock(sh_obj)))
+		sh_locker->nhandlelocks++;
+	if ((writelock = IS_WRITELOCK(newl->mode)))
 		sh_locker->nwrites++;
+
+	stack_at_get_lock(newl, lock, handlelock, writelock);
+
 	if (is_pagelock(sh_obj) && IS_WRITELOCK(lock->mode) &&
 	    F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
 		if (sh_locker->ntrackedlocks + 1 > sh_locker->maxtrackedlocks) {
@@ -3841,6 +3840,16 @@ __lock_freelocker(lt, region, sh_locker, indx)
 	SH_TAILQ_INSERT_HEAD(&region->free_lockers[partition], sh_locker, links,
 	    __db_locker);
 	SH_TAILQ_REMOVE(&region->lockers, sh_locker, ulinks, __db_locker);
+
+	if (sh_locker->dd_in_wlockers) {
+		lock_detector(region);
+		if (sh_locker->dd_in_wlockers) {
+			SH_TAILQ_REMOVE(&region->wlockers, sh_locker, wlinks, __db_locker);
+			sh_locker->dd_in_wlockers = 0;
+		}
+		unlock_detector(region);
+	}
+
 	region->stat.st_nlockers--;
 }
 
@@ -4054,7 +4063,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 		SH_TAILQ_REMOVE(&region->free_lockers[partition],
 		    sh_locker, links, __db_locker);
 		sh_locker->id = locker;
-		sh_locker->dd_id = 0;
+		sh_locker->dd_id = -1;
 		sh_locker->master_locker = INVALID_ROFF;
 		sh_locker->parent_locker = INVALID_ROFF;
 		SH_LIST_INIT(&sh_locker->child_locker);
@@ -4069,6 +4078,8 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 		sh_locker->num_retries = prop ? prop->retries : 0;
 		if (prop && prop->flags & DB_LOCK_ID_LOWPRI)
 			F_SET(sh_locker, DB_LOCKER_KILLME);
+		sh_locker->dd_gen = 0;
+		sh_locker->dd_in_wlockers = 0;
 #if TEST_DEADLOCKS
 		printf("%p %s:%d lockerid %x setting priority to %d\n",
 		    (void*)pthread_self(), __FILE__, __LINE__, sh_locker->id, sh_locker->priority);
@@ -5698,6 +5709,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 	FILE *fp;
 {
 	DBT obj_dbt;
+	char tablename[30] = {0};
 	DB_LOCK ret_lock;
 	DB_LOCK_ILOCK *lock;
 	DB_LOCKER *sh_locker;
@@ -5774,24 +5786,54 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 
 			GET_LSNCOUNT(dp, nlsns);
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-				if (fp)
-					fprintf(fp, "\t\tFILEID: ");
-				else
-					logmsg(LOGMSG_USER, "\t\tFILEID: ");
+				switch(obj_dbt.size)  {
+					case(sizeof(struct __db_ilock)): 
+						if (fp)
+							fprintf(fp, "\t\tFILEID: ");
+						else
+							logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-				hexdumpfp(fp, lock->fileid, sizeof(lock->fileid));
-				if (fp) {
-					fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
-					fprintf(fp, " PAGE: %u", lock->pgno);
-				} else {
-					logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
-					logmsg(LOGMSG_USER, " PAGE: %u", lock->pgno);
-				}
-				if (nlsns) {
-					if (fp)
-						fprintf(fp, " LSNS: ");
-					else
-						logmsg(LOGMSG_USER, " LSNS: ");
+						hexdumpfp(fp, lock->fileid, sizeof(lock->fileid));
+						if (fp) {
+							fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
+							fprintf(fp, " PAGE: %u\n", lock->pgno);
+						} else {
+							logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
+							logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
+						}
+						if (nlsns) {
+							if (fp)
+								fprintf(fp, "\t\tPGLOGS: ");
+							else
+								logmsg(LOGMSG_USER, "\t\tPGLOGS: ");
+						}
+						break;
+					case(32):
+						memcpy(tablename,obj_dbt.data, 28);
+						if (fp)
+							fprintf(fp, "\t\tTABLELOCK: %s", tablename);
+						else
+							logmsg(LOGMSG_USER, "\t\tTABLELOCK: %s", tablename);
+						// Tablenames > 28 chars have crc32 appended 
+						uint32_t crc32 = *(uint32_t *)(obj_dbt.data + 28);
+						if (crc32 > 0) {
+							if (fp)
+								fprintf(fp, " CRC32: %u", crc32);
+							else
+								logmsg(LOGMSG_USER, " CRC32: %u", crc32);
+						}
+						if (fp)
+							fprintf(fp, "\n");
+						else
+							logmsg(LOGMSG_USER, "\n");
+						break;
+					default:
+						if (fp)
+							fprintf(fp, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+						else
+							logmsg(LOGMSG_USER, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+						hexdumpfp(fp, obj_dbt.data, obj_dbt.size);
+						break;
 				}
 			}
 			for (j = 0; j < nlsns; j++) {
@@ -5845,8 +5887,9 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	DB_LSN *maxlsn;
 	void **pglogs;
 	u_int32_t *keycnt;
-    FILE *fp;
+	FILE *fp;
 {
+	char tablename[30] = {0};
 	DBT obj_dbt;
 	DB_LOCK ret_lock;
 	DB_LOCK_ILOCK *lock;
@@ -5939,22 +5982,55 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 					}
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                    if (fp) 
-                        fprintf(fp, "\t\tFILEID: ");
-                    else
-                        logmsg(LOGMSG_USER, "\t\tFILEID: ");
+					switch(obj_dbt.size) {
+						case(sizeof(struct __db_ilock)): 
+							if (fp) 
+								fprintf(fp, "\t\tFILEID: ");
+							else
+								logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-					hexdumpfp(fp, lock->fileid,
-					    sizeof(lock->fileid));
-                    if (fp) {
-                        fprintf(fp, " TYPE: %s",
-                                ilock_type_str(lock->type));
-                        fprintf(fp, " PAGE: %u\n", lock->pgno);
-                    } else {
-                        logmsg(LOGMSG_USER, " TYPE: %s",
-                                ilock_type_str(lock->type));
-                        logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
-                    }
+							hexdumpfp(fp, lock->fileid,
+									sizeof(lock->fileid));
+							if (fp) {
+								fprintf(fp, " TYPE: %s",
+										ilock_type_str(lock->type));
+								fprintf(fp, " PAGE: %u\n", lock->pgno);
+							} else {
+								logmsg(LOGMSG_USER, " TYPE: %s",
+										ilock_type_str(lock->type));
+								logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
+							}
+							break;
+
+						case(32):
+							memcpy(tablename,obj_dbt.data, 28);
+							if (fp)
+								fprintf(fp, "\t\tTABLELOCK: %s", tablename);
+							else
+								logmsg(LOGMSG_USER, "\t\tTABLELOCK: %s", tablename);
+
+							// Tablenames > 28 chars have crc32 appended 
+							uint32_t crc32 = *(uint32_t *)(obj_dbt.data + 28);
+							if (crc32 > 0) {
+								if (fp)
+									fprintf(fp, " CRC32: %u", crc32);
+								else
+									logmsg(LOGMSG_USER, " CRC32: %u", crc32);
+							}
+							if (fp)
+								fprintf(fp, "\n");
+							else
+								logmsg(LOGMSG_USER, "\n");
+							break;
+
+						default:
+							if (fp)
+								fprintf(fp, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+							else
+								logmsg(LOGMSG_USER, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
+							hexdumpfp(fp, obj_dbt.data, obj_dbt.size);
+							break;
+					}
 				}
 
 				if (npgno != 0)

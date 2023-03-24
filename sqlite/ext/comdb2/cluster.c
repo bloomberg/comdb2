@@ -50,5 +50,7 @@ int systblClusterInit(sqlite3 *db) {
             CDB2_INTEGER, "port",  -1, offsetof(struct cluster_info, port),
             CDB2_CSTRING, "is_master",  -1, offsetof(struct cluster_info, is_master),
             CDB2_CSTRING, "coherent_state",  -1, offsetof(struct cluster_info, coherent_state),
+            CDB2_INTEGER, "logfile",  -1, offsetof(struct cluster_info, logfile),
+            CDB2_INTEGER, "logoffset",  -1, offsetof(struct cluster_info, logoffset),
             SYSTABLE_END_OF_FIELDS);
 }

@@ -1,0 +1,1 @@
+Test comdb2 cluster that starts with tunable "protobuf_connectmsg" off (use old connect message), then restart one of the replicants with the tunable on (use protobuf connect message).

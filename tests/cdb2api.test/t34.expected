@@ -1,4 +1,4 @@
 [select 1] failed with rc -3 Invalid set command 'invalid'
 (1=1)
-[INSERT INTO t1 (x,y,z,w) VALUES (1,2,3,4)] failed with rc -106 Cannot modify tables via a read-only client connection
+[INSERT INTO t1 (x,y,z,w) VALUES (1,2,3,4)] failed with rc -106 connection/database in read-only mode
 [INSERT INTO t1 (x,y,z,w) VALUES (1,2,3,4)] failed with rc 299 add key constraint duplicate key 'KEY' on table 't1' index 0

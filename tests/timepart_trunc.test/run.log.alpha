@@ -842,3 +842,139 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_time
 cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
 (name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
 (name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+TEST 13
+Create table and merge existing table in it
+(a=1)
+(a=3)
+(a=5)
+TEST 14
+Create partitioned table, add records, drop partitiong and check table
+cdb2sql ${CDB2_OPTIONS} dorintdb default select * from t14 order by 1
+(a=10, b=20)
+(a=30, b=40)
+(a=50, b=60)
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t2",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_43868980",
+  },
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t14",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_528953B1",
+  },
+  {
+   "TABLENAME"    : "$1_9ABA178A",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+(name='t2', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+(name='t14', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t2', shardname='$0_43868980')
+(name='t2', shardname='$2_CE9DB8D')
+(name='t14', shardname='$0_528953B1')
+(name='t14', shardname='$1_9ABA178A')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t14', arg2=NULL, arg3=NULL)
+cdb2sql ${CDB2_OPTIONS} dorintdb default select * from t14 order by 1
+(a=10, b=20)
+(a=30, b=40)
+(a=50, b=60)
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t2",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_43868980",
+  },
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+(name='t2', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t2', shardname='$0_43868980')
+(name='t2', shardname='$2_CE9DB8D')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+TEST 15
+Test ALTER table MERGE
+(a=11)
+(a=22)
+(a=33)
+(a=100)
+(a=200)
+[select * from t16 order by a] failed with rc -3 no such table: t16

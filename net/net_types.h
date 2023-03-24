@@ -99,6 +99,7 @@ enum {
     USER_TYPE_TRANSFERMASTER_NAME,
     USER_TYPE_REQ_START_LSN,
     USER_TYPE_TRUNCATE_LOG,
+    USER_TYPE_COMMITDELAYTIMED = 43,
 
     NET_QUIESCE_THREADS = 100,
     NET_RESUME_THREADS = 101,
@@ -117,21 +118,21 @@ enum {
     NET_START_SC = 115,
     NET_STOP_SC = 116,
     NET_ODH_OPTIONS = 117,
-    NET_OSQL_BLOCK_REQ = 118, /* obsolete */
-    NET_OSQL_BLOCK_RPL = 119, /* obsolete */
+    NET_OSQL_BLOCK_REQ = 118,        /* obsolete */
+    NET_OSQL_BLOCK_RPL = 119,        /* obsolete */
     NET_SETLOCKS = 120,
     NET_SET_ALL_LOCKS = 121,
     NET_RELEASE_LOCKS = 122,
-    NET_OSQL_SOCK_REQ = 123,  /* this goes only on offload net */
-    NET_OSQL_SOCK_RPL = 124,  /* this goes only on offload net */
-    NET_OSQL_RECOM_REQ = 125, /* this goes only on offload net */
-    NET_OSQL_RECOM_RPL = 126, /* this goes only on offload net */
-    NET_HBEAT_SQL = 127,      /* this goes only on offload net */
-    NET_FORGETMENOT = 128,    /* to remind master of an incoherent node */
-    NET_USE_LLMETA = 129,  /* depricated, in this version of comdb2, * all dbs
-                              must be llmeta */
-    NET_OSQL_POKE = 130,   /* obsolete */
-    NET_OSQL_SIGNAL = 131, /* this goes only on offload net */
+    NET_OSQL_SOCK_REQ = 123,         /* this goes only on offload net */
+    NET_OSQL_SOCK_RPL = 124,         /* this goes only on offload net */
+    NET_OSQL_RECOM_REQ = 125,        /* this goes only on offload net */
+    NET_OSQL_RECOM_RPL = 126,        /* this goes only on offload net */
+    NET_HBEAT_SQL = 127,             /* this goes only on offload net */
+    NET_FORGETMENOT = 128,           /* to remind master of an incoherent node */
+    NET_USE_LLMETA = 129,            /* depricated, in this version of comdb2, * all dbs
+                                        must be llmeta */
+    NET_OSQL_POKE = 130,             /* obsolete */
+    NET_OSQL_SIGNAL = 131,           /* this goes only on offload net */
     NET_OSQL_SERIAL_REQ = 132,       /* this goes only on offload net */
     NET_OSQL_SERIAL_RPL = 133,       /* this goes only on offload net */
     NET_OSQL_BLOCK_REQ_PARAMS = 134, /* obsolete */
@@ -141,13 +142,13 @@ enum {
     NET_OSQL_SOCK_REQ_COST = 138,    /* like SOCK_REQ, but passes dbglog ids */
     NET_OSQL_SNAPISOL_REQ = 139,     /* this goes only on offload net */
     NET_OSQL_SNAPISOL_RPL = 140,     /* this goes only on offload net */
-    NET_RELOAD_LUA = 141, /* Delete the cached lua machines at load time */
-    NET_OSQL_MASTER_CHECK = 142,   /* this goes only on offload net */
-    NET_OSQL_MASTER_CHECKED = 143, /* this goes only on offload net */
-    NET_BLOCK_REQ = 144,   /* this is to process block request on master. */
-    NET_BLOCK_REPLY = 145, /*  process block request reply from master. */
-    NET_OSQL_SNAP_UID_REQ = 146, /* the request to check snapshot UID */
-    NET_OSQL_SNAP_UID_RPL = 147, /* the reply from master for uid check */
+    NET_RELOAD_LUA = 141,            /* Delete the cached lua machines at load time */
+    NET_OSQL_MASTER_CHECK = 142,     /* this goes only on offload net */
+    NET_OSQL_MASTER_CHECKED = 143,   /* this goes only on offload net */
+    NET_BLOCK_REQ = 144,             /* this is to process block request on master. */
+    NET_BLOCK_REPLY = 145,           /* process block request reply from master. */
+    NET_OSQL_SNAP_UID_REQ = 146,     /* the request to check snapshot UID */
+    NET_OSQL_SNAP_UID_RPL = 147,     /* the reply from master for uid check */
     NET_TRIGGER_REGISTER = 148,
     NET_TRIGGER_UNREGISTER = 149,
     NET_TRIGGER_START = 150,

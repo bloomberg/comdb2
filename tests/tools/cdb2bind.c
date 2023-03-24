@@ -480,6 +480,260 @@ void test_bind_array2()
     test_close(hndl);
 }
 
+static void test_bind_blob_array()
+{
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+    const int N = INT16_MAX;
+    struct {
+        size_t len;
+        void *data;
+    } blobs[N];
+    uint8_t db[N];
+    memset(db, 0xdb, sizeof(db));
+    for (int i = 0, j = N - 1; i < N; ++i, --j) {
+        /* desc order so first blob is not zero-length (which server return as string) */
+        blobs[i].len = j;
+        blobs[i].data = db;
+    }
+    cdb2_bind_array(hndl, "blobs", CDB2_BLOB, blobs, N, 0);
+    test_exec(hndl, "select * from carray(@blobs)");
+    int rc , i = -1, j = N;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        ++i;
+        --j;
+        if (cdb2_column_type(hndl, 0) != CDB2_BLOB) {
+            fprintf(stderr, "row:%d bad cdb2_column_type:%d expected:%d\n", i, cdb2_column_type(hndl, i), CDB2_BLOB);
+            abort();
+        }
+        if (cdb2_column_size(hndl, 0) != j) {
+            fprintf(stderr, "row:%d bad cdb2_column_size:%d expected:%d\n", i, cdb2_column_size(hndl, i), i);
+            abort();
+        }
+        if (memcmp(db, cdb2_column_value(hndl, 0), j) != 0) {
+            fprintf(stderr, "row:%d bad cdb2_column_value of size:%d\n", i, i);
+            abort();
+        }
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+    test_close(hndl);
+}
+
+static void create_procedure_sp_array(void)
+{
+    int rc;
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+    char *sp_array = "\
+create procedure sp_array version 'test' {    \
+local function main(i32s, i64s, ds, ss, bs) \n\
+    if #i32s ~= #i64s then return -201 end  \n\
+    if #i32s ~= #ds then return -202 end    \n\
+    if #i32s ~= #ss then return -203 end    \n\
+    if #i32s ~= #bs then return -204 end    \n\
+                                            \n\
+    db:num_columns(5)                       \n\
+                                            \n\
+    db:column_name('i32s', 1)               \n\
+    db:column_name('i64s', 2)               \n\
+    db:column_name('ds', 3)                 \n\
+    db:column_name('ss', 4)                 \n\
+    db:column_name('bs', 5)                 \n\
+                                            \n\
+    db:column_type('int', 1)                \n\
+    db:column_type('int', 2)                \n\
+    db:column_type('double', 3)             \n\
+    db:column_type('text', 4)               \n\
+    db:column_type('blob', 5)               \n\
+                                            \n\
+    db:setmaxinstructions(#i32s * 10)       \n\
+                                            \n\
+    for i = 1, #i32s do                     \n\
+     db:emit(                               \n\
+      i32s[i], i64s[i], ds[i], ss[i], bs[i] \n\
+     )                                      \n\
+    end                                     \n\
+end}";
+    if ((rc = cdb2_run_statement(hndl, sp_array)) != 0) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    test_close(hndl);
+}
+
+static void test_pass_array_to_sp()
+{
+    create_procedure_sp_array();
+
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+
+
+    const int N = 10240;
+    int32_t i32s[N];
+    int64_t i64s[N];
+    double ds[N];
+    char *ss[N];
+    struct {
+        size_t len;
+        void *data;
+    } bs[N];
+    uint8_t blob[N];
+    memset(blob, 0xdb, sizeof(blob));
+    for (int i = 0; i < N; ++i) {
+        i32s[i] = i;
+        i64s[i] = i * 10;
+        ds[i] = i * 100;
+        char s[64]; sprintf(s, "%zd", i64s[i] * 100);
+        ss[i] = strdup(s);
+        bs[i].len = i;
+        bs[i].data = blob;
+    }
+    cdb2_bind_array(hndl, "i32s", CDB2_INTEGER, i32s, N, sizeof(i32s[0]));
+    cdb2_bind_array(hndl, "i64s", CDB2_INTEGER, i64s, N, sizeof(i64s[0]));
+    cdb2_bind_array(hndl, "ds", CDB2_REAL, ds, N, 0);
+    cdb2_bind_array(hndl, "ss", CDB2_CSTRING, ss, N, 0);
+    cdb2_bind_array(hndl, "bs", CDB2_BLOB, bs, N, 0);
+    test_exec(hndl, "exec procedure sp_array(@i32s, @i64s, @ds, @ss, @bs)");
+    int rc, n = 0;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        for (int i = 0; i < cdb2_numcolumns(hndl); ++i) {
+            switch (cdb2_column_type(hndl, i)) {
+            case CDB2_INTEGER: {
+                int64_t val = *(int64_t *)cdb2_column_value(hndl, i);
+                if (i == 0) {
+                    if (val != i32s[n]) {
+                        fprintf(stderr, "row:%d i32 col:%d val:%zd vs exp:%d\n", n, i, val, i32s[n]);
+                        abort();
+                    }
+                } else if (i == 1) {
+                    if (val != i64s[n]) {
+                        fprintf(stderr, "row:%d i64 col:%d %zd vs exp:%zd\n", n, i, val, i64s[n]);
+                        abort();
+                    }
+                } else {
+                    fprintf(stderr, "row:%d col:%d should not be integer\n", n, i);
+                    abort();
+                }
+            }
+            break;
+            case CDB2_REAL: {
+                double val = *(double *)cdb2_column_value(hndl, i);
+                if (val != ds[n]) {
+                    fprintf(stderr, "row:%d dbl col:%d val:%f vs exp:%f\n", n, i, val, ds[n]);
+                    abort();
+                }
+            }
+            break;
+            case CDB2_CSTRING: {
+                char *val = (char *)cdb2_column_value(hndl, i);
+                if (strcmp(val, ss[n]) != 0) {
+                    fprintf(stderr, "row:%d str col:%d val:'%s' vs exp:'%s'\n", n, i, val, ss[n]);
+                    abort();
+                }
+            }
+            break;
+            case CDB2_BLOB: {
+                void *val = cdb2_column_value(hndl, i);
+                if (cdb2_column_size(hndl, i) != bs[n].len) {
+                    fprintf(stderr, "row:%d blob col:%d len:%d vs exp:%zu\n", n, i, cdb2_column_size(hndl, i), bs[n].len);
+                    abort();
+                }
+                if ((rc = memcmp(val, bs[n].data, bs[n].len)) != 0) {
+                    fprintf(stderr, "row:%d blob col:%d len:%d memcmp:%d\n", n, i, cdb2_column_size(hndl, i), rc);
+                    abort();
+                }
+            }
+            break;
+            default:
+            fprintf(stderr, "row:%d col:%d unexpected type:%d\n", n, i, cdb2_column_type(hndl, i));
+            abort();
+            }
+        }
+        ++n;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    if (n != N) {
+        fprintf(stderr, "received rows:%d exp:%d\n", n, N);
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+    test_close(hndl);
+}
+
+static void create_procedure_sp_carray(void)
+{
+    int rc;
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+    char *sp_carray = "\
+create procedure sp_carray version 'test' {                   \
+local function main()                                       \n\
+    local numbers = {0,1,2,3,4};                            \n\
+    local integers = {}                                     \n\
+    for i = 5, 10 do                                        \n\
+        table.insert(integers, db:cast(i, 'int'))           \n\
+    end                                                     \n\
+    local strings = {'hello', 'world'}                      \n\
+    local blobs = {x'436f6d64623200', x'35393200'}          \n\
+                                                            \n\
+    db:column_type('text', 1)                               \n\
+    local stmt = db:prepare('select * from carray(@arr)')   \n\
+                                                            \n\
+    stmt:bind('arr', numbers)                               \n\
+    stmt:emit()                                             \n\
+                                                            \n\
+    stmt:bind('arr', integers)                              \n\
+    stmt:emit()                                             \n\
+                                                            \n\
+    stmt:bind('arr', strings)                               \n\
+    stmt:emit()                                             \n\
+                                                            \n\
+    stmt:bind('arr', blobs)                                 \n\
+    stmt:emit()                                             \n\
+end}";
+    if ((rc = cdb2_run_statement(hndl, sp_carray)) != 0) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    test_close(hndl);
+}
+
+static void test_bind_array_in_sp(void)
+{
+    create_procedure_sp_carray();
+
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+
+    test_exec(hndl, "exec procedure sp_carray()");
+    char *exp[] = {
+        "0.0", "1.0", "2.0", "3.0", "4.0", //array of doubles
+        "5","6","7","8","9", "10",         //array of integers
+        "hello", "world",                  //array of strings
+        "Comdb2", "592"                    //array of blobs
+    };
+    int rc, n = 0;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        char *val = cdb2_column_value(hndl, 0);
+        if (strcmp(val, exp[n]) != 0) {
+            fprintf(stderr, "cdb2_next_record exp:%s val:%s\n", exp[n], val);
+            abort();
+        }
+        ++n;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+}
 
 int main(int argc, char *argv[])
 {
@@ -491,6 +745,9 @@ int main(int argc, char *argv[])
     test_04();
     test_bind_array();
     test_bind_array2();
+    test_bind_blob_array();
+    test_pass_array_to_sp();
+    test_bind_array_in_sp();
 
     return 0;
 }

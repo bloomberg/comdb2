@@ -38,11 +38,14 @@ unknown @ls sub-command foo
 (name='comdb2_limits')
 (name='comdb2_locks')
 (name='comdb2_logical_operations')
+(name='comdb2_memstats')
 (name='comdb2_metrics')
 (name='comdb2_net_userfuncs')
 (name='comdb2_opcode_handlers')
+(name='comdb2_partial_datacopies')
 (name='comdb2_plugins')
 (name='comdb2_procedures')
+(name='comdb2_query_plans')
 (name='comdb2_queues')
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')
@@ -50,6 +53,7 @@ unknown @ls sub-command foo
 (name='comdb2_sc_status')
 (name='comdb2_sql_client_stats')
 (name='comdb2_sqlpool_queue')
+(name='comdb2_stacks')
 (name='comdb2_systablepermissions')
 (name='comdb2_systables')
 (name='comdb2_table_properties')
@@ -64,6 +68,7 @@ unknown @ls sub-command foo
 (name='comdb2_timepartshards')
 (name='comdb2_timeseries')
 (name='comdb2_transaction_logs')
+(name='comdb2_transaction_state')
 (name='comdb2_triggers')
 (name='comdb2_tunables')
 (name='comdb2_type_samples')
@@ -75,7 +80,7 @@ Columns:
 (column='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 
 Keys:
-(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, ispartialdatacopy='N')
 
 Constraints:
 (name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
@@ -94,7 +99,7 @@ Columns:
 (column='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 
 Keys:
-(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, ispartialdatacopy='N')
 
 Constraints:
 (name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
@@ -117,7 +122,7 @@ Columns:
 (column='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 
 Keys:
-(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(keyname='COMDB2_PK', isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, ispartialdatacopy='N')
 
 Constraints:
 (name='$CONSTRAINT_C6A17957', type='FOREIGN KEY', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)

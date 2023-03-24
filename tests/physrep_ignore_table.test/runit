@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+
+#set -x
+
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+export DESTDB=${TESTCASE}dest${TESTID}
+export DEST_DBDIR=${DBDIR}/$DESTDB
+export stopfile=./stopfile.txt
+
+if [[ -z "$TEST_TIMEOUT" ]] ; then 
+    export TEST_TIMEOUT=5m 
+fi
+
+function failexit
+{
+    touch $stopfile
+    echo "Failed: $1"
+    exit -1
+}
+
+function create_tables
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b blob)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index t1a on t1(a)"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int, b blob)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index t2a on t2(a)"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t3(a int, b blob)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index t3a on t3(a)"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t4(a int, b blob)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index t4a on t4(a)"
+}
+
+function fill_tables
+{
+    j=0
+    while [[ $j -lt 100 ]]; do
+        # create large blob files
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select *, randomblob(16384) from generate_series(1, 50)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 select *, randomblob(16384) from generate_series(1, 50)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 select *, randomblob(16384) from generate_series(1, 50)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t4 select *, randomblob(16384) from generate_series(1, 50)"
+
+        # create large indexes
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 (a) select * from generate_series(1, 1000)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 (a) select * from generate_series(1, 1000)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 (a) select * from generate_series(1, 1000)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t4 (a) select * from generate_series(1, 1000)"
+        let j=j+1
+    done
+}
+
+function create_physrep
+{
+    mkdir -p $DEST_DBDIR
+    if [[ -z "$CLUSTER" ]]; then
+        export cl="-y @localhost"
+    else
+        export cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+    fi
+    if [[ -n "$CLUSTER" ]]; then
+        if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+            rmt=""
+        else
+            clarray=($CLUSTER)
+            rmt="${clarray[0]}:"
+        fi
+    fi
+    
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $DESTDB $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+    
+    if [ ! $? -eq 0 ]; then
+        echo "copycomdb2 failed"
+        exit 1
+    fi
+    
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${DESTDB}.lrl
+    
+    if [ -n "$PMUXPORT" ] ; then
+        echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${DESTDB}.lrl
+        echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${DESTDB}.lrl
+    fi
+
+    # ignore tables t2 and t4
+    echo "physrep_ignore t2 t4" >> $DEST_DBDIR/${DESTDB}.lrl
+    
+    export replog=$DEST_DBDIR/$DESTDB.log
+    
+    ( timeout $TEST_TIMEOUT $COMDB2_EXE $DESTDB -lrl $DEST_DBDIR/${DESTDB}.lrl -pidfile $DEST_DBDIR/${DESTDB}.pid >$replog 2>&1) &
+
+    sleep 2
+
+    # give this a bit to run recovery
+    j=0
+    while [[ $j -lt 30 ]]; do
+        ${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB "select 1" >/dev/null 2>&1
+        [[ $? == 0 ]] && break 1
+        let j=j+1
+    done
+}
+
+function flush_nodes
+{
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('flush')"
+    else
+        for node in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "exec procedure sys.cmd.send(\"flush\")"
+        done
+    fi
+}
+
+function check_physrep_file_sizes
+{
+    ls -l $DEST_DBDIR/t2_* | while read perm i1 own grp sz mon day tm fl ; do
+        [[ "$fl" == *"datas"* ]] && [[ "$sz" != 8192 ]] && failexit "$fl was not truncated"
+        [[ "$fl" == *"blobs"* ]] && [[ "$sz" != 131072 ]] && failexit "$fl was not truncated"
+        [[ "$fl" == *"index"* ]] && [[ "$sz" != 8192 ]] && failexit "$fl was not truncated"
+    done
+
+    ls -l $DEST_DBDIR/t4_* | while read perm i1 own grp sz mon day tm fl ; do
+        [[ "$fl" == *"datas"* ]] && [[ "$sz" != 8192 ]] && failexit "$fl was not truncated"
+        [[ "$fl" == *"blobs"* ]] && [[ "$sz" != 131072 ]] && failexit "$fl was not truncated"
+        [[ "$fl" == *"index"* ]] && [[ "$sz" != 8192 ]] && failexit "$fl was not truncated"
+    done
+}
+
+function verify_ignored_tables
+{
+    # Give physreps 100 seconds to catch up
+    t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
+    t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
+
+    j=0
+    while [[ "$j" -lt 100 && "$t1" != "$t1p" ]] ; do
+        sleep 1
+        t1=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t1" 2>&1)
+        t1p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t1" 2>&1)
+        let j=j+1
+    done
+    [[ "$t1" != "$t1p" ]] && failexit "physrep has different count than parent: cluster=$t1 vs physrep=$t1p"
+
+    # Physrep t2 should be ignored
+    t2=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t2" 2>&1)
+    [[ "$t2" != *"no such table"* ]] && failexit "ignored table t2 accessible from physrep"
+
+    # Physrep t3 should match parent 
+    t3=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t3" 2>&1)
+    t3p=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from t3" 2>&1)
+    [[ "$t3" != "$t3p" ]] && failexit "physrep has different count than parent"
+
+    # Physrep t4 should be ignored
+    t4=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DESTDB @localhost "select count(*) from t4" 2>&1)
+    [[ "$t4" != *"no such table"* ]] && failexit "ignored table t4 accessible from physrep"
+}
+
+function insert_new_records
+{
+    j=0
+    while [[ $j -lt 10 ]]; do
+
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select *, randomblob(16384) from generate_series(1, 10)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 select *, randomblob(16384) from generate_series(1, 10)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 select *, randomblob(16384) from generate_series(1, 10)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t4 select *, randomblob(16384) from generate_series(1, 10)"
+
+        # create large indexes
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 (a) select * from generate_series(1, 200)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2 (a) select * from generate_series(1, 200)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t3 (a) select * from generate_series(1, 200)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t4 (a) select * from generate_series(1, 200)"
+        let j=j+1
+    done
+}
+
+function run_test
+{
+    rm $stopfile
+
+    create_tables
+    fill_tables
+    flush_nodes
+    create_physrep
+    verify_ignored_tables
+    check_physrep_file_sizes
+    insert_new_records
+    verify_ignored_tables
+    check_physrep_file_sizes
+
+    kill -9 $(cat $DEST_DBDIR/${DESTDB}.pid)
+}
+
+run_test
+if [[ -f "$stopfile" ]]; then
+    echo "Testcase failed"
+    exit 1
+else
+    echo "Success"    
+    exit 0
+fi

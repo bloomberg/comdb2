@@ -34,6 +34,7 @@ typedef struct {
     bdb_state_type *bdb_state;
     struct dbtable *db_table;
     const char *tablename;
+    int (*partial_datacopy_callback)(const struct dbtable *tbl, const int pd_ix, const void *inbuf, void *outbuf);
     int (*formkey_callback)(const struct dbtable *tbl, void *dta, void *blob_parm,
                             int ix, void *keyout, int *keysz);
     int (*get_blob_sizes_callback)(const struct dbtable *tbl, void *dta, int blobs[16],
@@ -55,6 +56,7 @@ typedef struct {
     unsigned int threads_completed; // atomic inc
     verify_mode_t verify_mode;
     uint8_t client_dropped_connection;
+    uint8_t lock_desired;
     uint8_t verify_status; // 0 success, 1 failure
     verify_peer_check_func *peer_check;
     verify_response_func *verify_response;

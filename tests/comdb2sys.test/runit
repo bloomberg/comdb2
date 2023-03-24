@@ -73,27 +73,6 @@ function runtool
     $tool "$args" $db notused $tcs $rmt $dblog $dbex $dbdir > $log 2>&1
 }
 
-# runstepper
-function runstepper
-{
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
-
-    # args
-    typeset db=$1
-    typeset tcs=$2
-    typeset log=$3
-
-    # teststepper
-    typeset stp=${TESTSBUILDDIR}/stepper
-
-    # echo
-    echo "> $stp $db $tcs $log"
-
-    # execute
-    $stp $db $tcs $log
-}
-
 # add table partidx for partial indexes
 if [[ -f partidx.csc2 ]] ; then
     echo "cdb2sql ${CDB2_OPTIONS} $a_dbn default \"create table partidx { `cat partidx.csc2 ` }\""
@@ -146,6 +125,10 @@ rc=$?
 
 ./testindexusage $a_dbn
 rc2=$?
+
+./testtransactionstate $a_dbn
+rc3=$?
+[[ $rc3 -ne 0 ]] && rc2=$rc3 
 [[ $rc2 -ne 0 ]] && rc=$rc2
 
 exit $rc

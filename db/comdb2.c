@@ -84,7 +84,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "types.h"
 #include "timer.h"
 #include <plhash.h>
-#include <dynschemaload.h>
 #include "verify.h"
 #include "ssl_bend.h"
 #include "switches.h"
@@ -137,6 +136,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "phys_rep.h"
 #include "comdb2_query_preparer.h"
 #include <net_appsock.h>
+#include "sc_csc2.h"
 
 #define tokdup strndup
 
@@ -179,6 +179,8 @@ extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
 extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
+/* How frequent metrics are refreshed, once per this many seconds */
+int gbl_update_metrics_interval = 5;
 extern void update_metrics(void);
 extern void *timer_thread(void *);
 extern void comdb2_signal_timer();
@@ -214,8 +216,11 @@ int gbl_lock_conflict_trace = 0;
 int gbl_move_deadlk_max_attempt = 500;
 
 int gbl_uses_password;
+int gbl_unauth_tag_access = 0;
 int gbl_uses_externalauth = 0;
+int gbl_uses_externalauth_connect = 0;
 int gbl_externalauth_warn = 0;
+int gbl_identity_cache_max = 500;
 int gbl_uses_accesscontrol_tableXnode;
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
@@ -337,7 +342,12 @@ static int gbl_db_is_exiting = 0; /* Indicates this process is exiting */
 int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
+int gbl_debug_omit_zap_on_rebuild = 0;
+int gbl_debug_txn_sleep = 0;
 int gbl_debug_skip_constraintscheck_on_insert;
+int gbl_debug_pb_connectmsg_dbname_check = 0;
+int gbl_debug_pb_connectmsg_gibberish = 0;
+double gbl_query_plan_percentage = 50;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -480,7 +490,7 @@ int gbl_parallel_recovery_threads = 0;
 
 int gbl_fdb_resolve_local = 0;
 int gbl_fdb_allow_cross_classes = 0;
-
+uint64_t gbl_sc_headroom = 10;
 /*---COUNTS---*/
 long n_qtrap;
 long n_fstrap;
@@ -653,12 +663,12 @@ int gbl_check_wrong_db = 1;
 int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
-int gbl_reorder_socksql_no_deadlock = 1;
+int gbl_reorder_socksql_no_deadlock = 0;
 int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
 
-int gbl_rcache = 1;
+int gbl_rcache = 0;
 
 int gbl_noenv_messages = 1;
 
@@ -731,6 +741,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_query_plans = 1;
 int gbl_prioritize_queries = 1;
 int gbl_verbose_normalized_queries = 0;
 int gbl_verbose_prioritize_queries = 0;
@@ -780,6 +791,7 @@ int gbl_osql_odh_blob = 1;
 int gbl_clean_exit_on_sigterm = 1;
 
 int gbl_is_physical_replicant;
+int gbl_server_admin_mode = 0;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -1010,10 +1022,10 @@ void showdbenv(struct dbenv *dbenv)
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
-                   " datacopy? %c collattr? %c uniqnulls %c\n",
+                   " datacopy? %c collattr? %c uniqnulls %c datacopylen %-3d bytes\n",
                    ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'), (usedb->ix_recnums[ii] ? 'y' : 'n'),
                    (usedb->ix_datacopy[ii] ? 'y' : 'n'), (usedb->ix_collattr[ii] ? 'y' : 'n'),
-                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'), (usedb->ix_datacopy[ii] && !usedb->ix_datacopylen[ii] ? usedb->lrl : usedb->ix_datacopylen[ii]));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1329,7 +1341,7 @@ static void *purge_old_files_thread(void *arg)
         /* ok, get to work now */
         retries = 0;
     retry:
-        rc = trans_start_sc(&iq, NULL, &trans);
+        rc = trans_start_sc_fop(&iq, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: failed to create transaction\n", __func__);
             sleep_with_check_for_exiting(empty_pause);
@@ -1638,6 +1650,8 @@ static void begin_clean_exit(void)
  */
 void clean_exit(void)
 {
+    report_fastseed_users(LOGMSG_ERROR);
+
     if(gbl_perform_full_clean_exit) {
         begin_clean_exit();
         return;
@@ -1871,216 +1885,6 @@ void cleanup_newdb(dbtable *tbl)
         Pthread_rwlock_destroy(&tbl->consumer_lk);
 
     free(tbl);
-}
-
-dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                           int dbnum, int dbix)
-{
-    dbtable *tbl;
-    int ii;
-    int tmpidxsz;
-    int rc;
-
-    tbl = calloc(1, sizeof(dbtable));
-    if (tbl == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: Memory allocation error\n", __func__);
-        return NULL;
-    }
-
-    tbl->dbs_idx = dbix;
-
-    tbl->dbtype = DBTYPE_TAGGED_TABLE;
-    if (fname)
-        tbl->lrlfname = strdup(fname);
-    tbl->tablename = strdup(tblname);
-    tbl->dbenv = env;
-    tbl->dbnum = dbnum;
-    tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
-    Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
-    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
-    if (dbnum == 0) {
-        /* if no dbnumber then no default tag is required ergo lrl can be 0 */
-        if (tbl->lrl < 0)
-            tbl->lrl = 0;
-        else if (tbl->lrl > MAXLRL) {
-            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", tbl->lrl,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-    } else {
-        /* this table must have a default tag */
-        int ntags, itag;
-        ntags = dyns_get_table_count();
-        for (itag = 0; itag < ntags; itag++) {
-            if (strcasecmp(dyns_get_table_tag(itag), ".DEFAULT") == 0)
-                break;
-        }
-        if (ntags == itag) {
-            logmsg(LOGMSG_ERROR, "csc schema %s requires comdbg compatibility but "
-                            "has no default tag\n",
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-
-        if (tbl->lrl < 1 || tbl->lrl > MAXLRL) {
-            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", tbl->lrl,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-    }
-    tbl->nix = dyns_get_idx_count();
-    if (tbl->nix > MAXINDEX) {
-        logmsg(LOGMSG_ERROR, "too many indices %d in csc schema %s\n", tbl->nix,
-                tblname);
-        cleanup_newdb(tbl);
-        return NULL;
-    }
-    for (ii = 0; ii < tbl->nix; ii++) {
-        tmpidxsz = dyns_get_idx_size(ii);
-        if (tmpidxsz < 1 || tmpidxsz > MAXKEYLEN) {
-            logmsg(LOGMSG_ERROR, "index %d bad keylen %d in csc schema %s\n", ii,
-                    tmpidxsz, tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-        tbl->ix_keylen[ii] = tmpidxsz; /* ix lengths are adjusted later */
-
-        tbl->ix_dupes[ii] = dyns_is_idx_dup(ii);
-        if (tbl->ix_dupes[ii] < 0) {
-            logmsg(LOGMSG_ERROR, "cant find index %d dupes in csc schema %s\n", ii,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-
-        tbl->ix_recnums[ii] = dyns_is_idx_recnum(ii);
-        if (tbl->ix_recnums[ii] < 0) {
-            logmsg(LOGMSG_ERROR, "cant find index %d recnums in csc schema %s\n", ii,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-
-        tbl->ix_datacopy[ii] = dyns_is_idx_datacopy(ii);
-        if (tbl->ix_datacopy[ii] < 0) {
-            logmsg(LOGMSG_ERROR, "cant find index %d datacopy in csc schema %s\n",
-                    ii, tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        } else if (tbl->ix_datacopy[ii]) {
-            tbl->has_datacopy_ix = 1;
-        }
-
-        tbl->ix_nullsallowed[ii] = dyns_is_idx_uniqnulls(ii);
-        if (tbl->ix_nullsallowed[ii] < 0) {
-          logmsg(LOGMSG_ERROR, "cant find index %d uniqnulls in csc schema %s\n",
-                  ii, tblname);
-          cleanup_newdb(tbl);
-          return NULL;
-        }
-    }
-
-    init_reverse_constraints(tbl);
-
-    tbl->n_constraints = dyns_get_constraint_count();
-    if (tbl->n_constraints > 0) {
-        char *consname = NULL;
-        char *keyname = NULL;
-        int rulecnt = 0, flags = 0;
-        tbl->constraints = calloc(tbl->n_constraints, sizeof(constraint_t));
-        for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt, &flags);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%zu)!\n", ii, tbl->n_constraints);
-                cleanup_newdb(tbl);
-                return NULL;
-            }
-            tbl->constraints[ii].flags = flags;
-            tbl->constraints[ii].lcltable = tbl;
-            tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
-            tbl->constraints[ii].lclkeyname = (keyname) ? strdup(keyname) : 0;
-            tbl->constraints[ii].nrules = rulecnt;
-
-            tbl->constraints[ii].table = calloc(tbl->constraints[ii].nrules, MAXTABLELEN * sizeof(char *));
-            tbl->constraints[ii].keynm = calloc(tbl->constraints[ii].nrules, MAXKEYLEN * sizeof(char *));
-
-            if (tbl->constraints[ii].nrules > 0) {
-                int jj = 0;
-                for (jj = 0; jj < tbl->constraints[ii].nrules; jj++) {
-                    char *tblnm = NULL;
-                    rc = dyns_get_constraint_rule(ii, jj, &tblnm, &keyname);
-                    if (rc != 0) {
-                        logmsg(LOGMSG_ERROR, "cannot get constraint rule %d table %s:%s\n",
-                                jj, tblname, keyname);
-                        cleanup_newdb(tbl);
-                        return NULL;
-                    }
-                    tbl->constraints[ii].table[jj] = strdup(tblnm);
-                    tbl->constraints[ii].keynm[jj] = strdup(keyname);
-                }
-            }
-        } /* for (ii...) */
-    }     /* if (n_constraints > 0) */
-    tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
-    tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
-    return tbl;
-}
-
-int init_check_constraints(dbtable *tbl)
-{
-    char *consname = NULL;
-    char *check_expr = NULL;
-    strbuf *sql;
-    int rc;
-
-    tbl->n_check_constraints = dyns_get_check_constraint_count();
-    if (tbl->n_check_constraints == 0) {
-        return 0;
-    }
-
-    tbl->check_constraints = calloc(tbl->n_check_constraints, sizeof(check_constraint_t));
-    tbl->check_constraint_query = calloc(tbl->n_check_constraints, sizeof(char *));
-    if ((tbl->check_constraints == NULL) || (tbl->check_constraint_query == NULL)) {
-        logmsg(LOGMSG_ERROR, "%s:%d failed to allocate memory\n", __func__, __LINE__);
-        return 1;
-    }
-
-    sql = strbuf_new();
-
-    for (int i = 0; i < tbl->n_check_constraints; i++) {
-        rc = dyns_get_check_constraint_at(i, &consname, &check_expr);
-        if (rc == -1)
-            abort();
-        tbl->check_constraints[i].consname = consname ? strdup(consname) : 0;
-        tbl->check_constraints[i].expr = check_expr ? strdup(check_expr) : 0;
-
-        strbuf_clear(sql);
-
-        strbuf_appendf(sql, "WITH \"%s\" (\"%s\"", tbl->tablename,
-                       tbl->schema->member[0].name);
-        for (int j = 1; j < tbl->schema->nmembers; ++j) {
-            strbuf_appendf(sql, ", %s", tbl->schema->member[j].name);
-        }
-        strbuf_appendf(sql, ") AS (SELECT @%s", tbl->schema->member[0].name);
-        for (int j = 1; j < tbl->schema->nmembers; ++j) {
-            strbuf_appendf(sql, ", @%s", tbl->schema->member[j].name);
-        }
-        strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"",
-                       tbl->check_constraints[i].expr, tbl->tablename);
-        tbl->check_constraint_query[i] = strdup(strbuf_buf(sql));
-        if (tbl->check_constraint_query[i] == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to allocate memory\n", __func__,
-                   __LINE__);
-            cleanup_newdb(tbl);
-            strbuf_free(sql);
-            return 1;
-        }
-    }
-    strbuf_free(sql);
-    return 0;
 }
 
 static int resize_reverse_constraints(struct dbtable *db, size_t newsize)
@@ -2460,56 +2264,6 @@ static inline int db_get_alias(void *tran, dbtable *tbl)
     return 0;
 }
 
-struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int indx,
-                                   int sc_alt_tablename, int allow_ull,
-                                   struct errstat *err)
-{
-    struct dbtable *newtable = NULL;
-    int rc;
-
-    dyns_init_globals();
-
-    rc = dyns_load_schema_string(csc2, dbenv->envname, tablename);
-    if (rc) {
-        errstat_set_rcstrf(err, -1, "dyns_load_schema_string failed for %s",
-                           tablename);
-        goto err;
-    }
-
-    newtable = newdb_from_schema(dbenv, tablename, NULL, dbnum, indx);
-    if (!newtable) {
-        errstat_set_rcstrf(err, -1, "newdb_from_schema failed for %s",
-                           tablename);
-        rc = -1;
-        goto err;
-    }
-
-    rc = add_cmacc_stmt(newtable, sc_alt_tablename, allow_ull, err);
-    if (rc) {
-        goto err;
-    }
-
-    rc = init_check_constraints(newtable);
-    if (rc) {
-        errstat_set_rcstrf(err, -1,
-                           "Failed to load check constraints "
-                           "for %s",
-                           newtable->tablename);
-        goto err;
-    }
-
-err:
-    if (rc) {
-        if (newtable) {
-            cleanup_newdb(newtable);
-            newtable = NULL;
-        }
-    }
-
-    dyns_cleanup_globals();
-    return newtable;
-}
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
@@ -2588,7 +2342,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
 
         struct errstat err = {0};
         tbl = create_new_dbtable(dbenv, tblnames[i], csc2text, dbnums[i], i, 0,
-                                 0, &err);
+                                 0, 0, &err);
         free(csc2text);
         csc2text = NULL;
         if (!tbl) {
@@ -3006,7 +2760,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sql_threads, offsetof(struct sql_thread, lnk));
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
 
-    dbenv->master = NULL; /*no known master at this point.*/
+    thedb_set_master(db_eid_invalid);
     dbenv->errstaton = 1; /* ON */
 
     dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
@@ -3578,7 +3332,7 @@ static int init_sqlite_tables(struct dbenv *dbenv)
 
         tbl = create_new_dbtable(dbenv, (char *)sqlite_stats_name[i],
                                  (char *)sqlite_stats_csc2[i], 0,
-                                 dbenv->num_dbs, 0, 0, &err);
+                                 dbenv->num_dbs, 0, 0, 0, &err);
         if (!tbl) {
             logmsg(LOGMSG_ERROR, "%s\n", err.errstr);
             return -1;
@@ -3713,7 +3467,7 @@ static int init(int argc, char **argv)
         print_usage_and_exit(1);
     }
 
-    dyns_allow_bools();
+    csc2_allow_bools();
 
     rc = bdb_osql_log_repo_init(&bdberr);
     if (rc) {
@@ -4084,12 +3838,12 @@ static int init(int argc, char **argv)
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
     if ((get_my_mach_class() == CLASS_TEST) && gbl_create_mode) {
-        if (dyns_used_bools()) {
+        if (csc2_used_bools()) {
             logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
             logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
             exit(1);
         }
-        dyns_disallow_bools();
+        csc2_disallow_bools();
     }
 
     /* Now process all the directives we saved up from the lrl file. */
@@ -4327,7 +4081,6 @@ static int init(int argc, char **argv)
     load_dbstore_tableversion(thedb, NULL);
 
     gbl_backend_opened = 1;
-    unlock_schema_lk();
 
     sqlinit();
     rc = create_datacopy_arrays();
@@ -4348,6 +4101,7 @@ static int init(int argc, char **argv)
     };
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
+    unlock_schema_lk();
 
     /* There could have been an in-process schema change.  Add those tables now
      * before logical recovery */
@@ -4852,7 +4606,7 @@ void *statthd(void *p)
         if (have_scon_stats)
             logmsg(LOGMSG_USER, "\n");
 
-        if (count % 5 == 0)
+        if (count % gbl_update_metrics_interval == 0)
             update_metrics();
 
         if (!get_schema_change_in_progress(__func__, __LINE__)) {
@@ -5536,6 +5290,7 @@ static void register_all_int_switches()
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
+    register_int_switch("query_plans", "Keep track of query plans and their costs for each query", &gbl_query_plans);
     register_int_switch("verbose_normalized_queries",
                         "For new fingerprints, show normalized queries.",
                         &gbl_verbose_normalized_queries);
@@ -5676,7 +5431,8 @@ static void goodbye()
    TOOL(cdb2_load)      \
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_stat)      \
-   TOOL(cdb2_verify)
+   TOOL(cdb2_verify)    \
+   TOOL(cdb2_pgdump)
 
 #undef TOOL
 #define TOOL(x) int tool_ ##x ##_main(int argc, char *argv[]);
@@ -5804,7 +5560,7 @@ int main(int argc, char **argv)
     berk_fsync_alarm_ms(__berkdb_fsync_alarm_ms);
     berk_memp_sync_alarm_ms(500);
 
-    sighold(SIGPIPE); /*dothis before kicking off any threads*/
+    signal(SIGPIPE, SIG_IGN); /* do this before kicking off any threads */
 
     thrman_init();
     javasp_once_init();
@@ -6201,6 +5957,16 @@ int check_current_schemas(void)
     }
 
     return 0;
+}
+
+int log_delete_is_stopped(void)
+{
+    int rc;
+    struct dbenv *dbenv = thedb;
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    rc = dbenv->log_delete_state_list.count;
+    Pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
+    return rc;
 }
 
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state)

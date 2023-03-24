@@ -2866,6 +2866,7 @@ void sqlite3CodeRhsOfIN(
       */
       if( addrOnce && !sqlite3ExprIsConstant(pE2) ){
         sqlite3VdbeChangeToNoop(v, addrOnce);
+        ExprClearProperty(pExpr, EP_Subrtn);
         addrOnce = 0;
       }
 
@@ -3494,6 +3495,53 @@ static int exprCodeVector(Parse *pParse, Expr *p, int *piFreeable){
   return iResult;
 }
 
+/*
+** Check to see if pExpr is one of the indexed expressions on pParse->pIdxExpr.
+** If it is, then resolve the expression by reading from the index and
+** return the register into which the value has been read.  If pExpr is
+** not an indexed expression, then return negative.
+*/
+static SQLITE_NOINLINE int sqlite3IndexedExprLookup(
+  Parse *pParse,   /* The parsing context */
+  Expr *pExpr,     /* The expression to potentially bypass */
+  int target       /* Where to store the result of the expression */
+){
+  IndexedExpr *p;
+  Vdbe *v;
+  for(p=pParse->pIdxExpr; p; p=p->pIENext){
+    int iDataCur = p->iDataCur;
+    if( iDataCur<0 ) continue;
+    if( pParse->iSelfTab ){
+      if( p->iDataCur!=pParse->iSelfTab-1 ) continue;
+      iDataCur = -1;
+    }
+    if( sqlite3ExprCompare(0, pExpr, p->pExpr, iDataCur)!=0 ) continue;
+    v = pParse->pVdbe;
+    assert( v!=0 );
+    if( p->bMaybeNullRow ){
+      /* If the index is on a NULL row due to an outer join, then we
+      ** cannot extract the value from the index.  The value must be
+      ** computed using the original expression. */
+      int addr = sqlite3VdbeCurrentAddr(v);
+      sqlite3VdbeAddOp3(v, OP_IfNullRow, p->iIdxCur, addr+3, target);
+      VdbeCoverage(v);
+      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);
+      VdbeComment((v, "%s expr-column %d", p->zIdxName, p->iIdxCol));
+      sqlite3VdbeGoto(v, 0);
+      p = pParse->pIdxExpr;
+      pParse->pIdxExpr = 0;
+      sqlite3ExprCode(pParse, pExpr, target);
+      pParse->pIdxExpr = p;
+      sqlite3VdbeJumpHere(v, addr+2);
+    }else{
+      sqlite3VdbeAddOp3(v, OP_Column, p->iIdxCur, p->iIdxCol, target);
+      VdbeComment((v, "%s expr-column %d", p->zIdxName, p->iIdxCol));
+    }
+    return target;
+  }
+  return -1;  /* Not found */
+}
+
 
 /*
 ** Generate code into the current Vdbe to evaluate the given
@@ -3525,6 +3573,11 @@ int sqlite3ExprCodeTarget(Parse *pParse, Expr *pExpr, int target){
 expr_code_doover:
   if( pExpr==0 ){
     op = TK_NULL;
+  }else if( pParse->pIdxExpr!=0 
+   && !ExprHasProperty(pExpr, EP_Leaf)
+   && (r1 = sqlite3IndexedExprLookup(pParse, pExpr, target))>=0
+  ){
+    return r1;
   }else{
     op = pExpr->op;
   }
@@ -4915,7 +4968,13 @@ int sqlite3ExprCompare(Parse *pParse, Expr *pA, Expr *pB, int iTab){
     if( pB->op==TK_COLLATE && sqlite3ExprCompare(pParse, pA,pB->pLeft,iTab)<2 ){
       return 1;
     }
-    return 2;
+    if( pA->op==TK_AGG_COLUMN && pB->op==TK_COLUMN 
+     && pB->iTable<0 && pA->iTable==iTab
+    ){
+      /* fall through */
+    }else{
+      return 2;
+    }
   }
   if( pA->op!=TK_COLUMN && pA->op!=TK_AGG_COLUMN && pA->u.zToken ){
     if( pA->op==TK_FUNCTION ){
@@ -5770,7 +5829,9 @@ static char* sqlite3ExprDescribe_inner(
   Vdbe *v,
   const Expr *pExpr,
   int atRuntime,
-  struct params_info **pParamsOut
+  struct params_info **pParamsOut,
+  int useFullColnames
+/*  int forJoins*/
 ){
   int op = pExpr->op;
   switch( op ){
@@ -5796,7 +5857,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_NOT: {
       char *expr = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if ( !expr ){
         return NULL;
       }
@@ -5830,7 +5891,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_CAST: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if (!left) return NULL;
 
       char *ret = sqlite3_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
@@ -5871,16 +5932,16 @@ static char* sqlite3ExprDescribe_inner(
     case TK_ANY: {
       break;
     }
-    case TK_OR:
     case TK_AND:
+    case TK_OR:
     case TK_IS: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -5898,18 +5959,18 @@ static char* sqlite3ExprDescribe_inner(
             return NULL;
         }
         char *col = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-                pParamsOut);
+                pParamsOut, useFullColnames);
         if (!col) {
             return NULL;
         }
         char *left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
-                atRuntime, pParamsOut);
+                atRuntime, pParamsOut, useFullColnames);
         if (!left) {
             sqlite3DbFree(v->db, col);
             return NULL;
         }
         char *right = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[1].pExpr,
-                atRuntime, pParamsOut);
+                atRuntime, pParamsOut, useFullColnames);
         if (!right) {
             sqlite3DbFree(v->db, left);
             sqlite3DbFree(v->db, col);
@@ -5934,7 +5995,7 @@ static char* sqlite3ExprDescribe_inner(
         }
 
         left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-                pParamsOut);
+                pParamsOut, useFullColnames);
         if( !left ){
           return NULL;
         }
@@ -5950,7 +6011,7 @@ static char* sqlite3ExprDescribe_inner(
 
         for(i =0; i< pExpr->x.pList->nExpr; i++){
           left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                  atRuntime, pParamsOut);
+                  atRuntime, pParamsOut, useFullColnames);
           if( !left ){
             sqlite3_free(ret);
             return NULL;
@@ -5967,7 +6028,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_ISNULL: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !left ){
         return NULL;
       }
@@ -5979,7 +6040,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_NOTNULL: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !left ){
         return NULL;
       }
@@ -5996,12 +6057,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_LT :
     case TK_GE: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -6020,12 +6081,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_BITAND:
     case TK_BITOR: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -6048,12 +6109,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_REM:
     case TK_CONCAT: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -6071,7 +6132,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_BITNOT: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut);
+              pParamsOut, useFullColnames);
       if (!left)
         return NULL;
       char *ret = sqlite3_mprintf("( ~ %s )", left);
@@ -6191,7 +6252,7 @@ static char* sqlite3ExprDescribe_inner(
       int nelem = pExpr->x.pList->nExpr;
       if (pExpr->pLeft) {
         tmp = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-                pParamsOut);
+                pParamsOut, useFullColnames);
         if (!tmp)
             return NULL;
         ret = sqlite3_mprintf("case %s ", tmp);
@@ -6204,7 +6265,7 @@ static char* sqlite3ExprDescribe_inner(
 
       do { 
         char *c = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr,
-                atRuntime, pParamsOut);
+                atRuntime, pParamsOut, useFullColnames);
         if (!c) {
           sqlite3_free(ret);
           return NULL;
@@ -6218,7 +6279,7 @@ static char* sqlite3ExprDescribe_inner(
             break;
         } else {
           char *d = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr,
-                  atRuntime, pParamsOut);
+                  atRuntime, pParamsOut, useFullColnames);
           if (!d) {
             sqlite3_free(c);
             sqlite3_free(ret);
@@ -6309,7 +6370,8 @@ default_prec:
         if( pExpr->x.pList->nExpr <= 0 )
           return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
         char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
-                                              atRuntime, pParamsOut);
+                                              atRuntime, pParamsOut,
+                                              useFullColnames);
         if( !arg )
           return NULL;
         ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
@@ -6317,7 +6379,8 @@ default_prec:
         arg = NULL;
         for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
           arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                                        atRuntime, pParamsOut);
+                                        atRuntime, pParamsOut,
+                                        useFullColnames);
           if( !arg )
             return NULL;
           ret2 = sqlite3_mprintf("%s, %s", ret, arg);
@@ -6354,15 +6417,17 @@ default_prec:
         name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
         break;
       }
-      return sqlite3_mprintf("\"%w\"", name);
+      if (useFullColnames)
+        return sqlite3_mprintf("\"%w\".\"%w\"", pExpr->y.pTab->zName, name);
+      else
+        return sqlite3_mprintf("\"%w\"", name);
     }
-    case TK_AGG_FUNCTION:
-    case TK_AGG_COLUMN: {
+    case TK_AGG_FUNCTION: /* fallthrough */
+    case TK_AGG_COLUMN:
       break;
-    }
     case TK_UMINUS : {
        char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-               pParamsOut);
+               pParamsOut, useFullColnames);
        if( !left ) return NULL;
        char *ret = sqlite3_mprintf("( - ( %s ) )", left);
 
@@ -6372,7 +6437,7 @@ default_prec:
     }
     case TK_UPLUS : {
        char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-               pParamsOut);
+               pParamsOut, useFullColnames);
        if( !left ) return NULL;
        char *ret = sqlite3_mprintf("( + ( %s ) )", left);
 
@@ -6397,19 +6462,43 @@ default_prec:
       last = pExpr->op;
     }
   }
+  if (op == TK_AGG_FUNCTION) {
+      if (pParamsOut /* comes from dohsql */ &&
+              !strcasecmp(pExpr->u.zToken, "count")) {
+        if (!pExpr->x.pList) {
+          return sqlite3_mprintf("count(*)");
+        } else if (pExpr->x.pList->nExpr == 1) {
+            char *arguments = sqlite3ExprDescribe_inner(v,
+                    pExpr->x.pList->a[0].pExpr, atRuntime, pParamsOut,
+                    useFullColnames);
+            if (arguments) {
+                char *ret = sqlite3_mprintf("count(%s)", arguments);
+                sqlite3_free(arguments);
+                return ret;
+            }
+        }
+      }
+  }
   return NULL;
 }
 
 char* sqlite3ExprDescribe(Vdbe *v, const Expr *pExpr){
-  return sqlite3ExprDescribe_inner(v, pExpr, 0, NULL);
+  return sqlite3ExprDescribe_inner(v, pExpr, 0, NULL, 0);
 }
 
 char *sqlite3ExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr){
-  return sqlite3ExprDescribe_inner(v, pExpr, 1, NULL);
+  return sqlite3ExprDescribe_inner(v, pExpr, 1, NULL, 0);
 }
 
-char *sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, struct params_info **pParamsOut){
-  return sqlite3ExprDescribe_inner(v, pExpr, 0, pParamsOut);
+/** used by dohsql to generate string representations of pExpr
+ *  it supports parameters (remote sql still does not)
+ *  In addition, generating column names (TK_COLUMN):
+ *   - require a tablename in case when they are returned by a join 
+ *   - require NOT use a tablename in the case they are used for order by columns
+ */
+char *sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, struct params_info **pParamsOut,
+        int useFullColnames){
+  return sqlite3ExprDescribe_inner(v, pExpr, 0, pParamsOut, useFullColnames);
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

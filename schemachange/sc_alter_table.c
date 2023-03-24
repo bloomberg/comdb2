@@ -30,6 +30,7 @@
 #include "analyze.h"
 #include "comdb2_atomic.h"
 #include "views.h"
+#include "macc_glue.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct dbtable *db, struct dbtable *newdb,
@@ -65,14 +66,15 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
 {
     int changed = ondisk_schema_changed(s->tablename, newdb, stderr, s);
 
-    if (changed == SC_BAD_NEW_FIELD) {
+    if (changed == SC_BAD_NEW_FIELD || changed == SC_BAD_DBPAD) {
         /* we want to capture cases when "alter" is used
            to add a field to a table that has no dbstore or
-           isnull specified
+           isnull specified,
+           or change the size of a byte array with no dbpad specified
            It is still possible to do so by using "fastinit"
            with the new schema instead of "alter"
          */
-        if (s->fastinit) {
+        if (IS_FASTINIT(s)) {
             changed = SC_TAG_CHANGE;
         }
     }
@@ -86,6 +88,8 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
             sc_client_error(s, "cannot add new field without dbstore or null");
         } else if (changed == SC_BAD_INDEX_CHANGE) {
             sc_client_error(s, "cannot change index referenced by other tables");
+        } else if (changed == SC_BAD_DBPAD) {
+            sc_client_error(s, "cannot change size of byte array without dbpad");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;
@@ -148,7 +152,7 @@ static void adjust_version(int changed, struct scinfo *scinfo,
     }
     /* if we are enabling instant sc, set the version to 1. */
     else if (db->odh && !db->instant_schema_change &&
-             newdb->instant_schema_change && !s->fastinit) {
+             newdb->instant_schema_change && !IS_FASTINIT(s)) {
         /* old db had odh but not instant schema change.
          * the physical records will have version 0 &
          * will correspond to the latest csc2 version. start
@@ -160,12 +164,12 @@ static void adjust_version(int changed, struct scinfo *scinfo,
     /* if only index or constraints have changed don't bump version */
     int ondisk_changed = compare_tag(s->tablename, ".ondisk", NULL);
     if (ondisk_changed != SC_NO_CHANGE /* something changed in .ondisk */
-        || s->fastinit                 /* fastinit */
+        || IS_FASTINIT(s)              /* fastinit */
         || !s->use_plan                /* full rebuild due to some prob */
         || s->force_rebuild            /* full rebuild requested */
         || (!scinfo->olddb_instant_sc &&
             s->instant_sc) /* bump version if enabled instant sc */
-        ) {
+    ) {
         ++newdb->schema_version;
     } else if (ondisk_changed == SC_NO_CHANGE /* nothing changed ondisk */
                && changed == SC_TAG_CHANGE    /* plan says it did change */
@@ -354,6 +358,19 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
     }
 }
 
+static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran);
+static int optionsChanged(struct schema_change_type *sc, struct scinfo *scinfo){
+    if(sc->headers != scinfo->olddb_odh || 
+        sc->ip_updates != scinfo->olddb_inplace_updates ||
+        sc->instant_sc != scinfo->olddb_instant_sc ||
+        sc->compress_blobs != scinfo->olddb_compress_blobs ||
+        sc->compress != scinfo->olddb_compress) {
+            return 1;
+    }
+    return 0;
+}
+
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
@@ -368,6 +385,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int foundix;
     struct scinfo scinfo;
     struct errstat err = {0};
+
+    if (s->partition.type == PARTITION_MERGE)
+        return do_merge_table(iq, s, tran);
 
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
@@ -389,6 +409,23 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     set_schemachange_options_tran(s, db, &scinfo, tran);
+    if (optionsChanged(s,&scinfo)) {
+        sc_printf(s, "table option(s) have changed. Forcing a rebuild\n");
+        sc_printf(s," new options -> \n");
+        sc_printf(s," headers: %d\n", s->headers);
+        sc_printf(s," ip_updates: %d\n", s->ip_updates);
+        sc_printf(s," instant_sc: %d\n", s->instant_sc);
+        sc_printf(s," compress: %d\n", s->compress);
+        sc_printf(s," compress_blobs: %d\n", s->compress_blobs);
+        sc_printf(s," --------------------------------------------------\n"); 
+        sc_printf(s," old options -> \n");
+        sc_printf(s," headers: %d\n", scinfo.olddb_odh);
+        sc_printf(s," ip_updates: %d\n", scinfo.olddb_inplace_updates);
+        sc_printf(s," instant_sc: %d\n", scinfo.olddb_instant_sc);
+        sc_printf(s," compress: %d\n", scinfo.olddb_compress);
+        sc_printf(s," compress_blobs: %d\n", scinfo.olddb_compress_blobs);
+        s->force_rebuild = 1;
+    }
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
@@ -408,9 +445,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         exit(1);
     }
 
-    newdb =
-        create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum, foundix,
-                           1 /* sc_alt_name */, (s->same_schema) ? 1 : 0, &err);
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum,
+                               foundix, 1 /* sc_alt_name */,
+                               (s->same_schema) ? 1 : 0, 0, &err);
 
     if (!newdb) {
         sc_client_error(s, "%s", err.errstr);
@@ -435,7 +472,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             unlock_schema_lk();
         backout(newdb);
         cleanup_newdb(newdb);
-        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Sqlite syntax check failed\n");
         return SC_CSC2_ERROR;
@@ -444,7 +480,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     newdb->ix_blob = newdb->schema->ix_blob;
 
-    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
@@ -559,7 +594,7 @@ convert_records:
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
-    if (s->resume && s->alteronly != SC_ALTER_NONE && !s->finalize_only) {
+    if (s->resume && IS_ALTERTABLE(s) && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
@@ -674,6 +709,188 @@ errout:
     return SC_OK;
 }
 
+static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    struct dbtable *db;
+    struct dbtable *newdb;
+    int i;
+    int rc;
+    struct scinfo scinfo;
+
+#ifdef DEBUG_SC
+    logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
+#endif
+
+    gbl_sc_last_writer_time = 0;
+
+    db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+    newdb = s->newdb;
+
+    /* NOTE: add prepopulates newdb->csc2_schema, but alter does not
+     * we need this to be able to call populate_db_with_alt_schema
+     * later on
+     */
+    if (!newdb->csc2_schema) {
+        assert(bdb_have_llmeta() && s->kind == SC_ALTERTABLE);
+        int ver;
+        ver = get_csc2_version_tran(db->tablename, tran);
+        if (ver > 0) {
+            get_csc2_file_tran(db->tablename, ver, &newdb->csc2_schema,
+                               &newdb->csc2_schema_len, tran);
+        } else {
+            sc_client_error(s, "Cannot get csc2 for the table %s",
+                            db->tablename);
+            return -1;
+        }
+    }
+
+    if (s->resume == SC_PREEMPT_RESUME) {
+        newdb = db->sc_to;
+        goto convert_records;
+    }
+
+    set_schemachange_options_tran(s, db, &scinfo, tran);
+
+    if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
+
+    sc_printf(s, "starting table merge with seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
+
+    if ((iq == NULL || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
+        !self_referenced_only(db)) {
+        sc_client_error(s, "Cannot drop a table referenced by a foreign key");
+        return -1;
+    }
+
+    print_schemachange_info(s, db, newdb);
+
+    /* ban old settings */
+    if (db->dbnum) {
+        sc_client_error(s, "Cannot comdbg tables");
+        return -1;
+    }
+
+    /* set sc_genids, 0 them if we are starting a new schema change, or
+     * restore them to their previous values if we are resuming */
+    if (init_sc_genids(newdb, s)) {
+        sc_client_error(s, "Failed to initialize sc_genids");
+        return -1;
+    }
+
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    db->sc_from = s->db = db;
+    db->sc_to = s->newdb = newdb;
+    db->sc_abort = 0;
+    db->sc_downgrading = 0;
+    db->doing_conversion = 1; /* live_sc_off will unset it */
+    Pthread_rwlock_unlock(&db->sc_live_lk);
+
+convert_records:
+    assert(db->sc_from == db && s->db == db);
+    assert(db->sc_to == newdb && s->newdb == newdb);
+    assert(db->doing_conversion == 1);
+    MEMORY_SYNC;
+
+    if (get_stopsc(__func__, __LINE__)) {
+        sc_errf(s, "master downgrading\n");
+        return SC_MASTER_DOWNGRADE;
+    }
+    rc = wait_to_resume(s);
+    if (rc || get_stopsc(__func__, __LINE__)) {
+        sc_errf(s, "master downgrading\n");
+        return SC_MASTER_DOWNGRADE;
+    }
+
+    /* Merging two scenarios:
+     *- alter merge: in this case the schema is already populated with NEW tags
+     *- create merge: we need to populate schema with NEW tags
+     */
+    struct schema *tag = find_tag_schema(newdb->tablename, ".NEW..ONDISK");
+    if (!tag) {
+        struct errstat err = {0};
+        rc =
+            populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
+                   newdb->csc2_schema);
+            sc_client_error(s, "%s", err.errval, err.errstr);
+            return -1;
+        }
+    }
+
+    add_ongoing_alter(s);
+
+    /* skip converting records for fastinit and planned schema change
+     * that doesn't require rebuilding anything. */
+    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    if (rc == 1) rc = 0;
+
+    remove_ongoing_alter(s);
+
+    if (!tag)
+        backout_schemas(newdb->tablename);
+
+    if (rc == SC_PREEMPTED) {
+        sc_client_error(s, "SCHEMACHANGE PREEMPTED");
+        return SC_PREEMPTED;
+    } else if (get_stopsc(__func__, __LINE__) || rc == SC_MASTER_DOWNGRADE)
+        rc = SC_MASTER_DOWNGRADE;
+    else if (rc)
+        rc = SC_CONVERSION_FAILED;
+
+    if (s->convert_sleep > 0) {
+        sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
+                  db->tablename, s->convert_sleep);
+        logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
+               s->convert_sleep);
+        sleep(s->convert_sleep);
+        sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
+    }
+
+    if (rc && rc != SC_MASTER_DOWNGRADE) {
+        /* For live schema change, MUST do this before trying to remove
+         * the .new tables or you get crashes */
+        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
+            rc == SC_ABORTED) {
+            sc_errf(s, "convert_all_records aborted\n");
+        } else {
+            sc_errf(s, "convert_all_records failed\n");
+        }
+
+        live_sc_off(db);
+
+        for (i = 0; i < gbl_dtastripe; i++) {
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
+                    i, newdb->sc_genids[i]);
+        }
+
+        while (s->logical_livesc) {
+            usleep(200);
+        }
+
+        if (db->sc_live_logical) {
+            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
+            db->sc_live_logical = 0;
+        }
+        return rc;
+    }
+    newdb->iq = NULL;
+
+    /* check for rename outside of taking schema lock */
+    /* handle renaming sqlite_stat1 entries for idx */
+    check_for_idx_rename(s->newdb, s->db);
+
+    return SC_OK;
+}
+
+static int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
+                                tran_type *transac);
 #define BACKOUT                                                                \
     do {                                                                       \
         sc_errf(s, "%s:%d backing out\n", __func__, __LINE__);                 \
@@ -688,6 +905,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *newdb = s->newdb;
     void *old_bdb_handle, *new_bdb_handle;
     int olddb_bthashsz;
+
+    if (s->partition.type == PARTITION_MERGE)
+        return finalize_merge_table(iq, s, transac);
 
     iq->usedb = db;
 
@@ -878,7 +1098,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     iq->sc_closed_files = 1;
 
     if (!s->same_schema ||
-        (!s->fastinit &&
+        (!IS_FASTINIT(s) &&
          BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
         /* reliable per table versioning */
         if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
@@ -920,7 +1140,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->handle = old_bdb_handle;
 
     /* if this is an alter to partition an existing table */
-    if (s->partition.type == PARTITION_ADD_TIMED && s->publish) {
+    if ((s->partition.type == PARTITION_ADD_TIMED ||
+         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
         struct errstat err = {0};
         assert(s->newpartition);
         rc = partition_llmeta_write(transac, s->newpartition, 0, &err);
@@ -968,6 +1189,17 @@ failed:
     return -1;
 }
 
+extern int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
+                               tran_type *tran);
+
+static int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
+                                tran_type *transac)
+{
+    s->newdb = NULL; /* we not really own it*/
+    s->done_type = drop; /* we need to drop the merged table */
+    return finalize_drop_table(iq, s, transac);
+}
+
 int do_upgrade_table_int(struct schema_change_type *s)
 {
     int rc = SC_OK;
@@ -987,7 +1219,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
     set_schemachange_options(s, db, &scinfo);
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
-    if (s->fulluprecs) {
+    if (s->kind == SC_FULLUPRECS) {
         print_schemachange_info(s, db, db);
         sc_printf(s, "Starting FULL table upgrade.\n");
     }

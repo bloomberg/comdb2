@@ -78,8 +78,8 @@ __lc_cache_destroy(DB_ENV *dbenv)
 	lcc = &dbenv->lc_cache;
 
 	__os_free(dbenv, lcc->ent);
-    if (lcc->txnid_hash)
-        hash_free(lcc->txnid_hash);
+	if (lcc->txnid_hash)
+		hash_free(lcc->txnid_hash);
 	Pthread_mutex_destroy(&lcc->lk);
 
 	return 0;

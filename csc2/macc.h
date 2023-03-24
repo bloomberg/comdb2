@@ -171,6 +171,7 @@ struct key {
     int exprtype;
     int exprarraysz;
     char *where;
+    struct partial_datacopy *pd;    /* partial datacopy fields (if any) */
 };
 
 enum KEYFLAGS {
@@ -183,7 +184,8 @@ enum INDEXFLAGS {
     RECNUMS = 0x00000002, /* index has key sequence numbers (COMDB2) */
     PRIMARY = 0x00000004,
     DATAKEY = 0x00000008, /* key flag to indicate index has data */
-    UNIQNULLS = 0x00000010 /* all NULL values are treated as UNIQUE */
+    UNIQNULLS = 0x00000010, /* all NULL values are treated as UNIQUE */
+    PARTIALDATAKEY = 0x00000020 /* key flag to indicate index has some data */
 };
 
 typedef struct macc_globals_t {
@@ -201,6 +203,8 @@ typedef struct macc_globals_t {
     struct key *keys[MAXKEYS];
     struct key *workkey;
     struct key *rngs[MAXRNGS];
+    struct partial_datacopy *head_pd;
+    struct partial_datacopy *tail_pd;
     int keyixnum[MAXKEYS];   /* index # associated with a key */
     int keyexprnum[MAXKEYS]; /* case number associated with a key */
     int workkeyflag;         /* work key's flag */
@@ -314,10 +318,12 @@ void key_setdup();
 void key_setrecnums(void);
 void key_setprimary(void);
 void key_setdatakey(void);
+void key_setpartialdatakey(void);
 void key_setuniqnulls(void);
 void reset_key_exprtype(void);
 void key_exprtype_add(int type, int arraysz);
 void key_piece_add(char *buf, int is_expr);
+void datakey_piece_add(char *buf);
 void key_piece_setdescend();
 char *strcpylower(char *c);
 int keysize(struct key *ck);

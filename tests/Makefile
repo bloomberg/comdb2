@@ -91,7 +91,7 @@ basicops_nokey: init
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" $(TESTSROOTDIR)/tools/keygen.sh)
 	$(shell TOTAL="${TOTAL}" $(TESTSROOTDIR)/tools/smalldelay.sh)
-	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} SKIP_COPY_EXE="${SKIP_COPY_EXE}" ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 || echo "exit 1 copy_files_to_cluster failed, see ${TESTDIR}/copy_files_to_cluster.log" )
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" TESTSROOTDIR="${TESTSROOTDIR}" COMDB2_EXE=${COMDB2_EXE} CDB2SQL_EXE=${CDB2SQL_EXE} COMDB2AR_EXE=${COMDB2AR_EXE} CDB2VERIFY_EXE=${CDB2VERIFY_EXE} PMUX_EXE=${PMUX_EXE} PMUXPORT=${PMUXPORT} SKIP_COPY_EXE="${SKIP_COPY_EXE}" ${TESTSROOTDIR}/tools/copy_files_to_cluster.sh > ${TESTDIR}/copy_files_to_cluster.log 2>&1 || echo "exit 1 copy_files_to_cluster failed, see ${TESTDIR}/copy_files_to_cluster.log" )
 
 showparams: 
 	@echo MAKECMDGOALS=${MAKECMDGOALS}
@@ -103,6 +103,7 @@ showparams:
 	@echo CLUSTER=${CLUSTER}
 	@echo BUILDDIR=${BUILDDIR}
 	@echo COMDB2AR_EXE=${COMDB2AR_EXE}
+	@echo CDB2VERIFY_EXE=${CDB2VERIFY_EXE}
 	@echo COMDB2_EXE=${COMDB2_EXE}
 	@echo CDB2SQL_EXE=${CDB2SQL_EXE}
 	@echo COPYCOMDB2_EXE=${COPYCOMDB2_EXE}

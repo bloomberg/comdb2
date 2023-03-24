@@ -68,7 +68,7 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     int servermode;
     struct stat buf;
     STACK_OF(X509_NAME) *cert_names;
-    long protocols = 0;
+    long options = 0;
     int ii;
 
 #if SBUF2_SERVER
@@ -86,7 +86,7 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     /* If we are told to verify peer, and cacert file is NULL,
        we explicitly make one with the default name so that
        ssl_new_ctx() would fail if it could not load the CA. */
-    if (mode >= SSL_VERIFY_CA && *pca == NULL) {
+    if (SSL_NEEDS_VERIFICATION(mode) && *pca == NULL) {
         if (dir == NULL) {
             ssl_sfeprint(err, n, my_ssl_eprintln,
                          "A trusted CA certificate is required "
@@ -268,15 +268,19 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     };
     #undef XMACRO_SSL_NO_PROTOCOLS
 
+#ifdef SSL_OP_NO_COMPRESSION
+    options |= SSL_OP_NO_COMPRESSION;
+#endif
+
     for (ii = 0; ii != sizeof(ssl_no_protocols) / sizeof(ssl_no_protocols[0]);
          ++ii) {
         if (ssl_no_protocols[ii].tlsver < mintlsver)
-            protocols |= ssl_no_protocols[ii].opensslver;
+            options |= ssl_no_protocols[ii].opensslver;
     }
 
     /* Disable SSL protocols to prevent POODLE attack (CVE-2014-3566). */
-    if (protocols != 0)
-        SSL_CTX_set_options(myctx, protocols);
+    if (options != 0)
+        SSL_CTX_set_options(myctx, options);
 
     /* We need the flag to be able to write as fast as possible.
        We let sbuf2/comdb2buf take care of uncomplete writes. */
@@ -381,7 +385,9 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
 
 #ifndef OPENSSL_NO_ECDH
 #if OPENSSL_VERSION_NUMBER >= 0x10002000L
-    SSL_CTX_set_ecdh_auto(myctx, 1);
+    if (!SSL_CTX_set_ecdh_auto(myctx, 1)) {
+        my_ssl_eprintln("SSL_CTX_set_ecdh_auto failed. ECDHE ciphers will be disabled.");
+    }
 #else
     EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (ecdh == NULL) {

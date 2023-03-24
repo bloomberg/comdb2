@@ -20,6 +20,8 @@ extern size_t gbl_lkr_hash;
 
 #define	DB_LOCK_DEFAULT_N	1000	/* Default # of locks in region. */
 
+#include <dbinc/maxstackframes.h>
+
 /*
  * The locker id space is divided between the transaction manager and the lock
  * manager.  Lock IDs start at 1 and go to DB_LOCK_MAXID.  Txn IDs start at
@@ -125,9 +127,11 @@ struct __db_lockerid_latch_list;
 typedef struct __db_lockregion {
 	u_int32_t	need_dd;	/* flag for deadlock detector */
 	u_int32_t	detect;		/* run dd on every conflict */
+	u_int32_t	dd_gen;		/* generation of deadlock detector ID (dd_id) */
 	db_timeval_t	next_timeout;	/* next time to expire a lock */
 	SH_TAILQ_HEAD(__dobj, __db_lockobj) dd_objs;	/* objects with waiters */
 	SH_TAILQ_HEAD(__lkrs, __db_locker) lockers;	/* list of lockers */
+	SH_TAILQ_HEAD(__wlkrs, __db_locker) wlockers;	/* list of lockers in waiting status */
 	db_timeout_t	lk_timeout;	/* timeout for locks. */
 	db_timeout_t	tx_timeout;	/* timeout for txns. */
 	roff_t		conf_off;	/* offset of conflicts array */
@@ -264,6 +268,7 @@ typedef struct __db_locker {
 					   list. */
 	SH_TAILQ_ENTRY(__db_locker) links;		/* Links for free and hash list. */
 	SH_TAILQ_ENTRY(__db_locker) ulinks;	/* Links in-use list. */
+	SH_TAILQ_ENTRY(__db_locker) wlinks;	/* Links in-use list. */
 	SH_LIST_HEAD(_held, __db_lock) heldby;	/* Locks held by this locker. */
 	db_timeval_t	lk_expire;	/* When current lock expires. */
 	db_timeval_t	tx_expire;	/* When this txn expires. */
@@ -295,7 +300,8 @@ typedef struct __db_locker {
 	u_int8_t has_waiters;
 	u_int32_t flags;
 	u_int8_t has_pglk_lsn;
-	u_int8_t wstatus;  /* master locker waiting, for deadlock detection */
+	u_int32_t   dd_gen;		/* generation of the locker's deadlock detector ID */
+	u_int32_t   dd_in_wlockers; /* whether the locker is in wlockers list */
 } DB_LOCKER;
 
 /*
@@ -351,13 +357,7 @@ struct __db_lock {
 	SH_LIST_HEAD(_lsns, __db_lock_lsn) lsns;	/* logical lsns that hold this lock. */
 	u_int32_t nlsns;
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-	int			frames;
-	void		*buf[MAX_BERK_STACK_FRAMES];
-	int 		stack_gen;
-	DB_LOCK		*lock;
-	pthread_t	tid;
-#endif
+    int         stackid;
 };
 
 /*

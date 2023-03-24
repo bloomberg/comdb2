@@ -101,11 +101,11 @@ static int portmux_route_to(struct in_addr in, const char *app,
                             int timeoutms);
 static int portmux_poll(portmux_fd_t *fds, int timeoutms,
                         void (*accept_hndl)(int fd, void *user_data),
-                        void *user_data);
+                          void *user_data, struct sockaddr_in *);
 static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                           int (*accept_hndl)(int which, int fd,
                                              void *user_data),
-                          void *user_data);
+                          void *user_data, struct sockaddr_in *);
 static int portmux_connecti_int(struct in_addr addr, const char *app,
                                 const char *service, const char *instance,
                                 int myport, int timeoutms);
@@ -710,7 +710,6 @@ static int portmux_recover_route(portmux_fd_t *fds)
 
 static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
 {
-    int max_retries = 60;
     int rc;
     time_t now;
 
@@ -763,19 +762,6 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
                __LINE__, portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
-    } else {
-        /* If we have tcp connectivity then we can stop trying to
-         * connect the unix socket.
-         */
-        if (fds->nretries > max_retries && fds->tcplistenfd >= 0) {
-            /*too many attempts to get unix socket
-             *connectivity drop it and only use tcp port*/
-            logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
-                                 "too many retries %d will only use port# %d\n",
-                   __func__, __LINE__, portmux_unix_socket, fds->app,
-                   fds->service, fds->instance, fds->nretries, fds->port);
-            fds->recov_conn = 0 /*FALSE*/;
-        }
     }
 
     return 0;
@@ -1056,7 +1042,7 @@ static int portmux_poll_v_accept(int which, int fd, void *data)
  * connection handle is returned to the caller */
 static int portmux_poll(portmux_fd_t *fds, int timeoutms,
                         void (*accept_hndl)(int fd, void *user_data),
-                        void *user_data)
+                        void *user_data, struct sockaddr_in *cliaddr)
 {
     int clientfd;
     struct pollfd pollfds[2];
@@ -1070,14 +1056,14 @@ static int portmux_poll(portmux_fd_t *fds, int timeoutms,
      */
     if (PORTMUX_USE_POLL_V()) {
         if (accept_hndl == NULL) {
-            return portmux_poll_v(&fds, 1, timeoutms, NULL, NULL);
+            return portmux_poll_v(&fds, 1, timeoutms, NULL, NULL, cliaddr);
         } else {
             struct pollv_accept_data pollv_data;
 
             pollv_data.accept_hndl = accept_hndl;
             pollv_data.user_data = user_data;
             return portmux_poll_v(&fds, 1, timeoutms, portmux_poll_v_accept,
-                                  &pollv_data);
+                                  &pollv_data, cliaddr);
         }
     }
 
@@ -1163,7 +1149,7 @@ static int portmux_poll(portmux_fd_t *fds, int timeoutms,
                 close(fds->tcplistenfd);
                 fds->tcplistenfd = -1;
             } else if (pollfds[poll_tcpsocket].revents & POLLIN) {
-                clientfd = tcpaccept(fds->tcplistenfd, NULL);
+                clientfd = tcpaccept(fds->tcplistenfd, cliaddr);
                 if (clientfd >= 0) {
                     portmux_denagle(clientfd);
                     if (accept_hndl) {
@@ -1201,7 +1187,6 @@ static int portmux_poll(portmux_fd_t *fds, int timeoutms,
  */
 static int portmux_handle_recover_v(portmux_fd_t *fds)
 {
-    int max_retries = 60;
     int rc;
 
     if (fds->listenfd >= 0) {
@@ -1251,20 +1236,6 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
                __LINE__, portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
-    } else {
-        /* If we have tcp connectivity then we can stop trying to
-         * connect the unix socket.
-         */
-        if (fds->nretries > max_retries && fds->tcplistenfd >= 0) {
-            /*too many attempts to get unix socket
-             *connectivity drop it and only use tcp port*/
-            logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
-                                 "too many retries %d will only use port# %d\n",
-                   __func__, __LINE__, portmux_unix_socket, fds->app,
-                   fds->service, fds->instance, fds->nretries, fds->port);
-            fds->recov_conn = 0 /*FALSE*/;
-            return 2;
-        }
     }
 
     return (fds->listenfd >= 0) ? 0 : 1;
@@ -1280,7 +1251,7 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
 static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                           int (*accept_hndl)(int which, int fd,
                                              void *user_data),
-                          void *user_data)
+                          void *user_data, struct sockaddr_in *cliaddr)
 {
     int clientfd;
     struct pollfd *pollfds;
@@ -1445,7 +1416,7 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                  * clientfd; otherwise -1.
                  */
                 if (polldata[ii].is_tcp) {
-                    clientfd = tcpaccept(fds[slot]->tcplistenfd, NULL);
+                    clientfd = tcpaccept(fds[slot]->tcplistenfd, cliaddr);
                 } else {
                     /* get handle via passfd */
                     if (recv_fd(fds[slot]->listenfd, &msg, strlen("pmux"),
@@ -1478,6 +1449,12 @@ static int portmux_poll_v(portmux_fd_t **fds, nfds_t nfds, int timeoutms,
                             close(clientfd);
                             clientfd = -1;
                         }
+                    }
+                    socklen_t addrlen = sizeof(struct sockaddr_in);
+                    int rc = getpeername(clientfd, (struct sockaddr*) cliaddr, &addrlen);
+                    if (rc ) {
+                        close(clientfd);
+                        clientfd = -1;
                     }
                 }
 
@@ -1543,6 +1520,10 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
             } else {
                 tcplistenfd = -1;
             }
+        } else if (listenfd  < 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d portmux listen errno=[%d] %s\n", __func__,
+                    __LINE__, errno, strerror(errno));
+            return NULL;
         }
     }
 
@@ -1581,7 +1562,7 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
     fds->options = options;
 
     /*check if we have connection on portmux unix socket*/
-    if (fds->listenfd >= 0) {
+    if (PORTMUX_ROUTE_MODE_ENABLED()) {
         /*in case connection is dropped try to recover it*/
         fds->recov_conn = 1 /*TRUE*/;
     } else {
@@ -1606,7 +1587,7 @@ portmux_fd_t *portmux_listen_setup(const char *app, const char *service,
     return portmux_listen_options_setup(app, service, instance, tcplistenfd, 0);
 }
 
-int portmux_accept(portmux_fd_t *fds, int timeoutms)
+int portmux_accept(portmux_fd_t *fds, int timeoutms, struct sockaddr_in *cliaddr)
 {
     if (!fds) {
         return -1;
@@ -1616,12 +1597,12 @@ int portmux_accept(portmux_fd_t *fds, int timeoutms)
         timeoutms = -1; /*no timeout*/
     }
 
-    return portmux_poll(fds, timeoutms, NULL, NULL);
+    return portmux_poll(fds, timeoutms, NULL, NULL, cliaddr);
 }
 
 int portmux_acceptv(portmux_fd_t **fds, int nfds, int timeoutms,
                     int (*accept_hndl)(int which, int fd, void *user_data),
-                    void *user_data)
+                    void *user_data, struct sockaddr_in *cliaddr)
 {
     if (fds == NULL) {
         return -1;
@@ -1631,7 +1612,7 @@ int portmux_acceptv(portmux_fd_t **fds, int nfds, int timeoutms,
         timeoutms = -1; /*no timeout*/
     }
 
-    return portmux_poll_v(fds, nfds, timeoutms, accept_hndl, user_data);
+    return portmux_poll_v(fds, nfds, timeoutms, accept_hndl, user_data, cliaddr);
 }
 
 int portmux_listen_options(const char *app, const char *service,
@@ -1653,7 +1634,7 @@ int portmux_listen_options(const char *app, const char *service,
     }
 
     /*accept connections*/
-    portmux_poll(fds, -1 /*no timeout*/, accept_hndl, user_data);
+    portmux_poll(fds, -1 /*no timeout*/, accept_hndl, user_data, NULL);
 
     /*deregister properly*/
     save_errno = errno;
@@ -1995,7 +1976,7 @@ static void server_no_callback(char *server_name, int pure_one_port_mode)
                app, service, instance);
 
         while (true) {
-            int clientfd = portmux_accept(pmux_hndl, 0);
+            int clientfd = portmux_accept(pmux_hndl, 0, NULL);
             if (clientfd < 0) {
                 fprintf(stderr, "error in portmux_accept\n");
                 break;
@@ -2182,7 +2163,7 @@ static void server_v(char *server_name, int timeoutms, int pure_one_port_mode)
 
     int result;
     while ((result = portmux_acceptv(portmux_hndl, V_SIZE, timeoutms,
-                                     server_accept_hndl_v, NULL)) >= 0) {
+                                     server_accept_hndl_v, NULL, NULL)) >= 0) {
         if (result == 0 && errno == ETIMEDOUT) {
             printf("portmux_acceptv timeout. Continuing\n");
         } else {

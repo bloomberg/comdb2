@@ -776,7 +776,7 @@ int main(int argc, char *argv[])
     int exponent = 0;
     int isttyarg = 0;
 
-    sigignore(SIGPIPE);
+    signal(SIGPIPE, SIG_IGN);
 
     argc--;
     argv++;

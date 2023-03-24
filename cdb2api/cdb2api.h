@@ -35,7 +35,8 @@ enum cdb2_hndl_alloc_flags {
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
     CDB2_ROOM = 32,
-    CDB2_ADMIN = 64
+    CDB2_ADMIN = 64,
+    CDB2_SQL_ROWS = 128
 };
 
 enum cdb2_request_type {
@@ -76,7 +77,7 @@ enum cdb2_errors {
     CDB2ERR_TRAN_IO_ERROR = -105,
     CDB2ERR_ACCESS = -106,
 
-    CDB2ERR_TRAN_MODE_UNSUPPORTED = -107,
+    CDB2ERR_QUERYLIMIT = -107,
 
     CDB2ERR_SCHEMA = -110,
 
@@ -232,8 +233,7 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
                     const void *varaddr, int length);
 int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
                     const void *varaddr, int length);
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type,
-                    const void *varaddr, unsigned int count, int typelen);
+int cdb2_bind_array(cdb2_hndl_tp *, const char *, cdb2_coltype, const void *, size_t count, size_t typelen);
 int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
@@ -257,8 +257,8 @@ typedef enum cdb2_event_ctrl {
 
 typedef enum cdb2_event_type {
     /* Network events */
-    CDB2_BEFORE_CONNECT = 1,
-    CDB2_AFTER_CONNECT = 1 << 1,
+    CDB2_BEFORE_NEWSQL_CONNECT = 1,
+    CDB2_AFTER_NEWSQL_CONNECT = 1 << 1,
     CDB2_BEFORE_PMUX = 1 << 2,
     CDB2_AFTER_PMUX = 1 << 3,
     CDB2_BEFORE_DBINFO = 1 << 4,
@@ -268,14 +268,16 @@ typedef enum cdb2_event_type {
     CDB2_BEFORE_READ_RECORD = 1 << 8,
     CDB2_AFTER_READ_RECORD = 1 << 9,
     CDB2_AT_RECEIVE_HEARTBEAT = 1 << 10,
+    CDB2_BEFORE_TCP_CONNECT = 1 << 11,
+    CDB2_AFTER_TCP_CONNECT = 1 << 12,
 
     /* Logical operation events.
        A logicial operation event typically
        consists of multiple network events. */
-    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 11,
-    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 12,
-    CDB2_AT_ENTER_NEXT_RECORD = 1 << 13,
-    CDB2_AT_EXIT_NEXT_RECORD = 1 << 14,
+    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 13,
+    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 14,
+    CDB2_AT_ENTER_NEXT_RECORD = 1 << 15,
+    CDB2_AT_EXIT_NEXT_RECORD = 1 << 16,
 
     /* Lifecycle events */
     CDB2_BEFORE_DISCOVERY = 1 << 27,

@@ -67,6 +67,13 @@ int gbl_nid_dbname = NID_commonName;
 #endif
 /* Minimum acceptable TLS version */
 double gbl_min_tls_ver = 0;
+/* (test-only) are connections from localhost always allowed? */
+int gbl_ssl_allow_localhost = 0;
+
+/* number of full ssl handshakes */
+uint64_t gbl_ssl_num_full_handshakes = 0;
+/* number of partial ssl handshakes (via session resumption) */
+uint64_t gbl_ssl_num_partial_handshakes = 0;
 
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
@@ -97,6 +104,14 @@ int ssl_process_lrl(char *line, size_t len)
         }
         if (tokcmp(tok, ltok, SSL_MODE_ALLOW) == 0)
             gbl_client_ssl_mode = SSL_ALLOW;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER) == 0)
+            gbl_client_ssl_mode = SSL_PREFER;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER_VERIFY_CA) == 0)
+            gbl_client_ssl_mode = SSL_PREFER_VERIFY_CA;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER_VERIFY_HOST) == 0)
+            gbl_client_ssl_mode = SSL_PREFER_VERIFY_HOSTNAME;
+        if (tokcmp(tok, ltok, SSL_MODE_PREFER_VERIFY_DBNAME) == 0)
+            gbl_client_ssl_mode = SSL_PREFER_VERIFY_DBNAME;
         else if (tokcmp(tok, ltok, SSL_MODE_REQUIRE) == 0)
             gbl_client_ssl_mode = SSL_REQUIRE;
         else if (tokcmp(tok, ltok, SSL_MODE_VERIFY_CA) == 0)
@@ -278,6 +293,10 @@ int ssl_process_lrl(char *line, size_t len)
             return EINVAL;
         }
         gbl_min_tls_ver = atof(tok);
+    } else if (tokcmp(line, ltok, "ssl_allow_localhost") == 0) {
+        logmsg(LOGMSG_WARN, "Always allow connections from localhost. "
+                            "This option is for testing only and should not be enabled on production.");
+        gbl_ssl_allow_localhost = 1;
     }
     return 0;
 }
@@ -328,6 +347,14 @@ static const char *ssl_mode_to_string(ssl_mode mode)
         return "DISABLE";
     case SSL_ALLOW:
         return SSL_MODE_ALLOW;
+    case SSL_PREFER:
+        return SSL_MODE_PREFER;
+    case SSL_PREFER_VERIFY_CA:
+        return SSL_MODE_PREFER_VERIFY_CA;
+    case SSL_PREFER_VERIFY_HOSTNAME:
+        return SSL_MODE_PREFER_VERIFY_HOST;
+    case SSL_PREFER_VERIFY_DBNAME:
+        return SSL_MODE_PREFER_VERIFY_DBNAME;
     case SSL_REQUIRE:
         return SSL_MODE_REQUIRE;
     case SSL_VERIFY_CA:
@@ -340,6 +367,7 @@ static const char *ssl_mode_to_string(ssl_mode mode)
         return "UNKNOWN";
     }
 }
+
 void ssl_set_clnt_user(struct sqlclntstate *clnt)
 {
     int sz = sizeof(clnt->current_user.name);
@@ -358,6 +386,9 @@ void ssl_stats(void)
         logmsg(LOGMSG_USER,
                "Verify database name in client certificate: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_dbname));
+
+    logmsg(LOGMSG_USER, "  %" PRId64 " full handshakes, %" PRId64 " partial handshakes\n",
+           gbl_ssl_num_full_handshakes, gbl_ssl_num_partial_handshakes);
 
     logmsg(LOGMSG_USER, "Replicant SSL mode: %s\n",
            ssl_mode_to_string(gbl_rep_ssl_mode));

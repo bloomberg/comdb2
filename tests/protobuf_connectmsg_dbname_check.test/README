@@ -1,0 +1,1 @@
+Test that comdb2 cluster that uses new protobuf connect message does not accept node with bad dbname

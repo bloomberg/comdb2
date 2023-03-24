@@ -48,13 +48,13 @@ int do_rename_table(struct ireq *iq, struct schema_change_type *s,
     return SC_OK;
 }
 
-int finalize_rename_table_alias(struct ireq *iq, struct schema_change_type *s,
-                                tran_type *tran)
+int finalize_alias_table(struct ireq *iq, struct schema_change_type *s,
+                         tran_type *tran)
 {
     struct dbtable *db = s->db;
     int rc = 0;
 
-    assert(s->rename);
+    assert(s->kind == SC_ALIASTABLE);
 
     /* Before this handle is closed, lets wait for all the db reads to finish*/
     bdb_lock_table_write(db->handle, tran);
@@ -98,7 +98,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     int bdberr = 0;
     char *oldname = NULL;
 
-    assert(s->rename);
+    assert(s->kind == SC_RENAMETABLE);
+
     if (!newname) {
         sc_errf(s, "strdup error\n");
         return -1;

@@ -23,18 +23,18 @@ struct ireq;
 int do_add_sp(struct schema_change_type *, struct ireq *);
 int do_del_sp(struct schema_change_type *sc, struct ireq *);
 int do_default_sp(struct schema_change_type *, struct ireq *);
-int do_show_sp(struct schema_change_type *sc);
+int do_show_sp(struct schema_change_type *sc, struct ireq *);
 
 int finalize_add_sp(struct schema_change_type *sc);
 int finalize_del_sp(struct schema_change_type *sc);
 int finalize_default_sp(struct schema_change_type *sc);
-int do_lua_sfunc(struct schema_change_type *);
-int do_lua_afunc(struct schema_change_type *);
+int do_lua_sfunc(struct schema_change_type *, struct ireq *iq);
+int do_lua_afunc(struct schema_change_type *, struct ireq *iq);
 
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
 
-int finalize_lua_sfunc();
-int finalize_lua_afunc();
+int finalize_lua_sfunc(struct schema_change_type *unused);
+int finalize_lua_afunc(struct schema_change_type *unused);
 
 #endif

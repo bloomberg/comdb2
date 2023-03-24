@@ -24,5 +24,8 @@ sleep 5
 
 cdb2sql ${CDB2_OPTIONS} $dbnm --host $master 'select * from comdb2_repl_stats'
 cnt=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "select count(*) from comdb2_repl_stats where host = \"$rep\" and lsn_bytes_behind_master > 0"`
+[ "$cnt" != "1" ] && { echo $cnt; } || { exit 0; }
 
-[ "$cnt" != "1" ] && { echo $cnt; exit 1; } || { exit 0; }
+bytes_written=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master "select bytes_written from comdb2_repl_stats where host = \"$rep\""`
+[ "$bytes_written" != "0" ] && { echo $bytes_written; exit 1; } || { exit 0; }
+

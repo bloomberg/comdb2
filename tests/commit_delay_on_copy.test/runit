@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/timers.sh
+
+#export debug=1
+export fasttime=200
+export slowtime=2000
+
+function failexit
+{
+    [[ "$debug" == "1" ]] && set -x
+    echo "Failed: $1"
+    exit -1
+}
+
+function timeinsert
+{
+    typeset start=$(timems)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values (1)" >/dev/null 2>&1
+    typeset end=$(timems)
+    echo $(( end - start ))
+}
+
+# Times an insert, fail test if it is too slow
+function insertfast
+{
+    x=$(timeinsert)
+    [[ "$debug" == "1" ]] && echo "Insert took $x ms"
+    [[ $x -gt $fasttime ]] && failexit "Insert was too slow"
+}
+
+# Times an insert, fail test if it is too fast
+function insertslow
+{
+    x=$(timeinsert)
+    [[ "$debug" == "1" ]] && echo "Insert took $x ms"
+    [[ $x -lt $slowtime ]] && failexit "Insert was too fast"
+}
+
+# Use 'go-slow' flag to create a slow archive
+function slowarchive
+{
+    typeset machine=$1
+    ssh $machine "$COMDB2AR_EXE -A c ${DBDIR}/${DBNAME}.lrl >/dev/null 2>/dev/null"
+}
+
+function test_insert_archive
+{
+    slowarchive $1 &
+    pid=$!
+
+    # sleep a bit to make sure watcher-thread notifies master
+    sleep 5
+
+    while :; do
+        insertslow
+        echo "Insert is commit-delayed"
+        if ps -p $pid >/dev/null ; then
+            echo "Slow archive is still running on $1"
+        else
+            echo "Slow archive stopped"
+            break
+        fi
+    done
+
+    # Get past the timeout
+    sleep 11
+
+    insertfast
+    echo "Insert is fast, archive has stopped"
+}
+
+function run_test
+{
+    create_table
+    insertfast
+
+    sleep 10
+
+    for machine in $CLUSTER; do
+        test_insert_archive $machine
+    done
+}
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"
+run_test
+
+echo "Success!"

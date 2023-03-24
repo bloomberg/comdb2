@@ -29,6 +29,7 @@ enum mach_class {
     CLASS_UAT = 3,
     CLASS_BETA = 4,
     CLASS_PROD = 5,
+    CLASS_INTEGRATION = 6,
     CLASS_DENIED = 255
 };
 
@@ -36,5 +37,7 @@ int mach_class_init(void);
 int mach_class_addclass(const char *name, int value);
 int mach_class_name2class(const char *name);
 const char *mach_class_class2name(int value);
+int mach_class_remap_fdb_tier(const char *name, const char *tier);
+const char *mach_class_class2tier(int value);
 
 #endif

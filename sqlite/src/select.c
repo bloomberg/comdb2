@@ -153,13 +153,10 @@ Select *sqlite3SelectNew(
   u32 selFlags,         /* Flag parameters, such as SF_Distinct */
   Expr *pLimit          /* LIMIT value.  NULL means not used */
 ){
-  Select *pNew;
+  Select *pNew, *pAllocated;
   Select standin;
-  pNew = sqlite3DbMallocRawNN(pParse->db, sizeof(*pNew) );
+  pAllocated = pNew = sqlite3DbMallocRawNN(pParse->db, sizeof(*pNew) );
   if( pNew==0 ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    return NULL;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pParse->db->mallocFailed );
     pNew = &standin;
   }
@@ -195,12 +192,11 @@ Select *sqlite3SelectNew(
 #endif
   if( pParse->db->mallocFailed ) {
     clearSelect(pParse->db, pNew, pNew!=&standin);
-    pNew = 0;
+    pAllocated = 0;
   }else{
     assert( pNew->pSrc!=0 || pParse->nErr>0 );
   }
-  assert( pNew!=&standin );
-  return pNew;
+  return pAllocated;
 }
 
 
@@ -1677,8 +1673,6 @@ static const char *columnTypeImpl(
   assert( pExpr!=0 );
   assert( pNC->pSrcList!=0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  assert( pExpr->op!=TK_AGG_COLUMN );  /* This routine runes before aggregates
-                                       ** are processed */
   switch( pExpr->op ){
     case TK_COLUMN: {
       /* The expression is a column. Locate the table the column is being
@@ -2038,7 +2032,6 @@ int sqlite3ColumnsFromExprList(
         pColExpr = pColExpr->pRight;
         assert( pColExpr!=0 );
       }
-      assert( pColExpr->op!=TK_AGG_COLUMN );
       if( pColExpr->op==TK_COLUMN ){
         /* For columns use the column name name */
         int iCol = pColExpr->iColumn;
@@ -2776,9 +2769,7 @@ static int multiSelect(
                           selectOpName(p->op)));
         rc = sqlite3Select(pParse, p, &uniondest);
         testcase( rc!=SQLITE_OK );
-        /* Query flattening in sqlite3Select() might refill p->pOrderBy.
-        ** Be sure to delete p->pOrderBy, therefore, to avoid a memory leak. */
-        sqlite3ExprListDelete(db, p->pOrderBy);
+        assert( p->pOrderBy==0 );
         pDelete = p->pPrior;
         p->pPrior = pPrior;
         p->pOrderBy = 0;
@@ -4109,7 +4100,7 @@ static int flattenSubquery(
     ** We look at every expression in the outer query and every place we see
     ** "a" we substitute "x*3" and every place we see "b" we substitute "y+10".
     */
-    if( pSub->pOrderBy ){
+    if( pSub->pOrderBy && (pParent->selFlags & SF_NoopOrderBy)==0 ){
       /* At this point, any non-zero iOrderByCol values indicate that the
       ** ORDER BY column expression is identical to the iOrderByCol'th
       ** expression returned by SELECT statement pSub. Since these values
@@ -4478,6 +4469,57 @@ static int pushDownWhereTerms(
   return nChng;
 }
 #endif /* !defined(SQLITE_OMIT_SUBQUERY) || !defined(SQLITE_OMIT_VIEW) */
+
+
+/*
+** Check to see if a subquery contains result-set columns that are
+** never used.  If it does, change the value of those result-set columns
+** to NULL so that they do not cause unnecessary work to compute.
+**
+** Return the number of column that were changed to NULL.
+*/
+static int disableUnusedSubqueryResultColumns(struct SrcList_item *pItem){
+  int nCol;
+  Select *pSub;      /* The subquery to be simplified */
+  Select *pX;        /* For looping over compound elements of pSub */
+  Table *pTab;       /* The table that describes the subquery */
+  int j;             /* Column number */
+  int nChng = 0;     /* Number of columns converted to NULL */
+
+  assert( pItem!=0 );
+  assert( pItem->pTab!=0 );
+  pTab = pItem->pTab;
+  if( pTab->tabFlags & TF_Ephemeral ) return 0;
+  assert( pItem->pSelect!=0 );
+  pSub = pItem->pSelect;
+  assert( pSub->pEList->nExpr==pTab->nCol );
+  for(pX=pSub; pX; pX=pX->pPrior){
+    if( pX->pPrior && pX->op!=TK_ALL ){
+      /* This optimization does not work for compound subqueries that
+      ** use UNION, INTERSECT, or EXCEPT.  Only UNION ALL is allowed. */
+      return 0;
+    }
+    if( pX->pWin ){
+      /* This optimization does not work for subqueries that use window
+      ** functions. */
+      return 0;
+    }
+  }
+  nCol = pTab->nCol;
+  for(j=0; j<nCol; j++){
+    Select *pX;
+    Bitmask m = j<BMS-1 ? MASKBIT(j) : (((Bitmask)1)<<(BMS-1));
+    if( (m & pItem->colUsed)!=0 ) continue;
+    for(pX=pSub; pX; pX=pX->pPrior) {
+      Expr *pY = pX->pEList->a[j].pExpr;
+      if( pY->op==TK_NULL ) continue;
+      pY->op = TK_NULL;
+      /* pX->selFlags |= SF_PushDown; */
+      nChng++;
+    }
+  }
+  return nChng;
+}
 
 /*
 ** The pFunc is the only aggregate function in the query.  Check to see
@@ -5770,6 +5812,7 @@ int sqlite3Select(
     sqlite3ExprListDelete(db, p->pOrderBy);
     p->pOrderBy = 0;
     p->selFlags &= ~SF_Distinct;
+    p->selFlags |= SF_NoopOrderBy;
   }
   sqlite3SelectPrep(pParse, p, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -6036,6 +6079,20 @@ int sqlite3Select(
 #endif
     }else{
       SELECTTRACE(0x100,pParse,p,("Push-down not possible\n"));
+    }
+
+    /* Convert unused result columns of the subquery into simple NULL
+    ** expressions, to avoid unneeded searching and computation.
+    */
+    if( disableUnusedSubqueryResultColumns(pItem) ){
+#if TREETRACE_ENABLED
+      if( sqlite3TreeTrace & 0x4000 ){
+        TREETRACE(0x4000,pParse,p,
+            ("Change unused result columns to NULL for subquery %d:\n",
+             pSub->selId));
+        sqlite3TreeViewSelect(0, p, 0);
+      }
+#endif
     }
 
     zSavedAuthContext = pParse->zAuthContext;

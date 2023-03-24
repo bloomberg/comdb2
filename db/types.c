@@ -3718,6 +3718,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
                                       blob_buffer_t *outblob, int *outdtsz)
 {
     int valid_len;
+    if (out_len > 0)
+        memset(out, 0, out_len);
 
     /* if the string was too large to be stored in the in buffer and won't fit
      * in the out buffer, then the string will just be transfered from one blob
@@ -3729,7 +3731,14 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
          * our blob-conversion code, it will always return success, whether or
          * not
          * this copy takes place.  The calling code expects this behavior. */
-        if (inblob && outblob && inblob->exists) {
+
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && inblob->exists && inblob->length != -2) {
+            /* if outblob is NULL, we're trying to fit excess
+               characters into a cstring. Return an error here. */
+            if (outblob == NULL)
+                return -1;
+
             /* validate input blob */
             assert(inblob->length == len);
 
@@ -3801,6 +3810,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             outblob->exists = 1;
             outblob->collected = 1;
         } else {
+            /* if outblob is NULL, we're trying to fit excess
+               characters into a cstring. Return an error here. */
             return -1;
         }
     }
@@ -3812,7 +3823,8 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
     {
         int valid_len;
 
-        if (inblob) {
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && inblob->length != -2) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "vutf8_convert: missing inblob\n");
                 return -1;
@@ -4185,7 +4197,8 @@ TYPES_INLINE int CLIENT_PSTR2_to_SERVER_BCSTR(
     }
     ++inlen;
     set_data_int(out, in, inlen, hdr);
-    memset(out + inlen, 0, outlen - inlen);
+    char *cout = (char *)out;
+    memset(cout + inlen, 0, outlen - inlen);
     *outdtsz = inlen;
 
     if ((unsigned int)olen > (unsigned int)outlen - 1) {
@@ -5512,6 +5525,9 @@ TYPES_INLINE int CLIENT_BLOB_to_SERVER_BLOB2(
     } else {
         set_data(out, &blob->length, BLOB_ON_DISK_LEN);
         *outdtsz = BLOB_ON_DISK_LEN;
+        char *cout = (char *)out;
+        if (outlen - BLOB_ON_DISK_LEN > 0)
+            memset(cout + BLOB_ON_DISK_LEN, 0, outlen - BLOB_ON_DISK_LEN);
         if (outblob && !outblob->exists) {
             /* shouldn't happen */
             logmsg(LOGMSG_ERROR, "CLIENT_BLOB_to_SERVER_BLOB: missing blob!\n");
@@ -5547,11 +5563,13 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_BLOB2(
     tmp = htonl(inlen);
     set_data(out, &tmp, BLOB_ON_DISK_LEN);
     *outdtsz = BLOB_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - BLOB_ON_DISK_LEN > 0)
+        memset(cout + BLOB_ON_DISK_LEN, 0, outlen - BLOB_ON_DISK_LEN);
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - BLOB_ON_DISK_LEN) {
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, in, inlen);
@@ -5606,11 +5624,13 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_VUTF8(
     tmp = htonl(inlen);
     set_data(out, &tmp, VUTF8_ON_DISK_LEN);
     *outdtsz = VUTF8_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - VUTF8_ON_DISK_LEN > 0)
+        memset(cout + VUTF8_ON_DISK_LEN, 0, outlen - VUTF8_ON_DISK_LEN);
 
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - VUTF8_ON_DISK_LEN) {
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + VUTF8_ON_DISK_LEN, in, inlen - 1);
@@ -5626,7 +5646,7 @@ TYPES_INLINE int CLIENT_BYTEARRAY_to_SERVER_VUTF8(
             outblob->data = malloc(inlen);
 
         if (outblob->data == NULL) {
-            logmsg(LOGMSG_ERROR, "CLIENT_PSTR2_to_SERVER_VUTF8: malloc %u failed\n",
+            logmsg(LOGMSG_ERROR, "CLIENT_BYTEARRAY_to_SERVER_VUTF8: malloc %u failed\n",
                     inlen);
             return -1;
         }
@@ -5671,6 +5691,9 @@ static TYPES_INLINE int CLIENT_PSTR2_to_SERVER_VUTF8(
     tmp = htonl(inlen);
     set_data(out, &tmp, VUTF8_ON_DISK_LEN);
     *outdtsz = VUTF8_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - VUTF8_ON_DISK_LEN > 0)
+        memset(cout + VUTF8_ON_DISK_LEN, 0, outlen - VUTF8_ON_DISK_LEN);
 
     /*TODO can't use this here because doesn't handle non-NUL term case */
     /*return vutf8_convert(inlen,*/
@@ -5682,7 +5705,6 @@ static TYPES_INLINE int CLIENT_PSTR2_to_SERVER_VUTF8(
     /* if there is enough room in the out buffer to store string */
     if (inlen <= outlen - VUTF8_ON_DISK_LEN) {
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + VUTF8_ON_DISK_LEN, in, inlen - 1);
@@ -6262,21 +6284,26 @@ TYPES_INLINE int SERVER_UINT_to_SERVER_UINT(
     DO_SERVER_TO_SERVER(UINT, UINT, UINT);
 }
 
+static TYPES_INLINE int SERVER_BLOB_to_SERVER_BLOB_ext(const void *in, int inlen, const struct field_conv_opts *inopts,
+                                                       blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
+                                                       const struct field_conv_opts *outopts, blob_buffer_t *outblob,
+                                                       int intype, int outtype);
+
 TYPES_INLINE int SERVER_BLOB_to_SERVER_BLOB(
     const void *in, int inlen, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    if (inlen < BLOB_ON_DISK_LEN || outlen < BLOB_ON_DISK_LEN)
-        return -1;
+    return SERVER_BLOB_to_SERVER_BLOB_ext(in, inlen, inopts, inblob, out, outlen, outdtsz, outopts, outblob,
+                                          SERVER_BLOB, SERVER_BLOB);
+}
 
-    if (inblob && outblob) {
-        memcpy(outblob, inblob, sizeof(blob_buffer_t));
-        bzero(inblob, sizeof(blob_buffer_t));
-    }
-    memcpy(out, in, BLOB_ON_DISK_LEN);
-    *outdtsz = BLOB_ON_DISK_LEN;
-    return 0;
+TYPES_INLINE int SERVER_BLOB_to_SERVER_BLOB2(const void *in, int inlen, const struct field_conv_opts *inopts,
+                                             blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
+                                             const struct field_conv_opts *outopts, blob_buffer_t *outblob)
+{
+    return SERVER_BLOB_to_SERVER_BLOB_ext(in, inlen, inopts, inblob, out, outlen, outdtsz, outopts, outblob,
+                                          SERVER_BLOB, SERVER_BLOB2);
 }
 
 /* blobs don't convert easily - we don't have access to the blob data at this
@@ -6440,11 +6467,12 @@ static TYPES_INLINE int SERVER_VUTF8_to_SERVER_VUTF8(
                          outlen - VUTF8_ON_DISK_LEN, inblob, outblob, outdtsz);
 }
 
-static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
-                                      void *out, int out_len,
-                                      blob_buffer_t *inblob,
-                                      blob_buffer_t *outblob, int *outdtsz)
+static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len, void *out, int out_len,
+                                      blob_buffer_t *inblob, blob_buffer_t *outblob, int *outdtsz, int intype,
+                                      int outtype)
 {
+    if (out_len > 0)
+        memset(out, 0, out_len);
     /* if the string was too large to be stored in the in buffer and won't fit
      * in the out buffer, then the string will just be transfered from one blob
      * to another */
@@ -6455,9 +6483,12 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
          * our blob-conversion code, it will always return success, whether or
          * not
          * this copy takes place.  The calling code expects this behavior. */
-        if (inblob && outblob && inblob->exists) {
+
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && outblob && inblob->exists && inblob->length != -2) {
+
             /* validate input blob */
-            assert(inblob->length == len);
+            assert(IS_ODH_READY(inblob) || inblob->length == len);
 
             memcpy(outblob, inblob, sizeof(blob_buffer_t));
             bzero(inblob, sizeof(blob_buffer_t));
@@ -6471,19 +6502,50 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * in the out buffer, then the string needs to be copied directly from the
      * in buffer to the out buffer */
     if (len <= in_len && len <= out_len) {
-
         if (inblob && inblob->exists) {
-            logmsg(LOGMSG_ERROR, "blob2_convert: bogus inblob\n");
-            return -1;
+            /* Allow conversion from an empty SERVER_BLOB.
+               Unlike SERVER_VUTF8, a SERVER_BLOB must always exist,
+               even if it's empty (see CLIENT_BYTEARRAY_to_SERVER_BLOB()).
+               Changing SERVER_BLOB to behave like SERVER_VUTF8 would
+               cause an imcompatiblity in the blockprocessor where new replicant
+               sends a 'non-existed' empty blob whereas old server expects an
+               'existed' empty blob, or old replicant sends an 'existed' empty
+               blob whereas new server expects a 'non-existed' empty blob
+               (see check_blob_buffers()). */
+            if (intype == SERVER_BLOB && len == 0 && in_len == 0) {
+                if (outtype == SERVER_BLOB) {
+                    /* Preserve the empty data, as SERVER_BLOB expects an empty value to be stored offline. */
+                    memcpy(outblob, inblob, sizeof(blob_buffer_t));
+                } else {
+                    /* Discard the empty data, as SERVER_BLOB2 expects no offline data. */
+                    memset(outblob, 0, sizeof(blob_buffer_t));
+                    outblob->collected = 1;
+                }
+                memset(inblob, 0, sizeof(blob_buffer_t));
+                return 0;
+            } else {
+                logmsg(LOGMSG_ERROR, "blob2_convert: bogus inblob\n");
+                return -1;
+            }
         }
 
         memcpy(out, in, len);
         *outdtsz += len;
 
         if (outblob) {
-            outblob->length = 0;
-            outblob->exists = 0;
-            outblob->collected = 1;
+            /* If we're converting a 0-length SERVER_BLOB2 to a SERVER_BLOB,
+               make sure that the output "exists" (see above). */
+            if (intype == SERVER_BLOB2 && outtype == SERVER_BLOB && len == 0) {
+                /* our malloc implementation never returns NULL for 0-byte allocation */
+                outblob->data = malloc(0);
+                outblob->length = 0;
+                outblob->exists = 1;
+                outblob->collected = 1;
+            } else {
+                outblob->length = 0;
+                outblob->exists = 0;
+                outblob->collected = 1;
+            }
         }
     }
 
@@ -6515,7 +6577,8 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
      * blob to the out buffer */
     else /* len <= out_len */
     {
-        if (inblob) {
+        /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
+        if (inblob && inblob->length != -2) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "blob2_convert: missing inblob\n");
                 return -1;
@@ -6558,11 +6621,13 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
     tmp = htonl(inlen - 1);
     set_data(out, &tmp, BLOB_ON_DISK_LEN);
     *outdtsz = BLOB_ON_DISK_LEN;
+    char *cout = (char *)out;
+    if (outlen - BLOB_ON_DISK_LEN > 0)
+        memset(cout + BLOB_ON_DISK_LEN, 0, outlen - BLOB_ON_DISK_LEN);
 
     /* if there is enough room in the out buffer to store */
     if (inlen <= outlen - BLOB_ON_DISK_LEN + 1) {
         if (inlen > 0) {
-            char *cout = (char *)out;
             /* manually copy string data and append NUL byte because the input
              * data may not be NUL terminated */
             memcpy(cout + BLOB_ON_DISK_LEN, cin, inlen - 1);
@@ -6576,7 +6641,7 @@ static TYPES_INLINE int SERVER_BYTEARRAY_to_SERVER_BLOB(
 
         if (outblob->data == NULL) {
             logmsg(LOGMSG_ERROR, 
-                    "CLIENT_BYTEARRAY_to_SERVER_BLOB2: malloc %u failed\n",
+                    "SERVER_BYTEARRAY_to_SERVER_BLOB: malloc %u failed\n",
                     inlen);
             return -1;
         }
@@ -6651,38 +6716,23 @@ static TYPES_INLINE int SERVER_BLOB2_to_SERVER_BLOB(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    const char *cin = (const char *)in;
-    int len, tmp;
-
-    if (inlen < BLOB_ON_DISK_LEN || outlen < BLOB_ON_DISK_LEN)
-        return -1;
-
-    if (stype_is_null(in)) {
-        set_null(out, outlen);
-        if (inblob && inblob->exists) {
-            /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "SERVER_BLOB2_to_SERVER_BLOB: bogus blob!\n");
-            return -1;
-        }
-        return 0;
-    }
-
-    memcpy(out, in, BLOB_ON_DISK_LEN);
-    *outdtsz = BLOB_ON_DISK_LEN;
-
-    memcpy(&tmp, cin + 1, sizeof(int));
-    len = ntohl(tmp);
-
-    /* copy the actual data around */
-    return blob2_convert(len, cin + BLOB_ON_DISK_LEN, inlen - BLOB_ON_DISK_LEN,
-                         (char *)out + BLOB_ON_DISK_LEN,
-                         outlen - BLOB_ON_DISK_LEN, inblob, outblob, outdtsz);
+    return SERVER_BLOB_to_SERVER_BLOB_ext(in, inlen, inopts, inblob, out, outlen, outdtsz, outopts, outblob,
+                                          SERVER_BLOB2, SERVER_BLOB);
 }
 
 static TYPES_INLINE int SERVER_BLOB2_to_SERVER_BLOB2(
     const void *in, int inlen, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
+{
+    return SERVER_BLOB_to_SERVER_BLOB_ext(in, inlen, inopts, inblob, out, outlen, outdtsz, outopts, outblob,
+                                          SERVER_BLOB2, SERVER_BLOB2);
+}
+
+static TYPES_INLINE int SERVER_BLOB_to_SERVER_BLOB_ext(const void *in, int inlen, const struct field_conv_opts *inopts,
+                                                       blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
+                                                       const struct field_conv_opts *outopts, blob_buffer_t *outblob,
+                                                       int intype, int outtype)
 {
     const char *cin = (const char *)in;
     int len, tmp;
@@ -6694,7 +6744,7 @@ static TYPES_INLINE int SERVER_BLOB2_to_SERVER_BLOB2(
         set_null(out, outlen);
         if (inblob && inblob->exists) {
             /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "SERVER_VUTF8_to_SERVER_VUTF8: bogus blob!\n");
+            logmsg(LOGMSG_ERROR, "SERVER_BLOB2_to_SERVER_BLOB2: bogus blob!\n");
             return -1;
         }
         return 0;
@@ -6707,9 +6757,8 @@ static TYPES_INLINE int SERVER_BLOB2_to_SERVER_BLOB2(
     len = ntohl(tmp);
 
     /* copy the actual data around */
-    return blob2_convert(len, cin + BLOB_ON_DISK_LEN, inlen - BLOB_ON_DISK_LEN,
-                         (char *)out + BLOB_ON_DISK_LEN,
-                         outlen - BLOB_ON_DISK_LEN, inblob, outblob, outdtsz);
+    return blob2_convert(len, cin + BLOB_ON_DISK_LEN, inlen - BLOB_ON_DISK_LEN, (char *)out + BLOB_ON_DISK_LEN,
+                         outlen - BLOB_ON_DISK_LEN, inblob, outblob, outdtsz, intype, outtype);
 }
 
 /* datetime conversions*/
@@ -8185,7 +8234,6 @@ static TYPES_INLINE int SERVER_to_SERVER_NO_CONV(S2S_FUNKY_ARGS) { return -1; }
 #define SERVER_BREAL_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
 #define SERVER_BCSTR_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
 #define SERVER_BYTEARRAY_to_SERVER_BLOB2 SERVER_BYTEARRAY_to_SERVER_BLOB
-#define SERVER_BLOB_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
 #define SERVER_DATETIME_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
 #define SERVER_DATETIMEUS_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
 #define SERVER_INTVYM_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
@@ -10075,6 +10123,7 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
     decSingle dfp_single;
     decDouble dfp_double;
     decQuad dfp_quad;
+    int slen;
 
     if (stype_is_null(in)) {
         *outnull = 1;
@@ -10084,6 +10133,7 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
     decContextTestEndian(0);
 
     *outnull = 0;
+    char *cout = (char *)out;
 
     switch (inlen) {
     case sizeof(server_decimal32_t):
@@ -10113,6 +10163,11 @@ int SERVER_DECIMAL_to_CLIENT_CSTR(const void *in, int inlen,
 
         decQuadToString(&dfp_quad, (char *)out);
         break;
+    }
+
+    slen = strlen(cout) + 1;
+    if (slen < outlen) {
+        memset(cout + slen, 0, outlen - slen);
     }
 
     return 0;
@@ -10252,8 +10307,13 @@ int SERVER_INTVYM_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
     *outnull = 0;
 
     rc = _intv_srv2string(in, INTV_YM, out, outlen);
-    if (!rc)
-        *outdtsz = strlen(out) + 1;
+    if (!rc) {
+        char *cout = (char *)out;
+        *outdtsz = strlen(cout) + 1;
+        if (*outdtsz < outlen) {
+            memset(cout + *outdtsz, 0, outlen - *outdtsz);
+        }
+    }
 
     return rc;
 }
@@ -10398,8 +10458,13 @@ int SERVER_INTVDS_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
     *outnull = 0;
 
     rc = _intv_srv2string(in, INTV_DS, out, outlen);
-    if (!rc)
-        *outdtsz = strlen(out) + 1;
+    if (!rc) {
+        char *cout = (char *)out;
+        *outdtsz = strlen(cout) + 1;
+        if (*outdtsz < outlen) {
+            memset(cout + *outdtsz, 0, outlen - *outdtsz);
+        }
+    }
 
     return rc;
 }
@@ -10416,8 +10481,13 @@ int SERVER_INTVDSUS_to_CLIENT_CSTR(S2C_FUNKY_ARGS)
     *outnull = 0;
 
     rc = _intv_srv2string(in, INTV_DSUS, out, outlen);
-    if (!rc)
-        *outdtsz = strlen(out) + 1;
+    if (!rc) {
+        char *cout = (char *)out;
+        *outdtsz = strlen(cout) + 1;
+        if (*outdtsz < outlen) {
+            memset(cout + *outdtsz, 0, outlen - *outdtsz);
+        }
+    }
 
     return rc;
 }
@@ -12033,6 +12103,9 @@ int SERVER_INTVYM_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
         return rc;
 
     *outdtsz = strlen((char *)out + 1) + 2;
+    if (*outdtsz < outlen) {
+        memset((char *)out + *outdtsz, 0, outlen - *outdtsz);
+    }
     return 0;
 }
 
@@ -12102,6 +12175,9 @@ int SERVER_INTVDS_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
         return rc;
 
     *outdtsz = strlen((char *)out + 1) + 2;
+    if (*outdtsz < outlen) {
+        memset((char *)out + *outdtsz, 0, outlen - *outdtsz);
+    }
 
     return 0;
 }
@@ -12123,6 +12199,9 @@ int SERVER_INTVDSUS_to_SERVER_BCSTR(S2S_FUNKY_ARGS)
         return rc;
 
     *outdtsz = strlen((char *)out + 1) + 2;
+    if (*outdtsz < outlen) {
+        memset((char *)out + *outdtsz, 0, outlen - *outdtsz);
+    }
 
     return 0;
 }
@@ -13387,7 +13466,7 @@ int real_to_dttz(double d, dttz_t *dt, int precision)
     dt->dttz_conv = 1;
     if ((long long)(d * 1000) == d * 1000) {
         dt->dttz_prec = DTTZ_PREC_MSEC;
-        if (d > 0) {
+        if (d >= 0) {
             dt->dttz_sec = i;
             dt->dttz_frac = (d - i) * 1E3 + 0.5; /* Round up */
         } else {
@@ -13396,7 +13475,7 @@ int real_to_dttz(double d, dttz_t *dt, int precision)
         }
     } else {
         dt->dttz_prec = DTTZ_PREC_USEC;
-        if (d > 0) {
+        if (d >= 0) {
             dt->dttz_sec = i;
             dt->dttz_frac = (d - i) * 1E6 + 0.5; /* Round up */
         } else {

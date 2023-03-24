@@ -31,7 +31,9 @@ void thread_util_dump_on_exit_disable(void);
 void thread_util_donework(void);
 
 /* define architecture thread identifies for sane debugging */
-#if defined(_LINUX_SOURCE)
+#if defined (__APPLE__)
+typedef pthread_t arch_tid;
+#elif defined(_LINUX_SOURCE)
 typedef pid_t arch_tid;
 #elif defined(_IBM_SOURCE)
 typedef tid_t arch_tid;

@@ -17,6 +17,7 @@
 #include "comdb2_plugin.h"
 #include "comdb2.h"
 #include "comdb2_appsock.h"
+#include <comdb2_atomic.h>
 
 /* Forward declaration */
 comdb2_appsock_t logdelete3_plugin;
@@ -60,7 +61,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     /* check for after commented out below as well
     int before_count = bdb_get_low_headroom_count(thedb->bdb_env);
     */
-    before_master = gbl_master_changes;
+    before_master = ATOMIC_LOAD32(gbl_master_changes);
     before_sc = gbl_sc_commit_count;
     logmsg(LOGMSG_INFO, "Disabling log file deletion\n");
 
@@ -126,7 +127,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     log_delete_rem_state(thedb, &log_delete_state);
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
     backend_update_sync(thedb);
-    after_master = gbl_master_changes;
+    after_master = ATOMIC_LOAD32(gbl_master_changes);
     after_sc = gbl_sc_commit_count;
 
     /* The text we report back here is a binary protocol so don't

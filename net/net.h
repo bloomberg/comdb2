@@ -74,14 +74,19 @@ typedef void QSTATENQUEFP(struct netinfo_struct *netinfo, void *netstat,
                           void *rec, int len);
 typedef void QSTATFREEFP(struct netinfo_struct *netinfo, void *netstat);
 
-typedef void QSTATITERFP(struct netinfo_struct *netinfo, void *arg,
-                         void *qstat);
+struct net_get_records;
+struct net_queue_stat;
+typedef void QSTATITERFP(struct net_get_records *, struct net_queue_stat*);
 
+typedef void QSTATDUMPFP(struct netinfo_struct *netinfo, void *netstat,
+                         FILE *f);
 typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
                          char *service, char *userfunc, int64_t count,
                          int64_t totus);
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
+
+typedef int NETTHROTTLEFP(struct netinfo_struct *netinfo, const char *hostname);
 
 void net_setbufsz(netinfo_type *info, int bufsz);
 
@@ -96,7 +101,8 @@ enum {
     NET_SEND_NODELAY = 0x00000001,
     NET_SEND_NODROP = 0x00000002,
     NET_SEND_INORDER = 0x00000004,
-    NET_SEND_TRACE = 0x00000008
+    NET_SEND_TRACE = 0x00000008,
+    NET_SEND_LOGPUT = 0x00000010
 };
 
 enum {
@@ -109,7 +115,6 @@ enum {
     NET_SEND_FAIL_INVALIDACKRC = -7,
     NET_SEND_FAIL_QUEUE_FULL = -8,
     NET_SEND_FAIL_MALLOC_FAIL = -9,
-    NET_SEND_FAIL_CLOSED = -10
 };
 
 /*
@@ -159,7 +164,8 @@ int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
 
 int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
                             QSTATREADERFP *reader, QSTATENQUEFP *enque,
-                            QSTATCLEARFP *qclear, QSTATFREEFP *qfree);
+                            QSTATDUMPFP *dump, QSTATCLEARFP *qclear,
+                            QSTATFREEFP *qfree);
 
 /* register a callback that you can compare the order of things
    already on the write queue. */
@@ -170,6 +176,10 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+
+/* callback to disable logputs if a node is too far behind */
+int net_register_throttle(netinfo_type *netinfo_ptr, NETTHROTTLEFP func);
+
 int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net
@@ -412,8 +422,9 @@ int net_listen(int port);
 void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
 void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
-void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP func,
-                            void *arg);
+void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records *);
+void net_queue_stat_iterate_evbuffer(netinfo_type *, QSTATITERFP, struct net_get_records *);
+
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
                           void *arg);
 
@@ -440,7 +451,7 @@ int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
 void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
-
+void update_host_net_queue_stats(host_node_type *, size_t, size_t);
 extern int gbl_libevent;
 extern int gbl_libevent_appsock;
 extern int gbl_libevent_rte_only;
@@ -455,5 +466,6 @@ void add_timer_event(void(*)(int, short, void *), void *, int);
 int db_is_stopped(void);
 int db_is_exiting(void);
 void stop_event_net(void);
+int sync_state_to_protobuf(int);
 
 #endif

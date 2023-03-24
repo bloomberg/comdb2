@@ -49,6 +49,7 @@ static char junk[2048];
 
 static void *pushlogs_thread(void *voidarg)
 {
+    comdb2_name_thread(__func__);
     int rc;
     int lastreport = 0;
     thrman_register(THRTYPE_PUSHLOG);
@@ -103,8 +104,6 @@ static void *pushlogs_thread(void *voidarg)
         if (done)
             break;
 
-        Pthread_mutex_lock(&schema_change_in_progress_mutex);
-
         /* put some junk into meta table */
         init_fake_ireq(thedb, &iq);
         db = &thedb->static_table;
@@ -112,7 +111,6 @@ static void *pushlogs_thread(void *voidarg)
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot create transaction\n");
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             Pthread_mutex_lock(&mutex);
             have_thread = 0;
             Pthread_mutex_unlock(&mutex);
@@ -122,14 +120,12 @@ static void *pushlogs_thread(void *voidarg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: error %d adding to meta table\n",
                     rc);
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
             trans_abort(&iq, trans);
             Pthread_mutex_lock(&mutex);
             have_thread = 0;
             Pthread_mutex_unlock(&mutex);
             break;
         }
-        Pthread_mutex_unlock(&schema_change_in_progress_mutex);
         rc = trans_commit(&iq, trans, gbl_myhostname);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot commit txn %d\n", rc);

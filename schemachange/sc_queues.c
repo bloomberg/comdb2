@@ -435,20 +435,20 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     db = getqueuebyname(sc->tablename);
 
     /* dropping/altering a queue that doesn't exist? */
-    if ((sc->drop_table || sc->alteronly != SC_ALTER_NONE) && db == NULL) {
+    if ((sc->kind == SC_DEL_TRIGGER) && db == NULL) {
         sbuf2printf(sb, "!Trigger %s doesn't exist.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
         rc = -1;
         goto done;
     }
     /* adding a queue that already exists? */
-    else if (sc->addonly && db != NULL) {
+    else if (sc->kind == SC_ADD_TRIGGER && db != NULL) {
         sbuf2printf(sb, "!Trigger %s already exists.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
         rc = -1;
         goto done;
     }
-    if (sc->addonly) {
+    if (sc->kind == SC_ADD_TRIGGER) {
         if (javasp_exists(sc->tablename)) {
             sbuf2printf(sb, "!Procedure %s already exists.\n", sc->tablename);
             sbuf2printf(sb, "FAILED\n");
@@ -463,17 +463,17 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    if ((rc = check_option_queue_coherency(sc, db)))
+    if (sc->kind != SC_DEL_TRIGGER && (rc = check_option_queue_coherency(sc, db)))
         goto done;
 
     /* TODO: other checks: procedure with this name must not exist either */
 
-    char **dests;
+    char **dests = NULL;
 
-    if (sc->addonly || sc->alteronly != SC_ALTER_NONE) {
+    if (sc->kind == SC_ADD_TRIGGER) {
         struct dest *d;
 
-        dests = malloc(sizeof(char *) * sc->dests.count);
+        dests = calloc(sc->dests.count, sizeof(char *));
         if (dests == NULL) {
             sbuf2printf(sb, "!Can't allocate memory for destination list\n");
             logmsg(LOGMSG_ERROR,
@@ -498,7 +498,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     /* For addding, there's no queue and no consumer/procedure, etc., so create
      * those first.  For
      * other methods, we need to manage the existing consumer first. */
-    if (sc->addonly) {
+    if (sc->kind == SC_ADD_TRIGGER) {
         rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
                                   sc->dests.count, dests, &bdberr);
         if (rc) {
@@ -580,67 +580,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    __func__, rc, bdberr);
             goto done;
         }
-    } else if (sc->alteronly != SC_ALTER_NONE) {
-        rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->tablename, config,
-                                    sc->dests.count, dests, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_alter_queue returned %d\n",
-                   __func__, rc);
-            goto done;
-        }
-
-        if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
-            goto done;
-        }
-
-        if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-compress, rcode %d\n",
-                   rc);
-            goto done;
-        }
-
-        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) !=
-            0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-persistent seq, rc %d\n",
-                   rc);
-            goto done;
-        }
-
-        /* Zero sequence */
-        if (sc->persistent_seq &&
-            (rc = put_db_queue_sequence(db, tran, 0)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-sequence, rc %d\n", rc);
-            goto done;
-        }
-
-        db->odh = sc->headers;
-        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
-                                  sc->persistent_seq);
-
-        scdone_type = llmeta_queue_alter;
-
-        /* stop */
-        dbqueuedb_stop_consumers(db);
-        rc = javasp_do_procedure_op(JAVASP_OP_RELOAD, db->tablename, NULL,
-                                    config);
-        if (rc) {
-            sbuf2printf(sb,
-                        "!Can't load procedure - check config/destinations?\n");
-            sbuf2printf(sb, "FAILED\n");
-        }
-
-        /* TODO: needs locking */
-        rc = dbqueuedb_add_consumer(
-            db, 0, dests[0] /* TODO: multiple destinations */, 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: newqdb returned NULL\n", __func__);
-            goto done;
-        }
-
-        /* start - see the ugh above. */
-        dbqueuedb_restart_consumers(db);
-    } else if (sc->drop_table) {
+    } else if (sc->kind == SC_DEL_TRIGGER) {
         scdone_type = llmeta_queue_drop;
         /* stop */
         dbqueuedb_stop_consumers(db);
@@ -681,8 +621,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = bdb_llog_scdone(thedb->bdb_env, scdone_type, db->tablename,
                              strlen(db->tablename) + 1, 1, &bdberr);
         if (rc) {
-            sbuf2printf(sb, "!Failed to broadcast queue %s\n", sc->drop_table ? "drop" : "add");
-            logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n", sc->drop_table ? "drop" : "add");
+            sbuf2printf(sb, "!Failed to broadcast queue %s\n",
+                        sc->kind == SC_DROPTABLE ? "drop" : "add");
+            logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
+                   sc->kind == SC_DROPTABLE ? "drop" : "add");
         }
     }
 
@@ -691,7 +633,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * scdone. This needs to be a separate transaction right now because the
      * file handle is stil open on the
      * replicant until the scdone, and we can't delete it until it's closed. */
-    if (sc->drop_table) {
+    if (sc->kind == SC_DEL_TRIGGER) {
         if (!same_tran) {
             rc = trans_start(&iq, NULL, (void *)&tran);
             if (rc) {
@@ -746,11 +688,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    if (sc->addonly && db && rc == 0) {
+    if (sc->kind == SC_ADD_TRIGGER && db && rc == 0) {
         add_to_qdbs(db);
     }
 
-    if (sc->addonly || sc->alteronly != SC_ALTER_NONE) {
+    if (sc->kind == SC_ADD_TRIGGER) {
         dbqueuedb_admin(thedb);
     }
 
@@ -767,12 +709,12 @@ done:
     // depending on where it is being executed from.
 }
 
-int perform_trigger_update(struct schema_change_type *sc)
+int perform_trigger_update(struct schema_change_type *sc, struct ireq *unused)
 {
     wrlock_schema_lk();
-    javasp_do_procedure_wrlock();
+    javasp_splock_wrlock();
     int rc = perform_trigger_update_int(sc);
-    javasp_do_procedure_unlock();
+    javasp_splock_unlock();
     unlock_schema_lk();
     return rc;
 }

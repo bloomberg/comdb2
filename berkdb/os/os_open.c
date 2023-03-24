@@ -28,6 +28,10 @@ static const char revid[] = "$Id: os_open.c,v 11.48 2003/09/10 00:27:29 bostic E
 static int __os_region_open __P((DB_ENV *, const char *, int, int, DB_FH **));
 #endif
 
+#if defined (UFID_HASH_DEBUG)
+#include <logmsg.h>
+#endif
+
 /*
  * __os_have_direct --
  *	Check to see if we support direct I/O.
@@ -68,6 +72,8 @@ ___os_open(dbenv, name, flags, mode, fhpp)
 	return (__os_open_extend(dbenv, name, 0, 0, flags, mode, fhpp));
 }
 
+int gbl_force_direct_io = 1;
+int gbl_wal_osync = 0;
 /*
  * __os_open_extend --
  *	Open a file descriptor (including page size and log size information).
@@ -75,6 +81,7 @@ ___os_open(dbenv, name, flags, mode, fhpp)
  * PUBLIC: int __os_open_extend __P((DB_ENV *,
  * PUBLIC:     const char *, u_int32_t, u_int32_t, u_int32_t, int, DB_FH **));
  */
+
 int
 ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	DB_ENV *dbenv;
@@ -91,6 +98,9 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 
 	*fhpp = NULL;
 	oflags = 0;
+
+    if (gbl_force_direct_io && (F_ISSET(dbenv, DB_ENV_DIRECT_DB)) && !(LF_ISSET(DB_OSO_LOG)))
+        LF_SET(DB_OSO_DIRECT);
 
 #define	OKFLAGS								\
 	(DB_OSO_CREATE | DB_OSO_DIRECT | DB_OSO_EXCL | DB_OSO_LOG |	\
@@ -109,13 +119,22 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	oflags |= O_BINARY;
 #endif
 
+#if defined (UFID_HASH_DEBUG)
+	if (!strstr(name, "logs/log")) {
+		logmsg(LOGMSG_USER, "%s opening %s\n", __func__, name);
+	}
+#endif
 	/*
 	 * DB requires the POSIX 1003.1 semantic that two files opened at the
 	 * same time with DB_OSO_CREATE/O_CREAT and DB_OSO_EXCL/O_EXCL flags
 	 * set return an EEXIST failure in at least one.
 	 */
-	if (LF_ISSET(DB_OSO_CREATE))
+	if (LF_ISSET(DB_OSO_CREATE)) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s set create flag for %s\n", __func__, name);
+#endif
 		 oflags |= O_CREAT;
+	}
 
 	if (LF_ISSET(DB_OSO_EXCL))
 		 oflags |= O_EXCL;
@@ -137,8 +156,12 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	else
 		oflags |= O_RDWR;
 
-	if (LF_ISSET(DB_OSO_TRUNC))
+	if (LF_ISSET(DB_OSO_TRUNC)) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s truncating %s\n", __func__, name);
+#endif
 		 oflags |= O_TRUNC;
+	}
 
 
 	/*
@@ -166,7 +189,7 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 
 	/* if they didn't request direct on this file, it's a log file, and the
 	 * environment wants direct logs, request sync io, but not directio */
-	if (F_ISSET(dbenv, DB_ENV_DIRECT_LOG) && LF_ISSET(DB_OSO_LOG)) {
+	if (F_ISSET(dbenv, DB_ENV_DIRECT_LOG) && LF_ISSET(DB_OSO_LOG) && gbl_wal_osync) {
 		/* don't do O_DIRECT for logs */
 #if defined(_AIX) && !defined (TESTSUITE)
 		oflags |= O_DSYNC;

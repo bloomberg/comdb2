@@ -42,7 +42,6 @@
 #include "fdb_fend.h"
 #include "fdb_boots.h"
 #include "fdb_comm.h"
-#include "fdb_util.h"
 #include "fdb_fend_cache.h"
 #include "fdb_access.h"
 #include "fdb_bend.h"
@@ -64,6 +63,7 @@ extern int gbl_expressions_indexes;
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
+int gbl_fdb_push_remote = 0;
 
 struct fdb_tbl;
 struct fdb;
@@ -120,6 +120,7 @@ struct fdb {
     int dbname_len; /* excluding terminal 0 */
     enum mach_class class
         ;      /* what class is the cluster CLASS_PROD, CLASS_TEST, ... */
+    int class_override; /* set if class is part of table name at creation */
     int local; /* was this added by a LOCAL access ?*/
     int dbnum; /* cache dbnum for db, needed by current dbt_handl_alloc* */
 
@@ -469,7 +470,7 @@ fdb_t *get_fdb(const char *dbname)
  *
  */
 static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
-                      int local)
+                      int local, int class_override)
 {
     int rc = 0;
     fdb_t *fdb;
@@ -492,6 +493,7 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
 
     fdb->dbname = strdup(dbname);
     fdb->class = class;
+    fdb->class_override = class_override;
     /*
        default remote version we expect
 
@@ -1096,7 +1098,8 @@ done:
     return rc;
 }
 
-static enum mach_class get_fdb_class(const char **p_dbname, int *local)
+static enum mach_class get_fdb_class(const char **p_dbname, int *local,
+                                     int *lvl_override)
 {
     const char *dbname = *p_dbname;
     enum mach_class my_lvl = CLASS_UNKNOWN;
@@ -1121,9 +1124,13 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         }
         free(class); /* class is strndup'd */
         *p_dbname = dbname;
+        if (lvl_override)
+            *lvl_override = 1;
     } else {
         /* implicit is same class */
         remote_lvl = my_lvl;
+        if (lvl_override)
+            *lvl_override = 0;
     }
 
     /* override local */
@@ -1150,7 +1157,7 @@ int comdb2_fdb_check_class(const char *dbname)
     int local;
     int rc = 0;
 
-    requested_lvl = get_fdb_class(&dbname, &local);
+    requested_lvl = get_fdb_class(&dbname, &local, NULL);
     if (requested_lvl == CLASS_UNKNOWN) {
         return -1;
     }
@@ -1249,11 +1256,9 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
             clnt->fdb_state.xerr.errval, clnt->fdb_state.xerr.errstr, errcode,
             prefix);
     } else {
-        clnt->fdb_state.xerr.errval = errcode;
         /* need to pass error to sqlite */
-        snprintf(clnt->fdb_state.xerr.errstr,
-                 sizeof(clnt->fdb_state.xerr.errstr), "%s for db \"%s\"",
-                 prefix, dbname);
+        errstat_set_rcstrf(&clnt->fdb_state.xerr, errcode, 
+                 "%s for db \"%s\"", prefix, dbname);
     }
 
     return SQLITE_ERROR; /* speak sqlite */
@@ -1269,7 +1274,9 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
  *
  */
 int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
-                           int *version, int in_analysis_load)
+                           int *version, int in_analysis_load,
+                           int *out_class, int *out_local,
+                           int *out_class_override)
 {
     fdb_t *fdb;
     int rc = FDB_NOERR;
@@ -1278,8 +1285,9 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     enum mach_class lvl = 0;
     char errstr[256];
     char *perrstr;
+    int lvl_override;
 
-    lvl = get_fdb_class(&dbname, &local);
+    lvl = get_fdb_class(&dbname, &local, &lvl_override);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
         return _failed_AddAndLockTable(
             dbname,
@@ -1288,7 +1296,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 retry_fdb_creation:
-    fdb = new_fdb(dbname, &created, lvl, local);
+    fdb = new_fdb(dbname, &created, lvl, local, lvl_override);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
         return _failed_AddAndLockTable(dbname, FDB_ERR_MALLOC,
@@ -1418,6 +1426,10 @@ retry_fdb_creation:
     /* we return SQLITE_OK here, which tells the caller that the db is still
        READ locked!
        the caller will have to release that */
+
+    *out_class = lvl;
+    *out_local = local;
+    *out_class_override = lvl_override;
 
     return SQLITE_OK; /* speaks sqlite */
 }
@@ -1610,11 +1622,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
 {
 #define SQLITE_MASTER_ROW_COLS 6
     Mem mems[SQLITE_MASTER_ROW_COLS], *m;
-    u32 type;
-    int sz, remsz, total_data_sz, total_header_sz;
-    int fnum;
-    char *rec, *crt;
-    u32 len;
+    int rc;
 
     logmsg(LOGMSG_INFO, "Creating master table for %s %s %s %d \"%s\" \"%s\"\n", etype, name,
            tbl_name, rootpage, sql, csc2);
@@ -1690,59 +1698,16 @@ int create_sqlite_master_table(const char *etype, const char *name,
         m->flags = MEM_Null;
     }
 
-    /* compute output row size, header + data */
-    total_data_sz = 0;
-    total_header_sz = 0;
-    for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
-        type = sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
-                                     &len);
-        total_data_sz += sqlite3VdbeSerialTypeLen(type);
-        total_header_sz += sqlite3VarintLen(type);
-    }
-    total_header_sz += sqlite3VarintLen(total_header_sz);
-
-    /* create the sqlite row */
-    rec = (char *)calloc(1, total_header_sz + total_data_sz);
-    if (!rec) {
-        logmsg(LOGMSG_ERROR, "ENOMEM: Malloc %d\n", total_data_sz + total_header_sz);
+    rc = sqlite3_unpacked_to_packed(mems, SQLITE_MASTER_ROW_COLS, ret_rec,
+                                    ret_rec_len);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "ENOMEM: Malloc error\n");
         free(mems[0].z);
         free(mems[1].z);
         free(mems[2].z);
         free(mems[4].z);
         free(mems[5].z);
         return FDB_ERR_MALLOC;
-    }
-
-    crt = rec;
-    remsz = total_header_sz + total_data_sz;
-
-    sz = sqlite3PutVarint((unsigned char *)crt, total_header_sz);
-    crt += sz;
-    remsz -= sz;
-
-    /* serialize headers */
-    for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
-        sz = sqlite3PutVarint((unsigned char *)crt,
-                              sqlite3VdbeSerialType(&mems[fnum],
-                                                    SQLITE_DEFAULT_FILE_FORMAT,
-                                                    &len));
-        crt += sz;
-        remsz -= sz;
-    }
-    for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
-        sz = sqlite3VdbeSerialPut(
-            (unsigned char *)crt, &mems[fnum],
-            sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
-                                  &len));
-        crt += sz;
-        remsz -= sz;
-    }
-
-    *ret_rec = rec;
-    *ret_rec_len = total_header_sz + total_data_sz;
-
-    if (remsz != 0) {
-        abort();
     }
 
     return FDB_NOERR;
@@ -2439,7 +2404,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
         comdb2uuid(fdbc->ciduuid);
         memcpy(fdbc->tid, tid, sizeof(uuid_t));
     } else {
-        *((unsigned long long *)fdbc->cid) = comdb2fastseed();
+        *((unsigned long long *)fdbc->cid) = comdb2fastseed(1);
         memcpy(fdbc->tid, tid, sizeof(unsigned long long));
     }
     fdbc->flags = flags;
@@ -2804,7 +2769,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     u32 type = 0;
     int sz;
     int datasz, hdrsz;
+#ifndef NDEBUG
     int remainingsz;
+#endif
     char *dtabuf;
     char *hdrbuf;
     u32 len;
@@ -2847,14 +2814,18 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     hdrbuf += sz;
 
     /* keep track of the size remaining */
+#ifndef NDEBUG
     remainingsz = datasz;
+#endif
 
     for (fnum = 0; fnum < nfields; fnum++) {
         type =
             sqlite3VdbeSerialType(&key[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
         sz = sqlite3VdbeSerialPut((unsigned char *)dtabuf, &key[fnum], type);
         dtabuf += sz;
+#ifndef NDEBUG
         remainingsz -= sz;
+#endif
         sz =
             sqlite3PutVarint((unsigned char *)hdrbuf,
                              sqlite3VdbeSerialType(
@@ -2864,7 +2835,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 
     pCur->keybuflen = hdrsz + datasz;
 
+#ifndef NDEBUG
     assert(remainingsz == 0);
+#endif
 
     return FDB_NOERR;
 }
@@ -3159,52 +3132,6 @@ retry:
     return rc;
 }
 
-static void fdb_unpacked_get_reqsz(Mem *m, int nField, int *p_hdrsz,
-                                   int *p_datasz)
-{
-    int fnum;
-    u32 type;
-    int sz;
-    int datasz, hdrsz;
-    u32 len;
-
-    datasz = 0;
-    hdrsz = 0;
-
-    for (fnum = 0; fnum < nField; fnum++) {
-        type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialTypeLen(type);
-        datasz += sz;
-        hdrsz += sqlite3VarintLen(type);
-    }
-    /* to account for size of header in header */
-    hdrsz += sqlite3VarintLen(hdrsz);
-
-    *p_hdrsz = hdrsz;
-    *p_datasz = datasz;
-}
-
-static int fdb_sqlite_unpacked_to_packed(Mem *m, int ncols, char **out,
-                                         int *outlen)
-{
-    int datasz, hdrsz;
-
-    fdb_unpacked_get_reqsz(m, ncols, &hdrsz, &datasz);
-
-    *outlen = hdrsz + datasz;
-
-    *out = (char *)malloc(*outlen);
-    if (*out == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, *outlen);
-        return FDB_ERR_MALLOC;
-    }
-
-    fdb_unp_to_p(m, ncols, hdrsz, datasz, *out, *outlen);
-
-    return FDB_NOERR;
-}
-
 static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                                       int bias, int last)
 {
@@ -3259,22 +3186,8 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                 sql = fdbc->sql_hint;
                 sqllen = strlen(sql) + 1;
             } else {
-#if 0
-            NOTE: I will code the prefilter as part of sql
-
-            sql = _build_run_sql_from_hint(pCur, bias, &sqllen);
-
-            /* pack the key to send */
-            rc = fdb_sqlite_unpacked_to_packed(key, nfields, &packed_key, &packed_keylen);
-            if (rc)
-            {
-               return -1;
-            }
-#else
-
                 sql = _build_run_sql_from_hint(pCur, key, nfields, bias,
                                                &sqllen, &error);
-#endif
             }
         }
 
@@ -3868,7 +3781,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         if (tran->isuuid) {
             comdb2uuid((unsigned char *)tran->tid);
         } else
-            *(unsigned long long *)tran->tid = comdb2fastseed();
+            *(unsigned long long *)tran->tid = comdb2fastseed(2);
 
         tran->fdb = fdb;
 
@@ -3923,8 +3836,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int isuuid = (clnt->osql.rqid == OSQL_RQID_USE_UUID) &&
-                 (fdb->server_version > FDB_VER_WR_NAMES);
+    int isuuid = gbl_noenv_messages && (fdb->server_version > FDB_VER_WR_NAMES);
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -5116,7 +5028,7 @@ int fdb_validate_existing_table(const char *zDatabase)
     int local;
     int cls;
 
-    cls = get_fdb_class(&dbName, &local);
+    cls = get_fdb_class(&dbName, &local, NULL);
 
     Pthread_rwlock_rdlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbName, NULL);

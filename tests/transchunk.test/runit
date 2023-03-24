@@ -248,6 +248,18 @@ EOF
 
 check_done_2
 
+echo "chunk + indexes on expressions" >> $outlog
+$r >> $outlog 2>&1 << "EOF"
+CREATE TABLE t3 { tag ondisk { int i } keys { "KEY"=(int)"i+1" } }$$
+INSERT INTO t3 VALUES(1),(2),(3)
+SET TRANSACTION BLOCKSQL
+SET TRANSACTION CHUNK 1
+BEGIN
+DELETE FROM t3 WHERE 1
+COMMIT
+SELECT COUNT(*) FROM t3
+EOF
+
 
 # get testcase output
 testcase_output=$(cat $outlog)

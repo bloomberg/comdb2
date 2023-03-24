@@ -1,0 +1,10 @@
+The following case results in corruption; data is unreadable (disk malformed error); can rebuild.
+
+Schema change from vutf8 to vutf[16], and then update a row
+behind the sc cursor to an empty string
+
+ ...  record N ... record N+1
+          \                \
+           \                +-- sc cursor
+            \
+             +-- UPDATE t SET col = ""

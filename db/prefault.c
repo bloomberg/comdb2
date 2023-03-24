@@ -430,6 +430,7 @@ static int lock_variable;
 /* much of the code (most) here is stolen from record.c */
 static void *prefault_io_thread(void *arg)
 {
+    comdb2_name_thread(__func__);
     struct dbenv *dbenv;
     int rc = 0, needfree = 0;
     pfrq_t *req;

@@ -1270,6 +1270,10 @@ static void whereApplyPartialIndexConstraints(
   }
 }
 
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+int gbl_seekscan_maxsteps = -1;
+#endif
+
 /*
 ** Generate code for the start of the iLevel-th loop in the WHERE clause
 ** implementation described by pWInfo.
@@ -1786,7 +1790,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     }else{
       op = aStartOp[(start_constraints<<2) + (startEq<<1) + bRev];
       assert( op!=0 );
-      if( (pLoop->wsFlags & WHERE_IN_SEEKSCAN)!=0 && op==OP_SeekGE ){
+      if( (pLoop->wsFlags & WHERE_IN_SEEKSCAN)!=0 && op==OP_SeekGE ) {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         // NC: Patch that introduced Bignull has not been backported yet
         //assert( regBignull==0 );
@@ -1801,8 +1805,28 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         ** of entries in the tree, so basing the number of steps to try
         ** on the estimated number of rows in the btree seems like a good
         ** guess. */
-        addrSeekScan = sqlite3VdbeAddOp1(v, OP_SeekScan, 
-                                         (pIdx->aiRowLogEst[0]+9)/10);
+#if defined SQLITE_BUILDING_FOR_COMDB2
+        /* gbl_disable_seekscan_optimization turns off seekscans completely.  This
+        ** is a bit more lenient - we can keep them on, but get rid of, or adjust,
+        ** the maximum number of steps that we try to do on the index before doing
+        ** the next find.  This is a three-way switch. The default setting of -1
+        ** lets SQLite keep its setting that estimates the max number of steps by
+        ** max number of rows it expects to traverse.  0 disables the seekscan
+        ** optimization (OP_SeekScan), but still does a seekscan, doing a find for
+        ** each next record.  A positive value caps the scan to that many
+        ** operations. */
+        if (gbl_seekscan_maxsteps == 0) {
+          addrSeekScan = 0;
+          sqlite3VdbeAddOp0(v, OP_Noop);
+        } else if (gbl_seekscan_maxsteps > 0) {
+          addrSeekScan = sqlite3VdbeAddOp1(v, OP_SeekScan, gbl_seekscan_maxsteps);
+        } else {
+#endif
+          addrSeekScan = sqlite3VdbeAddOp1(v, OP_SeekScan,
+                                           (pIdx->aiRowLogEst[0] + 9) / 10);
+#if defined SQLITE_BUILDING_FOR_COMDB2
+        }
+#endif
         VdbeCoverage(v);
       }
       sqlite3VdbeAddOp4Int(v, op, iIdxCur, addrNxt, regBase, nConstraint);
@@ -1819,8 +1843,19 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     ** range (if any).
     */
     nConstraint = nEq;
+    assert( pLevel->p2==0 );
     if( pRangeEnd ){
       Expr *pRight = pRangeEnd->pExpr->pRight;
+      if( addrSeekScan ){
+        /* For a seek-scan that has a range on the lowest term of the index,
+        ** we have to make the top of the loop be code that sets the end
+        ** condition of the range.  Otherwise, the OP_SeekScan might jump
+        ** over that initialization, leaving the range-end value set to the
+        ** range-start value, resulting in a wrong answer.
+        ** See ticket 5981a8c041a3c2f3 (2021-11-02).
+        */
+        pLevel->p2 = sqlite3VdbeCurrentAddr(v);
+      }
       codeExprOrVector(pParse, pRight, regBase+nEq, nTop);
       whereLikeOptimizationStringFixup(v, pLevel, pRangeEnd);
       if( (pRangeEnd->wtFlags & TERM_VNULL)==0
@@ -1852,7 +1887,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     sqlite3DbFree(db, zEndAff);
 
     /* Top of the loop body */
-    pLevel->p2 = sqlite3VdbeCurrentAddr(v);
+    if( pLevel->p2==0 ) pLevel->p2 = sqlite3VdbeCurrentAddr(v);
 
     /* Check if the index cursor is past the end of the range. */
     if( nConstraint ){

@@ -17,7 +17,7 @@ cdb2sql $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('on sqlite_makerecord_fo
 before=`${TESTSBUILDDIR}/makerecord_timer $dbnm $host 67108864`
 # Measure memory
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
-totalmembefore=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $8}'`
+totalmembefore=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(peak) from comdb2_memstats WHERE lower(name) = 'sqlite'"`
 
 # Turn off the optimization
 cdb2sql $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('off sqlite_makerecord_for_comdb2')"
@@ -25,7 +25,7 @@ cdb2sql $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('off sqlite_makerecord_f
 after=`${TESTSBUILDDIR}/makerecord_timer $dbnm $host 67108864`
 # Measure memory
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
-totalmemafter=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $8}'`
+totalmemafter=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(peak) from comdb2_memstats WHERE lower(name) = 'sqlite'"`
 
 
 # With the optimization, insertion should run faster.

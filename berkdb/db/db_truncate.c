@@ -172,6 +172,8 @@ __db_cursor_check(dbp)
 	DB *ldbp;
 	DBC *dbc;
 	DB_ENV *dbenv;
+	DB_CQ *cq;
+	DB_CQ_HASH *h;
 	int found;
 
 	dbenv = dbp->dbenv;
@@ -180,15 +182,35 @@ __db_cursor_check(dbp)
 	for (found = 0, ldbp = __dblist_get(dbenv, dbp->adj_fileid);
 	    ldbp != NULL && ldbp->adj_fileid == dbp->adj_fileid;
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
-		MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
-		for (dbc = TAILQ_FIRST(&ldbp->active_queue);
-		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
-			if (IS_INITIALIZED(dbc)) {
-				found = 1;
-				break;
+
+		if (!dbp->use_tlcq) {
+			MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+			for (dbc = TAILQ_FIRST(&ldbp->active_queue);
+				dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
+				if (IS_INITIALIZED(dbc)) {
+					found = 1;
+					break;
+				}
 			}
+			MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+		} else {
+			Pthread_mutex_lock(&gbl_all_cursors.lk);
+			TAILQ_FOREACH(h, &gbl_all_cursors, links) {
+				Pthread_mutex_lock(&h->lk);
+				if ((cq = hash_find(h->h, &dbp)) != NULL) {
+					for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
+							dbc = TAILQ_NEXT(dbc, links)) {
+						if (IS_INITIALIZED(dbc)) {
+							found = 1;
+							break;
+						}
+					}
+				}
+				Pthread_mutex_unlock(&h->lk);
+			}
+			Pthread_mutex_unlock(&gbl_all_cursors.lk);
 		}
-		MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+
 		if (found == 1)
 			break;
 	}

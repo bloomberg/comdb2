@@ -54,6 +54,10 @@ extern int gbl_crc32c;
 extern int gbl_decom;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;
+extern int gbl_stack_at_lock_get;
+extern int gbl_stack_at_lock_handle;
+extern int gbl_stack_at_write_lock;
+extern int gbl_stack_at_lock_gen_increment;
 extern int gbl_disable_skip_rows;
 extern int gbl_disable_sql_dlmalloc;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
@@ -70,6 +74,7 @@ extern int gbl_forbid_ulonglong;
 extern int gbl_force_highslot;
 extern int gbl_fdb_allow_cross_classes;
 extern int gbl_fdb_resolve_local;
+extern int gbl_fdb_push_remote;
 extern int gbl_goslow;
 extern int gbl_heartbeat_send;
 extern int gbl_keycompr;
@@ -90,11 +95,14 @@ extern int gbl_net_throttle_percent;
 extern int gbl_notimeouts;
 extern int gbl_watchdog_disable_at_start;
 extern int gbl_osql_verify_retries_max;
+extern int gbl_dump_history_on_too_many_verify_errors;
 extern int gbl_page_latches;
+extern int gbl_pb_connectmsg;
 extern int gbl_prefault_udp;
 extern int gbl_print_syntax_err;
 extern int gbl_lclpooled_buffers;
 extern int gbl_reallyearly;
+extern int gbl_rep_mon_threshold;
 extern int gbl_repdebug;
 extern int gbl_replicant_latches;
 extern int gbl_return_long_column_names;
@@ -103,10 +111,13 @@ extern int skip_clear_queue_extents;
 extern int gbl_slow_rep_process_txn_freq;
 extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
+extern int gbl_sqlite_use_temptable_for_rowset;
 extern int gbl_allow_bplog_restarts;
+extern int gbl_sqlite_stat4_scan;
 extern int gbl_test_blob_race;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
+extern int gbl_track_weighted_queue_metrics_separately;
 extern int gbl_berkdb_track_locks;
 extern int gbl_db_lock_maxid_override;
 extern int gbl_udp;
@@ -140,6 +151,7 @@ extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
 extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
+extern uint32_t gbl_written_rows_warn;
 extern uint32_t gbl_max_wr_rows_per_txn;
 extern uint32_t gbl_max_cascaded_rows_per_txn;
 extern uint32_t gbl_max_time_per_txn_ms;
@@ -147,9 +159,13 @@ extern int gbl_force_serial_on_writelock;
 extern int gbl_processor_thd_poll;
 extern int gbl_time_rep_apply;
 extern int gbl_incoherent_logput_window;
+extern int gbl_dump_net_queue_on_partial_write;
 extern int gbl_dump_full_net_queue;
+extern int gbl_debug_partial_write;
+extern int gbl_debug_sleep_on_verify;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
+extern int gbl_dedup_rep_all_reqs;
 extern int gbl_apply_queue_memory;
 extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
@@ -158,6 +174,8 @@ extern int gbl_net_writer_thread_poll_ms;
 extern int gbl_max_apply_dequeue;
 extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
+extern int gbl_commit_delay_timeout;
+extern int gbl_commit_delay_copy_ms;
 extern int gbl_throttle_logput_trace;
 extern int gbl_fills_waitms;
 extern int gbl_finish_fill_threshold;
@@ -202,6 +220,8 @@ extern int gbl_client_heartbeat_ms;
 extern int gbl_rep_wait_release_ms;
 extern int gbl_rep_wait_core_ms;
 extern int gbl_random_get_curtran_failures;
+extern int gbl_txn_fop_noblock;
+extern int gbl_debug_random_block_on_fop;
 extern int gbl_random_thdpool_work_timeout;
 extern int gbl_thdpool_queue_only;
 extern int gbl_random_sql_work_delayed;
@@ -247,6 +267,17 @@ extern int gbl_max_trigger_threads;
 extern int gbl_alternate_normalize;
 extern int gbl_sc_logbytes_per_second;
 extern int gbl_fingerprint_max_queries;
+extern int gbl_query_plan_max_plans;
+extern double gbl_query_plan_percentage;
+extern int gbl_ufid_log;
+extern int gbl_ufid_add_on_collect;
+extern int gbl_collect_before_locking;
+extern unsigned gbl_ddlk;
+extern int gbl_abort_on_missing_ufid;
+extern int gbl_ufid_dbreg_test;
+extern int gbl_debug_add_replication_latency;
+extern int gbl_javasp_early_release;
+
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;
@@ -332,6 +363,9 @@ extern int gbl_legacy_defaults;
 extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
+extern int gbl_msgwaittime;
+extern int gbl_scwaittime;
+
 extern int gbl_reorder_idx_writes;
 extern int gbl_perform_full_clean_exit;
 extern int gbl_clean_exit_on_sigterm;
@@ -339,17 +373,31 @@ extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
+extern int gbl_debug_pb_connectmsg_dbname_check;
+extern int gbl_debug_pb_connectmsg_gibberish;
+extern int gbl_debug_omit_zap_on_rebuild;
+extern int gbl_debug_txn_sleep;
 extern int gbl_instrument_consumer_lock;
 extern int gbl_reject_mixed_ddl_dml;
+extern int gbl_debug_create_master_entry;
 extern int eventlog_nkeep;
 extern int gbl_debug_systable_locks;
 extern int gbl_assert_systable_locks;
 extern int gbl_track_curtran_gettran_locks;
 extern int gbl_permit_small_sequences;
 extern int gbl_debug_sleep_in_sql_tick;
+extern int gbl_debug_sleep_in_analyze;
+extern int gbl_debug_sleep_in_summarize;
+extern int gbl_debug_sleep_in_trigger_info;
 extern int gbl_protobuf_prealloc_buffer_size;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_internal_sql_stmt_caching;
+extern int gbl_longreq_log_freq_sec;
+extern int gbl_disable_seekscan_optimization;
+extern int gbl_pgcomp_dryrun;
+extern int gbl_pgcomp_dbg_stdout;
+extern int gbl_pgcomp_dbg_ctrace;
+extern int gbl_warn_on_equiv_type_mismatch;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
@@ -358,12 +406,17 @@ int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
 int gbl_enable_sq_flattening_optimization = 1;
 int gbl_mask_internal_tunables = 1;
+int gbl_allow_readonly_runtime_mod = 0;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
 int gbl_file_permissions = 0660;
 
 extern int gbl_net_maxconn;
+extern int gbl_force_direct_io;
+extern int gbl_seekscan_maxsteps;
+extern int gbl_wal_osync;
+extern uint64_t gbl_sc_headroom;
 
 /*
   =========================================================
@@ -1530,7 +1583,7 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
-    if ((t->flags & READONLY) != 0) {
+    if ((t->flags & READONLY) != 0 && !gbl_allow_readonly_runtime_mod) {
         logmsg(LOGMSG_DEBUG, "Attempt to update a READ-ONLY tunable '%s'.\n",
                name);
         return TUNABLE_ERR_READONLY;

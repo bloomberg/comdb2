@@ -4,7 +4,7 @@
 
 #set -x
 
-vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE"
+vars="HOSTNAME TESTSROOTDIR TESTDIR COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE CDB2VERIFY_EXE PMUX_EXE"
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -15,7 +15,7 @@ for required in $vars; do
 done
 
 #make sure files exist
-files="COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE"
+files="COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE CDB2VERIFY_EXE PMUX_EXE"
 for file in $files; do
     f=${!file}
     if [[ ! -f $f ]] ; then
@@ -58,6 +58,7 @@ copy_files_to_node() {
 
     if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
         scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
+        scp $SSH_OPT $SSH_MSTR $CDB2VERIFY_EXE $node:$CDB2VERIFY_EXE
         scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
     fi
     if [ -n "$RESTARTPMUX" ] ; then

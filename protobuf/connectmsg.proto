@@ -1,0 +1,10 @@
+//package com.bloomberg.comdb2.net;
+syntax = "proto2";
+
+message net_connectmsg {
+  optional string to_hostname = 1; // required
+  optional int32 to_portnum = 2; // required
+  optional string from_hostname = 3; // required
+  optional int32 from_portnum = 4; // required
+  optional string dbname = 5; // required
+}

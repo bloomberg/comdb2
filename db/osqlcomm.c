@@ -3206,8 +3206,7 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
 {
     snap_uid_t snap_info;
     snap_uid_get(&snap_info, dtap, (uint8_t *)dtap + dtalen);
-    osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0,
-                                &snap_info, NULL, &snap_info.effects);
+    osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0, &snap_info, NULL, &snap_info.effects, fromhost);
 }
 
 int gbl_disable_cnonce_blkseq;
@@ -4724,11 +4723,12 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         req_uuid.rqlen = rqlen;
         req_uuid.sqlqlen = sqlen;
 
+        p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
+
+        r_uuid_ptr->rqlen = rqlen;
+
         if (tzname)
             strncpy0(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
-
-        p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
-        r_uuid_ptr->rqlen = rqlen;
     } else {
         osql_req_t *r_ptr;
 
@@ -4903,8 +4903,7 @@ int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
     /* if error, lets send the error string */
     if (target->host == gbl_myhostname) {
         /* local */
-        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, snap, xerr,
-                                           (snap) ? &snap->effects : NULL);
+        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, snap, xerr, (snap) ? &snap->effects : NULL, target->host);
     }
 
     /* remote */
@@ -5743,7 +5742,8 @@ static int start_schema_change_tran_wrapper(const char *tblname,
         sc->fix_tp_badvers = 1;
     }
 
-    if ((sc->partition.type == PARTITION_ADD_TIMED && arg->indx == 0) ||
+    if (((sc->partition.type == PARTITION_ADD_TIMED ||
+          sc->partition.type == PARTITION_ADD_MANUAL) && arg->indx == 0) ||
         (sc->partition.type == PARTITION_REMOVE &&
          arg->nshards == arg->indx + 1)) {
         sc->publish = partition_publish;
@@ -5753,7 +5753,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     rc = start_schema_change_tran(iq, sc->tran);
     if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
         sc->preempted == SC_ACTION_RESUME ||
-        sc->alteronly == SC_ALTER_PENDING) {
+        sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -5777,6 +5777,281 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
 }
 
+static int _process_single_table_sc(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    /* schema change for a regular table */
+    rc = start_schema_change_tran(iq, NULL);
+    if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+        sc->preempted == SC_ACTION_RESUME ||
+        sc->kind == SC_ALTERTABLE_PENDING) {
+        iq->sc = NULL;
+    } else {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    }
+    return rc;
+}
+
+static int start_schema_change_tran_wrapper_merge(const char *tblname,
+                                                  timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct ireq *iq = sc->iq;
+    int rc;
+
+    /* first shard drops partition also */
+    if (arg->indx == 0) {
+        sc->publish = partition_publish;
+        sc->unpublish = partition_unpublish;
+    }
+
+    struct schema_change_type *alter_sc = clone_schemachange_type(sc);
+
+    /* new target */
+    strncpy0(alter_sc->tablename, tblname, sizeof(sc->tablename));
+    /*alter_sc->usedbtablevers = sc->partition.u.mergetable.version;*/
+    alter_sc->kind = SC_ALTERTABLE;
+    /* use the created file as target */
+    alter_sc->newdb = sc->newdb;
+    alter_sc->force_rebuild = 1; /* we are moving rows here */
+    /* alter only in parallel mode for live */
+    alter_sc->scanmode = SCAN_PARALLEL;
+    /* link the sc */
+    iq->sc = alter_sc;
+
+    rc = start_schema_change_tran(iq, NULL);
+    /* link the alter */
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
+static int _process_single_table_sc_merge(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    assert(sc->partition.type == PARTITION_MERGE);
+
+    /* if this is an create .. merge, make sure we create table first
+     * if this is an alter .. merge, we still prefer to sequence alters
+     * to limit the amount of parallelism in flight
+     */
+    sc->nothrevent = 1;
+    sc->finalize = 0; /* make sure */
+    if (sc->kind == SC_ALTERTABLE) {
+        /* alter only switches to merge path if this is set */
+        sc->partition.type = PARTITION_NONE;
+    }
+    rc = start_schema_change_tran(iq, NULL);
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+    if (rc != SC_COMMIT_PENDING) {
+        return ERR_SC;
+    }
+
+    /* at this point we have created the future btree, launch an alter
+     * for the to-be-merged table
+     */
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+    arg.indx = 1; /* no publishing */
+
+    /* need table version */
+    sc->usedbtablevers = sc->partition.u.mergetable.version;
+    enum comdb2_partition_type old_part_type = sc->partition.type;
+    sc->partition.type = PARTITION_MERGE;
+    rc = start_schema_change_tran_wrapper_merge(
+            sc->partition.u.mergetable.tablename, &arg);
+    sc->partition.type = old_part_type;
+
+    return rc;
+}
+
+static int _process_partitioned_table_merge(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    assert(sc->kind == SC_ALTERTABLE);
+
+    /* create a table with the same name as the partition */
+    sc->nothrevent = 1; /* we need do_add_table to run first */
+    sc->finalize = 0;   /* make sure */
+    sc->kind = SC_ADDTABLE;
+
+    rc = start_schema_change_tran(iq, NULL);
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+    if (rc != SC_COMMIT_PENDING) {
+        return ERR_SC;
+    }
+
+    /* at this point we have created the future btree, launch an alter
+     * for each of the shards of the partition
+     */
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+    rc = timepart_foreach_shard(
+        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, 0);
+    return rc;
+}
+
+static int _process_single_table_sc_partitioning(struct ireq *iq) 
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    if (sc->partition.type == PARTITION_REMOVE) {
+        logmsg(LOGMSG_ERROR, "Partition %s does not exist\n", sc->tablename);
+        sc_errf(sc, "Partition %s does not exist\n", sc->tablename);
+        return ERR_SC;
+    }
+
+    assert(sc->partition.type == PARTITION_ADD_TIMED || 
+           sc->partition.type == PARTITION_ADD_MANUAL);
+
+    /* create a new time partition object */
+    struct errstat err = {0};
+    sc->newpartition = timepart_new_partition(
+            sc->tablename, sc->partition.u.tpt.period,
+            sc->partition.u.tpt.retention, sc->partition.u.tpt.start, NULL,
+            TIMEPART_ROLLOUT_TRUNCATE, &sc->timepartition_name, &err);
+    /* DHTEST 1 {
+       sc->newpartition = NULL; err.errval = VIEW_ERR_PARAM;
+       snprintf(err.errstr, sizeof(err.errstr), "Test fail"); } DHTEST */
+    if (!sc->newpartition) {
+        assert(err.errval != VIEW_NOERR);
+        logmsg(LOGMSG_ERROR,
+                   "Creating a new time partition failed rc %d \"%s\"\n",
+                   err.errval, err.errstr);
+        sc_errf(sc, "Creating a new time partition failed rc %d \"%s\"",
+                err.errval, err.errstr);
+        rc = ERR_SC;
+        goto out;
+    }
+
+    /* create shards for the partition */
+    rc = timepart_populate_shards(sc->newpartition, &err);
+    if (rc) {
+        assert(err.errval != VIEW_NOERR);
+
+        timepart_free_view(sc->newpartition);
+        logmsg(LOGMSG_ERROR, "Failed to pre-populate the shards rc %d \"%s\"\n",
+               err.errval, err.errstr);
+        sc_errf(sc, "Failed to pre-populate the shards rc %d \"%s\"",
+                err.errval, err.errstr);
+        rc = ERR_SC;
+        goto out;
+    }
+
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+
+    /* is this an alter? preserve existing table as first shard */
+    if (sc->kind != SC_ADDTABLE) {
+        /* we need to create a light rename for first shard,
+         * together with the original alter
+         * NOTE: we need to grab the table version first
+         */
+        arg.s->timepartition_version =
+            arg.s->db->tableversion + 1; /* next version */
+
+        /* launch alter for original shard */
+        rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "Failed to process alter for existing table %s while "
+                   "partitioning rc %d\n",
+                   sc->tablename, rc);
+            sc_errf(sc,
+                    "Failed to process alter for existing table %s while "
+                    "partitioning rc %d",
+                    sc->tablename, rc);
+            return ERR_SC;
+        }
+        /* we need to  generate retention-1 table adds, with schema provided
+         * by previous alter; we need to convert an alter to a add sc
+         */
+        arg.s->kind = SC_ADDTABLE;
+        arg.indx = 1; /* first shard is already there */
+    }
+    rc = timepart_foreach_shard_lockless(
+            sc->newpartition, start_schema_change_tran_wrapper, &arg);
+out:
+    return rc;
+}
+
+static int _process_partition_alter_and_drop(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    if (sc->kind == SC_ADDTABLE) {
+        /* trying to create a duplicate time partition */
+        logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
+        sc_errf(sc, "Duplicate partition %s!", sc->tablename);
+        rc = SC_TABLE_ALREADY_EXIST;
+        goto out;
+    }
+
+    if (sc->partition.type == PARTITION_MERGE) {
+        return _process_partitioned_table_merge(iq);
+    }
+
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+    rc = timepart_foreach_shard(sc->tablename,
+                                start_schema_change_tran_wrapper, &arg, -1);
+out:
+    return rc;
+}
+
+
+static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
+                                    uuid_t uuid,  int *type)
+{
+    const uint8_t *p_buf;
+    const uint8_t *p_buf_end;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+        *type = rpl.type;
+        if (comdb2uuidcmp(rpl.uuid, uuid)) {
+            uuidstr_t us;
+            uuidstr_t passedus;
+            comdb2uuidstr(rpl.uuid, us);
+            comdb2uuidstr(uuid, passedus);
+            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
+                   passedus, us);
+            abort();
+        }
+    } else {
+        osql_rpl_t rpl = {0};
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+        *type = rpl.type;
+        comdb2uuid_clear(uuid);
+    }
+
+    return p_buf;
+}
+
+
 /**
  * Handles each packet and start schema change
  *
@@ -5791,30 +6066,9 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     const uint8_t *p_buf_end;
     int rc = 0;
     int type;
-    uuidstr_t us;
     char *msg = *pmsg;
 
-    if (rqid == OSQL_RQID_USE_UUID) {
-        osql_uuid_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-        comdb2uuidstr(rpl.uuid, us);
-        if (comdb2uuidcmp(rpl.uuid, uuid)) {
-            uuidstr_t passedus;
-            comdb2uuidstr(uuid, passedus);
-            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
-                   passedus, us);
-            abort();
-        }
-    } else {
-        osql_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-    }
+    p_buf = _get_txn_info(msg, rqid, uuid, &type);
 
     if (type != OSQL_SCHEMACHANGE)
         return 0;
@@ -5835,6 +6089,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
            sc->tablename, sc->usedbtablevers);
 
     if (gbl_enable_osql_logging) {
+        uuidstr_t us;
         logmsg(LOGMSG_DEBUG, "[%llu %s] OSQL_SCHEMACHANGE %s\n", rqid,
                comdb2uuidstr(uuid, us), sc->tablename);
     }
@@ -5860,98 +6115,18 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     int is_partition = timepart_is_partition(sc->tablename);
 
-    if (!is_partition && sc->partition.type == PARTITION_NONE) {
-        /* schema change for a regular table */
-        rc = start_schema_change_tran(iq, NULL);
-        if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
-            sc->preempted == SC_ACTION_RESUME ||
-            sc->alteronly == SC_ALTER_PENDING) {
-            iq->sc = NULL;
+    if (!is_partition) {
+        if (sc->partition.type == PARTITION_NONE) {
+            rc = _process_single_table_sc(iq);
+        } else if (sc->partition.type == PARTITION_MERGE) {
+            rc = _process_single_table_sc_merge(iq);
         } else {
-            iq->sc->sc_next = iq->sc_pending;
-            iq->sc_pending = iq->sc;
-            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            rc = _process_single_table_sc_partitioning(iq);
         }
-    } else if (!is_partition && sc->partition.type != PARTITION_NONE) {
-        assert(sc->partition.type == PARTITION_ADD_TIMED);
-
-        /* create a new time partition object */
-        struct errstat err = {0};
-        sc->newpartition = timepart_new_partition(
-            sc->tablename, sc->partition.u.tpt.period,
-            sc->partition.u.tpt.retention, sc->partition.u.tpt.start, NULL,
-            TIMEPART_ROLLOUT_TRUNCATE, &sc->timepartition_name, &err);
-        /* DHTEST 1 {
-           sc->newpartition = NULL; err.errval = VIEW_ERR_PARAM;
-           snprintf(err.errstr, sizeof(err.errstr), "Test fail"); } DHTEST */
-        if (!sc->newpartition) {
-            assert(err.errval != VIEW_NOERR);
-            logmsg(LOGMSG_ERROR,
-                   "Creating a new time partition failed rc %d \"%s\"\n",
-                   err.errval, err.errstr);
-            rc = SC_UNKNOWN_ERROR;
-            goto out;
-        }
-
-        /* create shards for the partition */
-        rc = timepart_populate_shards(sc->newpartition, &err);
-        if (rc) {
-            assert(err.errval != VIEW_NOERR);
-
-            timepart_free_view(sc->newpartition);
-            logmsg(LOGMSG_ERROR,
-                   "Failed to pre-populate the shards rc %d \"%s\"n",
-                   err.errval, err.errstr);
-            rc = SC_UNKNOWN_ERROR;
-            goto out;
-        }
-
-        timepart_sc_arg_t arg = {0};
-        arg.s = sc;
-        arg.s->iq = iq;
-
-        /* is this an alter? preserve existing table as first shard */
-        if (!sc->addonly) {
-            /* we need to create a light rename for first shard,
-             * together with the original alter
-             * NOTE: we need to grab the table version first
-             */
-            arg.s->timepartition_version =
-                arg.s->db->tableversion + 1; /* next version */
-
-            /* launch alter for original shard */
-            rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "Failed to process alter for existing table %s while "
-                       "partitioning rc %d\n",
-                       sc->tablename, rc);
-                return ERR_SC;
-            }
-            /* we need to  generate retention-1 table adds, with schema provided
-             * by previous alter; we need to convert an alter to a add sc
-             */
-            arg.s->alteronly = SC_ALTER_NONE; /* this is an add! */
-            arg.s->addonly = 1;
-            arg.indx = 1; /* first shard is already there */
-        }
-        rc = timepart_foreach_shard_lockless(
-            sc->newpartition, start_schema_change_tran_wrapper, &arg);
     } else {
-        if (sc->addonly) {
-            /* trying to create a duplicate time partition */
-            logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
-            rc = SC_TABLE_ALREADY_EXIST;
-            goto out;
-        }
-        /* schema change for a time partition */
-        timepart_sc_arg_t arg = {0};
-        arg.s = sc;
-        arg.s->iq = iq;
-        rc = timepart_foreach_shard(sc->tablename,
-                                    start_schema_change_tran_wrapper, &arg, -1);
+        rc = _process_partition_alter_and_drop(iq);
     }
-out:
+
     iq->usedb = NULL;
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
@@ -6025,34 +6200,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
     int type;
-    unsigned long long id;
     char *msg = *pmsg;
 
-    if (rqid == OSQL_RQID_USE_UUID) {
-        osql_uuid_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-        id = OSQL_RQID_USE_UUID;
-        if (comdb2uuidcmp(rpl.uuid, uuid)) {
-            uuidstr_t us;
-            uuidstr_t passedus;
-            comdb2uuidstr(rpl.uuid, us);
-            comdb2uuidstr(uuid, passedus);
-            logmsg(LOGMSG_FATAL, "uuid mismatch: passed in %s, in packet %s\n",
-                    passedus, us);
-            abort();
-        }
-    } else {
-        osql_rpl_t rpl;
-        p_buf = (const uint8_t *)msg;
-        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
-        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
-        type = rpl.type;
-        id = rpl.sid;
-        comdb2uuid_clear(uuid);
-    }
+    p_buf = _get_txn_info(msg, rqid, uuid, &type);
 
     if (type >= 0 && type < MAX_OSQL_TYPES)
         db->blockosqltypcnt[type]++;
@@ -6112,7 +6262,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (rc != SC_OK) {
                 return ERR_SC;
             }
-            if (iq->sc->fastinit && gbl_replicate_local)
+            if (IS_FASTINIT(iq->sc) && gbl_replicate_local)
                 local_replicant_write_clear(iq, trans, iq->sc->db);
             iq->sc = iq->sc->sc_next;
         }
@@ -6157,7 +6307,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
-            if (!gbl_disable_cnonce_blkseq)
+            if (!gbl_disable_cnonce_blkseq && !gbl_master_sends_query_effects)
                 assert(IQ_HAS_SNAPINFO(iq)); // was assigned in fast pass
 
             snap_uid_t snap_info;
@@ -6170,14 +6320,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
              * finally sends them to the replicant as part of 'done'.
              */
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
-
-            /* The following assert could fail when/if master modifies the
-             * write query effects.
-             */
-            if (!gbl_master_sends_query_effects && IQ_HAS_SNAPINFO(iq)) {
-                assert(
-                    !memcmp(&snap_info, IQ_SNAPINFO(iq), sizeof(snap_uid_t)));
-            }
         }
 
 #if 0
@@ -6450,7 +6592,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             logmsg(LOGMSG_DEBUG,
                    "[%llx %s] Startgen check failed, start_gen "
                    "%u, cur_gen %u\n",
-                   id, comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
+                   rqid, comdb2uuidstr(uuid, us), dt.start_gen, cur_gen);
             return ERR_VERIFY;
         }
     } break;
@@ -7069,9 +7211,9 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
             uint8_t *p_buf_end = (p_buf + sizeof(struct errstat));
             osqlcomm_errstat_type_get(&errstat, p_buf, p_buf_end);
 
-            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL);
+            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL, fromhost);
         } else {
-            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects);
+            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects, fromhost);
         }
 
     } else {
@@ -7651,9 +7793,7 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
         /* remote send */
         rc = net_send_tail(netinfo_ptr, host, usertype, data, datalen, nodelay,
                            tail, tailen);
-
-        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
-            NET_SEND_FAIL_NOSOCK == rc) {
+        if (NET_SEND_FAIL_QUEUE_FULL == rc) {
 
             if (total_wait > gbl_osql_bkoff_netsend_lmt) {
                 logmsg(
@@ -7674,12 +7814,10 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
             poll(NULL, 0, backoff);
             /*backoff *= 2; */
             total_wait += backoff;
-        } else if (NET_SEND_FAIL_CLOSED == rc) {
+        } else if (NET_SEND_FAIL_NOSOCK == rc) {
             /* on closed sockets, we simply return; a callback
                will trigger on the other side signalling we've
                lost the comm party */
-            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                   __LINE__, host);
             logmsg(LOGMSG_ERROR,
                    "%s:%d socket is closed, return wrong master\n", __FILE__,
                    __LINE__);
@@ -7795,4 +7933,31 @@ error:
     logmsg(LOGMSG_ERROR, "%s %s reading rc from master, %s\n", __func__,
            (left_timeoutms) ? "failed" : "timeout", part);
     return ERR_NOMASTER;
+}
+
+/* check if we need to get tpt lock */
+int need_views_lock(char *msg, int msglen, int use_uuid)
+{
+    const uint8_t *p_buf, *p_buf_end;
+
+    if (use_uuid) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+    } else {
+        osql_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+    }
+
+    osql_bpfunc_t *rpl = NULL;
+    p_buf_end = (const uint8_t *)p_buf + sizeof(osql_bpfunc_t) + msglen;
+    const uint8_t *n_p_buf = osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
+
+    if (!n_p_buf || !rpl)
+        return -1;
+
+    return bpfunc_check(rpl->data, rpl->data_len, BPFUNC_TIMEPART_RETENTION);
 }

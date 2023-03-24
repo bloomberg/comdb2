@@ -532,6 +532,11 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
             tran->tableversion = tableversion;
         }
         break;
+    case OSQL_BPFUNC:
+        if (need_views_lock(rpl, rplen, tran->is_uuid) == 1) {
+            sess->is_tptlock = 1;
+        }
+        break;
     }
 
     if (tran->is_selectv_wl_upd)
@@ -1297,6 +1302,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
 
 void *bplog_commit_timepart_resuming_sc(void *p)
 {
+    comdb2_name_thread(__func__);
     struct ireq iq;
     struct schema_change_type *sc_pending = (struct schema_change_type *)p;
     struct schema_change_type *sc;

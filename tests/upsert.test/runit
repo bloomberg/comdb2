@@ -1,31 +1,14 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source $TESTSROOTDIR/tools/runstepper.sh
+
 dbname=$1
 if [[ -z $dbname ]] ; then
     echo dbname missing
     exit 1
 fi
 
-# runstepper
-function runstepper
-{
-    # print debug trace
-    [[ "$debug" == "1" ]] && set -x
-
-    # args
-    typeset db=$1
-    typeset tcs=$2
-    typeset log=$3
-
-    # teststepper
-    typeset stp=${TESTSBUILDDIR}/stepper
-
-    #echo "> $stp $db $tcs > $log 3>&1"
-
-    # execute
-    $stp $db $tcs > $log 2>&1
-}
 
 # verify the result
 function verify
@@ -90,6 +73,16 @@ for showeffectsfile in $showeffectsfiles; do
                           > $testname.output
     verify $testname
 done
+
+# 5) Bug: Query effects when multiple transactions are executing in parallel
+./upsert_effects.sh ${CDB2_OPTIONS} $dbname > upsert_effects.output
+if [[  $? -eq 0 ]]; then
+    echo "passed upsert_effects.sh"
+else
+    echo "failed upsert_effects.sh"
+    cat upsert_effects.output
+    exit 1
+fi
 
 echo "Testcase passed."
 exit 0

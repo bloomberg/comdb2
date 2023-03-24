@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+dbnm=$1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table if exists t"
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t {
+schema {
+    int a
+    int b
+}
+
+keys {
+recnums "a" = a
+}
+}'
+
+# populate some data so we have more than one level in the tree
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+insert into t select value, value from generate_series(1, 10000)
+EOF
+
+# generate a bunch of duplicate key errors
+for i in $(seq 1 10000); do
+    echo "insert into t values(1, 1)"
+done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>&1
+
+leader=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select host from comdb2_cluster where is_master='Y'")
+
+# behold the reference counts for they are leaked (column 3)
+cdb2sql --tabs --host "${leader}" ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('bdb cachestatall')" | egrep -v '^File|^Cache' | grep '#' | awk '{ if($3>"0,") { { print } }}' > out.res
+leaked_pages=$(wc -l out.res)
+
+if [[ $leaked_pages -lt 0 ]]; then
+    cat out.res
+    exit 1
+fi
+exit 0

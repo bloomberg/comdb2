@@ -840,6 +840,30 @@ DB_TEST_RECOVERY_LABEL
 	return (ret);
 }
 
+int gbl_debug_random_block_on_fop = 0;
+
+static inline void debug_fop_dbpleak(DB_ENV *dbenv, DB *dbp, const char *name)
+{
+	if (!gbl_debug_random_block_on_fop || !dbenv->lk_handle)
+		return;
+
+	/* Grab & lock-handle in read-mode */
+	if (rand()%10 == 0) {
+		uint32_t lid;
+		int ret;
+		if ((ret = __lock_id(dbenv, &lid) != 0)) {
+			logmsg(LOGMSG_ERROR, "%s failure acquiring lock-id to leak %s: %d\n", __func__, name, ret);
+			return;
+		}
+		if ((ret = __fop_lock_handle(dbenv, dbp, lid, DB_LOCK_READ, NULL, DB_LOCK_NOWAIT)) != 0) {
+			logmsg(LOGMSG_ERROR, "%s failure leaking %s: %d\n", __func__, name, ret);
+			return;
+		}
+		logmsg(LOGMSG_USER, "%s leaked lock for %s lid=%u\n", __func__, name, lid);
+	}
+	return;
+}
+
 /*
  * __fop_remove_setup --
  *	Open handle appropriately and lock for removal of a database file.
@@ -906,13 +930,22 @@ retry:	if (LOCKING_ON(dbenv)) {
 		goto err;
 
 	/*
+	 * On a debug-flag, acquire this lock in read-mode from a different lid.
+	 * This reproducies a condition we're seeing with 8.0 in production.  As
+	 * we only delete files in the purge-files-thread it's "okay" to continue.
+	 */
+
+    debug_fop_dbpleak(dbenv, dbp, name);
+
+	/*
 	 * Now, get the handle lock.  We first try with NOWAIT, because if
 	 * we have to wait, we're going to have to close the file and reopen
 	 * it, so that if there is someone else removing it, our open doesn't
 	 * prevent that.
 	 */
-	if ((ret = __fop_lock_handle(dbenv,
-	    dbp, dbp->lid, DB_LOCK_WRITE, NULL, DB_LOCK_NOWAIT)) != 0) {
+
+	if ((ret = __fop_lock_handle(dbenv, dbp, dbp->lid,
+		DB_LOCK_WRITE, NULL, DB_LOCK_NOWAIT)) != 0) {
 		/*
 		 * Close the file, block on the lock, clean up the dbp, and
 		 * then start all over again.
@@ -926,6 +959,13 @@ retry:	if (LOCKING_ON(dbenv)) {
 				goto err;
 		} else if (ret != DB_LOCK_NOTGRANTED)
 			goto err;
+		else if (F_ISSET(txn, TXN_FOP_NOBLOCK)) {
+			int refc_rc = __memp_get_refcnt(dbenv, dbp->fileid, &cnt);
+			logmsg(LOGMSG_USER, "%s fop-lock held, ignoring %s refcnt rc=%d cnt=%d\n",
+						__func__, name, refc_rc, cnt);
+			/* TODO: print what holds the lock */
+			goto err;
+		}
 		else if ((ret = __fop_lock_handle(dbenv,
 		    dbp, dbp->lid, DB_LOCK_WRITE, &elock, 0)) != 0 &&
 		    ret != DB_LOCK_NOTEXIST)

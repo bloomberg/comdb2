@@ -94,5 +94,8 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_CSTRING, "sql", -1, offsetof(struct connection_info, sql),
             CDB2_CSTRING, "fingerprint", -1, offsetof(struct connection_info, fingerprint),
             CDB2_INTEGER, "is_admin", -1, offsetof(struct connection_info, is_admin),
+            CDB2_INTEGER, "is_ssl", -1, offsetof(struct connection_info, is_ssl),
+            CDB2_INTEGER, "has_cert", -1, offsetof(struct connection_info, has_cert),
+            CDB2_CSTRING, "common_name", -1, offsetof(struct connection_info, common_name),
             SYSTABLE_END_OF_FIELDS);
 }

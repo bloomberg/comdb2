@@ -223,7 +223,7 @@ void create_schedule_table(void)
     /* stat='1300000 5 5 5' */
     if ((rc = cdb2_run_statement(hndl, 
                     "CREATE UNIQUE INDEX schdid on schedule("
-                    "'instid', 'start' DESC, 'tztag') OPTION DATACOPY")) 
+                    "'instid', 'start' DESC, 'tztag') INCLUDE ALL")) 
             != 0) {
         fprintf(stderr, "%s line %d error creating index, %d, %s\n",
                 __func__, __LINE__, rc, cdb2_errstr(hndl));

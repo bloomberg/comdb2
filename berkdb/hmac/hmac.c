@@ -8,6 +8,11 @@
  * astubble@rice.edu.
  */
 
+/* AES_* and SHA1_* functions are made deprecated as of OpenSSL 3.0.
+   Disable compiler warning for the entire file as it's not very likely
+   that we'll ever modify this file. */
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include "db_config.h"
 
 #ifndef lint

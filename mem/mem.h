@@ -179,6 +179,26 @@ int comdb2ma_stats(char *pattern, int verbose, int hr,
                    comdb2ma_order_by orderby, comdb2ma_group_by groupby,
                    int toctrc);
 
+typedef struct comdb2ma_usage {
+    char *name;
+    char name_str[16];
+    char *scope;
+    char scope_str[16];
+    size_t peak;
+    size_t used;
+    size_t unused;
+    size_t total;
+} comdb2ma_usage;
+
+/*
+** Retrive memory usage of all allocators
+**
+** PARAMETERS
+** usages - output
+** n      - number of allocators
+*/
+int comdb2ma_usages(comdb2ma_usage **usages, int *n);
+
 /*
 ** Change allocator niceness.
 **

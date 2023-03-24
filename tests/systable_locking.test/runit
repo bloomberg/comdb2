@@ -8,6 +8,7 @@ bash -n "$0" | exit 1
 [[ $debug == "1" ]] && set -x
 
 export TESTITERS=20
+export TESTQUEUEITERS=20
 export MAXTABLES=20
 export MAXVIEWS=20
 export MAXQUEUES=20
@@ -31,6 +32,30 @@ function stat_all_tables
     for x in $t; do
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM $x LIMIT 10" >/dev/null 2>&1
     done
+}
+
+function enable_sleep_in_trigger_info
+{
+    [[ $debug == "1" ]] && set -x
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'debug_sleep_in_trigger_info' 1" >/dev/null 2>&1
+    else
+        for m in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "put tunablel 'debug_sleep_in_trigger_info' 1" >/dev/null 2>&1
+        done
+    fi
+}
+
+function disable_sleep_in_trigger_info
+{
+    [[ $debug == "1" ]] && set -x
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "put tunable 'debug_sleep_in_trigger_info' 0" >/dev/null 2>&1
+    else
+        for m in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "put tunablel 'debug_sleep_in_trigger_info' 0" >/dev/null 2>&1
+        done
+    fi
 }
 
 # List of systables as of the time this was written
@@ -107,6 +132,29 @@ function write_tables_loop
     done
 }
 
+function select_triggers_loop
+{
+    [[ $debug == "1" ]] && set -x
+    typeset j=0
+    while [[ ! -f $STOP_TABLES_TEST_TOUCHFILE ]];  do
+        let j=j+1
+        if [[ $(( j % 2 )) == 1 ]]; then
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM comdb2sys_triggers" >/dev/null 2>&1
+        else
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM comdb2_triggers" >/dev/null 2>&1
+        fi
+    done
+}
+
+function start_select_triggers
+{
+    [[ $debug == "1" ]] && set -x
+    typeset cnt=${1:-10}
+    for (( x = 0 ; x < cnt ; ++x )) ; do
+        select_triggers_loop &
+    done
+}
+
 function drop_tables
 {
     [[ $debug == "1" ]] && set -x
@@ -147,6 +195,8 @@ function drop_triggers
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua trigger audit$x"
     done
 }
+
+
 
 function create_triggers
 {
@@ -197,7 +247,8 @@ function check_all_nodes
     return 0
 }
 
-function run_test
+function alltables_test
+
 {
     [[ $debug == "1" ]] && set -x
     rm -Rf $STOP_TABLES_TEST_TOUCHFILE
@@ -218,6 +269,31 @@ function run_test
     touch $STOP_TABLES_TEST_TOUCHFILE
     wait
     check_all_nodes
+    rm -Rf $STOP_TABLES_TEST_TOUCHFILE
+}
+
+function splock_test
+{
+    [[ $debug == "1" ]] && set -x
+    rm -Rf $STOP_TABLES_TEST_TOUCHFILE
+    enable_sleep_in_trigger_info
+    start_select_triggers
+    for (( i = 0; i < TESTQUEUEITERS; ++i )); do
+        create_triggers
+        drop_triggers
+        [[ $(( i % 10 )) == 0 ]] && echo "Completed $i create and drop triggers"
+    done
+    touch $STOP_TABLES_TEST_TOUCHFILE
+    disable_sleep_in_trigger_info
+    wait
+    check_all_nodes
+    rm -Rf $STOP_TABLES_TEST_TOUCHFILE
+}
+
+function run_test
+{
+    splock_test
+    alltables_test
 }
 
 setup

@@ -22,6 +22,11 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __sun
+#  define BSD_COMP /* for FIONREAD */
+#endif
+#include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/types.h>
@@ -41,6 +46,7 @@
 #include <comdb2_atomic.h>
 #include <compat.h>
 #include <dbinc/queue.h>
+#include <dbinc/rep_types.h>
 #include <intern_strings.h>
 #include <locks_wrap.h>
 #include <logmsg.h>
@@ -52,6 +58,11 @@
 #include <plhash.h>
 #include <portmuxapi.h>
 
+#include <connectmsg.pb-c.h>
+
+#define NEED_LSN_DEF
+#include <rep_qstat.h>
+
 #ifndef likely
 #  if defined(__GNUC__)
 #    define likely(x) __builtin_expect(!!(x), 1)
@@ -62,8 +73,6 @@
 #  endif
 #endif
 
-#define KB(x) ((x) * 1024)
-#define MB(x) ((x) * 1024 * 1024)
 #define TCP_BUFSZ MB(8)
 #define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
 #define MAX_DISTRESS_COUNT 3
@@ -91,15 +100,21 @@
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
+extern int count_newsqls;
+int gbl_pb_connectmsg = 0;
 int gbl_libevent = 1;
 int gbl_libevent_appsock = 1;
 int gbl_libevent_rte_only = 0;
 
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char *gbl_myhostname;
 extern int gbl_create_mode;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern int gbl_pmux_route_enabled;
+extern int gbl_debug_pb_connectmsg_dbname_check;
+extern int gbl_debug_pb_connectmsg_gibberish;
+extern int gbl_accept_on_child_nets;
 
 static double resume_lvl = 0.7;
 static struct timeval one_sec = {1, 0};
@@ -133,11 +148,9 @@ static struct event_base *base;
 static pthread_t timer_thd;
 static struct event_base *timer_base;
 
-pthread_t appsock_timer_thd;
-struct event_base *appsock_timer_base;
-
-pthread_t appsock_rd_thd;
-struct event_base *appsock_rd_base;
+#define NUM_APPSOCK_RD 4
+pthread_t appsock_thd[NUM_APPSOCK_RD];
+struct event_base *appsock_base[NUM_APPSOCK_RD];
 
 #define get_akq()                                                              \
     ({                                                                         \
@@ -202,20 +215,26 @@ struct event_info;
 struct net_info;
 
 static struct akq *setup_akq(char *);
+static void do_add_host(int, short, void *);
 static void do_open(int, short, void *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
 static void resume_read(int, short, void *);
 static void unix_connect(int, short, void *);
+static int write_connect_message_proto(netinfo_type *, host_node_type *);
 
 static struct timeval reconnect_time(int retry)
 {
-    time_t sec = 0;
+    time_t sec;
     suseconds_t usec = (random() % 900000) + 100000;
-    if (retry > 100) {
-        sec = 10 + (usec % 5);
-    } else if (retry > 10) {
-        sec = 1 + (usec % 5);
+    if (retry <= 3) {
+        sec = 0;
+    } else if (retry <= 10) {
+        sec = 1;
+    } else if (retry <= 100) {
+        sec = 5 + (usec % 6); /* (5, 10) */
+    } else {
+        sec = 10 + (usec % 51); /* (10, 60) */
     }
     struct timeval t = {sec, usec};
     return t;
@@ -334,7 +353,8 @@ struct host_connected_info;
 
 struct event_info {
     host_node_type *host_node_ptr;
-    LIST_HEAD(, host_connected_info) host_connected_list;
+    struct host_connected_info *host_connected;
+    struct host_connected_info *host_connected_pending;
     LIST_ENTRY(event_info) host_list_entry;
     LIST_ENTRY(event_info) net_list_entry;
     int fd;
@@ -459,7 +479,11 @@ static void nop(int dummyfd, short what, void *arg)
 static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
+    char thdname[32];
     struct net_dispatch_info *n = arg;
+    snprintf(thdname, sizeof(thdname), "net_dispatch %s", n->who);
+    comdb2_name_thread(n->who);
+
     current_base = n->base;
     struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
     struct timeval ten = {10, 0};
@@ -483,15 +507,23 @@ static void *net_dispatch(void *arg)
     return NULL;
 }
 
-static void init_base(pthread_t *t, struct event_base **bb, const char *who)
+static void init_base_priority(pthread_t *t, struct event_base **bb, const char *who, int priority)
 {
     struct net_dispatch_info *info;
     info = calloc(1, sizeof(struct net_dispatch_info));
     *bb = event_base_new();
+    if (priority) {
+        event_base_priority_init(*bb, priority);
+    }
     info->who = who;
     info->base = *bb;
     Pthread_create(t, NULL, net_dispatch, info);
     Pthread_detach(*t);
+}
+
+static void init_base(pthread_t *t, struct event_base **bb, const char *who)
+{
+    init_base_priority(t, bb, who, 0);
 }
 
 static struct host_info *host_info_new(char *host)
@@ -645,7 +677,6 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     struct event_info *e = calloc(1, sizeof(struct event_info));
     LIST_INSERT_HEAD(&h->event_list, e, host_list_entry);
     LIST_INSERT_HEAD(&n->event_list, e, net_list_entry);
-    LIST_INIT(&e->host_connected_list);
     e->fd = -1;
     e->host = h->host;
     e->service = n->service;
@@ -675,7 +706,6 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
 }
 
 struct host_connected_info {
-    LIST_ENTRY(host_connected_info) entry;
     int fd;
     struct event_info *e;
     int connect_msg;
@@ -688,13 +718,11 @@ host_connected_info_new(struct event_info *e, int fd, int connect_msg)
     info->e = e;
     info->fd = fd;
     info->connect_msg = connect_msg;
-    LIST_INSERT_HEAD(&e->host_connected_list, info, entry);
     return info;
 }
 
 static void host_connected_info_free(struct host_connected_info *info)
 {
-    LIST_REMOVE(info, entry);
     free(info);
 }
 
@@ -711,20 +739,54 @@ struct accept_info {
     struct sockaddr_in ss;
     connect_message_type c;
     netinfo_type *netinfo_ptr;
+    struct event *ev;
+    int uses_proto;
+    char *dbname;
+    TAILQ_ENTRY(accept_info) entry;
 };
 
-static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr,
-                                           struct sockaddr_in *addr, int fd)
+static int pending_connections; /* accepted but didn't receive first-byte */
+static int max_pending_connections = 1024;
+static TAILQ_HEAD(, accept_info) accept_list = TAILQ_HEAD_INITIALIZER(accept_list);
+static void do_read(int, short, void *);
+static void accept_info_free(struct accept_info *);
+
+static int close_oldest_pending_connection(void)
 {
+    struct accept_info *a = TAILQ_FIRST(&accept_list);
+    if (!a) {
+        return -1;
+    }
+    accept_info_free(a);
+    logmsg(LOGMSG_USER, "%s closed oldest pending connection [outstanding:%d]\n", __func__, pending_connections);
+    return 0;
+}
+
+static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd)
+{
+    check_base_thd();
+    if (pending_connections > max_pending_connections) {
+        close_oldest_pending_connection();
+    }
+    ++pending_connections;
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
+    TAILQ_INSERT_TAIL(&accept_list, a, entry);
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
     a->fd = fd;
+    a->ev = event_new(base, fd, EV_READ, do_read, a);
+    event_add(a->ev, NULL);
     return a;
 }
 
 static void accept_info_free(struct accept_info *a)
 {
+    check_base_thd();
+    TAILQ_REMOVE(&accept_list, a, entry);
+    --pending_connections;
+    if (a->ev) {
+        event_free(a->ev);
+    }
     if (a->fd != -1) {
         shutdown_close(a->fd);
     }
@@ -733,6 +795,7 @@ static void accept_info_free(struct accept_info *a)
     }
     free(a->from_host);
     free(a->to_host);
+    free(a->dbname);
     free(a);
 }
 
@@ -773,7 +836,7 @@ static void set_hello_message(struct event_info *e)
 static void set_decom(struct event_info *e)
 {
     e->decomissioned = 1;
-    net_decom_node(e->net_info->netinfo_ptr, e->host_node_ptr->host);
+    e->host_node_ptr->decom_flag = 1;
 }
 
 static void update_host_node_ptr(host_node_type *host_node_ptr, struct event_info *e)
@@ -809,6 +872,7 @@ struct disable_info {
 static void do_disable_write(struct event_info *e)
 {
     check_wr_thd();
+    hputs("STOP WR\n");
     if (e->wr_ev) {
         event_free(e->wr_ev);
         e->wr_ev = NULL;
@@ -837,6 +901,7 @@ static void disable_write(int dummyfd, short what, void *data)
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
+    hputs("DISABLED\n");
     evtimer_once(base, d->func, e);
     free(d);
 }
@@ -844,6 +909,7 @@ static void disable_write(int dummyfd, short what, void *data)
 static void do_disable_read(struct event_info *e)
 {
     check_rd_thd();
+    hputs("STOP RD\n");
     Pthread_mutex_lock(&e->akq_lk);
     ++e->akq_gen;
     Pthread_mutex_unlock(&e->akq_lk);
@@ -862,12 +928,14 @@ static void disable_read(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     do_disable_read(e);
+    hputs("DISABLED\n");
     evtimer_once(wr_base, disable_write, d);
 }
 
 static void do_disable_heartbeats(struct event_info *e)
 {
     check_timer_thd();
+    hputs("STOP HB\n");
     if (e->hb_check_ev) {
         event_free(e->hb_check_ev);
         e->hb_check_ev = NULL;
@@ -883,6 +951,7 @@ static void disable_heartbeats(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     do_disable_heartbeats(e);
+    hputs("DISABLED\n");
     evtimer_once(rd_base, disable_read, d);
 }
 
@@ -890,16 +959,18 @@ static void do_host_close(int dummyfd, short what, void *data)
 {
     struct disable_info *d = data;
     struct event_info *e = d->e;
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    if (netinfo_ptr->hostdown_rtn) { /* net_hostdown_rtn or net_osql_nodedwn */
+        netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
+    }
     host_node_close(e->host_node_ptr);
+    hputs("CLOSING\n");
     evtimer_once(timer_base, disable_heartbeats, d);
 }
 
 static void do_close(struct event_info *e, event_callback_fn func)
 {
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    if (netinfo_ptr->hostdown_rtn) {
-        netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
-    }
+    hputs("CLOSE CONNECTION\n");
     struct disable_info *i = malloc(sizeof(struct disable_info));
     i->e = e;
     i->func = func;
@@ -909,7 +980,7 @@ static void do_close(struct event_info *e, event_callback_fn func)
 static int skip_connect(struct event_info *e)
 {
     if (e->decomissioned) {
-        hputs("SKIPPING DECOM HOST\n");
+        hputs_nd("SKIPPING DECOM HOST\n");
         return 1;
     }
     return 0;
@@ -937,23 +1008,35 @@ static void reconnect(struct event_info *e)
     if (gbl_exit) {
         return;
     }
+    hputs("CLOSE AND RECONNECT\n");
     do_close(e, do_reconnect);
 }
 
-static void check_wr_full(struct event_info *e)
+static size_t check_wr_full(struct event_info *e)
 {
     uint64_t max_bytes = e->net_info->wr_max;
-    size_t outstanding = evbuffer_get_length(e->wr_buf);
+    size_t outstanding = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
     if (e->wr_full) {
         if (outstanding < (max_bytes * resume_lvl)) {
-            hprintf("RESUMING WR outstanding:%zumb (max:%zumb) after:%ds\n", outstanding / MB(1),
+            hprintf("RESUMING WR outstanding:%zumb (max:%"PRIu64"mb) after:%ds\n", outstanding / MB(1),
                     max_bytes / MB(1), (int)(time(NULL) - e->wr_full));
             e->wr_full = 0;
         }
     } else if (outstanding > max_bytes) {
         e->wr_full = time(NULL);
-        hprintf("SUSPENDING WR outstanding:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
+        hprintf("SUSPENDING WR outstanding:%zumb (max:%" PRIu64 "mb)\n", outstanding / MB(1), max_bytes / MB(1));
     }
+    return outstanding;
+}
+
+static size_t get_wr_buf(struct event_info *e)
+{
+    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
+    if (e->host_node_ptr) {
+        e->host_node_ptr->enque_count = 0;
+        e->host_node_ptr->enque_bytes = 0;
+    }
+    return check_wr_full(e);
 }
 
 static void writecb(int fd, short what, void *data)
@@ -961,33 +1044,28 @@ static void writecb(int fd, short what, void *data)
     struct event_info *e = data;
     Pthread_mutex_lock(&e->wr_lk);
     if (fd != e->fd || !e->flush_buf || !e->wr_buf) abort(); /* sanity check */
-    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    check_wr_full(e);
+    size_t len = get_wr_buf(e);
     Pthread_mutex_unlock(&e->wr_lk);
-
-    int rc;
-    size_t len;
-    do {
-        rc = evbuffer_write(e->wr_buf, fd);
-        len = evbuffer_get_length(e->wr_buf);
-    } while (rc > 0 && len);
-    if (rc <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
+    while (len) {
+        int rc = evbuffer_write(e->wr_buf, fd);
+        if (rc <= 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
+                Pthread_mutex_lock(&e->wr_lk);
+                do_disable_write(e);
+                Pthread_mutex_unlock(&e->wr_lk);
+                reconnect(e);
+            }
+            return;
+        }
+        e->sent_at = time(NULL);
         Pthread_mutex_lock(&e->wr_lk);
-        do_disable_write(e);
+        len = get_wr_buf(e);
+        if (len == 0) {
+            event_del(e->wr_ev);
+        }
         Pthread_mutex_unlock(&e->wr_lk);
-        reconnect(e);
-        return;
     }
-    e->sent_at = time(NULL);
-
-    Pthread_mutex_lock(&e->wr_lk);
-    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
-    check_wr_full(e);
-    if (evbuffer_get_length(e->wr_buf) == 0) {
-        event_del(e->wr_ev);
-    }
-    Pthread_mutex_unlock(&e->wr_lk);
 }
 
 static void flush_evbuffer(struct event_info *e, int nodelay)
@@ -995,6 +1073,7 @@ static void flush_evbuffer(struct event_info *e, int nodelay)
     if (nodelay || evbuffer_get_length(e->flush_buf) > KB(512)) {
         event_add(e->wr_ev, NULL);
     }
+    check_wr_full(e);
 }
 
 static void send_decom_all(int dummyfd, short what, void *data)
@@ -1016,7 +1095,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    //hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
+    hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", (size_t)(outstanding / MB(1)), (size_t) (max_bytes / MB(1)));
 }
 
 static void message_done(struct event_info *e)
@@ -1057,10 +1136,7 @@ static void user_msg_callback(void *work)
         size_t outstanding = evbuffer_get_length(e->akq_buf) + evbuffer_get_length(e->payload_buf);
         if (outstanding < (max_bytes * resume_lvl)) {
             time_t diff = time(NULL) - e->rd_full;
-            if (diff > 5) {
-                hprintf("RESUMING RD outstanding:%zumb (max:%zumb ) after:%ds\n",
-                        outstanding / MB(1), max_bytes / MB(1), (int)diff);
-            }
+            hprintf("RESUMING RD outstanding:%zumb (max:%"PRIu64"mb ) after:%ds\n", outstanding / MB(1), max_bytes / MB(1), (int)diff);
             e->rd_full = 0;
             evtimer_once(rd_base, resume_read, e);
         }
@@ -1147,6 +1223,7 @@ static void stop_base(struct event_base *b)
 static int net_stop = 1;
 static void exit_once_func(void)
 {
+    logmsg(LOGMSG_USER, "%s: STOP NET\n", __func__);
     struct net_info *n;
     struct host_info *h;
     struct event_info *e;
@@ -1162,8 +1239,9 @@ static void exit_once_func(void)
         stop_base(timer_base);
     }
     if (gbl_libevent_appsock && dedicated_appsock) {
-        stop_base(appsock_timer_base);
-        stop_base(appsock_rd_base);
+        for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
+            stop_base(appsock_base[i]);
+        }
     }
     switch (reader_policy) {
     case POLICY_NONE:
@@ -1239,15 +1317,17 @@ static void exit_once_func(void)
     }
     Pthread_cond_destroy(&exit_cond);
     Pthread_mutex_destroy(&exit_mtx);
+    logmsg(LOGMSG_USER, "%s: STOPPED NET\n", __func__);
 }
 
 static void heartbeat_check(int dummyfd, short what, void *data)
 {
     check_timer_thd();
     struct event_info *e = data;
+    if (e->rd_full) return;
     int diff = time(NULL) - e->recv_at;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    if (diff > netinfo_ptr->heartbeat_check_time && !e->rd_full) {
+    if (diff >= netinfo_ptr->heartbeat_check_time) {
         hprintf("no data in %d seconds\n", (int)diff);
         do_disable_heartbeats(e);
         reconnect(e);
@@ -1258,15 +1338,15 @@ static void heartbeat_send(int dummyfd, short what, void *data)
 {
     check_timer_thd();
     struct event_info *e = data;
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    if (e->wr_full) return;
     int diff = time(NULL) - e->sent_at;
-    if (diff && !e->wr_full) {
-        if (diff < 5) { /* if fd not writeable, hbeat won't help */
-            write_heartbeat(netinfo_ptr, e->host_node_ptr);
-        }
-        if (diff % 10 == 0) { /* reduce spew */
-            hprintf("no data in %d seconds\n", diff);
-        }
+    if (!diff) return;
+    if (diff < 10) {
+        netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+        write_heartbeat(netinfo_ptr, e->host_node_ptr);
+    }
+    if (diff % 10 == 0) { /* reduce spew */
+        hprintf("no data in %d seconds\n", diff);
     }
 }
 
@@ -1277,23 +1357,47 @@ static void hello_hdr_common(struct event_info *e)
     e->need = htonl(n) - sizeof(uint32_t);
 }
 
+struct add_host_info {
+    struct event_info *e;
+    char *ihost;
+    int port;
+};
+
+static void add_host_from_hello_msg(void *data)
+{
+    check_base_thd();
+    struct add_host_info *i = data;
+    struct event_info *e = i->e;
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    host_node_type *host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, i->ihost);
+    if (host_node_ptr) return;
+    host_node_ptr = add_to_netinfo_ll(netinfo_ptr, i->ihost, i->port);
+    if (!host_node_ptr) return;
+    if (i->port) {
+        host_node_ptr->port = i->port;
+    }
+    evtimer_once(base, do_add_host, host_node_ptr);
+}
+
 static int hello_msg_common(struct event_info *e)
 {
+    int rc = -1;
     uint32_t hello_recv = e->need;
     uint32_t start_sz = evbuffer_get_length(e->rd_buf);
-    uint32_t n;
-    evbuffer_remove(e->rd_buf, &n, sizeof(uint32_t));
-    n = htonl(n);
+    uint32_t nn;
+    evbuffer_remove(e->rd_buf, &nn, sizeof(uint32_t));
+    const uint32_t n = htonl(nn);
     if (n > REPMAX) {
         hprintf("RECV'd BAD COUNT OF HOSTS:%u (max:%d)\n", n, REPMAX);
         return -1;
     }
-    char hosts[n][HOSTNAME_LEN + 1];
+    char **hosts = malloc(sizeof(char *) * n);
     for (uint32_t i = 0; i < n; ++i) {
+        hosts[i] = malloc(HOSTNAME_LEN + 1);
         evbuffer_remove(e->rd_buf, hosts[i], HOSTNAME_LEN);
         hosts[i][HOSTNAME_LEN] = 0;
     }
-    uint32_t ports[n];
+    uint32_t *ports = malloc(sizeof(uint32_t) * n);
     for (uint32_t i = 0; i < n; ++i) {
         evbuffer_remove(e->rd_buf, &ports[i], sizeof(uint32_t));
         ports[i] = htonl(ports[i]);
@@ -1301,34 +1405,38 @@ static int hello_msg_common(struct event_info *e)
     /* We have no use for node numbers */
     evbuffer_drain(e->rd_buf, n * sizeof(uint32_t));
     for (uint32_t i = 0; i < n; ++i) {
+        int need_free = 0;
         char *host = hosts[i];
         if (*host == '.') {
             ++host;
             uint32_t s = atoi(host);
             if (s > HOST_NAME_MAX) {
                 hprintf("RECV'd BAD HOSTNAME len:%u (max:%d)\n", s, HOST_NAME_MAX);
-                return -1;
+                goto out;
             }
-            host = alloca(s + 1);
+            need_free = 1;
+            host = malloc(s + 1);
             evbuffer_remove(e->rd_buf, host, s);
             host[s] = 0;
         }
         if (strcmp(host, gbl_myhostname) == 0) {
+            if (need_free) free(host);
             continue;
         }
         struct host_info *hi = host_info_find(host);
         if (hi && event_info_find(e->net_info, hi)) {
+            if (need_free) free(host);
             continue;
         }
         char *ihost = intern(host);
+        if (need_free) free(host);
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-        host_node_type *newhost = add_to_netinfo(netinfo_ptr, ihost, ports[i]);
-        if (newhost) {
-            if (ports[i]) {
-                newhost->port = ports[i];
-            }
-            add_host(newhost);
+        if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, ihost)) { /* net_allow_node */
+            logmsg(LOGMSG_ERROR, "connection to host:%s not allowed\n", ihost);
+            continue;
         }
+        struct add_host_info info = {.e = e, .ihost = ihost, .port = ports[i]};
+        run_on_base(base, add_host_from_hello_msg, &info);
     }
     /* R6/7.0 are sloppy with accounting and send extra fluff */
     uint32_t end_sz = evbuffer_get_length(e->rd_buf);
@@ -1338,7 +1446,13 @@ static int hello_msg_common(struct event_info *e)
         evbuffer_drain(e->rd_buf, fluff);
     }
     set_hello_message(e);
-    return 0;
+    rc = 0;
+out:free(ports);
+    for (uint32_t i = 0; i < n; ++i) {
+        free(hosts[i]);
+    }
+    free(hosts);
+    return rc;
 }
 
 static void check_distress(struct event_info *e)
@@ -1508,11 +1622,157 @@ static int process_payload(struct event_info *e)
     }
 }
 
+#define advance_evbuffer_ptr(ptr, size) evbuffer_ptr_set(e->flush_buf, (ptr), (size), EVBUFFER_PTR_ADD)
+
+
+static int get_stat_from_user_msg(struct event_info *e, struct evbuffer_ptr *p, net_queue_stat_t *stat) 
+{
+    /* seqnum */
+    if (advance_evbuffer_ptr(p, sizeof(uint32_t)) != 0) return -1;
+    uint32_t n = sizeof(uint32_t);
+
+    struct {
+        uint32_t sz;
+        uint32_t crc;
+    } rep, ctrl;
+
+    /* rep record */
+    if (evbuffer_copyout_from(e->flush_buf, p, &rep, sizeof(rep)) != sizeof(rep)) {
+        return -1;
+    }
+    rep.sz = ntohl(rep.sz);
+    if (advance_evbuffer_ptr(p, sizeof(rep) + rep.sz) != 0) return -1;
+    n += (sizeof(rep) + rep.sz);
+
+    /* control record */
+    if (evbuffer_copyout_from(e->flush_buf, p, &ctrl, sizeof(ctrl)) != sizeof(ctrl)) {
+        return -1;
+    }
+    ctrl.sz = ntohl(ctrl.sz);
+    if (advance_evbuffer_ptr(p, sizeof(ctrl)) != 0) return -1;
+    n += sizeof(ctrl);
+
+    /* rep_control */
+    struct {
+        uint32_t rep_version;
+        uint32_t log_version;
+        struct __db_lsn lsn;
+        uint32_t rectype;
+    } rep_ctrl;
+    if (evbuffer_copyout_from(e->flush_buf, p, &rep_ctrl, sizeof(rep_ctrl)) != sizeof(rep_ctrl)) {
+        return -1;
+    }
+    if (advance_evbuffer_ptr(p, ctrl.sz) != 0) return -1;
+    n += ctrl.sz;
+    rep_ctrl.lsn.file = ntohl(rep_ctrl.lsn.file);
+    rep_ctrl.lsn.offset = ntohl(rep_ctrl.lsn.offset);
+    rep_ctrl.rectype = ntohl(rep_ctrl.rectype);
+
+    ++stat->total_count;
+    if (rep_ctrl.rectype <= 0 || rep_ctrl.rectype >= REP_MAX_TYPE) {
+        return -1;
+    }
+    ++stat->type_counts[rep_ctrl.rectype];
+    if (stat->min_lsn.file == 0) {
+        stat->min_lsn = stat->max_lsn = rep_ctrl.lsn;
+    } else if (rep_ctrl.lsn.file <= stat->min_lsn.file) {
+        if (rep_ctrl.lsn.file < stat->min_lsn.file || rep_ctrl.lsn.offset < stat->min_lsn.offset) {
+            stat->min_lsn = rep_ctrl.lsn;
+        }
+    } else if (rep_ctrl.lsn.file >= stat->max_lsn.file) {
+        if (rep_ctrl.lsn.file > stat->max_lsn.file || rep_ctrl.lsn.offset > stat->max_lsn.offset) {
+            stat->max_lsn = rep_ctrl.lsn;
+        }
+    }
+    return n;
+}
+
+static void get_stat_evbuffer(struct event_info *e, net_queue_stat_t *stat)
+{
+    if (!e->flush_buf) return;
+    if (!e->got_hello && !e->got_hello_reply) return;
+    uint32_t n;
+    wire_header_type hdr;
+    net_send_message_header msg;
+    net_ack_message_payload_type ack;
+    struct evbuffer_ptr p;
+    evbuffer_ptr_set(e->flush_buf, &p, 0, EVBUFFER_PTR_SET);
+    while (evbuffer_copyout_from(e->flush_buf, &p, &hdr, sizeof(hdr)) == sizeof(hdr)) {
+        if (advance_evbuffer_ptr(&p, e->wirehdr_len) != 0) return;
+        int rc = -1;
+        int type = ntohl(hdr.type);
+        int known = 0;
+        switch (type) {
+        case WIRE_HEADER_HEARTBEAT:
+            rc = 0;
+            break;
+        case WIRE_HEADER_HELLO:
+        case WIRE_HEADER_HELLO_REPLY:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &n, sizeof(n)) != sizeof(n)) {
+                break;
+            }
+            n = ntohl(n);
+            rc = advance_evbuffer_ptr(&p, n);
+            break;
+        case WIRE_HEADER_DECOM:
+            rc = advance_evbuffer_ptr(&p, sizeof(n));
+            break;
+        case WIRE_HEADER_USER_MSG:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &msg, sizeof(msg)) != sizeof(msg)) {
+                break;
+            }
+            advance_evbuffer_ptr(&p, NET_SEND_MESSAGE_HEADER_LEN);
+            msg.datalen = ntohl(msg.datalen);
+            msg.usertype = ntohl(msg.usertype);
+            if (msg.usertype != USER_TYPE_BERKDB_REP) {
+                rc = advance_evbuffer_ptr(&p, msg.datalen);
+            } else if (get_stat_from_user_msg(e, &p, stat) == msg.datalen) {
+                rc = 0;
+                known = 1;
+            }
+            break;
+        case WIRE_HEADER_ACK:
+            rc = advance_evbuffer_ptr(&p, NET_ACK_MESSAGE_TYPE_LEN);
+            break;
+        case WIRE_HEADER_DECOM_NAME:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &n, sizeof(n)) != sizeof(n)) {
+                break;
+            }
+            n = ntohl(n);
+            rc = advance_evbuffer_ptr(&p, sizeof(n) + n);
+            break;
+        case WIRE_HEADER_ACK_PAYLOAD:
+            if (evbuffer_copyout_from(e->flush_buf, &p, &ack, sizeof(ack)) != sizeof(ack)) {
+                break;
+            }
+            n = ntohl(ack.paylen);
+            rc = advance_evbuffer_ptr(&p, NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN + n);
+            break;
+        default:
+            break;
+        }
+        if (rc) {
+            hprintf_nd("got error on type:%d (%d)\n", type, ntohl(type));
+            break;
+        } else if (!known) {
+            ++stat->unknown_count;
+        }
+    }
+}
+
 static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
 {
 #   define NVEC 8
     struct iovec v[NVEC];
-    const int nv = evbuffer_reserve_space(buf, MB(4), v, NVEC);
+#   ifdef FIONREAD
+    int avail;
+    (void)ioctl(fd, FIONREAD, &avail);
+    if (avail <= 0) avail = TCP_BUFSZ;
+#   else
+#   pragma message("FIONREAD not available")
+    avail = TCP_BUFSZ;
+#   endif
+    const int nv = evbuffer_reserve_space(buf, avail, v, NVEC);
     if (nv <= 0) {
         errno = ENOMEM;
         return -1;
@@ -1520,7 +1780,7 @@ static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
     const ssize_t sz = readv(fd, v, nv);
     if (sz <= 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
-        return -1;
+        return sz;
     }
     ssize_t n = sz;
     for (int i = 0; i < nv; ++i) {
@@ -1543,7 +1803,7 @@ static void readcb(int fd, short what, void *data)
     /* Writing my own readv wrapper; Observed max read of 4K with:
     ssize_t n = evbuffer_read(e->rd_buf, e->fd, -1); */
     ssize_t n = readv_evbuffer(e->rd_buf, e->fd);
-    if (n < 0) {
+    if (n <= 0) {
         hprintf("readv rc:%zd errno:%d:%s\n", n, errno, strerror(errno));
         reconnect:
         do_disable_read(e);
@@ -1567,26 +1827,27 @@ static void resume_read(int dummyfd, short what, void *data)
     event_add(e->rd_ev, NULL);
 }
 
-static void do_queued(int dummyfd, short what, void *data)
-{
-    struct event_info *e = data;
-    struct host_connected_info *info = LIST_FIRST(&e->host_connected_list);
-    evtimer_once(base, do_open, info);
-}
-
 static void finish_host_setup(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *i = data;
-    struct event_info *e = i->e;
+    check_base_thd();
+    struct event_info *e = data;
+    struct host_connected_info *i = e->host_connected;
+    e->host_connected = NULL;
     int connect_msg = i->connect_msg;
     host_connected_info_free(i);
-    if (!LIST_EMPTY(&e->host_connected_list)) {
-        hputs("WORKING ON QUEUED CONNECTION\n");
-        do_close(e, do_queued);
+    if (e->host_connected_pending) {
+        e->host_connected = e->host_connected_pending;
+        e->host_connected_pending = NULL;
+        hprintf("WORKING ON PENDING CONNECTION fd:%d\n", e->host_connected->fd);
+        do_close(e, do_open);
     } else if (connect_msg) {
         hputs("WRITING HELLO\n");
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-        write_connect_message(netinfo_ptr, e->host_node_ptr, NULL);
+        if (gbl_pb_connectmsg && gbl_libevent) {
+            write_connect_message_proto(netinfo_ptr, e->host_node_ptr);
+        } else {
+            write_connect_message(netinfo_ptr, e->host_node_ptr, NULL);
+        }
         write_hello(netinfo_ptr, e->host_node_ptr);
     } else {
         hputs("CONNECTED\n");
@@ -1595,8 +1856,7 @@ static void finish_host_setup(int dummyfd, short what, void *data)
 
 static void enable_heartbeats(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *i = data;
-    struct event_info *e = i->e;
+    struct event_info *e = data;
     check_timer_thd();
     if (e->hb_send_ev || e->hb_check_ev) {
         abort();
@@ -1606,13 +1866,13 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
     e->hb_send_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_send, e);
     event_add(e->hb_check_ev, &one_sec);
     event_add(e->hb_send_ev, &one_sec);
-    evtimer_once(base, finish_host_setup, i);
+    hputs("ENABLE\n");
+    evtimer_once(base, finish_host_setup, e);
 }
 
 static void enable_read(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *i = data;
-    struct event_info *e = i->e;
+    struct event_info *e = data;
     check_rd_thd();
     message_done(e);
     e->rd_full = 0;
@@ -1623,45 +1883,60 @@ static void enable_read(int dummyfd, short what, void *data)
     e->rd_buf = evbuffer_new();
     e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
     event_add(e->rd_ev, NULL);
-    evtimer_once(timer_base, enable_heartbeats, i);
+    hputs("ENABLE\n");
+    evtimer_once(timer_base, enable_heartbeats, e);
 }
 
 static void enable_write(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *i = data;
-    struct event_info *e = i->e;
+    struct event_info *e = data;
+    struct host_connected_info *i = e->host_connected;
     check_wr_thd();
     Pthread_mutex_lock(&e->wr_lk);
     update_event_fd(e, i->fd);
     if (e->flush_buf || e->wr_ev) {
         abort();
     }
-    e->wr_ev = event_new(wr_base, i->fd, EV_WRITE | EV_PERSIST, writecb, e);
+    e->wr_ev = event_new(wr_base, e->fd, EV_WRITE | EV_PERSIST, writecb, e);
     e->flush_buf = evbuffer_new();
     e->wr_buf = evbuffer_new();
     e->wr_full = 0;
     e->decomissioned = 0;
     Pthread_mutex_unlock(&e->wr_lk);
-    evtimer_once(rd_base, enable_read, i);
+    hputs("ENABLE\n");
+    evtimer_once(rd_base, enable_read, e);
 }
 
 static void do_open(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *i = data;
-    struct event_info *e = i->e;
     check_base_thd();
+    struct event_info *e = data;
+    struct host_connected_info *i = e->host_connected;
+    hprintf("PROCESSING fd:%d\n", i->fd);
     host_node_open(e->host_node_ptr, i->fd);
-    evtimer_once(wr_base, enable_write, i);
+    evtimer_once(wr_base, enable_write, e);
 }
 
 static void host_connected(struct event_info *e, int fd, int connect_msg)
 {
     check_base_thd();
-    int dispatch = LIST_EMPTY(&e->host_connected_list);
-    host_connected_info_new(e, fd, connect_msg);
-    if (dispatch) {
-        hprintf("PROCESSING CONNECTION fd:%d\n", fd);
-        do_close(e, do_queued);
+    struct host_connected_info *i = host_connected_info_new(e, fd, connect_msg);
+    struct host_connected_info *pending = e->host_connected_pending;
+    if (pending) {
+        if (e->host_connected == NULL) {
+            abort();
+        }
+        hprintf("ONGOING fd:%d  PENDING fd:%d  REPLACE WITH fd:%d\n", e->host_connected->fd, pending->fd, fd);
+        shutdown_close(pending->fd);
+        host_connected_info_free(pending);
+        e->host_connected_pending = i;
+    } else if (e->host_connected) {
+        hprintf("ONGOING fd:%d  ENQUEUE fd:%d\n", e->host_connected->fd, fd);
+        e->host_connected_pending = i;
+    } else {
+        hprintf("CONNECT TO fd:%d\n", fd);
+        e->host_connected = i;
+        do_close(e, do_open);
     }
 }
 
@@ -1680,15 +1955,15 @@ static void comdb2_connected(int fd, short what, void *data)
     struct connect_info *c = data;
     struct event_info *e = c->e;
     if (what & EV_TIMEOUT) {
-        hprintf("CONNECT TIMED OUT fd:%d\n", fd);
+        hprintf("TIMEOUT fd:%d\n", fd);
         pmux_reconnect(c);
         return;
     }
     if (e->fd != -1) {
         hputs("HAVE ACTIVE CONNECTION\n");
-    } else if (!LIST_EMPTY(&e->host_connected_list)) {
-        struct host_connected_info *i = LIST_FIRST(&e->host_connected_list);
-        hprintf("HAVE PENDING CONNECTION fd:%d\n", i->fd);
+    } else if (e->host_connected) {
+        struct host_connected_info *info = e->host_connected;
+        hprintf("HAVE PENDING CONNECTION fd:%d\n", info->fd);
     } else if (!skip_connect(e)) {
         hprintf("MADE NEW CONNECTION fd:%d\n", fd);
         host_connected(e, fd, 1);
@@ -1726,8 +2001,15 @@ static void comdb2_connect(struct connect_info *c, int port)
 static void pmux_rte_readcb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
-    if ((what & EV_TIMEOUT) || evbuffer_read(c->buf, fd, -1) <= 0) {
+    struct event_info *e = c->e;
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_read(c->buf, fd, -1)) <= 0) {
+        hprintf("FAILED read fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -1738,7 +2020,7 @@ static void pmux_rte_readcb(int fd, short what, void *data)
         return;
     }
     int pmux_rc = -1;
-    int rc = sscanf(res, "%d", &pmux_rc);
+    rc = sscanf(res, "%d", &pmux_rc);
     free(res);
     if (rc != 1 || pmux_rc != 0) {
         pmux_reconnect(c);
@@ -1750,8 +2032,15 @@ static void pmux_rte_readcb(int fd, short what, void *data)
 static void pmux_rte_writecb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
-    if ((what & EV_TIMEOUT) || evbuffer_write(c->buf, fd) <= 0) {
+    struct event_info *e = c->e;
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_write(c->buf, fd)) <= 0) {
+        hprintf("FAILED write fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -1776,10 +2065,16 @@ static void pmux_rte(struct connect_info *c)
 static void pmux_get_readcb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
     struct event_info *e = c->e;
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
-    if ((what & EV_TIMEOUT) || evbuffer_read(c->buf, fd, -1) <= 0) {
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_read(c->buf, fd, -1)) <= 0) {
+        hprintf("FAILED read fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -1806,11 +2101,12 @@ static void pmux_get_readcb(int fd, short what, void *data)
         return;
     }
     update_event_port(e, port);
+    /*
     if (gbl_pmux_route_enabled) {
         pmux_rte(c);
         return;
     }
-    /* Thanks pmux for the port */
+    */
     c->fd = -1;
     shutdown_close(fd);
     comdb2_connect(c, port);
@@ -1819,8 +2115,15 @@ static void pmux_get_readcb(int fd, short what, void *data)
 static void pmux_get_writecb(int fd, short what, void *data)
 {
     check_base_thd();
+    int rc;
     struct connect_info *c = data;
-    if ((what & EV_TIMEOUT) || evbuffer_write(c->buf, fd) <= 0) {
+    struct event_info *e = c->e;
+    if (what & EV_TIMEOUT) {
+        hprintf("TIMEOUT fd:%d\n", fd);
+        pmux_reconnect(c);
+        return;
+    } else if ((rc = evbuffer_write(c->buf, fd)) <= 0) {
+        hprintf("FAILED write fd:%d rc:%d errno:%d -- %s\n", fd, rc, errno, strerror(errno));
         pmux_reconnect(c);
         return;
     }
@@ -1847,7 +2150,7 @@ static void pmux_reconnect(struct connect_info *c)
     struct event_info *e = c->e;
     hprintf("FAILED CONNECTING fd:%d\n", c->fd);
     connect_info_free(c);
-    if (e->fd == -1 && LIST_EMPTY(&e->host_connected_list)) {
+    if (e->fd == -1 && !e->host_connected) {
         do_reconnect(-1, 0, e);
     }
 }
@@ -1890,11 +2193,14 @@ static void pmux_connect(int dummyfd, short what, void *data)
         return;
     }
     hprintf("CONNECTING fd:%d\n", c->fd);
+    /*
     if (gbl_pmux_route_enabled && e->port != 0) {
         pmux_rte(c);
     } else {
         pmux_get(c);
     }
+    */
+    pmux_get(c);
 }
 
 static struct timeval ms_to_timeval(int ms)
@@ -1927,17 +2233,15 @@ static int accept_host(struct accept_info *a)
         e = event_info_new(n, h);
     }
     host_node_type *host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
-    if (host_node_ptr == NULL) {
-        host_node_ptr = add_to_netinfo(netinfo_ptr, host, port);
-    }
-    if (host_node_ptr == NULL) {
-        return -1;
+    if (!host_node_ptr) {
+        host_node_ptr = add_to_netinfo_ll(netinfo_ptr, host, port);
+        if (!host_node_ptr) return -1;
     }
     host_node_ptr->addr = a->ss.sin_addr;
     update_host_node_ptr(host_node_ptr, e);
     update_event_port(e, port);
     update_wire_hdrs(e);
-    if (netinfo_ptr->new_node_rtn) {
+    if (netinfo_ptr->new_node_rtn) { /* net_newnode_rtn */
         netinfo_ptr->new_node_rtn(netinfo_ptr, host, port);
     }
     hprintf("ACCEPTED NEW CONNECTION fd:%d\n", a->fd);
@@ -1952,6 +2256,16 @@ static int validate_host(struct accept_info *a)
     if (strcmp(a->from_host, gbl_myhostname) == 0) {
         logmsg(LOGMSG_WARN, "%s fd:%d invalid from:%s\n", __func__, a->fd,
                a->from_host);
+        return -1;
+    }
+
+    char *dbname = gbl_dbname;
+    if (gbl_debug_pb_connectmsg_dbname_check) {
+        dbname = "icthxdb";
+    }
+
+    if (a->dbname && strcmp(a->dbname, dbname) != 0) {
+        logmsg(LOGMSG_WARN, "%s fd:%d invalid dbname:%s (exp:%s)\n", __func__, a->fd, a->dbname, dbname);
         return -1;
     }
 #   if 0
@@ -1974,7 +2288,7 @@ static int validate_host(struct accept_info *a)
     }
 #   endif
     int check_port = 1;
-    int port = a->c.my_portnum;
+    int port = a->c.from_portnum;
     int netnum = port >> 16;
     a->from_port = port &= 0xffff;
     if (netnum > 0 && netnum < a->netinfo_ptr->num_child_nets) {
@@ -1985,7 +2299,7 @@ static int validate_host(struct accept_info *a)
     if (netinfo_ptr == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s failed node:%d host:%s netnum:%d (%d) failed\n", __func__,
-               a->c.my_nodenum, a->from_host, netnum, a->netinfo_ptr->netnum);
+               a->c.from_nodenum, a->from_host, netnum, a->netinfo_ptr->netnum);
         return -1;
     }
     if (check_port && a->c.to_portnum != netinfo_ptr->myport) {
@@ -1996,9 +2310,9 @@ static int validate_host(struct accept_info *a)
         return -1;
     }
     char *host = a->from_host_interned = intern(a->from_host);
-    if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, host)) {
+    if (netinfo_ptr->allow_rtn && !netinfo_ptr->allow_rtn(netinfo_ptr, host)) { /* net_allow_node */
         logmsg(LOGMSG_ERROR, "connection from node:%d host:%s not allowed\n",
-               a->c.my_nodenum, host);
+               a->c.from_nodenum, host);
         return -1;
     }
     if (a->c.flags & CONNECT_MSG_SSL) {
@@ -2068,7 +2382,7 @@ static int process_connect_message(struct accept_info *a)
     }
     net_connect_message_get(&a->c, buf, buf + NET_CONNECT_MESSAGE_TYPE_LEN);
     evbuffer_drain(input, NET_CONNECT_MESSAGE_TYPE_LEN);
-    if (read_hostname(&a->from_host, &a->from_len, a->c.my_hostname) != 0) {
+    if (read_hostname(&a->from_host, &a->from_len, a->c.from_hostname) != 0) {
         return -1;
     }
     if (read_hostname(&a->to_host, &a->to_len, a->c.to_hostname) != 0) {
@@ -2082,24 +2396,130 @@ static int process_connect_message(struct accept_info *a)
     return event_base_once(base, a->fd, EV_READ, read_long_hostname, a, NULL);
 }
 
+static int process_connect_message_proto(struct accept_info *a)
+{
+    struct evbuffer *input = a->buf;
+    uint8_t *buf = evbuffer_pullup(input, a->need);
+    if (buf == NULL) {
+        return -1;
+    }
+
+    NetConnectmsg *c = net_connectmsg__unpack(NULL, a->need, buf);
+    evbuffer_drain(input, a->need);
+    int bad = 0;
+    char *missing = "Connect message missing field";
+    if (c->to_hostname)
+        a->to_host = strdup(c->to_hostname);
+    else {
+        logmsg(LOGMSG_ERROR, "%s to_hostname\n", missing);
+        bad = 1;
+    }
+    if (c->has_to_portnum)
+        a->c.to_portnum = c->to_portnum;
+    else {
+        logmsg(LOGMSG_ERROR, "%s to_portnum\n", missing);
+        bad = 1;
+    }
+    if (c->from_hostname)
+        a->from_host = strdup(c->from_hostname);
+    else {
+        logmsg(LOGMSG_ERROR, "%s from_hostname\n", missing);
+        bad = 1;
+    }
+    if (c->has_from_portnum)
+        a->c.from_portnum = c->from_portnum;
+    else {
+        logmsg(LOGMSG_ERROR, "%s from_portnum\n", missing);
+        bad = 1;
+    }
+    if (c->dbname)
+        a->dbname = strdup(c->dbname);
+    else {
+        logmsg(LOGMSG_ERROR, "%s dbname\n", missing);
+        bad = 1;
+    }
+
+    net_connectmsg__free_unpacked(c, NULL);
+    return bad ? -1 : validate_host(a);
+}
+
 static void read_connect(int fd, short what, void *data)
 {
     struct accept_info *a = data;
     int need = a->need - evbuffer_get_length(a->buf);
     int n = evbuffer_read(a->buf, fd, need);
-    if (n <= 0) {
+    if (n <= 0 && (what & EV_READ)) {
         accept_info_free(a);
         return;
     }
     int rc;
     if (n == need) {
-        rc = process_connect_message(a);
+        if (a->uses_proto) {
+            rc = process_connect_message_proto(a);
+        } else {
+            rc = process_connect_message(a);
+        }
     } else {
         rc = event_base_once(base, fd, EV_READ, read_connect, a, NULL);
     }
     if (rc) {
         accept_info_free(a);
     }
+}
+
+static int write_connect_message_proto(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
+{
+    char type = 0;
+    char star = '*';
+    NetConnectmsg connect_message = NET_CONNECTMSG__INIT;
+
+    // fill in message
+    connect_message.to_hostname = host_node_ptr->host;
+    connect_message.has_to_portnum = 1;
+    connect_message.to_portnum = host_node_ptr->port;
+    connect_message.from_hostname = netinfo_ptr->myhostname;
+    connect_message.has_from_portnum = 1;
+    if (gbl_accept_on_child_nets || !netinfo_ptr->ischild) {
+        connect_message.from_portnum = netinfo_ptr->myport;
+    } else {
+        connect_message.from_portnum = netinfo_ptr->parent->myport | (netinfo_ptr->netnum << 16);
+    }
+    connect_message.dbname = gbl_dbname;
+    if (gbl_debug_pb_connectmsg_dbname_check) {
+        connect_message.dbname = "icthxdb";
+    }
+
+    // send message
+    int len = net_connectmsg__get_packed_size(&connect_message);
+    int net_len = htonl(len);
+
+    uint8_t *buf = malloc(len);
+    net_connectmsg__pack(&connect_message, buf);
+
+    int i = 0;
+    int n = 4;
+    struct iovec iov[n];
+    int rc;
+
+    iov[i].iov_base = &type;
+    iov[i].iov_len = sizeof(type);
+    ++i;
+
+    iov[i].iov_base = &star;
+    iov[i].iov_len = sizeof(star);
+    ++i;
+
+    iov[i].iov_base = &net_len;
+    iov[i].iov_len = sizeof(net_len);
+    ++i;
+
+    iov[i].iov_base = buf;
+    iov[i].iov_len = len;
+    ++i;
+
+    rc = write_connect_message_evbuffer(host_node_ptr, iov, n);
+    free(buf);
+    return rc;
 }
 
 static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int first_byte, struct evbuffer *buf, int fd)
@@ -2117,6 +2537,42 @@ static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, in
     do_appsock(netinfo_ptr, ss, sb, first_byte);
 }
 
+/* retrive next 5 bytes to search for '*' and len */
+static void read_len(int fd, short what, void *data)
+{
+    char first;
+    int len, n;
+    struct accept_info *a = data;
+    int need = sizeof(first) + sizeof(len) - evbuffer_get_length(a->buf);
+
+    if (need > 0) {
+        n = evbuffer_read(a->buf, fd, need);
+        if (n <= 0 && (what & EV_READ)) {
+            accept_info_free(a);
+            return;
+        }
+    } else {
+        n = need; // we are done reading
+    }
+
+    if (n == need) {
+        evbuffer_copyout(a->buf, &first, 1);
+        if (first == '*' && !gbl_debug_pb_connectmsg_gibberish) { // protobuf connect message
+            evbuffer_drain(a->buf, 1);
+            evbuffer_remove(a->buf, &len, sizeof(len));
+            len = ntohl(len);
+            a->need = len;
+            a->uses_proto = 1;
+        } else {
+            a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
+            a->uses_proto = 0;
+        }
+        read_connect(fd, 0, a);
+    } else if (event_base_once(base, fd, EV_READ, read_len, a, NULL)) {
+        accept_info_free(a);
+    }
+}
+
 static void do_read(int fd, short what, void *data)
 {
     check_base_thd();
@@ -2132,10 +2588,7 @@ static void do_read(int fd, short what, void *data)
     if (first_byte == 0) {
         evbuffer_drain(buf, 1);
         a->buf = buf;
-        a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
-        if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
-            accept_info_free(a);
-        }
+        read_len(fd, 0, a);
         return;
     }
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
@@ -2169,24 +2622,38 @@ static void do_read(int fd, short what, void *data)
         arg->fd = fd;
         arg->addr = ss;
         arg->rd_buf = buf;
-        evtimer_once(appsock_rd_base, info->cb, arg); /* handle_newsql_request_evbuffer */
+
+        static int appsock_counter = 0;
+        arg->base = appsock_base[appsock_counter++];
+        if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
+        evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
         return;
     }
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
-static void do_accept(struct evconnlistener *listener, evutil_socket_t fd,
+static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
                       struct sockaddr *addr, int len, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    struct accept_info *a;
-    a = accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd);
-    if (event_base_once(base, fd, EV_READ, do_read, a, NULL) != 0) {
-        accept_info_free(a);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd);
+}
+
+static void accept_error_cb(struct evconnlistener *listener, void *data)
+{
+    check_base_thd();
+    int err = EVUTIL_SOCKET_ERROR();
+    if (err == EMFILE && close_oldest_pending_connection() == 0) {
+        return;
     }
+    logmsg(LOGMSG_FATAL,
+           "%s err:%d [%s] [outstanding fds:%d] [appsock fds:%d]\n",
+           __func__, err, evutil_socket_error_to_string(err),
+           pending_connections, ATOMIC_LOAD32(active_appsock_conns));
+    abort();
 }
 
 static void reopen_unix(int fd, struct net_info *n)
@@ -2210,20 +2677,21 @@ static void reopen_unix(int fd, struct net_info *n)
      (m)->cmsg_level == SOL_SOCKET && (m)->cmsg_type == SCM_RIGHTS)
 #endif
 
-static int recvfd(int fd)
+static int recvfd(int pmux_fd)
 {
     int newfd = -1;
     char buf[sizeof("pmux") - 1];
     struct iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
+    struct msghdr msg = {0};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
 #   ifdef __sun
-    struct msghdr msg = {.msg_iov = &iov,
-                         .msg_iovlen = 1,
-                         .msg_accrights = (caddr_t)&newfd,
-                         .msg_accrightslen = sizeof(newfd)};
-    ssize_t rc = recvmsg(fd, &msg, 0);
+    msg.msg_accrights = (caddr_t)&newfd;
+    msg.msg_accrightslen = sizeof(newfd);
+    ssize_t rc = recvmsg(pmux_fd, &msg, 0);
     if (rc != sizeof(buf)) {
-        logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d rc:%zd expected:%zu (%s)\n",
-               __func__, fd, rc, sizeof(buf), strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d rc:%zd expected:%zu (%s)\n",
+               __func__, pmux_fd, rc, sizeof(buf), strerror(errno));
         return -1;
     }
     if (msg.msg_accrightslen != sizeof(newfd)) {
@@ -2231,18 +2699,28 @@ static int recvfd(int fd)
     }
 #   else
     struct cmsghdr *cmsgptr = alloca(CMSG_SPACE(sizeof(int)));
-    struct msghdr msg = {.msg_iov = &iov,
-                         .msg_iovlen = 1,
-                         .msg_control = cmsgptr,
-                         .msg_controllen = CMSG_SPACE(sizeof(int))};
-    ssize_t rc = recvmsg(fd, &msg, 0);
+    msg.msg_control = cmsgptr;
+    msg.msg_controllen = CMSG_SPACE(sizeof(int));
+    ssize_t rc = recvmsg(pmux_fd, &msg, 0);
+    if (rc == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return 0;
+        }
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d rc:%zd errno:%d [%s]\n",
+               __func__, pmux_fd, rc, errno, strerror(errno));
+        return -1;
+    }
     if (rc != sizeof(buf)) {
-        logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d rc:%zd expected:%zu (%s)\n",
-               __func__, fd, rc, sizeof(buf), strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d rc:%zd expected:%zu\n",
+               __func__, pmux_fd, rc, sizeof(buf));
         return -1;
     }
     struct cmsghdr *tmp, *m;
     m = tmp = CMSG_FIRSTHDR(&msg);
+    if (!m) {
+        logmsg(LOGMSG_ERROR, "%s:CMSG_FIRSTHDR NULL msghdr\n", __func__);
+        return -2;
+    }
     if (CMSG_NXTHDR(&msg, tmp) != NULL) {
         logmsg(LOGMSG_ERROR, "%s:CMSG_NXTHDR unexpected msghdr\n", __func__);
         return -1;
@@ -2255,27 +2733,27 @@ static int recvfd(int fd)
 #   endif
     if (memcmp(buf, "pmux", sizeof(buf)) != 0) {
         shutdown_close(newfd);
-        logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d unexpected msg:%.*s\n", __func__,
-               fd, (int)sizeof(buf), buf);
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d unexpected msg:%.*s\n", __func__,
+               pmux_fd, (int)sizeof(buf), buf);
         return -1;
     }
     return newfd;
 }
 
-static void do_recvfd(int fd, short what, void *data)
+static void do_recvfd(int pmux_fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
-    int newfd = recvfd(fd);
-    if (newfd == -1) {
-        reopen_unix(fd, n);
-        return;
+    int newfd = recvfd(pmux_fd);
+    switch (newfd) {
+    case 0: return;
+    case -1: reopen_unix(pmux_fd, n); return;
+    case -2: close_oldest_pending_connection(); return;
     }
     make_socket_nonblocking(newfd);
     ssize_t rc = write(newfd, "0\n", 2);
     if (rc != 2) {
-        logmsg(LOGMSG_ERROR, "%s:write fd:%d rc:%zd (%s)\n", __func__, fd, rc,
-               strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
         shutdown_close(newfd);
         return;
     }
@@ -2283,7 +2761,7 @@ static void do_recvfd(int fd, short what, void *data)
     struct sockaddr *addr = (struct sockaddr *)&saddr;
     socklen_t addrlen = sizeof(saddr);
     getpeername(newfd, addr, &addrlen);
-    do_accept(NULL, newfd, addr, addrlen, n);
+    accept_cb(NULL, newfd, addr, addrlen, n);
 }
 
 static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
@@ -2325,10 +2803,11 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     struct sockaddr *s  = (struct sockaddr *)&sin;
     unsigned flags;
     flags = LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE;
-    n->listener = evconnlistener_new_bind(base, do_accept, n, flags, SOMAXCONN, s, len);
+    n->listener = evconnlistener_new_bind(base, accept_cb, n, flags, SOMAXCONN, s, len);
     if (n->listener == NULL) {
         return -1;
     }
+    evconnlistener_set_error_cb(n->listener, accept_error_cb);
     int fd = evconnlistener_get_fd(n->listener);
     update_net_info(n, fd, port);
     logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
@@ -2459,8 +2938,9 @@ static void net_accept(netinfo_type *netinfo_ptr)
         return;
     }
     make_socket_nonblocking(fd);
-    n->listener = evconnlistener_new(base, do_accept, n, LEV_OPT_CLOSE_ON_FREE,
+    n->listener = evconnlistener_new(base, accept_cb, n, LEV_OPT_CLOSE_ON_FREE,
                                      gbl_net_maxconn ? gbl_net_maxconn : SOMAXCONN, fd);
+    evconnlistener_set_error_cb(n->listener, accept_error_cb);
     logmsg(LOGMSG_INFO, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
            netinfo_ptr->service, netinfo_ptr->myport, fd);
 }
@@ -2501,11 +2981,9 @@ static void do_add_host(int accept_fd, short what, void *data)
 
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
 {
-    return strcmp(e->host, gbl_myhostname) == 0
-           || e->fd == -1
-           || e->decomissioned
-           || (e->wr_full && !nodrop)
-           || (check_hello && !e->got_hello);
+    if (e->fd == -1 || e->decomissioned || (check_hello && !e->got_hello)) return -3;
+    if (e->wr_full && !nodrop) return -2;
+    return 0;
 }
 
 struct shared_msg {
@@ -2599,11 +3077,14 @@ static void setup_bases(void)
     }
     if (gbl_libevent_appsock) {
         if (dedicated_appsock) {
-            init_base(&appsock_rd_thd, &appsock_rd_base, "appsock_rd");
-            init_base(&appsock_timer_thd, &appsock_timer_base, "appsock_timer");
+            for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
+                init_base_priority(&appsock_thd[i], &appsock_base[i], "appsock", 2);
+            }
         } else {
-            appsock_timer_base = appsock_rd_base = base;
-            appsock_timer_thd = appsock_rd_thd = base_thd;
+            for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
+                appsock_base[i] = base;
+                appsock_thd[i] = base_thd;
+            }
         }
     }
     if (writer_policy == POLICY_NONE) {
@@ -2728,6 +3209,7 @@ static void get_hosts_evbuffer_impl(void *arg)
     int i = 1;
     struct event_info *e;
     LIST_FOREACH(e, &n->event_list, net_list_entry) {
+        if (e->decomissioned) continue;
         info->hosts[i] = e->host_node_ptr;
         ++i;
         if (i == info->max_hosts) {
@@ -2747,7 +3229,7 @@ void add_host(host_node_type *host_node_ptr)
 {
     netinfo_type *netinfo_ptr = host_node_ptr->netinfo_ptr;
     int fake = netinfo_ptr->fake;
-    if (gbl_create_mode || gbl_fullrecovery || fake || !gbl_libevent) {
+    if (gbl_create_mode || gbl_exit || fake || !gbl_libevent) {
         return;
     }
     init_event_net(netinfo_ptr);
@@ -2766,6 +3248,7 @@ void decom(char *host)
     if (h == NULL) {
         return;
     }
+    logmsg(LOGMSG_USER, "%s host:%s\n", __func__, host);
     struct event_info *e;
     LIST_FOREACH(e, &h->event_list, host_list_entry) {
         if (e->decomissioned) continue;
@@ -2812,6 +3295,7 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
     int nodelay = flags & WRITE_MSG_NODELAY;
     struct event_info *e = host_node_ptr->event_info;
     struct evbuffer *buf = evbuffer_new();
+    size_t bytes_written;
     if (buf == NULL) {
         rc = -1;
         goto out;
@@ -2826,15 +3310,24 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
             goto out;
         }
     }
+    bytes_written = evbuffer_get_length(buf);
     Pthread_mutex_lock(&e->wr_lk);
-    if (skip_send(e, nodrop, 0)) {
-        rc = -2;
-    } else if (e->flush_buf) {
+    if (!e->flush_buf) {
+       rc = -3;
+    } else if ((rc = skip_send(e, nodrop, 0)) == 0) {
         if ((rc = evbuffer_add_buffer(e->flush_buf, buf)) == 0) {
             flush_evbuffer(e, nodelay);
+        } else {
+            rc = -1;
         }
-    } else {
-        rc = -3;
+    }
+    if (rc==0) {
+        if (e->net_info && e->net_info->netinfo_ptr) {
+            netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+            netinfo_ptr->stats.bytes_written += bytes_written;
+        }
+        host_node_ptr->stats.bytes_written += bytes_written;
+        update_host_net_queue_stats(host_node_ptr, 1, bytes_written);
     }
     Pthread_mutex_unlock(&e->wr_lk);
 out:if (buf) {
@@ -2850,11 +3343,13 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
     }
     int nodrop = 0;
     int nodelay = 0;
+    int logput = 0;
     int sz = (n * NET_SEND_MESSAGE_HEADER_LEN);
     for (int i = 0; i < n; ++i) {
         sz += len[i];
         nodrop |= flags[i] & NET_SEND_NODROP;
         nodelay |= flags[i] & NET_SEND_NODELAY;
+        logput |= flags[i] & NET_SEND_LOGPUT;
     }
     struct shared_msg **msg = NULL;
     if (sz > 256) {
@@ -2873,6 +3368,9 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
     struct net_info *ni = net_info_find(netinfo_ptr->service);
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
+        if (logput && netinfo_ptr->throttle_rtn && (netinfo_ptr->throttle_rtn)(netinfo_ptr, e->host)) {
+            continue;
+        }
         Pthread_mutex_lock(&e->wr_lk);
         if (e->flush_buf && !skip_send(e, nodrop, 1)) {
             if (msg) {
@@ -2883,6 +3381,11 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
             flush_evbuffer(e, nodelay);
         }
         Pthread_mutex_unlock(&e->wr_lk);
+        if (e->host_node_ptr) {
+            e->host_node_ptr->stats.bytes_written += sz;
+            update_host_net_queue_stats(e->host_node_ptr, 1, sz);
+        }
+        netinfo_ptr->stats.bytes_written += sz;
     }
     if (msg) {
         for (int i = 0; i < n; ++i) {
@@ -3011,4 +3514,26 @@ void run_on_base(struct event_base *base, run_on_base_fn func, void *arg)
     Pthread_mutex_unlock(&info.lock);
     Pthread_mutex_destroy(&info.lock);
     Pthread_cond_destroy(&info.cond);
+}
+
+void net_queue_stat_iterate_evbuffer(netinfo_type *netinfo_ptr, QSTATITERFP func, struct net_get_records *arg)
+{
+    struct net_info *ni = net_info_find(netinfo_ptr->service);
+    struct event_info *e;
+    LIST_FOREACH(e, &ni->event_list, net_list_entry) {
+        int type_counts[REP_MAX_TYPE] = {0};
+        net_queue_stat_t stat = {0};
+        Pthread_mutex_init(&stat.lock, NULL);
+        stat.nettype = e->service;
+        stat.hostname = e->host;
+        stat.max_type = REP_MAX_TYPE - 1;
+        stat.type_counts = type_counts;
+
+        Pthread_mutex_lock(&e->wr_lk);
+        get_stat_evbuffer(e, &stat);
+        Pthread_mutex_unlock(&e->wr_lk);
+
+        func(arg, &stat); /* net_to_systable */
+        Pthread_mutex_destroy(&stat.lock);
+    }
 }

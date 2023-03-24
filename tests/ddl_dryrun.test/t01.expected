@@ -1,0 +1,24 @@
+(Message='Table dr will be added.')
+(Message='Schema change plan:-')
+(Message='    No changes to main data file')
+(Message='    No action for blob 0.')
+(Message='    No action for blob 1.')
+(Message='    No action for index 0 (.NEW.KEY) [no datacopy]')
+(Message='    Rebuild index 1 (.NEW.FOO) [no datacopy]')
+(Message='    Schema change requires a table scan ')
+(Message='Table is already odh enabled.')
+(Message='Table records are compressed.')
+(Message='Table blobs are compressed.')
+(Message='Table already supports in-place updates.')
+(Message='Table already supports instant schema change.')
+(Message='Live schema change running in parallel scan mode')
+[dryrun create view v1 as select * from t1] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create trigger if not exists tr1 after insert on t1 BEGIN select 1; END] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create range partition on t1 where id in (1,2,3)] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create partition on t1 as testpart1 period 'manual' retention 2 start '1'] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create time partition on t1 as t1_tp period 'yearly' retention 2 start '2018-01-01'] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create procedure sp version 'test' {}] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create lua aggregate function sp] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create lua scalar function sp] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create lua trigger sp on (table t1 for insert)] failed with rc -3 DRYRUN not supported for this operation
+[dryrun create lua consumer sptest on (table t1 for insert)] failed with rc -3 DRYRUN not supported for this operation

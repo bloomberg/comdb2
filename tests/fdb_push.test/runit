@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Remote cursor moves testcase for comdb2
+################################################################################
+
+
+# args
+# <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
+echo "main db vars"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    echo "$required=$q" 
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+
+#generate testscripts in new files
+#files=`ls *.req.src`
+#for file in $files ; do
+#   newfile=${file%%.src}
+#   sed "/^insert /!s/ t$/ LOCAL_$dbname.t/g" $file > $newfile.tmp
+#   sed "/^insert /!s/ t / LOCAL_$dbname.t /g" $newfile.tmp > $newfile
+#   rm $newfile.tmp
+#done
+
+
+#run tests
+echo "Starting tests"
+echo ./test_fdb_push.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
+./test_fdb_push.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
+result=$?
+
+
+if (( $result != 0 )) ; then
+   echo "Failure"
+   exit 1
+fi
+
+
+echo "Success"

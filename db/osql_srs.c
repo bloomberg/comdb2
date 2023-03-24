@@ -39,12 +39,12 @@ static void *save_stmt(struct sqlclntstate *clnt)
 
 static void restore_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
 {
-    clnt->plugin.restore_stmt(clnt, item->stmt);
+    clnt->plugin.restore_stmt(clnt, item->stmt); /* newsql_restore_stmt */
 }
 
 static void destroy_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
 {
-    clnt->plugin.destroy_stmt(clnt, item->stmt);
+    clnt->plugin.destroy_stmt(clnt, item->stmt); /* newsql_destroy_stmt_evbuffer */
 }
 
 static char *print_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
@@ -66,6 +66,18 @@ static void srs_free_tran_entry(struct sqlclntstate *clnt,
         return;
     destroy_stmt(clnt, item);
     free(item);
+}
+
+void srs_tran_print_history(struct sqlclntstate *clnt, int indent)
+{
+    srs_tran_query_t *item = NULL;
+    srs_tran_t *history = clnt->osql.history;
+    if (history == NULL)
+        return;
+    int num = 0;
+    LISTC_FOR_EACH(&history->lst, item, lnk) {
+        logmsg(LOGMSG_WARN, "%*c %3d) %s\n", indent, ' ', num++, print_stmt(clnt, item));
+    }
 }
 
 /**
@@ -304,7 +316,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
         /* don't repeat if we fail with unexplicable error, i.e. not a logical
          * error */
         if (rc < 0) {
-            if (clnt->osql.replay != OSQL_RETRY_NONE) {
+            if (osql->replay != OSQL_RETRY_NONE) {
                 logmsg(LOGMSG_ERROR,
                        "%p Replaying failed abnormally, calling abort, nq=%d tnq=%d\n",
                        clnt, nq, tnq);
@@ -322,15 +334,12 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
             }
             break;
         }
-    } while (clnt->osql.replay == OSQL_RETRY_DO &&
-             clnt->verify_retries <= gbl_osql_verify_retries_max);
+    } while (osql->replay == OSQL_RETRY_DO && clnt->verify_retries <= gbl_osql_verify_retries_max);
 
-    if (clnt->verify_retries >= gbl_osql_verify_retries_max) {
+    if (clnt->verify_retries >= gbl_osql_verify_retries_max && osql->xerr.errval) {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR,
-               "transaction %llx %s failed %d times with verify errors\n",
-               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-               clnt->verify_retries);
+        logmsg(LOGMSG_ERROR, "transaction %llx %s failed %d times with verify errors\n", osql->rqid,
+               comdb2uuidstr(osql->uuid, us), clnt->verify_retries);
         /* Set to NONE to suppress the error from srs_tran_destroy(). */
         osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
     }

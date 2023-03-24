@@ -70,7 +70,10 @@ extern int macc_ferror(FILE *fh);
 %e 10000
 %p 10000
 %n 1000
-space	[\t ]+
+/* Adding \r here would also deal with Windows-style line endings,
+ * essentially converting \r\n into \n.
+ */
+space	[\t \r]+
 number	-?[0-9]+
 dqstring \"(\\.|[^\n\\\"])*\"
 sqstring \'(\\.|[^\n\\\'])*\'

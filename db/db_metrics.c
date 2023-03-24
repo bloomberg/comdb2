@@ -38,6 +38,7 @@ struct comdb2_metrics_store {
     int64_t commits;
     int64_t connections;
     int64_t connection_timeouts;
+    double  connection_to_sql_ratio;
     double  cpu_percent;
     int64_t deadlocks;
     int64_t locks_aborted;
@@ -96,6 +97,11 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_timestamp;
     int64_t reprepares;
     int64_t nonsql;
+    int64_t vreplays;
+    int64_t nsslfullhandshakes;
+    int64_t nsslpartialhandshakes;
+    double weighted_queue_depth;
+    int64_t weighted_standing_queue_time;
 };
 
 static struct comdb2_metrics_store stats;
@@ -123,6 +129,9 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_timeouts, NULL},
+    {"connection_to_sql_ratio", "Ratio of total number of connections to sql "
+     "(and nonsql) request counts", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.connection_to_sql_ratio, NULL},
     {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cpu_percent, NULL},
     {"current_connections", "Number of current connections", STATISTIC_INTEGER,
@@ -257,6 +266,18 @@ comdb2_metric gbl_metrics[] = {
     {"reprepares", "Number of times statements are reprepared by sqlitex",
       STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.reprepares,
       NULL},
+    {"verify_replays", "Number of replays on verify errors",
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.vreplays,
+      NULL},
+    {"nsslfullhandshakes", "Number of SSL full handshakes", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.nsslfullhandshakes, NULL},
+    {"nsslpartialhandshakes", "Number of SSL partial handshakes", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.nsslpartialhandshakes, NULL},
+    {"weighted_queue_depth", "Weighted queue depth", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.weighted_queue_depth, NULL},
+    {"weighted_standing_queue_time", "How long the database has had a weighted standing queue",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
+     &stats.weighted_standing_queue_time, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -300,6 +321,44 @@ static int64_t refresh_diskspace(struct dbenv *dbenv, tran_type *tran)
 
     Pthread_mutex_unlock(&lk);
     return total;
+}
+
+/* see the definition in db_tunables.h */
+int gbl_track_weighted_queue_metrics_separately = 0;
+/* Weighted queue depth */
+static double weighted_queue_depth = 0;
+/* When did weighted queue start */
+static time_t weighted_queue_start_time = 0;
+/* Return weighted standing queue time */
+static time_t metrics_weighted_standing_queue_time(void)
+{
+    return (weighted_queue_start_time == 0) ? 0 : (time(NULL) - weighted_queue_start_time);
+}
+/* Update weighted queue depth over the last N samples:
+   Weighted_queue_depth = (N-1) / N * Weighted_queue_depth + 1/N * Current_queue_depth
+
+   Also update when a weighted standing queue first started, accordingly */
+static void update_weighted_standing_queue_metrics(void)
+{
+    extern int gbl_metric_maxage;
+    extern int gbl_update_metrics_interval;
+    int curr_depth = thd_queue_depth() /* tag */ + thdpool_get_queue_depth(get_default_sql_pool(0)) /* sql */;
+    double weight = gbl_metric_maxage / gbl_update_metrics_interval;
+
+    if (weight < 0)
+        weight = 1;
+
+    /* Fix an edge case: if queue depth is constantly 1, the weighted average only approximates 1.
+       In this case we set the weighted average to 1 so it'll be reported too. */
+    if (weighted_queue_depth < 1 && curr_depth == 1)
+        weighted_queue_depth = 1;
+    else
+        weighted_queue_depth = (weight - 1) / weight * weighted_queue_depth + curr_depth / weight;
+
+    if (weighted_queue_depth < 1)
+        weighted_queue_start_time = 0;
+    else if (weighted_queue_start_time == 0)
+        weighted_queue_start_time = time(NULL);
 }
 
 /* TODO: this isn't threadsafe. */
@@ -346,7 +405,7 @@ int refresh_metrics(void)
 
     stats.commits = n_commits;
     stats.fstraps = n_fstrap;
-    stats.nonsql = n_fstrap + n_qtrap - n_dbinfo; 
+    stats.nonsql = n_fstrap + n_qtrap - n_dbinfo;
     stats.retries = n_retries;
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;
@@ -377,6 +436,9 @@ int refresh_metrics(void)
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
     stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+
+    int64_t total_reqs = stats.sql_count + stats.nonsql;
+    stats.connection_to_sql_ratio = (total_reqs > 0) ? (stats.connections/(double)total_reqs) : 0;
 
     /* cache hit rate */
     uint64_t hits, misses;
@@ -421,7 +483,11 @@ int refresh_metrics(void)
     stats.cpu_percent = gbl_cpupercent;
 #endif
     stats.service_time = time_metric_average(thedb->service_time);
-    stats.queue_depth = time_metric_average(thedb->queue_depth);
+    stats.weighted_queue_depth = weighted_queue_depth;
+    if (gbl_track_weighted_queue_metrics_separately)
+        stats.queue_depth = time_metric_average(thedb->queue_depth);
+    else
+        stats.queue_depth = stats.weighted_queue_depth;
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
     stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
     stats.sql_queue_timeouts = get_all_sql_pool_timeouts();
@@ -469,7 +535,11 @@ int refresh_metrics(void)
 
     bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
 
-    stats.standing_queue_time = metrics_standing_queue_time();
+    stats.weighted_standing_queue_time = metrics_weighted_standing_queue_time();
+    if (gbl_track_weighted_queue_metrics_separately)
+        stats.standing_queue_time = metrics_standing_queue_time();
+    else
+        stats.standing_queue_time = stats.weighted_standing_queue_time;
 
 #if 0
     bdb_min_truncate(thedb->bdb_env, &min_file, &min_offset, &min_timestamp);
@@ -491,6 +561,9 @@ int refresh_metrics(void)
         return 1;
     }
     stats.diskspace = refresh_diskspace(thedb, trans);
+    stats.vreplays = gbl_verify_tran_replays;
+    stats.nsslfullhandshakes = gbl_ssl_num_full_handshakes;
+    stats.nsslpartialhandshakes = gbl_ssl_num_partial_handshakes;
     curtran_puttran(trans);
 
     return 0;
@@ -584,4 +657,5 @@ static void update_cpu_percent(void)
 void update_metrics(void) {
     update_cpu_percent();
     update_standing_queue_time();
+    update_weighted_standing_queue_metrics();
 }

@@ -107,6 +107,7 @@ static int istty = 0;
 static int isadmin = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
+static int connect_to_master = 0;
 
 static int now_ms(void)
 {
@@ -180,7 +181,9 @@ static const char *usage_text =
     "     cdb2sql mydb --host node1 'select 1'\n"
     " * Query db by connecting to a known set of servers/ports:\n"
     "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
-    "\n"
+    "\n";
+
+static const char *interactive_usage =
     "Interactive session commands:\n"
     "@cdb2_close          Close connection (calls cdb2_close())\n"
     "@desc      tblname   Describe a table\n"
@@ -198,6 +201,7 @@ static const char *usage_text =
 void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
+    fputs(interactive_usage, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
@@ -882,6 +886,8 @@ static int process_escape(const char *cmdstr)
             return -1;
         }
     } else if (strcasecmp(tok, "send") == 0) {
+        int old_printmode = printmode;
+        printmode = DISP_TABS;
         tok = strtok_r(NULL, "", &lasts); // get remainder of string
         if (tok) {
             int start_time_ms, run_time_ms;
@@ -893,6 +899,7 @@ static int process_escape(const char *cmdstr)
             fprintf(stderr, "need command to @send\n");
             return -1;
         }
+        printmode = old_printmode;
     } else if ((strcasecmp(tok, "desc") == 0) ||
                (strcasecmp(tok, "describe") == 0)) {
         tok = strtok_r(NULL, delims, &lasts);
@@ -924,7 +931,7 @@ static int process_escape(const char *cmdstr)
             fprintf(out, "Keys:\n");
             snprintf(sql, sizeof(sql),
                      "select keyname, isunique, isdatacopy, isrecnum, "
-                     "condition from comdb2_keys where tablename = '%s'",
+                     "condition, ispartialdatacopy from comdb2_keys where tablename = '%s'",
                      tok);
             rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
             if (rc != 0) {
@@ -961,6 +968,8 @@ static int process_escape(const char *cmdstr)
         }
         repeat = atoi(tok);
         printf("Repeating every query %d times\n", repeat);
+    } else if (strcasecmp(tok, "help") == 0){
+        printf("%s\n", interactive_usage);
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
         return -1;
@@ -1481,6 +1490,44 @@ static int run_statement(const char *sql, int ntypes, int *types,
             cdb2h = NULL;
             return 1;
         }
+
+        if (connect_to_master) {
+            rc = cdb2_run_statement(cdb2h, "SELECT host FROM comdb2_cluster WHERE is_master = 'Y'");
+            if (rc != 0) {
+                fprintf(stderr, "error retrieving master node rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                cdb2_close(cdb2h);
+                cdb2h = NULL;
+                return 1;
+            }
+
+            rc = cdb2_next_record(cdb2h);
+            if (rc != CDB2_OK) {
+                fprintf(stderr, "error retrieving master node rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                cdb2_close(cdb2h);
+                cdb2h = NULL;
+                return 1;
+            }
+
+            char *masterhost = strdup((char *)cdb2_column_value(cdb2h, 0));
+            cdb2_close(cdb2h);
+            cdb2h = NULL;
+
+            if (masterhost == NULL) {
+                fprintf(stderr, "error retrieving master node rc %d %s\n", errno, strerror(errno));
+                return 1;
+            }
+
+            rc = cdb2_open(&cdb2h, dbname, masterhost, CDB2_DIRECT_CPU);
+            free(masterhost);
+
+            if (rc) {
+                fprintf(stderr, "error connecting to master rc %d %s\n", rc, cdb2_errstr(cdb2h));
+                cdb2_close(cdb2h);
+                cdb2h = NULL;
+                return 1;
+            }
+        }
+
         if (debug_trace) {
             cdb2_set_debug_trace(cdb2h);
         }
@@ -1945,7 +1992,7 @@ int main(int argc, char *argv[])
     int printtostderr = 0;
     int printcoltype = 0;
 
-    sighold(SIGPIPE);
+    signal(SIGPIPE, SIG_IGN);
 
     static struct option long_options[] = {
         {"pause", no_argument, &pausemode, 1},
@@ -1975,9 +2022,10 @@ int main(int argc, char *argv[])
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
+        {"connect-to-master", no_argument, NULL, 'm'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:m",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -2021,6 +2069,9 @@ int main(int argc, char *argv[])
             break;
         case 'n':
             dbhostname = optarg;
+            break;
+        case 'm':
+            connect_to_master = 1;
             break;
         case '?':
             cdb2sql_usage(EXIT_FAILURE);

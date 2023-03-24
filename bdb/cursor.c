@@ -631,11 +631,12 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         cur->idx = ixnum;
         cur->type = BDBC_IX;
         if (bdb_state->ixdta[ixnum]) {
+            int datacopy_size = bdb_state->ixdtalen[ixnum] > 0 ? bdb_state->ixdtalen[ixnum] : bdb_state->lrl;
             cur->datacopy =
-                malloc(bdb_state->lrl + 2 * sizeof(unsigned long long));
+                malloc(datacopy_size + 2 * sizeof(unsigned long long));
             if (!cur->datacopy) {
                 logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
-                       bdb_state->lrl + 2 * sizeof(unsigned long long));
+                       datacopy_size + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
                 free(pcur_ifn);
                 return NULL;
@@ -1050,13 +1051,15 @@ static void return_pglogs_queue_key(struct pglogs_queue_key *qk)
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
 }
 
+int gbl_clear_pool_dbg = 0;
 static void clear_pool(pool_t *p, const char *name)
 {
     int nused;
     pool_info(p, NULL, &nused, NULL);
     if (nused == 0) {
         pool_clear(p);
-        logmsg(LOGMSG_DEBUG, "--- %s CLEARED ---\n", name);
+        if (gbl_clear_pool_dbg)
+            logmsg(LOGMSG_DEBUG, "--- %s CLEARED ---\n", name);
     }
 }
 
@@ -2161,7 +2164,7 @@ static void *pglogs_asof_thread(void *arg)
     /* We need to stop this thread when truncating the log */
     if (!db_is_exiting()) {
         haslock = 1;
-        dbenv->lock_recovery_lock(dbenv);
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
     }
 
     while (!db_is_exiting()) {
@@ -2347,7 +2350,7 @@ static void *pglogs_asof_thread(void *arg)
         }
 #endif
 
-        dbenv->unlock_recovery_lock(dbenv);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
         clear_newsi_pool();
         if (!dont_poll) {
             pollms = bdb_state->attr->asof_thread_poll_interval_ms <= 0
@@ -2355,11 +2358,11 @@ static void *pglogs_asof_thread(void *arg)
                          : bdb_state->attr->asof_thread_poll_interval_ms;
             poll(NULL, 0, pollms);
         }
-        dbenv->lock_recovery_lock(dbenv);
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
     }
 
     if (haslock)
-        dbenv->unlock_recovery_lock(dbenv);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 
     return NULL;
 }
@@ -6527,8 +6530,9 @@ static void *bdb_cursor_datacopy(bdb_cursor_ifn_t *cur)
 
     if (bdb_state->ondisk_header && bdb_state->datacopy_odh &&
         (c->type == BDBC_DT || !is_genid_synthetic(c->genid))) {
+        int datacopy_size = bdb_state->ixdtalen[c->idx] > 0 ? bdb_state->ixdtalen[c->idx] : bdb_state->lrl;
         c->unpacked_datacopy = unpack_datacopy_odh(
-            cur, c->datacopy, bdb_state->lrl, from, size, &c->ver);
+            cur, c->datacopy, datacopy_size, from, size, &c->ver);
     } else {
         c->unpacked_datacopy = from;
         c->ver = c->state->version;

@@ -563,6 +563,41 @@ int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
     return rc;
 }
 
+int comdb2ma_usages(comdb2ma_usage **pusages, int *n)
+{
+    int rc, unlock_rc, cnt;
+    struct mallinfo info;
+    comdb2ma_usage *usages;
+    comdb2ma curr;
+
+    rc = COMDB2MA_LOCK(&root);
+    if (rc != 0)
+        return rc;
+
+    if (root.m == NULL)
+        rc = EPERM;
+    else {
+        *n = cnt = listc_size(&(root.list));
+        *pusages = usages = comdb2_calloc_static(1, cnt, sizeof(comdb2ma_usage));
+
+        LISTC_FOR_EACH(&(root.list), curr, lnk) {
+            info = comdb2_mallinfo(curr);
+            strncpy(usages->name_str, curr->name, sizeof(usages->name_str) - 1);
+            usages->name = usages->name_str;
+            strncpy(usages->scope_str, curr->thr_type, sizeof(usages->scope_str) - 1);
+            usages->scope = usages->scope_str;
+            usages->peak = info.usmblks;
+            usages->total = info.fordblks + info.uordblks;
+            usages->used = info.uordblks;
+            usages->unused = info.fordblks;
+            ++usages;
+        }
+    }
+
+    unlock_rc = COMDB2MA_UNLOCK(&root);
+    return (rc == 0) ? unlock_rc : rc;
+}
+
 /* dlmalloc.h and malloc.h both define struct mallinfo.
    We include malloc.h in the function to avoid the conflict. */
 int comdb2ma_nice(int niceness)
@@ -1923,6 +1958,7 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
     size_t sum;
     int np = 0;
     size_t cap;
+    size_t flen;
 
     trc_t trc;
     trc = toctrc ? pfx_ctrace : (trc_t)printf;
@@ -1949,6 +1985,7 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
 
     /* construct format string */
     if (verbose) {
+        flen = strlen(cm->file);
         cap = !cm->bm ? cm->cap : (cm->bm->cap == (size_t)-1 ? 0 : cm->bm->cap);
         fmt[0] = '\0';
         strcat(fmt, " %-3s "); /* MT-safe: YES/no */
@@ -1956,7 +1993,7 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
         strcat(fmt, (cm->init_sz == COMDB2MA_DEFAULT_SIZE || hr) ? " %12s "
                                                                  : " %12u ");
         strcat(fmt, (cap == COMDB2MA_UNLIMITED || hr) ? " %12s " : " %12u ");
-        strcat(fmt, (strlen(cm->file) > 15) ? " %12.12s... " : " %15.15s ");
+        strcat(fmt, (flen > 15) ? " ...%12.12s " : " %15.15s ");
         strcat(fmt, " %6d ");
 #ifdef PER_THREAD_MALLOC
         strcat(fmt, " 0x%016llx ");
@@ -1969,7 +2006,8 @@ static int ma_stats_int(size_t maxnamesz, size_t maxscopesz, int columns,
                 : (hr ? TB_TO_HR(cm->init_sz) : (char *)cm->init_sz),
             (cap == COMDB2MA_UNLIMITED) ? "unlimited"
                                         : (hr ? TB_TO_HR(cap) : (char *)cap),
-            cm->file, cm->line
+            (flen <= 15) ? cm->file : (cm->file + flen - 12), /* display the last 12 characters of the file name */
+            cm->line
 #ifdef PER_THREAD_MALLOC
             ,
             cm->pid

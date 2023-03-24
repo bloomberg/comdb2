@@ -283,6 +283,8 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
  *                     compose the record in.  It should be
  *                     odh->length + ODH_SIZE_RESERVE bytes long.
  *    tolen          - Length of to buffer in bytes.
+ *    pd_index       - Index number of the partial datacopy for current record
+ *                     (-1 if none)
  *
  * Output:
  *    *recptr        - Points to the packed record.
@@ -294,7 +296,8 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
  * Note: recsize is a uint32_t* so that we can point to a DBT->size field.
  */
 int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
-             size_t tolen, void **recptr, uint32_t *recsize, void **freeptr)
+             size_t tolen, void **recptr, uint32_t *recsize, void **freeptr,
+             int pd_index)
 {
     int rc;
 
@@ -402,7 +405,8 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
                              .insz = odh->length,
                              .out = (uint8_t *)to + ODH_SIZE,
                              .outsz = odh->length - 1};
-            if (compressComdb2RLE_hints(&rle, bdb_state->fld_hints) == 0)
+            uint16_t *fld_hints = pd_index != -1 ? bdb_state->fld_hints_pd[pd_index] : bdb_state->fld_hints;
+            if (compressComdb2RLE_hints(&rle, fld_hints) == 0)
                 *recsize = rle.outsz + ODH_SIZE;
             else
                 alg = BDB_COMPRESS_NONE;
@@ -1141,7 +1145,7 @@ int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
         }
 
         rc = bdb_pack(bdb_state, &odh, stackbuf, odh.length + ODH_SIZE_RESERVE,
-                      &data2->data, &data2->size, freeptr);
+                      &data2->data, &data2->size, freeptr, -1);
     }
 
     if (rc == 0)
@@ -1396,11 +1400,28 @@ inline void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
     bdb_state->fld_hints = hints;
 }
 
+/* set field hints for partial datacopy */
+inline void bdb_set_fld_hints_pd(bdb_state_type *bdb_state, uint16_t *hints, int ix)
+{
+    if (bdb_state->fld_hints_pd[ix])
+        free(bdb_state->fld_hints_pd[ix]);
+    bdb_state->fld_hints_pd[ix] = hints;
+}
+
 inline void bdb_cleanup_fld_hints(bdb_state_type *bdb_state)
 {
-    if (bdb_state && bdb_state->fld_hints) {
-        free(bdb_state->fld_hints);
-        bdb_state->fld_hints = NULL;
+    if (bdb_state) {
+        if (bdb_state->fld_hints) {
+            free(bdb_state->fld_hints);
+            bdb_state->fld_hints = NULL;
+        }
+
+        for (int i = 0; i < bdb_state->numix; ++i) {
+            if (bdb_state->fld_hints_pd[i]) {
+                free(bdb_state->fld_hints_pd[i]);
+                bdb_state->fld_hints_pd[i] = NULL;
+            }
+        }
     }
 }
 
@@ -1435,7 +1456,7 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
         return -1;
     struct odh odh;
     init_odh(bdb_state, &odh, in, inlen, 1);
-    rc = bdb_pack(bdb_state, &odh, NULL, 0, out, &recsz, freeptr);
+    rc = bdb_pack(bdb_state, &odh, NULL, 0, out, &recsz, freeptr, -1);
     if (rc == 0)
         *outlen = recsz;
     else

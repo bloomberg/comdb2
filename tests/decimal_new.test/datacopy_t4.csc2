@@ -1,0 +1,10 @@
+schema
+{
+   int         id
+   decimal32   d32 // test grabbing decimal in datacopy but not in key
+}
+
+keys
+{
+   dup datacopy "ID"     = id
+}

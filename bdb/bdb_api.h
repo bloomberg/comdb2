@@ -480,7 +480,7 @@ void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state);
 bdb_state_type *
 bdb_open_more(const char name[], const char dir[], int lrl, short numix,
               const short ixlen[], const signed char ixdups[],
-              const signed char ixrecnum[], const signed char ixdta[],
+              const signed char ixrecnum[], const signed char ixdta[], const int ixdtalen[],
               const signed char ixcollattr[], const signed char ixnulls[],
               int numdtafiles, bdb_state_type *parent_bdb_handle, int *bdberr);
 
@@ -488,7 +488,7 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
 bdb_state_type *
 bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                    const short ixlen[], const signed char ixdups[],
-                   const signed char ixrecnum[], const signed char ixdta[],
+                   const signed char ixrecnum[], const signed char ixdta[], const int ixdtalen[],
                    const signed char ixcollattr[], const signed char ixnulls[],
                    int numdtafiles, bdb_state_type *parent_bdb_handle,
                    tran_type *tran, uint32_t flags, int *bdberr);
@@ -527,7 +527,7 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
 bdb_state_type *
 bdb_create(const char name[], const char dir[], int lrl, short numix,
            const short ixlen[], const signed char ixdups[],
-           const signed char ixrecnum[], const signed char ixdta[],
+           const signed char ixrecnum[], const signed char ixdta[], const int ixdtalen[],
            const signed char ixcollattr[], const signed char ixnulls[],
            int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr);
@@ -535,7 +535,7 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
 bdb_state_type *
 bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 const short ixlen[], const signed char ixdups[],
-                const signed char ixrecnum[], const signed char ixdta[],
+                const signed char ixrecnum[], const signed char ixdta[], const int ixdtalen[],
                 const signed char ixcollattr[], const signed char ixnulls[],
                 int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *);
@@ -641,8 +641,10 @@ tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle,
                                 tran_type *parent_tran, int *bdberr,
                                 uint32_t flags);
 
-tran_type *bdb_tran_begin(bdb_state_type *bdb_handle, tran_type *parent_tran,
-                          int *bdberr);
+tran_type *bdb_tran_begin_internal(bdb_state_type *bdb_handle, tran_type *parent_tran,
+                          int *bdberr, const char *func, int line);
+
+#define bdb_tran_begin(A, B, C) ({tran_type *retval; retval = bdb_tran_begin_internal(A, B, C, __func__, __LINE__); retval;})
 
 tran_type *bdb_tran_begin_mvcc(bdb_state_type *bdb_handle,
                                tran_type *parent_tran, int *bdberr);
@@ -1401,6 +1403,8 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *file,
                                        unsigned int *offset);
 
+void bdb_set_tran_verify_updateid(tran_type *tran);
+
 int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);
@@ -1610,6 +1614,22 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
 
 int bdb_del_schema_change_history(tran_type *t, const char *tablename,
                                   uint64_t seed);
+
+typedef struct {
+    uint64_t genid;
+    unsigned int file;
+    unsigned int offset;
+} llmeta_sc_redo_data;
+
+int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmeta_sc_redo_data **redo_out, int *num,
+                                      int *bdberr);
+
+int bdb_newsc_set_redo_genid(tran_type *t, const char *tablename, uint64_t genid, unsigned int file,
+                             unsigned int offset, int *bdberr);
+
+int bdb_newsc_del_redo_genid(tran_type *t, const char *tablename, uint64_t genid, int *bdberr);
+
+int bdb_newsc_del_all_redo_genids(tran_type *t, const char *tablename, int *bdberr);
 
 int bdb_set_high_genid(tran_type *input_trans, const char *tablename,
                        unsigned long long genid, int *bdberr);
@@ -1966,8 +1986,6 @@ int calc_pagesize(int initsize, int recsize);
 int getpgsize(void *handle_);
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state);
 
-void fill_dbinfo(void *dbinfo_response, bdb_state_type *bdb_state);
-
 void bdb_disable_replication_time_tracking(bdb_state_type *bdb_state);
 void bdb_set_key_compression(bdb_state_type *);
 void bdb_print_compression_flags(bdb_state_type *);
@@ -2227,6 +2245,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
                        int64_t *maxactive, int64_t *commits, int64_t *aborts);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
+int bdb_recoverlk_blocked(bdb_state_type *bdb_state);
 
 void send_newmaster(bdb_state_type *bdb_state, int online);
 
@@ -2244,6 +2263,7 @@ struct bias_info {
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+void bdb_set_fld_hints_pd(bdb_state_type *, uint16_t *, int);
 void bdb_cleanup_fld_hints(bdb_state_type *bdb_state);
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
@@ -2289,6 +2309,8 @@ struct cluster_info {
     int64_t port;
     char *is_master;
     char *coherent_state;
+    int64_t logfile;
+    int64_t logoffset;
 };
 
 int bdb_fill_cluster_info(void **data, int *num_nodes);
@@ -2331,5 +2353,17 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 
 int32_t bdb_get_dbopen_gen(void);
 int is_incoherent(bdb_state_type *, const char *);
+
+#ifdef __APPLE__
+struct CDB2DBINFORESPONSE;
+void fill_dbinfo(struct CDB2DBINFORESPONSE *, bdb_state_type *);
+void fill_ssl_info(struct CDB2DBINFORESPONSE *);
+#else
+struct _CDB2DBINFORESPONSE;
+void fill_dbinfo(struct _CDB2DBINFORESPONSE *, bdb_state_type *);
+void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
+#endif
+
+void thedb_set_master(char *);
 
 #endif

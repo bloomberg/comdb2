@@ -1,0 +1,44 @@
+(rows inserted=1)
+[insert into t2 values(11)] rc 0
+(i=11)
+[select * from t2 where i = 11] rc 0
+[set transaction read committed] rc 0
+[begin] rc 0
+[insert into t2 values(11)] rc 0
+(i=11)
+(i=11)
+[select * from t2 where i = 11] rc 0
+(i=11)
+(i=11)
+[select * from t2 where i = 11 order by i asc] rc 0
+(i=11)
+(i=11)
+[select * from t2 where i = 11 order by i desc] rc 0
+[insert into t2 values(11)] rc 0
+(i=11)
+(i=11)
+(i=11)
+[select * from t2 where i = 11] rc 0
+(i=11)
+(i=11)
+(i=11)
+[select * from t2 where i = 11 order by i asc] rc 0
+(i=11)
+(i=11)
+(i=11)
+[select * from t2 where i = 11 order by i desc] rc 0
+(sleep(10)=10)
+[select sleep(10)] rc 0
+(i=11)
+(i=11)
+(i=11)
+[select * from t2 where i = 11] rc 0
+(i=11)
+(i=11)
+(i=11)
+[select * from t2 where i = 11 order by i asc] rc 0
+(i=11)
+(i=11)
+(i=11)
+[select * from t2 where i = 11 order by i desc] rc 0
+[rollback] rc 0

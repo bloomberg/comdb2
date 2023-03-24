@@ -73,8 +73,8 @@ retry:
 
 	ret = __db_pgcompact(dbp, txn, dbt, ff, tgtff);
 
-err:
 	__dbreg_prefault_complete(dbenv, fileid);
+err:
 	if (ret == 0)
 		ret = __txn_commit(txn, DB_TXN_NOSYNC);
 	else

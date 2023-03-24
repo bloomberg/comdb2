@@ -67,10 +67,12 @@ int systblNetUserfuncsInit(sqlite3 *db);
 int systblClusterInit(sqlite3 *db);
 int systblActiveOsqlsInit(sqlite3 *db);
 int systblBlkseqInit(sqlite3 *db);
+int systblPartialDatacopiesInit(sqlite3 *db);
 int systblTablePropertiesInit(sqlite3 *db);
 int systblTimepartInit(sqlite3*db);
 int systblCronInit(sqlite3*db);
 int systblFingerprintsInit(sqlite3 *);
+int systblQueryPlansInit(sqlite3 *db);
 int systblViewsInit(sqlite3 *);
 int systblSQLClientStats(sqlite3 *);
 int systblSQLIndexStatsInit(sqlite3 *);
@@ -86,6 +88,9 @@ int systblTablePermissionsInit(sqlite3 *db);
 int systblSystabPermissionsInit(sqlite3 *db);
 int systblTimepartPermissionsInit(sqlite3 *db);
 int systblFdbInfoInit(sqlite3 *db);
+int systblTransactionStateInit(sqlite3 *db);
+int systblMemstatsInit(sqlite3 *db);
+int systblStacks(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

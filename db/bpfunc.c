@@ -128,6 +128,18 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
     return 0;
 }
 
+static int _get_bpfunc(bpfunc_t *func, int32_t data_len, const uint8_t *data)
+{
+    init_bpfunc(func);
+
+    func->arg = bpfunc_arg__unpack(&pb_alloc, data_len, data);
+
+    if (!func->arg)
+        return -1;
+
+    return 0;
+}
+
 int bpfunc_prepare(bpfunc_t **f, int32_t data_len, uint8_t *data,
                    bpfunc_info *info)
 {
@@ -136,11 +148,7 @@ int bpfunc_prepare(bpfunc_t **f, int32_t data_len, uint8_t *data,
     if (func == NULL)
         goto end;
 
-    init_bpfunc(func);
-
-    func->arg = bpfunc_arg__unpack(&pb_alloc, data_len, data);
-
-    if (!func->arg)
+    if (_get_bpfunc(func, data_len, data))
         goto fail_arg;
 
     if (!prepare_methods(func, info))
@@ -151,6 +159,23 @@ fail_arg:
 end:
     return -1;
 }
+
+/* unpack a serialized bpfunc and check if the type matches the argument */
+int bpfunc_check(const uint8_t *data, int32_t data_len, int type)
+{
+    bpfunc_t func = {0};
+    int ret;
+
+    if (_get_bpfunc(&func, data_len, data))
+        return -1;
+
+    ret = type == func.arg->type;
+
+    free_bpfunc_arg(func.arg);
+
+    return ret;
+}
+
 /******************************** TIME PARTITIONS
  * ***********************************/
 

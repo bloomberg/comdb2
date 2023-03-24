@@ -26,6 +26,7 @@
 #include "logmsg.h"
 
 extern int gbl_partial_indexes;
+extern uint64_t gbl_sc_headroom;
 
 int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
@@ -178,9 +179,9 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             /* This key will be part of the record, no need to check */
             if (ins_keys & (1ULL << ixnum)) continue;
 
-            /* From now on, it means this record doesn't have partial index
+            /* From now on, it means this record doesn't touch the partial index
              * (ixnum). We need to check if someone else had constraints on this
-             * before */
+             * before. */
             snprintf(ondisk_tag, sizeof(ondisk_tag), ".NEW..ONDISK_IX_%d",
                      ixnum);
             /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
@@ -228,9 +229,12 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             ruleiq.usedb = cnstrt->lcltable;
             rc = ix_find_by_key_tran(&ruleiq, rkey, rixlen, rixnum, NULL,
                                      &fndrrn, &genid, NULL, NULL, 0, trans);
-            /* a foreign table key is relying on this */
             if (rc == IX_FND || rc == IX_FNDMORE)
+                /* A key in a child table index is referencing this key */
                 return ERR_CONSTR;
+            else if (rc == IX_PASTEOF || rc == IX_NOTFND || rc == IX_EMPTY)
+                /* No such key in the child table index */
+                continue;
             else if (rc == RC_INTERNAL_RETRY)
                 return rc;
             else {
@@ -353,7 +357,7 @@ int set_header_and_properties(void *tran, struct dbtable *newdb,
         return SC_TRANSACTION_FAILED;
     }
 
-    if (s->fastinit || s->force_rebuild || newdb->instant_schema_change) {
+    if (IS_FASTINIT(s) || s->force_rebuild || newdb->instant_schema_change) {
         if (put_db_datacopy_odh(newdb, tran, 1)) {
             sc_errf(s, "Failed to set datacopy odh in meta\n");
             return SC_TRANSACTION_FAILED;
@@ -894,7 +898,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
         /* If the new index has datacopy and there are ondisk changes then
          * the index must be rebuilt. */
-        if ((newixs->flags & SCHEMA_DATACOPY) && plan->dta_plan == -1) {
+        if ((newixs->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)) && plan->dta_plan == -1) {
             plan->ix_plan[ixn] = -1;
         } else {
             /* Try to find an unused index in the old file which exactly matches
@@ -912,7 +916,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         }
 
         if (newdb->odh &&                        /* table has odh */
-            (newixs->flags & SCHEMA_DATACOPY) && /* index had datacopy */
+            (newixs->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)) && /* index had datacopy */
             !datacopy_odh) /* index did not have odh in datacopy */
         {
             plan->ix_plan[ixn] = -1;
@@ -925,7 +929,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         if (plan->ix_plan[ixn] == -1) plan->plan_convert = 1;
 
         char *str_datacopy;
-        if (newixs->flags & SCHEMA_DATACOPY) {
+        if (newixs->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)) {
             if (olddb->odh) {
                 if (newdb->odh) {
                     if (datacopy_odh) {
@@ -1224,7 +1228,7 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     uint64_t avail, wanted;
     struct statvfs st;
     int rc;
-    int headroom = 10; /* percent */
+    uint64_t headroom = gbl_sc_headroom; /* percent */
     uint64_t oldsize, newsize, diff;
     char b1[32], b2[32], b3[32], b4[32];
 
@@ -1262,7 +1266,7 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
                     /* If an index has a blob field or is datacopy, the size
                        will rise based on the blob size or data size. So still
                        use the old way here. */
-                    if (!ix->ix_blob && !(ix->flags & SCHEMA_DATACOPY))
+                    if (!ix->ix_blob && !(ix->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)))
                         pct += get_size_of_schema(ix) / (double)lrl;
                 }
             }

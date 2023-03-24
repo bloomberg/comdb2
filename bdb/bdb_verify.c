@@ -25,6 +25,7 @@
 #include "comdb2_atomic.h"
 #include "constraints.h"
 #include "string_ref.h"
+#include <unistd.h>
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_exit;
@@ -36,6 +37,7 @@ extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
 extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
+int gbl_debug_sleep_on_verify = 0;
 
 static int locprint(verify_common_t *par, char *fmt, ...)
 {
@@ -182,6 +184,12 @@ ret:
 static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 {
     unsigned int last = par->last_connection_check; // get a copy of the last timestamp
+    if (bdb_lock_desired(par->bdb_state) || bdb_recoverlk_blocked(par->bdb_state)) {
+        logmsg(LOGMSG_WARN, "master change, stopped verify\n");
+        par->lock_desired = 1;
+        par->client_dropped_connection = 1;
+        goto out;
+    }
 
     // do the comparison with t_ms, we want to check connection every 1s
     if ((t_ms - last) < 1000)
@@ -297,6 +305,10 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         /* check existence of client and print progress every 1000ms */
         if (check_connection_and_progress(par, now))
             break;
+
+        /* sleep for a second if requested */
+        if (gbl_debug_sleep_on_verify)
+            sleep(1);
 
         unsigned long long genid;
         memcpy(&genid, dbt_key.data, sizeof(genid));
@@ -876,16 +888,19 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             /*  if dtacopy, does data payload in the key match the data
              * payload in the dta file? */
             int expected_size;
+            int datacopy_size = bdb_state->ixdtalen[ix] > 0 ? bdb_state->ixdtalen[ix] : bdb_state->lrl;
             uint8_t *expected_data;
-            uint8_t datacopy_buffer[bdb_state->lrl];
+            uint8_t datacopy_buffer[datacopy_size];
             if (bdb_state->datacopy_odh) {
                 int odhlen;
                 unpack_index_odh(bdb_state, &dbt_data, &genid_right,
                                  datacopy_buffer, sizeof(datacopy_buffer),
                                  &odhlen, &ver);
                 expected_size = odhlen;
-                par->vtag_callback(par->db_table, datacopy_buffer,
-                                   &expected_size, ver);
+                if (bdb_state->ixdtalen[ix] == 0) { // full datacopy
+                    par->vtag_callback(par->db_table, datacopy_buffer,
+                                       &expected_size, ver);
+                }
                 expected_data = datacopy_buffer;
             } else {
                 expected_size = dbt_data.size - sizeof(genid);
@@ -893,17 +908,29 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                 memcpy(&genid_right, (uint8_t *)dbt_data.data, sizeof(genid));
             }
 
-            if (expected_size != bdb_state->lrl) {
+            if (expected_size != datacopy_size) {
                 par->verify_status = 1;
                 locprint(par,
                          "!%016llx ix %d dtacpy payload wrong size expected %d "
                          "got %d",
-                         genid_flipped, ix, bdb_state->lrl, expected_size);
+                         genid_flipped, ix, datacopy_size, expected_size);
                 goto next_key;
             }
 
-            if (memcmp(expected_data, dbt_dta_check_data.data,
-                       bdb_state->lrl)) {
+            char tail[datacopy_size];
+            void *compared_data = dbt_dta_check_data.data;
+            if (bdb_state->ixdtalen[ix] > 0) { // partial datacopy
+                rc = par->partial_datacopy_callback(par->db_table, ix, dbt_dta_check_data.data, tail);
+                if (rc) {
+                    par->verify_status = 1;
+                    locprint(par, "!%016llx ix %d could not convert dta", genid_flipped);
+                    goto next_key;
+                }
+                compared_data = tail;
+            }
+
+            if (memcmp(expected_data, compared_data,
+                       datacopy_size)) {
                 par->verify_status = 1;
                 locprint(par, "!%016llx ix %d dtacpy data mismatch",
                          genid_flipped, ix);

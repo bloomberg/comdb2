@@ -78,6 +78,7 @@ static void free_event(struct log_event *e)
 
 static void *async_logthd(void *unused)
 {
+    comdb2_name_thread(__func__);
     struct log_event *e = NULL;
     int rc;
 

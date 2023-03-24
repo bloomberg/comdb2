@@ -597,6 +597,7 @@ void bdb_newsi_mempool_stat();
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 void *clean_exit_thd(void *unused)
 {
+    comdb2_name_thread(__func__);
     if (!gbl_ready)
         return NULL;
 
@@ -618,6 +619,7 @@ void *clean_exit_thd(void *unused)
 
 static void *getschemalk(void *arg)
 {
+    comdb2_name_thread(__func__);
     int64_t holdtime = (int64_t)arg;
     logmsg(LOGMSG_USER, "Locking the schemalk in write mode for %"PRId64" seconds", holdtime);
     wrlock_schema_lk();
@@ -1329,9 +1331,11 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "reset_blkmax") == 0) {
         reset_blkmax();
         logmsg(LOGMSG_USER, "Reset blkmax\n");
-    }
-
-    else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
+    } else if (tokcmp(tok, ltok, "reset_time") == 0) {
+        logmsg(LOGMSG_USER,
+               "Resetting epochms starttime\n");
+        timer_init(NULL);
+    } else if (tokcmp(tok, ltok, "get_blkmax") == 0) {
         int blkmax = get_blkmax();
         logmsg(LOGMSG_USER,
                 "Maximum concurrent block-processor threads is %d, maxwt is %d\n",
@@ -4685,8 +4689,7 @@ clipper_usage:
        logmsg(LOGMSG_USER, "disabled rcache\n");
 #endif
     } else if (tokcmp(tok, ltok, "swing") == 0) {
-        extern int gbl_master_changes;
-        ++gbl_master_changes;
+        ATOMIC_ADD32(gbl_master_changes, 1);
     } else if (tokcmp(tok, ltok, "stat4dump") == 0) {
         int more;
         segtok(line, lline, &st, &more);
@@ -4944,8 +4947,12 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
         }
     } else if (tokcmp(tok, ltok, "clear_fingerprints") == 0) {
-        int fpcount = clear_fingerprints();
-        logmsg(LOGMSG_USER, "Cleared %d fingerprints\n", fpcount);
+        int plans_count;
+        int fpcount = clear_fingerprints(&plans_count);
+        logmsg(LOGMSG_USER, "Cleared %d fingerprints with a total of %d plans\n", fpcount, plans_count);
+    } else if (tokcmp(tok, ltok, "clear_query_plans") == 0) {
+        int plans_count = clear_query_plans();
+        logmsg(LOGMSG_USER, "Cleared %d plans\n", plans_count);
     } else if (tokcmp(tok, ltok, "get_verify_thdpool_status") == 0) {
         if (gbl_verify_thdpool)
             thdpool_print_stats(stdout, gbl_verify_thdpool);

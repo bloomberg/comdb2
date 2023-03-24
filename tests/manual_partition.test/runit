@@ -58,8 +58,8 @@ gorun "select * from comdb2_logical_cron"
 
 echo "Creating partition 1 and 2"
 echo "Creating partition 1 and 2" >> $output
-gorun "create partition on t1 as testpart1 period 'manual' retention 2 start '1'"
-gorun "create partition on t2 as testpart2 period 'manual' retention 2 start '10'"
+gorun "create table testpart1(a int, alltypes_vutf8 text) partitioned by manual retention 2 start 1"
+gorun "create table testpart2(a int) partitioned by manual retention 2 start 10"
 
 echo "XXXXX we should see to empty partitions with no counters" >> $output
 gorun "select * from testpart1 order by a"
@@ -107,6 +107,8 @@ gorun "select * from testpart1 order by a"
 timepart_stats
 
 gorun "put counter testpart1 increment"
+echo "sleeping" >> $output
+sleep 10
 
 echo "XXXXX we should see an empty part1" >> $output
 gorun "select * from testpart1 order by a"

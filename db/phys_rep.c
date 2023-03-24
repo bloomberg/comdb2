@@ -123,6 +123,7 @@ int gbl_blocking_physrep = 0;
 
 static void *keep_in_sync(void *args)
 {
+    comdb2_name_thread(__func__);
     /* vars for syncing */
     int rc;
     volatile int64_t gen, highest_gen = 0;

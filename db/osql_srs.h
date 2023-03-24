@@ -64,4 +64,5 @@ int srs_tran_empty(struct sqlclntstate *clnt);
 int srs_tran_replay(struct sqlclntstate *);
 int srs_tran_replay_inline(struct sqlclntstate *);
 
+void srs_tran_print_history(struct sqlclntstate *clnt, int indent);
 #endif

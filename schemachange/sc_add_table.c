@@ -25,6 +25,7 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 #include "views.h"
+#include "macc_glue.h"
 
 extern int gbl_is_physical_replicant;
 
@@ -58,7 +59,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
-            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->ix_datacopy, newdb->ix_datacopylen, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
         open_auxdbs(newdb, 1);
     } else {
@@ -66,7 +67,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
         newdb->handle = bdb_open_more_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
-            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->ix_datacopy, newdb->ix_datacopylen, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
         open_auxdbs(newdb, 0);
     }
@@ -112,44 +113,23 @@ int add_table_to_environment(char *table, const char *csc2,
         return -1;
     }
 
-    rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
-
-    if (rc) {
-        char *err;
-        char *syntax_err;
-        err = csc2_get_errors();
-        syntax_err = csc2_get_syntax_errors();
-        sc_client_error(s, "%s", syntax_err);
-        sc_errf(s, "%s\n", err);
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/,
+                               thedb->num_dbs, 0 /*no altname*/,
+                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */, 
+                               0 /* side effects */, &err);
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
         sc_errf(s, "error adding new table locally\n");
         logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
-        return SC_CSC2_ERROR;
-    }
-    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs);
 
-    if (newdb == NULL) {
-        return SC_INTERNAL_ERROR;
+        return SC_CSC2_ERROR;
     }
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
-
-    struct errstat err = {0};
-    if (add_cmacc_stmt(newdb, 0, 0, &err)) {
-        logmsg(LOGMSG_ERROR, "%s: add_cmacc_stmt failed\n", __func__);
-        sc_client_error(s, "%s", err.errstr);
-        rc = SC_CSC2_ERROR;
-        goto err;
-    }
-
-    if (init_check_constraints(newdb)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to initialize check constraint(s)\n",
-               __func__);
-        rc = SC_CSC2_ERROR;
-        goto err;
-    }
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
@@ -253,11 +233,9 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         local_lock = 1;
     }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
-    dyns_init_globals();
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans,
                                   s->timepartition_name);
 
-    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
@@ -292,8 +270,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "failed to lock comdb2_tables (%s:%d)\n", __func__, __LINE__);
         return -1;
     }
-
-
     if (iq && iq->tranddl > 1 && verify_constraints_exist(db, NULL, NULL, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
         return -1;
@@ -334,7 +310,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);
         return rc;
     }
-    s->addonly = SC_DONE_ADD; /* done adding to thedb->dbs */
+    s->add_state = SC_DONE_ADD; /* done adding to thedb->dbs */
 
     if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
         return rc;
@@ -400,7 +376,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
      * if this is the original request for a partition table add,
      * create partition here
      */
-    if (s->partition.type == PARTITION_ADD_TIMED && s->publish) {
+    if ((s->partition.type == PARTITION_ADD_TIMED ||
+         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
         struct errstat err = {0};
         assert(s->newpartition);
         rc = partition_llmeta_write(tran, s->newpartition, 0, &err);
@@ -409,6 +386,17 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                    s->timepartition_name, rc, err.errstr);
             sc_errf(s, "partition_llmeta_write failed \"add\"\n");
             return -1;
+        }
+        /* drop partition llmeta, if we remove the partition (i.e. instead
+         * of merging another table in, in which case tablename is provided)
+         * Done only from one shard, the one that will publish results
+         */
+    } else if (s->partition.type == PARTITION_MERGE &&
+               s->partition.u.mergetable.tablename[0] == '\0') {
+        struct errstat err = {0};
+        if (partition_llmeta_delete(tran, s->timepartition_name, &err)) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            return SC_INTERNAL_ERROR;
         }
     }
 

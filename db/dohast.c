@@ -69,6 +69,7 @@ static char *generate_columns(Vdbe *v, ExprList *c, char **tbl,
     return cols;
 }
 
+/* this is used by order by expression list */
 static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
                               int **order_dir, struct params_info **pParamsOut,
                               int is_union)
@@ -78,7 +79,8 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
     char *newterm;
     int i;
 
-    ret = sqlite3ExprDescribeParams(v, lst->a[0].pExpr, pParamsOut);
+    /* NOTE: do not use tablename for order by TK_COLUMN expressions */
+    ret = sqlite3ExprDescribeParams(v, lst->a[0].pExpr, pParamsOut, 0);
     if (!ret)
         return NULL;
 
@@ -96,7 +98,8 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         ret = tmp;
     }
     for (i = 1; i < lst->nExpr; i++) {
-        newterm = sqlite3ExprDescribeParams(v, lst->a[i].pExpr, pParamsOut);
+        /* NOTE: do not use tablename for order by TK_COLUMN expressions */
+        newterm = sqlite3ExprDescribeParams(v, lst->a[i].pExpr, pParamsOut, 0);
         if (!newterm) {
             sqlite3_free(ret);
             free(*order_dir);
@@ -122,6 +125,46 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
     return ret;
 }
 
+/**
+ * Where expression contain all WHERE predicates, but also
+ * ON/USING/NATURAL join constraints.
+ * The tree is predictably organized with the join constraints
+ * always adding themselves as the right branch of a new rooted
+ * Expr tree (root is of the type TK_AND)
+ *
+ * We re looking for a specific join table subtree; 0 refers to
+ * the where predicates
+ */
+Expr *_find_join_constrains(Expr *where, int iRightJoinTable)
+{
+    Expr *crt = where;
+    if (!where)
+        return NULL;
+
+    if (iRightJoinTable == 0) {
+        while (!ExprHasProperty(crt, EP_FromJoin)) {
+            if (crt->op == TK_AND && ExprHasProperty(crt->pRight, EP_FromJoin))
+                crt = crt->pLeft;
+            else
+                return crt;
+        }
+        return NULL; /* no where predicates */
+    } else {
+        while (!ExprHasProperty(crt, EP_FromJoin)) {
+            if (crt->op == TK_AND &&
+                ExprHasProperty(crt->pRight, EP_FromJoin)) {
+                if (crt->pRight->iRightJoinTable == iRightJoinTable)
+                    return crt->pRight;
+                crt = crt->pLeft;
+            } else
+                return NULL;
+        }
+        if (crt->iRightJoinTable == iRightJoinTable)
+            return crt;
+        return NULL;
+    }
+}
+
 char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                               int *order_size, int **order_dir,
                               struct params_info **pParamsOut, int is_union)
@@ -134,6 +177,9 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
     char *offset = NULL;
     char *extra = NULL;
     char *orderby = NULL;
+    int i;
+    Expr *whereExpr = NULL;
+    Expr *joinExpr = NULL;
 
     if (p->recording)
         return NULL; /* no selectv */
@@ -143,16 +189,22 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         return NULL; /* no having */
     if (p->pGroupBy)
         return NULL; /* no group by */
-    if (p->pSrc->nSrc > 1)
-        return NULL; /* no joins */
+    /* if (p->pSrc->nSrc > 1)
+        return NULL;  no joins */
 
     if (p->pPrior && p->op != TK_ALL)
         return NULL; /* only union all */
 
     if (p->pWhere) {
-        where = sqlite3ExprDescribeParams(v, p->pWhere, pParamsOut);
-        if (!where)
-            return NULL;
+        /* skip any join constraints;
+         * sqlite puts them in here in most cases
+         */
+        whereExpr = _find_join_constrains(p->pWhere, 0 /* no join */);
+        if (whereExpr) {
+            where = sqlite3ExprDescribeParams(v, whereExpr, pParamsOut, 1);
+            if (!where)
+                return NULL;
+        }
     }
 
     if (p->pOrderBy) {
@@ -170,13 +222,96 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         sqlite3_free(where);
         return NULL;
     }
-    if (!tbl && p->pSrc->nSrc) {
-        /* select 1 from tbl */
-        if (p->pSrc->a[0].zDatabase)
-            tbl = sqlite3_mprintf("\"%w\".\"%w\"", p->pSrc->a[0].zDatabase,
-                                  p->pSrc->a[0].zName);
+
+    //    if (!tbl && p->pSrc->nSrc) {
+    //        /* select 1 from tbl */
+
+    sqlite3_free(tbl);
+    char *tmp;
+    tbl = NULL;
+    for (i = 0; i < p->pSrc->nSrc; i++) {
+        tmp = tbl;
+        if (i > 0) {
+            u8 jt = p->pSrc->a[i].fg.jointype;
+            /* natural */
+            if (jt & JT_NATURAL) {
+                tbl = sqlite3_mprintf("%s NaTuRaL ", tmp);
+                sqlite3_free(tmp);
+                tmp = tbl;
+                jt ^= JT_NATURAL;
+            }
+            if (jt & JT_INNER) {
+                if (jt & JT_CROSS) {
+                    tbl = sqlite3_mprintf("%s CRoSS JoiN ", tmp);
+                } else {
+                    tbl = sqlite3_mprintf("%s iNNeR JoiN ", tmp);
+                }
+            } else {
+                if ((jt & (JT_LEFT | JT_RIGHT)) == (JT_LEFT | JT_RIGHT)) {
+                    tbl = sqlite3_mprintf("%s Full ouTeR JoiN ", tmp);
+                } else if (jt & JT_LEFT) {
+                    tbl = sqlite3_mprintf("%s LeFT ouTeR JoiN ", tmp);
+                } else {
+                    tbl = sqlite3_mprintf("%s RiGHT ouTeR JoiN ", tmp);
+                }
+            }
+            sqlite3_free(tmp);
+            tmp = tbl;
+        } else {
+            tmp = sqlite3_mprintf("");
+        }
+        if (p->pSrc->a[i].zDatabase)
+            tbl = sqlite3_mprintf("%s\"%w\".\"%w\"", tmp,
+                                  p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName);
         else
-            tbl = sqlite3_mprintf("\"%w\"", p->pSrc->a[0].zName);
+            tbl = sqlite3_mprintf("%s\"%w\"", tmp, p->pSrc->a[i].zName);
+        sqlite3_free(tmp);
+
+        /**
+         * "ON ..."/pOn
+         * There are cases whene "ON ..." join constraint is pushed into
+         * pWhere with EP_FromJoin property set!
+         * There are other cases when the above optimization is disabled
+         * in which case pOn appears here
+         * NOTE: skip natural constraints since we already add them
+         */
+        if (i > 0 && !(p->pSrc->a[i].fg.jointype & JT_NATURAL)) {
+            if (p->pSrc->a[i].pOn) {
+                char *on = sqlite3ExprDescribeParams(v, p->pSrc->a[i].pOn,
+                                                     pParamsOut, 1);
+                if (!on) {
+                    sqlite3_free(tbl);
+                    sqlite3_free(orderby);
+                    sqlite3_free(where);
+                    return NULL;
+                }
+                tmp = tbl;
+                tbl = sqlite3_mprintf("%s ON %s", tmp, on);
+                sqlite3_free(tmp);
+                sqlite3_free(on);
+            } else {
+                /* In more general case ON/USING/NATURAL are included
+                 * in p->pWhere.
+                 * Locate then and process them here.
+                 */
+                joinExpr =
+                    _find_join_constrains(p->pWhere, p->pSrc->a[i].iCursor);
+                if (joinExpr) {
+                    char *join =
+                        sqlite3ExprDescribeParams(v, joinExpr, pParamsOut, 1);
+                    if (!join) {
+                        sqlite3_free(tbl);
+                        sqlite3_free(orderby);
+                        sqlite3_free(where);
+                        return NULL;
+                    }
+                    tmp = tbl;
+                    tbl = sqlite3_mprintf("%s ON %s", tmp, join);
+                    sqlite3_free(tmp);
+                    sqlite3_free(join);
+                }
+            }
+        }
     }
 
     if (unlikely(!tbl)) {
@@ -190,7 +325,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                                  (orderby) ? " oRDeR By " : "",
                                  (orderby) ? orderby : "");
     } else {
-        limit = sqlite3ExprDescribeParams(v, p->pLimit->pLeft, pParamsOut);
+        limit = sqlite3ExprDescribeParams(v, p->pLimit->pLeft, pParamsOut, 1);
         if (!limit) {
             sqlite3_free(tbl);
             sqlite3_free(orderby);
@@ -200,7 +335,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         }
         if (/* p->pLimit && */ p->pLimit->pRight) {
             offset =
-                sqlite3ExprDescribeParams(v, p->pLimit->pRight, pParamsOut);
+                sqlite3ExprDescribeParams(v, p->pLimit->pRight, pParamsOut, 1);
             if (!offset) {
                 sqlite3_free(limit);
                 sqlite3_free(tbl);
@@ -223,7 +358,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 (where) ? " WHeRe " : "", (where) ? where : "",
                 (orderby) ? " oRDeR By " : "", (orderby) ? orderby : "", limit);
         } else {
-            extra = sqlite3ExprDescribeParams(v, extraRows, pParamsOut);
+            extra = sqlite3ExprDescribeParams(v, extraRows, pParamsOut, 1);
             if (!extra) {
                 sqlite3_free(limit);
                 sqlite3_free(tbl);
@@ -554,15 +689,49 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
 
     /* no with, joins or subqueries */
     if (not_recognized || p->pSrc->nSrc == 0 /*with*/ ||
-        p->pSrc->nSrc > 1 /*joins*/ || p->pSrc->a->pSelect /*subquery*/ ||
+        /*p->pSrc->nSrc > 1 joins || */ p->pSrc->a->pSelect /*subquery*/ ||
         (span == 1 &&
          p->op == TK_ALL) /* insert rowset which links values on pNext */
     )
         return NULL;
 
-    if (p->op == TK_SELECT)
+    if (p->op == TK_SELECT) {
         ret = gen_oneselect(v, p, NULL, NULL, NULL, 0);
-    else
+        if (ret) {
+            /* single query case, can we push this remotely? */
+            int i;
+            const char *remoteDb = "";
+            int remoteIdb = 0;
+            for (i = 0; i < p->pSrc->nSrc; i++) {
+                struct SrcList_item *item = &p->pSrc->a[i];
+                if (!item->pTab) {
+                    /* no table data source */
+                    continue;
+                }
+                if (item->pTab->iDb <= 1) {
+                    /* local table */
+                    remoteIdb = 0;
+                    break;
+                }
+                if (remoteIdb && remoteIdb != item->pTab->iDb) {
+                    /* join of two remote tables, we could
+                     * push to one of them, but for now lets
+                     * run join locally
+                     */
+                    remoteIdb = 0;
+                    break;
+                }
+                remoteIdb = item->pTab->iDb;
+                remoteDb = v->db->aDb[remoteIdb].zDbSName;
+            }
+            if (remoteIdb) {
+                if (gbl_dohast_verbose)
+                    logmsg(LOGMSG_USER, "We can push remotely to %d %s db %p\n",
+                           remoteIdb, remoteDb, v->db);
+                ret->remotedb = remoteIdb;
+            }
+        }
+    } else
         ret = gen_union(v, p, span);
 
     return ret;
@@ -747,6 +916,38 @@ int comdb2_check_parallel(Parse *pParse)
     return 0;
 }
 
+int comdb2_check_push_remote(Parse *pParse)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return 0;
+
+    ast_t *ast = pParse->ast;
+    dohsql_node_t *node;
+
+    if (!gbl_fdb_push_remote)
+        return 0;
+
+    if (ast && ast->unsupported)
+        return 0;
+    if (has_parallel_sql(NULL) == 0)
+        return 0;
+    if (ast->nused > 1)
+        return 0;
+    if (!ast->stack[0].obj)
+        return 0;
+
+    node = (dohsql_node_t *)ast->stack[0].obj;
+
+    if (node->type != AST_TYPE_SELECT)
+        return 0;
+
+    if (!pParse->explain)
+        if (node->remotedb > 1)
+            if (!fdb_push_run(pParse, node))
+                return 1;
+    return 0;
+}
+
 static int _exprCallback(Walker *pWalker, Expr *pExpr)
 {
     switch (pExpr->op) {
@@ -761,6 +962,11 @@ static int _exprCallback(Walker *pWalker, Expr *pExpr)
         return WRC_Continue;
     case TK_FUNCTION:
         if (strcasecmp(pExpr->u.zToken, "comdb2_ctxinfo") == 0) {
+            return WRC_Continue;
+        }
+        return WRC_Abort;
+    case TK_AGG_FUNCTION:
+        if (strcasecmp(pExpr->u.zToken, "count") == 0) {
             return WRC_Continue;
         }
         /* fallthrough */
@@ -800,7 +1006,7 @@ static char *_gen_col_expr(Vdbe *v, Expr *expr, char **tblname,
         }
     }
 
-    return sqlite3ExprDescribeParams(v, expr, pParamsOut);
+    return sqlite3ExprDescribeParams(v, expr, pParamsOut, 1);
 }
 
 static void _save_params(Parse *pParse, dohsql_node_t *node)

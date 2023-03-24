@@ -56,14 +56,23 @@ static inline void fastseed_set_dup(int dup) { fastseed_dup = dup; }
 
 extern int gbl_mynodeid;
 
+uint64_t (*external_fastseed)(void) = NULL;
+
+static void _track(int srcid);
+
 /* TODO: fastseed - compatibility mode only - remove */
-uint64_t comdb2fastseed(void)
+uint64_t comdb2fastseed(int srcid)
 {
     int epoch, node, dup;
     int firstepoch = 0;
     int retries;
     int seed[2];
     uint64_t out;
+
+    _track(srcid);
+
+    if (external_fastseed)
+        return external_fastseed();
 
     node = gbl_mynodeid;
     if (node < 1 || node > MAXNODE) {
@@ -134,4 +143,27 @@ uint64_t comdb2fastseed(void)
 
     memcpy(&out, seed, 8);
     return flibc_ntohll(out);
+}
+
+/* hack alert: this is indexed by sources, which gets their own next available
+ * int id good enough to track this code that is going away
+ */
+static int track[5];
+const char *track_names[5] = {"osql", "remsql", "remtran", "seqno", "sqlfunc"};
+
+static void _track(int srcid)
+{
+    if (srcid < 0 || srcid >= sizeof(track) / sizeof(track[0]))
+        srcid = 0;
+    track[srcid]++;
+}
+
+void report_fastseed_users(int lvl)
+{
+    int i;
+    for (i = 0; i < sizeof(track) / sizeof(track[0]); i++) {
+        if (track[i])
+            logmsg(lvl, "COMDB2FASTSEED \"%s\" count %d\n", track_names[i],
+                   track[i]);
+    }
 }

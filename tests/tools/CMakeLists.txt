@@ -70,6 +70,7 @@ add_exe(updater updater.c testutil.c)
 add_exe(utf8 utf8.c)
 add_exe(verify_atomics_work verify_atomics_work.c)
 add_exe(makerecord_timer makerecord_timer.c)
+add_exe(sqlite_clnt sqlite_clnt.c)
 
 target_link_libraries(cson_test cson)
 target_link_libraries(stepper util mem dlmalloc util)

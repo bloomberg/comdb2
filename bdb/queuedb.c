@@ -137,9 +137,9 @@ static int bdb_queuedb_is_db_full(DB *db)
 
 static int start_qdb_schemachange(struct schema_change_type *sc)
 {
-    javasp_do_procedure_wrlock();
+    javasp_splock_wrlock();
     int rc = start_schema_change(sc);
-    javasp_do_procedure_unlock();
+    javasp_splock_unlock();
     return rc;
 }
 
@@ -191,8 +191,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 strncpy0(
                     sc->tablename, tbl_bdb_state->name, sizeof(sc->tablename)
                 );
-                sc->type = DBTYPE_QUEUEDB;
-                sc->del_qdb_file = 1;
+                sc->kind = SC_DEL_QDB_FILE;
                 sc->nothrevent = 1;
                 sc->finalize = 1;
                 sc->already_locked = 1;
@@ -221,8 +220,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             strncpy0(
                 sc->tablename, tbl_bdb_state->name, sizeof(sc->tablename)
             );
-            sc->type = DBTYPE_QUEUEDB;
-            sc->add_qdb_file = 1;
+            sc->kind = SC_ADD_QDB_FILE;
             sc->qdb_file_ver = flibc_htonll(bdb_get_cmp_context(tbl_bdb_state));
             sc->nothrevent = 1;
             sc->finalize = 1;

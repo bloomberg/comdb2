@@ -1,0 +1,27 @@
+#!/bin/bash
+
+a_dbn=$1
+master=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="Y"')
+master=$(echo $master | grep -oP \'\(.*?\)\')
+master=${master:1:-1}
+
+setup () {
+cdb2sql ${CDB2_OPTIONS} $a_dbn --host $master 'put tunable debug.txn_sleep = 5'
+cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
+create table txtest(a int); \$\$
+insert into txtest(a) values(1);
+EOF
+}
+
+setup &
+sleep 1 
+cdb2sql ${CDB2_OPTIONS} $a_dbn --host $master 'select * from comdb2_transaction_state' >> testtransactionstate.out
+
+nbusy=$(grep -o 'busy' testtransactionstate.out | wc -l)
+rc=$(($nbusy==0 ? 1 : 0)) # There should be at least one busy thread 
+
+if [[ $rc -ne 0  ]]; then
+    echo "Failed transaction state test"
+fi
+
+exit $rc

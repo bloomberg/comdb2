@@ -345,23 +345,23 @@ set all_graphs {
   }
   create-table {stack
     {line CREATE TABLE {opt IF NOT EXISTS}}
-    {line /table-name {opt table-options}}
+    {line /table-name {opt {line OPTIONS table-options}}}
     {line lbrc /table-schema rbrc }
   }
   alter-table {stack
-    {line ALTER TABLE /table-name {opt table-options}}
+    {line ALTER TABLE /table-name {opt OPTIONS table-options}}
     {line lbrc /table-schema rbrc }
   }
 
   table-options {
-    line OPTIONS {loop {or 
-      {line ODH OFF}
-      {line IPU OFF}
-      {line ISC OFF}
-      {line REBUILD}
-      {line REC {or NONE CRLE LZ4 RLE ZLIB}}
-      {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
-    } ,} 
+    line {loop {or
+        {line ODH OFF}
+        {line IPU OFF}
+        {line ISC OFF}
+        {line REBUILD}
+        {line REC {or NONE CRLE LZ4 RLE ZLIB}}
+        {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
+    } ,}
   }
 
   create-proc {stack
@@ -589,7 +589,16 @@ stack
                   {opt dup}
                   {opt uniqnulls}
               }
-              {opt datacopy}
+              {opt datacopy
+                  {opt
+                      (
+                      {loop
+                          column-name
+                          ,
+                      }
+                      )
+                  }
+              }
               {line /string-literal = }
           }
           {stack
@@ -693,7 +702,7 @@ stack
                   }
                   {line ) }
               }
-              {line {opt table-options }}
+              {line {opt OPTIONS table-options }}
           }
       }
   }
@@ -723,7 +732,7 @@ stack
           {stack
               {line {or {line UNIQUE } {line INDEX } }
                   {opt index-name } ( index-column-list ) }
-              {line {opt OPTION DATACOPY } {opt WHERE expr } }
+              {line {opt INCLUDE {or ALL {line ( {loop column-name , } ) } } } {opt WHERE expr } }
           }
       }
       {line PRIMARY KEY ( index-column-list ) }
@@ -784,7 +793,7 @@ stack
                               {stack
                                   {line {opt UNIQUE } INDEX index-name
                                       ( index-column-list ) }
-                                  {line {opt WITH DATACOPY } {opt WHERE expr } }
+                                  {line {opt INCLUDE {or ALL {line ( {loop column-name , } ) } } } {opt WHERE expr } }
                               }
                               {stack
                                   {line {opt CONSTRAINT constraint-name } }
@@ -793,19 +802,23 @@ stack
                           }
                       }
                       {line ALTER
-                          {line {opt COLUMN} column-name }
                           {or
-                              {line {opt SET DATA} TYPE column-type }
-                              {line SET DEFAULT expr }
-                              {line DROP DEFAULT }
-                              {line DROP AUTOINCREMENT }
-                              {line
+                              {line {opt COLUMN} column-name
                                   {or
-                                      {line SET }
-                                      {line DROP }
+                                      {line {opt SET DATA} TYPE column-type }
+                                      {line SET DEFAULT expr }
+                                      {line DROP DEFAULT }
+                                      {line DROP AUTOINCREMENT }
+                                      {line
+                                          {or
+                                              {line SET }
+                                              {line DROP }
+                                          }
+                                          NOT NULL
+                                      }
                                   }
-                                  NOT NULL
                               }
+                              {line OPTIONS ( table-options ) }
                           }
                       }
                       {line DROP
@@ -818,7 +831,7 @@ stack
                       }
                       {line SET COMMIT PENDING }
                   }
-              }
+              , }
               {line DO NOTHING }
           }
       }
@@ -827,7 +840,7 @@ stack
       stack
       {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
       {line {opt db-name } index-name ON table-name ( index-column-list ) }
-      {line {opt OPTION DATACOPY } {opt WHERE expr } }
+      {line {opt INCLUDE {or ALL {line ( {loop column-name , } ) } } } {opt WHERE expr } }
   }
 
   drop-index {

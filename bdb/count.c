@@ -269,6 +269,9 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
             size_t datalen;
             void *keyptr;
             size_t keylen;
+            (void) datalen;
+            (void) keyptr;
+            (void) keylen;
             DB_MULTIPLE_KEY_NEXT(ptr, &dbt_data, keyptr, keylen, dataptr,
                                  datalen);
             if (!dataptr)

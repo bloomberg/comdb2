@@ -23,9 +23,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-/* extra OpenSSL headers */
-#include <openssl/asn1.h>
-#include <openssl/x509v3.h>
+#include <hostname_support.h>
+#include <ssl_glue.h>
 
 SSL *SBUF2_FUNC(sslio_get_ssl)(SBUF2 *sb)
 {
@@ -87,124 +86,6 @@ static int sslio_pollout(SBUF2 *sb)
     return 1;
 }
 
-/* This is rougly in line with RFC6125, Section 6.4.3.
-   (https://tools.ietf.org/html/rfc6125#section-6.4.3) */
-static int hostname_wildcard_match(const char *s, const char *p)
-{
-    const char *asterisk = NULL;
-    const char *ts;
-    const char *dotasterisk;
-
-    /* Use optimized libc function first.
-       If no exact match, we use wildcard matching
-       and accept the overhead. */
-    if (strcasecmp(s, p) == 0)
-        return 0;
-
-    /* RFC6125 Rule 1 */
-    dotasterisk = strstr(p, "*");
-    if (strcspn(p, ".") < dotasterisk - p)
-        return 1;
-
-    ts = s;
-    while (*s) {
-        if (tolower(*p) == tolower(*s)) {
-            ++s;
-            ++p;
-        } else if (*p == '*') {
-            asterisk = p++;
-            ts = s;
-        } else if (asterisk && *s != '.') {
-            p = asterisk + 1;
-            s = ++ts;
-        } else {
-            return 1;
-        }
-    }
-    for (; *p == '*'; ++p)
-        ;
-
-    /* No wildcard match */
-    return (*p != 0);
-}
-
-#if (OPENSSL_VERSION_NUMBER < 0x10100000L) || defined(LIBRESSL_VERSION_NUMBER)
-#    define ASN1_STRING_get0_data ASN1_STRING_data
-#endif
-
-/* 0: okay. -1: no san. 1: no match. */
-static int ssl_verify_san(const char *hostname, const X509 *cert)
-{
-    STACK_OF(GENERAL_NAME) *peersan;
-    const GENERAL_NAME *name;
-    const char *dnsname;
-    int rc, ii, len;
-
-    peersan = (STACK_OF(GENERAL_NAME) *)
-        X509_get_ext_d2i((X509 *)cert, NID_subject_alt_name, NULL, NULL);
-    if (peersan == NULL)
-        return -1;
-
-    len = sk_GENERAL_NAME_num(peersan);
-    for (ii = 0, rc = 1; ii != len; ++ii) {
-        name = sk_GENERAL_NAME_value(peersan, ii);
-        if (name->type != GEN_DNS)
-            continue;
-        dnsname = (const char *)ASN1_STRING_get0_data(name->d.dNSName);
-
-        /* CVE-2009-4034 */
-        if (ASN1_STRING_length(name->d.dNSName) != strlen(dnsname)) {
-            rc = 1;
-            break;
-        }
-
-        if (hostname_wildcard_match(hostname, dnsname) == 0) {
-            rc = 0;
-            break;
-        }
-    }
-
-    sk_GENERAL_NAME_pop_free(peersan, GENERAL_NAME_free);
-    return rc;
-}
-
-static int ssl_x509_get_attr(const X509 *cert, int nid, char *out, size_t len)
-{
-    int fldindx;
-    X509_NAME  *certname;
-    X509_NAME_ENTRY *fld;
-    ASN1_STRING *fldasn1;
-    const char *fldstr;
-
-    /* Fast return if nid is undefined */
-    if (nid == NID_undef)
-        return EINVAL;
-
-    certname = X509_get_subject_name((X509 *)cert);
-    if (certname == NULL)
-        return EINVAL;
-
-    fldindx = X509_NAME_get_index_by_NID(certname, nid, -1);
-    if (fldindx < 0)
-        return EINVAL;
-
-    fld = X509_NAME_get_entry(certname, fldindx);
-    if (fld == NULL)
-        return EINVAL;
-
-    fldasn1 = X509_NAME_ENTRY_get_data(fld);
-    if (fldasn1 == NULL)
-        return EINVAL;
-
-    fldstr = (const char *)ASN1_STRING_get0_data(fldasn1);
-    /* CVE-2009-4034 */
-    if (ASN1_STRING_length(fldasn1) != strlen(fldstr))
-        return EINVAL;
-
-    strncpy(out, fldstr, len);
-    return 0;
-}
-
 int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len)
 {
     if (sb == NULL || sb->cert == NULL)
@@ -212,164 +93,37 @@ int SBUF2_FUNC(sslio_x509_attr)(SBUF2 *sb, int nid, char *out, size_t len)
     return ssl_x509_get_attr(sb->cert, nid, out, len);
 }
 
-static int ssl_verify_cn(const char *hostname, const X509 *cert)
-{
-    int rc;
-    /* RFC 2181 */
-    char cn[256];
-    rc = ssl_x509_get_attr(cert, NID_commonName, cn, sizeof(cn));
-    if (rc != 0)
-        return 1;
-    cn[255] = 0;
-    return hostname_wildcard_match(hostname, cn);
-}
-
-static int ssl_verify_ca(SBUF2 *sb)
-{
-    /*
-    ** 1) Perform a reverse DNS lookup to get the hostname
-    **    associated with the source address.
-    ** 2) Perform a forward DNS lookup to get a list of addresses
-    **    associated with the hostname.
-    ** 3) If the source address is in the list, proceed;
-    **    otherwise, return 1 immediately.
-    ** 4) Perform SAN/CN validation.
-    **
-    ** The forward DNS lookup is necessary in case an attacker is
-    ** in control of reverse DNS for the source IP.
-    */
-    struct sockaddr_in peeraddr;
-    struct in_addr *peer_in_addr, **p_fwd_in_addr;
-    socklen_t len = sizeof(struct sockaddr_in);
-    int rc, found_addr;
-    struct hostent *hp = NULL;
-
-    /* Reverse lookup the hostname */
-    char peerhost[NI_MAXHOST];
-    if (get_hostname_by_fileno_v2(sbuf2fileno(sb), peerhost, sizeof(peerhost))) {
-        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
-                     "Could not obtain peer host name.");
-        return 1;
-    }
-
-    /* Should always succeed as get_origin_mach_by_buf()
-       returns a valid hostname. */
-    getpeername(sb->fd, (struct sockaddr *)&peeraddr, &len);
-
-/* Forward lookup the IPs */
-
-#if defined(__APPLE__)
-    hp = gethostbyname(peerhost);
-#elif defined(_LINUX_SOURCE)
-    int herr;
-    char buf[8192];
-    struct hostent hostbuf;
-    gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &hp, &herr);
-#elif defined(_SUN_SOURCE)
-    int herr;
-    char buf[8192];
-    struct hostent hostbuf;
-    hp = gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &herr);
-#else
-    hp = gethostbyname(peerhost);
-#endif
-
-    if (hp == NULL) {
-        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
-                     "Failed to perform forward DNS lookup.");
-        return 1;
-    }
-
-    /* Find the source address in the address list returned
-       by the forward DNS lookup. */
-    for (found_addr = 0, peer_in_addr = &peeraddr.sin_addr,
-        p_fwd_in_addr = (struct in_addr **)hp->h_addr_list;
-         *p_fwd_in_addr != NULL; ++p_fwd_in_addr) {
-        if (peer_in_addr->s_addr == (*p_fwd_in_addr)->s_addr) {
-            found_addr = 1;
-            break;
-        }
-    }
-
-    /* Suspicious PTR record. Reject it. */
-    if (!found_addr)
-        return 1;
-
-    /* Trust localhost */
-    if (strcasecmp(peerhost, "localhost") == 0 ||
-            strcasecmp(peerhost, "localhost.localdomain") == 0)
-        return 0;
-
-    /* Per RFC 6125, If SANs are presented, they must be used and
-       the Comman Name must be ignored. */
-    rc = ssl_verify_san(peerhost, sb->cert);
-    if (rc == -1)
-        rc = ssl_verify_cn(peerhost, sb->cert);
-
-    return rc;
-}
-
-static int dbname_wildcard_match(const char *s, const char *p)
-{
-    const char *asterisk = NULL;
-    const char *ts = s;
-    const char *pc = p;
-
-    /* A pattern can't be all wildcard characters */
-    for (; *pc && (*pc == '?' || *pc == '*'); ++pc)
-        ;
-    if (*pc == 0)
-        return 1;
-
-    while (*s) {
-        if ((*p == '?') || (tolower(*p) == tolower(*s))) {
-            ++s;
-            ++p;
-        } else if (*p == '*') {
-            asterisk = p++;
-            ts = s;
-        } else if (asterisk) {
-            p = asterisk + 1;
-            s = ++ts;
-        } else {
-            return 1;
-        }
-    }
-    for (; *p == '*'; ++p)
-        ;
-    return (*p == 0) ? 0 : 1;
-}
-
-static int ssl_verify_dbname(SBUF2 *sb, const char *dbname, int nid)
-{
-    size_t sz = strlen(dbname) + 1;
-    char *dbname_in_cert = alloca(sz);
-    int rc = sslio_x509_attr(sb, nid, dbname_in_cert, sz);
-
-    if (rc != 0)
-        return rc;
-    if (strncasecmp(dbname_in_cert, dbname, sz) == 0)
-        return 0;
-    dbname_in_cert[sz - 1] = 0;
-    return dbname_wildcard_match(dbname, dbname_in_cert);
-}
-
 static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid)
 {
     int rc = 0;
-    if (sb->ssl != NULL && mode >= SSL_VERIFY_CA) {
+#if SBUF2_SERVER
+    extern int gbl_ssl_allow_localhost;
+    if (gbl_ssl_allow_localhost) {
+        char host[NI_MAXHOST];
+        if (get_hostname_by_fileno_v2(sb->fd, host, sizeof(host)) == 0) {
+            if (ssl_whitelisted(host)) {
+                /* skip certificate check for local connections */
+                return 0;
+            }
+        }
+    }
+#endif
+    if (sb->ssl != NULL && SSL_NEEDS_VERIFICATION(mode)) {
+        /* Convert SSL_PREFER_VERIFY_XXX to SSL_VERIFY_XXX */
+        if (SSL_IS_OPTIONAL(mode))
+            mode += (SSL_REQUIRE - SSL_PREFER);
         sb->cert = SSL_get_peer_certificate(sb->ssl);
         if (sb->cert == NULL) {
             ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Could not get peer certificate.");
             rc = EIO;
-        } else if (mode >= SSL_VERIFY_HOSTNAME && ssl_verify_ca(sb) != 0) {
+        } else if (mode >= SSL_VERIFY_HOSTNAME && ssl_verify_hostname(sb->cert, sb->fd) != 0) {
             /* set rc to error out. */
             rc = EACCES;
             ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Certificate does not match host name.");
         } else if (mode >= SSL_VERIFY_DBNAME &&
-                   ssl_verify_dbname(sb, dbname, nid) != 0) {
+                   ssl_verify_dbname(sb->cert, dbname, nid) != 0) {
             rc = EACCES;
             ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Certificate does not match database name.");

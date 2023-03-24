@@ -290,9 +290,8 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
     return (osql_chkboard_fetch_entry(rqid, uuid, 1) != NULL);
 }
 
-int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat,
-                                struct query_effects *effects)
+int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, void *data, struct errstat *errstat,
+                                struct query_effects *effects, const char *from)
 {
     if (!checkboard)
         return 0;
@@ -316,9 +315,21 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         return -1;
     }
 
-    if (errstat)
+    if (errstat) {
+        /* Ignore errors from non-master.
+           This can happen when:
+           1) A bplog session is opened right before the old master downgrades.
+           2) The old master signals the replicant with a wrong-master error message (see sorese_rcvreq()).
+              The message however hasn't been processed by replicant's reader-thread just yet.
+           3) Replicant detects that master has swung, and restarts the transaction against the new master.
+           4) Replicant reader-thread processes the wrong-master error from the old master, and restarts
+              the transaction again. */
+        if (errstat->errval != 0 && entry->master != from) {
+            Pthread_mutex_unlock(&checkboard->mtx);
+            return 0;
+        }
         entry->err = *errstat;
-    else
+    } else
         bzero(&entry->err, sizeof(entry->err));
 
     Pthread_mutex_lock(&entry->mtx);
@@ -387,7 +398,7 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
-extern int comdb2_sql_tick();
+extern int comdb2_sql_tick_no_recover_deadlock();
 /* NB: this is a helper function and waits for response from master
  * until max_wait count is reached.
  * This function is ment to be called with mutex entry->mtx in locked state
@@ -404,7 +415,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
            ((max_wait > 0 && (*cnt) < max_wait) || max_wait < 0)) {
 
         if (entry->progressing)
-            comdb2_sql_tick();
+            comdb2_sql_tick_no_recover_deadlock();
 
         /* prepare to wait for a second */
         struct timespec tm_s;

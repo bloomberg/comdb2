@@ -1,5 +1,5 @@
-#include <db_config.h>
-#include <db_int.h>
+#include <build/db_config.h>
+#include <build/db_int.h>
 #include <dbinc/db_page.h>
 #include <dbinc/db_shash.h>
 #include <dbinc/log.h>
@@ -18,6 +18,7 @@
 #include <assert.h>
 #include <comdb2rle.h>
 #include <logmsg.h>
+#include <tohex.h>
 
 struct pfx_type_t {
 	uint16_t npfx;		/* pfx size */
@@ -29,19 +30,6 @@ struct pfx_type_t {
 	uint8_t pfx[1];
 };
 
-
-void
-print_hex(uint8_t * b, unsigned l, int newline)
-{
-	static char map[] = "0123456789abcdef";
-	int i;
-
-	for (i = 0; i < l; ++i) {
-		logmsg(LOGMSG_USER, "%c%c", map[b[i] >> 4], map[b[i] & 0x0f]);
-	}
-	if (newline)
-		logmsg(LOGMSG_USER, "\n");
-}
 
 void
 inspect_bk(BKEYDATA *bk)
@@ -62,7 +50,7 @@ inspect_bk(BKEYDATA *bk)
 			logmsg(LOGMSG_USER, "not printing - too big");
 			break;
 		}
-		print_hex(bk->data, len, 0);
+		print_hex_nl(bk->data, len, 0);
 		logmsg(LOGMSG_USER, " [%s%s%s ]", B_PISSET(bk) ? "P" : " ",
 		    B_RISSET(bk) ? "R" : " ", B_DISSET(bk) ? "X" : " ");
 		break;
@@ -100,15 +88,15 @@ inspect_page_hdr(DB *dbp, PAGE *h)
 
 		logmsg(LOGMSG_USER, "key-compression:yes pfx:0x");
 		if (pfx->nrle) {
-			print_hex(pfx->rle, pfx->nrle, 0);
+			print_hex_nl(pfx->rle, pfx->nrle, 0);
 			logmsg(LOGMSG_USER, " (uncompressed:0x");
 		}
-		print_hex(pfx->pfx, pfx->npfx, 0);
+		print_hex_nl(pfx->pfx, pfx->npfx, 0);
 		if (pfx->nrle)
 			logmsg(LOGMSG_USER, ")");
 		if (pfx->nsfx) {
 			logmsg(LOGMSG_USER, " sfx:0x");
-			print_hex(pfx->sfx, pfx->nsfx, 0);
+			print_hex_nl(pfx->sfx, pfx->nsfx, 0);
 		}
 		logmsg(LOGMSG_USER, " ");
 	} else {
@@ -477,19 +465,19 @@ find_pfx(DB *dbp, PAGE *h, pfx_t * pfx)
 	}
 #if 0
 	printf("first: 0x");
-	print_hex(first->data, first->len, 1);
+	print_hex_nl(first->data, first->len, 1);
 	printf(" last: 0x");
-	print_hex(last->data, last->len, 1);
+	print_hex_nl(last->data, last->len, 1);
 	printf("  pfx: 0x");
-	print_hex(pfx->pfx, pfx->npfx, 0);
+	print_hex_nl(pfx->pfx, pfx->npfx, 0);
 	if (pfx->nsfx) {
 		printf("%.*s", 2 * (first->len - pfx->npfx - pfx->nsfx),
 		    "----------------");
-		print_hex(pfx->sfx, pfx->nsfx, 0);
+		print_hex_nl(pfx->sfx, pfx->nsfx, 0);
 	}
 	if (pfx->nrle) {
 		printf(" -> 0x");
-		print_hex(pfx->rle, pfx->nrle, 0);
+		print_hex_nl(pfx->rle, pfx->nrle, 0);
 	}
 	puts("");
 #endif
@@ -893,8 +881,14 @@ pfx_bulk_page(DBC *dbc, uint8_t * np, int32_t *offp, uint32_t space)
 	for (i = cp->indx; i < n; ++i) {
 		BKEYDATA *bk = GET_BKEYDATA(dbp, pg, i);
 
-		if (B_DISSET(bk))
-			continue;
+		if (i % 2 == 0) {
+			BKEYDATA *val = GET_BKEYDATA(dbp, pg, i + 1);
+			if (B_DISSET(bk) || B_DISSET(val)) {
+				/* skip this key-value pair, if key or value are marked deleted */
+				++i;
+				continue;
+			}
+		}
 
 		/* WE NEED AT LEAST THIS MUCH IN ANY CASE (for two offp-s) */
 		if (space < (2 * sizeof(*offp)))

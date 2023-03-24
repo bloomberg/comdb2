@@ -17,5 +17,5 @@ tag "full"
 keys
 {
     "0" = j
-    datacopy "1" = i
+    datacopy(k) "1" = i
 }

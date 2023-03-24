@@ -25,6 +25,8 @@ enum CDB2ClientFeatures {
     FLAT_COL_VALS        = 6;
     /* request server to send back query fingerprint */
     REQUEST_FP           = 7;
+    /* rows come in sqlite format */
+    SQLITE_ROW_FORMAT    = 8;
 }
 
 message CDB2_FLAG {
@@ -38,26 +40,26 @@ message CDB2_SQLQUERY {
   repeated CDB2_FLAG flag = 3;
   required bool little_endian = 4;
   message bindvalue {
+    message i32_array { repeated int32 elements = 1 [packed=true]; }
+    message i64_array { repeated int64 elements = 1 [packed=true]; }
+    message dbl_array { repeated double elements = 1 [packed=true]; }
+    message txt_array { repeated string elements = 1; }
+    message blob_array { repeated bytes elements = 1; }
+    message array {
+      oneof type {
+        i32_array i32 = 1;
+        i64_array i64 = 2;
+        dbl_array dbl = 3;
+        txt_array txt = 4;
+        blob_array blob = 5;
+      }
+    }
     required string varname = 1;
     required int32  type    = 2;
     required bytes  value   = 3;
     optional bool   isnull  = 4 [default = false];
     optional int32  index   = 5;
-
-    message int32array { repeated int32 elements = 1 [packed=true]; }
-    message int64array { repeated int64 elements = 1 [packed=true]; }
-    message doublearray { repeated double elements = 1 [packed=true]; }
-    message textarray { repeated string elements = 1; }
-    message blobarray { repeated bytes elements = 1; }
-    message bindarray {
-      oneof oneof_t {
-        int32array int32_arr = 1;
-        int64array int64_arr = 2;
-        doublearray double_arr = 3;
-        textarray text_arr = 4;
-      }
-    }
-    optional bindarray bind_array = 6;
+    optional array  carray  = 6;
   }
   repeated bindvalue bindvars = 5;
   optional string tzname = 6;
