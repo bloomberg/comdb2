@@ -396,6 +396,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	Pthread_mutex_init(&dbenv->ufid_to_db_lk, NULL);
 	dbenv->prepared_txn_hash = hash_init_strptr(offsetof(struct __db_txn_prepared, dist_txnid));
 	dbenv->prepared_txnid_hash = hash_init_o(offsetof(struct __db_txn_prepared, txnid), sizeof(u_int32_t));
+	dbenv->prepared_children = hash_init(sizeof(u_int32_t));
 	Pthread_mutex_init(&dbenv->prepared_txn_lk, NULL);
 	dbenv->mintruncate_state = MINTRUNCATE_START;
 	ZERO_LSN(dbenv->mintruncate_first);
@@ -942,6 +943,10 @@ __dbenv_close(dbenv, rep_check)
 		hash_free(dbenv->prepared_txnid_hash);
     }
 
+	if (dbenv->prepared_children != NULL) {
+		hash_clear(dbenv->prepared_children);
+		hash_free(dbenv->prepared_children);
+    }
 	/* Release DB list */
 	__os_free(dbenv, dbenv->dbs);
 

@@ -473,7 +473,7 @@ typedef enum {
 	DB_LOCK_TIMEOUT=8,		/* Force a txn to timeout. */
 	DB_LOCK_TRADE=9,		/* Trade locker ids on a lock. */
 	DB_LOCK_UPGRADE_WRITE=10, /* Upgrade writes for dirty reads. */
-	DB_LOCK_TRADE_COMP=11,   /* Trade locks for compensating txn. */
+	DB_LOCK_TRADE_COMP=11,  /* Trade locks for compensating txn. */
     DB_LOCK_PREPARE=12      /* lock-put-read but retain tablelocks */
 } db_lockop_t;
 
@@ -1103,17 +1103,16 @@ struct __db_txn {
 
 typedef enum {
 	DB_DIST_HAVELOCKS   = 0x00000001,
-	DB_DIST_COMMITTED	= 0x00000002,
-	DB_DIST_ABORTED		= 0x00000004,
+	DB_DIST_COMMITTED   = 0x00000002,
+	DB_DIST_ABORTED     = 0x00000004,
 	DB_DIST_SCHEMA_LK   = 0x00000008,
-	DB_DIST_INFLIGHT	= 0x00000010,
+	DB_DIST_INFLIGHT    = 0x00000010,
 	DB_DIST_RECOVERED   = 0x00000020,
 	DB_DIST_UPDSHADOWS  = 0x00000040
 } db_dist_state;
 
 struct __db_txn_prepared {
 	char *dist_txnid;
-	//u_int64_t dist_txnid;
 	u_int32_t txnid;
 	u_int32_t flags;
 	DB_LSN prepare_lsn;
@@ -1126,9 +1125,6 @@ struct __db_txn_prepared {
 	struct __db_txn *txnp;
 	void *pglogs;
 	u_int32_t keycnt;
-	u_int32_t numchildren;
-	u_int32_t childrensz;
-	u_int32_t *children;
 };
 
 /*
@@ -2684,6 +2680,7 @@ struct __db_env {
 	/* prepared transactions */
 	hash_t *prepared_txn_hash;
 	hash_t *prepared_txnid_hash;
+	hash_t *prepared_children;
 	pthread_mutex_t prepared_txn_lk;
 
 	/* Parallel recovery.  These are only valid on replicants. */

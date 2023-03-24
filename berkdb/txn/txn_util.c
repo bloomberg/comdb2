@@ -350,8 +350,6 @@ static inline void __free_prepared_txn(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 		__txn_free_recovered(p->txnp);
 	if (p->pglogs)
 		free(p->pglogs);
-	if (p->children)
-		free(p->children);
 	__os_free(dbenv, p);
 }
 
@@ -472,8 +470,9 @@ static int __downgrade_prepared(void *obj, void *arg)
 /*
  * __txn_is_dist_committed --
  *
- * Add dist_txn to prepared-txn hash as a committed txn.  This is needed 
- * to accommodate a commit from a different master.
+ * Add dist_txn to prepared-txn hash as a committed txn.  As a prepared 
+ * transaction may have been committed by a different master, this requires
+ * special handling in recovery (see the DB_TXN_DIST_ADD_TXNLIST case).
  *
  * PUBLIC: int __txn_is_dist_committed __P((DB_ENV *, const char *dist_txnid));
  */
@@ -541,9 +540,9 @@ int __txn_recover_dist_commit(dbenv, dist_txnid)
 /*
  * __txn_recover_dist_abort --
  *
- * Add dist_txn to prepared-txn hash as an aborted txn.  
- * This is similar to the dist-committed function above.  This will be removed 
- * when we undo the prepare record, or when the prepared-txn list is pruned.
+ * Add dist_txn to prepared-txn hash as an aborted txn.  This is similar to the 
+ * dist-committed function above.  This will be removed when we undo the prepare
+ * record, or when the prepared-txn list is pruned.
  *
  * TODO: add the blkseq key.
  *
@@ -584,6 +583,15 @@ int __txn_recover_dist_abort(dbenv, dist_txnid)
 	return 0;
 }
 
+/*
+ * __txn_master_prepared --
+ *
+ * Master has prepared a transaction and written a prepare record.  Add this 
+ * prepare to the prepared transaction list.
+ *
+ * PUBLIC: int __txn_master_prepared __P((DB_ENV *,
+ * PUBLIC:	  const char *, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
+ */
 int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, begin_lsn, blkseq_key, coordinator_gen,
 		coordinator_name, coordinator_tier)
 	DB_ENV *dbenv;
@@ -673,7 +681,6 @@ int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, begin_lsn, blkseq_key, co
  * PUBLIC: int __txn_recover_abort_prepared __P((DB_ENV *,
  * PUBLIC:	  u_int64_t, DB_LSN *, DBT *, u_int32_t, DBT *, DBT *));
  */
-
 int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordinator_gen,
 		coordinator_name, coordinator_tier)
 	DB_ENV *dbenv;
@@ -823,10 +830,16 @@ static int __free_prepared(void *obj, void *arg)
 	return 0;
 }
 
+static int __free_prepared_children(void *obj, void *arg)
+{
+	free(obj);
+	return 0;
+}
+
 /*
  * __txn_clear_all_prepared --
  *
- * Clear all prepared transactions
+ * Clear all prepared transactions.
  *
  * PUBLIC: int __txn_clear_all_prepared __P((DB_ENV *));
  */
@@ -840,48 +853,19 @@ int __txn_clear_all_prepared(dbenv)
 	hash_for(dbenv->prepared_txn_hash, __free_prepared, dbenv);
 	hash_clear(dbenv->prepared_txn_hash);
 	hash_clear(dbenv->prepared_txnid_hash);
+	hash_for(dbenv->prepared_children, __free_prepared_children, dbenv);
+	hash_clear(dbenv->prepared_children);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
 
-/* 
- * __txn_clear_prepared --
+/*
+ * __txn_prune_resolved_prepared --
  *
- * Remove a prepared transaction, optionally update it's blkseq.  Called
- * When we recover a dist_abort record.
+ * Purges all resolved prepares from the txnlist.
  *
- * PUBLIC: int __txn_clear_prepared __P((DB_ENV *, u_int64_t, int));
+ * PUBLIC: int __txn_prune_resolved_prepared __P((DB_ENV *));
  */
-int __txn_clear_prepared(dbenv, dist_txnid, update_blkseq)
-	DB_ENV *dbenv;
-	const char *dist_txnid;
-	int update_blkseq;
-{
-#if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s", __func__);
-#endif
-	DB_TXN_PREPARED *p;
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
-		hash_del(dbenv->prepared_txn_hash, p);
-		hash_del(dbenv->prepared_txnid_hash, p);
-	}
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-
-	if (p == NULL) {
-#if defined (DEBUG_PREPARE)
-		logmsg(LOGMSG_USER, "%s unable to locate prepared txnid %s\n", __func__, dist_txnid);
-#endif
-		return -1;
-	}
-
-	if (update_blkseq) {
-	}
-
-	__free_prepared_txn(dbenv, p);
-	return 0;
-}
-
 void __txn_prune_resolved_prepared(dbenv)
 	DB_ENV *dbenv;
 {
@@ -907,7 +891,7 @@ void __txn_prune_resolved_prepared(dbenv)
  * __txn_downgrade_all_prepared --
  *
  * Release locks for all prepared txns, but maintain entries in the
- * dist-txn list.  This is called on a role-change to replicant.
+ * dist-txn list.  This is called when role-changing to replicant.
  *
  * PUBLIC: int __txn_downgrade_all_prepared __P((DB_ENV *));
  */
@@ -918,37 +902,10 @@ int __txn_downgrade_all_prepared(dbenv)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_children, __free_prepared_children, dbenv);
+	hash_clear(dbenv->prepared_children);
 	__txn_prune_resolved_prepared(dbenv);
 	hash_for(dbenv->prepared_txn_hash, __downgrade_prepared, dbenv);
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-	return 0;
-}
-
-static int __downgrade_and_free_prepared(void *obj, void *arg)
-{
-	__downgrade_prepared(obj, arg);
-	__free_prepared(obj, arg);
-	return 0;
-}
-
-
-/*
- * __txn_downgrade_and_free_all_prepared --
- *
- * Downgrade and clear all prepared transactions
- *
- * PUBLIC: int __txn_downgrade_and_free_all_prepared __P((DB_ENV *));
- */
-int __txn_downgrade_and_free_all_prepared(dbenv)
-	DB_ENV *dbenv;
-{
-#if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s", __func__);
-#endif
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	hash_for(dbenv->prepared_txn_hash, __downgrade_and_free_prepared, dbenv);
-	hash_clear(dbenv->prepared_txn_hash);
-	hash_clear(dbenv->prepared_txnid_hash);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	return 0;
 }
@@ -957,7 +914,8 @@ int __txn_downgrade_and_free_all_prepared(dbenv)
  * __txn_upgrade_all_prepared --
  *
  * Create berkley txns for unresolved but prepared transactions we found
- * during recovery.  Acquire locks for these transactions.
+ * during recovery.  Acquire locks for these transactions.  Update the 
+ * transaction id-space and write a txn-recycle record
  *
  * PUBLIC: int __txn_upgrade_all_prepared __P((DB_ENV *));
  */
@@ -974,100 +932,23 @@ int __txn_upgrade_all_prepared(dbenv)
 		abort();
 	}
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_for(dbenv->prepared_children, __free_prepared_children, dbenv);
+	hash_clear(dbenv->prepared_children);
 	__txn_prune_resolved_prepared(dbenv);
 	hash_for(dbenv->prepared_txn_hash, __upgrade_prepared, logc);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	logc->close(logc, 0);
+	__txn_recycle_after_upgrade_prepared(dbenv);
 	return 0;
 }
 
-int __txn_rep_commit_recovered(dbenv, dist_txnid)
-	DB_ENV *dbenv;
-	const char *dist_txnid;
+struct child_parent
 {
-#if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s", __func__);
-#endif
+	u_int32_t ctxnid;
+	u_int32_t ptxnid;
 	DB_TXN_PREPARED *p;
-	int ret;
+};
 
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
-		logmsg(LOGMSG_FATAL, "%s unable to find dist-txn %s in recovered txnlist\n", 
-			__func__, dist_txnid);
-		abort();
-	}
-	hash_del(dbenv->prepared_txn_hash, p);
-	hash_del(dbenv->prepared_txnid_hash, p);
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-
-	if (F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp != NULL) {
-		logmsg(LOGMSG_FATAL, "%s recovered txnsaction holding locks, %s\n", 
-			__func__, dist_txnid);
-		abort();
-	}
-	__free_prepared_txn(dbenv, p);
-	return 0;
-}
-
-
-
-/*
- * __txn_rep_abort_recovered --
- * Replicant processing for dist-abort record
- *
- * PUBLIC: int __txn_rep_abort_recovered __P((DB_ENV *, u_int64_t));
- */
-int __txn_rep_abort_recovered(dbenv, dist_txnid)
-	DB_ENV *dbenv;
-	const char *dist_txnid;
-{
-#if defined (DEBUG_PREPARE)
-	comdb2_cheapstack_sym(stderr, "%s", __func__);
-#endif
-	DB_TXN_PREPARED *p;
-	int ret;
-	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
-		logmsg(LOGMSG_FATAL, "%s unable to find dist-txn %s in recovered txnlist\n", 
-			__func__, dist_txnid);
-		abort();
-	}
-	hash_del(dbenv->prepared_txn_hash, p);
-	hash_del(dbenv->prepared_txnid_hash, p);
-	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-
-	if (F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp != NULL) {
-		logmsg(LOGMSG_FATAL, "%s recovered-txn holding locks, %s\n", 
-				__func__, dist_txnid);
-		abort();
-	}
-	__free_prepared_txn(dbenv, p);
-	return 0;
-}
-
-static int __find_txn(void *obj, void *arg)
-{
-	u_int32_t *txnid = (u_int32_t *)arg;
-	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
-	if (p->txnid == *txnid) {
-#if defined (DEBUG_PREPARE)
-		logmsg(LOGMSG_USER, "%s found prepared %u returning 1\n", __func__, p->txnid);
-#endif
-		return 1;
-	}
-	for (int i = 0; i < p->numchildren; i++) {
-		if (p->children[i] == *txnid) {
-#if defined (DEBUG_PREPARE)
-			logmsg(LOGMSG_USER, "%s found prepared child %u returning 1\n", __func__, p->txnid);
-#endif
-			return 1;
-		}
-	}
-	return 0;
-}
-
-/* TODO: this is too expensive .. */
 int __txn_is_prepared(dbenv, txnid)
 	DB_ENV *dbenv;
 	u_int32_t txnid;
@@ -1075,11 +956,27 @@ int __txn_is_prepared(dbenv, txnid)
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
-	int found;
+	DB_TXN_PREPARED *p;
+	struct child_parent *c;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
-	found = hash_for(dbenv->prepared_txn_hash, __find_txn, &txnid);
+	if ((p = hash_find(dbenv->prepared_txnid_hash, &txnid)) != NULL) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s: found prepared txnid %"PRIx32
+			", dist-txn %s\n", __func__, txnid, p->dist_txnid);
+#endif
+		return 1;
+	}
+	if ((c = hash_find(dbenv->prepared_children, &txnid)) != NULL) {
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+#if defined (DEBUG_PREPARE)
+		logmsg(LOGMSG_USER, "%s: found child prepared txnid %"PRIx32
+			", dist-txn %s\n", __func__, txnid, c->p->dist_txnid);
+#endif
+		return 1;
+	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-	return found;
+	return 0;
 }
 
 int __txn_abort_recovered(dbenv, dist_txnid)
@@ -1169,6 +1066,9 @@ static int __lowest_prepared_lsn(void *obj, void *arg)
 	return 0;
 }
 
+/*
+ *   int __txn_lowest_prepared_lsn(dbenv, lsn)
+ */
 int __txn_lowest_prepared_lsn(dbenv, lsn)
 	DB_ENV *dbenv;
 	DB_LSN *lsn;
@@ -1189,28 +1089,28 @@ int __txn_lowest_prepared_lsn(dbenv, lsn)
 
 static void add_child(DB_ENV *dbenv, DB_TXN_PREPARED *p, u_int32_t ctxnid)
 {
-	int ret = 0;
-	for (int i = 0; i < p->numchildren; i++) {
-		if (p->children[i] == ctxnid) {
-#if defined (DEBUG_PREPARE)
-			logmsg(LOGMSG_USER, "%s prepared child %u already in child-list\n", __func__, ctxnid);
-#endif
-			return;
-		}
-	}
-	if (p->numchildren + 1 > p->childrensz) {
-		p->childrensz = p->childrensz ? p->childrensz * 2 : 16;
-		if ((ret = __os_realloc(dbenv, p->childrensz * sizeof(u_int32_t),
-			&p->children)) != 0) {
-			logmsg(LOGMSG_FATAL, "Error realloc'ing children array, %d\n", ret);
+	struct child_parent *c = hash_find(dbenv->prepared_children, &ctxnid);
+	if (c != NULL) {
+		if (c->ptxnid != p->txnid) {
+			logmsg(LOGMSG_FATAL, "%s: prepared-child %"PRIx32" found with parent %"PRIx32
+				" (not %"PRIx32")\n", __func__, ctxnid, c->ptxnid, p->txnid);
 			abort();
 		}
-	}
 #if defined (DEBUG_PREPARE)
-	logmsg(LOGMSG_USER, "%s adding prepared child %u to child-list for %s\n",
-		__func__, ctxnid, p->dist_txnid);
+		logmsg(LOGMSG_INFO, "%s: re-adding child %"PRIx32" with for %s\n", __func__,
+			ctxnid, p->dist_txnid);
 #endif
-	p->children[p->numchildren++] = ctxnid;
+		return;
+	}
+	c = malloc(sizeof(*c));
+	c->ctxnid = ctxnid;
+	c->ptxnid = p->txnid;
+	c->p = p;
+	hash_add(dbenv->prepared_children, c);
+#if defined (DEBUG_PREPARE)
+	logmsg(LOGMSG_INFO, "%s: added child %"PRIx32" with parent %"PRIx32", %s\n",
+			__func__, ctxnid, p->txnid, p->dist_txnid);
+#endif
 }
 
 int __txn_add_prepared_child(dbenv, ctxnid, ptxnid)
@@ -1237,9 +1137,14 @@ int __txn_add_prepared_child(dbenv, ctxnid, ptxnid)
 	return 0;
 }
 
-int __txn_discard_recovered(dbenv, dist_txnid)
+enum {
+	DISCARD_FROM_REP = 1
+};
+
+static int __txn_discard_recovered_int(dbenv, dist_txnid, flags)
 	DB_ENV *dbenv;
 	const char *dist_txnid;
+	u_int32_t flags;
 {
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
@@ -1258,6 +1163,7 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 	}
 
 	if (F_ISSET(p, DB_DIST_HAVELOCKS)) {
+		assert(!LF_ISSET(DISCARD_FROM_REP));
 		DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
 
 		if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
@@ -1275,6 +1181,20 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 
 	__free_prepared_txn(dbenv, p);
 	return 0;
+}
+
+int __txn_discard_recovered(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+{
+	return __txn_discard_recovered_int(dbenv, dist_txnid, 0);
+}
+
+int __rep_discard_recovered(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+{
+	return __txn_discard_recovered_int(dbenv, dist_txnid, DISCARD_FROM_REP);
 }
 
 static int __abort_waiters(void *obj, void *arg)

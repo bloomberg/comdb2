@@ -3572,7 +3572,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		dist_txnid = alloca(dist_abort_args->dist_txnid.size + 1);
 		memcpy(dist_txnid, dist_abort_args->dist_txnid.data, dist_abort_args->dist_txnid.size);
 		dist_txnid[dist_abort_args->dist_txnid.size] = '\0';
-		if ((ret = __txn_rep_abort_recovered(dbenv, dist_txnid)) != 0) {
+		if ((ret = __rep_discard_recovered(dbenv, dist_txnid)) != 0) {
 			goto err;
 		}
 		__os_free(dbenv, dist_abort_args);
@@ -4979,7 +4979,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		}
 	}
 
-	if (dist_txnid && (ret = __txn_rep_commit_recovered(dbenv, dist_txnid)) != 0) {
+	if (dist_txnid && (ret = __rep_discard_recovered(dbenv, dist_txnid)) != 0) {
 		abort();
 	}
 
@@ -5790,6 +5790,11 @@ bad_resize:	;
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
 	}
+
+	if (dist_txnid && (ret = __rep_discard_recovered(dbenv, dist_txnid)) != 0) {
+		abort();
+	}
+
 #endif
 
 	/* If we had any log records in this transaction that may affect the next transaction, 
@@ -5848,7 +5853,7 @@ bad_resize:	;
 	}
 	gbl_rep_trans_parallel++;
 
-	if (dist_txnid && (ret = __txn_discard_recovered(dbenv, dist_txnid)) != 0) {
+	if (dist_txnid && (ret = __rep_discard_recovered(dbenv, dist_txnid)) != 0) {
 		abort();
 	}
 

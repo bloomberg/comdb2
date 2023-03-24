@@ -504,6 +504,49 @@ int __txn_assert_notran_pp(dbenv)
 	return 0;
 }
 
+int
+__txn_recycle_after_upgrade_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+	u_int32_t *ids = NULL;
+	int nids;
+	DB_LSN null_lsn;
+	TXN_DETAIL *td;
+	DB_TXNMGR *mgr = dbenv->tx_handle;
+	DB_TXNREGION *region = mgr->reginfo.primary;
+	int ret;
+	if ((ret = __os_malloc(dbenv,
+		sizeof(u_int32_t) * (region->maxtxns + 1), &ids)) != 0)
+		goto err;
+
+	R_LOCK(dbenv, &mgr->reginfo);
+	nids = 0;
+	for (td = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
+		td != NULL;
+		td = SH_TAILQ_NEXT(td, links, __txn_detail)) {
+		ids[nids++] = td->txnid;
+	}
+	region->last_txnid = TXN_MINIMUM - 1;
+	region->cur_maxid = TXN_MAXIMUM;
+
+	if (nids != 0) {
+		__db_idspace(ids, nids,
+			&region->last_txnid, &region->cur_maxid);
+	}
+
+	if (DBENV_LOGGING(dbenv) && (ret = __txn_recycle_log(dbenv, NULL, &null_lsn,
+			0, region->last_txnid, region->cur_maxid)) != 0) {
+		 goto err;
+	}
+
+err:
+	R_UNLOCK(dbenv, &mgr->reginfo);
+	if (ids != NULL) {
+		__os_free(dbenv, ids);
+	}
+	return ret;
+}
+
 /*
  * __txn_begin_int --
  *	Normal DB version of txn_begin.
@@ -591,7 +634,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 		region->cur_maxid != TXN_MAXIMUM)
 		region->last_txnid = TXN_MINIMUM - 1;
 
-	/* Every recovered prepare emits txn_recycle */
+	/* Loop here for prepared_txnid's here as a sanity check */
 	if (prepared_txnid || ((region->last_txnid + 1) == region->cur_maxid)) {
 		if ((ret = __os_malloc(dbenv,
 			sizeof(u_int32_t) * (region->maxtxns + 1), &ids)) != 0)
@@ -607,21 +650,22 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 				abort();
 			}
 		}
-		if (prepared_txnid) {
-			ids[nids++] = prepared_txnid;
+		/* Write recycle for non-prepared case.  We emit a single recycle after upgrading
+		   all prepared records in txn_recycle_after_upgrade_prepared */
+		if (!prepared_txnid) {
+			region->last_txnid = TXN_MINIMUM - 1;
+			region->cur_maxid = TXN_MAXIMUM;
+			if (nids != 0)
+				__db_idspace(ids, nids,
+					&region->last_txnid, &region->cur_maxid);
+			__os_free(dbenv, ids);
+			/* Don't emit log until after we upgrade all prepared txns */
+			if (DBENV_LOGGING(dbenv) &&
+				(ret = __txn_recycle_log(dbenv, NULL,
+					&null_lsn, 0, region->last_txnid,
+					region->cur_maxid)) != 0)
+				 goto err;
 		}
-
-		region->last_txnid = TXN_MINIMUM - 1;
-		region->cur_maxid = TXN_MAXIMUM;
-		if (nids != 0)
-			__db_idspace(ids, nids,
-				&region->last_txnid, &region->cur_maxid);
-		__os_free(dbenv, ids);
-		if (DBENV_LOGGING(dbenv) &&
-			(ret = __txn_recycle_log(dbenv, NULL,
-				&null_lsn, 0, region->last_txnid,
-				region->cur_maxid)) != 0)
-			 goto err;
 	}
 
 	/* Allocate a new transaction detail structure. */
@@ -3145,8 +3189,6 @@ __txn_updateckp(dbenv, lsnp)
 		logmsg(LOGMSG_INFO, "%s:%d last_ckp is 0:0\n", __FILE__, __LINE__);
 	R_UNLOCK(dbenv, &mgr->reginfo);
 }
-
-
 
 int
 cmp_by_lsn(const void *pp1, const void *pp2)

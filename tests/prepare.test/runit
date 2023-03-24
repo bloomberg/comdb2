@@ -610,7 +610,7 @@ function run_test
 
     prepare_and_abort
     prepare_and_commit
-    #recover_prepared_and_downgrade
+    recover_prepared_and_downgrade
 }
 
 [[ -z "$CLUSTER" ]] && failexit "This test requires a cluster"

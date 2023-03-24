@@ -3291,7 +3291,6 @@ int bdb_update_pglogs_commitlsn(void *bdb_state, void *pglogs,
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
 
-
     for (int i = 0; i < nkeys; i++) {
         struct page_logical_lsn_key *key = &keylist[i];
         key->commit_lsn = commit_lsn;
