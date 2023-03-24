@@ -5790,11 +5790,6 @@ bad_resize:	;
 			assert(!IS_ZERO_LSN(lt->begin_lsn));
 		}
 	}
-
-	if (dist_txnid && (ret = __rep_discard_recovered(dbenv, dist_txnid)) != 0) {
-		abort();
-	}
-
 #endif
 
 	/* If we had any log records in this transaction that may affect the next transaction, 
