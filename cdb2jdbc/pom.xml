@@ -19,8 +19,8 @@ limitations under the License. -->
   <version>2.5.3</version>
   <packaging>jar</packaging>
   <properties>
-    <maven.compiler.source>1.6</maven.compiler.source>
-    <maven.compiler.target>1.6</maven.compiler.target>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
     <env.skipTests>true</env.skipTests>
   </properties>
   <dependencies>
