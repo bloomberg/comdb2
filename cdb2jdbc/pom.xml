@@ -22,12 +22,16 @@ limitations under the License. -->
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
     <env.skipTests>true</env.skipTests>
+
+    <maven-dependency-plugin.version>2.10</maven-dependency-plugin.version>
+    <maven-antrun-plugin.version>1.8</maven-antrun-plugin.version>
+    <protobuf-java.version>3.16.3</protobuf-java.version>
   </properties>
   <dependencies>
     <dependency>
       <groupId>com.google.protobuf</groupId>
       <artifactId>protobuf-java</artifactId>
-      <version>3.16.3</version>
+      <version>${protobuf-java.version}</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -41,7 +45,7 @@ limitations under the License. -->
       <resource>
         <directory>src/main/resources/</directory>
       </resource>
-      <resource> <!-- explicitly copy services file to JAR for auto-regiration -->
+      <resource> <!-- explicitly copy services file to JAR for auto-registration -->
         <directory>src/main/resources/META-INF/services</directory>
         <targetPath>META-INF/services</targetPath>
       </resource>
@@ -54,10 +58,12 @@ limitations under the License. -->
         <configuration>
           <protoSourceRoot>${basedir}/../protobuf/</protoSourceRoot>
           <outputDirectory>${project.build.directory}/generated-sources/protobuf</outputDirectory>
+          <protocExecutable>${project.build.directory}/protoc</protocExecutable>
         </configuration>
         <executions>
           <execution>
             <id>compile_sqlquery</id>
+            <phase>process-resources</phase>
             <configuration>
               <protoSourceRoot>${basedir}/../protobuf/</protoSourceRoot>
               <outputDirectory>${project.build.directory}/generated-sources/sqlquery</outputDirectory>
@@ -71,6 +77,7 @@ limitations under the License. -->
           </execution>
           <execution>
             <id>compile_sqlresponse</id>
+            <phase>process-resources</phase>
             <configuration>
               <protoSourceRoot>${basedir}/../protobuf/</protoSourceRoot>
               <outputDirectory>${project.build.directory}/generated-sources/sqlresponse</outputDirectory>
@@ -126,6 +133,56 @@ limitations under the License. -->
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>${maven-dependency-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>copy-protoc</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>com.google.protobuf</groupId>
+                  <artifactId>protoc</artifactId>
+                  <version>${protobuf-java.version}</version>
+                  <type>exe</type>
+                  <classifier>${protoc.classifier}</classifier>
+                  <overWrite>true</overWrite>
+                  <outputDirectory>${project.build.directory}</outputDirectory>
+                  <destFileName>protoc</destFileName>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <version>${maven-antrun-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>exec-protoc</id>
+            <phase>generate-sources</phase>
+            <configuration>
+              <target>
+                <property name="protoc.filename" value="protoc"/>
+                <property name="protoc.filepath"
+                  value="${project.build.directory}/${protoc.filename}"/>
+                <chmod file="${protoc.filepath}" perm="ugo+rx"/>
+              </target>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
   <profiles>
@@ -154,6 +211,40 @@ limitations under the License. -->
           </plugin>
         </plugins>
       </build>
+    </profile>
+    <profile>
+      <id>macos-build</id>
+      <activation>
+        <os>
+          <family>mac</family>
+        </os>
+      </activation>
+      <properties>
+        <protoc.classifier>osx-x86_64</protoc.classifier>
+      </properties>
+    </profile>
+    <profile>
+      <id>linux-build</id>
+      <activation>
+        <os>
+          <family>unix</family>
+          <name>Linux</name>
+        </os>
+      </activation>
+      <properties>
+        <protoc.classifier>linux-x86_64</protoc.classifier>
+      </properties>
+    </profile>
+    <profile>
+      <id>windows-build</id>
+      <activation>
+        <os>
+          <family>windows</family>
+        </os>
+      </activation>
+      <properties>
+        <protoc.classifier>linux-x86_64</protoc.classifier> <!-- Use WSL -->
+      </properties>
     </profile>
   </profiles>
 </project>
