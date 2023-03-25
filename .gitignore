@@ -87,5 +87,5 @@ compile_commands.json
 cscope.*
 CMakeLists.txt.user
 plugins/.gitignore
-/.idea/*
+.idea/
 /cmake-build*
