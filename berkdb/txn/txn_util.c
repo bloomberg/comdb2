@@ -979,6 +979,15 @@ int __txn_is_prepared(dbenv, txnid)
 	return 0;
 }
 
+/* 
+ * __txn_abort_recovered --
+ *
+ * Abort a prepared transaction that was recovered by this master.
+ * TODO: Maybe undo (again) to recover allocated pages?  Could be
+ * a new dispatch-opcode?
+ * 
+ * PUBLIC: int __txn_abort_recovered __P((DB_ENV *, const char *));
+ */
 int __txn_abort_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	const char *dist_txnid;
@@ -1066,8 +1075,14 @@ static int __lowest_prepared_lsn(void *obj, void *arg)
 	return 0;
 }
 
-/*
- *   int __txn_lowest_prepared_lsn(dbenv, lsn)
+/* 
+ * __txn_lowest_prepared_lsn --
+ *
+ * A new master will issue a checkpoint before acquiring locks & txn objects for
+ * unresolved prepared transactions.  These are still active transactions, so 
+ * recovery should begin at or prior to the oldest begin-lsn.
+ *
+ * PUBLIC: int __txn_lowest_prepared_lsn __P((DB_ENV *, DB_LSN *));
  */
 int __txn_lowest_prepared_lsn(dbenv, lsn)
 	DB_ENV *dbenv;
@@ -1113,6 +1128,20 @@ static void add_child(DB_ENV *dbenv, DB_TXN_PREPARED *p, u_int32_t ctxnid)
 #endif
 }
 
+/* 
+ * __txn_add_prepared_child --
+ *
+ * Unresolved-prepares are rolled-back, but they can't reclaim allocated pages,
+ * as this could eventually commit.  This function records child-tranids of 
+ * unresolved prepares in the 'prepared_children' hash so that pg_alloc_recover
+ * won't add the allocated pages to limbo.
+ *
+ * TODO: prepared transactions which are 'recovered' by a new master and which
+ * are then aborted will leak allocated pages.  Maybe adding them to limbo for
+ * this case is not that hard?
+ *
+ * PUBLIC: int __txn_add_prepared_child __P((DB_ENV *, u_int32_t, u_int32_t));
+ */
 int __txn_add_prepared_child(dbenv, ctxnid, ptxnid)
 	DB_ENV *dbenv;
 	u_int32_t ctxnid;
@@ -1183,6 +1212,14 @@ static int __txn_discard_recovered_int(dbenv, dist_txnid, flags)
 	return 0;
 }
 
+/* 
+ * __txn_discard_recovered --
+ *
+ * This master has prepared, and then resolved a prepared transaction. Remove 
+ * it from the prepared-txn list.
+ *
+ * PUBLIC: int __txn_discard_recovered __P((DB_ENV *, const char *));
+ */
 int __txn_discard_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	const char *dist_txnid;
@@ -1190,6 +1227,14 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 	return __txn_discard_recovered_int(dbenv, dist_txnid, 0);
 }
 
+/* 
+ * __rep_discard_recovered --
+ *
+ * Replication saw a dist-commit or dist-abort for this prepared txn.
+ * Remove it from the prepared-txn list.
+ *
+ * PUBLIC: int __txn_discard_recovered __P((DB_ENV *, const char *));
+ */
 int __rep_discard_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	const char *dist_txnid;
@@ -1213,7 +1258,15 @@ static int __abort_waiters(void *obj, void *arg)
 	return 0;
 }
 
-/* Abort lockids blocked on any unresolved prepare */
+/* 
+ * __txn_abort_prepared_waiters --
+ *
+ * To downgrade, a master must force all non-prepared transactions to abort,
+ * and then subsequently unroll prepared transactions.  This routine returns
+ * deadlock to any transaction which is blocked on a prepared transaction.
+ *
+ * PUBLIC: int __txn_abort_prepared_waiters __P((DB_ENV *));
+ */
 int __txn_abort_prepared_waiters(dbenv)
 	DB_ENV *dbenv;
 {
@@ -1226,6 +1279,13 @@ int __txn_abort_prepared_waiters(dbenv)
 	return 0;
 }
 
+/* 
+ * __txn_commit_recovered --
+ *
+ * Commits a prepared transaction that was recovered by this master.
+ *
+ * PUBLIC: int __txn_commit_recovered __P((DB_ENV *, const char *));
+ */
 int __txn_commit_recovered(dbenv, dist_txnid)
 	DB_ENV *dbenv;
 	const char *dist_txnid;
