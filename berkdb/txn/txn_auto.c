@@ -3431,7 +3431,12 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tbegin-lsn: [%lu][%lu]\n",
 		(u_long)argp->begin_lsn.file,
 		(u_long)argp->begin_lsn.offset);
-	(void)printf("\tdist-txnid: %*s\n", argp->dist_txnid.size, (char *)argp->dist_txnid.data);
+
+	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
+	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+	dist_txnid[argp->dist_txnid.size] = '\0';
+	(void)printf("\tdist-txnid: %s\n", dist_txnid);
+
 	(void)printf("\tcurrent-genid: %"PRIx64"\n", argp->genid);
 	/* Need schema-lk to support 2pc-sc */
 	(void)printf("\tlflags: 0x%08x ", argp->lflags);
@@ -3447,8 +3452,17 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 		printf("DB_TXN_DONT_GET_REPO_MTX ");
 	printf("\n");
 	(void)printf("\tcoordinator-gen: %lu\n", (u_long)argp->coordinator_gen);
-	(void)printf("\tcoordinator-name: %*s\n", argp->coordinator_name.size, (char *)argp->coordinator_name.data);
-	(void)printf("\tcoordinator-tier: %*s\n", argp->coordinator_tier.size, (char *)argp->coordinator_tier.data);
+
+	char *coordinator_name = alloca(argp->coordinator_name.size + 1);
+	memcpy(coordinator_name, argp->coordinator_name.data, argp->coordinator_name.size);
+	coordinator_name[argp->coordinator_name.size] = '\0';
+	(void)printf("\tcoordinator-name: %s\n", coordinator_name);
+
+	char *coordinator_tier = alloca(argp->coordinator_tier.size + 1);
+	memcpy(coordinator_tier, argp->coordinator_tier.data, argp->coordinator_tier.size);
+	coordinator_tier[argp->coordinator_tier.size] = '\0';
+	(void)printf("\tcoordinator-tier: %s\n", coordinator_tier);
+
 	if (argp->blkseq_key.size > 0) {
 		(void)printf("\tblkseq_key:\n");
 		fsnapf(stdout, argp->blkseq_key.data, argp->blkseq_key.size);
@@ -4176,7 +4190,11 @@ __txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset);
-	(void)printf("\tdist-txnid: %*s\n", argp->dist_txnid.size, (char *)argp->dist_txnid.data);
+
+    char *dist_txnid = (char *)alloca(argp->dist_txnid.size + 1);
+    memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
+    dist_txnid[argp->dist_txnid.size] = '\0';
+	(void)printf("\tdist-txnid: %s\n", dist_txnid);
 	(void)printf("\tgeneration: %u\n", argp->generation);
 
 	unsigned long long flipcontext;
