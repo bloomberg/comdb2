@@ -530,8 +530,6 @@ static struct host_info *host_info_new(char *host)
 {
     check_base_thd();
     struct host_info *h = calloc(1, sizeof(struct host_info));
-    LIST_INSERT_HEAD(&host_list, h, entry);
-    LIST_INIT(&h->event_list);
     h->host = intern(host);
     if (akq_policy == POLICY_PER_HOST) {
         h->per_host.akq = setup_akq(h->host);
@@ -542,6 +540,8 @@ static struct host_info *host_info_new(char *host)
     if (writer_policy == POLICY_PER_HOST) {
         init_base(&h->per_host.wrthd, &h->per_host.wrbase, h->host);
     }
+    LIST_INIT(&h->event_list);
+    LIST_INSERT_HEAD(&host_list, h, entry);
     return h;
 }
 
@@ -592,8 +592,8 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     if (writer_policy == POLICY_PER_NET) {
         init_base(&n->per_net.wrthd, &n->per_net.wrbase, n->service);
     }
-    LIST_INSERT_HEAD(&net_list, n, entry);
     LIST_INIT(&n->event_list);
+    LIST_INSERT_HEAD(&net_list, n, entry);
     return n;
 }
 
@@ -675,8 +675,6 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
 {
     check_base_thd();
     struct event_info *e = calloc(1, sizeof(struct event_info));
-    LIST_INSERT_HEAD(&h->event_list, e, host_list_entry);
-    LIST_INSERT_HEAD(&n->event_list, e, net_list_entry);
     e->fd = -1;
     e->host = h->host;
     e->service = n->service;
@@ -702,6 +700,8 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     }
     Pthread_mutex_init(&e->akq_lk, NULL);
     Pthread_mutex_init(&e->wr_lk, NULL);
+    LIST_INSERT_HEAD(&h->event_list, e, host_list_entry);
+    LIST_INSERT_HEAD(&n->event_list, e, net_list_entry);
     return e;
 }
 
@@ -770,12 +770,12 @@ static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct soc
     }
     ++pending_connections;
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
-    TAILQ_INSERT_TAIL(&accept_list, a, entry);
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
     a->fd = fd;
     a->ev = event_new(base, fd, EV_READ, do_read, a);
     event_add(a->ev, NULL);
+    TAILQ_INSERT_TAIL(&accept_list, a, entry);
     return a;
 }
 
@@ -3156,10 +3156,10 @@ static void add_event(int fd, event_callback_fn func, void *data)
         return;
     }
     struct user_event_info *info = malloc(sizeof(struct user_event_info));
-    LIST_INSERT_HEAD(&user_event_list, info, entry);
     info->func = func;
     info->data = data;
     info->ev = event_new(rd_base, fd, EV_READ | EV_PERSIST, user_event_func, info);
+    LIST_INSERT_HEAD(&user_event_list, info, entry);
     event_add(info->ev, NULL);
 }
 
@@ -3181,11 +3181,11 @@ void add_timer_event(event_callback_fn func, void *data, int ms)
         return;
     }
     struct user_event_info *info = malloc(sizeof(struct user_event_info));
-    LIST_INSERT_HEAD(&user_event_list, info, entry);
     info->func = func;
     info->data = data;
     info->ev = event_new(timer_base, -1, EV_PERSIST, user_event_func, info);
     struct timeval t = ms_to_timeval(ms);
+    LIST_INSERT_HEAD(&user_event_list, info, entry);
     event_add(info->ev, &t);
 }
 #endif
