@@ -13,16 +13,12 @@
    limitations under the License. */
 package com.bloomberg.comdb2.jdbc;
 
-import java.nio.ByteBuffer;
 import java.io.*;
 import java.util.*;
 import java.util.logging.*;
 import javax.net.ssl.*;
 import java.text.MessageFormat;
 
-import com.google.protobuf.*;
-
-import com.bloomberg.comdb2.jdbc.SockIO;
 import com.bloomberg.comdb2.jdbc.Cdb2Query.*;
 import com.bloomberg.comdb2.jdbc.Constants.*;
 import com.bloomberg.comdb2.jdbc.Sqlquery.*;
@@ -93,7 +89,8 @@ public class Comdb2Handle extends AbstractConnection {
 
     HashMap<String, Cdb2BindValue> bindVars;
     HashMap<Integer, Cdb2BindValue> bindVarsByIndex;
-    private List<String> sets;
+    private List<String> sentSetStmts; // Collection of "set" SQL statements sent for this Connection
+    private List<String> pendingSetStmts; // Collection of "set" SQL statements pending to be sent
 
     private boolean ack = false;
     private boolean skipDrain = false;
@@ -112,7 +109,6 @@ public class Comdb2Handle extends AbstractConnection {
     private int snapshotOffset;
     private boolean isHASql = false;
     private int isRetry;
-    private int nSetsSent;
     private int errorInTxn = 0;
     private boolean readIntransResults = true;
     private boolean firstRecordRead = false;
@@ -205,7 +201,8 @@ public class Comdb2Handle extends AbstractConnection {
        without discovering twice. */
     public Comdb2Handle() {
         super(new ProtobufProtocol(), null);
-        sets = new ArrayList<String>();
+        sentSetStmts = new LinkedList<String>();
+        pendingSetStmts = new LinkedList<String>();
 
         /* CDB2JDBC_STATEMENT_QUERYEFFECTS and CDB2JDBC_VERIFY_RETRY
            are used by the Jepsen tests to change the driver's behaviors. */
@@ -229,12 +226,12 @@ public class Comdb2Handle extends AbstractConnection {
 
         String userEnv = System.getenv("COMDB2_USER");
         if (userEnv != null) {
-            sets.add("set user " + userEnv);
+            addSetStatement("set user " + userEnv);
         }
 
         String passwordEnv = System.getenv("COMDB2_PASSWORD");
         if (passwordEnv != null) {
-            sets.add("set password " + passwordEnv);
+            addSetStatement("set password " + passwordEnv);
         }
 
         uuid = UUID.randomUUID().toString();
@@ -334,11 +331,11 @@ public class Comdb2Handle extends AbstractConnection {
             return;
 
         if (val) {
-            sets.remove("set verifyretry off");
-            sets.add("set verifyretry on");
+            removeSetStatement("set verifyretry off");
+            addSetStatement("set verifyretry on");
         } else {
-            sets.remove("set verifyretry on");
-            sets.add("set verifyretry off");
+            removeSetStatement("set verifyretry on");
+            addSetStatement("set verifyretry off");
         }
 
         verifyretry = val;
@@ -387,11 +384,11 @@ public class Comdb2Handle extends AbstractConnection {
             return;
 
         if (val) {
-            sets.remove("set queryeffects transaction");
-            sets.add("set queryeffects statement");
+            removeSetStatement("set queryeffects transaction");
+            addSetStatement("set queryeffects statement");
         } else {
-            sets.remove("set queryeffects statement");
-            sets.add("set queryeffects transaction");
+            removeSetStatement("set queryeffects statement");
+            addSetStatement("set queryeffects transaction");
         }
 
         stmteffects = val;
@@ -467,14 +464,6 @@ public class Comdb2Handle extends AbstractConnection {
             MessageFormat form = new MessageFormat("td={0} mach={1} snapshotFile={2} snapshotOffset={3} cnonce={4}: {5}");
             System.err.println(form.format(messageParams));
         }
-    }
-
-    private void printCallingInfo() {
-        int frame = 3;
-        String methodName = Thread.currentThread().getStackTrace()[frame-1].getMethodName();
-        String callerMethodName = Thread.currentThread().getStackTrace()[3].getMethodName();
-        int callerLine = Thread.currentThread().getStackTrace()[3].getLineNumber();
-        tdlog(Level.FINEST, "%s->%s->[%d]", callerMethodName, methodName, callerLine);
     }
 
     public void setPolicy(String policy) {
@@ -696,7 +685,7 @@ public class Comdb2Handle extends AbstractConnection {
         sqlQuery.bindVars.addAll(bindVarsByIndex.values());
         if (debug)
             tdlog(Level.FINEST, "starting sendQuery");
-        sqlQuery.setFlags.addAll(sets.subList(nSetsSent, sets.size()));
+        sqlQuery.setFlags.addAll(pendingSetStmts);
 
         if (types != null)
             sqlQuery.types.addAll(types);
@@ -988,18 +977,12 @@ public class Comdb2Handle extends AbstractConnection {
         tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
-            int ii = nSetsSent, len = sets.size();
-            for (; ii < len; ++ii) {
-                if (sets.get(ii).toLowerCase().equals(lowerSql))
-                    break;
-            }
-
             if (isClientOnlySetCommand(lowerSql)) {
                 tdlog(Level.FINEST, "Added client-only set command %s", sql);
             } else {
-                sets.add(sql);
+                addSetStatement(sql);
                 tdlog(Level.FINEST, "Added '%s' to sets size is %d uuid is %s",
-                      sql, sets.size(), uuid);
+                      sql, pendingSetStmts.size(), uuid);
 
                 // HASql sessions need the file & offset from begin
                 String hasql[] = lowerSql.split("hasql");
@@ -1649,7 +1632,7 @@ public class Comdb2Handle extends AbstractConnection {
             if (lastResp.respType == 2) {
                 rc = lastResp.errCode;
             } else if (lastResp.respType == 3) {
-                nSetsSent = sets.size();
+                mergeSetStatements();
                 rc = Errors.CDB2_OK_DONE;
             } else {
                 rc = Errors.CDB2ERR_IO_ERROR;
@@ -1819,7 +1802,7 @@ readloop:
                 return rc;
             }
 
-            nSetsSent = sets.size();
+            mergeSetStatements();
 
             if (inTxn && lastResp.features != null) {
                 for (int feature : lastResp.features) {
@@ -1830,8 +1813,7 @@ readloop:
                 }
             }
             tdlog(Level.FINEST,
-                  "next_int: lastResp.respType is 3, nSetsSent=%d lastResp.errCode=%d",
-                  nSetsSent, lastResp.errCode);
+                  "next_int: lastResp.respType is 3, lastResp.errCode=%d", lastResp.errCode);
 
             return Errors.CDB2_OK_DONE;
         }
@@ -1961,7 +1943,7 @@ readloop:
                         return false;
                     dbHostConnected = prefIdx;
                     dbHostIdx = prefIdx;
-                    nSetsSent = 0;
+                    resetSetStatements();
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -1999,7 +1981,7 @@ readloop:
                         if (!trySSL())
                             return false;
                         dbHostConnected = try_node;
-                        nSetsSent = 0;
+                        resetSetStatements();
                         opened = true;
                         return true;
                     } catch (IOException e) {
@@ -2042,7 +2024,7 @@ readloop:
                     if (!trySSL())
                         return false;
                     dbHostConnected = dbHostIdx;
-                    nSetsSent = 0;
+                    resetSetStatements();
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -2073,7 +2055,7 @@ readloop:
                     if (!trySSL())
                         return false;
                     dbHostConnected = dbHostIdx;
-                    nSetsSent = 0;
+                    resetSetStatements();
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -2103,7 +2085,7 @@ readloop:
                         return false;
                     dbHostConnected = masterIndexInMyDbHosts;
                     dbHostIdx = masterIndexInMyDbHosts;
-                    nSetsSent = 0;
+                    resetSetStatements();
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -2129,6 +2111,50 @@ readloop:
 
         dbHostConnected = -1;
         return false;
+    }
+
+    /**
+     * Adds a 'set' statement to the pending list.
+     */
+    private void addSetStatement(String statement) {
+        removeSetStatement(statement);
+        pendingSetStmts.add(statement);
+    }
+
+    /**
+     * Removes a 'set' statement from the pending list.
+     */
+    private void removeSetStatement(String statement) {
+        pendingSetStmts.remove(statement);
+    }
+
+    /**
+     * Caches the already sent 'set' statements, so they can be re-sent in the case of a
+     * disconnection.
+     */
+    private void mergeSetStatements() {
+        for (String setStatement : pendingSetStmts) {
+            sentSetStmts.remove(setStatement);
+            sentSetStmts.add(setStatement);
+        }
+
+        pendingSetStmts.clear();
+    }
+
+    /**
+     * Restores the cached 'set' statements, in order to be sent again after a reconnection.
+     */
+    private void resetSetStatements() {
+        // Make a copy of the pending statements before clearing the list
+        List<String> pendingStatementsCopy = new LinkedList<String>(pendingSetStmts);
+
+        pendingSetStmts.clear();
+        pendingSetStmts.addAll(sentSetStmts); // Add the sent statements
+
+        // Add the statements that were pending before the disconnection happened
+        for (String setStatement : pendingStatementsCopy) {
+            addSetStatement(setStatement);
+        }
     }
 
     private void closeNoException() {
