@@ -1016,11 +1016,11 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
     struct dbq_entry_t *newent = NULL;
 
     if (db_is_exiting()) {
-        return ERR_REJECTED;
+        return reterr(curswap, 0, NULL, ERR_REJECTED);
     }
 
     if (qtype != REQ_OFFLOAD && gbl_server_admin_mode)
-        return ERR_REJECTED;
+        return reterr(curswap, 0, NULL, ERR_REJECTED);
 
     net_delay(frommach);
 
@@ -1045,7 +1045,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
         UNLOCK(&lock);
         if (!iq) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
-            return reterr(0, 0, iq, ERR_INTERNAL);
+            return reterr(curswap, 0, iq, ERR_INTERNAL);
         }
 
         rc = init_ireq_legacy(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
