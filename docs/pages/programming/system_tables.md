@@ -169,6 +169,14 @@ The cached remote schemas used for distributed sql execution.
 * `remoterootpage` - Value of the remote rootpage
 * `version` - Schema version of the remote table; used to pull new schema on access
 
+## comdb2_files
+
+Lists files and directories in the database main directory.
+
+    comdb2_files(file)
+
+* `file` - File name
+
 ## comdb2_functions
 
 The functions available to call from sql.
@@ -242,6 +250,14 @@ Lists all active comdb2 locks.
 * `locktype` - Lock type (`PAGE`, `HANDLE`, `KEYHASH`, `ROWLOCK`, `MINMAX`,
               `TABLELOCK`, `STRIPELOCK`, `LSN`, `ENV`)
 * `page` - Page number
+
+## comdb2_log_files
+
+Lists files in the database log directory.
+
+    comdb2_log_files(file)
+
+* `file` - File name
 
 ## comdb2_logical_operations
 
@@ -599,6 +615,14 @@ This table lists various metrics.
 * `metric` - Name of the metric
 * `time` - Timestamp
 * `value` - Value
+
+## comdb2_tmp_files
+
+Lists files in the database tmp directory.
+
+    comdb2_tmp_files(file)
+
+* `file` - File name
 
 ## comdb2_transaction_logs
 
