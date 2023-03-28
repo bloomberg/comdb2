@@ -183,6 +183,7 @@ static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
         return &clnt->effects;
     if (clnt->dbtran.crtchunksize > 0)
         return &clnt->log_effects;
+    clnt->chunk_effects.num_selected = clnt->log_effects.num_selected;
     return &clnt->chunk_effects;
 }
 

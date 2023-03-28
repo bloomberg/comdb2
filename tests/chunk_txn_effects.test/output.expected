@@ -47,7 +47,7 @@ Number of rows updated 0
 Number of rows inserted 4
 ---------------- ON-CONFLICT-DO-UPDATE -----------------
 Number of rows affected 0
-Number of rows selected 0
+Number of rows selected 1
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
@@ -84,7 +84,7 @@ Number of rows updated 4
 Number of rows inserted 0
 ---------------- ON-CONFLICT-DO-NOTHING -----------------
 Number of rows affected 0
-Number of rows selected 0
+Number of rows selected 1
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
@@ -124,7 +124,7 @@ Number of rows inserted 0
 13
 14
 Number of rows affected 0
-Number of rows selected 0
+Number of rows selected 4
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
