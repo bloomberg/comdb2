@@ -22,6 +22,7 @@ enum CDB2ClientFeatures {
     /* flat column values. see sqlresponse.proto for more details. */
     FLAT_COL_VALS   = 6;
     SUPPORTS_IDENTITY = 8;
+    SQLITE_ROW_FORMAT    = 9;
 }
 
 message CDB2_FLAG {
