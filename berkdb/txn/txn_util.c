@@ -979,6 +979,7 @@ int __txn_is_prepared(dbenv, txnid)
 	return 0;
 }
 
+extern int __txn_undo(DB_TXN *txnp);
 /* 
  * __txn_abort_recovered --
  *
@@ -1030,6 +1031,19 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 		logmsg(LOGMSG_FATAL, "Error writing dist-abort for txn %s, LSN %d:%d\n", p->dist_txnid,
 			p->prev_lsn.file, p->prev_lsn.offset);
 		abort();
+	}
+
+	/* Avoid surprise children */
+	F_SET(p->txnp, TXN_CHILDCOMMIT);
+
+	/* skip prepare-record */
+	p->txnp->last_lsn = p->prev_lsn;
+
+	/* Undo to recover pg-allocations */
+	if ((ret = __txn_undo(p->txnp)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s: failed to abort prepared txn %s: %d\n", __func__,
+			p->dist_txnid, ret);
+		abort(); 
 	}
 
 	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};

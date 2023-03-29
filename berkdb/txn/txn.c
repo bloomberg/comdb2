@@ -182,7 +182,7 @@ static int __txn_dist_prepare_pp __P((DB_TXN *, const char *, const char *, cons
 static int __txn_discard_pp __P((DB_TXN *, u_int32_t));
 static int __txn_end __P((DB_TXN *, int));
 static int __txn_isvalid __P((const DB_TXN *, TXN_DETAIL **, txnop_t));
-static int __txn_undo __P((DB_TXN *));
+int __txn_undo __P((DB_TXN *));
 static int __txn_dispatch_undo __P((DB_ENV *,
 	DB_TXN *, DBT *, DB_LSN *, void *));
 
@@ -2408,7 +2408,7 @@ __txn_dispatch_undo(dbenv, txnp, rdbt, key_lsn, txnlist)
  * __txn_undo --
  *	Undo the transaction with id txnid.
  */
-static int
+int
 __txn_undo(txnp)
 	DB_TXN *txnp;
 {
