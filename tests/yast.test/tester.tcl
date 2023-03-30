@@ -1102,6 +1102,7 @@ proc create_table_as {origquery} {
   set rc [catch {do_cdb2_defquery "CREATE TABLE $dest \{$csc2schema\}"} output]
   if {$rc != 0} {
     puts "add table failed for $table rc: $rc $output"
+    puts "$csc2schema"
   }
 
   delay_for_schema_change
@@ -1257,6 +1258,7 @@ proc create_table {origquery} {
   puts $csc2 $csc2schema
   close $csc2
 
+
   set rc [catch {do_cdb2_defquery "CREATE TABLE $table \{$csc2schema \}" } output]
   if {$rc != 0} {
     puts "add table failed for $table rc: $rc $output"
@@ -1288,13 +1290,19 @@ proc create_index {origquery} {
 
   set key "$dup\"$index\" = "
   set first 1
+  set i 0
   foreach f $fields {
-    if {$first == 1} {
-      set first 0
-      append key $f
-    } else {
-      append key " + " $f
+    if {$first != 1} {
+      append key " + "
     }
+
+    if {[regexp -nocase {[[:space:]]+desc} $f _ _]} {
+        regsub {[[:space:]]+desc} $f "" f
+        append key "<DESCEND>"
+    }
+
+    append key $f
+    set first 0
   }
   if {[string compare $where ""] != 0} {
       append key " {"
