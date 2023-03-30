@@ -2677,7 +2677,7 @@ static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
     }
 
 int gbl_random_prepare_commit = 0;
-int gbl_all_prepare_commit = 0;
+int gbl_all_prepare_commit = 1;
 int gbl_all_prepare_abort = 0;
 int gbl_all_prepare_leak = 0;
 
