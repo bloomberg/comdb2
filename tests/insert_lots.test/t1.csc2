@@ -7,4 +7,5 @@ schema
 keys 
 {
     "PK"=i+j
+dup "j"=j
 }
