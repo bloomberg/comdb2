@@ -566,9 +566,6 @@ function log_function() {
 	printf("\tbp += sizeof(txn_num);\n\n") >> CFILE;
 	printf("\tLOGCOPY_FROMLSN(bp, lsnp);\n") >> CFILE;
 	printf("\tbp += sizeof(DB_LSN);\n\n") >> CFILE;
-	printf("\tLOGCOPY_64(bp, &txn_num_uint64);\n") >> CFILE;
-	printf("\tbp += sizeof(txn_num_uint64);\n\n") >> CFILE;
-
 	printf("\tif (utxnid_log) {\n") >> CFILE;
 	printf("\t\tLOGCOPY_64(bp, &txn_num_uint64);\n") >> CFILE;
 	printf("\t\tbp += sizeof(txn_num_uint64);\n}\n") >> CFILE;
