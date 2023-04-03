@@ -1286,7 +1286,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 				goto err;
 			}
 		} 
-		// TODO: next_utxnid start point in catastrophic recovery case?
 	}
 	/* Reset the start LSN so subsequent recoveries don't use it. */
 	ZERO_LSN(dbenv->recovery_start_lsn);
