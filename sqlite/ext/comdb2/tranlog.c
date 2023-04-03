@@ -291,78 +291,78 @@ static u_int64_t get_timestamp_from_regop_gen_record(char *data)
 static u_int32_t get_generation_from_regop_gen_record(char *data)
 {
     u_int32_t generation;
-	u_int32_t rectype;
-	LOGCOPY_32(&rectype, data); 
-	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-		LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 8 + 4] );
-	} else {
-		LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4] );
-	}
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 8 + 4] );
+    } else {
+        LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4] );
+    }
     return generation;
 }
 
 static u_int64_t get_timestamp_from_regop_rowlocks_record(char *data)
 {
     u_int64_t timestamp;
-	u_int32_t rectype;
-	LOGCOPY_32(&rectype, data); 
-	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-		LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8] );
-	} else {
-		LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8] );
-	}
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8] );
+    } else {
+        LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8] );
+    }
     return timestamp;
 }
 
 static u_int32_t get_generation_from_regop_rowlocks_record(char *data)
 {
     u_int32_t generation;
-	u_int32_t rectype;
-	LOGCOPY_32(&rectype, data); 
-	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
-	} else {
-		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
-	}
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+    } else {
+        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+    }
     return generation;
 }
 
 static u_int32_t get_timestamp_from_regop_record(char *data)
 {
     u_int32_t timestamp;
-	u_int32_t rectype;
-	LOGCOPY_32(&rectype, data); 
-	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 4] );
-	} else {
-		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 4] );
-	}
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 4] );
+    } else {
+        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 4] );
+    }
     return timestamp;
 }
 
 static u_int32_t get_timestamp_from_ckp_record(char *data)
 {
     u_int32_t timestamp;
-	u_int32_t rectype;
-	LOGCOPY_32(&rectype, data); 
-	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8 + 8] );
-	} else {
-		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8] );
-	}
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8 + 8] );
+    } else {
+        LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8] );
+    }
     return timestamp;
 }
 
 static u_int32_t get_generation_from_ckp_record(char *data)
 {
     u_int32_t generation;
-	u_int32_t rectype;
-	LOGCOPY_32(&rectype, data); 
-	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 8 + 4] );
-	} else {
-		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
-	}
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 8 + 4] );
+    } else {
+        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
+    }
     return generation;
 }
 
@@ -435,17 +435,17 @@ static int tranlogColumn(
         }
         sqlite3_result_text(ctx, pCur->maxLsnStr, -1, NULL);
         break;
-	case TRANLOG_COLUMN_MAXUTXNID: 
+    case TRANLOG_COLUMN_MAXUTXNID: 
         if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data); 
-			if (rectype == DB___txn_ckp+2000) {
-				LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
-				sqlite3_result_int64(ctx, maxutxnid);
-				break;
-			} 
-		}
-		sqlite3_result_null(ctx);
-		break;
+            if (rectype == DB___txn_ckp+2000) {
+                LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+                sqlite3_result_int64(ctx, maxutxnid);
+                break;
+            } 
+        }
+        sqlite3_result_null(ctx);
+        break;
     case TRANLOG_COLUMN_FLAGS:
         sqlite3_result_int64(ctx, pCur->flags);
         break;
@@ -483,21 +483,21 @@ static int tranlogColumn(
             sqlite3_result_null(ctx);
         }
         break;
-	case TRANLOG_COLUMN_TXNID:
-		LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
-		sqlite3_result_int64(ctx, txnid);
-		break;
-	case TRANLOG_COLUMN_UTXNID:
+    case TRANLOG_COLUMN_TXNID:
+        LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+        sqlite3_result_int64(ctx, txnid);
+        break;
+    case TRANLOG_COLUMN_UTXNID:
         if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data); 
-			if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-				LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]); 
-				sqlite3_result_int64(ctx, utxnid);
-				break;
-			}
-		}
-		sqlite3_result_null(ctx);
-		break;
+            if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+                LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]); 
+                sqlite3_result_int64(ctx, utxnid);
+                break;
+            }
+        }
+        sqlite3_result_null(ctx);
+        break;
     case TRANLOG_COLUMN_TIMESTAMP:
         if (pCur->data.data)
             LOGCOPY_32(&rectype, pCur->data.data); 

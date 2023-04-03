@@ -2919,7 +2919,7 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 					PARM_LSN(lc.array[i].lsn), name);
 				fsnapf(stdout, a->dbt.data, a->dbt.size);
 			}
-		} else if (type == 10019 || type == 10019+2000) {
+		} else if (type == 10019) {
 			logmsg(LOGMSG_USER, "blkseq: " PR_LSN "\n",
 				PARM_LSN(lc.array[i].lsn));
 		}
