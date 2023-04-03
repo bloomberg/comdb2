@@ -30,7 +30,8 @@
 #define MAXDYNTAGCOLUMNS 2048
 #define MAXKEYLEN 512
 #define MAXLRL 65536
-#define MAXNODES REPMAX
+#define MAXBBNODENUM 32768 /* Legacy: maximum number assigned to a machine in BBENV */
+#define MAXNODES MAXBBNODENUM
 #define MAXPLUGINS 100
 #define MAXPSTRLEN 256
 #define MAX_QUEUE_HITS_PER_TRANS 8
@@ -60,7 +61,6 @@
 #define MAXDTASTRIPE 16
 #define MAX_USERNAME_LEN 16
 #define MAX_PASSWORD_LEN 19
-#define MAXBBNODENUM 32768 /* Legacy: maximum number assigned to a machine in BBENV */
 #define GENIDLEN sizeof(unsigned long long)
 /* moved here from csc2, better place */
 /*max length of index name, its char[64] in stat1 - 10 for $_12345678*/
