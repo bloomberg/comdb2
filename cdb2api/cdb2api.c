@@ -2618,7 +2618,7 @@ static inline void ack(cdb2_hndl_tp *hndl)
 {
     hndl->ack = 0;
     struct newsqlheader hdr = {.type =
-                                   htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)}; 
+                                   htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)};
 
     sbuf2write((void *)&hdr, sizeof(hdr), hndl->sb);
     sbuf2flush(hndl->sb);

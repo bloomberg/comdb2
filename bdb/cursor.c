@@ -196,8 +196,6 @@ static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
                                                     unsigned char *infileid,
                                                     int *bdberr);
 
-extern int normalize_rectype(u_int32_t * rectype);
-
 /* local bdb cursor functionality */
 static int bdb_cursor_first(bdb_cursor_ifn_t *cur, int *bdberr);
 static int bdb_cursor_next(bdb_cursor_ifn_t *cur, int *bdberr);

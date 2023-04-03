@@ -28,7 +28,6 @@ static const char revid[] = "$Id: db_rec.c,v 11.48 2003/08/27 03:54:18 ubell Exp
 static int __db_pg_free_recover_int __P((DB_ENV *,
 	__db_pg_freedata_args *, DB *, DB_LSN *, DB_MPOOLFILE *, db_recops,
 	int));
-extern int normalize_rectype(u_int32_t * rectype);
 
 #include <stdlib.h>
 

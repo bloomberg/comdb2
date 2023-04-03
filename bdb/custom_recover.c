@@ -53,7 +53,6 @@
 extern int __db_count_cursors(DB *db);
 extern int __dbenv_count_cursors_dbenv(DB_ENV *dbenv);
 
-int normalize_rectype(u_int32_t * rectype);
 int handle_undo_upd_ix(DB_ENV *dbenv, u_int32_t rectype,
                        llog_undo_upd_ix_args *updop, DB_LSN *lsn, db_recops op);
 int handle_repblob(DB_ENV *dbenv, u_int32_t rectype, llog_repblob_args *repblob,

@@ -51,8 +51,6 @@ __P((DB_ENV *, DB_MPOOLFILE *, DB_MPOOL_HASH *, BH *, int));
 static int __memp_pgwrite_multi
 __P((DB_ENV *, DB_MPOOLFILE *, DB_MPOOL_HASH **, BH **, int, int));
 
-extern int normalize_rectype(u_int32_t * rectype);
-
 /*
  * __memp_bhwrite --
  *	Write the page associated with a given buffer header.

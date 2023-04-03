@@ -36,7 +36,6 @@
 #include "locks_wrap.h"
 #include "tohex.h"
 
-extern int normalize_rectype(u_int32_t * rectype);
 extern int blkseq_get_rcode(void *data, int datalen);
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
                                         int timestamp, DB_LSN lsn, int stripe);

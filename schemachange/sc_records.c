@@ -38,7 +38,6 @@
 
 int gbl_logical_live_sc = 0;
 
-extern int normalize_rectype(u_int32_t * rectype);
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_partial_indexes;
 extern int gbl_debug_omit_zap_on_rebuild;

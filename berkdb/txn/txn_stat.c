@@ -23,7 +23,6 @@ static const char revid[] = "$Id: txn_stat.c,v 11.22 2003/09/13 19:20:43 bostic 
 #include "dbinc/txn.h"
 
 static int __txn_stat __P((DB_ENV *, DB_TXN_STAT **, u_int32_t));
-extern int normalize_rectype(u_int32_t * rectype);
 
 /*
  * __txn_stat_pp --

@@ -79,7 +79,6 @@ extern int gbl_is_physical_replicant;
 
 #include "printformats.h"
 
-int normalize_rectype(u_int32_t* rectype);
 static int __log_earliest __P((DB_ENV *, DB_LOGC *, int32_t *, DB_LSN *));
 static double __lsn_diff __P((DB_LSN *, DB_LSN *, DB_LSN *, u_int32_t, int));
 static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,

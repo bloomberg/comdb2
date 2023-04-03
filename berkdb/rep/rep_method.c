@@ -41,7 +41,6 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 
 int gbl_rep_method_max_sleep_cnt = 0;
 
-int normalize_rectype(u_int32_t * rectype);
 static int __rep_abort_prepared __P((DB_ENV *));
 static int __rep_bt_cmp __P((DB *, const DBT *, const DBT *));
 static int __rep_client_dbinit __P((DB_ENV *, int));

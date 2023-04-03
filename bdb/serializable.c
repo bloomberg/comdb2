@@ -52,8 +52,6 @@
 #include <llog_auto.h>
 #include <llog_ext.h>
 
-int normalize_rectype(u_int32_t * rectype);
-
 int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
 {
     int rc = 0;

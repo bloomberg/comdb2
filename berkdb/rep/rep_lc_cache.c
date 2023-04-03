@@ -32,8 +32,6 @@
    [ ] 3.  Use mspace (also gets us #2 for free)?
 */
 
-int normalize_rectype(u_int32_t * rectype);
-
 // PUBLIC: int __lc_cache_init __P((DB_ENV *, int));
 int
 __lc_cache_init(DB_ENV *dbenv, int reinit)

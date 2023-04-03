@@ -54,7 +54,6 @@ extern int bdb_commitdelay(void *arg);
 extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, 
 	uint32_t generation, unsigned long long ltranid, int push);
 
-extern int normalize_rectype(u_int32_t * rectype);
 
 static int __log_encrypt_record __P((DB_ENV *, DBT *, HDR *, u_int32_t));
 static int __log_file __P((DB_ENV *, const DB_LSN *, char *, size_t));

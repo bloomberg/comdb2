@@ -32,7 +32,6 @@ static int	__log_recover __P((DB_LOG *));
 static size_t	__log_region_size __P((DB_ENV *));
 static int	__log_stat __P((DB_ENV *, DB_LOG_STAT **, u_int32_t));
 static int	__log_zero __P((DB_ENV *, DB_LSN *, DB_LSN *));
-extern int normalize_rectype(u_int32_t * rectype);
 
 /*
  * __log_open --

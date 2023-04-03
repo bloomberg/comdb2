@@ -44,7 +44,6 @@ void bdb_set_rep_handle_dead(struct bdb_state_tag *);
 int bdb_num_connected_nodes(struct bdb_state_tag *);
 #endif
 
-int normalize_rectype(u_int32_t * rectype);
 int gbl_verbose_master_req = 0;
 int gbl_trace_repmore_reqs = 0;
 

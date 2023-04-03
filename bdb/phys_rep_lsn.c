@@ -14,7 +14,6 @@
 #include <tohex.h>
 
 int matchable_log_type(int rectype);
-int normalize_rectype(u_int32_t * rectype);
 
 extern int gbl_verbose_physrep;
 int gbl_physrep_exit_on_invalid_logstream = 0;

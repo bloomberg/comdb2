@@ -79,7 +79,6 @@ static int __db_txnlist_find_internal __P((DB_ENV *, void *, db_txnlist_type,
 	u_int32_t, u_int8_t[DB_FILE_ID_LEN], DB_TXNLIST **, int));
 static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
 	int32_t, u_int8_t[DB_FILE_ID_LEN], char *, db_pgno_t));
-int normalize_rectype(u_int32_t * rectype);
 
 
 /* TODO: dispatch table for these? */

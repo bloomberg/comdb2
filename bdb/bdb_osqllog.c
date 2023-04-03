@@ -96,8 +96,6 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                                         void *llog_dta, bdb_osql_trn_t *trn,
                                         int *dirty, int trak, int *bdberr);
 
-int normalize_rectype(u_int32_t * rectype);
-
 /**
  * Initialize bdb_osql log repository
  *

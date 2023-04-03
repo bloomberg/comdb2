@@ -100,8 +100,6 @@ static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                           llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *undolsn,
                           DB_LSN *prev, int just_load_lsn);
 
-int normalize_rectype(u_int32_t * rectype);
-
 static int print_log_records(bdb_state_type *bdb_state, DB_LSN *lsn)
 {
     DB_LOGC *cur = NULL;

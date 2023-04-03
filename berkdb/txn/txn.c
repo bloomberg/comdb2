@@ -88,7 +88,6 @@ void bdb_get_writelock(void *bdb_state,
 	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
-extern int normalize_rectype(u_int32_t * rectype);
 
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
