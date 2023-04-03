@@ -45,7 +45,6 @@ extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
 extern void *comdb2_get_ddl_context(char *name);
-
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
@@ -337,20 +336,19 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
 {
     if (OPT_ON(opt, ODH_OFF))
         sc->headers = 0;
-    else 
+    else if (OPT_ON(opt, ODH_ON)) 
         sc->headers = 1;
 
     if (OPT_ON(opt, IPU_OFF))
         sc->ip_updates = 0;
-    else
+    else if (OPT_ON(opt, IPU_ON))
         sc->ip_updates = 1;
 
     if (OPT_ON(opt, ISC_OFF))
         sc->instant_sc = 0;
-    else
+    else if (OPT_ON(opt, ISC_ON))
         sc->instant_sc = 1;
 
-    sc->compress_blobs = -1;
     if (OPT_ON(opt, BLOB_NONE))
         sc->compress_blobs = BDB_COMPRESS_NONE;
     else if (OPT_ON(opt, BLOB_RLE))
@@ -360,7 +358,6 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
     else if (OPT_ON(opt, BLOB_LZ4))
         sc->compress_blobs = BDB_COMPRESS_LZ4;
 
-    sc->compress = -1;
     if (OPT_ON(opt, REC_NONE))
         sc->compress = BDB_COMPRESS_NONE;
     else if (OPT_ON(opt, REC_RLE))
@@ -371,19 +368,6 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
         sc->compress = BDB_COMPRESS_ZLIB;
     else if (OPT_ON(opt, REC_LZ4))
         sc->compress = BDB_COMPRESS_LZ4;
-
-    if (OPT_ON(opt, FORCE_REBUILD))
-        sc->force_rebuild = 1;
-    else
-        sc->force_rebuild = 0;
-
-    if (OPT_ON(opt, PAGE_ORDER))
-        sc->scanmode = SCAN_PAGEORDER;
-
-    if (OPT_ON(opt, READ_ONLY))
-        sc->live = 0;
-    else
-        sc->live = 1;
 
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
@@ -461,6 +445,29 @@ static int comdb2CheckOpAccess(void) {
 int comdb2IsPrepareOnly(Parse* pParse)
 {
     return pParse==NULL || (pParse->prepFlags & SQLITE_PREPARE_ONLY);
+}
+
+int comdb2IsDryrun(Parse* pParse)
+{
+   if(!pParse || !pParse->isDryrun)
+       return 0;
+   return 1;
+}
+
+int comdb2SCIsDryRunnable(struct schema_change_type *s){
+    switch(s->kind){
+        case SC_ADDTABLE:
+        case SC_DROPTABLE:
+        case SC_TRUNCATETABLE:
+        case SC_ALTERTABLE:
+        case SC_ALTERTABLE_PENDING:
+        case SC_REBUILDTABLE:
+        case SC_ALTERTABLE_INDEX:
+        case SC_REBUILDTABLE_INDEX:
+            return 1;
+        default:
+            return 0;
+    }
 }
 
 int comdb2AuthenticateUserOp(Parse* pParse)
@@ -714,10 +721,25 @@ void comdb2CreateTableCSC2(
     sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;
     sc->live = 1;
+
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
+
     fillTableOption(sc, opt);
     copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+
+    if(sc->dryrun)
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -730,8 +752,7 @@ void comdb2AlterTableCSC2(
   Token *pName1,   /* First part of the name of the table or view */
   Token *pName2,   /* Second part of the name of the table or view */
   int opt,         /* Various options for alter (compress, etc) */
-  Token *csc2,
-  int dryrun
+  Token *csc2
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -763,10 +784,20 @@ void comdb2AlterTableCSC2(
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = dryrun;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
     fillTableOption(sc, opt);
+    if(OPT_ON(opt, FORCE_SC)){
+        sc->force = 1;
+    }
     copyNoSqlToken(v, pParse, &sc->newcsc2, csc2);
-    if(dryrun)
+    if(sc->dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
                             (vdbeFuncArgFree)  &free_schema_change_type);
     else
@@ -811,6 +842,15 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->same_schema = 1;
     sc->kind = SC_DROPTABLE;
     sc->nothrevent = 1;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
+
     if (partition_first_shard)
         sc->partition.type = PARTITION_REMOVE;
 
@@ -825,8 +865,12 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+    if(sc->dryrun)
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     free(partition_first_shard);
     return;
 
@@ -849,10 +893,11 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto out;
 
+    fillTableOption(sc, opt);
     sc->nothrevent = 1;
     sc->live = 1;
     sc->scanmode = gbl_default_sc_scanmode;
-    
+
     if (OPT_ON(opt, REBUILD_ALL))
         sc->force_rebuild = 1;
 
@@ -879,6 +924,14 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
     sc->same_schema = 1;
     tran_type *tran = curtran_gettran();
     int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
@@ -890,8 +943,13 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+    if(sc->dryrun){
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    } else {
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 
 out:
@@ -981,6 +1039,14 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
     sc->kind = SC_TRUNCATETABLE;
     sc->nothrevent = 1;
     sc->same_schema = 1;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
 
     tran_type *tran = curtran_gettran();
     int rc = get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL, tran);
@@ -992,8 +1058,13 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+
+    if(sc->dryrun)
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -1059,6 +1130,14 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     sc->index_to_rebuild = index_num;
     sc->use_plan = 1;
     sc->scanmode = gbl_default_sc_scanmode;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
 
     if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
@@ -1073,8 +1152,13 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
     sc->same_schema = 1;
 
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+    if(sc->dryrun){
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
+    } else {
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 
 out:
@@ -1114,6 +1198,14 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     strcpy(sc->tablename, spname);
     sc->kind = SC_ADDSP;
 
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto cleanup;
+        }
+    }
     if (ver) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
             setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
@@ -1246,6 +1338,14 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
     }
     sc->kind = SC_DELSP;
 
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto cleanup;
+        }
+    }
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran,
                         (vdbeFuncArgFree)&free_schema_change_type);
     return;
@@ -1256,6 +1356,17 @@ cleanup:
 }
 
 /********************* PARTITIONS  **********************************************/
+
+static int _get_integer(Token *tok, int32_t *oInt)
+{
+    char str[10];
+    if (tok->n >= sizeof(str)) {
+        return -1;
+    }
+    strncpy0(str, tok->z, tok->n + 1);
+    *oInt = atoi(str);
+    return 0;
+}
 
 static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
                                         Token *retention, Token *start,
@@ -1279,13 +1390,10 @@ static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
         return -1;
     }
 
-    char retention_str[10];
-    if (retention->n >= sizeof(retention_str)) {
+    if (_get_integer(retention, oRetention)) {
         setError(pParse, SQLITE_MISUSE, "Invalid retention");
         return -1;
     }
-    strncpy0(retention_str, retention->z, retention->n + 1);
-    *oRetention = atoi(retention_str);
 
     char start_str[200];
     assert (*start->z == '\'' || *start->z == '\"');
@@ -1305,6 +1413,21 @@ static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
     return 0;
 }
 
+static int comdb2GetManualPartitionParams(Parse* pParse, Token *retention,
+                                          Token *start, int32_t *oRetention,
+                                          int32_t *oStart)
+{
+    if (_get_integer(retention, oRetention)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid manual retention");
+        return -1;
+    }
+    if (_get_integer(start, oStart)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid manual start");
+        return -1;
+    }
+    return 0;
+}
+
 void comdb2CreatePartition(Parse* pParse, Token* table,
                            Token* partition_name, Token* period,
                            Token* retention, Token* start)
@@ -1312,6 +1435,10 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+    if (comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+         return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
@@ -1381,6 +1508,10 @@ void comdb2DropPartition(Parse* pParse, Token* partition_name)
     if (comdb2IsPrepareOnly(pParse))
         return;
 
+    if(comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_DROP_PART, 0, 0, 0) ){
@@ -2270,7 +2401,10 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
-
+    if(comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+        return;
+    }
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
@@ -2498,8 +2632,7 @@ void comdb2CounterSet(Parse *pParse, Token *nm, Token *lnm, long long value)
     comdb2CounterInt(pParse, nm, lnm, 1, value);
 }
 
-void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
-        int dryrun)
+void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -2558,6 +2691,14 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     sc->nothrevent = 1;
     sc->live = 1;
     sc->kind = gbl_lightweight_rename?SC_ALIASTABLE:SC_RENAMETABLE;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto out;
+        }
+    }
     strncpy0(sc->newtable, newTable, sizeof(sc->newtable));
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
@@ -2612,6 +2753,12 @@ void comdb2WriteTransaction(Parse *pParse)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
+
+    struct sqlclntstate *clnt = get_sql_clnt();
+    if (clnt && clnt->is_readonly) {
+      setError(pParse, SQLITE_READONLY, "connection/database in read-only mode");
+      return;
+    }
 
     pParse->write = 1;
 }
@@ -2759,7 +2906,6 @@ struct comdb2_schema {
 /* DDL context flags */
 enum {
     DDL_NOOP = 1 << 0,
-    DDL_DRYRUN = 1 << 1,
     DDL_PENDING = 1 << 2,
 };
 
@@ -3950,19 +4096,19 @@ static int retrieve_table_options(struct dbtable *table)
 
     switch (odh) {
     case 0: table_options |= ODH_OFF; break;
-    case 1: break;
+    case 1: table_options |= ODH_ON; break;
     default: assert(0);
     }
 
     switch (inplace_updates) {
     case 0: table_options |= IPU_OFF; break;
-    case 1: break;
+    case 1: table_options |= IPU_ON; break;
     default: assert(0);
     }
 
     switch (instant_schema_change) {
     case 0: table_options |= ISC_OFF; break;
-    case 1: break;
+    case 1: table_options |= ISC_ON; break;
     default: assert(0);
     }
 
@@ -4479,8 +4625,7 @@ err:
 void comdb2AlterTableStart(
     Parse *pParse, /* Parser context */
     Token *pName1, /* First part of the name of the table. */
-    Token *pName2, /* Second part of the name of the table. */
-    int dryrun     /* Whether its a dryrun? */
+    Token *pName2  /* Second part of the name of the table. */
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -4511,9 +4656,6 @@ void comdb2AlterTableStart(
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
     if (ctx->schema->name == 0)
         goto oom;
-
-    if (dryrun == 1)
-        ctx->flags |= DDL_DRYRUN;
 
     /*
       Add all the columns, indexes and constraints in the table to the
@@ -4564,9 +4706,19 @@ void comdb2AlterTableEnd(Parse *pParse)
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = ((ctx->flags & DDL_DRYRUN) != 0) ? 1 : 0;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto cleanup;
+        }
+    }
 
     fillTableOption(sc, ctx->schema->table_options);
+    if(OPT_ON(ctx->schema->table_options, FORCE_SC)){
+        sc->force = 1;
+    }
 
     if (ctx->partition)
         sc->partition = *ctx->partition;
@@ -4708,7 +4860,6 @@ void comdb2CreateTableEnd(
     if ((ctx->flags & DDL_NOOP) != 0) {
         goto cleanup;
     }
-
     v = sqlite3GetVdbe(pParse);
 
     sc = new_schemachange_type();
@@ -4720,6 +4871,15 @@ void comdb2CreateTableEnd(
     sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;
     sc->live = 1;
+
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto cleanup;
+        }
+    }
 
     fillTableOption(sc, comdb2Opts);
 
@@ -4734,8 +4894,12 @@ void comdb2CreateTableEnd(
         goto cleanup;
     }
 
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                    (vdbeFuncArgFree)&free_schema_change_type);
+    if (sc->dryrun)
+        comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
+                             (vdbeFuncArgFree)&free_schema_change_type);
+    else
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 oom:
@@ -5713,7 +5877,14 @@ void comdb2CreateIndex(
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = 0;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto cleanup;
+        }
+    }
 
     fillTableOption(sc, ctx->schema->table_options);
 
@@ -5723,9 +5894,13 @@ void comdb2CreateIndex(
         assert(pParse->rc != 0);
         goto cleanup;
     }
-
-    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+    if(sc->dryrun) {
+        comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
                     (vdbeFuncArgFree)&free_schema_change_type);
+    } else {
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
+    }
     return;
 
 oom:
@@ -6443,7 +6618,14 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     sc->live = 1;
     sc->use_plan = 1;
     sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = 0;
+    if(comdb2IsDryrun(pParse)){
+        if(comdb2SCIsDryRunnable(sc)){
+            sc->dryrun = 1;
+        } else {
+            setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+            goto cleanup;
+        }
+    }
 
     fillTableOption(sc, ctx->schema->table_options);
 
@@ -6506,6 +6688,91 @@ oom:
 
 cleanup:
     free_ddl_context(pParse);
+    return;
+}
+
+#define ODH_FLAGS (ODH_OFF|ODH_ON)
+#define IPU_FLAGS (IPU_OFF|IPU_ON)
+#define ISC_FLAGS (ISC_OFF|ISC_ON)
+#define BLOB_CMPR_FLAGS (BLOB_NONE|BLOB_RLE|BLOB_CRLE|BLOB_ZLIB|BLOB_LZ4)
+#define REC_CMPR_FLAGS (REC_NONE|REC_RLE|REC_CRLE|REC_ZLIB|REC_LZ4)
+#define REBUILD_FLAGS (REBUILD_ALL|REBUILD_DATA|REBUILD_BLOB)
+
+static int bitSetCount(int num) {
+    int count = 0;
+    while (num) {
+        ++count;
+        num &= (num-1);
+    }
+    return count;
+}
+
+static int checkAndSetBits(Parse *pParse, uint32_t *dst, uint32_t src,
+                           uint32_t propertyFlags, const char *propertyName) {
+    uint32_t propertyBits = src & propertyFlags;
+    int count = bitSetCount(propertyBits);
+    if (count >= 1) {
+        if (count > 1) {
+            sqlite3ErrorMsg(pParse, "Conflicting '%s' options", propertyName);
+            return 1;
+        }
+
+        *dst &= (~propertyFlags);
+        *dst |= propertyBits;
+    }
+    return 0;
+}
+
+void comdb2AlterTableOptions(
+    Parse *pParse,      /* Parse context */
+    uint32_t comdb2Opts /* Comdb2 specific table properties */
+)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    /* At this point, we have already retreived the existing table properties.
+     * Here we update all the flags that was explicitly asked in the ALTER
+     * command. */
+
+    uint32_t *tableOpts = &ctx->schema->table_options;
+
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, ODH_FLAGS, "ODH")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, IPU_FLAGS, "IPU")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, ISC_FLAGS, "ISC")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, BLOB_CMPR_FLAGS, "BLOB COMPRESSION")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, REC_CMPR_FLAGS, "RECORD COMPRESSION")) == 1) {
+        return;
+    }
+    if ((checkAndSetBits(pParse, tableOpts, comdb2Opts, REBUILD_FLAGS, "REBUILD")) == 1) {
+        return;
+    }
+    if (comdb2Opts & PAGE_ORDER) {
+        *tableOpts |= PAGE_ORDER;
+    }
+    if (comdb2Opts & READ_ONLY) {
+        *tableOpts |= READ_ONLY;
+    }
     return;
 }
 
@@ -7137,6 +7404,35 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
                                      (int64_t*)&partition->u.tpt.start)) {
         free_ddl_context(pParse);
     }
+}
+
+/**
+ * Create Manual Partition
+ *
+ */
+void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
+{
+    struct comdb2_partition *partition;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create manual partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse, 0);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_MANUAL;
+    partition->u.tpt.period = VIEW_PARTITION_MANUAL;
+
+    int32_t tmp = 0;
+    if (comdb2GetManualPartitionParams(pParse, retention, start,
+                                     (int32_t*)&partition->u.tpt.retention,
+                                     &tmp)) {
+        free_ddl_context(pParse);
+    }
+    partition->u.tpt.start = tmp;
 }
 
 /*

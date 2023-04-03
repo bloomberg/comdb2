@@ -31,6 +31,8 @@ static int __build_data __P((DB_ENV *, char *, char ***));
 static int __cmpfunc __P((const void *, const void *));
 static int __usermem __P((DB_ENV *, char ***));
 
+extern int normalize_rectype(u_int32_t * rectype);
+
 /*
  * __log_archive_pp --
  *	DB_ENV->log_archive pre/post processing.
@@ -376,6 +378,7 @@ __build_data(dbenv, pref, listp)
 		}
 
 		LOGCOPY_32(&rectype, rec.data);
+		normalize_rectype(&rectype);
 		if (rectype != DB___dbreg_register)
 			continue;
 		if ((ret =

@@ -59,13 +59,12 @@ static config_t *default_config(void)
 unsigned int myrand(void)
 {
     static int first = 1;
-    static unsigned int seed;
-    static unsigned int adds;
+    static int64_t seed;
+    static int64_t adds;
 
-    if(first)
-    {
+    if (first) {
         seed = time(NULL);
-        adds = (unsigned int)pthread_self();
+        adds = (int64_t)(intptr_t) pthread_self();
         first = 0;
     }
 

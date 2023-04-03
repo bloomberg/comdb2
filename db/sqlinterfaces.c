@@ -74,6 +74,7 @@
 
 #include <sqlresponse.pb-c.h>
 #include <sqlite3expert.h>
+#include <carray.h>
 
 #include <alloca.h>
 #include <fsnapf.h>
@@ -199,8 +200,6 @@ static int test_no_btcursors(struct sqlthdstate *thd);
 static void sql_thread_describe(void *obj, FILE *out);
 static char *get_query_cost_as_string(struct sql_thread *thd,
                                       struct sqlclntstate *clnt);
-extern int sqlite3_carray_bind(sqlite3_stmt *pStmt, int idx, void *aData,
-                               int nData, int mFlags, void (*xDestroy)(void*));
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 
@@ -400,34 +399,54 @@ int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     return sqlite3_column_count(stmt);
 }
 
-int validate_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
 {
-    int ncols = column_count(clnt, stmt), rc = 0;
-    if (!sqlite3_can_get_column_type_and_data(clnt, stmt))
-        return 0;
-    for (int i = 0; i < ncols; ++i) {
-        int type = column_type(clnt, stmt, i);
-        if (type == (int)SQLITE_NEXTSEQ)
-            rc = -1;
-    }
-    return rc;
+    if (clnt && clnt->plugin.column_type)
+        return clnt->plugin.column_type(clnt, stmt, iCol);               \
+    return sqlite3_column_type(stmt, iCol);                              \
 }
 
-#define FUNC_COLUMN_TYPE(ret, type)                                            \
-    ret column_##type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol) \
-    {                                                                          \
-        if (clnt && clnt->plugin.column_##type)                                \
-            return clnt->plugin.column_##type(clnt, stmt, iCol);               \
-        return sqlite3_column_##type(stmt, iCol);                              \
-    }
+sqlite_int64 column_int64(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_int64) return clnt->plugin.column_int64(clnt, stmt, iCol);
+    return sqlite3_column_int64(stmt, iCol);
+}
 
-FUNC_COLUMN_TYPE(int, type)
-FUNC_COLUMN_TYPE(sqlite_int64, int64)
-FUNC_COLUMN_TYPE(double, double)
-FUNC_COLUMN_TYPE(const unsigned char *, text)
-FUNC_COLUMN_TYPE(int, bytes)
-FUNC_COLUMN_TYPE(const void *, blob)
-FUNC_COLUMN_TYPE(const dttz_t *, datetime)
+double column_double(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_double) return clnt->plugin.column_double(clnt, stmt, iCol);
+    return sqlite3_column_double(stmt, iCol);
+}
+
+const unsigned char *column_text(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_text) return clnt->plugin.column_text(clnt, stmt, iCol);
+    return sqlite3_column_text(stmt, iCol);
+}
+
+int column_bytes(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_bytes) return clnt->plugin.column_bytes(clnt, stmt, iCol);
+    return sqlite3_column_bytes(stmt, iCol);
+}
+
+const void *column_blob(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_blob) return clnt->plugin.column_blob(clnt, stmt, iCol);
+    return sqlite3_column_blob(stmt, iCol);
+}
+
+const dttz_t *column_datetime(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_datetime) return clnt->plugin.column_datetime(clnt, stmt, iCol);
+    return sqlite3_column_datetime(stmt, iCol);
+}
+
+const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol, int type)
+{
+    if (clnt && clnt->plugin.column_interval) return clnt->plugin.column_interval(clnt, stmt, iCol, type);
+    return sqlite3_column_interval(stmt, iCol, type);
+}
 
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr)
 {
@@ -450,14 +469,6 @@ int sqlite_error(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         return clnt->plugin.sqlite_error(clnt, stmt, errstr);
 
     return sqlite_stmt_error(stmt, errstr);
-}
-
-const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                              int iCol, int type)
-{
-    if (clnt && clnt->plugin.column_interval)
-        return clnt->plugin.column_interval(clnt, stmt, iCol, type);
-    return sqlite3_column_interval(stmt, iCol, type);
 }
 
 int next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
@@ -747,6 +758,9 @@ static int vtable_search(char **vtables, int ntables, const char *table)
 static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const char *table)
 {
     const char *vtable_lock = vtable_lockname(pAuthState->db, table);
+    if (table != NULL && (strcmp(table, "comdb2_triggers") == 0)) {
+        pAuthState->flags |= PREPARE_ACQUIRE_SPLOCK;
+    }
     if (vtable_lock && !vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_lock)) {
         pAuthState->vTableLocks =
             (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * (pAuthState->numVTableLocks + 1));
@@ -902,33 +916,72 @@ int sqlite3_maybe_step(
   return clnt->step_rc;
 }
 
-int sqlite3_can_get_column_type_and_data(
-  struct sqlclntstate *clnt,
-  sqlite3_stmt *stmt
-){
-  if( !sqlite3_is_prepare_only(clnt) ){
-    /*
-    ** When the client is not in 'prepare only' mode, the result set
-    ** should always be available (i.e. anytime after sqlite3_step()
-    ** is called).  The column type / data should be available -IF-
-    ** this is not a write transaction.  An assert is used here to
-    ** verify this invariant.
-    */
-    assert( clnt->step_rc!=SQLITE_ROW || sqlite3_hasResultSet(stmt) );
-    return 1;
-  }
-  if( sqlite3_hasResultSet(stmt) ){
-    /*
-    ** If the result set is available for the prepared statement, e.g.
-    ** due to sqlite3_step() having been called, it can always be used
-    ** to query the column type and data.  It shouldn't be possible to
-    ** reach this point in 'prepare only' mode; therefore, assert this
-    ** invariant here.
-    */
-    assert( !sqlite3_is_prepare_only(clnt) );
-    return 1;
-  }
-  return 0;
+int sqlite3_can_get_column_type_and_data(struct sqlclntstate *clnt,
+                                         sqlite3_stmt *stmt)
+{
+    if (!sqlite3_is_prepare_only(clnt)) {
+        /*
+        ** When the client is not in 'prepare only' mode, the result set
+        ** should always be available (i.e. anytime after sqlite3_step()
+        ** is called).  The column type / data should be available -IF-
+        ** this is not a write transaction.  An assert is used here to
+        ** verify this invariant.
+        */
+        assert(clnt->step_rc != SQLITE_ROW || sqlite3_hasResultSet(stmt));
+        return 1;
+    }
+    if (sqlite3_hasResultSet(stmt)) {
+        /*
+        ** If the result set is available for the prepared statement, e.g.
+        ** due to sqlite3_step() having been called, it can always be used
+        ** to query the column type and data.  It shouldn't be possible to
+        ** reach this point in 'prepare only' mode; therefore, assert this
+        ** invariant here.
+        */
+        assert(!sqlite3_is_prepare_only(clnt));
+        return 1;
+    }
+    return 0;
+}
+
+int validate_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    int ncols = column_count(clnt, stmt), type;
+    if (!sqlite3_can_get_column_type_and_data(clnt, stmt))
+        return 0;
+    for (int i = 0; i < ncols; ++i) {
+        type = column_type(clnt, stmt, i);
+        if (type == (int)SQLITE_NEXTSEQ)
+            return -1;
+    }
+    return 0;
+}
+
+int get_sqlite3_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                            int col, int skip_decltype)
+{
+    int type = SQLITE_NULL;
+
+    if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
+        type = column_type(clnt, stmt, col);
+        if (type == SQLITE_NULL && !skip_decltype) {
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+        }
+        if (type == SQLITE_DECIMAL) {
+            type = SQLITE_TEXT;
+        }
+    }
+    return type;
+}
+
+int is_column_type_null(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
+{
+    if (!clnt->fdb_push) {
+        return get_sqlite3_column_type(clnt, stmt, col, 1) == SQLITE_NULL ||
+               column_type(clnt, stmt, col) == SQLITE_NULL;
+    }
+
+    return column_type(clnt, stmt, col) == SQLITE_NULL;
 }
 
 pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1117,7 +1170,7 @@ static int is_stored_proc_sql(const char *zSql)
     return is_meta_sql(zSql, azMeta);
 }
 
-static int is_stored_proc(struct sqlclntstate *clnt)
+int is_stored_proc(struct sqlclntstate *clnt)
 {
     return is_stored_proc_sql(clnt->sql);
 }
@@ -1193,6 +1246,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->txnid = rqid;
 
     time_metric_add(thedb->service_time, h->cost.time);
+    clnt->last_cost = (int64_t) h->cost.cost;
 
     /* request logging framework takes care of logging long sql requests */
     reqlog_set_cost(logger, h->cost.cost);
@@ -1207,10 +1261,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     int64_t time;
     int64_t prepTime;
     int64_t rows;
+    int is_lua;
+
+    if (1 || clnt->query_stats == NULL) {
+        record_query_cost(thd, clnt);
+        reqlog_set_path(logger, clnt->query_stats);
+    }
 
     if (gbl_fingerprint_queries) {
         if (h->sql_ref) {
-            if (is_stored_proc_sql(string_ref_cstr(h->sql_ref))) {
+            if ((is_lua = is_stored_proc_sql(string_ref_cstr(h->sql_ref)))) {
                 cost = clnt->spcost.cost;
                 time = clnt->spcost.time;
                 prepTime = clnt->spcost.prepTime;
@@ -1222,14 +1282,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zOrigNormSql,
-                                cost, time, prepTime, rows, logger,
-                                fingerprint);
+                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zOrigNormSql, cost, time, prepTime,
+                                rows, logger, fingerprint, is_lua);
                 have_fingerprint = 1;
             } else if (clnt->work.zNormSql &&
                        sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zNormSql, cost,
-                                time, prepTime, rows, logger, fingerprint);
+                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zNormSql, cost, time, prepTime,
+                                rows, logger, fingerprint, is_lua);
                 have_fingerprint = 1;
             } else {
                 reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
@@ -1239,10 +1298,6 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         }
     }
 
-    if (clnt->query_stats == NULL) {
-        record_query_cost(thd, clnt);
-        reqlog_set_path(logger, clnt->query_stats);
-    }
     reqlog_set_vreplays(logger, clnt->verify_retries);
 
     if (clnt->saved_rc)
@@ -1649,11 +1704,15 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
 {
     Pthread_mutex_lock(&clnt->wait_mutex);
-    /* if this is a new chunk, do not stop the hearbeats */
+    /* if this is a new chunk, do not stop the hearbeats.*/
     if (sideeffects != TRANS_CLNTCOMM_CHUNK)
         clnt->ready_for_heartbeats = 0;
 
-    reqlog_setup_begin_commit_rollback(thd, clnt);
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
+        /* for chunks and SPs (which implicitly call begin)
+           we don't want to set up reqlog again */
+        reqlog_setup_begin_commit_rollback(thd, clnt);
+    }
 
     /* this is a good "begin", just say "ok" */
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_STRT_STATE);
@@ -1675,7 +1734,10 @@ done:
     if (srs_tran_add_query(clnt))
         logmsg(LOGMSG_ERROR, "Fail to create a transaction replay session\n");
 
-    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
+        /* for chunks and SPs, don't end the request */
+        reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    }
 
     return SQLITE_OK;
 }
@@ -1713,6 +1775,7 @@ void reset_query_effects(struct sqlclntstate *clnt)
 {
     bzero(&clnt->effects, sizeof(clnt->effects));
     bzero(&clnt->log_effects, sizeof(clnt->effects));
+    bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
 }
 
 static char *sqlenginestate_tostr(int state)
@@ -1862,8 +1925,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
         rc = SQLITE_OK;
     } else {
-        bzero(clnt->dirty, sizeof(clnt->dirty));
-
+        clear_session_tbls(clnt);
         sql_debug_logf(clnt, __func__, __LINE__, "starting\n");
 
         switch (clnt->dbtran.mode) {
@@ -2162,7 +2224,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int outrc = 0;
 
-    reqlog_setup_begin_commit_rollback(thd, clnt);
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
+    /* Don't setup(reset) logger for commits of individual chunks,
+       and for the implicit commit from an SP */
+        reqlog_setup_begin_commit_rollback(thd, clnt);
+    }
 
     int64_t rows = clnt->log_effects.num_updated +
                    clnt->log_effects.num_deleted +
@@ -2319,9 +2385,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 done:
     reset_clnt_flags(clnt);
-    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
     if (clnt->osql.sock_started == 0)
         comdb2uuid_clear(clnt->osql.uuid);
+
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
+        /* end request only for non-chunk and non-SP transactions */
+        reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    }
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
@@ -3053,7 +3123,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         if (rec->stmt) {
-            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks);
+            int flags = (thd->authState.flags & PREPARE_ACQUIRE_SPLOCK) ? VTABLE_FLAGS_GETSPLOCK : 0;
+            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks, flags);
             thd->authState.numVTableLocks = 0;
             thd->authState.vTableLocks = NULL;
         } else {
@@ -3185,27 +3256,24 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         if (p.arraylen) {
             int flag;
             switch (p.type) {
+            case CLIENT_REAL: flag = CARRAY_DOUBLE; break;
+            case CLIENT_CSTR: /* fall-through */
+            case CLIENT_VUTF8: flag = CARRAY_TEXT; break;
+            case CLIENT_BLOB: flag = CARRAY_BLOB; break;
             case CLIENT_INT:
-            case CLIENT_UINT:
-                //we dont have 32bit int type 
-                if (p.len == sizeof(int32_t))
-                    flag = 0; /* CARRAY_INT32; */
-                else if (p.len == sizeof(int64_t))
-                    flag = 1; /* CARRAY_INT64; */ 
-                else 
-                    flag = -1;
+            if (p.len == sizeof(int32_t)) {
+                flag = CARRAY_INT32;
                 break;
-            case CLIENT_REAL:
-                flag = 2; /* CARRAY_DOUBLE; */ break;
-            case CLIENT_CSTR:
-            case CLIENT_VUTF8:
-                flag = 3; /* CARRAY_TEXT; */ break;
-            default:
-                logmsg(LOGMSG_ERROR, "Unsupported type %d for carray_bind\n", p.type);
-                rc = -1;
-                return rc;
             }
-
+            if (p.len == sizeof(int64_t)) {
+                flag = CARRAY_INT64;
+                break;
+            }
+            /* fall-through */
+            default:
+                logmsg(LOGMSG_ERROR, "carray_bind: invalid type:%d size:%d\n", p.type, p.len);
+                return -1;
+            }
             rc = sqlite3_carray_bind(stmt, p.pos, p.u.p, p.arraylen, flag, SQLITE_STATIC);
             continue;
         }
@@ -3482,8 +3550,8 @@ static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
     return write_response(clnt, RESPONSE_COLUMNS, stmt, 0);
 }
 
-static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
-                    uint64_t row_id, int postpone, struct errstat *err)
+int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
+             uint64_t row_id, int postpone, struct errstat *err)
 {
     if (skip_row(clnt, row_id))
         return 0;
@@ -3853,6 +3921,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     char *allocd_str = NULL;
 
     do {
+retry_legacy_remote:
         /* clean old stats */
         clear_cost(thd->sqlthd);
 
@@ -3867,6 +3936,15 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             allocd_str = strdup(dohsql_get_sql(clnt, 0));
             rec.sql = (const char *)allocd_str;
             continue;
+        }
+        if (rc == SQLITE_SCHEMA_PUSH_REMOTE) {
+            rc = handle_fdb_push(clnt, &err);
+            if (rc == -2) {
+                /* remote server does not support proxy, retry without */
+                clnt->disable_fdb_push = 1;
+                goto retry_legacy_remote;
+            }
+            goto done;
         }
 
         if (rc) {
@@ -3914,6 +3992,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     /* set these after sending response so client gets results a bit sooner */
     post_run_reqlog(thd, clnt, &rec);
 
+done:
     sqlite_done(thd, clnt, &rec, rc);
 
     if (allocd_str)
@@ -4424,6 +4503,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
 {
     int rc;
+    stmt_cache_entry_t *cached_entry = NULL;
     if (thd->sqldb == NULL) {
         /* open sqlite db without copying rootpages */
         rc = sqlite3_open_serial("db", &thd->sqldb, thd);
@@ -4446,9 +4526,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
             thd->stmt_cache = stmt_cache_new(NULL);
         }
 
-        stmt_cache_entry_t *cached_entry;
-        if ((stmt_cache_find_entry(thd->stmt_cache, clnt->sql,
-                                   &cached_entry)) == 0) {
+        if ((stmt_cache_find_and_remove_entry(thd->stmt_cache, clnt->sql, &cached_entry)) == 0) {
             stmt = cached_entry->stmt;
         }
     }
@@ -4467,7 +4545,10 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
         clnt->has_sqliterow = 1;
         rc = verify_indexes_column_value(stmt, clnt->schema_mems);
         if (gbl_enable_internal_sql_stmt_caching) {
-            stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
+            if (cached_entry)
+                stmt_cache_requeue_old_entry(thd->stmt_cache, cached_entry);
+            else
+                stmt_cache_add_new_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
         } else {
             sqlite3_finalize(stmt);
         }
@@ -4475,7 +4556,10 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
 
     if (gbl_enable_internal_sql_stmt_caching) {
-        stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
+        if (cached_entry)
+            stmt_cache_requeue_old_entry(thd->stmt_cache, cached_entry);
+        else
+            stmt_cache_add_new_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
     } else {
         sqlite3_finalize(stmt);
     }
@@ -4822,7 +4906,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
 
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
-    clnt->sql_ref = create_string_ref(clnt->sql);
+    if (!clnt->sql_ref && clnt->sql) {
+        clnt->sql_ref = create_string_ref(clnt->sql);
+    }
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
@@ -5152,6 +5238,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->dtran_mtx);
     Pthread_mutex_destroy(&clnt->state_lk);
     Pthread_mutex_destroy(&clnt->sql_tick_lk);
+    Pthread_mutex_destroy(&clnt->sql_lk);
 }
 
 void reset_clnt(struct sqlclntstate *clnt, int initial)
@@ -5165,8 +5252,9 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         Pthread_mutex_init(&clnt->dtran_mtx, NULL);
         Pthread_mutex_init(&clnt->state_lk, NULL);
         Pthread_mutex_init(&clnt->sql_tick_lk, NULL);
-    }
-    else {
+        Pthread_mutex_init(&clnt->sql_lk, NULL);
+        TAILQ_INIT(&clnt->session_tbls);
+    } else {
        clnt->sql_since_reset = 0;
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();
@@ -5196,6 +5284,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
     /* start off in comdb2 mode till we're told otherwise */
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->dbtran.nchunks = 0;
     clnt->heartbeat = 0;
     clnt->limits.maxcost = gbl_querylimits_maxcost;
     clnt->limits.tablescans_ok = gbl_querylimits_tablescans_ok;
@@ -5213,6 +5302,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
     clnt->prepare_only = 0;
     clnt->is_readonly = 0;
+    clnt->is_readonly_set = 0;
     clnt->admin = 0;
 
     /* reset page-order. */
@@ -5255,7 +5345,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->early_retry = 0;
     clnt_reset_cursor_hints(clnt);
 
-    bzero(clnt->dirty, sizeof(clnt->dirty));
+    clear_session_tbls(clnt);
 
     clnt->planner_effort = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
@@ -5297,6 +5387,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->rowbuffer = 1;
     clnt->flat_col_vals = 0;
     clnt->request_fp = 0;
+    free(clnt->prev_cost_string);
+    clnt->prev_cost_string = NULL;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
@@ -6306,7 +6398,7 @@ int sqlserver2sqlclient_error(int rc)
     case SQLITE_COST_TOO_HIGH:
     case SQLITE_NO_TEMPTABLES:
     case SQLITE_NO_TABLESCANS:
-        return SQLHERR_LIMIT;
+        return CDB2ERR_QUERYLIMIT;
     case SQLITE_TRANTOOCOMPLEX:
         return SQLHERR_ROLLBACKTOOLARGE;
     case SQLITE_CLIENT_CHANGENODE:
@@ -6619,7 +6711,9 @@ static void log_long_running_stmts_evbuffer(void)
     struct sqlclntstate *clnt;
     Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
+        Pthread_mutex_lock(&clnt->sql_lk);
         reqlog_long_running_clnt(clnt);
+        Pthread_mutex_unlock(&clnt->sql_lk);
     }
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
@@ -6632,12 +6726,14 @@ static void log_long_running_stmts_sbuf(void)
     struct sqlclntstate *clnt;
     Pthread_mutex_lock(&clnt_lk);
     LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+        Pthread_mutex_lock(&clnt->sql_lk);
         reqlog_long_running_clnt(clnt);
+        Pthread_mutex_unlock(&clnt->sql_lk);
     }
     Pthread_mutex_unlock(&clnt_lk);
 }
 
-void log_long_running_sql_statements(void)
+void reqlog_long_running_sql_statements(void)
 {
     if (gbl_libevent_appsock) {
         log_long_running_stmts_evbuffer();
@@ -6957,6 +7053,26 @@ void update_col_info(struct sql_col_info *info, int ncols)
     info->count = ncols;
 }
 
+void clnt_plugin_reset(struct sqlclntstate *clnt)
+{
+    struct plugin_callbacks *backup = &clnt->backup;
+
+    clnt->plugin.column_count = backup->column_count;
+    clnt->plugin.next_row = backup->next_row;
+    clnt->plugin.column_type = backup->column_type;
+    clnt->plugin.column_int64 = backup->column_int64;
+    clnt->plugin.column_double = backup->column_double;
+    clnt->plugin.column_text = backup->column_text;
+    clnt->plugin.column_bytes = backup->column_bytes;
+    clnt->plugin.column_blob = backup->column_blob;
+    clnt->plugin.column_datetime = backup->column_datetime;
+    clnt->plugin.column_interval = backup->column_interval;
+    clnt->plugin.sqlite_error = backup->sqlite_error;
+    clnt->plugin.param_count = backup->param_count;
+    clnt->plugin.param_value = backup->param_value;
+    clnt->plugin.param_index = backup->param_index;
+}
+
 void exhausted_appsock_connections(struct sqlclntstate *clnt)
 {
     write_response(clnt, RESPONSE_ERROR, "Exhausted appsock connections.", CDB2__ERROR_CODE__APPSOCK_LIMIT);
@@ -6974,5 +7090,24 @@ void exhausted_appsock_connections(struct sqlclntstate *clnt)
 int maxquerytime_cb(struct sqlclntstate *clnt)
 {
     clnt->statement_timedout = 1;
-    return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), SQLHERR_LIMIT);
+    return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), CDB2ERR_QUERYLIMIT);
+}
+
+/* Sqlite prototypes this as i64, since it insists on C89 compatibility, which precludes
+ * using int64_t.  We'll just make the assumption that i64 and int64_t are the same underlying
+ * type. */
+int64_t comdb2_last_stmt_cost(void) {
+   struct sql_thread *thd = pthread_getspecific(query_info_key);
+   if (!thd)
+      return -1;
+
+   return thd->clnt ? thd->clnt->last_cost : -1;
+}
+
+char *clnt_tzname(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    if (clnt->plugin.tzname)
+        return clnt->plugin.tzname(clnt, stmt);
+
+    return stmt_tzname(stmt);
 }

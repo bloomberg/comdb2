@@ -937,3 +937,28 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...)
     pthread_mutex_unlock(&lk);
 #endif
 }
+
+void comdb2_cheapstack_sym_char_array(char *str, int maxln)
+{
+    void *buf[MAXFRAMES];
+    (void)buf;
+    unsigned int frames;
+    char **strings;
+    char *cur = str;
+
+    frames = backtrace(buf, MAXFRAMES);
+    strings = backtrace_symbols(buf, frames);
+    for (int j = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            int ccount;
+            ccount = snprintf(cur, maxln, "%s", &p[1]);
+            cur += ccount;
+            maxln -= ccount;
+        }
+    }
+    if (strings)
+        free(strings);
+}
+

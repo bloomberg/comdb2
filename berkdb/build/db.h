@@ -58,6 +58,7 @@
 
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
+#include <dbinc/maxstackframes.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -282,6 +283,7 @@ struct txn_properties;
 #define DB_TXN_DONT_GET_REPO_MTX   0x0080000 /* Get the repo mutex on this commit */
 #define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
 #define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
+#define DB_TXN_FOP_NOBLOCK         0x0400000 /* Don't block on fop operations */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
@@ -1072,6 +1074,7 @@ struct __db_txn {
 #define	TXN_RESTORED	0x080		/* Transaction has been restored. */
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
+#define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */
@@ -1080,6 +1083,8 @@ struct __db_txn {
 					 * this is a new one */
 	void            *pglogs_hashtbl;
    pthread_mutex_t pglogs_mutex;
+
+   u_int64_t utxnid;
 };
 
 /*
@@ -1107,6 +1112,7 @@ struct __db_txn_active {
 
 struct __db_txn_stat {
 	DB_LSN	  st_last_ckp;		/* lsn of the last checkpoint */
+	DB_LSN	  st_ckp_lsn;		/* ckp-lsn of last checkpoint */
 	time_t	  st_time_ckp;		/* time of last checkpoint */
 	u_int32_t st_last_txnid;	/* last transaction id given out */
 	u_int32_t st_maxtxns;		/* maximum txns possible */
@@ -1342,6 +1348,7 @@ typedef enum {
 
 
 /* DB (private) error return codes. */
+#define DB_IGNORED			(-30900) /* Ignore logging to this btree */
 #define	DB_ALREADY_ABORTED	(-30899)
 #define	DB_DELETED		(-30898)/* Recovery file marked deleted. */
 #define	DB_LOCK_NOTEXIST	(-30897)/* Object to lock is gone. */
@@ -2163,6 +2170,7 @@ struct __lsn_collection {
 
 struct __lc_cache_entry {
 	u_int32_t txnid;
+	u_int64_t utxnid;
 	int cacheid;  /* offset in __lc_cache.ent */
 	DB_LSN last_seen_lsn;
 	LINKC_T(struct __lc_cache_entry) lnk;
@@ -2181,13 +2189,14 @@ struct __lc_cache {
 
 struct __ufid_to_db_t {
 	u_int8_t ufid[DB_FILE_ID_LEN];
+    int ignore : 1;
 	char *fname;
 	DB *dbp;
 };
 
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
-		int64_t page, const char *rectype);
+		int64_t page, const char *rectype, int stackid);
 
 /* Database Environment handle. */
 struct __db_env {
@@ -2271,6 +2280,8 @@ struct __db_env {
 	int		(*rep_send)	/* Send function. */
 			__P((DB_ENV *, const DBT *, const DBT *,
 				   const DB_LSN *, char*, int, void *));
+	int	 (*rep_ignore) 
+			__P((const char *));
 	int	 (*txn_logical_start)
 			__P((DB_ENV *, void *state, u_int64_t ltranid,
 			DB_LSN *lsn));
@@ -2512,6 +2523,7 @@ struct __db_env {
 		char*, int, void *)));
 	int  (*set_rep_db_pagesize) __P((DB_ENV *, int));
 	int  (*get_rep_db_pagesize) __P((DB_ENV *, int *));
+	int  (*set_rep_ignore) __P((DB_ENV *, int (*func)(const char *filename)));
 	void *tx_handle;		/* Txn handle and methods. */
 	int  (*get_tx_max) __P((DB_ENV *, u_int32_t *));
 	int  (*set_tx_max) __P((DB_ENV *, u_int32_t));
@@ -2703,8 +2715,10 @@ struct __db_env {
 	void (*rep_set_gen)(DB_ENV *, uint32_t gen);
 	int (*set_rep_recovery_cleanup) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn, int is_master)));
 	int (*rep_recovery_cleanup)(DB_ENV *, DB_LSN *lsn, int is_master);
-	int (*lock_recovery_lock)(DB_ENV *);
-	int (*unlock_recovery_lock)(DB_ENV *);
+	int (*wrlock_recovery_lock)(DB_ENV *, const char *func, int line);
+    int (*wrlock_recovery_blocked)(DB_ENV *);
+	int (*lock_recovery_lock)(DB_ENV *, const char *func, int line);
+	int (*unlock_recovery_lock)(DB_ENV *, const char *func, int line);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
 					 pthread_mutex_t **, const uint8_t **));
@@ -2717,6 +2731,9 @@ struct __db_env {
 
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+
+	pthread_mutex_t utxnid_lock;
+	u_int64_t next_utxnid;
 };
 
 #ifndef DB_DBM_HSEARCH
@@ -3048,7 +3065,7 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	int check_checkpoint);
 
 int ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
-	int rectype, u_int8_t *ufid, DBT *dbt);
+	int rectype, u_int8_t *ufid, DBT *dbt, int utxnid_logged);
 
 int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);
@@ -3067,6 +3084,7 @@ int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
 void __log_txn_lsn(DB_ENV *, DB_LSN *, u_int32_t *, u_int32_t *);
 
 int __recover_logfile_pglogs(DB_ENV *, void *);
+int normalize_rectype(u_int32_t* rectype);
 
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 

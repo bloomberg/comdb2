@@ -66,13 +66,12 @@ static config_t *default_config(void)
 unsigned int myrand(void)
 {
     static int first = 1;
-    static unsigned int seed;
-    static unsigned int adds;
+    static int64_t seed;
+    static int64_t adds;
 
-    if(first)
-    {
+    if (first) {
         seed = time(NULL);
-        adds = (unsigned int)pthread_self();
+        adds = (int64_t)(intptr_t) pthread_self();
         first = 0;
     }
 
@@ -215,8 +214,8 @@ void *update_records_thd(void *arg)
         snprintf(sql, sizeof(sql), "begin");
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "td %u error in begin, ret=%d, %s.\n", 
-                    (uint32_t) pthread_self(), ret, cdb2_errstr(sqlh));
+            fprintf(stderr, "td %"PRIuPTR" error in begin, ret=%d, %s.\n",
+                    (uintptr_t) pthread_self(), ret, cdb2_errstr(sqlh));
             exit(1);
         }
         do

@@ -1,2 +1,0 @@
-[insert into t values (1)] failed with rc -106 Cannot modify tables via a read-only client connection
-[update t set id=id+1 limit 1] failed with rc -106 Cannot modify tables via a read-only client connection

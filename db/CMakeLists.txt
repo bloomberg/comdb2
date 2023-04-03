@@ -11,6 +11,7 @@ set(src
   db_access.c
   db_fingerprint.c
   db_metrics.c
+  db_query_plan.c
   db_tunables.c
   db_util.c
   dbglog_iface.c
@@ -26,6 +27,7 @@ set(src
   fdb_boots.c
   fdb_fend.c
   fdb_fend_cache.c
+  fdb_push.c
   glue.c
   handle_buf.c
   history.c
@@ -194,6 +196,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/schemachange
   ${PROJECT_SOURCE_DIR}/sockpool
   ${PROJECT_SOURCE_DIR}/sqlite/ext/expert
+  ${PROJECT_SOURCE_DIR}/sqlite/ext/misc
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/sqlite
   ${OPENSSL_INCLUDE_DIR}

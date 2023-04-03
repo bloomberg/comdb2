@@ -1,0 +1,6 @@
+Alter table has a force mode that forces the schemachange to go through even when the
+database deems it unsafe. 
+This test does the following :
+1.) Simulates a low headroom scenario, forcing the database to prevent the schemachange
+2.) Subsequently runs the same schemachange with the 'force' option and tests to see that 
+    the schemachange succeeds

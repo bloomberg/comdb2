@@ -1,3 +1,8 @@
 update_delete_limit
 dtastripe 1
 ssl_client_mode OPTIONAL
+
+# Disable parallel rep: reload-analyze isn't a serialization point
+REP_WORKERS 0
+REP_PROCESSORS 0
+early 0

@@ -35,6 +35,9 @@
 #define TRANLOG_COLUMN_GENERATION   5
 #define TRANLOG_COLUMN_TIMESTAMP    6
 #define TRANLOG_COLUMN_LOG          7
+#define TRANLOG_COLUMN_TXNID        8
+#define TRANLOG_COLUMN_UTXNID       9
+#define TRANLOG_COLUMN_MAXUTXNID    10
 
 
 /* Modeled after generate_series */
@@ -68,7 +71,7 @@ static int tranlogConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden, flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -114,6 +117,7 @@ static int tranlogClose(sqlite3_vtab_cursor *cur){
 
 extern pthread_mutex_t gbl_logput_lk;
 extern pthread_cond_t gbl_logput_cond;
+extern int gbl_num_logput_listeners;
 extern pthread_mutex_t gbl_durable_lsn_lk;
 extern pthread_cond_t gbl_durable_lsn_cond;
 extern int comdb2_sql_tick();
@@ -193,6 +197,10 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           /* Wait on a condition variable */
           clock_gettime(CLOCK_REALTIME, &ts);
           ts.tv_nsec += (200 * 1000000);
+          if (ts.tv_nsec >= 1000000000) {
+              ++ts.tv_sec;
+              ts.tv_nsec -= 1000000000;
+          }
           Pthread_mutex_lock(&gbl_durable_lsn_lk);
           pthread_cond_timedwait(&gbl_durable_lsn_cond, &gbl_durable_lsn_lk, &ts);
           Pthread_mutex_unlock(&gbl_durable_lsn_lk);
@@ -216,8 +224,14 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
               struct timespec ts;
               clock_gettime(CLOCK_REALTIME, &ts);
               ts.tv_nsec += (200 * 1000000);
+              if (ts.tv_nsec >= 1000000000) {
+                  ++ts.tv_sec;
+                  ts.tv_nsec -= 1000000000;
+              }
               Pthread_mutex_lock(&gbl_logput_lk);
+              ++gbl_num_logput_listeners;
               pthread_cond_timedwait(&gbl_logput_cond, &gbl_logput_lk, &ts);
+              --gbl_num_logput_listeners;
               Pthread_mutex_unlock(&gbl_logput_lk);
 
               int sleepms = 100;
@@ -264,49 +278,91 @@ static inline int parse_lsn(const unsigned char *lsnstr, DB_LSN *lsn)
 static u_int64_t get_timestamp_from_regop_gen_record(char *data)
 {
     u_int64_t timestamp;
-    LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 4 + 4 + 8] );
+    u_int32_t rectype;
+    LOGCOPY_32(&rectype, data); 
+    if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+        LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 8 + 4 + 4 + 8] );
+    } else {
+        LOGCOPY_64( &timestamp, &data[ 4 + 4 + 8 + 4 + 4 + 8] );
+    }
     return timestamp;
 }
 
 static u_int32_t get_generation_from_regop_gen_record(char *data)
 {
     u_int32_t generation;
-    LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4] );
+	u_int32_t rectype;
+	LOGCOPY_32(&rectype, data); 
+	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+		LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 8 + 4] );
+	} else {
+		LOGCOPY_32( &generation, &data[ 4 + 4 + 8 + 4] );
+	}
     return generation;
 }
 
 static u_int64_t get_timestamp_from_regop_rowlocks_record(char *data)
 {
     u_int64_t timestamp;
-    LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8] );
+	u_int32_t rectype;
+	LOGCOPY_32(&rectype, data); 
+	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+		LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8] );
+	} else {
+		LOGCOPY_64( &timestamp, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8] );
+	}
     return timestamp;
 }
 
 static u_int32_t get_generation_from_regop_rowlocks_record(char *data)
 {
     u_int32_t generation;
-    LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+	u_int32_t rectype;
+	LOGCOPY_32(&rectype, data); 
+	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+	} else {
+		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+	}
     return generation;
 }
 
 static u_int32_t get_timestamp_from_regop_record(char *data)
 {
     u_int32_t timestamp;
-    LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 4] );
+	u_int32_t rectype;
+	LOGCOPY_32(&rectype, data); 
+	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 4] );
+	} else {
+		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 4] );
+	}
     return timestamp;
 }
 
 static u_int32_t get_timestamp_from_ckp_record(char *data)
 {
     u_int32_t timestamp;
-    LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8] );
+	u_int32_t rectype;
+	LOGCOPY_32(&rectype, data); 
+	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8 + 8] );
+	} else {
+		LOGCOPY_32( &timestamp, &data[4 + 4 + 8 + 8 + 8] );
+	}
     return timestamp;
 }
 
 static u_int32_t get_generation_from_ckp_record(char *data)
 {
     u_int32_t generation;
-    LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
+	u_int32_t rectype;
+	LOGCOPY_32(&rectype, data); 
+	if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 8 + 4] );
+	} else {
+		LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 8 + 4] );
+	}
     return generation;
 }
 
@@ -326,19 +382,19 @@ u_int64_t get_timestamp_from_matchable_record(char *data)
         logmsg(LOGMSG_DEBUG, "No data, so can't get rectype!\n");
     }
 
-    if (rectype == DB___txn_regop_gen){
+    if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000)) {
         return get_timestamp_from_regop_gen_record(data);
     }
 
-    if (rectype == DB___txn_regop_rowlocks) {
+    if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000)) {
         return get_timestamp_from_regop_rowlocks_record(data);
     }
 
-    if (rectype == DB___txn_regop) {
+    if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
         return get_timestamp_from_regop_record(data);
     }
 
-    if (rectype == DB___txn_ckp) {
+    if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000)) {
         return get_timestamp_from_ckp_record(data);
     }
 
@@ -359,6 +415,9 @@ static int tranlogColumn(
   u_int32_t rectype = 0;
   u_int32_t generation = 0;
   int64_t timestamp = 0;
+  u_int32_t txnid = 0;
+  u_int64_t utxnid = 0;
+  u_int64_t maxutxnid = 0;
 
   switch( i ){
     case TRANLOG_COLUMN_START:
@@ -376,7 +435,17 @@ static int tranlogColumn(
         }
         sqlite3_result_text(ctx, pCur->maxLsnStr, -1, NULL);
         break;
-
+	case TRANLOG_COLUMN_MAXUTXNID: 
+        if (pCur->data.data) {
+            LOGCOPY_32(&rectype, pCur->data.data); 
+			if (rectype == DB___txn_ckp+2000) {
+				LOGCOPY_64(&maxutxnid, &((char*)pCur->data.data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+				sqlite3_result_int64(ctx, maxutxnid);
+				break;
+			} 
+		}
+		sqlite3_result_null(ctx);
+		break;
     case TRANLOG_COLUMN_FLAGS:
         sqlite3_result_int64(ctx, pCur->flags);
         break;
@@ -414,24 +483,38 @@ static int tranlogColumn(
             sqlite3_result_null(ctx);
         }
         break;
-
+	case TRANLOG_COLUMN_TXNID:
+		LOGCOPY_32(&txnid, &((char *) pCur->data.data)[4]); 
+		sqlite3_result_int64(ctx, txnid);
+		break;
+	case TRANLOG_COLUMN_UTXNID:
+        if (pCur->data.data) {
+            LOGCOPY_32(&rectype, pCur->data.data); 
+			if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
+				LOGCOPY_64(&utxnid, &((char *) pCur->data.data)[4 + 4 + 8]); 
+				sqlite3_result_int64(ctx, utxnid);
+				break;
+			}
+		}
+		sqlite3_result_null(ctx);
+		break;
     case TRANLOG_COLUMN_TIMESTAMP:
         if (pCur->data.data)
             LOGCOPY_32(&rectype, pCur->data.data); 
 
-        if (rectype == DB___txn_regop_gen){
+        if (rectype == DB___txn_regop_gen || (rectype == DB___txn_regop_gen+2000)) {
             timestamp = get_timestamp_from_regop_gen_record(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop_rowlocks) {
+        if (rectype == DB___txn_regop_rowlocks || (rectype == DB___txn_regop_rowlocks+2000)) {
             timestamp = get_timestamp_from_regop_rowlocks_record(pCur->data.data);
         }
 
-        if (rectype == DB___txn_regop) {
+        if (rectype == DB___txn_regop || (rectype == DB___txn_regop+2000)) {
             timestamp = get_timestamp_from_regop_record(pCur->data.data);
         }
 
-        if (rectype == DB___txn_ckp) {
+        if (rectype == DB___txn_ckp || (rectype == DB___txn_ckp+2000)) {
             timestamp = get_timestamp_from_ckp_record(pCur->data.data);
         }
 

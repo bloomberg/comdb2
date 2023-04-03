@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2022 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -127,6 +127,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_REMOVE:
         return sizeof(p->type);
     case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_MANUAL:
         return sizeof(p->type) + sizeof(p->u.tpt.period) +
                sizeof(p->u.tpt.retention) + sizeof(p->u.tpt.start);
     case PARTITION_MERGE:
@@ -190,8 +191,7 @@ static void *buf_put_dests(struct schema_change_type *s, void *p_buf,
     return p_buf;
 }
 
-void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
-                           void *p_buf_end)
+void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
 {
 
     if (p_buf >= p_buf_end) return NULL;
@@ -303,7 +303,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->partition.type, sizeof(s->partition.type), p_buf,
                     p_buf_end);
     switch (s->partition.type) {
-    case PARTITION_ADD_TIMED: {
+    case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_MANUAL: {
         p_buf = buf_put(&s->partition.u.tpt.period,
                         sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
         p_buf = buf_put(&s->partition.u.tpt.retention,
@@ -368,8 +369,205 @@ static const void *buf_get_dests(struct schema_change_type *s,
     return p_buf;
 }
 
-void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
-                           void *p_buf_end)
+void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
+                              void *p_buf_end)
+{
+    int type = 0,          fastinit = 0,   addonly = 0,    fulluprecs = 0,
+        partialuprecs = 0, alteronly = 0,  is_trigger = 0, drop_table = 0,
+        addsp = 0,         delsp = 0,      defaultsp = 0,  is_sfunc = 0,
+        is_afunc = 0,      rename = 0;
+
+    if (p_buf >= p_buf_end) return NULL;
+
+    p_buf = (uint8_t *)buf_get(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
+
+    p_buf =
+        (uint8_t *)buf_no_net_get(&s->uuid, sizeof(s->uuid), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&type, sizeof(type), p_buf, p_buf_end); /* s->type */
+
+    p_buf = (uint8_t *)buf_get(&s->tablename_len, sizeof(s->tablename_len),
+                               p_buf, p_buf_end);
+    if (s->tablename_len != strlen((const char *)p_buf) + 1 ||
+        s->tablename_len > sizeof(s->tablename)) {
+        s->tablename_len = -1;
+        return NULL;
+    }
+    p_buf = (uint8_t *)buf_no_net_get(s->tablename, s->tablename_len, p_buf,
+                                      p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->fname_len, sizeof(s->fname_len), p_buf,
+                               p_buf_end);
+    if (s->fname_len != strlen((const char *)p_buf) + 1 ||
+        s->fname_len > sizeof(s->fname)) {
+        s->fname_len = -1;
+        return NULL;
+    }
+    p_buf = (uint8_t *)buf_no_net_get(s->fname, s->fname_len, p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->aname_len, sizeof(s->aname_len), p_buf,
+                               p_buf_end);
+    if (s->aname_len != strlen((const char *)p_buf) + 1 ||
+        s->aname_len > sizeof(s->aname)) {
+        s->aname_len = -1;
+        return NULL;
+    }
+
+    p_buf = (uint8_t *)buf_get(s->aname, s->aname_len, p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->avgitemsz, sizeof(s->avgitemsz), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&fastinit, sizeof(fastinit), p_buf, p_buf_end); /* s->fastinit */
+
+    p_buf = (uint8_t *)buf_get(&s->newdtastripe, sizeof(s->newdtastripe), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->blobstripe, sizeof(s->blobstripe), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->live, sizeof(s->live), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&addonly, sizeof(addonly), p_buf, p_buf_end); /* s->addonly */
+    p_buf = (uint8_t *)buf_get(&fulluprecs, sizeof(fulluprecs), p_buf, p_buf_end); /* s->fulluprecs */
+    p_buf = (uint8_t *)buf_get(&partialuprecs, sizeof(partialuprecs), p_buf, p_buf_end); /* s->partialuprecs */
+    p_buf = (uint8_t *)buf_get(&alteronly, sizeof(alteronly), p_buf, p_buf_end); /* s->alteronly */
+    p_buf = (uint8_t *)buf_get(&is_trigger, sizeof(is_trigger), p_buf, p_buf_end); /* s->is_trigger */
+
+    p_buf = (uint8_t *)buf_get(&s->newcsc2_len, sizeof(s->newcsc2_len), p_buf,
+                               p_buf_end);
+
+    if (s->newcsc2_len) {
+        if (s->newcsc2_len != strlen((const char *)p_buf) + 1) {
+            s->newcsc2_len = -1;
+            return NULL;
+        }
+
+        s->newcsc2 = (char *)malloc(s->newcsc2_len);
+        if (!s->newcsc2) return NULL;
+
+        p_buf = (uint8_t *)buf_no_net_get(s->newcsc2, s->newcsc2_len, p_buf,
+                                          p_buf_end);
+    } else
+        s->newcsc2 = NULL;
+
+    p_buf =
+        (uint8_t *)buf_get(&s->scanmode, sizeof(s->scanmode), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->delay_commit, sizeof(s->delay_commit), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->force_rebuild, sizeof(s->force_rebuild),
+                               p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->force_dta_rebuild,
+                               sizeof(s->force_dta_rebuild), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->force_blob_rebuild,
+                               sizeof(s->force_blob_rebuild), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->force, sizeof(s->force), p_buf, p_buf_end);
+
+    p_buf =
+        (uint8_t *)buf_get(&s->headers, sizeof(s->headers), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->header_change, sizeof(s->header_change),
+                               p_buf, p_buf_end);
+
+    p_buf =
+        (uint8_t *)buf_get(&s->compress, sizeof(s->compress), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->compress_blobs, sizeof(s->compress_blobs),
+                               p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->ip_updates, sizeof(s->ip_updates), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->instant_sc, sizeof(s->instant_sc), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->preempted, sizeof(s->preempted), p_buf,
+                               p_buf_end);
+
+    p_buf =
+        (uint8_t *)buf_get(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->commit_sleep, sizeof(s->commit_sleep), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->convert_sleep, sizeof(s->convert_sleep),
+                               p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->same_schema, sizeof(s->same_schema), p_buf,
+                               p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->dbnum, sizeof(s->dbnum), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->flg, sizeof(s->flg), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->rebuild_index, sizeof(s->rebuild_index),
+                               p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->index_to_rebuild,
+                               sizeof(s->index_to_rebuild), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&drop_table, sizeof(drop_table), p_buf, p_buf_end); /* s->drop_table */
+
+    p_buf =
+        (uint8_t *)buf_get(&s->original_master_node,
+                           sizeof(s->original_master_node), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get_dests(s, p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->spname_len, sizeof(s->spname_len), p_buf,
+                               p_buf_end);
+    p_buf =
+        (uint8_t *)buf_no_net_get(s->spname, s->spname_len, p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&addsp, sizeof(addsp), p_buf, p_buf_end); /* s->addsp */
+    p_buf = (uint8_t *)buf_get(&delsp, sizeof(delsp), p_buf, p_buf_end); /* s->delsp */
+    p_buf = (uint8_t *)buf_get(&defaultsp, sizeof(defaultsp), p_buf, p_buf_end); /* s->defaultsp */
+    p_buf = (uint8_t *)buf_get(&is_sfunc, sizeof(is_sfunc), p_buf, p_buf_end); /* s->is_sfunc */
+    p_buf = (uint8_t *)buf_get(&is_afunc, sizeof(is_afunc), p_buf, p_buf_end); /* s->is_afunc */
+    p_buf = (uint8_t *)buf_get(&rename, sizeof(rename), p_buf, p_buf_end); /* s->rename */
+
+    p_buf = (uint8_t *)buf_no_net_get(s->newtable, sizeof(s->newtable), p_buf,
+                                      p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->usedbtablevers, sizeof(s->usedbtablevers),
+                               p_buf, p_buf_end);
+
+    if (fastinit && drop_table)
+        s->kind = SC_DROPTABLE;
+    else if (fastinit)
+        s->kind = SC_TRUNCATETABLE;
+    else if (alteronly)
+        s->kind = SC_ALTERTABLE;
+    else if (addonly)
+        s->kind = SC_ADDTABLE;
+    else if (rename)
+        s->kind = SC_RENAMETABLE;
+    else if (fulluprecs)
+        s->kind = SC_FULLUPRECS;
+    else if (partialuprecs)
+        s->kind = SC_PARTIALUPRECS;
+    else if (is_trigger && addonly)
+        s->kind = SC_ADD_TRIGGER;
+    else if (is_trigger && drop_table)
+        s->kind = SC_DEL_TRIGGER;
+    else if (drop_table)
+        s->kind = SC_DROPTABLE;
+    else if (addsp)
+        s->kind = SC_ADDSP;
+    else if (delsp)
+        s->kind = SC_DELSP;
+    else if (defaultsp)
+        s->kind = SC_DEFAULTSP;
+
+    return p_buf;
+}
+
+void *buf_get_schemachange_v2(struct schema_change_type *s,
+                              void *p_buf, void *p_buf_end)
 {
 
     if (p_buf >= p_buf_end) return NULL;
@@ -525,7 +723,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->partition.type, sizeof(s->partition.type),
                                p_buf, p_buf_end);
     switch (s->partition.type) {
-    case PARTITION_ADD_TIMED: {
+    case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_MANUAL: {
         p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.period,
                                    sizeof(s->partition.u.tpt.period), p_buf,
                                    p_buf_end);
@@ -730,7 +929,7 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
     else if (!s->ip_updates && olddb_inplace_updates)
         info = ">Table will not support in-place updates.\n";
     else if (s->ip_updates && olddb_inplace_updates)
-        info = ">Table supports in-place updates.\n";
+        info = ">Table already supports in-place updates.\n";
     else
         info = ">Table does not support in-place updates.\n";
 
@@ -786,6 +985,9 @@ void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable 
     int rc;
 
     /* Get properties from meta */
+    rc = get_db_odh_tran(db, &scinfo->olddb_odh, tran);
+    if (rc) scinfo->olddb_odh = 0;
+
     rc = get_db_compress_tran(db, &scinfo->olddb_compress, tran);
     if (rc) scinfo->olddb_compress = 0;
 

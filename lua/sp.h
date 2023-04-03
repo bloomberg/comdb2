@@ -31,5 +31,6 @@ void exec_thread(struct sqlthdstate *, struct sqlclntstate *);
 void *exec_trigger(char *);
 void close_sp(struct sqlclntstate *);
 int is_pingpong(struct sqlclntstate *);
+int can_consume(struct sqlclntstate *);
 
 #endif

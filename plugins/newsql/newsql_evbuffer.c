@@ -39,6 +39,7 @@
 #include <pb_alloc.h>
 
 #include <newsql.h>
+#include <fsnapf.h>
 
 extern int gbl_nid_dbname;
 extern SSL_CTX *gbl_ssl_ctx;
@@ -313,14 +314,17 @@ static void wr_dbinfo_plaintext(struct newsql_appdata_evbuffer *appdata)
 
 static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct evbuffer *buf)
 {
-    CDB2DBINFORESPONSE__Nodeinfo *master = NULL;
     CDB2DBINFORESPONSE__Nodeinfo *nodes[REPMAX];
     CDB2DBINFORESPONSE__Nodeinfo same_dc[REPMAX], diff_dc[REPMAX];
+    CDB2DBINFORESPONSE__Nodeinfo no_master = CDB2__DBINFORESPONSE__NODEINFO__INIT, *master = &no_master;
+    no_master.name = db_eid_invalid;
+    no_master.number = -1;
     int num_same_dc = 0, num_diff_dc = 0;
     host_node_type *hosts[REPMAX];
     int num_hosts = get_hosts_evbuffer(REPMAX, hosts);
     int my_dc = machine_dc(gbl_myhostname);
     int process_incoherent = bdb_amimaster(thedb->bdb_env);
+    const char *who = bdb_whoismaster(thedb->bdb_env);
     for (int i = 0; i < num_hosts; ++i) {
         CDB2DBINFORESPONSE__Nodeinfo *node;
         int dc = machine_dc(hosts[i]->host);
@@ -332,7 +336,6 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
         node->port = hosts[i]->port;
         node->name = hosts[i]->host;
         node->incoherent = process_incoherent ? is_incoherent(thedb->bdb_env, node->name) : 0;
-        const char *who = bdb_whoismaster(thedb->bdb_env);
         if (who && strcmp(who, node->name) == 0) {
             master = node;
         }
@@ -351,6 +354,8 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     response.n_nodes = num_hosts;
     response.master = master;
     response.nodes = nodes;
+    response.has_sync_mode = 1;
+    response.sync_mode = sync_state_to_protobuf(thedb->rep_sync);
 
     int len = cdb2__dbinforesponse__get_packed_size(&response);
     struct newsqlheader hdr = {0};
@@ -360,6 +365,14 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     cdb2__dbinforesponse__pack(&response, out);
     evbuffer_add(buf, &hdr, sizeof(hdr));
     evbuffer_add(buf, out, len);
+    /* Keep this check temporarily */
+    CDB2DBINFORESPONSE *decode = cdb2__dbinforesponse__unpack(NULL, len, out);
+    if (!decode) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to decode dbinfo len:%d\n", __func__, __LINE__, len);
+        fsnapf(stderr, out, len);
+        abort();
+    }
+    cdb2__dbinforesponse__free_unpacked(decode, NULL);
 }
 
 static void process_dbinfo(struct newsql_appdata_evbuffer *appdata)
@@ -394,19 +407,38 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
             return 1;
         }
     }
-    if (ssl_whitelisted(appdata->clnt.origin)) {
-        /* allow plaintext local connections */
+    if (ssl_whitelisted(appdata->clnt.origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode))) {
+        /* allow plaintext local connections, or server is configured to prefer (but not disallow) SSL clients. */
         return 0;
     }
     write_response(&appdata->clnt, RESPONSE_ERROR, "database requires SSL connections", CDB2ERR_CONNECT_ERROR);
     return -1;
 }
 
+static void check_sqlite_row(struct newsql_appdata_evbuffer *appdata,
+                             CDB2QUERY *query)
+{
+    if (!query || !query->sqlquery)
+        return;
+
+    appdata->clnt.sqlite_row_format = 0;
+    for (int i = 0; i < query->sqlquery->n_features; ++i) {
+        if (CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT ==
+            query->sqlquery->features[i]) {
+            appdata->clnt.sqlite_row_format = 1;
+            break;
+        }
+    }
+}
+
 static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
     int do_read = 0;
     int commit_rollback;
-    if (gbl_client_ssl_mode >= SSL_REQUIRE) {
+
+    check_sqlite_row(appdata, query);
+
+    if (SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
         switch (ssl_check(appdata, query)) {
         case 0: break;
         case 1: do_read = 1; // fallthrough
@@ -452,6 +484,10 @@ out:
 
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
+    if (!query) {
+        newsql_cleanup(appdata);
+        return;
+    }
     CDB2DBINFO *dbinfo = query->dbinfo;
     if (!dbinfo) {
         process_query(appdata, query);
@@ -502,9 +538,13 @@ static int verify_ssl(struct newsql_appdata_evbuffer *appdata)
         /* skip certificate check for local connections */
         return 0;
     }
+
     switch (gbl_client_ssl_mode) {
+    case SSL_PREFER_VERIFY_DBNAME:
     case SSL_VERIFY_DBNAME: if (verify_dbname(cert) != 0) return -1; // fallthrough
+    case SSL_PREFER_VERIFY_HOSTNAME:
     case SSL_VERIFY_HOSTNAME: if (verify_hostname(appdata, cert) != 0) return -1; // fallthrough
+    case SSL_PREFER_VERIFY_CA:
     case SSL_VERIFY_CA: if (!cert) return -1; // fallthrough
     default: return 0;
     }
@@ -603,8 +643,9 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
     case SSL_ERROR_ZERO_RETURN: disable_ssl_evbuffer(appdata); // fallthrough
     case SSL_ERROR_WANT_READ: return 1;
     case SSL_ERROR_SYSCALL:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
-               __func__, __LINE__, rc, err, errno, strerror(errno));
+        if (errno == 0 || errno == ECONNRESET) break;
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d SSL_ERROR_SYSCALL errno:%d [%s]\n",
+               __func__, __LINE__, rc, errno, strerror(errno));
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
@@ -630,15 +671,17 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         goto cleanup;
     }
     int rc;
-    char ssl_response = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+    char ssl_response = SSL_IS_ABLE(gbl_client_ssl_mode) ? 'Y' : 'N';
     if ((rc = write(appdata->fd, &ssl_response, 1)) != 1) {
         logmsg(LOGMSG_ERROR, "%s write fd:%d ssl_response:%c rc:%d err:%s\n",
                __func__, appdata->fd, ssl_response, rc, strerror(errno));
         goto cleanup;
     }
-    if (ssl_response != 'Y') {
-        goto cleanup;
+    if (ssl_response == 'N') {
+        rd_hdr(-1, 0, appdata);
+        return;
     }
+
     if (!appdata->ssl_data) {
         appdata->ssl_data = calloc(1, sizeof(struct ssl_data));
     }

@@ -53,6 +53,7 @@
 extern int __db_count_cursors(DB *db);
 extern int __dbenv_count_cursors_dbenv(DB_ENV *dbenv);
 
+int normalize_rectype(u_int32_t * rectype);
 int handle_undo_upd_ix(DB_ENV *dbenv, u_int32_t rectype,
                        llog_undo_upd_ix_args *updop, DB_LSN *lsn, db_recops op);
 int handle_repblob(DB_ENV *dbenv, u_int32_t rectype, llog_repblob_args *repblob,
@@ -95,6 +96,7 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
     bdb_state = (bdb_state_type *)dbenv->app_private;
 
     LOGCOPY_32(&rectype, bp);
+    normalize_rectype(&rectype);
 
     if (bdb_state->attr->snapisol && !gbl_rowlocks &&
         (op == DB_TXN_FORWARD_ROLL || op == DB_TXN_APPLY)) {

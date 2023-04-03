@@ -35,7 +35,8 @@ enum cdb2_hndl_alloc_flags {
     CDB2_RANDOM = 8,
     CDB2_RANDOMROOM = 16,
     CDB2_ROOM = 32,
-    CDB2_ADMIN = 64
+    CDB2_ADMIN = 64,
+    CDB2_SQL_ROWS = 128
 };
 
 enum cdb2_request_type {
@@ -76,7 +77,7 @@ enum cdb2_errors {
     CDB2ERR_TRAN_IO_ERROR = -105,
     CDB2ERR_ACCESS = -106,
 
-    CDB2ERR_TRAN_MODE_UNSUPPORTED = -107,
+    CDB2ERR_QUERYLIMIT = -107,
 
     CDB2ERR_SCHEMA = -110,
 
@@ -232,8 +233,7 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
                     const void *varaddr, int length);
 int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
                     const void *varaddr, int length);
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type,
-                    const void *varaddr, unsigned int count, int typelen);
+int cdb2_bind_array(cdb2_hndl_tp *, const char *, cdb2_coltype, const void *, size_t count, size_t typelen);
 int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);

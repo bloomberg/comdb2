@@ -463,6 +463,7 @@ SQLITE_API int sqlite3_exec(
                                       * local cache */
 #define SQLITE_SCHEMA_DOHSQL      51 /* see dohsql */
 #define SQLITE_EARLYSTOP_DOHSQL   52 /* see dohsql */
+#define SQLITE_SCHEMA_PUSH_REMOTE 53 /* push query to remote node */
 #define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
 #define SQLITE_ACCESS            201 /* failed permissions */
 #define SQLITE_LIMIT_DEPRECATED  202 /* SQLITE_LIMIT -- no longer used */
@@ -4853,7 +4854,7 @@ char *stmt_column_name(sqlite3_stmt *, int);
 char *stmt_column_decltype(sqlite3_stmt *pStmt, int index);
 char *stmt_cached_column_decltype(sqlite3_stmt *pStmt, int index);
 void stmt_set_cached_columns(sqlite3_stmt *, char **, char **, int);
-void stmt_set_vlock_tables(sqlite3_stmt *, char **, int);
+void stmt_set_vlock_tables(sqlite3_stmt *, char **, int, int);
 int stmt_do_column_names_match(sqlite3_stmt *);
 int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

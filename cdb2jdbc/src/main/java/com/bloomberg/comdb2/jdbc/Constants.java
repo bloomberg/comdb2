@@ -84,7 +84,7 @@ public class Constants {
         public static final int CDB2ERR_ACCESS = -106;
 
         /* linux */
-        public static final int CDB2ERR_TRAN_MODE_UNSUPPORTED = -107;
+        public static final int CDB2ERR_QUERYLIMIT = -107;
 
         public static final int CDB2ERR_SCHEMA = -110;
 
@@ -106,10 +106,66 @@ public class Constants {
 
     public enum SSL_MODE {
           ALLOW
+        , PREFER
+        , PREFER_VERIFY_CA
+        , PREFER_VERIFY_HOSTNAME
+        , PREFER_VERIFY_DBNAME
         , REQUIRE
         , VERIFY_CA
         , VERIFY_HOSTNAME
-        , VERIFY_DBNAME
+        , VERIFY_DBNAME;
+
+        public static boolean isRequired(SSL_MODE mode) {
+            switch(mode) {
+                case ALLOW:
+                case PREFER:
+                case PREFER_VERIFY_CA:
+                case PREFER_VERIFY_HOSTNAME:
+                case PREFER_VERIFY_DBNAME:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+        public static boolean isOptional(SSL_MODE mode) {
+            switch(mode) {
+                case ALLOW:
+                case PREFER:
+                case PREFER_VERIFY_CA:
+                case PREFER_VERIFY_HOSTNAME:
+                case PREFER_VERIFY_DBNAME:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        public static boolean isPreferred(SSL_MODE mode) {
+            switch(mode) {
+                case PREFER:
+                case PREFER_VERIFY_CA:
+                case PREFER_VERIFY_HOSTNAME:
+                case PREFER_VERIFY_DBNAME:
+                case VERIFY_CA:
+                case VERIFY_HOSTNAME:
+                case VERIFY_DBNAME:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        public static boolean needsVerification(SSL_MODE mode) {
+            switch(mode) {
+                case PREFER_VERIFY_CA:
+                case PREFER_VERIFY_HOSTNAME:
+                case PREFER_VERIFY_DBNAME:
+                case VERIFY_CA:
+                case VERIFY_HOSTNAME:
+                case VERIFY_DBNAME:
+                    return true;
+                default:
+                    return false;
+            }
+        }
     }
 
     public enum PEER_SSL_MODE {

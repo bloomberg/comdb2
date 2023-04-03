@@ -42,7 +42,8 @@
 
 struct string_ref;
 
-struct string_ref * create_string_ref(const char *str);
+struct string_ref * create_string_ref_internal(const char *str, const char *func, int line);
+#define create_string_ref(str) ({ struct string_ref *r; do { r = create_string_ref_internal(str, __func__, __LINE__); } while(0); r; })
 struct string_ref * get_ref(struct string_ref *ref);
 void put_ref(struct string_ref **ref);
 void transfer_ref(struct string_ref **from, struct string_ref **to);

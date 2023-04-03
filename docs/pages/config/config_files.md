@@ -460,8 +460,6 @@ preallocate_on_writes| 0 |Pre-allocate on writes
 preallocate_max| 256 * MEGABYTE |Pre-allocation size
 lsnerr_pgdump| 1 |Dump page on LSN errors
 lsnerr_pgdump_all| 0 |Dump page on LSN errors on all nodes
-max_backout_seconds| 0 |Refuse to roll back replicant past this many seconds
-max_backout_logs| 3 |Refuse to roll back replicant past this many log files
 log_applied_lsns| 0 |Log applied LSNs to log
 check_applied_lsns| 0 |Check transaction that its LSNs have been applied
 check_applied_lsns_fatal| 0 |Abort if check_applied_lsns fails
@@ -667,6 +665,7 @@ can be queried with the `stat autonalyze` command.
 |REP_VERIFY_MIN_PROGRESS | 10485760 | Abort replicant if it doesn't make this much progress while rolling back logs to sync up to master.
 |REP_VERIFY_LIMIT_ENABLED | 1 | Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.
 |DELETE_OLD_FILE_DEBUG | 0 | Spew debug info about deleting old files during schema change.
+|DONT_BLOCK_DELETE_FILES_THREAD | 0 | Don't delete any files that would cause delete files thread to block
 |file_permissions | 0660 | Default filesystem permissions for database files.
 
 #### Log configuration
@@ -776,6 +775,8 @@ These options are toggle-able at runtime.
 |default_sql_mspace_kbsz          | 1024            | Default size of memory regions owned by SQL threads, in KB 
 |osync                            |Off         | Enables `O_SYNC` on data files (reads still go through FS cache) if `directio` isn't set
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
+|commit_delay_timeout_seconds     |10          | Period of time a master will delay-commits if a copy is ongoing
+|commit_delay_on_copy_ms          |0           | Amount of time each commit will be delayed if a copy is ongoing
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
 |gbl_exit_on_pthread_create_fail  |1           | If set, database will exit if thread pools aren't able to create threads.
@@ -887,6 +888,9 @@ These options are toggle-able at runtime.
 |disable_inplace_blob_optimization | | Disables enable_inplace_blob_optimization
 |enable_osql_blob_optimization | set | Replicant tracks which columns are modified in a transaction to allow blob updates to be omitted if possible
 |disable_osql_blob_optimization | | Disables disable_osql_blob_optimization
+|stack_at_lock_get| not set | Collect comdb2_stack for every lock
+|stack_at_lock_handle| not set | Collect comdb2_stack for every handle-lock
+|stack_at_write_lock| not set | Collect comdb2_stack for every write-lock
 |pagedeadlock_maxpoll | 5 (ms) | Randomly poll for this many ms and retry a deadlocked component of a rowlocks transaction
 |pagedeadlock_retries | 500 | Retry a deadlocked component of a rowlock transaction this many times before reporting deadlock for the transaction.
 |enable_cache_internal_nodes | set | Btree internal nodes have a higher cache priority.
@@ -939,6 +943,7 @@ These options are toggle-able at runtime.
 |sockbplog_sockpool | off | Osql bplog sent over sockets is using local sockpool
 |throttle_txn_chunks_msec | 0 | Wait that many milliseconds before starting a new transaction chunk
 |externalauth| off | Enable use of external auth plugin
+|query_plan_percentage| 50 | Alarm if the average cost per row of current query plan is n percent above the cost for different query plan.
 
 
 

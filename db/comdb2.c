@@ -343,7 +343,11 @@ int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
 int gbl_debug_omit_zap_on_rebuild = 0;
+int gbl_debug_txn_sleep = 0;
 int gbl_debug_skip_constraintscheck_on_insert;
+int gbl_debug_pb_connectmsg_dbname_check = 0;
+int gbl_debug_pb_connectmsg_gibberish = 0;
+double gbl_query_plan_percentage = 50;
 int gbl_readonly = 0;
 int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
@@ -442,6 +446,7 @@ int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
+int gbl_utxnid_log = 1; 
 
 /* how many times we retry osql for verify */
 int gbl_osql_verify_retries_max = 499;
@@ -486,7 +491,7 @@ int gbl_parallel_recovery_threads = 0;
 
 int gbl_fdb_resolve_local = 0;
 int gbl_fdb_allow_cross_classes = 0;
-
+uint64_t gbl_sc_headroom = 10;
 /*---COUNTS---*/
 long n_qtrap;
 long n_fstrap;
@@ -659,7 +664,7 @@ int gbl_check_wrong_db = 1;
 int gbl_broken_max_rec_sz = 0;
 int gbl_private_blkseq = 1;
 int gbl_use_blkseq = 1;
-int gbl_reorder_socksql_no_deadlock = 1;
+int gbl_reorder_socksql_no_deadlock = 0;
 int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
@@ -737,6 +742,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_query_plans = 1;
 int gbl_prioritize_queries = 1;
 int gbl_verbose_normalized_queries = 0;
 int gbl_verbose_prioritize_queries = 0;
@@ -1336,7 +1342,7 @@ static void *purge_old_files_thread(void *arg)
         /* ok, get to work now */
         retries = 0;
     retry:
-        rc = trans_start_sc(&iq, NULL, &trans);
+        rc = trans_start_sc_fop(&iq, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: failed to create transaction\n", __func__);
             sleep_with_check_for_exiting(empty_pause);
@@ -1645,6 +1651,8 @@ static void begin_clean_exit(void)
  */
 void clean_exit(void)
 {
+    report_fastseed_users(LOGMSG_ERROR);
+
     if(gbl_perform_full_clean_exit) {
         begin_clean_exit();
         return;
@@ -2753,7 +2761,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sql_threads, offsetof(struct sql_thread, lnk));
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
 
-    dbenv->master = NULL; /*no known master at this point.*/
+    thedb_set_master(db_eid_invalid);
     dbenv->errstaton = 1; /* ON */
 
     dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
@@ -5283,6 +5291,7 @@ static void register_all_int_switches()
     register_int_switch("fingerprint_queries",
                         "Compute fingerprint for SQL queries",
                         &gbl_fingerprint_queries);
+    register_int_switch("query_plans", "Keep track of query plans and their costs for each query", &gbl_query_plans);
     register_int_switch("verbose_normalized_queries",
                         "For new fingerprints, show normalized queries.",
                         &gbl_verbose_normalized_queries);
@@ -5552,7 +5561,7 @@ int main(int argc, char **argv)
     berk_fsync_alarm_ms(__berkdb_fsync_alarm_ms);
     berk_memp_sync_alarm_ms(500);
 
-    sighold(SIGPIPE); /*dothis before kicking off any threads*/
+    signal(SIGPIPE, SIG_IGN); /* do this before kicking off any threads */
 
     thrman_init();
     javasp_once_init();
@@ -5949,6 +5958,16 @@ int check_current_schemas(void)
     }
 
     return 0;
+}
+
+int log_delete_is_stopped(void)
+{
+    int rc;
+    struct dbenv *dbenv = thedb;
+    Pthread_mutex_lock(&dbenv->log_delete_counter_mutex);
+    rc = dbenv->log_delete_state_list.count;
+    Pthread_mutex_unlock(&dbenv->log_delete_counter_mutex);
+    return rc;
 }
 
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state)

@@ -386,6 +386,8 @@ __ufid_dump(dbenv)
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 }
 
+#include <tohex.h>
+
 // PUBLIC: int __ufid_add_dbp __P(( DB_ENV *, DB *));
 int
 __ufid_add_dbp(dbenv, dbp)
@@ -397,18 +399,25 @@ __ufid_add_dbp(dbenv, dbp)
 
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
-		if (ufid->dbp != NULL) {
-			DB_ASSERT(ufid->dbp == dbp);
+		if (ufid->dbp != NULL && ufid->dbp != dbp) {
+			/* There may be 2 dbp's for the same ufid, if a replicant upgrades to a
+			   master and later assigns a dbreg ID to a btree (see __dbreg_lazy_id).
+			   In this case, we need to take the old dbp off the hashtable so that
+			   __db_close() doesn't mistakenly clear the new dbp. */
+			ufid->dbp->added_to_ufid = 0;
 		}
 	} else {
 		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
 			abort();
 		}
 		memcpy(ufid->ufid, dbp->fileid, DB_FILE_ID_LEN);
-		if (dbp->fname)
+		if (dbp->fname) {
 			ufid->fname = strdup(dbp->fname);
-		else
+			ufid->ignore = dbenv->rep_ignore ? dbenv->rep_ignore(ufid->fname) : 0;
+		} else {
 			ufid->fname = NULL;
+			ufid->ignore = 0;
+		}
 		hash_add(dbenv->ufid_to_db_hash, ufid);
 	}
 
@@ -460,9 +469,13 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	DB_LSN *lsnp;
 {
 	DB_LOG *dblp;
-	DB *dbp;
-	int ret;
+	DB *dbp = NULL;
+	int ret = 0;
 	dblp = dbenv->lg_handle;
+
+	extern int gbl_abort_ufid_open;
+	if (gbl_abort_ufid_open)
+		abort();
 
 	if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
 		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error creating db:%s\n", name);
@@ -472,11 +485,11 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 
 	if ((ret = __db_open(dbp, txn, name, NULL,
 		DB_UNKNOWN, DB_ODDFILESIZE, __db_omode("rw----"), 0)) != 0) {
-		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error opening db:%s\n", name);
-		abort();
+		logmsg(LOGMSG_INFO, "__dbreg_fid_to_fname error opening db:%s\n", name);
+		ret = ENOENT;
 	}
-	(*dbpp) = dbp;
-	return 0;
+	if (!ret) (*dbpp) = dbp;
+	return ret;
 }
 
 int gbl_abort_on_missing_ufid = 0;
@@ -507,6 +520,13 @@ __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
 				close_dbp = dbp;
 			}
 		}
+		if (ret == ENOENT) {
+			if (gbl_abort_on_missing_ufid) {
+				abort();
+			}
+			ret = DB_DELETED;
+		}
+		ret = ret ? ret : (ufid->ignore ? DB_IGNORED : 0);
 		(*dbpp) = ufid->dbp;
 	} else {
 		if (gbl_abort_on_missing_ufid) {
@@ -1160,10 +1180,14 @@ __dbreg_lazy_id(dbp)
 	lp = dblp->reginfo.primary;
 	fnp = dbp->log_filename;
 
+	/* The lazy_id_mutex protects replication from allocating
+	   a new dbreg ID in the middle of a schema change. */
+	MUTEX_LOCK(dbenv, &lp->lazy_id_mutex);
 	/* The fq_mutex protects the FNAME list and id management. */
 	MUTEX_LOCK(dbenv, &lp->fq_mutex);
 	if (fnp->id != DB_LOGFILEID_INVALID) {
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+		MUTEX_UNLOCK(dbenv, &lp->lazy_id_mutex);
 		return (0);
 	}
 	id = DB_LOGFILEID_INVALID;
@@ -1193,6 +1217,7 @@ err:
 	if (ret != 0 && id != DB_LOGFILEID_INVALID)
 		(void)__dbreg_revoke_id(dbp, 1, id);
 	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+	MUTEX_UNLOCK(dbenv, &lp->lazy_id_mutex);
 	return (ret);
 }
 
@@ -1543,4 +1568,36 @@ __dbreg_exists(DB_ENV *dbenv, const char *find_name)
 	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 
 	return found;
+}
+
+/*
+ * PUBLIC: void __dbreg_lock_lazy_id __P((DB_ENV *));
+ */
+void
+__dbreg_lock_lazy_id(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_LOG *dblp;
+	LOG *lp;
+
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+
+	MUTEX_LOCK(dbenv, &lp->lazy_id_mutex);
+}
+
+/*
+ * PUBLIC: void __dbreg_unlock_lazy_id __P((DB_ENV *));
+ */
+void
+__dbreg_unlock_lazy_id(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_LOG *dblp;
+	LOG *lp;
+
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+
+	MUTEX_UNLOCK(dbenv, &lp->lazy_id_mutex);
 }

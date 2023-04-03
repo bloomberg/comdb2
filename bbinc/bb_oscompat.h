@@ -17,6 +17,7 @@
 #ifndef INCLUDED_BB_OSCOMPAT_H
 #define INCLUDED_BB_OSCOMPAT_H
 
+#include <stdlib.h>
 #include <dirent.h>
 
 #ifdef __cplusplus

@@ -9,7 +9,7 @@ There is no change in the schema
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 Schema change plan:-
@@ -22,7 +22,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -36,7 +36,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -54,7 +54,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -73,7 +73,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -87,7 +87,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -104,7 +104,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records will be compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -123,7 +123,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -137,7 +137,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -154,7 +154,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs will be compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -173,7 +173,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -187,7 +187,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records are not compressed.
 Table blobs are not compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)
@@ -204,7 +204,7 @@ Schema change plan:-
 Table is already odh enabled.
 Table records will be compressed.
 Table blobs will be compressed.
-Table supports in-place updates.
+Table already supports in-place updates.
 Table already supports instant schema change.
 Live schema change running in parallel scan mode
 (rows inserted=1)

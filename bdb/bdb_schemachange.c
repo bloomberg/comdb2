@@ -257,10 +257,10 @@ retry:
         return -1;
     }
 
-    if ((sctype == alter || sctype == fastinit || sctype == bulkimport) &&
-        (strncmp(tbl, "sqlite_stat",
-                 sizeof("sqlite_stat") - 1) != 0))
+    if ((sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop) &&
+        (strncmp(tbl, "sqlite_stat", sizeof("sqlite_stat") - 1) != 0)) {
         bdb_lock_tablename_write(bdb_state, tbl, tran);
+    }
     /* analyze does NOT need schema_lk */
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;

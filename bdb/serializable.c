@@ -52,6 +52,8 @@
 #include <llog_auto.h>
 #include <llog_ext.h>
 
+int normalize_rectype(u_int32_t * rectype);
+
 int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
 {
     int rc = 0;
@@ -89,9 +91,10 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
         return rc;
     }
     rc = cur->get(cur, &lsn, &logdta, DB_SET);
-    if (!rc)
+    if (!rc) {
         LOGCOPY_32(&rectype, logdta.data);
-    else {
+        normalize_rectype(&rectype);
+    } else {
         fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
         fprintf(stderr, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
         return 1;
@@ -301,9 +304,10 @@ int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
 
         /* Get previous logical log */
         rc = cur->get(cur, &lsn, &logdta, DB_SET);
-        if (!rc)
+        if (!rc) {
             LOGCOPY_32(&rectype, logdta.data);
-        else {
+            normalize_rectype(&rectype);
+        } else {
             fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n", rc);
             fprintf(stderr, "@ file: %d, offset %d\n", lsn.file, lsn.offset);
             return 1;
@@ -401,8 +405,10 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
             commit = NULL;
         }
         rc = cur->get(cur, &seriallsn, &logdta, DB_SET);
-        if (!rc)
+        if (!rc) {
             LOGCOPY_32(&rectype, logdta.data);
+            normalize_rectype(&rectype);
+        }
         else if (rc == DB_NOTFOUND) {
             *file = seriallsn.file;
             *offset = seriallsn.offset;
@@ -433,8 +439,10 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
             }
 
             rc = cur->get(cur, &seriallsn, &logdta, DB_NEXT);
-            if (!rc)
+            if (!rc) {
                 LOGCOPY_32(&rectype, logdta.data);
+                normalize_rectype(&rectype);
+            }
             else if (rc == DB_NOTFOUND) {
                 *file = seriallsn.file;
                 *offset = seriallsn.offset;
@@ -451,8 +459,10 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 free(logdta.data);
                 logdta.data = NULL;
                 rc = prevcur->get(prevcur, &prevlsn, &logdta, DB_SET);
-                if (!rc)
+                if (!rc) {
                     LOGCOPY_32(&rectype, logdta.data);
+                    normalize_rectype(&rectype);
+                }
                 else {
                     fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
@@ -470,9 +480,10 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 free(logdta.data);
                 logdta.data = NULL;
                 rc = prevcur->get(prevcur, &prevlsn, &logdta, DB_SET);
-                if (!rc)
+                if (!rc) {
                     LOGCOPY_32(&rectype, logdta.data);
-                else {
+                    normalize_rectype(&rectype);
+                } else {
                     fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
                     fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,
@@ -489,9 +500,10 @@ static int osql_serial_check(bdb_state_type *bdb_state, void *ranges,
                 free(logdta.data);
                 logdta.data = NULL;
                 rc = prevcur->get(prevcur, &prevlsn, &logdta, DB_SET);
-                if (!rc)
+                if (!rc) {
                     LOGCOPY_32(&rectype, logdta.data);
-                else {
+                    normalize_rectype(&rectype);
+                } else {
                     fprintf(stderr, "Unable to get last_logical_lsn, rc %d\n",
                             rc);
                     fprintf(stderr, "@ file: %d, offset %d\n", seriallsn.file,

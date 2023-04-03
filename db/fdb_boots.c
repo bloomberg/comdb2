@@ -59,7 +59,7 @@ struct fdb_affinity {
 static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      int maxnodes,
                                      /* out: */ char *nodes[REPMAX],
-                                     int *nnodes, int room[REPMAX]);
+                                     int *nnodes, int *room);
 
 /**
  * Retrieves node location from comdb2db for "dbname" of class "class"

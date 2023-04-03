@@ -1382,8 +1382,9 @@ char *typestr(int type, int len)
     case SERVER_BCSTR:
         return "bcstring";
     case SERVER_BYTEARRAY:
-        return "bbytearray";
+        return "bytearray";
     case SERVER_BLOB:
+    case SERVER_BLOB2:
         return "blob";
     case SERVER_DATETIME:
         return "datetime";
@@ -6745,11 +6746,9 @@ int create_key_from_schema(const struct dbtable *db, struct schema *schema, int 
                 abort();
             }
             if (partial_datacopy_tail && (tosch->flags & SCHEMA_PARTIALDATACOPY)) {
-                rc = _stag_to_stag_buf_flags_blobs(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail, 0 /*flags*/, NULL, inblobs, NULL /*outblobs*/,
-                                       maxblobs, tzname);
+                rc = stag_to_stag_buf_schemas(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail, tzname);
                 if (rc)
                     return rc;
-
                 *tail = (char *)partial_datacopy_tail;
                 *taillen = get_size_of_schema(tosch->partial_datacopy);
             } else {
@@ -6825,8 +6824,8 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
             struct schema *fromsch = get_schema(db, -1);
             struct schema *tosch = get_schema(db, ixnum);
             if (partial_datacopy_tail && (tosch->flags & SCHEMA_PARTIALDATACOPY)) {
-                rc = _stag_to_stag_buf_flags_blobs(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail, 0 /*flags*/, NULL, NULL /*inblobs*/, NULL /*outblobs*/,
-                                       0 /*maxblobs*/, iq->tzname);
+                rc = stag_to_stag_buf_schemas(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail,
+                                              iq->tzname);
                 if (rc)
                     return rc;
 

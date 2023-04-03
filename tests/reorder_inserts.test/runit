@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-set -e
 set -x
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
@@ -76,10 +75,29 @@ do_inserts()
     echo "done inserter $item"
 }
 
+
+# {171621407} simple inserts were failing for key lengths >= 512
+# this function exercises simple inserts in a transaction
+basic_inserts() {
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "DROP TABLE IF EXISTS t2" > t2.out
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t2 {`cat t2.csc2`}" >> t2.out
+    echo "begin" > t2.ins
+    local j=0
+    while [[ $j -lt 10 ]] ; do
+        echo "insert into t2 values('1','${j}')" >> t2.ins
+	let j=j+1
+    done
+    echo "commit" >> t2.ins
+    cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default -f t2.ins >> t2.out 
+    assertcnt t2 10
+}
+
 #cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (a,b,c,d) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $NUM) SELECT x,(x+1)%100,(x+2)%100,(x+3)%100 FROM i" > ins1.out
 
 tun=`cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "select value from comdb2_tunables where name='print_deadlock_cycles'"`
 assertres $tun 1 # Tunable needs to be set to 1
+
+basic_inserts
 
 i=0
 while [[ $i -lt $INSERTERS ]] ; do 
@@ -103,7 +121,7 @@ else
 fi
 
 ddcount=`grep -c DEADLOCK $mlog`
-limit=300
+limit=150
 if [[ $DBNAME == *"noreordergenerated"* ]] ; then
     if [[ $ddcount -lt $limit ]] ; then
         failexit 'no reorder expected to get more than 500 deadlocks for this test'

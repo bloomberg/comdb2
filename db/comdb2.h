@@ -19,7 +19,6 @@
 
 /* MOVE THESE TO COMDB2_API.H */
 
-#define SQLHERR_LIMIT (-107)
 #define SQLHERR_ROLLBACKTOOLARGE (-108)
 #define SQLHERR_ROLLBACK_TOOOLD (-109)
 #define SQLHERR_ROLLBACK_NOLOG (-110)
@@ -826,7 +825,8 @@ struct dbenv {
     void *bdb_callback; /*engine callbacks */
 
     char *master; /*current master node, from callback*/
-    int gen;      /*election generation for current master node*/
+    int gen;      /*generation for current master node*/
+    int egen;     /*election generation for current master node*/
 
     int cacheszkb;
     int cacheszkbmin;
@@ -836,7 +836,7 @@ struct dbenv {
     /*sibling info*/
     int nsiblings;
     char *sibling_hostname[REPMAX];
-    short sibling_port[REPMAX][NET_MAX];
+    unsigned short sibling_port[REPMAX][NET_MAX];
     int listen_fds[NET_MAX];
     /* banckend db engine handle for replication */
     void *handle_sibling;
@@ -1252,6 +1252,7 @@ struct osql_sess {
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
     int is_tranddl;
+    int is_tptlock;   /* needs tpt locking */
     int is_cancelled; /* 1 if session is cancelled */
 };
 typedef struct osql_sess osql_sess_t;
@@ -1403,6 +1404,7 @@ struct ireq {
     int osql_flags;
     uint32_t priority;
     int tranddl;
+    int tptlock; /* need to know if we need to wrap whole txn in a view_lock */
     uint32_t written_row_count;
     uint32_t cascaded_row_count;
 
@@ -1835,7 +1837,7 @@ extern int gbl_sockbplog_sockpool;
 extern int gbl_logical_live_sc;
 
 extern int gbl_test_io_errors;
-
+extern uint64_t gbl_sc_headroom;
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -2036,6 +2038,7 @@ void tran_dump(struct long_trn_stat *tstats);
 /* transactional stuff */
 int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_sc_fop(struct ireq *, tran_type **out);
 int trans_start_sc_lowpri(struct ireq *, tran_type **out);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             uint32_t retries, uint32_t priority);
@@ -2859,6 +2862,7 @@ int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
                    const char *fmt, ...);
 
 enum { LOG_DEL_ABS_ON, LOG_DEL_ABS_OFF, LOG_DEL_REFRESH };
+int log_delete_is_stopped(void);
 void log_delete_counter_change(struct dbenv *dbenv, int action);
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state);
 void log_delete_rem_state(struct dbenv *dbenv, struct log_delete_state *state);

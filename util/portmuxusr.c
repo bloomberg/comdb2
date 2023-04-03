@@ -710,7 +710,6 @@ static int portmux_recover_route(portmux_fd_t *fds)
 
 static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
 {
-    int max_retries = 60;
     int rc;
     time_t now;
 
@@ -763,19 +762,6 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
                __LINE__, portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
-    } else {
-        /* If we have tcp connectivity then we can stop trying to
-         * connect the unix socket.
-         */
-        if (fds->nretries > max_retries && fds->tcplistenfd >= 0) {
-            /*too many attempts to get unix socket
-             *connectivity drop it and only use tcp port*/
-            logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
-                                 "too many retries %d will only use port# %d\n",
-                   __func__, __LINE__, portmux_unix_socket, fds->app,
-                   fds->service, fds->instance, fds->nretries, fds->port);
-            fds->recov_conn = 0 /*FALSE*/;
-        }
     }
 
     return 0;
@@ -1201,7 +1187,6 @@ static int portmux_poll(portmux_fd_t *fds, int timeoutms,
  */
 static int portmux_handle_recover_v(portmux_fd_t *fds)
 {
-    int max_retries = 60;
     int rc;
 
     if (fds->listenfd >= 0) {
@@ -1251,20 +1236,6 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
                __LINE__, portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
-    } else {
-        /* If we have tcp connectivity then we can stop trying to
-         * connect the unix socket.
-         */
-        if (fds->nretries > max_retries && fds->tcplistenfd >= 0) {
-            /*too many attempts to get unix socket
-             *connectivity drop it and only use tcp port*/
-            logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
-                                 "too many retries %d will only use port# %d\n",
-                   __func__, __LINE__, portmux_unix_socket, fds->app,
-                   fds->service, fds->instance, fds->nretries, fds->port);
-            fds->recov_conn = 0 /*FALSE*/;
-            return 2;
-        }
     }
 
     return (fds->listenfd >= 0) ? 0 : 1;
@@ -1549,6 +1520,10 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
             } else {
                 tcplistenfd = -1;
             }
+        } else if (listenfd  < 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d portmux listen errno=[%d] %s\n", __func__,
+                    __LINE__, errno, strerror(errno));
+            return NULL;
         }
     }
 
@@ -1587,7 +1562,7 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
     fds->options = options;
 
     /*check if we have connection on portmux unix socket*/
-    if (fds->listenfd >= 0) {
+    if (PORTMUX_ROUTE_MODE_ENABLED()) {
         /*in case connection is dropped try to recover it*/
         fds->recov_conn = 1 /*TRUE*/;
     } else {

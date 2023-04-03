@@ -151,10 +151,10 @@ static double cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
 
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
-typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
-static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
+typedef struct cdb2_ssl_sess cdb2_ssl_sess;
+static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
-                                 cdb2_ssl_sess_list *sessions);
+                                 cdb2_ssl_sess *sessions);
 static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl);
 
 static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -906,23 +906,15 @@ typedef struct cdb2_query_list_item {
     struct cdb2_query_list_item *next;
 } cdb2_query_list;
 
-typedef struct cdb2_ssl_sess {
-    char host[CDB2HOSTNAME_LEN];
-    SSL_SESSION *sess;
-} cdb2_ssl_sess;
-
-struct cdb2_ssl_sess_list {
-    cdb2_ssl_sess_list *next;
+struct cdb2_ssl_sess {
+    struct cdb2_ssl_sess *next;
     char dbname[64];
     char cluster[64];
     int ref;
-    int n;
-    /* We need to malloc the list separately as
-       the list may change due to SSL re-negotiation
-       or database migration. */
-    cdb2_ssl_sess *list;
+    SSL_SESSION *sessobj;
 };
-static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
+
+static cdb2_ssl_sess cdb2_ssl_sess_cache;
 
 /* A cnonce is composed of
    - 32 bits of machine ID
@@ -1024,7 +1016,7 @@ struct cdb2_hndl {
     char *crl;
     int cache_ssl_sess;
     double min_tls_ver;
-    cdb2_ssl_sess_list *sess_list;
+    cdb2_ssl_sess *sess;
     int nid_dbname;
     /* 1 if it's a newly established session which needs to be cached. */
     int newsess;
@@ -1229,6 +1221,14 @@ int is_valid_int(const char *str)
 
 static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 {
+    if (strcasecmp(SSL_MODE_PREFER, s) == 0)
+        return SSL_PREFER;
+    if (strcasecmp(SSL_MODE_PREFER_VERIFY_CA, s) == 0)
+        return SSL_PREFER_VERIFY_CA;
+    if (strcasecmp(SSL_MODE_PREFER_VERIFY_HOST, s) == 0)
+        return SSL_PREFER_VERIFY_HOSTNAME;
+    if (strcasecmp(SSL_MODE_PREFER_VERIFY_DBNAME, s) == 0)
+        return SSL_PREFER_VERIFY_DBNAME;
     if (strcasecmp(SSL_MODE_REQUIRE, s) == 0)
         return SSL_REQUIRE;
     if (strcasecmp(SSL_MODE_VERIFY_CA, s) == 0)
@@ -1368,6 +1368,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 if (tok != NULL) {
                     if (strcasecmp(SSL_MODE_ALLOW, tok) == 0)
                         cdb2_c_ssl_mode = SSL_ALLOW;
+                    else if (strcasecmp(SSL_MODE_PREFER, tok) == 0)
+                        cdb2_c_ssl_mode = SSL_PREFER;
+                    else if (strcasecmp(SSL_MODE_PREFER_VERIFY_CA, tok) == 0)
+                        cdb2_c_ssl_mode = SSL_PREFER_VERIFY_CA;
+                    else if (strcasecmp(SSL_MODE_PREFER_VERIFY_HOST, tok) == 0)
+                        cdb2_c_ssl_mode = SSL_PREFER_VERIFY_HOSTNAME;
                     else if (strcasecmp(SSL_MODE_REQUIRE, tok) == 0)
                         cdb2_c_ssl_mode = SSL_REQUIRE;
                     else if (strcasecmp(SSL_MODE_VERIFY_CA, tok) == 0)
@@ -1376,6 +1382,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                         cdb2_c_ssl_mode = SSL_VERIFY_HOSTNAME;
                     else if (strcasecmp(SSL_MODE_VERIFY_DBNAME, tok) == 0) {
                         cdb2_c_ssl_mode = SSL_VERIFY_DBNAME;
+                        tok = strtok_r(NULL, " :,", &last);
+                        if (tok != NULL)
+                            cdb2_nid_dbname = OBJ_txt2nid(tok);
+                    } else if (strcasecmp(SSL_MODE_PREFER_VERIFY_DBNAME, tok) == 0) {
+                        cdb2_c_ssl_mode = SSL_PREFER_VERIFY_DBNAME;
                         tok = strtok_r(NULL, " :,", &last);
                         if (tok != NULL)
                             cdb2_nid_dbname = OBJ_txt2nid(tok);
@@ -2083,19 +2094,21 @@ static int send_reset(SBUF2 *sb)
     return 0;
 }
 
-static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
+static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
 {
     /*
-     *                   |<---------------- CLIENT ---------------->|
-     *                   |------------------------------------------|
-     *                   |    REQUIRE    |    ALLOW    |    < R7    |
-     * -------|-----------------------------------------------------|
-     *   ^    | REQUIRE  |     SSL[1]    |    SSL[1]   |    X[2]    |
-     *   |    |-----------------------------------------------------|
-     * SERVER | ALLOW    |     SSL[1]    |  PLAINTEXT  |  PLAINTEXT |
-     *   |    |-----------------------------------------------------|
-     *   v    | < R7     |     X[3]      |  PLAINTEXT  |  PLAINTEXT |
-     * -------|-----------------------------------------------------|
+     *                   |<----------------------- CLIENT ----------------------->|
+     *                   |--------------------------------------------------------|
+     *                   |    REQUIRE    |    PREFER   |    ALLOW    |   others   |
+     * -------|-------------------------------------------------------------------|
+     *   ^    | REQUIRE  |     SSL[1]    |    SSL[1]   |    SSL[1]   |    X[2]    |
+     *   |    |-------------------------------------------------------------------|
+     *   |    | PREFER   |     SSL[1]    |    SSL[1]   |    SSL[1]   |  PLAINTEXT |
+     *   |    |-------------------------------------------------------------------|
+     * SERVER | ALLOW    |     SSL[1]    |    SSL[1]   |  PLAINTEXT  |  PLAINTEXT |
+     *   |    |-------------------------------------------------------------------|
+     *   v    | others   |     X[3]      |  PLAINTEXT  |  PLAINTEXT  |  PLAINTEXT |
+     * -------|-------------------------------------------------------------------|
      *        [1] The client writes an SSL negotiation packet first.
      *        [2] Rejected by the server.
      *        [3] Rejected by the client API.
@@ -2107,7 +2120,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     int rc, dossl = 0;
     cdb2_ssl_sess *p;
 
-    if (hndl->c_sslmode >= SSL_REQUIRE) {
+    if (SSL_IS_REQUIRED(hndl->c_sslmode)) {
         switch (hndl->s_sslmode) {
         case PEER_SSL_UNSUPPORTED:
             sprintf(hndl->errstr, "The database does not support SSL.");
@@ -2123,7 +2136,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
             hndl->sslerr = 1;
             return -1;
         }
-    } else {
+    } else if (SSL_IS_PREFERRED(hndl->c_sslmode)) {
+        dossl = 1;
+    } else { /* hndl->c_sslmode == SSL_ALLOW */
         switch (hndl->s_sslmode) {
         case PEER_SSL_ALLOW:
         case PEER_SSL_UNSUPPORTED:
@@ -2156,14 +2171,21 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1)
         return -1;
-    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0)
+    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
+        /* If SSL is optional (this includes ALLOW and PREFER), change
+           my mode to ALLOW so that we can reconnect in plaintext. */
+        if (SSL_IS_OPTIONAL(hndl->c_sslmode))
+            hndl->c_sslmode = SSL_ALLOW;
         return rc;
+    }
 
     /* The node does not agree with dbinfo. This usually happens
        during the downgrade from SSL to non-SSL. */
     if (rc == 'N') {
-        if (hndl->c_sslmode <= SSL_ALLOW)
+        if (SSL_IS_OPTIONAL(hndl->c_sslmode)) {
+            hndl->c_sslmode = SSL_ALLOW;
             return 0;
+        }
 
         /* We reach here only if the server is mistakenly downgraded
            before the client. */
@@ -2180,17 +2202,15 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    p = (hndl->sess_list == NULL) ? NULL : &(hndl->sess_list->list[indx]);
-
-    rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname,
-                       ((p != NULL) ? p->sess : NULL));
+    p = hndl->sess;
+    rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname, ((p != NULL) ? p->sessobj : NULL));
 
     SSL_CTX_free(ctx);
     if (rc != 1) {
         hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
-            p->sess = NULL;
+            p->sessobj = NULL;
         return -1;
     }
     hndl->newsess = 1;
@@ -2342,7 +2362,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 
     sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
-    if (try_ssl(hndl, sb, node_indx) != 0) {
+    if (try_ssl(hndl, sb) != 0) {
         sbuf2close(sb);
         rc = -1;
         goto after_callback;
@@ -2598,8 +2618,7 @@ static inline void ack(cdb2_hndl_tp *hndl)
 {
     hndl->ack = 0;
     struct newsqlheader hdr = {.type =
-                                   htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)};
-
+                                   htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)}; 
     sbuf2write((void *)&hdr, sizeof(hdr), hndl->sb);
     sbuf2flush(hndl->sb);
 }
@@ -2980,6 +2999,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
     }
 
+    if (hndl && hndl->flags & CDB2_SQL_ROWS) {
+        features[n_features++] = CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT;
+    }
+
     if (n_features) {
         sqlquery.n_features = n_features;
         sqlquery.features = features;
@@ -3129,8 +3152,10 @@ retry_next_record:
             PRINT_AND_RETURN_OK(CDB2_OK_DONE);
         }
 
-        if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES &&
-                hndl->lastresponse->error_code != 0) {
+        if ((hndl->lastresponse->response_type ==
+                 RESPONSE_TYPE__COLUMN_VALUES ||
+             hndl->lastresponse->response_type == RESPONSE_TYPE__SQL_ROW) &&
+            hndl->lastresponse->error_code != 0) {
             int rc = cdb2_convert_error_code(hndl->lastresponse->error_code);
             if (hndl->in_trans) {
                 /* Give the same error for every query until commit/rollback */
@@ -3192,13 +3217,22 @@ retry_next_record:
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
+    if (hndl->flags & CDB2_SQL_ROWS &&
+        hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW &&
+        !hndl->lastresponse->has_sqlite_row) {
+        debugprint("received regular row when asked for sqlite format\n");
+        sprintf(hndl->errstr, "remote is R7 or lower");
+        return -1;
+    }
+
     if (hndl->lastresponse->snapshot_info &&
         hndl->lastresponse->snapshot_info->file) {
         hndl->snapshot_file = hndl->lastresponse->snapshot_info->file;
         hndl->snapshot_offset = hndl->lastresponse->snapshot_info->offset;
     }
 
-    if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
+    if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES ||
+        hndl->lastresponse->response_type == RESPONSE_TYPE__SQL_ROW) {
         // "Good" rcodes are not retryable
         if (is_retryable(hndl->lastresponse->error_code) &&
             hndl->snapshot_file) {
@@ -3268,7 +3302,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
         rc = CDB2_OK_DONE;
     } else if (hndl->lastresponse && hndl->first_record_read == 0) {
         hndl->first_record_read = 1;
-        if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
+        if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES ||
+            hndl->lastresponse->response_type == RESPONSE_TYPE__SQL_ROW) {
             rc = hndl->lastresponse->error_code;
         } else if (hndl->lastresponse->response_type ==
                    RESPONSE_TYPE__LAST_ROW) {
@@ -3457,9 +3492,9 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     free(hndl->key);
     free(hndl->ca);
     free(hndl->crl);
-    if (hndl->sess_list) {
+    if (hndl->sess) {
         /* This is correct - we don't have to do it under lock. */
-        hndl->sess_list->ref = 0;
+        hndl->sess->ref = 0;
     }
 
     curre = NULL;
@@ -3739,12 +3774,9 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         debugprint("type=%d returning 1\n", type);
 
         /* Clear cached SSL sessions - Hosts may have changed. */
-        if (hndl->sess_list != NULL) {
-            cdb2_ssl_sess_list *sl = hndl->sess_list;
-            for (int i = 0; i != sl->n; ++i)
-                SSL_SESSION_free(sl->list[i].sess);
-            free(sl->list);
-            sl->list = NULL;
+        if (hndl->sess != NULL) {
+            SSL_SESSION_free(hndl->sess->sessobj);
+            hndl->sess->sessobj = NULL;
         }
         return 1;
     }
@@ -4395,7 +4427,7 @@ read_record:
             hndl->first_buf = NULL;
             hndl->s_sslmode = PEER_SSL_REQUIRE;
             /* server wants us to use ssl so turn ssl on in same connection */
-            try_ssl(hndl, hndl->sb, hndl->connected_host);
+            try_ssl(hndl, hndl->sb);
 
             /* Decrement retry counter: It is not a real retry. */
             --retries_done;
@@ -4424,12 +4456,9 @@ read_record:
             hndl->retry_all = 1;
 
             /* Clear cached SSL sessions - Hosts may have changed. */
-            if (hndl->sess_list != NULL) {
-                cdb2_ssl_sess_list *sl = hndl->sess_list;
-                for (int i = 0; i != sl->n; ++i)
-                    SSL_SESSION_free(sl->list[i].sess);
-                free(sl->list);
-                sl->list = NULL;
+            if (hndl->sess != NULL) {
+                SSL_SESSION_free(hndl->sess->sessobj);
+                hndl->sess->sessobj = NULL;
             }
             free(hndl->first_buf);
             hndl->first_buf = NULL;
@@ -4585,6 +4614,8 @@ read_record:
             PRINT_AND_RETURN(err_val);
         }
     }
+
+    debugprint("Received message %d\n", hndl->firstresponse->response_type);
 
     if (using_hint) {
         if (hndl->firstresponse->error_code ==
@@ -4974,6 +5005,9 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
     /* data came back in the child column structure */
     if (lastresponse->value != NULL)
         return lastresponse->value[col]->value.len;
+    /* sqlite row */
+    if (hndl->lastresponse->has_sqlite_row)
+        return lastresponse->sqlite_row.len;
     /* data came back in the parent CDB2SQLRESPONSE structure */
     return (col_values_flattened(lastresponse)) ? lastresponse->values[col].len : -1;
 }
@@ -4993,6 +5027,9 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
         }
         return lastresponse->value[col]->value.data;
     }
+    /* sqlite row */
+    if (hndl->lastresponse->has_sqlite_row)
+        return lastresponse->sqlite_row.data;
     /* data came back in the parent CDB2SQLRESPONSE structure */
     if (col_values_flattened(lastresponse)) {
         /* handle empty values */
@@ -5076,72 +5113,97 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
 }
 
 
-#define GENERIC_BIND_ARR_VALUE(bind_array, Type, type, ctype, oneoftype)                                           \
-    do {     \
-        CDB2SQLQUERY__Bindvalue__##Type##array *arr = malloc(sizeof(CDB2SQLQUERY__Bindvalue__##Type##array));           \
-        cdb2__sqlquery__bindvalue__##type##array__init(arr);           \
-        arr->elements = (ctype) varaddr;           \
-        arr->n_elements = count;           \
-        bind_array = malloc(sizeof(CDB2SQLQUERY__Bindvalue__Bindarray));           \
-        cdb2__sqlquery__bindvalue__bindarray__init(bind_array);           \
-        bind_array->oneof_t_case = CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_##oneoftype##_ARR;           \
-        bind_array->type##_arr = arr;    \
-    } while(0);
-
-
 /* cdb2_bind_array -- bind c array to a parameter name
  * name is the variable name we used in the sql
- * type is the type of elements we will bind ex. CDB2_INTEGER
+ * type is the type of elements to bind ex. CDB2_INTEGER
  * varaddr is the array address
  * count is the number of items in the array we will bind
- * typelen is the type size of the acrual elements in the array (ex sizeof(int) for int array)
+ * typelen is the size of the elements for integer-arrays sizeof(int32_t or int64_t)
  */
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type,
-                    const void *varaddr, unsigned int count, int typelen)
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
 {
     if (count <= 0 || count > MAX_BIND_ARRAY) {
-        sprintf(hndl->errstr, "%s: bind array count outside of range [0,%d]", __func__, MAX_BIND_ARRAY);
+        sprintf(hndl->errstr, "%s: bad array length:%zd (max:%d)", __func__, count, MAX_BIND_ARRAY);
         return -1;
+    }
+
+    CDB2SQLQUERY__Bindvalue__Array *carray = malloc(sizeof(*carray));
+    cdb2__sqlquery__bindvalue__array__init(carray);
+
+    switch(type) {
+    case CDB2_INTEGER:
+    if (typelen == sizeof(int32_t)) {
+        CDB2SQLQUERY__Bindvalue__I32Array *i32 = malloc(sizeof(*i32));
+        cdb2__sqlquery__bindvalue__i32_array__init(i32);
+        i32->elements = (int32_t *)varaddr;
+        i32->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_I32;
+        carray->i32 = i32;
+    } else if (typelen == sizeof(int64_t)) {
+        CDB2SQLQUERY__Bindvalue__I64Array *i64 = malloc(sizeof(*i64));
+        cdb2__sqlquery__bindvalue__i64_array__init(i64);
+        i64->elements = (int64_t *)varaddr;
+        i64->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_I64;
+        carray->i64 = i64;
+    } else {
+        goto notsupported;
+    }
+    break;
+    case CDB2_REAL: {
+        CDB2SQLQUERY__Bindvalue__DblArray *dbl = malloc(sizeof(*dbl));
+        cdb2__sqlquery__bindvalue__dbl_array__init(dbl);
+        dbl->elements = (double *)varaddr;
+        dbl->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_DBL;
+        carray->dbl = dbl;
+    }
+    break;
+    case CDB2_CSTRING: {
+        CDB2SQLQUERY__Bindvalue__TxtArray *txt = malloc(sizeof(*txt));
+        cdb2__sqlquery__bindvalue__txt_array__init(txt);
+        txt->elements = (char **)varaddr;
+        txt->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_TXT;
+        carray->txt = txt;
+    }
+    break;
+    case CDB2_BLOB: {
+        CDB2SQLQUERY__Bindvalue__BlobArray *blob = malloc(sizeof(*blob));
+        cdb2__sqlquery__bindvalue__blob_array__init(blob);
+        blob->elements = (ProtobufCBinaryData *) varaddr;
+        blob->n_elements = count;
+        carray->type_case = CDB2__SQLQUERY__BINDVALUE__ARRAY__TYPE_BLOB;
+        carray->blob = blob;
+    }
+    break;
+    default: goto notsupported;
     }
 
     CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
     cdb2__sqlquery__bindvalue__init(bindval);
     bindval->type = type;
     bindval->varname = (char *)name;
-    switch(type) {
-    case CDB2_INTEGER:
-        if (typelen == sizeof(int32_t)) {
-            GENERIC_BIND_ARR_VALUE( bindval->bind_array, Int32, int32, int32_t *, INT32);
-        } else if (typelen == sizeof(int64_t)) {
-            GENERIC_BIND_ARR_VALUE( bindval->bind_array, Int64, int64, int64_t *, INT64);
-        } else 
-            goto notsupported;
-    break;
-    case CDB2_REAL:
-        if (typelen == sizeof(double)) {
-            GENERIC_BIND_ARR_VALUE( bindval->bind_array, Double, double, double *, DOUBLE);
-        } else 
-            goto notsupported;
-    break;
-    case CDB2_CSTRING: {
-        GENERIC_BIND_ARR_VALUE( bindval->bind_array, Text, text, char **, TEXT);
-    }
-    break;
-    default:
-        goto notsupported;
-    }
+    bindval->carray = carray;
+
+    CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
+    cdb2__sqlquery__bindvalue__init(bindval);
+    bindval->type = type;
+    bindval->varname = (char *)name;
+    bindval->carray = carray;
 
     hndl->n_bindvars++;
     hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) * hndl->n_bindvars);
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
     if (log_calls)
-        fprintf(stderr, "%p> cdb2_bind_array(%p, \"%s\", %d, %s, %p, %d) = 0\n",
+        fprintf(stderr, "%p> cdb2_bind_array(%p, \"%s\", %zu, %s, %p, %zu) = 0\n",
                 (void *)pthread_self(), hndl, name, count,
                 cdb2_type_str(type), varaddr, typelen);
 
     return 0;
 
 notsupported:
+    free(carray);
     sprintf(hndl->errstr, "%s: bind array type not supported", __func__);
     return -1;
 }
@@ -5155,9 +5217,9 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
         return 0;
     for (int i = 0; i < hndl->n_bindvars; i++) {
         CDB2SQLQUERY__Bindvalue *val = hndl->bindvars[i];
-        if (val->bind_array) {
-            free(val->bind_array->int32_arr);
-            free(val->bind_array);
+        if (val->carray) {
+            free(val->carray->i32);
+            free(val->carray);
         }
         free(hndl->bindvars[i]);
     }
@@ -5357,10 +5419,9 @@ free_vars:
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
     int timeoutms = 10 * 1000;
+    sbuf2free(ss);
     cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000,
                                 comdb2db_num);
-
-    sbuf2free(ss);
     free_events(&tmp);
     return 0;
 }
@@ -5530,9 +5591,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
 
     int timeoutms = 10 * 1000;
 
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
-
     sbuf2free(sb);
+    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
 
     rc = (*num_valid_hosts > 0) ? 0 : -1;
 
@@ -6143,9 +6203,9 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
     return hndl->sb == NULL ? 0 : sslio_has_ssl(hndl->sb);
 }
 
-static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
+static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
 {
-    cdb2_ssl_sess_list *pos;
+    cdb2_ssl_sess *pos;
     int rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
     if (rc != 0)
         return NULL;
@@ -6153,12 +6213,10 @@ static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
     for (pos = cdb2_ssl_sess_cache.next; pos != NULL; pos = pos->next) {
         if (strcasecmp(hndl->dbname, pos->dbname) == 0 &&
             strcasecmp(hndl->cluster, pos->cluster) == 0) {
-            /* Don't return if being used. */
-            if (pos->ref)
-                pos = NULL;
-            else
+            if (!pos->ref) {
                 pos->ref = 1;
-            break;
+                break;
+            }
         }
     }
 
@@ -6166,77 +6224,45 @@ static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
     return pos;
 }
 
-static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
+static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess *arg)
 {
-    /* Worst practices of variable naming. */
-    int i, j;
-    cdb2_ssl_sess *p, *q, *r;
-
     if (arg == NULL)
         return EINVAL;
 
-    /* Disallow if sess_list not nil to avoid any confusion. */
-    if (hndl->sess_list != NULL)
+    if (hndl->sess != NULL) /* Already have a session cache. */
         return EPERM;
 
-    /* Transfer valid SSL sessions to the new list
-       in case that the hosts have changed (re-ordering, migration and etc). */
-    r = malloc(sizeof(cdb2_ssl_sess) * hndl->num_hosts);
-    if (r == NULL)
-        return ENOMEM;
-
-    for (i = 0, p = r; i != hndl->num_hosts; ++i, ++p) {
-        strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
-        p->host[sizeof(p->host) - 1] = '\0';
-        p->sess = NULL;
-        for (j = 0, q = arg->list; j != arg->n; ++q) {
-            if (strcasecmp(p->host, q->host) == 0) {
-                p->sess = q->sess;
-                break;
-            }
-        }
-    }
-
-    free(arg->list);
-    arg->n = hndl->num_hosts;
-    arg->list = r;
-
-    hndl->sess_list = arg;
-
+    hndl->sess = arg;
     return 0;
 }
 
 static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
 {
-    int i, rc;
+    int rc;
     SSL_SESSION *sess;
-    cdb2_ssl_sess_list *store;
-    cdb2_ssl_sess *p;
+    cdb2_ssl_sess *store, *p;
 
     if (!hndl->cache_ssl_sess || !hndl->newsess)
         return 0;
     hndl->newsess = 1;
-    if (hndl->sess_list == NULL) {
-        hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
-        if (hndl->sess_list == NULL)
+    if (hndl->sess == NULL) {
+        hndl->sess = malloc(sizeof(cdb2_ssl_sess));
+        if (hndl->sess == NULL)
             return ENOMEM;
-        hndl->sess_list->list = NULL;
-        strncpy(hndl->sess_list->dbname, hndl->dbname,
-                sizeof(hndl->dbname) - 1);
-        hndl->sess_list->dbname[sizeof(hndl->dbname) - 1] = '\0';
-        strncpy(hndl->sess_list->cluster, hndl->cluster,
-                sizeof(hndl->cluster) - 1);
-        hndl->sess_list->cluster[sizeof(hndl->cluster) - 1] = '\0';
-        hndl->sess_list->ref = 1;
-        hndl->sess_list->n = hndl->num_hosts;
+        strncpy(hndl->sess->dbname, hndl->dbname, sizeof(hndl->dbname) - 1);
+        hndl->sess->dbname[sizeof(hndl->dbname) - 1] = '\0';
+        strncpy(hndl->sess->cluster, hndl->cluster, sizeof(hndl->cluster) - 1);
+        hndl->sess->cluster[sizeof(hndl->cluster) - 1] = '\0';
+        hndl->sess->ref = 1;
+        hndl->sess->sessobj = NULL;
 
         /* Append it to our internal linkedlist. */
         rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
         if (rc != 0) {
             /* If we fail to lock (which is quite rare), don't error out.
                we lose the caching ability, and that's it. */
-            free(hndl->sess_list);
-            hndl->sess_list = NULL;
+            free(hndl->sess);
+            hndl->sess = NULL;
             hndl->cache_ssl_sess = 0;
             return 0;
         }
@@ -6246,28 +6272,18 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
              store = store->next) {
             /* right, blank. */
         };
-        hndl->sess_list->next = NULL;
-        store->next = hndl->sess_list;
+        hndl->sess->next = NULL;
+        store->next = hndl->sess;
         pthread_mutex_unlock(&cdb2_ssl_sess_lock);
     }
 
-    if (hndl->sess_list->list == NULL) {
-        p = malloc(sizeof(cdb2_ssl_sess) * hndl->num_hosts);
-        if (p == NULL)
-            return ENOMEM;
-        hndl->sess_list->list = p;
-
-        for (i = 0; i != hndl->num_hosts; ++i, ++p) {
-            strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
-            p->host[sizeof(p->host) - 1] = '\0';
-            p->sess = NULL;
-        }
-    }
-
     /* Refresh in case of renegotiation. */
-    p = &(hndl->sess_list->list[hndl->connected_host]);
-    sess = p->sess;
-    p->sess = SSL_get1_session(sslio_get_ssl(hndl->sb));
+    p = hndl->sess;
+    sess = p->sessobj;
+    /* In the prefer mode, we may end up here without an SSL connection,
+       if the SSL negotiation on a reconnect attempt fails and we reconnect
+       again using plaintext. Check for this. */
+    p->sessobj = sslio_has_ssl(hndl->sb) ? SSL_get1_session(sslio_get_ssl(hndl->sb)) : NULL;
     if (sess != NULL)
         SSL_SESSION_free(sess);
     return 0;

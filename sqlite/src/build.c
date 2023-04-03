@@ -37,6 +37,7 @@ const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **f
 int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
 int comdb2_check_parallel(Parse*);
+int comdb2_check_push_remote(Parse*);
 void comdb2_create_view(Parse *pParse, const char *view_name,
                         int view_name_len, const char *zStmt, int temp);
 void comdb2_drop_view(Parse *pParse, SrcList *pName);
@@ -276,6 +277,10 @@ void sqlite3FinishCoding(Parse *pParse){
     pParse->rc = SQLITE_DONE;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pParse->ast ){
+      if( comdb2_check_push_remote(pParse) ){
+        pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
+        return;
+      }
       if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;
@@ -527,14 +532,16 @@ retry_after_fdb_creation:
   */
   if( !already_searched_fdb && (db->flags & SQLITE_PrepareOnly)==0 ){
     int        version = 0;
+    int        server_version = 0;
     char       *zErrDyn = NULL;
 
     if( gbl_fdb_track ){
       logmsg(LOGMSG_USER, "Trying to locate \"%s:%s\"\n", fqDbname, zName);
     }
 
+    int lvl, local, lvl_override;
     rc = sqlite3AddAndLockTable(db, fqDbname, zName, &version,
-          in_analysis_load);
+          in_analysis_load, &lvl, &local, &lvl_override, &server_version);
     if( rc ){
         if( gbl_fdb_track )
             logmsg(LOGMSG_USER, "No foreign table \"%s:%s\"\n", fqDbname, zName);
@@ -554,7 +561,7 @@ retry_after_fdb_creation:
     ** attached from two different databases
     */
     rc = comdb2_dynamic_attach(db, NULL, 0, NULL, uri, dbName,
-        &zErrDyn, version);
+        &zErrDyn, version, lvl, local, lvl_override, server_version);
 
     if( sqlite3UnlockTable(dbName, zName) ){
       logmsg(LOGMSG_ERROR, "%s: failed to unlock %s.%s\n", __func__,
@@ -2746,6 +2753,10 @@ void sqlite3CreateView(
   int iDb;
   sqlite3 *db = pParse->db;
 
+  if(comdb2IsDryrun(pParse)){
+    sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+    goto create_view_fail;
+  }
   if( pParse->nVar>0 ){
     sqlite3ErrorMsg(pParse, "parameters are not allowed in views");
     goto create_view_fail;
@@ -3193,6 +3204,11 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   int bDropTable = 0;
 
   comdb2WriteTransaction(pParse);
+  if(isView && comdb2IsDryrun(pParse)){
+      sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
+      pParse->rc = SQLITE_MISUSE;
+      goto exit_drop_table;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( db->mallocFailed ){
     goto exit_drop_table;
@@ -3918,6 +3934,7 @@ void sqlite3CreateIndex(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       pTab->hasExprIdx = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      pIndex->bHasExpr = 1;
     }else{
       j = pCExpr->iColumn;
       assert( j<=0x7fff );

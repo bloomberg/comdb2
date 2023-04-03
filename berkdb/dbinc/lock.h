@@ -20,6 +20,8 @@ extern size_t gbl_lkr_hash;
 
 #define	DB_LOCK_DEFAULT_N	1000	/* Default # of locks in region. */
 
+#include <dbinc/maxstackframes.h>
+
 /*
  * The locker id space is divided between the transaction manager and the lock
  * manager.  Lock IDs start at 1 and go to DB_LOCK_MAXID.  Txn IDs start at
@@ -355,13 +357,7 @@ struct __db_lock {
 	SH_LIST_HEAD(_lsns, __db_lock_lsn) lsns;	/* logical lsns that hold this lock. */
 	u_int32_t nlsns;
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-	int			frames;
-	void		*buf[MAX_BERK_STACK_FRAMES];
-	int 		stack_gen;
-	DB_LOCK		*lock;
-	pthread_t	tid;
-#endif
+    int         stackid;
 };
 
 /*

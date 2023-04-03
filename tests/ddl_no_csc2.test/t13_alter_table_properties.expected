@@ -1,0 +1,19 @@
+(table_name='t1', odh='Y', compress='crle', blob_compress='lz4', in_place_updates='Y', instant_schema_change='Y')
+[ALTER TABLE t1 ALTER OPTIONS (ODH OFF)] failed with rc 240 a schema change error occurred
+(table_name='t1', odh='Y', compress='crle', blob_compress='lz4', in_place_updates='Y', instant_schema_change='Y')
+(table_name='t1', odh='Y', compress='crle', blob_compress='lz4', in_place_updates='N', instant_schema_change='Y')
+(table_name='t1', odh='Y', compress='crle', blob_compress='lz4', in_place_updates='Y', instant_schema_change='N')
+[ALTER TABLE t1 ALTER OPTIONS (ODH OFF, IPU OFF, ISC OFF)] failed with rc 240 a schema change error occurred
+(table_name='t1', odh='Y', compress='crle', blob_compress='lz4', in_place_updates='Y', instant_schema_change='N')
+(table_name='t1', odh='Y', compress='crle', blob_compress='lz4', in_place_updates='Y', instant_schema_change='Y')
+(table_name='t1', odh='Y', compress='crle', blob_compress='rle8', in_place_updates='Y', instant_schema_change='Y')
+(table_name='t1', odh='Y', compress='rle8', blob_compress='rle8', in_place_updates='Y', instant_schema_change='Y')
+[ALTER TABLE t1 ALTER OPTIONS (REC ZLIB, BLOBFIELD CRLE)] failed with rc -3 near "CRLE": syntax error
+(table_name='t1', odh='Y', compress='rle8', blob_compress='rle8', in_place_updates='Y', instant_schema_change='Y')
+(table_name='t1', odh='Y', compress='none', blob_compress='none', in_place_updates='Y', instant_schema_change='Y')
+(table_name='t1', odh='Y', compress='none', blob_compress='none', in_place_updates='Y', instant_schema_change='Y')
+(table_name='t1', odh='N', compress='none', blob_compress='none', in_place_updates='N', instant_schema_change='N')
+[ALTER TABLE t1 ALTER OPTIONS ODH ON] failed with rc -3 near "ODH": syntax error
+[ALTER TABLE t1 ALTER OPTIONS (ODH ON, ODH OFF)] failed with rc -3 Conflicting 'ODH' options
+[ALTER TABLE t1 ALTER OPTIONS (BLOBFIELD LZ4, BLOBFIELD ZLIB)] failed with rc -3 Conflicting 'BLOB COMPRESSION' options
+(table_name='t1', odh='N', compress='none', blob_compress='none', in_place_updates='N', instant_schema_change='N')

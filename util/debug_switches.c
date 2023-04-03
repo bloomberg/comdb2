@@ -79,6 +79,8 @@ static struct debug_switches {
     int replicant_latency;
     int test_sync_osql_cancel;
     int convert_record_sleep;
+    int abort_ufid_open;
+    int bdb_handle_reset_delay;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -137,6 +139,8 @@ int init_debug_switches(void)
     debug_switches.replicant_latency = 0;
     debug_switches.test_sync_osql_cancel = 0;
     debug_switches.convert_record_sleep = 0;
+    debug_switches.abort_ufid_open = 0;
+    debug_switches.bdb_handle_reset_delay = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -249,6 +253,11 @@ int init_debug_switches(void)
                         &debug_switches.test_sync_osql_cancel);
     register_int_switch("convert_record_sleep", "Force a 5-second delay in each convert_record() call",
                         &debug_switches.convert_record_sleep);
+    register_int_switch("abort_ufid_open", "Abort ufid_open when applying a transaction",
+                        &debug_switches.abort_ufid_open);
+    register_int_switch("bdb_handle_reset_delay",
+                        "Force a 5-second delay in bdb_handle_reset between closing and opening",
+                        &debug_switches.bdb_handle_reset_delay);
     return 0;
 }
 
@@ -467,4 +476,12 @@ int debug_switch_test_sync_osql_cancel(void)
 int debug_switch_convert_record_sleep(void)
 {
     return debug_switches.convert_record_sleep;
+}
+int debug_switch_abort_ufid_open(void)
+{
+    return debug_switches.abort_ufid_open;
+}
+int debug_switch_bdb_handle_reset_delay(void)
+{
+    return debug_switches.bdb_handle_reset_delay;
 }

@@ -23,18 +23,12 @@ done
 
 cdb2sql --admin $dbnm --host $host 'select * from comdb2_metrics where name like "%queue_depth%" or name like "%standing_queue%"'
 
-has_weighted_queue=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) from comdb2_metrics where name = "weighted_standing_queue_time"'`
-has_queue=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) from comdb2_metrics where name = "standing_queue_time"'`
+weighted_queue_depth=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) * 1000 from comdb2_metrics where name = "weighted_queue_depth"'`
+queue_depth=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) * 1000 from comdb2_metrics where name = "queue_depth"'`
 
-#### Verify that the old queue metric reports a standing queue
-if [ "$has_queue" -eq "0" ]; then
-    echo No standing queue time??? >&2
-    exit 1
-fi
-
-#### Verify that the new queue metric does not report a standing queue
-if [ "$has_weighted_queue" -ne "0" ]; then
-    echo Has weighted standing queue time??? >&2
+let qddiff=$queue_depth-$weighted_queue_depth
+if [  $qddiff -le 0 ]; then
+    echo weighted queue depth is less than queue depth??? >&2
     exit 1
 fi
 
@@ -46,10 +40,12 @@ sleep 60
 jobs -p | xargs kill -9 >/dev/null 2>&1
 cdb2sql --admin $dbnm --host $host 'select * from comdb2_metrics where name like "%queue_depth%" or name like "%standing_queue%"'
 
-has_weighted_queue=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) from comdb2_metrics where name = "weighted_standing_queue_time"'`
-#### Verify that the new queue metric reports a standing queue
-if [ "$has_weighted_queue" -eq "0" ]; then
-    echo No weighted standing queue time??? >&2
+weighted_queue_depth=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) * 1000 from comdb2_metrics where name = "weighted_queue_depth"'`
+queue_depth=`cdb2sql --tabs --admin $dbnm --host $host 'select cast(value as integer) * 1000 from comdb2_metrics where name = "queue_depth"'`
+
+let qddiff=$queue_depth-$weighted_queue_depth
+if [  $qddiff -le 0 ]; then
+    echo weighted queue depth is less than queue depth??? >&2
     exit 1
 fi
 

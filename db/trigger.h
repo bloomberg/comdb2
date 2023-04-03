@@ -87,7 +87,7 @@ void trigger_reg_to_cpu(trigger_reg_t *);
     do {                                                                       \
         dest = alloca(trigger_reg_sz(sp_name));                                \
         dest->node = 0;                                                        \
-        dest->elect_cookie = gbl_master_changes;                               \
+        dest->elect_cookie = ATOMIC_LOAD32(gbl_master_changes);                \
         dest->trigger_cookie = get_id(thedb->bdb_env);                         \
         dest->qdb_locked = have_lock;                                          \
         dest->spname_len = strlen(sp_name);                                    \

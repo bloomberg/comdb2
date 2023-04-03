@@ -236,8 +236,10 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             free_schema_change_type(s);
             return rc;
         }
-        if (seed == 0 && host == 0)
+        if (seed == 0 && host == 0) {
+            logmsg(LOGMSG_ERROR, "Failed to determine host and seed!\n");
             return SC_INTERNAL_ERROR; // SC_INVALID_OPTIONS?
+        }
         logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
                seed, host);
         logmsg(
@@ -333,7 +335,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         int max_threads =
             bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC_MAXTHREADS);
         Pthread_mutex_lock(&sc_async_mtx);
-        while (!s->resume && max_threads > 0 &&
+        while (!s->must_resume && !s->resume && max_threads > 0 &&
                sc_async_threads >= max_threads) {
             logmsg(LOGMSG_INFO, "Waiting for avaiable schema change threads\n");
             Pthread_cond_wait(&sc_async_cond, &sc_async_mtx);
@@ -582,13 +584,22 @@ int do_dryrun(struct schema_change_type *s)
         } else if (IS_FASTINIT(s)) {
             sbuf2printf(s->sb, ">Table %s will be truncated\n", s->tablename);
             goto done;
+        } else if (s->kind == SC_DROPTABLE) {
+            if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
+                sc_client_error(s, "Can't drop a table referenced by a foreign key");
+                rc = -1;
+            } else {
+                sbuf2printf(s->sb, ">Table %s will be dropped\n", s->tablename);
+            }
+            goto done;
         }
     }
-
+    
     if (db == NULL) {
         sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
         goto done;
     }
+
 
     struct errstat err = {0};
     newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, 0, 0,

@@ -68,6 +68,7 @@ enum comdb2_partition_type {
     PARTITION_REMOVE = 1,
     PARTITION_MERGE = 2,
     PARTITION_ADD_TIMED = 20,
+    PARTITION_ADD_MANUAL = 21,
     PARTITION_ADD_COL_RANGE = 40,
     PARTITION_ADD_COL_HASH = 60,
 };
@@ -122,6 +123,7 @@ enum schema_change_kind {
     SC_ALTERTABLE_INDEX = 27,
     SC_DROPTABLE_INDEX = 28,
     SC_REBUILDTABLE_INDEX = 29,
+    SC_LAST /* End marker */
 };
 
 #define IS_SC_DBTYPE_TAGGED_TABLE(s) ((s)->kind > SC_DROP_VIEW)
@@ -216,6 +218,7 @@ struct schema_change_type {
 
     int resume;           /* if we are trying to resume a schema change,
                            * usually because there is a new master */
+    int must_resume;      /* used for partitions, if we generate new shard sc-s upon resume */
     int retry_bad_genids; /* retrying a schema change (with full rebuild)
                              because there are old genids in flight */
     int dryrun;           /* comdb2sc.tsk -y */
@@ -307,6 +310,7 @@ struct scinfo {
     int olddb_compress_blobs;
     int olddb_inplace_updates;
     int olddb_instant_sc;
+    int olddb_odh;
 };
 
 enum schema_change_rc {
@@ -411,7 +415,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end);
 void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end);
-
+void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
+                              void *p_buf_end);
+void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf,
+                              void *p_buf_end);
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 

@@ -24,8 +24,6 @@
 #include "block_internal.h"
 #include "comdb2uuid.h"
 
-#define OSQL_BLOB_ODH_BIT (1 << 31)
-#define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 
 enum { OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION = 0x00000001, };
@@ -439,5 +437,8 @@ int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
  *
  */
 int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess);
+
+/* check if we need to get tpt lock */
+int need_views_lock(char *msg, int msglen, int use_uuid);
 
 #endif

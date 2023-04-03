@@ -38,6 +38,7 @@
 
 int gbl_logical_live_sc = 0;
 
+extern int normalize_rectype(u_int32_t * rectype);
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_partial_indexes;
 extern int gbl_debug_omit_zap_on_rebuild;
@@ -2197,6 +2198,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             goto error;
         }
         LOGCOPY_32(&rectype, logdta->data);
+        normalize_rectype(&rectype);
         assert(rectype == rec->type);
 
         assert(rec->dtafile >= 1);
@@ -2454,7 +2456,7 @@ static void set_redo_genid(struct convert_record_data *data, unsigned long long 
     int bdberr = 0;
     int rc = bdb_newsc_set_redo_genid(data->trans, data->s->tablename, genid, lsn->file, lsn->offset, &bdberr);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%u: Error setting redo genid, %d bdberr=%d\n", (unsigned int)pthread_self(), rc, bdberr);
+        logmsg(LOGMSG_ERROR, "%"PRIxPTR": Error setting redo genid, %d bdberr=%d\n", (uintptr_t) pthread_self(), rc, bdberr);
     }
 
     struct redo_genid_lsns *r, *fnd;
@@ -2480,7 +2482,7 @@ static int get_redo_genid(struct convert_record_data *data, unsigned long long g
     if ((r = hash_find(data->redo_genids, &genid)) != NULL) {
         int rc2, bdberr;
         if ((rc2 = bdb_newsc_del_redo_genid(data->trans, data->s->tablename, genid, &bdberr)) != 0) {
-            logmsg(LOGMSG_ERROR, "%u: %s del_redo_genid returns %d bdberr=%d\n", (unsigned int)pthread_self(), __func__,
+            logmsg(LOGMSG_ERROR, "%"PRIxPTR": %s del_redo_genid returns %d bdberr=%d\n", (uintptr_t)pthread_self(), __func__,
                    rc2, bdberr);
         }
         hash_del(data->redo_genids, r);
@@ -2532,6 +2534,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
     assert(rectype == rec->type);
 
     if (rec->type == DB_llog_undo_add_dta_lk) {
@@ -2742,6 +2745,7 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
     assert(rectype == rec->type);
     if (rec->type == DB_llog_undo_del_dta_lk) {
         if ((rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta->data,
@@ -2865,6 +2869,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
     assert(rectype == rec->type);
     if (rec->type == DB_llog_undo_upd_dta_lk) {
         if ((rc = llog_undo_upd_dta_lk_read(bdb_state->dbenv, logdta->data,
@@ -3040,7 +3045,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
             /* try to update the record in the new btree */
             rc = upd_new_record(&data->iq, data->trans, oldgenid, data->oldodh.recptr, genid, data->odh.recptr, -1ULL,
                                 -1ULL, updlen, updCols, data->wrblb, 0, data->freeblb, data->wrblb, 0);
-            logmsg(LOGMSG_USER, "%u: Upd_new_record %llx to %llx returns %d\n", (unsigned int)pthread_self(), oldgenid,
+            logmsg(LOGMSG_USER, "%"PRIxPTR": Upd_new_record %llx to %llx returns %d\n", (uintptr_t)pthread_self(), oldgenid,
                    genid, rc);
         }
 #ifdef LOGICAL_LIVESC_DEBUG
@@ -3116,6 +3121,7 @@ done:
 
 static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
 {
+    assert (rec->type < 12000);
     switch (rec->type) {
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk:
@@ -3162,6 +3168,8 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
                __func__, __LINE__, mingenid, minlsn.file, minlsn.offset, rec->lsn.file, rec->lsn.offset);
         return ERR_INDEX_CONFLICT;
     }
+
+    assert(rec->type < 12000);
 
     switch (rec->type) {
     case DB_llog_undo_add_dta:

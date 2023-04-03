@@ -72,6 +72,7 @@
 
 #endif
 #include <event2/util.h> /* missing timeradd on aix */
+#include <carray.h>
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
@@ -85,7 +86,6 @@ extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
-extern int comdb2_sql_tick();
 
 pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
@@ -227,7 +227,6 @@ static int db_exec(Lua);
 static int dbstmt_emit(Lua);
 
 static void add_tran_funcs(Lua);
-static void remove_consumer(Lua);
 static void remove_thd_funcs(Lua);
 
 /*
@@ -1439,7 +1438,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             cdb2_client_datetime_t cdt;
             datetime_t datetime;
             const dttz_t *dt = column_datetime(clnt, stmt, col);
-            dttz_to_client_datetime(dt, stmt_tzname(stmt), &cdt);
+            dttz_to_client_datetime(dt, clnt_tzname(clnt, stmt), &cdt);
             client_datetime_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
             break;
@@ -1448,7 +1447,7 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
             cdb2_client_datetimeus_t cdt;
             datetime_t datetime;
             const dttz_t *dt = column_datetime(clnt, stmt, col);
-            dttz_to_client_datetimeus(dt, stmt_tzname(stmt), &cdt);
+            dttz_to_client_datetimeus(dt, clnt_tzname(clnt, stmt), &cdt);
             client_datetimeus_to_datetime_t(&cdt, &datetime, 0);
             luabb_pushdatetime(lua, &datetime);
             break;
@@ -1762,42 +1761,42 @@ static char *no_such_procedure(const char *name, struct spversion_t *spversion)
 }
 
 const char comdb2_trigger_main[] =
-"                                                           \n\
-local function comdb2_trigger_main()                        \n\
-    local sp = db:spname()                                  \n\
-    db:ctrace('trigger:'..sp..' send register')             \n\
-    local c = db:trigger({register_timeout = 1000})         \n\
-    if c == nil then                                        \n\
-        db:ctrace('trigger:'..sp..' register failed')       \n\
-        return                                              \n\
-    end                                                     \n\
-    db:ctrace('trigger:'..sp..' assigned; now running')     \n\
-    local e = c:get()                                       \n\
-    while e do                                              \n\
-        db:trigger_version_check()                          \n\
-        db:trigger_begin()                                  \n\
-        local rc = main(e)                                  \n\
-        if rc ~= 0 then                                     \n\
-            db:ctrace('trigger:'..sp..' main rc:'..rc)      \n\
-            db:trigger_rollback()                           \n\
-            break                                           \n\
-        end                                                 \n\
-        rc = c:consume()                                    \n\
-        if rc ~= 0 then                                     \n\
-            db:ctrace('trigger:'..sp..' consume rc:'..rc)   \n\
-            db:trigger_rollback()                           \n\
-            break                                           \n\
-        end                                                 \n\
-        rc = db:trigger_commit()                            \n\
-        if rc ~= 0 then                                     \n\
-            db:ctrace('trigger:'..sp..' commit rc:'..rc)    \n\
-            break                                           \n\
-        end                                                 \n\
-        e = c:get()                                         \n\
-    end                                                     \n\
-    if e == nil then                                        \n\
-        db:ctrace('trigger'..sp..' nil event')              \n\
-    end                                                     \n\
+"                                                                              \n\
+local function comdb2_trigger_main()                                           \n\
+    local sp = db:spname()                                                     \n\
+    db:ctrace('trigger:'..sp..' send register')                                \n\
+    local c = db:trigger({register_timeout = 1000})                            \n\
+    if c == nil then                                                           \n\
+        db:ctrace('trigger:'..sp..' register failed')                          \n\
+        return                                                                 \n\
+    end                                                                        \n\
+    db:ctrace('trigger:'..sp..' assigned; now running')                        \n\
+    local e = c:get()                                                          \n\
+    while e do                                                                 \n\
+        db:trigger_version_check()                                             \n\
+        db:trigger_begin()                                                     \n\
+        local rc = main(e)                                                     \n\
+        if rc ~= 0 then                                                        \n\
+            db:ctrace('trigger:'..sp..' main rc:'..rc..' err:'..db:error())    \n\
+            db:trigger_rollback()                                              \n\
+            break                                                              \n\
+        end                                                                    \n\
+        rc = c:consume()                                                       \n\
+        if rc ~= 0 then                                                        \n\
+            db:ctrace('trigger:'..sp..' consume rc:'..rc..' err:'..db:error()) \n\
+            db:trigger_rollback()                                              \n\
+            break                                                              \n\
+        end                                                                    \n\
+        rc = db:trigger_commit()                                               \n\
+        if rc ~= 0 then                                                        \n\
+            db:ctrace('trigger:'..sp..' commit rc:'..rc..' err:'..db:error())  \n\
+            break                                                              \n\
+        end                                                                    \n\
+        e = c:get()                                                            \n\
+    end                                                                        \n\
+    if e == nil then                                                           \n\
+        db:ctrace('trigger'..sp..' nil event')                                 \n\
+    end                                                                        \n\
 end";
 
 static char bootstrap_src[] =
@@ -2165,22 +2164,88 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
     }
 }
 
+static int luabb_carray_bind_real(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    double ds[count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        luabb_toreal(L, -1, &ds[i - 1]);
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, ds, count, CARRAY_DOUBLE, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind_integer(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    long long ints[count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        luabb_tointeger(L, -1, &ints[i - 1]);
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, ints, count, CARRAY_INT64, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind_string(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    const char *strings[count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        strings[i - 1] = luabb_tostring(L, -1);
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, strings, count, CARRAY_TEXT, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind_blob(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    int count = lua_objlen(L, lua_idx);
+    struct {
+        size_t len;
+        void *data;
+    }blobs [count];
+    for (int i = 1; i <= count; ++i) {
+        lua_rawgeti(L, lua_idx, i);
+        blob_t b;
+        luabb_toblob(L, -1, &b);
+        blobs[i - 1].len = b.length;
+        blobs[i - 1].data = b.data;
+        lua_pop(L, 1);
+    }
+    return sqlite3_carray_bind(stmt, sql_idx, blobs, count, CARRAY_BLOB, SQLITE_TRANSIENT);
+}
+
+static int luabb_carray_bind(Lua L, int lua_idx, sqlite3_stmt *stmt, int sql_idx)
+{
+    lua_rawgeti(L, lua_idx, 1);
+    dbtypes_enum dbtype = luabb_dbtype(L, -1);
+    lua_pop(L, 1);
+    switch (dbtype) {
+    case DBTYPES_LNUMBER:
+    case DBTYPES_REAL: return luabb_carray_bind_real(L, lua_idx, stmt, sql_idx);
+    case DBTYPES_INTEGER: return luabb_carray_bind_integer(L, lua_idx, stmt, sql_idx);
+    case DBTYPES_LSTRING:
+    case DBTYPES_CSTRING: return luabb_carray_bind_string(L, lua_idx, stmt, sql_idx);
+    case DBTYPES_BLOB: return luabb_carray_bind_blob(L, lua_idx, stmt, sql_idx);
+    default: return luaL_error(L, "bad array argument to bind of type:%s", dbtypes_str[dbtype]);
+    }
+    return -1;
+}
+
 static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
 {
-    SP sp = getsp(lua);
-    int position;
+    int position = 0;
     if (lua_isnumber(lua, name)) {
         position = lua_tonumber(lua, name);
     } else if (lua_isstring(lua, name)) {
         position = sqlite3_bind_parameter_index(stmt, lua_tostring(lua, name));
-    } else {
-        return luabb_error(lua, sp, "bad argument to 'bind'");
     }
-
     if (position == 0) {
-        return luabb_error(lua, sp, "invalid position");
+        return luaL_error(lua, "bad argument to 'bind'");
     }
-
     dttz_t dt;
     const char *c;
     const void *p = NULL;
@@ -2188,7 +2253,6 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     intv_t *i;
     datetime_t *d;
     int type;
-
     if ((type = luabb_dbtype(lua, value)) > DBTYPES_MINTYPE) {
         if (luabb_isnull(lua, value)) {
             return sqlite3_bind_null(stmt, position);
@@ -2222,6 +2286,8 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     case DBTYPES_INTERVALDS:
         i = &((lua_intervalds_t *)p)->val;
         return sqlite3_bind_interval(stmt, position, i);
+    case DBTYPES_LTABLE:
+        return luabb_carray_bind(lua, value, stmt, position);
     default: return luabb_error(lua, NULL, "unsupported type (%d) for bind ", type);
     }
 }
@@ -2340,7 +2406,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
 
             unsigned char fingerprint[FINGERPRINTSZ];
             add_fingerprint(clnt, pStmt, sqlite3_sql(pStmt), zNormSql, cost,
-                            timeMs, prepMs, pVdbe->luaRows, NULL, fingerprint);
+                            timeMs, prepMs, pVdbe->luaRows, NULL, fingerprint, 1); // TODO: Make work for query plans
             if (clnt->rawnodestats)
                 add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, pVdbe->luaRows, timeMs);
 
@@ -3246,7 +3312,6 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         goto err;
     }
     Lua newlua = newsp->lua;
-    remove_consumer(newlua);
     remove_thd_funcs(newlua);
     add_tran_funcs(newlua);
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
@@ -4010,6 +4075,19 @@ static int db_csv_to_table(Lua L)
         }
     }
     free(csv.z);
+    // Expected Lua stack:
+    //   2: Array of parsed values
+    //   1: CSV string
+    if (lua_gettop(L) > 2) { // clean up any left-overs
+        if (cols) {
+            lua_rawseti(L, -2, ++lines);
+        } else {
+            lua_pop(L, 1); //new-line (EOF)
+        }
+    }
+    if (lua_gettop(L) != 2) {
+        return luaL_error(L, "csv_to_table failed");
+    }
     if (lines == 1) lua_rawgeti(L, -1, 1);
     return 1;
 }
@@ -4983,11 +5061,6 @@ static const luaL_Reg db_funcs[] = {
     #ifdef WITH_RDKAFKA
     {"kafka_publish", kafka_publish},
     #endif
-    /************ CONSUMER/TRIGGER ************/
-    {"consumer", db_consumer},
-    {"get_event_epoch", db_get_event_epoch},
-    {"get_event_sequence", db_get_event_sequence},
-    {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
     {"db_debug", db_db_debug},
     {"debug", db_debug},
@@ -5004,21 +5077,35 @@ static const luaL_Reg tran_funcs[] = {
     {"begin", db_begin},
     {"commit", db_commit},
     {"rollback", db_rollback},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
+
+static const luaL_Reg consumer_funcs[] = {
+    {"consumer", db_consumer},
+    {"get_event_epoch", db_get_event_epoch},
+    {"get_event_sequence", db_get_event_sequence},
+    {"get_event_tid", db_get_event_tid},
+    {NULL, NULL}
+};
 
 static const luaL_Reg trigger_funcs[] = {
     {"ctrace", db_ctrace},
+    {"get_event_epoch", db_get_event_epoch},
+    {"get_event_sequence", db_get_event_sequence},
+    {"get_event_tid", db_get_event_tid},
     {"spname", db_spname},
     {"trigger", db_consumer},
     {"trigger_begin", db_begin},
     {"trigger_commit", db_commit},
     {"trigger_rollback", db_rollback},
     {"trigger_version_check", db_trigger_version_check},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static const luaL_Reg thd_funcs[] = {
     {"create_thread", db_create_thread},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static const struct luaL_Reg dbtable_funcs[] = {
     {"insert", dbtable_insert},
@@ -5043,7 +5130,8 @@ static const struct luaL_Reg dbstmt_funcs[] = {
     {"exec", dbstmt_exec},
     {"fetch", dbstmt_fetch},
     {"rows_changed", dbstmt_rows_changed},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static void init_db_funcs(Lua L)
 {
@@ -5124,11 +5212,27 @@ static void remove_thd_funcs(Lua L)
     lua_pop(L, 1);
 }
 
-static void remove_consumer(Lua L)
+static void add_consumer_funcs(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "consumer");
+    luaL_openlib(L, NULL, consumer_funcs, 0);
+    lua_pop(L, 1);
+}
+
+static void remove_consumer_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    for (int i = 0; consumer_funcs[i].name; ++i) {
+        lua_pushnil(L);
+        lua_setfield(L, -2, consumer_funcs[i].name);
+    }
+    lua_pop(L, 1);
+}
+
+static void add_trigger_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    luaL_openlib(L, NULL, trigger_funcs, 0);
     lua_pop(L, 1);
 }
 
@@ -5787,9 +5891,75 @@ static int push_null(Lua L, int param_type)
     return 0;
 }
 
+static int push_blob_array(Lua L, struct param_data *p)
+{
+    struct {
+        size_t len;
+        void *data;
+    } *bs = p->u.p;
+    lua_newtable(L);
+    for (int i = 0; i < p->arraylen; ++i) {
+        blob_t b = {.length = bs[i].len, .data = bs[i].data};
+        luabb_pushblob(L, &b);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_string_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    char **ss = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushcstring(L, ss[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_i32_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    int32_t *is = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushinteger(L, is[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_i64_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    int64_t *is = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushinteger(L, is[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
+static int push_int_array(Lua L, struct param_data *p)
+{
+    if (p->len == sizeof(int32_t)) return push_i32_array(L, p);
+    if (p->len == sizeof(int64_t)) return push_i64_array(L, p);
+    return -1;
+}
+
+static int push_real_array(Lua L, struct param_data *p)
+{
+    lua_newtable(L);
+    double *ds = p->u.p;
+    for (int i = 0; i < p->arraylen; ++i) {
+        luabb_pushreal(L, ds[i]);
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 0;
+}
+
 static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
 {
-    struct param_data p;
+    struct param_data p = {0};
     if (param_value(clnt, &p, index) != 0) {
         if (p.type > CLIENT_MINTYPE && p.type < CLIENT_MAXTYPE)
             return p.type;
@@ -5797,6 +5967,15 @@ static int push_param(Lua L, struct sqlclntstate *clnt, int64_t index)
     }
     if (p.null || p.type == COMDB2_NULL_TYPE) {
         return push_null(L, p.type);
+    }
+    if (p.arraylen) {
+        switch (p.type) {
+        case CLIENT_BLOB: return push_blob_array(L, &p);
+        case CLIENT_CSTR: return push_string_array(L, &p);
+        case CLIENT_INT: return push_int_array(L, &p);
+        case CLIENT_REAL: return push_real_array(L, &p);
+        }
+        return -1;
     }
     switch (p.type) {
     case CLIENT_INT:
@@ -6076,11 +6255,10 @@ do_continue:
     logmsg(LOGMSG_USER, "Exit debugging \n");
 }
 
-static int get_spname(struct sqlclntstate *clnt, const char **exec,
-                      char *spname, char **err)
+static int get_spname(struct sqlclntstate *clnt, char *spname, const char **end_ptr, char **err)
 {
-#define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
-    const char *s = *exec;
+#   define EXEC_SYNTAX_ERROR "syntax error, expected 'exec' or 'execute'"
+    const char *s = clnt->sql;
     while (s && isspace(*s))
         s++;
     if (!s) {
@@ -6149,7 +6327,7 @@ static int get_spname(struct sqlclntstate *clnt, const char **exec,
         return -1;
     }
 
-    *exec = s;
+    *end_ptr = s;
     return 0;
 }
 
@@ -6282,8 +6460,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd, struct sqlclntstate *
     return setup_sp_int(spname, thd, clnt, 0, new_vm, err);
 }
 
-static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
-                     int *argc)
+static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err, int *argc)
 {
     const char *s = *argstr;
     SP sp = clnt->sp;
@@ -6323,7 +6500,6 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
         reset_sp(sp);
         return -1;
     }
-    *argstr = s;
     *argc = argcnt;
     return 0;
 }
@@ -6957,7 +7133,6 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
     SP sp = clnt->sp;
     if (new_vm) {
         remove_emit(L);
-        remove_consumer(L);
         remove_tran_funcs(L);
         if ((rc = process_src(L, sp->src, err)) != 0) return rc;
     }
@@ -6976,7 +7151,6 @@ static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
     remove_emit(L);
-    remove_consumer(L);
     remove_tran_funcs(L);
     if ((rc = process_src(L, sp->src, err)) != 0) return rc;
     if ((rc = get_func_by_name(L, spname, err)) != 0) return rc;
@@ -7006,25 +7180,26 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return commit_sp(L, &err);
 }
 
-static void add_trigger_funcs(Lua L)
+static int push_args_and_run_sp(struct sqlclntstate *clnt, const char *arg_str, char **err)
 {
-    luaL_getmetatable(L, dbtypes.db);
-    luaL_openlib(L, NULL, trigger_funcs, 0);
-    lua_pop(L, 1);
+    int rc, args;
+    if ((rc = push_args(&arg_str, clnt, err, &args)) != 0) return rc;
+    if ((rc = begin_sp(clnt, err)) != 0) return rc;
+    return run_sp(clnt, args, err);
 }
 
 static int exec_procedure_int(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, char **err, int trigger)
 {
-    const char *s = clnt->sql;
+    const char *end_ptr = NULL;
     char spname[MAX_SPNAME];
     long long sprc = 0;
-    int rc, args, new_vm;
+    int rc, new_vm;
     *err = NULL;
 
     reqlog_set_event(thd->logger, EV_SP);
 
-    if ((rc = get_spname(clnt, &s, spname, err)) != 0)
+    if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
 
     if (strcmp(spname, "debug") == 0) {
@@ -7042,28 +7217,31 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if ((rc = get_func_by_name(L, main_func, err)) != 0) return rc;
 
+    int consumer = 0;
     if (trigger) {
         remove_tran_funcs(L);
         remove_thd_funcs(L);
-        remove_consumer(L);
         remove_emit(L);
         add_trigger_funcs(L);
     } else {
+        consumer = can_consume(clnt);
+        if (consumer) add_consumer_funcs(L);
         update_tran_funcs(L, clnt);
     }
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    if ((rc = push_args(&s, clnt, err, &args)) != 0) return rc;
-
-    if ((rc = begin_sp(clnt, err)) != 0) return rc;
-
-    if ((rc = run_sp(clnt, args, err)) != 0) return rc;
+    rc = push_args_and_run_sp(clnt, end_ptr, err);
 
     if (trigger) {
-        rollback_sp(L);
         return rc;
     }
+
+    if (consumer) {
+        remove_consumer_funcs(L); /* lua vm may be resused by another proc */
+    }
+
+    if (rc) return rc;
 
     if ((rc = emit_result(L, &sprc, err)) != 0) return rc;
 
@@ -7085,6 +7263,22 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 int is_pingpong(struct sqlclntstate *clnt)
 {
     return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
+}
+
+int can_consume(struct sqlclntstate *clnt) {
+    if (clnt == NULL || clnt->sp == NULL)
+        return 0;
+
+    SP sp = clnt->sp;
+    char spname[strlen(sp->spname) + 1];
+    strcpy(spname, sp->spname);
+    Q4SP(qname, spname);
+
+    struct dbtable *db = getqueuebyname(qname);
+    if (db != NULL) {
+        return 1;
+    }
+    return 0;
 }
 
 void close_sp(struct sqlclntstate *clnt)

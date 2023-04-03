@@ -32,7 +32,7 @@ exec procedure sys.cmd.send('scdelay 2000')
 EOF
 
 ### Test 2: Test extending inline blob length
-cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options rebuild, blobfield rle {`cat t2.csc2`}" &
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options blobfield rle {`cat t2.csc2`}" &
 
 sleep 1;
 cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'insert into t values("AAAABBBBCCCCDDDDEEEEFFFFGGGG")'
@@ -45,7 +45,7 @@ cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'select * from t order
 echo '--------------' >>actual
 
 ### Test 3: Test adding a new expressional index on the blob
-cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options rebuild, blobfield rle {`cat t3.csc2`}" &
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options blobfield rle {`cat t3.csc2`}" &
 
 sleep 1;
 cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode 'insert into t values("1111111122222222")'
@@ -79,7 +79,7 @@ PUT SCHEMACHANGE CONVERTSLEEP 3
 EOF
 
 #### kick off a rebuild that removes the ODH.
-cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options rebuild, odh off, ipu off, isc off, rec none, blobfield none {`cat t3.csc2`}" &
+cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $fixednode "alter table t options odh off, ipu off, isc off, rec none, blobfield none {`cat t3.csc2`}" &
 
 #### Sleep a bit to make sure that SC has started before we issue new writes.
 sleep 2

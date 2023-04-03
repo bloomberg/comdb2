@@ -78,6 +78,7 @@
 #include "comdb2_atomic.h"
 #include "str0.h"
 #include "schemachange.h"
+#include "views.h"
 
 #if 0
 #define TEST_OSQL
@@ -3931,10 +3932,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
             }
 
-            int updflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
-            if (iq->comdbg_flags)
-                updflags |= RECFLAGS_COMDBG_FROM_LE;
-
             rc = upd_record(iq, trans, NULL, /*primkey - will be formed from
                                                verification data*/
                             rrn, 0,          /*vgenid*/
@@ -5827,6 +5824,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     static uint64_t lastpr = 0;
 
     uint64_t start = gettimeofday_ms();
+    uint64_t end;
 
     Pthread_mutex_lock(&blklk);
     blkcnt++;
@@ -5848,8 +5846,25 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                prmax);
     }
 
+    if (iq->tptlock) {
+        if (iq->tranddl) {
+            /* avoid a lock inversion here; simply forbit mixing bpfunc that
+             * requires tpt lock with other schema changes
+             */
+            reqlog_set_error(
+                iq->reqlogger,
+                "Error cannot mix tpt retention with other schema changes",
+                rc = -1);
+            logmsg(
+                LOGMSG_ERROR,
+                "Error cannot mix tpt retention with other schema changes\n");
+            end = gettimeofday_ms();
+            goto done;
+        }
+        views_lock();
+    }
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
-    uint64_t end = gettimeofday_ms();
+    end = gettimeofday_ms();
 
     bdb_assert_notran(thedb->bdb_env);
 
@@ -5860,6 +5875,11 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
     }
+
+    if (iq->tptlock)
+        views_unlock();
+
+done:
 
     assert(iq->sc_running == 0);
 

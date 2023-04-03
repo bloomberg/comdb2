@@ -128,6 +128,9 @@ void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
 /* Call this at the end of a transaction (committed or aborted).  Cleans up. */
 void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle);
 
+/* Call this prior to distributed commit to release splock */
+void javasp_trans_release(struct javasp_trans_state *javasp_trans_handle);
+
 /* This is used to determine if we want to be notified about a particular
  * event - if we don't care, then the block processor needn't waste time
  * creating temporary things.  It is not an error to report events that
@@ -207,8 +210,10 @@ typedef struct {
     LISTC_T(trigger_tbl_info) tbls;
 } trigger_info;
 void get_trigger_info(const char *, trigger_info *);
+void get_trigger_info_lk(const char *, trigger_info *);
 
-void javasp_do_procedure_wrlock(void);
-void javasp_do_procedure_unlock(void);
+void javasp_splock_wrlock(void);
+void javasp_splock_rdlock(void);
+void javasp_splock_unlock(void);
 
 #endif

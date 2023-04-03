@@ -22,6 +22,7 @@
 #include "indices.h"
 #include "sqloffload.h"
 
+
 extern int gbl_partial_indexes;
 static __thread void *defered_index_tbl = NULL;
 static __thread void *defered_index_tbl_cursor = NULL;
@@ -47,7 +48,7 @@ typedef struct {
                            // usedb separately
     short ixnum;
     short ixlen;
-    char ixkey[MAXKEYLEN]; // consider storing up to the largest key
+    char ixkey[MAXKEYLEN + GENIDLEN]; // consider storing up to the largest key
                            // for dups genid is appended to end of key
     dit_t type;
     unsigned long long genid;

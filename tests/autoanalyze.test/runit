@@ -343,7 +343,7 @@ if [ $lastRun -eq $prevDate ] ; then
     failexit "lastRun $lastRun is eq to $prevDate -- insert should have triggered autoanalyze"
 fi
 
-stats_should_be $savedCnt  $lastRun 0 $lastRun
+stats_should_be $savedCnt $lastRun 0 $lastRun
 
 
 cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "put tunable 'debug.autoanalyze' 1"
@@ -364,5 +364,41 @@ fi
 
 #can also test downgrade master until it is a different node
 #stats should be the same as before
+
+echo ""
+echo "Testing Auto Analyze Subtraction Bug"
+get_autoanalyze_stat $master
+stats_should_be $savedCnt $lastRun 0 $lastRun # initial condition: start with savedCnt == 0
+prevDate=$lastRun
+
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "put tunable 'debug.autoanalyze' 0"
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_count_upd 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr min_aa_ops 100000")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr chk_aa_time 6")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr min_aa_time 7200")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_llmeta_save_freq 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_min_percent 20")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_min_percent_jitter 300")'
+
+sleep 5
+
+update_records 10 # anything less than aa_min_percent_jitter will work
+# Bug is that we evaluate 10 - 300 but 10 used to be unsigned so 10 - 300 >> 0 and not -290. This was compared to aa_min_percent and falsely trigerred analyze
+sleep $T_TO_SLEEP
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1"
+if [[ $lastRun != $prevDate || $savedCnt -eq 0 ]] ; then
+    if [ $lastRun != $prevDate ] ; then
+        echo "lastRun $lastRun is not eq to $prevDate but should be. This means that analyze ran but should not have"
+    fi
+    if [ $savedCnt -eq 0 ] ; then
+        echo "savedCnt is eq to 0. This means that analyze ran but should not have"
+    fi
+    echo "Failed"
+    exit -1
+fi
+
 
 echo "Success"

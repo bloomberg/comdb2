@@ -29,6 +29,7 @@ enum mach_class {
     CLASS_UAT = 3,
     CLASS_BETA = 4,
     CLASS_PROD = 5,
+    CLASS_INTEGRATION = 6,
     CLASS_DENIED = 255
 };
 

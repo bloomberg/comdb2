@@ -142,7 +142,7 @@ static void _view_unregister_shards_lkless(timepart_views_t *views,
 
 static int _create_inmem_view(timepart_views_t *views, timepart_view_t *view,
                               struct errstat *err);
-static int _view_find_current_shard(timepart_view_t *view, struct errstat *err);
+static void _view_find_current_shard(timepart_view_t *view);
 
 enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
@@ -241,6 +241,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 {
     char next_existing_shard[MAXTABLELEN + 1];
     int preemptive_rolltime = _get_preemptive_rolltime(view);
+    int published = 0;
     char *tmp_str;
     int rc;
     int tm;
@@ -260,6 +261,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     if (rc != VIEW_NOERR) {
         return rc;
     }
+    published = 1;
 
     Pthread_rwlock_wrlock(&views_lk);
 
@@ -333,6 +335,17 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     gbl_views_gen++;
 
 done:
+    if (rc) {
+        if (published) {
+            int irc = views_write_view(NULL, view->name, NULL, 1 /*unused*/);
+            if (irc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "Failed %d to remove tpt %s llmeta during failed create\n",
+                    irc, view->name);
+            }
+        }
+    }
     Pthread_rwlock_unlock(&views_lk);
 
     return rc;
@@ -604,15 +617,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
             /* the order of the shards does not dictate current shard,
              * determine the current shard here
              */
-            rc = _view_find_current_shard(view, &xerr);
-            if (rc != VIEW_NOERR) {
-                logmsg(LOGMSG_ERROR, "Unable to find current shard for %s\n",
-                       view->name);
-                timepart_free_view(view);
-
-                view = NULL;
-                goto done;
-            }
+            _view_find_current_shard(view);
         }
     }
 
@@ -788,13 +793,13 @@ static int _generate_new_shard_name(const char *oldname, char *newname,
         suffix_len = _shard_suffix_str_len(maxshards);
 
         snprintf(newname, newnamelen, "%s%.*d", oldname, suffix_len, nextnum);
-        newname[newnamelen - 1] = '\0';
     } else {
         char hash[128];
         len = snprintf(hash, sizeof(hash), "%u%s", nextnum, oldname);
         len = crc32c((uint8_t *)hash, len);
         snprintf(newname, newnamelen, "$%u_%X", nextnum, len);
     }
+    newname[newnamelen - 1] = '\0';
 
     return VIEW_NOERR;
 }
@@ -2495,18 +2500,16 @@ static void print_dbg_verbose(const char *name, uuid_t *source_id,
     va_end(va);
 }
 
-
 /**
  * Update the retention of the existing partition
- *
+ * NOTE: this is called from bpfunc on master, and we already
+ * have the views lock
  */
 int timepart_update_retention(void *tran, const char *name, int retention, struct errstat *err)
 {
    timepart_views_t *views = thedb->timepart_views;
    timepart_view_t *view;
    int rc = VIEW_NOERR;
-
-   Pthread_rwlock_wrlock(&views_lk);
 
    /* make sure we are unique */
    view = _get_view(views, name);
@@ -2610,7 +2613,6 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
    }
 
 done:
-    Pthread_rwlock_unlock(&views_lk);
     return rc;
 }
 
@@ -2913,7 +2915,7 @@ static int _view_new_rollout_lkless(char *name, int period, int roll_time,
     return rc;
 }
 
-static int _view_find_current_shard(timepart_view_t *view, struct errstat *err)
+static void _view_find_current_shard(timepart_view_t *view)
 {
     int now = comdb2_time_epoch();
     int newest_earlier_shard = -1;
@@ -2930,19 +2932,19 @@ static int _view_find_current_shard(timepart_view_t *view, struct errstat *err)
                 print_dbg_verbose(view->name, &view->source_id, "SSS",
                                   "Found current shard %d\n", i);
                 view->current_shard = i;
-                return VIEW_NOERR;
-            } else if (view->shards[newest_earlier_shard].high <
-                       view->shards[i].high) {
-                /* remember the newest one */
-                newest_earlier_shard = i;
+                return;
             }
         }
+        if (newest_earlier_shard < 0 || (view->shards[i].low != INT_MAX && 
+            view->shards[newest_earlier_shard].low < view->shards[i].low))
+            newest_earlier_shard = i;
     }
-    assert(newest_earlier_shard >= 0);
+    assert(newest_earlier_shard >= 0 && newest_earlier_shard < view->nshards);
+
     print_dbg_verbose(view->name, &view->source_id, "SSS",
-                      "Found the earliest shard, deem it current %d\n",
+                      "Stale rollout, use last shard%d\n",
                       newest_earlier_shard);
-    return newest_earlier_shard;
+    view->current_shard = newest_earlier_shard;
 }
 
 static int _view_restart_new_rollout(timepart_view_t *view, struct errstat *err)
@@ -2954,9 +2956,7 @@ static int _view_restart_new_rollout(timepart_view_t *view, struct errstat *err)
     print_dbg_verbose(view->name, &view->source_id, "III",
                       "Restart new rollout mode\n");
 
-    rc = _view_find_current_shard(view, err);
-    if (rc != VIEW_NOERR)
-        goto error;
+    _view_find_current_shard(view);
 
     view->roll_time = view->shards[view->current_shard].high;
     rc = _view_new_rollout_lkless(strdup(view->name), view->period,
@@ -3123,6 +3123,17 @@ int timepart_create_inmem_view(timepart_view_t *view)
         logmsg(LOGMSG_ERROR, "Unable to add view %s rc %d \"%s\"\n", view->name,
                err.errval, err.errstr);
     } else {
+        if (period == VIEW_PARTITION_MANUAL) {
+            /* dedicated logical cron schedulers */
+            rc = logical_cron_init(name_dup, &err);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Failed to initialize logical cron %s\n",
+                       name_dup);
+                free(name_dup);
+                return rc;
+            }
+        }
+
         /* we need to add the first scheduler event */
         rc = _view_new_rollout_lkless(name_dup, period, rolltime, &source_id,
                                       &err);
@@ -3269,7 +3280,8 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
 
     if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
-        case PARTITION_ADD_TIMED: {
+        case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_create_inmem_view(sc->newpartition);
             break;
@@ -3303,7 +3315,8 @@ void partition_unpublish(struct schema_change_type *sc)
 {
    if (sc->partition.type != PARTITION_NONE) {
         switch (sc->partition.type) {
-        case PARTITION_ADD_TIMED: {
+        case PARTITION_ADD_TIMED:
+        case PARTITION_ADD_MANUAL: {
             assert(sc->newpartition != NULL);
             timepart_destroy_inmem_view(sc->timepartition_name);
             break;

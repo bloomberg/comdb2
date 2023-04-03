@@ -41,6 +41,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include "logmsg.h"
 #include "locks_wrap.h"
 
+int normalize_rectype(u_int32_t * rectype);
 static int __db_tmp_open __P((DB_ENV *, u_int32_t, char *, DB_FH **));
 static int __dbenv_config __P((DB_ENV *, const char *, u_int32_t));
 static int __dbenv_refresh __P((DB_ENV *, u_int32_t, int));
@@ -493,6 +494,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 						ret == 0; ret = __log_c_get(logc, &lsn, 
 							&data, DB_PREV)) {
 					LOGCOPY_32(&rectype, data.data);
+					normalize_rectype(&rectype);
 					switch (rectype)
 					{
 						case (DB___txn_regop):

@@ -896,6 +896,7 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     new_sc->iq = NULL;
     new_sc->tran = NULL;
     new_sc->resume = 0;
+    new_sc->must_resume = 1; /* this is a shard, we cannot complete partition sc without it */
     new_sc->nothrevent = 0;
     new_sc->finalize = 0;
 

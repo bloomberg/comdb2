@@ -61,7 +61,7 @@
 #define MAX_USERNAME_LEN 16
 #define MAX_PASSWORD_LEN 19
 #define MAXBBNODENUM 32768 /* Legacy: maximum number assigned to a machine in BBENV */
-
+#define GENIDLEN sizeof(unsigned long long)
 /* moved here from csc2, better place */
 /*max length of index name, its char[64] in stat1 - 10 for $_12345678*/
 #define MAXIDXNAMELEN 54
@@ -74,8 +74,8 @@
     {                                                                          \
         int ret;                                                               \
         ret = snprintf(str + off, size - off, fmt, __VA_ARGS__);               \
-        if (ret >= size) {                                                     \
-            off += size;                                                       \
+        if (ret >= size - off) {                                               \
+            off += size - off;                                                 \
             goto done;                                                         \
         }                                                                      \
         off += ret;                                                            \

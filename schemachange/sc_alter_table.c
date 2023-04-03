@@ -360,6 +360,16 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
 
 static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran);
+static int optionsChanged(struct schema_change_type *sc, struct scinfo *scinfo){
+    if(sc->headers != scinfo->olddb_odh || 
+        sc->ip_updates != scinfo->olddb_inplace_updates ||
+        sc->instant_sc != scinfo->olddb_instant_sc ||
+        sc->compress_blobs != scinfo->olddb_compress_blobs ||
+        sc->compress != scinfo->olddb_compress) {
+            return 1;
+    }
+    return 0;
+}
 
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
@@ -399,6 +409,23 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     set_schemachange_options_tran(s, db, &scinfo, tran);
+    if (optionsChanged(s,&scinfo)) {
+        sc_printf(s, "table option(s) have changed. Forcing a rebuild\n");
+        sc_printf(s," new options -> \n");
+        sc_printf(s," headers: %d\n", s->headers);
+        sc_printf(s," ip_updates: %d\n", s->ip_updates);
+        sc_printf(s," instant_sc: %d\n", s->instant_sc);
+        sc_printf(s," compress: %d\n", s->compress);
+        sc_printf(s," compress_blobs: %d\n", s->compress_blobs);
+        sc_printf(s," --------------------------------------------------\n"); 
+        sc_printf(s," old options -> \n");
+        sc_printf(s," headers: %d\n", scinfo.olddb_odh);
+        sc_printf(s," ip_updates: %d\n", scinfo.olddb_inplace_updates);
+        sc_printf(s," instant_sc: %d\n", scinfo.olddb_instant_sc);
+        sc_printf(s," compress: %d\n", scinfo.olddb_compress);
+        sc_printf(s," compress_blobs: %d\n", scinfo.olddb_compress_blobs);
+        s->force_rebuild = 1;
+    }
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
@@ -1113,7 +1140,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->handle = old_bdb_handle;
 
     /* if this is an alter to partition an existing table */
-    if (s->partition.type == PARTITION_ADD_TIMED && s->publish) {
+    if ((s->partition.type == PARTITION_ADD_TIMED ||
+         s->partition.type == PARTITION_ADD_MANUAL) && s->publish) {
         struct errstat err = {0};
         assert(s->newpartition);
         rc = partition_llmeta_write(transac, s->newpartition, 0, &err);

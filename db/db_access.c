@@ -73,7 +73,7 @@ void check_access_controls(struct dbenv *dbenv)
     check_tableXnode_enabled(dbenv);
 }
 
-int (*externalComdb2AuthenticateUserMakeRequest)(void *) = NULL;
+int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
 
 /* If user password does not match this function
  * will write error response and return a non 0 rc
@@ -83,14 +83,21 @@ static int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest && !clnt->admin) {
+    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest &&
+            !clnt->admin && !clnt->current_user.bypass_auth) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
             return 0;
         }
-        int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+        char client_info[1024];
+        snprintf(client_info, sizeof(client_info),
+                 "%s:origin:%s:pid:%d",
+                 clnt->argv0 ? clnt->argv0 : "?",
+                 clnt->origin ? clnt->origin: "?",
+                 clnt->conninfo.pid);
+        int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, client_info);
         if (rc) {
             write_response(clnt, RESPONSE_ERROR,
                            "User isn't allowed to make request on this db",
@@ -304,7 +311,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
-        externalComdb2AuthenticateUserRead && !clnt->admin) {
+        externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
+        && !clnt->current_user.bypass_auth /* not analyze */) {
         clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
@@ -349,7 +357,7 @@ static int check_tag_access(struct ireq *iq) {
         return ERR_ACCESS;
     }
 
-    if (gbl_client_ssl_mode >= SSL_REQUIRE) {
+    if (SSL_IS_REQUIRED(gbl_client_ssl_mode)) {
         reqerrstr(iq, ERR_ACCESS, "The database requires SSL connections\n");
         return ERR_ACCESS;
     }

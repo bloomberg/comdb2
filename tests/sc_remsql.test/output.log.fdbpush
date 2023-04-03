@@ -1,0 +1,44 @@
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(table_version("t")=0)
+(id=-1, b1=x'61')
+(id=0, b1=x'62')
+(id=1, b1=x'11')
+(id=2, b1=x'22')
+(id=5, b1=x'55')
+(id=6, b1=x'56')
+(id=10, b1=x'57')
+(id=23, b1=x'58')
+(id=123, b1=x'59')
+(id=11115, b1=x'60')
+Table "sqlite_stat1" Rootp 1073741828 Remrootp 4 Version=0
+Table "sqlite_stat4" Rootp 1073741829 Remrootp 5 Version=0
+Index "$ID_52596C31" for table "t" Rootp 1073741827 Remrootp 3 Version=0
+Table "t" Rootp 1073741826 Remrootp 2 Version=0
+(table_version("t")=1)
+(id=-1, b1=x'61')
+(id=0, b1=x'62')
+(id=1, b1=x'11')
+(id=2, b1=x'22')
+(id=5, b1=x'55')
+(id=6, b1=x'56')
+(id=10, b1=x'57')
+(id=23, b1=x'58')
+(id=123, b1=x'59')
+(id=11115, b1=x'60')
+Cost: 220.00 NRows: 10
+    table t finds 10
+    index 0 on table t finds 1 next/prev 10
+
+Table "sqlite_stat1" Rootp 1073741828 Remrootp 4 Version=0
+Table "sqlite_stat4" Rootp 1073741829 Remrootp 5 Version=0
+Index "$ID_52596C31" for table "t" Rootp 1073741827 Remrootp 3 Version=0
+Table "t" Rootp 1073741826 Remrootp 2 Version=0

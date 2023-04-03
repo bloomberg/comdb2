@@ -124,6 +124,7 @@ static void disableLookaside(Parse *pParse){
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+
 /* Add flag for ANALYZE EXPERT */
 static void setExpert(Parse *pParse){
   pParse->db->isExpert = 1;
@@ -146,6 +147,7 @@ explain ::= EXPLAIN DISTRIBUTION. { pParse->explain = 3; }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %endif  SQLITE_OMIT_EXPLAIN
 cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
+
 
 ///////////////////// Begin and end transactions. ////////////////////////////
 //
@@ -198,18 +200,23 @@ cmd ::= ROLLBACK trans_opt TO savepoint_opt nm(X). {
 }
 
 ///////////////////// The CREATE TABLE statement ////////////////////////////
-//
+
 cmd ::= create_table create_table_args.
-create_table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
+
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+create_table ::= dryrun createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
    comdb2CreateTableStart(pParse,&Y,&Z,T,0,0,E);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-   sqlite3StartTable(pParse,&Y,&Z,T,0,0,E);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
+%endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+%ifndef SQLITE_BUILDING_FOR_COMDB2
+create_table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z). {
+   sqlite3StartTable(pParse,&Y,&Z,T,0,0,E);
+}
+%endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 %ifdef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= comdb2_create_table_csc2.
-comdb2_create_table_csc2 ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+comdb2_create_table_csc2 ::= dryrun createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
   comdb2CreateTableCSC2(pParse,&Y,&Z,O,&C,T,E);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
@@ -236,6 +243,9 @@ partition_options ::= TIME PERIOD STRING(P) RETENTION INTEGER(R) START STRING(S)
 }
 partition_options ::= NONE. {
     comdb2SaveMergeTable(pParse, NULL, NULL, 1);
+}
+partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
+    comdb2CreateManualPartition(pParse, &R, &S);
 }
 merge ::= .
 merge ::= merge_with.
@@ -332,8 +342,8 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DETERMINISTIC DISABLE 
-  DISTRIBUTION DRYRUN ENABLE EXEC EXECUTE FUNCTION GENID48 GET 
-  GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MERGE NONE
+  DISTRIBUTION DRYRUN ENABLE EXEC EXECUTE FORCE FUNCTION GENID48 GET 
+  GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MANUAL MERGE NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
@@ -643,9 +653,11 @@ resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
 
 ////////////////////////// The DROP TABLE /////////////////////////////////////
 //
-cmd ::= DROP TABLE ifexists(E) fullname(X). {
+cmd ::= drop_table.
+drop_table ::= dryrun DROP TABLE ifexists(E) fullname(X). {
   sqlite3DropTable(pParse, X, 0, E);
 }
+
 %type ifexists {int}
 ifexists(A) ::= IF EXISTS.   {A = 1;}
 ifexists(A) ::= .            {A = 0;}
@@ -653,11 +665,11 @@ ifexists(A) ::= .            {A = 0;}
 ///////////////////// The CREATE VIEW statement /////////////////////////////
 //
 %ifndef SQLITE_OMIT_VIEW
-cmd ::= createkw(X) temp(T) VIEW ifnotexists(E) nm(Y) dbnm(Z) eidlist_opt(C)
+cmd ::= dryrun createkw(X) temp(T) VIEW ifnotexists(E) nm(Y) dbnm(Z) eidlist_opt(C)
           AS select(S). {
   sqlite3CreateView(pParse, &X, &Y, &Z, C, S, T, E);
 }
-cmd ::= DROP VIEW ifexists(E) fullname(X). {
+cmd ::= dryrun DROP VIEW ifexists(E) fullname(X). {
   sqlite3DropTable(pParse, X, 1, E);
 }
 %endif  SQLITE_OMIT_VIEW
@@ -1607,7 +1619,7 @@ with_inc(A) ::= . {A = 0;}
 %type with_opt2 {int}
 with_opt2(A) ::= ALL. {A = 1;}
 with_opt2(A) ::= . {A = 2;} // partial datacopy
-cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2CreateIndex(pParse, &X, &D,
                     sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
@@ -1615,7 +1627,7 @@ cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
                      O, 0, T);
 }
 // datacopy with include syntax
-cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= dryrun createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP INCLUDE with_opt2(O) with_inc(P) scanpt(BW) where_opt(W) scanpt(AW). {
   comdb2CreateIndex(pParse, &X, &D,
                     sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
@@ -1624,7 +1636,7 @@ cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= dryrun createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP where_opt(W). {
   sqlite3CreateIndex(pParse, &X, &D, 
                      sqlite3SrcListAppend(pParse,0,&Y,0), Z, U,
@@ -1709,11 +1721,11 @@ collate(C) ::= COLLATE ids.   {C = 1;}
 ///////////////////////////// The DROP INDEX command /////////////////////////
 //
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= DROP INDEX ifexists(E) nm(X).          {comdb2DropIndex(pParse, &X, 0, E);}
-cmd ::= DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndex(pParse, &X, &Y, E);}
+cmd ::= dryrun DROP INDEX ifexists(E) nm(X).          {comdb2DropIndex(pParse, &X, 0, E);}
+cmd ::= dryrun DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndex(pParse, &X, &Y, E);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= DROP INDEX ifexists(E) fullname(X).   {sqlite3DropIndex(pParse, X, E);}
+cmd ::= dryrun DROP INDEX ifexists(E) fullname(X).   {sqlite3DropIndex(pParse, X, E);}
 %endif !SQLITE_BUILDING_FOR_COMDB2
 
 ///////////////////////////// The VACUUM command /////////////////////////////
@@ -1754,7 +1766,7 @@ minus_num(A) ::= MINUS number(X).     {A = X;}
 
 %ifndef SQLITE_OMIT_TRIGGER
 
-cmd ::= createkw trigger_decl(A) BEGIN trigger_cmd_list(S) END(Z). {
+cmd ::= dryrun createkw trigger_decl(A) BEGIN trigger_cmd_list(S) END(Z). {
   Token all;
   all.z = A.z;
   all.n = (int)(Z.z - A.z) + Z.n;
@@ -1873,11 +1885,15 @@ raisetype(A) ::= FAIL.      {A = OE_Fail;}
 
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
 %ifndef SQLITE_OMIT_TRIGGER
-cmd ::= DROP TRIGGER ifexists(NOERR) fullname(X). {
+cmd ::= dryrun DROP TRIGGER ifexists(NOERR) fullname(X). {
   sqlite3DropTrigger(pParse,X,NOERR);
 }
 %endif  !SQLITE_OMIT_TRIGGER
 
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+dryrun ::= DRYRUN.  { pParse->isDryrun = 1; }
+dryrun ::= .        { pParse->isDryrun = 0; }
+%endif SQLITE_BUILDING_FOR_COMDB2
 //////////////////////// ATTACH DATABASE file AS name /////////////////////////
 %ifndef SQLITE_OMIT_ATTACH
 cmd ::= ATTACH database_kw_opt expr(F) AS expr(D) key_opt(K). {
@@ -1919,9 +1935,6 @@ cmd ::= ANALYZE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
 //////////////////////// ALTER TABLE table ... ////////////////////////////////
 %ifndef SQLITE_OMIT_ALTERTABLE
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-%type dryrun {int}
-dryrun(D) ::= DRYRUN.  {D=1;}
-dryrun(D) ::= .        {D=0;}
 
 constraint_opt ::= .                 { pParse->constraintName.n = 0; }
 constraint_opt ::= CONSTRAINT nm(X). { pParse->constraintName = X; }
@@ -1945,13 +1958,13 @@ tconscheck ::= constraint_opt CHECK LP scanpt(BW) expr(E) scanpt(AW) RP. {
 cmd ::= alter_table_csc2.
 cmd ::= alter_table alter_table_action_list. {comdb2AlterTableEnd(pParse);}
 
-alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
+alter_table ::= dryrun ALTER TABLE nm(Y) dbnm(Z) . {
+  comdb2AlterTableStart(pParse,&Y,&Z);
 }
 
-alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O)
+alter_table_csc2 ::= dryrun ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O)
                      NOSQL(C). {
-  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C);
 }
 
 alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
@@ -2024,6 +2037,12 @@ alter_table_commit_pending ::= SET COMMIT PENDING. {
 alter_table_partitioned ::= partitioned_by.
 alter_table_merge ::= merge_with_alter.
 
+// Even though they make the syntax a bit ugly, the parentheses were
+// added to overcome a parer conflict.
+alter_table_alter_options ::= ALTER OPTIONS LP comdb2optlist(O) RP. {
+  comdb2AlterTableOptions(pParse,O);
+}
+
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
 alter_table_action ::= alter_table_alter_column.
@@ -2038,14 +2057,15 @@ alter_table_action ::= alter_table_drop_index.
 alter_table_action ::= alter_table_commit_pending.
 alter_table_action ::= alter_table_partitioned.
 alter_table_action ::= alter_table_merge.
+alter_table_action ::= alter_table_alter_options.
 
 alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.
 alter_table_action_list ::= alter_table_action_list alter_comma alter_table_action.
 
-cmd ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
+cmd ::= dryrun ALTER TABLE nm(X) RENAME TO nm(Y). {
   comdb2WriteTransaction(pParse);
-  sqlite3AlterRenameTable(pParse,&X,&Y,D);
+  sqlite3AlterRenameTable(pParse,&X,&Y);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
@@ -2075,7 +2095,7 @@ kwcolumn_opt ::= COLUMNKW.
 %ifndef SQLITE_OMIT_VIRTUALTABLE
 cmd ::= create_vtab.                       {sqlite3VtabFinishParse(pParse,0);}
 cmd ::= create_vtab LP vtabarglist RP(X).  {sqlite3VtabFinishParse(pParse,&X);}
-create_vtab ::= createkw VIRTUAL TABLE ifnotexists(E)
+create_vtab ::= dryrun createkw VIRTUAL TABLE ifnotexists(E)
                 nm(X) dbnm(Y) USING nm(Z). {
     sqlite3VtabBeginParse(pParse, &X, &Y, &Z, E);
 }
@@ -2254,9 +2274,21 @@ putcmd ::= SCHEMACHANGE CONVERTSLEEP INTEGER(F). {
     comdb2schemachangeConvertsleep(pParse, tmp);
 }
 
+tunable_value ::= INTEGER.
+tunable_value(V) ::= MINUS number(N). {
+    Token t;
+    char *z = sqlite3DbMallocRawNN(pParse->db, N.n+1);
+    t.z = z;
+    t.n = N.n+1;
+    memcpy(z+1, N.z, N.n);
+    z[0] = '-';
+    V = t;
+}
+tunable_value ::= STRING.
+
 opteq ::= .
 opteq ::= EQ .
-putcmd ::= TUNABLE nm(N) dbnm(M) opteq INTEGER|FLOAT|STRING(V). {
+putcmd ::= TUNABLE nm(N) dbnm(M) opteq tunable_value(V). {
     comdb2putTunable(pParse, &N, &M, &V);
 }
 
@@ -2264,20 +2296,20 @@ putcmd ::= TUNABLE nm(N) dbnm(M) opteq INTEGER|FLOAT|STRING(V). {
 
 cmd ::= rebuild.
 
-rebuild ::= REBUILD nm(T) dbnm(X) comdb2opt(O). { /* REBUILD FULL CANNOT BE USED
+rebuild ::= dryrun REBUILD nm(T) dbnm(X) comdb2opt(O). { /* REBUILD FULL CANNOT BE USED
                                         BECAUSE OF SQLITE SYNTAX */
     comdb2RebuildFull(pParse,&T,&X,O);
 }
 
-rebuild ::= REBUILD INDEX nm(T) dbnm(Y) nm(X) comdb2opt(O). {
+rebuild ::= dryrun REBUILD INDEX nm(T) dbnm(Y) nm(X) comdb2opt(O). {
     comdb2RebuildIndex(pParse, &T,&Y,&X,O);
 }
 
-rebuild ::= REBUILD DATA nm(T) dbnm(X) comdb2opt(O). {
+rebuild ::= dryrun REBUILD DATA nm(T) dbnm(X) comdb2opt(O). {
     comdb2RebuildData(pParse, &T, &X, O);
 }
 
-rebuild ::= REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
+rebuild ::= dryrun REBUILD DATABLOB nm(N) dbnm(X) comdb2opt(O). {
     comdb2RebuildDataBlob(pParse,&N, &X, O);
 }
 
@@ -2345,7 +2377,7 @@ cmd ::= REVOKE userschema(P) nm(U1) TO|FROM nm(U2). {
 table_opt ::= .
 table_opt ::= TABLE.
 
-cmd ::= TRUNCATE table_opt nm(T) dbnm(Y). {
+cmd ::= dryrun TRUNCATE table_opt nm(T) dbnm(Y). {
     comdb2Truncate(pParse, &T, &Y);
 }
 
@@ -2355,11 +2387,11 @@ cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
 
 ////////////////////////////// CREATE PARTITION ///////////////////////////////
 
-cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) RP. {
+cmd ::= dryrun createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) RP. {
     comdb2CreateRangePartition(pParse, &A, &B, C);
 }
 
-cmd ::= createkw partition_type PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+cmd ::= dryrun createkw partition_type PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
     comdb2WriteTransaction(pParse);
     comdb2CreatePartition(pParse, &A, &P, &D, &R, &S);
 }
@@ -2369,7 +2401,7 @@ partition_type ::= TIME.
 
 /////////////////////////////// DROP PARTITION ////////////////////////////////
 
-cmd ::= DROP TIME PARTITION nm(N). {
+cmd ::= dryrun DROP TIME PARTITION nm(N). {
     comdb2WriteTransaction(pParse);
     comdb2DropPartition(pParse, &N);
 }
@@ -2431,17 +2463,17 @@ analyze_sumthds(A) ::= SUMMARIZE INTEGER(X). {
 comdb2opt(A) ::= . {A = 0;}
 comdb2opt(A) ::= OPTIONS comdb2optlist(X). {A = X;}
 %type comdb2optlist {int}
-comdb2optlist(A) ::= comdb2optfield(O). {
-    A = O;
-}
 comdb2optlist(A) ::= comdb2optlist(X) COMMA comdb2optfield(O). {
     A = X | O;
+}
+comdb2optlist(A) ::= comdb2optfield(O). {
+    A = O;
 }
 %type comdb2optfield {int}
 comdb2optfield(A) ::= odh(O). {A = O;}
 comdb2optfield(A) ::= ipu(I). {A = I;}
 comdb2optfield(A) ::= isc(S). {A = S;}
-comdb2optfield(A) ::= REBUILD. {A = FORCE_REBUILD;}
+comdb2optfield(A) ::= FORCE. {A = FORCE_SC;}
 comdb2optfield(A) ::= PAGEORDER. {A = PAGE_ORDER;}
 comdb2optfield(A) ::= READONLY. {A = READ_ONLY;}
 comdb2optfield(A) ::= compress_blob(C). {A = C;}
@@ -2449,12 +2481,15 @@ comdb2optfield(A) ::= compress_rec(C). {A = C;}
 
 %type odh {int}
 odh(A) ::= ODH OFF. {A = ODH_OFF;}
+odh(A) ::= ODH ON.  {A = ODH_ON;}
 
 %type ipu {int}
 ipu(A) ::= IPU OFF. {A = IPU_OFF;}
+ipu(A) ::= IPU ON.  {A = IPU_ON;}
 
 %type isc {int}
 isc(A) ::= ISC OFF. {A = ISC_OFF;}
+isc(A) ::= ISC ON.  {A = ISC_ON;}
 
 %type compress_blob {int}
 compress_blob(A) ::= BLOBFIELD blob_compress_type(T). { A = T;}
@@ -2478,25 +2513,25 @@ rle_compress_type(A) ::= LZ4. {A = REC_LZ4;}
 
 ////////////////////////////// CREATE PROCEDURE ///////////////////////////////
 
-cmd ::= createkw PROCEDURE nm(N) NOSQL(X). {
+cmd ::= dryrun createkw PROCEDURE nm(N) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, NULL, &X);
 }
-cmd ::= createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
+cmd ::= dryrun createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, &V, &X);
 }
 
 /////////////////////////////// DROP PROCEDURE ////////////////////////////////
 
-cmd ::= DROP PROCEDURE nm(N) INTEGER(V). {
+cmd ::= dryrun DROP PROCEDURE nm(N) INTEGER(V). {
     comdb2DropProcedure(pParse, &N, &V, 0);
 }
-cmd ::= DROP PROCEDURE nm(N) VERSION INTEGER(V). {
+cmd ::= dryrun DROP PROCEDURE nm(N) VERSION INTEGER(V). {
     comdb2DropProcedure(pParse, &N, &V, 0);
 }
-cmd ::= DROP PROCEDURE nm(N) STRING(V). {
+cmd ::= dryrun DROP PROCEDURE nm(N) STRING(V). {
     comdb2DropProcedure(pParse, &N, &V, 1);
 }
-cmd ::= DROP PROCEDURE nm(N) VERSION STRING(V). {
+cmd ::= dryrun DROP PROCEDURE nm(N) VERSION STRING(V). {
     comdb2DropProcedure(pParse, &N, &V, 1);
 }
 
@@ -2507,19 +2542,19 @@ cmd ::= DROP PROCEDURE nm(N) VERSION STRING(V). {
 sfuncattr(A) ::= DETERMINISTIC.          {A = SQLITE_FUNC_CONSTANT;}
 sfuncattr(A) ::= .                       {A = 0;}
 
-cmd ::= createkw LUA SCALAR FUNCTION nm(Q) sfuncattr(A). {
+cmd ::= dryrun createkw LUA SCALAR FUNCTION nm(Q) sfuncattr(A). {
 	comdb2CreateScalarFunc(pParse, &Q, A);
 }
 
-cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
+cmd ::= dryrun createkw LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
+cmd ::= dryrun createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
   comdb2CreateTrigger(pParse,0,S,&Q,T);
 }
 
-cmd ::= createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
+cmd ::= dryrun createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
   comdb2CreateTrigger(pParse,1,S,&Q,T);
 }
 
@@ -2578,16 +2613,16 @@ cdb2_trigger_event(A) ::= UPDATE OF idlist(X). {
 
 ////////////////////////////////// DROP LUA ///////////////////////////////////
 
-cmd ::= DROP LUA SCALAR FUNCTION nm(A). {
+cmd ::= dryrun DROP LUA SCALAR FUNCTION nm(A). {
   comdb2DropScalarFunc(pParse,&A);
 }
-cmd ::= DROP LUA AGGREGATE FUNCTION nm(A). {
+cmd ::= dryrun DROP LUA AGGREGATE FUNCTION nm(A). {
   comdb2DropAggFunc(pParse,&A);
 }
-cmd ::= DROP LUA TRIGGER nm(A). {
+cmd ::= dryrun DROP LUA TRIGGER nm(A). {
   comdb2DropTrigger(pParse,0,&A);
 }
-cmd ::= DROP LUA CONSUMER nm(A). {
+cmd ::= dryrun DROP LUA CONSUMER nm(A). {
   comdb2DropTrigger(pParse,1,&A);
 }
 %endif SQLITE_BUILDING_FOR_COMDB2

@@ -879,7 +879,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    sighold(SIGPIPE);
+    signal(SIGPIPE, SIG_IGN);
 
     struct event_config *cfg = event_config_new();
     event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);

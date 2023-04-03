@@ -14,6 +14,11 @@ if [[ "$a_dbn" == *"queueodhgenerated"* ]]; then
     skip_t10=1
 fi
 
+skip_t16=0
+if [[ "$a_dbn" == *"snapshotgenerated"* ]]; then
+    skip_t16=1
+fi
+
 # find input files
 files=$( ls *.req | sort )
 
@@ -88,6 +93,10 @@ for testcase in $files ; do
     testcase=${testcase##*/}
 
     if [[ $skip_t10 == 1 && "$testcase" == "t10.req" ]]; then
+        continue
+    fi
+
+    if [[ $skip_t16 == 1 && "$testcase" == "t16.req" ]]; then
         continue
     fi
     

@@ -1992,7 +1992,7 @@ int main(int argc, char *argv[])
     int printtostderr = 0;
     int printcoltype = 0;
 
-    sighold(SIGPIPE);
+    signal(SIGPIPE, SIG_IGN);
 
     static struct option long_options[] = {
         {"pause", no_argument, &pausemode, 1},

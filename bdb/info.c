@@ -47,7 +47,7 @@
 extern char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
 extern void __test_last_checkpoint(DB_ENV *dbenv);
-extern void __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno);
 extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
@@ -119,6 +119,7 @@ static void txn_stats(FILE *out, bdb_state_type *bdb_state)
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
 
     logmsgf(LOGMSG_USER, out, "st_last_ckp: %s\n", lsn_to_str(str, &(stats->st_last_ckp)));
+    logmsgf(LOGMSG_USER, out, "st_ckp_lsn: %s\n", lsn_to_str(str, &(stats->st_ckp_lsn)));
     prn_stat(st_time_ckp);
     prn_stat(st_last_txnid);
     prn_stat(st_maxtxns);
@@ -661,7 +662,7 @@ void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
     if (gbl_client_ssl_mode <= SSL_UNKNOWN)
         return;
     dbinfo_response->has_require_ssl = 1;
-    dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
+    dbinfo_response->require_ssl = SSL_IS_REQUIRED(gbl_client_ssl_mode);
 }
 
 void fill_dbinfo(CDB2DBINFORESPONSE *dbinfo_response, bdb_state_type *bdb_state)
@@ -1875,7 +1876,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
             return;
         pgno = toknum(tok, ltok);
 
-        __pgdump(bdb_state->dbenv, fileid, pgno);
+        /* Can probably extend the trap to also accept a ufid. But for now pass a NULL. */
+        __pgdump(bdb_state->dbenv, fileid, NULL, pgno);
     } else if (tokcmp(tok, ltok, "pgtrash") == 0) {
         int fileid, pgno;
         tok = segtok(line, lline, &st, &ltok);
@@ -2268,6 +2270,9 @@ int bdb_fill_cluster_info(void **data, int *num_nodes) {
         info[i].coherent_state = bdb_coherent_state_string(nodes[i].host);
         if (info[i].coherent_state[0] == 0)
             info[i].coherent_state = "coherent";
+        DB_LSN *lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[i].host)].lsn;
+        info[i].logfile = lsnp->file;
+        info[i].logoffset = lsnp->offset;
     }
     *data = info;
     return 0;

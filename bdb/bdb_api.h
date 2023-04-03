@@ -641,8 +641,10 @@ tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_handle,
                                 tran_type *parent_tran, int *bdberr,
                                 uint32_t flags);
 
-tran_type *bdb_tran_begin(bdb_state_type *bdb_handle, tran_type *parent_tran,
-                          int *bdberr);
+tran_type *bdb_tran_begin_internal(bdb_state_type *bdb_handle, tran_type *parent_tran,
+                          int *bdberr, const char *func, int line);
+
+#define bdb_tran_begin(A, B, C) ({tran_type *retval; retval = bdb_tran_begin_internal(A, B, C, __func__, __LINE__); retval;})
 
 tran_type *bdb_tran_begin_mvcc(bdb_state_type *bdb_handle,
                                tran_type *parent_tran, int *bdberr);
@@ -2243,6 +2245,7 @@ void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,
                        int64_t *maxactive, int64_t *commits, int64_t *aborts);
 
 uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
+int bdb_recoverlk_blocked(bdb_state_type *bdb_state);
 
 void send_newmaster(bdb_state_type *bdb_state, int online);
 
@@ -2306,6 +2309,8 @@ struct cluster_info {
     int64_t port;
     char *is_master;
     char *coherent_state;
+    int64_t logfile;
+    int64_t logoffset;
 };
 
 int bdb_fill_cluster_info(void **data, int *num_nodes);
@@ -2358,5 +2363,7 @@ struct _CDB2DBINFORESPONSE;
 void fill_dbinfo(struct _CDB2DBINFORESPONSE *, bdb_state_type *);
 void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
 #endif
+
+void thedb_set_master(char *);
 
 #endif

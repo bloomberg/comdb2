@@ -96,6 +96,8 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                                         void *llog_dta, bdb_osql_trn_t *trn,
                                         int *dirty, int trak, int *bdberr);
 
+int normalize_rectype(u_int32_t * rectype);
+
 /**
  * Initialize bdb_osql log repository
  *
@@ -785,6 +787,7 @@ bdb_osql_comprec_reference_rec(bdb_state_type *bdb_state, DB_LSN *lsn,
     void *logp = NULL;
 
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
 
     switch (rectype) {
 
@@ -1668,9 +1671,10 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
     }
 
     rc = cur->get(cur, &lsn, &logdta, DB_SET);
-    if (!rc)
+    if (!rc) {
         LOGCOPY_32(&rectype, logdta.data);
-    else {
+        normalize_rectype(&rectype);
+    } else {
         logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn\n");
         undolog = NULL;
         goto done;
@@ -2117,6 +2121,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
             break;
         }
         LOGCOPY_32(&rectype, logdta.data);
+        normalize_rectype(&rectype);
     }
 
 done:
@@ -2179,6 +2184,7 @@ static int undo_get_ltranid(bdb_state_type *bdb_state, DBT *logdta,
     void *logp = NULL;
 
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
 
     switch (rectype) {
 
@@ -2507,6 +2513,7 @@ static int undo_get_prevlsn(bdb_state_type *bdb_state, DBT *logdta,
     void *logp = NULL;
 
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
 
     switch (rectype) {
 
@@ -2901,6 +2908,7 @@ static int bdb_osql_log_try_run_optimized(bdb_cursor_impl_t *cur,
         rc = curlog->get(curlog, &rec->lsn, &logdta, DB_SET);
         if (!rc) {
             LOGCOPY_32(&rectype, logdta.data);
+            normalize_rectype(&rectype);
         } else {
             if (rc == DB_NOTFOUND) {
                 *bdberr = BDBERR_NO_LOG;
@@ -3103,6 +3111,7 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta.data);
+    normalize_rectype(&rectype);
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timersub(&after, &before, &diff);
@@ -3443,8 +3452,10 @@ static int bdb_osql_log_run_unoptimized(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
         bzero(&logdta, sizeof(logdta));
         logdta.flags = DB_DBT_REALLOC;
         rc = curlog->get(curlog, &rec->lsn, &logdta, DB_SET);
-        if (!rc)
+        if (!rc) {
             LOGCOPY_32(&rectype, logdta.data);
+            normalize_rectype(&rectype);
+        }
         else {
             if (rc == DB_NOTFOUND) {
                 *bdberr = BDBERR_NO_LOG;
@@ -4096,8 +4107,10 @@ static int bdb_osql_log_get_optim_data_int(bdb_state_type *bdb_state,
     bzero(&logdta, sizeof(logdta));
     logdta.flags = DB_DBT_REALLOC;
     rc = curlog->get(curlog, lsn, &logdta, DB_SET);
-    if (!rc)
+    if (!rc) {
         LOGCOPY_32(&rectype, logdta.data);
+        normalize_rectype(&rectype);
+    }
     else {
         if (rc == DB_NOTFOUND) {
             *bdberr = BDBERR_NO_LOG;
@@ -4481,10 +4494,12 @@ again:
         } else
             pCur->hitLast = 0;
         pCur->getflags = DB_NEXT;
-        if (pCur->data.data)
+        if (pCur->data.data) {
             LOGCOPY_32(&rectype, pCur->data.data);
-        else
+            normalize_rectype(&rectype);
+        } else {
             rectype = 0;
+        }
         if (pCur->maxLsn.file > 0 &&
             log_compare(&pCur->curLsn, &pCur->maxLsn) > 0) {
             /* traverse upto maxLsn */

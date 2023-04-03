@@ -1,0 +1,2 @@
+Test running analyze followed by exit to make sure node exits immediately.
+Problems could happen if analyze is running on master and after exit command node doesn't shut down immediately

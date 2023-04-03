@@ -1,0 +1,4 @@
+(Message='Table t1 will be dropped')
+[dryrun drop index key on t1] failed with rc -3 DRYRUN not supported for this operation
+[dryrun drop trigger if exists sp] failed with rc -3 DRYRUN not supported for this operation
+[dryrun drop procedure sp version 'test'] failed with rc -3 DRYRUN not supported for this operation

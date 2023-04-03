@@ -63,6 +63,7 @@ tests/tools/verify_atomics_work
 tests/tools/cdb2_open
 tests/tools/cdb2api_unit
 tests/tools/cdb2_close_early
+tests/tools/sqlite_clnt
 
 
 tests/*_generated.test
@@ -86,3 +87,5 @@ compile_commands.json
 cscope.*
 CMakeLists.txt.user
 plugins/.gitignore
+/.idea/*
+/cmake-build*

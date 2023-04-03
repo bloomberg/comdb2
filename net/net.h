@@ -86,6 +86,8 @@ typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
+typedef int NETTHROTTLEFP(struct netinfo_struct *netinfo, const char *hostname);
+
 void net_setbufsz(netinfo_type *info, int bufsz);
 
 void net_set_callback_data(netinfo_type *info, void *data);
@@ -99,7 +101,8 @@ enum {
     NET_SEND_NODELAY = 0x00000001,
     NET_SEND_NODROP = 0x00000002,
     NET_SEND_INORDER = 0x00000004,
-    NET_SEND_TRACE = 0x00000008
+    NET_SEND_TRACE = 0x00000008,
+    NET_SEND_LOGPUT = 0x00000010
 };
 
 enum {
@@ -173,6 +176,10 @@ int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func);
 
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
+
+/* callback to disable logputs if a node is too far behind */
+int net_register_throttle(netinfo_type *netinfo_ptr, NETTHROTTLEFP func);
+
 int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func);
 
 /* register a callback routine that will be called to find out if net
@@ -444,7 +451,7 @@ int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
 void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
-
+void update_host_net_queue_stats(host_node_type *, size_t, size_t);
 extern int gbl_libevent;
 extern int gbl_libevent_appsock;
 extern int gbl_libevent_rte_only;
@@ -459,5 +466,6 @@ void add_timer_event(void(*)(int, short, void *), void *, int);
 int db_is_stopped(void);
 int db_is_exiting(void);
 void stop_event_net(void);
+int sync_state_to_protobuf(int);
 
 #endif

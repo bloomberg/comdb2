@@ -83,7 +83,7 @@ static void get_info(trigger_cursor *cur){
   trigger *t;
 again:
   t = cur->trg;
-  get_trigger_info(t->name, &t->info);
+  get_trigger_info_lk(t->name, &t->info);
   cur->tbl = LISTC_TOP(&t->info.tbls);
   if( cur->tbl ){
     cur->col = LISTC_TOP(&cur->tbl->cols);

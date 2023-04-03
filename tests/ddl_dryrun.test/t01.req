@@ -1,0 +1,12 @@
+dryrun create table dr(a int)
+dryrun create index foo on t1(id)
+dryrun create view v1 as select * from t1
+dryrun create trigger if not exists tr1 after insert on t1 BEGIN select 1; END
+dryrun create range partition on t1 where id in (1,2,3)
+dryrun create partition on t1 as testpart1 period 'manual' retention 2 start '1'
+dryrun create time partition on t1 as t1_tp period 'yearly' retention 2 start '2018-01-01'
+dryrun create procedure sp version 'test' {}
+dryrun create lua aggregate function sp
+dryrun create lua scalar function sp
+dryrun create lua trigger sp on (table t1 for insert)
+dryrun create lua consumer sptest on (table t1 for insert)

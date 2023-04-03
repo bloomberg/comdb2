@@ -316,7 +316,7 @@ dopage(DB *dbp, PAGE *p)
 }
 
 void
-__pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
+__pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno)
 {
 	int ret;
 	DB *dbp;
@@ -324,7 +324,10 @@ __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 	PAGE *pagep;
 
 	/* No transaction because we should already have a dbp open. */
-	ret = __dbreg_id_to_db(dbenv, NULL, &dbp, fileid, 0, NULL, 0);
+	if (fileid != -1)
+		ret = __dbreg_id_to_db(dbenv, NULL, &dbp, fileid, 0, NULL, 0);
+	else
+		ret = __ufid_to_db(dbenv, NULL, &dbp, ufid, NULL);
 
 	if (ret) {
 		fprintf(stderr,
@@ -355,6 +358,7 @@ __pgdump(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 struct pginfo {
 	int32_t fileid;
 	db_pgno_t pgno;
+	uint8_t ufid[0];
 };
 
 void
@@ -368,25 +372,32 @@ __pgdump_reprec(DB_ENV *dbenv, DBT *dbt)
 	p += sizeof(int32_t);
 	LOGCOPY_32(&pgno, p);
 	p += sizeof(int32_t);
-	__pgdump(dbenv, fileid, pgno);
+	__pgdump(dbenv, fileid, (dbt->size == sizeof(struct pginfo) ? NULL : p), pgno);
 }
 
 void
-__pgdumpall(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
+__pgdumpall(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno)
 {
-	struct pginfo pg;
+	struct pginfo *pg;
+    pg = malloc(sizeof(struct pginfo) + DB_FILE_ID_LEN);
+    int send_ufid = (pgno == -1);
 	DBT dbt = { 0 };
 	/* dump locally */
-	__pgdump(dbenv, fileid, pgno);
-	LOGCOPY_32(&pg.fileid, &fileid);
-	LOGCOPY_32(&pg.pgno, &pgno);
+	__pgdump(dbenv, fileid, ufid, pgno);
+	LOGCOPY_32(&pg->fileid, &fileid);
+	LOGCOPY_32(&pg->pgno, &pgno);
+	if (send_ufid)
+		memcpy(pg->ufid, ufid, DB_FILE_ID_LEN);
 
 	/* tell other nodes to dump */
 	dbt.data = &pg;
 	dbt.size = sizeof(struct pginfo);
+	if (send_ufid)
+		dbt.size += DB_FILE_ID_LEN;
 
 	__rep_send_message(dbenv, db_eid_broadcast, REP_PGDUMP_REQ, NULL, &dbt,
 	    DB_REP_NOBUFFER, NULL);
+	free(pg);
 }
 
 void

@@ -1684,11 +1684,15 @@ int bdb_lock_row_fromlid(bdb_state_type *bdb_state, int lid, int idx,
 int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
                              unsigned long long genid, int how, DB_LOCK *dblk,
                              DBT *lkname, int trylock, int flags);
+enum {
+    CURTRAN_HOLDS_SPLOCK    = 1
+};
 
 /* we use this structure to create a dummy cursor to be used for all
  * non-transactional cursors. it is defined below */
 struct cursor_tran {
     uint32_t lockerid;
+    uint32_t flags;
     int id; /* debugging */
 };
 
@@ -1748,6 +1752,7 @@ void udp_backup(int, short, void *);
 void auto_analyze(int, short, void *);
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
+void net_rep_throttle_init(netinfo_type *netinfo_ptr);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
 void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,

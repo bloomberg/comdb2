@@ -695,9 +695,43 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
     )
         return NULL;
 
-    if (p->op == TK_SELECT)
+    if (p->op == TK_SELECT) {
         ret = gen_oneselect(v, p, NULL, NULL, NULL, 0);
-    else
+        if (ret) {
+            /* single query case, can we push this remotely? */
+            int i;
+            const char *remoteDb = "";
+            int remoteIdb = 0;
+            for (i = 0; i < p->pSrc->nSrc; i++) {
+                struct SrcList_item *item = &p->pSrc->a[i];
+                if (!item->pTab) {
+                    /* no table data source */
+                    continue;
+                }
+                if (item->pTab->iDb <= 1) {
+                    /* local table */
+                    remoteIdb = 0;
+                    break;
+                }
+                if (remoteIdb && remoteIdb != item->pTab->iDb) {
+                    /* join of two remote tables, we could
+                     * push to one of them, but for now lets
+                     * run join locally
+                     */
+                    remoteIdb = 0;
+                    break;
+                }
+                remoteIdb = item->pTab->iDb;
+                remoteDb = v->db->aDb[remoteIdb].zDbSName;
+            }
+            if (remoteIdb) {
+                if (gbl_dohast_verbose)
+                    logmsg(LOGMSG_USER, "We can push remotely to %d %s db %p\n",
+                           remoteIdb, remoteDb, v->db);
+                ret->remotedb = remoteIdb;
+            }
+        }
+    } else
         ret = gen_union(v, p, span);
 
     return ret;
@@ -879,6 +913,38 @@ int comdb2_check_parallel(Parse *pParse)
             pParse->explain = 2;
         }
     }
+    return 0;
+}
+
+int comdb2_check_push_remote(Parse *pParse)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return 0;
+
+    ast_t *ast = pParse->ast;
+    dohsql_node_t *node;
+
+    if (!gbl_fdb_push_remote)
+        return 0;
+
+    if (ast && ast->unsupported)
+        return 0;
+    if (has_parallel_sql(NULL) == 0)
+        return 0;
+    if (ast->nused > 1)
+        return 0;
+    if (!ast->stack[0].obj)
+        return 0;
+
+    node = (dohsql_node_t *)ast->stack[0].obj;
+
+    if (node->type != AST_TYPE_SELECT)
+        return 0;
+
+    if (!pParse->explain)
+        if (node->remotedb > 1)
+            if (!fdb_push_run(pParse, node))
+                return 1;
     return 0;
 }
 

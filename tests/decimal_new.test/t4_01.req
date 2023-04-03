@@ -1,0 +1,2 @@
+insert into t4 (id, d32) values (1, "2.0")
+select d32 from t4 where id < 40

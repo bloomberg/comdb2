@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ "$debug" == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export maxtable=50
+
+function create_tables
+{
+    typeset j=0
+    typeset func=create_tables
+    write_prompt $func "Creating tables"
+    while [[ "$j" -lt "$maxtable" ]]; do
+        $CDB2SQL_EXE -s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default "create table t${j} (a int)" >/dev/null 2>&1
+        [[ "$?" == "0" ]] && write_prompt $func "Created table t${j}"
+        let j=j+1
+    done
+    $CDB2SQL_EXE --tabs --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default "select * from comdb2_tables" | while read x ; do
+        write_prompt $func "Found table $x"
+    done
+}
+
+function truncate_tables
+{
+    typeset j=0
+    typeset func=truncate_tables
+    write_prompt $func "Deleting tables"
+    while [[ "$j" -lt "$maxtable" ]]; do
+        $CDB2SQL_EXE -s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default "truncate t${j}" >/dev/null 2>&1
+        [[ "$?" == "0" ]] && write_prompt $func "Truncated t${j}"
+        let j=j+1
+    done
+}
+
+function drop_tables
+{
+    typeset j=0
+    typeset func=drop_tables
+    write_prompt $func "Deleting tables"
+    while [[ "$j" -lt "$maxtable" ]]; do
+        $CDB2SQL_EXE -s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default "drop table t${j}" >/dev/null 2>&1
+        [[ "$?" == "0" ]] && write_prompt $func "Dropped table t${j}"
+        let j=j+1
+    done
+    $CDB2SQL_EXE --tabs --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default "select * from comdb2_tables" | while read x ; do
+        write_prompt $func "Found table $x"
+    done
+}
+
+function pushnext
+{
+    typeset master=$(get_master)
+    write_prompt pushnext "Running pushnext"
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} --host $master $DBNAME "exec procedure sys.cmd.send('pushnext')" >/dev/null 2>&1
+}
+
+function downgrade
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="downgrade"
+    typeset node=$(get_master)
+    typeset count=0
+    typeset foundmaster=0
+    typeset maxcount=600
+    typeset initialmaster=0
+    write_prompt $func "Running $func $node"
+
+    x=$(get_master)
+    while [[ "$CLUSTER" != *"$x"* && "$count" -lt "$maxcount" ]]; do
+        sleep 1
+        x=$(get_master)
+        let count=count+1
+    done
+
+    [[ "$count" -ge "$maxcount" ]] && failexit "Could not find master"
+    initialmaster=$x
+
+    while [[ "$x" == "$initialmaster" && "$count" -lt $maxcount ]]; do
+        x=$(get_master)
+        while [[ "$CLUSTER" != *"$x"* && "$count" -lt "$maxcount" ]]; do
+            sleep 1
+            x=$(get_master)
+            let count=count+1
+        done
+        $CDB2SQL_EXE --tabs $CDB2_OPTIONS --host $x $DBNAME "EXEC PROCEDURE sys.cmd.send('downgrade')"
+        sleep 1
+        x=$(get_master)
+        while [[ "$CLUSTER" != *"$x"* && "$count" -lt "$maxcount" ]]; do
+            sleep 1
+            x=$(get_master)
+        done
+
+        [[ "$x" != "$node" ]] && foundmaster=1
+        let count=count+1
+    done
+
+    [[ "$count" -ge "$maxcount" ]] && failexit "Could not downgrade master"
+}
+
+function run_test
+{
+    typeset maxtime=`echo "(${TEST_TIMEOUT%%m}-2)*60" | bc`
+    typeset now=$(date +%s)
+    typeset endtime=$(( now + maxtime ))
+    typeset func=run_test
+    typeset count=0
+    rm -f $stopfile >/dev/null 2>&1
+
+    if [[ "$TESTCASE" == "delfile_block_reproleak_generated" ]]; then
+        create_tables
+    fi
+
+    while [[ ! -f $stopfile && "$(date +%s)" -lt $endtime ]]; do
+        let count=count+1
+        if [[ "$TESTCASE" == "delfile_block_reproleak_generated" ]]; then
+            truncate_tables
+        else
+            create_tables
+            drop_tables
+        fi
+        pushnext
+        if [[ "$TESTCASE" == "delfile_block_reproleak_generated" ]]; then
+            x=$(( count % 6 ))
+            if [[ "$x" == "0" ]]; then
+                write_prompt $func "Downgrading master"
+                downgrade
+            fi
+        fi
+        write_prompt $func "Sleeping for 10"
+        sleep 10
+    done
+    
+    write_prompt $func "Verify the checkpoint lsn"
+
+    master=$(get_master)
+    txnstat=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} --host $master $DBNAME "exec procedure sys.cmd.send('bdb txnstat')")
+
+    lstckp_ln=$(echo "$txnstat" | grep "st_last_ckp")
+    ckplsn_ln=$(echo "$txnstat" | grep "st_ckp_lsn")
+
+    lstckp=$(echo ${lstckp_ln#*: })
+    ckplsn=$(echo ${ckplsn_ln#*: })
+
+    lstfl=$(echo ${lstckp%:*})
+    ckpfl=$(echo ${ckplsn%:*})
+
+    write_prompt $func "Last-checkpoint is $lstckp, Checkpoint-LSN is $ckplsn"
+
+    diff=$(( lstfl - ckpfl ))
+
+    if [[ "$diff" -gt 1 ]]; then
+        echo "Failing test: Checkpoint-LSN is TOO OLD"
+        exit -1
+    fi
+}
+
+run_test
+echo "Success!"

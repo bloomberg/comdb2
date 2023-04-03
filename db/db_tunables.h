@@ -239,6 +239,14 @@ REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'",
 REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_rowlocks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("stack_at_lock_get", "Stores stack-id for every lock-get.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_lock_get, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_lock_handle", "Stores stack-id for every lock-handle.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_lock_handle, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_write_lock", "Stores stack-id for every write-lock.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_write_lock, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_lock_gen_increment", "Stores stack-id when lock's generation increments.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_stack_at_lock_gen_increment, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_seekscan_optimization",
                  "Disables SEEKSCAN optimization", TUNABLE_BOOLEAN,
                  &gbl_disable_seekscan_optimization, NOARG, NULL, NULL, NULL,
@@ -481,6 +489,8 @@ REGISTER_TUNABLE("foreign_db_allow_cross_class", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN,
                  &gbl_fdb_resolve_local, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN,
+                 &gbl_fdb_push_remote, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fullrecovery", "Attempt to run database "
                                  "recovery from the beginning of "
                                  "available logs. (Default : off)",
@@ -770,6 +780,7 @@ REGISTER_TUNABLE("net_poll",
                  "shut down. (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_net_poll, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("netpoll", "Alias of net_poll", TUNABLE_INTEGER, &gbl_net_poll, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("net_portmux_register_interval",
                  "Check on this interval if our port is correctly registered "
                  "with pmux for the replication net. (Default: 600ms)",
@@ -1310,11 +1321,32 @@ REGISTER_TUNABLE(
     "Deliberately allow insertion without constraint check to debug db_verify",
     TUNABLE_BOOLEAN, &gbl_debug_skip_constraintscheck_on_insert, INTERNAL, NULL,
     NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.protobuf_connectmsg_dbname_check",
+                 "Send the wrong dbname in the connect message to test that a node in the same cluster should not "
+                 "connect in this case (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_pb_connectmsg_dbname_check, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.protobuf_connectmsg_gibberish",
+                 "Don't understand the new protobuf connnect message to test connecting with older versions of comdb2"
+                 " (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_pb_connectmsg_gibberish, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.omit_zap_on_rebuild",
                  "Omit zeroing out record on rebuild to test whether array types are already zeroed out after end of field"
                  " (Default: 0)", TUNABLE_BOOLEAN,
                  &gbl_debug_omit_zap_on_rebuild, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug.txn_sleep",
+                 "Sleep during a transaction to test transaction state systable", TUNABLE_INTEGER,
+                 &gbl_debug_txn_sleep, INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE(
+    "query_plan_percentage",
+    "Alarm if the average cost per row of current query plan is n percent above the cost for different query plan."
+    " (Default: 50)",
+    TUNABLE_DOUBLE, &gbl_query_plan_percentage, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_plan_query_plans",
+                 "Maximum number of plans to be placed into the query plan "
+                 "hash for each fingerprint (Default: 20)",
+                 TUNABLE_INTEGER, &gbl_query_plan_max_plans, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
@@ -1386,6 +1418,8 @@ REGISTER_TUNABLE("verbose_send_cohlease",
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dedup_rep_all_reqs", "Only allow a single rep-all on queue to the master. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_dedup_rep_all_reqs, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("decoupled_logputs",
                  "Perform logputs out-of-band. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_decoupled_logputs, EXPERIMENTAL | INTERNAL, NULL, NULL,
@@ -1406,6 +1440,10 @@ REGISTER_TUNABLE("rep_verify_will_recover_trace",
 REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("written_rows_warn",
+                 "Set warning threshold for rows written in a transaction.  "
+                 "(Default: 0)",
+                 TUNABLE_INTEGER, &gbl_written_rows_warn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_cascaded_rows_per_txn",
                  "Set the max cascaded rows updated per transaction.", TUNABLE_INTEGER,
                  &gbl_max_cascaded_rows_per_txn, 0, NULL, NULL, NULL, NULL);
@@ -1522,6 +1560,12 @@ REGISTER_TUNABLE("early_ack_trace",
                  "Print trace when sending an early ack.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_early_ack_trace, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_delay_timeout_seconds",
+                 "Set timeout for commit-delay on copy.  (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_commit_delay_timeout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_delay_on_copy_ms",
+                 "Set automatic delay-ms for commit-delay on copy.  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_commit_delay_copy_ms, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -1679,6 +1723,12 @@ REGISTER_TUNABLE("random_get_curtran_failures",
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_random_get_curtran_failures,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("dont_block_delete_files_thread", "Ignore files that would block delete-files thread.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_txn_fop_noblock, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_random_fop_block", "Randomly return .  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_random_block_on_fop, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("random_thdpool_work_timeout",
                  "Force a random thread pool work item timeout 1/this many "
@@ -1843,6 +1893,9 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_pb_connectmsg, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("libevent", "Use libevent in net library. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
 
@@ -1905,6 +1958,14 @@ REGISTER_TUNABLE("clean_exit_on_sigterm",
                  "Attempt to do orderly shutdown on SIGTERM (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_clean_exit_on_sigterm,
                  NOARG, NULL, NULL, update_clean_exit_on_sigterm, NULL);
+
+REGISTER_TUNABLE("msgwaittime",
+                 "Network timeout for pushnext & queue changes.  (Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_msgwaittime, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("scwaittime",
+                 "Network timeout for schema changes.  (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_scwaittime, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_children_lock",
                  "Stacktrace when database acquires or releases children lock."
@@ -2001,8 +2062,14 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
 REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_log,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("utxnid_log", "Generate utxnid logs. (Default: on)", TUNABLE_BOOLEAN, &gbl_utxnid_log,
+				 NOARG, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: off)", TUNABLE_BOOLEAN, 
                  &gbl_ufid_add_on_collect, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("collect_before_locking", "Collect a transaction from the log before acquiring locks.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_collect_before_locking, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -2013,6 +2080,14 @@ REGISTER_TUNABLE("abort_on_missing_ufid", "Abort if ufid is not found.  (Default
 
 REGISTER_TUNABLE("ufid_dbreg_test", "Enable ufid-dbreg test.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_dbreg_test,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("javasp_early_release", "Release javasp-lock before distributed commit.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_javasp_early_release, EXPERIMENTAL | INTERNAL, 
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_add_replication_latency", "Sleep after distributed commit.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_add_replication_latency, EXPERIMENTAL | INTERNAL, 
+                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("ref_sync_pollms",
                  "Set pollms for ref_sync thread.  "
@@ -2146,6 +2221,15 @@ REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid 
 REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_analyze", "Sleep analyze sql tick.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_analyze, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_sleep_in_summarize", "Sleep analyze summarize.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_summarize, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_sleep_in_trigger_info", "Sleep trigger info.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_trigger_info, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_consumer_lock",
                  "Enable debug-trace for consumer lock.  "
                  "(Default: off)",
@@ -2170,7 +2254,7 @@ REGISTER_TUNABLE("sockbplog_sockpool",
                  &gbl_sockbplog_sockpool, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
 
-REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: on)",
+REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
@@ -2253,4 +2337,16 @@ REGISTER_TUNABLE("pgcomp_dbg_ctrace", "Enable debugging ctrace for page compacti
 REGISTER_TUNABLE("dump_history_on_too_many_verify_errors",
                  "Dump osql history and client info on too many verify errors (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_dump_history_on_too_many_verify_errors, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("warn_on_equiv_type_mismatch", "Warn about mismatch of different but equivalent data types "
+                 "returned by different sqlite versions (Default off)", TUNABLE_BOOLEAN,
+                 &gbl_warn_on_equiv_type_mismatch, NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("seekscan_maxsteps",
+                 "Overrides the max number of steps for a seekscan optimization", TUNABLE_INTEGER,
+                 &gbl_seekscan_maxsteps, SIGNED, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("wal_osync", "Open WAL files using the O_SYNC flag (Default: off)", TUNABLE_BOOLEAN, &gbl_wal_osync, 0,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_headroom", 
+                 "Percentage threshold for low headroom calculation. (Default: 10)",
+                 TUNABLE_DOUBLE, &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

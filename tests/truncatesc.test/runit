@@ -1071,12 +1071,14 @@ function bulk_rebuild
     bulk_rebuild_sal_1=$(select_all)
 
     write_prompt $func "Rebuilding t1 with blob"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild { schema { int a blob b null=yes }} "
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 { schema { int a blob b null=yes }} "
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "rebuild t1 "
     bulk_rebuild_lsn_2=$(get_current_lsn)
     bulk_rebuild_sal_2=$(select_all)
 
     write_prompt $func "Rebuilding t1 with cstring"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild { schema { int a blob b null=yes cstring c[10] null=yes}} "
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 { schema { int a blob b null=yes cstring c[10] null=yes}} "
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "rebuild t1"
     bulk_rebuild_lsn_3=$(get_current_lsn)
     bulk_rebuild_sal_3=$(select_all)
 
@@ -1127,17 +1129,17 @@ function alter_table_options
     alter_table_stc_1=$(stat_compr)
 
     write_prompt $func "Altering tables adding ODH"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options rebuild, ipu off, isc off, rec none, blobfield none { schema { int a } }"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options ipu off, isc off, rec none, blobfield none { schema { int a } }"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options ipu off, isc off, rec none, blobfield none { schema { int a } }"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options ipu off, isc off, rec none, blobfield none { schema { int a } }"
     alter_table_lsn_2=$(get_current_lsn)
     alter_table_sal_2=$(select_all)
     alter_table_stc_2=$(stat_compr)
 
     write_prompt $func "Altering tables adding compression"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options rebuild, ipu off, isc off { schema { int a } }"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options rebuild, ipu off, isc off { schema { int a } }"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options rebuild, ipu off, isc off { schema { int a } }"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 options ipu off, isc off { schema { int a } }"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t2 options ipu off, isc off { schema { int a } }"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t3 options ipu off, isc off { schema { int a } }"
     alter_table_lsn_3=$(get_current_lsn)
     alter_table_sal_3=$(select_all)
     alter_table_stc_3=$(stat_compr)

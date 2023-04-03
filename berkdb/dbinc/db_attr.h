@@ -21,8 +21,6 @@ BERK_DEF_ATTR(preallocate_on_writes, "Pre-allocate on writes", BERK_ATTR_TYPE_BO
 BERK_DEF_ATTR(preallocate_max, "Pre-allocation size", BERK_ATTR_TYPE_INTEGER, 256 * MEGABYTE)
 BERK_DEF_ATTR(lsnerr_pgdump, "Dump page on LSN errors", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(lsnerr_pgdump_all, "Dump page on LSN errors on all nodes", BERK_ATTR_TYPE_BOOLEAN, 0)
-BERK_DEF_ATTR(max_backout_seconds, "Refuse to roll back replicant past this many seconds", BERK_ATTR_TYPE_INTEGER, 0)
-BERK_DEF_ATTR(max_backout_logs, "Refuse to roll back replicant past this many log files", BERK_ATTR_TYPE_INTEGER, 3)
 BERK_DEF_ATTR(log_applied_lsns, "Log applied LSNs to log", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(check_applied_lsns, "Check transaction that its LSNs have been applied", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(check_applied_lsns_fatal, "Abort if check_applied_lsns fails", BERK_ATTR_TYPE_BOOLEAN, 0)

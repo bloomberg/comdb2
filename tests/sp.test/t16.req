@@ -1,0 +1,27 @@
+drop table if exists t
+create procedure udf version 'test' {
+local function udf()
+    return 'udf result'
+end}$$
+create lua scalar function udf
+select udf()
+
+create table t (i int)$$
+create procedure consumer version 'test' {
+local function main()
+    db:column_name('emit', 1)
+    db:column_type('text', 1)
+    local c = db:consumer()
+    c:emit({emit='consumer result'})
+end}$$
+
+--no consumer created: should fail
+exec procedure consumer()
+
+--should work after creating consumer
+create lua consumer consumer on (table t for update)
+exec procedure consumer()
+
+--fix for original bug: should work after running udf
+select udf()
+exec procedure consumer()

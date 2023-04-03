@@ -4689,8 +4689,7 @@ clipper_usage:
        logmsg(LOGMSG_USER, "disabled rcache\n");
 #endif
     } else if (tokcmp(tok, ltok, "swing") == 0) {
-        extern int gbl_master_changes;
-        ++gbl_master_changes;
+        ATOMIC_ADD32(gbl_master_changes, 1);
     } else if (tokcmp(tok, ltok, "stat4dump") == 0) {
         int more;
         segtok(line, lline, &st, &more);
@@ -4948,8 +4947,12 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "Usage: testrep num_items item_size\n");
         }
     } else if (tokcmp(tok, ltok, "clear_fingerprints") == 0) {
-        int fpcount = clear_fingerprints();
-        logmsg(LOGMSG_USER, "Cleared %d fingerprints\n", fpcount);
+        int plans_count;
+        int fpcount = clear_fingerprints(&plans_count);
+        logmsg(LOGMSG_USER, "Cleared %d fingerprints with a total of %d plans\n", fpcount, plans_count);
+    } else if (tokcmp(tok, ltok, "clear_query_plans") == 0) {
+        int plans_count = clear_query_plans();
+        logmsg(LOGMSG_USER, "Cleared %d plans\n", plans_count);
     } else if (tokcmp(tok, ltok, "get_verify_thdpool_status") == 0) {
         if (gbl_verify_thdpool)
             thdpool_print_stats(stdout, gbl_verify_thdpool);

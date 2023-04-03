@@ -278,7 +278,7 @@ include_directories(
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
 elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
-  set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-knr-promoted-parameter -Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
+  set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-knr-promoted-parameter -Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label -Wno-unused-but-set-variable")
 endif()
 
 if (COMDB2_BBCMAKE)
@@ -298,12 +298,6 @@ option(WRITELOCK_HANDLE_DUMP_MATCHING "Dump matching handles at writelock" OFF)
 mark_as_advanced(WRITELOCK_HANDLE_DUMP_MATCHING)
 if(WRITELOCK_HANDLE_DUMP_MATCHING)
   add_definitions(-DWRITELOCK_HANDLE_DUMP_MATCHING)
-endif()
-
-option(STACK_AT_GET_LOCK "Save a cheap-stack at every lock-get" OFF)
-mark_as_advanced(STACK_AT_GET_LOCK)
-if(STACK_AT_GET_LOCK)
-  add_definitions(-DSTACK_AT_GET_LOCK)
 endif()
 
 add_definitions(-DSTDC_HEADERS)

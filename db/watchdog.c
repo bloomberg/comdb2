@@ -25,6 +25,7 @@
 #include "views.h"
 #include "logmsg.h"
 #include "reqlog.h"
+#include <comdb2_atomic.h>
 
 int gbl_client_queued_slow_seconds = 0;
 int gbl_client_running_slow_seconds = 0;
@@ -308,8 +309,8 @@ static void *watchdog_thread(void *arg)
             socket_pool_timeout();
         }
         
-        if (gbl_trigger_timepart) {
-            gbl_trigger_timepart = 0;
+        int one = 1;
+        if (CAS32(gbl_trigger_timepart, one, 0)) {
             if (thedb->master == gbl_myhostname) {
                 rc = views_cron_restart(thedb->timepart_views);
                 if (rc) {
@@ -371,7 +372,7 @@ static void *watchdog_thread(void *arg)
             }
         }
 
-        reqlog_long_running_sql_statements();
+        reqlog_log_all_longreqs();
 
         /* we use counter to downsample the run events for lower frequence
            tasks, like deadlock detector */

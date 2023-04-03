@@ -41,8 +41,10 @@ extern pthread_mutex_t rep_candidate_lock;
 extern int gbl_passed_repverify;
 struct bdb_state_tag;
 void bdb_set_rep_handle_dead(struct bdb_state_tag *);
+int bdb_num_connected_nodes(struct bdb_state_tag *);
 #endif
 
+int normalize_rectype(u_int32_t * rectype);
 int gbl_verbose_master_req = 0;
 int gbl_trace_repmore_reqs = 0;
 
@@ -143,6 +145,9 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 		}
 	}
 
+	if (eid == db_eid_broadcast && bdb_num_connected_nodes(dbenv->app_private) == 0)
+		return 0;
+
 	/* Set up control structure. */
 	memset(&cntrl, 0, sizeof(cntrl));
 	if (lsnp == NULL)
@@ -175,8 +180,10 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	 * REQ_ALL request 
 	 */
 #if 0
-	if (dbtp->size >= sizeof(rectype))
+	if (dbtp->size >= sizeof(rectype)) {
 		LOGCOPY_32(&rectype, dbtp->data);
+		normalize_rectype(&rectype);
+	}
 
 	if ((rtype == REP_LOG || rtype == REP_LOG_LOGPUT) &&
 		(rectype == DB___txn_regop)) {
@@ -214,6 +221,7 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 		 * so we know that dbtp is a log record.
 		 */
 		memcpy(&rectype, dbtp->data, sizeof(rectype));
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen
 			|| rectype == DB___txn_ckp ||
 			rectype == DB___txn_regop_rowlocks)
@@ -461,6 +469,9 @@ int gbl_abort_on_incorrect_upgrade;
 extern int last_fill;
 extern int gbl_decoupled_logputs;
 
+int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
+					 const char *func, int line);
+
 int
 __rep_new_master(dbenv, cntrl, eid)
 	DB_ENV *dbenv;
@@ -560,8 +571,8 @@ __rep_new_master(dbenv, cntrl, eid)
 		} else {
 			/* Let the apply-thread make this request */
 			if (log_compare(&lsn, &cntrl->lsn) < 0 && !gbl_decoupled_logputs) {
-				if (__rep_send_message(dbenv, eid, REP_ALL_REQ, &lsn, 
-							NULL, DB_REP_NODROP|DB_REP_NOBUFFER, NULL) == 0) {
+				if (send_rep_all_req(dbenv, eid, &lsn, DB_REP_NODROP|DB_REP_NOBUFFER,
+					__func__, __LINE__) == 0) {
 					if (gbl_verbose_fills) {
 						logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ "
 								"for %d:%d\n", __func__, __LINE__, lsn.file,
@@ -609,10 +620,10 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			 */
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
-			if (__rep_send_message(dbenv, rep->master_id,
-				REP_ALL_REQ, &lsn, NULL, DB_REP_NODROP, NULL) == 0) {
+			if (send_rep_all_req(dbenv, rep->master_id, &lsn, DB_REP_NODROP,
+				__func__, __LINE__) == 0) {
 				last_fill = comdb2_time_epochms();
-			} 
+			}
 		} else
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 

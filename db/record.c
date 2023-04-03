@@ -699,6 +699,24 @@ int upgrade_record(struct ireq *iq, void *trans, unsigned long long vgenid,
    Switch it off to return null constraint error (4). */
 int gbl_upd_null_cstr_return_conv_err = 0;
 
+/* Unodhfy the blob payload of `src', and make a copy of it into `dst'. */
+static int unodhfy_and_clone(const dbtable *db, blob_buffer_t *src, blob_buffer_t *dst, int blobind)
+{
+    int rc = unodhfy_blob_buffer(db, src, blobind);
+    if (rc != 0)
+        return -1;
+    free_blob_buffers(dst, 1);
+    memset(dst, 0, sizeof(blob_buffer_t));
+    dst->exists = src->exists;
+    dst->length = src->length;
+    dst->collected = src->collected;
+    if (src->data != NULL) {
+        dst->data = malloc(src->length);
+        memcpy(dst->data, src->data, dst->length);
+    }
+    return 0;
+}
+
 /*
  * Update an existing record.
  *
@@ -1197,7 +1215,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             if (!(blob->collected) && !(flags & RECFLAGS_DONT_SKIP_BLOBS))
                 continue;
 
-            add_blobs_buf[blobno] = *blob;
+            /* unodhfy in case we need to perform a type conversion (e.g., from blob to blob2) */
+            rc = unodhfy_and_clone(iq->usedb, blob, &add_blobs_buf[blobno], blobno);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s: failed to remove ODH and clone blobs\n", __func__);
+                *opfailcode = OP_FAILED_INTERNAL;
+                retrc = ERR_INTERNAL;
+                goto err;
+            }
         }
         del_idx_blobs = del_blobs_buf;
         add_idx_blobs = add_blobs_buf;
@@ -1590,6 +1615,7 @@ err:
     if (retrc == RC_INTERNAL_RETRY) {
         iq->usedb->deadlock_count++;
     }
+    free_blob_buffers(add_blobs_buf, MAXBLOBS);
     free_blob_status_data(&oldblobs);
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
@@ -1948,6 +1974,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     int blobn;
     int myupdatecols[MAXCOLUMNS + 1];
     unsigned long long newgenidcpy = newgenid;
+    blob_buffer_t outblobs[MAXBLOBS] = {{0}};
 
     void *sc_old= NULL;
     void *sc_new = NULL;
@@ -2013,8 +2040,6 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         goto err;
     }
 
-    struct schema *fromsch = find_tag_schema(iq->usedb->tablename, ".ONDISK");
-
     if (!gbl_use_plan || !iq->usedb->plan || iq->usedb->plan->dta_plan == -1) {
         if (!verify_retry) {
             int bdberr;
@@ -2036,8 +2061,21 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
 
-        rc = stag_to_stag_buf_tz(fromsch, iq->usedb->tablename, (char *)new_dta, ".NEW..ONDISK", (char *)sc_new, NULL,
-                                 iq->tzname);
+        for (int i = 0; i != MAXBLOBS; ++i) {
+            /* unodhfy in case we need to perform a type conversion (e.g., from blob to blob2) */
+            rc = unodhfy_and_clone(iq->usedb, &blobs[i], &outblobs[i], i);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s: failed to remove ODH and clone blobs\n", __func__);
+                reqerrstrhdr(iq, "Table '%s' ", iq->usedb->tablename);
+                reqerrstr(iq, COMDB2_UPD_RC_INVL_DTA, "cannot form new record");
+                retrc = ERR_INTERNAL;
+                goto err;
+            }
+        }
+
+        /* Get blobs too. We'll need them to determine whether blob_add() is needed. */
+        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", new_dta, ".NEW..ONDISK", sc_new, NULL, outblobs,
+                                    MAXBLOBS, 1);
 
         if (rc == -1) {
             logmsg(LOGMSG_ERROR, 
@@ -2229,7 +2267,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 
             /* add this only if it exists - if it doesn't exist it will change
              * to NULL */
-            blob = &blobs[oldblobidx];
+            blob = &outblobs[oldblobidx];
             if (blob->exists) {
                 rc = blob_add(iq, trans, blobn, blob->data, blob->length, 2,
                               newgenid, IS_ODH_READY(blob));
@@ -2263,6 +2301,7 @@ err:
         free(sc_new);
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
+    free_blob_buffers(outblobs, MAXBLOBS);
     return retrc;
 }
 
@@ -2853,7 +2892,15 @@ void blob_status_to_blob_buffer(blob_status_t *bs, blob_buffer_t *bf)
     for (blobno = 0; blobno < bs->numcblobs; blobno++) {
         if (bs->blobptrs[blobno] != NULL) {
             bf[blobno].exists = 1;
-            bf[blobno].data = bs->blobptrs[blobno];
+            if (bs->blobptrs[blobno] == NULL)
+                bf[blobno].data = NULL;
+            else {
+                /* Make a copy of the blob data to avoid double-free.
+                   The types system will either free the copy, or let the
+                   output blobs own it. */
+                bf[blobno].data = malloc(bs->bloblens[blobno]);
+                memcpy(bf[blobno].data, bs->blobptrs[blobno], bs->bloblens[blobno]);
+            }
             bf[blobno].length = bs->bloblens[blobno];
             bf[blobno].collected = bs->bloblens[blobno];
         }

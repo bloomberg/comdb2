@@ -6325,11 +6325,12 @@ case OP_Next:          /* jump */
   ** The Prev opcode is only used after SeekLT, SeekLE, and Last. */
   assert( pOp->opcode!=OP_Next
        || pC->seekOp==OP_SeekGT || pC->seekOp==OP_SeekGE
-       || pC->seekOp==OP_Rewind || pC->seekOp==OP_Found 
-       || pC->seekOp==OP_NullRow|| pC->seekOp==OP_SeekRowid);
+       || pC->seekOp==OP_Rewind || pC->seekOp==OP_Found
+       || pC->seekOp==OP_NullRow|| pC->seekOp==OP_SeekRowid
+       || pC->seekOp==OP_IfNoHope);
   assert( pOp->opcode!=OP_Prev
        || pC->seekOp==OP_SeekLT || pC->seekOp==OP_SeekLE
-       || pC->seekOp==OP_Last 
+       || pC->seekOp==OP_Last   || pC->seekOp==OP_IfNoHope
        || pC->seekOp==OP_NullRow);
 
   rc = pOp->p4.xAdvance(pC->uc.pCursor, pOp->p3);
@@ -8867,6 +8868,7 @@ abort_due_to_error:
    && rc!=SQLITE_TRAN_NOUNDO
    && rc!=SQLITE_SCHEMA_REMOTE
    && rc!=SQLITE_SCHEMA_DOHSQL
+   && rc!=SQLITE_SCHEMA_PUSH_REMOTE
   ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = SQLITE_ERROR;

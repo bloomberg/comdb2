@@ -63,6 +63,7 @@
 #include "txn_properties.h"
 
 static unsigned int curtran_counter = 0;
+extern int gbl_debug_txn_sleep;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 
 #if 0
@@ -1037,6 +1038,9 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
                                         int tranclass, int *bdberr,
                                         u_int32_t inflags)
 {
+    if (gbl_debug_txn_sleep)
+        sleep(gbl_debug_txn_sleep);
+
     tran_type *tran;
     int rc;
     DB_TXN *parent_tid;
@@ -1325,10 +1329,13 @@ tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
     return tran;
 }
 
-tran_type *bdb_tran_begin(bdb_state_type *bdb_state, tran_type *parent,
-                          int *bdberr)
+tran_type *bdb_tran_begin_internal(bdb_state_type *bdb_state, tran_type *parent,
+                          int *bdberr, const char *func, int line)
 {
     tran_type *tran;
+#if DEBUG_RECOVERY_LOCK
+    logmsg(LOGMSG_USER, "%s called from %s:%d\n", __func__, func, line);
+#endif
     tran = bdb_tran_begin_pp(bdb_state, parent, NULL, bdberr, 0);
     return tran;
 }
@@ -2478,6 +2485,8 @@ int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
     return 0;
 }
 
+extern void javasp_splock_unlock(void);
+
 int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                        uint32_t flags, int *bdberr)
 {
@@ -2495,6 +2504,11 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
         logmsg(LOGMSG_DEBUG, "bdb_put_cursortran called with null curtran\n");
         *bdberr = BDBERR_BADARGS;
         return -1;
+    }
+
+    if (curtran->flags & CURTRAN_HOLDS_SPLOCK) {
+        javasp_splock_unlock();
+        curtran->flags &= ~CURTRAN_HOLDS_SPLOCK;
     }
 
     rc = bdb_free_curtran_locks(bdb_state, curtran, bdberr);

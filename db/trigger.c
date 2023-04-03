@@ -22,6 +22,7 @@
 #include <compat.h>
 #include <intern_strings.h>
 #include <ctrace.h>
+#include <comdb2_atomic.h>
 
 /*
 ** Master node will maintain client subscription info.
@@ -257,6 +258,7 @@ int trigger_unregister_node(const char *host)
 void trigger_clear_hash()
 {
     Pthread_mutex_lock(&trighash_lk);
+    ATOMIC_ADD32(gbl_master_changes, 1);
     hash_t *old = trigger_hash;
     trigger_hash = NULL;
     Pthread_mutex_unlock(&trighash_lk);
@@ -354,7 +356,7 @@ int trigger_register_req(trigger_reg_t *reg)
     GET_BDB_STATE(bdb_state);
     size_t sz;
     uint8_t buf[TRIGGER_REG_MAX];
-    reg->elect_cookie = gbl_master_changes;
+    reg->elect_cookie = ATOMIC_LOAD32(gbl_master_changes);
     trigger_reg_t *t = trigger_send(buf, reg, &sz);
     if (bdb_amimaster(bdb_state)) {
         return trigger_register(t);
@@ -379,6 +381,5 @@ int trigger_unregister_req(trigger_reg_t *reg)
     if (thedb->handle_sibling == NULL || master == NULL) {
         return NET_SEND_FAIL_INTERNAL; // fake internal retry
     }
-    return net_send_message(thedb->handle_sibling, master,
-                            NET_TRIGGER_UNREGISTER, t, sz, 1, 1000);
+    return net_send_message(thedb->handle_sibling, master, NET_TRIGGER_UNREGISTER, t, sz, 1, 1000);
 }

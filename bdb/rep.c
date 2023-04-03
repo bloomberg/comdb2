@@ -628,13 +628,19 @@ int is_incoherent(bdb_state_type *bdb_state, const char *host)
 int gbl_throttle_logput_trace = 0;
 int gbl_incoherent_logput_window = 0;
 
-static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
-                                             const char *host)
+static int throttle_updates_incoherent_nodes(netinfo_type *netinfo_ptr, const char *host)
 {
+    bdb_state_type *bdb_state = net_get_usrptr(netinfo_ptr);
     int ret = 0, now, pr = 0;
     static int lastpr = 0;
     static unsigned long long throttles = 0;
     unsigned long long cntbytes;
+    uint32_t window = gbl_incoherent_logput_window;
+
+    /* Disabled */
+    if (window <= 0) {
+        return 0;
+    }
 
     if (gbl_throttle_logput_trace && ((now = time(NULL)) - lastpr)) {
         pr = 1;
@@ -643,41 +649,28 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
 
     /* INCOHERENT & INCOHERENT_SLOW */
     if (is_incoherent(bdb_state, host)) {
-        uint32_t window = gbl_incoherent_logput_window;
 
         DB_LSN *lsnp, *masterlsn;
-        if (!window) {
+
+        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+        masterlsn = &bdb_state->seqnum_info->seqnums[nodeix(bdb_state->repinfo->master_host)].lsn;
+        cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
+        if (cntbytes > window) {
             ret = 1;
             throttles++;
             if (pr) {
                 logmsg(LOGMSG_USER,
-                       "%s throttling logput to %s, incoherent, %llu "
-                       "throttles\n",
-                       __func__, host, throttles);
+                       "%s throttling logput to %s, incoherent"
+                       " %llu bytes behind, total throttles=%llu\n",
+                       __func__, host, cntbytes, throttles);
             }
         } else {
-            lsnp = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
-            masterlsn = &bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                             .lsn;
-            cntbytes = subtract_lsn(bdb_state, masterlsn, lsnp);
-            if (cntbytes > window) {
-                ret = 1;
-                throttles++;
-                if (pr) {
-                    logmsg(LOGMSG_USER,
-                           "%s throttling logput to %s, incoherent"
-                           " %llu bytes behind, total throttles=%llu\n",
-                           __func__, host, cntbytes, throttles);
-                }
-            } else {
-                if (pr) {
-                    logmsg(LOGMSG_USER,
-                           "%s NOT throttling logput to %s, "
-                           "incoherent and %llu bytes behind, total, "
-                           "throttles=%llu\n",
-                           __func__, host, cntbytes, throttles);
-                }
+            if (pr) {
+                logmsg(LOGMSG_USER,
+                       "%s NOT throttling logput to %s, "
+                       "incoherent and %llu bytes behind, total, "
+                       "throttles=%llu\n",
+                       __func__, host, cntbytes, throttles);
             }
         }
     } else if (pr) {
@@ -685,6 +678,11 @@ static int throttle_updates_incoherent_nodes(bdb_state_type *bdb_state,
     }
 
     return ret;
+}
+
+void net_rep_throttle_init(netinfo_type *netinfo_ptr)
+{
+    net_register_throttle(netinfo_ptr, throttle_updates_incoherent_nodes);
 }
 
 extern int gbl_rowlocks;
@@ -726,15 +724,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
-
-    /* Fast return if broadcasting in standalone mode. */
-    if (host == db_eid_broadcast) {
-        const char *hostlist[REPMAX];
-        int count =
-            net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
-        if (count == 0)
-            return 0;
-    }
 
     callcount++;
 
@@ -921,12 +910,11 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
         data[num] = buf;
         sz[num] = bufsz;
         type[num] = USER_TYPE_BERKDB_REP;
-        flag[num] =
-            (!is_logput ? (NET_SEND_NODROP | NET_SEND_NODELAY) : 0) |
-            ((flags & DB_REP_NODROP) ? NET_SEND_NODROP : 0) |
-            (bdb_state->attr->net_inorder_logputs ? NET_SEND_INORDER : 0) |
-            (nodelay ? NET_SEND_NODELAY : 0) |
-            (flags & DB_REP_TRACE ? NET_SEND_TRACE : 0);
+        flag[num] = (is_logput ? NET_SEND_LOGPUT : (NET_SEND_NODROP | NET_SEND_NODELAY)) |
+                    ((flags & DB_REP_NODROP) ? NET_SEND_NODROP : 0) |
+                    (bdb_state->attr->net_inorder_logputs ? NET_SEND_INORDER : 0) |
+                    (nodelay ? NET_SEND_NODELAY : 0) |
+                    (flags & DB_REP_TRACE ? NET_SEND_TRACE : 0);
         ++num;
         rc = net_send_all(bdb_state->repinfo->netinfo, num, data, sz, type, flag);
     } else {
@@ -1584,7 +1572,8 @@ int net_get_lsn_rectype(const void *buf, int buflen, DB_LSN *lsn, int *myrectype
         return -1;
 
     /* Copyout rectype */
-    *myrectype = rectype;
+    if (myrectype)
+        *myrectype = rectype;
 
     return 0;
 }
@@ -2039,6 +2028,11 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state)
     uint32_t mygen;
     bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &mygen);
     return mygen;
+}
+
+int bdb_recoverlk_blocked(bdb_state_type *bdb_state)
+{
+    return bdb_state->dbenv->wrlock_recovery_blocked(bdb_state->dbenv);
 }
 
 void send_newmaster(bdb_state_type *bdb_state, int online)
@@ -3100,7 +3094,7 @@ static int node_in_list(int node, int list[], int listsz)
 
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */
 
-int gbl_replicant_retry_on_not_durable = 1;
+int gbl_replicant_retry_on_not_durable = 0;
 static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                                             seqnum_type *seqnum, int *timeoutms,
                                             uint64_t txnsize, int newcoh)
@@ -3626,6 +3620,15 @@ int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum)
     return rc;
 }
 
+int request_copydelay(void *bdb_state_in)
+{
+    int rc;
+    bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_in;
+    rc = net_send_flags(bdb_state->repinfo->netinfo,
+                        bdb_state->repinfo->master_host, USER_TYPE_COMMITDELAYTIMED, NULL,
+                        0, NET_SEND_NODROP);
+    return rc;
+}
 
 int send_myseqnum_to_master(bdb_state_type *bdb_state, int nodelay)
 {
@@ -4982,12 +4985,29 @@ int enque_udppfault_filepage(bdb_state_type *bdb_state, unsigned int fileid,
     return rc;
 }
 
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+int gbl_commit_delay_copy_ms = 0;
+int gbl_commit_delay_timeout = 10;
+static int64_t commit_delay_timeout = 0;
+
 int bdb_commitdelay(void *arg)
 {
     bdb_state_type *bdb_state = arg;
+
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
-    return bdb_state->attr->commitdelay;
+
+    if (bdb_state->attr->commitdelaymax <= 0)
+        return 0;
+
+    if (bdb_state->attr->commitdelay > 0)
+        return MIN(bdb_state->attr->commitdelay, bdb_state->attr->commitdelaymax);
+
+    if (time(NULL) < commit_delay_timeout)
+        return MIN(gbl_commit_delay_copy_ms, bdb_state->attr->commitdelaymax);
+
+    return 0;
 }
 
 static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
@@ -5135,6 +5155,12 @@ static int berkdb_receive_rtn_int(void *ack_handle, void *usr_ptr,
         got_new_seqnum_from_node(bdb_state, &berkdb_seqnum, from_node, is_tcp);
         break;
 
+    case USER_TYPE_COMMITDELAYTIMED:
+        commit_delay_timeout = time(NULL) + gbl_commit_delay_timeout;
+        logmsg(LOGMSG_WARN, "--- got commitdelaytimed req from node %s.  timeout=%" PRId64 "\n", from_node,
+               commit_delay_timeout);
+        break;
+
     case USER_TYPE_COMMITDELAYMORE:
         if (bdb_state->attr->commitdelay == 0)
             bdb_state->attr->commitdelay = 1;
@@ -5250,14 +5276,25 @@ int request_delaymore(void *bdb_state_in)
 
 int gbl_rep_wait_core_ms = 0;
 
+#include <signal.h>
+
+static void abort_stalled_exit(int signum)
+{
+    logmsg(LOGMSG_WARN, "Aborting stalled watchdog alarm\n");
+    raise(SIGABRT);
+    _exit(1);
+}
+
 void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
                                       int fatal)
 {
     if (watchdog || fatal) {
-      alarm(60);
+        if (fatal) {
+            signal(SIGALRM, abort_stalled_exit);
+        }
+        alarm(60);
 
-      logmsg(LOGMSG_FATAL,
-             "Getting ready to die, printing useful debug info.\n");
+        logmsg(LOGMSG_FATAL, "Getting ready to die, printing useful debug info.\n");
     }
     if (bdb_state->callback->threaddump_rtn)
         (bdb_state->callback->threaddump_rtn)();
@@ -5752,6 +5789,18 @@ void *watcher_thread(void *arg)
         }
         Pthread_mutex_unlock(&bdb_state->pending_broadcast_lock);
 
+        int log_delete_is_stopped(void);
+        if (log_delete_is_stopped()) {
+            logmsg(LOGMSG_WARN, "Logdelete stopped, requesting copy commit-delay\n");
+            if (rep_master == bdb_state->repinfo->myhost) {
+                commit_delay_timeout = time(NULL) + gbl_commit_delay_timeout;
+                logmsg(LOGMSG_WARN, "--- delaying commits for copy on master.  timeout=%"PRId64"\n",
+                    commit_delay_timeout);
+            } else {
+                request_copydelay(bdb_state);
+            }
+        }
+
         /* check if we have connections to everyone in the sanc list */
         bdb_state->sanc_ok =
             net_sanctioned_list_ok(bdb_state->repinfo->netinfo);
@@ -5999,4 +6048,11 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
     return 0;
 }
 
+int bdb_num_connected_nodes(bdb_state_type *bdb_state)
+{
+    const char *hostlist[REPMAX];
 
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+    return net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+}

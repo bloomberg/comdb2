@@ -39,6 +39,7 @@ static const char revid[] = "$Id: txn_region.c,v 11.79 2003/07/23 13:13:12 mjc E
 
 #include <logmsg.h>
 
+int normalize_rectype(u_int32_t * rectype);
 static int __txn_findlastckp __P((DB_ENV *, DB_LSN *));
 static int __txn_init __P((DB_ENV *, DB_TXNMGR *));
 static size_t __txn_region_size __P((DB_ENV *));
@@ -232,6 +233,7 @@ __txn_findlastckp(dbenv, lsnp)
 		if (dbt.size < sizeof(u_int32_t))
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_ckp) {
 			*lsnp = lsn;
 			break;

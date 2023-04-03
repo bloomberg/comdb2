@@ -73,6 +73,7 @@
 
 #include "eventlog.h"
 #include "reqlog_int.h"
+#include "sp.h"
 
 #include <tohex.h>
 #include "string_ref.h"
@@ -117,6 +118,8 @@ int sqldbgflag = 0;
 int gbl_longreq_log_freq_sec = 60;
 
 static void log_all_events(struct reqlogger *logger, struct output *out);
+
+extern int is_stored_proc(struct sqlclntstate*);
 
 inline void sltdbt_get_stats(int *n_reqs, int *l_reqs)
 {
@@ -1037,6 +1040,7 @@ static void reqlog_free_events(struct reqlogger *logger) {
         }
         free(event);
     }
+    logger->events = NULL;
 }
 
 static void reqlog_free_tables(struct reqlogger *logger) {
@@ -1052,6 +1056,7 @@ static void reqlog_free_tables(struct reqlogger *logger) {
         free(logger->sqltables[i]);
     }
     free(logger->sqltables);
+    logger->sqltables = NULL;
 }
 
 static void reqlog_free_all(struct reqlogger *logger)
@@ -1585,13 +1590,13 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
               clnt->conninfo.pid, clnt->argv0 ? clnt->argv0 : "???");
     }
 
-    dumpf(logger, out, " rqid %s from %s rc %d", logger->id,
-          reqorigin(logger), logger->rc);
+    dumpf(logger, out, " rqid %s from %s", logger->id, reqorigin(logger));
 
     if (out == long_request_out && is_running) {
+        /* No need to include 'rc' if the request is still running. */
         dumpf(logger, out, " **running**\n");
     } else {
-        dumpf(logger, out, "\n");
+        dumpf(logger, out, " rc %d\n", logger->rc);
     }
 
     if (logger->iq) {
@@ -1879,27 +1884,30 @@ static int current_long_request_count = 0;
 static int current_long_request_duration_ms = 0;
 static int current_longest_long_request_ms = 0;
 static int current_shortest_long_request_ms = INT_MAX;
-static int last_current_long_request_epoch = 0;
 
 void reqlog_long_running_clnt(struct sqlclntstate *clnt)
 {
     if (clnt->done || !clnt->thd || !clnt->sql || !clnt->thd->logger) return;
-    struct reqlogger *logger = clnt->thd->logger;
-    struct string_ref *sql = clnt->sql_ref;
-    static int long_request_logged_count = 0;
-    static int last_long_request_logged_epoch = 0;
-    int long_request_thresh;
 
-    logger->durationus = (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
-    int duration_ms = U2M(logger->durationus);
-
-    if (logger->opcode == OP_SQL && !logger->iq) {
-        long_request_thresh = gbl_sql_time_threshold;
-    } else {
-        long_request_thresh = long_request_ms;
+    if (can_consume(clnt) == 1) {
+        return; /* Do not log consumers */
     }
 
-    if (duration_ms < long_request_thresh) {
+    struct string_ref *sql = clnt->sql_ref;
+    struct reqlogger logger;
+
+    memset(&logger, 0, sizeof(struct reqlogger));
+
+    logger.request_type = "sql_request";
+    logger.opcode = OP_SQL;
+    logger.startus = clnt->enque_timeus;
+    logger.startprcsus = logger.startus;
+
+    logger.durationus = comdb2_time_epochus() - logger.startprcsus;
+
+    int duration_ms = U2M(logger.durationus);
+
+    if (duration_ms < gbl_sql_time_threshold) {
         return;
     }
 
@@ -1913,106 +1921,93 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
         current_shortest_long_request_ms = duration_ms;
     }
 
-    ++ current_long_request_count;
+    logger.rc = 0;
 
-    if (((duration_ms - long_request_thresh) / 1000 % gbl_longreq_log_freq_sec) != 0) {
+    /* Should this long running statement be reported at this instant? */
+
+    int duration_beyond_thresh_sec = (duration_ms - gbl_sql_time_threshold) / 1000;
+    if ((duration_beyond_thresh_sec % gbl_longreq_log_freq_sec) != 0) {
         return;
     }
 
-    if (logger->clnt) {
-        log_params(logger);
+    if (!reqlog_init_off && duration_beyond_thresh_sec >= 0 &&
+        duration_beyond_thresh_sec < gbl_longreq_log_freq_sec) {
+        /* Only for the first time, also log more information (like sql)
+           about this long running query. */
+        logger.event_mask |= REQL_INFO;
     }
-    if (logger->sqlrows > 0) {
-        reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
-    }
-    if (logger->sqlcost > 0) {
-        reqlog_logf(logger, REQL_INFO, "cost=%f", logger->sqlcost);
-    }
-    if (logger->vreplays) {
-        reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
-    }
+    logger.mask = logger.event_mask | logger.dump_mask;
 
-    logger->rc = 0;
+    reqlog_set_clnt(&logger, clnt);
+    reqlog_set_origin(&logger, "%s", clnt->origin);
+    reqlog_set_vreplays(&logger, clnt->verify_retries);
+    reqlog_set_sql(&logger, sql);
 
-    reqlog_set_sql(logger, sql);
-
-    flushdump(logger, NULL);
-
-    log_header(logger, long_request_out, 1);
-
-    if (duration_ms >= long_request_thresh &&
-        (duration_ms < (long_request_thresh + (gbl_longreq_log_freq_sec * 1000)))) {
-        long_request_logged_count++;
-        if (last_long_request_logged_epoch != comdb2_time_epoch()) {
-            last_long_request_logged_epoch = comdb2_time_epoch();
-
-            if (long_request_out != default_out) {
-                char *sqlinfo;
-
-                if (logger->iq) {
-                    sqlinfo = osql_sess_info(logger->iq->sorese);
-                } else {
-                    sqlinfo = NULL;
-                }
-                if (sqlinfo) {
-                    if (long_request_logged_count == 1) {
-                        logmsg(LOGMSG_USER,
-                               "LONG SQL REQUEST (%d ms) running [%s] (see %s for details)\n",
-                               U2M(logger->durationus), sqlinfo,
-                               long_request_out->filename);
-                    } else {
-                        logmsg(LOGMSG_USER,
-                               "%d LONG SQL REQUESTS running [last %s] (see %s for details)\n",
-                               long_request_logged_count, sqlinfo,
-                               long_request_out->filename);
-                    }
-                    free(sqlinfo);
-                } else {
-                    if (long_request_logged_count == 1) {
-                        logmsg(LOGMSG_USER,
-                               "LONG SQL REQUEST (%d ms) running (see %s for details)\n",
-                               U2M(logger->durationus),
-                               long_request_out->filename);
-                    } else {
-                        logmsg(LOGMSG_USER,
-                               "%d LONG SQL REQUESTS running (see %s for details)\n",
-                               long_request_logged_count,
-                               long_request_out->filename);
-                    }
-                }
-            }
-            long_request_logged_count = 0;
+    if (gbl_fingerprint_queries) {
+        unsigned char fp[FINGERPRINTSZ];
+        size_t unused;
+        const char *normSql = NULL;
+        if (is_stored_proc(clnt)) {
+            normSql = clnt->work.zOrigNormSql;
+        } else {
+            normSql = (clnt->work.zNormSql) ? clnt->work.zNormSql :
+          clnt->work.zOrigNormSql;
+        }
+        if (normSql) {
+            calc_fingerprint(normSql, &unused, fp);
+            reqlog_set_fingerprint(&logger, (const char *)fp, FINGERPRINTSZ);
         }
     }
-    reqlog_free_events(logger);
-    put_ref(&logger->sql_ref);
+
+    if (logger.vreplays) {
+        reqlog_logf(&logger, REQL_INFO, "verify replays=%d", logger.vreplays);
+    }
+
+    flushdump(&logger, NULL);
+
+    log_header(&logger, long_request_out, 1);
+
+    current_long_request_count++;
+
+    reqlog_free_all(&logger);
+
+    put_ref(&logger.sql_ref);
 }
 
-void reqlog_long_running_sql_statements(void)
+void reqlog_log_all_longreqs(void)
 {
+    /* Periodic long request logging disabled */
+    if (gbl_longreq_log_freq_sec < 0)
+        return;
+
+    /*
+      Also disable periodic logging if "long request threshold" is set to <= 0.
+      It is a popular trick to temporarily set long sql request threshold to 0
+      to force logging of all statements to the longreqs log. We don't want to
+      double log all the statements.
+    */
+    if (gbl_sql_time_threshold <= 0)
+        return;
+
     current_long_request_count = 0;
     current_long_request_duration_ms = 0;
     current_longest_long_request_ms = 0;
     current_shortest_long_request_ms = INT_MAX;
 
-    log_long_running_sql_statements();
+    reqlog_long_running_sql_statements();
 
-    if (((comdb2_time_epoch() - last_current_long_request_epoch) % gbl_longreq_log_freq_sec) == 0) {
-        if ((current_long_request_count > 0) &&
-            (long_request_out != default_out)) {
-          if (current_long_request_count == 1) {
-              logmsg(LOGMSG_USER, "LONG SQL REQUEST (%d ms) still running (see %s for details)\n",
-                     current_long_request_duration_ms,
-                     long_request_out->filename);
-          } else {
-              logmsg(LOGMSG_USER, "%d LONG SQL REQUESTS (%d ms - %d ms) still running (see %s for details)\n",
-                     current_long_request_count,
-                     current_shortest_long_request_ms,
-                     current_longest_long_request_ms,
-                     long_request_out->filename);
-          }
+    if ((current_long_request_count > 0) && (long_request_out != default_out)) {
+        if (current_long_request_count == 1) {
+            logmsg(LOGMSG_USER, "LONG SQL REQUEST (%d ms) still running (see %s for details)\n",
+                   current_long_request_duration_ms,
+                   long_request_out->filename);
+        } else {
+            logmsg(LOGMSG_USER, "%d LONG SQL REQUESTS (%d ms - %d ms) still running (see %s for details)\n",
+                   current_long_request_count,
+                   current_shortest_long_request_ms,
+                   current_longest_long_request_ms,
+                   long_request_out->filename);
         }
-        last_current_long_request_epoch = comdb2_time_epoch();
     }
 }
 

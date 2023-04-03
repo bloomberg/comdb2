@@ -32,6 +32,7 @@ static int	__log_recover __P((DB_LOG *));
 static size_t	__log_region_size __P((DB_ENV *));
 static int	__log_stat __P((DB_ENV *, DB_LOG_STAT **, u_int32_t));
 static int	__log_zero __P((DB_ENV *, DB_LSN *, DB_LSN *));
+extern int normalize_rectype(u_int32_t * rectype);
 
 /*
  * __log_open --
@@ -226,6 +227,10 @@ __log_init(dbenv, dblp)
 	    MUTEX_NO_RLOCK)) != 0)
 		return (ret);
 
+	if ((ret = __db_mutex_setup(dbenv, &dblp->reginfo, &region->lazy_id_mutex,
+	    MUTEX_NO_RLOCK)) != 0)
+		return (ret);
+
 	/*
 	 * We must create a place for the flush mutex separately; mutexes have
 	 * to be aligned to MUTEX_ALIGN, and the only way to guarantee that is
@@ -320,6 +325,7 @@ __log_get_last_ckp(DB_ENV *dbenv, DB_LSN *lsn)
 			continue;
 
 		LOGCOPY_32(&rectype, dbt.data);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_ckp) {
 			/* found it */
 			(void)__log_c_close(logc);
@@ -407,6 +413,7 @@ __log_recover(dblp)
 		if (dbt.size < sizeof(u_int32_t))
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_ckp)
 			/*
 			 * If we happen to run into a checkpoint, cache its

@@ -307,6 +307,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblFingerprintsInit(db);
   if (rc == SQLITE_OK)
+    rc = systblQueryPlansInit(db);
+  if (rc == SQLITE_OK)
     rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
     rc = systblScHistoryInit(db);
@@ -334,6 +336,10 @@ int comdb2SystblInit(
     rc = sqlite3_carray_init(db, 0, 0);
   if (rc == SQLITE_OK)
     rc = systblMemstatsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTransactionStateInit(db);
+  if (rc == SQLITE_OK)  
+    rc = systblStacks(db);
 #endif
   return rc;
 }

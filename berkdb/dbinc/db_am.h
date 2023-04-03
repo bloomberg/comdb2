@@ -52,10 +52,10 @@
 		CHECK_ABORT \
 		goto out;						\
 	}								   \
-	if (argp->type > 1000) { \
+	if (argp->type > 3000 || (argp->type > 1000 && argp->type < 2000)) { \
 		if ((ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, \
 						argp->ufid_fileid, lsnp)) != 0) { \
-			if (ret	== DB_DELETED) { \
+			if (ret	== DB_DELETED || ret == DB_IGNORED) { \
 				ret = 0; \
 				goto done; \
 			} \
@@ -98,9 +98,8 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 	mpf = NULL;							\
 	if ((ret = func(dbenv, dbtp->data, &argp)) != 0) {		\
 		__log_flush(dbenv, NULL); 				\
-		abort(); 						\
 	}								\
-	if (argp->type > 1000) {					\
+	if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {					\
 		ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp,	\
 			argp->ufid_fileid, lsnp);			\
 	}								\
@@ -109,7 +108,7 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 			&file_dbp, argp->fileid, inc_count, lsnp, 0);	\
 	} 								\
 	if (ret) { 							\
-		if (ret	== DB_DELETED && IS_RECOVERING(dbenv)) {	\
+		if (ret == DB_IGNORED || (ret == DB_DELETED && IS_RECOVERING(dbenv))) {	\
 			ret = 0;					\
 			goto done;					\
 		}							\

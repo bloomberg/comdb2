@@ -28,6 +28,7 @@ static const char revid[] = "$Id: db_rec.c,v 11.48 2003/08/27 03:54:18 ubell Exp
 static int __db_pg_free_recover_int __P((DB_ENV *,
 	__db_pg_freedata_args *, DB *, DB_LSN *, DB_MPOOLFILE *, db_recops,
 	int));
+extern int normalize_rectype(u_int32_t * rectype);
 
 #include <stdlib.h>
 
@@ -42,7 +43,7 @@ __db_addrem_verify_fileid(dbenv, dbp, lsnp, prevlsn, fileid)
 	int32_t fileid;
 {
 	int ret = 0;
-	int32_t type;
+	u_int32_t type;
 	DB_LOGC *logc = NULL;
 	DBT log = { 0 };
 	__db_debug_args *debug = NULL;
@@ -72,6 +73,7 @@ __db_addrem_verify_fileid(dbenv, dbp, lsnp, prevlsn, fileid)
 	}
 
 	LOGCOPY_32(&type, log.data);
+	normalize_rectype(&type);
 	if (type != DB___db_debug) {
 #if 0
 		fprintf(stderr,
@@ -866,7 +868,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	if (IS_ZERO_LSN(LSN(pagep)) &&
 	    IS_ZERO_LSN(argp->page_lsn) && DB_UNDO(op)) {
 		/* Put the page in limbo.*/
-		if (argp->type > 1000) {
+		if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
 			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
 					argp->pgno, 1);
 		} else {
@@ -1108,7 +1110,7 @@ __db_pg_new_recover(dbenv, dbtp, lsnp, op, info)
 	REC_INTRO(__db_pg_free_read, 1);
 	COMPQUIET(op, 0);
 
-	if (argp->type > 1000) {
+	if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
 		if ((ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
 						argp->pgno, 1)) == 0)
 			*lsnp = argp->prev_lsn;
@@ -1250,7 +1252,7 @@ __db_pg_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		P_INIT(pagep, file_dbp->pgsize,
 		    argp->pgno, PGNO_INVALID, PGNO_INVALID, 0, P_INVALID);
 		ZERO_LSN(pagep->lsn);
-		if (argp->type > 1000) {
+		if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
 			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid, argp->pgno, 1);
 		} else {
 			ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);

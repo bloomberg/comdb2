@@ -290,9 +290,8 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
     return (osql_chkboard_fetch_entry(rqid, uuid, 1) != NULL);
 }
 
-int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat,
-                                struct query_effects *effects)
+int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, void *data, struct errstat *errstat,
+                                struct query_effects *effects, const char *from)
 {
     if (!checkboard)
         return 0;
@@ -316,9 +315,21 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         return -1;
     }
 
-    if (errstat)
+    if (errstat) {
+        /* Ignore errors from non-master.
+           This can happen when:
+           1) A bplog session is opened right before the old master downgrades.
+           2) The old master signals the replicant with a wrong-master error message (see sorese_rcvreq()).
+              The message however hasn't been processed by replicant's reader-thread just yet.
+           3) Replicant detects that master has swung, and restarts the transaction against the new master.
+           4) Replicant reader-thread processes the wrong-master error from the old master, and restarts
+              the transaction again. */
+        if (errstat->errval != 0 && entry->master != from) {
+            Pthread_mutex_unlock(&checkboard->mtx);
+            return 0;
+        }
         entry->err = *errstat;
-    else
+    } else
         bzero(&entry->err, sizeof(entry->err));
 
     Pthread_mutex_lock(&entry->mtx);
@@ -329,6 +340,14 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     if (gbl_master_sends_query_effects && effects) {
         memcpy(&entry->clnt->effects, effects, sizeof(struct query_effects));
+        if (entry->clnt->dbtran.nchunks > 0) { /* chunked */
+            struct query_effects *ep = &entry->clnt->chunk_effects;
+            ep->num_affected += effects->num_affected;
+            ep->num_selected += effects->num_selected;
+            ep->num_updated += effects->num_updated;
+            ep->num_deleted += effects->num_deleted;
+            ep->num_inserted += effects->num_inserted;
+        }
     }
 
     Pthread_cond_signal(&entry->cond);

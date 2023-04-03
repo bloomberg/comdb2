@@ -88,6 +88,7 @@ void bdb_get_writelock(void *bdb_state,
 	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
+extern int normalize_rectype(u_int32_t * rectype);
 
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
@@ -327,6 +328,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, prop)
 		F_SET(txn, TXN_SYNC);
 	if (LF_ISSET(DB_TXN_NOWAIT))
 		F_SET(txn, TXN_NOWAIT);
+	if (prop && prop->flags & DB_TXN_FOP_NOBLOCK) 
+		F_SET(txn, TXN_FOP_NOBLOCK);
 
 	if ((ret =
 		__txn_begin_int_with_prop(txn, prop,
@@ -431,6 +434,7 @@ __txn_xa_begin(dbenv, txn)
 	txn->parent = NULL;
 	ZERO_LSN(txn->last_lsn);
 	txn->txnid = TXN_INVALID;
+	txn->utxnid = TXN_INVALID;
 	txn->tid = 0;
 	txn->cursors = 0;
 	memset(&txn->lock_timeout, 0, sizeof(db_timeout_t));
@@ -521,6 +525,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	int nids, ret;
 	int internal = LF_ISSET(DB_TXN_INTERNAL);
 	int recovery = LF_ISSET(DB_TXN_RECOVERY);
+	uint64_t utxnid;
 
 
 	/*
@@ -537,6 +542,10 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	}
 
 	region = mgr->reginfo.primary;
+
+	Pthread_mutex_lock(&dbenv->utxnid_lock);
+	utxnid = ++dbenv->next_utxnid;
+	Pthread_mutex_unlock(&dbenv->utxnid_lock);
 
 	/*
 	 * We do not have to write begin records (and if we do not, then we
@@ -556,8 +565,9 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	if (we_start_at_this_lsn)
 		*we_start_at_this_lsn = begin_lsn;
 
-	if (!recovery)
-		Pthread_rwlock_rdlock(&dbenv->recoverlk);
+	if (!recovery) {
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
+    }
 
 	R_LOCK(dbenv, &mgr->reginfo);
 	if (!F_ISSET(txn, TXN_COMPENSATE) && F_ISSET(region, TXN_IN_RECOVERY)) {
@@ -671,6 +681,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 				__func__);
 		abort();
 	}
+	txn->utxnid = utxnid;
 
 	td_txn[txncnt++] = txn;
 
@@ -684,8 +695,9 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 
 err:
 	R_UNLOCK(dbenv, &mgr->reginfo);
-	if (!recovery)
-		Pthread_rwlock_unlock(&dbenv->recoverlk);
+	if (!recovery) {
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+    }
 	return (ret);
 }
 
@@ -1364,7 +1376,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	}
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-		Pthread_rwlock_unlock(&dbenv->recoverlk);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
@@ -1626,7 +1638,7 @@ __txn_abort(txnp)
 		 return (__db_panic(dbenv, ret));
 
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
-		Pthread_rwlock_unlock(&dbenv->recoverlk);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
@@ -2406,7 +2418,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	}
 
 do_ckp:	
-	Pthread_rwlock_rdlock(&dbenv->recoverlk);
+    dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
 
 	/* Retrieve lsn again after locking */
 	__log_txn_lsn(dbenv, &ckp_lsn, &mbytes, &bytes);
@@ -2443,7 +2455,7 @@ do_ckp:
 		__db_err(dbenv,
 			"txn_checkpoint: failed to flush the buffer cache %s",
 			db_strerror(ret));
-		Pthread_rwlock_unlock(&dbenv->recoverlk);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		return (ret);
 	}
 
@@ -2489,7 +2501,7 @@ do_ckp:
 		 * __txn_checkpoint() writes a checkpoint in the log.
 		 */
 		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0) {
-			Pthread_rwlock_unlock(&dbenv->recoverlk);
+            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return (0);
 		}
 
@@ -2513,7 +2525,7 @@ do_ckp:
 		if (ret) {
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-			Pthread_rwlock_unlock(&dbenv->recoverlk);
+            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return ret;
 		}
 
@@ -2542,18 +2554,23 @@ do_ckp:
 		ckp_lsn_sav = ckp_lsn;
 		timestamp = (int32_t)time(NULL);
 
+		u_int64_t max_utxnid;
+		Pthread_mutex_lock(&dbenv->utxnid_lock);
+		max_utxnid = dbenv->next_utxnid;
+		Pthread_mutex_unlock(&dbenv->utxnid_lock);
+
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
 			(ret = __txn_ckp_log(dbenv, NULL, &ckp_lsn,
 				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
 				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
-				gen)) != 0) {
+				gen, max_utxnid)) != 0) {
 			__db_err(dbenv,
 				"txn_checkpoint: log failed at LSN [%ld %ld] %s",
 				(long)ckp_lsn.file, (long)ckp_lsn.offset,
 				db_strerror(ret));
 			Pthread_rwlock_unlock(&dbenv->dbreglk);
 			MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
-			Pthread_rwlock_unlock(&dbenv->recoverlk);
+            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return (ret);
 		}
 		Pthread_rwlock_unlock(&dbenv->dbreglk);
@@ -2581,7 +2598,7 @@ do_ckp:
 			logmsg(LOGMSG_ERROR, 
 				"%s: failed to push to checkpoint list, ret %d\n",
 				__func__, ret);
-			Pthread_rwlock_unlock(&dbenv->recoverlk);
+            dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 			return ret;
 		}
 
@@ -2589,7 +2606,7 @@ do_ckp:
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
 	}
-	Pthread_rwlock_unlock(&dbenv->recoverlk);
+    dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	return (ret);
 }
 
@@ -2638,8 +2655,9 @@ __txn_activekids(dbenv, rectype, txnp)
 	 * On a child commit, we know that there are children (i.e., the
 	 * commiting child at the least.  In that case, skip this check.
 	 */
-	if (F_ISSET(txnp, TXN_COMPENSATE) || rectype == DB___txn_child)
+	if (F_ISSET(txnp, TXN_COMPENSATE) || rectype == DB___txn_child || rectype == DB___txn_child+2000) {
 		return (0);
+	}
 
 	if (TAILQ_FIRST(&txnp->kids) != NULL) {
 		__db_err(dbenv, "Child transaction is active");
@@ -2681,7 +2699,11 @@ __txn_force_abort(dbenv, buffer)
 	memcpy(&hdrlen, buffer + SSZ(HDR, len), sizeof(hdr->len));
 	rec_len = hdrlen - hdrsize;
 
-	offset = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
+	u_int32_t rectype = 0;
+	LOGCOPY_32(&rectype, buffer + hdrsize);
+	int utxnid_logged = normalize_rectype(&rectype);
+
+	offset = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + (utxnid_logged ? sizeof(u_int64_t) : 0);
 	if (CRYPTO_ON(dbenv)) {
 		key = db_cipher->mac_key;
 		sum_len = DB_MAC_KEY;
@@ -2872,6 +2894,7 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 			goto done;
 		}
 		LOGCOPY_32(&type, dbt.data);
+		normalize_rectype(&type);
 		if (type == DB___db_addrem) {
 			DB *db;
 			char *name;
@@ -2897,7 +2920,7 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 					PARM_LSN(lc.array[i].lsn), name);
 				fsnapf(stdout, a->dbt.data, a->dbt.size);
 			}
-		} else if (type == 10019) {
+		} else if (type == 10019 || type == 10019+2000) {
 			logmsg(LOGMSG_USER, "blkseq: " PR_LSN "\n",
 				PARM_LSN(lc.array[i].lsn));
 		}

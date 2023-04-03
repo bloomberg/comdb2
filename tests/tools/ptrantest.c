@@ -7,6 +7,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sqlite3.h>
+#include <inttypes.h>
 
 /* use a single appname */
 static char *appname="seed";
@@ -60,15 +61,15 @@ static int set_update_value(long long val, FILE *f)
     pthread_mutex_lock(&lk);
 
     if(verbose) {
-        fprintf(f,"Thread %d updating current seed to %lld\n", (int)pthread_self(), val);
+        fprintf(f,"Thread %"PRIdPTR" updating current seed to %lld\n", (intptr_t)pthread_self(), val);
     }
 
     /* This doesn't have to be sequential to be correct, but trying to update to an 
        existing value is always wrong */
     if(val == updated_value) {
         if(verbose) {
-            fprintf(stderr,"Error!  Thread %d succeeded in updating to current value (%lld)?\n", 
-                    (int)pthread_self(), val);
+            fprintf(stderr,"Error!  Thread %"PRIdPTR" succeeded in updating to current value (%lld)?\n",
+                    (intptr_t)pthread_self(), val);
         }
         rc=1;
     }
@@ -96,7 +97,7 @@ static void *updater(void *arg)
 
     rc = cdb2_open(&sqlh, dbname, "default", 0);
     if(0 != rc) {
-        fprintf(stderr,"cdb2_open failed for thread %d\n", (int)pthread_self());
+        fprintf(stderr,"cdb2_open failed for thread %"PRIdPTR"\n", (intptr_t)pthread_self());
         exit_pthread=1;
         pthread_exit((void *)1);
         exit(1);
@@ -153,8 +154,8 @@ static void *updater(void *arg)
         }
 
         if(CDB2_OK != rc) {
-            fprintf(stderr,"Thread %d error finding record rc=%d %s\n", 
-                    (int)pthread_self(), rc, cdb2_errstr( sqlh ));
+            fprintf(stderr,"Thread %"PRIdPTR" error finding record rc=%d %s\n",
+                    (intptr_t)pthread_self(), rc, cdb2_errstr( sqlh ));
             exit_pthread=1;
             pthread_exit((void *)1);
         }
@@ -164,8 +165,8 @@ static void *updater(void *arg)
 
         while(CDB2_OK == rc) {
             val = *(long long*) cdb2_column_value(sqlh, 0);
-            fprintf(stderr,"Thread %d found another record with seed=%lld\n",
-                    (int)pthread_self(), val);
+            fprintf(stderr,"Thread %"PRIdPTR" found another record with seed=%lld\n",
+                    (intptr_t)pthread_self(), val);
             rc = cdb2_next_record( sqlh );
         }
 
@@ -181,7 +182,7 @@ static void *updater(void *arg)
         } while(CDB2ERR_VERIFY_ERROR == rc);
 
         if(rc) {
-            fprintf(stderr,"Thread %d error on update rc=%d %s\n",(int)pthread_self(),
+            fprintf(stderr,"Thread %"PRIdPTR" error on update rc=%d %s\n",(intptr_t)pthread_self(),
                     rc, cdb2_errstr( sqlh ));
             fprintf(stderr,"(Trying to set %lld to %lld)\n", val, val+1);
             exit_pthread=1;
@@ -190,8 +191,8 @@ static void *updater(void *arg)
 
         rc = cdb2_next_record( sqlh );
         if(rc) {
-            fprintf(stderr,"Thread %d error on next-rec, rc=%d %s\n", 
-                    (int)pthread_self(), rc, cdb2_errstr( sqlh ));
+            fprintf(stderr,"Thread %"PRIdPTR" error on next-rec, rc=%d %s\n",
+                    (intptr_t)pthread_self(), rc, cdb2_errstr( sqlh ));
             exit_pthread=1;
             pthread_exit((void *)1);
         }
@@ -216,7 +217,7 @@ static void *updater(void *arg)
             continue;
 
         if(nupd < 0 || nupd > 1) {
-            fprintf(stderr,"Thread %d updated %d records??\n", (int)pthread_self(),
+            fprintf(stderr,"Thread %"PRIdPTR" updated %d records??\n", (intptr_t)pthread_self(),
                     nupd);
             exit_pthread=1;
             pthread_exit((void *)1);
@@ -225,8 +226,8 @@ static void *updater(void *arg)
         /* nupd succeeded - set the update value */
         rc = set_update_value(val+1, stdout);
         if(rc) {
-            fprintf(stderr,"Thread %d updated to %lld but the last updated value was already %lld???\n",
-                (int)pthread_self(), val+1, val+1);
+            fprintf(stderr,"Thread %"PRIdPTR" updated to %lld but the last updated value was already %lld???\n",
+                (intptr_t)pthread_self(), val+1, val+1);
         }
         ret+=rc;
     }
@@ -366,7 +367,7 @@ int main(int argc,char *argv[])
             exit(1);
         }
         if(ret) {
-            fprintf(stderr,"ERROR FROM THREAD #%d\n", (int)tids[i]);
+            fprintf(stderr,"ERROR FROM THREAD #%"PRIdPTR"\n", (intptr_t)tids[i]);
         }
         joinrc += ret;
     }

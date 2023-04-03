@@ -358,27 +358,77 @@ Parameters:
 
 ### cdb2_bind_array
 ```
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type, const void *varaddr, unsigned int count, int typelen)
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
 
 ```
 
 Description:
+`cdb2_bind_array` enables passing C-language array of values to a SQL query or to a stored procedure. In a SQL query, the parameter is passed to `carray` table valued function. `Carray` has a single column (named "value") and zero or more rows, corresponding to the values in the array. The "value" of each row in the carray() is taken from a C-language array supplied by the application.
 
-This routine is used to bind arrays in an sql statement, for use with sql statements with IN clause with many parameters example: `SELECT * FROM t1 WHERE a IN CARRAY(@myarray)` as a replacement for 'select * from t1 where a IN (1,2,3,4,...)`.
+`cdb2_bind_array` is also used to bind an array of values passed to a stored procedure (without the `carray` keyword.) The `main` function in the procedure will receive a Lua array with corresponding values for every array parameter.
 
-Usage example for an array with 10 elements:
+`cdb2_bind_array` supports binding CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING and CDB2_BLOB values. The maximum number of elements in the array is `INT16_MAX`. The pointer `varaddr` accepts following types: `int32_t *` (or `int64_t *`) for `CDB2_INTEGER`, `double *` for `CDB2_REAL` and `char **` for `CDB2_STRING`. For `CDB2_BLOB`, the pointer should point to array of structures defined as:
 
 ```c
-char *sql = "SELECT * FROM t1 WHERE a IN CARRAY(@myarray)”
-int arr[10] = {1,2,3,4...};
-
-cdb2_bind_array(hndl, "myarray", CDB2_INTEGER, arr, 10, sizeof(int));
-cdb2_run_statement(db, sql);
+struct {
+    size_t len;
+    void * data;
+};
 ```
 
-Notice that you can name parameter `myarray` any valid varable name you want.
+For CDB2_INTEGER arrays, application must provide size of elements (`sizeof(int32_t)` or `sizeof(int64_t)`).
 
-Other usage of such binding can be an insert statement such as this: `INSERT INTO t2 SELECT * FROM CARRAY(@myintarr)`.
+Examples:
+
+```c
+//int32_t array:
+int arr[10] = {1,2,3,4...};
+cdb2_bind_array(hndl, "arr", CDB2_INTEGER, arr, 10, sizeof(int));
+
+//Run the SQL statement:
+cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)”);
+
+
+//Pass multiple arrays:
+int64_t ids0[] = {...};
+int64_t ids1[] = {...};
+cdb2_bind_array(hndl, "arr0", CDB2_INTEGER, ids0, count0, sizeof(int64_t));
+cdb2_bind_array(hndl, "arr1", CDB2_INTEGER, ids1, count1, sizeof(int64_t));
+cdb2_run_statement(db, "SELECT * FROM a WHERE id IN CARRAY(@arr0) UNION SELECT * FROM b WHERE id IN CARRAY(@arr1)”);
+
+
+//bind cstrings:
+char *strs[] = {"hello", "world"};
+cdb2_bind_array(hndl, "strings", CDB2_CSTRING, strs, 2, 0);
+cdb2_run_statement(db, `INSERT INTO b SELECT * FROM CARRAY(@strings)`.
+
+
+//bind blobs:
+struct {
+    size_t len;
+    void *ptr;
+} b[2];
+
+b[0].len = 4;
+b[0].ptr = 0x600dcafe;
+
+b[1].len = 2;
+b[2].ptr = 0xf00d;
+cdb2_bind_array(hndle, "blobs", CDB2_BLOB, b, 2, 0);
+
+
+//Pass array to stored procedure:
+cdb2_run_statement(db, "exec procedure sp(@arr)");
+
+//Or pass multiple array parameters:
+cdb2_run_statement(db, "exec procedure sp(@arr, @strings, @blobs)");
+
+//In Lua procedure:
+local function main(a, b, c)
+    --a, b, c are Lua arrays corresponding to arr, strs, b respectively.
+end
+
+```
 
 Parameters:
 
@@ -650,7 +700,7 @@ These return codes can be found in ```cdb2api.h```
 | 203  |```CDB2ERR_DEADLOCK``` | <a id="CDB2ERR_DEADLOCK"/>Deadlock detected. 
 | -105 |```CDB2ERR_TRAN_IO_ERROR``` | <a id="CDB2ERR_TRAN_IO_ERROR"/>I/O error. 
 | -106 |```CDB2ERR_ACCESS``` | <a id="CDB2ERR_ACCESS"/>Access denied. 
-| -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | <a id="CDB2ERR_TRAN_MODE_UNSUPPORTED"/>Transaction mode is unsupported. 
+| -107 |```CDB2ERR_QUERYLIMIT``` | <a id="CDB2ERR_QUERYLIMIT"/>Query has exceeded a limit. To define query limits, see [Query limit commands](config_files.html#query-limit-commands).
 | -110 |```CDB2ERR_SCHEMA``` | <a id="CDB2ERR_SCHEMA"/>Table schema was changed in the middle of query execution.
 | 2    |```CDB2ERR_VERIFY_ERROR``` | <a id="CDB2ERR_VERIFY_ERROR"/>An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose). 
 | 3    |```CDB2ERR_FKEY_VIOLATION``` | <a id="CDB2ERR_FKEY_VIOLATION"/>Foreign key violation. 

@@ -53,7 +53,7 @@ enum CDB2_ErrorCode {
     TRAN_IO_ERROR           = -105;
     ACCESS                  = -106;
 
-    TRAN_MODE_UNSUPPORTED   = -107;
+    QUERYLIMIT              = -107;
     MASTER_TIMEOUT          = -109;
     APPSOCK_LIMIT           = -110;
     WRONG_DB                = -111;
@@ -93,6 +93,7 @@ enum ResponseType {
   COMDB2_INFO   = 4; // For info about features, or snapshot file/offset etc
   SP_TRACE      = 5;
   SP_DEBUG      = 6;
+  SQL_ROW       = 7;
 }
 
 enum CDB2SyncMode {
@@ -162,4 +163,7 @@ message CDB2_SQLRESPONSE {
 
     /* query fingerprint */
     optional bytes fp = 14;
+
+    /* sqlite row */
+    optional bytes sqlite_row = 15;
 }

@@ -3206,8 +3206,7 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
 {
     snap_uid_t snap_info;
     snap_uid_get(&snap_info, dtap, (uint8_t *)dtap + dtalen);
-    osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0,
-                                &snap_info, NULL, &snap_info.effects);
+    osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0, &snap_info, NULL, &snap_info.effects, fromhost);
 }
 
 int gbl_disable_cnonce_blkseq;
@@ -4724,11 +4723,12 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         req_uuid.rqlen = rqlen;
         req_uuid.sqlqlen = sqlen;
 
+        p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
+
+        r_uuid_ptr->rqlen = rqlen;
+
         if (tzname)
             strncpy0(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
-
-        p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
-        r_uuid_ptr->rqlen = rqlen;
     } else {
         osql_req_t *r_ptr;
 
@@ -4903,8 +4903,7 @@ int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
     /* if error, lets send the error string */
     if (target->host == gbl_myhostname) {
         /* local */
-        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, snap, xerr,
-                                           (snap) ? &snap->effects : NULL);
+        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, snap, xerr, (snap) ? &snap->effects : NULL, target->host);
     }
 
     /* remote */
@@ -5743,7 +5742,8 @@ static int start_schema_change_tran_wrapper(const char *tblname,
         sc->fix_tp_badvers = 1;
     }
 
-    if ((sc->partition.type == PARTITION_ADD_TIMED && arg->indx == 0) ||
+    if (((sc->partition.type == PARTITION_ADD_TIMED ||
+          sc->partition.type == PARTITION_ADD_MANUAL) && arg->indx == 0) ||
         (sc->partition.type == PARTITION_REMOVE &&
          arg->nshards == arg->indx + 1)) {
         sc->publish = partition_publish;
@@ -5916,7 +5916,8 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         return ERR_SC;
     }
 
-    assert(sc->partition.type == PARTITION_ADD_TIMED);
+    assert(sc->partition.type == PARTITION_ADD_TIMED || 
+           sc->partition.type == PARTITION_ADD_MANUAL);
 
     /* create a new time partition object */
     struct errstat err = {0};
@@ -6039,7 +6040,7 @@ static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
             abort();
         }
     } else {
-        osql_rpl_t rpl;
+        osql_rpl_t rpl = {0};
         p_buf = (const uint8_t *)msg;
         p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
         p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
@@ -6319,14 +6320,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
              * finally sends them to the replicant as part of 'done'.
              */
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
-
-            /* The following assert could fail when/if master modifies the
-             * write query effects.
-             */
-            if (!gbl_master_sends_query_effects && IQ_HAS_SNAPINFO(iq)) {
-                assert(
-                    !memcmp(&snap_info, IQ_SNAPINFO(iq), sizeof(snap_uid_t)));
-            }
         }
 
 #if 0
@@ -7218,9 +7211,9 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
             uint8_t *p_buf_end = (p_buf + sizeof(struct errstat));
             osqlcomm_errstat_type_get(&errstat, p_buf, p_buf_end);
 
-            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL);
+            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL, fromhost);
         } else {
-            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects);
+            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects, fromhost);
         }
 
     } else {
@@ -7940,4 +7933,31 @@ error:
     logmsg(LOGMSG_ERROR, "%s %s reading rc from master, %s\n", __func__,
            (left_timeoutms) ? "failed" : "timeout", part);
     return ERR_NOMASTER;
+}
+
+/* check if we need to get tpt lock */
+int need_views_lock(char *msg, int msglen, int use_uuid)
+{
+    const uint8_t *p_buf, *p_buf_end;
+
+    if (use_uuid) {
+        osql_uuid_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_uuid_rpl_type_get(&rpl, p_buf, p_buf_end);
+    } else {
+        osql_rpl_t rpl;
+        p_buf = (const uint8_t *)msg;
+        p_buf_end = (uint8_t *)p_buf + sizeof(rpl);
+        p_buf = osqlcomm_rpl_type_get(&rpl, p_buf, p_buf_end);
+    }
+
+    osql_bpfunc_t *rpl = NULL;
+    p_buf_end = (const uint8_t *)p_buf + sizeof(osql_bpfunc_t) + msglen;
+    const uint8_t *n_p_buf = osqlcomm_bpfunc_type_get(&rpl, p_buf, p_buf_end);
+
+    if (!n_p_buf || !rpl)
+        return -1;
+
+    return bpfunc_check(rpl->data, rpl->data_len, BPFUNC_TIMEPART_RETENTION);
 }

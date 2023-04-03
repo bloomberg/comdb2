@@ -196,6 +196,8 @@ static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
                                                     unsigned char *infileid,
                                                     int *bdberr);
 
+extern int normalize_rectype(u_int32_t * rectype);
+
 /* local bdb cursor functionality */
 static int bdb_cursor_first(bdb_cursor_ifn_t *cur, int *bdberr);
 static int bdb_cursor_next(bdb_cursor_ifn_t *cur, int *bdberr);
@@ -2164,7 +2166,7 @@ static void *pglogs_asof_thread(void *arg)
     /* We need to stop this thread when truncating the log */
     if (!db_is_exiting()) {
         haslock = 1;
-        dbenv->lock_recovery_lock(dbenv);
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
     }
 
     while (!db_is_exiting()) {
@@ -2350,7 +2352,7 @@ static void *pglogs_asof_thread(void *arg)
         }
 #endif
 
-        dbenv->unlock_recovery_lock(dbenv);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
         clear_newsi_pool();
         if (!dont_poll) {
             pollms = bdb_state->attr->asof_thread_poll_interval_ms <= 0
@@ -2358,11 +2360,11 @@ static void *pglogs_asof_thread(void *arg)
                          : bdb_state->attr->asof_thread_poll_interval_ms;
             poll(NULL, 0, pollms);
         }
-        dbenv->lock_recovery_lock(dbenv);
+        dbenv->lock_recovery_lock(dbenv, __func__, __LINE__);
     }
 
     if (haslock)
-        dbenv->unlock_recovery_lock(dbenv);
+        dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 
     return NULL;
 }
@@ -3619,6 +3621,7 @@ void bdb_durable_lsn_for_single_node(void *in_bdb_state)
     for (ret = logc->get(logc, &lsn, &data, DB_LAST); ret == 0;
          ret = logc->get(logc, &lsn, &data, DB_PREV)) {
         LOGCOPY_32(&rectype, data.data);
+        normalize_rectype(&rectype);
         switch (rectype) {
         case DB___txn_regop:
         case DB___txn_regop_gen:

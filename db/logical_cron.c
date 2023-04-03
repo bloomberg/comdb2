@@ -249,3 +249,8 @@ char *logical_cron_update_sql(const char *name, long long value, int increment)
                             LOGICAL_CRON_SYSTABLE, name, value, value, name);
     return query;
 }
+
+int logical_cron_create_backend(void)
+{
+    return -1;
+}

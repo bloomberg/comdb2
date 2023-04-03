@@ -1,2 +1,2 @@
-[INSERT INTO t1 (x,y,z,w) VALUES (1,2,3,4)] failed with rc -106 Cannot modify tables via a read-only client connection
+[INSERT INTO t1 (x,y,z,w) VALUES (1,2,3,4)] failed with rc -106 connection/database in read-only mode
 (rows inserted=1)

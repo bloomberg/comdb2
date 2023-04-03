@@ -63,6 +63,7 @@ extern int gbl_expressions_indexes;
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
+int gbl_fdb_push_remote = 0;
 
 struct fdb_tbl;
 struct fdb;
@@ -119,6 +120,7 @@ struct fdb {
     int dbname_len; /* excluding terminal 0 */
     enum mach_class class
         ;      /* what class is the cluster CLASS_PROD, CLASS_TEST, ... */
+    int class_override; /* set if class is part of table name at creation */
     int local; /* was this added by a LOCAL access ?*/
     int dbnum; /* cache dbnum for db, needed by current dbt_handl_alloc* */
 
@@ -468,7 +470,7 @@ fdb_t *get_fdb(const char *dbname)
  *
  */
 static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
-                      int local)
+                      int local, int class_override)
 {
     int rc = 0;
     fdb_t *fdb;
@@ -491,6 +493,7 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
 
     fdb->dbname = strdup(dbname);
     fdb->class = class;
+    fdb->class_override = class_override;
     /*
        default remote version we expect
 
@@ -1095,7 +1098,8 @@ done:
     return rc;
 }
 
-static enum mach_class get_fdb_class(const char **p_dbname, int *local)
+static enum mach_class get_fdb_class(const char **p_dbname, int *local,
+                                     int *lvl_override)
 {
     const char *dbname = *p_dbname;
     enum mach_class my_lvl = CLASS_UNKNOWN;
@@ -1120,9 +1124,13 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         }
         free(class); /* class is strndup'd */
         *p_dbname = dbname;
+        if (lvl_override)
+            *lvl_override = 1;
     } else {
         /* implicit is same class */
         remote_lvl = my_lvl;
+        if (lvl_override)
+            *lvl_override = 0;
     }
 
     /* override local */
@@ -1149,7 +1157,7 @@ int comdb2_fdb_check_class(const char *dbname)
     int local;
     int rc = 0;
 
-    requested_lvl = get_fdb_class(&dbname, &local);
+    requested_lvl = get_fdb_class(&dbname, &local, NULL);
     if (requested_lvl == CLASS_UNKNOWN) {
         return -1;
     }
@@ -1248,11 +1256,9 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
             clnt->fdb_state.xerr.errval, clnt->fdb_state.xerr.errstr, errcode,
             prefix);
     } else {
-        clnt->fdb_state.xerr.errval = errcode;
         /* need to pass error to sqlite */
-        snprintf(clnt->fdb_state.xerr.errstr,
-                 sizeof(clnt->fdb_state.xerr.errstr), "%s for db \"%s\"",
-                 prefix, dbname);
+        errstat_set_rcstrf(&clnt->fdb_state.xerr, errcode, 
+                 "%s for db \"%s\"", prefix, dbname);
     }
 
     return SQLITE_ERROR; /* speak sqlite */
@@ -1268,7 +1274,9 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
  *
  */
 int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
-                           int *version, int in_analysis_load)
+                           int *version, int in_analysis_load,
+                           int *out_class, int *out_local,
+                           int *out_class_override, int *out_proto_version)
 {
     fdb_t *fdb;
     int rc = FDB_NOERR;
@@ -1277,8 +1285,9 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     enum mach_class lvl = 0;
     char errstr[256];
     char *perrstr;
+    int lvl_override;
 
-    lvl = get_fdb_class(&dbname, &local);
+    lvl = get_fdb_class(&dbname, &local, &lvl_override);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
         return _failed_AddAndLockTable(
             dbname,
@@ -1287,7 +1296,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 retry_fdb_creation:
-    fdb = new_fdb(dbname, &created, lvl, local);
+    fdb = new_fdb(dbname, &created, lvl, local, lvl_override);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
         return _failed_AddAndLockTable(dbname, FDB_ERR_MALLOC,
@@ -1417,6 +1426,11 @@ retry_fdb_creation:
     /* we return SQLITE_OK here, which tells the caller that the db is still
        READ locked!
        the caller will have to release that */
+
+    *out_class = lvl;
+    *out_local = local;
+    *out_class_override = lvl_override;
+    *out_proto_version = fdb->server_version;
 
     return SQLITE_OK; /* speaks sqlite */
 }
@@ -2391,7 +2405,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
         comdb2uuid(fdbc->ciduuid);
         memcpy(fdbc->tid, tid, sizeof(uuid_t));
     } else {
-        *((unsigned long long *)fdbc->cid) = comdb2fastseed();
+        *((unsigned long long *)fdbc->cid) = comdb2fastseed(1);
         memcpy(fdbc->tid, tid, sizeof(unsigned long long));
     }
     fdbc->flags = flags;
@@ -2756,7 +2770,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     u32 type = 0;
     int sz;
     int datasz, hdrsz;
+#ifndef NDEBUG
     int remainingsz;
+#endif
     char *dtabuf;
     char *hdrbuf;
     u32 len;
@@ -2799,14 +2815,18 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     hdrbuf += sz;
 
     /* keep track of the size remaining */
+#ifndef NDEBUG
     remainingsz = datasz;
+#endif
 
     for (fnum = 0; fnum < nfields; fnum++) {
         type =
             sqlite3VdbeSerialType(&key[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
         sz = sqlite3VdbeSerialPut((unsigned char *)dtabuf, &key[fnum], type);
         dtabuf += sz;
+#ifndef NDEBUG
         remainingsz -= sz;
+#endif
         sz =
             sqlite3PutVarint((unsigned char *)hdrbuf,
                              sqlite3VdbeSerialType(
@@ -2816,7 +2836,9 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
 
     pCur->keybuflen = hdrsz + datasz;
 
+#ifndef NDEBUG
     assert(remainingsz == 0);
+#endif
 
     return FDB_NOERR;
 }
@@ -2941,6 +2963,15 @@ static void _update_fdb_version(BtCursor *pCur, char *errstr)
            pCur->bt->fdb->server_version);
 
     pCur->bt->fdb->server_version = protocol_version;
+    /* this socket is possible dirty, because the old version
+     * is detected in the first replay; but we have probably sent
+     * async requests already to the target.
+     *
+     * we cannot close and cache it in sockpool;
+     * to make sure it is not cached, we mark the socket as
+     * "in-the-middle-of-streaming-rows"
+     */
+    pCur->fdbc->impl->streaming = FDB_CUR_STREAMING;
 }
 
 #define RETRY_GET_ROW 16
@@ -3760,7 +3791,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         if (tran->isuuid) {
             comdb2uuid((unsigned char *)tran->tid);
         } else
-            *(unsigned long long *)tran->tid = comdb2fastseed();
+            *(unsigned long long *)tran->tid = comdb2fastseed(2);
 
         tran->fdb = fdb;
 
@@ -3815,8 +3846,7 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int isuuid = (clnt->osql.rqid == OSQL_RQID_USE_UUID) &&
-                 (fdb->server_version > FDB_VER_WR_NAMES);
+    int isuuid = gbl_noenv_messages && (fdb->server_version > FDB_VER_WR_NAMES);
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -5008,7 +5038,7 @@ int fdb_validate_existing_table(const char *zDatabase)
     int local;
     int cls;
 
-    cls = get_fdb_class(&dbName, &local);
+    cls = get_fdb_class(&dbName, &local, NULL);
 
     Pthread_rwlock_rdlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbName, NULL);

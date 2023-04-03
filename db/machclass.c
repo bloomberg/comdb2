@@ -34,13 +34,14 @@ static hash_t *class_names;
 
 #define MAX_MACH_CLASS_NAME_LEN 10
 static machine_class_t default_classes[] = {
-    {"unknown", 0}, /* 0 indexed! */
-    {"test", 1},    /* CLASS_TEST == 1 */
-    {"dev", 1},     /* CLASS_TEST == 1 */
-    {"alpha", 2},   /* CLASS_ALPHA == 2 */
-    {"uat", 3},     /* CLASS_UAT == 3 */
-    {"beta", 4},    /* CLASS_BETA == 4  */
-    {"prod", 5},    /* CLASS_PROD == 5 */
+    {"unknown", 0},     /* 0 indexed! */
+    {"test", 1},        /* CLASS_TEST == 1 */
+    {"dev", 1},         /* CLASS_TEST == 1 */
+    {"alpha", 2},       /* CLASS_ALPHA == 2 */
+    {"uat", 3},         /* CLASS_UAT == 3 */
+    {"beta", 4},        /* CLASS_BETA == 4  */
+    {"prod", 5},        /* CLASS_PROD == 5 */
+    {"integration", 6}, /* CLASS_INTEGRATION == 6 */
 };
 
 static char *fdb_tiers[sizeof(default_classes) / sizeof(default_classes[0])];
@@ -104,7 +105,6 @@ int mach_class_addclass(const char *name, int value)
     if (is_default) {
         /* override the default with client classes */
         hash_clear(classes);
-        classes = NULL;
         is_default = 0;
     }
     rc = _mach_class_add(class, &added);

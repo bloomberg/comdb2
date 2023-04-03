@@ -97,9 +97,8 @@ void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 void reqlog_set_nwrites(struct reqlogger *logger, int nwrites, int cascaded_nwrites);
 
-void reqlog_long_running_sql_statements(void);
-void log_long_running_sql_statements(void);
-
 void reqlog_long_running_clnt(struct sqlclntstate *);
+void reqlog_long_running_sql_statements(void);
+void reqlog_log_all_longreqs(void);
 
 #endif /* !INCLUDED_COMDB2_H */

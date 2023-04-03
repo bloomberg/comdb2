@@ -170,6 +170,7 @@ typedef enum {
     LLMETA_SEQUENCE_VALUE = 53,
     LLMETA_LUA_SFUNC_FLAG = 54,
     LLMETA_NEWSC_REDO_GENID = 55, /* 55 + TABLENAME + GENID -> MAX-LSN */
+    LLMETA_SCHEMACHANGE_STATUS_V2 = 56,
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -3960,8 +3961,8 @@ int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmet
     }
 
     for (int i = 0; i < nkey; i++) {
-        llmeta_newsc_redo_genid_key k;
-        struct llmeta_db_lsn_data_type d;
+        llmeta_newsc_redo_genid_key k = {0};
+        struct llmeta_db_lsn_data_type d = {{0}};
         llmeta_newsc_redo_genid_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(llmeta_newsc_redo_genid_key));
         sc_redo[i].genid = k.genid;
         llmeta_db_lsn_data_type_get(&d, data[i], (uint8_t *)(data[i]) + sizeof(struct llmeta_db_lsn_data_type));
@@ -4241,9 +4242,8 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
     }
 
     for (int i = 0; i < nkey; i++) {
-        struct llmeta_hist_key k;
-        llmeta_sc_hist_key_get(
-            &k, keys[i], (uint8_t *)(keys[i]) + sizeof(struct llmeta_hist_key));
+        struct llmeta_hist_key k = {0};
+        llmeta_sc_hist_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(struct llmeta_hist_key));
         strcpy(hist[i].tablename, k.tablename);
         hist[i].seed = k.seed;
         llmeta_sc_hist_data_get(&hist[i], data[i],
@@ -4351,7 +4351,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
     }
 
     /*add the key type */
-    schema_change.file_type = LLMETA_SCHEMACHANGE_STATUS;
+    schema_change.file_type = LLMETA_SCHEMACHANGE_STATUS_V2;
 
     /*copy the table name and check its length so that we have a clean key*/
     strncpy0(schema_change.dbname, db_name, sizeof(schema_change.dbname));
@@ -4514,9 +4514,7 @@ backout:
 int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status_out, void ***sc_data_out, int *num,
                                  int *bdberr)
 {
-    void **data = NULL;
-    int nkey = 0, rc = 1;
-    llmetakey_t k = htonl(LLMETA_SCHEMACHANGE_STATUS);
+    int rc = 1;
     llmeta_sc_status_data *status = NULL;
     void **sc_data = NULL;
 
@@ -4524,13 +4522,31 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
     *status_out = NULL;
     *sc_data_out = NULL;
 
-    rc = kv_get(tran, &k, sizeof(k), &data, &nkey, bdberr);
+    /* Extract old (v1) sc status data */
+    llmetakey_t k_v1 = htonl(LLMETA_SCHEMACHANGE_STATUS);
+    int nkey_v1 = 0;
+    void **data_v1 = NULL;
+    rc = kv_get(tran, &k_v1, sizeof(k_v1), &data_v1, &nkey_v1, bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
         return -1;
     }
+
+    /* Extract new (v2) sc status data */
+    llmetakey_t k_v2 = htonl(LLMETA_SCHEMACHANGE_STATUS_V2);
+    int nkey_v2 = 0;
+    void **data_v2 = NULL;
+    rc = kv_get(tran, &k_v2, sizeof(k_v2), &data_v2, &nkey_v2, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
+        return -1;
+    }
+
+    int nkey = nkey_v1 + nkey_v2;
+
     if (nkey == 0)
         return 0;
+
     status = calloc(nkey, sizeof(llmeta_sc_status_data) * nkey);
     if (status == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
@@ -4546,10 +4562,10 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
         return -1;
     }
 
-    for (int i = 0; i < nkey; i++) {
+    for (int i = 0; i < nkey_v1; i++) {
         const uint8_t *p_buf;
-        p_buf = llmeta_sc_status_data_get(&status[i], data[i],
-                                          (uint8_t *)(data[i]) +
+        p_buf = llmeta_sc_status_data_get(&status[i], data_v1[i],
+                                          (uint8_t *)(data_v1[i]) +
                                               sizeof(llmeta_sc_status_data));
         sc_data[i] = malloc(status[i].sc_data_len);
         if (sc_data[i] == NULL) {
@@ -4561,11 +4577,32 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
         memcpy(sc_data[i], p_buf, status[i].sc_data_len);
     }
 
-    for (int i = 0; i < nkey; i++) {
-        if (data[i])
-            free(data[i]);
+    for (int i = 0; i < nkey_v1; i++) {
+        if (data_v1[i])
+            free(data_v1[i]);
     }
-    free(data);
+    free(data_v1);
+
+    for (int i = 0; i < nkey_v2; i++) {
+        const uint8_t *p_buf;
+        p_buf = llmeta_sc_status_data_get(&status[nkey_v1+i], data_v2[i],
+                                          (uint8_t *)(data_v2[i]) +
+                                              sizeof(llmeta_sc_status_data));
+        sc_data[nkey_v1 + i] = malloc(status[nkey_v1 + i].sc_data_len);
+        if (sc_data[nkey_v1 + i] == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
+            *bdberr = BDBERR_MALLOC;
+            goto err;
+        }
+
+        memcpy(sc_data[nkey_v1 + i], p_buf, status[nkey_v1 + i].sc_data_len);
+    }
+
+    for (int i = 0; i < nkey_v2; i++) {
+        if (data_v2[i])
+            free(data_v2[i]);
+    }
+    free(data_v2);
 
     *num = nkey;
     *status_out = status;
@@ -4573,13 +4610,22 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
     return 0;
 
 err:
-    for (int i = 0; i < nkey; i++) {
-        if (data[i])
-            free(data[i]);
+    for (int i = 0; i < nkey_v1; i++) {
+        if (data_v1[i])
+            free(data_v1[i]);
         if (sc_data[i])
             free(sc_data[i]);
     }
-    free(data);
+    free(data_v1);
+
+    for (int i = 0; i < nkey_v2; i++) {
+        if (data_v2[i])
+            free(data_v2[i]);
+        if (sc_data[nkey_v1 + i])
+            free(sc_data[nkey_v1 + i]);
+    }
+    free(data_v2);
+
     free(status);
     free(sc_data);
     return -1;
@@ -6226,7 +6272,7 @@ backout:
 int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
                         int *bdberr, int add, int file_type)
 {
-    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t key[LLMETA_IXLEN+sizeof(uint8_t)] = {0};
     int rc;
     struct llmeta_authentication authentication_data = {0};
     uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;
@@ -6731,7 +6777,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             return -1;
         }
         llmeta_newsc_redo_genid_key k;
-        struct llmeta_db_lsn_data_type newsc_lsn;
+        struct llmeta_db_lsn_data_type newsc_lsn = {{0}};
         llmeta_newsc_redo_genid_key_get(&k, p_buf_key, p_buf_end_key);
         llmeta_db_lsn_data_type_get(&newsc_lsn, p_buf_data, p_buf_end_data);
 
@@ -10676,4 +10722,54 @@ int bdb_del_view(tran_type *t, const char *view_name)
         logmsg(LOGMSG_INFO, "View '%s' deleted\n", view_name);
     }
     return rc;
+}
+
+#include "schemachange.h"
+
+/*
+  DRQS-170879936:
+
+  In version R8, some backwards incompatible changes got introduced into
+  the schema change object that broke the object's original deserializer
+  function (buf_get_schemachange()). As a result, reading an sc status object
+  created by R7 would fail if read by R8 (via comdb2_sc_status).
+
+  The fix was to keep the both the versions of the deserializer functions and
+  invoke them appropriately.
+
+  The current (potential hackish) method to pick the right version on the
+  deserializer function is based on the content of the first 4 bytes of the
+  LLMETA_SCHEMACHANGE_STATUS payload, where it is assumed that the valid
+  values of s->kind (between SC_INVALID and SC_LAST, exclusive) will not
+  coincide with the first 4 bytes of the rqid (fastseed) stored as the first
+  member in old (7.0's) LLMETA_SCHEMACHANGE_STATUS payload.
+*/
+static int buf_get_schemachange_key_type(void *p_buf, void *p_buf_end)
+{
+    int first = 0;
+
+    if (p_buf >= p_buf_end) return -1;
+
+    buf_get(&first, sizeof(first), p_buf, p_buf_end);
+
+    if (first > SC_INVALID && first < SC_LAST) {
+        return LLMETA_SCHEMACHANGE_STATUS_V2;
+    }
+    return LLMETA_SCHEMACHANGE_STATUS;
+}
+
+void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
+                           void *p_buf_end)
+{
+    int sc_key_type = buf_get_schemachange_key_type(p_buf, p_buf_end);
+
+    switch (sc_key_type) {
+    case LLMETA_SCHEMACHANGE_STATUS:
+        return buf_get_schemachange_v1(s, (void *)p_buf, (void *)p_buf_end);
+    case LLMETA_SCHEMACHANGE_STATUS_V2:
+        return buf_get_schemachange_v2(s, (void *)p_buf, (void *)p_buf_end);
+    default:
+        break;
+    }
+    return NULL;
 }
