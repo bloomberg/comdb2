@@ -2619,6 +2619,7 @@ static inline void ack(cdb2_hndl_tp *hndl)
     hndl->ack = 0;
     struct newsqlheader hdr = {.type =
                                    htonl(RESPONSE_HEADER__SQL_RESPONSE_PONG)}; 
+
     sbuf2write((void *)&hdr, sizeof(hdr), hndl->sb);
     sbuf2flush(hndl->sb);
 }
@@ -5179,18 +5180,6 @@ int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, con
     break;
     default: goto notsupported;
     }
-
-    CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
-    cdb2__sqlquery__bindvalue__init(bindval);
-    bindval->type = type;
-    bindval->varname = (char *)name;
-    bindval->carray = carray;
-
-    CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
-    cdb2__sqlquery__bindvalue__init(bindval);
-    bindval->type = type;
-    bindval->varname = (char *)name;
-    bindval->carray = carray;
 
     CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
     cdb2__sqlquery__bindvalue__init(bindval);
