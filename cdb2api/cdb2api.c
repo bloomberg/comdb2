@@ -5192,6 +5192,12 @@ int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, con
     bindval->varname = (char *)name;
     bindval->carray = carray;
 
+    CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
+    cdb2__sqlquery__bindvalue__init(bindval);
+    bindval->type = type;
+    bindval->varname = (char *)name;
+    bindval->carray = carray;
+
     hndl->n_bindvars++;
     hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) * hndl->n_bindvars);
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
