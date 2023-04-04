@@ -1628,6 +1628,186 @@ void bdb_prepare_close(bdb_state_type *bdb_state)
     osql_cleanup_netinfo();
 }
 
+static int free_it(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
+static void free_hash(hash_t *h)
+{
+    hash_for(h, free_it, NULL);
+    hash_clear(h);
+    hash_free(h);
+}
+
+// clang-format off
+#define MAXLCACHE 32
+
+struct name_cache {
+    const void *obj;
+    int ref;
+};
+
+#define retrieve_hash_func(name, rtype, stype, hash, lock)                                  \
+                                                                                            \
+volatile static __thread struct name_cache name##_lcache[MAXLCACHE];                        \
+volatile static __thread int name##_lnodes;                                                 \
+                                                                                            \
+static long long name##_global_counter = 0ll;                                               \
+static long long name##_local_counter = 0ll;                                                \
+                                                                                            \
+inline rtype retrieve_##name(bdb_state_type *bdb_state, const char *host)                   \
+{                                                                                           \
+    struct stype *a;                                                                        \
+    int minref = INT_MAX, minix = 0;                                                        \
+    for (int i = 0; i < name##_lnodes; i++) {                                               \
+        if (strcmp(((struct stype *)(name##_lcache[i].obj))->host, host) == 0) {            \
+            name##_lcache[i].ref++;                                                         \
+            name##_local_counter++;                                                         \
+            return &((struct stype *)name##_lcache[i].obj)->a;                              \
+        }                                                                                   \
+        if (name##_lcache[i].ref < minref) {                                                \
+            minref = name##_lcache[i].ref;                                                  \
+            minix = i;                                                                      \
+        }                                                                                   \
+    }                                                                                       \
+    name##_global_counter++;                                                                \
+    const char *h = intern(host);                                                           \
+    Pthread_mutex_lock(lock);                                                               \
+    if ((a = hash_find(hash, &h)) == NULL) {                                                \
+        a = (struct stype *)calloc(sizeof(struct stype), 1);                                \
+        a->host = h;                                                                        \
+        hash_add(hash, a);                                                                  \
+    }                                                                                       \
+    Pthread_mutex_unlock(lock);                                                             \
+    if (name##_lnodes < MAXLCACHE) {                                                        \
+        name##_lcache[name##_lnodes].obj = a;                                               \
+        name##_lcache[name##_lnodes].ref = 1;                                               \
+        name##_lnodes++;                                                                    \
+    } else {                                                                                \
+        name##_lcache[minix].obj = a;                                                       \
+        name##_lcache[minix].ref = 1;                                                       \
+    }                                                                                       \
+    return &a->a;                                                                           \
+}
+
+// struct averager **retrieve_time_minute(bdb_state_type *bdb_state, const char *host);
+retrieve_hash_func(time_minute, 
+                   struct averager **,
+                   averager_strptr,
+                   bdb_state->seqnum_info->time_minute,
+                   &bdb_state->seqnum_info->averager_time_lk);
+
+// struct averager **retrieve_time_10seconds(bdb_state_type *bdb_state, const char *host);
+retrieve_hash_func(time_10seconds, 
+                   struct averager **,
+                   averager_strptr,
+                   bdb_state->seqnum_info->time_10seconds,
+                   &bdb_state->seqnum_info->averager_time_lk);
+
+// wait_for_lsn_list **retrieve_waitlist(bdb_state_type *bdb_state, const char *host);
+retrieve_hash_func(waitlist, 
+                   wait_for_lsn_list **,
+                   wait_for_lsn_list_strptr,
+                   bdb_state->seqnum_info->waitlist,
+                   &bdb_state->seqnum_info->waitlist_hash_lk);
+
+// int *retrieve_last_downgrade_time(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t last_downgrade_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(last_downgrade_time, 
+                   int *,
+                   int_strptr,
+                   bdb_state->last_downgrade_time,
+                   &last_downgrade_hash_lk);
+
+// uint64_t *retrieve_master_lease(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t master_lease_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(master_lease, 
+                   uint64_t *,
+                   uint64_strptr,
+                   bdb_state->master_lease,
+                   &master_lease_hash_lk);
+
+// int *retrieve_coherent_state(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t coherent_state_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(coherent_state, 
+                   int *,
+                   int_strptr,
+                   bdb_state->coherent_state,
+                   &coherent_state_hash_lk);
+
+// int *retrieve_appseqnum(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t appseqnum_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(appseqnum, 
+                   int *,
+                   int_strptr,
+                   bdb_state->repinfo->appseqnum,
+                   &appseqnum_hash_lk);
+
+// int *retrieve_filenum(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t filenum_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(filenum, 
+                   int *,
+                   int_strptr,
+                   bdb_state->seqnum_info->filenum,
+                   &filenum_hash_lk);
+
+// seqnum_type *retrieve_seqnum(bdb_state_type *bdb_state, const char *host);
+retrieve_hash_func(seqnum, 
+                   seqnum_type *,
+                   seqnum_strptr,
+                   bdb_state->seqnum_info->seqnums,
+                   &bdb_state->seqnum_info->seqnum_hash_lk);
+
+// short *retrieve_incoming_udp_count(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t incoming_udp_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(incoming_udp_count, 
+                   short *,
+                   short_strptr,
+                   bdb_state->seqnum_info->incoming_udp_count,
+                   &incoming_udp_hash_lk);
+
+// short *retrieve_expected_udp_count(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t expected_udp_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(expected_udp_count, 
+                   short *,
+                   short_strptr,
+                   bdb_state->seqnum_info->expected_udp_count,
+                   &expected_udp_hash_lk);
+
+// short *retrieve_udp_average_counter(bdb_state_type *bdb_state, const char *host);
+static pthread_mutex_t udp_average_hash_lk = PTHREAD_MUTEX_INITIALIZER;
+retrieve_hash_func(udp_average_counter, 
+                   short *,
+                   short_strptr,
+                   bdb_state->seqnum_info->udp_average_counter,
+                   &udp_average_hash_lk);
+// clang-format on
+
+void print_hash_stats()
+{
+    logmsg(LOGMSG_USER, "time_minute local=%llu global=%llu\n", time_minute_local_counter, time_minute_global_counter);
+    logmsg(LOGMSG_USER, "time_10seconds local=%llu global=%llu\n", time_10seconds_local_counter,
+           time_10seconds_global_counter);
+    logmsg(LOGMSG_USER, "waitlist local=%llu global=%llu\n", waitlist_local_counter, waitlist_global_counter);
+    logmsg(LOGMSG_USER, "last_downgrade_time local=%llu global=%llu\n", last_downgrade_time_local_counter,
+           last_downgrade_time_global_counter);
+    logmsg(LOGMSG_USER, "master_lease local=%llu global=%llu\n", master_lease_local_counter,
+           master_lease_global_counter);
+    logmsg(LOGMSG_USER, "coherent_state local=%llu global=%llu\n", coherent_state_local_counter,
+           coherent_state_global_counter);
+    logmsg(LOGMSG_USER, "appseqnum local=%llu global=%llu\n", appseqnum_local_counter, appseqnum_global_counter);
+    logmsg(LOGMSG_USER, "filenum local=%llu global=%llu\n", filenum_local_counter, filenum_global_counter);
+    logmsg(LOGMSG_USER, "seqnum local=%llu global=%llu\n", seqnum_local_counter, seqnum_global_counter);
+    logmsg(LOGMSG_USER, "incoming_udp local=%llu global=%llu\n", incoming_udp_count_local_counter,
+           incoming_udp_count_global_counter);
+    logmsg(LOGMSG_USER, "expected_udp local=%llu global=%llu\n", expected_udp_count_local_counter,
+           expected_udp_count_global_counter);
+    logmsg(LOGMSG_USER, "udp_average local=%llu global=%llu\n", udp_average_counter_local_counter,
+           udp_average_counter_global_counter);
+}
+
 /* this routine is only used to CLOSE THE WHOLE DB (env) */
 static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 {
@@ -1733,20 +1913,19 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state->txndir);
     free(bdb_state->tmpdir);
 
-    free(bdb_state->seqnum_info->seqnums);
-    free(bdb_state->last_downgrade_time);
-    free(bdb_state->master_lease);
-    free(bdb_state->coherent_state);
-    free(bdb_state->seqnum_info->waitlist);
+    free_hash(bdb_state->seqnum_info->seqnums);
+    free_hash(bdb_state->last_downgrade_time);
+    free_hash(bdb_state->master_lease);
+    free_hash(bdb_state->coherent_state);
+    free_hash(bdb_state->seqnum_info->waitlist);
     free(bdb_state->seqnum_info->trackpool);
-    free(bdb_state->seqnum_info->time_10seconds);
-    free(bdb_state->seqnum_info->time_minute);
-    free(bdb_state->seqnum_info->expected_udp_count);
-    free(bdb_state->seqnum_info->incomming_udp_count);
-    free(bdb_state->seqnum_info->udp_average_counter);
-    free(bdb_state->seqnum_info->filenum);
-
-    free(bdb_state->repinfo->appseqnum);
+    free_hash(bdb_state->seqnum_info->time_10seconds);
+    free_hash(bdb_state->seqnum_info->time_minute);
+    free_hash(bdb_state->seqnum_info->expected_udp_count);
+    free_hash(bdb_state->seqnum_info->incoming_udp_count);
+    free_hash(bdb_state->seqnum_info->udp_average_counter);
+    free_hash(bdb_state->seqnum_info->filenum);
+    free_hash(bdb_state->repinfo->appseqnum);
 
     /* We can not free bdb_state because other threads get READLOCK
      * and it does not work well doing so on freed memory, so don't:
@@ -1943,10 +2122,8 @@ void get_master_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout)
 {
     char *master_host = bdb_state->repinfo->master_host;
     if (master_host != db_eid_invalid && master_host != bdb_master_dupe) {
-        memcpy(lsnout, &(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                             .lsn),
-               sizeof(DB_LSN));
+        seqnum_type *s = retrieve_seqnum(bdb_state, bdb_state->repinfo->master_host);
+        memcpy(lsnout, &s->lsn, sizeof(DB_LSN));
     }
 }
 
@@ -3074,9 +3251,8 @@ again2:
         if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
             goto waitformaster;
 
-        memcpy(&master_seqnum,
-               &(bdb_state->seqnum_info->seqnums[nodeix(master_host)]),
-               sizeof(seqnum_type));
+        seqnum_type *s = retrieve_seqnum(bdb_state, master_host);
+        memcpy(&master_seqnum, s, sizeof(seqnum_type));
         memcpy(&master_lsn, &master_seqnum.lsn, sizeof(DB_LSN));
 
         rc = bdb_state->dbenv->log_stat(bdb_state->dbenv, &log_stats, 0);
@@ -3395,8 +3571,9 @@ static int get_lowfilenum_sanclist(bdb_state_type *bdb_state)
     lowfilenum = INT_MAX;
 
     for (i = 0; i < numnodes; i++) {
-        if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum) {
-            lowfilenum = bdb_state->seqnum_info->filenum[nodeix(nodes[i])];
+        int *filenum = retrieve_filenum(bdb_state, nodes[i]);
+        if ((*filenum) < lowfilenum) {
+            lowfilenum = (*filenum);
             if (bdb_state->attr->debug_log_deletion) {
                 logmsg(LOGMSG_USER,
                        "%s set lowfilenum to %d for machine "
@@ -3572,9 +3749,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         nhosts = net_get_sanctioned_node_list(bdb_state->repinfo->netinfo,
                                               REPMAX, hosts);
         for (i = 0; i < nhosts; i++) {
-            int filenum;
-            filenum = bdb_state->seqnum_info->filenum[nodeix(hosts[i])];
-            snprintf(nodestr, sizeof(nodestr), "%s:%d ", hosts[i], filenum);
+            int *filenum = retrieve_filenum(bdb_state, hosts[i]);
+            snprintf(nodestr, sizeof(nodestr), "%s:%d ", hosts[i], *filenum);
             strcat(filenums_str, nodestr);
         }
     }
@@ -4031,8 +4207,8 @@ low_headroom:
 
     /* 0 means no-one should remove any logs */
     send_filenum_to_all(bdb_state, send_filenum, 0);
-    bdb_state->seqnum_info->filenum[nodeix(bdb_state->repinfo->myhost)] =
-        send_filenum;
+    int *rfilenum = retrieve_filenum(bdb_state, bdb_state->repinfo->myhost);
+    (*rfilenum) = send_filenum;
     if (bdb_state->attr->debug_log_deletion)
         logmsg(LOGMSG_WARN, "sending filenum %d\n", send_filenum);
     if (ctrace_info)
@@ -4112,15 +4288,14 @@ int rep_caught_up(bdb_state_type *bdb_state)
     int count;
     const char *hostlist[REPMAX];
     int i;
-    int my_filenum;
+    int *my_filenum;
 
-    my_filenum =
-        bdb_state->seqnum_info
-            ->filenum[nodeix(net_get_mynode(bdb_state->repinfo->netinfo))];
+    my_filenum = retrieve_filenum(bdb_state, net_get_mynode(bdb_state->repinfo->netinfo));
 
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
     for (i = 0; i < count; i++) {
-        if (bdb_state->seqnum_info->filenum[nodeix(hostlist[i])] != my_filenum)
+        int *ck_filenum = retrieve_filenum(bdb_state, hostlist[i]);
+        if ((*ck_filenum) != (*my_filenum))
             return 0;
     }
 
@@ -5448,10 +5623,15 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     return rc;
 }
 
+static int seqnum_reset_file(void *obj, void *arg)
+{
+    struct seqnum_strptr *s = (struct seqnum_strptr *)obj;
+    s->a.lsn.file = 0;
+    return 0;
+}
+
 int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
 {
-    int i;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
@@ -5463,12 +5643,11 @@ int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
         logmsg(LOGMSG_USER, "%s line %d setting all seqnums to 0\n", __func__,
                __LINE__);
     }
-    for (i = 0; i < MAXNODES; i++) {
-        bdb_state->seqnum_info->seqnums[i].lsn.file = 0;
-    }
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->seqnum_hash_lk));
+    hash_for(bdb_state->seqnum_info->seqnums, seqnum_reset_file, NULL);
+    Pthread_mutex_unlock(&(bdb_state->seqnum_info->seqnum_hash_lk));
 
-    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, newgen,
-                                             done);
+    return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, newgen, done);
 }
 
 int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
@@ -5680,13 +5859,11 @@ static bdb_state_type *bdb_open_int(
         Pthread_mutex_init(&(bdb_state->id_lock), NULL);
         Pthread_mutex_init(&(bdb_state->gblcontext_lock), NULL);
 
-        bdb_state->last_downgrade_time = calloc(sizeof(uint64_t), MAXNODES);
-        bdb_state->master_lease = calloc(sizeof(uint64_t), MAXNODES);
+        bdb_state->last_downgrade_time = hash_init_strptr(offsetof(struct int_strptr, host));
+        bdb_state->master_lease = hash_init_strptr(offsetof(struct uint64_strptr, host));
         Pthread_mutex_init(&(bdb_state->master_lease_lk), NULL);
 
-        bdb_state->coherent_state = malloc(sizeof(int) * MAXNODES);
-        for (int i = 0; i < MAXNODES; i++)
-            bdb_state->coherent_state[i] = STATE_COHERENT;
+        bdb_state->coherent_state = hash_init_strptr(offsetof(struct int_strptr, host));
 
         Pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
 
@@ -5716,13 +5893,11 @@ static bdb_state_type *bdb_open_int(
         /* init seqnum_info */
         bdb_state->seqnum_info = mymalloc(sizeof(seqnum_info_type));
         bzero(bdb_state->seqnum_info, sizeof(seqnum_info_type));
-
-        bdb_state->seqnum_info->seqnums =
-            mymalloc(sizeof(seqnum_type) * MAXNODES);
-        bzero(bdb_state->seqnum_info->seqnums, sizeof(seqnum_type) * MAXNODES);
-
-        bdb_state->seqnum_info->filenum = mymalloc(sizeof(int) * MAXNODES);
-        bzero(bdb_state->seqnum_info->filenum, sizeof(int) * MAXNODES);
+        bdb_state->seqnum_info->seqnums = hash_init_strptr(offsetof(struct seqnum_strptr, host));
+        bdb_state->seqnum_info->filenum = hash_init_strptr(offsetof(struct int_strptr, host));
+        Pthread_mutex_init(&(bdb_state->seqnum_info->seqnum_hash_lk), NULL);
+        Pthread_mutex_init(&(bdb_state->seqnum_info->waitlist_hash_lk), NULL);
+        Pthread_mutex_init(&(bdb_state->seqnum_info->averager_time_lk), NULL);
     } else {
         /* share the parent */
         bdb_state->seqnum_info = parent_bdb_state->seqnum_info;
@@ -5740,20 +5915,13 @@ static bdb_state_type *bdb_open_int(
     if (!parent_bdb_state) {
         Pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
         Pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
-        bdb_state->seqnum_info->waitlist =
-            calloc(MAXNODES, sizeof(wait_for_lsn_list *));
-        bdb_state->seqnum_info->trackpool = pool_setalloc_init(
-            sizeof(struct waiting_for_lsn), 100, malloc, free);
-        bdb_state->seqnum_info->time_10seconds =
-            calloc(MAXNODES, sizeof(struct averager *));
-        bdb_state->seqnum_info->time_minute =
-            calloc(MAXNODES, sizeof(struct averager *));
-        bdb_state->seqnum_info->expected_udp_count =
-            calloc(MAXNODES, sizeof(short));
-        bdb_state->seqnum_info->incomming_udp_count =
-            calloc(MAXNODES, sizeof(short));
-        bdb_state->seqnum_info->udp_average_counter =
-            calloc(MAXNODES, sizeof(short));
+        bdb_state->seqnum_info->waitlist = hash_init_strptr(offsetof(struct wait_for_lsn_list_strptr, host));
+        bdb_state->seqnum_info->trackpool = pool_setalloc_init(sizeof(struct waiting_for_lsn), 100, malloc, free);
+        bdb_state->seqnum_info->time_10seconds = hash_init_strptr(offsetof(struct averager_strptr, host));
+        bdb_state->seqnum_info->time_minute = hash_init_strptr(offsetof(struct averager_strptr, host));
+        bdb_state->seqnum_info->expected_udp_count = hash_init_strptr(offsetof(struct short_strptr, host));
+        bdb_state->seqnum_info->incoming_udp_count = hash_init_strptr(offsetof(struct short_strptr, host));
+        bdb_state->seqnum_info->udp_average_counter = hash_init_strptr(offsetof(struct short_strptr, host));
 
         for (i = 0; i < 16; i++)
             bdb_state->stripe_pool[i] = 255;
@@ -5925,14 +6093,7 @@ static bdb_state_type *bdb_open_int(
 
         Pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
 
-        /* set up the appseqnum array.  we tag all packets we put out
-           on the network with our own application level sequence
-           number.  */
-        bdb_state->repinfo->appseqnum = mymalloc((sizeof(int) * MAXNODES));
-        bzero(bdb_state->repinfo->appseqnum, sizeof(int) * MAXNODES);
-
-        for (i = 0; i < MAXNODES; i++)
-            bdb_state->repinfo->appseqnum[i] = MAXNODES - i;
+        bdb_state->repinfo->appseqnum = hash_init_strptr(offsetof(struct int_strptr, host));
 
         bdb_set_key(bdb_state);
 
@@ -6096,11 +6257,9 @@ static bdb_state_type *bdb_open_int(
         bdb_state->repinfo->upgrade_allowed = 1;
 
         whoismaster_rtn(bdb_state, 1);
+        seqnum_type *s = retrieve_seqnum(bdb_state, gbl_myhostname);
 
-        logmsg(
-            LOGMSG_INFO, "@LSN %u:%u\n",
-            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.file,
-            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.offset);
+        logmsg(LOGMSG_INFO, "@LSN %u:%u\n", s->lsn.file, s->lsn.offset);
 
         BDB_RELLOCK();
     } else {
@@ -6408,18 +6567,15 @@ int get_seqnum(bdb_state_type *bdb_state, const char *host)
 
     Pthread_mutex_lock(&(bdb_state->repinfo->appseqnum_lock));
 
-    bdb_state->repinfo->appseqnum[nodeix(host)]++;
-    seq = bdb_state->repinfo->appseqnum[nodeix(host)];
-
+    int *appseqnum = retrieve_appseqnum(bdb_state, host);
+    seq = ++(*appseqnum);
     Pthread_mutex_unlock(&(bdb_state->repinfo->appseqnum_lock));
 
     return seq;
 }
 
-bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
-                                   int ixlen_in, int pagesize,
-                                   bdb_state_type *parent_bdb_handle,
-                                   tran_type *tran, uint32_t flags, int *bdberr)
+bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl, int ixlen_in, int pagesize,
+                                   bdb_state_type *parent_bdb_handle, tran_type *tran, uint32_t flags, int *bdberr)
 {
     int numdtafiles = 1;
     short numix = 1;

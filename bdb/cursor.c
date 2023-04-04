@@ -3538,7 +3538,8 @@ static inline void set_seqnum_host(void *in_bdb_state, char *host, DB_LSN lsn,
                                    const char *func, int line)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)in_bdb_state;
-    bdb_state->seqnum_info->seqnums[nodeix(host)].lsn = lsn;
+    seqnum_type *seqnum = retrieve_seqnum(bdb_state, host);
+    seqnum->lsn = lsn;
     if (gbl_set_seqnum_trace) {
         logmsg(LOGMSG_USER, "%s line %d setting host %s lsn to %d:%d\n", func,
                line, host, lsn.file, lsn.offset);
@@ -3599,8 +3600,8 @@ static int bdb_push_pglogs_commit_int(void *in_bdb_state, DB_LSN commit_lsn, uin
                 abort();
 
             set_seqnum_host(bdb_state, master, commit_lsn, __func__, __LINE__);
-            bdb_state->seqnum_info->seqnums[nodeix(master)].generation =
-                bdb_state->seqnum_info->seqnums[nodeix(master)].commit_generation = gen;
+            seqnum_type *seqnum = retrieve_seqnum(bdb_state, master);
+            (*seqnum).generation = (*seqnum).commit_generation = gen;
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
             bdb_set_commit_lsn_gen(bdb_state, &commit_lsn, gen);
             master_cnt++;
@@ -3608,7 +3609,7 @@ static int bdb_push_pglogs_commit_int(void *in_bdb_state, DB_LSN commit_lsn, uin
                 logmsg(LOGMSG_USER,
                        "%s: setting seqnum_info ptr %p on master to [%d][%d] gen "
                        "[%d] master-count=%llu not-master-count=%llu\n",
-                       __func__, &bdb_state->seqnum_info->seqnums[nodeix(master)], commit_lsn.file, commit_lsn.offset,
+                       __func__, seqnum, commit_lsn.file, commit_lsn.offset,
                        gen, master_cnt, notmaster_cnt);
             }
         } else {

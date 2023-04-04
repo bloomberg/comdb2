@@ -191,7 +191,7 @@ int bdb_seqnum_compare(void *inbdb_state, seqnum_type *seqnum1,
 
 char *bdb_format_seqnum(const seqnum_type *seqnum, char *buf, size_t bufsize)
 {
-    const DB_LSN *lsn = (const DB_LSN *)seqnum;
+    const DB_LSN *lsn = (const DB_LSN *)&seqnum->lsn;
     snprintf(buf, bufsize, "%u:%u", (unsigned)lsn->file, (unsigned)lsn->offset);
     return buf;
 }
@@ -211,7 +211,7 @@ int bdb_get_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
     if (log_stats) {
         make_lsn(&our_lsn, log_stats->st_cur_file, log_stats->st_cur_offset);
         free(log_stats);
-        memcpy(seqnum, &our_lsn, sizeof(DB_LSN));
+        memcpy(&seqnum->lsn, &our_lsn, sizeof(DB_LSN));
         outrc = 0;
     } else {
         outrc = -1;
@@ -232,8 +232,9 @@ int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset)
 int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,
                      int *offset)
 {
-    *logfile = bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file;
-    *offset = bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset;
+    seqnum_type *s = retrieve_seqnum(bdb_state, host);
+    *logfile = s->lsn.file;
+    *offset = s->lsn.offset;
     return 0;
 }
 
@@ -243,7 +244,7 @@ void bdb_make_seqnum(seqnum_type *seqnum, uint32_t logfile, uint32_t logbyte)
     lsn.file = logfile;
     lsn.offset = logbyte;
     bzero(seqnum, sizeof(seqnum_type));
-    memcpy(seqnum, &lsn, sizeof(DB_LSN));
+    memcpy(&seqnum->lsn, &lsn, sizeof(DB_LSN));
 }
 
 void bdb_get_txn_stats(bdb_state_type *bdb_state, int64_t *active,

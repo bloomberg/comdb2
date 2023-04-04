@@ -95,6 +95,7 @@ int gbl_track_sqlengine_states = 0;
 extern pthread_t gbl_break_lua;
 
 extern void reinit_sql_hint_table();
+extern void print_hash_stats();
 
 static void dump_table_sizes(struct dbenv *dbenv);
 static void request_stats(struct dbenv *dbenv);
@@ -1732,6 +1733,8 @@ clipper_usage:
             blob_print_stats();
         } else if (tokcmp(tok, ltok, "compr") == 0) {
             compr_print_stats();
+        } else if (tokcmp(tok, ltok, "hash") == 0) {
+            print_hash_stats();
         } else if (tokcmp(tok, ltok, "resources") == 0) {
             dumpresources();
         } else if (tokcmp(tok, ltok, "signals") == 0) {
