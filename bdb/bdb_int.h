@@ -705,21 +705,53 @@ struct waiting_for_lsn {
 
 typedef LISTC_T(struct waiting_for_lsn) wait_for_lsn_list;
 
+struct seqnum_strptr {
+    const char *host;
+    struct seqnum_t a;
+};
+
+struct wait_for_lsn_list_strptr {
+    const char *host;
+    wait_for_lsn_list *a;
+};
+
+struct averager_strptr {
+    const char *host;
+    struct averager *a;
+};
+
+struct short_strptr {
+    const char *host;
+    short a;
+};
+
+struct uint64_strptr {
+    const char *host;
+    uint64_t a;
+};
+
+struct int_strptr {
+    const char *host;
+    int a;
+};
+
 typedef struct {
-    seqnum_type *seqnums; /* 1 per node num */
+    hash_t *seqnums; /* 1 per node num */
+    pthread_mutex_t seqnum_hash_lk;
     pthread_mutex_t lock;
     pthread_cond_t cond;
     pthread_key_t key;
-    wait_for_lsn_list **waitlist;
-    short *expected_udp_count;
-    short *incomming_udp_count;
-    short *udp_average_counter;
-    int *filenum;
+    hash_t *waitlist;
+    pthread_mutex_t waitlist_hash_lk;
+    hash_t *expected_udp_count;
+    hash_t *incoming_udp_count;
+    hash_t *udp_average_counter;
+    hash_t *filenum;
 
     pool_t *trackpool;
-    /* need to do a bit better here... */
-    struct averager **time_10seconds;
-    struct averager **time_minute;
+    hash_t *time_10seconds;
+    hash_t *time_minute;
+    pthread_mutex_t averager_time_lk;
 } seqnum_info_type;
 
 typedef struct {
@@ -746,7 +778,7 @@ typedef struct {
     char *myhost;
 
     pthread_mutex_t elect_mutex;
-    int *appseqnum; /* application level (bdb lib) sequencing */
+    hash_t *appseqnum; /* application level (bdb lib) sequencing */
     pthread_mutex_t appseqnum_lock;
     pthread_mutex_t upgrade_lock; /* ensure only 1 upgrade at a time */
     pthread_mutex_t send_lock;
@@ -989,8 +1021,8 @@ struct bdb_state_tag {
     signed char low_headroom_count;
 
     signed char pending_seqnum_broadcast;
-    int *coherent_state;
-    uint64_t *master_lease;
+    hash_t *coherent_state;
+    hash_t *master_lease;
     pthread_mutex_t master_lease_lk;
 
     signed char after_llmeta_init_done;
@@ -1001,7 +1033,7 @@ struct bdb_state_tag {
         not_coherent; /*master sets this if it knows were not coherent */
     int not_coherent_time;
 
-    uint64_t *last_downgrade_time;
+    hash_t *last_downgrade_time;
 
     /* old databases with datacopy don't have odh in index */
     signed char datacopy_odh;
@@ -1150,6 +1182,19 @@ int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade_noelect(bdb_state_type *bdb_state);
 int get_seqnum(bdb_state_type *bdb_state, const char *host);
 void bdb_set_key(bdb_state_type *bdb_state);
+
+seqnum_type *retrieve_seqnum(bdb_state_type *bdb_state, const char *host);
+int *retrieve_coherent_state(bdb_state_type *bdb_state, const char *host);
+int *retrieve_filenum(bdb_state_type *bdb_state, const char *host);
+int *retrieve_appseqnum(bdb_state_type *bdb_state, const char *host);
+int *retrieve_last_downgrade_time(bdb_state_type *bdb_state, const char *host);
+uint64_t *retrieve_master_lease(bdb_state_type *bdb_state, const char *host);
+struct averager **retrieve_time_10seconds(bdb_state_type *bdb_state, const char *host);
+struct averager **retrieve_time_minute(bdb_state_type *bdb_state, const char *host);
+wait_for_lsn_list **retrieve_waitlist(bdb_state_type *bdb_state, const char *host);
+short *retrieve_incoming_udp_count(bdb_state_type *bdb_state, const char *host);
+short *retrieve_expected_udp_count(bdb_state_type *bdb_state, const char *host);
+short *retrieve_udp_average_counter(bdb_state_type *bdb_state, const char *host);
 
 uint64_t subtract_lsn(bdb_state_type *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 void get_my_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout);

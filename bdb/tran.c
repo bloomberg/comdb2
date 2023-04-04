@@ -865,15 +865,14 @@ static inline unsigned long long lag_bytes(bdb_state_type *bdb_state)
         return 0;
 
     for (i = 0; i < count; i++) {
-        if (!is_incoherent(bdb_state, connlist[i]) &&
-            log_compare(
-                &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])].lsn,
-                &minlsn) < 0) {
-            minlsn = bdb_state->seqnum_info->seqnums[nodeix(connlist[i])].lsn;
+        seqnum_type *s = retrieve_seqnum(bdb_state, connlist[i]);
+        if (!is_incoherent(bdb_state, connlist[i]) && log_compare(&s->lsn, &minlsn) < 0) {
+            minlsn = s->lsn;
         }
     }
 
-    masterlsn = bdb_state->seqnum_info->seqnums[nodeix(master_host)].lsn;
+    seqnum_type *master_seq = retrieve_seqnum(bdb_state, master_host);
+    masterlsn = master_seq->lsn;
     if (log_compare(&minlsn, &masterlsn) >= 0)
         return 0;
 
@@ -1655,10 +1654,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             /* successful physical commit, lets increment our seqnum */
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             /* dont let our global lsn go backwards */
-            memcpy(&old_lsn,
-                   &(bdb_state->seqnum_info
-                         ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                   sizeof(DB_LSN));
+            seqnum_type *s = retrieve_seqnum(bdb_state, bdb_state->repinfo->myhost);
+            memcpy(&old_lsn, &s->lsn, sizeof(DB_LSN));
 
             if (log_compare(&lsn, &old_lsn) > 0) {
                 /*fprintf(stderr, "%s:%d 2 updating my seqnum to %d:%d\n",
@@ -1666,12 +1663,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
                 // TODO not sure if this is necessary anymore 
                 // I should be setting this from a hook in log-put
-                memcpy(&(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                       &lsn, sizeof(DB_LSN));
-                bdb_state->seqnum_info
-                    ->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                    .generation = generation;
+                memcpy(&(s->lsn), &lsn, sizeof(DB_LSN));
+                s->generation = generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         }
@@ -1936,26 +1929,21 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         assert(!rc);
 
         if (seqnum) {
-            memcpy(seqnum, &lsn, sizeof(DB_LSN));
+            memcpy(&seqnum->lsn, &lsn, sizeof(DB_LSN));
             seqnum->generation = generation;
             set_seqnum = 1;
 
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             /* dont let our global lsn go backwards */
-            memcpy(&old_lsn,
-                   &(bdb_state->seqnum_info
-                         ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                   sizeof(DB_LSN));
+            seqnum_type *s = retrieve_seqnum(bdb_state, bdb_state->repinfo->myhost);
+            memcpy(&old_lsn, &s->lsn, sizeof(DB_LSN));
 
             if (log_compare(&lsn, &old_lsn) > 0) {
                 /*fprintf(stderr, "%s:%d 2 updating my seqnum to %d:%d\n",
                   __func__, __LINE__, lsn.file, lsn.offset);*/
-                memcpy(&(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                       &lsn, sizeof(DB_LSN));
-                bdb_state->seqnum_info
-                    ->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                    .generation = generation;
+
+                memcpy(&(s->lsn), &lsn, sizeof(DB_LSN));
+                s->generation = generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         }
@@ -1989,7 +1977,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         free(log_stats);
 
         if (seqnum) {
-            memcpy(seqnum, &our_lsn, sizeof(DB_LSN));
+            memcpy(&seqnum->lsn, &our_lsn, sizeof(DB_LSN));
             seqnum->generation = generation;
         }
 
@@ -2015,7 +2003,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         else if (seqnum) {
             bzero(seqnum, sizeof(seqnum_type));
             // TODO: NC: copy lsn instead of tran->savelsn instead?
-            memcpy(seqnum, &(tran->savelsn), sizeof(DB_LSN));
+            memcpy(&seqnum->lsn, &(tran->savelsn), sizeof(DB_LSN));
             seqnum->generation = generation;
         }
 
