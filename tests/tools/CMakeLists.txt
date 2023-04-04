@@ -9,6 +9,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_BINARY_DIR}/bbinc
   ${PROTOBUF-C_INCLUDE_DIR}
   ${SQLite3_INCLUDE_DIRS}
   ${OPENSSL_INCLUDE_DIR}
@@ -71,10 +72,12 @@ add_exe(utf8 utf8.c)
 add_exe(verify_atomics_work verify_atomics_work.c)
 add_exe(makerecord_timer makerecord_timer.c)
 add_exe(sqlite_clnt sqlite_clnt.c)
+add_exe(hashbench hashbench.c testutil.c)
 
 target_link_libraries(cson_test cson)
 target_link_libraries(stepper util mem dlmalloc util)
 target_link_libraries(test_threadpool util mem dlmalloc util)
+target_link_libraries(hashbench util mem dlmalloc util)
 
 list(APPEND common-deps
   ${READLINE_LIBRARIES}

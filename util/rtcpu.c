@@ -158,7 +158,16 @@ static int machine_my_class_default(void)
 {
     return machine_class_default(gbl_myhostname);
 }
-static int machine_dcs[MAXBBNODENUM];
+
+struct int_strptr {
+    const char *host;
+    int i;
+};
+
+#include <plhash.h>
+
+static hash_t *machine_dcs = NULL;
+static pthread_mutex_t machine_dcs_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static int resolve_dc(const char *host)
 {
@@ -168,11 +177,19 @@ static int resolve_dc(const char *host)
 
 static int machine_dc_default(const char *host)
 {
-    int ix;
-    ix = nodeix(host);
-    if (machine_dcs[ix] == 0)
-        machine_dcs[ix] = resolve_dc(host);
-    return machine_dcs[ix];
+    const char *h = intern(host);
+    struct int_strptr *s;
+    Pthread_mutex_lock(&machine_dcs_lk);
+    if (machine_dcs == NULL)
+        machine_dcs = hash_init_strptr(0);
+    if ((s = hash_find(machine_dcs, &h)) == NULL) {
+        s = calloc(sizeof(struct int_strptr), 1);
+        s->host = h;
+        hash_add(machine_dcs, s);
+    }
+    Pthread_mutex_unlock(&machine_dcs_lk);
+    if (s->i == 0) s->i = resolve_dc(host);
+    return s->i;
 }
 
 static int machine_num_default(const char *host)

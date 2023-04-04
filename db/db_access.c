@@ -212,6 +212,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     }
 
     if (gbl_uses_accesscontrol_tableXnode) {
+        /* Using nodeix here is wrong: I will handle in different PR */
         rc = bdb_access_tbl_write_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
             nodeix(thd->clnt->origin), &bdberr);
