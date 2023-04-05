@@ -100,6 +100,33 @@ function runtest
 	verify_unique_utxnid_per_txnid
 	verify_utxnid_under_limit_after_timestamp $CKP_TIME $CKP_MAX_UTXNID
 
+	# Send checkpoint, get max utxnid and timestamp, and then downgrade master.
+	cdb2sql ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb checkpoint")'
+	sleep 3
+	insert_values 1 t
+	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(utxnid) from comdb2_transaction_logs")
+	failif $?
+	CKP_MAX_UTXNID=$(echo $res | grep -oP "\=(.*?)\)")
+	CKP_MAX_UTXNID=${CKP_MAX_UTXNID:1:-1}
+	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(timestamp) from comdb2_transaction_logs")
+	failif $?
+	CKP_TIME=$(echo $res | grep -oP "\=(.*?)\)")
+	CKP_TIME=${CKP_TIME:1:-1}
+
+	oldmaster=$(getmaster)
+	master=oldmaster
+	while [[ $master == $oldmaster ]]; do
+		cdb2sql ${CDB2_OPTIONS} --host $MASTER $a_dbn "exec procedure sys.cmd.send('downgrade')"
+		sleep 5
+		master=$(getmaster)
+	done
+
+	# Run transactions
+	insert_values 100 t
+
+	# Validate transaction IDs: Make sure that transactions after checkpoint have utxnids greater than the max utxnid at checkpoint.
+	verify_unique_utxnid_per_txnid
+	verify_utxnid_under_limit_after_timestamp $CKP_TIME $CKP_MAX_UTXNID
 }
 
 runtest
