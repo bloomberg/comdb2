@@ -124,7 +124,7 @@ get_autoanalyze_stat()
     cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm  'exec procedure sys.cmd.send("stat autoanalyze")' | grep "Table t1" > $fl
 
     sCnt=`cat $fl | cut -d= -f2 | awk '{print $1}'`
-    lRun=`cat $fl | cut -d= -f3 | sed 's/[^(]*(\([^)]*\))/\1/' `
+    lRun=`cat $fl | cut -d= -f3 | sed 's/[^(]*(\([^)]*\))/\1/' | cut -d, -f1 `
     echo "count $sCnt, lastrun $lRun" >&2
     echo $sCnt $lRun > $TMPDIR/$$.out
     read savedCnt lastRun < $TMPDIR/$$.out
@@ -400,5 +400,39 @@ if [[ $lastRun != $prevDate || $savedCnt -eq 0 ]] ; then
     exit -1
 fi
 
+echo ""
+echo "Testing comdb2_notifications queue"
+
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_count_upd 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr min_aa_ops 50")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr chk_aa_time 6")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr min_aa_time 10")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_llmeta_save_freq 1")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_min_percent 20")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_min_percent_jitter 300")'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_request_mode 1")'
+
+sleep 5
+
+update_records 100
+sleep $T_TO_SLEEP
+
+tablename=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure comdb2_notifications()' | awk '{print $1}'`
+if [[ ! $tablename || $tablename != "t1" ]] ; then
+    echo "Expected table t1 from comdb2_notifications consumer, got $tablename instead"
+    echo "Failed"
+    exit -1
+fi
+
+# make sure it only shows up in the queue one time (cheat by just checking table)
+sleep $T_TO_SLEEP
+
+count=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'select count(*) from comdb2_notifications_table'`
+if [[ $count -ne 1 ]] ; then
+    echo "Expected one row in comdb2_notifications_table, got $count"
+    echo "Failed"
+    exit -1
+fi
 
 echo "Success"

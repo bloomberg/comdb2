@@ -30,11 +30,13 @@
 #include <ctrace.h>
 #include <autoanalyze.h>
 #include <sqlstat1.h>
+#include <notifications_queue.h>
 #include "sc_util.h"
 #include "comdb2_atomic.h"
 
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
+const char *aa_added_to_queue_str = "autoanalyze_added_to_queue";
 static volatile int auto_analyze_running = 0;
 int gbl_debug_aa;
 
@@ -54,6 +56,7 @@ void reset_aa_counter(char *tblname)
     }
 
     XCHANGE32(tbl->aa_saved_counter, 0);
+    XCHANGE32(tbl->aa_added_to_queue, 0);
     tbl->aa_lastepoch = time(NULL);
 
     if (save_freq > 0 && thedb->master == gbl_myhostname) {
@@ -64,15 +67,16 @@ void reset_aa_counter(char *tblname)
         char epoch[30] = {0};
         sprintf(epoch, "%d", (int)tbl->aa_lastepoch);
         bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
+        bdb_set_table_parameter(NULL, tblname, aa_added_to_queue_str, str);
     }
 
     BDB_RELLOCK();
 
     char my_buf[30];
-    ctrace("AUTOANALYZE: Analyzed Table %s, reseting counter to %d and last "
-           "run time %s",
+    ctrace("AUTOANALYZE: Analyzed Table %s, reseting counter to %d, last "
+           "run time %s, and added to queue %d",
            tbl->tablename, tbl->aa_saved_counter,
-           ctime_r(&tbl->aa_lastepoch, my_buf));
+           ctime_r(&tbl->aa_lastepoch, my_buf), tbl->aa_added_to_queue);
 }
 
 static inline void loc_print_date(const time_t *timep)
@@ -128,8 +132,8 @@ void *auto_analyze_table(void *arg)
     return NULL;
 }
 
-static void get_saved_counter_epoch(char *tblname, unsigned *aa_counter,
-                                    time_t *aa_lastepoch)
+static void get_saved_counter_epoch_queue(char *tblname, unsigned *aa_counter,
+                                          time_t *aa_lastepoch, unsigned *aa_added_to_queue)
 {
     int rc;
     if (aa_counter) {
@@ -151,6 +155,16 @@ static void get_saved_counter_epoch(char *tblname, unsigned *aa_counter,
             free(epochstr);
         }
     }
+
+    if (aa_added_to_queue) {
+        *aa_added_to_queue = 0;
+        char *queuestr = NULL;
+        rc = bdb_get_table_parameter(tblname, aa_added_to_queue_str, &queuestr);
+        if (rc == 0) {
+            *aa_added_to_queue = strtoul(queuestr, NULL, 10);
+            free(queuestr);
+        }
+    }
 }
 
 int load_auto_analyze_counters(void)
@@ -163,14 +177,17 @@ int load_auto_analyze_counters(void)
             continue;
 
         tbl->aa_lastepoch = 0;
+        XCHANGE32(tbl->aa_added_to_queue, 0);
         if (save_freq > 0) {
             unsigned int saved_counter = 0;
-            get_saved_counter_epoch(tbl->tablename, &saved_counter, &tbl->aa_lastepoch);
+            unsigned int added_to_queue = 0;
+            get_saved_counter_epoch_queue(tbl->tablename, &saved_counter, &tbl->aa_lastepoch, &added_to_queue);
             XCHANGE32(tbl->aa_saved_counter, saved_counter);
+            XCHANGE32(tbl->aa_added_to_queue, added_to_queue);
 
             char my_buf[30];
-            ctrace("AUTOANALYZE: Loading table %s, count %d, last run time %s",
-                   tbl->tablename, tbl->aa_saved_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
+            ctrace("AUTOANALYZE: Loading table %s, count %d, last run time %s, added to queue %d",
+                   tbl->tablename, tbl->aa_saved_counter, ctime_r(&tbl->aa_lastepoch, my_buf), tbl->aa_added_to_queue);
         }
     }
 
@@ -307,7 +324,7 @@ void stat_auto_analyze(void)
                tbl->tablename, newautoanalyze_counter, tbl->aa_saved_counter,
                delta, (new_aa_percnt > 100 ? 100 : new_aa_percnt));
         loc_print_date(&tbl->aa_lastepoch);
-        logmsg(LOGMSG_USER, "\n");
+        logmsg(LOGMSG_USER, ", added to queue=%d\n", tbl->aa_added_to_queue);
     }
 }
 
@@ -370,6 +387,7 @@ void *auto_analyze_main(void *unused)
             continue;
 
         unsigned int newautoanalyze_counter = ATOMIC_LOAD32(tbl->aa_saved_counter);
+        unsigned int added_to_queue = ATOMIC_LOAD32(tbl->aa_added_to_queue);
         double new_aa_percnt = 0;
 
         if (newautoanalyze_counter > 0) {
@@ -389,17 +407,30 @@ void *auto_analyze_main(void *unused)
                 ctrace("AUTOANALYZE: Forcing analyze because new_aa_percnt %f > min_percent %d\n",
                        new_aa_percnt, min_percent);
 
-            // In AA_REQUEST_MODE, a message is printed to stdout that another
-            // task can watch for and schedule analyze at a time of its choosing
+            // In AA_REQUEST_MODE, a message is added to lua consumer comdb2_notifications
+            // that another task can watch for and schedule analyze at a time of its choosing
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_REQUEST_MODE)) {
-                ctrace("AUTOANALYZE: Requesting analyze be run for Table %s, counter (%d); last run time %s\n",
-                       tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
+                if (!added_to_queue) {
+                    ctrace("AUTOANALYZE: Requesting analyze be run for Table %s, counter (%d) (adding to queue); last run time %s\n",
+                           tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
 
-                logmsg(LOGMSG_USER, "AUTOANALYZE: Requesting analyze be run for table: %s\n", tbl->tablename);
+                    pthread_t thread_id;
+                    // will be freed in add_to_notifications_queue()
+                    struct notifications_queue_item *item = calloc(1, sizeof(struct notifications_queue_item));
+                    item->tablename = strdup(tbl->tablename);
+                    item->json = strdup("{\"action\": \"analyze\"}");
+                    Pthread_create(&thread_id, NULL, add_to_notifications_queue, item);
+                    XCHANGE32(tbl->aa_added_to_queue, 1);
+                    const char *str = "1";
+                    bdb_set_table_parameter(NULL, tbl->tablename, aa_added_to_queue_str, str);
+                } else {
+                    ctrace("AUTOANALYZE: Table %s, counter (%d) already added to comdb2_notifications, doing nothing; last run time %s\n",
+                           tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
+                }
             } else {
                 ctrace(
-                    "AUTOANALYZE: Analyzing Table %s, counter (%d); last run time %s\n",
-                    tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
+                    "AUTOANALYZE: Analyzing Table %s, counter (%d); last run time %s, added to queue %d\n",
+                    tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf), added_to_queue);
                 auto_analyze_running = 1; // will be reset by
                                              // auto_analyze_table()
                 pthread_t analyze;
@@ -411,11 +442,11 @@ void *auto_analyze_main(void *unused)
             // save updated autoanalyze counter if there is a delta
             unsigned int llmeta_aa_saved_counter;
             // get saved counter from llmeta
-            get_saved_counter_epoch(tbl->tablename, &llmeta_aa_saved_counter, NULL);
+            get_saved_counter_epoch_queue(tbl->tablename, &llmeta_aa_saved_counter, NULL, NULL);
             int delta = newautoanalyze_counter - llmeta_aa_saved_counter;
             if (delta > 0) {
-                ctrace("AUTOANALYZE: Table %s, saving counter (%d); last run time %s\n",
-                        tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
+                ctrace("AUTOANALYZE: Table %s, saving counter (%d); last run time %s, added to queue %d\n",
+                        tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf), added_to_queue);
                 char str[12] = {0};
                 sprintf(str, "%d", newautoanalyze_counter);
                 bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str);

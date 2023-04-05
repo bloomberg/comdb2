@@ -105,6 +105,7 @@
 #include <schema_lk.h>
 #include <tohex.h>
 #include <timer_util.h>
+#include <notifications_queue.h>
 
 #include <phys_rep.h>
 #include <phys_rep_lsn.h>

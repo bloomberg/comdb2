@@ -662,6 +662,7 @@ typedef struct dbtable {
     time_t aa_lastepoch;
     unsigned aa_counter_upd;   // counter which includes updates
     unsigned aa_counter_noupd; // does not include updates
+    unsigned aa_added_to_queue; // update when schedule autoanalyze added to comdb2_notifications
 
     /* Foreign key constraints */
     constraint_t *constraints;
