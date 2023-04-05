@@ -124,10 +124,23 @@ get_autoanalyze_stat()
     cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm  'exec procedure sys.cmd.send("stat autoanalyze")' | grep "Table t1" > $fl
 
     sCnt=`cat $fl | cut -d= -f2 | awk '{print $1}'`
-    lRun=`cat $fl | cut -d= -f3 | sed 's/[^(]*(\([^)]*\))/\1/' `
+    lRun=`cat $fl | cut -d= -f3 | sed 's/[^(]*(\([^)]*\))/\1/' | cut -d, -f1 `
     echo "count $sCnt, lastrun $lRun" >&2
     echo $sCnt $lRun > $TMPDIR/$$.out
     read savedCnt lastRun < $TMPDIR/$$.out
+    rm -f $TMPDIR/$$.out
+}
+
+
+get_autoanalyze_stat_from_table()
+{
+    node=$1
+
+    fl=stat.out
+    sCnt=`cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select counter from comdb2_auto_analyze_tables where tablename='t1'"`
+    lRun=`cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select cast(last_run_time as int) from comdb2_auto_analyze_tables where tablename='t1'"`
+    echo $sCnt $lRun > $TMPDIR/$$.out
+    read savedCntTable lastRunTable < $TMPDIR/$$.out
     rm -f $TMPDIR/$$.out
 }
 
@@ -167,6 +180,8 @@ echo "just initialized, stats should be blank at this point"
 get_autoanalyze_stat $master 
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 0 0
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 echo ""
 insert_records_tran t1 900
@@ -176,6 +191,8 @@ echo "stats should have data, but date still be blank"
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 900 0
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 sleep $T_TO_SLEEP 
 
@@ -184,6 +201,8 @@ echo "stats should have same amount of data, date still be blank"
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 900 0
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("bdb setattr autoanalyze 0")'
 
@@ -194,6 +213,8 @@ update_records 101
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 900 0
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
 
@@ -210,6 +231,8 @@ fi
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 1001 0
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 
 sleep $T_TO_SLEEP
@@ -226,6 +249,8 @@ if [ $lastRun -eq $prevDate ] ; then
 fi
 
 stats_should_be $savedCnt $lastRun 0 $lastRun
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 
 echo ""
@@ -235,6 +260,8 @@ delete_records 10
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 10 $prevDate
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 sleep 6
 
@@ -244,6 +271,8 @@ echo "stats should be updated, date stays the same"
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 10 $prevDate
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 sleep $T_TO_SLEEP
 
@@ -267,6 +296,8 @@ if [ $lastRun -eq $prevDate ] ; then
 fi
 
 stats_should_be $savedCnt $lastRun 0 $lastRun
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 sleep 2 
 
 
@@ -279,12 +310,16 @@ get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 echo "stats should be updated, date stays the same"
 stats_should_be $savedCnt $lastRun 100 $prevDate
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 sleep $T_TO_SLEEP
 
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 100 $prevDate
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 
 
@@ -307,6 +342,8 @@ if [ $lastRun -eq $prevDate ] ; then
 fi
 
 stats_should_be $savedCnt $lastRun 0 $lastRun
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 
 
@@ -329,6 +366,8 @@ prevDate=$lastRun
 get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 200 $prevDate
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 echo "Turn on autoanalyze"
 cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
@@ -344,6 +383,8 @@ if [ $lastRun -eq $prevDate ] ; then
 fi
 
 stats_should_be $savedCnt $lastRun 0 $lastRun
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 
 
 cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "put tunable 'debug.autoanalyze' 1"
@@ -369,6 +410,8 @@ echo ""
 echo "Testing Auto Analyze Subtraction Bug"
 get_autoanalyze_stat $master
 stats_should_be $savedCnt $lastRun 0 $lastRun # initial condition: start with savedCnt == 0
+get_autoanalyze_stat_from_table $master
+stats_should_be $savedCntTable $lastRunTable $savedCnt $lastRun
 prevDate=$lastRun
 
 cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "put tunable 'debug.autoanalyze' 0"

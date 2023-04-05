@@ -211,6 +211,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblTablePermissionsInit(db);
   if (rc == SQLITE_OK)
+    rc = systblAutoAnalyzeTablesInit(db);
+  if (rc == SQLITE_OK)
     rc = systblSystabPermissionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTimepartPermissionsInit(db);
