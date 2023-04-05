@@ -71,6 +71,7 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
 	int off_context = -1;
+	int utxnid_log = gbl_utxnid_log;
 #if 0
     u_int32_t gen = 0;
 #endif
@@ -80,7 +81,7 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 #endif
 
 	rectype = DB___txn_regop;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -109,7 +110,7 @@ __txn_regop_log_int(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t) + (locks == NULL ? 0 : locks->size);
@@ -170,7 +171,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
@@ -547,6 +548,7 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	u_int8_t *bp;
 	int is_durable, ret;
 	int used_malloc = 0;
+	int utxnid_log = gbl_utxnid_log;
 
     if (last_ckp->file == 0 && last_ckp->offset == 0 && ckp_lsn->file != 1 && ckp_lsn->offset != 28) {
         __db_err(dbenv, "Logging a non-first checkpoint with a 0:0 last checkpoint lsn\n");
@@ -558,7 +560,7 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 #endif
 
 	rectype = DB___txn_ckp;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -587,12 +589,12 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(*ckp_lsn)
 	    + sizeof(*last_ckp)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t)
-		+ (gbl_utxnid_log ? sizeof(u_int64_t) : 0);
+		+ (utxnid_log ? sizeof(u_int64_t) : 0);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
 		    ((DB_CIPHER *)dbenv->crypto_handle)->adj_size(logrec.size);
@@ -650,7 +652,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
@@ -675,7 +677,7 @@ do_malloc:
 	LOGCOPY_32(bp, &uinttmp);
 	bp += sizeof(uinttmp);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		uint64tmp = (u_int64_t)max_utxnid;
 		LOGCOPY_64(bp, &uint64tmp);
 		bp += sizeof(uint64tmp);
@@ -959,13 +961,14 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 	u_int8_t *bp;
 	int is_durable, ret;
 	int used_malloc = 0;
+	int utxnid_log = gbl_utxnid_log;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_child_log: begin\n");
 #endif
 
 	rectype = DB___txn_child;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -994,7 +997,7 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(*c_lsn);
 	if (CRYPTO_ON(dbenv)) {
@@ -1054,7 +1057,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
@@ -1319,13 +1322,14 @@ __txn_xa_regop_log(dbenv, txnid, ret_lsnp, flags,
 	u_int8_t *bp;
 	int is_durable, ret;
 	int used_malloc = 0;
+	int utxnid_log = gbl_utxnid_log;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_xa_regop_log: begin\n");
 #endif
 
 	rectype = DB___txn_xa_regop;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -1354,7 +1358,7 @@ __txn_xa_regop_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t) + (xid == NULL ? 0 : xid->size)
 	    + sizeof(u_int32_t)
@@ -1419,7 +1423,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
@@ -1754,13 +1758,14 @@ __txn_recycle_log(dbenv, txnid, ret_lsnp, flags,
 	u_int8_t *bp;
 	int is_durable, ret;
 	int used_malloc = 0;
+	int utxnid_log = gbl_utxnid_log;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_recycle_log: begin\n");
 #endif
 
 	rectype = DB___txn_recycle;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -1789,7 +1794,7 @@ __txn_recycle_log(dbenv, txnid, ret_lsnp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t);
 	if (CRYPTO_ON(dbenv)) {
@@ -1849,7 +1854,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
@@ -2121,13 +2126,14 @@ __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
     int off_context = -1;
+	int utxnid_log = gbl_utxnid_log;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_regop_rowlocks_log: begin\n");
 #endif
 
 	rectype = DB___txn_regop_rowlocks;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -2156,7 +2162,7 @@ __txn_regop_rowlocks_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int64_t)
 	    + sizeof(*begin_lsn)
@@ -2224,7 +2230,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
@@ -2661,13 +2667,14 @@ __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 	int is_durable, ret;
 	int used_malloc = 0;
 	int off_context = -1;
+	int utxnid_log = gbl_utxnid_log;
 
 #ifdef __txn_DEBUG
 	fprintf(stderr,"__txn_regop_gen_log: begin\n");
 #endif
 
 	rectype = DB___txn_regop_gen;
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		rectype += 2000;
 	}
 	npad = 0;
@@ -2696,7 +2703,7 @@ __txn_regop_gen_log(dbenv, txnid, ret_lsnp, ret_contextp, flags,
 		lsnp = &txnid->last_lsn;
 	}
 
-	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (gbl_utxnid_log ? sizeof(txn_unum) : 0)
+	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int32_t)
 	    + sizeof(u_int64_t)
@@ -2760,7 +2767,7 @@ do_malloc:
 	LOGCOPY_FROMLSN(bp, lsnp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log) {
+	if (utxnid_log) {
 		LOGCOPY_64(bp, &txn_unum);
 		bp += sizeof(txn_unum);
 	}
