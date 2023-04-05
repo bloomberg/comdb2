@@ -528,21 +528,21 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
-            goto done;
+            logmsg(LOGMSG_WARN, "failed to set odh for queue, rcode %d\n", rc);
+            if (rc != ERR_NO_AUXDB || sc->headers)
+                goto done;
         }
 
         if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-compression, rcode %d\n",
-                   rc);
-            goto done;
+            logmsg(LOGMSG_WARN, "failed to set queue-compression, rcode %d\n", rc);
+            if (rc != ERR_NO_AUXDB || sc->compress)
+                goto done;
         }
 
-        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) !=
-            0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-persistent seq, rc %d\n",
-                   rc);
-            goto done;
+        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) != 0) {
+            logmsg(LOGMSG_WARN, "failed to set queue-persistent seq, rc %d\n", rc);
+            if (rc != ERR_NO_AUXDB || sc->persistent_seq)
+                goto done;
         }
 
         if (sc->persistent_seq &&
