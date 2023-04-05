@@ -656,9 +656,10 @@ typedef struct dbtable {
     unsigned deadlock_count;
     unsigned saved_deadlock_count;
     unsigned aa_saved_counter; // zeroed out at autoanalyze
-    time_t aa_lastepoch;
+    int64_t aa_lastepoch;
     unsigned aa_counter_upd;   // counter which includes updates
     unsigned aa_counter_noupd; // does not include updates
+    int64_t aa_needs_analyze_time; // time when analyze is needed for table in request mode, otherwise 0
 
     /* Foreign key constraints */
     constraint_t *constraints;

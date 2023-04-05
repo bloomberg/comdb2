@@ -9,6 +9,7 @@ add_library(sqlite
   ext/comdb2/activelocks.c
   ext/comdb2/activeosqls.c
   ext/comdb2/appsock_handlers.c
+  ext/comdb2/auto_analyze_tables.c
   ext/comdb2/blkseq.c
   ext/comdb2/clientstats.c
   ext/comdb2/cluster.c

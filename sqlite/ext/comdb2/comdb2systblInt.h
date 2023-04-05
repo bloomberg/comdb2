@@ -86,6 +86,7 @@ int systblScHistoryInit(sqlite3 *db);
 int systblConnectionsInit(sqlite3 *db);
 int systblFunctionsInit(sqlite3 *db);
 int systblTablePermissionsInit(sqlite3 *db);
+int systblAutoAnalyzeTablesInit(sqlite3 *db);
 int systblSystabPermissionsInit(sqlite3 *db);
 int systblTimepartPermissionsInit(sqlite3 *db);
 int systblFdbInfoInit(sqlite3 *db);
