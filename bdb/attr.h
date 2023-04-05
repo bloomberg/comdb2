@@ -665,7 +665,7 @@ DEF_ATTR(
     "Amount of seconds to run phase 3 of time partition rollout after phase 2")
 DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
-    "Print a message to stdout instead of performing auto-analyze ourselves")
+    "Mark table in comdb2_auto_analyze_tables instead of performing auto-analyze ourselves")
 DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10, "Check I/O in watchdog this often")
 DEF_ATTR(TEST_SQL_TIME, test_sql_time, SECS, 0, "Check SQL in watchdog this often")
 DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,

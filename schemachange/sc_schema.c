@@ -24,6 +24,7 @@
 #include "intern_strings.h"
 #include "views.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_partial_indexes;
 extern uint64_t gbl_sc_headroom;
@@ -1055,7 +1056,7 @@ void transfer_db_settings(struct dbtable *olddb, struct dbtable *newdb)
     memcpy(newdb->write_count, olddb->write_count, sizeof(olddb->write_count));
     memcpy(newdb->saved_write_count, olddb->saved_write_count,
            sizeof(olddb->saved_write_count));
-    newdb->aa_lastepoch = olddb->aa_lastepoch;
+    XCHANGE64(newdb->aa_lastepoch, olddb->aa_lastepoch);
 }
 
 /* use callers transaction if any, need to do I/O */

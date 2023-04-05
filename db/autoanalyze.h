@@ -17,10 +17,13 @@
 #ifndef INCLUDE_AUTOANALYZE_H
 #define INCLUDE_AUTOANALYZE_H
 
+#include <comdb2.h>
+
 int load_auto_analyze_counters(void);
 void stat_auto_analyze(void);
 void *auto_analyze_main(void *);
 void *auto_analyze_table(void *);
 void autoanalyze_after_fastinit(char *);
+void get_auto_analyze_tbl_stats(struct dbtable *, int, int *, int *, unsigned int *, double *);
 
 #endif // INCLUDE_AUTOANALYZE_H

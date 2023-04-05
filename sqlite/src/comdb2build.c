@@ -1602,7 +1602,7 @@ int comdb2vdbeAnalyze(OpFunc *f)
 }
 
 
-void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
+void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc, int only_leader)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -1618,6 +1618,12 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
 
     if (comdb2AuthenticateUserOp(pParse))
         return;
+
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    if (only_leader && !bdb_amimaster(bdb_state)) {
+        setError(pParse, SQLITE_ERROR, "Should only run needs_analyze on leader node");
+        return;
+    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     int threads = GET_ANALYZE_THREAD(opt);

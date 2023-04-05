@@ -6,6 +6,7 @@
 (tablename='t2', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_active_osqls', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_appsock_handlers', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_auto_analyze_tables', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_blkseq', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_clientstats', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_cluster', username='mohit', READ='Y', WRITE='Y', DDL='Y')

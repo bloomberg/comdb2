@@ -19,6 +19,7 @@
 unknown @ls sub-command foo
 (name='comdb2_active_osqls')
 (name='comdb2_appsock_handlers')
+(name='comdb2_auto_analyze_tables')
 (name='comdb2_blkseq')
 (name='comdb2_clientstats')
 (name='comdb2_cluster')
