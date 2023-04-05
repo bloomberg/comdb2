@@ -147,7 +147,6 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 	DB___txn_ckp && (R) != DB___dbreg_register)
 
 int gbl_rep_process_msg_print_rc;
-extern int gbl_utxnid_log;
 
 #define PRINT_RETURN(retrc, fromline)										\
 	do {																	\
