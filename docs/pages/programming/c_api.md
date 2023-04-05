@@ -251,7 +251,7 @@ CDB2_BLOB|void*|```none```
 CDB2_DATETIME|cdb2_client_datetime_t|```*(cdb2_client_datetime_t*)```
 CDB2_DATETIMEUS|cdb2_client_datetimeus_t|```*(cdb2_client_datetimeus_t*)```
 CDB2_INTERVALYM|cdb2_client_intv_ym_t|```*(cdb2_client_intv_ym_t*)```
-CDB2_INTERVALDS|cdb2_client_intv_ym_t|```*(cdb2_client_intv_ym_t*)```
+CDB2_INTERVALDS|cdb2_client_intv_ds_t|```*(cdb2_client_intv_ds_t*)```
 CDB2_INTERVALDSUS|cdb2_client_intv_dsus_t|```*(cdb2_client_intv_dsus_t*)```
 
 
