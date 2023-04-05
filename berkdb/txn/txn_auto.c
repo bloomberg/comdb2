@@ -394,7 +394,7 @@ __txn_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_regop + 2000)) {
+	if (argp->type == DB___txn_regop + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}
@@ -833,7 +833,7 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_ckp + 2000)) {
+	if (argp->type == DB___txn_ckp + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}
@@ -852,7 +852,7 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->rep_gen = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_ckp + 2000)) {
+	if (argp->type == DB___txn_ckp + 2000) {
 		LOGCOPY_64(&argp->max_utxnid, bp);
 		bp += sizeof(argp->max_utxnid);
 	}
@@ -916,10 +916,8 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\trep_gen: %ld\n", (long)argp->rep_gen);
 	fflush(stdout);
-	if (gbl_utxnid_log) {
-		(void)printf("\tmax_utxnid: %"PRIx64"\n", argp->max_utxnid);
-		fflush(stdout);
-	}
+	(void)printf("\tmax_utxnid: %"PRIx64"\n", argp->max_utxnid);
+	fflush(stdout);
 	(void)printf("\n");
 	__os_free(dbenv, argp);
 
@@ -1222,7 +1220,7 @@ __txn_child_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 	
-	if (gbl_utxnid_log && (argp->type == DB___txn_child + 2000)) {
+	if (argp->type == DB___txn_child + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}
@@ -1627,7 +1625,7 @@ __txn_xa_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_xa_regop + 2000)) {
+	if (argp->type == DB___txn_xa_regop + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}
@@ -2015,7 +2013,7 @@ __txn_recycle_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_recycle + 2000)) {
+	if (argp->type == DB___txn_recycle + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}
@@ -2474,7 +2472,7 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_regop_rowlocks + 2000)) {
+	if (argp->type == DB___txn_regop_rowlocks + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}
@@ -2949,7 +2947,7 @@ __txn_regop_gen_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (gbl_utxnid_log && (argp->type == DB___txn_regop_gen + 2000)) {
+	if (argp->type == DB___txn_regop_gen + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid,  bp);
 		bp += sizeof(argp->txnid->utxnid);
 	}

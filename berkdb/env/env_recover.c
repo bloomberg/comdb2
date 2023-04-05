@@ -87,7 +87,6 @@ static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
 int gbl_ufid_dbreg_test = 0;
 int gbl_ufid_log = 0;
-extern int gbl_utxnid_log;
 
 /* Get the recovery LSN. */
 int
@@ -1232,14 +1231,12 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 				// Get a starting next_utxnid that's higher than the checkpoint.
 				// This will be updated as transactions are processed during 
 				// forward roll.
-				if (gbl_utxnid_log) {
-					u_int32_t rectype;
-					LOGCOPY_32(&rectype, data.data);
-					if (normalize_rectype(&rectype)) {
-						Pthread_mutex_lock(&dbenv->utxnid_lock);
-						dbenv->next_utxnid = ckp_args->max_utxnid+1;
-						Pthread_mutex_unlock(&dbenv->utxnid_lock);
-					}
+				u_int32_t rectype;
+				LOGCOPY_32(&rectype, data.data);
+				if (normalize_rectype(&rectype)) {
+					Pthread_mutex_lock(&dbenv->utxnid_lock);
+					dbenv->next_utxnid = ckp_args->max_utxnid+1;
+					Pthread_mutex_unlock(&dbenv->utxnid_lock);
 				}
 				have_rec = 0;
 				logmsg(LOGMSG_DEBUG, "checkpoint %u:%u points to last lsn %u:%u\n",

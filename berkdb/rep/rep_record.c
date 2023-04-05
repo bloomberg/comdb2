@@ -390,9 +390,15 @@ lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc)
 }
 
 int normalize_rectype(u_int32_t *rectype) {
+	// If 2000 has been added to a rectype, then this function 
+	// subtracts 2000 from a rectype and returns 1; otherwise, 
+	// it does nothing and returns 0. It does not subtract 1000 
+	// from a rectype if 1000 has been added because this is already 
+	// done by existing code where it is appropriate. If log records 
+	// are versioned further in the future, then this function may 
+	// be extended to normalize rectypes of these versions as well.
+
 	if (*rectype > 12000 || (*rectype > 2000 && *rectype < 10000)) {
-		assert (gbl_utxnid_log);
-		// Don't -1000 from +3000 records. Existing ufid code works with rectypes > 1000. 
 		*rectype -= 2000;
 		return 1;
 	} else {
