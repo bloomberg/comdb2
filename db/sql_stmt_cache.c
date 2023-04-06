@@ -411,7 +411,8 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str, void *dta,
 
     entry->dta_sz = dta_sz;
     entry->dta = entry->sql_hint + sql_hint_len + sql_len;
-    memcpy(entry->dta, dta, dta_sz);
+    if (dta_sz)
+        memcpy(entry->dta, dta, dta_sz);
 
     Pthread_mutex_lock(&gbl_sql_lock);
     if (lrucache_hasentry(sql_hints, &sql_hint) == 0) {
@@ -564,8 +565,8 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
-            void *data;
-            int data_sz;
+            void *data = NULL;
+            int data_sz = 0;
             query_data_func(clnt, &data, &data_sz, QUERY_HINT_DATA, QUERY_DATA_GET);
             add_sql_hint_table(rec->cache_hint, clnt->sql, data, data_sz);
         }
