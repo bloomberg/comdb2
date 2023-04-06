@@ -2197,6 +2197,7 @@ static int reconstruct_blob_records(struct convert_record_data *data,
             goto error;
         }
         LOGCOPY_32(&rectype, logdta->data);
+        normalize_rectype(&rectype);
         assert(rectype == rec->type);
 
         assert(rec->dtafile >= 1);
@@ -2532,6 +2533,7 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
     assert(rectype == rec->type);
 
     if (rec->type == DB_llog_undo_add_dta_lk) {
@@ -2742,6 +2744,7 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
     assert(rectype == rec->type);
     if (rec->type == DB_llog_undo_del_dta_lk) {
         if ((rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta->data,
@@ -2865,6 +2868,7 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
         goto done;
     }
     LOGCOPY_32(&rectype, logdta->data);
+    normalize_rectype(&rectype);
     assert(rectype == rec->type);
     if (rec->type == DB_llog_undo_upd_dta_lk) {
         if ((rc = llog_undo_upd_dta_lk_read(bdb_state->dbenv, logdta->data,
@@ -3116,6 +3120,7 @@ done:
 
 static inline int is_logical_data_op(bdb_osql_log_rec_t *rec)
 {
+    assert (rec->type < 12000);
     switch (rec->type) {
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk:
@@ -3162,6 +3167,8 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
                __func__, __LINE__, mingenid, minlsn.file, minlsn.offset, rec->lsn.file, rec->lsn.offset);
         return ERR_INDEX_CONFLICT;
     }
+
+    assert(rec->type < 12000);
 
     switch (rec->type) {
     case DB_llog_undo_add_dta:

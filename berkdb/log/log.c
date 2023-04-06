@@ -324,6 +324,7 @@ __log_get_last_ckp(DB_ENV *dbenv, DB_LSN *lsn)
 			continue;
 
 		LOGCOPY_32(&rectype, dbt.data);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_ckp) {
 			/* found it */
 			(void)__log_c_close(logc);
@@ -411,6 +412,7 @@ __log_recover(dblp)
 		if (dbt.size < sizeof(u_int32_t))
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_ckp)
 			/*
 			 * If we happen to run into a checkpoint, cache its

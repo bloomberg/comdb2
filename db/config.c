@@ -427,6 +427,7 @@ static char *legacy_options[] = {
     "init_with_queue_persistent_sequence off",
     "usenames",
     "setattr max_sql_idle_time 864000",
+    "utxnid_log off"
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

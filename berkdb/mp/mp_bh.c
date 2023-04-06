@@ -643,6 +643,7 @@ berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	}
 
 	LOGCOPY_32(&type, logent);
+	normalize_rectype(&type);
 	/* check that the checkpoint lsn is valid and readable */
 	if (type == DB___txn_ckp && check_checkpoint) {
 		__txn_ckp_args *ckp = NULL;

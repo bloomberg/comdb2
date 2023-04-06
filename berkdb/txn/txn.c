@@ -433,6 +433,7 @@ __txn_xa_begin(dbenv, txn)
 	txn->parent = NULL;
 	ZERO_LSN(txn->last_lsn);
 	txn->txnid = TXN_INVALID;
+	txn->utxnid = TXN_INVALID;
 	txn->tid = 0;
 	txn->cursors = 0;
 	memset(&txn->lock_timeout, 0, sizeof(db_timeout_t));
@@ -523,6 +524,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	int nids, ret;
 	int internal = LF_ISSET(DB_TXN_INTERNAL);
 	int recovery = LF_ISSET(DB_TXN_RECOVERY);
+	uint64_t utxnid;
 
 
 	/*
@@ -539,6 +541,10 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	}
 
 	region = mgr->reginfo.primary;
+
+	Pthread_mutex_lock(&dbenv->utxnid_lock);
+	utxnid = ++dbenv->next_utxnid;
+	Pthread_mutex_unlock(&dbenv->utxnid_lock);
 
 	/*
 	 * We do not have to write begin records (and if we do not, then we
@@ -674,6 +680,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 				__func__);
 		abort();
 	}
+	txn->utxnid = utxnid;
 
 	td_txn[txncnt++] = txn;
 
@@ -2546,11 +2553,16 @@ do_ckp:
 		ckp_lsn_sav = ckp_lsn;
 		timestamp = (int32_t)time(NULL);
 
+		u_int64_t max_utxnid;
+		Pthread_mutex_lock(&dbenv->utxnid_lock);
+		max_utxnid = dbenv->next_utxnid;
+		Pthread_mutex_unlock(&dbenv->utxnid_lock);
+
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
 			(ret = __txn_ckp_log(dbenv, NULL, &ckp_lsn,
 				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
 				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
-				gen)) != 0) {
+				gen, max_utxnid)) != 0) {
 			__db_err(dbenv,
 				"txn_checkpoint: log failed at LSN [%ld %ld] %s",
 				(long)ckp_lsn.file, (long)ckp_lsn.offset,
@@ -2642,8 +2654,10 @@ __txn_activekids(dbenv, rectype, txnp)
 	 * On a child commit, we know that there are children (i.e., the
 	 * commiting child at the least.  In that case, skip this check.
 	 */
-	if (F_ISSET(txnp, TXN_COMPENSATE) || rectype == DB___txn_child)
+	normalize_rectype(&rectype);
+	if (F_ISSET(txnp, TXN_COMPENSATE) || rectype == DB___txn_child) {
 		return (0);
+	}
 
 	if (TAILQ_FIRST(&txnp->kids) != NULL) {
 		__db_err(dbenv, "Child transaction is active");
@@ -2685,7 +2699,11 @@ __txn_force_abort(dbenv, buffer)
 	memcpy(&hdrlen, buffer + SSZ(HDR, len), sizeof(hdr->len));
 	rec_len = hdrlen - hdrsize;
 
-	offset = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
+	u_int32_t rectype = 0;
+	LOGCOPY_32(&rectype, buffer + hdrsize);
+	int utxnid_logged = normalize_rectype(&rectype);
+
+	offset = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + (utxnid_logged ? sizeof(u_int64_t) : 0);
 	if (CRYPTO_ON(dbenv)) {
 		key = db_cipher->mac_key;
 		sum_len = DB_MAC_KEY;
@@ -2876,6 +2894,7 @@ dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp)
 			goto done;
 		}
 		LOGCOPY_32(&type, dbt.data);
+		normalize_rectype(&type);
 		if (type == DB___db_addrem) {
 			DB *db;
 			char *name;

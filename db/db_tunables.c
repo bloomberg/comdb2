@@ -270,6 +270,7 @@ extern int gbl_fingerprint_max_queries;
 extern int gbl_query_plan_max_plans;
 extern double gbl_query_plan_percentage;
 extern int gbl_ufid_log;
+extern int gbl_utxnid_log;
 extern int gbl_ufid_add_on_collect;
 extern int gbl_collect_before_locking;
 extern unsigned gbl_ddlk;

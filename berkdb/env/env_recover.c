@@ -96,7 +96,7 @@ __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout)
 	DB_LSN lsn;
 	DB_LOGC *dbc = NULL;
 	DBT dbt = { 0 };
-	int32_t type;
+	u_int32_t type;
 	__txn_ckp_args *ckp = NULL;
 
 	ZERO_LSN(*lsnout);
@@ -123,6 +123,7 @@ __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout)
 	}
 
 	LOGCOPY_32(&type, dbt.data);
+	normalize_rectype(&type);
 	if (type != DB___txn_ckp) {
 		logmsg(LOGMSG_ERROR, "checkpoint record unexpeted type %d\n", type);
 		goto err;
@@ -324,6 +325,7 @@ __db_find_earliest_recover_point_after_file(dbenv, outlsn, file)
 	for (ret = __log_c_get(logc, &lsn, &rec, flags);
 			ret == 0; ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
 		LOGCOPY_32(&type, rec.data);
+		normalize_rectype(&type);
 		if (type == DB___db_debug && lsn.file >= file) {
 			int optype = 0;
 			if((ret = __db_debug_read(dbenv, rec.data, &debug_args)) != 0)
@@ -447,6 +449,7 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 		goto err;
 
 	LOGCOPY_32(&rectype, rec.data);
+	normalize_rectype(&rectype);
 	if (rectype == DB___db_debug) {
 		ret = __db_debug_read(dbenv, rec.data, &debug_args);
 		if (ret)
@@ -469,6 +472,7 @@ __db_find_recovery_start_int(dbenv, outlsn, max_lsn)
 		if (ret)
 			break;
 		LOGCOPY_32(&rectype, rec.data);
+		normalize_rectype(&rectype);
 		optype = -1;
 		if (rectype == DB___db_debug) {
 			__os_free(dbenv, debug_args);
@@ -725,6 +729,7 @@ int __dbenv_build_mintruncate_list(dbenv)
 			ret = __log_c_get(logc, &lsn, &rec, DB_NEXT)) {
 
 		LOGCOPY_32(&type, rec.data);
+		normalize_rectype(&type);
 		if (type == DB___db_debug) {
 			if ((ret = __db_debug_read(dbenv, rec.data, &debug_args))!=0)
 				abort();
@@ -850,6 +855,7 @@ full_recovery_check(DB_ENV *dbenv, DB_LSN *max_lsn)
 		ret = __log_c_get(logc, &lsn, &logrec, DB_NEXT)) {
 		last = lsn;
 		LOGCOPY_32(&type, logrec.data);
+		normalize_rectype(&type);
 		if (IS_ZERO_LSN(first))
 			first = lsn;
 		if (type == DB___txn_regop || type == DB___txn_regop_gen ||
@@ -1222,6 +1228,16 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 					goto err;
 				}
 				first_lsn = ckp_args->ckp_lsn;
+				// Get a starting next_utxnid that's higher than the checkpoint.
+				// This will be updated as transactions are processed during 
+				// forward roll.
+				u_int32_t rectype;
+				LOGCOPY_32(&rectype, data.data);
+				if (normalize_rectype(&rectype)) {
+					Pthread_mutex_lock(&dbenv->utxnid_lock);
+					dbenv->next_utxnid = ckp_args->max_utxnid+1;
+					Pthread_mutex_unlock(&dbenv->utxnid_lock);
+				}
 				have_rec = 0;
 				logmsg(LOGMSG_DEBUG, "checkpoint %u:%u points to last lsn %u:%u\n",
 					logged_checkpoint_lsn.file,
@@ -1433,6 +1449,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		 * we need to make sure that we don't try to roll
 		 * forward beyond the soon-to-be end of log.
 		 */
+
 
 		if (log_compare(&lsn, &stop_lsn) > 0)
 			break;
@@ -1815,6 +1832,7 @@ __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV * dbenv,
 	do {
 		if (data.size >= sizeof(u_int32_t)) {
 			LOGCOPY_32(&type, data.data);
+			normalize_rectype(&type);
 			if (type == DB___txn_ckp) {
 				if (log_compare(&lsn, max_lsn) < 0) {
 					*foundlsn = lsn;
@@ -1937,6 +1955,7 @@ __log_earliest(dbenv, logc, lowtime, lowlsn)
 	for (ret = __log_c_get(logc, &first_lsn, &data, DB_FIRST);
 		ret == 0; ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
 		LOGCOPY_32(&rectype, data.data);
+		normalize_rectype(&rectype);
 		if (rectype != DB___txn_ckp)
 			continue;
 		if ((ret = __txn_ckp_read(dbenv, data.data, &ckpargs)) == 0) {
@@ -2124,6 +2143,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 		first_lsn; ret == 0;
 		ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
 		LOGCOPY_32(&rectype, data.data);
+		normalize_rectype(&rectype);
 		switch (rectype) {
 		case DB___txn_ckp:
 			if ((ret =
@@ -2423,6 +2443,7 @@ __env_find_verify_recover_start(dbenv, lsnp)
 
 	do {
 		LOGCOPY_32(&rectype, rec.data);
+		normalize_rectype(&rectype);
 	} while ((!matchable_log_type(rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
 			 (ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
 
@@ -2469,6 +2490,7 @@ __env_find_verify_recover_start(dbenv, lsnp)
 	/* Step 4: find the start of DBREG records of the ckp from Step 3. */
 	do {
 		LOGCOPY_32(&rectype, rec.data);
+		normalize_rectype(&rectype);
 		optype = -1;
 		if (rectype == DB___db_debug) {
 			ret = __db_debug_read(dbenv, rec.data, &debug_args);

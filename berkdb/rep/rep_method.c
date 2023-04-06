@@ -1096,11 +1096,14 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 	curlsn = lastlsn;
 
 	LOGCOPY_32(&rectype, rec.data);
+	normalize_rectype(&rectype);
 
 	while (ret == 0 && rectype != DB___txn_regop_gen && rectype !=
 			DB___txn_regop_rowlocks && rectype != DB___txn_regop) {
-		if ((ret = __log_c_get(logc, &curlsn, &rec, DB_PREV)) == 0)
+		if ((ret = __log_c_get(logc, &curlsn, &rec, DB_PREV)) == 0) {
 			LOGCOPY_32(&rectype, rec.data);
+			normalize_rectype(&rectype);
+		}
 	}
 
 	if (rectype == DB___txn_regop_gen) {

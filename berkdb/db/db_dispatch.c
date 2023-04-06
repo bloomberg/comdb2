@@ -270,13 +270,12 @@ optostr(int op)
 
 int
 ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
-		u_int8_t *fuid, DBT *dbt)
+		u_int8_t *fuid, DBT *dbt, int utxnid_logged)
 {
 	int off = -1;
 	u_int32_t fileid = UINT32_MAX;
 	int is_fuid = 0;
 
-	/* Skip custom log recs */
 	if (rectype < 10000) {
 		log_event_counts[rectype]++;
 		if (rectype > 1000) {
@@ -322,7 +321,10 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 	case DB___qam_del:
 	case DB___qam_add:
 	case DB___qam_delext:
-		off = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
+		if (utxnid_logged)
+			off = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + sizeof(u_int64_t);
+		else
+			off = sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
 		break;
 
 	case DB___db_addrem:
@@ -335,9 +337,13 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 		 * These records take an additional 'opcode' parameter
 		 * before the fileid
 		 */
-		off =
-		    sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) +
-		    sizeof(u_int32_t);
+		if (utxnid_logged)
+			off =
+				sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + sizeof(u_int64_t) +
+				sizeof(u_int32_t);
+		else
+			off =
+				sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN) + sizeof(u_int32_t);
 		break;
 
 	case DB___dbreg_register:
@@ -447,9 +453,26 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 {
 	DB_LSN prev_lsn;
 	u_int32_t rectype, txnid;
+	u_int64_t utxnid;
+	u_int64_t maxutxnid = 0;
 	int make_call, ret;
 
 	LOGCOPY_32(&rectype, db->data);
+	
+	if (normalize_rectype(&rectype) && (redo == DB_TXN_OPENFILES)) {
+		LOGCOPY_64(&utxnid, &((char*)db->data)[4 + 4 + 8]);
+		if (rectype == DB___txn_ckp) {
+			LOGCOPY_64(&maxutxnid, &((char*)db->data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
+		}
+		Pthread_mutex_lock(&dbenv->utxnid_lock);
+		if (utxnid > dbenv->next_utxnid) {
+			dbenv->next_utxnid = utxnid + 1;
+		}
+		if (maxutxnid > dbenv->next_utxnid) {
+			dbenv->next_utxnid = maxutxnid + 1;
+		}
+		Pthread_mutex_unlock(&dbenv->utxnid_lock);
+	}
 	LOGCOPY_32(&txnid, (u_int8_t *)db->data + sizeof(rectype));
 	make_call = ret = 0;
 

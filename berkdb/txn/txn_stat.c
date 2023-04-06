@@ -72,7 +72,7 @@ __txn_stat(dbenv, statp, flags)
 	DBT dbt = { 0 };
 	__txn_ckp_args *ckp = NULL;
 	size_t nbytes;
-	int32_t type;
+	u_int32_t type;
 	u_int32_t maxtxn, ndx;
 	int ret;
 
@@ -109,6 +109,7 @@ __txn_stat(dbenv, statp, flags)
 	ret = dbc->get(dbc, &stats->st_last_ckp, &dbt, DB_SET);
 	if (!ret) {
 		LOGCOPY_32(&type, dbt.data);
+		normalize_rectype(&type);
 		if (type == DB___txn_ckp) {
 			ret = __txn_ckp_read(dbenv, dbt.data, &ckp);
 			if (ret == 0) {

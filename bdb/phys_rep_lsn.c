@@ -107,6 +107,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
             }
 
             LOGCOPY_32(&rectype, logrec.data);
+            normalize_rectype(&rectype);
 
         } while (!matchable_log_type(rectype));
 
@@ -155,6 +156,7 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current,
             return 1;
         }
         LOGCOPY_32(&rectype, logrec->data);
+        normalize_rectype(&rectype);
         if (matchable_log_type(rectype)) {
             if (gbl_verbose_physrep) {
                 logmsg(LOGMSG_USER, "%s: initial rec {%u:%u} is matchable\n",
@@ -179,6 +181,7 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current,
             return 1;
         }
         LOGCOPY_32(&rectype, logrec->data);
+        normalize_rectype(&rectype);
     } while (!matchable_log_type(rectype));
 
     info->file = match_lsn.file;

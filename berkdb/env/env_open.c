@@ -493,6 +493,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 						ret == 0; ret = __log_c_get(logc, &lsn, 
 							&data, DB_PREV)) {
 					LOGCOPY_32(&rectype, data.data);
+					normalize_rectype(&rectype);
 					switch (rectype)
 					{
 						case (DB___txn_regop):

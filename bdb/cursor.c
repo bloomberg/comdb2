@@ -3619,6 +3619,7 @@ void bdb_durable_lsn_for_single_node(void *in_bdb_state)
     for (ret = logc->get(logc, &lsn, &data, DB_LAST); ret == 0;
          ret = logc->get(logc, &lsn, &data, DB_PREV)) {
         LOGCOPY_32(&rectype, data.data);
+        normalize_rectype(&rectype);
         switch (rectype) {
         case DB___txn_regop:
         case DB___txn_regop_gen:

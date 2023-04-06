@@ -1083,6 +1083,8 @@ struct __db_txn {
 					 * this is a new one */
 	void            *pglogs_hashtbl;
    pthread_mutex_t pglogs_mutex;
+
+   u_int64_t utxnid;
 };
 
 /*
@@ -2168,6 +2170,7 @@ struct __lsn_collection {
 
 struct __lc_cache_entry {
 	u_int32_t txnid;
+	u_int64_t utxnid;
 	int cacheid;  /* offset in __lc_cache.ent */
 	DB_LSN last_seen_lsn;
 	LINKC_T(struct __lc_cache_entry) lnk;
@@ -2728,6 +2731,9 @@ struct __db_env {
 
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+
+	pthread_mutex_t utxnid_lock;
+	u_int64_t next_utxnid;
 };
 
 #ifndef DB_DBM_HSEARCH
@@ -3059,7 +3065,7 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	int check_checkpoint);
 
 int ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
-	int rectype, u_int8_t *ufid, DBT *dbt);
+	int rectype, u_int8_t *ufid, DBT *dbt, int utxnid_logged);
 
 int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);
@@ -3078,6 +3084,7 @@ int get_context_from_lsn(DB_ENV *dbenv, DB_LSN lsn,
 void __log_txn_lsn(DB_ENV *, DB_LSN *, u_int32_t *, u_int32_t *);
 
 int __recover_logfile_pglogs(DB_ENV *, void *);
+int normalize_rectype(u_int32_t* rectype);
 
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 

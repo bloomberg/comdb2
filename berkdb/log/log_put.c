@@ -171,7 +171,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	LOG *lp;
 	int lock_held, need_free, ret;
 	u_int8_t *key = NULL;
-	int rectype = 0;
+	u_int32_t rectype = 0;
 	int delay;
 
 	dblp = dbenv->lg_handle;
@@ -181,6 +181,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	t = *udbt;
 	u_int8_t *pp;
     int adjsize = 0;
+	int utxnid_logged = 0;
 
 	lock_held = need_free = 0;
 	flags &= (~(DB_LOG_DONT_LOCK | DB_LOG_DONT_INFLATE));
@@ -188,6 +189,7 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	{
 		pp = udbt->data;
 		LOGCOPY_32(&rectype, pp);
+		utxnid_logged = normalize_rectype(&rectype);
 	}
 
     /* prevent local replicant from generating logs */
@@ -240,8 +242,8 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	}
 	unsigned long long ltranid = 0;
 	if (10006 == rectype) {
-		/* Find the logical tranid.  Offset should be (rectype + txn_num + last_lsn) */
-		ltranid = *(unsigned long long *)(&pp[4 + 4 + 8]);
+		/* Find the logical tranid.  Offset should be (rectype + txn_num + last_lsn + txn_unum) */
+		ltranid = *(unsigned long long *)(&pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0)]);
 	}
 
     /* try to do this before grabbing the region lock */
@@ -648,7 +650,8 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 	LOG *lp;
 	u_int8_t *pp;
 	DB_CIPHER *db_cipher;
-	int newfile, ret, rectype;
+	int newfile, ret;
+	u_int32_t rectype;
 	uint32_t generation;
  	unsigned long long ctx;
 
@@ -708,6 +711,7 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 
 	pp = udbt->data;
 	LOGCOPY_32(&rectype, pp);
+	int utxnid_logged = normalize_rectype(&rectype);
 
 	/* we have the log lsn value, can get context */
 	if (off_context >= 0) {
@@ -719,16 +723,16 @@ __log_put_next(dbenv, lsn, context, dbt, udbt, hdr, old_lsnp, off_context, key, 
 
 		if (rectype == DB___txn_regop_rowlocks)
 		{
-			/* rectype(4)+txn_num(4)+db_lsn(8)+opcode(4)+LTRANID(8)+begin_lsn(8)+last_commit_lsn(8)+context(8)+timestamp(8)+lflags(4)+GENERATION(4) */
-			ltranid = (unsigned long long *)(&pp[4 + 4 + 8 + 4]);
-			LOGCOPY_32( &generation, &pp[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+LTRANID(8)+begin_lsn(8)+last_commit_lsn(8)+context(8)+timestamp(8)+lflags(4)+GENERATION(4) */
+			ltranid = (unsigned long long *)(&pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4]);
+			LOGCOPY_32( &generation, &pp[4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
 			pushlog = (flags & DB_LOG_LOGICAL_COMMIT);
 		}
 
 		if (rectype == DB___txn_regop_gen)
 		{
-			/* rectype(4)+txn_num(4)+db_lsn(8)+opcode(4)+GENERATION(4) */
-			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + 4] );
+			/* rectype(4)+txn_num(4)+db_lsn(8)+txn_unum(8)+opcode(4)+GENERATION(4) */
+			LOGCOPY_32( &generation, &pp[ 4 + 4 + 8 + (utxnid_logged ? 8 : 0) + 4] );
 		}
 
 		bdb_push_pglogs_commit(dbenv->app_private, *lsn, generation, *ltranid, pushlog);

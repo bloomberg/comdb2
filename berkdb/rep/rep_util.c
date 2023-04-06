@@ -179,8 +179,10 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	 * REQ_ALL request 
 	 */
 #if 0
-	if (dbtp->size >= sizeof(rectype))
+	if (dbtp->size >= sizeof(rectype)) {
 		LOGCOPY_32(&rectype, dbtp->data);
+		normalize_rectype(&rectype);
+	}
 
 	if ((rtype == REP_LOG || rtype == REP_LOG_LOGPUT) &&
 		(rectype == DB___txn_regop)) {
@@ -218,6 +220,7 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 		 * so we know that dbtp is a log record.
 		 */
 		memcpy(&rectype, dbtp->data, sizeof(rectype));
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen
 			|| rectype == DB___txn_ckp ||
 			rectype == DB___txn_regop_rowlocks)

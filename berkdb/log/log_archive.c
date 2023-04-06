@@ -376,6 +376,7 @@ __build_data(dbenv, pref, listp)
 		}
 
 		LOGCOPY_32(&rectype, rec.data);
+		normalize_rectype(&rectype);
 		if (rectype != DB___dbreg_register)
 			continue;
 		if ((ret =

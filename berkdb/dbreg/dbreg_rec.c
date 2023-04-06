@@ -384,6 +384,7 @@ __dbreg_open_file(dbenv, txn, argp, info)
 	DB_ENTRY *dbe;
 	DB_LOG *lp;
 	u_int32_t id;
+	u_int64_t utxnid;
 	int ret;
 
 
@@ -455,8 +456,10 @@ __dbreg_open_file(dbenv, txn, argp, info)
 	 */
 reopen:if (txn != NULL) {
 		id = txn->txnid;
+		utxnid = txn->utxnid;
 		memset(txn, 0, sizeof(DB_TXN));
 		txn->txnid = id;
+		txn->utxnid = utxnid;
 		txn->mgrp = dbenv->tx_handle;
 	}
 

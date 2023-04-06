@@ -114,6 +114,7 @@ free_ent(DB_ENV *dbenv, LC_CACHE_ENTRY * e)
 		hash_del(dbenv->lc_cache.txnid_hash, e);
 		free_lsn_collection(dbenv, &e->lc);
 		e->txnid = 0;
+		e->utxnid = 0;
 		e->lc.had_serializable_records = 0;
 		listc_abl(&dbenv->lc_cache.avail, e);
 		dbenv->lc_cache.memused -= e->lc.memused;
@@ -225,6 +226,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 
 	u_int32_t type;
 	u_int32_t txnid;
+	u_int64_t utxnid = 0;
 	DB_LSN prevlsn;
 	uint8_t *logrec;
 
@@ -251,11 +253,16 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	LOGCOPY_TOLSN(&prevlsn, logrec);
 	logrec += sizeof(DB_LSN);
 
+	if (normalize_rectype(&type)) {
+		LOGCOPY_64(&utxnid, logrec);
+		logrec += sizeof(u_int64_t);
+	}
+
 	/* dump our current state */
 	if (dbenv->attr.cache_lc_debug) {
 		logmsg(LOGMSG_USER, ">> got txnid %x lsn " PR_LSN " prevlsn " PR_LSN
-		    " type %u sz %d\n", txnid, PARM_LSN(lsn), PARM_LSN(prevlsn),
-		    type, dbt.size);
+		    " utxnid \%"PRIx64" type %u sz %d\n", txnid, PARM_LSN(lsn), PARM_LSN(prevlsn),
+		    utxnid, type, dbt.size);
 	}
 
 	/* Don't process txnid 0 transactions. */
@@ -415,6 +422,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 				__db_panic(dbenv, EINVAL);
 			}
 			e->txnid = txnid;
+			e->utxnid = utxnid;
 			e->last_seen_lsn = lsn;
 
 			if (type != DB___txn_child) {
@@ -590,6 +598,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 
 			e->lc.had_serializable_records = 0;
 			e->txnid = 0;
+			e->utxnid = 0;
 			// printf("%d %d\n", dbenv->lc_cache.memused, e->lc.memused);
 			dbenv->lc_cache.memused -= e->lc.memused;
 			e->lc.memused = 0;

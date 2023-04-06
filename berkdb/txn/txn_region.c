@@ -232,6 +232,7 @@ __txn_findlastckp(dbenv, lsnp)
 		if (dbt.size < sizeof(u_int32_t))
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
+		normalize_rectype(&rectype);
 		if (rectype == DB___txn_ckp) {
 			*lsnp = lsn;
 			break;
