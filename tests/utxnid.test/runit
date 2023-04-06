@@ -3,24 +3,26 @@ bash -n "$0" | exit 1
 source ${TESTSROOTDIR}/tools/cluster_utils.sh
 a_dbn=$1
 ckp_rectype=2011
+downgrade_wait_time=5
+checkpoint_wait_time=1
+kill_wait_time=10
 
 #####################################################
 
 kill_restart_cluster()
 {
-    delay=$1
     for node in $CLUSTER ; do
         echo "killrestart nodes $node"
-        kill_restart_node $node $delay &
+        kill_restart_node $node $kill_wait_time &
     done
-    sleep $delay
+    sleep $kill_wait_time
     # select 1 all nodes
     for node in $CLUSTER ; do
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
         # wait until we can query it
         echo "$DBNAME: waiting until ready"
         while [[ "$out" != "1" ]]; do
-            sleep 2
+            sleep $kill_wait_time
             out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
         done
     done
@@ -65,68 +67,60 @@ function verify_utxnid_under_limit_after_timestamp
         failif $NUM_INVALID_IDS
 }
 
+function bounce {
+	if [[ -n "$CLUSTER" ]] ; then
+		kill_restart_cluster 
+	else
+		kill_restart_node $(hostname) $kill_wait_time
+	fi
+}
+
+function master_swing {
+	oldmaster=$(get_master)
+	master=$oldmaster
+	while [[ $master == $oldmaster ]]; do
+		cdb2sql ${CDB2_OPTIONS} --host $master $a_dbn "exec procedure sys.cmd.send('downgrade')"
+		sleep $downgrade_wait_time
+		master=$(get_master)
+	done
+}
+
+function verify_utxnids_after_action {
+	# Send checkpoint, get max utxnid and timestamp, and then take action on cluster.
+	cdb2sql ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb checkpoint")'
+	sleep $checkpoint_wait_time
+	insert_values 1 t
+	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(utxnid) from comdb2_transaction_logs")
+	failif $?
+	CKP_MAX_UTXNID=$(echo $res | grep -oP "\=(.*?)\)")
+	CKP_MAX_UTXNID=${CKP_MAX_UTXNID:1:-1}
+	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(timestamp) from comdb2_transaction_logs")
+	failif $?
+	CKP_TIME=$(echo $res | grep -oP "\=(.*?)\)")
+	CKP_TIME=${CKP_TIME:1:-1}
+
+	# Do action
+	$1
+
+	# Run transactions
+	insert_values 100 t
+
+	# Validate transaction IDs: Make sure that transactions after checkpoint have utxnids greater than the max utxnid at checkpoint.
+	verify_unique_utxnid_per_txnid
+	verify_utxnid_under_limit_after_timestamp $CKP_TIME $CKP_MAX_UTXNID
+}
+
 function runtest
 {
-	# Setup
 	cdb2sql ${CDB2_OPTIONS} $a_dbn default 'create table t(i int)'
 	insert_values 100 t
 
-	# Validate transaction IDs
+	# Validate utxnids
 	verify_unique_utxnid_per_txnid
 
-	# Send checkpoint, get max utxnid and timestamp, and then bounce cluster.
-	cdb2sql ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb checkpoint")'
-	sleep 3
-	insert_values 1 t
-	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(utxnid) from comdb2_transaction_logs")
-	failif $?
-	CKP_MAX_UTXNID=$(echo $res | grep -oP "\=(.*?)\)")
-	CKP_MAX_UTXNID=${CKP_MAX_UTXNID:1:-1}
-	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(timestamp) from comdb2_transaction_logs")
-	failif $?
-	CKP_TIME=$(echo $res | grep -oP "\=(.*?)\)")
-	CKP_TIME=${CKP_TIME:1:-1}
-
-	if [[ -n "$CLUSTER" ]] ; then
-		kill_restart_cluster 3
-	else
-		kill_restart_node $(hostname) 3
-	fi
-
-	# Run transactions
-	insert_values 100 t
-
-	# Validate transaction IDs: Make sure that transactions after checkpoint have utxnids greater than the max utxnid at checkpoint.
-	verify_unique_utxnid_per_txnid
-	verify_utxnid_under_limit_after_timestamp $CKP_TIME $CKP_MAX_UTXNID
-
-	# Send checkpoint, get max utxnid and timestamp, and then downgrade master.
-	cdb2sql ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb checkpoint")'
-	sleep 3
-	insert_values 1 t
-	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(utxnid) from comdb2_transaction_logs")
-	failif $?
-	CKP_MAX_UTXNID=$(echo $res | grep -oP "\=(.*?)\)")
-	CKP_MAX_UTXNID=${CKP_MAX_UTXNID:1:-1}
-	res=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default "select MAX(timestamp) from comdb2_transaction_logs")
-	failif $?
-	CKP_TIME=$(echo $res | grep -oP "\=(.*?)\)")
-	CKP_TIME=${CKP_TIME:1:-1}
-
-	oldmaster=$(getmaster)
-	master=oldmaster
-	while [[ $master == $oldmaster ]]; do
-		cdb2sql ${CDB2_OPTIONS} --host $MASTER $a_dbn "exec procedure sys.cmd.send('downgrade')"
-		sleep 5
-		master=$(getmaster)
-	done
-
-	# Run transactions
-	insert_values 100 t
-
-	# Validate transaction IDs: Make sure that transactions after checkpoint have utxnids greater than the max utxnid at checkpoint.
-	verify_unique_utxnid_per_txnid
-	verify_utxnid_under_limit_after_timestamp $CKP_TIME $CKP_MAX_UTXNID
+	# Validate utxnids after a bounce and master swing
+	verify_utxnids_after_action bounce
+	verify_utxnids_after_action master_swing
 }
 
 runtest
