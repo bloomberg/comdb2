@@ -96,7 +96,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     struct sqlclntstate *clnt = &appdata->clnt;
     int fd = appdata->fd;
-    pthread_mutex_t *lk = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd->lk : NULL;
+    pthread_mutex_t *lk = (clnt->thd && clnt->thd->sqlthd) ? &clnt->thd->sqlthd->lk : NULL;
 
     /* grab the mutex on the associated sql thread to prevent other threads
        (eg sql_dump_running_statements()) from reading a stale clnt */
