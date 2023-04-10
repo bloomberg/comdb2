@@ -526,7 +526,7 @@ retry_read:
 static void free_newsql_appdata_sbuf(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_sbuf *appdata = clnt->appdata;
-    pthread_mutex_t *lk = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd->lk : NULL;
+    pthread_mutex_t *lk = (clnt->thd && clnt->thd->sqlthd) ? &clnt->thd->sqlthd->lk : NULL;
 
     if (lk)
         Pthread_mutex_lock(lk);
