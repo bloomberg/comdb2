@@ -25,122 +25,122 @@ int bdb_get_sp_get_default_version(const char *, int *);
 
 int comdb2LocateSP(Parse *p, char *sp)
 {
-	char *ver = NULL;
-	int bdberr;
-	int rc0 = bdb_get_sp_get_default_version(sp, &bdberr);
-	int rc1 = bdb_get_default_versioned_sp(sp, &ver);
-	free(ver);
-	if (rc0 < 0 && rc1 < 0) {
-		sqlite3ErrorMsg(p, "no such procedure: %s", sp);
-		return -1;
-	}
-	return 0;
+    char *ver = NULL;
+    int bdberr;
+    int rc0 = bdb_get_sp_get_default_version(sp, &bdberr);
+    int rc1 = bdb_get_default_versioned_sp(sp, &ver);
+    free(ver);
+    if (rc0 < 0 && rc1 < 0) {
+        sqlite3ErrorMsg(p, "no such procedure: %s", sp);
+        return -1;
+    }
+    return 0;
 }
 
 enum ops { del = 0x01, ins = 0x02, upd = 0x04 };
 
 typedef struct columnevent {
-	const char *col;
-	int event;
-	LIST_ENTRY(columnevent) link;
+    const char *col;
+    int event;
+    LIST_ENTRY(columnevent) link;
 } ColumnEvent;
 
 typedef struct {
-	LIST_HEAD(, columnevent) head;
+    LIST_HEAD(, columnevent) head;
 } ColumnEventList;
 
 static ColumnEvent *getcol(ColumnEventList *list, const char *col)
 {
-	ColumnEvent *e = NULL;
-	LIST_FOREACH(e, &list->head, link) {
-		if (strcmp(e->col, col) == 0) {
-			return e;
-		}
-	}
-	e = malloc(sizeof(ColumnEvent));
-	e->col = col;
-	e->event = 0;
-	LIST_INSERT_HEAD(&list->head, e, link);
-	return e;
+    ColumnEvent *e = NULL;
+    LIST_FOREACH(e, &list->head, link) {
+        if (strcmp(e->col, col) == 0) {
+            return e;
+        }
+    }
+    e = malloc(sizeof(ColumnEvent));
+    e->col = col;
+    e->event = 0;
+    LIST_INSERT_HEAD(&list->head, e, link);
+    return e;
 }
 
 #define ALLOW_ALL_COLS
 static void add_watched_cols(int type, Table *table, Cdb2TrigEvent *event,
-			     ColumnEventList *list)
+                             ColumnEventList *list)
 {
-	if (event->cols) {
-		for (int i = 0; i < event->cols->nId; ++i) {
-			ColumnEvent *ce = getcol(list, event->cols->a[i].zName);
-			ce->event |= type;
-		}
-	#ifdef ALLOW_ALL_COLS
-	} else {
-		for (int i = 0; i < table->nCol; ++i) {
-			ColumnEvent *ce = getcol(list, table->aCol[i].zName);
-			ce->event |= type;
-		}
-	#endif
-	}
+    if (event->cols) {
+        for (int i = 0; i < event->cols->nId; ++i) {
+            ColumnEvent *ce = getcol(list, event->cols->a[i].zName);
+            ce->event |= type;
+        }
+#ifdef ALLOW_ALL_COLS
+    } else {
+        for (int i = 0; i < table->nCol; ++i) {
+            ColumnEvent *ce = getcol(list, table->aCol[i].zName);
+            ce->event |= type;
+        }
+#endif
+    }
 }
 
 Cdb2TrigEvents *comdb2AddTriggerEvent(Parse *pParse, Cdb2TrigEvents *A, Cdb2TrigEvent *B)
 {
-	if (A == NULL) {
-		A = sqlite3DbMallocZero(pParse->db, sizeof(Cdb2TrigEvents));
-	}
-	Cdb2TrigEvent *e = NULL;
-	const char *type = NULL;
-	switch (B->op) {
-	case TK_DELETE: e = &A->del; type = "delete"; break;
-	case TK_INSERT: e = &A->ins; type = "insert"; break;
-	case TK_UPDATE: e = &A->upd; type = "update"; break;
-	default: sqlite3ErrorMsg(pParse, "%s: bad op", __func__, B->op); return NULL;
-	}
-	if (B->op == e->op) {
-		sqlite3DbFree(pParse->db, A);
-		sqlite3ErrorMsg(pParse, "%s condition repeated", type);
-		return NULL;
-	#ifndef ALLOW_ALL_COLS
-	} else if (B->cols == NULL) {
-		sqlite3DbFree(pParse->db, A);
-		sqlite3ErrorMsg(pParse, "%s condition has unspecified columns", type);
-		return NULL;
-	#endif
-	}
-	e->op = B->op;
-	e->cols = B->cols;
-	return A;
+    if (A == NULL) {
+        A = sqlite3DbMallocZero(pParse->db, sizeof(Cdb2TrigEvents));
+    }
+    Cdb2TrigEvent *e = NULL;
+    const char *type = NULL;
+    switch (B->op) {
+    case TK_DELETE: e = &A->del; type = "delete"; break;
+    case TK_INSERT: e = &A->ins; type = "insert"; break;
+    case TK_UPDATE: e = &A->upd; type = "update"; break;
+    default: sqlite3ErrorMsg(pParse, "%s: bad op", __func__, B->op); return NULL;
+    }
+    if (B->op == e->op) {
+        sqlite3DbFree(pParse->db, A);
+        sqlite3ErrorMsg(pParse, "%s condition repeated", type);
+        return NULL;
+#ifndef ALLOW_ALL_COLS
+    } else if (B->cols == NULL) {
+        sqlite3DbFree(pParse->db, A);
+        sqlite3ErrorMsg(pParse, "%s condition has unspecified columns", type);
+        return NULL;
+#endif
+    }
+    e->op = B->op;
+    e->cols = B->cols;
+    return A;
 }
 
 Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
-				      SrcList *tbl, Cdb2TrigEvents *events)
+                                      SrcList *tbl, Cdb2TrigEvents *events)
 {
-	Table *table;
-	if ((table = sqlite3LocateTableItem(parse, 0, &tbl->a[0])) == NULL) {
-		sqlite3ErrorMsg(parse, "no such table:%s", tbl->a[0].zName);
-		return NULL;
-	}
-	Cdb2TrigTables *tmp;
-	const char *name = table->zName;
-	if (tables) {
-		tmp = tables;
-		while (tmp) {
-			if (strcmp(tmp->table->zName, name) == 0) {
-				sqlite3ErrorMsg(parse, "trigger already specified table:%s", name);
-				return NULL;
-			}
-			tmp = tmp->next;
-		}
-	}
-	tmp = sqlite3DbMallocRaw(parse->db, sizeof(Cdb2TrigTables));
-	if (tmp == NULL) {
-		sqlite3ErrorMsg(parse, "malloc failED");
-		return NULL;
-	}
-	tmp->table = table;
-	tmp->events = events;
-	tmp->next = tables;
-	return tmp;
+    Table *table;
+    if ((table = sqlite3LocateTableItem(parse, 0, &tbl->a[0])) == NULL) {
+        sqlite3ErrorMsg(parse, "no such table:%s", tbl->a[0].zName);
+        return NULL;
+    }
+    Cdb2TrigTables *tmp;
+    const char *name = table->zName;
+    if (tables) {
+        tmp = tables;
+        while (tmp) {
+            if (strcmp(tmp->table->zName, name) == 0) {
+                sqlite3ErrorMsg(parse, "trigger already specified table:%s", name);
+                return NULL;
+            }
+            tmp = tmp->next;
+        }
+    }
+    tmp = sqlite3DbMallocRaw(parse->db, sizeof(Cdb2TrigTables));
+    if (tmp == NULL) {
+        sqlite3ErrorMsg(parse, "malloc failED");
+        return NULL;
+    }
+    tmp->table = table;
+    tmp->events = events;
+    tmp->next = tables;
+    return tmp;
 }
 
 // dynamic -> consumer
@@ -176,68 +176,68 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
         return;
     }
 
-	Q4SP(qname, spname);
-	if (getqueuebyname(qname)) {
-		sqlite3ErrorMsg(parse, "trigger already exists: %s", spname);
-		return;
-	}
+    Q4SP(qname, spname);
+    if (getqueuebyname(qname)) {
+        sqlite3ErrorMsg(parse, "trigger already exists: %s", spname);
+        return;
+    }
 
-	if (comdb2LocateSP(parse, spname) != 0) {
-		return;
-	}
+    if (comdb2LocateSP(parse, spname) != 0) {
+        return;
+    }
 
-	strbuf *s = strbuf_new();
-	while (tbl) {
-		Table *table = tbl->table;
-		Cdb2TrigEvents *events = tbl->events;
-		tbl = tbl->next;
-		ColumnEventList celist;
-		LIST_INIT(&celist.head);
-		if (events->del.op == TK_DELETE) {
-			add_watched_cols(del, table, &events->del, &celist);
-		}
-		if (events->ins.op == TK_INSERT) {
-			add_watched_cols(ins, table, &events->ins, &celist);
-		}
-		if (events->upd.op == TK_UPDATE) {
-			add_watched_cols(upd, table, &events->upd, &celist);
-		}
-		strbuf_appendf(s, "table %s\n", table->zName);
-		ColumnEvent *prev = NULL, *ce = NULL;
-		LIST_FOREACH(ce, &celist.head, link) {
-			strbuf_appendf(s, "field %s", ce->col);
-			if (ce->event & del) {
-				strbuf_append(s, " del");
-			}
-			if (ce->event & ins) {
-				strbuf_append(s, " add");
-			}
-			if (ce->event & upd) {
-				strbuf_append(s, " pre_upd post_upd");
-			}
-			strbuf_append(s, "\n");
-			free(prev);
-			prev = ce;
-		}
-		free(prev);
-	}
+    strbuf *s = strbuf_new();
+    while (tbl) {
+        Table *table = tbl->table;
+        Cdb2TrigEvents *events = tbl->events;
+        tbl = tbl->next;
+        ColumnEventList celist;
+        LIST_INIT(&celist.head);
+        if (events->del.op == TK_DELETE) {
+            add_watched_cols(del, table, &events->del, &celist);
+        }
+        if (events->ins.op == TK_INSERT) {
+            add_watched_cols(ins, table, &events->ins, &celist);
+        }
+        if (events->upd.op == TK_UPDATE) {
+            add_watched_cols(upd, table, &events->upd, &celist);
+        }
+        strbuf_appendf(s, "table %s\n", table->zName);
+        ColumnEvent *prev = NULL, *ce = NULL;
+        LIST_FOREACH(ce, &celist.head, link) {
+            strbuf_appendf(s, "field %s", ce->col);
+            if (ce->event & del) {
+                strbuf_append(s, " del");
+            }
+            if (ce->event & ins) {
+                strbuf_append(s, " add");
+            }
+            if (ce->event & upd) {
+                strbuf_append(s, " pre_upd post_upd");
+            }
+            strbuf_append(s, "\n");
+            free(prev);
+            prev = ce;
+        }
+        free(prev);
+    }
 
-	char method[64];
-	sprintf(method, "dest:%s:%s", dynamic ? "dynlua" : "lua", spname);
+    char method[64];
+    sprintf(method, "dest:%s:%s", dynamic ? "dynlua" : "lua", spname);
 
-	// trigger add table:qname dest:method
-	struct schema_change_type *sc = new_schemachange_type();
-	sc->kind = SC_ADD_TRIGGER;
+    // trigger add table:qname dest:method
+    struct schema_change_type *sc = new_schemachange_type();
+    sc->kind = SC_ADD_TRIGGER;
     sc->persistent_seq = seq;
-	strcpy(sc->tablename, qname);
-	struct dest *d = malloc(sizeof(struct dest));
-	d->dest = strdup(method);
-	listc_abl(&sc->dests, d);
-	sc->newcsc2 = strbuf_disown(s);
-	strbuf_free(s);
-	Vdbe *v = sqlite3GetVdbe(parse);
-	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
-			    (vdbeFuncArgFree)&free_schema_change_type);
+    strcpy(sc->tablename, qname);
+    struct dest *d = malloc(sizeof(struct dest));
+    d->dest = strdup(method);
+    listc_abl(&sc->dests, d);
+    sc->newcsc2 = strbuf_disown(s);
+    strbuf_free(s);
+    Vdbe *v = sqlite3GetVdbe(parse);
+    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
     free_schema_change_type(sc);
 }
@@ -268,19 +268,19 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
         return;
     }
 
-	Q4SP(qname, spname);
-	if (!getqueuebyname(qname)) {
-		sqlite3ErrorMsg(parse, "no such trigger: %s", spname);
-		return;
-	}
+    Q4SP(qname, spname);
+    if (!getqueuebyname(qname)) {
+        sqlite3ErrorMsg(parse, "no such trigger: %s", spname);
+        return;
+    }
 
-	// trigger drop table:qname
-	struct schema_change_type *sc = new_schemachange_type();
-	sc->kind = SC_DEL_TRIGGER;
-	strcpy(sc->tablename, qname);
-	Vdbe *v = sqlite3GetVdbe(parse);
-	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
-			    (vdbeFuncArgFree)&free_schema_change_type);
+    // trigger drop table:qname
+    struct schema_change_type *sc = new_schemachange_type();
+    sc->kind = SC_DEL_TRIGGER;
+    strcpy(sc->tablename, qname);
+    Vdbe *v = sqlite3GetVdbe(parse);
+    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
+                        (vdbeFuncArgFree)&free_schema_change_type);
 }
 
 #define comdb2CreateFunc(parse, proc, pfx, PFX, type, flags)                   \
