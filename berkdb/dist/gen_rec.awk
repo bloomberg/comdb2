@@ -792,7 +792,7 @@ function print_function() {
 	printf("\t(void)printf(\n\t    \"[%%lu][%%lu]%s%%s: ",\
 	     funcname) >> CFILE;
 	printf("rec: %%lu txnid %%lx prevlsn [%%lu][%%lu] ") >> CFILE;
-	printf("utxnid %%\"PRIu64\" \\n\",\n") >> CFILE;
+	printf("utxnid %%\"PRIx64\" \\n\",\n") >> CFILE;
 	printf("\t    (u_long)lsnp->file,\n") >> CFILE;
 	printf("\t    (u_long)lsnp->offset,\n") >> CFILE;
 	printf("\t    (argp->type & DB_debug_FLAG) ? \"_debug\" : \"\",\n") \
