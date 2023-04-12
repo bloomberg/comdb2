@@ -77,6 +77,32 @@ function insert_thread
     done
 }
 
+function check_up
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="check_up"
+    typeset max=60
+    typeset i=0
+    typeset error=1
+    while [[ "$i" -lt "$max" && "$error" -ne "0" ]]; do
+        error=0
+        for node in $CLUSTER ; do
+            $CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME "select 1" > /dev/null 2>&1 
+            if [[ "$?" -ne "0" ]] ; then 
+                error=1
+            fi
+        done
+        if [[ "$error" -ne "0" ]]; then
+            sleep 1
+        fi
+    let i=i+1
+    done
+    if [[ "$error" -ne "0" ]]; then
+        write_prompt $func "Database not up at finish"
+        echo "Database not up at finish" >> $failfile
+    fi
+}
+
 function run_test
 {
     [[ $debug == "1" ]] && set -x
@@ -137,6 +163,7 @@ function run_test
     done
     touch $stopfile
     wait
+    check_up
 }
 
 # Globals
@@ -166,6 +193,7 @@ else
 fi
 
 run_test $truncaters $truncate_sleep $downgrade_sleep $inserters $insertrecs $nocheckpoint $dgcount $maxtruncatefail
+
 if [[ -f $failfile ]]; then
     echo "Failed test"
     cat $failfile
