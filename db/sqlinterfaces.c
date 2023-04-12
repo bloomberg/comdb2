@@ -4423,6 +4423,15 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
 
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
+    struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
+
+    /* Clear the client from the sql thread, so that sql-dump won't see it. */
+    if (thd) {
+        Pthread_mutex_lock(&gbl_sql_lock);
+        thd->clnt = NULL;
+        Pthread_mutex_unlock(&gbl_sql_lock);
+    }
+
     if (clnt->done_cb) {
         clnt->done_cb(clnt); /* newsql_done_cb */
     } else {
@@ -4489,8 +4498,6 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     debug_close_clnt(clnt);
     signal_clnt_as_done(clnt);
-
-    sql_reset_sqlthread(thd->sqlthd);
 
     thrman_setid(thrman_self(), "[done]");
 }
@@ -4807,7 +4814,6 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     clnt_change_state(clnt, CONNECTION_IDLE);
     debug_close_clnt(clnt);
     signal_clnt_as_done(clnt);
-    sql_reset_sqlthread(sqlthd);
 
     thrman_setid(thrman_self(), "[done]");
 }
@@ -6153,17 +6159,6 @@ void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
     Pthread_mutex_lock(&clnt->state_lk);
     clnt->state = state;
     Pthread_mutex_unlock(&clnt->state_lk);
-}
-
-/* we have to clear
-      - sqlclntstate (key, pointers in Bt, thd)
-      - thd->tran and mode (this is actually done in Commit/Rollback)
- */
-void sql_reset_sqlthread(struct sql_thread *thd)
-{
-    if (thd) {
-        thd->clnt = NULL;
-    }
 }
 
 /**

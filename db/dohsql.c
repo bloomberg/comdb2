@@ -228,8 +228,6 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
         handle_child_error(clnt, clnt->query_rc);
     }
 
-    sql_reset_sqlthread(thd->sqlthd);
-
     if (put_curtran(thedb->bdb_env, clnt)) {
         logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
                __func__);
