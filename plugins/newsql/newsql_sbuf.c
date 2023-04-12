@@ -526,18 +526,10 @@ retry_read:
 static void free_newsql_appdata_sbuf(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_sbuf *appdata = clnt->appdata;
-    pthread_mutex_t *lk = (clnt->thd && clnt->thd->sqlthd) ? &clnt->thd->sqlthd->lk : NULL;
-
-    if (lk)
-        Pthread_mutex_lock(lk);
-
     clnt_unregister(clnt);
     free_newsql_appdata(clnt);
     newsql_protobuf_destroy(&appdata->newsql_protobuf_allocator);
     free(appdata);
-
-    if (lk)
-        Pthread_mutex_unlock(lk);
 }
 
 static int handle_newsql_request(comdb2_appsock_arg_t *arg)
