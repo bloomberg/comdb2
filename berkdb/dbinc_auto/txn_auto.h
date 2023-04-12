@@ -31,6 +31,7 @@ typedef struct ___txn_child_args {
 	DB_TXN *txnid;
 	DB_LSN prev_lsn;
 	u_int32_t	child;
+	u_int64_t   child_utxnid;
 	DB_LSN	c_lsn;
 } __txn_child_args;
 

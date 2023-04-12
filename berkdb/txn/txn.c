@@ -1290,7 +1290,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			if (!IS_ZERO_LSN(txnp->last_lsn)) {
 				if ((ret = __txn_child_log(dbenv,
 								txnp->parent, &txnp->parent->last_lsn,
-								0, txnp->txnid, &txnp->last_lsn)) != 0) {
+								0, txnp->txnid, txnp->utxnid, &txnp->last_lsn)) != 0) {
 					goto err;
 				}
 #if defined DEBUG_STACK_AT_TXN_LOG

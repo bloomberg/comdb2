@@ -398,6 +398,8 @@ __txn_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_regop + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -838,6 +840,8 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_ckp + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_TOLSN(&argp->ckp_lsn, bp);
@@ -857,8 +861,9 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_ckp + 2000) {
 		LOGCOPY_64(&argp->max_utxnid, bp);
 		bp += sizeof(argp->max_utxnid);
+	} else {
+		argp->max_utxnid = 0;
 	}
-
 	*argpp = argp;
 	return (0);
 }
@@ -940,16 +945,17 @@ __txn_ckp_read(dbenv, recbuf, argpp)
 
 /*
  * PUBLIC: int __txn_child_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
- * PUBLIC:     u_int32_t, u_int32_t, DB_LSN *));
+ * PUBLIC:     u_int32_t, u_int32_t, u_int64_t, DB_LSN *));
  */
 int
 __txn_child_log(dbenv, txnid, ret_lsnp, flags,
-    child, c_lsn)
+    child, c_utxnid, c_lsn)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
 	DB_LSN *ret_lsnp;
 	u_int32_t flags;
 	u_int32_t child;
+	u_int64_t c_utxnid;
 	DB_LSN * c_lsn;
 {
 	DBT logrec;
@@ -998,7 +1004,7 @@ __txn_child_log(dbenv, txnid, ret_lsnp, flags,
 	}
 
 	logrec.size = sizeof(rectype) + sizeof(txn_num) + sizeof(DB_LSN) + (utxnid_log ? sizeof(txn_unum) : 0)
-	    + sizeof(u_int32_t)
+	    + sizeof(u_int32_t) + (utxnid_log ? sizeof(c_utxnid) : 0)
 	    + sizeof(*c_lsn);
 	if (CRYPTO_ON(dbenv)) {
 		npad =
@@ -1065,6 +1071,11 @@ do_malloc:
 	uinttmp = (u_int32_t)child;
 	LOGCOPY_32(bp, &uinttmp);
 	bp += sizeof(uinttmp);
+
+	if (utxnid_log) {
+		LOGCOPY_64(bp, &c_utxnid);
+		bp += sizeof(c_utxnid);
+	}
 
 	if (c_lsn != NULL)
 		LOGCOPY_FROMLSN(bp, c_lsn);
@@ -1226,11 +1237,20 @@ __txn_child_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_child + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
 	argp->child = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
+
+	if (argp->type == DB___txn_child + 2000) {
+		LOGCOPY_64(&argp->child_utxnid, bp);
+		bp += sizeof(argp->child_utxnid);
+	} else {
+		argp->child_utxnid = 0;
+	}
 
 	LOGCOPY_TOLSN(&argp->c_lsn, bp);
 	bp += sizeof(argp->c_lsn);
@@ -1270,6 +1290,7 @@ __txn_child_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->prev_lsn.offset,
 	    (u_long)argp->txnid->utxnid);
 	(void)printf("\tchild: 0x%lx\n", (u_long)argp->child);
+	(void)printf("\tchild_utxnid: %"PRIx64"\n", (u_long)argp->child_utxnid);
 	fflush(stdout);
 	(void)printf("\tc_lsn: [%lu][%lu]\n",
 	    (u_long)argp->c_lsn.file, (u_long)argp->c_lsn.offset);
@@ -1632,6 +1653,8 @@ __txn_xa_regop_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_xa_regop + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -2021,6 +2044,8 @@ __txn_recycle_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_recycle + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -2481,6 +2506,8 @@ __txn_regop_rowlocks_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_regop_rowlocks + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);
@@ -2957,6 +2984,8 @@ __txn_regop_gen_read_int(dbenv, recbuf, do_pgswp, argpp)
 	if (argp->type == DB___txn_regop_gen + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid,  bp);
 		bp += sizeof(argp->txnid->utxnid);
+	} else {
+		argp->txnid->utxnid = 0;
 	}
 
 	LOGCOPY_32(&uinttmp, bp);

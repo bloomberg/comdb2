@@ -47,7 +47,7 @@ int __txn_ckp_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_ckp_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_ckp_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_ckp_read __P((DB_ENV *, void *, __txn_ckp_args **));
-int __txn_child_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t, DB_LSN *));
+int __txn_child_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t, u_int64_t, DB_LSN *));
 int __txn_child_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_child_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_child_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
