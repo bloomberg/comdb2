@@ -96,13 +96,6 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     struct sqlclntstate *clnt = &appdata->clnt;
     int fd = appdata->fd;
-    pthread_mutex_t *lk = (clnt->thd && clnt->thd->sqlthd) ? &clnt->thd->sqlthd->lk : NULL;
-
-    /* grab the mutex on the associated sql thread to prevent other threads
-       (eg sql_dump_running_statements()) from reading a stale clnt */
-    if (lk)
-        Pthread_mutex_lock(lk);
-
     rem_sql_evbuffer(clnt);
     rem_appsock_connection_evbuffer(clnt);
     if (appdata->ping) {
@@ -133,9 +126,6 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     free(appdata);
     shutdown(fd, SHUT_RDWR);
     close(fd);
-
-    if (lk)
-        Pthread_mutex_unlock(lk);
 }
 
 static void newsql_cleanup(struct newsql_appdata_evbuffer *appdata)
