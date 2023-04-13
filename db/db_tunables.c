@@ -1083,10 +1083,19 @@ static inline int free_tunable(comdb2_tunable *tunable)
     return 0;
 }
 
+static int tunable_free(void *obj, void *arg)
+{
+    comdb2_tunable *tunable = obj;
+    free(tunable->name);
+    free(tunable);
+    return 0;
+}
+
 /* Reclaim memory acquired by global tunables. */
 int free_gbl_tunables()
 {
     if (gbl_tunables->hash) {
+        hash_for(gbl_tunables->hash, tunable_free, NULL);
         hash_clear(gbl_tunables->hash);
         hash_free(gbl_tunables->hash);
         gbl_tunables->hash = NULL;

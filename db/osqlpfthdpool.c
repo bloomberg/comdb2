@@ -41,6 +41,23 @@ typedef struct osqlpf_rq {
 
 /* osql request io prefault, code stolen from prefault.c */
 
+int osqlpfthdpool_clean(void)
+{
+    if (gbl_osqlpfault_thdpool) {
+        thdpool_stop(gbl_osqlpfault_thdpool);
+    }
+    free(gbl_osqlpf_step);
+    gbl_osqlpf_step = NULL;
+
+    int *ii;
+    while ((ii = queue_next(gbl_osqlpf_stepq)))
+        free(ii);
+
+    queue_free(gbl_osqlpf_stepq);
+    gbl_osqlpf_stepq = NULL;
+    return 0;
+}
+
 int osqlpfthdpool_init(void)
 {
     int i = 0;

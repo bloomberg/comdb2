@@ -33,6 +33,15 @@ struct time_metric {
 
 pthread_once_t once = PTHREAD_ONCE_INIT;
 
+void cleanup_time_metrics(void) {
+    struct time_metric *t = listc_rtl(&metrics);
+    while (t) {
+        free(t);
+        t = listc_rtl(&metrics);
+    }
+
+}
+
 static void init_time_metrics(void) {
     listc_init(&metrics, offsetof(struct time_metric, lnk));
 }
