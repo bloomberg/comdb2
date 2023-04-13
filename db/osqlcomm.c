@@ -1304,6 +1304,7 @@ static uint8_t *client_query_path_component_put(
     p_buf = buf_no_net_put(&(p_path->table), sizeof(p_path->table), p_buf,
                            p_buf_end);
     p_buf = buf_put(&(p_path->ix), sizeof(p_path->ix), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_path->nblob), sizeof(p_path->nblob), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -1437,6 +1438,8 @@ uint8_t *client_query_stats_put(const struct client_query_stats *p_stats,
                     p_buf, p_buf_end);
     p_buf = buf_put(&(p_stats->n_read_ios), sizeof(p_stats->n_read_ios), p_buf,
                     p_buf_end);
+    p_buf = buf_put(&(p_stats->component_has_blobs), sizeof(p_stats->component_has_blobs),
+            p_buf, p_buf_end);
     p_buf = buf_no_net_put(&(p_stats->reserved), sizeof(p_stats->reserved),
                            p_buf, p_buf_end);
     p_buf =
@@ -4727,6 +4730,7 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
 
         if (query_stats) {
+            query_stats->component_has_blobs = 1;
             if (!(p_buf =
                       client_query_stats_put(query_stats, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s line %d:%s returns NULL\n", __func__,
@@ -4865,6 +4869,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
         }
 
         if (query_stats) {
+            query_stats->component_has_blobs = 1;
             if (!(p_buf =
                       client_query_stats_put(query_stats, p_buf, p_buf_end))) {
                 logmsg(LOGMSG_ERROR, "%s line %d:%s returns NULL\n", __func__,
