@@ -419,6 +419,7 @@ extern int gbl_seekscan_maxsteps;
 extern int gbl_wal_osync;
 extern uint64_t gbl_sc_headroom;
 
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need

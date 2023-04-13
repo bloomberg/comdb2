@@ -215,13 +215,13 @@ struct temp_table {
     unsigned long long rowid;
     char *sql;
 
-    unsigned long long num_mem_entries;
-    int max_mem_entries;
+    size_t num_mem_entries;
+    size_t max_mem_entries;
     LISTC_T(struct temp_cursor) cursors;
     void *next;
 
-    unsigned long long inmemsz;
-    unsigned long long cachesz;
+    size_t inmemsz;
+    size_t cachesz;
     arr_elem_t *elements;
 };
 
@@ -309,7 +309,7 @@ static int create_temp_db_env(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     rc = dbenv_temp->set_cachesize(dbenv_temp, 0, tbl->cachesz, 1);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "invalid set_cache_size call: bytes %llu\n",
+        logmsg(LOGMSG_ERROR, "invalid set_cache_size call: bytes %zu\n",
                tbl->cachesz);
         goto error;
     }
@@ -652,7 +652,7 @@ int bdb_temp_table_clear_list(bdb_state_type *bdb_state)
     return rc;
 }
 
-int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
+inline int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
 {
     comdb2_objpool_t op = bdb_state->temp_table_pool;
     if (op == NULL) return EINVAL;
@@ -660,7 +660,7 @@ int bdb_temp_table_clear_pool(bdb_state_type *bdb_state)
     return 0;
 }
 
-int bdb_temp_table_clear_cache(bdb_state_type *bdb_state)
+inline int bdb_temp_table_clear_cache(bdb_state_type *bdb_state)
 {
     if (gbl_temptable_pool_capacity == 0) {
         return bdb_temp_table_clear_list(bdb_state);
@@ -669,7 +669,7 @@ int bdb_temp_table_clear_cache(bdb_state_type *bdb_state)
     }
 }
 
-int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
+inline int bdb_temp_table_create_pool_wrapper(void **tblp, void *bdb_state_arg)
 {
     int bdberr = 0;
     *tblp =
@@ -808,7 +808,7 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
     return table;
 }
 
-struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
+inline struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
                                                int flags, int *bdberr)
 {
     int temptype;
@@ -818,23 +818,23 @@ struct temp_table *bdb_temp_table_create_flags(bdb_state_type *bdb_state,
     return bdb_temp_table_create_type(bdb_state, temptype, bdberr);
 }
 
-struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state, int *bdberr)
+inline struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state, int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_BTREE, bdberr);
 }
 
-struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr)
+inline struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_LIST, bdberr);
 }
 
-struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
+inline struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_HASH, bdberr);
 }
 
-struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state, int *bdberr)
+inline struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state, int *bdberr)
 {
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_ARRAY, bdberr);
 }
