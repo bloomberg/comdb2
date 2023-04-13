@@ -20,7 +20,7 @@ void dyns_init_globals()
                  // and then free(macc_globals);
     }
     any_errors = 0;
-    current_line = 0;
+    current_line = 1;
     memset(constants, 0, sizeof(constants));
     macc_globals = calloc(1, sizeof(*macc_globals));
 
