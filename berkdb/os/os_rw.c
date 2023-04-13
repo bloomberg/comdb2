@@ -51,7 +51,6 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 #include "dbinc/db_swap.h"
 #include "thread_stats.h"
 #include "printformats.h"
-#include "mem_restore.h"
 
 #include <poll.h>
 #include "logmsg.h"
@@ -78,10 +77,6 @@ struct iobuf {
 	void *buf;
 };
 
-/*
-** malloc overrides are disabled in this file in order to 
-** 100% correctly free memalign()'d chunks.
-*/
 void
 free_iobuf(void *p)
 {
@@ -97,37 +92,33 @@ init_iobuf(void)
 	Pthread_key_create(&iobufkey, free_iobuf);
 }
 
+#define DIRECT_IO_ALIGNMENT 512
+
 static void *
 get_aligned_buffer(void *buf, size_t bufsz, int copy)
 {
 	struct iobuf *b;
 
+	/* Nothing needs done if buf and bufsz are already aligned. */
+	if ((((uintptr_t)buf) % DIRECT_IO_ALIGNMENT == 0) && (bufsz % DIRECT_IO_ALIGNMENT == 0))
+		return buf;
+
+	bufsz = ((bufsz + DIRECT_IO_ALIGNMENT - 1) & -DIRECT_IO_ALIGNMENT);
+
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
 		b = malloc(sizeof(struct iobuf));
 		b->sz = bufsz;
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-		if (posix_memalign(&b->buf, 512, bufsz))
+		if (posix_memalign(&b->buf, DIRECT_IO_ALIGNMENT, bufsz))
 			return NULL;
-#else
-		b->buf = memalign(512, bufsz);
-		if (b->buf == NULL)
-			return NULL;
-#endif
 		Pthread_setspecific(iobufkey, b);
 	} else if (b->sz < bufsz) {
 		free(b->buf);
 		b->buf = NULL;
-
 		b->sz = 0;
-#if ! defined ( _SUN_SOURCE ) &&  ! defined ( _HP_SOURCE )
-		if (posix_memalign(&b->buf, 512, bufsz))
+
+		if (posix_memalign(&b->buf, DIRECT_IO_ALIGNMENT, bufsz))
 			return NULL;
-#else
-		b->buf = memalign(512, bufsz);
-		if (b->buf == NULL)
-			return NULL;
-#endif
 		b->sz = bufsz;
 	}
 	if (copy)
