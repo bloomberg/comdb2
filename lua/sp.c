@@ -6569,6 +6569,7 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         u.in.type = INTV_DS_TYPE;
         u.in.sign = ntohl(ds->sign);
         u.in.u.ds.days = ntohl(ds->days);
+        u.in.u.ds.hours = ntohl(ds->hours);
         u.in.u.ds.mins = ntohl(ds->mins);
         u.in.u.ds.sec = ntohl(ds->sec);
         u.in.u.ds.frac = ntohl(ds->msec);
@@ -6582,6 +6583,7 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         u.in.type = INTV_DSUS_TYPE;
         u.in.sign = ntohl(dsus->sign);
         u.in.u.ds.days = ntohl(dsus->days);
+        u.in.u.ds.hours = ntohl(dsus->hours);
         u.in.u.ds.mins = ntohl(dsus->mins);
         u.in.u.ds.sec = ntohl(dsus->sec);
         u.in.u.ds.frac = ntohl(dsus->usec);
