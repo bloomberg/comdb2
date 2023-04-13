@@ -649,6 +649,7 @@ typedef struct dbtable {
     unsigned prev_blocktypcnt[BLOCK_MAXOPCODE];
     unsigned prev_blockosqltypcnt[MAX_OSQL_TYPES];
     unsigned prev_nsql;
+    unsigned prev_qdb_adds;
     /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
