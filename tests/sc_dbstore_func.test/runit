@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -s $dbnm default - >output.actual 2>&1
+CREATE TABLE t1 { tag ondisk { int i } }\$\$
+INSERT INTO t1 VALUES (1)
+ALTER TABLE t1 { tag ondisk { int i datetime t dbstore={now()} } }\$\$
+SELECT COUNT(*) FROM t1 WHERE t IS NULL -- rebuild; t should be evaluated
+CREATE TABLE t2 { tag ondisk { int i } }\$\$
+INSERT INTO t2 VALUES (1)
+ALTER TABLE t2 { tag ondisk { int i byte b[16] dbstore={guid()} } }\$\$
+SELECT COUNT(*) FROM t2 WHERE b IS NULL -- rebuild; b should be evaluated
+EOF
+
+diff output.actual output.expected

@@ -3351,6 +3351,7 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
                              struct field *f,
                              struct convert_failure *fail_reason,
                              const char *tzname);
+int sql_func_to_ondisk(char *func, void *out, struct field *f, struct convert_failure *fail_reason, const char *tzname);
 static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
                               struct convert_failure *fail_reason,
                               blob_buffer_t *inblobs, blob_buffer_t *outblobs,
@@ -3447,12 +3448,16 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
         } else {
             if (fail_reason)
                 fail_reason->source_field_idx = field_idx;
-            rc = SERVER_to_SERVER(
-                to_field->in_default, to_field->in_default_len,
-                to_field->in_default_type, NULL /*convopts*/, NULL /*blob*/, 0,
-                outbuf + to_field->offset, to_field->len, to_field->type,
-                oflags, &outdtsz, &to_field->convopts, outblob /*blob*/
-                );
+            if (to_field->in_default_type == SERVER_FUNCTION) {
+                rc = sql_func_to_ondisk(to_field->in_default, outbuf, to_field, fail_reason, tzname);
+            } else {
+                rc = SERVER_to_SERVER(
+                    to_field->in_default, to_field->in_default_len,
+                    to_field->in_default_type, NULL /*convopts*/, NULL /*blob*/, 0,
+                    outbuf + to_field->offset, to_field->len, to_field->type,
+                    oflags, &outdtsz, &to_field->convopts, outblob /*blob*/
+                    );
+            }
             if (rc) {
                 if (fail_reason)
                     fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
@@ -3962,6 +3967,7 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
  *   3. NULL attribute removed from field
  *   4. field size reduced
  *   5. field deleted
+ *   6. new field with a dbstore function
  * SC_BAD_NEW_FIELD: New field missing dbstore or null
  * SC_BAD_DBPAD: Byte array size changed and missing dbpad
  * SC_COLUMN_ADDED: If new column is added
@@ -4192,6 +4198,13 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                             old->tag, nidx, fnew->name);
                 }
                 break;
+            } else if (fnew->in_default && fnew->in_default_type == SERVER_FUNCTION) {
+                /* force rebuild for a dbstore function */
+                rc = SC_TAG_CHANGE;
+                if (out) {
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s dbstore %s)\n",
+                            old->tag, nidx, fnew->name, (char *)fnew->in_default);
+                }
             } else if (allow_null || (fnew->in_default && fnew->in_default_type != SERVER_SEQUENCE)) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {

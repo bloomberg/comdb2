@@ -13173,3 +13173,68 @@ int comdb2_is_field_indexable(const char *table_name, int fld_idx) {
     }
     return 1;
 }
+
+/* Evaluate an SQL function, and convert its SQLite Mem to ondisk data. */
+int sql_func_to_ondisk(char *func, void *out, struct field *f, struct convert_failure *fail_reason, const char *tzname)
+{
+    char *sql;
+    struct sqlclntstate clnt;
+
+    struct schema_mem sm = {0};
+    struct schema empty_schema = {0};
+    Mem empty_mem = {{0}};
+    Mem mout = {{0}};
+
+    struct field_conv_opts_tz convopts = {.flags = 0};
+    struct mem_info info;
+    int nblobs = 0;
+
+    if (!tzname || !tzname[0])
+        tzname = "America/New_York";
+    sql = sqlite3_mprintf("SELECT %s", func);
+
+    start_internal_sql_clnt(&clnt);
+
+    sm.sc = &empty_schema;
+    sm.min = &empty_mem;
+    sm.mout = &mout;
+
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.sql = sql;
+    /* Reuse expressional index code, which runs a query and
+       conveniently produces its 1st column value in clnt.schema_mems. */
+    clnt.verify_indexes = 1;
+    clnt.schema_mems = &sm;
+
+    int rc = dispatch_sql_query(&clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: dispatch_sql_query failed rc %d\n", __func__, rc);
+        goto done;
+    }
+
+    end_internal_sql_clnt(&clnt);
+
+    info.s = &empty_schema;
+    info.null = 0;
+    info.fail_reason = fail_reason;
+    info.tzname = tzname;
+    info.m = &mout;
+    info.nblobs = &nblobs;
+    info.convopts = &convopts;
+    info.outblob = NULL;
+    info.maxblobs = MAXBLOBS;
+    info.fldidx = -1;
+
+    rc = mem_to_ondisk(out, f, &info, NULL);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: mem_to_ondisk failed rc %d\n", __func__, rc);
+        goto done;
+    }
+
+done:
+    if (mout.szMalloc)
+      sqlite3_free(mout.zMalloc);
+    sqlite3_free(sql);
+
+    return rc ? -1 : 0;
+}
