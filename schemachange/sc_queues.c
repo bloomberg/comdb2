@@ -712,9 +712,7 @@ done:
 int perform_trigger_update(struct schema_change_type *sc, struct ireq *unused)
 {
     wrlock_schema_lk();
-    javasp_splock_wrlock();
     int rc = perform_trigger_update_int(sc);
-    javasp_splock_unlock();
     unlock_schema_lk();
     return rc;
 }

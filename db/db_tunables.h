@@ -1279,6 +1279,10 @@ REGISTER_TUNABLE("no_ack_trace", "Disables 'ack_trace'", TUNABLE_BOOLEAN,
                  NULL, NULL);
 REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_javasp_deadlock", 
+                 "Throw random deadlocks from javasp_set_trans.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_javasp_deadlock,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.thdpool_queue_only",
@@ -2080,10 +2084,6 @@ REGISTER_TUNABLE("abort_on_missing_ufid", "Abort if ufid is not found.  (Default
 
 REGISTER_TUNABLE("ufid_dbreg_test", "Enable ufid-dbreg test.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_dbreg_test,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("javasp_early_release", "Release javasp-lock before distributed commit.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_javasp_early_release, EXPERIMENTAL | INTERNAL, 
-                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_add_replication_latency", "Sleep after distributed commit.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_add_replication_latency, EXPERIMENTAL | INTERNAL, 

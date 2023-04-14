@@ -760,11 +760,6 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         iq->sc_locked = 0;
     }
 
-    /* release_schema_lk == parent-tran */
-    if (release_schema_lk && iq->jsph && gbl_javasp_early_release) {
-        javasp_trans_release(iq->jsph);
-    }
-
     if (rc != 0) {
         return rc;
     }

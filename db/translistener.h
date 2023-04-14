@@ -122,14 +122,11 @@ struct javasp_trans_state *javasp_consumer_trans_start(int debug);
 
 /* Set the ireq and transaction for the Java handle.  Must be called before
  * any Java triggers are invoked. */
-void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
+int javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *ireq, void *parent_trans, void *trans);
 
 /* Call this at the end of a transaction (committed or aborted).  Cleans up. */
 void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle);
-
-/* Call this prior to distributed commit to release splock */
-void javasp_trans_release(struct javasp_trans_state *javasp_trans_handle);
 
 /* This is used to determine if we want to be notified about a particular
  * event - if we don't care, then the block processor needn't waste time

@@ -40,19 +40,6 @@
 #include <logmsg.h>
 #include "str0.h"
 
-struct javasp_trans_state {
-    /* Which events we are subscribed for. */
-    int events;
-
-    /* We need this in case the Java code tries to write anything in the
-     * trans */
-    struct ireq *iq;
-    void *trans;
-    void *parent_trans;
-    int debug;
-    int lockref;
-};
-
 struct sp_rec_blob {
     int status;
     char *blobdta;
@@ -84,6 +71,20 @@ struct stored_proc {
 };
 LISTC_T(struct stored_proc) stored_procs;
 LISTC_T(struct stored_proc) delayed_stored_procs;
+
+struct javasp_trans_state {
+    /* Which events we are subscribed for. */
+    int events;
+
+    /* We need this in case the Java code tries to write anything in the
+     * trans */
+    struct ireq *iq;
+    void *trans;
+    void *parent_trans;
+    int debug;
+    int collected;
+    LISTC_T(struct stored_proc) local_stored_procs;
+};
 
 static pthread_rwlock_t splk = PTHREAD_RWLOCK_INITIALIZER;
 #define SP_READLOCK() Pthread_rwlock_rdlock(&splk)
@@ -134,6 +135,121 @@ enum {
     BLOB_KNOWN = 1,      /* we have the blob data for this one */
     BLOB_KNOWN_FREE = 2, /* ditto, and we must free it ourselves */
 };
+
+static inline void javasp_deallocate_sp(struct stored_proc *sp)
+{
+    struct sp_table *t;
+    struct sp_field *f;
+
+    free(sp->name);
+    free(sp->param);
+    free(sp->qname);
+
+    t = listc_rtl(&sp->tables);
+    while (t) {
+        free(t->name);
+
+        f = listc_rtl(&t->fields);
+        while (f) {
+            free(f->name);
+            free(f);
+            f = listc_rtl(&t->fields);
+        }
+
+        free(t);
+        t = listc_rtl(&sp->tables);
+    }
+    free(sp);
+}
+
+static void javasp_remove_local_sps(struct javasp_trans_state *javasp_trans_handle)
+{
+    struct stored_proc *sp;
+    while ((sp = javasp_trans_handle->local_stored_procs.top) != NULL) {
+        listc_rfl(&javasp_trans_handle->local_stored_procs, sp);
+        javasp_deallocate_sp(sp);
+    }
+}
+
+static int streq(const char *s1, const char *s2)
+{
+    if (s1 == NULL && s2 == NULL) {
+        return 0;
+    }
+
+    if ((s1 == NULL && s2 != NULL) || (s1 != NULL && s2 == NULL)) {
+        return 1;
+    }
+
+    return strcmp(s1, s2);
+}
+
+static int javasp_check_equal(struct stored_proc *p1, struct stored_proc *p2)
+{
+    struct sp_table *t1, *t2;
+    struct sp_field *f1, *f2;
+
+    if (streq(p1->name, p2->name) || streq(p1->param, p2->param) ||
+        streq(p1->qname, p2->qname) || p1->flags != p2->flags)
+        return 0;
+
+    t1 = p1->tables.top;
+    t2 = p2->tables.top;
+
+    while (t1 != NULL && t2 != NULL) {
+        f1 = t1->fields.top;
+        f2 = t2->fields.top;
+
+        while (f1 != NULL && f2 != NULL) {
+            if (streq(f1->name, f2->name) || f1->flags != f2->flags)
+                return 0;
+            f1 = f1->lnk.next;
+            f2 = f2->lnk.next;
+        }
+
+        if (f1 != f2)
+            return 0;
+
+        t1 = t1->lnk.next;
+        t2 = t2->lnk.next;
+    }
+
+    if (t1 != t2)
+        return 0;
+
+    return 1;
+}
+
+static struct stored_proc *javasp_clone_sp(struct stored_proc *sp)
+{
+    struct stored_proc *p;
+    struct sp_table *t;
+    struct sp_field *f;
+
+    p = malloc(sizeof(struct stored_proc));
+    p->name = strdup(sp->name);
+    p->param = sp->param ? strdup(sp->param) : NULL;
+    p->qname = sp->qname ? strdup(sp->qname) : NULL;
+    p->flags = sp->flags;
+    listc_init(&p->tables, offsetof(struct sp_table, lnk));
+
+    LISTC_FOR_EACH(&sp->tables, t, lnk)
+    {
+        struct sp_table *table = malloc(sizeof(struct sp_table));
+        table->name = strdup(t->name);
+        table->flags = t->flags;
+        listc_init(&table->fields, offsetof(struct sp_field, lnk));
+        LISTC_FOR_EACH(&t->fields, f, lnk)
+        {
+            struct sp_field *field = malloc(sizeof(struct sp_field));
+            field->name = strdup(f->name);
+            field->flags = f->flags;
+            listc_abl(&table->fields, field);
+        }
+        listc_abl(&p->tables, table);
+    }
+    return p;
+}
 
 void javasp_once_init(void)
 {
@@ -198,7 +314,6 @@ void javasp_stat(const char *args)
 struct javasp_trans_state *javasp_trans_start(int debug)
 {
     struct javasp_trans_state *st;
-    struct stored_proc *sp;
 
     st = malloc(sizeof(struct javasp_trans_state));
     st->events = 0;
@@ -206,40 +321,98 @@ struct javasp_trans_state *javasp_trans_start(int debug)
     st->trans = NULL;
     st->parent_trans = NULL;
     st->debug = 0;
-    st->lockref = 1;
-
-    SP_READLOCK();
-
-    LISTC_FOR_EACH(&stored_procs, sp, lnk) { st->events |= sp->flags; }
-
+    st->collected = 0;
+    listc_init(&st->local_stored_procs, offsetof(struct stored_proc, lnk));
     return st;
 }
 
-void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
+int gbl_debug_javasp_deadlock = 0;
+
+int javasp_collect_stored_procs(struct javasp_trans_state *javasp_trans_handle)
+{
+    struct stored_proc *sp, *lc;
+    int rc = 0;
+
+retry:
+    LISTC_FOR_EACH(&stored_procs, sp, lnk)
+    {
+        struct stored_proc *p = javasp_clone_sp(sp);
+        listc_abl(&javasp_trans_handle->local_stored_procs, p);
+    }
+
+    SP_RELLOCK();
+
+    LISTC_FOR_EACH(&javasp_trans_handle->local_stored_procs, sp, lnk)
+    {
+        if (sp->qname) {
+            rc = bdb_lock_tablename_read(thedb->bdb_env, sp->qname,
+                    javasp_trans_handle->trans);
+            if (rc == 0 && gbl_debug_javasp_deadlock && (rand() % 10))
+                rc = BDBERR_DEADLOCK;
+            if (rc == BDBERR_DEADLOCK) {
+                SP_READLOCK();
+                return RC_INTERNAL_RETRY;
+            }
+            if (rc != 0)
+                abort();
+        }
+    }
+
+    SP_READLOCK();
+
+    lc = javasp_trans_handle->local_stored_procs.top;
+    sp = stored_procs.top;
+
+    while (sp != NULL && lc != NULL) {
+        if (!javasp_check_equal(sp, lc)) {
+            javasp_remove_local_sps(javasp_trans_handle);
+            goto retry;
+        }
+        sp = sp->lnk.next;
+        lc = lc->lnk.next;
+    }
+
+    if (sp != lc) {
+        javasp_remove_local_sps(javasp_trans_handle);
+        goto retry;
+    }
+
+    return 0;
+}
+
+int javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *ireq, void *parent_trans, void *trans)
 {
-    if (javasp_trans_handle == NULL) return;
+    struct stored_proc *sp;
+    int rc = 0;
+
+    if (javasp_trans_handle == NULL) return 0;
     javasp_trans_handle->iq = ireq;
     javasp_trans_handle->trans = trans;
     javasp_trans_handle->parent_trans = parent_trans;
-}
 
-void javasp_trans_release(struct javasp_trans_state *javasp_trans_handle)
-{
-    if (javasp_trans_handle == NULL) return;
-    if (javasp_trans_handle->lockref) {
+    if (trans != NULL) {
+        SP_READLOCK();
+
+        LISTC_FOR_EACH(&stored_procs, sp, lnk) { 
+            javasp_trans_handle->events |= sp->flags;
+        }
+
+        if (javasp_trans_handle->collected == 0) {
+            if (javasp_trans_handle->local_stored_procs.count != 0)
+                abort();
+            rc = javasp_collect_stored_procs(javasp_trans_handle);
+            javasp_trans_handle->collected = 1;
+        }
         SP_RELLOCK();
-        javasp_trans_handle->lockref = 0;
     }
+    return rc;
 }
 
 void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle)
 {
     if (javasp_trans_handle == NULL) return;
-    if (javasp_trans_handle->lockref) {
-        SP_RELLOCK();
-        javasp_trans_handle->lockref = 0;
-    }
+    javasp_remove_local_sps(javasp_trans_handle);
     bzero(javasp_trans_handle, sizeof(struct javasp_trans_state));
     free(javasp_trans_handle);
 }
@@ -861,26 +1034,26 @@ int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
     if (javasp_trans_handle == NULL)
         return 0;
 
-    /* TODO: this code can be made a lot more efficient, eg
-       should store list of stored procedures interested in a table's updates
-       off the table structure */
-    LISTC_FOR_EACH(&stored_procs, p, lnk)
+    LISTC_FOR_EACH(&javasp_trans_handle->local_stored_procs, p, lnk)
     {
         LISTC_FOR_EACH(&p->tables, t, lnk)
         {
             if (strcasecmp(t->name, tblname) == 0 && (t->flags & event)) {
                 rc = sp_trigger_run(javasp_trans_handle, p, t, event, oldrec,
-                                    newrec);
+                        newrec);
                 if (rc) {
                     return rc;
                 }
                 goto nextproc;
             }
         }
-    nextproc:
+nextproc:
         ;
     }
 
+    /* TODO: this code can be made a lot more efficient, eg
+       should store list of stored procedures interested in a table's updates
+       off the table structure */
     return 0;
 }
 
@@ -940,18 +1113,25 @@ int javasp_do_procedure_op(int op, const char *name, const char *param, const ch
 
     switch (op) {
     case JAVASP_OP_LOAD:
-        return javasp_load_procedure_int(name, param, paramvalue);
-        break;
+        SP_WRITELOCK();
+        rc = javasp_load_procedure_int(name, param, paramvalue);
+        SP_RELLOCK();
+        return rc;
 
     case JAVASP_OP_RELOAD:
+        SP_WRITELOCK();
         rc = javasp_unload_procedure_int(name);
         if (rc == 0) {
             rc = javasp_load_procedure_int(name, param, paramvalue);
         }
+        SP_RELLOCK();
         return rc;
 
     case JAVASP_OP_UNLOAD:
-        return javasp_unload_procedure_int(name);
+        SP_WRITELOCK();
+        rc = javasp_unload_procedure_int(name);
+        SP_RELLOCK();
+        return rc;
 
     default:
         logmsg(LOGMSG_ERROR, "javasp_do_procedure_op: op=%d??\n", op);
@@ -1019,29 +1199,8 @@ int javasp_unload_procedure_int(const char *name)
     struct stored_proc *sp = stored_procs.top;
     while (sp) {
         if (strcasecmp(sp->name, name) == 0) {
-            struct sp_table *t;
-            struct sp_field *f;
-
             listc_rfl(&stored_procs, sp);
-            free(sp->name);
-            free(sp->param);
-            free(sp->qname);
-
-            t = listc_rtl(&sp->tables);
-            while (t) {
-                free(t->name);
-
-                f = listc_rtl(&t->fields);
-                while (f) {
-                    free(f->name);
-                    free(f);
-                    f = listc_rtl(&t->fields);
-                }
-
-                free(t);
-                t = listc_rtl(&sp->tables);
-            }
-            free(sp);
+            javasp_deallocate_sp(sp);
             break;
         }
         sp = sp->lnk.next;
@@ -1402,11 +1561,13 @@ void javasp_rec_have_blob(struct javasp_rec *rec, int blobn,
 int javasp_exists(const char *name)
 {
     struct stored_proc *sp;
+    SP_READLOCK();
     LISTC_FOR_EACH(&stored_procs, sp, lnk)
     {
         if (strcmp(sp->name, name) == 0)
             break;
     }
+    SP_RELLOCK();
     return sp != NULL;
 }
 

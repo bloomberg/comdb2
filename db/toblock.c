@@ -2119,9 +2119,9 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     }
 
     if (parent_trans)
-        javasp_trans_set_trans(javasp_trans_handle, iq, *parent_trans, *trans);
+        rc = javasp_trans_set_trans(javasp_trans_handle, iq, *parent_trans, *trans);
     else
-        javasp_trans_set_trans(javasp_trans_handle, iq, NULL, *trans);
+        rc = javasp_trans_set_trans(javasp_trans_handle, iq, NULL, *trans);
 
     if (osql_needtransaction)
         *osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
@@ -3004,7 +3004,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     delay_if_sc_resuming(
         iq); /* tiny sleep if resuming sc has not marked sc pointers */
 
-    javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
+    rc = javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
+    if (rc) {
+        if (rc != RC_INTERNAL_RETRY)
+            logmsg(LOGMSG_ERROR, "javasp_trans_set unexpected rc %d\n", rc);
+        GOTOBACKOUT;
+    }
 
     if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") && !iq->tranddl) {
         rc = localrep_seqno(trans, p_blkstate);
