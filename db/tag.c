@@ -3321,11 +3321,14 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
         } else {
             if (fail_reason)
                 fail_reason->source_field_idx = field_idx;
-            rc = SERVER_to_SERVER(
-                to_field->in_default, to_field->in_default_len,
-                to_field->in_default_type, NULL /*convopts*/, NULL /*blob*/, 0,
-                outbuf + to_field->offset, to_field->len, to_field->type,
-                oflags, &outdtsz, &to_field->convopts, outblob /*blob*/
+            /* Be sure to evalute a dbstore function for new records only.
+               For existing records, use NULL */
+            if (to_field->in_default_type == SERVER_FUNCTION)
+                rc = NULL_to_SERVER(outbuf + to_field->offset, to_field->len, to_field->type);
+            else
+                rc = SERVER_to_SERVER(to_field->in_default, to_field->in_default_len, to_field->in_default_type,
+                                      NULL /*convopts*/, NULL /*blob*/, 0, outbuf + to_field->offset, to_field->len,
+                                      to_field->type, oflags, &outdtsz, &to_field->convopts, outblob /*blob*/
                 );
             if (rc) {
                 if (fail_reason)
@@ -3926,6 +3929,14 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                         }
                         return SC_BAD_NEW_FIELD;
                     }
+
+                    if (fnew->in_default_type == SERVER_FUNCTION && fold->in_default_type != SERVER_FUNCTION &&
+                        (fnew->flags & NO_NULL)) {
+                        if (out)
+                            logmsg(LOGMSG_ERROR, "field %s must be nullable to set a default function\n", fold->name);
+                        return SC_BAD_DBSTORE_FUNC_NOT_NULL;
+                    }
+
                 } else {
                     assert(fold->in_default_len == fnew->in_default_len);
                     int len = fold->in_default_len;
@@ -4066,11 +4077,19 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                             old->tag, nidx, fnew->name);
                 }
                 break;
-            } else if (allow_null || (fnew->in_default && fnew->in_default_type != SERVER_SEQUENCE)) {
+            } else if (allow_null || (fnew->in_default && fnew->in_default_type != SERVER_SEQUENCE &&
+                                      fnew->in_default_type != SERVER_FUNCTION)) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)\n",
                             old->tag, nidx, fnew->name);
+                }
+            } else if (!allow_null && fnew->in_default_type == SERVER_FUNCTION) {
+                rc = SC_BAD_DBSTORE_FUNC_NOT_NULL;
+                if (out) {
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)"
+                           "that uses a dbstore function but isn't nullable\n",
+                           old->tag, nidx, fnew->name);
                 }
             } else {
                 if (out) {

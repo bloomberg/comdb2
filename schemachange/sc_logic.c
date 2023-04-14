@@ -1498,6 +1498,9 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         } else if (changed == SC_BAD_DBPAD) {
             sc_client_error(s, ">Cannot change size of byte array without dbpad\n");
             return -1;
+        } else if (changed == SC_BAD_DBSTORE_FUNC_NOT_NULL) {
+            sc_client_error(s, ">Column must be nullable to use a function as its default value");
+            return -1;
         } else {
             sc_client_error(s, ">Failed to process schema!\n");
             return -1;

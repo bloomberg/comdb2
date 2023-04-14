@@ -13192,4 +13192,3 @@ int comdb2_is_field_indexable(const char *table_name, int fld_idx) {
     }
     return 1;
 }
-

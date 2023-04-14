@@ -194,8 +194,11 @@ enum {
     SC_BAD_NEW_FIELD = -3,
     SC_BAD_INDEX_CHANGE = -4,
     SC_BAD_INDEX_NAME = -5,
-    SC_BAD_DBPAD = -6
+    SC_BAD_DBPAD = -6,
+    SC_BAD_DBSTORE_FUNC_NOT_NULL = -7,
 };
+
+#define DBPAD_OR_DBSTORE_ERR(e) ((e) == SC_BAD_NEW_FIELD || (e) == SC_BAD_DBPAD || (e) == SC_BAD_DBSTORE_FUNC_NOT_NULL)
 
 extern hash_t *gbl_tag_hash;
 extern char gbl_ver_temp_table[];
