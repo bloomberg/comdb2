@@ -1053,7 +1053,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     changed = ondisk_schema_changed(table, newdb, NULL, NULL);
     /* let this fly, which will be ok for fastinit;
        master will catch early non-fastinit cases */
-    if (changed < 0 && changed != SC_BAD_NEW_FIELD && changed != SC_BAD_DBPAD) {
+    if (changed < 0 && !DBPAD_OR_DBSTORE_ERR(changed)) {
         if (changed == -2) {
             logmsg(LOGMSG_ERROR, "Error reloading schema!\n");
         }

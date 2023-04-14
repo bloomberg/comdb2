@@ -66,7 +66,7 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
 {
     int changed = ondisk_schema_changed(s->tablename, newdb, stderr, s);
 
-    if (changed == SC_BAD_NEW_FIELD || changed == SC_BAD_DBPAD) {
+    if (DBPAD_OR_DBSTORE_ERR(changed)) {
         /* we want to capture cases when "alter" is used
            to add a field to a table that has no dbstore or
            isnull specified,
@@ -90,6 +90,8 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
             sc_client_error(s, "cannot change index referenced by other tables");
         } else if (changed == SC_BAD_DBPAD) {
             sc_client_error(s, "cannot change size of byte array without dbpad");
+        } else if (changed == SC_BAD_DBSTORE_FUNC_NOT_NULL) {
+            sc_client_error(s, "column must be nullable to use a function as its default value");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;

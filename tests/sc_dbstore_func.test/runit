@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+cat << EOF | cdb2sql ${CDB2_OPTIONS} -tabs -s $dbnm default - >output.actual 2>&1
+SELECT "- Testing dbstore now() -"
+CREATE TABLE t1 { tag ondisk { int i } }\$\$
+INSERT INTO t1 VALUES (1)
+SELECT "-- The schema change below should fail --"
+ALTER TABLE t1 { tag ondisk { int i datetime t dbstore={now()} } }\$\$
+SELECT "-- The schema change below should succeed, instantly --"
+ALTER TABLE t1 { tag ondisk { int i datetime t dbstore={now()} null=yes } }\$\$
+INSERT INTO t1(i) VALUES (1)
+SELECT "-- Verify records --"
+SELECT COUNT(*) FROM t1 WHERE t IS NOT NULL
+SELECT "-- Verify records again after rebuild --"
+REBUILD t1
+SELECT COUNT(*) FROM t1 WHERE t IS NOT NULL
+SELECT "-- The schema change below should succeed. dta is untouched but a new index is built --"
+ALTER TABLE t1 { tag ondisk { int i datetime t dbstore={now()} null=yes byte b[16] dbstore={guid()} null=yes } keys { uniqnulls "KEY_B" = b } }\$\$
+INSERT INTO t1(i) VALUES (1)
+SELECT "-- Verify records --"
+SELECT COUNT(*) FROM t1 WHERE b IS NOT NULL
+SELECT "-- Verify records again after full rebuild --"
+REBUILD t1
+SELECT COUNT(*) FROM t1 WHERE b IS NOT NULL
+EOF
+
+diff output.actual output.expected
