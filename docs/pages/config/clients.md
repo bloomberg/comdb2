@@ -89,7 +89,7 @@ configured in [comdb2db](#comdb2db).
 #### pmuxport
 
 `cdb2_open` needs to learn what port the database listens on.  To do that, it talks to a service called `pmux` that runs on
-database machines.  This configures what port `pmux` is listening on.  The default is 5101.
+database machines.  This configures what port `pmux` is listening on.  The default is 5105.
 
 #### connect_timeout
 
