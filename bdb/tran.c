@@ -2506,11 +2506,6 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
         return -1;
     }
 
-    if (curtran->flags & CURTRAN_HOLDS_SPLOCK) {
-        javasp_splock_unlock();
-        curtran->flags &= ~CURTRAN_HOLDS_SPLOCK;
-    }
-
     rc = bdb_free_curtran_locks(bdb_state, curtran, bdberr);
     if (rc)
         return rc;
