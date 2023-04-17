@@ -1684,9 +1684,6 @@ int bdb_lock_row_fromlid(bdb_state_type *bdb_state, int lid, int idx,
 int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
                              unsigned long long genid, int how, DB_LOCK *dblk,
                              DBT *lkname, int trylock, int flags);
-enum {
-    CURTRAN_HOLDS_SPLOCK    = 1
-};
 
 /* we use this structure to create a dummy cursor to be used for all
  * non-transactional cursors. it is defined below */
