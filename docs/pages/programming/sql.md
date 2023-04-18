@@ -9,7 +9,7 @@ This section defines the syntax of SQL as accepted by Comdb2. Anyone familiar
 with [SQLite](http://sqlite.org) will find the syntax diagrams familiar. Comdb2
 uses SQLite as the query parser and query planner. The SQL dialects in Comdb2
 and SQLite are not identical however. Some things have been taken away and some
-have been added (stored procedures, time partitions).
+have been added (stored procedures, table partitions).
 ## Transactions
 
 ### BEGIN
@@ -356,6 +356,13 @@ The list of allowed types that the expression in an index be casted to as well
 as the syntax required to define an index on expression using CSC2 schema, can
 be found [here](table_schema.html#indexes-on-expressions).
 
+The table can be partitioned, if ```PARTITIONED BY``` option is present.  This
+semantic was added in version 8.0.  A partitioned table is a union of table shards
+that are accessed as a whole no different that a regular table.  Currently Comdb2
+supports a time-based retention and manual retention partitioning.
+For more details, see also:
+[ Table partitioning language and design](table_partition.html)
+
 See also:
 [Schema definition language (CSC2)](table_schema.html)
 
@@ -396,6 +403,7 @@ subset of rows, like the built-in function ```SUM```.
 
 ```DROP TABLE``` will drop the specified table.  If the table doesn't exist, the statement will return an error,
 unless ```IF EXISTS``` is specified.
+If the table is partitioned, the partition and its shard tables are both removed.
 
 ```DROP PROCEDURE``` will drop the specified version on a procedure.  See the [stored procedure](storedprocs.html)
 section for details.
@@ -449,6 +457,11 @@ silently removed from the referring keys and constraints definitions. ```RENAME 
 option renames a table.  This option cannot be combined with other ```ALTER TABLE```
 options.
 
+An existing table can be partitioned live by using the ```PARTITIONED BY``` option.
+An existing partition can be collapsed live to a standalone table by using
+```PARTITIONED BY NONE``` option.  See also:
+[ Table partitioning language and design](table_partition.html)
+
 ```SET COMMIT PENDING``` detaches the schema change from the current transaction
 and schema changes that use this option will keep running until an explicit
 commit/abort command is issued. Also see [```SCHEMACHANGE```](#schemachange).
@@ -464,12 +477,6 @@ See also:
 [table-options](#table-options)
 
 [table-schema](table_schema.html)
-
-### CREATE TIME PARTITION
-
-![create-time-partition](images/create-time-part.gif)
-
-```CREATE TIME PARTITION``` defines the data retention policy for the given table. See [Time-based Table Partitioning](timepart.html)
 
 ### TRUNCATE
 
@@ -563,7 +570,6 @@ The settings currently available to ```PUT``` are:
   * ```PASSWORD``` - sets a password for a given user.  ```PUT PASSWORD OFF``` disables the user.
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
-  * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; decreasing is possible at all times; increasing is only possible when shard numbers are in order
   * ```COUNTER``` - changes the counter "counter-name" value, either incrementing it or setting it; incrementing a counter without setting it first generate a zero valued counter; a counter with the same name as a logical partition serves as the logical clock for rolling out that partition.
 
 ## Operational commands
@@ -679,7 +685,7 @@ In any aggregate function that takes a single argument, that argument can be pre
 
 ### REGEXP function
 
-The REGEXP function in comdb2 is implemented as a [SQLite extention](https://sqlite.org/src/file?name=ext/misc/regexp.c).
+The REGEXP function in Comdb2 is implemented as a [SQLite extention](https://sqlite.org/src/file?name=ext/misc/regexp.c).
 The function can be invoked either by REGEXP(A,B) or B REGEXP A, where A is the regular expression and B is the string to
 be matched. Note that the order of string and regular expression is flipped in both syntaxes.
 

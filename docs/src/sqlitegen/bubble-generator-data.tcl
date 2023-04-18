@@ -480,7 +480,6 @@ stack
       {line ROWLOCKS {or ENABLE DISABLE}}
       {line SCHEMACHANGE {or COMMITSLEEP CONVERTSLEEP} /numeric-literal}
       {line SKIPSCAN {or ENABLE DISABLE}}
-      {line TIME PARTITION /partition-name RETENTION /numeric-literal}
       {line TUNABLE /string-literal {opt = } {or /string-literal /numeric-literal}}
       {line COUNTER /counter-name SET /numeric-literal}
       {line COUNTER /counter-name INCREMENT}
@@ -703,6 +702,7 @@ stack
                   {line ) }
               }
               {line {opt OPTIONS table-options }}
+              {line {opt PARTITIONED BY table-partition }}
           }
       }
   }
@@ -777,6 +777,12 @@ stack
       { , }
   }
 
+  table-partition {
+      or
+      {TIME PERIOD /period RETENTION /retention START /partition-start-time}
+      {MANUAL RETENTION /retention {opt START /partition-start-number}}
+  }
+
   alter-table-ddl {
       stack
       {line ALTER TABLE {opt db-name .} table-name }
@@ -832,6 +838,12 @@ stack
                       {line SET COMMIT PENDING }
                   }
               , }
+              {line {opt PARTITIONED BY {or
+                        {line table-partition }
+                        {line NONE }
+                        }
+                    }
+              }
               {line DO NOTHING }
           }
       }
