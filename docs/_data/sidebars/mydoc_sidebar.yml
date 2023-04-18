@@ -90,8 +90,8 @@ entries:
       url: /triggers.html
       output: web
 
-    - title: Time partitions
-      url: /timepart.html
+    - title: Table partitions
+      url: /table_partition.html
       output: web
 
   - title: Configuring databases
