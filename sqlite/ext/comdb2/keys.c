@@ -44,6 +44,8 @@
 #include "sql.h"
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
+#include "views.h"
+#include "timepart_systable.h"
 
 /* systbl_keys_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate keys. We keep track
@@ -132,24 +134,26 @@ static int systblKeysClose(sqlite3_vtab_cursor *cur){
 */
 static int systblKeysNext(sqlite3_vtab_cursor *cur){
   systbl_keys_cursor *pCur = (systbl_keys_cursor*)cur;
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(pCur->iRowid);;
 
   pCur->iKeyid++;
 
   /* Test just in case cursor is in a bad state */
-  if( pCur->iRowid < thedb->num_dbs ){
+  if( pCur->iRowid < timepart_systable_num_tables_and_views() ){
     do{
-      while( pCur->iKeyid < thedb->dbs[pCur->iRowid]->schema->nix
-       && thedb->dbs[pCur->iRowid]->ixsql[pCur->iKeyid] == NULL
+      while( pCur->iKeyid < pDb->schema->nix
+       && pDb->ixsql[pCur->iKeyid] == NULL
       ){
         pCur->iKeyid++;
       }
-      if( pCur->iKeyid >= thedb->dbs[pCur->iRowid]->schema->nix ){
+      if( pCur->iKeyid >= pDb->schema->nix ){
         pCur->iKeyid = 0;
         pCur->iRowid++;
+        pDb = comdb2_get_dbtable_or_shard0(pCur->iRowid);;
       }else{
 	break;
       }
-    } while( pCur->iRowid < thedb->num_dbs );
+    } while( pCur->iRowid < timepart_systable_num_tables_and_views() );
   }
 
   comdb2_next_allowed_table(&pCur->iRowid);
@@ -166,12 +170,13 @@ static int systblKeysColumn(
   int i
 ){
   systbl_keys_cursor *pCur = (systbl_keys_cursor*)cur;
-  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(pCur->iRowid);;
   struct schema *pSchema = pDb->ixschema[pCur->iKeyid];
+  const char *readable_name = pDb->timepartition_name ? pDb->timepartition_name : pDb->tablename;
 
   switch( i ){
     case STKEY_TABLE: {
-      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+      sqlite3_result_text(ctx, readable_name, -1, NULL);
       break;
     }
     case STKEY_KEY: {
@@ -226,7 +231,7 @@ static int systblKeysRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 
   *pRowid = 0;
   for( int i = 0; i < pCur->iRowid - 1; i++ ){
-    *pRowid += thedb->dbs[i]->nsqlix;
+    *pRowid += comdb2_get_dbtable_or_shard0(i)->nsqlix;
   }
   *pRowid += pCur->iKeyid;
   return SQLITE_OK;
@@ -238,7 +243,7 @@ static int systblKeysRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 static int systblKeysEof(sqlite3_vtab_cursor *cur){
   systbl_keys_cursor *pCur = (systbl_keys_cursor*)cur;
 
-  return pCur->iRowid >= thedb->num_dbs;
+  return pCur->iRowid >= timepart_systable_num_tables_and_views();
 }
 
 /*
@@ -252,6 +257,7 @@ static int systblKeysFilter(
   int argc, sqlite3_value **argv
 ){
   systbl_keys_cursor *pCur = (systbl_keys_cursor*)pVtabCursor;
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(0);
 
   pCur->iRowid = 0;
   pCur->iKeyid = 0;
@@ -259,8 +265,8 @@ static int systblKeysFilter(
   /* Advance to the first key, as it's possible that the cursor will
   ** start on a table without a key.
   */
-  if( thedb->dbs[pCur->iRowid]->nsqlix == 0
-   || thedb->dbs[pCur->iRowid]->ixsql[pCur->iKeyid] == NULL
+  if( pDb->nsqlix == 0
+   || pDb->ixsql[pCur->iKeyid] == NULL
   ){
     systblKeysNext(pVtabCursor);
   }

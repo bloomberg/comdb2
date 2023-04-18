@@ -25,7 +25,6 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
     int rc = 0;
     uuidstr_t us;
 
-    Pthread_rwlock_rdlock(&views_lk);
     arr = calloc(views->nviews, sizeof(systable_timepartition_t));
     if (!arr) {
         logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
@@ -56,7 +55,6 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
         }
     }
 done:
-    Pthread_rwlock_unlock(&views_lk);
     *data = arr;
     *nrecords = narr;
     return rc;
@@ -90,7 +88,6 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
     int nview;
     int rc = 0;
 
-    Pthread_rwlock_rdlock(&views_lk);
     narr = 0;
     for (nview = 0; nview < views->nviews; nview++) {
         narr += views->views[nview]->nshards;
@@ -123,7 +120,6 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
         }
     }
 done:
-    Pthread_rwlock_unlock(&views_lk);
     *data = arr;
     *nrecords = narr;
     return rc;
@@ -167,7 +163,6 @@ int timepart_systable_timepartpermissions_collect(void **data, int *nrecords)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     char *usr = thd->clnt->current_user.name;
 
-    Pthread_rwlock_rdlock(&views_lk);
     arr = calloc(views->nviews, sizeof(char *));
     if (!arr) {
         logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__, sizeof(char *) * views->nviews);
@@ -193,7 +188,6 @@ int timepart_systable_timepartpermissions_collect(void **data, int *nrecords)
         }
     }
 done:
-    Pthread_rwlock_unlock(&views_lk);
     *data = arr;
     *nrecords = narr;
     return rc;
@@ -209,4 +203,51 @@ void timepart_systable_timepartpermissions_free(void *arr, int nrecords)
             free(parr[i]);
     }
     free(arr);
+}
+
+int timepart_systable_num_tables_and_views()
+{
+    return thedb->num_dbs + timepart_num_views();
+}
+
+int timepart_systable_next_allowed(sqlite3_int64 *tabId)
+{
+    struct sql_thread *thd;
+    int bdberr, ii;
+    timepart_view_t *view;
+    timepart_views_t *views = thedb->timepart_views;
+
+    if ((ii = *tabId) >= thedb->num_dbs)
+        ii -= thedb->num_dbs;
+
+    thd = pthread_getspecific(query_info_key);
+
+    for (; ii < views->nviews; ++ii, ++(*tabId)) {
+        view = views->views[ii];
+        if (bdb_check_user_tbl_access(NULL, thd->clnt->current_user.name, view->name, ACCESS_READ, &bdberr) == 0)
+            break;
+    }
+
+    return 0;
+}
+
+struct dbtable *timepart_systable_shard0(sqlite3_int64 tabId)
+{
+    static dbtable empty = {0};
+    struct dbtable *rv = NULL;
+    timepart_view_t *view;
+    int ii;
+
+    if ((ii = tabId) >= thedb->num_dbs)
+        ii -= thedb->num_dbs;
+
+    if (ii < timepart_num_views()) {
+        view = thedb->timepart_views->views[ii];
+        if (view->nshards > 0)
+            rv = get_dbtable_by_name(view->shards[0].tblname);
+    }
+
+    if (rv == NULL)
+        rv = &empty;
+    return rv;
 }
