@@ -290,10 +290,37 @@ function splock_test
     rm -Rf $STOP_TABLES_TEST_TOUCHFILE
 }
 
+function read_systable_from_consumer {
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<-'EOF'
+	DROP TABLE IF EXISTS t
+	CREATE TABLE t(i INTEGER)$$
+	CREATE PROCEDURE foo VERSION 'bar' {
+	local function main()
+		local stmt = db:exec("SELECT * FROM COMDB2_TRIGGERS")
+		stmt:close()
+		db:consumer():get()
+		return 0
+	end
+	}$$
+	CREATE PROCEDURE bar VERSION 'foo' {}$$
+	CREATE LUA CONSUMER foo ON (TABLE t FOR INSERT)
+	CREATE LUA CONSUMER bar ON (TABLE t FOR INSERT)
+	EOF
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "EXEC PROCEDURE foo()" &
+    sleep 1
+    timeout 3s $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP LUA CONSUMER bar"
+    if [[ $? -ne 0 ]]; then failexit "drop consumer timed out"; fi
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "INSERT INTO t VALUES(1)"
+    wait
+    if [[ $? -ne 0 ]]; then failexit "consumer failed"; fi
+}
+
 function run_test
 {
     splock_test
     alltables_test
+    read_systable_from_consumer
 }
 
 setup
