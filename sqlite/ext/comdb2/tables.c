@@ -43,6 +43,7 @@
 #include "comdb2systblInt.h"
 #include "sql.h"
 #include "views.h"
+#include "timepart_systable.h"
 
 /* systbl_tables_cursor is a subclass of sqlite3_vtab_cursor which serves
 ** as the underlying cursor to enumerate the rows in this vtable. The 
@@ -156,7 +157,7 @@ static int systblTablesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 static int systblTablesEof(sqlite3_vtab_cursor *cur){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
 
-  return pCur->iRowid >= thedb->num_dbs + timepart_num_views();
+  return pCur->iRowid >= timepart_systable_num_tables_and_views();
 }
 
 /*

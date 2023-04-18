@@ -419,3 +419,8 @@
 (name='comdb2_users')
 (name='comdb2_views')
 [SELECT * FROM comdb2_systables ORDER BY name] rc 0
+[CREATE TABLE tpt1(a int PRIMARY KEY) PARTITIONED BY TIME PERIOD 'yearly' RETENTION 7 start '2000-01-01T UTC'] rc 0
+(COUNT(*)=1)
+[SELECT COUNT(*) FROM comdb2_keys WHERE tablename = 'tpt1'] rc 0
+(COUNT(*)=1)
+[SELECT COUNT(*) FROM comdb2_keycomponents WHERE tablename = 'tpt1'] rc 0

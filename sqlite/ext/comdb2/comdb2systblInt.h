@@ -79,6 +79,7 @@ int systblSQLIndexStatsInit(sqlite3 *);
 int systblTemporaryFileSizesModuleInit(sqlite3 *);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
+struct dbtable *comdb2_get_dbtable_or_shard0(sqlite3_int64 tabId);
 
 int systblScStatusInit(sqlite3 *db);
 int systblScHistoryInit(sqlite3 *db);

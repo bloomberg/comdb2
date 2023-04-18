@@ -7622,6 +7622,7 @@ int gbl_assert_systable_locks = 1;
 #else
 int gbl_assert_systable_locks = 0;
 #endif
+extern pthread_rwlock_t views_lk;
 
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
@@ -7644,6 +7645,16 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
+    }
+
+    if (p->numVTableLocks > 0) {
+        /* system table: grab views_lk as long as there's time partitions, so that
+           we can maintain the same lock order as time partion rollout which may
+           happen while we're in the middle of this query */
+        Pthread_rwlock_rdlock(&views_lk);
+        clnt->dbtran.views_lk_held = 1;
+    } else {
+        clnt->dbtran.views_lk_held = 0;
     }
 
     for (int i = 0; i < p->numVTableLocks; i++) {
@@ -9689,6 +9700,12 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
                             &bdberr);
+
+    if (clnt->dbtran.views_lk_held) {
+        Pthread_rwlock_unlock(&views_lk);
+        clnt->dbtran.views_lk_held = 0;
+    }
+
     if (rc) {
         logmsg(LOGMSG_DEBUG, "%s: %p rc %d bdberror %d\n", __func__, (void *)pthread_self(), rc, bdberr);
         ctrace("%s: rc %d bdberror %d\n", __func__, rc, bdberr);

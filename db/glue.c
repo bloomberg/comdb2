@@ -6157,6 +6157,8 @@ void *get_bdb_env(void)
     return thedb->bdb_env;
 }
 
+int timepart_systable_next_allowed(sqlite3_int64 *tabId);
+
 /* This function can be used as an iterator to jump to the next
  * base table, starting the table at the specified index in the
  * global tables array, that the current user has READ access to.
@@ -6170,6 +6172,9 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
     char *tablename;
     int bdberr;
     int rc;
+
+    if (*tabId >= thedb->num_dbs)
+        return timepart_systable_next_allowed(tabId);
 
     thd = pthread_getspecific(query_info_key);
 
@@ -6188,6 +6193,13 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
     }
 
     return SQLITE_OK;
+}
+
+struct dbtable *timepart_systable_shard0(sqlite3_int64 tabId);
+
+struct dbtable *comdb2_get_dbtable_or_shard0(sqlite3_int64 tabId)
+{
+    return ((tabId < thedb->num_dbs) ? thedb->dbs[tabId] : timepart_systable_shard0(tabId));
 }
 
 int comdb2_is_user_op(char *user, char *password)

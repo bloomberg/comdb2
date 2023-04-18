@@ -44,6 +44,8 @@
 #include "sql.h"
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
+#include "views.h"
+#include "timepart_systable.h"
 
 /* systbl_columns_cursor is a subclass of sqlite3_vtab_cursor which serves
 ** as the underlying cursor to enumerate the rows in this vtable. The 
@@ -136,7 +138,7 @@ static int systblColumnsClose(sqlite3_vtab_cursor *cur){
 static int systblColumnsNext(sqlite3_vtab_cursor *cur){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
 
-  if( ++pCur->iColId == thedb->dbs[pCur->iTabId]->schema->nmembers ){
+  if( ++pCur->iColId == comdb2_get_dbtable_or_shard0(pCur->iTabId)->schema->nmembers ){
     pCur->iColId = 0;
     pCur->iTabId++;
     comdb2_next_allowed_table(&pCur->iTabId);
@@ -153,12 +155,13 @@ static int systblColumnsColumn(
   int i
 ){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
-  struct dbtable *pDb = thedb->dbs[pCur->iTabId];
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(pCur->iTabId);;
   struct field *pField = &pDb->schema->member[pCur->iColId];
+  const char *readable_name = pDb->timepartition_name ? pDb->timepartition_name : pDb->tablename;
 
   switch( i ){
     case STCOL_TABLE: {
-      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+      sqlite3_result_text(ctx, readable_name, -1, NULL);
       break;
     }
     case STCOL_COLUMN: {
@@ -247,7 +250,7 @@ static int systblColumnsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 
   *pRowid = 0;
   for( int i = 0; i < pCur->iTabId - 1; i++ ){
-    *pRowid += thedb->dbs[i]->schema->nmembers;
+    *pRowid += comdb2_get_dbtable_or_shard0(i)->schema->nmembers;
   }
   *pRowid += pCur->iColId;
   return SQLITE_OK;
@@ -259,7 +262,7 @@ static int systblColumnsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 static int systblColumnsEof(sqlite3_vtab_cursor *cur){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
 
-  return pCur->iTabId >= thedb->num_dbs;
+  return pCur->iTabId >= timepart_systable_num_tables_and_views();
 }
 
 /*

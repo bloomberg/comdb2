@@ -43,6 +43,8 @@
 #include "sql.h"
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
+#include "views.h"
+#include "timepart_systable.h"
 
 /* systbl_field_cursor is a subclass of sqlite3_vtab_cursor which
 ** can enumerate fields of all the fields in systbl_fields_cursor
@@ -126,36 +128,38 @@ static int systblFieldsClose(sqlite3_vtab_cursor *cur){
 */
 static int systblFieldsNext(sqlite3_vtab_cursor *cur){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)cur;
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(pCur->iRowid);;
 
   pCur->iFieldid++;
 
   /* Test just in case cursor is in a bad state */
-  if( pCur->iRowid < thedb->num_dbs ){
+  if( pCur->iRowid < timepart_systable_num_tables_and_views()){
     struct schema *pSchema = NULL;
 
     /* TODO May be better to re-cast cursor and call systblKeysNext() */
-    if( pCur->iKeyid < thedb->dbs[pCur->iRowid]->schema->nix ){
-      pSchema = thedb->dbs[pCur->iRowid]->schema->ix[pCur->iKeyid];
+    if( pCur->iKeyid < pDb->schema->nix ){
+      pSchema = pDb->schema->ix[pCur->iKeyid];
     }
     if( pSchema == NULL
-     || thedb->dbs[pCur->iRowid]->ixsql[pCur->iKeyid] == NULL
+     || pDb->ixsql[pCur->iKeyid] == NULL
      || pCur->iFieldid >= pSchema->nmembers 
     ){
       pCur->iFieldid = 0;
       pCur->iKeyid++;
       do{
-        while( pCur->iKeyid < thedb->dbs[pCur->iRowid]->schema->nix
-         && thedb->dbs[pCur->iRowid]->ixsql[pCur->iKeyid] == NULL
+        while( pCur->iKeyid < pDb->schema->nix
+         && pDb->ixsql[pCur->iKeyid] == NULL
         ){
           pCur->iKeyid++;
         }
-        if( pCur->iKeyid >= thedb->dbs[pCur->iRowid]->schema->nix ){
+        if( pCur->iKeyid >= pDb->schema->nix ){
           pCur->iKeyid = 0;
           pCur->iRowid++;
+          pDb = comdb2_get_dbtable_or_shard0(pCur->iRowid);;
         } else {
 	  break;
 	}
-      } while( pCur->iRowid < thedb->num_dbs );
+      } while( pCur->iRowid < timepart_systable_num_tables_and_views() );
     }
   }
 
@@ -173,13 +177,14 @@ static int systblFieldsColumn(
   int i
 ){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)cur;
-  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(pCur->iRowid);;
   struct schema *pSchema = pDb->ixschema[pCur->iKeyid];
   struct field *pField = &pSchema->member[pCur->iFieldid];
+  const char *readable_name = pDb->timepartition_name ? pDb->timepartition_name : pDb->tablename;
 
   switch( i ){
     case STFIELD_TABLE: {
-      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
+      sqlite3_result_text(ctx, readable_name, -1, NULL);
       break;
     }
     case STFIELD_KEY: {
@@ -211,18 +216,20 @@ static int systblFieldsColumn(
 */
 static int systblFieldsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)cur;
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(0);
   int i;
 
   *pRowid = 0;
   for( i = 0; i < pCur->iRowid - 1; i++ ){
-    for( int j = 0; j < thedb->dbs[i]->schema->nix - 1; j++ ){
-      if( thedb->dbs[i]->ixsql[j] == NULL ) continue;
-      *pRowid += thedb->dbs[i]->schema->ix[j]->nmembers;
+    pDb = comdb2_get_dbtable_or_shard0(i);
+    for( int j = 0; j < pDb->schema->nix - 1; j++ ){
+      if( pDb->ixsql[j] == NULL ) continue;
+      *pRowid += pDb->schema->ix[j]->nmembers;
     }
   }
   for( int j = 0; j < pCur->iKeyid - 1; j++ ){
-    if( thedb->dbs[i]->ixsql[j] == NULL ) continue;
-    *pRowid += thedb->dbs[i]->schema->ix[j]->nmembers;
+    if( pDb->ixsql[j] == NULL ) continue;
+    *pRowid += pDb->schema->ix[j]->nmembers;
   }
   *pRowid += pCur->iFieldid;
   return SQLITE_OK;
@@ -234,7 +241,7 @@ static int systblFieldsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 static int systblFieldsEof(sqlite3_vtab_cursor *cur){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)cur;
 
-  return pCur->iRowid >= thedb->num_dbs;
+  return pCur->iRowid >= timepart_systable_num_tables_and_views();
 }
 
 /*
@@ -248,6 +255,7 @@ static int systblFieldsFilter(
   int argc, sqlite3_value **argv
 ){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)pVtabCursor;
+  struct dbtable *pDb = comdb2_get_dbtable_or_shard0(0);
 
   pCur->iRowid = 0;
   pCur->iKeyid = 0;
@@ -256,8 +264,8 @@ static int systblFieldsFilter(
   /* Advance to the first key, as it's possible that the cursor will
   ** start on a table without a key.
   */
-  if( thedb->dbs[pCur->iRowid]->nsqlix == 0
-   || thedb->dbs[pCur->iRowid]->ixsql[pCur->iKeyid] == NULL
+  if( pDb->nsqlix == 0
+   || pDb->ixsql[pCur->iKeyid] == NULL
   ){
     systblFieldsNext(pVtabCursor);
   }
