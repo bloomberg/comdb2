@@ -34,6 +34,7 @@
 #  include "series.h"
 # endif
 # include <logmsg.h>
+# include <stddef.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_JSON1
 int sqlite3Json1Init(sqlite3*);
@@ -3185,6 +3186,10 @@ static int openDatabase(
     }
   }
   sqlite3_mutex_enter(db->mutex);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  db->isPreparer = 0;
+  assert(offsetof(sqlite3, isPreparer) == 0);
+#endif
   db->errMask = 0xff;
   db->nDb = 2;
   db->magic = SQLITE_MAGIC_BUSY;
@@ -4650,3 +4655,9 @@ const char *sqlite3_compileoption_get(int N){
   return 0;
 }
 #endif /* SQLITE_OMIT_COMPILEOPTION_DIAGS */
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3_is_preparer(sqlite3 *db) {
+    return db->isPreparer;
+}
+#endif

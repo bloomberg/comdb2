@@ -1216,13 +1216,8 @@ static int __check_sqlite_stat(sqlite3 *db, fdb_tbl_ent_t *ent, Table *tab)
 
 static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    if (gbl_old_column_names && thd && thd->clnt && thd->clnt->thd &&
-        thd->clnt->thd->query_preparer_running) {
-        /* We're preparing query in sqlitex; let's pretend that
-         * everything is fine */
+    if (sqlite3_is_preparer(db))
         return SQLITE_OK;
-    }
 
     fdb_tbl_ent_t *stat_ent;
     Table *stat_tab;
