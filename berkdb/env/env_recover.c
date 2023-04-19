@@ -61,8 +61,10 @@ void bdb_get_writelock(void *bdb_state,
 	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
+int comdb2_time_epoch(void);
 
 extern int gbl_is_physical_replicant;
+extern int gbl_point_in_time_window;
 
 #define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
@@ -2090,7 +2092,7 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
 	hash_t *fileid_tbl);
 int bdb_update_timestamp_lsn(void *bdb_state, int32_t timestamp, DB_LSN lsn,
 	unsigned long long context);
-int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
+int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp, int is_backward_pass);
 extern DB_LSN bdb_latest_commit_lsn;
 extern pthread_mutex_t bdb_asof_current_lsn_mutex;
 
@@ -2117,11 +2119,15 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 	int lineno = 0;
 	int got_recoverable_lsn = 0;
 	int not_newsi_log_format = 0;
+	int reached_pglogs_recover_limit = 0;
+	int point_in_time_window_secs = gbl_point_in_time_window;
 	void *keylist = NULL;
 	u_int32_t keycnt = 0;
 	DB *file_dbp;
 	DB_MPOOLFILE *mpf;
 	u_int32_t rectype;
+	u_int64_t pglogs_recovery_lower_bound_timestamp =
+		comdb2_time_epoch()-point_in_time_window_secs;
 
 	__txn_ckp_args *ckp_args = NULL;
 	__txn_regop_args *txn_args = NULL;
@@ -2139,9 +2145,12 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		return ret;
 
-	for (ret = __log_c_get(logc, &first_lsn, &data, DB_FIRST), lsn =
-		first_lsn; ret == 0;
-		ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
+	ret = __log_c_get(logc, &lsn, &data, DB_LAST);
+	if (ret)
+		goto err;
+	for (; ret == 0 && !reached_pglogs_recover_limit && 
+			log_compare(&lsn, &first_lsn) >= 0;
+			ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
 		switch (rectype) {
@@ -2152,10 +2161,15 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = ckp_args;
+		 if (ckp_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 {
+			reached_pglogs_recover_limit = 1;
+			break;
+		 }
 
 			ret =
 				bdb_checkpoint_list_push(lsn, ckp_args->ckp_lsn,
-				ckp_args->timestamp);
+				ckp_args->timestamp, 1);
 			if (ret) {
 				logmsg(LOGMSG_ERROR, 
 				  "%s: failed to push to checkpoint list, ret %d\n",
@@ -2182,9 +2196,14 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_gen_args)) != 0) {
 				GOTOERR;
 		 }
+		 free_ptr = txn_gen_args;
+		 if (txn_gen_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 {
+			reached_pglogs_recover_limit = 1;
+			break;
+		 }
 		 bdb_push_pglogs_commit(dbenv->app_private, lsn, 
 			   txn_gen_args->generation, 0, 0);
-			free_ptr = txn_gen_args;
 
 			ret =
 				bdb_update_timestamp_lsn(dbenv->app_private,
@@ -2212,8 +2231,13 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_args)) != 0) {
 				GOTOERR;
 		 }
+		 free_ptr = txn_args;
+		 if (txn_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 {
+			reached_pglogs_recover_limit = 1;
+			break;
+		 }
 		 bdb_push_pglogs_commit(dbenv->app_private, lsn, 0, 0, 0);
-			free_ptr = txn_args;
 
 			ret =
 				bdb_update_timestamp_lsn(dbenv->app_private,
@@ -2241,9 +2265,14 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_rl_args)) != 0) {
 				GOTOERR;
 		 }
+		 free_ptr = txn_rl_args;
+		 if (txn_rl_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 {
+			reached_pglogs_recover_limit = 1;
+			break;
+		 }
 		 bdb_push_pglogs_commit(dbenv->app_private, lsn, 
 			   txn_rl_args->generation, 0, 0);
-			free_ptr = txn_rl_args;
 
 			ret = bdb_update_timestamp_lsn(dbenv->app_private,
 				txn_rl_args->timestamp, lsn, txn_rl_args->context);

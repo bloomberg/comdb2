@@ -3533,8 +3533,9 @@ int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn, uint32_t gen,
     }
 
     Pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
-    if (lcommit)
-        listc_abl(&pglogs_commit_list, lcommit);
+    if (lcommit) {
+			listc_abl(&pglogs_commit_list, lcommit);
+	}
     bdb_latest_commit_lsn = commit_lsn;
     bdb_latest_commit_gen = gen;
 
