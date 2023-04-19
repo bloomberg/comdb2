@@ -65,6 +65,7 @@ int comdb2_time_epoch(void);
 
 extern int gbl_is_physical_replicant;
 extern int gbl_point_in_time_window;
+int gbl_pglogs_recovery_lower_bound_timestamp;
 
 #define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
@@ -2126,7 +2127,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 	DB *file_dbp;
 	DB_MPOOLFILE *mpf;
 	u_int32_t rectype;
-	u_int64_t pglogs_recovery_lower_bound_timestamp =
+	gbl_pglogs_recovery_lower_bound_timestamp =
 		comdb2_time_epoch()-point_in_time_window_secs;
 
 	__txn_ckp_args *ckp_args = NULL;
@@ -2161,7 +2162,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = ckp_args;
-		 if (ckp_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 if (ckp_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;
@@ -2197,7 +2198,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = txn_gen_args;
-		 if (txn_gen_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 if (txn_gen_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;
@@ -2232,7 +2233,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = txn_args;
-		 if (txn_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 if (txn_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;
@@ -2266,7 +2267,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = txn_rl_args;
-		 if (txn_rl_args->timestamp < pglogs_recovery_lower_bound_timestamp)
+		 if (txn_rl_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;

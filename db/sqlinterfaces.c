@@ -144,6 +144,7 @@ extern int gbl_old_column_names;
 extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
+extern int gbl_pglogs_recovery_lower_bound_timestamp;
 
 /* Once and for all:
 
@@ -1489,14 +1490,19 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                             return -1;
                         } else {
                             long long lcl_ret = flibc_ntohll(ret);
-                            if (gbl_new_snapisol_asof &&
-                                bdb_is_timestamp_recoverable(thedb->bdb_env,
+                            if (gbl_new_snapisol_asof) {
+								if (bdb_is_timestamp_recoverable(thedb->bdb_env,
                                                              lcl_ret) <= 0) {
-                                logmsg(LOGMSG_ERROR,
-                                       "No log file to maintain "
-                                       "snapshot epoch %lld\n",
-                                       lcl_ret);
-                                return -1;
+									logmsg(LOGMSG_ERROR,
+										   "No log file to maintain "
+										   "snapshot epoch %lld\n",
+										   lcl_ret);
+									return -1;
+								} else if (lcl_ret < gbl_pglogs_recovery_lower_bound_timestamp) {
+									logmsg(LOGMSG_ERROR,
+											"Snapshot epoch outside of configured time interval\n");
+									return -1;
+								}
                             } else {
                                 logmsg(LOGMSG_DEBUG,
                                        "Detected snapshot epoch %lld\n",
