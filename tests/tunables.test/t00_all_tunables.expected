@@ -684,6 +684,7 @@
 (name='poll_on_lock_desired', description='poll_on_lock_desired', type='BOOLEAN', value='ON', read_only='N')
 (name='portmux_bind_path', description='', type='STRING', value='/tmp/portmux.socket', read_only='Y')
 (name='portmux_port', description='', type='INTEGER', value='5105', read_only='Y')
+(name='point_in_time_window', description='', type='INTEGER', value='-1', read_only='Y')
 (name='preallocate_max', description='Pre-allocation size', type='INTEGER', value='268435456', read_only='N')
 (name='preallocate_on_writes', description='Pre-allocate on writes', type='BOOLEAN', value='OFF', read_only='N')
 (name='prefaulthelper_blockops', description='', type='INTEGER', value='1', read_only='Y')

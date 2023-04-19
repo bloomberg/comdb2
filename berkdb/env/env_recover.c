@@ -2128,7 +2128,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 	DB_MPOOLFILE *mpf;
 	u_int32_t rectype;
 	gbl_pglogs_recovery_lower_bound_timestamp =
-		comdb2_time_epoch()-point_in_time_window_secs;
+		point_in_time_window_secs > 0 ? comdb2_time_epoch()-point_in_time_window_secs : 0;
 
 	__txn_ckp_args *ckp_args = NULL;
 	__txn_regop_args *txn_args = NULL;
@@ -2162,7 +2162,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = ckp_args;
-		 if (ckp_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
+		 if ((gbl_point_in_time_window > 0) && (ckp_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp))
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;
@@ -2198,7 +2198,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = txn_gen_args;
-		 if (txn_gen_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
+		 if ((gbl_point_in_time_window > 0) && (txn_gen_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp))
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;
@@ -2233,7 +2233,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = txn_args;
-		 if (txn_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
+		 if ((gbl_point_in_time_window > 0) && (txn_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp))
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;
@@ -2267,7 +2267,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				GOTOERR;
 		 }
 		 free_ptr = txn_rl_args;
-		 if (txn_rl_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp)
+		 if ((gbl_point_in_time_window > 0) && (txn_rl_args->timestamp < gbl_pglogs_recovery_lower_bound_timestamp))
 		 {
 			reached_pglogs_recover_limit = 1;
 			break;

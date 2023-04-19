@@ -145,6 +145,7 @@ extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
 extern int gbl_pglogs_recovery_lower_bound_timestamp;
+extern int gbl_point_in_time_window;
 
 /* Once and for all:
 
@@ -1498,7 +1499,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
 										   "snapshot epoch %lld\n",
 										   lcl_ret);
 									return -1;
-								} else if (lcl_ret < gbl_pglogs_recovery_lower_bound_timestamp) {
+								} else if ((gbl_point_in_time_window > 0) && (lcl_ret < gbl_pglogs_recovery_lower_bound_timestamp)) {
 									logmsg(LOGMSG_ERROR,
 											"Snapshot epoch outside of configured time interval\n");
 									return -1;
