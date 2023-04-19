@@ -969,6 +969,8 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
                  &gbl_penaltyincpercent, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("point_in_time_window", NULL, TUNABLE_INTEGER,
+                  &gbl_point_in_time_window, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
                  NULL, READONLY | READEARLY, portmux_bind_path_get, NULL,
                  portmux_bind_path_set, NULL);

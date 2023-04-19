@@ -793,6 +793,7 @@ int gbl_clean_exit_on_sigterm = 1;
 
 int gbl_is_physical_replicant;
 int gbl_server_admin_mode = 0;
+int gbl_point_in_time_window = INT_MAX;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();

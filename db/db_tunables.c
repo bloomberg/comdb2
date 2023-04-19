@@ -418,6 +418,7 @@ extern int gbl_force_direct_io;
 extern int gbl_seekscan_maxsteps;
 extern int gbl_wal_osync;
 extern uint64_t gbl_sc_headroom;
+extern int gbl_point_in_time_window;
 
 /*
   =========================================================
