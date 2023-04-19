@@ -247,31 +247,13 @@ if(WITH_TCL AND NOT COMDB2_BUILD_STATIC)
   add_subdirectory(tcl)
 endif()
 if(NOT COMDB2_SKIP_TOOLS)
-  set(CMAKE_CXX_STANDARD 11)
   add_subdirectory(tools)
-  add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 endif()
 add_subdirectory(plugins)
 add_subdirectory(db)
-
-enable_testing()
-add_test(NAME tests-tools COMMAND make test-tools )
-add_test(NAME all-tests COMMAND make WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
-
-######## TODO: Get testing framework to work with ctest #####
-#file(GLOB TESTS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/tests/*.test")
-#foreach(TEST IN ITEMS ${TESTS}) 
-#     get_filename_component(TEST ${TEST} NAME_WE)
-#     add_test(NAME ${TEST} COMMAND echo make ${TEST} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
-#endforeach()
-
-
-########################
-######## TODO ##########
-########################
-# comdb2admin
-# supervisor
-########################
+if(NOT COMDB2_SKIP_TESTS)
+  add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
+endif()
 
 set(CPACK_PACKAGE_NAME Comdb2)
 set(CPACK_PACKAGE_FILE_NAME comdb2)

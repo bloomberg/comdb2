@@ -1,5 +1,5 @@
 find_package(Readline REQUIRED)
-find_package(SQLite REQUIRED)
+find_package(SQLite3 REQUIRED)
 include_directories(
   ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc
@@ -88,7 +88,11 @@ list(APPEND common-deps
 )
 
 foreach(executable ${test-tools})
-  target_link_libraries(${executable} cdb2api ${common-deps})
+  if (COMDB2_BBCMAKE)
+    target_link_libraries(${executable} opencdb2api ${common-deps})
+  else()
+    target_link_libraries(${executable} cdb2api ${common-deps})
+  endif()
 endforeach()
 
 if(NOT COMDB2_SKIP_CDB2API_SO)
