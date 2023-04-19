@@ -1440,6 +1440,9 @@ void sqlite3CryptFunc(sqlite3_context*,int,sqlite3_value**);
 ** Each database connection is an instance of the following structure.
 */
 struct sqlite3 {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int isPreparer;               /* Set by preparer plugin - must be first, must be an int. */
+#endif
   sqlite3_vfs *pVfs;            /* OS Interface */
   struct Vdbe *pVdbe;           /* List of active virtual machines */
   CollSeq *pDfltColl;           /* The default collating sequence (BINARY) */

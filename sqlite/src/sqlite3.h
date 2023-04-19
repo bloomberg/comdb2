@@ -4859,6 +4859,11 @@ int stmt_do_column_names_match(sqlite3_stmt *);
 int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3_is_preparer(sqlite3 *db);
+#endif
+
+
 /*
 ** CAPI3REF: Create Or Redefine SQL Functions
 ** KEYWORDS: {function creation routines}
