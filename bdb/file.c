@@ -153,7 +153,6 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
-static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
 static int close_dbs(bdb_state_type *bdb_state);
 static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state);
@@ -4111,8 +4110,7 @@ int calc_pagesize(int initsize, int recsize)
     return (initsize >= pagesize) ? initsize : pagesize;
 }
 
-static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                        int create, DB_TXN *tid, uint32_t flags)
+int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN *tid, uint32_t flags)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4127,7 +4125,9 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran = {0};
 
-    assert_wrlock_schema_lk();
+    if ((flags & BDB_OPEN_SKIP_SCHEMA_LK) == 0) {
+        assert_wrlock_schema_lk();
+    }
 
 deadlock_again:
     tmp_tid = 0;
@@ -4732,20 +4732,6 @@ deadlock_again:
     }
 
     return 0;
-}
-
-static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                          int create, DB_TXN *tid, uint32_t flags)
-{
-    int rc = 0;
-    rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags);
-    return rc;
-}
-
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid, uint32_t flags)
-{
-    return open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags);
 }
 
 static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -6060,7 +6046,7 @@ static bdb_state_type *bdb_open_int(
         /* open our databases as either a client or master */
         bdb_state->bdbtype = bdbtype;
         bdb_state->pagesize_override = pagesize_override;
-        rc = open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags);
+        rc = open_dbs(bdb_state, iammaster, upgrade, create, tid, flags);
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
@@ -7217,6 +7203,11 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
     }
 
     return rc;
+}
+
+int bdb_open_again_foreign_bulkimport(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_open_again_tran_int(bdb_state, NULL, BDB_OPEN_SKIP_SCHEMA_LK, bdberr);
 }
 
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)

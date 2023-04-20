@@ -297,9 +297,10 @@ enum COMPRESS {
 };
 
 enum OPENFLAGS { /* NOTE: For "uint32_t flags" arg to "bdb_open_*()". */
-    BDB_OPEN_NONE = 0x0,
-    BDB_OPEN_ADD_QDB_FILE = 0x1000000,
-    BDB_OPEN_DEL_QDB_FILE = 0x2000000
+    BDB_OPEN_NONE = 0,
+    BDB_OPEN_ADD_QDB_FILE = 0x01,
+    BDB_OPEN_DEL_QDB_FILE = 0x02,
+    BDB_OPEN_SKIP_SCHEMA_LK = 0x04,
 };
 
 int bdb_compr2algo(const char *a);
@@ -1177,11 +1178,10 @@ int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
 
 /* re-open bdb handle that has been bdb_close_only'ed
    as master/client depending on how it used to be */
-int bdb_open_again(bdb_state_type *bdb_handle, int *bdberr);
-int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran,
-                        int *bdberr);
-int bdb_open_again_tran_queue(bdb_state_type *bdb_state, tran_type *tran,
-                              uint32_t flags, int *bdberr);
+int bdb_open_again(bdb_state_type *, int *bdberr);
+int bdb_open_again_tran(bdb_state_type *, tran_type *, int *bdberr);
+int bdb_open_again_tran_queue(bdb_state_type *, tran_type *, uint32_t flags, int *bdberr);
+int bdb_open_again_foreign_bulkimport(bdb_state_type *, int *bdberr);
 
 /* destroy resources related to bdb_handle.  assumes that bdb_close_only
    was called */
