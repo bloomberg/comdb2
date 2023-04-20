@@ -189,6 +189,7 @@ struct fdb_tran {
     bdb_state_type *bdb_state;
     struct temp_table *dedup_tbl;
     struct temp_cursor *dedup_cur;
+    int nwrites; /* number of writes (ins/upd/del) issues on the fdb tran */
 };
 typedef struct fdb_tran fdb_tran_t;
 
@@ -325,7 +326,7 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
 fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
                                     char *ptid, int use_ssl);
 fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid);
-int fdb_trans_commit(struct sqlclntstate *clnt);
+int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects);
 int fdb_trans_rollback(struct sqlclntstate *clnt);
 char *fdb_trans_id(fdb_tran_t *trans);
 
@@ -411,6 +412,9 @@ int fdb_heartbeats(struct sqlclntstate *clnt);
  */
 void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
                           const char *tblname);
+
+/* return if ssl is needed */
+int fdb_cursor_need_ssl(fdb_cursor_if_t *cur);
 
 /**
  * Retrieve the schema of a remote table

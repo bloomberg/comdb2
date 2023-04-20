@@ -428,7 +428,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
 
     case TRANLEVEL_SOSQL:
 
-        rc = osql_sock_commit(clnt, tran2req(clnt->dbtran.mode));
+        rc = osql_sock_commit(clnt, tran2req(clnt->dbtran.mode), TRANS_CLNTCOMM_NORMAL);
         /* convert this to user code */
         if (rc == SQLITE_ABORT) {
             rc = blockproc2sql_error(clnt->osql.xerr.errval, __func__, __LINE__);

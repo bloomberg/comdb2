@@ -37,6 +37,7 @@
  */
 
 struct BtCursor;
+enum trans_clntcomm;
 
 /* Upsert flags that attach with OSQL_INSERT. */
 enum osql_rec_flags {
@@ -137,7 +138,7 @@ int osql_sock_start_deferred(struct sqlclntstate *clnt);
  * Returns the result of block processor commit
  *
  */
-int osql_sock_commit(struct sqlclntstate *clnt, int type);
+int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects);
 
 /**
  * Terminates a sosql session

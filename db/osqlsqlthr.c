@@ -996,7 +996,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
  *
  */
 extern int gbl_is_physical_replicant;
-int osql_sock_commit(struct sqlclntstate *clnt, int type)
+int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects)
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0, rc2;
@@ -1014,7 +1014,7 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     /* is it distributed? */
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && clnt->dbtran.dtran)
     {
-        rc = fdb_trans_commit(clnt);
+        rc = fdb_trans_commit(clnt, sideeffects);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
 

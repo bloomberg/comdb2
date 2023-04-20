@@ -345,7 +345,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
         /* close the block processor session and retrieve the result */
         sql_debug_logf(clnt, __func__, __LINE__, "committing\n");
-        rc = osql_sock_commit(clnt, osqlreq_type);
+        rc = osql_sock_commit(clnt, osqlreq_type, TRANS_CLNTCOMM_NORMAL);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
             rc != SQLITE_BUSY && rc != SQLITE_CLIENT_CHANGENODE) {
             // XXX HERE IS THE BUG .. SQLITE_ERROR IS 1 - THE SAME AS DUP
@@ -396,7 +396,7 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* temp hook for sql transactions */
     if (clnt->dbtran.dtran) {
-        rc = fdb_trans_commit(clnt);
+        rc = fdb_trans_commit(clnt, TRANS_CLNTCOMM_NORMAL);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s distributed failure rc=%d\n", __func__, rc);
             return rc;

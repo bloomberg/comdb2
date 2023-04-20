@@ -1915,7 +1915,7 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
         abort_dbtran(clnt);
 }
 
-static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
 {
     int irc = 0, rc = 0, bdberr = 0;
 
@@ -2141,7 +2141,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                     clnt->early_retry = 0;
                     rc = SQLITE_ABORT;
                 } else {
-                    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+                    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, sideeffects);
                 }
                 if (rc == SQLITE_ABORT) {
                     /* convert this to user code */
@@ -2253,7 +2253,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         goto done;
     }
 
-    rc = do_commitrollback(thd, clnt);
+    rc = do_commitrollback(thd, clnt, sideeffects);
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
