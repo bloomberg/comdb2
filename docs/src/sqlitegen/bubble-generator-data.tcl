@@ -779,8 +779,8 @@ stack
 
   table-partition {
       or
-      {TIME PERIOD /period RETENTION /retention START /partition-start-time}
-      {MANUAL RETENTION /retention {opt START /partition-start-number}}
+      {opt TIME PERIOD /period RETENTION /retention START /partition-start-time}
+      {opt MANUAL RETENTION /retention {opt START /partition-start-number}}
   }
 
   alter-table-ddl {
