@@ -597,7 +597,7 @@ int comdb2SqlSchemaChange_tran(OpFunc *f)
             return ERR_INTERNAL;
         }
     }
-    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
     if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
         osql->xerr.errval = 0;
     }

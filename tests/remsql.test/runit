@@ -93,6 +93,45 @@ SET TRANSACTION READ COMMITTED
 INSERT INTO LOCAL_${dbname}.dedup VALUES (4, 4)
 EOF
 
+#### remsql + chunk ####
+cdb2sql --cdb2cfg ${cdb2config} $dbname default - <<EOF
+DROP TABLE IF EXISTS chunky
+CREATE TABLE chunky (a INT)\$\$
+INSERT INTO chunky VALUES (0), (1), (2)
+EOF
+
+###### inserting to source from remote ######
+cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+DROP TABLE IF EXISTS chunky
+CREATE TABLE chunky (a INT)\$\$
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO chunky SELECT a FROM LOCAL_${dbname}.chunky
+COMMIT
+SELECT 'inserted 3 records from remote to source; source should have 3 records' AS hint
+SELECT COUNT(*) FROM chunky
+EOF
+
+###### inserting to remote from source ######
+cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO LOCAL_${dbname}.chunky SELECT a FROM chunky
+COMMIT
+SELECT 'inserted 3 records from source to remote; source should have 6 records' AS hint
+SELECT COUNT(*) FROM LOCAL_${dbname}.chunky
+EOF
+
+###### inserting to remote from remote ######
+cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO LOCAL_${dbname}.chunky SELECT a FROM LOCAL_${dbname}.chunky
+COMMIT
+SELECT 'inserted 6 records from remote to remote; remote should have 12 records' AS hint
+SELECT COUNT(*) FROM LOCAL_${dbname}.chunky
+EOF
+
 # validate results
 testcase_output=$(cat output.actual)
 expected_output=$(cat output.expected)

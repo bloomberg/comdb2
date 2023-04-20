@@ -5113,7 +5113,7 @@ int sqlite3BtreeCommit(Btree *pBt)
                 rc = SQLITE_ABORT;
             }
         } else {
-            rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+            rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
             osqlstate_t *osql = &thd->clnt->osql;
             if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
                 osql->xerr.errval = 0;
@@ -8596,6 +8596,10 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
     int commit_rc = SQLITE_OK;
     int newlocks_rc = SQLITE_OK;
     int bdberr = 0;
+    fdb_t *fdb = NULL;
+    fdb_tran_t *trans = NULL;
+    uuid_t tid;
+    int need_ssl = 0;
 
     uint8_t **pIdxInsert = NULL, **pIdxDelete = NULL;
 
@@ -8603,7 +8607,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         /* Latch expressional index keys. We do not want them to be
            cleaned up by the micro transaction we are about to commit. */
-        if (gbl_expressions_indexes && pCur->db->ix_expr) {
+        if (gbl_expressions_indexes && pCur->db && pCur->db->ix_expr) {
             pIdxInsert = clnt->idxInsert;
             pIdxDelete = clnt->idxDelete;
             clnt->idxInsert = clnt->idxDelete = NULL;
@@ -8632,6 +8636,17 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
         /* commit current transaction */
         ++clnt->dbtran.nchunks;
+        if (pCur->cursor_class == CURSORCLASS_REMOTE) {
+            fdb = pCur->bt->fdb;
+            need_ssl = fdb_cursor_need_ssl(pCur->fdbc);
+            rc = pCur->fdbc->close(pCur);
+            if (rc) {
+                comdb2_sqlite3VdbeError(pCur->vdbe, errstat_get_str(&clnt->osql.xerr));
+                logmsg(LOGMSG_ERROR, "Failed to close remote cursor\n");
+                commit_rc = SQLITE_ABORT;
+            }
+        }
+
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
         rc = handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
         if (rc) {
@@ -8651,7 +8666,13 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         /* restart a new transaction */
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_PRE_STRT_STATE);
+        if (pCur->cursor_class == CURSORCLASS_REMOTE) {
+            /* restart a remote transaction, and open a new remote cursor */
+            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0);
+            pCur->fdbc = fdb_cursor_open(clnt, pCur, pCur->rootpage, trans, &pCur->ixnum, need_ssl);
+        }
         rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
+
         if (rc && !commit_rc) {
             comdb2_sqlite3VdbeError(pCur->vdbe, "Failed to start a new chunk");
             rc = SQLITE_ERROR;

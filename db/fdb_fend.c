@@ -3584,6 +3584,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
         datalen, data, trans->seq, trans->isuuid, trans->sb);
 
     trans->seq++;
+    trans->nwrites++;
 
     return rc;
 }
@@ -3641,6 +3642,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
         trans->seq, trans->isuuid, trans->sb);
 
     trans->seq++;
+    trans->nwrites++;
 
     if (rc == 0) {
         rc = fdb_set_genid_deleted(trans, genid);
@@ -3719,6 +3721,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
         datalen, data, trans->seq, fdbc->isuuid, trans->sb);
 
     trans->seq++;
+    trans->nwrites++;
 
     if (rc == 0) {
         rc = fdb_set_genid_deleted(trans, genid);
@@ -3886,7 +3889,7 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
     return tran;
 }
 
-int fdb_trans_commit(struct sqlclntstate *clnt)
+int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
@@ -3917,6 +3920,16 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
+        /*
+         * We may need to read from a remote cursor again in the next chunk
+         * (for example, INSERT INTO tbl SELECT * FROM remotedb.tbl).
+         * Keep such a read transaction open. The final commit of a chunk
+         * transaction will call into here with a different `sideeffects'
+         * flag, and that will close all remote transactions.
+         */
+        if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
+            continue;
+
         rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->isuuid,
                              tran->sb);
 
@@ -3928,6 +3941,9 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
+        if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
+            continue;
+
         rc = fdb_recv_rc(msg, tran);
 
         if (gbl_fdb_track) {
@@ -3965,6 +3981,9 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     /* free the dtran */
     LISTC_FOR_EACH_SAFE(&dtran->fdb_trans, tran, tmp, lnk)
     {
+        if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
+            continue;
+
         listc_rfl(&dtran->fdb_trans, tran);
 
         if (tran->sb)
@@ -3981,8 +4000,16 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
         free(tran);
     }
-    free(clnt->dbtran.dtran);
-    clnt->dbtran.dtran = NULL;
+
+    /*
+     * Keep the remote tran repo alive for next chunk. The final commit of
+     * a chunk transaction will call into here with a different `sideeffect' flag,
+     * and that will free the remote tran repo.
+     */
+    if (sideeffects != TRANS_CLNTCOMM_CHUNK) {
+        free(clnt->dbtran.dtran);
+        clnt->dbtran.dtran = NULL;
+    }
 
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
@@ -4944,6 +4971,10 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
     cur->ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, tblname);
 }
 
+int fdb_cursor_need_ssl(fdb_cursor_if_t *cur)
+{
+    return cur->impl->need_ssl;
+}
 
 /**
  * Retrieve the schema of a remote table
