@@ -114,7 +114,7 @@ Implementing such a constrain would require that every write operation access an
 Because there are no unique key constraints across the partition, foreign constraints also can only be implemented one way: a regular table cannot depend on a partitioned table, but the other way around is valid. The UPSERT is not supported for the same reason.
 
 
-### Legacy implementation
+## Legacy implementation
 
 Release 8.0 time and manual partitioning is a redesign of previous partitioning scheme.  It eliminates most deficiencies:
 - partitioning is a feature of a table, rather than another abstraction on top of tables
@@ -124,5 +124,5 @@ Release 8.0 time and manual partitioning is a redesign of previous partitioning 
 - live reconfiguring of a partition, as opposed to limited retention only changes
 
 For obsolete partition information, see:
-[Legacy time partition] (timepart.html)
+[Legacy time partition](timepart.html)
 

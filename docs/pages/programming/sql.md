@@ -328,6 +328,10 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ![table-options](images/table-options.gif)
 
+#### table-partition
+
+![table-partition](images/table-partition.gif)
+
 The ```CREATE TABLE``` statement creates a new table. If the table already
 exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
 is present.
