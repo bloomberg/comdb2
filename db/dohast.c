@@ -30,6 +30,9 @@ static void _save_params(Parse *pParse, dohsql_node_t *node);
 static char *_gen_col_expr(Vdbe *v, Expr *expr, char **tblname,
                            struct params_info **pParamsOut);
 
+static dohsql_node_t *gen_select(Vdbe *v, Select *p);
+
+
 static char *generate_columns(Vdbe *v, ExprList *c, char **tbl,
                               struct params_info **pParamsOut)
 {
@@ -260,11 +263,26 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         } else {
             tmp = sqlite3_mprintf("");
         }
-        if (p->pSrc->a[i].zDatabase)
-            tbl = sqlite3_mprintf("%s\"%w\".\"%w\"", tmp,
-                                  p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName);
-        else
-            tbl = sqlite3_mprintf("%s\"%w\"", tmp, p->pSrc->a[i].zName);
+        /* is it a subquery? */
+        if (p->pSrc->a[i].zName) {
+            if (p->pSrc->a[i].zDatabase)
+                tbl = sqlite3_mprintf("%s\"%w\".\"%w\"", tmp,
+                        p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName);
+            else
+                tbl = sqlite3_mprintf("%s\"%w\"", tmp, p->pSrc->a[i].zName);
+        } else {
+            /* subquery */
+            dohsql_node_t *subnode = gen_select(v, p->pSrc->a[i].pSelect);
+            /* failed to parse, or not standalone select */
+            if (!subnode || subnode->type != AST_TYPE_SELECT || !subnode->sql) {
+                sqlite3_free(tmp);
+                sqlite3_free(orderby);
+                sqlite3_free(where);
+                return NULL;
+            }
+            tbl = sqlite3_mprintf("%s(%s)", tmp, subnode->sql);
+            node_free(&subnode, v->db);
+        }
         sqlite3_free(tmp);
 
         /**
@@ -670,6 +688,9 @@ static dohsql_node_t *gen_select(Vdbe *v, Select *p)
     int span = 0;
     dohsql_node_t *ret = NULL;
     int not_recognized = 0;
+
+    if (!p)
+        return NULL;
 
     /* mark everything done, either way or another */
     crt = p;
