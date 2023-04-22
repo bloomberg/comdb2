@@ -98,15 +98,16 @@ function interactive-init {
             fi
         fi
     fi
+    defsource="artifactory.inf.bloomberg.com/ubuntu18:latest"
     mkdir -p ${dir}
     local v
     printf "Machine name prefix [m]: "
     read v
     [[ -z "$v" ]] && v=m
     put mach-prefix $v
-    printf "Cluster size [4]: "
+    printf "Cluster size [1]: "
     read v
-    [[ -z "$v" ]] && v=4
+    [[ -z "$v" ]] && v=1
     put clusternum $v
     v=""
     local defdb=$(whoami)db
@@ -123,6 +124,7 @@ function interactive-init {
         defsrc=$HOME/comdb2/src
     fi
     defsrc=/home/nchoubey/repo/comdb2-physrep-sp
+    defsrc=/home/nchoubey/repo/comdb2-physrep-prod-to-dev
     while [[ -z "$v" ]]; do
         printf "Comdb2 source root [$defsrc]: "
         read v
@@ -168,9 +170,9 @@ function interactive-init {
     [[ -z "$v" ]] && v=r
     put repl-mach-prefix $v
 
-    printf "Number of physical replicants? [0]: "
+    printf "Number of physical replicants? [2]: "
     read v
-    [[ -z "$v" ]] && v=0
+    [[ -z "$v" ]] && v=2
     put add-repl-count $v     # Total number of physical replicants to add
     put current-repl-count 0  # Current number of physical replicants
 
@@ -179,10 +181,32 @@ function interactive-init {
     [[ -z "$v" ]] && v=c
     put repl-cluster-mach-prefix $v
 
-    printf "Number of nodes in physical replication cluster? [4]: "
+    printf "Number of nodes in physical replication cluster? [2]: "
     read v
-    [[ -z "$v" ]] && v=4
+    [[ -z "$v" ]] && v=2
     put phys-repl-cluster-size $v
+
+    printf "Replicate via metadata cluster? [1]: "
+    read v
+    if [[ -z "$v" || "$v" = "y" || $v = "1" ]]; then
+        v=1
+    else
+        v=0
+    fi
+    put repl-via-metadb $v
+    put repl-metadata-cluster-mach-prefix z
+    put repl-metadata-cluster-size 0
+    if [[ "$v" = "1" ]]; then
+	printf "Replication metadata cluster machine name prefix [z]: "
+	read v
+	[[ -z "$v" ]] && v=z
+	put repl-metadata-cluster-mach-prefix $v
+
+	printf "Number of nodes in replication metadata cluster? [2]: "
+	read v
+	[[ -z "$v" ]] && v=2
+	put repl-metadata-cluster-size $v
+    fi
 
     docker network ls | grep -qw "comdb2"
     [[ $? -ne 0 ]] && docker network create comdb2
@@ -202,6 +226,7 @@ function build {
     local machprefix=$(get mach-prefix)
     local replmachprefix=$(get repl-mach-prefix)
     local replclustermachprefix=$(get repl-cluster-mach-prefix)
+    local replmetadataclustermachprefix=$(get repl-metadata-cluster-mach-prefix)
 
     pushd $DIR
     cat >> Dockerfile <<- EOF
@@ -211,6 +236,7 @@ function build {
         $(cat ${dir}/proxy.conf)
         RUN apt-get update
         RUN apt-get install -y                                                 \
+            apport                                                             \
             bc                                                                 \
             cmake                                                              \
             figlet                                                             \
@@ -232,6 +258,7 @@ function build {
             openssh-client                                                     \
             openssh-server                                                     \
             openssl                                                            \
+            pstack                                                             \
             psmisc                                                             \
             sqlite3                                                            \
             strace                                                             \
@@ -266,6 +293,8 @@ EOF
         HOST ${replmachprefix}*
             StrictHostKeyChecking no
         HOST ${replclustermachprefix}*
+            StrictHostKeyChecking no
+        HOST ${replmetadataclustermachprefix}*
             StrictHostKeyChecking no
 EOF
 cat >> Dockerfile <<- EOF
@@ -305,6 +334,13 @@ EOF
 }
 
 function start-cluster-jobs {
+    # NC: Host must be modified to enable coredumps on crash
+    # echo "/tmp/core.%e.%p" | sudo tee /proc/sys/kernel/core_pattern
+    for ((i=0;i<=$n;++i)); do
+        name=$(container-name $i)
+        docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+    done
+
     if [[ $(get auto-pmux) = 1 ]]; then
         echo "starting pmux"
         for ((i=0;i<=$n;++i)); do
@@ -319,6 +355,38 @@ function start-cluster-jobs {
             name=$(container-name $i)
             db=$(get defaultdb)
             docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $db > ${dir}/persist/logs/${name}.${db} 2>&1 &
+        done
+    fi
+
+    # Wait for cluster node to start
+    success=0
+    for i in `seq 1 10`; do
+        res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
+	if [[ -n ${res} ]]; then
+            success=1
+	    break
+	fi
+	echo "$i: cluster not ready, waiting.."
+	sleep 2
+    done
+
+    if [[ $success -eq 0 ]]; then
+        echo "FATAL: cluster not up"
+	exit 1
+    fi
+
+    setup-physrep-tables
+
+    if [[ $(get repl-via-metadb) = 1 ]]; then
+        echo "Replicating via replication metadata db"
+    else
+        for ((i=0;i<=$n;++i)); do
+            name=$(container-name $i)
+            echo "Starting replication on ${name}"
+            res=$(docker exec --user $(id -u) ${name} /opt/bb/bin/cdb2sql $db @${name} "exec procedue sys.cmd.start_replication()" 2> /dev/null)
+            if [[ ${res} -ne 0 ]]; then
+                echo "Failed to start replication on ${name} (rc: $res)"
+            fi
         done
     fi
 }
@@ -338,7 +406,7 @@ function run {
         else
             dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
         fi
-        docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
             -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
             --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
     done
@@ -349,13 +417,41 @@ function run {
         docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
     done
 
+    if [[ $(get repl-via-metadb) = 1 ]]; then
+        container_name=$(repl-metadata-cluster-container-name 0)
+        db=$(get defaultdb)$container_name
+
+        for ((i=0;i<=$n;++i)); do
+            name=$(container-name $i)
+            cluster_cmd='echo export REPLMETADB=\"'"${db} ${container_name}"'\" >> ${HOME}/.bash_profile'
+        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+        done
+    fi
+
     if [[ $(get auto-db) = 1 ]]; then
         echo "setting up databases"
         $0 setup
     fi
+
+    echo "Start replicaction metadata cluster?"
+    read v
+    start-physical-replication-metadata-cluster
+    echo "===== Replication metadata cluster started ===="
+
+    echo "Start source cluster?"
+    read v
     start-cluster-jobs
+    echo "===== Source cluster started ===="
+
+    echo "Starting replicants?"
+    read v
     start-physical-replicants
+    echo "===== Replicants started ===="
+
+    echo "Start replication cluster?"
+    read v
     start-physical-replication-cluster
+    echo "===== Replication cluster started ===="
 }
 
 function do_docker {
@@ -373,6 +469,11 @@ function do_docker {
 	n=$(get phys-repl-cluster-size)
 	for ((i=0;i<${n};++i)); do
 		names+=($(repl-cluster-container-name $i))
+	done
+
+	n=$(get repl-metadata-cluster-size)
+	for ((i=0;i<${n};++i)); do
+		names+=($(repl-metadata-cluster-container-name $i))
 	done
 
 	docker $1 ${names[@]}
@@ -458,11 +559,18 @@ function copy {
 	lrl="$dir/$1.lrl"
 	cfg="/opt/bb/etc/cdb2/config.d/$1.cfg"
 	echo "cluster nodes $CLUSTER" >> $lrl
+
+        if [[ -n ${REPLMETADB} ]]; then
+	    echo "physrep_metadb ${REPLMETADB}" >> $lrl
+        fi
+
 	for c in $CLUSTER; do
-            echo -n "$c "
-            ssh $c rm -rf $dir
-            scp $cfg $c: > /dev/null
-            copycomdb2 $lrl $c: &
+            if [[ $c != $(hostname) ]]; then
+                echo -n "$c "
+                ssh $c rm -rf $dir
+                scp $cfg $c: > /dev/null
+                copycomdb2 $lrl $c: &
+	    fi
         done
         wait
         echo ""
@@ -598,18 +706,37 @@ function copy-to-physical-replicant {
     ssh $2 rm -rf $dstdir
     scp $srccfg $2:$dstcfg > /dev/null
     # TODO: Pass a list of all the machines in the cluster
-    copycomdb2 -H $1$2 -y @$(hostname) $lrl $2:$dstdir $2:$dstdir
+    #copycomdb2 -H $3 -y @$(hostname) $lrl $2:$dstdir $2:$dstdir
+    copycomdb2 -H $3 -y m0 $lrl $2:$dstdir $2:$dstdir
 }
 
 function start-physical-replicants {
     add-replicant $(get add-repl-count)
 }
 
+function setup-physrep-tables {
+    local container_name=$(container-name 0)
+    local db=$(get defaultdb)
+
+    if [[ $(get repl-via-metadb) = 1 ]]; then
+        container_name=$(repl-metadata-cluster-container-name 0)
+        db=$db$container_name
+    fi
+
+    res=$(docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "select * from comdb2_tables where tablename = 'comdb2_physreps'" 2> /dev/null)
+    if [[ -z ${res} ]]; then
+        docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create table comdb2_physreps(dbname cstring(20), host cstring(100), file int, offset int, last_keepalive datetime, state cstring(10), unique key (dbname, host))"
+        docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physreps(dbname, host)"
+        docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create table comdb2_physrep_connections(dbname cstring(20), host cstring(100), source_dbname cstring(20), source_host cstring(100), unique key (dbname, host, source_dbname, source_host), foreign key(dbname, host) references comdb2_physreps(dbname, host) on delete cascade on update cascade)"
+        #docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physrep_connections(dbname, host, source_dbname, source_host)"
+    fi
+}
+
 function add-replicant {
     local db=$(get defaultdb)
     local n=$1
 
-    [[ -z $n ]] && n=$(get phys-repl-cluster-size)
+    [[ -z $n ]] && n=$(get add-repl-count)
     [[ $n -lt 0 ]] && n=$(get add-repl-count)
     [[ $n -lt 0 ]] && usage
     put add-repl-count $n
@@ -630,37 +757,14 @@ function add-replicant {
             dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
         fi
 
-        docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
             -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
             --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
         wait_pids+=($!)
     done
     wait ${wait_pids[@]}
 
-    # Wait for cluster node to start
-    success=0
-    for i in `seq 1 10`; do
-        res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
-	if [[ -n ${res} ]]; then
-            success=1
-	    break
-	fi
-	echo "$i: cluster not ready, waiting.."
-	sleep 2
-    done
-
-    if [[ $success -eq 0 ]]; then
-        echo "FATAL: cluster not up"
-	exit 1
-    fi
-
-    res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select * from comdb2_tables where tablename = 'comdb2_physreps'" 2> /dev/null)
-    if [[ -z ${res} ]]; then
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create table comdb2_physreps(dbname cstring(20), host cstring(100), tier int, lsn cstring(60), last_keepalive datetime, state cstring(10))"
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physreps(dbname, host, tier)"
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create table comdb2_physrep_connections(dbname cstring(20), host cstring(100), tier int, source_dbname cstring(20), source_host cstring(100), source_tier int)"
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physrep_connections(dbname, host, tier, source_dbname, source_host, source_tier)"
-    fi
+    setup-physrep-tables
 
     # Copy data from m0 to physical replicant containers
     for ((i=0;i<$n;++i)); do
@@ -671,6 +775,7 @@ function add-replicant {
         docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster copy-to-physical-replicant $db $name $dst_dbname
 	rc=$?
 	if [[ $rc -eq 0 ]]; then
+            docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
 
             docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
             sleep 1
@@ -710,21 +815,21 @@ function add-repl-cluster {
 
     [[ $n -eq 0 ]] && return 0
 
-    echo "setting up a $n-node physical replicantion cluster"
+    echo "setting up a $n-node physical replication cluster"
 
     # Start physical replication cluster node containers
     declare -a names
     declare -a wait_pids
     for ((i=0;i<$n;++i)); do
         name=$(repl-cluster-container-name $i)
-        [[ $i -gt 0 ]] && names+=(${name})
+        names+=(${name})
         local dbfs=""
         if [[ $persist -eq 1 ]]; then 
             dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
         else
             dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
         fi
-        docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
             -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
             --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
         wait_pids+=($!)
@@ -738,33 +843,42 @@ function add-repl-cluster {
         docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
     done
 
-    # Wait for cluster node to start
+    # Wait for source cluster nodes to start
     success=0
     for i in `seq 1 10`; do
         res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
 	if [[ -n ${res} ]]; then
             success=1
-	    break
-	fi
-	echo "$i: cluster not ready, waiting.."
-	sleep 2
+            break
+        fi
+        echo "$i: cluster not ready, waiting.."
+        sleep 2
     done
 
     if [[ $success -eq 0 ]]; then
         echo "FATAL: cluster not up"
-	exit 1
+        exit 1
     fi
 
-    res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select * from comdb2_tables where tablename = 'comdb2_physreps'" 2> /dev/null)
-    if [[ -z ${res} ]]; then
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create table comdb2_physreps(dbname cstring(20), host cstring(100), tier int, lsn cstring(60), last_keepalive datetime, state cstring(10))"
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physreps(dbname, host, tier)"
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create table comdb2_physrep_connections(dbname cstring(20), host cstring(100), tier int, source_dbname cstring(20), source_host cstring(100), source_tier int)"
-        docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physrep_connections(dbname, host, tier, source_dbname, source_host, source_tier)"
-    fi
+    setup-physrep-tables
 
     # Copy data from m0 to physical replication cluster node containers
     cluster_dbname=$db$(repl-cluster-container-name 0)
+
+    # First make a copy on the first node
+    docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster copy-to-physical-replicant $db $(repl-cluster-container-name 0) $cluster_dbname
+    rc=$?
+    if [[ $rc -eq 0 ]]; then
+        echo "copycomdb2 succeeded"
+    else
+        echo "FATAL: copycomdb2 failed (rc: $rc, src: $(container-name 0), dst: $name)"
+        exit 1
+    fi
+
+    # Now copy it to rest of the nodes
+    docker exec --user $(id -u) $(repl-cluster-container-name 0) ${HOME}/cluster copy $cluster_dbname
+
+
     for ((i=0;i<$n;++i)); do
         name=$(repl-cluster-container-name $i)
         echo -n "$name "
@@ -797,12 +911,103 @@ function add-repl-cluster {
         sleep 1
     fi
     if [[ $(get auto-db) = 1 ]]; then
-        echo "starting db"
         for ((i=0;i<$n;++i)); do
             name=$(repl-cluster-container-name $i)
+            docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+            echo "starting ${cluster_dbname} on ${name}"
             docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $cluster_dbname > ${dir}/persist/logs/${name}.${cluster_dbname} 2>&1 &
         done
     fi
+}
+
+function repl-metadata-cluster-container-name {
+    local prefix
+    prefix=$(get repl-metadata-cluster-mach-prefix)
+    echo "${prefix}$1"
+}
+
+function start-physical-replication-metadata-cluster {
+    add-repl-metadata-cluster $(get repl-metadata-cluster-size)
+}
+
+function add-repl-metadata-cluster {
+    local db=$(get defaultdb)
+    local n=$1
+
+    [[ -z $n ]] && n=$(get repl-metadata-cluster-size)
+    [[ $n -lt 0 ]] && n=$(get repl-metadata-cluster-size)
+    [[ $n -lt 0 ]] && usage
+    put repl-metadata-cluster-size $n
+
+    [[ $n -eq 0 ]] && return 0
+
+    echo "setting up a $n-node replication metadata cluster"
+
+    # Start replication metadata cluster node containers
+    declare -a names
+    declare -a wait_pids
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-metadata-cluster-container-name $i)
+        names+=(${name})
+        local dbfs=""
+        if [[ $persist -eq 1 ]]; then 
+            dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
+        else
+            dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
+        fi
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
+            -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+            --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+        wait_pids+=($!)
+    done
+    wait ${wait_pids[@]}
+
+    # Set CLUSTER environment variable in the containers
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-metadata-cluster-container-name $i)
+        cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
+        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+    done
+
+    cluster_dbname=$db$(repl-metadata-cluster-container-name 0)
+    docker exec --user $(id -u) $(repl-metadata-cluster-container-name 0) ${HOME}/cluster setup $cluster_dbname
+
+    # Start the nodes
+    if [[ $(get auto-pmux) = 1 ]]; then
+        echo "starting pmux"
+        for ((i=0;i<$n;++i)); do
+            name=$(repl-metadata-cluster-container-name $i)
+            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+        done
+        sleep 1
+    fi
+    if [[ $(get auto-db) = 1 ]]; then
+        for ((i=0;i<$n;++i)); do
+            name=$(repl-metadata-cluster-container-name $i)
+            docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+            echo "starting ${cluster_dbname} on ${name}"
+            docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $cluster_dbname > ${dir}/persist/logs/${name}.${cluster_dbname} 2>&1 &
+        done
+    fi
+
+    # Wait for cluster node to start
+    success=0
+    for i in `seq 1 10`; do
+        res=$(docker exec --user $(id -u) $(repl-metadata-cluster-container-name 0) /opt/bb/bin/cdb2sql ${cluster_dbname} local "select 1" 2> /dev/null)
+	if [[ -n ${res} ]]; then
+            success=1
+	    break
+	fi
+	echo "$i: cluster not ready, waiting.."
+	sleep 2
+    done
+
+    if [[ $success -eq 0 ]]; then
+        echo "FATAL: cluster not up"
+	exit 1
+    fi
+
+    setup-physrep-tables
 }
 
 function usage {
