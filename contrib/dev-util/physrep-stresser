@@ -1,0 +1,37 @@
+#!/bin/bash
+
+DBNAME=$1
+HOST=$2
+TAB1=t1
+TAB2=t2
+
+DOCKER_EXE="docker exec ${HOST} /opt/bb/bin/cdb2sql ${DBNAME} local"
+
+${DOCKER_EXE} "CREATE TABLE ${TAB1} (i INT)"
+${DOCKER_EXE} "CREATE TABLE ${TAB2} (i INT, d DATETIME)"
+
+#${DOCKER_EXE} "CREATE TABLE tt(i INT)"
+#start_time=`date +%s`
+#${DOCKER_EXE} "CREATE TIME PARTITION ON tt AS ${TAB1} PERIOD 'test2min' RETENTION 1 START '${start_time}'"
+
+for i in `seq 1 10000`; do
+    ${DOCKER_EXE} "INSERT INTO ${TAB2} VALUES($i, NOW())" &
+    ${DOCKER_EXE} "DELETE FROM ${TAB1}"
+
+    for i in `seq 1 10`; do
+        ${DOCKER_EXE} "INSERT INTO ${TAB1} SELECT 1 FROM GENERATE_SERIES(1, 100)" &
+    done
+    wait
+
+    ${DOCKER_EXE} "ALTER TABLE ${TAB1} ADD COLUMN j INT"
+    for i in `seq 1 10`; do
+        ${DOCKER_EXE} "INSERT INTO ${TAB1} SELECT 1,1 FROM GENERATE_SERIES(1, 100)" &
+    done
+    wait
+
+    ${DOCKER_EXE} "ALTER TABLE ${TAB1} DROP COLUMN j"
+    for i in `seq 1 10`; do
+        ${DOCKER_EXE} "INSERT INTO ${TAB1} SELECT 1 FROM GENERATE_SERIES(1, 100)" &
+    done
+    wait
+done
