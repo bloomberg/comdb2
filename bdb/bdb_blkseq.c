@@ -18,6 +18,7 @@
 #include "bdb_int.h"
 
 #include <build/db_int.h>
+#include "dbinc_auto/txn_auto.h"
 #include "llog_auto.h"
 #include "llog_ext.h"
 #include "printformats.h"
@@ -669,63 +670,72 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
     last_log_filenum = lsn.file;
     while (rc == 0) {
         u_int32_t rectype;
-        if (logdta.size > sizeof(u_int32_t)) {
+        if (logdta.size > (sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN))) {
             LOGCOPY_32(&rectype, logdta.data);
             normalize_rectype(&rectype);
-            if (rectype == DB_llog_blkseq) {
-                rc = llog_blkseq_read(bdb_state->dbenv, logdta.data, &blkseq);
-                if (rc) {
-                    logmsg(LOGMSG_ERROR, "at " PR_LSN " llog_blkseq_read rc %d\n",
-                            PARM_LSN(lsn), rc);
-                    goto err;
-                }
-                int *k;
-                k = (int *)blkseq->key.data;
-                if ((now - blkseq->time) >
-                    bdb_state->attr->private_blkseq_maxage) {
-                    logmsg(LOGMSG_INFO,
-                           "Stopping at " PR_LSN ", blkseq age %" PRId64
-                           " > max %d\n",
-                           PARM_LSN(lsn), now - blkseq->time,
-                           bdb_state->attr->private_blkseq_maxage);
-                    break;
-                }
 
-                /* TODO: these should always run back in time, so the if may be
-                 * unnecessary? Right? */
-                if (blkseq->time < oldest_blkseq)
-                    oldest_blkseq = blkseq->time;
+            /* blkseq-record is previous */
+            if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen || rectype == DB___txn_regop_rowlocks) {
+                /* Skip past rectype & txnid */
+                char *bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                DB_LSN bslsn = {0};
+                LOGCOPY_FROMLSN(bp, &bslsn);
+                rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+                if (rc == 0) {
+                    LOGCOPY_32(&rectype, logdta.data);
+                    if (rectype == DB_llog_blkseq) {
+                        rc = llog_blkseq_read(bdb_state->dbenv, logdta.data, &blkseq);
+                        if (rc) {
+                            logmsg(LOGMSG_ERROR, "at " PR_LSN " llog_blkseq_read rc %d\n", PARM_LSN(bslsn), rc);
+                            goto err;
+                        }
+                        int *k;
+                        k = (int *)blkseq->key.data;
+                        if ((now - blkseq->time) > bdb_state->attr->private_blkseq_maxage) {
+                            logmsg(LOGMSG_INFO, "Stopping at " PR_LSN ", blkseq age %" PRId64 " > max %d\n",
+                                   PARM_LSN(bslsn), now - blkseq->time, bdb_state->attr->private_blkseq_maxage);
+                            break;
+                        }
 
-                if (lsn.file != last_log_filenum && oldest_blkseq != INT_MAX) {
-                    /* if we just switched a file, remember the oldest blkseq we
-                     * saw in the current file */
-                    for (int i = 0; i < bdb_state->pvt_blkseq_stripes; i++) {
-                        logseq = malloc(sizeof(struct seen_blkseq));
-                        logseq->logfile = lsn.file;
-                        logseq->timestamp = oldest_blkseq;
+                        /* TODO: these should always run back in time, so the if may be
+                         * unnecessary? Right? */
+                        if (blkseq->time < oldest_blkseq)
+                            oldest_blkseq = blkseq->time;
 
-                        /* we are running backwards here, so add to the start of
-                         * the list */
-                        listc_atl(&bdb_state->blkseq_log_list[i], logseq);
+                        if (bslsn.file != last_log_filenum && oldest_blkseq != INT_MAX) {
+                            /* if we just switched a file, remember the oldest blkseq we
+                             * saw in the current file */
+                            for (int i = 0; i < bdb_state->pvt_blkseq_stripes; i++) {
+                                logseq = malloc(sizeof(struct seen_blkseq));
+                                logseq->logfile = bslsn.file;
+                                logseq->timestamp = oldest_blkseq;
+
+                                /* we are running backwards here, so add to the start of
+                                 * the list */
+                                listc_atl(&bdb_state->blkseq_log_list[i], logseq);
+                            }
+
+                            oldest_blkseq = INT_MAX;
+                            last_log_filenum = bslsn.file;
+                        }
+
+                        rc = bdb_blkseq_insert(bdb_state, NULL, blkseq->key.data, blkseq->key.size, blkseq->data.data,
+                                               blkseq->data.size, NULL, NULL);
+                        if (rc == IX_DUP)
+                            ndupes++;
+                        else if (rc) {
+                            logmsg(LOGMSG_ERROR, "at " PR_LSN " bdb_blkseq_insert %x %x %x rc %d\n", PARM_LSN(bslsn),
+                                   k[0], k[1], k[2], rc);
+                            goto err;
+                        } else
+                            nblkseq++;
+                        free(blkseq);
+                        blkseq = NULL;
                     }
 
-                    oldest_blkseq = INT_MAX;
-                    last_log_filenum = lsn.file;
                 }
-
-                rc = bdb_blkseq_insert(bdb_state, NULL, blkseq->key.data,
-                                       blkseq->key.size, blkseq->data.data,
-                                       blkseq->data.size, NULL, NULL);
-                if (rc == IX_DUP)
-                    ndupes++;
-                else if (rc) {
-                    logmsg(LOGMSG_ERROR, "at " PR_LSN " bdb_blkseq_insert %x %x %x rc %d\n",
-                           PARM_LSN(lsn), k[0], k[1], k[2], rc);
-                    goto err;
-                } else
-                    nblkseq++;
-                free(blkseq);
-                blkseq = NULL;
+                /* Reset to commit record */
+                rc = logc->get(logc, &lsn, &logdta, DB_SET);
             }
         }
 

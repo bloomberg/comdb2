@@ -102,6 +102,7 @@ extern int gbl_print_blockp_stats;
 extern int gbl_dump_blkseq;
 extern __thread int send_prefault_udp;
 extern unsigned int gbl_delayed_skip;
+int gbl_debug_blkseq_race = 0;
 
 extern void delay_if_sc_resuming(struct ireq *iq);
 extern void clear_pfk(struct dbenv *dbenv, int i, int numops);
@@ -5417,6 +5418,10 @@ add_blkseq:
                                        &replay_data, &replay_len);
                 if (debug_switch_test_ddl_backout_blkseq())
                     rc = -1;
+                if (!rc && gbl_debug_blkseq_race && !(rand() % 5)) {
+                    logmsg(LOGMSG_INFO, "Sleep 10 to debug blkseq\n");
+                    sleep(10);
+                }
             }
 
             if (rc == 0 && have_blkseq) {
