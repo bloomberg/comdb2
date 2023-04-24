@@ -1,5 +1,6 @@
 find_package(Readline REQUIRED)
-find_package(SQLite3 REQUIRED)
+find_package(SQLite REQUIRED)
+
 include_directories(
   ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc
