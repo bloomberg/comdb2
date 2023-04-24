@@ -16,6 +16,7 @@
 
 #include "bdb_api.h"
 #include "bdb_int.h"
+#include "locks.h"
 
 #include <build/db_int.h>
 #include "llog_auto.h"
@@ -350,6 +351,10 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
 
     if (!bdb_state->attr->private_blkseq_enabled)
         return 0;
+
+    if (tran != NULL && (rc = bdb_lock_blkseq_write(bdb_state, key, klen, tran)) != 0) {
+        return rc;
+    }
 
     ddata.flags = DB_DBT_REALLOC;
 

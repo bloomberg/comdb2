@@ -22,6 +22,7 @@
    minmax lock:      31  bytes  :  fileid(20) + fluff(10) + min0/max1(1)
    stripe lock:      20  bytes  :  fileid(20)
    table lock:       32  bytes  :  shorttablename(28) + crc32(4)
+   blkseq lock:      60  bytes  :  blkseqkey(56) + crc32(4)
 
    additionally berkeley already uses the following locks:
 
@@ -341,6 +342,21 @@ void form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
     dbt_out->size = TABLELOCK_KEY_SIZE;
 }
 
+static void form_blkseqlock_keyname(const uint8_t *blkseq, int blkseq_len, uint8_t *blkseqkeybuf,
+        DBT *dbt_out)
+{
+    bzero(blkseqkeybuf, BLKSEQLOCK_KEY_SIZE);
+    bzero(dbt_out, sizeof(DBT));
+
+    memcpy(blkseqkeybuf, blkseq, MIN(blkseq_len, BLKSEQ_KEY_LEN));
+    if (blkseq_len > BLKSEQ_KEY_LEN) {
+        u_int32_t cksum = crc32c((uint8_t *)blkseq, blkseq_len);
+        memcpy(blkseqkeybuf + BLKSEQLOCK_KEY_SIZE, &cksum, sizeof(u_int32_t));
+    }
+    dbt_out->data = blkseqkeybuf;
+    dbt_out->size = BLKSEQLOCK_KEY_SIZE;
+}
+
 /* FNV-1a */
 static inline unsigned long long hash_key(DBT *key)
 {
@@ -477,6 +493,53 @@ static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     return rc;
+}
+
+/* first 56 bytes of blkseq-key + optional crc32c(4) for longer keys = 60 byte names */
+static int bdb_lock_blkseq_int(DB_ENV *dbenv, const uint8_t *blkseq, int blkseq_len,
+                              int lid, int how)
+{
+    DB_LOCK dblk;
+    DBT lk;
+    int rc, lockmode;
+    uint8_t name[BLKSEQLOCK_KEY_SIZE];
+
+    form_blkseqlock_keyname(blkseq, blkseq_len, name, &lk);
+
+    if (how == BDB_LOCK_READ)
+        lockmode = DB_LOCK_READ;
+    else if (how == BDB_LOCK_WRITE)
+        lockmode = DB_LOCK_WRITE;
+    else {
+        logmsg(LOGMSG_ERROR, "%s unknown lock mode %d requested\n", __func__,
+               how);
+        return BDBERR_BADARGS;
+    }
+
+    rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
+
+#ifdef DEBUG_LOCKS
+    fprintf(stderr, "%p:%s: mode %d, name %s, lid=%x\n", (void *)pthread_self(),
+            __func__, how, name, lid);
+#endif
+
+    return rc;
+}
+
+int bdb_lock_blkseq_read(bdb_state_type *bdb_state, const uint8_t *blkseq,
+    int blkseq_len, tran_type *tran)
+{
+    assert(tran->parent == NULL);
+    return bdb_lock_blkseq_int(bdb_state->dbenv, blkseq, blkseq_len,
+        resolve_locker_id(tran), BDB_LOCK_READ);
+}
+
+int bdb_lock_blkseq_write(bdb_state_type *bdb_state, const uint8_t *blkseq,
+    int blkseq_len, tran_type *tran)
+{
+    assert(tran->parent == NULL);
+    return bdb_lock_blkseq_int(bdb_state->dbenv, blkseq, blkseq_len,
+        resolve_locker_id(tran), BDB_LOCK_WRITE);
 }
 
 /* first 28 bytes of table tablename(28) + optional crc32c(4) = 32 byte names */

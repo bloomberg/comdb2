@@ -638,7 +638,7 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 	char minmax = 0;
 	char *hexdump = NULL;
 	char *namep = NULL;
-	char rectype[80]={0};
+	char rectype[132]={0};
 	unsigned long long genid;
 	char fileid[DB_FILE_ID_LEN];
 	char tablename[64] = {0};
@@ -711,6 +711,15 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 			snprintf(rectype, sizeof(rectype), "STRIPELOCK");
 			break;
 
+        case (60):
+        {
+            int len = snprintf(rectype, sizeof(rectype), "BLKSEQLOCK ");
+            /* Increased rectype to 11 + (60 * 2) + 1 */
+            assert(len == 11);
+            util_tohex(&rectype[len], (const char *)ptr, 60);
+            namep = NULL;
+            break;
+        }
 		/* LSN LOCK .. REALLY?? */
 		case (8):
 			memcpy(&lsn, ptr, sizeof(DB_LSN));

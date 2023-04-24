@@ -5415,6 +5415,7 @@ add_blkseq:
                                        bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int),
                                        &replay_data, &replay_len);
+                rc = (rc == BDBERR_DEADLOCK ? RC_INTERNAL_RETRY : rc);
                 if (debug_switch_test_ddl_backout_blkseq())
                     rc = -1;
             }

@@ -5827,6 +5827,14 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 						else
 							logmsg(LOGMSG_USER, "\n");
 						break;
+					case(60):
+						if (fp)
+							fprintf(fp, "\t\tBLKSEQLOCK: ");
+						else
+							logmsg(LOGMSG_USER, "\t\tBLKSEQLOCK: ");
+						hexdumpfp(fp, obj_dbt.data, obj_dbt.size);
+						break;
+
 					default:
 						if (fp)
 							fprintf(fp, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
@@ -6022,7 +6030,14 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 							else
 								logmsg(LOGMSG_USER, "\n");
 							break;
-
+						case(60):
+							if (fp)
+								fprintf(fp, "\t\tBLKSEQLOCK: ");
+							else
+								logmsg(LOGMSG_USER, "\t\tBLKSEQLOCK: ");
+							hexdumpfp(fp, obj_dbt.data, obj_dbt.size);
+							break;
+	
 						default:
 							if (fp)
 								fprintf(fp, "\t\tUNKNOWN-SIZE-%d: ", obj_dbt.size);
