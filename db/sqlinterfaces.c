@@ -2820,7 +2820,13 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if((gbl_uses_externalauth || gbl_uses_externalauth_connect) && !clnt->admin &&
         externalComdb2AuthenticateUserMakeRequest && !clnt->current_user.bypass_auth) {
           clnt->authdata = get_authdata(clnt);
-          int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, clnt->argv0);
+          char client_info[1024];
+          snprintf(client_info, sizeof(client_info),
+                   "%s:origin:%s:pid:%d",
+                   clnt->argv0 ? clnt->argv0 : "?",
+                   clnt->origin ? clnt->origin: "?",
+                   clnt->conninfo.pid);
+          int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, client_info);
           if (rc) {
               write_response(clnt, RESPONSE_ERROR,
                              "User isn't allowed to make request on this db",
