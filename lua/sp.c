@@ -4830,8 +4830,10 @@ void force_unregister(Lua L, trigger_reg_t *reg)
 static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
                    struct dbtable **pDb, int *got_lock, char **err)
 {
+    if (tryrdlock_schema_lk() != 0) {
+        return luaL_error(L, sqlite3ErrStr(SQLITE_SCHEMA));
+    }
     Q4SP(qname, spname);
-    rdlock_schema_lk();
     struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         *pDb = NULL;
@@ -4851,8 +4853,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
             *err = strdup("grab_qdb_table_read_lock failed");
             return rc;
         } else {
-            return luaL_error(L, "cannot read-lock queue for sp:%s (%d)",
-                              spname, rc);
+            return luaL_error(L, "cannot read-lock queue for sp:%s (%d)", spname, rc);
         }
     }
     *pDb = db;
