@@ -907,34 +907,6 @@ dbtable *get_dbtable_by_name(const char *p_name)
     return p_db;
 }
 
-dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
-{
-    dbtable *p_db = NULL;
-    int rc = 0;
-
-    if (!tran)
-        return get_dbtable_by_name(p_name);
-
-    Pthread_rwlock_rdlock(&thedb_lock);
-    p_db = _db_hash_find(p_name);
-    if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
-        p_db = &thedb->static_table;
-    if (!p_db) {
-        rc = bdb_lock_tablename_read(thedb->bdb_env, p_db->tablename, tran);
-    } else {
-        rc = bdb_lock_tablename_write(thedb->bdb_env, p_db->tablename, tran);
-    }
-    Pthread_rwlock_unlock(&thedb_lock);
-
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s Failed to lock table by name rc=%d!\n",
-               __func__, rc);
-        return NULL;
-    }
-
-    return p_db;
-}
-
 dbtable *getqueuebyname(const char *name)
 {
     return hash_find_readonly(thedb->qdb_hash, &name);

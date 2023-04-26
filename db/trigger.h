@@ -57,7 +57,6 @@ typedef struct trigger_reg {
     int node;
     int elect_cookie;
     genid_t trigger_cookie;
-    char qdb_locked;
     int spname_len;
     char spname[0]; // spname_len + 1
     // hostname[]
@@ -82,19 +81,6 @@ void trigger_reg_to_cpu(trigger_reg_t *);
 
 #define trigger_reg_sz(sp_name)                                                \
     sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_myhostname) + 1
-
-#define trigger_reg_init(dest, sp_name, have_lock)                             \
-    do {                                                                       \
-        dest = alloca(trigger_reg_sz(sp_name));                                \
-        dest->node = 0;                                                        \
-        dest->elect_cookie = ATOMIC_LOAD32(gbl_master_changes);                \
-        dest->trigger_cookie = get_id(thedb->bdb_env);                         \
-        dest->qdb_locked = have_lock;                                          \
-        dest->spname_len = strlen(sp_name);                                    \
-        memcpy(dest->spname, sp_name, dest->spname_len + 1);                   \
-        int hostname_len = strlen(gbl_myhostname);                             \
-        memcpy(trigger_hostname(dest), gbl_myhostname, hostname_len + 1);      \
-    } while (0)
 
 #define Q4SP(var, spname)                                                      \
     char var[sizeof("__q") + strlen(spname)];                                  \
