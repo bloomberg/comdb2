@@ -67,6 +67,10 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(sltpck.c PROPERTIES COMPILE_FLAGS "-Wno-return-local-addr")
 endif()
 
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  set_source_files_properties(schema_lk.c PROPERTIES COMPILE_FLAGS "-O0")
+endif()
+
 add_library(util ${src})
 include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}

@@ -1974,10 +1974,6 @@ struct dbtable *get_dbtable_by_name(const char *name);
 struct dbview *get_view_by_name(const char *view_name);
 /* Load all views from llmeta */
 int llmeta_load_views(struct dbenv *, void *);
-/* lookup a table by name; if it exists, lock table readonly
-   if there is no table, lock table in write mode
-   NOTE: if there is no tran object, this behaves like get_dbtable_by_name */
-struct dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *name);
 /*look up managed queue db's by name*/
 struct dbtable *getqueuebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);

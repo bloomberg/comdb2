@@ -153,7 +153,6 @@ struct dbconsumer_t {
     struct ireq iq;
     struct bdb_queue_cursor last;
     struct bdb_queue_cursor fnd;
-    struct consumer *consumer;
     genid_t genid;
     int push_tid;
     int push_seq;
@@ -161,7 +160,6 @@ struct dbconsumer_t {
     int register_timeoutms;
     int emit_timeoutms;
     time_t registration_time;
-    char name[MAXTABLELEN];
     const char *type;
 
     /* signaling from libdb on qdb insert */
@@ -202,26 +200,6 @@ static struct timespec setup_dbq_ts(int delay_ms)
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
     (sizeof(dbconsumer_t) - sizeof(trigger_reg_t) + trigger_reg_sz(spname))
-
-static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
-                            struct dbtable *qdb, trigger_reg_t *info)
-{
-    init_fake_ireq(thedb, &q->iq);
-    int spname_len = info->spname_len;
-    strncpy0(q->name, qdb->tablename, MAXTABLELEN);
-    q->iq.usedb = qdb;
-    q->emit_timeoutms = 60000; /* emit times-out after 1 min */
-    q->consumer = consumer;
-    q->info = *info;
-    // correct size allocated by trigger_reg_sz
-    char *src = &info->spname[0];
-    char *out = &q->info.spname[0];
-    memcpy(out, src, spname_len + 1);
-    src += (spname_len + 1);
-    out += (spname_len + 1);
-    strcpy(out, src);
-    return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->status);
-}
 
 static int db_exec(Lua);
 static int dbstmt_emit(Lua);
@@ -381,8 +359,7 @@ static char *csv_read_one_field(CSVReader *p)
     return p->z;
 }
 
-static int check_retry_conditions(Lua L, trigger_reg_t *reg,
-                                  int skip_incoherent)
+static int check_retry_conditions(Lua L, trigger_reg_t *reg, int skip_incoherent)
 {
     SP sp = getsp(L);
 
@@ -396,15 +373,11 @@ static int check_retry_conditions(Lua L, trigger_reg_t *reg,
         return -2;
     }
 
-    if (bdb_curtran_has_waiters(thedb->bdb_env, sp->clnt->dbtran.cursor_tran)
-            || bdb_lock_desired(thedb->bdb_env)) {
+    if (bdb_curtran_has_waiters(thedb->bdb_env, sp->clnt->dbtran.cursor_tran) || bdb_lock_desired(thedb->bdb_env)) {
         int rc;
-        if ((rc = recover_deadlock(thedb->bdb_env, sp->thd->sqlthd, NULL, 0)) !=
-            0) {
+        if ((rc = recover_deadlock(thedb->bdb_env, sp->thd->sqlthd, NULL, 0)) != 0) {
             luabb_error(L, sp, "recover deadlock failed");
             return -3;
-        } else if (reg != NULL) {
-            reg->qdb_locked = 0; /* table read lock is now gone. */
         }
     }
 
@@ -420,10 +393,9 @@ static int check_retry_conditions(Lua L, trigger_reg_t *reg,
     return 0;
 }
 
-pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
-                                  int register_timeoutms)
+static int luabb_trigger_register(Lua L, trigger_reg_t *reg, int register_timeoutms)
 {
     int rc;
     SP sp = getsp(L);
@@ -698,38 +670,6 @@ char *sp_column_name(struct response_data *arg, int col)
     return parent->clntname[col];
 }
 
-static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
-                                    const char *qname, struct dbtable **db,
-                                    trigger_reg_t *reg, int have_schema_lock,
-                                    int *got_lock)
-{
-    if ((reg != NULL) && reg->qdb_locked) {
-        return 0; /* we already have the table read lock */
-    }
-    if (!have_schema_lock && (tryrdlock_schema_lk() != 0)) {
-        logmsg(LOGMSG_WARN, "%s: tryrdlock_schema_lk failed\n", __func__);
-        return -2;
-    }
-    (*db) = getqueuebyname(qname);
-    if ((*db) == NULL) {
-        if (!have_schema_lock) unlock_schema_lk();
-        logmsg(LOGMSG_ERROR, "%s: failed to get queue %s by name\n", __func__,
-                qname);
-        return -2;
-    }
-    int rc = bdb_lock_table_read_fromlid((*db)->handle,
-             bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: bdb_lock_table_read_fromlid rc %d\n",
-               __func__, rc);
-    } else {
-        if (reg != NULL) reg->qdb_locked = 1;
-        if (got_lock != NULL) *got_lock = 1;
-    }
-    if (!have_schema_lock) unlock_schema_lk();
-    return rc;
-}
-
 // Call with q->lock held.
 // Unlocks q->lock on return.
 // Returns  -2:stopped -1:error  0:IX_NOTFND  1:IX_FND
@@ -739,15 +679,8 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
     struct qfound f = {0};
-    int rc = grab_qdb_table_read_lock(clnt, q->name, &q->iq.usedb, &q->info, 0, NULL);
-    if (rc != 0) {
-        // TODO: Temporary hack for testing.
-        //       Transform -2 (schema lock fail) to 0 (success).
-        Pthread_mutex_unlock(q->lock);
-        return rc == -2 ? 0 : -1;
-    }
-    rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd,
-                 &f.seq, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    int rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd, &f.seq,
+                     bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
     sp->num_instructions = 0;
@@ -827,42 +760,38 @@ static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
     return rc;
 }
 
-static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms,
-        int *push_seq, int *push_epoch)
+static void dbconsumer_getargs(Lua L, dbconsumer_t *consumer)
 {
-    if (lua_gettop(L) != 1) return;
-    luaL_checktype(L, 1, LUA_TTABLE);
+    luaL_checktype(L, -1, LUA_TTABLE);
     lua_pushnil(L);
     while (lua_next(L, -2)) {
         const char *key;
-        switch (luabb_type(L, -2)) {
-        case DBTYPES_LSTRING:
-        case DBTYPES_CSTRING:
+        int type = luabb_type(L, -2);
+        if (type == DBTYPES_LSTRING || type == DBTYPES_CSTRING) {
             key = luabb_tostring(L, -2);
             if (strcasecmp(key, "with_tid") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
-                    *push_tid = lua_toboolean(L, -1);
+                    consumer->push_tid = lua_toboolean(L, -1);
                 }
             } else if (strcasecmp(key, "with_sequence") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
-                    *push_seq = lua_toboolean(L, -1);
+                    consumer->push_seq = lua_toboolean(L, -1);
                 }
             } else if (strcasecmp(key, "with_epoch") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
-                    *push_epoch = lua_toboolean(L, -1);
+                    consumer->push_epoch = lua_toboolean(L, -1);
                 }
             } else if (strcasecmp(key, "register_timeout") == 0) {
                 long long timeoutms = 0;
                 luabb_tointeger(L, -1, &timeoutms);
                 if (timeoutms > 0) {
-                    *register_timeoutms = timeoutms;
+                    consumer->register_timeoutms = timeoutms;
                 }
             }
-            lua_pop(L, 1);
-        default:
-            continue;
         }
+        lua_pop(L, 1);
     }
+    lua_pop(L, 1);
 }
 
 static int dbconsumer_get(Lua L)
@@ -950,9 +879,6 @@ static int dbconsumer_consume(Lua L)
             luaL_error(L, "%s: osql_sock_start intrans:%d err:%s rc:%d\n",
                        __func__, clnt->intrans, err, rc);
         }
-    }
-    if ((rc = grab_qdb_table_read_lock(clnt, q->name, &q->iq.usedb, &q->info, 0, NULL)) != 0) {
-        luaL_error(L, "%s: grab_qdb_table_read_lock rc:%d\n", __func__, rc);
     }
     if ((rc = osql_dbq_consume_logic(clnt, q->info.spname, q->genid)) != 0) {
         if (implicit_txn) {
@@ -4007,6 +3933,30 @@ static int db_recover_ddlk(Lua L)
     return push_and_return(L, rc);
 }
 
+static struct dbtable *find_and_lock_queue_table(Lua L)
+{
+    if (tryrdlock_schema_lk() != 0) {
+        luaL_error(L, sqlite3ErrStr(SQLITE_SCHEMA));
+        return NULL;
+    }
+    SP sp = getsp(L);
+    Q4SP(qname, sp->spname);
+    int rc;
+    struct dbtable *db = getqueuebyname(qname);
+    if (db) {
+        rc = bdb_lock_table_read_fromlid(db->handle, bdb_get_lid_from_cursortran(sp->clnt->dbtran.cursor_tran));
+    }
+    unlock_schema_lk();
+    if (!db) {
+        luaL_error(L, "%s not found for sp:%s", sp->consumer->type, sp->spname);
+        return NULL;
+    } else if (rc) {
+        luaL_error(L, "read-lock failed for %s:%s\n", sp->consumer->type, sp->spname);
+        return NULL;
+    }
+    return db;
+}
+
 static int recover_ddlk_sp(struct sqlclntstate *clnt)
 {
     SP sp = clnt->sp;
@@ -4016,6 +3966,7 @@ static int recover_ddlk_sp(struct sqlclntstate *clnt)
     LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
         rc |= sqlite3LockStmtTablesRecover(dbstmt->stmt);
     }
+    if (sp->consumer) sp->consumer->iq.usedb = find_and_lock_queue_table(sp->lua);
     return rc;
 }
 
@@ -4742,7 +4693,9 @@ static int db_sp(Lua L)
         spversion.version_str = (char *)lua_tostring(L, 3);
     }
     char *err = NULL;
-    rdlock_schema_lk();
+    if (tryrdlock_schema_lk() != 0) {
+        return luaL_error(L, sqlite3ErrStr(SQLITE_SCHEMA));
+    }
     char *src = load_src(name, &spversion, 0, &err);
     unlock_schema_lk();
     free(spversion.version_str);
@@ -4827,106 +4780,84 @@ void force_unregister(Lua L, trigger_reg_t *reg)
     luabb_trigger_unregister(L, q);
 }
 
-static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
-                   struct dbtable **pDb, int *got_lock, char **err)
+static int register_queue_with_berkdb_and_master(Lua L, const char *type)
 {
-    if (tryrdlock_schema_lk() != 0) {
-        return luaL_error(L, sqlite3ErrStr(SQLITE_SCHEMA));
+    SP sp = getsp(L);
+    struct sqlclntstate *clnt = sp->clnt;
+
+    if (sp->consumer) {
+        return luaL_error(L, "%s:%s already registered\n", sp->consumer->type, sp->spname);
     }
-    Q4SP(qname, spname);
-    struct dbtable *db = getqueuebyname(qname);
-    if (db == NULL) {
-        *pDb = NULL;
-        unlock_schema_lk();
-        if (err != NULL) {
-            *err = strdup("getqueuebyname failed");
-            return -1;
-        } else {
-            return luaL_error(L, "trigger not found for sp:%s", spname);
+    if (sp->parent != sp) {
+        return luaL_error(L, "attempt to run consumer in child thread");
+    }
+    if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
+        return luaL_error(L, "%s is only supported under default transaction mode", type);
+    }
+
+    dbconsumer_t *consumer;
+    size_t sz = dbconsumer_sz(sp->spname);
+    new_lua_t_sz(L, consumer, DBTYPES_DBCONSUMER, sz);
+
+    sp->consumer = consumer;
+    consumer->type = type;
+    consumer->emit_timeoutms = 60000; /* emit times-out after 1 min */
+
+    if (lua_gettop(L) == 2) {
+        lua_insert(L, 1); /* move dbconsumer to bottom of stack */
+        dbconsumer_getargs(L, consumer);
+    }
+
+    /* register with master */
+    trigger_reg_t *info = &consumer->info;
+    info->elect_cookie = ATOMIC_LOAD32(gbl_master_changes);
+    info->trigger_cookie = get_id(thedb->bdb_env);
+    info->spname_len = strlen(sp->spname);
+    memcpy(info->spname, sp->spname, info->spname_len + 1);
+    int hostname_len = strlen(gbl_myhostname);
+    memcpy(trigger_hostname(info), gbl_myhostname, hostname_len + 1);
+    ctrace("%s:%s %016" PRIx64 " register req\n", type, info->spname, info->trigger_cookie);
+    int rc = luabb_trigger_register(L, info, consumer->register_timeoutms);
+    if (rc != CDB2_TRIG_REQ_SUCCESS) {
+        ctrace("%s:%s %016" PRIx64 " register failed rc:%d\n", type, info->spname, info->trigger_cookie, rc);
+        force_unregister(L, info);
+        if (rc == -2) { /* register timeout */
+            sp->consumer = NULL;
+            return 0;
         }
+        return luaL_error(L, sp->error);
     }
-    int rc = grab_qdb_table_read_lock(clnt, qname, &db, NULL, 1, got_lock);
-    if (rc != 0) {
-        *pDb = NULL;
-        unlock_schema_lk();
-        if (err != NULL) {
-            *err = strdup("grab_qdb_table_read_lock failed");
-            return rc;
-        } else {
-            return luaL_error(L, "cannot read-lock queue for sp:%s (%d)", spname, rc);
-        }
+    ctrace("%s:%s %016" PRIx64 " register success\n", type, info->spname, info->trigger_cookie);
+
+    init_fake_ireq(thedb, &consumer->iq);
+    consumer->iq.usedb = find_and_lock_queue_table(L);
+
+    /* register with berkdb */
+    if (bdb_trigger_subscribe(consumer->iq.usedb->handle, &consumer->cond, &consumer->lock, &consumer->status) != 0) {
+        return luaL_error(L, "bdb_trigger_subscribe failed for %s:%s", type, sp->spname);
     }
-    *pDb = db;
-    unlock_schema_lk();
-    return 0;
+
+    return 1;
 }
 
 static int db_consumer(Lua L)
 {
+    int args = lua_gettop(L);
+    if (args == 2) {
+        luaL_checktype(L, 2, LUA_TTABLE);
+    } else if (args > 2) {
+        return luaL_argerror(L, 3, "bad number of arguments");
+    }
     luaL_checkudata(L, 1, dbtypes.db);
     lua_remove(L, 1);
+    return register_queue_with_berkdb_and_master(L, "consumer");
+}
 
-    int push_tid = 0, register_timeoutms = 0, push_seq = 0, push_epoch = 0;
-    dbconsumer_getargs(L, &push_tid, &register_timeoutms, &push_seq, &push_epoch);
-
-    SP sp = getsp(L);
-    if (sp->parent != sp) {
-        return luaL_error(L, "attempt to run consumer in child thread");
-    }
-    struct sqlclntstate *clnt = sp->clnt;
-    if (clnt->dbtran.mode != TRANLEVEL_SOSQL)
-        return luaL_error(L, "trigger/consumer is only supported under default transaction mode");
-
-    if (sp->consumer) {
-        return 0;
-    }
-    struct dbtable *db = NULL;
-    int got_lock = 0;
-
-    int rc = get_qdb(L, clnt, sp->spname, &db, &got_lock, NULL);
-    if (rc != 0) {
-        return rc;
-    }
-
-    struct consumer *consumer = db->consumers[0];
-    if (consumer == NULL) {
-        return luaL_error(L, "consumer not found for sp:%s", sp->spname);
-    }
-
-    enum consumer_t type = dbqueue_consumer_type(consumer);
-    const char *type_str = type == CONSUMER_TYPE_DYNLUA ? "consumer" : "trigger";
-
-    trigger_reg_t *t;
-    trigger_reg_init(t, sp->spname, got_lock);
-    ctrace("%s:%s %016" PRIx64 " register req\n", type_str, t->spname, t->trigger_cookie);
-    rc = luabb_trigger_register(L, t, register_timeoutms);
-    if (rc != CDB2_TRIG_REQ_SUCCESS) {
-        ctrace("%s:%s %016" PRIx64 " register failed rc:%d\n", type_str, t->spname, t->trigger_cookie, rc);
-        force_unregister(L, t);
-        if (rc == -2) {
-            /* timeout */
-            lua_pushnil(L);
-            return 1;
-        }
-        return luaL_error(L, sp->error);
-    }
-    ctrace("%s:%s %016" PRIx64 " register success\n", type_str, t->spname, t->trigger_cookie);
-
-    dbconsumer_t *q;
-    size_t sz = dbconsumer_sz(sp->spname);
-    new_lua_t_sz(L, q, DBTYPES_DBCONSUMER, sz);
-    if (setup_dbconsumer(q, consumer, db, t) != 0) {
-        luabb_error(L, sp, "failed to register consumer with qdb");
-        lua_pushnil(L);
-        return 1;
-    }
-    q->type = type_str;
-    q->push_tid = push_tid;
-    q->push_seq = push_seq;
-    q->push_epoch = push_epoch;
-    q->register_timeoutms = register_timeoutms;
-    sp->consumer = q;
-    return 1;
+static int db_trigger(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    lua_remove(L, 1);
+    return register_queue_with_berkdb_and_master(L, "trigger");
 }
 
 static int db_get_event_tid(Lua L)
@@ -5095,7 +5026,7 @@ static const luaL_Reg trigger_funcs[] = {
     {"get_event_sequence", db_get_event_sequence},
     {"get_event_tid", db_get_event_tid},
     {"spname", db_spname},
-    {"trigger", db_consumer},
+    {"trigger", db_trigger},
     {"trigger_begin", db_begin},
     {"trigger_commit", db_commit},
     {"trigger_rollback", db_rollback},
@@ -7225,7 +7156,12 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         remove_emit(L);
         add_trigger_funcs(L);
     } else {
-        consumer = can_consume(clnt);
+        Q4SP(qname, sp->spname);
+        rdlock_schema_lk();
+        if (getqueuebyname(qname)) {
+            consumer = 1;
+        }
+        unlock_schema_lk();
         if (consumer) add_consumer_funcs(L);
         update_tran_funcs(L, clnt);
     }
@@ -7266,20 +7202,10 @@ int is_pingpong(struct sqlclntstate *clnt)
     return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
 }
 
-int can_consume(struct sqlclntstate *clnt) {
-    if (clnt == NULL || clnt->sp == NULL)
-        return 0;
-
-    SP sp = clnt->sp;
-    char spname[strlen(sp->spname) + 1];
-    strcpy(spname, sp->spname);
-    Q4SP(qname, spname);
-
-    struct dbtable *db = getqueuebyname(qname);
-    if (db != NULL) {
-        return 1;
-    }
-    return 0;
+int can_consume(struct sqlclntstate *clnt)
+{
+    if (clnt == NULL || clnt->sp == NULL) return 0;
+    return clnt->sp->consumer ? 1 : 0;
 }
 
 void close_sp(struct sqlclntstate *clnt)
