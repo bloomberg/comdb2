@@ -80,7 +80,7 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
 
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
-        logmsg(LOGMSG_DEBUG, "Already in blkseq %*s, stalling...\n",
+        logmsg(LOGMSG_USER, "Already in blkseq %*s, stalling...\n",
                IQ_SNAPINFO(iq)->keylen - 3, IQ_SNAPINFO(iq)->key);
         poll(NULL, 0, gbl_block_blkseq_poll);
 

@@ -702,7 +702,7 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
    units */
 int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
                                      seqnum_type *seqnum, uint64_t *out_txnsize,
-                                     int *bdberr);
+                                     int holdlock, int *rellock, int *bdberr);
 
 /* abort the transaction referenced by the tran handle */
 int bdb_tran_abort(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
@@ -1021,6 +1021,10 @@ int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
                                                  seqnum_type *seqnum,
                                                  uint64_t txnsize,
                                                  int *timeoutms);
+
+int bdb_wait_for_seqnum_from_all_adaptive_checklock(bdb_state_type *bdb_state,
+                                                    seqnum_type *seqnum, uint64_t txnsize, 
+                                                    int ignore_lock_desired, int *timeoutms);
 
 int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
                                int n);

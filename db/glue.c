@@ -95,6 +95,7 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
 #include <comdb2_atomic.h>
+#include "locks.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -148,6 +149,8 @@ struct net_morestripe_msg {
 };
 
 extern struct dbenv *thedb;
+
+int gbl_replication_blocks_downgrade = 1;
 extern int gbl_lost_master_time;
 extern int gbl_use_fastseed_for_comdb2_seqno;
 extern int gbl_debug_omit_idx_write;
@@ -522,13 +525,13 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                                    struct ireq *iq, void *trans,
                                    db_seqnum_type *seqnum, int logical,
                                    void *blkseq, int blklen, void *blkkey,
-                                   int blkkeylen)
+                                   int blkkeylen, int repblk, int *rellock)
 {
     int bdberr;
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size";
     if (!logical)
         bdb_tran_commit_with_seqnum_size(
-            bdb_handle, trans, (seqnum_type *)seqnum, &iq->txnsize, &bdberr);
+            bdb_handle, trans, (seqnum_type *)seqnum, &iq->txnsize, 0, NULL, &bdberr);
     else {
         bdb_tran_commit_logical_with_seqnum_size(
             bdb_handle, trans, blkseq, blklen, blkkey, blkkeylen,
@@ -564,7 +567,7 @@ int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum)
 {
     bdb_state_type *bdb_handle = thedb->bdb_env;
     return trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, seqnum, 0,
-                                   NULL, 0, NULL, 0);
+                                   NULL, 0, NULL, 0, 0, NULL);
 }
 
 static const char *sync_to_str(int sync)
@@ -594,7 +597,7 @@ static const char *sync_to_str(int sync)
 static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                                      struct ireq *iq, char *source_node,
                                      int timeoutms, int adaptive,
-                                     db_seqnum_type *ss)
+                                     int ignore_lock_desired, db_seqnum_type *ss)
 {
     int rc = 0;
     int sync;
@@ -639,8 +642,8 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     case REP_SYNC_FULL:
         iq->gluewhere = "bdb_wait_for_seqnum_from_all";
         if (adaptive)
-            rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(
-                bdb_handle, (seqnum_type *)ss, iq->txnsize, &iq->timeoutms);
+            rc = bdb_wait_for_seqnum_from_all_adaptive_checklock(bdb_handle,
+                (seqnum_type *)ss, iq->txnsize, ignore_lock_desired, &iq->timeoutms);
         else if (timeoutms == -1)
             rc = bdb_wait_for_seqnum_from_all(bdb_handle, (seqnum_type *)ss);
         else
@@ -695,7 +698,7 @@ int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
 {
     bdb_state_type *bdb_handle = thedb->bdb_env;
     return trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, -1,
-                                     0 /*adaptive*/, ss);
+                                     0 /*adaptive*/, 0 /* ignore-lk-desired */, ss);
 }
 
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
@@ -706,7 +709,7 @@ int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 
     if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
         rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, -1,
-                                       0 /*adaptive*/, &seqnum);
+                                       0 /*adaptive*/, 0 /* ignore-desired */, &seqnum);
     }
     return rc;
 }
@@ -743,8 +746,12 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
     }
 
+    int rep_blocks_downgrade = gbl_replication_blocks_downgrade;
+
+    int rellock = 0;
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
-                                 blkseq, blklen, blkkey, blkkeylen);
+                                 blkseq, blklen, blkkey, blkkeylen,
+                                 rep_blocks_downgrade, &rellock);
 
     if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO_KEY(iq)) {
         cn_len = IQ_SNAPINFO(iq)->keylen;
@@ -769,8 +776,12 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         return rc;
     }
 
-    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
-                                   timeoutms, adaptive, &ss);
+    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, timeoutms,
+                                   adaptive, (rep_blocks_downgrade && rellock), &ss);
+
+    if (rellock) {
+        bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+    }
 
     if (release_schema_lk && gbl_debug_add_replication_latency) {
         logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
@@ -840,7 +851,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     u_int32_t *file = (u_int32_t *)&ss;
     if (*file != 0) {
         trans_wait_for_seqnum_int(bdb_handle, thedb, iq, gbl_myhostname,
-                                  -1 /* timeoutms */, 1 /* adaptive */, &ss);
+                                  -1 /* timeoutms */, 1 /* adaptive */, 0, &ss);
     }
     return rc;
 }

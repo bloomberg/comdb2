@@ -338,6 +338,8 @@ int bdb_blkseq_find(bdb_state_type *bdb_state, tran_type *tran, void *key,
     return IX_NOTFND;
 }
 
+int gbl_debug_reproduce_blkseq_race = 0;
+
 int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
                       int klen, void *data, int datalen, void **dtaout,
                       int *lenout)
@@ -352,7 +354,8 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
     if (!bdb_state->attr->private_blkseq_enabled)
         return 0;
 
-    if (tran != NULL && (rc = bdb_lock_blkseq_write(bdb_state, key, klen, tran)) != 0) {
+    if (!gbl_debug_reproduce_blkseq_race && tran != NULL &&
+        (rc = bdb_lock_blkseq_write(bdb_state, key, klen, tran)) != 0) {
         return rc;
     }
 

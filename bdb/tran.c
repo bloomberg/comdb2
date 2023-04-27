@@ -1595,6 +1595,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             outrc = -1;
             goto cleanup;
         } else {
+            logmsg(LOGMSG_USER, "%s commit at LSN %d:%d\n", __func__,
+                lsn.file, lsn.offset);
             /* successful physical commit, lets increment our seqnum */
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             /* dont let our global lsn go backwards */
@@ -2115,7 +2117,7 @@ int bdb_is_rowlocks_transaction(tran_type *tran)
 
 int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
                                      seqnum_type *seqnum, uint64_t *out_txnsize,
-                                     int *bdberr)
+                                     int holdlock, int *rellock, int *bdberr)
 {
     int rc;
     int is_rowlocks_trans = tran->is_rowlocks_trans;
@@ -2130,8 +2132,13 @@ int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
     rc = bdb_tran_commit_with_seqnum_int(bdb_state, tran, seqnum, bdberr, 1,
                                          out_txnsize, NULL, 0, NULL, 0);
 
-    if (!is_rowlocks_trans)
-        BDB_RELLOCK();
+    if (!is_rowlocks_trans) {
+        if (!holdlock) {
+            BDB_RELLOCK();
+        } else {
+            if (rellock) *rellock = 1;
+        }
+    }
 
     return rc;
 }

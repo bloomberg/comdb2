@@ -2918,7 +2918,7 @@ retry:
 
     seqnum_type ss;
     rc = bdb_tran_commit_with_seqnum_size(llmeta_bdb_state, tran, &ss, NULL,
-                                          &bdberr);
+                                          0, NULL, &bdberr);
 
     if (rc == 0 && wait_for_seqnum) {
         int timeoutms;

@@ -2825,7 +2825,7 @@ static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
 static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                                              seqnum_type *seqnum,
                                              const char *host, int timeoutms, int lineno,
-                                             int fakeincoherent)
+                                             int fakeincoherent, int ignore_lock_desired)
 {
     int rc, reset_ts = 1, wakecnt = 0, remaining = timeoutms;
     int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
@@ -2890,7 +2890,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
 again:
 
     if (bdb_state->seqnum_info->seqnums[node_ix].lsn.file == INT_MAX ||
-        bdb_lock_desired(bdb_state)) {
+        (!ignore_lock_desired && bdb_lock_desired(bdb_state))) {
         /* add 1 ms of latency if we have someone catching up */
         poll(NULL, 0, 1);
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
@@ -3017,7 +3017,7 @@ int bdb_wait_for_seqnum_from_node(bdb_state_type *bdb_state,
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
     return bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, host,
-                                             timeoutms, __LINE__, 0);
+                                             timeoutms, __LINE__, 0, 0);
 }
 
 int bdb_wait_for_seqnum_from_node_timeout(bdb_state_type *bdb_state,
@@ -3025,7 +3025,7 @@ int bdb_wait_for_seqnum_from_node_timeout(bdb_state_type *bdb_state,
                                           int timeoutms)
 {
     return bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, host,
-                                             timeoutms, __LINE__, 0);
+                                             timeoutms, __LINE__, 0, 0);
 }
 
 /* inside bdb_commit(), we get a seqnum from the log file,
@@ -3097,7 +3097,7 @@ static int node_in_list(int node, int list[], int listsz)
 int gbl_replicant_retry_on_not_durable = 0;
 static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                                             seqnum_type *seqnum, int *timeoutms,
-                                            uint64_t txnsize, int newcoh)
+                                            uint64_t txnsize, int ignore_lock_desired)
 {
     int i, now, cntbytes;
     const char *nodelist[REPMAX];
@@ -3158,6 +3158,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
 
         if ((total_commissioned = net_get_all_commissioned_nodes(
                  bdb_state->repinfo->netinfo, connlist)) == 0) {
+          logmsg(LOGMSG_USER, "%s no commissioned nodes so punting\n", __func__);
           goto done_wait;
         }
 
@@ -3204,7 +3205,10 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         }
 
         if (numnodes == 0) {
+            logmsg(LOGMSG_USER, "%s no coherent nodes so punting\n", __func__);
             goto done_wait;
+        } else {
+            logmsg(LOGMSG_USER, "%s waiting on %d nodes\n", __func__, numnodes);
         }
 
         if ((debug_switch_all_incoherent() && (rand() % 2))) {
@@ -3218,9 +3222,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                        nodelist[i], lsn_to_str(str, &(seqnum->lsn)));
 
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
-                    nodelist[i], 1000, __LINE__, fake_incoherent);
+                    nodelist[i], 1000, __LINE__, fake_incoherent, ignore_lock_desired);
 
-            if (bdb_lock_desired(bdb_state)) {
+            if (!ignore_lock_desired && bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR,
                        "%s line %d early exit because lock-is-desired\n",
                        __func__, __LINE__);
@@ -3258,9 +3262,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 goto got_ack;
             }
         }
-    } while (comdb2_time_epochms() - begin_time <
-                 bdb_state->attr->rep_timeout_maxms &&
-             !(lock_desired = bdb_lock_desired(bdb_state)));
+    } while (comdb2_time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
+                !(ignore_lock_desired || (lock_desired = bdb_lock_desired(bdb_state))));
 
     /* if we get here then we timed out without finding even one good node.
      * allow a waitms of ZERO for the remaining nodes - we've run out of
@@ -3309,9 +3312,10 @@ got_ack:
                    nodelist[i], lsn_to_str(str, &(seqnum->lsn)), waitms);
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
-                                               waitms, __LINE__, fake_incoherent);
+                                               waitms, __LINE__, fake_incoherent,
+                                               ignore_lock_desired);
 
-        if (bdb_lock_desired(bdb_state)) {
+        if (!ignore_lock_desired && bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d early exit because lock-is-desired\n", __func__,
                    __LINE__);
@@ -3480,15 +3484,13 @@ done_wait:
 int bdb_wait_for_seqnum_from_all(bdb_state_type *bdb_state, seqnum_type *seqnum)
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0, 0);
 }
 
 int bdb_wait_for_seqnum_from_all_timeout(bdb_state_type *bdb_state,
                                          seqnum_type *seqnum, int timeoutms)
 {
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0, 0);
 }
 
 int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
@@ -3496,8 +3498,7 @@ int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
                                           int *timeoutms)
 {
     *timeoutms = -1;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms,
-                                            txnsize, 0);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, txnsize, 0);
 }
 
 /*
@@ -3515,16 +3516,23 @@ int bdb_wait_for_seqnum_from_all_newcoh(bdb_state_type *bdb_state,
                                         seqnum_type *seqnum)
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0, 0);
 }
 
 int bdb_wait_for_seqnum_from_all_timeout_newcoh(bdb_state_type *bdb_state,
                                                 seqnum_type *seqnum,
                                                 int timeoutms)
 {
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0,
-                                            1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, &timeoutms, 0, 0);
+}
+
+int bdb_wait_for_seqnum_from_all_adaptive_checklock(bdb_state_type *bdb_state,
+                                                    seqnum_type *seqnum, uint64_t txnsize, 
+                                                    int ignore_lock_desired, int *timeoutms)
+{
+    *timeoutms = -1;
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, txnsize,
+            ignore_lock_desired);
 }
 
 int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
@@ -3533,8 +3541,7 @@ int bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state_type *bdb_state,
                                                  int *timeoutms)
 {
     *timeoutms = -1;
-    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms,
-                                            txnsize, 1);
+    return bdb_wait_for_seqnum_from_all_int(bdb_state, seqnum, timeoutms, txnsize, 0);
 }
 
 /* let everyone know what logfile we are currently using */

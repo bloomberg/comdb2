@@ -1,0 +1,16 @@
+#on cause_random_blkseq_replays
+master_swing_osql_verbose
+
+dtastripe 16
+
+# Apply & sync log before acking
+early 0
+
+# Flush log on commit
+setattr SYNCTRANSACTIONS 1
+
+# Sleep after writing blkseq, before writing commit
+debug_blkseq_race on
+
+# Don't acquire blkseq-lock to reproduce blkseq-bug
+#debug_reproduce_blkseq_race on

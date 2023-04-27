@@ -1078,7 +1078,7 @@ retry:
                     __func__, __LINE__, rcout, rc);
         } else {
 
-            if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
+            if (gbl_random_blkseq_replays && ((rand() % 2) == 0)) {
                 logmsg(LOGMSG_ERROR, "%s line %d forcing random blkseq retry\n",
                        __func__, __LINE__);
                 osql->xerr.errval = ERR_NOMASTER;

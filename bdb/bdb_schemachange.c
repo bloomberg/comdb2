@@ -275,7 +275,7 @@ retry:
     uint64_t transize;
     seqnum_type seqnum;
     rc = bdb_tran_commit_with_seqnum_size(bdb_state, ltran, &seqnum,
-                                          &transize, bdberr);
+                                          &transize, 0, NULL, bdberr);
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;

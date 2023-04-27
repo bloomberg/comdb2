@@ -664,6 +664,14 @@ REGISTER_TUNABLE("master_retry_poll_ms",
                  "retrying a transaction. (Default: 100ms)",
                  TUNABLE_INTEGER, &gbl_master_retry_poll_ms, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_blkseq_race",
+                 "Pause after adding blkseq to reproduce blkseq race.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_blkseq_race,
+                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_reproduce_blkseq_race",
+                 "Reproduce blkseq-race by not locking.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_blkseq_race,
+                 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("master_swing_osql_verbose",
                  "Produce verbose trace for SQL handlers detecting a master "
                  "change. (Default: off)",
