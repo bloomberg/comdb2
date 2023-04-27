@@ -22,9 +22,16 @@ function stop_cluster
 {
     [[ $debug == "1" ]] && set -x
     for node in $CLUSTER ; do
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send(\"exit\")"
+        $CDB2SQL_EXE -admin $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send(\"exit\")"
     done
     sleep 5
+    for node in $CLUSTER ; do
+        if [ $node == $(hostname) ] ; then
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+        else
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+        fi
+    done
 }
 
 function verify_up
@@ -115,6 +122,7 @@ function run_test
     typeset maxtime=600
     typeset now=$(date +%s)
     typeset endtime=$(( now + maxtime ))
+    typeset failed=0
 
     create_table
     rm $stopfile
@@ -126,15 +134,25 @@ function run_test
     done
 
     # Different thread failed the test
-    [[ -f "$stopfile" ]] && failexit "testcase failed"
+    if [[ -f "$stopfile" ]] ; then
+        failed=1
+        echo "Testcase failed"
+    fi
     touch "$stopfile"
+
+    echo "Sleeping 10"
+    sleep 10
+
+    echo "Stopping cluster"
+    stop_cluster
+
     echo "Waiting for spawned processes"
     wait
     echo "Finished waiting for spawned processes"
-    check_results
+    if [[ "$failed" == 1 ]]; then
+        failexit $func "Testcase failed"
+    fi
 }
 
 run_test
-stop_cluster
-wait
 echo "Success"
