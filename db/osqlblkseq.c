@@ -57,6 +57,15 @@ int cnonce_hashcmpfunc(const void *key1, const void *key2, int len)
     return -1;
 }
 
+int osql_blkseq_is_inflight(const void *key)
+{
+    void *iq_src = NULL;
+    Pthread_mutex_lock(&hmtx);
+    iq_src = hash_find(hiqs_cnonce, key);
+    Pthread_mutex_unlock(&hmtx);
+    return (iq_src != NULL);
+}
+
 int osql_blkseq_register_cnonce(struct ireq *iq)
 {
     void *iq_src = NULL;

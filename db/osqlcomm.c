@@ -3157,6 +3157,8 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     }
 }
 
+int osql_blkseq_is_inflight(const void *key);
+
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
@@ -3173,8 +3175,13 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
     p_buf_start = p_buf = (uint8_t *)&snap_send;
     p_buf_end = p_buf + sizeof(snap_uid_t);
 
-    rc = bdb_blkseq_find(thedb->bdb_env, NULL, snap_info.key, snap_info.keylen,
-                         (void **)&snap_out, NULL);
+    if (osql_blkseq_is_inflight(snap_info.key)) {
+        logmsg(LOGMSG_USER, "Returning not-found because blkseq is in flight\n");
+        rc = IX_NOTFND;
+    } else {
+        rc = bdb_blkseq_find(thedb->bdb_env, NULL, snap_info.key, snap_info.keylen,
+                            (void **)&snap_out, NULL);
+    }
 
     if (rc == IX_FND) {
         comdb2uuidcpy(snap_out->uuid, snap_info.uuid);
@@ -3207,7 +3214,7 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
 {
     snap_uid_t snap_info;
     snap_uid_get(&snap_info, dtap, (uint8_t *)dtap + dtalen);
-    osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0, &snap_info, NULL, &snap_info.effects, fromhost);
+    osql_chkboard_sqlsession_rc(OSQL_RQID_USE_UUID, snap_info.uuid, 0, &snap_info, NULL, &snap_info.effects, fromhost, __func__);
 }
 
 int gbl_disable_cnonce_blkseq;
@@ -4880,6 +4887,7 @@ int osql_comm_send_socksqlreq(osql_target_t *target, const char *sql, int sqlen,
  * client
  *
  */
+extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
                                uuid_t uuid, int nops, struct errstat *xerr,
                                snap_uid_t *snap, int rc)
@@ -4894,6 +4902,7 @@ int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
         char d[OSQLCOMM_DONE_RPL_LEN];
     } largest_message;
     uint8_t *buf = (uint8_t *)&largest_message;
+    comdb2_cheapstack_sym(stderr, ">>> ");
 
     /* test if the sql thread was the one closing the request,
      * and if so, don't send anything back, request might be gone already anyway
@@ -4904,7 +4913,8 @@ int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
     /* if error, lets send the error string */
     if (target->host == gbl_myhostname) {
         /* local */
-        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, snap, xerr, (snap) ? &snap->effects : NULL, target->host);
+        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, snap, xerr,
+            (snap) ? &snap->effects : NULL, target->host, __func__);
     }
 
     /* remote */
@@ -7260,9 +7270,9 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
             uint8_t *p_buf_end = (p_buf + sizeof(struct errstat));
             osqlcomm_errstat_type_get(&errstat, p_buf, p_buf_end);
 
-            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL, fromhost);
+            osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL, fromhost, __func__);
         } else {
-            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects, fromhost);
+            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects, fromhost, __func__);
         }
 
     } else {

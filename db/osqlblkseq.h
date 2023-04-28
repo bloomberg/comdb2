@@ -48,6 +48,13 @@ int osql_blkseq_init(void);
 int osql_blkseq_register_cnonce(struct ireq *iq);
 
 /**
+ * This closes the race between writing blkseq to a temp-table and commit.
+ * - Check to see if a cnonce is in flight
+ *
+ */
+int osql_blkseq_is_inflight(const void *key);
+
+/**
  * Main function
  * - check to see if the seq exists
  * - if this is a replay, return OSQL_BLOCKSEQ_REPLAY

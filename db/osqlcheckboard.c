@@ -290,12 +290,32 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
     return (osql_chkboard_fetch_entry(rqid, uuid, 1) != NULL);
 }
 
+void trace_osql_checkboard(unsigned long long rqid, uuid_t uuid, int nops, void *data, struct errstat *errstat,
+                                struct query_effects *effects, const char *from, const char *func)
+{
+    uuidstr_t uuidstr;
+    comdb2uuidstr((unsigned char *)uuid, uuidstr);
+    logmsg(LOGMSG_USER, "checkboard rqid=%llx uuid=%s nops=%d data=%p errstat=%p errval=%d "
+                        "effects=%p affected=%d selected=%d updated=%d deleted=%d inserted=%d from=%s "
+                        "func=%s\n",
+                        rqid, uuidstr, nops, data, errstat, errstat ? errstat->errval : -1, effects,
+                        effects ? effects->num_affected : -1,
+                        effects ? effects->num_selected : -1,
+                        effects ? effects->num_updated : -1,
+                        effects ? effects->num_deleted : -1,
+                        effects ? effects->num_inserted : -1, 
+                        from, func);
+}
+
+
+
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, void *data, struct errstat *errstat,
-                                struct query_effects *effects, const char *from)
+                                struct query_effects *effects, const char *from, const char *func)
 {
     if (!checkboard)
         return 0;
 
+    trace_osql_checkboard(rqid, uuid, nops, data, errstat, effects, from, func);
     Pthread_mutex_lock(&checkboard->mtx);
 
     osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);

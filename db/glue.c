@@ -531,7 +531,8 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size";
     if (!logical)
         bdb_tran_commit_with_seqnum_size(
-            bdb_handle, trans, (seqnum_type *)seqnum, &iq->txnsize, 0, NULL, &bdberr);
+            bdb_handle, trans, (seqnum_type *)seqnum, &iq->txnsize, repblk,
+            rellock, &bdberr);
     else {
         bdb_tran_commit_logical_with_seqnum_size(
             bdb_handle, trans, blkseq, blklen, blkkey, blkkeylen,

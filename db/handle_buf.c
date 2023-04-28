@@ -227,6 +227,11 @@ int thd_init(void)
     return 0;
 }
 
+int write_thread_count()
+{
+    return write_thd_count;
+}
+
 void thd_stats(void)
 {
     int ii, jj;

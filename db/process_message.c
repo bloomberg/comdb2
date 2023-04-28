@@ -595,12 +595,23 @@ void bdb_osql_trn_clients_status();
 void bdb_newsi_mempool_stat();
 
 static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
+int write_thread_count(void);
+
 void *clean_exit_thd(void *unused)
 {
     comdb2_name_thread(__func__);
     if (!gbl_ready)
         return NULL;
 
+/*
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    thrman_register(THRTYPE_CLEANEXIT);
+    thread_started("clean_exit");
+    int wr = write_thread_count();
+
+    logmsg(LOGMSG_USER, "%s write-thread-count is %d\n", __func__, wr);
+    bdb_get_writelock(thedb->bdb_env, "clean_exit", __func__, __LINE__);
+    */
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
         Pthread_mutex_unlock(&exiting_lock);
@@ -612,6 +623,7 @@ void *clean_exit_thd(void *unused)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     thrman_register(THRTYPE_CLEANEXIT);
     thread_started("clean_exit");
+    logmsg(LOGMSG_USER, "%s write-thread-count is %d\n", __func__, write_thread_count());
 
     clean_exit();
     return NULL;
