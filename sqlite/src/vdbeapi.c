@@ -1498,10 +1498,14 @@ static const void *columnName(
     sqlite3_mutex_enter(db->mutex);
     assert( db->mallocFailed==0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( gbl_old_column_names && useUtf16 == 0 && useType == COLNAME_NAME &&
+    if( gbl_old_column_names && useUtf16 == 0 &&
+            (useType == COLNAME_NAME || useType == COLNAME_DECLTYPE) &&
         stmt_cached_column_count(pStmt)>0 ){
-      assert(N<=stmt_cached_column_count(pStmt));
-      ret = stmt_cached_column_name(pStmt, N);
+      if (useType == COLNAME_NAME) {
+          assert(N<=stmt_cached_column_count(pStmt));
+          ret = stmt_cached_column_name(pStmt, N);
+      } else if (useType == COLNAME_DECLTYPE)
+          ret = stmt_cached_column_decltype(pStmt, N-n);
     }else
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_OMIT_UTF16
