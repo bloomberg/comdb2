@@ -267,12 +267,6 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
 
-        if (clnt->verify_retries % 10 == 0) {
-            // whoah slow down there pal
-            int ms = clnt->verify_retries / 10;
-            poll(NULL, 0, 10 * ms);
-        }
-
         /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM) {
             /* we need to free all the shadows but selectv table (recgenid) */
