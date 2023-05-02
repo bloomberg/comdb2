@@ -80,6 +80,7 @@ struct stored_proc {
     unsigned pingpong          : 2;
     unsigned in_parent_trans   : 1;
     unsigned make_parent_trans : 1;
+    unsigned can_consume : 1;
 };
 
 #define getsp(x) ((SP)lua_getsp(x))
