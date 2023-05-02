@@ -600,7 +600,10 @@ int do_dryrun(struct schema_change_type *s)
 
     newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0, 1);
     if (!newdb) {
-        goto fail;
+        if (s->iq)
+            reqerrstr(s->iq, ERR_SC, "");
+        rc = SQLITE_ABORT;
+        goto done;
     }
 
     set_schemachange_options(s, db, &scinfo);
@@ -614,7 +617,8 @@ int do_dryrun(struct schema_change_type *s)
     }
 
     if (dryrun_int(s, db, newdb, &scinfo)) {
-        goto fail;
+        rc = SQLITE_ABORT;
+        goto done;
     }
 
 succeed:
