@@ -3138,6 +3138,7 @@ static void reset_sp(SP sp)
         lua_gc(sp->lua, LUA_GCCOLLECT, 0);
         drop_temp_tables(sp);
     }
+    sp->can_consume = 0;
     sp->in_parent_trans = 0;
     sp->make_parent_trans = 0;
     if (sp->parent == sp) {
@@ -7151,6 +7152,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     int consumer = 0;
     if (trigger) {
+        sp->can_consume = 1;
         remove_tran_funcs(L);
         remove_thd_funcs(L);
         remove_emit(L);
@@ -7160,6 +7162,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         rdlock_schema_lk();
         if (getqueuebyname(qname)) {
             consumer = 1;
+            sp->can_consume = 1;
         }
         unlock_schema_lk();
         if (consumer) add_consumer_funcs(L);
@@ -7205,7 +7208,7 @@ int is_pingpong(struct sqlclntstate *clnt)
 int can_consume(struct sqlclntstate *clnt)
 {
     if (clnt == NULL || clnt->sp == NULL) return 0;
-    return clnt->sp->consumer ? 1 : 0;
+    return clnt->sp->can_consume;
 }
 
 void close_sp(struct sqlclntstate *clnt)
