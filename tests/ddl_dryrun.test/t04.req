@@ -1,0 +1,7 @@
+dryrun alter table t1 add column a int not null
+
+dryrun alter table t1 add column b byte(-5) 
+
+dryrun alter table t1 drop column id 
+
+dryrun alter table t2 alter column f set data type byte(7)

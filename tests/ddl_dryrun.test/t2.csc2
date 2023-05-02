@@ -1,0 +1,17 @@
+schema
+{
+    int id
+    byte f[4]
+}
+
+keys
+{
+	"k" = id
+}
+
+constraints
+{
+    "k" -> <"t1":"key">
+}
+
+
