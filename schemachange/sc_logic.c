@@ -1490,18 +1490,16 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
     changed = ondisk_schema_changed(s->tablename, newdb, NULL, s);
     if (changed < 0) {
         if (changed == SC_BAD_NEW_FIELD) {
-            sbuf2printf(s->sb,
-                        ">Cannot add new field without dbstore or null\n");
+            sc_client_error(s, ">Cannot add new field without dbstore or null");
             return -1;
         } else if (changed == SC_BAD_INDEX_CHANGE) {
-            sbuf2printf(s->sb,
-                        ">Cannot change index referenced by other tables\n");
+            sc_client_error(s, ">Cannot change index referenced by other tables\n");
             return -1;
         } else if (changed == SC_BAD_DBPAD) {
-            sbuf2printf(s->sb, ">Cannot change size of byte array without dbpad\n");
+            sc_client_error(s, ">Cannot change size of byte array without dbpad\n");
             return -1;
         } else {
-            sbuf2printf(s->sb, ">Failed to process schema!\n");
+            sc_client_error(s, ">Failed to process schema!\n");
             return -1;
         }
     }

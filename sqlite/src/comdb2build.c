@@ -516,7 +516,10 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
 {
     struct sqlclntstate *clnt = get_sql_clnt();
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
-
+    struct ireq iq;
+    init_fake_ireq(thedb, &iq);
+    iq.errstrused = 1;
+    s->iq = &iq;
     FILE *fl = tmpfile();
     if (!fl) {
         fprintf(stderr, "%s:%d SYSTEM RAN OUT OF FILE DESCRIPTORS!!! EXITING\n",
@@ -546,11 +549,12 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     }
     fclose(fl);
 
-    /*
-    */
     osqlstate_t *osql = &clnt->osql;
-    osql->xerr.errval = 0;
+    osql->xerr.errval = errstat_get_rc(&iq.errstat);
+    memcpy(osql->xerr.errstr, errstat_get_str(&iq.errstat), strlen(errstat_get_str(&iq.errstat)));
+    //f->errorMsg = (char *)errstat_get_str(&iq.errstat);
     f->errorMsg = osql->xerr.errstr;
+    s->iq = NULL;
     return f->rc;
 }
 

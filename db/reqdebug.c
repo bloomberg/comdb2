@@ -52,6 +52,10 @@ void reqerrstr(struct ireq *iq, int rc, char *format, ...)
     if (iq == NULL)
         return;
 
+    /* NEED this kludge because of comdb2sc.tsk */
+    if (format != NULL && format[0] == '>') {
+        format += 1;
+    }
     va_start(ap, format);
 
     /* check errstr should be reported */

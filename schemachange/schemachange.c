@@ -606,7 +606,7 @@ int do_dryrun(struct schema_change_type *s)
                                &err);
     if (!newdb) {
         sc_client_error(s, "%s", err.errstr);
-        rc = -1;
+        rc = SQLITE_ABORT;
         goto done;
     }
 
@@ -617,7 +617,7 @@ int do_dryrun(struct schema_change_type *s)
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
 
     if (dryrun_int(s, db, newdb, &scinfo)) {
-        rc = -1;
+        rc = SQLITE_ABORT;
         goto done;
     }
 
