@@ -679,7 +679,7 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 /* Skip past rectype & txnid */
                 char *bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
                 DB_LSN bslsn = {0};
-                LOGCOPY_FROMLSN(bp, &bslsn);
+                LOGCOPY_TOLSN(&bslsn, bp);
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                 if (rc == 0) {
                     LOGCOPY_32(&rectype, logdta.data);
