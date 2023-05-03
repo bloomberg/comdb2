@@ -1142,7 +1142,16 @@ static void user_msg_callback(void *work)
         }
     }
     if (likely(info->gen == e->akq_gen)) {
-        user_msg(e, msg, evbuffer_pullup(e->payload_buf, datalen));
+        struct iovec payload;
+        if (evbuffer_get_contiguous_space(e->payload_buf) > datalen) {
+            evbuffer_peek(e->payload_buf, datalen, NULL, &payload, 1);
+        } else if (datalen < KB(64)) {
+            payload.iov_base = alloca(datalen);
+            evbuffer_copyout(e->payload_buf, payload.iov_base, datalen);
+        } else {
+            payload.iov_base = evbuffer_pullup(e->payload_buf, datalen);
+        }
+        user_msg(e, msg, payload.iov_base);
     }
     evbuffer_drain(e->payload_buf, datalen);
 }
