@@ -6,3 +6,4 @@ allow_lua_print 1
 max_lua_instructions 0
 lua_prepare_retries 3
 lua_prepare_retry_sleep 1000
+logmsg level info

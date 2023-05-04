@@ -9,7 +9,7 @@ EOF
 
 for ((i=0;i<50;++i)); do
     ./qdb4_adds.sh 96 &
-    ./qdb4_cons.sh 96 &
+    ./qdb_cons.sh nop2 0 $((96 * 2)) &
     wait
     cdb2sql $SP_OPTIONS "select depth from comdb2_queues where queuename = '__qnop2';"
 done
