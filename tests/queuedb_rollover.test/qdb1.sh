@@ -20,17 +20,15 @@ for ((i=1;i<9600;++i)); do
     echo "insert into foraudit values(${i})"
 done | cdb2sql $SP_OPTIONS - >/dev/null
 
-for ((i=1;i<9600;++i)); do
-    echo "exec procedure nop0()"
-done | cdb2sql $SP_OPTIONS - >/dev/null
-
-for ((i=1;i<9600;++i)); do
-    echo "exec procedure log1()"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
+./qdb_cons.sh nop0 1 9600
+./qdb_cons.sh log1 1 9600
 
 for ((i=1;i<96;++i)); do
-    echo "exec procedure dml2(${i})"
-done | cdb2sql $SP_OPTIONS
+    cdb2sql ${SP_OPTIONS} "exec procedure dml2($i)" 2> /dev/null
+    if [[ $? -ne 0 ]]; then
+        cdb2sql ${SP_OPTIONS} "exec procedure dml2($i)"
+    fi
+done
 
 sleep 60
 

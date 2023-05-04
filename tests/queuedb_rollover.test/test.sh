@@ -87,7 +87,7 @@ for testcase in $files ; do
     expected_output=$(cat $testcase.out)
 
     # get expected output
-    alt_expected_output=$(cat $testcase.out.alt)
+    alt_expected_output=$(cat $testcase.out.alt 2>/dev/null)
 
     # verify
     if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$alt_expected_output" ]]; then
