@@ -253,7 +253,9 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	LOGCOPY_TOLSN(&prevlsn, logrec);
 	logrec += sizeof(DB_LSN);
 
-	if (normalize_rectype(&type)) {
+	int have_child_utxnid;
+
+	if ((have_child_utxnid = normalize_rectype(&type)) != 0) {
 		LOGCOPY_64(&utxnid, logrec);
 		logrec += sizeof(u_int64_t);
 	}
@@ -466,10 +468,15 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	 * rid of the child. */
 	if (type == DB___txn_child) {
 		u_int32_t child_txnid;
+		u_int64_t child_utxnid = 0;
 		DB_LSN c_lsn;
 
 		LOGCOPY_32(&child_txnid, logrec);
 		logrec += sizeof(u_int32_t);
+		if (have_child_utxnid) {
+			LOGCOPY_64(&child_utxnid, logrec);
+			logrec += sizeof(u_int64_t);
+		}
 		LOGCOPY_TOLSN(&c_lsn, logrec);
 		logrec += sizeof(DB_LSN);
 
