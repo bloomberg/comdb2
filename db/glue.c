@@ -3505,10 +3505,13 @@ int broadcast_add_consumer(const char *queuename, int consumern,
  * and development. */
 int net_allow_node(struct netinfo_struct *netinfo_ptr, const char *host)
 {
-    if (allow_cluster_from_remote(host))
-        return 1;
-    else
+    struct in_addr addr = {0};
+    char *name = (char *)host;
+    if (comdb2_gethostbyname(&name, &addr) != 0) {
+        printf("%s - reject host:%s (name:%s)\n", __func__, host, name);
         return 0;
+    }
+    return allow_cluster_from_remote(host);
 }
 
 int open_auxdbs(struct dbtable *db, int force_create)
