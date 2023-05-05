@@ -428,6 +428,28 @@ int bdb_dump_dta_file_n(bdb_state_type *bdb_state, int dtanum, FILE *out)
 #endif
     return 0;
 }
+char *bdb_get_type_str(bdb_state_type *bdb_state)
+{
+    if (!bdb_state) {
+        return NULL;
+    }
+    switch (bdb_state->bdbtype) {
+        case BDBTYPE_NONE: 
+            return strdup("NONE");
+        case BDBTYPE_ENV:
+            return strdup("ENV");
+        case BDBTYPE_TABLE:
+            return strdup("TABLE");
+        case BDBTYPE_LITE:
+            return strdup("LITE");
+        case BDBTYPE_QUEUE:
+            return strdup("OLDQUEUE");
+        case BDBTYPE_QUEUEDB:
+            return strdup("QUEUE");
+        default:
+            return strdup("UNKNOWN");
+    }
+}
 
 bdbtype_t bdb_get_type(bdb_state_type *bdb_state)
 {
