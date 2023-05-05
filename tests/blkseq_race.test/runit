@@ -10,6 +10,7 @@ export debug=1
 
 export stopfile=./stopfile.txt
 export maxrecord=0
+export failed=0
 
 function failexit
 {
@@ -50,6 +51,15 @@ function verify_up
     if [[ ! -f $stopfile && $r != 0 ]] ; then
         failexit "node $node did not recover in time"
     fi
+}
+
+function bounce_cluster
+{
+    typeset func="bounce_cluster"
+    for node in $CLUSTER ; do
+        bounce_node $node 1
+        verify_up $node
+    done
 }
 
 function bounce_master_thread
@@ -116,16 +126,14 @@ function create_table
     $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "create table t1(a int)" >/dev/null 2>&1
 }
 
-function run_test
+function lost_write
 {
-    typeset func="run_test"
-    typeset maxtime=600
+    typeset func="lost_write"
+    typeset maxtime=300
     typeset now=$(date +%s)
     typeset endtime=$(( now + maxtime ))
-    typeset failed=0
 
     create_table
-    rm $stopfile >/dev/null 2>&1
     bounce_master_thread &
     insert_thread &
 
@@ -138,10 +146,55 @@ function run_test
         failed=1
         echo "Testcase failed"
     fi
+
+    # teardown
     touch "$stopfile"
 
     write_prompt $func "Sleeping 10"
     sleep 10
+}
+
+# This test makes sure that we recover blkseqs after a bounce
+function recover_blkseq
+{
+    typeset func="recover_blkseq"
+    typeset bscnt=0
+    typeset chk=0
+    typeset master=""
+
+    # Create table
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "create table tblkseq(a int)" >/dev/null 2>&1
+
+    # Insert records
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "insert into tblkseq select * from generate_series(1, 100)" >/dev/null 2>&1
+
+    bscnt=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "select count(*) from comdb2_blkseq")
+
+    bounce_cluster
+    master=$(get_master)
+    echo "New master after bounce cluster is $master"
+
+    for node in $CLUSTER ; do 
+        chk=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "select count(*) from comdb2_blkseq")
+        if [[ "$chk" != "$bscnt" ]] ; then
+            echo "Host $node has bscount $chk rather than $bscnt, failing"
+            failed=1
+            return
+        fi
+    done
+}
+
+function run_test
+{
+    typeset func="run_test"
+
+    rm $stopfile >/dev/null 2>&1
+
+    recover_blkseq
+
+    if [[ "$failed" == 0 ]]; then
+        lost_write
+    fi
 
     write_prompt $func "Stopping cluster"
     stop_cluster

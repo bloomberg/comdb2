@@ -683,6 +683,25 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 rc = logc->get(logc, &bslsn, &logdta, DB_SET);
                 if (rc == 0) {
                     LOGCOPY_32(&rectype, logdta.data);
+                    normalize_rectype(&rectype);
+                    if (rectype == DB_llog_ltran_commit) {
+                        bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                        LOGCOPY_TOLSN(&bslsn, bp);
+                        rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+                        if (rc == 0) {
+                            LOGCOPY_32(&rectype, logdta.data);
+                            normalize_rectype(&rectype);
+                        }
+                    }
+                    while (rc == 0 && rectype == DB___txn_child) {
+                        bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
+                        LOGCOPY_TOLSN(&bslsn, bp);
+                        rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+                        if (rc == 0) {
+                            LOGCOPY_32(&rectype, logdta.data);
+                            normalize_rectype(&rectype);
+                        }
+                    }
                     if (rectype == DB_llog_blkseq) {
                         rc = llog_blkseq_read(bdb_state->dbenv, logdta.data, &blkseq);
                         if (rc) {
