@@ -5566,12 +5566,16 @@ uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
     return calc_table_size_tran(NULL, db, skip_blobs);
 }
 
-void compr_print_stats_int(struct dbtable **dbs, int num_dbs){
+void compr_print_stats()
+{
     int ii;
     int odh, compr, blob_compr;
 
-    for (ii = 0; ii < num_dbs; ii++) {
-        struct dbtable *db = dbs[ii];
+    logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
+    logmsg(LOGMSG_USER, "These apply to new records only!\n");
+
+    for (ii = 0; ii < thedb->num_dbs; ii++) {
+        struct dbtable *db = thedb->dbs[ii];
         bdb_get_compr_flags(db->handle, &odh, &compr, &blob_compr);
 
         logmsg(LOGMSG_USER, "[%-16s] ", db->tablename);
@@ -5580,24 +5584,7 @@ void compr_print_stats_int(struct dbtable **dbs, int num_dbs){
                odh ? "yes" : "no", bdb_algo2compr(compr),
                bdb_algo2compr(blob_compr), db->inplace_updates ? "yes" : "no",
                db->instant_schema_change ? "yes" : "no");
-
         logmsg(LOGMSG_USER, "\n");
-    }
-}
-void compr_print_stats()
-{
-    if (thedb->num_dbs == 0 && thedb->num_qdbs == 0) {
-        return;
-    }
-    logmsg(LOGMSG_USER, "COMPRESSION FLAGS\n");
-    logmsg(LOGMSG_USER, "These apply to new records only!\n");
-
-    if (thedb->num_dbs) {
-        compr_print_stats_int(thedb->dbs, thedb->num_dbs);
-    }
-
-    if (thedb->num_qdbs) {
-        compr_print_stats_int(thedb->qdbs, thedb->num_qdbs);
     }
 }
 

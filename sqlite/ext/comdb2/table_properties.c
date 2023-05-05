@@ -21,7 +21,7 @@
 #include "ezsystables.h"
 
 extern struct dbenv *thedb;
-
+char *bdb_get_type_str(bdb_state_type *);
 sqlite3_module systblTablePropertiesModule = {
     .access_flag = CDB2_ALLOW_USER,
     .systable_lock = "comdb2_tables",
@@ -29,6 +29,7 @@ sqlite3_module systblTablePropertiesModule = {
 
 typedef struct systable_table_properties {
     char *table_name;
+    char *type;
     const char *odh;
     const char *compress;
     const char *blob_compress;
@@ -44,6 +45,7 @@ static void table_properties_gather_data(systable_table_properties_t *arr, struc
         bdb_get_compr_flags(db->handle, &odh, &compr, &blob_compr);
 
         arr[i].table_name = strdup(db->tablename);
+        arr[i].type = bdb_get_type_str(db->handle);
         arr[i].odh = odh ? "Y" : "N";
         arr[i].compress = bdb_algo2compr(compr);
         arr[i].blob_compress = bdb_algo2compr(blob_compr);
@@ -76,6 +78,9 @@ void table_properties_systable_free(void *arr, int nrecords)
 
     for (i = 0; i < nrecords; i++) {
         free(parr[i].table_name);
+        if (parr[i].type) {
+            free(parr[i].type);
+        }
     }
     free(arr);
 }
@@ -87,6 +92,7 @@ int systblTablePropertiesInit(sqlite3*db)
         table_properties_systable_collect, table_properties_systable_free,
         sizeof(systable_table_properties_t),
         CDB2_CSTRING, "table_name", -1, offsetof(systable_table_properties_t, table_name),
+        CDB2_CSTRING, "type", -1, offsetof(systable_table_properties_t, type),
         CDB2_CSTRING, "odh", -1, offsetof(systable_table_properties_t, odh),
         CDB2_CSTRING, "compress", -1, offsetof(systable_table_properties_t, compress),
         CDB2_CSTRING, "blob_compress", -1, offsetof(systable_table_properties_t, blob_compress),
