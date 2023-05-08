@@ -28,7 +28,7 @@
 #include "sql.h"
 #include "sqloffload.h"
 #include "fdb_fend.h"
-
+#include "sqlquery.pb-c.h"
 #include "newsql.h"
 
 void free_original_normalized_sql(struct sqlclntstate *);
@@ -40,6 +40,8 @@ extern int gbl_typessql;
 extern int gbl_incoherent_clnt_wait;
 extern int gbl_new_leader_duration;
 extern int gbl_use_modsnap_for_snapshot;
+
+void dump_response(const CDB2SQLRESPONSE *r);
 
 struct newsql_appdata {
     NEWSQL_APPDATA_COMMON
@@ -648,7 +650,6 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
         cols[i].value.len = sizeof(*c);                                        \
         cols[i].value.data = (uint8_t *)c;                                     \
     } while (0)
-
 #define newsql_ds(cols, i, val, flip)                                          \
     do {                                                                       \
         int frac = val->u.ds.frac;                                             \
@@ -1091,6 +1092,22 @@ static int newsql_redirect_foreign(struct sqlclntstate *clnt, char **foreign_db,
     return newsql_response(clnt, &r, 1);
 }
 
+struct legacy_response {
+    int rc;
+    int outlen;
+    uint8_t buf[64*1024];
+};
+
+static int newsql_raw_payload(struct sqlclntstate *c, void *a) {
+    CDB2SQLRESPONSE r;
+    struct legacy_response *rsp = (struct legacy_response*)a;
+    r.response_type = RESPONSE_TYPE__RAW_DATA;
+    r.sqlite_row.data = rsp->buf;
+    r.sqlite_row.len = rsp->outlen;
+    r.error_code = rsp->rc;
+    return newsql_response_int(c, &r, RESPONSE_HEADER__SQL_RESPONSE_RAW, 0);
+}
+
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     switch (t) {
@@ -1123,8 +1140,8 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_ERROR_PREPARE_RETRY:
     case RESPONSE_QUERY_STATS:
         return 0;
-    case RESPONSE_ROW_REMTRAN:
-        return newsql_row_remtran(c, a, i);
+    case RESPONSE_ROW_REMTRAN: return newsql_row_remtran(c, a, i);
+    case RESPONSE_RAW_PAYLOAD: return newsql_raw_payload(c, a);
     default:
         abort();
     }
@@ -2442,4 +2459,326 @@ void newsql_set_client_info(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query, 
     if (sql_query->client_info->api_driver_version) {
         clnt->api_driver_version = strdup(sql_query->client_info->api_driver_version);
     }
+}
+
+static void dump(int depth, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    for (int i = 0; i < depth*2; i++)
+        printf(" ");
+    vprintf(fmt, args);
+    va_end(args);
+}
+
+static const char *response_type_str(int type) {
+    switch (type) {
+        case RESPONSE_TYPE__COLUMN_NAMES:
+            return "COLUMN_NAMES";
+        case RESPONSE_TYPE__COLUMN_VALUES:
+            return "COLUMN_VALUES";
+        case RESPONSE_TYPE__LAST_ROW:
+            return "LAST_ROW";
+        case RESPONSE_TYPE__COMDB2_INFO:
+            return "COMDB2_INFO";
+        case RESPONSE_TYPE__SP_TRACE:
+            return "SP_TRACE";
+        case RESPONSE_TYPE__SP_DEBUG:
+            return "SP_DEBUG";
+        case RESPONSE_TYPE__SQL_ROW:
+            return "SQL_ROW";
+        default:
+            return "???";
+    };
+}
+
+static const char* type_str(CDB2ColumnType type) {
+    switch (type) {
+        case CDB2__COLUMN_TYPE__INTEGER:
+            return "INTEGER";
+        case CDB2__COLUMN_TYPE__REAL:
+            return "REAL";
+        case CDB2__COLUMN_TYPE__CSTRING:
+            return "CSTRING";
+        case CDB2__COLUMN_TYPE__BLOB:
+            return "BLOB";
+        case CDB2__COLUMN_TYPE__DATETIME:
+            return "DATETIME";
+        case CDB2__COLUMN_TYPE__INTERVALYM:
+            return "INTERVALYM";
+        case CDB2__COLUMN_TYPE__INTERVALDS:
+            return "INTERVALDS";
+        case CDB2__COLUMN_TYPE__DATETIMEUS:
+            return "DATETIMEUS";
+        case CDB2__COLUMN_TYPE__INTERVALDSUS:
+            return "INTERVALDSUS";
+        default:
+            return "???";
+    };
+}
+
+static void dump_value(int depth, const ProtobufCBinaryData *value) {
+    dump(depth, "");
+    uint8_t *c = value->data;
+    for (int i = 0; i < value->len; i++) {
+        printf("%02x", c[i]);
+    }
+}
+
+static void dump_column(int depth, const CDB2SQLRESPONSE__Column *c) {
+    if (c->has_type) {
+        dump(depth+1, "%s ", type_str(c->type));
+    }
+    if (c->has_isnull && c->isnull) {
+        dump(0, "null\n");
+    }
+    else {
+        dump_value(0, &c->value);
+        printf("\n");
+    }
+}
+
+static void dump_columns(int depth, const CDB2SQLRESPONSE *r) {
+    if (r->n_value == 0)
+        return;
+    dump(depth, "n_columns %d\n", r->n_value);
+    if (r->n_value > 0) {
+        dump(depth, "value [\n");
+        for (int i = 0; i < r->n_value; i++) {
+            dump_column(depth+1, r->value[i]);
+        }
+        dump(depth, "]\n");
+    }
+}
+
+static const char *sync_mode_str(CDB2SyncMode m) {
+    switch (m) {
+        case CDB2_SYNC_MODE__SYNC:
+            return "SYNC";
+        case CDB2_SYNC_MODE__ASYNC:
+            return "ASYNC";
+        case CDB2_SYNC_MODE__SYNC_ROOM:
+            return "ROOM";
+        case CDB2_SYNC_MODE__SYNC_N:
+            return "N";
+        case CDB2_SYNC_MODE__SYNC_SOURCE:
+            return "SOURCE";
+        case CDB2_SYNC_MODE__SYNC_UNKNOWN:
+            return "UNKNOWN";
+        default:
+            return "???";
+    };
+}
+
+static void dump_node(int depth, CDB2DBINFORESPONSE__Nodeinfo *r) {
+    dump(depth, "name=%s number=%d incoherent=%d", r->name, r->number, r->incoherent);
+    if (r->has_room)
+        dump(depth, " room=%d", r->room);
+    if (r->has_port)
+        dump(depth, " port=%d", r->port);
+    printf("\n");
+}
+
+static void dump_dbinfo(int depth, CDB2DBINFORESPONSE *r) {
+    if (r == NULL)
+        return;
+    dump(depth, "dbinfo: {\n");
+    depth++;
+    dump(depth, "master: {\n");
+    dump_node(depth+1, r->master);
+    dump(depth, "}\n");
+    if (r->n_nodes > 0) {
+        dump(depth, "nodes: [\n");
+        for (int i = 0; i < r->n_nodes; i++) {
+            dump_node(depth+1, r->nodes[i]);
+        }
+        dump(depth, "]\n");
+    }
+    if (r->has_require_ssl)
+        dump(depth, "require_ssl: %d\n", r->require_ssl);
+    if (r->has_sync_mode)
+        dump(depth, "sync_mode: %s\n", sync_mode_str(r->sync_mode));
+
+    depth--;
+    dump(depth, "}\n");
+}
+
+static const char* errorcode_str(CDB2ErrorCode err) {
+    switch (err) {
+        case CDB2__ERROR_CODE__OK:
+            return "OK";
+        case CDB2__ERROR_CODE__DUP_OLD:
+            return "DUP_OLD";
+        case CDB2__ERROR_CODE__CONNECT_ERROR:
+            return "CONNECT_ERROR";
+        case CDB2__ERROR_CODE__NOTCONNECTED:
+            return "NOTCONNECTED";
+        case CDB2__ERROR_CODE__PREPARE_ERROR:
+            return "PREPARE_ERROR";
+        case CDB2__ERROR_CODE__PREPARE_ERROR_OLD:
+            return "PREPARE_ERROR_OLD";
+        case CDB2__ERROR_CODE__IO_ERROR:
+            return "IO_ERROR";
+        case CDB2__ERROR_CODE__INTERNAL:
+            return "INTERNAL";
+        case CDB2__ERROR_CODE__NOSTATEMENT:
+            return "NOSTATEMENT";
+        case CDB2__ERROR_CODE__BADCOLUMN:
+            return "BADCOLUMN";
+        case CDB2__ERROR_CODE__BADSTATE:
+            return "BADSTATE";
+        case CDB2__ERROR_CODE__ASYNCERR:
+            return "ASYNCERR";
+        case CDB2__ERROR_CODE__OK_ASYNC:
+            return "OK_ASYNC";
+        case CDB2__ERROR_CODE__INVALID_ID:
+            return "INVALID_ID";
+        case CDB2__ERROR_CODE__RECORD_OUT_OF_RANGE:
+            return "RECORD_OUT_OF_RANGE";
+        case CDB2__ERROR_CODE__REJECTED:
+            return "REJECTED";
+        case CDB2__ERROR_CODE__STOPPED:
+            return "STOPPED";
+        case CDB2__ERROR_CODE__BADREQ:
+            return "BADREQ";
+        case CDB2__ERROR_CODE__DBCREATE_FAILED:
+            return "DBCREATE_FAILED";
+        case CDB2__ERROR_CODE__THREADPOOL_INTERNAL:
+            return "THREADPOOL_INTERNAL";
+        case CDB2__ERROR_CODE__READONLY:
+            return "READONLY";
+        case CDB2__ERROR_CODE__NOMASTER:
+            return "NOMASTER";
+        case CDB2__ERROR_CODE__NOTSERIAL:
+            return "NOTSERIAL";
+        case CDB2__ERROR_CODE__SCHEMACHANGE:
+            return "SCHEMACHANGE";
+        case CDB2__ERROR_CODE__UNTAGGED_DATABASE:
+            return "UNTAGGED_DATABASE";
+        case CDB2__ERROR_CODE__CONSTRAINTS:
+            return "CONSTRAINTS";
+        case CDB2__ERROR_CODE__DEADLOCK:
+            return "DEADLOCK";
+        case CDB2__ERROR_CODE__TRAN_IO_ERROR:
+            return "TRAN_IO_ERROR";
+        case CDB2__ERROR_CODE__ACCESS:
+            return "ACCESS";
+        case CDB2__ERROR_CODE__QUERYLIMIT:
+            return "QUERYLIMIT";
+        case CDB2__ERROR_CODE__MASTER_TIMEOUT:
+            return "MASTER_TIMEOUT";
+        case CDB2__ERROR_CODE__APPSOCK_LIMIT:
+            return "APPSOCK_LIMIT";
+        case CDB2__ERROR_CODE__WRONG_DB:
+            return "WRONG_DB";
+        case CDB2__ERROR_CODE__VERIFY_ERROR:
+            return "VERIFY_ERROR";
+        case CDB2__ERROR_CODE__FKEY_VIOLATION:
+            return "FKEY_VIOLATION";
+        case CDB2__ERROR_CODE__NULL_CONSTRAINT:
+            return "NULL_CONSTRAINT";
+        case CDB2__ERROR_CODE__CONV_FAIL:
+            return "CONV_FAIL";
+        case CDB2__ERROR_CODE__NONKLESS:
+            return "NONKLESS";
+        case CDB2__ERROR_CODE__MALLOC:
+            return "MALLOC";
+        case CDB2__ERROR_CODE__NOTSUPPORTED:
+            return "NOTSUPPORTED";
+        case CDB2__ERROR_CODE__TRAN_TOO_BIG:
+            return "TRAN_TOO_BIG";
+        case CDB2__ERROR_CODE__DUPLICATE:
+            return "DUPLICATE";
+        case CDB2__ERROR_CODE__TZNAME_FAIL:
+            return "TZNAME_FAIL";
+        case CDB2__ERROR_CODE__CHANGENODE:
+            return "CHANGENODE";
+        case CDB2__ERROR_CODE__UNKNOWN:
+            return "UNKNOWN";
+        default:
+            return "???";
+    };
+}
+
+static void dump_effects(int depth, CDB2EFFECTS *eff) {
+    if (eff == NULL)
+        return;
+    dump(depth, "effects: {\n");
+    depth++;
+    dump(depth, "num_affected=%d\n", eff->num_affected);
+    dump(depth, "num_selected=%d\n", eff->num_selected);
+    dump(depth, "num_updated=%d\n", eff->num_updated);
+    dump(depth, "num_deleted=%d\n", eff->num_deleted);
+    dump(depth, "num_inserted=%d\n", eff->num_inserted);
+    depth--;
+    dump(depth, "}\n");
+}
+
+static void dump_snapshot_info(int depth, CDB2SQLRESPONSE__Snapshotinfo *si) {
+    if (si == NULL)
+        return;
+    dump(depth, "SnapshotInfo: {\n");
+    depth++;
+    dump(depth, "file=%d\n", si->file);
+    dump(depth, "offset=%d\n", si->offset);
+    depth--;
+    dump(depth, "}\n");
+}
+
+static const char *feature_str(CDB2ServerFeatures f) {
+    switch (f) {
+        case CDB2_SERVER_FEATURES__SKIP_INTRANS_RESULTS:
+            return "SKIP_INTRANS_RESULTS";
+        default:
+            return "???";
+    };
+}
+
+void dump_response(const CDB2SQLRESPONSE *r) {
+    int depth = 0;
+    dump(depth, "CDB2_SQLRESPONSE: {\n");
+    depth++;
+    dump(depth, "response_type=%s\n", response_type_str(r->response_type));
+    dump_columns(depth, r);
+    dump_dbinfo(depth, r->dbinforesponse);
+    dump(depth, "errorcode=%s\n", errorcode_str(r->error_code));
+    if (r->error_string)
+        dump(depth, "error_string=%s\n", r->error_string);
+    dump_effects(depth, r->effects);
+    dump_snapshot_info(depth, r->snapshot_info);
+    if (r->has_row_id)
+        dump(depth, "row_id=%"PRIx64"\n", r->row_id);
+    if (r->n_features > 0) {
+        dump(depth, "features: [\n");
+        for (int i = 0; i < r->n_features; i++) {
+            dump(depth+1, "%s\n", feature_str(r->features[i]));
+        }
+        dump(depth, "]\n");
+    }
+    if (r->info_string)
+        dump(depth, "info_string=%s\n", r->info_string);
+    if (r->has_flat_col_vals) {
+        dump(depth, "flat_col_vals=%d\n", r->flat_col_vals);
+        dump(depth, "values: [\n");
+        for (int i = 0; i < r->n_values; i++) {
+            dump_value(depth+1, &r->values[i]);
+        }
+        dump(depth, "]\n");
+    }
+    if (r->n_isnulls) {
+        dump(depth, "isnulls: [\n");
+        for (int i = 0; i < r->n_isnulls; i++) {
+            dump(depth+1, "%d\n", r->isnulls[i]);
+        }
+        dump(depth, "]\n");
+    }
+    if (r->has_fp) {
+        dump(depth, "fp: ");
+        dump_value(0, &r->fp);
+    }
+    if (r->has_sqlite_row) {
+        dump(depth, "sqlite_row: ");
+        dump_value(0, &r->sqlite_row);
+    }
+    depth--;
+    dump(depth, "}\n");
 }

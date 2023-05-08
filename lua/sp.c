@@ -67,6 +67,9 @@
 #include <sql_stmt_cache.h>
 #include <debug_switches.h>
 #include <string_ref.h>
+#include "comdb2_atomic.h"
+#include "sql_stmt_cache.h"
+#include "util.h"
 
 #ifdef WITH_RDKAFKA    
 
@@ -6841,7 +6844,8 @@ static int emit_result(Lua L, long long *sprc, char **err)
             break;
         }
     }
-    // lua_settop(L, 0); -- not necessary, right??
+    // HERE
+    lua_settop(L, 0); // not necessary, right??
 
     if (rettab) dbtable_emit_int(L, rettab);
 
@@ -7112,6 +7116,99 @@ static int push_args_and_run_sp(struct sqlclntstate *clnt, const char *arg_str, 
     return run_sp(clnt, args, err);
 }
 
+struct legacy_response {
+    int64_t rc;
+    blob_t result;
+};
+
+
+extern int do_comdb2_legacy(void *payload, int payloadlen, struct sqlclntstate *clnt, int luxref, int flags, int *outlen, int *rcode);
+static int exec_comdb2_legacy(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err, const char *args) {
+    sparg_t arg[3];
+    int rc;
+    char *errstr = NULL;
+    arg_t expected_types[3] = { arg_blob, arg_int, arg_int };
+
+    void *authdata = clnt->authdata;
+    if (authdata == NULL && (gbl_uses_externalauth || gbl_uses_externalauth_connect))
+        clnt->authdata = get_authdata(clnt);
+
+    for (int i = 0; i < 3; i++) {
+        rc = getarg(&args, clnt, &arg[i]);
+        if (rc == arg_end) {
+            errstr = strdup("parse error reading arguments");
+            goto badargs;
+        }
+
+        if (arg[i].type == arg_param) {
+            struct param_data p;
+            if (param_value(clnt, &p, arg[i].u.i)) {
+                errstr = comdb2_asprintf("can't get parameter value for param %d\n", arg[i].u.i);
+                goto badargs;
+            }
+            switch(p.type) {
+                case CLIENT_INT:
+                case CLIENT_UINT:
+                    arg[i].u.i = p.u.i;
+                    break;
+                case CLIENT_REAL:
+                    arg[i].u.d = p.u.r;
+                    break;
+                case CLIENT_CSTR:
+                case CLIENT_PSTR:
+                case CLIENT_PSTR2:
+                case CLIENT_VUTF8:
+                    arg[i].u.c = (char*) p.u.p;
+                    break;
+                case CLIENT_BLOB:
+                case CLIENT_BYTEARRAY:
+                    arg[i].u.b.data = (char*) p.u.p;
+                    arg[i].u.b.length = p.len;
+                    break;
+            }
+        }
+        else if (rc != expected_types[i]) {
+            errstr = comdb2_asprintf("unexpected type for argument %d: expected %d got %d", i+1, (int) expected_types[i], (int) arg[i].type);
+            goto badargs;
+        }
+    }
+
+    blob_t b = arg[0].u.b;
+    int luxref = arg[1].u.i;
+    int flags = arg[2].u.i;
+
+    struct legacy_response {
+        int rc;
+        int outlen;
+        char buf[64*1024];
+    } rsp;
+
+    // TODO: check size
+    // TODO: why copy?
+    memcpy(rsp.buf, b.data, b.length);
+    // logmsg(LOGMSG_WARN, "-> %p %d\n", rsp.buf, b.length);
+    do_comdb2_legacy(rsp.buf, b.length, clnt, luxref, flags, &rsp.outlen, &rsp.rc);
+    // logic from sndbak - keep it compatible
+    char *fb = (char *)rsp.buf;
+    int *bp = (int *)rsp.buf;
+    bp[1] = htonl(rsp.rc);
+    fb[0] = 0xfd;
+
+    // logmsg(LOGMSG_WARN, "rsp: len %d rc %d\n", rsp.outlen, rsp.rc);
+    // fsnapf(stdout, rsp.buf, rsp.outlen);
+    rsp.outlen += 8;
+    write_response(clnt, RESPONSE_RAW_PAYLOAD, &rsp, 0);
+
+    return 0;
+
+badargs:
+    if (errstr == NULL)
+        *err = strdup("Badly formed legacy request?");
+    else
+        *err = errstr;
+    return -1;
+}
+
 static int exec_procedure_int(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, char **err, int trigger)
 {
@@ -7131,6 +7228,9 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
 
+    if (strncmp(spname, "comdb2_legacy_", 14) == 0)
+        return exec_comdb2_legacy(thd, clnt, err, end_ptr);
+
     if (strcmp(spname, "debug") == 0) {
         debug_sp(clnt);
         return 0;
@@ -7145,13 +7245,11 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     }
 
     if ((rc = setup_sp_int(spname, thd, clnt, trigger, &new_vm, err)) != 0) return rc;
-
     SP sp = clnt->sp;
     Lua L = sp->lua;
     const char *main_func = trigger ? "comdb2_trigger_main" : "main";
 
     if ((rc = process_src(L, sp->src, err)) != 0) return rc;
-
     if ((rc = get_func_by_name(L, main_func, err)) != 0) return rc;
 
     int consumer = 0;

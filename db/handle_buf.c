@@ -88,6 +88,11 @@ struct thd {
     pthread_cond_t wakeup;
     struct ireq *iq;
     LINKC_T(struct thd) lnk;
+
+    // extensions to allow calling thd_req inline
+    int do_inline;
+    int inited;
+    struct thr_handle *thr_self;
 };
 
 static pool_t *p_thds;
@@ -493,7 +498,7 @@ int signal_buflock(struct buf_lock_t *p_slock)
 }
 
 /* request handler */
-static void *thd_req(void *vthd)
+void *thd_req(void *vthd)
 {
     comdb2_name_thread(__func__);
     struct thd *thd = (struct thd *)vthd;
@@ -501,66 +506,82 @@ static void *thd_req(void *vthd)
     struct timespec ts;
     int rc;
     int iamwriter = 0;
-    struct thread_info *thdinfo;
+    struct thread_info *thdinfo = NULL;
     struct thr_handle *thr_self;
     struct reqlogger *logger;
     int numwriterthreads;
 
-    thread_started("request");
-    ENABLE_PER_THREAD_MALLOC(__func__);
+    if (!thd->inited) {
+        if (thd->do_inline) {
+            thd->thr_self = thrman_self();
+        }
+        else {
+            thd->thr_self = thrman_register(THRTYPE_REQ);
+            thread_started("request");
+        }
 
-    thr_self = thrman_register(THRTYPE_REQ);
+
+        ENABLE_PER_THREAD_MALLOC(__func__);
+
+        dbenv = thd->iq->dbenv;
+
+        // This was already called in the thread that's calling this code if we're called
+        // inline.  If we're called as a start routine of a new thread, we need to call it
+        // ourselves.
+        if (!thd->do_inline)
+            backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
+
+        /* thdinfo is assigned to thread specific variable thd_info_key which
+         * will automatically free it when the thread exits. */
+        thdinfo = malloc(sizeof(struct thread_info));
+        if (thdinfo == NULL) {
+            logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n", (void *)pthread_self());
+            abort();
+        }
+        thdinfo->uniquetag = 0;
+        thdinfo->ct_id_key = 0LL;
+
+        thdinfo->ct_add_table = create_constraint_table();
+        if (thdinfo->ct_add_table == NULL) {
+            logmsg(LOGMSG_FATAL,
+                    "**aborting: cannot allocate constraint add table thd "
+                    "%p\n",
+                    (void *)pthread_self());
+            abort();
+        }
+        thdinfo->ct_del_table = create_constraint_table();
+        if (thdinfo->ct_del_table == NULL) {
+            logmsg(LOGMSG_FATAL,
+                    "**aborting: cannot allocate constraint delete table "
+                    "thd %p\n",
+                    (void *)pthread_self());
+            abort();
+        }
+        thdinfo->ct_add_index = create_constraint_index_table();
+        if (thdinfo->ct_add_index == NULL) {
+            logmsg(LOGMSG_FATAL,
+                    "**aborting: cannot allocate constraint add index table "
+                    "thd %p\n",
+                    (void *)pthread_self());
+            abort();
+        }
+        thdinfo->ct_add_table_genid_hash = hash_init(sizeof(unsigned long long));
+        thdinfo->ct_add_table_genid_pool =
+            pool_setalloc_init(sizeof(unsigned long long), 0, malloc, free);
+
+        /* Initialize the sql statement cache */
+        thdinfo->stmt_cache = stmt_cache_new(NULL);
+        if (thdinfo->stmt_cache == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to create sql statement cache\n",
+                    __func__, __LINE__);
+        }
+
+        Pthread_setspecific(thd_info_key, thdinfo);
+        thd->inited = 1;
+    }
+    thr_self = thd->thr_self;
+
     logger = thrman_get_reqlogger(thr_self);
-
-    dbenv = thd->iq->dbenv;
-    backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
-
-    /* thdinfo is assigned to thread specific variable thd_info_key which
-     * will automatically free it when the thread exits. */
-    thdinfo = malloc(sizeof(struct thread_info));
-    if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n", (void *)pthread_self());
-        abort();
-    }
-    thdinfo->uniquetag = 0;
-    thdinfo->ct_id_key = 0LL;
-
-    thdinfo->ct_add_table = create_constraint_table();
-    if (thdinfo->ct_add_table == NULL) {
-        logmsg(LOGMSG_FATAL,
-               "**aborting: cannot allocate constraint add table thd "
-               "%p\n",
-               (void *)pthread_self());
-        abort();
-    }
-    thdinfo->ct_del_table = create_constraint_table();
-    if (thdinfo->ct_del_table == NULL) {
-        logmsg(LOGMSG_FATAL,
-               "**aborting: cannot allocate constraint delete table "
-               "thd %p\n",
-               (void *)pthread_self());
-        abort();
-    }
-    thdinfo->ct_add_index = create_constraint_index_table();
-    if (thdinfo->ct_add_index == NULL) {
-        logmsg(LOGMSG_FATAL,
-               "**aborting: cannot allocate constraint add index table "
-               "thd %p\n",
-               (void *)pthread_self());
-        abort();
-    }
-    thdinfo->ct_add_table_genid_hash = hash_init(sizeof(unsigned long long));
-    thdinfo->ct_add_table_genid_pool =
-        pool_setalloc_init(sizeof(unsigned long long), 0, malloc, free);
-
-    /* Initialize the sql statement cache */
-    thdinfo->stmt_cache = stmt_cache_new(NULL);
-    if (thdinfo->stmt_cache == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d failed to create sql statement cache\n",
-               __func__, __LINE__);
-    }
-
-    Pthread_setspecific(thd_info_key, thdinfo);
 
     /*printf("started handler %ld thd %p thd->id %p\n", pthread_self(), thd,
      * thd->tid);*/
@@ -598,6 +619,9 @@ static void *thd_req(void *vthd)
 
         // before acquiring next request, yield
         comdb2bma_yield_all();
+
+        if (thd->do_inline)
+            return NULL;
 
         /*NEXT REQUEST*/
         LOCK(&lock)
@@ -740,6 +764,7 @@ static void *thd_req(void *vthd)
         }
         UNLOCK(&lock);
 
+        // TODO: reuse
         /* Should not be done under lock - might be expensive */
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
@@ -750,6 +775,26 @@ static void *thd_req(void *vthd)
         }
         truncate_defered_index_tbl();
     } while (1);
+}
+
+void thd_req_inline(struct ireq *iq) {
+    struct thd inlinerq = {0};
+    // TODO: reuse the constraint tables, etc
+    inlinerq.do_inline = 1;
+    inlinerq.inited = 0;
+    inlinerq.tid = pthread_self();
+    inlinerq.iq = iq;
+    thd_req(&inlinerq);
+
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
+    delete_constraint_table(thdinfo->ct_add_table);
+    delete_constraint_table(thdinfo->ct_del_table);
+    delete_constraint_table(thdinfo->ct_add_index);
+    hash_free(thdinfo->ct_add_table_genid_hash);
+    if (thdinfo->ct_add_table_genid_pool) {
+        pool_free(thdinfo->ct_add_table_genid_pool);
+    }
+    delete_defered_index_tbl();
 }
 
 /* sndbak error code &  return resources.*/
@@ -787,7 +832,10 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
         }
         UNLOCK(&lock);
     }
-    if (comdb2_ipc_sndbak && curswap) {
+    if (iq && iq->ipc_sndbak) {
+        iq->ipc_sndbak(iq, rc, iq->p_buf_out_end - iq->p_buf_out_start);
+    }
+    else if (comdb2_ipc_sndbak && curswap) {
         /* curswap is just a pointer to the buffer */
         int *ibuf = (int *)curswap;
         ibuf += 2;
@@ -845,7 +893,7 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
     memcpy(p_bigbuf, p_buf, length);
     int rc = handle_buf_main(dbenv, NULL, p_bigbuf, p_bigbuf + length, debug,
                              frommach, 0, NULL, NULL, REQ_SOCKREQUEST, NULL, 0,
-                             rqid);
+                             rqid, NULL);
 
     return rc;
 }
@@ -856,7 +904,7 @@ int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
                                    char *fromtask)
 {
     return handle_buf_main(dbenv, sb, p_buf, p_buf_end, debug, frommach,
-                           frompid, fromtask, NULL, REQ_SOCKET, NULL, 0, 0);
+                           frompid, fromtask, NULL, REQ_SOCKET, NULL, 0, 0, NULL);
 }
 
 void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
@@ -883,7 +931,7 @@ int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach) /* 040307dh: 64bits */
 {
     return handle_buf_main(dbenv, NULL, p_buf, p_buf_end, debug, frommach, 0,
-                           NULL, NULL, REQ_WAITFT, NULL, 0, 0);
+                           NULL, NULL, REQ_WAITFT, NULL, 0, 0, NULL);
 }
 
 int handled_queue;
@@ -934,7 +982,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     /* HERE: unpack and get the proper lux - req_hdr_get_and_fixup_lux */
     if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end, iq->comdbg_flags))) {
-        logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
+        logmsg(LOGMSG_ERROR, "%s:failed to unpack req header\n", __func__);
         return ERR_BADREQ;
     }
 
@@ -954,7 +1002,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         iq->sb = NULL;
     }
 
-    if (iq->is_socketrequest) {
+    if (iq->is_socketrequest || qtype == REQ_SQLLEGACY) {
         iq->request_data = data_hndl;
     }
 
@@ -995,7 +1043,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     }
 
     if (dbenv->num_dbs > 0 && (luxref < 0 || luxref >= dbenv->num_dbs)) {
-        logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
+        logmsg(LOGMSG_ERROR, "%s:luxref out of range %d max %d\n", __func__,
                luxref, dbenv->num_dbs);
         return ERR_REJECTED;
     }
@@ -1018,7 +1066,8 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                      int frompid, char *fromtask, osql_sess_t *sorese,
                      int qtype, void *data_hndl, int luxref,
                      unsigned long long rqid, void *p_sinfo, intptr_t curswap,
-                     int comdbg_flags)
+                     int comdbg_flags, void (*iq_setup_func)(struct ireq*, void *setup_data),
+                     void *setup_data, int doinline, void* authdata)
 {
     struct ireq *iq = NULL;
     int rc, num, ndispatch, iamwriter = 0;
@@ -1068,12 +1117,20 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
             return reterr(curswap, /*thd*/ 0, iq, rc);
         }
         iq->sorese = sorese;
+        if (iq_setup_func)
+            iq_setup_func(iq, setup_data);
 
         if (iq->comdbg_flags == -1)
             iq->comdbg_flags = 0;
 
         if (p_buf && p_buf[7] == OP_FWD_BLOCK_LE)
             iq->comdbg_flags |= COMDBG_FLAG_FROM_LE;
+        iq->authdata = authdata;
+
+        if (doinline) {
+            thd_req_inline(iq);
+            return 0;
+        }
 
 
         Pthread_mutex_lock(&lock);
@@ -1169,6 +1226,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                 printf("%s:%d: thdpool FOUND THD=%p -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
 #endif
                 thd->iq = iq;
+                thd->inited = 0;
                 iq->where = "dispatched";
                 num = busy.count;
                 listc_abl(&busy, thd);
@@ -1293,11 +1351,12 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 int handle_buf_main(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     const uint8_t *p_buf_end, int debug, char *frommach,
                     int frompid, char *fromtask, osql_sess_t *sorese, int qtype,
-                    void *data_hndl, int luxref, unsigned long long rqid)
+                    void *data_hndl, int luxref, unsigned long long rqid, 
+                    void (*iq_setup_func)(struct ireq *, void *setup_data))
 {
     return handle_buf_main2(dbenv, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,
-                            rqid, 0, 0, 0);
+                            rqid, 0, 0, 0, iq_setup_func, NULL, 0, NULL);
 }
 
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq)

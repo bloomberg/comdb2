@@ -555,17 +555,13 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
 
     req_len = p_blkstate->p_buf_req_end - iq->p_buf_out_start;
 
-    if (iq->debug)
-        reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%zu\n",
-                  getorigin(iq), mstr, iq->origdb->dbnum, req_len);
-
-    if (iq->is_socketrequest) {
-        if (iq->sb == NULL) {
+    if (iq->is_socketrequest || iq->ipc_sndbak) {
+        if (iq->is_socketrequest && iq->sb == NULL) {
             return ERR_INCOHERENT;
         } else {
             rc = offload_comm_send_blockreq(mstr, iq->request_data,
                                             iq->p_buf_out_start, req_len);
+            // HERE 
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
@@ -6224,7 +6220,9 @@ cleanup:
     logmsg(LOGMSG_DEBUG, "%s cleanup rc %d did_replay:%d fromline:%d\n",
            __func__, outrc, did_replay, fromline);
 #endif
-    bdb_checklock(thedb->bdb_env);
+    // legacy_sndbak is being done from an SQL thread, which will hold a curtran lock, so skip this check
+    if (!iq->ipc_sndbak)
+        bdb_checklock(thedb->bdb_env);
 
     iq->timings.req_finished = osql_log_time();
     /*printf("Set req_finished=%llu\n", iq->timings.req_finished);*/

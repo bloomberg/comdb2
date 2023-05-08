@@ -63,6 +63,14 @@ int reject_anon_id(struct sqlclntstate *clnt)
 
 int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
 
+void get_client_origin(char *out, size_t outlen, struct sqlclntstate *clnt) {
+    snprintf(out, outlen,
+            "%s:origin:%s:pid:%d",
+            clnt->argv0 ? clnt->argv0 : "?",
+            clnt->origin ? clnt->origin: "?",
+            clnt->conninfo.pid);
+} 
+
 /* If user password does not match this function
  * will write error response and return a non 0 rc
  */
@@ -86,11 +94,7 @@ static int check_user_password(struct sqlclntstate *clnt)
             return 0;
         }
         char client_info[1024];
-        snprintf(client_info, sizeof(client_info),
-                 "%s:origin:%s:pid:%d",
-                 clnt->argv0 ? clnt->argv0 : "?",
-                 clnt->origin ? clnt->origin: "?",
-                 clnt->conninfo.pid);
+        get_client_origin(client_info, sizeof(client_info), clnt);
         int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, client_info);
         if (rc) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
@@ -347,14 +351,14 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd,
 }
 
 static int check_tag_access(struct ireq *iq) {
-    if ((gbl_uses_password || gbl_uses_externalauth) && !gbl_unauth_tag_access) {
+    if ((gbl_uses_password || gbl_uses_externalauth) && !gbl_unauth_tag_access && !iq->authdata) {
         reqerrstr(iq, ERR_ACCESS,
                   "Tag access denied for table %s from %s\n",
                   iq->usedb->tablename, iq->corigin);
         return ERR_ACCESS;
     }
 
-    if (SSL_IS_REQUIRED(gbl_client_ssl_mode)) {
+    if (SSL_IS_REQUIRED(gbl_client_ssl_mode) && !iq->has_ssl) {
         reqerrstr(iq, ERR_ACCESS, "The database requires SSL connections\n");
         return ERR_ACCESS;
     }
@@ -364,6 +368,10 @@ static int check_tag_access(struct ireq *iq) {
 int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
 {
     int rc = 0;
+
+    if (gbl_uses_externalauth && iq->authdata && externalComdb2AuthenticateUserRead) {
+        return externalComdb2AuthenticateUserWrite(iq->authdata, iq->usedb->tablename, iq->corigin);
+    }
 
     rc = check_tag_access(iq);
     if (rc)
@@ -375,6 +383,10 @@ int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
 int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
 {
     int rc = 0;
+
+    if (gbl_uses_externalauth && iq->authdata && externalComdb2AuthenticateUserRead) {
+        return externalComdb2AuthenticateUserRead(iq->authdata, iq->usedb->tablename, iq->corigin);
+    }
 
     rc = check_tag_access(iq);
     if (rc)

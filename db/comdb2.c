@@ -986,7 +986,7 @@ void showdbenv(struct dbenv *dbenv)
     for (jj = 0; jj < dbenv->num_dbs; jj++) {
         usedb = dbenv->dbs[jj]; /*de-stink*/
         logmsg(LOGMSG_USER,
-               "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
+               "table '%s' comdbg compat dbnum %d\n   dir '%s' lrlfile '%s' "
                "nconns %zu  nrevconns %zu\n",
                usedb->tablename, usedb->dbnum, dbenv->basedir, (usedb->lrlfname) ? usedb->lrlfname : "NULL",
                usedb->n_constraints, usedb->n_rev_constraints);
@@ -4400,7 +4400,7 @@ static int init(int argc, char **argv)
 
 char *getorigin(struct ireq *iq)
 {
-    if (iq->is_fake || iq->corigin[0] == 0)
+    if (!iq->is_fake && iq->corigin[0] == 0)
         return "INTERNAL";
 
     /* is_fromsocket case in init_ireq should set corigin, and
