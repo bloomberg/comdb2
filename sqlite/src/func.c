@@ -2947,6 +2947,7 @@ static void comdb2LastCostFunc(
   cost = comdb2_last_stmt_cost();
   sqlite3_result_int64(context, cost);
 }
+
 #endif
 
 /*

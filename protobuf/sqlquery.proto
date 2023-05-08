@@ -15,22 +15,22 @@ enum CDB2RequestType {
 }
 
 enum CDB2ClientFeatures {
-    SKIP_INTRANS_RESULTS = 1;
-    ALLOW_MASTER_EXEC    = 2;
-    ALLOW_MASTER_DBINFO  = 3;
-    ALLOW_QUEUING        = 4;
+    SKIP_INTRANS_RESULTS   = 1;
+    ALLOW_MASTER_EXEC      = 2;
+    ALLOW_MASTER_DBINFO    = 3;
+    ALLOW_QUEUING          = 4;
     /* To tell the server that the client is SSL-capable. */
-    SSL                  = 5;
+    SSL                    = 5;
     /* flat column values. see sqlresponse.proto for more details. */
-    FLAT_COL_VALS        = 6;
+    FLAT_COL_VALS          = 6;
     /* request server to send back query fingerprint */
-    REQUEST_FP           = 7;
+    REQUEST_FP             = 7;
     /* rows come in sqlite format */
-    SQLITE_ROW_FORMAT    = 9;
+    SQLITE_ROW_FORMAT      = 9;
     /* cdb2api is being invoked by comdb2api library (comdb2api -> cdb2api -> * comdb2) */
-    REQUIRE_FASTSQL      = 10;
+    REQUIRE_FASTSQL        = 10;
     /* To tell the server that the client can redirect an fdb query */
-    CAN_REDIRECT_FDB     = 11;
+    CAN_REDIRECT_FDB       = 11;
 }
 
 message CDB2_FLAG {

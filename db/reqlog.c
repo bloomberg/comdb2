@@ -1483,7 +1483,7 @@ inline void reqlog_set_sql(struct reqlogger *logger, struct string_ref *sr)
 
 inline void reqlog_set_startprcs(struct reqlogger *logger, uint64_t val)
 {
-    logger->startprcsus = val;
+    if (logger) logger->startprcsus = val;
 }
 
 void reqlog_new_sql_request(struct reqlogger *logger, struct string_ref *sr)

@@ -500,7 +500,7 @@ int handle_ireq(struct ireq *iq)
                 logmsg(LOGMSG_ERROR,
                        "\n Unexpected error %d in block operation", rc);
             }
-        } else if (iq->is_fromsocket) {
+        } else if (iq->is_fromsocket && !iq->ipc_sndbak) {
             net_delay(iq->frommach);
             /* process socket end request */
             if (iq->is_socketrequest) {
@@ -537,7 +537,10 @@ int handle_ireq(struct ireq *iq)
             }
             iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
             iq->p_buf_in_end = iq->p_buf_in = NULL;
-        } else if (comdb2_ipc_sndbak_len_sinfo) {
+        } else if (iq->ipc_sndbak) {
+            iq->ipc_sndbak(iq, rc, iq->p_buf_out - iq->p_buf_out_start);
+        }
+        else if (comdb2_ipc_sndbak_len_sinfo) {
             comdb2_ipc_sndbak_len_sinfo(iq, rc);
         }
     }
@@ -568,10 +571,6 @@ int handle_ireq(struct ireq *iq)
     release_node_stats(NULL, NULL, iq->frommach);
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
-
-    /* Make sure we do not leak locks */
-
-    bdb_checklock(thedb->bdb_env);
 
     return rc;
 }

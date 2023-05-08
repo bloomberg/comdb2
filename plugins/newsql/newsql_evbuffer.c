@@ -1024,7 +1024,7 @@ static void pb_evbuffer_append(ProtobufCBuffer *vbuf, size_t len, const uint8_t 
 static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 {
     struct newsql_pack_arg *arg = data;
-    if (arg->resp_len <= SQLWRITER_MAX_BUF || arg->appdata->clnt.query_timeout) {
+    if (arg->resp && arg->resp->response_type != RESPONSE_TYPE__RAW_DATA && (arg->resp_len <= SQLWRITER_MAX_BUF || arg->appdata->clnt.query_timeout)) {
         return newsql_pack_small(sqlwriter, arg);
     }
     struct pb_evbuffer_appender appender = PB_EVBUFFER_APPENDER_INIT(sqlwriter);
@@ -1034,11 +1034,21 @@ static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
             return -1;
     }
     if (arg->resp) {
-        cdb2__sqlresponse__pack_to_buffer(arg->resp, &appender.vbuf);
-        if (appender.rc != 0)
-            return -1;
-        if (arg->resp->response_type == RESPONSE_TYPE__LAST_ROW) {
-            return 1;
+        if (arg->resp->response_type == RESPONSE_TYPE__RAW_DATA) {
+            pb_evbuffer_append(&appender.vbuf, sizeof(int), (uint8_t*) &arg->resp->error_code);
+            if (appender.rc != 0)
+                return -1;
+            pb_evbuffer_append(&appender.vbuf, arg->resp->sqlite_row.len, arg->resp->sqlite_row.data);
+            if (appender.rc != 0)
+                return -1;
+        }
+        else {
+            cdb2__sqlresponse__pack_to_buffer(arg->resp, &appender.vbuf);
+            if (appender.rc != 0)
+                return -1;
+            if (arg->resp->response_type == RESPONSE_TYPE__LAST_ROW) {
+                return 1;
+            }
         }
     }
     return 0;
@@ -1047,9 +1057,18 @@ static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
                                  const CDB2SQLRESPONSE *resp, int flush)
 {
+    
+    int response_len;
+
+    if (resp && resp->response_type == RESPONSE_TYPE__RAW_DATA) {
+        response_len = sizeof(int) + resp->sqlite_row.len;
+    }
+    else
+        response_len = resp ? cdb2__sqlresponse__get_packed_size(resp) : 0;
+
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
     struct newsql_pack_arg arg = {0};
-    arg.resp_len = resp ? cdb2__sqlresponse__get_packed_size(resp) : 0;
+    arg.resp_len = response_len;
     struct newsqlheader hdr;
     if (type) {
         hdr.type = htonl(type);

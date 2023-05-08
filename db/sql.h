@@ -387,7 +387,8 @@ enum {
     XRESPONSE(RESPONSE_ROW_LUA)                                                \
     XRESPONSE(RESPONSE_ROW_STR)                                                \
     XRESPONSE(RESPONSE_TRACE)                                                  \
-    XRESPONSE(RESPONSE_ROW_REMTRAN)
+    XRESPONSE(RESPONSE_ROW_REMTRAN)                                            \
+    XRESPONSE(RESPONSE_RAW_PAYLOAD)
 
 #define XRESPONSE(x) x,
 enum WriteResponsesEnum { RESPONSE_TYPES };
@@ -1583,6 +1584,16 @@ struct query_count {
     int64_t timems;
     int64_t last_timems;
 };
+
+struct fixed_row_source {
+    void *data;
+    int ncolumns;
+    int rownum;
+    int *types;
+    char **names;
+    int (*fixed_values_callback)(struct sqlclntstate *, struct fixed_row_source *src, int rownum, int colnum, void **value, int *len);
+};
+
 
 void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  unsigned char *fingerprint, int cost,
