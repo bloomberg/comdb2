@@ -2050,9 +2050,11 @@ REGISTER_TUNABLE("transaction_grace_period",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("foreign_metadb", "Forces metadb for fdb queries to the one specified (Default:NULL)",
-                 TUNABLE_STRING, &gbl_foreign_metadb, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+                 TUNABLE_STRING, &gbl_foreign_metadb, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class specified (Default:NULL)",
-                 TUNABLE_STRING, &gbl_foreign_metadb_class, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+                 TUNABLE_STRING, &gbl_foreign_metadb_class, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_metadb_config", "Cdb2api config file for fdb metadb; superceded by foreign_metadb (Default:NULL)",
+                 TUNABLE_RAW, &gbl_foreign_metadb_config, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("allow_trigger_emit", "Allows (temporary) compatibility with buggy triggers which call dbtable:emit",
                  TUNABLE_BOOLEAN, &gbl_allow_trigger_emit, READONLY | READEARLY, NULL, NULL, NULL, NULL);
@@ -2086,5 +2088,12 @@ REGISTER_TUNABLE("seekscan_maxsteps",
                  "Overrides the max number of steps for a seekscan optimization", TUNABLE_INTEGER,
                  &gbl_seekscan_maxsteps, SIGNED, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("fdb_incoherence_percentage",
+                 "Generate random incoherent errors in remsql", TUNABLE_INTEGER,
+                 &gbl_fdb_incoherence_percentage, INTERNAL, NULL, percent_verify, NULL, NULL);
+REGISTER_TUNABLE("fdb_io_error_retries",
+                 "Number of retries for io error remsql", TUNABLE_INTEGER,
+                 &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
