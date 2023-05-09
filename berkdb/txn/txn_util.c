@@ -451,26 +451,6 @@ static int __txn_commit_map_remove_nolock(dbenv, utxnid)
 }
 
 /*
- * __txn_commit_map_remove --
- *  Remove a transaction from the commit LSN map.	
- *
- * PUBLIC: int __txn_commit_map_remove
- * PUBLIC:     __P((DB_ENV *, u_int64_t));
- */
-int __txn_commit_map_remove(dbenv, utxnid) 
-	DB_ENV *dbenv;
-	u_int64_t utxnid;
-{
-	int ret;
-
-	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
-	ret = __txn_commit_map_remove_nolock(dbenv, utxnid);
-	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
-
-	return ret;
-}
-
-/*
  * __txn_commit_map_delete_logfile_txns --
  *  Remove all transactions that committed in a specific logfile 
  *  from the commit LSN map.	
