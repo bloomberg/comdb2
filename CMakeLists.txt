@@ -21,6 +21,13 @@ else()
   add_definitions(-DWITH_TCL=0)
 endif()
 
+option(INCLUDE_DEBUG_ONLY_SYSTABLES "Turn ON to compile with debug-only systables" OFF)
+if(INCLUDE_DEBUG_ONLY_SYSTABLES)
+	add_definitions(-DINCLUDE_DEBUG_ONLY_SYSTABLES=1)
+else()
+	add_definitions(-DINCLUDE_DEBUG_ONLY_SYSTABLES=0)
+endif()
+
 option(WITH_TINFO "Turn ON on platforms where tinfo library is required for cdb2sql" OFF)
 if(WITH_TINFO)
   add_definitions(-DWITH_TINFO=1)

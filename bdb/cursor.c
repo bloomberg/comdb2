@@ -178,6 +178,8 @@ extern DB_LSN bdb_latest_commit_lsn;
 extern uint32_t bdb_latest_commit_gen;
 extern pthread_cond_t bdb_asof_current_lsn_cond;
 
+extern int __txn_commit_map_delete_logfile_txns(DB_ENV *env, int del_log);
+
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
 static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
                                  int *bdberr);
@@ -2000,6 +2002,23 @@ static inline void set_del_lsn(const char *func, unsigned int line,
     logmsg(LOGMSG_INFO, "%s:%d del_lsn[%d][%d]\n", func, line,
            new_del_lsn->file, new_del_lsn->offset);
 #endif
+}
+
+int truncate_commit_lsn_map(bdb_state_type *bdb_state, int file)
+{
+	int del_log;
+
+	del_log = file + 1;
+
+	if (bdb_state == NULL) {
+		return 0;
+	}
+
+	while (__txn_commit_map_delete_logfile_txns(bdb_state->dbenv, del_log) == 0) {
+		++del_log;
+	}
+
+	return 0;
 }
 
 /* Remove pglogs & clear queues for anything larger than LSN.

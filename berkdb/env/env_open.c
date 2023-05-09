@@ -46,6 +46,9 @@ static int __dbenv_config __P((DB_ENV *, const char *, u_int32_t));
 static int __dbenv_refresh __P((DB_ENV *, u_int32_t, int));
 static int __dbenv_remove_int __P((DB_ENV *, const char *, u_int32_t));
 
+int __txn_commit_map_init(DB_ENV *);
+int __txn_commit_map_destroy(DB_ENV *);
+
 extern int gbl_file_permissions;
 
 /*
@@ -404,6 +407,10 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	if (LF_ISSET(DB_INIT_TXN)) {
 		if ((ret = __txn_open(dbenv)) != 0)
 			goto err;
+
+		if ((ret = __txn_commit_map_init(dbenv)) != 0) {
+			goto err;
+		}
 
 		/*
 		 * If the application is running with transactions, initialize
@@ -919,6 +926,9 @@ __dbenv_close(dbenv, rep_check)
 
 	/* Release lc_cache */
 	__lc_cache_destroy(dbenv);
+
+	/* Release read-only mempool */
+	__txn_commit_map_destroy(dbenv);
 
 	/* Discard the structure. */
 	memset(dbenv, CLEAR_BYTE, sizeof(DB_ENV));

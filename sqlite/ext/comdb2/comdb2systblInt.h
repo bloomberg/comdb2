@@ -88,6 +88,7 @@ int systblTablePermissionsInit(sqlite3 *db);
 int systblSystabPermissionsInit(sqlite3 *db);
 int systblTimepartPermissionsInit(sqlite3 *db);
 int systblFdbInfoInit(sqlite3 *db);
+int systblTranCommitInit(sqlite3 *db);
 int systblTransactionStateInit(sqlite3 *db);
 int systblMemstatsInit(sqlite3 *db);
 int systblStacks(sqlite3 *db);

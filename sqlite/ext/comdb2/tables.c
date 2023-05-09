@@ -340,6 +340,10 @@ int comdb2SystblInit(
     rc = systblTransactionStateInit(db);
   if (rc == SQLITE_OK)  
     rc = systblStacks(db);
+#ifdef INCLUDE_DEBUG_ONLY_SYSTABLES
+  if (rc == SQLITE_OK)
+    rc = systblTranCommitInit(db);
+#endif
 #endif
   return rc;
 }

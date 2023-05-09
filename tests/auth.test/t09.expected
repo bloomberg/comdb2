@@ -271,6 +271,7 @@
 (candidate='comdb2_timepartpermissions')
 (candidate='comdb2_timepartshards')
 (candidate='comdb2_timeseries')
+(candidate='comdb2_transaction_commit')
 (candidate='comdb2_transaction_logs')
 (candidate='comdb2_transaction_state')
 (candidate='comdb2_triggers')

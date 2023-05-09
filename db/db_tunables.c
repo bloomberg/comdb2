@@ -177,6 +177,7 @@ extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
 extern int gbl_commit_delay_timeout;
 extern int gbl_commit_delay_copy_ms;
+extern int gbl_commit_lsn_map;
 extern int gbl_throttle_logput_trace;
 extern int gbl_fills_waitms;
 extern int gbl_finish_fill_threshold;

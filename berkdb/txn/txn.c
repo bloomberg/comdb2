@@ -92,7 +92,10 @@ int bdb_is_open(void *bdb_state);
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
+int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+
 extern int gbl_is_physical_replicant;
+extern int gbl_commit_lsn_map;
 
 #define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
@@ -315,6 +318,7 @@ __txn_begin_main(dbenv, parent, txnpp, flags, prop)
 
 	txn->mgrp = dbenv->tx_handle;
 	txn->parent = parent;
+	listc_init(&txn->committed_kids, offsetof(UTXNID, lnk));	
 	TAILQ_INIT(&txn->kids);
 	TAILQ_INIT(&txn->events);
 	STAILQ_INIT(&txn->logs);
@@ -986,13 +990,15 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
 	TXN_DETAIL *td = NULL, *ptd = NULL;
+	UTXNID *utxnid_track;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
 	uint32_t gen;
 	u_int64_t context = 0;
-	int ret, t_ret, elect_highest_committed_gen;
+	int ret, t_ret, elect_highest_committed_gen, commit_lsn_map;
 
 	dbenv = txnp->mgrp->dbenv;
+	commit_lsn_map = gbl_commit_lsn_map;
 
 	PANIC_CHECK(dbenv);
 
@@ -1350,7 +1356,16 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				STAILQ_INIT(&txnp->logs);
 			}
 
-			F_SET(txnp->parent, TXN_CHILDCOMMIT);
+			if (commit_lsn_map) {
+				if ((ret = __os_malloc(dbenv, sizeof(UTXNID), &utxnid_track)) != 0) {
+					goto err;
+				}
+
+				utxnid_track->utxnid = txnp->utxnid;
+				listc_atl(&txnp->parent->committed_kids, utxnid_track);
+
+				F_SET(txnp->parent, TXN_CHILDCOMMIT);
+			}
 		}
 	}
 
@@ -1377,6 +1392,21 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	if (F_ISSET(txnp, TXN_RECOVER_LOCK)) {
         dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
+	}
+
+	if (commit_lsn_map && !txnp->parent) {
+		ret = __txn_commit_map_add(dbenv, txnp->utxnid, txnp->last_lsn);
+		if (ret != 0) {
+			goto err;
+		}
+
+		/* No grandchildren in comdb2, so this is sufficient. */
+		LISTC_FOR_EACH(&txnp->committed_kids, utxnid_track, lnk) {
+			ret = __txn_commit_map_add(dbenv, utxnid_track->utxnid, txnp->last_lsn);
+			if (ret != 0) {
+				goto err;
+			}
+		}
 	}
 
 	remove_td_txn(txnp);
@@ -1964,6 +1994,7 @@ __txn_end(txnp, is_commit)
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;
 	TXN_DETAIL *tp;
+	UTXNID *utxnid_track, *tmpp;
 	int do_closefiles, ret;
 
 	mgr = txnp->mgrp;
@@ -2026,6 +2057,10 @@ __txn_end(txnp, is_commit)
 		return (__db_panic(dbenv, ret));
 	if (txnp->parent != NULL)
 		TAILQ_REMOVE(&txnp->parent->kids, txnp, klinks);
+	
+	LISTC_FOR_EACH_SAFE(&txnp->committed_kids, utxnid_track, tmpp, lnk) {
+		__os_free(dbenv, utxnid_track);
+	}
 
 	/* Free the space. */
 	while ((lr = STAILQ_FIRST(&txnp->logs)) != NULL) {
