@@ -6002,6 +6002,7 @@ int thdpool_alarm_on_queing(int len)
 
 int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
 {
+    int commit_lsn_map = gbl_commit_lsn_map;
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
     int rc;
@@ -6010,7 +6011,9 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
 
-	rc = truncate_commit_lsn_map(thedb->bdb_env, *file);
+    if (commit_lsn_map) {
+        rc = truncate_commit_lsn_map(thedb->bdb_env, *file);
+    }
     rc = truncate_asof_pglogs(thedb->bdb_env, *file, *offset);
 
     logmsg(LOGMSG_INFO, "%s complete [%d:%d] rc=%d\n", __func__, *file, *offset,

@@ -3507,6 +3507,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     int filenum;
     int delete_adjacent;
     int ctrace_info = 0;
+    int commit_lsn_map = gbl_commit_lsn_map;
 
     filenums_str[0] = 0;
 
@@ -3852,7 +3853,9 @@ low_headroom:
                 bdb_snapshot_asof_delete_log(bdb_state, filenum, sb.st_mtime);
 
             /* Delete transactions that committed in this file from the commit LSN map. */
-            __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, filenum);
+            if (commit_lsn_map) {
+                __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, filenum);
+            }
 
             if ((filenum <= lowfilenum && delete_adjacent) || is_low_headroom) {
                 /* delete this file if we got this far AND it's under the
