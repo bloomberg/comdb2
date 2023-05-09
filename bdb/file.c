@@ -115,6 +115,7 @@ extern int gbl_fullrecovery;
 extern char *gbl_myhostname;
 extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
+extern int gbl_commit_lsn_map;
 
 #define FILENAMELEN 100
 
