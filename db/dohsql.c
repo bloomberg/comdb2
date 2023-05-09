@@ -1940,6 +1940,7 @@ void explain_distribution(dohsql_node_t *node)
         }
     }
 
+    NO_HEARTBEAT(clnt);
     write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
 }
 

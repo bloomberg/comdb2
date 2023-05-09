@@ -1320,6 +1320,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
     out = NULL;
 
     sqlite3_finalize(stmt);
+    NO_HEARTBEAT(clnt);
     write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
     return 0;
 }

@@ -932,6 +932,13 @@ struct sqlclntstate {
     int disable_fdb_push;
 };
 
+#define NO_HEARTBEAT(c)                     \
+do {                                        \
+    Pthread_mutex_lock(&(c)->wait_mutex);   \
+    (c)->ready_for_heartbeats = 0;          \
+    Pthread_mutex_unlock(&(c)->wait_mutex); \
+} while (0)                                 \
+
 /* Query stats. */
 struct query_path_component {
     char lcl_tbl_name[MAXTABLELEN];

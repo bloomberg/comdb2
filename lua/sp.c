@@ -6820,6 +6820,7 @@ static int flush_sp(SP sp, char **err)
 {
     int rc;
     struct sqlclntstate *clnt = sp->clnt;
+    NO_HEARTBEAT(clnt);
     if (clnt->osql.sent_column_data) {
         rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
     } else {

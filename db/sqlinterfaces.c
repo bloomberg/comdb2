@@ -2244,9 +2244,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_NORMAL_PROCESS);
         outrc = CDB2ERR_VERIFY_ERROR;
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        NO_HEARTBEAT(clnt);
         if (do_send_commitrollback_response(clnt, sideeffects)) {
             write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
         }
@@ -2369,9 +2367,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
         }
 
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        NO_HEARTBEAT(clnt);
 
         outrc = rc;
 
@@ -2879,9 +2875,7 @@ static void _prepare_error(struct sqlthdstate *thd,
 
 static int send_run_error(struct sqlclntstate *clnt, const char *err, int rc)
 {
-    Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->ready_for_heartbeats = 0;
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    NO_HEARTBEAT(clnt);
     return write_response(clnt, RESPONSE_ERROR, (void *)err, rc);
 }
 
@@ -3679,9 +3673,7 @@ static int post_sqlite_processing(struct sqlthdstate *thd,
         }
         clnt->had_errors = 1;
     } else {
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        NO_HEARTBEAT(clnt);
         if (!skip_response(clnt)) {
             if (postponed_write)
                 send_row(clnt, NULL, row_id, 0, NULL);

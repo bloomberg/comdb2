@@ -2181,10 +2181,10 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
 
     /* The node does not agree with dbinfo. This usually happens
        during the downgrade from SSL to non-SSL. */
-    if (rc == 'N') {
+    if (rc != 'Y') {
         if (SSL_IS_OPTIONAL(hndl->c_sslmode)) {
             hndl->c_sslmode = SSL_ALLOW;
-            return 0;
+            return (rc == 'N') ? 0 : -1;
         }
 
         /* We reach here only if the server is mistakenly downgraded

@@ -260,6 +260,7 @@ send_error:
     }
 
     /* send last row */
+    NO_HEARTBEAT(clnt);
     if (first_row) {
         irc = write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     } else {

@@ -403,9 +403,7 @@ retry_read:
         }
 
     if (pre_enabled) {
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        NO_HEARTBEAT(clnt);
         pre_enabled = 0;
     }
 
@@ -445,9 +443,7 @@ retry_read:
     free(p);
 
     if (pre_enabled) {
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
+        NO_HEARTBEAT(clnt);
     }
 
     if (!query) {
