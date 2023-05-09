@@ -429,5 +429,8 @@ int fdb_table_exists(int rootpage);
 int fdb_set_genid_deleted(fdb_tran_t *, unsigned long long);
 int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);
 
+extern int gbl_fdb_incoherence_percentage;
+extern int gbl_fdb_io_error_retries;
+
 #endif
 
