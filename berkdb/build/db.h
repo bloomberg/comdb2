@@ -173,6 +173,11 @@ struct __recovery_processor;
 struct __recovery_list;
 struct __db_trigger_subscription;
 
+struct __utxnid; typedef struct __utxnid UTXNID;
+struct __utxnid_track; typedef struct __utxnid_track UTXNID_TRACK;
+struct __logfile_txn_list; typedef struct __logfile_txn_list LOGFILE_TXN_LIST;
+struct __txn_commit_map; typedef struct __txn_commit_map DB_TXN_COMMIT_MAP;
+
 struct txn_properties;
 
 #include "db_dbt.h"
@@ -1045,6 +1050,12 @@ struct __db_txn {
 		struct __db_txn *tqe_next;
 		struct __db_txn **tqe_prev;
 	} klinks;
+
+	/* 
+	 * Stores the utxnids of committed kids so that parent can add them
+	 * to the commit LSN map when it commits.
+	 */
+	LISTC_T(UTXNID) committed_kids; 
 
 	/* API-private structure: used by C++ */
 	void	*api_internal;
@@ -2166,6 +2177,7 @@ struct __lsn_collection {
 	int memused;
 	int had_serializable_records;
 	int filled_from_cache;
+	LISTC_T(UTXNID) *child_utxnids;
 };
 
 struct __lc_cache_entry {
@@ -2734,6 +2746,29 @@ struct __db_env {
 
 	pthread_mutex_t utxnid_lock;
 	u_int64_t next_utxnid;
+
+	DB_TXN_COMMIT_MAP* txmap;
+};
+
+struct __utxnid {
+	u_int64_t utxnid;
+	LINKC_T(struct __utxnid) lnk;
+};
+
+struct __logfile_txn_list {
+	u_int32_t file_num;
+	LISTC_T(struct __utxnid) commit_utxnids;
+};
+
+struct __utxnid_track {
+	u_int64_t utxnid;
+	DB_LSN commit_lsn;
+};
+
+struct __txn_commit_map {
+	pthread_mutex_t txmap_mutexp;
+	hash_t *transactions;
+	hash_t *logfile_lists;
 };
 
 #ifndef DB_DBM_HSEARCH

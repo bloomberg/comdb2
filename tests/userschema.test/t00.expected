@@ -54,6 +54,7 @@
 (tablename='comdb2_timepartpermissions', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_timepartshards', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_timeseries', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_transaction_commit', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_transaction_logs', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_transaction_state', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_triggers', username='mohit', READ='Y', WRITE='Y', DDL='Y')

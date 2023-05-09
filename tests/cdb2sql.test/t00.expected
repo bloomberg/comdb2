@@ -67,6 +67,7 @@ unknown @ls sub-command foo
 (name='comdb2_timepartpermissions')
 (name='comdb2_timepartshards')
 (name='comdb2_timeseries')
+(name='comdb2_transaction_commit')
 (name='comdb2_transaction_logs')
 (name='comdb2_transaction_state')
 (name='comdb2_triggers')

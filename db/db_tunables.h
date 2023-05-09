@@ -1571,6 +1571,9 @@ REGISTER_TUNABLE("commit_delay_on_copy_ms",
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("commit_lsn_map", "Maintain a map of transaction commit LSNs. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_commit_lsn_map,
+                 NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("set_coherent_state_trace",
                  "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL,

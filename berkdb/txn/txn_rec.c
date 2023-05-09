@@ -59,6 +59,12 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 
 int set_commit_context(unsigned long long context, uint32_t *generation,
 		void *plsn, void *args, unsigned int rectype);
+
+extern int gbl_commit_lsn_map;
+
+int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
+int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+
 /*
  * PUBLIC: int __txn_regop_gen_recover
  * PUBLIC:    __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
@@ -79,7 +85,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 	REP *rep;
 	DB_TXNHEAD *headp;
 	__txn_regop_gen_args *argp;
-	int ret;
+	int ret, commit_lsn_map;
 
 #ifdef DEBUG_RECOVER
 	(void)__txn_regop_gen_print(dbenv, dbtp, lsnp, op, info);
@@ -87,6 +93,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+	commit_lsn_map = gbl_commit_lsn_map;
 
 	if ((ret = __txn_regop_gen_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
@@ -156,6 +163,10 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
+			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		}
 	}
 
 	if (ret == 0) {
@@ -196,11 +207,13 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 	DB_TXNHEAD *headp;
 	__txn_regop_args *argp;
 	unsigned long long context = 0;
-	int ret;
+	int ret, commit_lsn_map;
 
 #ifdef DEBUG_RECOVER
 	(void)__txn_regop_print(dbenv, dbtp, lsnp, op, info);
 #endif
+
+	commit_lsn_map = gbl_commit_lsn_map;
 
 	if ((ret = __txn_regop_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
@@ -256,6 +269,10 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
+			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		}
 	}
 
 	if (ret == 0) {
@@ -328,12 +345,13 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	DB_TXNHEAD *headp;
 	__txn_regop_rowlocks_args *argp;
 	LTDESC *lt = NULL;
-	int ret;
+	int ret, commit_lsn_map;
 
 #ifdef DEBUG_RECOVER
 	(void)__txn_regop_rowlocks_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
+	commit_lsn_map = gbl_commit_lsn_map;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
@@ -500,6 +518,10 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
+			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		}
 	}
 
 	if (ret == 0) {
@@ -697,11 +719,15 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 	void *info;
 {
 	__txn_child_args *argp;
-	int c_stat, p_stat, ret;
+	DB_LSN commit_lsn;
+	int c_stat, p_stat, ret, commit_lsn_map;
 
 #ifdef DEBUG_RECOVER
 	(void)__txn_child_print(dbenv, dbtp, lsnp, op, info);
 #endif
+
+	commit_lsn_map = gbl_commit_lsn_map;
+
 	if ((ret = __txn_child_read(dbenv, dbtp->data, &argp)) != 0) {
 		abort();
 		return (ret);
@@ -801,6 +827,9 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			}
 
 			ret = __db_txnlist_add(dbenv, info, argp->child, c_stat, NULL);
+		}
+		if (commit_lsn_map && (__txn_commit_map_get(dbenv, argp->txnid->utxnid, &commit_lsn) == 0)) {
+			ret = __txn_commit_map_add(dbenv, argp->child_utxnid, commit_lsn);
 		}
 	} else if (op == DB_TXN_OPENFILES) {
 		/*

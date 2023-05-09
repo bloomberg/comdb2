@@ -38,6 +38,9 @@
 #define TRANLOG_COLUMN_TXNID        8
 #define TRANLOG_COLUMN_UTXNID       9
 #define TRANLOG_COLUMN_MAXUTXNID    10
+#define TRANLOG_COLUMN_CHILDUTXNID  11
+#define TRANLOG_COLUMN_LSN_FILE     12 /* Useful for sorting records by LSN */
+#define TRANLOG_COLUMN_LSN_OFFSET   13
 
 
 /* Modeled after generate_series */
@@ -71,7 +74,7 @@ static int tranlogConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -418,6 +421,7 @@ static int tranlogColumn(
   u_int32_t txnid = 0;
   u_int64_t utxnid = 0;
   u_int64_t maxutxnid = 0;
+  u_int64_t childutxnid = 0;
 
   switch( i ){
     case TRANLOG_COLUMN_START:
@@ -526,6 +530,27 @@ static int tranlogColumn(
         break;
     case TRANLOG_COLUMN_LOG:
         sqlite3_result_blob(ctx, pCur->data.data, pCur->data.size, NULL);
+        break;
+    case TRANLOG_COLUMN_CHILDUTXNID:
+        if (pCur->data.data)
+                LOGCOPY_32(&rectype, pCur->data.data);
+
+        if (rectype == DB___txn_child+2000 || rectype == DB___txn_child+3000)
+        { 
+                LOGCOPY_64(&childutxnid, &((char *) pCur->data.data)[4 + 4 + 8 + 8 + 4]); 
+        }
+
+        if (childutxnid > 0) {
+                sqlite3_result_int64(ctx, childutxnid);
+        } else {
+                sqlite3_result_null(ctx);
+        }
+        break;
+    case TRANLOG_COLUMN_LSN_FILE:
+        sqlite3_result_int(ctx, pCur->curLsn.file);
+        break;
+    case TRANLOG_COLUMN_LSN_OFFSET:
+        sqlite3_result_int(ctx, pCur->curLsn.offset);
         break;
   }
   return SQLITE_OK;

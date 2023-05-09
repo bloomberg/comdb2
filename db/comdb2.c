@@ -447,6 +447,7 @@ int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1; 
+int gbl_commit_lsn_map = 1;
 
 /* how many times we retry osql for verify */
 int gbl_osql_verify_retries_max = 499;
@@ -6004,10 +6005,14 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
     int rc;
+
     assert(*file >= 0 && *offset >= 0);
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
+
+	rc = truncate_commit_lsn_map(thedb->bdb_env, *file);
     rc = truncate_asof_pglogs(thedb->bdb_env, *file, *offset);
+
     logmsg(LOGMSG_INFO, "%s complete [%d:%d] rc=%d\n", __func__, *file, *offset,
            rc);
     return rc;
