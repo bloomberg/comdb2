@@ -60,5 +60,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
  */
 int fdb_get_rescpu_nodes(fdb_location_t *loc, int *locals);
 
+extern int gbl_fdb_track;
+
 #endif
 
