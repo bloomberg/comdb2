@@ -64,6 +64,8 @@ int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
 int gbl_fdb_push_remote = 0;
+int gbl_fdb_incoherence_percentage = 0;
+int gbl_fdb_io_error_retries = 16;
 
 struct fdb_tbl;
 struct fdb;
@@ -2969,7 +2971,6 @@ static void _update_fdb_version(BtCursor *pCur, char *errstr)
     pCur->fdbc->impl->streaming = FDB_CUR_STREAMING;
 }
 
-#define RETRY_GET_ROW 16
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
@@ -3096,7 +3097,7 @@ retry:
                         logmsg(LOGMSG_USER,
                                "%s:%d blacklisting %s, retrying..\n", __func__,
                                __LINE__, fdbc->node);
-                    if (retry++ < RETRY_GET_ROW)
+                    if (retry++ < gbl_fdb_io_error_retries)
                         goto retry;
                     logmsg(LOGMSG_ERROR,
                            "%s:%d failed to reconnect after %d retries\n",
@@ -3157,15 +3158,17 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
     unsigned long long start_rpc;
     unsigned long long end_rpc;
     int no_version_retry = 0;
+    int retry = 0;
 
     if (fdbc) {
         int sqllen;
         char *sql;
         int error = 0;
 
+retry:
         /* this is a rewind, lets make sure the pipe is clean */
         if (fdbc->streaming != FDB_CUR_IDLE) {
-        version_retry:
+version_retry:
             rc = fdb_cursor_reopen(pCur);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
@@ -3252,6 +3255,23 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                         no_version_retry = 1;
                         goto version_retry;
                     }
+                } else if (rc == FDB_ERR_READ_IO &&
+                           !pCur->clnt->intrans) {
+                    /* I/O error. Let's retry the query on some other node by
+                     * temporarily blacklisting this node (only when we haven't
+                     * read any rows and not in a transaction). */
+                    fdbc->streaming = FDB_CUR_ERROR;
+                    _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb,
+                                           fdbc->node, FDB_ERR_TRANSIENT_IO);
+                    if (gbl_fdb_track)
+                        logmsg(LOGMSG_USER,
+                               "%s:%d blacklisting %s, retrying..\n", __func__,
+                               __LINE__, fdbc->node);
+                    if (retry++ < gbl_fdb_io_error_retries)
+                        goto retry;
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to reconnect after %d retries\n",
+                           __func__, __LINE__, retry);
                 } else {
                     if (rc != FDB_ERR_SSL) {
                         if (state) {
@@ -4996,6 +5016,10 @@ int fdb_get_remote_version(const char *dbname, const char *table,
     } else {
         location = mach_class_class2name(class);
         flags = 0;
+    }
+
+    if (gbl_foreign_metadb_config) {
+        cdb2_set_comdb2db_info(gbl_foreign_metadb_config);
     }
 
     sql = sqlite3_mprintf("select table_version('%q')", table);

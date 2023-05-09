@@ -2313,9 +2313,11 @@ REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("foreign_metadb", "Forces metadb for fdb queries to the one specified (Default:NULL)",
-                 TUNABLE_STRING, &gbl_foreign_metadb, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+                 TUNABLE_STRING, &gbl_foreign_metadb, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class specified (Default:NULL)",
-                 TUNABLE_STRING, &gbl_foreign_metadb_class, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+                 TUNABLE_STRING, &gbl_foreign_metadb_class, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_metadb_config", "Cdb2api config file for fdb metadb; superceded by foreign_metadb (Default:NULL)",
+                 TUNABLE_RAW, &gbl_foreign_metadb_config, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("allow_unauthenticated_tag_access", NULL, TUNABLE_BOOLEAN, &gbl_unauth_tag_access, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
@@ -2359,4 +2361,11 @@ REGISTER_TUNABLE("wal_osync", "Open WAL files using the O_SYNC flag (Default: of
 REGISTER_TUNABLE("sc_headroom", 
                  "Percentage threshold for low headroom calculation. (Default: 10)",
                  TUNABLE_DOUBLE, &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_incoherence_percentage",
+                 "Generate random incoherent errors in remsql", TUNABLE_INTEGER,
+                 &gbl_fdb_incoherence_percentage, INTERNAL, NULL, percent_verify, NULL, NULL);
+REGISTER_TUNABLE("fdb_io_error_retries",
+                 "Number of retries for io error remsql", TUNABLE_INTEGER,
+                 &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

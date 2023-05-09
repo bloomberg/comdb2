@@ -558,16 +558,22 @@ int fdb_msg_size(void)
     return sizeof(fdb_msg_t);
 }
 
-int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags);
 
-int fdb_recv_row(fdb_msg_t *msg, char *cid, SBUF2 *sb)
+int fdb_msg_read_message_int(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags,
+                             const char *func, int line);
+
+#define fdb_msg_read_message(sb, msg, flags) \
+    fdb_msg_read_message_int(sb, msg, flags, __func__, __LINE__);
+
+
+int fdb_recv_row_int(fdb_msg_t *msg, char *cid, SBUF2 *sb, const char *func, int line)
 {
     int rc;
 
     rc = fdb_msg_read_message(sb, msg, 0);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
-               __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d (%s:%d)\n",
+               __func__, rc, func, line);
         /* synthetic row containing the error */
         msg->hd.type = FDB_MSG_DATA_ROW;
         msg->dr.rc = FDB_ERR_READ_IO;
@@ -862,7 +868,8 @@ static void fdb_msg_prepare_message(fdb_msg_t *msg)
 }
 
 /* stuff comes in network endian fomat */
-int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
+int fdb_msg_read_message_int(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags,
+                             const char *func, int line)
 {
     int rc;
     unsigned long long lltmp;
@@ -889,7 +896,8 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
      * osql_log_time());*/
 
     if (rc != sizeof(msg->hd.type)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to read header rc=%d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to read header rc=%d (%s:%d)\n",
+               __func__, rc, func, line);
         return -1;
     }
 
@@ -3416,6 +3424,12 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
     memcpy(&open_msg, &msg, sizeof open_msg);
 
     /* let transactional cursors go through */ 
+    if (gbl_fdb_incoherence_percentage) {
+        if (gbl_fdb_incoherence_percentage <= (rand() % 100)) {
+            logmsg(LOGMSG_ERROR, "Test incoherent rejection\n");
+            return -1;
+        }
+    }
     if (!bdb_am_i_coherent(thedb->bdb_env)) {
         if (((flags & FD_MSG_FLAGS_ISUUID) && comdb2uuid_is_zero((unsigned char*)open_msg.tid)) ||
                 (*(unsigned long long *)open_msg.tid == 0ULL)) {

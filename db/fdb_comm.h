@@ -60,7 +60,9 @@ int fdb_send_run_sql(fdb_msg_t *msg, char *cid, int sqllen, char *sql,
                      int version, int keylen, char *key,
                      enum run_sql_flags flags, int isuuid, SBUF2 *sb);
 
-int fdb_recv_row(fdb_msg_t *msg, char *cid, SBUF2 *sb);
+int fdb_recv_row_int(fdb_msg_t *msg, char *cid, SBUF2 *sb, const char *func, int line);
+#define fdb_recv_row(msg, cid, sb) \
+    fdb_recv_row_int(msg, cid, sb, __func__, __LINE__);
 
 int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans);
 

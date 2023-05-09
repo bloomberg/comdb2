@@ -61,6 +61,8 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      /* out: */ char *nodes[REPMAX],
                                      int *nnodes, int *room);
 
+void _extract_cdb2api_metadb_info(char *info, char ** name, char **class);
+
 /**
  * Retrieves node location from comdb2db for "dbname" of class "class"
  *
@@ -310,7 +312,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
     int lcl_nnodes;
     int rescpu_nnodes = 0;
     char *host = NULL;
-    int masked_op;
+    int masked_op = 0;
     int my_nnodes = 0;
     char **my_nodes = NULL;
     int *my_lcl = NULL;
@@ -389,11 +391,16 @@ done:
     if (my_nodes)
         free(my_nodes);
 
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_INFO,
+               "!!! USING %s op %d masked %d\n",
+               host, op, masked_op);
     return host;
 }
 
 char *gbl_foreign_metadb = NULL;
 char *gbl_foreign_metadb_class = NULL;
+char *gbl_foreign_metadb_config = NULL;
 static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      int maxnodes,
                                      /* out: */ char *nodes[REPMAX],
@@ -402,29 +409,39 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     int rc = FDB_NOERR;
     char *node;
     cdb2_hndl_tp *db;
-    const char *comdb2dbname = "comdb2db";
-    const char *comdb2dbclass = "prod";
-
-    /* NOTE: test is dev */
-    if ((strncasecmp(class, "test", 4) == 0) ||
-        (strncasecmp(class, "dev", 3) == 0)) {
-        class = "dev";
-        comdb2dbname = "comdb3db";
-        comdb2dbclass = "dev";
-    }
+    char *comdb2dbname = NULL;
+    char *comdb2dbclass = NULL;
 
     if (gbl_foreign_metadb && gbl_foreign_metadb_class) {
-        comdb2dbname = gbl_foreign_metadb;
-        comdb2dbclass = gbl_foreign_metadb_class;
+        comdb2dbname = strdup(gbl_foreign_metadb);
+        comdb2dbclass = strdup(gbl_foreign_metadb_class);
+    } else if (gbl_foreign_metadb_config) {
+        char *dupstr = strdup(gbl_foreign_metadb_config);
+        _extract_cdb2api_metadb_info(dupstr, &comdb2dbname, &comdb2dbclass);
+        free(dupstr);
+    } else {
+        /* NOTE: test is dev */
+        if ((strncasecmp(class, "test", 4) == 0) ||
+                (strncasecmp(class, "dev", 3) == 0)) {
+            class = "dev";
+            comdb2dbname = strdup("comdb3db");
+            comdb2dbclass = strdup("dev");
+        } else {
+            comdb2dbname = strdup("comdb2db");
+            comdb2dbclass = strdup("prod");
+        }
     }
 
     rc = cdb2_open(&db, comdb2dbname, comdb2dbclass, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: can't talk to metadb rc %d %s\n", __func__, rc,
                 cdb2_errstr(db));
-        cdb2_close(db);
-        return FDB_ERR_GENERIC;
+        rc = FDB_ERR_GENERIC;
+        goto noclose_done;
     }
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_INFO, "FDB: for %s, connected to metadb %s:%s\n",
+               dbname, comdb2dbname, comdb2dbclass);
 
     /* get the nodes on which a db runs, rescpued */
     const char *query = "select m.name, m.room  from machines as m,clusters as "
@@ -435,12 +452,14 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     rc = cdb2_bind_param(db, "dbname", CDB2_CSTRING, dbname, strlen(dbname));
     if (rc) {
         logmsg(LOGMSG_ERROR, "bind dbname rc %d %s\n", rc, cdb2_errstr(db));
-        return FDB_ERR_GENERIC;
+        rc = FDB_ERR_GENERIC;
+        goto done;
     }
     rc = cdb2_bind_param(db, "class", CDB2_CSTRING, class, strlen(class));
     if (rc) {
         logmsg(LOGMSG_ERROR, "bind class rc %d %s\n", rc, cdb2_errstr(db));
-        return FDB_ERR_GENERIC;
+        rc = FDB_ERR_GENERIC;
+        goto done;
     }
 
     rc = cdb2_run_statement(db, query);
@@ -458,6 +477,9 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
             switch (cdb2_column_type(db, 0)) {
             case CDB2_CSTRING: {
                 node = intern(cdb2_column_value(db, 0));
+                if (gbl_fdb_track)
+                    logmsg(LOGMSG_INFO, "FDB: for %s found node %s\n",
+                           dbname, node);
             } break;
             default:
                 logmsg(LOGMSG_ERROR, "%s: comdb2db returned funny type for column name\n",
@@ -496,7 +518,9 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
 
 done:
     cdb2_close(db);
-
+noclose_done:
+    free(comdb2dbname);
+    free(comdb2dbclass);
     return rc;
 }
 
@@ -534,25 +558,55 @@ int fdb_get_rescpu_nodes(fdb_location_t *loc, int *locals)
     return rescpued;
 }
 
-#if 0
-/**
- * Set the affinity node; setting it to -1 will force a refresh
- *
- */
-int fdb_aff_set_node(fdb_affinity_t *aff)
+static int read_line(char *line, int nline, const char *buf, int *offset)
 {
-   return 0;
+    int off = *offset;
+    int ch = buf[off];
+    while (ch == ' ' || ch == '\n') {
+        ch = buf[++off];
+    }
+
+    int count = 0;
+    while ((ch != '\n') && (ch != EOF) && (ch != '\0')) {
+        line[count] = ch;
+        count++;
+        if (count >= nline)
+            return count;
+        ch = buf[++off];
+    }
+    *offset = off;
+    if (count == 0)
+        return -1;
+    line[count + 1] = '\0';
+    return count + 1;
 }
 
-int fdb_aff_get_node(fdb_affinity_t *aff)
+void _extract_cdb2api_metadb_info(char *info, char ** name, char **class)
 {
-   return 0;
-}
+    char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
+    int offset = 0;
 
-int fdb_aff_destroy(fdb_affinity_t **paff)
-{
+    *name = *class = NULL;
+    while (read_line(line, sizeof(line), info, &offset) != -1) {
+        char *last = NULL;
+        char *tok = NULL;
+        tok = strtok_r(line, " :", &last);
+        if (tok == NULL) {
+            continue;
+        } else if (strcasecmp("comdb2_config", tok) == 0) {
+            tok = strtok_r(NULL, " =:,", &last);
+            if (tok == NULL) continue;
+            if (strcasecmp("default_type", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    *class = strdup(tok);
+            } else if (strcasecmp("comdb2dbname", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    *name = strdup(tok);
+            }
+        }
+        bzero(line, sizeof(line));
+    }
 }
-
-int fdb_get_next_node(fdb_location_t *loc, int datacenter_affinity, int crt_node);
-#endif
 

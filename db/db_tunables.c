@@ -406,6 +406,9 @@ extern int gbl_pgcomp_dryrun;
 extern int gbl_pgcomp_dbg_stdout;
 extern int gbl_pgcomp_dbg_ctrace;
 extern int gbl_warn_on_equiv_type_mismatch;
+extern int gbl_warn_on_equiv_types;
+extern int gbl_fdb_incoherence_percentage;
+extern int gbl_fdb_io_error_retries;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
@@ -1355,8 +1358,10 @@ static int parse_bool(const char *value, int *num)
 
 /* Grab the next token and store it into a buffer. */
 #define PARSE_RAW                                                              \
-    tok = segtok2((char *)value, value_len, &st, &ltok);                       \
+    tok = (char*)value;                                                        \
+    ltok = strlen(tok) + 1;                                                    \
     tokcpy0(tok, ltok, buf, MAX_TUNABLE_VALUE_SIZE);
+
 
 /* Use the custom verify function if one's provided. */
 #define DO_VERIFY(t, value)                                                    \
