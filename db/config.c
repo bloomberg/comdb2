@@ -810,18 +810,22 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 tokcpy(tok, ltok, nodename);
                 errno = 0;
 
-                if (dbenv->nsiblings >= MAXSIBLINGS) {
+                if (dbenv->nsiblings >= REPMAX) {
                     logmsg(LOGMSG_ERROR,
                            "too many sibling nodes (max=%d) in lrl %s\n",
-                           MAXSIBLINGS, options->lrlname);
+                           REPMAX, options->lrlname);
                     return -1;
                 }
 
                 /* Check to see if this name is another name for me. */
                 struct in_addr addr;
                 char *name = nodename;
-                if (comdb2_gethostbyname(&name, &addr) == 0 &&
-                    addr.s_addr == gbl_myaddr.s_addr) {
+                int rc = comdb2_gethostbyname(&name, &addr);
+                if (rc!=0) {
+                    logmsg(LOGMSG_ERROR, "Could not resolve host %s. Not adding to siblings list\n", name);
+                    continue;
+                }
+                if (rc==0 && addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(name);
                     gbl_mynodeid = machine_num(gbl_mynode);
@@ -830,7 +834,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
-                    gbl_rep_node_pri = MAXSIBLINGS - dbenv->nsiblings;
+                    gbl_rep_node_pri = REPMAX - dbenv->nsiblings;
                     continue;
                 }
                 /* lets ignore duplicate for now and make a list out of what is
