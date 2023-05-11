@@ -850,8 +850,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 /* Check to see if this name is another name for me. */
                 struct in_addr addr;
                 char *name = nodename;
-                if (comdb2_gethostbyname(&name, &addr) == 0 &&
-                    addr.s_addr == gbl_myaddr.s_addr) {
+                int rc = comdb2_gethostbyname(&name, &addr);
+                if (rc!=0) {
+                    logmsg(LOGMSG_FATAL, "Could not resolve host %s. Exiting Database...\n", name);
+                    exit(1);
+                }
+                if (rc==0 && addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
                     gbl_myhostname = intern(name);
                     gbl_mynodeid = machine_num(gbl_myhostname);
