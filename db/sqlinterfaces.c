@@ -3876,13 +3876,6 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     free_original_normalized_sql(clnt);
     normalize_stmt_and_store(clnt, NULL, 1);
 
-    if (clnt->work.zOrigNormSql) {
-        size_t nOrigNormSql = 0;
-
-        calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql,
-                            clnt->work.aFingerprint);
-    }
-
     memset(&clnt->spcost, 0, sizeof(struct sql_hist_cost));
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
@@ -3900,6 +3893,13 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     if (!in_client_trans(clnt))
         clnt->dbtran.trans_has_sp = 0;
     test_no_btcursors(thd);
+    if (clnt->work.zOrigNormSql) {
+        size_t nOrigNormSql = 0;
+
+        // calculate aFingerprint here since exec_procedure will update aFingerprint to last sql stmt found in stored
+        // procedure
+        calc_fingerprint(clnt->work.zOrigNormSql, &nOrigNormSql, clnt->work.aFingerprint);
+    }
     sqlite_done(thd, clnt, &rec, 0);
 }
 
