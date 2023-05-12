@@ -144,7 +144,8 @@ function test_add_recovery
 
 	# Send checkpoint
 	cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb setattr CHECKPOINTTIME 10000")'
-	cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb checkpoint")'
+	res=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb checkpoint")')
+	echo "checkpoint $res"
 	sleep 10
 
 	insert_values 100 data 1
@@ -152,6 +153,7 @@ function test_add_recovery
 
 	# Get checkpoint lsn file/offset
 	res=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'select lsnfile, max(lsnoffset) from comdb2_transaction_logs where (rectype='$CKP_RECTYPE' or rectype='$CKP_UTXNID_RECTYPE') and lsnfile=(select max(lsnfile) from comdb2_transaction_logs where (rectype='$CKP_RECTYPE' or rectype='$CKP_UTXNID_RECTYPE'))')
+	echo "checkpoint from txn logs $res"
 	recoverylsnfile=$(echo $res | grep -oP "[0-9]+\,")
 	recoverylsnfile=${recoverylsnfile:0:-1}
 	recoverylsnoffset=$(echo $res | grep -oP "[0-9]+\)$")
@@ -159,9 +161,11 @@ function test_add_recovery
 
 	# Get max lsn file/offset before bounce
 	res=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'select max(lsnfile) from comdb2_transaction_logs')
+	echo "max lsn file $res"
 	maxlsnfilebeforebounce=$(echo $res | grep -oP "[0-9]+\)$")
 	maxlsnfilebeforebounce=${maxlsnfilebeforebounce:0:-1}
 	res=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'select max(lsnoffset) from comdb2_transaction_logs where lsnfile='$maxlsnfilebeforebounce'')
+	echo "max lsn offset $res"
 	maxlsnoffsetbeforebounce=$(echo $res | grep -oP "[0-9]+\)$")
 	maxlsnoffsetbeforebounce=${maxlsnoffsetbeforebounce:0:-1}
 
@@ -170,6 +174,7 @@ function test_add_recovery
 	update_tranlog_copy
 
 	res=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'select COUNT(*) from comdb2_transaction_commit commits, tranlog_copy logs where commits.utxnid=logs.utxnid and (logs.lsnfile>'$recoverylsnfile' or (logs.lsnfile='$recoverylsnfile' and logs.lsnoffset>'$recoverylsnoffset'))')
+	echo "num recovered txns $res"
 	numrecoveredtxns=$(echo $res | grep -oP "[0-9]+\)$")
 	numrecoveredtxns=${numrecoveredtxns:0:-1}
 
