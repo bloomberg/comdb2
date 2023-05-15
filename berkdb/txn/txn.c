@@ -1356,6 +1356,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				STAILQ_INIT(&txnp->logs);
 			}
 
+			F_SET(txnp->parent, TXN_CHILDCOMMIT);
 			if (commit_lsn_map) {
 				if ((ret = __os_malloc(dbenv, sizeof(UTXNID), &utxnid_track)) != 0) {
 					goto err;
@@ -1363,8 +1364,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 				utxnid_track->utxnid = txnp->utxnid;
 				listc_atl(&txnp->parent->committed_kids, utxnid_track);
-
-				F_SET(txnp->parent, TXN_CHILDCOMMIT);
 			}
 		}
 	}
