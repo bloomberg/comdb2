@@ -413,6 +413,7 @@ static char *legacy_options[] = {
     "on disable_etc_services_lookup",
     "online_recovery off",
     "osql_send_startgen off",
+    "reorder_idx_writes 0",
     "setattr DIRECTIO 0",
     "setattr ENABLE_SEQNUM_GENERATIONS 0",
     "setattr MASTER_LEASE 0",
