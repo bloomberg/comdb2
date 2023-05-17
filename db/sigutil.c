@@ -137,7 +137,7 @@ void dumpsignalsetupf(FILE *out)
             logmsg(LOGMSG_ERROR, "dumpsignalsetup: sigaction(%d/%s) failed: %d %s\n",
                     signo, unix_signals[ii].name, errno, strerror(errno));
         else {
-            char buf[1024];
+            char buf[2048];
             sprintsigact(buf, sizeof(buf), &act);
             logmsg(LOGMSG_USER, "%8s = %s\n", unix_signals[ii].name, buf);
         }
@@ -155,7 +155,7 @@ void ctracesignalsetup(void)
             logmsg(LOGMSG_ERROR, "dumpsignalsetup: sigaction(%d/%s) failed: %d %s\n",
                     signo, unix_signals[ii].name, errno, strerror(errno));
         else {
-            char buf[1024];
+            char buf[2048];
             sprintsigact(buf, sizeof(buf), &act);
             ctrace("%8s = %s\n", unix_signals[ii].name, buf);
         }
