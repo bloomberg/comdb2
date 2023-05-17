@@ -1513,7 +1513,7 @@ static void free_view_hash(hash_t *view_hash)
  */
 static void finish_clean()
 {
-    if(gbl_async_dist_commit && gbl_async_dist_commit_init_success) {
+    if (gbl_async_dist_commit && gbl_async_dist_commit_init_success) {
         async_wait_cleanup();
     }
 
@@ -4082,7 +4082,6 @@ static int init(int argc, char **argv)
 
     load_dbstore_tableversion(thedb, NULL);
 
-
     gbl_backend_opened = 1;
 
     /* Recovered prepares need the osql-cnonce hash */
@@ -5679,7 +5678,8 @@ int main(int argc, char **argv)
     if (gbl_async_dist_commit) {
         rc = async_wait_init();
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Error while initialising seqnum_wait... Waiting for seqnums will happen sequentially %d\n", rc);
+            logmsg(LOGMSG_ERROR,
+                   "Error while initialising seqnum_wait... Waiting for seqnums will happen sequentially %d\n", rc);
         } else {
             gbl_async_dist_commit_init_success = 1;
         }

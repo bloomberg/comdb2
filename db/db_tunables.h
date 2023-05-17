@@ -2431,14 +2431,19 @@ REGISTER_TUNABLE("unexpected_last_type_abort",
 REGISTER_TUNABLE("async_dist_commit", 
                  "Enable asynchronous wait for replicants to catch up to master node after a transaction commits. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit",
+                 "Enable asynchronous wait for replicants to catch up to master node after a transaction commits. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
-                 "Maximum number of transactions that can be outstanding i.e waiting on asynchronous distributed commit. (Default : 8)",
+                 "Maximum number of transactions that can be outstanding i.e waiting on asynchronous distributed "
+                 "commit. (Default : 8)",
                  TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("async_dist_commit_verbose", 
+REGISTER_TUNABLE("async_dist_commit_verbose",
                  "Enable detailed logging for debugging asynchronous distributed commit. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_async_dist_commit_verbose, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("async_dist_commit_track_seqnum_times", 
-                 "Enable tracking of when leader node gets ack for seqnum and when the associated async wait item is actually considered for retirement. (Default: off)",
+REGISTER_TUNABLE("async_dist_commit_track_seqnum_times",
+                 "Enable tracking of when leader node gets ack for seqnum and when the associated async wait item is "
+                 "actually considered for retirement. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_async_dist_commit_track_seqnum_times, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

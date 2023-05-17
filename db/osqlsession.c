@@ -330,7 +330,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         rc = osql_repository_put(sess);
         if (rc == 1) {
             /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, 1,__func__);
+            osql_sess_close(&sess, 1, __func__);
         }
         return 0;
     }
@@ -511,8 +511,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 {
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
-    logmsg(LOGMSG_USER, "%s: Opening request %llu %s\n", __func__, rqid,
-           comdb2uuidstr(uuid, us));
+    logmsg(LOGMSG_USER, "%s: Opening request %llu %s\n", __func__, rqid, comdb2uuidstr(uuid, us));
 #endif
 
 #if DEBUG_REORDER

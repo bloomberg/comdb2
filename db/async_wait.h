@@ -1,7 +1,7 @@
 #ifndef INCLUDED_SEQNUM_WAIT_H
 #define INCLUDED_SEQNUM_WAIT_H
-#include<comdb2.h>
-#include<errstat.h>
+#include <comdb2.h>
+#include <errstat.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <pthread.h>
@@ -61,14 +61,14 @@
 #include <inttypes.h>
 
 /* The asynchronous wait for distributed commit can be captured
-   by a state machine involving the following states : 
+   by a state machine involving the following states :
    - INIT               ->
    - WAIT_FOR_FIRST_ACK ->
    - WAIT_FOR_ALL_ACK   ->
-   - WAIT_FINISH        -> 
-   - DONE               -> 
+   - WAIT_FINISH        ->
+   - DONE               ->
  */
-enum async_wait_state{
+enum async_wait_state {
     INIT,
     WAIT_FOR_FIRST_ACK,
     WAIT_FOR_ALL_ACK,
@@ -80,13 +80,13 @@ enum async_wait_state{
 #endif
 
 /*
-	This struct encapsulates the progress of 'distributed commit' as 
-	a work item part of a larger work queue.
+        This struct encapsulates the progress of 'distributed commit' as
+        a work item part of a larger work queue.
 */
-struct async_wait_node{
-	LINKC_T(struct async_wait_node) lsn_lnk;
+struct async_wait_node {
+    LINKC_T(struct async_wait_node) lsn_lnk;
     LINKC_T(struct async_wait_node) absolute_ts_lnk;
-    enum async_wait_state cur_state; 
+    enum async_wait_state cur_state;
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
     int numnodes;
@@ -97,8 +97,8 @@ struct async_wait_node{
     int outrc;
     errstat_t errstat;
     int num_incoh;
-    uint64_t next_ts;              // timestamp in the future when this item has to be "worked" on
-    uint64_t start_time , end_time;
+    uint64_t next_ts; // timestamp in the future when this item has to be "worked" on
+    uint64_t start_time, end_time;
     uint64_t enqueue_time;
     /* following times are mainly for debugging */
     uint64_t wait_init_start_time;
@@ -126,14 +126,14 @@ struct async_wait_node{
 };
 typedef struct async_wait_node async_wait_node;
 
-typedef struct{
+typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     int size;
     LISTC_T(struct async_wait_node) lsn_list;
     LISTC_T(struct async_wait_node) absolute_ts_list;
     uint64_t next_commit_timestamp;
-}async_wait_queue;
+} async_wait_queue;
 
 int async_wait_init();
 void async_wait_cleanup();

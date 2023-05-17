@@ -488,9 +488,7 @@ int signal_buflock(struct buf_lock_t *p_slock)
 
 void cleanup_ireq(struct ireq *iq)
 {
-    if (iq->usedb && iq->ixused >= 0 &&
-        iq->ixused < iq->usedb->nix &&
-        iq->usedb->ixuse) {
+    if (iq->usedb && iq->ixused >= 0 && iq->ixused < iq->usedb->nix && iq->usedb->ixuse) {
         iq->usedb->ixuse[iq->ixused] += iq->ixstepcnt;
     }
     iq->ixused = -1;
@@ -516,8 +514,8 @@ void cleanup_ireq(struct ireq *iq)
 #if 0
     fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
 #endif
-    pool_relablk(p_reqs,iq); /* this request is done, so release
-                                    * resource. */
+    pool_relablk(p_reqs, iq); /* this request is done, so release
+                               * resource. */
 }
 
 /* request handler */
@@ -609,7 +607,7 @@ static void *thd_req(void *vthd)
         thrman_origin(thr_self, getorigin(thd->iq));
         user_request_begin(REQUEST_TYPE_QTRAP, FLAG_REQUEST_TRACK_EVERYTHING);
         rc = handle_ireq(thd->iq);
-        time_metric_add(thedb->bp_time, (comdb2_time_epochus() - thd->iq->startus)/1000.0);
+        time_metric_add(thedb->bp_time, (comdb2_time_epochus() - thd->iq->startus) / 1000.0);
         if (rc == RC_TRAN_ASYNC_WAIT) {
             thrman_disown_logger(thr_self);
             thd->iq = NULL;
@@ -646,7 +644,7 @@ static void *thd_req(void *vthd)
             /* if transaction's commit is waiting asynchronously
                for replication to complete, don't release iq yet.
                the async_wait thread will handle it */
-            if (rc!=RC_TRAN_ASYNC_WAIT) {
+            if (rc != RC_TRAN_ASYNC_WAIT) {
                 cleanup_ireq(thd->iq);
             }
             /* get next item off hqueue */

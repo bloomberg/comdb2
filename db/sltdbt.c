@@ -358,7 +358,8 @@ static inline int opcode_supported(int opcode)
     }
 }
 
-void finish_handling_ireq(struct ireq *iq, int rc){
+void finish_handling_ireq(struct ireq *iq, int rc)
+{
     /* Unblock anybody waiting for stuff that was added in this transaction. */
     clear_trans_from_repl_list(iq->repl_list);
 
@@ -454,7 +455,7 @@ int handle_ireq(struct ireq *iq)
         int enqueued = 0;
         if (iq->sorese) {
             /* in async_wait mode */
-			if (rc==0 && iq->enque_request) { 
+            if (rc == 0 && iq->enque_request) {
                 enqueued = add_to_async_wait_queue(iq, rc);
                 if (enqueued) {
                     /* we can return now. The async wait logic
@@ -465,7 +466,7 @@ int handle_ireq(struct ireq *iq)
                 char out[37];
                 // We didn't farm off distributed commit wait. do it inline
                 logmsg(LOGMSG_USER, "could not enque in dist commit queue. %s\n", comdb2uuidstr(iq->sorese->uuid, out));
-                rc = trans_wait_for_seqnum(iq,gbl_myhostname,iq->commit_seqnum);
+                rc = trans_wait_for_seqnum(iq, gbl_myhostname, iq->commit_seqnum);
                 if (rc == BDBERR_NOT_DURABLE) {
                     rc = ERR_NOT_DURABLE;
                 }

@@ -133,7 +133,7 @@ int osql_repository_add(osql_sess_t *sess)
         int keep = osql_sess_try_terminate(sess_chk, NULL);
         if (!keep) {
             osql_repository_rem_unlocked(sess_chk);
-            osql_sess_close(&sess_chk, 0,__func__); /* false -- don't remove from repository again */
+            osql_sess_close(&sess_chk, 0, __func__); /* false -- don't remove from repository again */
         } else {
             Pthread_mutex_unlock(&theosql->hshlck);
             return -2;
@@ -289,7 +289,7 @@ static int osql_session_testterminate(void *obj, void *arg)
     int keep = osql_sess_try_terminate(sess, host);
     if (!keep) {
         osql_repository_rem_unlocked(sess);
-        osql_sess_close(&sess, 0,__func__); /* false -- don't remove from repository again */
+        osql_sess_close(&sess, 0, __func__); /* false -- don't remove from repository again */
     }
     return 0;
 }

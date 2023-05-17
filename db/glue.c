@@ -748,8 +748,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
     }
 
-    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, ss, logical,
-                                 blkseq, blklen, blkkey, blkkeylen);
+    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, ss, logical, blkseq, blklen, blkkey, blkkeylen);
 
     if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO_KEY(iq)) {
         cn_len = IQ_SNAPINFO(iq)->keylen;
@@ -773,21 +772,20 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     if (rc != 0) {
         return rc;
     }
-    is_zero_seqnum = (((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0);
+    is_zero_seqnum = (((seqnum_type *)ss)->lsn.file == 0 && ((seqnum_type *)ss)->lsn.offset == 0);
 
-    if (is_zero_seqnum) { 
+    if (is_zero_seqnum) {
         free(ss);
         return rc;
     }
-    /* If we need to wait for replicants to catch up asynchronously 
+    /* If we need to wait for replicants to catch up asynchronously
        then return here. */
     if (gbl_async_dist_commit && iq->sorese) {
         iq->commit_seqnum = ss;
         iq->enque_request = 1;
         return rc;
     }
-    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
-                                   timeoutms, adaptive, ss);
+    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, timeoutms, adaptive, ss);
 
     if (release_schema_lk && gbl_debug_add_replication_latency) {
         logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
