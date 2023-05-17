@@ -82,6 +82,5 @@ rowlocks_blkseq.test
 sc_async_constraints.test
 sigstopcluster.test
 weighted_standing_queue.test -- failing in rhel8 + podman
-utxnid.test       -- disable by default for now
 
 # vim: set sw=4 ts=4 et:
