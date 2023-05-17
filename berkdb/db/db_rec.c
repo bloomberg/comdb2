@@ -842,7 +842,8 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 
 		pagep->lsn = *lsnp;
 		modified = 1;
-	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {
+	/* created won't be set if a previous memp_fget extended by serveral pages. */
+	} else if (DB_UNDO(op) && (cmp_n == 0 || created || IS_ZERO_LSN(argp->page_lsn))) {
 		/*
 		 * This is where we handle the case of a 0'd page (pagep->pgno
 		 * is equal to PGNO_INVALID).
