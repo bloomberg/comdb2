@@ -84,6 +84,7 @@ extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
+extern int gbl_commit_lsn_map;
 extern struct thdpool *gbl_verify_thdpool;
 
 void debug_bulktraverse_data(char *tbl);
@@ -4958,6 +4959,21 @@ clipper_usage:
             thdpool_print_stats(stdout, gbl_verify_thdpool);
         else
             logmsg(LOGMSG_USER, "Verify threadpool is not active\n");
+    } else if (tokcmp(tok, ltok, "clm_delete_logfile") == 0) {
+        if (gbl_commit_lsn_map) {
+            int del_log;
+
+            tok = segtok(line, lline, &st, &ltok);
+            del_log = toknum(tok, ltok);
+
+            if (del_log < 1) {
+                logmsg(LOGMSG_ERROR, "Usage: log number must be greater than 0\n");
+            } else {
+		delete_logfile_txns_commit_lsn_map(thedb->bdb_env, del_log);
+            }
+        } else {
+            logmsg(LOGMSG_USER, "Commit LSN map is not active\n");
+        }
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;
