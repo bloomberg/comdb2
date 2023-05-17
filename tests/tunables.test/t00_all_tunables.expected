@@ -990,7 +990,7 @@
 (name='use_recovery_start_for_log_deletion', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='use_vtag_ondisk_vermap', description='Use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk.', type='BOOLEAN', value='ON', read_only='N')
 (name='usenames', description='', type='BOOLEAN', value='OFF', read_only='Y')
-(name='utxnid_log', description='Generate utxnid logs. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='utxnid_log', description='Generate utxnid logs. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='verbose_cursor_deadlocks', description='verbose_cursor_deadlocks', type='BOOLEAN', value='OFF', read_only='N')
 (name='verbose_deadlocks', description='verbose_deadlocks', type='BOOLEAN', value='OFF', read_only='N')
 (name='verbose_deadlocks_log', description='verbose_deadlocks_log', type='BOOLEAN', value='OFF', read_only='N')

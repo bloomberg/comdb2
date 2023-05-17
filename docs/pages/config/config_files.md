@@ -315,6 +315,7 @@ disable_etc_services_lookup|  off |When on, disables using /etc/services first t
 rowlocks_deadlock_trace|off |Prints deadlock trace in phys.c
 mask_internal_tunables|on|When enabled, comdb2_tunables system table would not list INTERNAL tunables
 lightweight_rename|off|When enabled, rename will add an alias instead of completely changing the table name
+utxnid_log|on|When enabled, 8-byte transaction IDs will be written to log records.
 
 #### `sqllogger` commands
 
