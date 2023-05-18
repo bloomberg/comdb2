@@ -83,8 +83,7 @@ static int defered_index_key_cmp(void *usermem, int key1len, const void *key1,
     assert(k1->ixlen == k2->ixlen);
     MEMCMP_KEY_MEMBER(k1, k2, ixkey, k1->ixlen);
     CMP_KEY_MEMBER(k1, k2, type);
-    CMP_KEY_MEMBER(k1, k2, genid);
-    return 0;
+    return memcmp(&k1->genid, &k2->genid, sizeof(genid_t));
 }
 
 static inline void *create_defered_index_table()
