@@ -10,7 +10,7 @@ function get {
         echo "No config?"
         exit 1
     fi
-	sqlite3 ${config} <<EOF
+    sqlite3 ${config} <<EOF
 create table if not exists getput(k, v);
 select v from getput where k='$1';
 EOF
@@ -98,21 +98,22 @@ function interactive-init {
             fi
         fi
     fi
+    defsource="artifactory.inf.bloomberg.com/ubuntu18:latest"
     mkdir -p ${dir}
     local v
     printf "Machine name prefix [m]: "
     read v
     [[ -z "$v" ]] && v=m
     put mach-prefix $v
-    printf "Cluster size [4]: "
+    printf "Cluster size [1]: "
     read v
-    [[ -z "$v" ]] && v=4
+    [[ -z "$v" ]] && v=1
     put clusternum $v
     v=""
     local defdb=$(whoami)db
-    printf "Default db name [$defdb]: "
+    printf "Default db name [nctdb]: "
     read v
-    [[ -z "$v" ]] && v=$defdb
+    [[ -z "$v" ]] && v=nctdb
     put defaultdb $v
     v=""
     defsrc=`find $PWD -type f  | grep "contrib/dev-util/cluster" > /dev/null && echo $PWD`
@@ -122,6 +123,8 @@ function interactive-init {
     if [ -z "$defsrc" ]; then
         defsrc=$HOME/comdb2/src
     fi
+    defsrc=/home/nchoubey/repo/comdb2-physrep-sp
+    defsrc=/home/nchoubey/repo/comdb2-physrep-prod-to-dev
     while [[ -z "$v" ]]; do
         printf "Comdb2 source root [$defsrc]: "
         read v
@@ -149,18 +152,61 @@ function interactive-init {
         v=1
     fi
     put auto-pmux $v
-    printf "Auto-start database? [0]: "
+    printf "Auto-start database? [1]: "
     read v
     if [[ "$v" = "y" || $v = "1" ]]; then
         v=1
     else
-        v=0
+        v=1
     fi
     put auto-db $v
     printf "Test parallel jobs? [4]: "
     read v
     [[ -z "$v" ]] && v=4
     put testjobs $v
+
+    printf "Physical replicant machine name prefix [r]: "
+    read v
+    [[ -z "$v" ]] && v=r
+    put repl-mach-prefix $v
+
+    printf "Number of physical replicants? [2]: "
+    read v
+    [[ -z "$v" ]] && v=2
+    put add-repl-count $v     # Total number of physical replicants to add
+    put current-repl-count 0  # Current number of physical replicants
+
+    printf "Physical replication cluster machine name prefix [c]: "
+    read v
+    [[ -z "$v" ]] && v=c
+    put repl-cluster-mach-prefix $v
+
+    printf "Number of nodes in physical replication cluster? [2]: "
+    read v
+    [[ -z "$v" ]] && v=2
+    put phys-repl-cluster-size $v
+
+    printf "Replicate via metadata cluster? [1]: "
+    read v
+    if [[ -z "$v" || "$v" = "y" || $v = "1" ]]; then
+        v=1
+    else
+        v=0
+    fi
+    put repl-via-metadb $v
+    put repl-metadata-cluster-mach-prefix z
+    put repl-metadata-cluster-size 0
+    if [[ "$v" = "1" ]]; then
+	printf "Replication metadata cluster machine name prefix [z]: "
+	read v
+	[[ -z "$v" ]] && v=z
+	put repl-metadata-cluster-mach-prefix $v
+
+	printf "Number of nodes in replication metadata cluster? [2]: "
+	read v
+	[[ -z "$v" ]] && v=2
+	put repl-metadata-cluster-size $v
+    fi
 
     docker network ls | grep -qw "comdb2"
     [[ $? -ne 0 ]] && docker network create comdb2
@@ -173,110 +219,131 @@ function interactive-init {
 }
 
 function build {
-	DIR=$(mktemp -d)
+    DIR=$(mktemp -d)
     local uid=$(id -u)
     local id=$(whoami)
-	pushd $DIR
-	cat >> Dockerfile <<- EOF
-		FROM $base
-		ENV DEBIAN_FRONTEND=noninteractive
-		ENV LD_LIBRARY_PATH=/opt/bb/lib
-		$(cat ${dir}/proxy.conf)
-		RUN apt-get update
-		RUN apt-get install -y		\
-			bc			\
-			cmake			\
-			figlet			\
-			gawk			\
-			gdb			\
-			jq			\
-			less			\
-			libevent-2.1		\
-			libevent-core-2.1	\
-			libevent-openssl-2.1	\
-			libevent-pthreads-2.1	\
-			libprotobuf-c1		\
-			libreadline-dev		\
-			libsqlite3-0		\
-			libunwind8		\
-			liblz4-tool		\
-			make			\
-			netcat-openbsd		\
-			openssh-client		\
-			openssh-server		\
-			openssl			\
-			psmisc			\
-			sqlite3                 \
-			strace			\
-			tzdata			\
-			valgrind		\
-			vim                     \
-			tclsh
+    local clusterpath=$(cd `dirname $0`; pwd -P) # Path to copy cluster script
+    local machprefix=$(get mach-prefix)
+    local replmachprefix=$(get repl-mach-prefix)
+    local replclustermachprefix=$(get repl-cluster-mach-prefix)
+    local replmetadataclustermachprefix=$(get repl-metadata-cluster-mach-prefix)
+
+    pushd $DIR
+    cat >> Dockerfile <<- EOF
+        FROM $base
+        ENV DEBIAN_FRONTEND=noninteractive
+        ENV LD_LIBRARY_PATH=/opt/bb/lib
+        $(cat ${dir}/proxy.conf)
+        RUN apt-get update
+        RUN apt-get install -y                                                 \
+            apport                                                             \
+            bc                                                                 \
+            cmake                                                              \
+            figlet                                                             \
+            gawk                                                               \
+            gdb                                                                \
+            jq                                                                 \
+            less                                                               \
+            libevent-2.1                                                       \
+            libevent-core-2.1                                                  \
+            libevent-openssl-2.1                                               \
+            libevent-pthreads-2.1                                              \
+            libprotobuf-c1                                                     \
+            libreadline-dev                                                    \
+            libsqlite3-0                                                       \
+            libunwind8                                                         \
+            liblz4-tool                                                        \
+            make                                                               \
+            netcat-openbsd                                                     \
+            openssh-client                                                     \
+            openssh-server                                                     \
+            openssl                                                            \
+            pstack                                                             \
+            psmisc                                                             \
+            sqlite3                                                            \
+            strace                                                             \
+            tzdata                                                             \
+            valgrind                                                           \
+            vim                                                                \
+            tclsh
         RUN useradd -d ${HOME} -m -u ${uid} ${id} -s /bin/bash
-	EOF
-	create-or-copy $HOME/.vimrc vimrc
-	create-or-copy $HOME/.inputrc inputrc
-	create-or-copy $HOME/.gdbinit gdbinit
-	create-or-copy $HOME/.bash_aliases bash_profile
+EOF
+    create-or-copy $HOME/.vimrc vimrc
+    create-or-copy $HOME/.inputrc inputrc
+    create-or-copy $HOME/.gdbinit gdbinit
+    create-or-copy $HOME/.bash_aliases bash_profile
     create-or-copy ${dir}/proxy.conf proxy.conf
-    create-or-copy $0 cluster
+    create-or-copy ${clusterpath}/cluster cluster
     mkdir comdb2-util
     cp ${dir}/config.sqlite ${dir}/proxy.conf comdb2-util
-	cat >> bash_profile <<- EOF
-		export SKIPSSL=1
-		export TESTDIR=/opt/bb/tmp/testdir
-		export SKIP_COPY_EXE=1
-		export SKIPDEBUG=1
-		export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$HOME/bin:/opt/bb/bin
-		export HOME=${HOME}
-	EOF
+    cat >> bash_profile <<- EOF
+        export SKIPSSL=1
+        export TESTDIR=/opt/bb/tmp/testdir
+        export SKIP_COPY_EXE=1
+        export SKIPDEBUG=1
+        export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:\$HOME/bin:/opt/bb/bin
+        export HOME=${HOME}
+EOF
     grep ENV proxy.conf | sed 's/ENV /export /g' >> bash_profile
-	ssh-keygen -q -t rsa -N '' -f $PWD/id_rsa
-	cat > config <<- EOF
-		LogLevel=quiet
-		HOST m*
-			StrictHostKeyChecking no
-	EOF
-	cat >> Dockerfile <<- EOF
-		RUN mkdir -p /opt/bb/bin /opt/bb/etc/cdb2/config.d /opt/bb/include /opt/bb/lib/cdb2 /opt/bb/lib/pkgconfig /opt/bb/lib/systemd /opt/bb/lib/systemd/system /opt/bb/log/cdb2 /opt/bb/var/cdb2 /opt/bb/var/lib/cdb2 /opt/bb/var/log/cdb2 /opt/bb/tmp
-		RUN ln -s ${HOME}/src/build/db/comdb2			/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/db/comdb2dumpcsc		/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/db/copycomdb2			/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/tools/pmux/pmux		/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/tools/comdb2ar/comdb2ar	/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/tools/cdb2sql/cdb2sql		/opt/bb/bin/
-		RUN ln -s /opt/bb/bin/comdb2	/opt/bb/bin/cdb2_dump
-		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_printlog
-		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_stat
-		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_load
-		RUN ln -s /opt/bb/bin/comdb2 	/opt/bb/bin/cdb2_sqlreply
-		RUN ln -s /opt/bb/bin/comdb2	/opt/bb/bin/cdb2_verify
-		RUN ln -s ${HOME}/src/build/cdb2api/libcdb2api.so /opt/bb/lib/libcdb2api.so
-		RUN mkdir ${HOME}/.ssh /var/run/sshd
-		RUN touch		${HOME}/.hushlogin
-		COPY config		${HOME}/.ssh/config
-		COPY id_rsa		${HOME}/.ssh/id_rsa
-		COPY id_rsa.pub		${HOME}/.ssh/id_rsa.pub
-		COPY id_rsa.pub		${HOME}/.ssh/authorized_keys
-		COPY vimrc		${HOME}/.vimrc
-		COPY inputrc		${HOME}/.inputrc
-		COPY bash_profile	${HOME}/.bash_profile
-		COPY gdbinit		${HOME}/.gdbinit
-		COPY comdb2-util    ${HOME}/.local/share/comdb2-util/
-		COPY cluster    ${HOME}/bin/cluster
-		RUN chmod -R 777 /opt/bb/
-		RUN chown -R ${id}:${id} ${HOME}
-	EOF
-	#if having problems with missing packages build with --no-cache=true 
-	docker build -t comdb2:dev .
-	popd
-	rm -rf $DIR
+    ssh-keygen -q -t rsa -N '' -f $PWD/id_rsa
+    cat > config <<- EOF
+        LogLevel=quiet
+        HOST ${machprefix}*
+            StrictHostKeyChecking no
+        HOST ${replmachprefix}*
+            StrictHostKeyChecking no
+        HOST ${replclustermachprefix}*
+            StrictHostKeyChecking no
+        HOST ${replmetadataclustermachprefix}*
+            StrictHostKeyChecking no
+EOF
+cat >> Dockerfile <<- EOF
+        RUN mkdir -p /opt/bb/bin /opt/bb/etc/cdb2/config.d /opt/bb/include /opt/bb/lib/cdb2 /opt/bb/lib/pkgconfig /opt/bb/lib/systemd /opt/bb/lib/systemd/system /opt/bb/log/cdb2 /opt/bb/var/cdb2 /opt/bb/var/lib/cdb2 /opt/bb/var/log/cdb2 /opt/bb/tmp
+        RUN ln -s ${HOME}/src/build/db/comdb2                /opt/bb/bin/
+        RUN ln -s ${HOME}/src/build/db/comdb2dumpcsc         /opt/bb/bin/
+        RUN ln -s ${HOME}/src/build/db/copycomdb2            /opt/bb/bin/
+        RUN ln -s ${HOME}/src/build/tools/pmux/pmux          /opt/bb/bin/
+        RUN ln -s ${HOME}/src/build/tools/comdb2ar/comdb2ar  /opt/bb/bin/
+        RUN ln -s ${HOME}/src/build/tools/cdb2sql/cdb2sql    /opt/bb/bin/
+        RUN ln -s /opt/bb/bin/comdb2                         /opt/bb/bin/cdb2_dump
+        RUN ln -s /opt/bb/bin/comdb2                         /opt/bb/bin/cdb2_printlog
+        RUN ln -s /opt/bb/bin/comdb2                         /opt/bb/bin/cdb2_stat
+        RUN ln -s /opt/bb/bin/comdb2                         /opt/bb/bin/cdb2_load
+        RUN ln -s /opt/bb/bin/comdb2                         /opt/bb/bin/cdb2_sqlreply
+        RUN ln -s /opt/bb/bin/comdb2                         /opt/bb/bin/cdb2_verify
+        RUN ln -s ${HOME}/src/build/cdb2api/libcdb2api.so    /opt/bb/lib/libcdb2api.so
+        RUN mkdir ${HOME}/.ssh /var/run/sshd
+        RUN touch ${HOME}/.hushlogin
+        COPY config                                          ${HOME}/.ssh/config
+        COPY id_rsa                                          ${HOME}/.ssh/id_rsa
+        COPY id_rsa.pub                                      ${HOME}/.ssh/id_rsa.pub
+        COPY id_rsa.pub                                      ${HOME}/.ssh/authorized_keys
+        COPY vimrc                                           ${HOME}/.vimrc
+        COPY inputrc                                         ${HOME}/.inputrc
+        COPY bash_profile                                    ${HOME}/.bash_profile
+        COPY gdbinit                                         ${HOME}/.gdbinit
+        COPY comdb2-util                                     ${HOME}/.local/share/comdb2-util/
+        COPY cluster                                         ${HOME}/cluster
+        RUN chmod -R 777 /opt/bb/
+        RUN chown -R ${id}:${id} ${HOME}
+EOF
+    #if having problems with missing packages build with --no-cache=true 
+    docker build -t comdb2:dev .
+    popd
+    rm -rf $DIR
 }
 
 function start-cluster-jobs {
+    # NC: Host must be modified to enable coredumps on crash
+    # echo "/tmp/core.%e.%p" | sudo tee /proc/sys/kernel/core_pattern
+    for ((i=0;i<=$n;++i)); do
+        name=$(container-name $i)
+        docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+    done
+
     if [[ $(get auto-pmux) = 1 ]]; then
         echo "starting pmux"
-    	for ((i=0;i<=$n;++i)); do
+        for ((i=0;i<=$n;++i)); do
             name=$(container-name $i)
             docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
         done
@@ -284,45 +351,107 @@ function start-cluster-jobs {
     fi
     if [[ $(get auto-db) = 1 ]]; then
         echo "starting db"
-    	for ((i=0;i<=$n;++i)); do
+        for ((i=0;i<=$n;++i)); do
             name=$(container-name $i)
             db=$(get defaultdb)
             docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $db > ${dir}/persist/logs/${name}.${db} 2>&1 &
         done
     fi
+
+    # Wait for cluster node to start
+    success=0
+    for i in `seq 1 10`; do
+        res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
+	if [[ -n ${res} ]]; then
+            success=1
+	    break
+	fi
+	echo "$i: cluster not ready, waiting.."
+	sleep 2
+    done
+
+    if [[ $success -eq 0 ]]; then
+        echo "FATAL: cluster not up"
+	exit 1
+    fi
+
+    setup-physrep-tables
+
+    if [[ $(get repl-via-metadb) = 1 ]]; then
+        echo "Replicating via replication metadata db"
+    else
+        for ((i=0;i<=$n;++i)); do
+            name=$(container-name $i)
+            echo "Starting replication on ${name}"
+            res=$(docker exec --user $(id -u) ${name} /opt/bb/bin/cdb2sql $db @${name} "exec procedue sys.cmd.start_replication()" 2> /dev/null)
+            if [[ ${res} -ne 0 ]]; then
+                echo "Failed to start replication on ${name} (rc: $res)"
+            fi
+        done
+    fi
 }
 
 function run {
-	n=$1
+    n=$1
     [[ $n -lt 1 ]] && n=$(get clusternum)
     [[ $n -lt 1 ]] && usage
-	put clusternum $n
-	declare -a names
-	for ((i=0;i<=$n;++i)); do
-		name=$(container-name $i)
-		[[ $i -gt 0 ]] && names+=(${name})
+    put clusternum $n
+    declare -a names
+    for ((i=0;i<=$n;++i)); do
+        name=$(container-name $i)
+        [[ $i -gt 0 ]] && names+=(${name})
         local dbfs=""
         if [[ $persist -eq 1 ]]; then 
             dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
         else
             dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
         fi
-        docker run --ulimit nofile=10000:10000 -it -d --privileged $dbfs --network comdb2 \
-		    -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
-		    --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
-	done
-	wait
-	for ((i=0;i<=$n;++i)); do
-		name=$(container-name $i)
-		cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
+            -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+            --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+    done
+    wait
+    for ((i=0;i<=$n;++i)); do
+        name=$(container-name $i)
+        cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
         docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
-	done
+    done
+
+    if [[ $(get repl-via-metadb) = 1 ]]; then
+        container_name=$(repl-metadata-cluster-container-name 0)
+        db=$(get defaultdb)$container_name
+
+        for ((i=0;i<=$n;++i)); do
+            name=$(container-name $i)
+            cluster_cmd='echo export REPLMETADB=\"'"${db} ${container_name}"'\" >> ${HOME}/.bash_profile'
+        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+        done
+    fi
 
     if [[ $(get auto-db) = 1 ]]; then
         echo "setting up databases"
-        cluster setup
+        $0 setup
     fi
+
+    echo "Start replicaction metadata cluster?"
+    read v
+    start-physical-replication-metadata-cluster
+    echo "===== Replication metadata cluster started ===="
+
+    echo "Start source cluster?"
+    read v
     start-cluster-jobs
+    echo "===== Source cluster started ===="
+
+    echo "Starting replicants?"
+    read v
+    start-physical-replicants
+    echo "===== Replicants started ===="
+
+    echo "Start replication cluster?"
+    read v
+    start-physical-replication-cluster
+    echo "===== Replication cluster started ===="
 }
 
 function do_docker {
@@ -331,18 +460,34 @@ function do_docker {
 	for ((i=0;i<=${n};++i)); do
 		names+=($(container-name $i))
 	done
+
+	n=$(get current-repl-count)
+	for ((i=0;i<${n};++i)); do
+		names+=($(repl-container-name $i))
+	done
+
+	n=$(get phys-repl-cluster-size)
+	for ((i=0;i<${n};++i)); do
+		names+=($(repl-cluster-container-name $i))
+	done
+
+	n=$(get repl-metadata-cluster-size)
+	for ((i=0;i<${n};++i)); do
+		names+=($(repl-metadata-cluster-container-name $i))
+	done
+
 	docker $1 ${names[@]}
 }
 
 function tmux_int {
 	/usr/bin/tmux new-window
 	/usr/bin/tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
-	/usr/bin/tmux send-keys "${HOME}/bin/cluster c 1" Enter
+	/usr/bin/tmux send-keys "${HOME}/cluster c 1" Enter
 	n=$(get clusternum)
 	for ((i=2;i<=$n;++i)); do
 		/usr/bin/tmux split-window
 		/usr/bin/tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
-		/usr/bin/tmux send-keys "$HOME/bin/cluster c ${i}" Enter
+		/usr/bin/tmux send-keys "$HOME/cluster c ${i}" Enter
 		/usr/bin/tmux select-layout tiled
 	done
 }
@@ -358,9 +503,17 @@ function tmux {
 	sync_panes
 }
 
-function db {
-    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
+function is_container {
+    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | grep docker | head -1)
     if [[ "$isdocker" == "docker" ]]; then
+        echo "yes"
+    else
+        echo "no"
+    fi
+}
+
+function db {
+    if [[ $(is_container) == "yes" ]]; then
         echo "Please run this outside docker"
         exit 1
     fi
@@ -395,8 +548,8 @@ function pmux {
 function create {
 	set -e
 	local dir="/opt/bb/var/cdb2/$1"
-    mkdir -p $dir
-    mkdir -p /opt/bb/var/log/cdb2
+        mkdir -p $dir
+        mkdir -p /opt/bb/var/log/cdb2
 	rm -rf  $dir
 	comdb2 --create $1 --dir $dir --tunable 'sqlenginepool.maxt 50'
 }
@@ -406,9 +559,21 @@ function copy {
 	lrl="$dir/$1.lrl"
 	cfg="/opt/bb/etc/cdb2/config.d/$1.cfg"
 	echo "cluster nodes $CLUSTER" >> $lrl
-	for c in $CLUSTER; do echo -n "$c "; ssh $c rm -rf $dir; scp $cfg $c: > /dev/null; copycomdb2 $lrl $c: & done
-	wait
-	echo ""
+
+        if [[ -n ${REPLMETADB} ]]; then
+	    echo "physrep_metadb ${REPLMETADB}" >> $lrl
+        fi
+
+	for c in $CLUSTER; do
+            if [[ $c != $(hostname) ]]; then
+                echo -n "$c "
+                ssh $c rm -rf $dir
+                scp $cfg $c: > /dev/null
+                copycomdb2 $lrl $c: &
+	    fi
+        done
+        wait
+        echo ""
 }
 
 function cfg {
@@ -421,18 +586,16 @@ function cfg {
 }
 
 function setup {
-    local isdocker
-    isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
-    if [[ "$isdocker" != "docker" ]]; then
+    if [[ $(is_container) == "no" ]]; then
         check-containers-ready || exit 1
-        docker exec --user $(id -u) $(container-name 0) ${HOME}/bin/cluster setup $*
+        docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster setup $*
         return $?
     fi
 
     . ${HOME}/.bash_profile
-	cfg $1
-	create $1
-	copy $1
+    cfg $1
+    create $1
+    copy $1
 }
 
 function gdb {
@@ -525,33 +688,358 @@ function clean-persist {
     sudo rm -fr ${dir}/persist
 }
 
-function usage {
-	cat >&2 <<- EOF
-		Usage: cluster <cmd> [arg]
+function repl-container-name {
+    echo "$(get repl-mach-prefix)$1"
+}
 
-		cmd list:
-		  db [dbname] ----------- Start database cluster-wide
-		  build ----------------- Build docker image
-		  clean ----------------- Kill and remove containers
-		  c|clnt [n] ------------ Get a shell on nth container
-		  copy [dbname] --------- Copy db cluster-wide
-		  setup [dbname] -------- Create db and copy it cluster-wide
-		  gdb [dbname] ---------- Start db under gdb cluster-wide
-		  info  ----------------- Dump settings
-		  init  ----------------- Wipe settings and start from scratch
-		  kill  ----------------- Kill containers
-		  pmux  ----------------- Start pmux cluster-wide
-		  ps    ----------------- List containers
-		  rm    ----------------- Remove containers
-		  run <cluster-size> ---- Initial run of containers
-		  status ---------------- Check container status
-		  start ----------------- Start containers
-		  stop  ----------------- Stop containers
-		  test [n] -------------- Run tests n at a time (default 1)
-		  tmux  ----------------- Container tmux panes
-		  vg    ----------------- Start database under valgrind
-	EOF
+function repl-next-container-name {
+    local curcount=$(get current-repl-count)  # Current number of physical replicants
+    echo "$(get repl-mach-prefix)$(($curcount + $1))"
+}
+
+function copy-to-physical-replicant {
+    local srcdir="/opt/bb/var/cdb2/$1"
+    local dstdir="/opt/bb/var/cdb2/$3"
+    lrl="$srcdir/$1.lrl"
+    srccfg="/opt/bb/etc/cdb2/config.d/$1.cfg"
+    dstcfg="/opt/bb/etc/cdb2/config.d/$3.cfg"
+    ssh $2 rm -rf $dstdir
+    scp $srccfg $2:$dstcfg > /dev/null
+    # TODO: Pass a list of all the machines in the cluster
+    #copycomdb2 -H $3 -y @$(hostname) $lrl $2:$dstdir $2:$dstdir
+    copycomdb2 -H $3 -y m0 $lrl $2:$dstdir $2:$dstdir
+}
+
+function start-physical-replicants {
+    add-replicant $(get add-repl-count)
+}
+
+function setup-physrep-tables {
+    local container_name=$(container-name 0)
+    local db=$(get defaultdb)
+
+    if [[ $(get repl-via-metadb) = 1 ]]; then
+        container_name=$(repl-metadata-cluster-container-name 0)
+        db=$db$container_name
+    fi
+
+    res=$(docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "select * from comdb2_tables where tablename = 'comdb2_physreps'" 2> /dev/null)
+    if [[ -z ${res} ]]; then
+        docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create table comdb2_physreps(dbname cstring(20), host cstring(100), file int, offset int, last_keepalive datetime, state cstring(10), unique key (dbname, host))"
+        docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physreps(dbname, host)"
+        docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create table comdb2_physrep_connections(dbname cstring(20), host cstring(100), source_dbname cstring(20), source_host cstring(100), unique key (dbname, host, source_dbname, source_host), foreign key(dbname, host) references comdb2_physreps(dbname, host) on delete cascade on update cascade)"
+        #docker exec --user $(id -u) ${container_name} /opt/bb/bin/cdb2sql $db local "create unique index 'idx' on comdb2_physrep_connections(dbname, host, source_dbname, source_host)"
+    fi
+}
+
+function add-replicant {
+    local db=$(get defaultdb)
+    local n=$1
+
+    [[ -z $n ]] && n=$(get add-repl-count)
+    [[ $n -lt 0 ]] && n=$(get add-repl-count)
+    [[ $n -lt 0 ]] && usage
+    put add-repl-count $n
+
+    [[ $n -eq 0 ]] && return 0
+
+    echo "setting up $n physical replicants"
+
+    # Run the physical replicant containers
+    declare -a wait_pids
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-next-container-name $i)
+
+        local dbfs=""
+        if [[ $persist -eq 1 ]]; then
+            dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
+        else
+            dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
+        fi
+
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
+            -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+            --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+        wait_pids+=($!)
+    done
+    wait ${wait_pids[@]}
+
+    setup-physrep-tables
+
+    # Copy data from m0 to physical replicant containers
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-next-container-name 0)
+	dst_dbname=$db$name
+        echo -n "$name "
+
+        docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster copy-to-physical-replicant $db $name $dst_dbname
+	rc=$?
+	if [[ $rc -eq 0 ]]; then
+            docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+
+            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+            sleep 1
+
+            docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 ${db}${name} > ${dir}/persist/logs/${name}.${dst_dbname} 2>&1 &
+	else
+	    echo "FATAL: copycomdb2 failed (rc: $rc, src: $(container-name 0), dst: $name)"
+	    exit 1
+        fi
+
+        cnt=$(get add-repl-count)
+        put add-repl-count $((cnt-1))
+        cnt=$(get current-repl-count)
+        put current-repl-count $((cnt+1))
+    done
+    echo ""
+}
+
+function repl-cluster-container-name {
+    local prefix
+    prefix=$(get repl-cluster-mach-prefix)
+    echo "${prefix}$1"
+}
+
+function start-physical-replication-cluster {
+    add-repl-cluster $(get phys-repl-cluster-size)
+}
+
+function add-repl-cluster {
+    local db=$(get defaultdb)
+    local n=$1
+
+    [[ -z $n ]] && n=$(get phys-repl-cluster-size)
+    [[ $n -lt 0 ]] && n=$(get phys-repl-cluster-size)
+    [[ $n -lt 0 ]] && usage
+    put phys-repl-cluster-size $n
+
+    [[ $n -eq 0 ]] && return 0
+
+    echo "setting up a $n-node physical replication cluster"
+
+    # Start physical replication cluster node containers
+    declare -a names
+    declare -a wait_pids
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-cluster-container-name $i)
+        names+=(${name})
+        local dbfs=""
+        if [[ $persist -eq 1 ]]; then 
+            dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
+        else
+            dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
+        fi
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
+            -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+            --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+        wait_pids+=($!)
+    done
+    wait ${wait_pids[@]}
+
+    # Set CLUSTER environment variable in the containers
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-cluster-container-name $i)
+        cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
+        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+    done
+
+    # Wait for source cluster nodes to start
+    success=0
+    for i in `seq 1 10`; do
+        res=$(docker exec --user $(id -u) $(container-name 0) /opt/bb/bin/cdb2sql $db local "select 1" 2> /dev/null)
+	if [[ -n ${res} ]]; then
+            success=1
+            break
+        fi
+        echo "$i: cluster not ready, waiting.."
+        sleep 2
+    done
+
+    if [[ $success -eq 0 ]]; then
+        echo "FATAL: cluster not up"
+        exit 1
+    fi
+
+    setup-physrep-tables
+
+    # Copy data from m0 to physical replication cluster node containers
+    cluster_dbname=$db$(repl-cluster-container-name 0)
+
+    # First make a copy on the first node
+    docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster copy-to-physical-replicant $db $(repl-cluster-container-name 0) $cluster_dbname
+    rc=$?
+    if [[ $rc -eq 0 ]]; then
+        echo "copycomdb2 succeeded"
+    else
+        echo "FATAL: copycomdb2 failed (rc: $rc, src: $(container-name 0), dst: $name)"
+        exit 1
+    fi
+
+    # Now copy it to rest of the nodes
+    docker exec --user $(id -u) $(repl-cluster-container-name 0) ${HOME}/cluster copy $cluster_dbname
+
+
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-cluster-container-name $i)
+        echo -n "$name "
+
+        docker exec --user $(id -u) $(container-name 0) ${HOME}/cluster copy-to-physical-replicant $db $name $cluster_dbname
+	rc=$?
+	if [[ $rc -eq 0 ]]; then
+	    echo "copycomdb2 succeeded"
+	else
+	    echo "FATAL: copycomdb2 failed (rc: $rc, src: $(container-name 0), dst: $name)"
+	    exit 1
+        fi
+    done
+
+    # Add cluster line to the lrl files
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-cluster-container-name $i)
+
+        cluster_cmd="echo cluster nodes ${names[@]} >> /opt/bb/var/cdb2/$cluster_dbname/$cluster_dbname.lrl"
+        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+    done
+
+    # Start the nodes
+    if [[ $(get auto-pmux) = 1 ]]; then
+        echo "starting pmux"
+        for ((i=0;i<$n;++i)); do
+            name=$(repl-cluster-container-name $i)
+            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+        done
+        sleep 1
+    fi
+    if [[ $(get auto-db) = 1 ]]; then
+        for ((i=0;i<$n;++i)); do
+            name=$(repl-cluster-container-name $i)
+            docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+            echo "starting ${cluster_dbname} on ${name}"
+            docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $cluster_dbname > ${dir}/persist/logs/${name}.${cluster_dbname} 2>&1 &
+        done
+    fi
+}
+
+function repl-metadata-cluster-container-name {
+    local prefix
+    prefix=$(get repl-metadata-cluster-mach-prefix)
+    echo "${prefix}$1"
+}
+
+function start-physical-replication-metadata-cluster {
+    add-repl-metadata-cluster $(get repl-metadata-cluster-size)
+}
+
+function add-repl-metadata-cluster {
+    local db=$(get defaultdb)
+    local n=$1
+
+    [[ -z $n ]] && n=$(get repl-metadata-cluster-size)
+    [[ $n -lt 0 ]] && n=$(get repl-metadata-cluster-size)
+    [[ $n -lt 0 ]] && usage
+    put repl-metadata-cluster-size $n
+
+    [[ $n -eq 0 ]] && return 0
+
+    echo "setting up a $n-node replication metadata cluster"
+
+    # Start replication metadata cluster node containers
+    declare -a names
+    declare -a wait_pids
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-metadata-cluster-container-name $i)
+        names+=(${name})
+        local dbfs=""
+        if [[ $persist -eq 1 ]]; then 
+            dbfs="-v ${dir}/persist/${name}:/opt/bb/var"
+        else
+            dbfs="--mount type=tmpfs,destination=/opt/bb:exec"
+        fi
+        docker run --ulimit nofile=10000:10000 --ulimit core=-1 -it -d --privileged $dbfs --network comdb2 \
+            -v $HOME/bin:${HOME}/bin -v $HOME/.vim:${HOME}/.vim -v ${src}:${HOME}/src \
+            --name ${name} --hostname ${name} comdb2:dev /usr/sbin/sshd -D &
+        wait_pids+=($!)
+    done
+    wait ${wait_pids[@]}
+
+    # Set CLUSTER environment variable in the containers
+    for ((i=0;i<$n;++i)); do
+        name=$(repl-metadata-cluster-container-name $i)
+        cluster_cmd='echo export CLUSTER=\"'"${names[@]}"'\" >> ${HOME}/.bash_profile'
+        docker exec --user $(id -u) -it ${name} /bin/bash -c "${cluster_cmd}"
+    done
+
+    cluster_dbname=$db$(repl-metadata-cluster-container-name 0)
+    docker exec --user $(id -u) $(repl-metadata-cluster-container-name 0) ${HOME}/cluster setup $cluster_dbname
+
+    # Start the nodes
+    if [[ $(get auto-pmux) = 1 ]]; then
+        echo "starting pmux"
+        for ((i=0;i<$n;++i)); do
+            name=$(repl-metadata-cluster-container-name $i)
+            docker exec --user $(id -u) ${name} /opt/bb/bin/pmux > ${dir}/persist/logs/${name}.pmux
+        done
+        sleep 1
+    fi
+    if [[ $(get auto-db) = 1 ]]; then
+        for ((i=0;i<$n;++i)); do
+            name=$(repl-metadata-cluster-container-name $i)
+            docker exec --user root -it ${name} /bin/bash -c "sysctl -w kernel.core_pattern='/tmp/core.%e.%p'"
+            echo "starting ${cluster_dbname} on ${name}"
+            docker exec --user $(id -u) ${name} /opt/bb/bin/comdb2 $cluster_dbname > ${dir}/persist/logs/${name}.${cluster_dbname} 2>&1 &
+        done
+    fi
+
+    # Wait for cluster node to start
+    success=0
+    for i in `seq 1 10`; do
+        res=$(docker exec --user $(id -u) $(repl-metadata-cluster-container-name 0) /opt/bb/bin/cdb2sql ${cluster_dbname} local "select 1" 2> /dev/null)
+	if [[ -n ${res} ]]; then
+            success=1
+	    break
+	fi
+	echo "$i: cluster not ready, waiting.."
+	sleep 2
+    done
+
+    if [[ $success -eq 0 ]]; then
+        echo "FATAL: cluster not up"
 	exit 1
+    fi
+
+    setup-physrep-tables
+}
+
+function usage {
+    cat >&2 <<- EOF
+        Usage: cluster <cmd> [arg]
+
+        cmd list:
+            add-repl-cluster [n] -- Add physical replication cluster
+            add-replicant [n] ----- Add n physical replicants
+            db [dbname] ----------- Start database cluster-wide
+            build ----------------- Build docker image
+            clean ----------------- Kill and remove containers
+            c|clnt [n] ------------ Get a shell on nth container
+            copy [dbname] --------- Copy db cluster-wide
+            copy-to-physical-replicant [dbname] [dest-container] [dest-dbname] Copy db to physical replicant container
+            setup [dbname] -------- Create db and copy it cluster-wide
+            gdb [dbname] ---------- Start db under gdb cluster-wide
+            info  ----------------- Dump settings
+            init  ----------------- Wipe settings and start from scratch
+            kill  ----------------- Kill containers
+            pmux  ----------------- Start pmux cluster-wide
+            ps    ----------------- List containers
+            rm    ----------------- Remove containers
+            run <cluster-size> ---- Initial run of containers
+            status ---------------- Check container status
+            start ----------------- Start containers
+            stop  ----------------- Stop containers
+            test [n] -------------- Run tests n at a time (default 1)
+            tmux  ----------------- Container tmux panes
+            vg    ----------------- Start database under valgrind
+EOF
+    exit 1
 }
 
 if [[ ! -d "${dir}" ]]; then 
@@ -569,40 +1057,41 @@ fi
 init-globals
 
 if [[ "$1" == "build" ]]; then
-	build
+    build
 elif [[ "$1" == "clean" ]]; then
-	do_docker "kill" > /dev/null
+    do_docker "kill" > /dev/null
     clean-persist
-	do_docker "rm"
+    do_docker "rm"
     create-persist
+    put current-repl-count 0
 elif [[ "$1" == "run" ]]; then
-	run $2
+    run $2
 elif [[ "$1" == "rm" ]] || [[ "$1" == "stop" ]] || [[ "$1" == "kill" ]] || [[ "$1" == "start" ]]; then
-	do_docker "$1"
+    do_docker "$1"
     if [[ "$1" == "start" ]]; then
         start-cluster-jobs
     fi
 elif [[ "$1" == "tmux" ]]; then
     check-containers-ready || exit 1
-	tmux
+    tmux
 elif [[ "$1" == "db" ]]; then
     check-containers-ready || exit 1
-	db ${2:-${defaultdb}}
+    db ${2:-${defaultdb}}
 elif [[ "$1" == "pmux" ]]; then
     shift
     check-containers-ready || exit 1
-	pmux $*
+    pmux $*
 elif [[ "$1" == "copy" ]]; then
     check-containers-ready || exit 1
-	copy ${2:-${defaultdb}}
+    copy ${2:-${defaultdb}}
 elif [[ "$1" == "setup" ]]; then
-	setup ${2:-${defaultdb}}
+    setup ${2:-${defaultdb}}
 elif [[ "$1" == "cfg" ]]; then
-	cfg ${2:-${defaultdb}}
+    cfg ${2:-${defaultdb}}
 elif [[ "$1" == "gdb" ]]; then
-	gdb ${2:-${defaultdb}}
+    gdb ${2:-${defaultdb}}
 elif [[ "$1" == "vg" ]]; then
-	vg
+    vg
 elif [[ "$1" == "info" ]]; then
     sqlite3 -separator '	' ${config} "select * from getput"
 elif [[ "$1" == "init" ]]; then
@@ -623,10 +1112,16 @@ elif [[ "$1" == "test" ]]; then
     n=$(container-name 0)
     docker exec --user $(id -u) $n bash -c -l ". ~/.bashrc && cd ${HOME}/src/contrib/dev-util && make && TERM=xterm ./testrunner -j ${testjobs} ${HOME}/src/tests $*"
 elif [[ "$1" == "ps" ]]; then
-	figlet $(get clusternum)
-	docker ps -a
+    figlet $(get clusternum)
+    docker ps -a
 elif [[ "$1" == "status" ]]; then
     docker-status
+elif [[ "$1" == "add-replicant" ]]; then
+    add-replicant $2
+elif [[ "$1" == "copy-to-physical-replicant" ]]; then
+    copy-to-physical-replicant $2 $3 $4
+elif [[ "$1" == "add-repl-cluster" ]]; then
+    add-repl-cluster
 else
-	usage
+    usage
 fi
