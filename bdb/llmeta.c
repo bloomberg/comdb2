@@ -33,6 +33,7 @@
 #include "lrucache.h"
 #include <sys/time.h>
 #include "lockmacros.h"
+#include <sys/poll.h>
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -176,6 +177,8 @@ typedef enum {
 struct llmeta_file_type_key {
     int file_type;
 };
+
+int gbl_llmeta_deadlock_poll = 50;
 
 enum { LLMETA_FILE_TYPE_KEY_LEN = 4 };
 
@@ -1396,8 +1399,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -1447,8 +1452,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -1532,9 +1539,11 @@ retry:
 
     /* handle return codes */
     if (rc && *bdberr != BDBERR_NOERROR) {
-        if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+        if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s: *ERROR* bdb_lite_exact_fetch too much contention "
@@ -1688,8 +1697,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
@@ -1733,8 +1744,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -1904,8 +1917,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
@@ -1955,8 +1970,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -2069,8 +2086,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
@@ -2108,8 +2127,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -2252,8 +2273,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
@@ -2297,8 +2320,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -2417,8 +2442,10 @@ retry:
     if (!input_tran) {
         tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!tran) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -2487,8 +2514,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
     }
     logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     return -1;
@@ -2579,9 +2608,11 @@ retry:
 
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
-        if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+        if (*bdberr == BDBERR_DEADLOCK && !tran) {
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s: *ERROR* bdb_lite_exact_fetch too much contention "
@@ -2811,8 +2842,10 @@ retry:
     /* handle return codes */
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK && !tran) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s:*ERROR* bdb_lite_exact_fetch too much contention "
@@ -2948,8 +2981,10 @@ fail:
             return -1;
         }
     }
-    if (retries)
+    if (retries) {
+        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
         goto retry;
+    }
     return -1;
 }
 
@@ -3054,8 +3089,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
@@ -3122,8 +3159,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -3210,8 +3249,10 @@ retry:
             if (trans)
                 return -1;
 
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
                             "contention %d count %d\n",
@@ -3362,8 +3403,10 @@ retry:
         rc = bdb_get_csc2_highest(tran, db_name, &csc2_vers, bdberr);
         if (rc || *bdberr != BDBERR_NOERROR) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                if (++retries < gbl_maxretries)
+                if (++retries < gbl_maxretries && !tran) {
+                    poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                     goto retry;
+                }
 
                 logmsg(LOGMSG_ERROR, "%s:*ERROR* bdb_get_csc2_highest too much "
                                 "contention %d count %d\n",
@@ -3395,8 +3438,10 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries && !tran) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s:*ERROR* bdb_lite_exact_fetch too much contention "
@@ -3647,8 +3692,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction, rc:%d\n",
@@ -3696,8 +3743,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -3775,8 +3824,10 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s: *ERROR* bdb_lite_exact_fetch too much contention "
@@ -4380,8 +4431,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get transaction, rc:%d\n",
                    __func__, *bdberr);
@@ -4501,8 +4554,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -4718,8 +4773,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -4768,8 +4825,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -4894,8 +4953,11 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            /* TODO: this function doesn't take tran argument */
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s:*ERROR* bdb_lite_exact_fetch too much contention "
@@ -5050,8 +5112,10 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries && !trans) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
                             "contention %d count %d\n",
@@ -5133,8 +5197,10 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries && !trans) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: *ERROR* bdb_lite_fetch_keys_bwd too much "
                             "contention %d count %d\n",
@@ -5962,8 +6028,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -6006,8 +6074,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -6084,8 +6154,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -6128,8 +6200,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -6212,8 +6286,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -6257,8 +6333,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -6303,8 +6381,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -6351,8 +6431,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -6581,8 +6663,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -6626,8 +6710,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -7083,8 +7169,11 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            /* TODO: input_trans is not used */
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s:*ERROR* bdb_lite_exact_fetch too much contention "
@@ -7178,8 +7267,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -7227,8 +7318,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -7322,8 +7415,11 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            /* TODO: input_trans unused */
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s:*ERROR* bdb_lite_exact_fetch too much contention "
@@ -7387,8 +7483,10 @@ retry:
 
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries && !tran) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, 
                     "%s:*ERROR* bdb_lite_exact_fetch too much contention "
@@ -7465,8 +7563,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get rowlocks_state\n", __func__);
             return -1;
@@ -7506,8 +7606,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -7583,8 +7685,10 @@ retry:
     if (!input_trans) {
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
-            if (*bdberr == BDBERR_DEADLOCK)
+            if (*bdberr == BDBERR_DEADLOCK) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
@@ -7632,8 +7736,10 @@ backout:
         }
 
         *bdberr = prev_bdberr;
-        if (*bdberr == BDBERR_DEADLOCK)
+        if (*bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
@@ -7732,6 +7838,7 @@ err:
     }
     if (retry < gbl_maxretries &&
         (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK)) {
+        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
         ++retry;
         goto rep;
     }
@@ -7893,8 +8000,10 @@ retry:
 
     trans = bdb_tran_begin(llmeta_bdb_state, ptran, &bdberr);
     if (!trans) {
-        if (bdberr == BDBERR_DEADLOCK)
+        if (bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed to get transaction bdberr=%d\n", __func__,
                 bdberr);
@@ -7907,8 +8016,12 @@ retry:
     rc = bdb_lite_add(llmeta_bdb_state, trans, &data_buf, sizeof(data_buf),
                       &key_buf, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
-        if (bdberr == BDBERR_DEADLOCK)
-            goto retry;
+        if (bdberr == BDBERR_DEADLOCK && !ptran) {
+            if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                goto retry;
+            }
+        }
 
         if (bdberr == BDBERR_ADD_DUPE) {
             logmsg(LOGMSG_ERROR, "%s: tablename alias already exists!\n", __func__);
@@ -7928,8 +8041,12 @@ retry:
     if (!rc) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            if (bdberr == BDBERR_DEADLOCK)
-                goto retry;
+            if (bdberr == BDBERR_DEADLOCK && !ptran) {
+                if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
+                    poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                    goto retry;
+                }
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to commit transaction bdberr=%d\n",
                     __func__, bdberr);
@@ -7981,8 +8098,10 @@ retry:
                                    &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries && !tran) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
             logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                     retries);
@@ -8046,8 +8165,10 @@ retry:
 
     trans = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
     if (!trans) {
-        if (bdberr == BDBERR_DEADLOCK)
+        if (bdberr == BDBERR_DEADLOCK) {
+            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
             goto retry;
+        }
 
         logmsg(LOGMSG_ERROR, "%s:%d failed to get transaction bdberr=%d\n", __func__,
                 __LINE__, bdberr);
@@ -8059,8 +8180,14 @@ retry:
 
     rc = bdb_lite_exact_del(llmeta_bdb_state, trans, &key_buf, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
-        if (bdberr == BDBERR_DEADLOCK)
-            goto retry;
+        if (bdberr == BDBERR_DEADLOCK) {
+            if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                goto retry;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n", __func__, bdberr);
+            }
+        }
 
         if (bdberr == BDBERR_DEL_DTA) {
             if (errstr)
@@ -8079,11 +8206,16 @@ retry:
     if (!rc) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            if (bdberr == BDBERR_DEADLOCK)
-                goto retry;
+            if (bdberr == BDBERR_DEADLOCK) {
+                if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
+                    poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                    goto retry;
+                } else {
+                    logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n", __func__, bdberr);
+                }
+            }
 
-            logmsg(LOGMSG_ERROR, "%s: failed to commit transaction bdberr=%d\n",
-                    __func__, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to commit transaction bdberr=%d\n", __func__, bdberr);
             if (errstr)
                 *errstr = strdup("failed to commit transaction");
 
@@ -8432,13 +8564,15 @@ retry:
 
         /* errored case */
         if (tran == NULL && *bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries)
+            if (++retries < gbl_maxretries) {
+                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
                 goto retry;
+            }
 
-            logmsg(LOGMSG_ERROR, 
-                    "%s: *ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+            logmsg(LOGMSG_ERROR,
+                   "%s: *ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /*fail on all other errors*/
@@ -8515,6 +8649,7 @@ rep:
         rc = 1;
     } else if (rc == -1 && bdberr == BDBERR_DEADLOCK && !tran &&
                retry < gbl_maxretries) {
+        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
         ++retry;
         goto rep;
     } else
@@ -8607,8 +8742,8 @@ err:
                 bdberr);
         goto out;
     }
-    if (retry < gbl_maxretries &&
-        (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK)) {
+    if (retry < gbl_maxretries && (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK) && !parent_tran) {
+        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
         ++retry;
         goto rep;
     }

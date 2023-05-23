@@ -1217,6 +1217,8 @@ REGISTER_TUNABLE("use_live_schema_change", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("use_llmeta", NULL, TUNABLE_INTEGER,
                  &gbl_use_llmeta, READONLY, NULL, NULL, NULL, NULL);
 */
+REGISTER_TUNABLE("llmeta_deadlock_poll", "Max poll for llmeta on deadlock.  (Default: 50ms)", TUNABLE_INTEGER,
+                 &gbl_llmeta_deadlock_poll, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("usenames", NULL, TUNABLE_BOOLEAN, &gbl_nonames,
                  INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
                  NULL);

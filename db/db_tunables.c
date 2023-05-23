@@ -116,6 +116,7 @@ extern int gbl_sqlite_use_temptable_for_rowset;
 extern int gbl_allow_bplog_restarts;
 extern int gbl_sqlite_stat4_scan;
 extern int gbl_test_blob_race;
+extern int gbl_llmeta_deadlock_poll;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
 extern int gbl_track_weighted_queue_metrics_separately;
