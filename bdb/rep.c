@@ -3016,10 +3016,7 @@ again:
             return -1;
         }
     }
-    /*This node hasn't caught up and we don't want to wait*/
-    if (remaining == 0) {
-        return -999;
-    }
+
     /* Set timespec for first run and timeouts */
     if (reset_ts) {
         if (seqnum_wait_interval <= 50 || remaining < seqnum_wait_interval) {
