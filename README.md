@@ -225,4 +225,3 @@ On every machine in the cluster:
 | tests/        | Comdb2 test suite |
 | tools/        | Tools that are part of Comdb2 core |
 | util/         | Useful generic modules |
-
