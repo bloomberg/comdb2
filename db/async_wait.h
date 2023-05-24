@@ -122,6 +122,7 @@ struct async_wait_node {
     seqnum_type seqnum;
     int track_once;
     int durable_lsns;
+    int is_final_check;
     struct ireq *iq;
 };
 typedef struct async_wait_node async_wait_node;

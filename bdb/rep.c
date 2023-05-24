@@ -3017,6 +3017,11 @@ again:
         }
     }
 
+    if (remaining == 0) {
+        logmsg(LOGMSG_USER, "%s called with waitms 0. The node hasn't caught up yet\n", __func__);
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        return -999;
+    }
     /* Set timespec for first run and timeouts */
     if (reset_ts) {
         if (seqnum_wait_interval <= 50 || remaining < seqnum_wait_interval) {

@@ -214,6 +214,7 @@ int add_to_async_wait_queue(struct ireq *iq, int rc)
     swait->lsn_lnk.prev = NULL;
     swait->track_once = 1;
     swait->durable_lsns = 0;
+    swait->is_final_check = 0;
     Pthread_mutex_lock(&(work_queue->mutex));
     if (listc_size(&work_queue->lsn_list) > gbl_async_dist_commit_max_outstanding_trans) {
         Pthread_mutex_unlock(&work_queue->mutex);
@@ -418,8 +419,7 @@ void process_work_item(async_wait_node *item)
                     logmsg(LOGMSG_USER, "waiting for initial NEWSEQ from node %s of >= <%d:%d>\n", item->nodelist[i],
                            item->seqnum.lsn.file, item->seqnum.lsn.offset);
                 }
-                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 1000,
-                                                           __LINE__, 0 /* Fake incoherent */);
+                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0, __LINE__, 0 /* Fake incoherent */);
                 if (bdb_lock_desired(item->bdb_state)) {
                     logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
                     if (item->durable_lsns) {
@@ -467,7 +467,6 @@ void process_work_item(async_wait_node *item)
                     }
 
                     /* WE got first ack.. move to next state */
-                    item->cur_state = WAIT_FOR_ALL_ACK;
                     item->wait_wait_for_first_ack_end_time = comdb2_time_epochms();
                     goto got_first_ack_label;
                 }
@@ -478,7 +477,8 @@ void process_work_item(async_wait_node *item)
             /* we want to revisit after timeout. If we get seqnums in the meanwhile
                we'll recheck anyway. */
             int now = comdb2_time_epochms();
-            item->next_ts = now + (item->bdb_state->attr->rep_timeout_maxms - (now - item->start_time));
+            //item->next_ts = now + (item->bdb_state->attr->rep_timeout_maxms - (now - item->start_time));
+            item->next_ts = now + 1000;
             listc_rfl(&work_queue->absolute_ts_list, item);
             add_to_absolute_ts_list(item);
             Pthread_mutex_unlock(&(work_queue->mutex));
@@ -500,104 +500,129 @@ void process_work_item(async_wait_node *item)
         item->wait_wait_for_first_ack_end_time = comdb2_time_epochms();
     case WAIT_FOR_ALL_ACK:
     got_first_ack_label:
-        item->cur_state = WAIT_FOR_ALL_ACK;
-        item->wait_wait_for_all_ack_start_time = comdb2_time_epochms();
-        item->numfailed = 0;
-        // int acked = 0;
-        int begin_time = 0, end_time = 0;
-        item->start_time = comdb2_time_epochms();
-        for (int i = 0; i < item->numnodes; i++) {
-            if (item->nodelist[i] == item->base_node) {
-                continue;
-            }
-
-            /* we always want to wait atleast rep_timout_minms */
-            if (item->waitms < item->bdb_state->attr->rep_timeout_minms) {
-                item->waitms = item->bdb_state->attr->rep_timeout_minms;
-            }
-            if (item->bdb_state->rep_trace) {
-                logmsg(LOGMSG_DEBUG, "checking for NEWSEQ from node %s of >= <%d:%d> timeout %d\n", item->nodelist[i],
-                       item->seqnum.lsn.file, item->seqnum.lsn.offset, item->waitms);
-            }
-
-            begin_time = comdb2_time_epochms();
-            int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], item->waitms,
-                                                       __LINE__, 0 /* fake incoherent */);
-            if (bdb_lock_desired(item->bdb_state)) {
-                logmsg(LOGMSG_USER, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
-                if (item->durable_lsns) {
-                    item->outrc = BDBERR_NOT_DURABLE;
-                } else {
-                    logmsg(LOGMSG_USER, "lock desired .. setting outrc to -1 from %s:%d\n", __func__, __LINE__);
-                    item->outrc = -1;
-                }
-                item->cur_state = WAIT_NOTIFY;
-                item->wait_wait_for_all_ack_end_time = comdb2_time_epochms();
-                goto wait_notify_label;
-            }
-            if (rc == -999) {
+        if (item->cur_state != WAIT_FOR_ALL_ACK) {
+            item->cur_state = WAIT_FOR_ALL_ACK;
+            item->wait_wait_for_all_ack_start_time = comdb2_time_epochms();
+            item->is_final_check = 0;
+        }
+        if (item->waitms >= 0 || !item->is_final_check) {
+            item->numfailed = 0;
+            // int acked = 0;
+            int begin_time = 0, end_time = 0;
+            item->start_time = comdb2_time_epochms();
+            if (item->waitms <=0) {
                 if (gbl_async_dist_commit_verbose) {
-                    logmsg(LOGMSG_USER,
-                           "node %s hasn't caught up yet, base node "
-                           "was %s",
-                           item->nodelist[i], item->base_node);
+                    logmsg(LOGMSG_USER, "This is the final pass over replicants\n");
                 }
-                item->numfailed++;
-            } else if (rc == 0) {
-                item->num_successfully_acked++;
-            } else if (rc == 1) {
-                rc = 0;
+                item->is_final_check = 1;
+            }
+            for (int i = 0; i < item->numnodes; i++) {
+                if (item->nodelist[i] == item->base_node) {
+                    continue;
+                }
+
+                if (item->bdb_state->rep_trace) {
+                    logmsg(LOGMSG_DEBUG, "checking for NEWSEQ from node %s of >= <%d:%d> timeout %d\n", item->nodelist[i],
+                           item->seqnum.lsn.file, item->seqnum.lsn.offset, item->waitms);
+                }
+
+                begin_time = comdb2_time_epochms();
+                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0,__LINE__, 0 /* fake incoherent */);
+                if (bdb_lock_desired(item->bdb_state)) {
+                    logmsg(LOGMSG_USER, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
+                    if (item->durable_lsns) {
+                        item->outrc = BDBERR_NOT_DURABLE;
+                    } else {
+                        logmsg(LOGMSG_USER, "lock desired .. setting outrc to -1 from %s:%d\n", __func__, __LINE__);
+                        item->outrc = -1;
+                    }
+                    item->cur_state = WAIT_NOTIFY;
+                    item->wait_wait_for_all_ack_end_time = comdb2_time_epochms();
+                    goto wait_notify_label;
+                }
+                if (rc == -999) {
+                    if (gbl_async_dist_commit_verbose) {
+                        logmsg(LOGMSG_USER,
+                               "node %s hasn't caught up yet, base node "
+                               "was %s",
+                               item->nodelist[i], item->base_node);
+                    }
+                    item->numfailed++;
+                } else if (rc == 0) {
+                    item->num_successfully_acked++;
+                } else if (rc == 1) {
+                    rc = 0;
+                }
+                DB_LSN nodelsn = {0};
+                uint32_t nodegen = 0;
+                /* we may need to make node INCOHERENT.
+                   NOTE: rc of -2 is for rtcpu. bdb_wait_for_seqnum_from_node_int handles that case */
+                if (rc != 0 && rc != -2 && (rc == -999 && item->is_final_check)) {
+                    int node_ix = nodeix(item->nodelist[i]);
+                    /* Extract seqnum */
+                    Pthread_mutex_lock(&(item->bdb_state->seqnum_info->lock));
+                    nodegen = item->bdb_state->seqnum_info->seqnums[node_ix].generation;
+                    nodelsn = item->bdb_state->seqnum_info->seqnums[node_ix].lsn;
+                    Pthread_mutex_unlock(&(item->bdb_state->seqnum_info->lock));
+                    if (gbl_async_dist_commit_verbose) {
+                        logmsg(LOGMSG_USER, "item->nodegen: %d, item->nodelsn: %d:%d \n", nodegen, nodelsn.file,
+                               nodelsn.offset);
+                    }
+                    Pthread_mutex_lock(&(item->bdb_state->coherent_state_lock));
+                    if (nodegen <= item->seqnum.generation && log_compare(&(item->seqnum.lsn), &nodelsn) >= 0) {
+                        if (item->bdb_state->coherent_state[node_ix] == STATE_COHERENT) {
+                            defer_commits(item->bdb_state, item->nodelist[i], __func__);
+                        }
+                        /* if catchup on commit then change to INCOHERENT_WAIT */
+                        if (item->bdb_state->attr->catchup_on_commit && item->bdb_state->attr->catchup_window) {
+                            DB_LSN *masterlsn =
+                                &(item->bdb_state->seqnum_info->seqnums[nodeix(item->bdb_state->repinfo->master_host)].lsn);
+                            int cntbytes = subtract_lsn(item->bdb_state, masterlsn, &nodelsn);
+                            set_coherent_state(item->bdb_state, item->nodelist[i],
+                                               (cntbytes < item->bdb_state->attr->catchup_window) ? STATE_INCOHERENT_WAIT
+                                                                                                  : STATE_INCOHERENT,
+                                               __func__, __LINE__);
+
+                        } else {
+                            set_coherent_state(item->bdb_state, item->nodelist[i], STATE_INCOHERENT, __func__, __LINE__);
+                        }
+                        /* change next_commit_timestamp for the work queue, if new value of coherency_commit_timestamp is
+                           larger, than current value of coherency_commit_timestamp */
+                        work_queue->next_commit_timestamp = (work_queue->next_commit_timestamp < coherency_commit_timestamp)
+                                                                ? coherency_commit_timestamp
+                                                                : work_queue->next_commit_timestamp;
+                        if (gbl_async_dist_commit_verbose) {
+                            logmsg(LOGMSG_USER,
+                                   " work_queue->next_commit_timestamp: %ld, coherency_commit_timestamp: %ld\n",
+                                   work_queue->next_commit_timestamp, coherency_commit_timestamp);
+                        }
+                        item->bdb_state->last_downgrade_time[nodeix(item->nodelist[i])] = gettimeofday_ms();
+                        item->bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
+                    }
+                    Pthread_mutex_unlock(&(item->bdb_state->coherent_state_lock));
+                }
             }
             end_time = comdb2_time_epochms();
             item->waitms -= (end_time - begin_time);
-            DB_LSN nodelsn = {0};
-            uint32_t nodegen = 0;
-            /* we may need to make node INCOHERENT.
-               NOTE: rc of -2 is for rtcpu. bdb_wait_for_seqnum_from_node_int handles that case */
-            if (rc != 0 && rc != -2) {
-                int node_ix = nodeix(item->nodelist[i]);
-                /* Extract seqnum */
-                Pthread_mutex_lock(&(item->bdb_state->seqnum_info->lock));
-                nodegen = item->bdb_state->seqnum_info->seqnums[node_ix].generation;
-                nodelsn = item->bdb_state->seqnum_info->seqnums[node_ix].lsn;
-                Pthread_mutex_unlock(&(item->bdb_state->seqnum_info->lock));
-                if (gbl_async_dist_commit_verbose) {
-                    logmsg(LOGMSG_USER, "item->nodegen: %d, item->nodelsn: %d:%d \n", nodegen, nodelsn.file,
-                           nodelsn.offset);
-                }
-                Pthread_mutex_lock(&(item->bdb_state->coherent_state_lock));
-                if (nodegen <= item->seqnum.generation && log_compare(&(item->seqnum.lsn), &nodelsn) >= 0) {
-                    if (item->bdb_state->coherent_state[node_ix] == STATE_COHERENT) {
-                        defer_commits(item->bdb_state, item->nodelist[i], __func__);
-                    }
-                    /* if catchup on commit then change to INCOHERENT_WAIT */
-                    if (item->bdb_state->attr->catchup_on_commit && item->bdb_state->attr->catchup_window) {
-                        DB_LSN *masterlsn =
-                            &(item->bdb_state->seqnum_info->seqnums[nodeix(item->bdb_state->repinfo->master_host)].lsn);
-                        int cntbytes = subtract_lsn(item->bdb_state, masterlsn, &nodelsn);
-                        set_coherent_state(item->bdb_state, item->nodelist[i],
-                                           (cntbytes < item->bdb_state->attr->catchup_window) ? STATE_INCOHERENT_WAIT
-                                                                                              : STATE_INCOHERENT,
-                                           __func__, __LINE__);
-
-                    } else {
-                        set_coherent_state(item->bdb_state, item->nodelist[i], STATE_INCOHERENT, __func__, __LINE__);
-                    }
-                    /* change next_commit_timestamp for the work queue, if new value of coherency_commit_timestamp is
-                       larger, than current value of coherency_commit_timestamp */
-                    work_queue->next_commit_timestamp = (work_queue->next_commit_timestamp < coherency_commit_timestamp)
-                                                            ? coherency_commit_timestamp
-                                                            : work_queue->next_commit_timestamp;
-                    if (gbl_async_dist_commit_verbose) {
-                        logmsg(LOGMSG_USER,
-                               " work_queue->next_commit_timestamp: %ld, coherency_commit_timestamp: %ld\n",
-                               work_queue->next_commit_timestamp, coherency_commit_timestamp);
-                    }
-                    item->bdb_state->last_downgrade_time[nodeix(item->nodelist[i])] = gettimeofday_ms();
-                    item->bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
-                }
-                Pthread_mutex_unlock(&(item->bdb_state->coherent_state_lock));
+        }
+        if (item->numfailed == 0) {
+            if (gbl_async_dist_commit_verbose) {
+                logmsg(LOGMSG_USER, "All replicants have caught up!\n");
             }
+        } else if (item->waitms <= 0 && !item->is_final_check) {
+            if (gbl_async_dist_commit_verbose) {
+                logmsg(LOGMSG_USER, "ran out of waitms.. Doing final pass\n");
+            }
+            goto got_first_ack_label;
+        } else if (item->waitms > 0) {
+            assert(item->is_final_check==0);
+            logmsg(LOGMSG_USER, "We still have waitms remaining\n");
+            Pthread_mutex_lock(&(work_queue->mutex));
+            item->next_ts = comdb2_time_epochms() + item->waitms;
+            listc_rfl(&work_queue->absolute_ts_list, item);
+            add_to_absolute_ts_list(item);
+            Pthread_mutex_unlock(&(work_queue->mutex));
+            break;
         }
         item->wait_wait_for_all_ack_end_time = comdb2_time_epochms();
     case WAIT_FINISH:
@@ -787,7 +812,7 @@ void *queue_processor(void *arg)
             item = LISTC_TOP(&(work_queue->absolute_ts_list));
             Pthread_mutex_unlock(&(work_queue->mutex));
             cur_time = comdb2_time_epochms();
-            while (item != NULL && (item->next_ts <= cur_time)) {
+            while (item != NULL && (item->next_ts < cur_time)) {
                 if (gbl_async_dist_commit_verbose) {
                     logmsg(LOGMSG_USER, "Processing work item with seqnum  %d:%d, in state: %d\n",
                            item->seqnum.lsn.file, item->seqnum.lsn.offset, item->cur_state);
