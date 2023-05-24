@@ -277,6 +277,8 @@ extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;
 extern int gbl_ref_sync_wait_txnlist;
 extern int gbl_ref_sync_iterations;
+extern int gbl_net_connect_timeout;
+
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;

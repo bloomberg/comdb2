@@ -736,6 +736,8 @@ REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
                              "(Default: 1MB)",
                  TUNABLE_INTEGER, &gbl_netbufsz, READONLY | NOZERO, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("net_connect_timeout", "Max time to wait for a connection attempt between nodes (Default: 100)",
+                 TUNABLE_INTEGER, &gbl_net_connect_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "net_explicit_flush_trace",
     "Produce a stack dump for long network flushes. (Default: off)",
