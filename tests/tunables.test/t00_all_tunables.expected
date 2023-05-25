@@ -418,7 +418,7 @@
 (name='lkr_hash', description='', type='INTEGER', value='16', read_only='Y')
 (name='lkr_part', description='', type='INTEGER', value='23', read_only='Y')
 (name='llmeta', description='', type='BOOLEAN', value='ON', read_only='N')
-(name='llmeta_deadlock_poll', description='Max poll for llmeta on deadlock.  (Default: 50ms)', type='INTEGER', value='50', read_only='N')
+(name='llmeta_deadlock_poll', description='Max poll for llmeta on deadlock.  (Default: 0ms)', type='INTEGER', value='0', read_only='N')
 (name='load_cache_max_pages', description='Maximum number of pages that will load into cache.  Setting to 0 means that there is no limit.  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='load_cache_threads', description='Number of threads loading pages to cache.  (Default: 8)', type='INTEGER', value='8', read_only='N')
 (name='loadcache.dump_on_full', description='Dump status on full queue.', type='BOOLEAN', value='OFF', read_only='N')

@@ -178,7 +178,7 @@ struct llmeta_file_type_key {
     int file_type;
 };
 
-int gbl_llmeta_deadlock_poll = 50;
+int gbl_llmeta_deadlock_poll = 0;
 
 enum { LLMETA_FILE_TYPE_KEY_LEN = 4 };
 
@@ -1400,7 +1400,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -1453,7 +1455,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -1541,7 +1545,9 @@ retry:
     if (rc && *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -1698,7 +1704,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -1745,7 +1753,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -1918,7 +1928,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -1964,14 +1976,15 @@ backout:
         /*kill the transaction*/
         rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
         if (rc && !BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n", __func__,
-                    *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n", __func__, *bdberr);
             return -1;
         }
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -2087,7 +2100,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -2120,15 +2135,18 @@ backout:
         /*kill the transaction*/
         rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
         if (rc && !BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: trans abort failed with "
-                            "bdberr %d\n",
-                    __func__, *bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "%s: trans abort failed with "
+                   "bdberr %d\n",
+                   __func__, *bdberr);
             return -1;
         }
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -2274,7 +2292,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -2321,7 +2341,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -2443,7 +2465,9 @@ retry:
         tran = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!tran) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -2515,7 +2539,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
     }
@@ -2610,7 +2636,9 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK && !tran) {
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -2843,7 +2871,9 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK && !tran) {
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -2982,7 +3012,9 @@ fail:
         }
     }
     if (retries) {
-        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+        int dp = gbl_llmeta_deadlock_poll;
+        if (dp > 1)
+            poll(NULL, 0, rand() % dp);
         goto retry;
     }
     return -1;
@@ -3090,7 +3122,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -3160,7 +3194,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -3250,7 +3286,9 @@ retry:
                 return -1;
 
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -3404,7 +3442,9 @@ retry:
         if (rc || *bdberr != BDBERR_NOERROR) {
             if (*bdberr == BDBERR_DEADLOCK) {
                 if (++retries < gbl_maxretries && !tran) {
-                    poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                    int dp = gbl_llmeta_deadlock_poll;
+                    if (dp > 1)
+                        poll(NULL, 0, rand() % dp);
                     goto retry;
                 }
 
@@ -3439,7 +3479,9 @@ retry:
 
         if (*bdberr == BDBERR_DEADLOCK) {
             if (++retries < gbl_maxretries && !tran) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -3671,10 +3713,8 @@ int bdb_set_in_schema_change(
     p_buf_start = p_buf = (uint8_t *)key;
     p_buf_end = p_buf_start + LLMETA_IXLEN;
 
-    if (!(p_buf = llmeta_schema_change_type_put(&schema_change, p_buf,
-                                                p_buf_end))) {
-        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
-                __func__);
+    if (!(p_buf = llmeta_schema_change_type_put(&schema_change, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n", __func__);
         logmsg(LOGMSG_ERROR, "%s: check the length of db_name\n", __func__);
         *bdberr = BDBERR_MISC;
         return -1;
@@ -3693,7 +3733,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -3744,7 +3786,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -3825,7 +3869,9 @@ retry:
 
         if (*bdberr == BDBERR_DEADLOCK && !input_trans) {
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -4411,8 +4457,7 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
     p_buf_start = p_buf = (uint8_t *)key;
     p_buf_end = p_buf_start + LLMETA_IXLEN;
 
-    if (!(p_buf = llmeta_schema_change_type_put(&schema_change, p_buf,
-                                                p_buf_end))) {
+    if (!(p_buf = llmeta_schema_change_type_put(&schema_change, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: llmeta_schema_change_type_put returns NULL\n",
                __func__);
         logmsg(LOGMSG_ERROR, "%s: check the length of db_name\n", __func__);
@@ -4432,7 +4477,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -4555,7 +4602,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -4774,7 +4823,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -4826,7 +4877,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -4955,7 +5008,9 @@ retry:
         if (*bdberr == BDBERR_DEADLOCK) {
             /* TODO: this function doesn't take tran argument */
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -5113,7 +5168,9 @@ retry:
 
         if (*bdberr == BDBERR_DEADLOCK) {
             if (++retries < gbl_maxretries && !trans) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -5198,7 +5255,9 @@ retry:
 
         if (*bdberr == BDBERR_DEADLOCK) {
             if (++retries < gbl_maxretries && !trans) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -6029,7 +6088,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -6075,7 +6136,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -6121,8 +6184,7 @@ int bdb_tbl_op_access_set(bdb_state_type *bdb_state, tran_type *input_trans,
     tran_type *trans;
     int retries = 0;
     int prev_bdberr;
-    command_type =
-        0; // OVERRIDES PARAMETER BECAUSE WE DO NOT CHECK THE COMMAND YET
+    command_type = 0; // OVERRIDES PARAMETER BECAUSE WE DO NOT CHECK THE COMMAND YET
     p_buf = key;
     p_buf_end = p_buf + LLMETA_IXLEN;
 
@@ -6155,7 +6217,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -6201,7 +6265,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -6287,7 +6353,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -6334,7 +6402,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -6347,10 +6417,9 @@ backout:
 /**********************************************************************/
 
 /* call this to enable authentication on a database */
-int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans,
-                        int *bdberr, int add, int file_type)
+int bdb_feature_set_int(bdb_state_type *bdb_state, tran_type *input_trans, int *bdberr, int add, int file_type)
 {
-    uint8_t key[LLMETA_IXLEN+sizeof(uint8_t)] = {0};
+    uint8_t key[LLMETA_IXLEN + sizeof(uint8_t)] = {0};
     int rc;
     struct llmeta_authentication authentication_data = {0};
     uint8_t *p_buf, *p_buf_start = NULL, *p_buf_end;
@@ -6382,7 +6451,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -6432,7 +6503,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -6664,7 +6737,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -6711,7 +6786,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -7171,7 +7248,9 @@ retry:
         if (*bdberr == BDBERR_DEADLOCK) {
             /* TODO: input_trans is not used */
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -7268,7 +7347,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -7319,7 +7400,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -7417,7 +7500,9 @@ retry:
         if (*bdberr == BDBERR_DEADLOCK) {
             /* TODO: input_trans unused */
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -7484,7 +7569,9 @@ retry:
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK) {
             if (++retries < gbl_maxretries && !tran) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -7564,7 +7651,9 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -7607,7 +7696,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -7640,9 +7731,10 @@ int bdb_set_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
     }
 
     if (!tbl_name || !bdberr) {
-        logmsg(LOGMSG_ERROR, "%s: NULL or inconsistant "
-                        "argument\n",
-                __func__);
+        logmsg(LOGMSG_ERROR,
+               "%s: NULL or inconsistant "
+               "argument\n",
+               __func__);
         if (bdberr)
             *bdberr = BDBERR_BADARGS;
         return -1;
@@ -7686,13 +7778,16 @@ retry:
         trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
         if (!trans) {
             if (*bdberr == BDBERR_DEADLOCK) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
-            logmsg(LOGMSG_ERROR, "%s: failed to get "
-                            "transaction\n",
-                    __func__);
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to get "
+                   "transaction\n",
+                   __func__);
             return -1;
         }
     } else
@@ -7737,7 +7832,9 @@ backout:
 
         *bdberr = prev_bdberr;
         if (*bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -7787,8 +7884,7 @@ static int llmeta_set_uint64(llmetakey_t key, uint64_t value)
 
 rep:
     if ((tran = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr)) == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
-                bdberr, retry);
+        logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__, bdberr, retry);
         rc = bdberr;
         goto err;
     }
@@ -7838,7 +7934,9 @@ err:
     }
     if (retry < gbl_maxretries &&
         (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK)) {
-        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+        int dp = gbl_llmeta_deadlock_poll;
+        if (dp > 1)
+            poll(NULL, 0, rand() % dp);
         ++retry;
         goto rep;
     }
@@ -7971,8 +8069,7 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
     }
 
     if (strlen(url) + 1 > sizeof(data.url)) {
-        logmsg(LOGMSG_ERROR, "%s: tablename url too long, limit is %zu\n",
-               __func__, sizeof(data.url));
+        logmsg(LOGMSG_ERROR, "%s: tablename url too long, limit is %zu\n", __func__, sizeof(data.url));
         if (errstr)
             *errstr = strdup("tablename url too long");
         return -1;
@@ -8001,7 +8098,9 @@ retry:
     trans = bdb_tran_begin(llmeta_bdb_state, ptran, &bdberr);
     if (!trans) {
         if (bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -8018,7 +8117,9 @@ retry:
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK && !ptran) {
             if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
         }
@@ -8043,13 +8144,14 @@ retry:
         if (rc || bdberr != BDBERR_NOERROR) {
             if (bdberr == BDBERR_DEADLOCK && !ptran) {
                 if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
-                    poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                    int dp = gbl_llmeta_deadlock_poll;
+                    if (dp > 1)
+                        poll(NULL, 0, rand() % dp);
                     goto retry;
                 }
             }
 
-            logmsg(LOGMSG_ERROR, "%s: failed to commit transaction bdberr=%d\n",
-                    __func__, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: failed to commit transaction bdberr=%d\n", __func__, bdberr);
             if (errstr)
                 *errstr = strdup("failed to commit transaction");
 
@@ -8099,7 +8201,9 @@ retry:
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK) {
             if (++retries < gbl_maxretries && !tran) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -8156,8 +8260,7 @@ int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr)
     retries = 0;
 retry:
     if (++retries >= gbl_maxretries) {
-        logmsg(LOGMSG_ERROR, "%s:%d giving up after %d retries\n", __func__,
-                __LINE__, retries);
+        logmsg(LOGMSG_ERROR, "%s:%d giving up after %d retries\n", __func__, __LINE__, retries);
         if (errstr)
             *errstr = strdup("failed to commit transaction, hit max retries");
         return -1;
@@ -8166,7 +8269,9 @@ retry:
     trans = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
     if (!trans) {
         if (bdberr == BDBERR_DEADLOCK) {
-            poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+            int dp = gbl_llmeta_deadlock_poll;
+            if (dp > 1)
+                poll(NULL, 0, rand() % dp);
             goto retry;
         }
 
@@ -8182,7 +8287,9 @@ retry:
     if (rc || bdberr != BDBERR_NOERROR) {
         if (bdberr == BDBERR_DEADLOCK) {
             if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             } else {
                 logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n", __func__, bdberr);
@@ -8208,7 +8315,9 @@ retry:
         if (rc || bdberr != BDBERR_NOERROR) {
             if (bdberr == BDBERR_DEADLOCK) {
                 if ((rc = bdb_tran_abort(llmeta_bdb_state, trans, &bdberr)) == 0) {
-                    poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                    int dp = gbl_llmeta_deadlock_poll;
+                    if (dp > 1)
+                        poll(NULL, 0, rand() % dp);
                     goto retry;
                 } else {
                     logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n", __func__, bdberr);
@@ -8565,7 +8674,9 @@ retry:
         /* errored case */
         if (tran == NULL && *bdberr == BDBERR_DEADLOCK) {
             if (++retries < gbl_maxretries) {
-                poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+                int dp = gbl_llmeta_deadlock_poll;
+                if (dp > 1)
+                    poll(NULL, 0, rand() % dp);
                 goto retry;
             }
 
@@ -8595,8 +8706,7 @@ retry:
     return 0;
 }
 
-int bdb_table_version_select(const char *tblname, tran_type *tran,
-                             unsigned long long *version, int *bdberr)
+int bdb_table_version_select(const char *tblname, tran_type *tran, unsigned long long *version, int *bdberr)
 {
     return bdb_table_version_select_verbose(tblname, tran, version, bdberr, 1);
 }
@@ -8649,7 +8759,9 @@ rep:
         rc = 1;
     } else if (rc == -1 && bdberr == BDBERR_DEADLOCK && !tran &&
                retry < gbl_maxretries) {
-        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+        int dp = gbl_llmeta_deadlock_poll;
+        if (dp > 1)
+            poll(NULL, 0, rand() % dp);
         ++retry;
         goto rep;
     } else
@@ -8689,8 +8801,7 @@ rep:
     key = htonl(key);
     memcpy(llkey, &key, sizeof(key));
     if (table)
-        memcpy((llkey + sizeof(key)), table,
-               strnlen(table, LLMETA_IXLEN - sizeof(key)));
+        memcpy((llkey + sizeof(key)), table, strnlen(table, LLMETA_IXLEN - sizeof(key)));
 
     int fndlen;
     char *tmpstr = NULL;
@@ -8743,7 +8854,9 @@ err:
         goto out;
     }
     if (retry < gbl_maxretries && (bdberr == BDBERR_NOERROR || bdberr == BDBERR_DEADLOCK) && !parent_tran) {
-        poll(NULL, 0, rand() % gbl_llmeta_deadlock_poll);
+        int dp = gbl_llmeta_deadlock_poll;
+        if (dp > 1)
+            poll(NULL, 0, rand() % dp);
         ++retry;
         goto rep;
     }
