@@ -2319,7 +2319,7 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
                " prevlsn[%lu][%lu] utxnid \%"PRIx64" prevllsn[%lu][%lu] tranid %016" PRIx64,
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
-               (u_long)addop->prev_lsn.offset, (u_long)addop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)addop->prev_lsn.offset, addop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, addop->ltranid);
         printf("\ttable:     %.*s\n", addop->table.size,
                (char *)addop->table.data);
@@ -2414,7 +2414,7 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
                " prevlsn[%lu][%lu] utxnid \%"PRIx64" prevllsn[%lu][%lu] tranid %016" PRIx64,
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
-               (u_long)addop->prev_lsn.offset, (u_long)addop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)addop->prev_lsn.offset, addop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, addop->ltranid);
         printf("\ttable:     %.*s\n", addop->table.size,
                (char *)addop->table.data);
@@ -2515,8 +2515,8 @@ int handle_undo_add_ix(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu] utxnid \%"PRIx64" tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
-               (u_long)addop->prev_lsn.offset, (u_long)addop->txnid->utxnid, (u_long)lprev->file,
-               (u_long)lprev->offset, addop->ltranid);
+               (u_long)addop->prev_lsn.offset, (u_long)lprev->file,
+               (u_long)lprev->offset, addop->txnid->utxnid, addop->ltranid);
         printf("\ttable:  %.*s\n", addop->table.size,
                (char *)addop->table.data);
         printf("\tgenid:  %016" PRIx64 "\n", addop->genid);
@@ -2604,8 +2604,8 @@ int handle_undo_add_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu] utxnid \%"PRIx64" tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
-               (u_long)addop->prev_lsn.offset, (u_long)addop->txnid->utxnid, (u_long)lprev->file,
-               (u_long)lprev->offset, addop->ltranid);
+               (u_long)addop->prev_lsn.offset, (u_long)lprev->file,
+               (u_long)lprev->offset, addop->txnid->utxnid, addop->ltranid);
         printf("\ttable:    %.*s\n", addop->table.size,
                (char *)addop->table.data);
         printf("\tgenid:    %016" PRIx64 "\n", addop->genid);
@@ -2729,7 +2729,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
                (u_long)lsn->file, (u_long)lsn->offset,
                args->isabort ? "abort" : "commit", (u_long)rectype,
                (u_long)args->txnid->txnid, (u_long)args->prev_lsn.file,
-               (u_long)args->prev_lsn.offset, (u_long)args->txnid->utxnid, (u_long)lprev->file,
+               (u_long)args->prev_lsn.offset, args->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, args->ltranid);
         printf("\n");
         break;
@@ -2787,7 +2787,7 @@ int handle_start(DB_ENV *dbenv, u_int32_t rectype, llog_ltran_start_args *args,
                "tranid %016llx\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)args->txnid->txnid, (u_long)args->prev_lsn.file,
-               (u_long)args->prev_lsn.offset, (u_long)args->txnid->utxnid, ltranid);
+               (u_long)args->prev_lsn.offset, args->txnid->utxnid, ltranid);
         printf("\n");
         break;
 
@@ -2836,7 +2836,7 @@ int handle_comprec(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu] tranid %016llx\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)args->txnid->txnid, (u_long)args->prev_lsn.file,
-               (u_long)args->prev_lsn.offset, (u_long)args->txnid->utxnid, (u_long)prevllsn.file,
+               (u_long)args->prev_lsn.offset, args->txnid->utxnid, (u_long)prevllsn.file,
                (u_long)prevllsn.offset, ltranid);
         printf("\tcomplsn: %d:%d\n", undolsn.file, undolsn.offset);
         printf("\n");
@@ -3103,7 +3103,7 @@ int handle_undo_del_dta(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016llx\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)delop->txnid->txnid, (u_long)delop->prev_lsn.file,
-               (u_long)delop->prev_lsn.offset, (u_long)delop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)delop->prev_lsn.offset, delop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, ltranid);
         printf("\ttable:       %.*s\n", delop->table.size,
                (char *)delop->table.data);
@@ -3180,7 +3180,7 @@ int handle_undo_del_ix(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016llx\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)delop->txnid->txnid, (u_long)delop->prev_lsn.file,
-               (u_long)delop->prev_lsn.offset, (u_long)delop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)delop->prev_lsn.offset, delop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, ltranid);
         printf("\ttable:   %.*s\n", delop->table.size,
                (char *)delop->table.data);
@@ -3259,7 +3259,7 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016llx\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)updop->txnid->txnid, (u_long)updop->prev_lsn.file,
-               (u_long)updop->prev_lsn.offset, (u_long)updop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)updop->prev_lsn.offset, updop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, ltranid);
         printf("\ttable:       %.*s\n", updop->table.size,
                (char *)updop->table.data);
@@ -3359,7 +3359,7 @@ int handle_undo_upd_ix(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016llx\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)updop->txnid->txnid, (u_long)updop->prev_lsn.file,
-               (u_long)updop->prev_lsn.offset, (u_long)updop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)updop->prev_lsn.offset, updop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, ltranid);
         printf("\ttable:       %.*s\n", updop->table.size,
                (char *)updop->table.data);
@@ -3776,7 +3776,7 @@ int handle_undo_del_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)delop->txnid->txnid, (u_long)delop->prev_lsn.file,
-               (u_long)delop->prev_lsn.offset, (u_long)delop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)delop->prev_lsn.offset, delop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, delop->ltranid);
         printf("\ttable:       %.*s\n", delop->table.size,
                (char *)delop->table.data);
@@ -3860,7 +3860,7 @@ int handle_undo_del_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)delop->txnid->txnid, (u_long)delop->prev_lsn.file,
-               (u_long)delop->prev_lsn.offset, (u_long)delop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)delop->prev_lsn.offset, delop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, delop->ltranid);
         printf("\ttable:        %.*s\n", delop->table.size,
                (char *)delop->table.data);
@@ -3944,7 +3944,7 @@ int handle_undo_upd_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)updop->txnid->txnid, (u_long)updop->prev_lsn.file,
-               (u_long)updop->prev_lsn.offset, (u_long)updop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)updop->prev_lsn.offset, updop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, updop->ltranid);
         printf("\ttable:       %.*s\n", updop->table.size,
                (char *)updop->table.data);
@@ -4047,7 +4047,7 @@ int handle_undo_upd_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
                "prevllsn[%lu][%lu]  tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)updop->txnid->txnid, (u_long)updop->prev_lsn.file,
-               (u_long)updop->prev_lsn.offset, (u_long)updop->txnid->utxnid, (u_long)lprev->file,
+               (u_long)updop->prev_lsn.offset, updop->txnid->utxnid, (u_long)lprev->file,
                (u_long)lprev->offset, updop->ltranid);
         printf("\ttable:       %.*s\n", updop->table.size,
                (char *)updop->table.data);
@@ -4117,9 +4117,9 @@ int handle_rowlocks_log_bench(DB_ENV *dbenv, u_int32_t rectype,
                "prelsn[%lu][%lu]  prevllsn[%lu][%lu]  tranid %016" PRIx64 "\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)rl_log_bench->txnid->txnid,
+               rl_log_bench->txnid->utxnid,
                (u_long)rl_log_bench->prev_lsn.file,
                (u_long)rl_log_bench->prev_lsn.offset,
-	       (u_long)rl_log_bench->txnid->utxnid,
                (u_long)rl_log_bench->prevllsn.file,
                (u_long)rl_log_bench->prevllsn.offset, rl_log_bench->ltranid);
         printf("\top:          %d\n", rl_log_bench->op);
@@ -4173,7 +4173,7 @@ int handle_commit_log_bench(DB_ENV *dbenv, u_int32_t rectype,
                (u_long)c_log_bench->txnid->txnid,
                (u_long)c_log_bench->prev_lsn.file,
                (u_long)c_log_bench->prev_lsn.offset,
-	       (u_long)c_log_bench->txnid->utxnid,
+               c_log_bench->txnid->utxnid,
                (u_long)c_log_bench->prevllsn.file,
                (u_long)c_log_bench->prevllsn.offset, c_log_bench->ltranid);
         printf("\top:          %d\n", c_log_bench->op);

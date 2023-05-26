@@ -39,6 +39,8 @@ struct dohsql_node {
 };
 typedef struct dohsql_node dohsql_node_t;
 
+typedef struct dohsql dohsql_t;
+
 /**
  * Launch parallel sql engines
  *

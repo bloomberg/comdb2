@@ -26,9 +26,11 @@ struct stack {
 static hash_t *stackhash = NULL;
 static struct stack **stacks = NULL;
 static int stackid = 0;
+#ifdef __GLIBC__
 static int stackalloc = 0;
-static pthread_mutex_t stacklk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t stacksonce = PTHREAD_ONCE_INIT;
+#endif
+static pthread_mutex_t stacklk = PTHREAD_MUTEX_INITIALIZER;
 
 static void once(void)
 {
@@ -43,10 +45,9 @@ extern char **backtrace_symbols(void *const *, int);
 
 int stackutil_get_stack_id(const char *type)
 {
-    struct stack s = {0};
     int id = -1;
-
 #ifdef __GLIBC__
+    struct stack s = {0};
     Pthread_once(&stacksonce, once);
 
     if (stackhash == NULL)
@@ -102,11 +103,10 @@ int stackutil_get_stack(int id, char **type, int *nframes, void *frames[MAX_STAC
 
 char *stackutil_get_stack_str(int id, char **type, int *nframes, int64_t *hits)
 {
-    void *frames[MAX_STACK_FRAMES];
     char *str = NULL;
-    *type = NULL;
-
 #ifdef __GLIBC__
+    void *frames[MAX_STACK_FRAMES];
+    *type = NULL;
     if (stackutil_get_stack(id, type, nframes, frames, hits) == 0) {
         char **strings = NULL;
         strings = backtrace_symbols(frames, *nframes);

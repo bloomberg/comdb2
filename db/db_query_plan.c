@@ -19,6 +19,7 @@
 
 #include <math.h>
 #include <ctrace.h>
+#include <inttypes.h>
 
 int gbl_query_plan_max_plans = 20;
 extern double gbl_query_plan_percentage;
@@ -121,7 +122,7 @@ static void add_query_plan_int(struct fingerprint_track *t, const char *query_pl
             util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
 
         logmsg(LOGMSG_WARN,
-               "Possible better plan available for fingerprint %s, avg cost per row difference: %f, current # rows: %ld\n",
+               "Possible better plan available for fingerprint %s, avg cost per row difference: %f, current # rows: %" PRId64 "\n",
                fp, max_diff, nrows);
         t->alert_once_query_plan = 0;
     }
