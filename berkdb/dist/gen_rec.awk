@@ -801,7 +801,7 @@ function print_function() {
 	printf("\t    (u_long)argp->txnid->txnid,\n") >> CFILE;
 	printf("\t    (u_long)argp->prev_lsn.file,\n") >> CFILE;
 	printf("\t    (u_long)argp->prev_lsn.offset,\n") >> CFILE;
-	printf("\t    (u_long)argp->txnid->utxnid);\n") >> CFILE;
+	printf("\t    argp->txnid->utxnid);\n") >> CFILE;
 
 	# Now print fields of argp
 	for (i = 0; i < nvars; i ++) {

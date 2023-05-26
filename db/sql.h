@@ -319,9 +319,7 @@ void currange_free(CurRange *cr);
 struct stored_proc;
 struct lua_State;
 struct dohsql;
-typedef struct dohsql dohsql_t;
 struct dohsql_node;
-typedef struct dohsql_node dohsql_node_t;
 typedef struct fdb_push_connector fdb_push_connector_t;
 
 enum early_verify_error {
@@ -865,7 +863,7 @@ struct sqlclntstate {
     int verify_remote_schemas;
 
     /* sharding scheme */
-    dohsql_t *conns;
+    struct dohsql *conns;
     int nconns;
     int conns_idx;
     int shard_slice;
@@ -1278,7 +1276,7 @@ int fdb_add_remote_time(BtCursor *pCur, unsigned long long start,
  * refers to a remote table
  *
  */
-int fdb_push_run(Parse *pParse, dohsql_node_t *node);
+int fdb_push_run(Parse *pParse, struct dohsql_node *node);
 
 /**
  * Free remote push support

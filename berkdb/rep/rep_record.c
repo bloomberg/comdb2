@@ -5134,7 +5134,7 @@ __rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
 
 	if (!gbl_rep_process_txn_time) {
 		rc = __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
-			commit_gen, 0, NULL, NULL, NULL);
+			commit_gen, 0, NULL, NULL);
 	} else {
 		long long usecs;
 		bbtime_t start = { 0 }, end = {
@@ -5143,7 +5143,7 @@ __rep_process_txn(dbenv, rctl, rec, ltrans, maxlsn, commit_gen)
 		rep_process_txn_cnt++;
 		getbbtime(&start);
 		rc = __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn,
-			commit_gen, 0, NULL, NULL, NULL);
+			commit_gen, 0, NULL, NULL);
 		getbbtime(&end);
 		usecs = diff_bbtime(&end, &start);
 		rep_process_txn_usc += usecs;

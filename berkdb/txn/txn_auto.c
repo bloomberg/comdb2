@@ -898,7 +898,7 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    (u_long)argp->txnid->utxnid);
+	    argp->txnid->utxnid);
 	(void)printf("\tckp_lsn: [%lu][%lu]\n",
 	    (u_long)argp->ckp_lsn.file, (u_long)argp->ckp_lsn.offset);
 	fflush(stdout);
@@ -1288,7 +1288,7 @@ __txn_child_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    (u_long)argp->txnid->utxnid);
+	    argp->txnid->utxnid);
 	(void)printf("\tchild: 0x%lx\n", (u_long)argp->child);
 	(void)printf("\tchild_utxnid: %"PRIx64"\n", (u_long)argp->child_utxnid);
 	fflush(stdout);
@@ -1721,7 +1721,7 @@ __txn_xa_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    (u_long)argp->txnid->utxnid);
+	    argp->txnid->utxnid);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\txid: \n");
@@ -2089,7 +2089,7 @@ __txn_recycle_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    (u_long)argp->txnid->utxnid);
+	    argp->txnid->utxnid);
 	(void)printf("\tmin: %u\n", argp->min);
 	fflush(stdout);
 	(void)printf("\tmax: %u\n", argp->max);
@@ -2590,7 +2590,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    (u_long)argp->txnid->utxnid);
+	    argp->txnid->utxnid);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tltranid: %"PRIx64"\n", argp->ltranid);
@@ -3044,7 +3044,7 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->txnid->txnid,
 	    (u_long)argp->prev_lsn.file,
 	    (u_long)argp->prev_lsn.offset,
-	    (u_long)argp->txnid->utxnid);
+	    argp->txnid->utxnid);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tgeneration: %u\n", argp->generation);
