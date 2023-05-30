@@ -31,6 +31,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <berkdb/dbinc/queue.h>
 #include <limits.h>
 
+#include <arpa/inet.h>
 #include <alloca.h>
 #include <ctype.h>
 #include <errno.h>
@@ -303,6 +304,7 @@ int gbl_report_last;
 long gbl_report_last_n;
 long gbl_report_last_r;
 char *gbl_myhostname;      /* my hostname */
+char *gbl_mycname;      /* my cname */
 struct in_addr gbl_myaddr; /* my IPV4 address */
 int gbl_mynodeid = 0; /* node number, for backwards compatibility */
 pid_t gbl_mypid;      /* my pid */
@@ -5343,20 +5345,24 @@ static void register_all_int_switches()
 
 static void getmyid(void)
 {
-    char name[1024];
-    char *cname;
-
-    if (gethostname(name, sizeof(name))) {
-        logmsg(LOGMSG_ERROR, "%s: Failure to get local hostname!!!\n", __func__);
-        gbl_myhostname = "localhost";
-    } else if ((cname = comdb2_getcanonicalname(name)) != NULL) {
-        gbl_myhostname = intern(cname);
-    } else {
-        gbl_myhostname = intern(name);
+    int rc;
+    char *cname = NULL;
+    char buf[NI_MAXHOST];
+    if ((rc = gethostname(buf, sizeof(buf))) != 0) {
+        logmsg(LOGMSG_FATAL, "gethostname failed rc:%d err:%s\n", rc, strerror(errno));
+        abort();
     }
-
-    getmyaddr();
+    gbl_myhostname = intern(buf);
+    get_os_hostbyname()(&gbl_myhostname, &gbl_myaddr , &cname); // -> os_get_host_and_cname_by_name
+    if (cname) {
+        gbl_mycname = intern(cname);
+        free(cname);
+    } else {
+        gbl_mycname = gbl_myhostname;
+    }
     gbl_mypid = getpid();
+    inet_ntop(AF_INET, &gbl_myaddr.s_addr, buf, sizeof(buf));
+    printf("%s  hostname:%s  cname:%s  addr:%s  pid:%d\n", __func__, gbl_myhostname, gbl_mycname, buf, gbl_mypid);
 }
 
 void create_marker_file() 
