@@ -5361,8 +5361,6 @@ static void getmyid(void)
         gbl_mycname = gbl_myhostname;
     }
     gbl_mypid = getpid();
-    inet_ntop(AF_INET, &gbl_myaddr.s_addr, buf, sizeof(buf));
-    printf("%s  hostname:%s  cname:%s  addr:%s  pid:%d\n", __func__, gbl_myhostname, gbl_mycname, buf, gbl_mypid);
 }
 
 void create_marker_file() 
@@ -5642,8 +5640,9 @@ int main(int argc, char **argv)
         }
     }
 
+    logmsg(LOGMSG_USER, "hostname:%s  cname:%s\n", gbl_myhostname, gbl_mycname);
+    logmsg(LOGMSG_USER, "I AM READY.\n");
     gbl_ready = 1;
-    logmsg(LOGMSG_WARN, "I AM READY.\n");
 
     pthread_t timer_tid;
     pthread_attr_t timer_attr;
