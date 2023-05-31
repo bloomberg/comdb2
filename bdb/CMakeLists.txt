@@ -75,8 +75,10 @@ add_custom_command(
 
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
   set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label -Wno-unused-but-set-variable")
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+  set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
 endif()
 
 include_directories(
