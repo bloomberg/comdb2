@@ -1290,7 +1290,7 @@ __txn_child_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->prev_lsn.offset,
 	    argp->txnid->utxnid);
 	(void)printf("\tchild: 0x%lx\n", (u_long)argp->child);
-	(void)printf("\tchild_utxnid: %"PRIx64"\n", (u_long)argp->child_utxnid);
+	(void)printf("\tchild_utxnid: %"PRIx64"\n", argp->child_utxnid);
 	fflush(stdout);
 	(void)printf("\tc_lsn: [%lu][%lu]\n",
 		(u_long)argp->c_lsn.file, (u_long)argp->c_lsn.offset);
@@ -3597,7 +3597,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		(u_long)argp->txnid->utxnid);
+		argp->txnid->utxnid);
 	(void)printf("\tgeneration: %lu\n", (u_long)argp->generation);
 	fflush(stdout);
 	(void)printf("\tbegin-lsn: [%lu][%lu]\n",
@@ -3990,7 +3990,7 @@ __txn_dist_abort_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		(u_long)argp->txnid->utxnid);
+		argp->txnid->utxnid);
 
 	char *dist_txnid = alloca(argp->dist_txnid.size + 1);
 	memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
@@ -4402,7 +4402,7 @@ __txn_dist_commit_print(dbenv, dbtp, lsnp, notused2, notused3)
 		(u_long)argp->txnid->txnid,
 		(u_long)argp->prev_lsn.file,
 		(u_long)argp->prev_lsn.offset,
-		(u_long)argp->txnid->utxnid);
+		argp->txnid->utxnid);
 
     char *dist_txnid = (char *)alloca(argp->dist_txnid.size + 1);
     memcpy(dist_txnid, argp->dist_txnid.data, argp->dist_txnid.size);
