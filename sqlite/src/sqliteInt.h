@@ -2371,6 +2371,9 @@ struct UnpackedRecord {
 */
 struct Index {
   char *zName;             /* Name of this index */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  char *zCsc2Name;         /* Name of the index given in the csc2 schema */
+#endif
   i16 *aiColumn;           /* Which columns are used by this index.  1st is 0 */
   LogEst *aiRowLogEst;     /* From ANALYZE: Est. rows selected by each column */
   Table *pTable;           /* The SQL table being indexed */
@@ -4251,8 +4254,13 @@ void sqlite3SrcListAssignCursors(Parse*, SrcList*);
 void sqlite3IdListDelete(sqlite3*, IdList*);
 void sqlite3SrcListDelete(sqlite3*, SrcList*);
 Index *sqlite3AllocateIndexObject(sqlite3*,i16,int,char**);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3CreateIndex(Parse*,Token*,Token*,SrcList*,ExprList*,int,Token*,
+                          Expr*, int, int, u8, Token*);
+#else
 void sqlite3CreateIndex(Parse*,Token*,Token*,SrcList*,ExprList*,int,Token*,
                           Expr*, int, int, u8);
+#endif
 void sqlite3DropIndex(Parse*, SrcList*, int);
 int sqlite3Select(Parse*, Select*, SelectDest*);
 Select *sqlite3SelectNew(Parse*,ExprList*,SrcList*,Expr*,ExprList*,

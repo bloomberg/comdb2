@@ -1897,8 +1897,13 @@ void sqlite3AddPrimaryKey(
        "INTEGER PRIMARY KEY");
 #endif
   }else{
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+    sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0,
+                           0, sortOrder, 0, SQLITE_IDXTYPE_PRIMARYKEY, NULL);
+#else
     sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0,
                            0, sortOrder, 0, SQLITE_IDXTYPE_PRIMARYKEY);
+#endif
     pList = 0;
   }
 
@@ -2314,8 +2319,13 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
     if( pList==0 ) return;
     pList->a[0].sortOrder = pParse->iPkSortOrder;
     assert( pParse->pNewTable==pTab );
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+    sqlite3CreateIndex(pParse, 0, 0, 0, pList, pTab->keyConf, 0, 0, 0, 0,
+                       SQLITE_IDXTYPE_PRIMARYKEY, NULL);
+#else
     sqlite3CreateIndex(pParse, 0, 0, 0, pList, pTab->keyConf, 0, 0, 0, 0,
                        SQLITE_IDXTYPE_PRIMARYKEY);
+#endif
     if( db->mallocFailed || pParse->nErr ) return;
     pPk = sqlite3PrimaryKeyIndex(pTab);
     pTab->iPKey = -1;
@@ -3672,6 +3682,9 @@ void sqlite3CreateIndex(
   int sortOrder,     /* Sort order of primary key when pList==NULL */
   int ifNotExist,    /* Omit error if index already exists */
   u8 idxType         /* The index type */
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  ,Token *altname
+#endif
 ){
   Table *pTab = 0;     /* Table to be indexed */
   Index *pIndex = 0;   /* The index to be created */
@@ -4219,6 +4232,15 @@ void sqlite3CreateIndex(
       sqlite3VdbeJumpHere(v, pIndex->tnum);
     }
   }
+
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+  /* Remember the alternate name (specified in csc2) for that index, because
+   * we can refer to it directly in queries with INDEXED BY */
+  if (altname) {
+      pIndex->zCsc2Name = sqlite3DbStrNDup(pParse->db, altname->z, altname->n);
+      sqlite3Dequote(pIndex->zCsc2Name);
+  }
+#endif
 
   /* When adding an index to the list of indices for a table, make
   ** sure all indices labeled OE_Replace come after all those labeled
