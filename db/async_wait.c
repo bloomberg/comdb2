@@ -509,6 +509,7 @@ void process_work_item(async_wait_node *item)
             item->numfailed = 0;
             // int acked = 0;
             int begin_time = 0, end_time = 0;
+            begin_time = comdb2_time_epochms();
             item->start_time = comdb2_time_epochms();
             if (item->waitms <=0) {
                 if (gbl_async_dist_commit_verbose) {
@@ -526,7 +527,6 @@ void process_work_item(async_wait_node *item)
                            item->seqnum.lsn.file, item->seqnum.lsn.offset, item->waitms);
                 }
 
-                begin_time = comdb2_time_epochms();
                 int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0,__LINE__, 0 /* fake incoherent */);
                 if (bdb_lock_desired(item->bdb_state)) {
                     logmsg(LOGMSG_USER, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
@@ -616,7 +616,9 @@ void process_work_item(async_wait_node *item)
             goto got_first_ack_label;
         } else if (item->waitms > 0) {
             assert(item->is_final_check==0);
-            logmsg(LOGMSG_USER, "We still have waitms remaining\n");
+            if (gbl_async_dist_commit_verbose) {
+                logmsg(LOGMSG_USER, "We still have waitms remaining\n");
+            }
             Pthread_mutex_lock(&(work_queue->mutex));
             item->next_ts = comdb2_time_epochms() + item->waitms;
             listc_rfl(&work_queue->absolute_ts_list, item);
@@ -804,6 +806,9 @@ void *queue_processor(void *arg)
                     Pthread_mutex_unlock(&(work_queue->mutex));
                 }
             }
+
+            /* We've gone over the entire LSN list.. Let's go over the absolute ts list next */
+            wait_rc = 1;
         } else {
             if (gbl_async_dist_commit_verbose) {
                 logmsg(LOGMSG_USER, "Timed out on conditional wait.. Going over absolute ts list\n");
@@ -812,7 +817,7 @@ void *queue_processor(void *arg)
             item = LISTC_TOP(&(work_queue->absolute_ts_list));
             Pthread_mutex_unlock(&(work_queue->mutex));
             cur_time = comdb2_time_epochms();
-            while (item != NULL && (item->next_ts < cur_time)) {
+            while (item != NULL && (item->next_ts <= cur_time)) {
                 if (gbl_async_dist_commit_verbose) {
                     logmsg(LOGMSG_USER, "Processing work item with seqnum  %d:%d, in state: %d\n",
                            item->seqnum.lsn.file, item->seqnum.lsn.offset, item->cur_state);
