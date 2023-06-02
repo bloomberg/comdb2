@@ -10,6 +10,7 @@ mkdir -p $DBDIR
 $COMDB2_EXE $db --create --dir $DBDIR/$db >/dev/null 2>&1
 ulimit -c 0
 echo "watchthreshold 10" >> $DBDIR/$db/$db.lrl
+echo "setattr TEST_SQL_TIME 1" >> $DBDIR/$db/$db.lrl
 $COMDB2_EXE $db --lrl $DBDIR/$db/$db.lrl >$DBDIR/$db/out 2>&1 &
 pid=$!
 sleep 10
