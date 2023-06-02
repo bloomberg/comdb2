@@ -1077,12 +1077,13 @@ struct __db_txn {
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
 			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
 			  u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
-	int   (*dist_prepare) __P((DB_TXN *, const char *, const char *, const char *, u_int32_t, DBT *, u_int32_t));
+	int   (*dist_prepare) __P((DB_TXN *, const char *, const char *, const char *, u_int32_t, DBT *, DB_LSN *, u_int32_t));
 	int   (*getlogbytes) __P((DB_TXN *, u_int64_t *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
 	int	  (*prepare) __P((DB_TXN *, u_int8_t *));
 	int	  (*set_timeout) __P((DB_TXN *, db_timeout_t, u_int32_t));
+	int	  (*set_discard) __P((DB_TXN *));
 
 #define	TXN_CHILDCOMMIT	0x001		/* Transaction that has committed. */
 #define	TXN_COMPENSATE	0x002		/* Compensating transaction. */
@@ -1096,7 +1097,7 @@ struct __db_txn {
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
 #define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
 #define TXN_DIST_PREPARED	0x800 /* Dist-txn has written prepare record */
-#define TXN_DIST_DISCARD	0x1000 /* Discard a repared dist-txn */
+#define TXN_DIST_DISCARD	0x1000 /* Discard a prepared dist-txn */
 #define TXN_NOPREP	        0x2000 /* Prevent prepares against this txn */
 	u_int32_t	flags;
 
@@ -1112,6 +1113,7 @@ struct __db_txn {
 	char *coordinator_tier;
 	u_int32_t coordinator_gen;
 	DBT blkseq_key;
+	int wrote_regop_gen;
 };
 
 typedef enum {
@@ -1121,13 +1123,14 @@ typedef enum {
 	DB_DIST_SCHEMA_LK   = 0x00000008,
 	DB_DIST_INFLIGHT    = 0x00000010,
 	DB_DIST_RECOVERED   = 0x00000020,
-	DB_DIST_UPDSHADOWS  = 0x00000040
+	DB_DIST_UPDSHADOWS  = 0x00000040,
+	DB_DIST_DISCARDED   = 0x00000080
 } db_dist_state;
 
 struct __db_txn_prepared_child {
 	u_int64_t cutxnid;
 	DB_TXN_PREPARED *p;
-    LINKC_T(struct __db_txn_prepared_child) lnk;
+	LINKC_T(struct __db_txn_prepared_child) lnk;
 };
 
 typedef LISTC_T(struct __db_txn_prepared_child) txn_children;
@@ -2520,6 +2523,8 @@ struct __db_env {
 	int  (*lock_detect) __P((DB_ENV *, u_int32_t, u_int32_t, int *));
 	int  (*lock_dump_region) __P((DB_ENV *, const char *, FILE *));
 	int  (*lock_abort_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
+	int  (*lock_count_waiters)__P((DB_ENV *, u_int32_t, u_int32_t *));
+	int  (*lock_count_write_waiters)__P((DB_ENV *, u_int32_t, u_int32_t *));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
 	int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
@@ -2611,7 +2616,10 @@ struct __db_env {
 	int  (*txn_discard_recovered) __P((DB_ENV *, const char *));
 	int  (*txn_discard_all_recovered) __P((DB_ENV *));
 	int  (*txn_upgrade_all_prepared) __P((DB_ENV *));
+	int  (*txn_recover_all_prepared) __P((DB_ENV *));
 	int  (*txn_abort_prepared_waiters) __P((DB_ENV *));
+	int  (*set_recover_prepared_callback) __P((DB_ENV *, void (*)(const char *, const char *, const char *)));
+	void  (*recover_prepared_callback)(const char *, const char *, const char *);
 	int  (*get_timeout) __P((DB_ENV *, db_timeout_t *, u_int32_t));
 	int  (*set_timeout) __P((DB_ENV *, db_timeout_t, u_int32_t));
 	int  (*set_bulk_stops_on_page) __P((DB_ENV*, int));

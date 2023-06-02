@@ -426,6 +426,13 @@ typedef struct fdb_hbeats {
     struct timeval tv;
 } fdb_hbeats_type;
 
+struct sanctioned;
+typedef struct dist_hbeats {
+    struct sanctioned *sanc;
+    struct event *ev_hbeats;
+    struct timeval tv;
+} dist_hbeats_type;
+
 /* Trace functions */
 void host_node_printf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);

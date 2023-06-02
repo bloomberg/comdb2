@@ -1,0 +1,1905 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/hrtime.sh
+
+#export maxtime=30000
+# permissive maxtime because im killing my hardware
+export maxtime=300000
+# tight maxtime for verify-retry testing
+#export maxtime=1000
+export debug=1
+#export DEBUGTRACE="--debugtrace"
+export DEBUGTRACE=""
+
+[[ $debug == "1" ]] && set -x
+
+export comdb2db_hosts="${SENARY_DBNAME}:1234"
+export COMDB2DB_DBNAME=${SENARY_DBNAME}
+export COMDB2DB_OPTIONS=${SENARY_CDB2_OPTIONS}
+export LOGDIR=$TESTDIR/logs
+
+function stop_all_databases
+{
+    for node in $CLUSTER ; do
+         kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${QUATERNARY_DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${QUINARY_DBNAME}.${node}.pid)
+         kill -9 $(cat ${TMPDIR}/${SENARY_DBNAME}.${node}.pid)
+    done
+}
+
+function fail_exit()
+{
+    echo "Failed $@" | tee ${DBNAME}.failexit # runtestcase script looks for this file
+    stop_all_databases
+    exit -1
+}
+
+function send_message_machine
+{
+    typeset msg="$1"
+    typeset mach="$2"
+
+    $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "exec procedure sys.cmd.send(\"$msg\")"
+    $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "exec procedure sys.cmd.send(\"$msg\")"
+    $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "exec procedure sys.cmd.send(\"$msg\")"
+    $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $mach "exec procedure sys.cmd.send(\"$msg\")"
+    $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $mach "exec procedure sys.cmd.send(\"$msg\")"
+}
+
+function send_message_all
+{
+    typeset msg="$1"
+    for node in $CLUSTER ; do
+        send_message_machine "$msg" "$node"
+    done
+}
+
+function send_message_db_machine
+{
+    typeset msg="$1"
+    typeset dbname="$2"
+    typeset options="$3"
+    typeset mach="$4"
+
+    $CDB2SQL_EXE -admin $options $dbname --host $mach "exec procedure sys.cmd.send('$msg')"
+}
+
+function send_message_cluster
+{
+    typeset msg="$1"
+    typeset dbname="$2"
+    typeset options="$3"
+
+    for node in $CLUSTER ; do
+        send_message_db_machine "$msg" "$dbname" "$options" "$node"
+    done
+}
+
+function forbid_coordinator
+{
+    send_message_all "forbid-coordinator $DBNAME/prod"
+}
+
+function allow_coordinator
+{
+    send_message_all "allow-coordinator $DBNAME/prod"
+}
+
+function set_tunable_machine
+{
+    typeset tunable=$1
+    typeset value=$2
+    typeset mach=$3
+
+    $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable $tunable $value" >/dev/null 2>&1
+    $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "put tunable $tunable $value" >/dev/null 2>&1
+    $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable $tunable $value" >/dev/null 2>&1
+    $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $mach "put tunable $tunable $value" >/dev/null 2>&1
+    $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $mach "put tunable $tunable $value" >/dev/null 2>&1
+}
+
+function benchmark_common_tunables
+{
+    for mach in ${CLUSTER}; do
+        set_tunable_machine debug_disttxn_trace 0 $mach
+        set_tunable_machine verbose_toblock_backouts 0 $mach
+        set_tunable_machine dump_blkseq 0 $mach
+        set_tunable_machine ack_trace 0 $mach
+        set_tunable_machine set_coherent_state_trace 0 $mach
+        set_tunable_machine wait_for_seqnum_trace 0 $mach
+        set_tunable_machine gbl_extended_sql_debug_trace 0 $mach
+        set_tunable_machine fdbdebg 0 $mach
+        set_tunable_machine bdblock_debug 0 $mach
+    done
+}
+
+# Disables all safety measures
+function benchmark_loose_tunables
+{
+    for mach in ${CLUSTER}; do
+        set_tunable_machine coordinator_sync_on_commit 0 $mach
+        set_tunable_machine flush_on_prepare 0 $mach
+        set_tunable_machine flush_on_replicant_prepare 0 $mach
+        set_tunable_machine wait_for_prepare_seqnum 0 $mach
+    done
+}
+
+function benchmark_austere_tunables
+{
+    for mach in ${CLUSTER}; do
+        set_tunable_machine coordinator_sync_on_commit 1 $mach
+        set_tunable_machine flush_on_prepare 1 $mach
+        set_tunable_machine flush_on_replicant_prepare 1 $mach
+        set_tunable_machine wait_for_prepare_seqnum 1 $mach
+    done
+}
+
+function update_all_tunables
+{
+    # Update tunables
+    if [[ -z ${CLUSTER} ]]; then
+        $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+        $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+        $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+        $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+        $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+        $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+    else
+        for mach in ${CLUSTER}; do
+            $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+            $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+            $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+            $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+
+            $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $mach "put tunable foreign_metadb '${COMDB2DB_DBNAME}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $mach "put tunable foreign_metadb_class 'local'" >/dev/null 2>&1
+        done
+    fi
+}
+
+# Setup comdb2db tables- modeled from incoh_remsql test
+function create_comdb2db
+{
+    # Create comdb2db tables
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "create table if not exists clusters {`cat clusters.csc2`}" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "create table if not exists machines {`cat machines.csc2`}" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "create table if not exists databases {`cat databases.csc2`}" >/dev/null 2>&1
+
+    # Populate databases
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${DBNAME}', 1234) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${SECONDARY_DBNAME}', 1235) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${TERTIARY_DBNAME}', 1236) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${QUATERNARY_DBNAME}', 1237) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${QUINARY_DBNAME}', 1237) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${SENARY_DBNAME}', 1238) on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into databases(name, dbnum) values('${COMDB2DB_DBNAME}', 1239) on conflict do nothing" >/dev/null 2>&1
+
+    # Populate clusters
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${SECONDARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${TERTIARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${QUATERNARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${QUINARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${SENARY_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+    $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into clusters(name, cluster_name, cluster_machs) values('${COMDB2DB_DBNAME}', 'prod', 'KABOOM') on conflict do nothing" >/dev/null 2>&1
+
+    # Populate machines
+    if [[ -z ${CLUSTER} ]]; then
+        $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into machines(name, cluster, room) values ('localhost', 'KABOOM', 'NY') on conflict do nothing" >/dev/null 2>&1
+        comdb2db_hosts="${comdb2db_hosts}:localhost"
+    else
+        let nnodes=0
+        for mach in ${CLUSTER} ; do
+            $CDB2SQL_EXE $COMDB2DB_OPTIONS $COMDB2DB_DBNAME default "insert into machines(name, cluster, room) values('${mach}', 'KABOOM', 'NY') on conflict do nothing" >/dev/null 2>&1
+            comdb2db_hosts="${comdb2db_hosts}:${mach}"
+            let nnodes=nnodes+1
+        done
+    fi
+
+    echo "Refreshing all tunables"
+    update_all_tunables
+
+    echo "Allowing coordinator on all nodes"
+    allow_coordinator
+}
+
+function find_master
+{
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default 'select host from comdb2_cluster where is_master="Y"'
+}
+
+function find_secondary_master
+{
+    $CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default 'select host from comdb2_cluster where is_master="Y"'
+}
+
+function find_tertiary_master
+{
+    $CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default 'select host from comdb2_cluster where is_master="Y"'
+}
+
+function find_quaternary_master
+{
+    $CDB2SQL_EXE --tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default 'select host from comdb2_cluster where is_master="Y"'
+}
+
+function create_tables
+{
+    # Create t1 DBNAME
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists t1(a int)" 2>&1) 
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t1 for $DBNAME $x"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create unique index if not exists t1a on t1(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating unique index for $DBNAME $x"
+
+    # Create t2 DBNAME (for benchmark)
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists t2(a int)" 2>&1) 
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t2 for $DBNAME $x"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create unique index if not exists t2a on t2(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating unique index for $DBNAME $x"
+
+    # Create t3 DBNAME (for benchmark)
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists t3(a int)" 2>&1) 
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t3 for $DBNAME $x"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create unique index if not exists t3a on t3(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating unique index for $DBNAME $x"
+
+    # Create t4 DBNAME (for benchmark)
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists t4(a int)" 2>&1) 
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t4 for $DBNAME $x"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create unique index if not exists t4a on t4(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating unique index for $DBNAME $x"
+
+    # Create t1 SECONDARY
+    x=$($CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "create table if not exists t1(a int)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t1 for $SECONDARY_DBNAME $x"
+    x=$($CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "create unique index if not exists t1a on t1(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating unique index for $SECONDARY_DBNAME $x"
+
+    # Create t1 TERTIARY
+    x=$($CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "create table if not exists t1(a int)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t1 for $TERTIARY_DBNAME $x"
+    x=$($CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "create unique index if not exists t1a on t1(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating index for $TERTIARY_DBNAME $x"
+
+
+    # Create t1 QUATERNARY
+    x=$($CDB2SQL_EXE $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "create table if not exists t1(a int)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t1 for $QUATERNARY_DBNAME $x"
+    x=$($CDB2SQL_EXE $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "create unique index if not exists t1a on t1(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating index for $QUATERNARY_DBNAME $x"
+
+    # Create t1 QUINARY
+    x=$($CDB2SQL_EXE $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "create table if not exists t1(a int)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating table t1 for $QUINARY_DBNAME $x"
+    x=$($CDB2SQL_EXE $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "create unique index if not exists t1a on t1(a)" 2>&1)
+    r=$? ; [[ "$r" == "0" ]] || failexit "failed creating index for $QUINARY_DBNAME $x"
+}
+
+function wait_dist_table
+{
+    typeset max=10
+    typeset j=0
+    typeset count=0
+    echo "wait_dist_table"
+    while [[ $j -lt $max && "$count" -ne "1" ]]; do
+        count=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from comdb2_tables where tablename='comdb2_distributed_transactions'")
+        if [[ "$count" -ne "1" ]]; then
+            echo "Waiting for comdb2_distributed_transactions table"
+            sleep 2
+        fi
+        let j=j+1
+    done
+    [[ "$count" == "1" ]] || failexit "missing distributed transactions table"
+}
+
+function delete_records_ignore_error
+{
+    echo "delete_records_ignore_error"
+    typeset r=1
+    typeset j=0
+    while [[ "$r" -ne "0" ]]; do
+    let j=j+1
+    echo "begin
+delete from t1 where 1
+delete from $SECONDARY_DBNAME.t1 where 1
+delete from $TERTIARY_DBNAME.t1 where 1
+delete from $QUATERNARY_DBNAME.t1 where 1
+delete from $QUINARY_DBNAME.t1 where 1
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+    r=$?
+    
+    if [[ "$r" -ne "0" ]] ; then
+        echo "Error deleting iteration $j"
+        update_all_tunables
+        sleep 1
+    fi
+    done
+}
+
+function delete_records
+{
+    echo "delete_records"
+    typeset j=0
+    echo "begin
+delete from t1 where 1
+delete from $SECONDARY_DBNAME.t1 where 1
+delete from $TERTIARY_DBNAME.t1 where 1
+delete from $QUATERNARY_DBNAME.t1 where 1
+delete from $QUINARY_DBNAME.t1 where 1
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+    r=$?
+    [[ "$r" == "0" ]] || fail_exit "failed deleting records"
+
+    # Verify that they are deleted
+    echo "Sleeping for 3"
+    sleep 3
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    if [[ "$x" -ne "0" ]]; then
+        fail_exit "$DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
+    if [[ "$x" -ne "0" ]]; then
+        fail_exit "$SECONDARY_DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $TERTIARY_DBNAME.t1")
+    if [[ "$x" -ne "0" ]]; then
+        fail_exit "$TERTIARY_DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUATERNARY_DBNAME.t1")
+    if [[ "$x" -ne "0" ]]; then
+        fail_exit "$QUATERNARY_DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUINARY_DBNAME.t1")
+    if [[ "$x" -ne "0" ]]; then
+        fail_exit "$QUINARY_DBNAME has $x records after delete"
+    fi
+}
+
+function insert_records_bulk
+{
+    echo "insert_records_bulk"
+    typeset j=0
+    typeset count=$1
+    typeset iterations=$2
+    while [[ $j -lt $iterations ]]; do
+        echo "begin
+insert into t1(a) select * from generate_series($(( ( j * count ) + 1)), $(( ( j + 1 ) * count )))
+insert into $SECONDARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into $TERTIARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into $QUATERNARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into $QUINARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+        let j=j+1
+    done
+}
+
+function insert_records_to_normalize
+{
+    echo "insert_records_to_normalize"
+    j=0
+    startms=$(timems)
+    while [[ $j -lt 10 ]]; do
+        echo "begin
+insert into t1(a) values($j)
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+        let j=j+1
+    done
+
+    # Verify that there are 10 records in each database
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$SECONDARY_DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$TERTIARY_DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$QUATERNARY_DBNAME has only $x records"
+
+    x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "10" ]] && fail_exit "$QUINARY_DBNAME has only $x records"
+
+    delete_records
+}
+
+function insert_records_basic
+{
+    echo "insert_records_basic"
+    j=0
+    startms=$(timems)
+    while [[ $j -lt 1000 ]]; do
+        startsinglems=$(timems)
+        echo "begin
+insert into t1(a) values($j)
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        stopsinglems=$(timems)
+        [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+        if [[ "$(( stopsinglems - startsinglems ))" -gt $maxtime ]]; then
+            #fail_exit "Single record test took $(( stopsinglems - startsinglems )) ms"
+            while :; do
+                echo "test failed, single record took $(( stopsinglems - startsinglems )) ms"
+                sleep 1
+            done
+        fi
+        let j=j+1
+    done
+    donems=$(timems)
+    elapsed=$(( donems - startms ))
+    echo "Elapsed time is $elapsed"
+
+    # Verify counts
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    #[[ "$x" == "1000" ]] || fail_exit "$DBNAME has only $x records"
+    if [[ "$x" != "1000" ]] ; then 
+        for node in $CLUSTER ; do
+            echo "Node $node"
+            x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select count(*) from t1")
+            x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select * from t1 order by a")
+        done
+        fail_exit "$DBNAME has only $x records"
+    fi 
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
+    if [[ "$x" != "1000" ]] ; then 
+        for node in $CLUSTER ; do
+            echo "Node $node"
+            x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $node "select count(*) from t1")
+            x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $node "select * from t1 order by a")
+        done
+        fail_exit "$SECONDARY_DBNAME has only $x records"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $TERTIARY_DBNAME.t1")
+    if [[ "$x" != "1000" ]] ; then 
+        for node in $CLUSTER ; do
+            echo "Node $node"
+            x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $node "select count(*) from t1")
+            x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $node "select * from t1 order by a")
+        done
+        fail_exit "$TERTIARY_DBNAME has only $x records"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUATERNARY_DBNAME.t1")
+    if [[ "$x" != "1000" ]] ; then 
+        for node in $CLUSTER ; do
+            echo "Node $node"
+            x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select count(*) from t1")
+            x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select * from t1 order by a")
+        done
+        fail_exit "$QUATERNARY_DBNAME has only $x records"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUINARY_DBNAME.t1")
+    if [[ "$x" != "1000" ]] ; then 
+        for node in $CLUSTER ; do
+            echo "Node $node"
+            x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $node "select count(*) from t1")
+            x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $node "select * from t1 order by a")
+        done
+        fail_exit "$QUINARY_DBNAME has only $x records"
+    fi
+}
+
+function setup
+{
+    create_comdb2db
+    create_tables
+    wait_dist_table
+    allow_coordinator
+}
+
+function basic_test
+{
+    typeset j=0
+    typeset cnt=${1:-3}
+    while [[ $j -lt $cnt ]]; do
+        insert_records_basic
+        delete_records
+        let j=j+1
+    done
+}
+
+function bulk_test
+{
+    typeset cnt=${1:-1}
+    typeset j=0
+    while [[ $j -lt "$cnt" ]]; do
+        insert_records_bulk 2000 50
+        delete_records
+        let j=j+1
+    done
+}
+
+function toggle_tunable
+{
+    typeset tunable=$1
+    typeset onoff=$2
+    typeset skip_coordinator=$3
+    typeset only_coordinator=$4
+
+    if [[ -z ${CLUSTER} ]]; then
+        if [[ "$skip_coordinator" == "0" ]]; then
+            $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME default "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+        fi
+        if [[ "$only_coordinator" == "0" ]]; then
+            $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+            $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+        fi
+    else
+        for mach in ${CLUSTER}; do
+            if [[ "$skip_coordinator" == "0" ]]; then
+                $CDB2SQL_EXE -admin $CDB2_OPTIONS $DBNAME --host $mach "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+            fi
+            if [[ "$only_coordinator" == "0" ]]; then
+                $CDB2SQL_EXE -admin $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $mach "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+                $CDB2SQL_EXE -admin $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $mach "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+                $CDB2SQL_EXE -admin $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $mach "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+                $CDB2SQL_EXE -admin $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $mach "put tunable ${tunable} '${onoff}'" >/dev/null 2>&1
+            fi
+        done
+    fi
+}
+
+function toggle_random_deadlocks
+{
+    typeset onoff=$1
+    toggle_tunable debug.toblock_random_deadlock_trans $onoff 0 0
+}
+
+function toggle_random_verify_errors
+{
+    typeset onoff=$1
+    # Skip coordinator at first to see if it works
+    toggle_tunable debug.toblock_random_verify_error $onoff 0 0
+}
+
+function toggle_debug_wait_on_verify_off
+{
+    typeset onoff=$1
+    toggle_tunable debug_wait_on_verify_off $onoff 0 0
+}
+
+function toggle_debug_sleep_before_prepare
+{
+    typeset onoff=$1
+    toggle_tunable debug_sleep_before_prepare $onoff 1 0
+}
+
+function toggle_debug_sleep_coordinator_before_commit
+{
+    typeset onoff=$1
+    toggle_tunable debug_sleep_coordinator_before_commit $onoff 0 1
+}
+
+function toggle_debug_sleep_on_set_read_only
+{
+    typeset onoff=$1
+    toggle_tunable debug_sleep_on_set_read_only $onoff 0 1
+}
+
+# This works
+function random_deadlocks
+{
+    toggle_random_deadlocks 1
+    insert_records_basic
+    delete_records
+    toggle_random_deadlocks 0
+}
+
+# This works
+function random_verify_errors
+{
+    toggle_random_verify_errors 1
+    insert_records_basic
+    delete_records
+    toggle_random_verify_errors 0
+}
+
+function participant_constraint_violation
+{
+    typeset j=0
+    typeset r=0
+    while [[ $j -lt 1000 ]]; do
+    startms=$(timems)
+    echo "begin
+insert into t1(a) values($j)
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+
+    r=$?
+    donems=$(timems)
+    [[ "$r" == "0" ]] || failexit "participant_constraint_violation failed inserting"
+
+
+    if [[ "$(( donems - startms ))" -gt $maxtime ]]; then
+        failexit "took excessive time to insert good record"
+    fi
+
+    # Try each case in turn
+    if [[ "$(( j % 4 ))" == "0" ]]; then
+    startms=$(timems)
+    output=$(echo "set verifyretry off
+begin
+insert into t1(a) values($(( j + 1 )))
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUATERNARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUINARY_DBNAME.t1(a) values($(( j + 1 )))
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    r=$?
+    donems=$(timems)
+    fi
+
+    if [[ "$(( j % 4 ))" == "1" ]]; then
+    startms=$(timems)
+    output=$(echo "set verifyretry off
+begin
+insert into t1(a) values($(( j + 1 )))
+insert into $SECONDARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUINARY_DBNAME.t1(a) values($(( j + 1 )))
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    r=$?
+    donems=$(timems)
+    fi
+
+    if [[ "$(( j % 4 ))" == "2" ]]; then
+    startms=$(timems)
+    output=$(echo "set verifyretry off
+begin
+insert into t1(a) values($(( j + 1 )))
+insert into $SECONDARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $TERTIARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($(( j + 1 )))
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    r=$?
+    donems=$(timems)
+    fi
+
+    if [[ "$(( j % 4 ))" == "3" ]]; then
+    startms=$(timems)
+    output=$(echo "set verifyretry off
+begin
+insert into t1(a) values($(( j + 1 )))
+insert into $SECONDARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $TERTIARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUATERNARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    r=$?
+    donems=$(timems)
+    fi
+
+    [[ "$r" != "0" ]] || failexit "participant_constraint_violation succeeded incorrectly"
+    if [[ "$output" == *"failed with rc 299"* ]]; then
+        echo "participant_constraint_violation failed with correct rcode 299"
+    else
+        echo "participant_constraint_violation failed with incorrect rcode: $output"
+        failexit "participant_constraint_violation failed with incorrect rcode"
+    fi
+    #echo "participant_constraint_violation output is $output"
+    #echo "participant_constraint_violation failed with rcode $r"
+
+    if [[ "$(( donems - startms ))" -gt $maxtime ]]; then
+        failexit "took excessive time to fail to insert"
+    fi
+    
+    let j=j+1
+    done
+
+    delete_records
+}
+
+function coordinator_constraint_violation
+{
+    typeset j=0
+    while [[ $j -lt 1000 ]]; do
+    startms=$(timems)
+    echo "begin
+insert into t1(a) values($j)
+insert into $SECONDARY_DBNAME.t1(a) values($j)
+insert into $TERTIARY_DBNAME.t1(a) values($j)
+insert into $QUATERNARY_DBNAME.t1(a) values($j)
+insert into $QUINARY_DBNAME.t1(a) values($j)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+
+    donems=$(timems)
+
+    [[ "$r" == "0" ]] || failexit "coordonator_constraint+violation failed inserting, r=$r"
+
+    if [[ "$(( donems - startms ))" -gt $maxtime ]]; then
+        failexit "coordinator took excessive time to insert good record"
+    fi
+
+    startms=$(timems)
+    output=$(echo "set verifyretry off
+begin
+insert into $SECONDARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $TERTIARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUATERNARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into $QUINARY_DBNAME.t1(a) values($(( j + 1 )))
+insert into t1(a) values(${j})
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    r=$?
+
+    donems=$(timems)
+
+    [[ "$r" != "0" ]] || failexit "coordinator_constraint_violation succeeded incorrectly rcode=$r"
+    
+    if [[ "$(( donems - startms ))" -gt $maxtime ]]; then
+        failexit "coordinator took excessive time to fail to insert insert bad record"
+    fi
+    if [[ "$output" == *"failed with rc 299"* ]]; then
+        echo "coordinator_constraint_violation failed with correct rcode 299"
+    else
+        echo "coordinator_constraint_violation failed with incorrect rcode: $output"
+        failexit "coordinator_constraint_violation failed with incorrect rcode"
+    fi
+
+    let j=j+1
+    done
+
+    delete_records
+}
+
+function forbid_disttxn_write_to_disttxn_table
+{
+    startms=$(timems)
+    echo "begin
+insert into comdb2_distributed_transactions(dist_txnid, timestamp) values ('hello2', now())
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    donems=$(timems)
+    [[ "$r" == "0" ]] && failexit "forbid_write_to_disttxn_table incorrectly succeeded write to disttxn-table on coordinator"
+
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.comdb2_distributed_transactions(dist_txnid, timestamp) values ('hello2', now())
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    donems=$(timems)
+    [[ "$r" == "0" ]] && failexit "forbid_write_to_disttxn_table incorrectly succeeded write to disttxn-table on participant"
+
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.comdb2_distributed_transactions(dist_txnid, timestamp) values ('hello2', now())
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    donems=$(timems)
+    [[ "$r" == "0" ]] && failexit "forbid_write_to_disttxn_table incorrectly succeeded write to disttxn-table on participant"
+
+
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.comdb2_distributed_transactions(dist_txnid, timestamp) values ('hello2', now())
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    donems=$(timems)
+    [[ "$r" == "0" ]] && failexit "forbid_write_to_disttxn_table incorrectly succeeded write to disttxn-table on participant"
+
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.comdb2_distributed_transactions(dist_txnid, timestamp) values ('hello2', now())
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    donems=$(timems)
+    [[ "$r" == "0" ]] && failexit "forbid_write_to_disttxn_table incorrectly succeeded write to disttxn-table on participant"
+}
+
+function allow_write_to_disttxn_table
+{
+    startms=$(timems)
+    echo "begin
+insert into comdb2_distributed_transactions(dist_txnid, timestamp) values ('hello1', now())
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    donems=$(timems)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from comdb2_distributed_transactions where dist_txnid = 'hello1'" >/dev/null 2>&1
+    [[ "$r" != "0" ]] && failexit "allow_write_to_disttxn_table failed to insert to disttxn-table rcode=$r"
+}
+
+function kill_restart_cluster
+{
+    typeset dbname=$1
+    typeset options=$2
+    typeset dbdir=$3
+    typeset sleeptime=$4
+    typeset skipmach=$5
+
+    # Add 3 second of latency to respond to a prepare
+    sleep 3
+
+    REP_ENV_VARS="${dbdir}/replicant_env_vars"
+    # Kill first
+    for node in $CLUSTER ; do
+        if [[ "$node" != "$skipmach" ]]; then
+            $CDB2SQL_EXE $options $dbname --host $node "exec procedure sys.cmd.send('flush')"
+            kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid)
+        fi
+    done
+
+    # sleep
+    sleep $sleeptime
+
+    # restart
+    for node in $CLUSTER ; do
+        if [[ "$node" != "$skipmach" ]]; then
+            PARAMS="$dbname --no-global-lrl"
+            CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.pid"
+            if [ $node == $(hostname) ] ; then
+
+            (
+                #kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid)
+                mv --backup=numbered $LOGDIR/${dbname}.db $LOGDIR/${dbname}.db.1
+                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $dbdir/${dbname}.lrl --pidfile ${TMPDIR}/${dbname}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${dbname}.${node}.db 2>&1
+            ) &
+
+            else
+
+                #kill -9 $(cat ${TMPDIR}/${dbname}.${node}.pid)
+                mv --backup=numbered $LOGDIR/${dbname}.${node}.db $LOGDIR/${dbname}.${node}.db.1
+                ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${dbname}.${node}.db) &
+                echo $! > ${TMPDIR}/${dbname}.${node}.pid
+
+            fi
+        fi
+    done
+}
+
+function block_until_cluster_is_up
+{
+    typeset dbname=$1
+    typeset options=$2
+    typeset isup=0
+
+    while [[ "$isup" == 0 ]]; do
+        isup=1
+        for node in ${CLUSTER}; do
+            $CDB2SQL_EXE $options $dbname --host $node "select 1"
+            if [[ $? != 0 ]]; then
+                isup=0
+            fi
+        done
+        [[ "$isup" == 0 ]] && sleep 1
+    done
+}
+
+# Setting the linger-time to 0 to force coordinator to search dist-txn table 
+# to resolve participant's prepared txn
+function exit_participant_after_prepare_from_table
+{
+    echo "exit_participant_after_prepare_from_table"
+    typeset failed=0
+    typeset master=$(find_tertiary_master)
+    typeset coordinator_master=$(find_master)
+    $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $master "put tunable debug_exit_participant_after_prepare '1'"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $coordinator_master "put tunable disttxn_linger '0'"
+
+    startms=$(timems)
+
+    echo "Killing and restarting $TERTIARY_DBNAME in the background"
+    kill_restart_cluster $TERTIARY_DBNAME "$TERTIARY_CDB2_OPTIONS" $TERTIARY_DBDIR 5 noskip &
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    endms=$(timems)
+
+    if [[ "$r" != "0" ]] ; then 
+        echo "Participant did not recover transaction rcode=$r"
+        failed=1
+    fi
+
+    echo "sleeping for 60 seconds for cluster to restart and for orphaned prepare to resolve"
+    sleep 60
+
+    echo "Reset linger-time to 10 seconds"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $coordinator_master "put tunable disttxn_linger '10'"
+
+    echo "Find $TERTIARY_DBNAME master"
+
+    master=""
+    while [[ -z "$master" ]]; do
+        sleep 1
+        master=$(find_tertiary_master)
+    done
+
+    echo "Update all tunables"
+    update_all_tunables
+
+    echo "Allowing coordinator on all nodes"
+    allow_coordinator
+
+    echo "Verify record is there"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $SECONDARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $master "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $TERTIARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $QUATERNARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $QUINARY_DBNAME"
+
+    [[ "$failed" != 0 ]] && failexit "Bad rcode $r from original transaction"
+
+    delete_records
+}
+
+function exit_participant_after_prepare
+{
+    echo "exit_participant_after_prepare"
+    typeset master=$(find_secondary_master)
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $master "put tunable debug_exit_participant_after_prepare '1'"
+
+    startms=$(timems)
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    endms=$(timems)
+
+    if [[ "$r" != "0" ]] ; then 
+        #stop_all_databases
+        echo "participant did not recover transaction rcode=$r"
+    fi
+
+    echo "verify we can contact secondary db"
+    r=1
+    while [[ "$r" -ne "0" ]]; do
+        $CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select 1"
+        r=$?
+        [[ "$r" -ne 0 ]] && sleep 1
+    done
+
+    echo "sleeping for 10 seconds for sanity"
+    sleep 10
+
+    echo "Verify record is there"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $SECONDARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $TERTIARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $QUATERNARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select * from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $QUINARY_DBNAME"
+
+    echo "Restart $SECONDARY_DBNAME on $master"
+    pushd $SECONDARY_DBDIR
+    export LOGDIR=$TESTDIR/logs
+    if [ $master == `hostname` ] ; then
+        PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${master}.pid"
+        $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.${master}.db.1 &
+    else
+        PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${master}.pid"
+        CMD="cd ${SECONDARY_DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${SECONDARY_DBNAME}.${master}.db.1"
+        ssh -n -o StrictHostKeyChecking=no -tt $master ${CMD} &> $LOGDIR/${SECONDARY_DBNAME}.${master}.db.1 &
+        echo $! > ${TMPDIR}/${SECONDARY_DBNAME}.${master}.pid
+    fi
+    popd
+
+    echo "Pause until it comes up"
+    r=-1
+    while [[ "$r" -ne "0" ]]; do
+        $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $master "select 1"
+        r=$?
+        sleep 1
+    done
+
+    echo "Refreshing all tunables"
+    update_all_tunables
+
+    echo "Allowing coordinator on all nodes"
+    allow_coordinator
+
+    delete_records
+}
+
+function non_durable_prepare_int
+{
+    echo "non_durable_prepare"
+    typeset master=$(find_quaternary_master)
+
+    kill_restart_cluster $QUATERNARY_DBNAME "$QUATERNARY_CDB2_OPTIONS" $QUATERNARY_DBDIR 0 $master &
+
+    output=$(echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1)
+    r=$?
+
+    
+    [[ "$r" == 0 ]] && failexit "Succeeded incorrectly on non-durable prepare record"
+
+    if [[ "$output" != *"Prepare was not durable"* ]]; then
+        failexit "Expected prepare-was-not-durable rcode"
+    fi
+
+    for node in $CLUSTER; do
+        r=-1
+        while [[ "$r" -ne "0" ]]; do
+            $CDB2SQL_EXE $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select 1"
+            r=$?
+            sleep 1
+        done
+    done
+
+    echo "updating all tunables"
+    update_all_tunables
+
+    echo "allowing coordinator on all nodes"
+    allow_coordinator
+}
+
+function non_durable_prepare
+{
+    toggle_debug_sleep_before_prepare 1
+    non_durable_prepare_int
+    toggle_debug_sleep_before_prepare 0
+}
+
+function timed_insert
+{
+    typeset val=$1
+    startms=$(timems)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values($val)"
+    r=$?
+    endms=$(timems)
+    echo "Insert $val took $(( endms -  startms )) ms, rcode=$r"
+}
+
+function sleep_insert
+{
+    typeset sleeptime=$1
+    echo "sleep_insert"
+    sleep $sleeptime
+    timed_insert 2 &
+    timed_insert 3 &
+    timed_insert 4 &
+    timed_insert 5 &
+    timed_insert 6 &
+    timed_insert 7 &
+    timed_insert 8 &
+    timed_insert 9 &
+    timed_insert 10 &
+}
+
+function non_durable_commit_int
+{
+    echo "non_durable_commit"
+    typeset master=$(find_master)
+    typeset newmaster=""
+
+    kill_restart_cluster $DBNAME "$CDB2_OPTIONS" $DBDIR 20 $master &
+
+    sleep_insert 1 &
+    startms=$(timems)
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    endms=$(timems)
+    echo "Coordinator took $(( endms - startms )) ms to complete txn with rcode $r"
+
+    [[ "$r" == 0 ]] && failexit "Should have exited when replicant was aborted"
+
+    # Look at lock-table to make sure inserts are blocked on prepare
+    x=$($CDB2SQL_EXE --tabs --admin $CDB2_OPTIONS $DBNAME --host $master "select count(*) from comdb2_locks where locktype='PAGE' and status='WAIT'")
+
+    [[ "$x" == 0 ]] && failexit "Inserts are not blocked on prepare"
+
+    # Sleep for a bit to make sure other nodes have exited
+    sleep 4
+
+    # Toggle set-readonly to 0 now for sane downgrade / election times
+    toggle_debug_sleep_on_set_read_only 0
+
+    # Sleep for a while to let nodes come back up
+    sleep 30
+
+    # Do a select, but this might take a while
+
+    for node in $CLUSTER; do
+        r=-1
+        while [[ "$r" -ne "0" ]]; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1"
+            r=$?
+            sleep 1
+        done
+    done
+
+    echo "Refreshing all tunables"
+    update_all_tunables
+
+    echo "Allowing coordinator on all nodes"
+    allow_coordinator
+
+    sleep 1
+    newmaster=$(find_master)
+
+    # Okay this one is tricky.. going to sniff for trace to verify that
+    # we've hit the conditions we are looking for:
+
+    # 1
+    # The distrbuted-commit didn't replicate to a quorum on original master.  
+    # First, verify that bdb_block_durable polled for a few seconds waiting 
+    # for this to occur before finally returning LOCK_DESIRED when the master
+    # wants to downgrade.
+    #
+    # I've seen the database not emit this trace even though it is working 
+    # correctly.  I think this is because the bdb-lock is already desired 
+    # by the time it reaches this line of code.  I've increased the debug-
+    # sleep-on-set-read-only timer to 6 seconds, to make this more reliable.
+
+    x=$(egrep "bdb_block_durable waiting for lsn" $TESTDIR/logs/${DBNAME}.${master}.db 2>&1)
+    cnt=$(echo "$x" | wc -l)
+    echo "$x"
+
+    [[ "$cnt" -le "1" ]] && failexit "Coordinator master didn't block on non-durable commit"
+
+    echo "Coordinator correctly blocked on non-durable commit"
+
+    # 2
+    # Coordinator failed to commit durably because 'lock-is-desired' ..
+    # search for this trace
+    x=$(egrep "failed to commit durably" $TESTDIR/logs/${DBNAME}.${master}.db 2>&1)
+    echo "$x"
+    [[ -z "$x" ]] && failexit "Coordinator master didn't fail to commit durably"
+
+    # 3
+    # We should see the coordinator master aborting the blocked inserts
+    x=$(egrep "abort waiter with lock" $TESTDIR/logs/${DBNAME}.${master}.db 2>&1)
+    echo "$x"
+    [[ -z "$x" ]] && failexit "Coordinator master didn't abort waiters"
+
+    # 4
+    # Coordinator master should have 'discarded' the prepared txn
+    x=$(egrep "toblock_main_int disttxn discarding prepared txn" $TESTDIR/logs/${DBNAME}.${master}.db 2>&1)
+    echo "$x"
+    [[ -z "$x" ]] && failexit "Coordinator master never discarded txn"
+
+    # 5
+    # Make sure that the participants eventually receive an 'HAS_COMMITTED' or 'HAS_ABORTED' message 
+    # from the new master.  If we miss one, it implies that the old master told them to commit even 
+    # though the commit record was not written to a quorum
+    shouldsee=1
+    x=$(egrep "transaction_has_committed from " $TESTDIR/logs/${DBNAME}.${newmaster}.db | egrep "HAS_COMMITTED" 2>&1)
+    if [[ -z "$x" ]]; then
+        x=$(egrep "transaction_has_committed from " $TESTDIR/logs/${DBNAME}.${newmaster}.db | egrep "HAS_ABORTED" 2>&1)
+        shouldsee=0
+    fi
+    echo "$x"
+    [[ -z "$x" ]] && failexit "Transaction not resolved"
+
+    [[ "$x" != *"$SECONDARY_DBNAME"* ]] && failexit "$SECONDARY_DBNAME could have committed on original master"
+    [[ "$x" != *"$TERTIARY_DBNAME"* ]] && failexit "$TERTIARY_DBNAME could have committed on original master"
+    [[ "$x" != *"$QUATERNARY_DBNAME"* ]] && failexit "$QUATERNARY_DBNAME could have committed on original master"
+    [[ "$x" != *"$QUINARY_DBNAME"* ]] && failexit "$QUINARY_DBNAME could have committed on original master"
+
+    if [[ "$shouldsee" == 1 ]]; then
+
+        x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1 where a=1")
+        [[ "$x" -ne "1" ]] && failexit "No record on $DBNAME for successful commit"
+
+        x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "1" ]] && failexit "No record on $SECONDARY_DBNAME for successful commit"
+
+        x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "1" ]] && failexit "No record on $TERTIARY_DBNAME for successful commit"
+
+        x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "1" ]] && failexit "No record on $QUATERNARY_DBNAME for successful commit"
+
+        x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "1" ]] && failexit "No record on $QUINARY_DBNAME for successful commit"
+
+    else
+
+        x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1 where a=1")
+        [[ "$x" -ne "0" ]] && failexit "Found record on $DBNAME for aborted transaction"
+
+        x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "0" ]] && failexit "Found record on $SECONDARY_DBNAME for aborted transaction"
+
+        x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "0" ]] && failexit "Found record on $TERTIARY_DBNAME for aborted transaction"
+
+        x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "0" ]] && failexit "Found record on $QUATERNARY_DBNAME for aborted transaction"
+
+        x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select count(*) from t1")
+        [[ "$x" -ne "0" ]] && failexit "Found record on $QUINARY_DBNAME for aborted transaction"
+
+    fi
+
+    echo "Deleting all records"
+    delete_records_ignore_error
+}
+
+function non_durable_commit
+{
+    toggle_debug_sleep_coordinator_before_commit 1
+    toggle_debug_sleep_on_set_read_only 1
+    non_durable_commit_int
+    toggle_debug_sleep_coordinator_before_commit 0
+    toggle_debug_sleep_on_set_read_only 0
+}
+
+function non_durable_loop
+{
+    typeset i=0
+    while [[ "$i" -lt "10" ]]; do 
+        let i=i+1
+        echo "non-durable-loop iteration $i"
+        non_durable_commit
+        non_durable_prepare
+    done
+}
+
+function coordinator_whitelist
+{
+    echo "coordinator_whitelist"
+
+    forbid_coordinator
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+     r=$?
+     [[ "$r" == "0" ]] && fail_exit "2pc txn worked against forbidden coordinator $SECONDARY_DBNAME"
+
+    send_message_cluster "allow-coordinator $DBNAME/prod" "$SECONDARY_DBNAME" "$SECONDARY_CDB2_OPTIONS"
+
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+     r=$?
+     [[ "$r" != "0" ]] && fail_exit "2pc txn failed against allowed coordinator $SECONDARY_DBNAME"
+
+    echo "begin
+delete from t1 where 1
+delete from $SECONDARY_DBNAME.t1 where 1
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+     r=$?
+     [[ "$r" == "0" ]] && fail_exit "2pc txn failed against forbidden coordinator $TERTIARY_DBNAME"
+
+    send_message_cluster "allow-coordinator $DBNAME/prod" "$TERTIARY_DBNAME" "$TERTIARY_CDB2_OPTIONS"
+
+    echo "begin
+delete from t1 where 1
+delete from $SECONDARY_DBNAME.t1 where 1
+insert into $TERTIARY_DBNAME.t1(a) values (1)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+     r=$?
+     [[ "$r" != "0" ]] && fail_exit "2pc txn failed against allowed coordinator $TERTIARY_DBNAME"
+
+    echo "Allow $SECONDARY_DBNAME and $DBNAME to act as coordinator"
+    send_message_cluster "allow-coordinator $SECONDARY_DBNAME/prod $DBNAME/prod" "$QUATERNARY_DBNAME" "$QUATERNARY_CDB2_OPTIONS"
+
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values (1)
+delete from $TERTIARY_DBNAME.t1 where 1
+insert into $QUATERNARY_DBNAME.t1(a) values (1)
+commit
+" | $CDB2SQL_EXE $DEBUGTRACE $CDB2_OPTIONS $DBNAME default -
+    r=$?
+    [[ "$r" != "0" ]] && fail_exit "2pc txn failed against allowed coordinator $QUATERNARY_DBNAME"
+
+    x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default 'exec procedure sys.cmd.send("show-allowed-coordinators")' 2>&1)
+
+    echo "allowed-coordinators: $x"
+    if [[ "$x" != *"$SECONDARY_DBNAME/prod"* ]]; then
+        failexit "Couldn't find $SECONDARY_DBNAME in allowed-coordinator list"
+    fi
+    if [[ "$x" != *"$DBNAME/prod"* ]]; then
+        failexit "Couldn't find $DBNAME in allowed-coordinator list"
+    fi
+
+    send_message_cluster "forbid-coordinator $SECONDARY_DBNAME/prod" "$QUATERNARY_DBNAME" "$QUATERNARY_CDB2_OPTIONS"
+
+    x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default 'exec procedure sys.cmd.send("show-allowed-coordinators")' 2>&1)
+    echo "allowed-coordinators: $x"
+
+    echo "allowed-coordinators: $x"
+    [[ "$x" == *"$SECONDARY_DBNAME/prod"* ]] && fail_exit "$SECONDARY_DBNAME/prod is still an allowed coordinator for $QUATERNARY_DBNAME"
+    if [[ "$x" == *"$SECONDARY_DBNAME/prod"* ]]; then
+        failexit "Found $SECONDARY_DBNAME in allowed-coordinators list"
+    fi
+    if [[ "$x" != *"$DBNAME/prod"* ]]; then
+        failexit "Couldn't find $DBNAME in allowed-coordinator list"
+    fi
+
+    allow_coordinator
+    delete_records
+}
+
+function coordinator_whitelist_loop
+{
+    echo "coordinator_whitelist_loop"
+    j=0
+    while [[ $j -lt 10 ]]; do
+        coordinator_whitelist
+        let j=j+1
+    done
+}
+
+function exit_coordinator_before_commit
+{
+    echo "exit_coordinator_before_commit"
+    typeset master=$(find_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable debug_exit_coordinator_before_commit '1'"
+
+    startms=$(timems)
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    endms=$(timems)
+
+    echo "sleeping for 30 seconds for sanity"
+    sleep 30
+
+    echo "Verify record is not there"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$x" != "0" ]] && failexit "Uncommitted record in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "0" ]] && failexit "Uncommitted record in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "0" ]] && failexit "Uncommitted record in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "0" ]] && failexit "Uncommitted record in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "0" ]] && failexit "Uncommitted record in $DBNAME"
+
+    echo "Restart $DBNAME on $master"
+    pushd $DBDIR
+    export LOGDIR=$TESTDIR/logs
+    REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    if [ $master == `hostname` ] ; then
+        PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
+        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${master}.db.1 &
+    else
+        PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
+        CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.${master}.db.1"
+        ssh -n -o StrictHostKeyChecking=no -tt $master ${CMD} &> $LOGDIR/${DBNAME}.${master}.db.1 &
+        echo $! > ${TMPDIR}/${DBNAME}.${master}.pid
+    fi
+    popd
+
+    echo "Pause until it comes up"
+    r=-1
+    while [[ "$r" -ne "0" ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "select 1"
+        r=$?
+        sleep 1
+    done
+
+    echo "Refreshing all tunables"
+    update_all_tunables
+
+    echo "Allowing coordinator on all nodes"
+    allow_coordinator
+
+    delete_records_ignore_error
+}
+
+function exit_coordinator_after_commit
+{
+    echo "exit_coordinator_after_commit"
+    typeset master=$(find_master)
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "put tunable debug_exit_coordinator_after_commit '1'"
+
+    startms=$(timems)
+    echo "begin
+insert into t1(a) values(1)
+insert into $SECONDARY_DBNAME.t1(a) values(1)
+insert into $TERTIARY_DBNAME.t1(a) values(1)
+insert into $QUATERNARY_DBNAME.t1(a) values(1)
+insert into $QUINARY_DBNAME.t1(a) values(1)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - 2>&1
+    r=$?
+    endms=$(timems)
+
+    echo "sleeping for 30 seconds for sanity"
+    sleep 30
+
+    echo "Verify record is there"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $SECONDARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $TERTIARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $QUATERNARY_DBNAME"
+
+    x=$($CDB2SQL_EXE --tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "select count(*) from t1")
+    [[ "$x" != "1" ]] && failexit "Record not in $QUINARY_DBNAME"
+
+    echo "Restart $DBNAME on $master"
+    pushd $DBDIR
+    export LOGDIR=$TESTDIR/logs
+    REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    if [ $master == `hostname` ] ; then
+        PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
+        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${master}.db.1 &
+    else
+        PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${master}.pid"
+        CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.${master}.db.1"
+        ssh -n -o StrictHostKeyChecking=no -tt $master ${CMD} &> $LOGDIR/${DBNAME}.${master}.db.1 &
+        echo $! > ${TMPDIR}/${DBNAME}.${master}.pid
+    fi
+    popd
+
+    echo "Pause until it comes up"
+    r=-1
+    while [[ "$r" -ne "0" ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "select 1"
+        r=$?
+        sleep 1
+    done
+
+    echo "Refreshing all tunables"
+    update_all_tunables
+
+    echo "Allowing coordinator on all nodes"
+    allow_coordinator
+
+    delete_records_ignore_error
+}
+
+function random_verify_coordinator_constraint_violation
+{
+    toggle_random_verify_errors 1
+    toggle_debug_wait_on_verify_off 1
+    coordinator_constraint_violation
+    toggle_random_verify_errors 0
+    toggle_debug_wait_on_verify_off 0
+}
+
+function random_verify_participant_constraint_violation
+{
+    toggle_random_verify_errors 1
+    toggle_debug_wait_on_verify_off 1
+    participant_constraint_violation
+    toggle_random_verify_errors 0
+    toggle_debug_wait_on_verify_off 0
+}
+
+function test_deadlocks
+{
+    typeset cnt=0
+    while [[ "$cnt" -lt 10 ]]; do 
+        let cnt=cnt+1
+        echo "Test deadlocks iteration $cnt"
+        random_deadlocks
+    done
+}
+
+function test_verify_retry
+{
+    typeset cnt=0
+    while [[ "$cnt" -lt 10 ]]; do 
+        let cnt=cnt+1
+        echo "Test verify-errors iteration $cnt"
+        random_verify_errors
+    done
+}
+
+function test_verify_participant_constraint_violation
+{
+    typeset cnt=0
+    while [[ "$cnt" -lt 5 ]]; do 
+        let cnt=cnt+1
+        echo "Test participant-constraint-violation-verify-errors iteration $cnt"
+        random_verify_participant_constraint_violation
+    done
+}
+
+function test_verify_coordinator_constraint_violation
+{
+    typeset cnt=0
+    while [[ "$cnt" -lt 5 ]]; do 
+        let cnt=cnt+1
+        echo "Test participant-constraint-violation-verify-errors iteration $cnt"
+        random_verify_coordinator_constraint_violation
+    done
+}
+
+function verify_retry_loop
+{
+    typeset cnt=0
+    while [[ "$cnt" -lt 3 ]]; do 
+        let cnt=cnt+1
+        echo "verify-retry-loop iteration $cnt"
+        test_verify_participant_constraint_violation
+        test_verify_coordinator_constraint_violation
+    done
+}
+
+# This breaks if machine is overloaded- but its not a 2pc error
+function simple_test
+{
+    typeset cnt=0
+    while [[ "$cnt" -lt 3 ]]; do 
+        let cnt=cnt+1
+        echo "Test loop iteration $cnt"
+        bulk_test 1
+        insert_records_to_normalize
+        basic_test 1
+    done
+}
+
+function insert_2000
+{
+    echo "insert_2000"
+    echo "begin
+insert into t1(a) select * from generate_series(1, 2000)
+insert into $SECONDARY_DBNAME.t1(a) select * from generate_series(1, 2000)
+insert into $TERTIARY_DBNAME.t1(a) select * from generate_series(1, 2000)
+insert into $QUATERNARY_DBNAME.t1(a) select * from generate_series(1, 2000)
+insert into $QUINARY_DBNAME.t1(a) select * from generate_series(1, 2000)
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+    r=$?
+    [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    if [[ "$x" -ne "2000" ]]; then
+        fail_exit "$DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
+    if [[ "$x" -ne "2000" ]]; then
+        fail_exit "$SECONDARY_DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $TERTIARY_DBNAME.t1")
+    if [[ "$x" -ne "2000" ]]; then
+        fail_exit "$TERTIARY_DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUATERNARY_DBNAME.t1")
+    if [[ "$x" -ne "2000" ]]; then
+        fail_exit "$QUATERNARY_DBNAME has $x records after delete"
+    fi
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUINARY_DBNAME.t1")
+    if [[ "$x" -ne "2000" ]]; then
+        fail_exit "$QUINARY_DBNAME has $x records after delete"
+    fi
+
+    delete_records
+}
+
+function insert_2000_loop
+{
+    typeset j=0
+    while [[ $j -lt 10 ]]; do
+        let j=j+1
+        echo "insert-2000 iteration $j"
+        insert_2000
+    done
+}
+
+function benchmark_delete_all
+{
+    echo "benchmark_delete_all"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate t3"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate t4"
+
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "truncate t1"
+    $CDB2SQL_EXE $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME default "truncate t1"
+    $CDB2SQL_EXE $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME default "truncate t1"
+    $CDB2SQL_EXE $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME default "truncate t1"
+}
+
+function benchmark_4_tables
+{
+    typeset count=$1
+    typeset iterations=$2
+    typeset j=0
+    startms=$(timems)
+    while [[ $j -lt $iterations ]]; do
+        echo "begin
+insert into t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into t2(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into t3(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into t4(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+        let j=j+1
+    done
+    endms=$(timems)
+    echo "benchmark_4_tables records-per-table $count iterations $iterations took $(( endms - startms )) ms"
+}
+
+function benchmark_4_participants
+{
+    typeset count=$1
+    typeset iterations=$2
+    typeset j=0
+    startms=$(timems)
+    while [[ $j -lt $iterations ]]; do
+        echo "begin
+insert into $SECONDARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into $TERTIARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into $QUATERNARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+insert into $QUINARY_DBNAME.t1(a) select * from generate_series($(( ( j * count ) + 1 )), $(( ( j + 1 ) * count )))
+commit
+" | $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default -
+        r=$?
+        [[ "$r" == "0" ]] || fail_exit "failed inserting iteration $j"
+        let j=j+1
+    done
+    endms=$(timems)
+    echo "benchmark_4_participants records-per-table $count iterations $iterations took $(( endms - startms )) ms"
+}
+
+function benchmark_table_internal
+{
+    typeset iter=100
+    benchmark_delete_all
+    benchmark_4_tables 1 $iter
+    benchmark_4_participants 1 $iter
+
+    benchmark_delete_all
+    benchmark_4_tables 10 $iter
+    benchmark_4_participants 10 $iter
+
+    benchmark_delete_all
+    benchmark_4_tables 100 $iter
+    benchmark_4_participants 100 $iter
+
+    benchmark_delete_all
+    benchmark_4_tables 1000 $iter
+    benchmark_4_participants 1000 $iter
+
+    benchmark_delete_all
+    benchmark_4_tables 10000 $iter
+    benchmark_4_participants 10000 $iter
+
+    #benchmark_delete_all
+    #benchmark_4_tables 100000 $iter
+    #benchmark_4_participants 100000 $iter
+}
+
+function benchmark_table_comparison_loose
+{
+    echo "benchmark_table_comparison_loose"
+    benchmark_common_tunables
+    benchmark_loose_tunables
+    benchmark_table_internal
+}
+
+function benchmark_table_comparison_austere
+{
+    echo "benchmark_table_comparison_austere"
+    benchmark_common_tunables
+    benchmark_austere_tunables
+    benchmark_table_internal
+}
+
+function run_test
+{
+    # bulk-test
+    bulk_test
+
+    # Last delete was expensive & early-acked, so the first insert will take longer 
+    # Write a few records without bound latency- this slowness isn't 2pc related
+    insert_records_to_normalize
+
+    # Single-record transactions
+    basic_test
+
+    # Writes to comdb2_distributed_transactions
+    allow_write_to_disttxn_table
+    forbid_disttxn_write_to_disttxn_table
+
+    # constraint-violations
+    coordinator_constraint_violation
+    participant_constraint_violation
+
+    # Deadlock test
+    test_deadlocks
+
+    # Coordinator whitelist
+    coordinator_whitelist
+
+    # Durability tests
+    non_durable_commit
+    non_durable_prepare
+
+    # Verify-retry test
+    test_verify_participant_constraint_violation
+    test_verify_coordinator_constraint_violation
+
+    # participant recovery-tests
+    exit_participant_after_prepare
+    exit_participant_after_prepare_from_table
+
+    # coordinator recovery-tests
+    exit_coordinator_before_commit
+    exit_coordinator_after_commit
+}
+
+rm ${DBNAME}.failexit >/dev/null 2>&1 
+[[ -z "$CLUSTER" ]] && failexit "This test requires a 3-node cluster"
+
+setup
+
+#simple_test
+#test_deadlocks
+#test_verify_retry
+#test_verify_participant_constraint_violation
+#test_verify_coordinator_constraint_violation
+#verify_retry_loop
+#insert_2000_loop
+#benchmark_table_comparison_loose
+#benchmark_table_comparison_austere
+#allow_write_to_disttxn_table
+#forbid_disttxn_write_to_disttxn_table
+#run_test
+#non_durable_prepare
+#non_durable_commit
+#non_durable_loop
+#coordinator_whitelist_loop
+
+run_test
+stop_all_databases
+
+if [[ -f ${DBNAME}.failexit ]]; then
+    echo "Testcase failed"
+    exit -1
+fi
+
+echo "Success"

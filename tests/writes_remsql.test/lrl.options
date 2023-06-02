@@ -1,6 +1,9 @@
 table t t.csc2
 table t2 t.csc2
 
+fdb_socket_timeout_ms 0
+timeout_fdb_trans_sync 600000
+
 dtastripe 4
 blobstripe
 round_robin_stripes

@@ -20,6 +20,7 @@
 
 extern int handle_remsql_request(comdb2_appsock_arg_t *arg);
 extern int handle_remtran_request(comdb2_appsock_arg_t *arg);
+extern int handle_rem2pc_request(comdb2_appsock_arg_t *arg);
 extern int handle_alias_request(comdb2_appsock_arg_t *arg);
 
 comdb2_appsock_t remsql_plugin = {
@@ -36,6 +37,14 @@ comdb2_appsock_t remtran_plugin = {
     0,                     /* Execution count */
     0,                     /* Flags */
     handle_remtran_request /* Handler function */
+};
+
+comdb2_appsock_t rem2pc_plugin = {
+    "rem2pc",             /* Name */
+    "",                   /* Usage info */
+    0,                    /* Execution count */
+    0,                    /* Flags */
+    handle_rem2pc_request /* Handler function */
 };
 
 comdb2_appsock_t alias_plugin = {

@@ -278,7 +278,8 @@ void *coherency_lease_thread(void *arg)
         if (repinfo->master_host == repinfo->myhost) {
             send_coherency_leases(bdb_state, lease_time, &inc_wait);
 
-            if (bdb_state->attr->durable_lsns) {
+            extern int gbl_2pc;
+            if (bdb_state->attr->durable_lsns || gbl_2pc) {
                 /* See if master has written a durable LSN */
                 bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
                 bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,

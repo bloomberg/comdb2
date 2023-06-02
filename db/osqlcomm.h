@@ -163,6 +163,26 @@ int osql_send_startgen(osql_target_t *target, unsigned long long rqid,
                        uuid_t uuid, uint32_t start_gen, int type);
 
 /**
+ * Prepare record
+ *
+ */
+int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *coordinator_dbname,
+                      const char *dist_txnid, const char *coordinator_tier, int type);
+
+/**
+ * Send dist-txnid to coordinator
+ *
+ */
+int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid, int type);
+
+/**
+ * Send a participant to coordinator
+ *
+ */
+int osql_send_participant(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *participant_dbname,
+                          const char *participant_tier, int type);
+
+/**
  * Consume
  *
  */

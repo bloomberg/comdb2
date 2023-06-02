@@ -104,6 +104,7 @@
 #include <schema_lk.h>
 #include <tohex.h>
 #include <timer_util.h>
+#include <disttxn.h>
 
 #include <phys_rep.h>
 #include <phys_rep_lsn.h>
@@ -5062,6 +5063,8 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
     whoismaster_rtn(bdb_state, 0);
 }
 
+int gbl_debug_sleep_on_set_read_only = 0;
+
 void bdb_set_read_only(bdb_state_type *bdb_state)
 {
     bdb_state_type *child;
@@ -5077,6 +5080,10 @@ void bdb_set_read_only(bdb_state_type *bdb_state)
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    if (gbl_debug_sleep_on_set_read_only) {
+        logmsg(LOGMSG_USER, "%s sleeping on debug_sleep_set_read_only tunable\n", __func__);
+        sleep(7);
+    }
     bdb_state->read_write = 0;
 
     bdb_lock_children_lock(bdb_state);
@@ -5146,6 +5153,7 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
     int i;
 
     osql_repository_cancelall();
+    disttxn_cleanup();
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -5286,7 +5294,11 @@ static void *bdb_abort_prepared_thd(void *arg)
     /* Stop when we can acquire mutex */
     while (pthread_mutex_trylock(&b->lk) != 0) {
         if (bdb_lock_desired(bdb_state)) {
-            logmsg(LOGMSG_INFO, "%s aborting waiters on prepared txns\n", __func__);
+            static int lastpr = 0;
+            if ((comdb2_time_epoch() - lastpr) > 1) {
+                logmsg(LOGMSG_INFO, "%s aborting waiters on prepared txns\n", __func__);
+                lastpr = comdb2_time_epoch();
+            }
             bdb_state->dbenv->txn_abort_prepared_waiters(bdb_state->dbenv);
         }
         poll(0, 0, 100);
@@ -5682,6 +5694,7 @@ static bdb_state_type *bdb_open_int(
         bdb_lock_init(bdb_state);
 
         Pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
+        Pthread_cond_init(&bdb_state->durable_lsn_cd, NULL);
     }
 
     /* XXX this looks wrong */

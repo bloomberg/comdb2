@@ -54,7 +54,7 @@ copy_files_to_node() {
     trap "close_master_ssh_session \"closing\"" INT EXIT
       
     ssh $SSH_OPT $SSH_MSTR -MNf $node   #start master ssh session for node
-    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2 $TESTDIR/etc/cdb2/config.d" < /dev/null
 
     if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
         scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE

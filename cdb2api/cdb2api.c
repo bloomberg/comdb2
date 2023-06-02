@@ -2449,9 +2449,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
                    hndl->newsql_typestr);
     }
 
-    while (!hndl->is_admin &&
-           (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
-                                      NULL)) > 0) {
+    while (!hndl->is_admin && !(hndl->flags & CDB2_MASTER) &&
+           (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL)) > 0) {
         get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
@@ -2712,9 +2711,17 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
     int requery_done = 0;
 
 retry_connect:
-    debugprint("node_seq=%d flags=0x%x, num_hosts=%d, num_hosts_sameroom=%d\n",
-               hndl->node_seq, hndl->flags, hndl->num_hosts,
-               hndl->num_hosts_sameroom);
+    debugprint("node_seq=%d flags=0x%x, num_hosts=%d, num_hosts_sameroom=%d\n", hndl->node_seq, hndl->flags,
+               hndl->num_hosts, hndl->num_hosts_sameroom);
+
+    if ((hndl->flags & CDB2_MASTER)) {
+        bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
+        if (newsql_connect(hndl, hndl->master) == 0) {
+            return 0;
+        }
+        hndl->connected_host = -1;
+        return -1;
+    }
 
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
@@ -2939,6 +2946,103 @@ static void clear_responses(cdb2_hndl_tp *hndl)
     }
 }
 
+int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *cmaster, unsigned int op,
+                  char *dist_txnid, int rcode, int outrc, char *errmsg, int async)
+{
+    if (!hndl->sb) {
+        cdb2_connect_sqlhost(hndl);
+        if (!hndl->sb) {
+            return -1;
+        }
+    }
+
+    if (op != CDB2_DIST__PREPARE && op != CDB2_DIST__DISCARD && op != CDB2_DIST__PREPARED &&
+        op != CDB2_DIST__FAILED_PREPARE && op != CDB2_DIST__COMMIT && op != CDB2_DIST__ABORT &&
+        op != CDB2_DIST__PROPAGATED && op != CDB2_DIST__HEARTBEAT) {
+        return -1;
+    }
+
+    CDB2QUERY query = CDB2__QUERY__INIT;
+    CDB2DISTTXN distquery = CDB2__DISTTXN__INIT;
+    CDB2DISTTXN__Disttxn disttxn = CDB2__DISTTXN__DISTTXN__INIT;
+
+    /* TODO: hand-craft each msg-type on a switch */
+    disttxn.operation = op;
+    disttxn.async = async;
+    disttxn.txnid = dist_txnid;
+    disttxn.name = pname;
+    disttxn.tier = ptier;
+    disttxn.master = cmaster;
+    disttxn.has_rcode = 1;
+    disttxn.rcode = rcode;
+    disttxn.has_outrc = 1;
+    disttxn.outrc = outrc;
+    disttxn.errmsg = errmsg;
+
+    distquery.dbname = dbname;
+    distquery.disttxn = &disttxn;
+    query.disttxn = &distquery;
+
+    int len = cdb2__query__get_packed_size(&query);
+    unsigned char *buf = malloc(len + 1);
+
+    cdb2__query__pack(&query, buf);
+
+    struct newsqlheader hdr = {
+        .type = ntohl(CDB2_REQUEST_TYPE__CDB2QUERY), .compression = ntohl(0), .length = ntohl(len)};
+
+    sbuf2write((char *)&hdr, sizeof(hdr), hndl->sb);
+    sbuf2write((char *)buf, len, hndl->sb);
+
+    int rc = sbuf2flush(hndl->sb);
+    free(buf);
+
+    if (rc < 0) {
+        sprintf(hndl->errstr, "%s: Error writing to other master", __func__);
+        sbuf2close(hndl->sb);
+        hndl->sb = NULL;
+        return -1;
+    }
+
+    if (async) {
+        return 0;
+    }
+
+    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), hndl->sb);
+    if (rc != sizeof(hdr)) {
+        sbuf2close(hndl->sb);
+        hndl->sb = NULL;
+        return -1;
+    }
+
+    hdr.type = ntohl(hdr.type);
+    hdr.compression = ntohl(hdr.compression);
+    hdr.length = ntohl(hdr.length);
+    char *p = malloc(hdr.length);
+    rc = sbuf2fread(p, 1, hdr.length, hndl->sb);
+
+    if (rc != hdr.length) {
+        sbuf2close(hndl->sb);
+        hndl->sb = NULL;
+        free(p);
+        return -1;
+    }
+    CDB2DISTTXNRESPONSE *disttxn_response = cdb2__disttxnresponse__unpack(NULL, hdr.length, (const unsigned char *)p);
+
+    if (disttxn_response == NULL) {
+        sbuf2close(hndl->sb);
+        hndl->sb = NULL;
+        free(p);
+        return -1;
+    }
+
+    int response_rcode = disttxn_response->rcode;
+
+    cdb2__disttxnresponse__free_unpacked(disttxn_response, NULL);
+
+    return response_rcode;
+}
+
 static int cdb2_effects_request(cdb2_hndl_tp *hndl)
 {
     if (hndl && !hndl->in_trans) {
@@ -3102,9 +3206,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
-        if ((hndl->flags & CDB2_DIRECT_CPU) ||
-            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
-             hndl->connected_host)) {
+        if ((hndl->flags & (CDB2_DIRECT_CPU | CDB2_MASTER)) ||
+            (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master == hndl->connected_host)) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         }
         if (retries_done >= hndl->num_hosts) {
@@ -6104,6 +6207,14 @@ const char *cdb2_dbname(cdb2_hndl_tp *hndl)
     return NULL;
 }
 
+const char *cdb2_host(cdb2_hndl_tp *hndl)
+{
+    if (hndl && hndl->connected_host >= 0) {
+        return hndl->hosts[hndl->connected_host];
+    }
+    return NULL;
+}
+
 int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
 {
     cdb2_hndl_tp *hndl;
@@ -6631,6 +6742,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "random_room");
     } else if (hndl->flags & CDB2_ROOM) {
         strcpy(hndl->policy, "room");
+    } else if (hndl->flags & CDB2_MASTER) {
+        strcpy(hndl->policy, "dc");
     } else {
         hndl->flags |= CDB2_RANDOMROOM;
         /* DIRECTCPU mode behaves like RANDOMROOM. But let's pick a shorter policy name
