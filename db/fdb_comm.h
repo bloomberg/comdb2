@@ -74,12 +74,11 @@ int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
 
 int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
                    enum transaction_level lvl, int flags, SBUF2 *sb);
-int fdb_send_commit(fdb_msg_t *msg, fdb_tran_t *trans,
-                    enum transaction_level lvl, SBUF2 *sb);
-int fdb_send_rollback(fdb_msg_t *msg, fdb_tran_t *trans,
-                      enum transaction_level lvl, SBUF2 *sb);
-int fdb_send_rc(fdb_msg_t *msg, char *tid, int rc, int errstrlen, char *errstr,
-                SBUF2 *sb);
+int fdb_send_2pc_begin(fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, int flags, char *dist_txnid,
+                       char *coordinator_dbname, char *coordinator_tier, SBUF2 *sb);
+int fdb_send_commit(fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, SBUF2 *sb);
+int fdb_send_rollback(fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, SBUF2 *sb);
+int fdb_send_rc(fdb_msg_t *msg, char *tid, int rc, int errstrlen, char *errstr, SBUF2 *sb);
 
 int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long genid,

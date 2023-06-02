@@ -63,7 +63,11 @@
 #include <build/db.h>
 
 static unsigned int curtran_counter = 0;
+int gbl_flush_on_prepare = 1;
+int gbl_wait_for_prepare_seqnum = 1;
+int gbl_debug_sleep_before_prepare = 0;
 extern int gbl_debug_txn_sleep;
+extern int gbl_debug_disttxn_trace;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 
 #if 0
@@ -389,6 +393,25 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
     ltran->logical_lid = 0;
 
     return 0;
+}
+
+uint32_t bdb_tran_count_write_waiters(bdb_state_type *bdb_state, tran_type *tran)
+{
+    uint32_t count = 0;
+    bdb_state->dbenv->lock_count_write_waiters(bdb_state->dbenv, tran->tid->txnid, &count);
+    return count;
+}
+
+uint32_t bdb_tran_count_waiters(bdb_state_type *bdb_state, tran_type *tran)
+{
+    uint32_t count = 0;
+    bdb_state->dbenv->lock_count_waiters(bdb_state->dbenv, tran->tid->txnid, &count);
+    return count;
+}
+
+void bdb_abort_waiters(bdb_state_type *bdb_state, tran_type *tran)
+{
+    bdb_state->dbenv->lock_abort_waiters(bdb_state->dbenv, tran->tid->txnid, 0);
 }
 
 /* Aborts anything waiting on locks held by the logical transactions.  Used
@@ -1449,6 +1472,7 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dis
 {
     u_int32_t flags = (DB_TXN_DONT_GET_REPO_MTX | (tran->request_ack) ? DB_TXN_REP_ACK : 0);
     *bdberr = BDBERR_NOERROR;
+    DB_LSN commit_lsn;
     DBT blkseq = {.data = blkseq_key, .size = blkseq_key_len};
     extern int gbl_utxnid_log;
 
@@ -1490,13 +1514,50 @@ int bdb_tran_prepare(bdb_state_type *bdb_state, tran_type *tran, const char *dis
         flags |= DB_TXN_DIST_UPD_SHADOWS;
     }
 
+    if (gbl_debug_sleep_before_prepare) {
+        logmsg(LOGMSG_USER, "%s sleeping for 10 seconds before preparing\n", __func__);
+        sleep(10);
+    }
+
     int prepare_rc = tran->tid->dist_prepare(tran->tid, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen,
-                                             &blkseq, flags);
+                                             &blkseq, &commit_lsn, flags);
 
     if (prepare_rc != 0) {
         logmsg(LOGMSG_INFO, "%s error preparing txn: %d\n", __func__, prepare_rc);
     }
     tran->is_prepared = 1;
+
+    if (!prepare_rc && gbl_flush_on_prepare) {
+        int startms = comdb2_time_epochms();
+        bdb_state->dbenv->log_flush(bdb_state->dbenv, NULL);
+        int endms = comdb2_time_epochms();
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "DISTTXN %s %s log-flush took %d ms\n", __func__, dist_txnid, (endms - startms));
+        }
+    }
+
+    if (!prepare_rc && gbl_wait_for_prepare_seqnum) {
+        int timeoutms = -1;
+        seqnum_type seqnum = {{0}};
+        memcpy(&seqnum.lsn, &commit_lsn, sizeof(commit_lsn));
+        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &seqnum.generation);
+        int startms = comdb2_time_epochms();
+        int rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &seqnum, 0, &timeoutms);
+        int endms = comdb2_time_epochms();
+
+        /*  0 -> replicated everywhere
+         * -1 -> durable but not everywhere
+         * BDBERR_NOT_DURABLE -> not-durable */
+
+        if (rc == BDBERR_NOT_DURABLE) {
+            prepare_rc = BDBERR_NOT_DURABLE;
+        }
+
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "DISTTXN %s %s wait-for-seqnum took %d ms commit-lsn is %d:%d rc=%d\n", __func__,
+                   dist_txnid, (endms - startms), commit_lsn.file, commit_lsn.offset, prepare_rc);
+        }
+    }
 
     return prepare_rc;
 }
@@ -2001,8 +2062,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         else if (seqnum) {
             bzero(seqnum, sizeof(seqnum_type));
-            // TODO: NC: copy lsn instead of tran->savelsn instead?
-            memcpy(seqnum, &(tran->savelsn), sizeof(DB_LSN));
+            memcpy(seqnum, &lsn, sizeof(DB_LSN));
             seqnum->generation = generation;
         }
 
@@ -2415,9 +2475,11 @@ int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
     return rc;
 }
 
-int bdb_tran_abort_priority(bdb_state_type *bdb_state, tran_type *tran,
-                            int *bdberr, int *priority)
+int bdb_tran_abort_priority(bdb_state_type *bdb_state, tran_type *tran, int *bdberr, int *priority, int discard)
 {
+    if (discard) {
+        tran->tid->set_discard(tran->tid);
+    }
     return bdb_tran_abort_wrap(bdb_state, tran, bdberr, priority);
 }
 

@@ -32,6 +32,7 @@
 #include "net.h"
 #include "sql_stmt_cache.h"
 #include "sc_rename_table.h"
+#include <disttxn.h>
 #include "views.h"
 
 /* Maximum allowable size of the value of tunable. */
@@ -63,6 +64,22 @@ extern int gbl_disable_sql_dlmalloc;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_enable_cache_internal_nodes;
 extern int gbl_partial_indexes;
+extern int gbl_logmsg_epochms;
+extern int gbl_2pc;
+extern int gbl_coordinator_sync_on_commit;
+extern int gbl_coordinator_block_until_durable;
+extern int gbl_disttxn_linger_time;
+extern int gbl_disttxn_handle_cache;
+extern int gbl_disttxn_handle_linger_time;
+extern int gbl_disttxn_async_messages;
+extern int gbl_disttxn_async_prepare;
+extern int gbl_debug_exit_participant_after_prepare;
+extern int gbl_debug_exit_coordinator_before_commit;
+extern int gbl_debug_exit_coordinator_after_commit;
+extern int gbl_debug_sleep_coordinator_before_commit;
+extern int gbl_debug_sleep_on_set_read_only;
+extern int gbl_debug_wait_on_verify_off;
+extern int gbl_debug_disttxn_trace;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
@@ -137,6 +154,7 @@ extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;
 extern int gbl_toblock_random_deadlock_trans;
+extern int gbl_toblock_random_verify_error;
 extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
@@ -147,6 +165,9 @@ extern int gbl_all_prepare_commit;
 extern int gbl_all_prepare_abort;
 extern int gbl_all_prepare_leak;
 extern int gbl_flush_on_prepare;
+extern int gbl_debug_sleep_before_prepare;
+extern int gbl_wait_for_prepare_seqnum;
+extern int gbl_flush_replicant_on_prepare;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
@@ -410,6 +431,7 @@ extern int gbl_pgcomp_dbg_stdout;
 extern int gbl_pgcomp_dbg_ctrace;
 extern int gbl_warn_on_equiv_type_mismatch;
 extern int gbl_warn_on_equiv_types;
+extern int gbl_fdb_socket_timeout_ms;
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
 extern int gbl_fdb_io_error_retries_phase_1;

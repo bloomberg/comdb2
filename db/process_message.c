@@ -64,6 +64,7 @@ extern int __berkdb_read_alarm_ms;
 #include "schemachange.h"
 #include "reverse_conn.h"
 #include "phys_rep.h"
+#include "disttxn.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -3368,6 +3369,12 @@ clipper_usage:
         } else {
             logmsg(LOGMSG_ERROR, "Expected <dist-txnid> 'commit', 'abort', or 'discard'\n");
         }
+    } else if (tokcmp(tok, ltok, "allow-coordinator") == 0) {
+        process_allow_coordinator(&line[st], lline - st);
+    } else if (tokcmp(tok, ltok, "forbid-coordinator") == 0) {
+        process_forbid_coordinator(&line[st], lline - st);
+    } else if (tokcmp(tok, ltok, "show-allowed-coordinators") == 0) {
+        show_allowed_coordinators();
     } else if (tokcmp(tok, ltok, "oldestgenids") == 0) {
         int i, stripe;
         void *buf = malloc(64 * 1024);

@@ -118,12 +118,14 @@ int __txn_recover_prepared __P((DB_ENV *, DB_TXN *, const char *dist_txnid, DB_L
 int __txn_master_prepared __P((DB_ENV *, const char *dist_txnid, DB_LSN *prep_lsn,
 		DB_LSN *begin_lsn, DBT *blkseq_key, u_int32_t coordinator_gen, DBT *coordinator_name,
 		DBT *coordinator_tier));
+void __txn_set_prepared_discard __P((DB_ENV *, const char *dist_txnid));
 int __txn_recover_dist_abort __P((DB_ENV *, const char *));
 int __txn_recover_dist_commit __P((DB_ENV *, const char *));
 int __txn_is_dist_committed __P((DB_ENV *, const char *));
 int __txn_clear_all_prepared __P((DB_ENV *));
 void __txn_prune_resolved_prepared __P((DB_ENV *));
 int __txn_upgrade_all_prepared __P((DB_ENV *));
+int __txn_recover_all_prepared __P((DB_ENV *));
 int __txn_abort_prepared_waiters __P((DB_ENV *));
 int __txn_downgrade_all_prepared __P((DB_ENV *));
 int __txn_abort_recovered_pp __P((DB_ENV *, const char *dist_txnid));
@@ -134,6 +136,7 @@ int __txn_commit_recovered_pp __P((DB_ENV *, const char *dist_txnid));
 int __txn_commit_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_recovered_pp __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_all_recovered_pp __P((DB_ENV *));
+int __txn_set_recover_prepared_callback __P((DB_ENV *, void (*)(const char *, const char *, const char *)));
 int __txn_rep_discard_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_recovered __P((DB_ENV *, const char *dist_txnid));
 int __txn_discard_all_recovered __P((DB_ENV *));

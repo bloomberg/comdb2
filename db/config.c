@@ -38,6 +38,7 @@
 #include "phys_rep.h"
 #include "phys_rep_lsn.h"
 #include "macc_glue.h"
+#include "disttxn.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -1429,6 +1430,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_USER, "Successfully remapped machine class '%s' to fdb tier '%s'\n", cls, tier);
         else
             logmsg(LOGMSG_USER, "Failed remapping machine class '%s' to fdb tier '%s'\n", cls, tier);
+    } else if (tokcmp(tok, ltok, "allow-coordinator") == 0) {
+        process_allow_coordinator(&line[st], len - st);
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;

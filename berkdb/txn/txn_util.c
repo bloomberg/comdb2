@@ -740,6 +740,55 @@ static int __upgrade_prepared(void *obj, void *arg)
 	return 0;
 }
 
+struct __collect_disttxn_node
+{
+	char *coordinator_name;
+	char *coordinator_tier;
+	char *dist_txnid;
+};
+
+struct __collect_disttxns
+{
+	DB_ENV *dbenv;
+	struct __collect_disttxn_node *disttxns;
+	int count;
+};
+
+static int __collect_prepared(void *obj, void *arg)
+{
+	DB_TXN_PREPARED *p = (DB_TXN_PREPARED *)obj;
+	struct __collect_disttxns *collect = (struct __collect_disttxns *)arg;
+	int ret;
+	if (F_ISSET(p, DB_DIST_HAVELOCKS)) {
+
+		/* Collect coordinator name */
+		if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_name.size + 1,
+			&collect->disttxns[collect->count].coordinator_name)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+			abort();
+		}
+		memcpy(collect->disttxns[collect->count].coordinator_name, p->coordinator_name.data,
+			p->coordinator_name.size);
+
+		/* Collect coordinator tier */
+		if ((ret = __os_calloc(collect->dbenv, 1, p->coordinator_tier.size + 1,
+			&collect->disttxns[collect->count].coordinator_tier)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+			abort();
+		}
+		memcpy(collect->disttxns[collect->count].coordinator_tier, p->coordinator_tier.data,
+			p->coordinator_tier.size);
+
+		/* Collect dist_txnid */
+		if ((ret = __os_strdup(collect->dbenv, p->dist_txnid, &collect->disttxns[collect->count].dist_txnid)) != 0) {
+			logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+			abort();
+		}
+		collect->count++;
+	}
+	return 0;
+}
+
 static int __downgrade_prepared_int(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 {
 	DB_LOCKREQ request = {.op = DB_LOCK_PUT_ALL};
@@ -748,8 +797,8 @@ static int __downgrade_prepared_int(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 	if (!F_ISSET(p, DB_DIST_HAVELOCKS))
 		return 0;
 
-    /* Unregister cnonce */
-    osql_blkseq_unregister_cnonce(p->blkseq_key.data, p->blkseq_key.size);
+	/* Unregister cnonce */
+	osql_blkseq_unregister_cnonce(p->blkseq_key.data, p->blkseq_key.size);
 
 	if ((ret = __lock_vec(dbenv, p->txnp->txnid, 0, &request, 1, NULL)) != 0) {
 		logmsg(LOGMSG_FATAL, "Error releasing locks dist-txn %s, LSN %d:%d\n", p->dist_txnid,
@@ -979,6 +1028,26 @@ int __txn_master_prepared(dbenv, dist_txnid, prep_lsn, begin_lsn, blkseq_key, co
 	return 0;
 }
 
+void __txn_set_prepared_discard(dbenv, dist_txnid)
+	DB_ENV *dbenv;
+	const char *dist_txnid;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	int ret;
+	DB_TXN_PREPARED *p;
+
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
+		logmsg(LOGMSG_FATAL, "%s cannot find prepared transaction %s\n", 
+			__func__, dist_txnid);
+		abort();
+	}
+	F_SET(p, DB_DIST_DISCARDED);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+}
+
 /*
  * __txn_recover_abort_prepared --
  *
@@ -1004,13 +1073,19 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
 	int ret;
-	DB_TXN_PREPARED *p, *fnd;
+	DB_TXN_PREPARED *p;
 
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
 		logmsg(LOGMSG_FATAL, "%s cannot find prepared transaction %s\n", 
 			__func__, dist_txnid);
 		abort();
+	}
+	if (F_ISSET(p, DB_DIST_DISCARDED)) {
+		F_CLR(p, DB_DIST_DISCARDED);
+		Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+		logmsg(LOGMSG_INFO, "%s retaining discarded transaction %s on downgrade\n", __func__, dist_txnid);
+		return 0;
 	}
 	hash_del(dbenv->prepared_txn_hash, p);
 	hash_del(dbenv->prepared_utxnid_hash, p);
@@ -1144,7 +1219,9 @@ int __txn_recover_prepared(dbenv, txnid, dist_txnid, prep_lsn, begin_lsn, blkseq
 	hash_add(dbenv->prepared_txn_hash, p);
 	hash_add(dbenv->prepared_utxnid_hash, p);
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
-	logmsg(LOGMSG_DEBUG, "%s added unresolved prepared txn %s\n", __func__, dist_txnid);
+#if defined (DEBUG_PREPARE)
+	logmsg(LOGMSG_USER, "%s added prepared txn %s\n", __func__, dist_txnid);
+#endif
 	return 0;
 }
 
@@ -1239,6 +1316,47 @@ int __txn_downgrade_all_prepared(dbenv)
 	return 0;
 }
 
+/*
+ * __txn_recover_all_prepared --
+ *
+ * Contact coordinator for every recovered prepare through the callback 
+ * function.
+ *
+ * PUBLIC: int __txn_recover_all_prepared __P((DB_ENV *));
+ */
+int __txn_recover_all_prepared(dbenv)
+	DB_ENV *dbenv;
+{
+#if defined (DEBUG_PREPARE)
+	comdb2_cheapstack_sym(stderr, "%s", __func__);
+#endif
+	if (dbenv->recover_prepared_callback == NULL) {
+		logmsg(LOGMSG_ERROR, "%s recover_prepared_callback is not set\n", __func__);
+		return -1;
+	}
+
+	int alloc, ret;
+	struct __collect_disttxns collect = {0};
+	collect.dbenv = dbenv;
+	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
+	hash_info(dbenv->prepared_txn_hash, NULL, NULL, NULL, NULL, &alloc, NULL, NULL);
+	if ((ret = __os_malloc(dbenv, sizeof(struct __collect_disttxn_node) * alloc, &collect.disttxns)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s error allocating memory %d\n", __func__, ret);
+		abort();
+	}
+	hash_for(dbenv->prepared_txn_hash, __collect_prepared, &collect);
+	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
+	for (int i = 0; i < collect.count; i++) {
+		dbenv->recover_prepared_callback(collect.disttxns[i].dist_txnid, collect.disttxns[i].coordinator_name,
+			collect.disttxns[i].coordinator_tier);
+		__os_free(dbenv, collect.disttxns[i].dist_txnid);
+		__os_free(dbenv, collect.disttxns[i].coordinator_name);
+		__os_free(dbenv, collect.disttxns[i].coordinator_tier);
+	}
+	__os_free(dbenv, collect.disttxns);
+	return 0;
+}
+
 /* 
  * __txn_upgrade_all_prepared --
  *
@@ -1321,7 +1439,7 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		if (!F_ISSET(p, DB_DIST_HAVELOCKS) || p->txnp == NULL) {
-			logmsg(LOGMSG_INFO, "%s unable to abort unprepared dist-txn %s\n", __func__, dist_txnid);
+			logmsg(LOGMSG_DEBUG, "%s unable to abort unprepared dist-txn %s\n", __func__, dist_txnid);
 			p = NULL;
 		} else {
 			hash_del(dbenv->prepared_txn_hash, p);
@@ -1331,7 +1449,7 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	}
 	Pthread_mutex_unlock(&dbenv->prepared_txn_lk);
 	if (p == NULL) {
-		logmsg(LOGMSG_INFO, "%s unable to locate txnid %s\n", __func__, dist_txnid);
+		logmsg(LOGMSG_DEBUG, "%s unable to locate txnid %s\n", __func__, dist_txnid);
 		return -1;
 	}
 
@@ -1355,7 +1473,7 @@ int __txn_abort_recovered(dbenv, dist_txnid)
 	}
 
     /* Write blkseq record for aborted prepare */
-    dist_txn_abort_write_blkseq(NULL, p->blkseq_key.data, p->blkseq_key.size);
+    dist_txn_abort_write_blkseq(dbenv->app_private, p->blkseq_key.data, p->blkseq_key.size);
 
     /* Unregister cnonce */
     osql_blkseq_unregister_cnonce(p->blkseq_key.data, p->blkseq_key.size);
@@ -1665,7 +1783,7 @@ int __rep_abort_dist_prepared(dbenv, dist_txnid)
 #endif
 	}
 
-    dist_txn_abort_write_blkseq(NULL, p->blkseq_key.data, p->blkseq_key.size);
+    dist_txn_abort_write_blkseq(dbenv->app_private, p->blkseq_key.data, p->blkseq_key.size);
 	assert(!F_ISSET(p, DB_DIST_HAVELOCKS));
 	__free_prepared_txn(dbenv, p);
 	return 0;

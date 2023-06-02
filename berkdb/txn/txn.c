@@ -178,10 +178,11 @@ static int __txn_abort_pp __P((DB_TXN *));
 static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
 static int __txn_logbytes_pp __P((DB_TXN *, u_int64_t *));
+static int __txn_set_discard __P((DB_TXN *));
 static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
 	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
-static int __txn_dist_prepare_pp __P((DB_TXN *, const char *, const char *, const char*, u_int32_t, DBT *, u_int32_t));
+static int __txn_dist_prepare_pp __P((DB_TXN *, const char *, const char *, const char*, u_int32_t, DBT *, DB_LSN *, u_int32_t));
 static int __txn_discard_pp __P((DB_TXN *, u_int32_t));
 static int __txn_end __P((DB_TXN *, int));
 static int __txn_isvalid __P((const DB_TXN *, TXN_DETAIL **, txnop_t));
@@ -725,6 +726,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	txn->abort = __txn_abort_pp;
 	txn->commit = __txn_commit_pp;
 	txn->getlogbytes = __txn_logbytes_pp;
+    txn->set_discard = __txn_set_discard;
 	txn->commit_getlsn = __txn_commit_getlsn_pp;
 	txn->commit_rowlocks = __txn_commit_rl_pp;
 	txn->dist_prepare = __txn_dist_prepare_pp;
@@ -1343,6 +1345,17 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							&tp->begin_lsn, &txnp->blkseq_key, txnp->coordinator_gen, &coordinator, &tier))!=0) {
 							abort();
 						}
+
+						/* Treat prepares like commits in elections */
+						if (elect_highest_committed_gen) {
+							MUTEX_LOCK(dbenv,
+									db_rep->rep_mutexp);
+							rep->committed_gen = gen;
+							rep->committed_lsn = txnp->last_lsn;
+							MUTEX_UNLOCK(dbenv,
+									db_rep->rep_mutexp);
+						}
+
 					} else if (elect_highest_committed_gen) {
 
 						MUTEX_LOCK(dbenv,
@@ -1364,12 +1377,17 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 								abort();
 							}
 						} else {
+							if (txnp->wrote_regop_gen) {
+								logmsg(LOGMSG_FATAL, "%s writing multiple commits for same txn?\n", __func__);
+								abort();
+							}
 							ret =
 								__txn_regop_gen_log(dbenv,
 										txnp, &txnp->last_lsn,
 										&context, lflags,
 										TXN_COMMIT, gen, timestamp,
 										request.obj, usr_ptr);
+							txnp->wrote_regop_gen = 1;
 						}
 #if defined DEBUG_STACK_AT_TXN_LOG
 						comdb2_cheapstack_sym(stderr, "TXN-COMMIT-GEN TXNID %x LSN [%d:%d]",
@@ -1774,6 +1792,20 @@ __txn_free_recovered(txnp)
 	return (__txn_end(txnp, 0));
 }
 
+static int
+__txn_set_discard(txnp)
+	DB_TXN *txnp;
+{
+	if (!F_ISSET(txnp, TXN_DIST_PREPARED)) {
+		logmsg(LOGMSG_FATAL, "%s set discard flag for unprepared transaction\n", __func__);
+		abort();
+	}
+	F_SET(txnp, TXN_DIST_DISCARD);
+	__txn_set_prepared_discard(txnp->mgrp->dbenv, txnp->dist_txnid);
+	return 0;
+}
+
+
 /*
  * __txn_abort --
  *	Abort a transaction.
@@ -1973,13 +2005,14 @@ __txn_discard(txnp, flags)
 }
 
 static int
-__txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen, blkseq_key, lflags)
+__txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coordinator_gen, blkseq_key, commit_lsn, lflags)
 	DB_TXN *txnp;
 	const char *dist_txnid;
 	const char *coordinator_name;
 	const char *coordinator_tier;
 	u_int32_t coordinator_gen;
 	DBT *blkseq_key;
+	DB_LSN *commit_lsn;
 	u_int32_t lflags;
 {
 	DB_ENV *dbenv = txnp->mgrp->dbenv;
@@ -2028,7 +2061,7 @@ __txn_dist_prepare_pp(txnp, dist_txnid, coordinator_name, coordinator_tier, coor
 	lflags |= DB_TXN_DIST_PREPARE;
 
 	ret =
-		__txn_commit_int(txnp, lflags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
+		__txn_commit_int(txnp, lflags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, commit_lsn, NULL);
 	return (ret);
 }
 
@@ -2569,6 +2602,22 @@ err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 }
 
 /*
+ * __txn_set_recover_prepared_callback --
+ *  DB_ENV->set_recover_prepared_callback function
+ *
+ * PUBLIC: int __txn_set_recover_prepared_callback
+ * PUBLIC:   __P((DB_ENV *, void (*)(const char *, const char *, const char *)));
+ */
+int
+__txn_set_recover_prepared_callback(dbenv, func)
+	DB_ENV *dbenv;
+	void (*func)(const char *, const char *, const char *);
+{
+	dbenv->recover_prepared_callback = func;
+	return 0;
+}
+
+/*
  * __txn_commit_recovered_pp --
  *	DB_ENV->txn_commit_recovered pre/post processing.
  *
@@ -2872,8 +2921,14 @@ do_ckp:
 
 	__txn_lowest_prepared_lsn(dbenv, &prepared);
 	if (!IS_ZERO_LSN(prepared) &&
-		log_compare(&prepared, &ckp_lsn) < 0)
+		log_compare(&prepared, &ckp_lsn) < 0) {
+		logmsg(LOGMSG_USER, "%s setting checkpoint to lowest prepared-lsn %d:%d\n",
+			__func__, prepared.file, prepared.offset);
 		ckp_lsn = prepared;
+	} else {
+		logmsg(LOGMSG_USER, "%s higher prepared-lsn %d:%d is lower than ckp_lsn %d:%d\n",
+			__func__, prepared.file, prepared.offset, ckp_lsn.file, ckp_lsn.offset);
+	}
 
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);

@@ -488,8 +488,11 @@ int db_is_exiting(void);
 void stop_event_net(void);
 int sync_state_to_protobuf(int);
 struct fdb_hbeats;
+struct dist_hbeats;
 void increase_net_buf(void);
 int enable_fdb_heartbeats(struct fdb_hbeats*);
 int disable_fdb_heartbeats_and_free(struct fdb_hbeats *);
+int enable_dist_heartbeats(struct dist_hbeats *);
+int disable_dist_heartbeats_and_free(struct dist_hbeats *);
 
 #endif

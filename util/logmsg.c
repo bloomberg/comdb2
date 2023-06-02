@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <syslog.h>
+#include <sys/time.h>
 
 #include "logmsg.h"
 #include <locks_wrap.h>
@@ -25,6 +26,7 @@ static int ended_with_newline = 1;
 
 #ifndef BUILDING_TOOLS
 #include <ctrace.h>
+int gbl_logmsg_epochms = 0;
 #endif
 
 /* from io_override.c */
@@ -116,6 +118,20 @@ static int sprintf_auto_resize(char **headp, int *offp, int len, const char *fmt
     return size;
 }
 
+#ifndef BUILDING_TOOLS
+static unsigned int epochms(void)
+{
+    struct timeval tv;
+    int rc;
+    rc = gettimeofday(&tv, NULL);
+    if (rc) {
+        fprintf(stderr, "gettimeofday rc %d\n", rc);
+        abort();
+    }
+    return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+#endif
+
 int logmsgv(loglvl lvl, const char *fmt, va_list args)
 {
     if (!fmt) return 0;
@@ -166,13 +182,26 @@ int logmsgv(loglvl lvl, const char *fmt, va_list args)
         struct tm tm;
         localtime_r(&t, &tm);
         if (do_thread) {
-            snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d 0x%p ", tm.tm_year + 1900,
-                     tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (void *)pthread_self());
+#ifndef BUILDING_TOOLS
+            if (gbl_logmsg_epochms) {
+                unsigned int timems = epochms();
+                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d %u 0x%p ", tm.tm_year + 1900,
+                         tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, timems, (void *)pthread_self());
+            } else
+#endif
+                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d 0x%p ", tm.tm_year + 1900,
+                         tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (void *)pthread_self());
+
         } else {
-            snprintf(timestamp, sizeof(timestamp),
-                     "%04d/%02d/%02d %02d:%02d:%02d ", tm.tm_year + 1900,
-                     tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-                     tm.tm_sec);
+#ifndef BUILDING_TOOLS
+            if (gbl_logmsg_epochms) {
+                unsigned int timems = epochms();
+                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d %u ", tm.tm_year + 1900,
+                         tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, timems);
+            } else
+#endif
+                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d ", tm.tm_year + 1900,
+                         tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
         }
     }
     while (do_time && ! override && ended_with_newline && *msg != 0) {

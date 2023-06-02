@@ -38,6 +38,9 @@
 #include <str0.h>
 #include <timer_util.h>
 #include <pb_alloc.h>
+#include <comdb2uuid.h>
+#include <osqlsession.h>
+#include <disttxn.h>
 
 #include <newsql.h>
 
@@ -551,22 +554,103 @@ err:    newsql_cleanup(appdata);
     }
 }
 
+static void process_disttxn(struct newsql_appdata_evbuffer *appdata, CDB2DISTTXN *disttxn)
+{
+    struct evbuffer *buf = sql_wrbuf(appdata->writer);
+    CDB2DISTTXNRESPONSE response = CDB2__DISTTXNRESPONSE__INIT;
+    int rcode = 0;
+    if (!bdb_amimaster(thedb->bdb_env) || bdb_lock_desired(thedb->bdb_env)) {
+        rcode = -1;
+        goto sendresponse;
+    }
+
+    switch (disttxn->disttxn->operation) {
+
+    /* Coordinator master tells me (participant master) to prepare */
+    case (CDB2_DIST__PREPARE):
+        rcode = osql_prepare(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier,
+                             disttxn->disttxn->master);
+        break;
+
+    /* Coordinator master tells me (participant master) to discard */
+    case (CDB2_DIST__DISCARD):
+        rcode = osql_discard(disttxn->disttxn->txnid);
+        break;
+
+    /* Participant master sends me (coordinator master) a heartbeat message */
+    case (CDB2_DIST__HEARTBEAT):
+        rcode = participant_heartbeat(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier);
+        break;
+
+    /* Participant master tells me (coordinator master) it has prepared */
+    case (CDB2_DIST__PREPARED):
+        rcode = participant_prepared(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier,
+                                     disttxn->disttxn->master);
+        break;
+
+    /* Participant master tells me (coordinator master) it has failed */
+    case (CDB2_DIST__FAILED_PREPARE):
+        rcode = participant_failed(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier,
+                                   disttxn->disttxn->rcode, disttxn->disttxn->outrc, disttxn->disttxn->errmsg);
+        break;
+
+    /* Coordinator master tells me (participant master) to commit */
+    case (CDB2_DIST__COMMIT):
+        rcode = coordinator_committed(disttxn->disttxn->txnid);
+        break;
+
+    /* Coordinator master tells me (participant master) to abort */
+    case (CDB2_DIST__ABORT):
+        rcode = coordinator_aborted(disttxn->disttxn->txnid);
+        break;
+
+    /* Participant master tells me (coordinator master) it has propagated */
+    case (CDB2_DIST__PROPAGATED):
+        rcode = participant_propagated(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier);
+        break;
+    }
+
+sendresponse:
+    if (disttxn->disttxn->async) {
+        rd_hdr(-1, 0, appdata);
+        return;
+    }
+
+    response.rcode = rcode;
+    int len = cdb2__disttxnresponse__get_packed_size(&response);
+    struct newsqlheader hdr = {0};
+    hdr.type = htonl(RESPONSE_HEADER__DISTTXN_RESPONSE);
+    hdr.length = htonl(len);
+    uint8_t out[len];
+    cdb2__disttxnresponse__pack(&response, out);
+    evbuffer_add(buf, &hdr, sizeof(hdr));
+    evbuffer_add(buf, out, len);
+    event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
+}
+
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
     if (!query) {
         newsql_cleanup(appdata);
         return;
     }
+    CDB2DISTTXN *disttxn = query->disttxn;
     CDB2DBINFO *dbinfo = query->dbinfo;
-    if (!dbinfo) {
+
+    if (!dbinfo && !disttxn) {
         appdata->query = query;
         process_query(appdata);
         return;
     }
-    if (dbinfo->has_want_effects && dbinfo->want_effects) {
-        process_get_effects(appdata);
-    } else {
-        process_dbinfo(appdata);
+    if (dbinfo) {
+        if (dbinfo->has_want_effects && dbinfo->want_effects) {
+            process_get_effects(appdata);
+        } else {
+            process_dbinfo(appdata);
+        }
+    }
+    if (disttxn) {
+        process_disttxn(appdata, disttxn);
     }
     cdb2__query__free_unpacked(query, &pb_alloc);
 }
