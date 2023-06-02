@@ -419,7 +419,8 @@ void process_work_item(async_wait_node *item)
                     logmsg(LOGMSG_USER, "waiting for initial NEWSEQ from node %s of >= <%d:%d>\n", item->nodelist[i],
                            item->seqnum.lsn.file, item->seqnum.lsn.offset);
                 }
-                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0, __LINE__, 0 /* Fake incoherent */);
+                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0,
+                                                           __LINE__, 0 /* Fake incoherent */);
                 if (bdb_lock_desired(item->bdb_state)) {
                     logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
                     if (item->durable_lsns) {
@@ -477,7 +478,7 @@ void process_work_item(async_wait_node *item)
             /* we want to revisit after timeout. If we get seqnums in the meanwhile
                we'll recheck anyway. */
             int now = comdb2_time_epochms();
-            //item->next_ts = now + (item->bdb_state->attr->rep_timeout_maxms - (now - item->start_time));
+            // item->next_ts = now + (item->bdb_state->attr->rep_timeout_maxms - (now - item->start_time));
             item->next_ts = now + 1000;
             listc_rfl(&work_queue->absolute_ts_list, item);
             add_to_absolute_ts_list(item);
@@ -511,7 +512,7 @@ void process_work_item(async_wait_node *item)
             int begin_time = 0, end_time = 0;
             begin_time = comdb2_time_epochms();
             item->start_time = comdb2_time_epochms();
-            if (item->waitms <=0) {
+            if (item->waitms <= 0) {
                 if (gbl_async_dist_commit_verbose) {
                     logmsg(LOGMSG_USER, "This is the final pass over replicants\n");
                 }
@@ -523,11 +524,12 @@ void process_work_item(async_wait_node *item)
                 }
 
                 if (item->bdb_state->rep_trace) {
-                    logmsg(LOGMSG_DEBUG, "checking for NEWSEQ from node %s of >= <%d:%d> timeout %d\n", item->nodelist[i],
-                           item->seqnum.lsn.file, item->seqnum.lsn.offset, item->waitms);
+                    logmsg(LOGMSG_DEBUG, "checking for NEWSEQ from node %s of >= <%d:%d> timeout %d\n",
+                           item->nodelist[i], item->seqnum.lsn.file, item->seqnum.lsn.offset, item->waitms);
                 }
 
-                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0,__LINE__, 0 /* fake incoherent */);
+                int rc = bdb_wait_for_seqnum_from_node_int(item->bdb_state, &item->seqnum, item->nodelist[i], 0,
+                                                           __LINE__, 0 /* fake incoherent */);
                 if (bdb_lock_desired(item->bdb_state)) {
                     logmsg(LOGMSG_USER, "%s line %d early exit because lock-is-desired\n", __func__, __LINE__);
                     if (item->durable_lsns) {
@@ -576,21 +578,25 @@ void process_work_item(async_wait_node *item)
                         /* if catchup on commit then change to INCOHERENT_WAIT */
                         if (item->bdb_state->attr->catchup_on_commit && item->bdb_state->attr->catchup_window) {
                             DB_LSN *masterlsn =
-                                &(item->bdb_state->seqnum_info->seqnums[nodeix(item->bdb_state->repinfo->master_host)].lsn);
+                                &(item->bdb_state->seqnum_info->seqnums[nodeix(item->bdb_state->repinfo->master_host)]
+                                      .lsn);
                             int cntbytes = subtract_lsn(item->bdb_state, masterlsn, &nodelsn);
                             set_coherent_state(item->bdb_state, item->nodelist[i],
-                                               (cntbytes < item->bdb_state->attr->catchup_window) ? STATE_INCOHERENT_WAIT
-                                                                                                  : STATE_INCOHERENT,
+                                               (cntbytes < item->bdb_state->attr->catchup_window)
+                                                   ? STATE_INCOHERENT_WAIT
+                                                   : STATE_INCOHERENT,
                                                __func__, __LINE__);
 
                         } else {
-                            set_coherent_state(item->bdb_state, item->nodelist[i], STATE_INCOHERENT, __func__, __LINE__);
+                            set_coherent_state(item->bdb_state, item->nodelist[i], STATE_INCOHERENT, __func__,
+                                               __LINE__);
                         }
-                        /* change next_commit_timestamp for the work queue, if new value of coherency_commit_timestamp is
-                           larger, than current value of coherency_commit_timestamp */
-                        work_queue->next_commit_timestamp = (work_queue->next_commit_timestamp < coherency_commit_timestamp)
-                                                                ? coherency_commit_timestamp
-                                                                : work_queue->next_commit_timestamp;
+                        /* change next_commit_timestamp for the work queue, if new value of coherency_commit_timestamp
+                           is larger, than current value of coherency_commit_timestamp */
+                        work_queue->next_commit_timestamp =
+                            (work_queue->next_commit_timestamp < coherency_commit_timestamp)
+                                ? coherency_commit_timestamp
+                                : work_queue->next_commit_timestamp;
                         if (gbl_async_dist_commit_verbose) {
                             logmsg(LOGMSG_USER,
                                    " work_queue->next_commit_timestamp: %ld, coherency_commit_timestamp: %ld\n",
@@ -615,7 +621,7 @@ void process_work_item(async_wait_node *item)
             }
             goto got_first_ack_label;
         } else if (item->waitms > 0) {
-            assert(item->is_final_check==0);
+            assert(item->is_final_check == 0);
             if (gbl_async_dist_commit_verbose) {
                 logmsg(LOGMSG_USER, "We still have waitms remaining\n");
             }
