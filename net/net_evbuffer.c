@@ -1769,20 +1769,24 @@ static void get_stat_evbuffer(struct event_info *e, net_queue_stat_t *stat)
     }
 }
 
-static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
+static ssize_t readv_evbuffer(struct event_info *e)
 {
+    int fd = e->fd;
+    struct evbuffer *buf = e->rd_buf;
 #   define NVEC 8
     struct iovec v[NVEC];
 #   ifdef FIONREAD
     int avail;
     (void)ioctl(fd, FIONREAD, &avail);
     if (avail <= 0) avail = TCP_BUFSZ;
+    else if (avail > TCP_BUFSZ) avail = TCP_BUFSZ;
 #   else
 #   pragma message("FIONREAD not available")
     avail = TCP_BUFSZ;
 #   endif
     const int nv = evbuffer_reserve_space(buf, avail, v, NVEC);
     if (nv <= 0) {
+        hprintf("evbuffer_reserve_space failed nv:%d need:%d\n", nv, avail);
         errno = ENOMEM;
         return -1;
     }
@@ -1811,9 +1815,8 @@ static void readcb(int fd, short what, void *data)
     if (fd != e->fd) abort();
     /* Writing my own readv wrapper; Observed max read of 4K with:
     ssize_t n = evbuffer_read(e->rd_buf, e->fd, -1); */
-    ssize_t n = readv_evbuffer(e->rd_buf, e->fd);
+    ssize_t n = readv_evbuffer(e);
     if (n <= 0) {
-        hprintf("readv rc:%zd errno:%d:%s\n", n, errno, strerror(errno));
         reconnect:
         do_disable_read(e);
         reconnect(e);
