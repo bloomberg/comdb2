@@ -667,7 +667,7 @@ DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
     "Print a message to stdout instead of performing auto-analyze ourselves")
 DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10, "Check I/O in watchdog this often")
-DEF_ATTR(TEST_SQL_TIME, test_sql_time, SECS, 60, "Check SQL in watchdog this often")
+DEF_ATTR(TEST_SQL_TIME, test_sql_time, SECS, 0, "Check SQL in watchdog this often")
 DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
          "Spew debug info about deleting old files.")
 
