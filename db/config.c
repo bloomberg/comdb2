@@ -822,8 +822,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 char *name = nodename;
                 int rc = comdb2_gethostbyname(&name, &addr);
                 if (rc!=0) {
-                    logmsg(LOGMSG_ERROR, "Could not resolve host %s. Not adding to siblings list\n", name);
-                    continue;
+                    logmsg(LOGMSG_FATAL, "Could not resolve host %s. Exiting Database...\n", name);
+                    exit(1);
                 }
                 if (rc==0 && addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
