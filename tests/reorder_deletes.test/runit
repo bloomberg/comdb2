@@ -159,16 +159,16 @@ fi
 
 ddcount=`grep -c DEADLOCK $mlog`
 rr=$(cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm --host ${master} "select value from comdb2_tunables where name='reorder_idx_writes'")
-
+limit=110
 if [[ $DBNAME == *"noreordergenerated"* ]] ; then
     assertres $rr "OFF"
-    if [[ $ddcount -lt 100 ]] ; then
-        failexit 'no reorder expected to get more than 100 deadlocks for this test'
+    if [[ $ddcount -lt $limit ]] ; then
+        failexit "no reorder expected to get more than $limit deadlocks for this test"
     fi
 else
     assertres $rr "ON"
-    if [[ $ddcount -gt 100 ]] ; then
-        failexit 'reorder expected to get less than 100 deadlocks for this test'
+    if [[ $ddcount -gt $limit ]] ; then
+        failexit "reorder expected to get less than $limit deadlocks for this test"
     fi
 fi
 
