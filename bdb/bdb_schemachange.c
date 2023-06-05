@@ -121,20 +121,16 @@ int sc_type_requires_dbopen_gen_bump(scdone_t type) {
     return 1;
 }
 
-int bdb_bump_dbopen_gen(int type, const char *message,
+void bdb_bump_dbopen_gen(int type, const char *message,
                         const char *funcName, const char *fileName, int lineNo)
 {
+    if (!sc_type_requires_dbopen_gen_bump(type)) return;
     const char *typestr = bdb_get_scdone_str(type);
-
-    if (!sc_type_requires_dbopen_gen_bump(type))
-        return 0;
-
     int rc = ATOMIC_ADD32(dbopen_gen, 1);
     if (message == NULL) message = "<null>";
     logmsg(LOGMSG_WARN,
            "DBOPEN_GEN is now %d (for type %s via %s, %s, line #%d): %s\n",
            rc, typestr, funcName, fileName, lineNo, message);
-    return rc;
 }
 
 static int bdb_scdone_int(bdb_state_type *bdb_state, DB_TXN *txnid,
@@ -268,8 +264,7 @@ retry:
         return -1;
     }
 
-    if ((sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop) &&
-        (strncmp(tbl, "sqlite_stat", sizeof("sqlite_stat") - 1) != 0)) {
+    if (sctype == alter || sctype == fastinit || sctype == bulkimport || sctype == drop) {
         bdb_lock_tablename_write(bdb_state, tbl, tran);
     }
     /* analyze does NOT need schema_lk */
@@ -302,8 +297,6 @@ retry:
     return rc;
 }
 
-#define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a)                              \
-    (((a) == add_queue_file) || ((a) == del_queue_file))
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, const char *tbl, int tbllen, int *bdberr)
 {
