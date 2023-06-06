@@ -2680,6 +2680,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     listc_init(&dbenv->lrl_handlers, offsetof(struct lrl_handler, lnk));
     listc_init(&dbenv->message_handlers, offsetof(struct message_handler, lnk));
+    tz_hash_init();
 
     plugin_post_dbenv_hook(dbenv);
 
@@ -2714,7 +2715,6 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
         return NULL;
     }
 
-    tz_hash_init();
     init_sql_hint_table();
     init_clientstats_table();
 
