@@ -23,7 +23,6 @@ enum synctype {
 #define MAXINITSIZE 256000000 /* safety limit on init files */
 #define COMMENT_COLUMN 40     /* column for comments    */
 #define MAX_CLUSTER 16
-#define MAX_KEY_SIZE 512
 /* currently, we have 28 indeces in comdb2 due to buffer size restrictions */
 #define MAX_KEY_INDEX 28
 
@@ -35,7 +34,7 @@ made throughout comdb2. */
    The largest possible buffer through comdb2_api right now is update by rrn in
    WORDS as follows:
 
-   4 words  +  2*((3 + MAX_KEY_SIZE/4) * MAX_KEY_INDEX) + 6 words +
+   4 words  +  2*((3 + MAXKEYLEN/4) * MAX_KEY_INDEX) + 6 words +
    2*(COMDB2_MAX_RECORD_SIZE/4) == 4018 words
    (blkstart)     (blkdelnod+blkadnod)                      blkupvrrn
 

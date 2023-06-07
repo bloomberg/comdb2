@@ -75,9 +75,9 @@ int bdb_maybe_use_genid_for_key(
         else
             rc = 1;
 
-        assert(bdb_state->ixlen[ixnum] <= BDB_KEY_MAX);
+        assert(bdb_state->ixlen[ixnum] <= (MAXKEYLEN + 1));
 
-        *ppKeyMaxBuf = malloc(BDB_KEY_MAX + sizeof(unsigned long long));
+        *ppKeyMaxBuf = malloc(MAXKEYLEN + 1 + sizeof(unsigned long long));
         memcpy(*ppKeyMaxBuf, ixdta, bdb_state->ixlen[ixnum]);
 
         p_dbt_key->data = *ppKeyMaxBuf;

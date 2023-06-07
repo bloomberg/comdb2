@@ -57,7 +57,7 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
     size_t buffer_length;
     void *buffer;
     int count = 0;
-    unsigned char keymax[BDB_KEY_MAX + sizeof(unsigned long long)];
+    unsigned char keymax[MAXKEYLEN + sizeof(unsigned long long) + 1];
 
     /* see if we can find an index with recnums.  if we can, we can
        get the number of rrns in constant time by getting the recnum of

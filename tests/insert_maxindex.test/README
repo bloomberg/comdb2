@@ -1,0 +1,1 @@
+Verify that inserting a byte key of 512 bytes doesn't crash the database

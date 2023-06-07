@@ -115,7 +115,7 @@ int has_cascading_forward_constraints(struct dbtable *table)
 /* this is for index on expressions */
 static int insert_add_index(struct ireq *iq, unsigned long long genid)
 {
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     void *foundkey = NULL;
     void *cur = NULL;
     int err = 0;
@@ -165,7 +165,7 @@ out:
 
 static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
 {
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     void *foundkey = NULL;
     void *cur = NULL;
     int err = 0;
@@ -259,8 +259,8 @@ struct backward_ct {
     struct dbtable *dstdb;
     int blkpos;
     int optype;
-    char key[MAXKEYLEN];
-    char newkey[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
+    char newkey[MAXKEYLEN + 1];
     int sixlen;
     int sixnum;
     int dixnum;
@@ -282,7 +282,7 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
 {
     block_state_t *blkstate = iq->blkstate;
     int type = CTE_ADD;
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     cte cte_record;
     int err = 0;
     int rc = 0;
@@ -352,7 +352,7 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
 {
     void *cur = NULL;
     int type = CTE_DEL, rc = 0;
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     cte cte_record;
     int err = 0;
 
@@ -423,16 +423,16 @@ int check_update_constraints(struct ireq *iq, void *trans,
     for (i = 0; i < iq->usedb->n_rev_constraints; i++) {
         int j = 0;
         constraint_t *cnstrt = iq->usedb->rev_constraints[i];
-        char rkey[MAXKEYLEN];
+        char rkey[MAXKEYLEN + 1];
         int rixnum = 0, rixlen = 0;
         char rondisk_tag[MAXTAGLEN];
 
         for (j = 0; j < cnstrt->nrules; j++) {
             char ondisk_tag[MAXTAGLEN];
             int ixnum = 0, ixlen = 0;
-            char lkey[MAXKEYLEN];
-            char nkey[MAXKEYLEN];
-            char rnkey[MAXKEYLEN];
+            char lkey[MAXKEYLEN + 1];
+            char nkey[MAXKEYLEN + 1];
+            char rnkey[MAXKEYLEN + 1];
             int nornrefs = 0;
 
             if (strcasecmp(cnstrt->table[j], iq->usedb->tablename)) {
@@ -644,7 +644,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
 {
     int rc = 0, fndrrn = 0, err = 0;
     int keylen;
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
 
     struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
@@ -756,7 +756,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
          * to do anything (if also key length and key are exactly the same).
          * If we dont find key, we need to cascade the delete. */
         char ondisk_tag[MAXTAGLEN], dondisk_tag[MAXTAGLEN];
-        char dkey[MAXKEYLEN];
+        char dkey[MAXKEYLEN + 1];
         if (bct->nonewrefs) {
             if (iq->debug)
                 reqprintf(iq,
@@ -928,7 +928,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             int saved_flgs = iq->osql_flags;
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
-            char nullkey[MAXKEYLEN];
+            char nullkey[MAXKEYLEN + 1];
             rc = stag_set_key_null(bct->tablename, ondisk_tag, skey, keylen, nullkey);
 
             if (rc)
@@ -1142,10 +1142,10 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     int rc = 0, fndlen = 0, err = 0, limit = 0;
     int idx = 0, ixkeylen = -1;
     void *od_dta = NULL;
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     char *od_dta_tail = NULL;
     int od_tail_len = 0;
-    char mangled_key[MAXKEYLEN];
+    char mangled_key[MAXKEYLEN + 1];
     char partial_datacopy_tail[MAXRECSZ];
 
 #if DEBUG_REORDER
@@ -1461,7 +1461,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
     int rc = 0, fndrrn = 0, opcode = 0, err = 0;
     void *od_dta = NULL;
     char ondisk_tag[MAXTAGLEN];
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     int nulls;
 
     od_dta = (void *)alloca(20 * 1024 + 8);
@@ -1616,7 +1616,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
             for (cidx = 0; cidx < nct; cidx++) {
                 constraint_t *ct = &curop->usedb->constraints[cidx];
                 int ridx = 0, lixnum = -1;
-                char lkey[MAXKEYLEN];
+                char lkey[MAXKEYLEN + 1];
 
                 rc = getidxnumbyname(iq->usedb->tablename, ct->lclkeyname,
                                      &lixnum);
@@ -1664,7 +1664,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                     struct dbtable *currdb = NULL;
                     int fixnum = 0;
                     int fixlen = 0;
-                    char fkey[MAXKEYLEN];
+                    char fkey[MAXKEYLEN + 1];
                     char fondisk_tag[MAXTAGLEN];
 
                     struct dbtable *ftable = get_dbtable_by_name(ct->table[ridx]);
@@ -2287,7 +2287,7 @@ int check_single_key_constraint(struct ireq *ruleiq, const constraint_t *ct,
 
     for (int ri = 0; ri < ct->nrules; ri++) {
         int ridx;
-        char rkey[MAXKEYLEN];
+        char rkey[MAXKEYLEN + 1];
         char rtag[MAXTAGLEN];
         int nulls;
 

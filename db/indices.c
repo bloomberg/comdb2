@@ -48,7 +48,7 @@ typedef struct {
                            // usedb separately
     short ixnum;
     short ixlen;
-    char ixkey[MAXKEYLEN + GENIDLEN]; // consider storing up to the largest key
+    char ixkey[MAXKEYLEN + GENIDLEN + 1]; // consider storing up to the largest key
                            // for dups genid is appended to end of key
     dit_t type;
     unsigned long long genid;
@@ -171,8 +171,8 @@ static int check_index(struct ireq *iq, void *trans, int ixnum, blob_buffer_t *b
 {
     int ixkeylen;
     int rc;
-    char key[MAXKEYLEN];
-    char mangled_key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
+    char mangled_key[MAXKEYLEN + 1];
     char partial_datacopy_tail[MAXRECSZ];
     char *od_dta_tail = NULL;
     int od_tail_len;
@@ -327,7 +327,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char *key = ditk.ixkey; // key points to chararray regardless reordering
-        char mangled_key[MAXKEYLEN];
+        char mangled_key[MAXKEYLEN + 1];
         char partial_datacopy_tail[MAXRECSZ];
 
         if (gbl_use_plan && iq->usedb->plan &&
@@ -550,8 +550,8 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
         char *oldkey = delditk.ixkey;
         char *newkey = ditk.ixkey;
-        char mangled_oldkey[MAXKEYLEN];
-        char mangled_newkey[MAXKEYLEN];
+        char mangled_oldkey[MAXKEYLEN + 1];
+        char mangled_newkey[MAXKEYLEN + 1];
         char partial_datacopy_oldtail[MAXRECSZ];
         char partial_datacopy_newtail[MAXRECSZ];
 
@@ -963,8 +963,8 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
 
     /* Add all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char key[MAXKEYLEN];
-        char mangled_key[MAXKEYLEN];
+        char key[MAXKEYLEN + 1];
+        char mangled_key[MAXKEYLEN + 1];
         char partial_datacopy_tail[MAXRECSZ];
         char *od_dta_tail = NULL;
         int od_tail_len = 0;
@@ -1062,7 +1062,7 @@ int upd_new_record_indices(
     int rc = 0;
     /* First delete all keys */
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char key[MAXKEYLEN];
+        char key[MAXKEYLEN + 1];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
@@ -1144,7 +1144,7 @@ int del_new_record_indices(struct ireq *iq, void *trans,
 {
     int rc = 0;
     for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
-        char key[MAXKEYLEN];
+        char key[MAXKEYLEN + 1];
 
         if (gbl_use_plan && iq->usedb->plan &&
             iq->usedb->plan->ix_plan[ixnum] != -1)
