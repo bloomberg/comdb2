@@ -324,6 +324,7 @@ static inline int newsql_to_client_type(int newsql_type)
 static int newsql_response_int(struct sqlclntstate *clnt, const CDB2SQLRESPONSE *r, int h, int flush)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    clnt->lastresptype = r->response_type;
     return appdata->write(clnt, h, 0, r, flush);
 }
 
