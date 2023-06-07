@@ -2246,6 +2246,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 failed:
                     sbuf2close(*psb);
                     *psb = NULL;
+#if 0
+                    LETS TRY ANOTHER NODE HERE INSTEAD OF FAILING
                     /* don't retry other nodes if SSL configuration is bad */
                     clnt->fdb_state.preserve_err = 1;
                     clnt->fdb_state.xerr.errval = FDB_ERR_CONNECT_CLUSTER;
@@ -2253,6 +2255,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                              sizeof(clnt->fdb_state.xerr.errstr),
                              "SSL config error to %s", host);
                     return FDB_ERR_SSL;
+#endif
                 }
             }
             break;
