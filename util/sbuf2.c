@@ -113,8 +113,11 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
         return -1;
 
     /* Gracefully shutdown SSL to make the
-       fd re-usable. */
-    sslio_close(sb, 1);
+       fd re-usable. Close the fd if it fails. */
+    int rc = sslio_close(sb, 1);
+    if (rc)
+        close(sb->fd);
+
     sb->fd = -1;
     if (sb->rbuf) {
         free(sb->rbuf);
@@ -139,7 +142,7 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
 #if SBUF2_SERVER
     comdb2ma_destroy(alloc);
 #endif
-    return 0;
+    return rc;
 }
 
 /* flush output, close fd, and free SBUF2.*/

@@ -605,7 +605,7 @@ static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
         event_base_once(appdata->base, appdata->fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
         return;
     case SSL_ERROR_WANT_WRITE:
-        event_base_once(appdata->base, appdata->fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
+        event_base_once(appdata->base, appdata->fd, EV_WRITE, ssl_accept_evbuffer, appdata, NULL);
         return;
     case SSL_ERROR_SYSCALL:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d errno:%d [%s]\n",

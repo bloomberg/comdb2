@@ -2181,10 +2181,12 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb)
 
     /* The node does not agree with dbinfo. This usually happens
        during the downgrade from SSL to non-SSL. */
-    if (rc == 'N') {
+    if (rc != 'Y') {
         if (SSL_IS_OPTIONAL(hndl->c_sslmode)) {
             hndl->c_sslmode = SSL_ALLOW;
-            return 0;
+            /* if server sends back 'N', reuse this plaintext connection;
+               force reconnecting for an unexpected byte */
+            return (rc == 'N') ? 0 : -1;
         }
 
         /* We reach here only if the server is mistakenly downgraded
@@ -2456,8 +2458,7 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
         (hndl->in_trans) ||
         ((hndl->flags & CDB2_TYPE_IS_FD) != 0)) {
         sbuf2close(sb);
-    } else {
-        sbuf2free(sb);
+    } else if (sbuf2free(sb) == 0) {
         cdb2_socket_pool_donate_ext(hndl->newsql_typestr, fd, timeoutms / 1000,
                                     hndl->dbnum);
     }
@@ -5472,9 +5473,8 @@ free_vars:
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
     int timeoutms = 10 * 1000;
-    sbuf2free(ss);
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000,
-                                comdb2db_num);
+    if (sbuf2free(ss) == 0)
+        cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, comdb2db_num);
     free_events(&tmp);
     return 0;
 }
@@ -5644,8 +5644,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type, const char *d
 
     int timeoutms = 10 * 1000;
 
-    sbuf2free(sb);
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
+    if (sbuf2free(sb) == 0)
+        cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
 
     rc = (*num_valid_hosts > 0) ? 0 : -1;
 

@@ -2422,5 +2422,10 @@ REGISTER_TUNABLE("fdb_incoherence_percentage",
 REGISTER_TUNABLE("fdb_io_error_retries",
                  "Number of retries for io error remsql", TUNABLE_INTEGER,
                  &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("unexpected_last_type_warn",
+                 "print a line of trace if the last response server sent before sockpool reset isn't LAST_ROW",
+                 TUNABLE_INTEGER, &gbl_unexpected_last_type_warn, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("unexpected_last_type_abort",
+                 "Panic if the last response server sent before sockpool reset isn't LAST_ROW",
+                 TUNABLE_INTEGER, &gbl_unexpected_last_type_abort, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
