@@ -734,8 +734,12 @@ keyondisksize(struct key *wk) /* CALCULATE THE SIZE IN BYTES OF A WHOLE KEY */
     sz = 0;
     ck = wk;
     while (ck) {
-        sz += keysize(ck) + 1; /* one byte header */
+        sz += keysize(ck);
         ck = ck->cmp;
+        if (ck) {
+            /* one byte extra header will be needed for every column in key. */
+            sz++;
+        }
     }
     return sz;
 }
