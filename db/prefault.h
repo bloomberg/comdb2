@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <cdb2_constants.h>
 
 enum pfrq_type {
     PFRQ_OLDDATA = 1, /* given a table, genid : fault the dta record */
@@ -93,7 +94,7 @@ typedef struct pfrq {
     unsigned short ix;
     unsigned long long genid;
     int index;
-    unsigned char key[512];
+    unsigned char key[MAXKEYLEN + 1];
     void *record;
     unsigned short len; /* if its a key, the len of the key.  if its a dta rec,
                            the len of the record */
@@ -131,7 +132,7 @@ typedef struct {
     short ixnum;
     short keylen;
     short numreadahead;
-    unsigned char key[512];
+    unsigned char key[MAXKEYLEN + 1];
     int abort;
 
     unsigned char *pfk_bitmap;

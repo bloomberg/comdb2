@@ -1,7 +1,7 @@
 schema
 {
-    cstring text1[511]
-    cstring text2[511]
+    cstring text1[512]
+    cstring text2[512]
 }
 
 keys {

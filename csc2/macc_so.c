@@ -734,8 +734,12 @@ keyondisksize(struct key *wk) /* CALCULATE THE SIZE IN BYTES OF A WHOLE KEY */
     sz = 0;
     ck = wk;
     while (ck) {
-        sz += keysize(ck) + 1; /* one byte header */
+        sz += keysize(ck); /* one byte header */
         ck = ck->cmp;
+        if (ck) {
+            /* one byte extra header will be needed for every column in key. */
+            sz++;
+        }
     }
     return sz;
 }
@@ -1056,13 +1060,13 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         }
     }
     int sz = keyondisksize(macc_globals->workkey);
-    if (sz > MAX_KEY_SIZE) { /* COMDB2 CURRENTLY SUPPORTS 512 byte KEYS*/
+    if (sz > MAXKEYLEN) { /* COMDB2 CURRENTLY SUPPORTS 512 byte KEYS*/
         csc2_error(
             "Error at line %3d: KEY %s TOO BIG(%d)! VALID SIZE=1-%d BYTES\n",
-            current_line, tag, sz, MAX_KEY_SIZE);
+            current_line, tag, sz, MAXKEYLEN);
         csc2_syntax_error(
             "Error at line %3d: KEY %s TOO BIG(%d)! VALID SIZE=1-%d BYTES",
-            current_line, tag, sz, MAX_KEY_SIZE);
+            current_line, tag, sz, MAXKEYLEN);
         any_errors++;
         return;
     }

@@ -29,7 +29,7 @@ typedef struct osqlpf_rq {
     struct dbtable *db;
     unsigned long long genid;
     int index;
-    unsigned char key[MAXKEYLEN];
+    unsigned char key[MAXKEYLEN + 1];
     void *record;
     unsigned short len; /* if its a key, the len of the key.  if its a dta rec,
                            the len of the record */
@@ -107,7 +107,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen,
     qdata->seq = seq;
     qdata->rqid = rqid;
 
-    if ((keylen > 0) && (keylen < MAXKEYLEN))
+    if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
@@ -142,7 +142,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen,
     qdata->seq = seq;
     qdata->rqid = rqid;
 
-    if ((keylen > 0) && (keylen < MAXKEYLEN))
+    if ((keylen > 0) && (keylen < MAXKEYLEN + 1))
         memcpy(qdata->key, key, keylen);
 
     rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
@@ -323,7 +323,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     } break;
     case OSQLPFRQ_OLDKEY: {
         int fndrrn = 0;
-        char fndkey[MAXKEYLEN];
+        char fndkey[MAXKEYLEN + 1];
         unsigned long long genid = 0;
         if ((req->index < 0) || (req->index > 49)) {
             logmsg(LOGMSG_ERROR, "PFRQ_OLDKEY ix %d out of bounds\n",
@@ -342,7 +342,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
     } break;
     case OSQLPFRQ_NEWKEY: {
         int fndrrn = 0;
-        char fndkey[MAXKEYLEN];
+        char fndkey[MAXKEYLEN + 1];
         unsigned long long genid = 0;
 
         if ((req->index < 0) || (req->index > 49)) {
@@ -400,7 +400,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char key[MAXKEYLEN];
+            char key[MAXKEYLEN + 1];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
@@ -432,7 +432,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
         /* enqueue faults for new keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char key[MAXKEYLEN];
+            char key[MAXKEYLEN + 1];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
@@ -492,7 +492,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
         /* enqueue faults for old keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char key[MAXKEYLEN];
+            char key[MAXKEYLEN + 1];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
@@ -519,7 +519,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
         /* enqueue faults for new keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char key[MAXKEYLEN];
+            char key[MAXKEYLEN + 1];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {

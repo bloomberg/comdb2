@@ -2172,7 +2172,7 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
     bdb_cursor_ifn_t *tmpcur;
     int ix;
     int rc = SQLITE_OK;
-    char key[MAXKEYLEN];
+    char key[MAXKEYLEN + 1];
     char *datacopy;
     int datacopylen;
 
@@ -2267,7 +2267,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
     int rc = 0;
     unsigned long long genid = pCur->genid;
     void *dta = pCur->dtabuf;
-    key = alloca(MAXKEYLEN + sizeof(genid));
+    key = alloca(MAXKEYLEN + sizeof(genid) + 1);
 
     if (thd->clnt && thd->clnt->dbtran.mode == TRANLEVEL_SOSQL)
         return 0;

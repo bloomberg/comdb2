@@ -256,11 +256,6 @@ typedef enum {
 } bdbtype_t;
 
 enum {
-    BDB_KEY_MAX = 512,     /*
-                            max size of a key ON DISK.
-                            comdb2 exposes 256 bytes, with 256 columns and
-                            1 byte of overhead per, that gets us to 512
-                          */
     BDB_RECORD_MAX = 20480, /*
                              max size of a fixed record ON DISK.
                              comdb2 exposes 16384.  add 1 byte for an
