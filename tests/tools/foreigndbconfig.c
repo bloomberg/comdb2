@@ -9,6 +9,7 @@ void usage(FILE *f, const char *argv0)
     fprintf(f, "Usage: %s <options>\n", argv0);
     fprintf(f, " -d <dbname>                - dbname to config\n");
     fprintf(f, " -c <dbname_config>         - config to reach dbname\n");
+    fprintf(f, " -m <mach>                  - machine name for direct connect\n");
     fprintf(f, " -s <foreign_metadb_config> - configuration info for server cdb2api\n");
 
     exit(1);
@@ -19,11 +20,12 @@ int main (int argc, char *argv[])
     char *dbname = NULL;
     char *config = NULL;
     char *metadb_config = NULL;
+    char *mach = NULL;
     const char *argv0 = argv[0];
     int opt, rc;
 
 
-    while ((opt = getopt(argc, argv, "d:c:s:")) != EOF)
+    while ((opt = getopt(argc, argv, "d:c:s:m:")) != EOF)
     {
         switch (opt)
         {
@@ -33,6 +35,9 @@ int main (int argc, char *argv[])
             case 'c':
                 config = optarg;
                 break;
+            case 'm':
+                mach = optarg;
+                break;
             case 's':
                 metadb_config = optarg;
                 break;
@@ -40,15 +45,18 @@ int main (int argc, char *argv[])
                 usage(stderr, argv0);
         }
     }
-    if (!dbname || !config || !metadb_config)
+    if (!dbname || (!config && !mach) || !metadb_config)
         usage(stderr, argv0);
     
 
     cdb2_hndl_tp *hndl = NULL;
 
-    cdb2_set_comdb2db_config(config);
-
-    rc = cdb2_open(&hndl, dbname, "default", 0);
+    if (!mach) {
+        cdb2_set_comdb2db_config(config);
+        rc = cdb2_open(&hndl, dbname, "default", 0);
+    } else {
+        rc = cdb2_open(&hndl, dbname, mach, CDB2_DIRECT_CPU);
+    }
     if (rc) 
     {
         fprintf(stderr, "Failed to open db '%s' rc %d\n", dbname, rc);

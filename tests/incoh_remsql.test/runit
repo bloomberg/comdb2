@@ -94,18 +94,57 @@ if (( $? != 0 )) ; then
     exit 1
 fi
 
-echo "Pointing the source ${DBNAME} to custom comdb2db ${SECONDARY_DBNAME}"
-echo $cmdSRC "put tunable foreign_metadb '${SECONDARY_DBNAME}'"
-$cmdSRC "put tunable foreign_metadb '${SECONDARY_DBNAME}'"
-if (( $? != 0 )) ; then
-    echo "Failure to put foreign_metadb ${SECONDARY_DBNAME}"
-    exit 1
-fi
-echo $cmdSRC "put tunable foreign_metadb_class 'local'"
-$cmdSRC "put tunable foreign_metadb_class 'local'"
-if (( $? != 0 )) ; then
-    echo "Failure to put foreign_metadb_class 'local'"
-    exit 1
+if [[ -z "${CLUSTER}" ]] ; then
+    echo "Pointing the source ${DBNAME} to custom comdb2db ${SECONDARY_DBNAME}"
+    echo $cmdSRC "put tunable foreign_metadb '${SECONDARY_DBNAME}'"
+    $cmdSRC "put tunable foreign_metadb '${SECONDARY_DBNAME}'"
+    if (( $? != 0 )) ; then
+        echo "Failure to put foreign_metadb ${SECONDARY_DBNAME}"
+        exit 1
+    fi
+    echo $cmdSRC "put tunable foreign_metadb_class 'local'"
+    $cmdSRC "put tunable foreign_metadb_class 'local'"
+    if (( $? != 0 )) ; then
+        echo "Failure to put foreign_metadb_class 'local'"
+        exit 1
+    fi
+
+    echo ${TESTSBUILDDIR}/foreigndbconfig -d ${DBNAME} -c ${CDB2_CONFIG} -s "comdb2_config:comdb2dbname:${SECONDARY_DBNAME}
+comdb2_config:default_type:dev
+${comdb2db_hosts}"
+    ${TESTSBUILDDIR}/foreigndbconfig -d ${DBNAME} -c ${CDB2_CONFIG} -s "comdb2_config:comdb2dbname:${SECONDARY_DBNAME}
+comdb2_config:default_type:dev
+${comdb2db_hosts}"
+    if (( $? != 0 )) ; then
+        echo "Failure to put foreign_metadb_class 'local'"
+        exit 1
+    fi
+else
+    for mach in ${CLUSTER} ; do
+        echo "Pointing the source ${DBNAME} to custom comdb2db ${SECONDARY_DBNAME} in ${mach}"
+        echo cdb2sql ${DBNAME} --host ${mach} "put tunable foreign_metadb '${SECONDARY_DBNAME}'"
+        cdb2sql ${DBNAME} --host ${mach} "put tunable foreign_metadb '${SECONDARY_DBNAME}'"
+        if (( $? != 0 )) ; then
+            echo "Failure to put foreign_metadb ${SECONDARY_DBNAME}"
+            exit 1
+        fi
+        echo cdb2sql ${DBNAME} --host ${mach} "put tunable foreign_metadb_class 'local'"
+        cdb2sql ${DBNAME} --host ${mach} "put tunable foreign_metadb_class 'local'"
+        if (( $? != 0 )) ; then
+            echo "Failure to put foreign_metadb_class 'local'"
+            exit 1
+        fi
+        echo ${TESTSBUILDDIR}/foreigndbconfig -d ${DBNAME} -m ${mach} -s "comdb2_config:comdb2dbname:${SECONDARY_DBNAME}
+comdb2_config:default_type:dev
+${comdb2db_hosts}"
+    ${TESTSBUILDDIR}/foreigndbconfig -d ${DBNAME} -m ${mach} -s "comdb2_config:comdb2dbname:${SECONDARY_DBNAME}
+comdb2_config:default_type:dev
+${comdb2db_hosts}"
+        if (( $? != 0 )) ; then
+            echo "Failure to put foreign_metadb_class 'local'"
+            exit 1
+        fi
+    done
 fi
 
 
