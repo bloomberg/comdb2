@@ -24,6 +24,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <csignal>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -1025,6 +1026,8 @@ void process_events(cdb2_hndl_tp *db, event_queue &queue) {
 
 int main(int argc, char **argv) {
     char *filename = nullptr;
+
+    signal(SIGPIPE, SIG_IGN);
 
     init_handlers();
 
