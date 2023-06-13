@@ -1018,8 +1018,10 @@ void transfer_db_settings(struct dbtable *olddb, struct dbtable *newdb)
     }
     memcpy(newdb->typcnt, olddb->typcnt, sizeof(olddb->typcnt));
     memcpy(newdb->blocktypcnt, olddb->blocktypcnt, sizeof(olddb->blocktypcnt));
+    memcpy(newdb->prev_blocktypcnt, olddb->prev_blocktypcnt, sizeof(olddb->prev_blocktypcnt));
     memcpy(newdb->blockosqltypcnt, olddb->blockosqltypcnt,
            sizeof(olddb->blockosqltypcnt));
+    memcpy(newdb->prev_blockosqltypcnt, olddb->prev_blockosqltypcnt, sizeof(olddb->prev_blockosqltypcnt));
     memcpy(newdb->write_count, olddb->write_count, sizeof(olddb->write_count));
     memcpy(newdb->saved_write_count, olddb->saved_write_count,
            sizeof(olddb->saved_write_count));
