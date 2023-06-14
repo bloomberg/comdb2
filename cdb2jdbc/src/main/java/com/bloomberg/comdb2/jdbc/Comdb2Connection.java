@@ -281,6 +281,10 @@ public class Comdb2Connection implements Connection {
         hndl.setClearAck(clearAck);
     }
 
+    public void setForceDirectcpu(boolean directcpu) {
+        hndl.setForceDirectcpu(directcpu);
+    }
+
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
         return hndl.getDbHosts();
     }

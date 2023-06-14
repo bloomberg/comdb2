@@ -24,7 +24,8 @@ public class DatabaseDiscoveryTest {
     public void testDNSDown() throws IOException, SQLException {
         try {
             LogManager.getLogManager().reset();
-            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/db");
+            /* The URL below would inquire dev-comdb2db.example.com */
+            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/db?dnssuffix=example.com");
             Assert.assertTrue("Should not reach here", false);
         } catch (SQLException sqle) {
             Assert.assertTrue("Should see correct error message.",

@@ -180,6 +180,7 @@ public class Driver implements java.sql.Driver {
         List<String> hosts = new ArrayList<String>();
         List<Integer> ports = new ArrayList<Integer>();
         Set<String> processedOptions = new HashSet<String>();
+        ret = new Comdb2Connection();
 
         if (tokens.length < 4) { /* Use legacy format */
             tokens = url.split(":\\s*|\\s+");
@@ -189,33 +190,41 @@ public class Driver implements java.sql.Driver {
             dbStr = tokens[2];
             clusterStr = tokens[3];
         } else {
-            /* hosttokens cluster[:port]+ */
-            String[] hoststokens = tokens[2].split(",\\s*|\\s+");
-            if (hoststokens.length > 1) {
-                /* more than 1 hosts. */
-                clusterStr = "User-supplied-hosts";
-                for (String elem : hoststokens) {
-                    String[] hosttokens = elem.split(":\\s*|\\s+");
-                    if (hosttokens.length == 1) {
-                        /* no port, use -1 as a placeholder */
-                        ports.add(-1);
-                    } else {
-                        try {
-                            ports.add(Integer.parseInt(hosttokens[1]));
-                        } catch (NumberFormatException e1) {
-                            /* invalid input, fall back to -1 */
-                            ports.add(-1);
-                        }
-                    }
-                    hosts.add(hosttokens[0]);
-                }
+            if (tokens[0].equalsIgnoreCase("jdbc:comdb2:tier")) { /* Expect a tier name */
+                ret.setForceDirectcpu(false);
+                clusterStr = tokens[2];
             } else {
-                /* only 1 host. */
-                String[] hosttokens = tokens[2].split(":\\s*|\\s+");
-                clusterStr = hosttokens[0];
-                /* read url string */
-                if (hosttokens.length > 1)
-                    port = hosttokens[1];
+                if (tokens[0].equalsIgnoreCase("jdbc:comdb2:hosts")) /* Expect a list of hostnames */
+                    ret.setForceDirectcpu(true);
+
+                /* hosttokens cluster[:port]+ */
+                String[] hoststokens = tokens[2].split(",\\s*|\\s+");
+                if (hoststokens.length > 1) {
+                    /* more than 1 hosts. */
+                    clusterStr = "User-supplied-hosts";
+                    for (String elem : hoststokens) {
+                        String[] hosttokens = elem.split(":\\s*|\\s+");
+                        if (hosttokens.length == 1) {
+                            /* no port, use -1 as a placeholder */
+                            ports.add(-1);
+                        } else {
+                            try {
+                                ports.add(Integer.parseInt(hosttokens[1]));
+                            } catch (NumberFormatException e1) {
+                                /* invalid input, fall back to -1 */
+                                ports.add(-1);
+                            }
+                        }
+                        hosts.add(hosttokens[0]);
+                    }
+                } else {
+                    /* only 1 host. */
+                    String[] hosttokens = tokens[2].split(":\\s*|\\s+");
+                    clusterStr = hosttokens[0];
+                    /* read url string */
+                    if (hosttokens.length > 1)
+                        port = hosttokens[1];
+                }
             }
 
             /* dbtokens db[?key=value...] */
@@ -228,7 +237,6 @@ public class Driver implements java.sql.Driver {
 
         /* Don't look up. Just set attributes.
            We will look up the database before returning. */
-        ret = new Comdb2Connection();
         ret.setDatabase(dbStr);
         ret.setCluster(clusterStr);
 

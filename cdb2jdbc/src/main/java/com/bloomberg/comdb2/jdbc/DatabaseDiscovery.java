@@ -444,6 +444,17 @@ public class DatabaseDiscovery {
         }
     }
 
+    static boolean isTier(String str) {
+        return (
+               str.equalsIgnoreCase("default")
+            || str.equalsIgnoreCase("dev")
+            || str.equalsIgnoreCase("uat")
+            || str.equalsIgnoreCase("alpha")
+            || str.equalsIgnoreCase("beta")
+            || str.equalsIgnoreCase("prod")
+        );
+    }
+
     /**
      * Gets the database server host(s) and port(s) of @hndl.
      * 
@@ -463,17 +474,15 @@ public class DatabaseDiscovery {
             comdb2lcldb.remove(hndl.myDbName + "/" + hndl.myDbCluster);
         }
 
-        if (hndl.myDbCluster.equalsIgnoreCase("local")) {
+        if (hndl.myDbCluster.equalsIgnoreCase("local") && hndl.forceDirectcpu == null) {
 			/* type is local */
             hndl.isDirectCpu = true;
             hndl.myDbHosts.add("localhost");
             hndl.myDbPorts.add(hndl.overriddenPort);
-        } else if ( hndl.myDbCluster.equalsIgnoreCase("default")
-                || hndl.myDbCluster.equalsIgnoreCase("dev")
-                || hndl.myDbCluster.equalsIgnoreCase("uat")
-                || hndl.myDbCluster.equalsIgnoreCase("alpha")
-                || hndl.myDbCluster.equalsIgnoreCase("beta")
-                || hndl.myDbCluster.equalsIgnoreCase("prod")) {
+        } else if ((isTier(hndl.myDbCluster) && hndl.forceDirectcpu == null) ||
+                (hndl.forceDirectcpu != null && hndl.forceDirectcpu == false)) {
+            /* This is a pre-defined tier (eg jdbc:comdb2://dev);
+             * or is defined as a tier from the URL (eg jdbc:comdb2:tier//fuzz) */
             hndl.isDirectCpu = false;
 
             /* if the handle asks for cache, do it now. */
