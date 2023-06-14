@@ -5258,18 +5258,18 @@ enum { UPGRADE = 1, DOWNGRADE = 2, DOWNGRADE_NOELECT = 3, REOPEN = 4 };
 void *dummy_add_thread(void *arg);
 void bdb_all_incoherent(bdb_state_type *bdb_state);
 
-static __thread int waiting_for_bdblock = 0;
-
 struct bdblock_state {
     bdb_state_type *bdb_state;
-    int *waiting_for_bdblock;
+    pthread_mutex_t lk;
 };
 
 static void *bdb_abort_prepared_thd(void *arg)
 {
     struct bdblock_state *b = (struct bdblock_state *)arg;
     bdb_state_type *bdb_state = (bdb_state_type *)b->bdb_state;
-    while (*b->waiting_for_bdblock) {
+
+    /* Stop when we can acquire mutex */
+    while (pthread_mutex_trylock(&b->lk) != 0) {
         if (bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_INFO, "%s aborting waiters on prepared txns\n", __func__);
             bdb_state->dbenv->txn_abort_prepared_waiters(bdb_state->dbenv);
@@ -5285,16 +5285,18 @@ static void *bdb_abort_prepared_thd(void *arg)
  * blocked transactions so that we can acquire the bdb-lock.
  *
  * TODO: think about how to downgrade normal prepared-transactions on the master */
-static void abort_prepared_waiters(bdb_state_type *bdb_state)
+static struct bdblock_state *abort_prepared_waiters(bdb_state_type *bdb_state)
 {
-    struct bdblock_state *b = malloc(sizeof(struct bdblock_state));
+    struct bdblock_state *b = calloc(sizeof(struct bdblock_state), 1);
     b->bdb_state = bdb_state;
-    b->waiting_for_bdblock = &waiting_for_bdblock;
+    Pthread_mutex_init(&b->lk, 0);
+    Pthread_mutex_lock(&b->lk);
     pthread_t abort_prepared_td;
     pthread_attr_t thd_attr;
     Pthread_attr_init(&thd_attr);
     Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
     Pthread_create(&abort_prepared_td, &thd_attr, bdb_abort_prepared_thd, b);
+    return b;
 }
 
 static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
@@ -5302,6 +5304,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
                                              int *done)
 {
     int rc = 0;
+    struct bdblock_state *lockstate = NULL;
     char *lock_str;
 
     if (done) {
@@ -5314,10 +5317,9 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     }
 
     watchdog_set_alarm(timeout);
-    waiting_for_bdblock = 1;
 
     if (op == DOWNGRADE || op == DOWNGRADE_NOELECT) {
-        abort_prepared_waiters(bdb_state);
+        lockstate = abort_prepared_waiters(bdb_state);
     }
 
     switch (op) {
@@ -5354,7 +5356,9 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
         exit(1);
         break;
     }
-    waiting_for_bdblock = 0;
+    if (lockstate) {
+        Pthread_mutex_unlock(&lockstate->lk);
+    }
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
