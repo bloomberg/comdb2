@@ -355,7 +355,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt,
                 offset = 0;
                 while (temp) {
                     m = &p->member[piece];
-                    m->idx = find_field_idx(dbname, schema->tag, temp->field);
+                    m->idx = find_field_idx(db, schema->tag, temp->field);
                     if (m->idx == -1) {
                         rc = -ix - 1;
                         goto errout;
@@ -479,7 +479,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt,
                 db->ix_expr = 1;
             } else {
                 m->name = strdup(buf);
-                m->idx = find_field_idx(dbname, schema->tag, m->name);
+                m->idx = find_field_idx(db, schema->tag, m->name);
                 if (m->idx == -1) {
                     errstat_set_rcstrf(err, -1, "field %s not found in %s\n",
                                        m->name, schema->tag);
@@ -949,13 +949,12 @@ static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
             if (!alt) {
                 if (!no_side_effects)
                     db->lrl =
-                        get_size_of_schema_by_name(db->tablename, ".ONDISK");
+                        get_size_of_schema_by_name(db, ".ONDISK");
                 rc = clone_server_to_client_tag(db->tablename, ".ONDISK",
                                                 ".ONDISK_CLIENT");
             } else {
                 if (!no_side_effects)
-                    db->lrl = get_size_of_schema_by_name(db->tablename,
-                                                         ".NEW..ONDISK");
+                    db->lrl = get_size_of_schema_by_name(db, ".NEW..ONDISK");
                 rc = clone_server_to_client_tag(db->tablename, ".NEW..ONDISK",
                                                 ".NEW..ONDISK_CLIENT");
             }
@@ -974,7 +973,7 @@ static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
                         snprintf(tmptagname, sizeof(tmptagname),
                                  ".NEW..ONDISK_ix_%d", i);
                     db->ix_keylen[i] =
-                        get_size_of_schema_by_name(db->tablename, tmptagname);
+                        get_size_of_schema_by_name(db, tmptagname);
 
                     if (!alt) {
                         snprintf(sname_buf, sizeof(sname_buf), ".ONDISK_IX_%d",

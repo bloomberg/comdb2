@@ -49,8 +49,8 @@ struct ireq;
 
 int skip_lookup_for_nullfkey(const struct dbtable *db, int ixnum, int nulls);
 int check_single_key_constraint(struct ireq *ruleiq, const constraint_t *ct,
-                                const char *lcl_tag, const char *lcl_key, const char *tblname,
-                                void *trans, int *remote_ri);
+                                const char *lcl_tag, const char *lcl_key, 
+                                const struct dbtable *table, void *trans, int *remote_ri);
 constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix);
 int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
                                char *tblname, bdb_state_type **r_state,

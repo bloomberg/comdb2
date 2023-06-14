@@ -3564,7 +3564,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                use record to form and delete other keys */
             snprintf(client_tag, MAXTAGLEN, ".DEFAULT_IX_0");
             snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_0");
-            rc = ctag_to_stag_buf(iq->usedb->tablename, client_tag,
+            rc = ctag_to_stag_buf(iq->usedb, client_tag,
                                   (const char *)iq->p_buf_in, WHOLE_BUFFER,
                                   nulls, ondisk_tag, key, 0, NULL);
             if (rc == -1) {
@@ -3870,7 +3870,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             /* convert key */
             bzero(nulls, sizeof(nulls));
-            rc = ctag_to_stag_buf(iq->usedb->tablename, ".DEFAULT_IX_0",
+            rc = ctag_to_stag_buf(iq->usedb, ".DEFAULT_IX_0",
                                   (const char *)p_keydat, WHOLE_BUFFER, nulls,
                                   ".ONDISK_IX_0", key, convert_flags, NULL);
             if (rc == -1) {
@@ -4001,8 +4001,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                    capture comdb clients that are trying to verify
                    only a prefix of the row (size < .default rowsize)
                  */
-                int rowsz = get_size_of_schema_by_name(iq->usedb->tablename,
-                                                       ".DEFAULT");
+                int rowsz = get_size_of_schema_by_name(iq->usedb, ".DEFAULT");
                 if (rowsz != vlen) {
                     logmsg(
                         LOGMSG_ERROR,
@@ -4340,7 +4339,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 break;
             }
             dtalen =
-                get_size_of_schema_by_name(iq->usedb->tablename, ".ONDISK");
+                get_size_of_schema_by_name(iq->usedb, ".ONDISK");
 
             MIXED_SQL_DYNTAGS(trans, parent_trans);
 
@@ -6109,7 +6108,7 @@ static int keyless_range_delete_post_delete(void *record, size_t record_len,
         int rc;
         struct javasp_rec *jrec;
         jrec = javasp_alloc_rec(record, record_len,
-                                rngdel_info->iq->usedb->tablename);
+                                rngdel_info->iq->usedb);
         if (rngdel_info->saveblobs)
             javasp_rec_set_blobs(jrec, rngdel_info->oldblobs);
         rc = javasp_trans_tagged_trigger(

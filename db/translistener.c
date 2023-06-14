@@ -771,7 +771,7 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
 
     byte_buffer_init(&bytes);
 
-    s = find_tag_schema(t->name, ".ONDISK");
+    s = find_tag_schema(get_dbtable_by_name(t->name), ".ONDISK");
     if (s == NULL) {
         logmsg(LOGMSG_ERROR, "can't find schema for %s\n", t->name);
         rc = -1;
@@ -885,12 +885,12 @@ int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
 }
 
 struct javasp_rec *javasp_alloc_rec(const void *od_dta, size_t od_len,
-                                    const char *tblname)
+                                    struct dbtable *table)
 {
     struct javasp_rec *rec;
     struct schema *schema;
 
-    schema = find_tag_schema(tblname, ".ONDISK");
+    schema = find_tag_schema(table, ".ONDISK");
     if (!schema)
         return NULL;
 
@@ -907,7 +907,7 @@ struct javasp_rec *javasp_alloc_rec(const void *od_dta, size_t od_len,
     }
     bzero(rec, sizeof(struct javasp_rec));
 
-    strncpy0(rec->tablename, tblname, sizeof(rec->tablename));
+    strncpy0(rec->tablename, table->tablename, sizeof(rec->tablename));
     rec->ondisk_dta = od_dta;
     rec->ondisk_dta_len = od_len;
     rec->schema = schema;

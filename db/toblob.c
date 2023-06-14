@@ -809,11 +809,11 @@ int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
 {
     int cblob;
     memset(b, 0, sizeof(*b));
-    b->numcblobs = get_schema_blob_count(iq->usedb->tablename, tag);
+    b->numcblobs = get_schema_blob_count(iq->usedb, tag);
     for (cblob = 0; cblob < b->numcblobs; cblob++) {
         int diskblob, blob_idx;
-        diskblob = blob_no_to_blob_no(iq->usedb->tablename, tag, cblob, to_tag);
-        blob_idx = get_schema_blob_field_idx(iq->usedb->tablename, tag, cblob);
+        diskblob = blob_no_to_blob_no(iq->usedb, tag, cblob, to_tag);
+        blob_idx = get_schema_blob_field_idx(iq->usedb, tag, cblob);
         if (diskblob < 0 || blob_idx < 0) {
             if (iq->debug)
                 reqprintf(
@@ -844,16 +844,16 @@ static int convert_idx_partial_datacopy(int blob_idx, struct schema *pd) {
 
 /* pd == NULL if not using partial datacopy fields
  */
-int gather_blob_data_byname(const char *dbname, const char *tag,
+int gather_blob_data_byname(struct dbtable *table, const char *tag,
                             blob_status_t *b, struct schema *pd)
 {
     int cblob;
     memset(b, 0, sizeof(*b));
-    b->numcblobs = get_schema_blob_count(dbname, tag);
+    b->numcblobs = get_schema_blob_count(table, tag);
     for (cblob = 0; cblob < b->numcblobs; cblob++) {
         int diskblob, blob_idx;
-        diskblob = blob_no_to_blob_no(dbname, tag, cblob, ".ONDISK");
-        blob_idx = get_schema_blob_field_idx(dbname, tag, cblob);
+        diskblob = blob_no_to_blob_no(table, tag, cblob, ".ONDISK");
+        blob_idx = get_schema_blob_field_idx(table, tag, cblob);
         if (pd) { // convert to index in partial datacopy schema
             blob_idx = convert_idx_partial_datacopy(blob_idx, pd);
         }
@@ -1075,7 +1075,7 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
 /* Returns 0 if the blob data is consistent with the record, -1 if it
  * is not.  If the record is in ondisk format then we do not fill in
  * the b->blobflds pointers. */
-static int check_blob_consistency_int(struct ireq *iq, const char *table,
+static int check_blob_consistency_int(struct ireq *iq, struct dbtable *table,
                                       const char *tag, blob_status_t *b,
                                       const void *record, int repair_mode)
 {
@@ -1087,9 +1087,9 @@ static int check_blob_consistency_int(struct ireq *iq, const char *table,
     b->total_length = 0;
 
     if (isondisk < 0) {
-        logmsg(LOGMSG_ERROR, "check_blob_consistency: is_tag_ondisk table %s tag %s "
+        logmsg(LOGMSG_ERROR, "check_blob_consistency: is_tag_ondisk_sc table %s tag %s "
                         "error\n",
-                table, tag);
+                table->tablename, tag);
         return -1;
     }
 
@@ -1107,7 +1107,7 @@ static int check_blob_consistency_int(struct ireq *iq, const char *table,
  * but for one blob only.
  * pd == NULL if not using partial datacopy fields
  */
-int check_one_blob_consistency(struct ireq *iq, const char *table,
+int check_one_blob_consistency(struct ireq *iq, struct dbtable *table,
                                const char *tag, blob_status_t *b, void *record,
                                int blob_index, int cblob, struct schema *pd)
 {
@@ -1120,9 +1120,9 @@ int check_one_blob_consistency(struct ireq *iq, const char *table,
     b->total_length = 0;
 
     if (isondisk < 0) {
-        logmsg(LOGMSG_ERROR, "check_blob_consistency: is_tag_ondisk table %s tag %s "
+        logmsg(LOGMSG_ERROR, "check_blob_consistency: is_tag_ondisk_sc table %s tag %s "
                         "error\n",
-                table, tag);
+                table->tablename, tag);
         return -1;
     }
 
@@ -1132,13 +1132,13 @@ int check_one_blob_consistency(struct ireq *iq, const char *table,
                           blob_index, cblob);
 }
 
-int check_blob_consistency(struct ireq *iq, const char *table, const char *tag,
+int check_blob_consistency(struct ireq *iq, struct dbtable *table, const char *tag,
                            blob_status_t *b, const void *record)
 {
     return check_blob_consistency_int(iq, table, tag, b, record, 0);
 }
 
-int check_and_repair_blob_consistency(struct ireq *iq, const char *table,
+int check_and_repair_blob_consistency(struct ireq *iq, struct dbtable *table,
                                       const char *tag, blob_status_t *b,
                                       const void *record)
 {

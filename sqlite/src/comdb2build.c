@@ -1119,7 +1119,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (create_string_from_token(v, pParse, &indexname, index))
         goto out;
 
-    rc = getidxnumbyname(sc->tablename, indexname, &index_num );
+    rc = getidxnumbyname(get_dbtable_by_name(sc->tablename), indexname, &index_num);
     if( rc ){
         logmsg(LOGMSG_ERROR, "!table:index '%s:%s' not found\n", sc->tablename, indexname);
         setError(pParse, SQLITE_ERROR, "Index not found");

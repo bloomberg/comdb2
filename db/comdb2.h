@@ -2620,14 +2620,14 @@ int process_allow_command(char *line, int lline);
 /* blob caching to support find requests */
 int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
                      const char *to_tag);
-int gather_blob_data_byname(const char *dbname, const char *tag,
+int gather_blob_data_byname(struct dbtable *table, const char *tag,
                             blob_status_t *b, struct schema *pd);
-int check_one_blob_consistency(struct ireq *iq, const char *table,
+int check_one_blob_consistency(struct ireq *iq, struct dbtable *table,
                                const char *tag, blob_status_t *b, void *record,
                                int blob_index, int cblob, struct schema *pd);
-int check_blob_consistency(struct ireq *iq, const char *table, const char *tag,
+int check_blob_consistency(struct ireq *iq, struct dbtable *table, const char *tag,
                            blob_status_t *b, const void *record);
-int check_and_repair_blob_consistency(struct ireq *iq, const char *table,
+int check_and_repair_blob_consistency(struct ireq *iq, struct dbtable *table,
                                       const char *tag, blob_status_t *b,
                                       const void *record);
 void free_blob_status_data(blob_status_t *b);
@@ -2647,7 +2647,7 @@ int getdefaultkeysize(const struct dbtable *tbl, int ixnum);
 int getdefaultdatsize(const struct dbtable *tbl);
 int update_sqlite_stats(struct ireq *iq, void *trans, void *dta);
 void *do_verify(void *);
-void dump_tagged_buf(const char *table, const char *tag,
+void dump_tagged_buf(struct dbtable *table, const char *tag,
                      const unsigned char *buf);
 int ix_find_by_rrn_and_genid_get_curgenid(struct ireq *iq, int rrn,
                                           unsigned long long genid,

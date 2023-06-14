@@ -83,7 +83,7 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
         return;
     }
     logmsg(LOGMSG_INFO, "rrn %d genid 0x%016llx\n", rrn, genid);
-    dump_tagged_buf(db->tablename, ".ONDISK", (unsigned char *)dta);
+    dump_tagged_buf(db, ".ONDISK", (unsigned char *)dta);
     for (ix = 0; ix < db->nix; ix++) {
         key = malloc(getkeysize(db, ix));
         if (key == NULL) {
@@ -92,7 +92,7 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
             return;
         }
         snprintf(tag, sizeof(tag), ".ONDISK_IX_%d", ix);
-        rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, tag, key, NULL);
+        rc = stag_to_stag_buf(db, ".ONDISK", dta, tag, key, NULL);
         if (rc) {
             logmsg(LOGMSG_INFO,
                    "dump_record_by_rrn:stag_to_stag_buf rrn %d genid %016llx "
@@ -102,7 +102,7 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
             break;
         }
         logmsg(LOGMSG_INFO, "ix %d:\n", ix);
-        dump_tagged_buf(db->tablename, tag, (unsigned char *)key);
+        dump_tagged_buf(db, tag, (unsigned char *)key);
         free(key);
     }
     free(dta);

@@ -199,7 +199,7 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     struct schema *s;
 
     /* Grab the tag schema, or punt. */
-    if (!(s = find_tag_schema(tbldb->tablename, ".ONDISK_ix_0"))) {
+    if (!(s = find_tag_schema(tbldb, ".ONDISK_ix_0"))) {
         /* This is not an error. This just means the table has no indexes. */
         goto abort;
     }

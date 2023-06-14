@@ -278,7 +278,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (tag_same_as_ondisktag)
         dbname_schema = get_schema(iq->usedb, -1);
     else
-        dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
+        dbname_schema = find_tag_schema(iq->usedb, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
             reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
@@ -380,7 +380,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             conv_flags |= CONVERT_LITTLE_ENDIAN_CLIENT;
         }
 
-        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+        rc = ctag_to_stag_blobs_tz(iq->usedb, tag, record,
                                    WHOLE_BUFFER, fldnullmap, ondisktag, od_dta,
                                    conv_flags, &reason /*fail reason*/, blobs,
                                    maxblobs, iq->tzname);
@@ -576,7 +576,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (!(flags & RECFLAGS_NO_TRIGGERS) &&
         javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_ADD)) {
         struct javasp_rec *jrec;
-        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename);
+        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb);
         if (!jrec) {
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
@@ -880,7 +880,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (strcmp(tag, ondisktag) == 0)
         dbname_schema = get_schema(iq->usedb, -1);
     else
-        dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
+        dbname_schema = find_tag_schema(iq->usedb, tag);
 
     if (dbname_schema == NULL) {
         if (iq->debug)
@@ -981,7 +981,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
      */
     if (vrecord && !primkey) {
         static unsigned char nullnulls[32] = {0};
-        rc = ctag_to_stag_buf_tz(iq->usedb->tablename, tag, vrecord, reclen,
+        rc = ctag_to_stag_buf_tz(iq->usedb, tag, vrecord, reclen,
                                  nullnulls, ".ONDISK_IX_0", lclprimkey,
                                  conv_flags, NULL, iq->tzname);
         if (rc < 0) {
@@ -1091,7 +1091,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             rc = stag_to_stag_buf_update_tz(dbname_schema, get_schema(iq->usedb, -1), vrecord, odv_dta, NULL,
                                             iq->tzname);
         } else {
-            rc = ctag_to_stag_buf_tz(iq->usedb->tablename, tag, vrecord,
+            rc = ctag_to_stag_buf_tz(iq->usedb, tag, vrecord,
                                      WHOLE_BUFFER, fldnullmap, ".ONDISK",
                                      odv_dta, (conv_flags | CONVERT_UPDATE),
                                      NULL, iq->tzname);
@@ -1138,7 +1138,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             rc = stag_to_stag_buf_update_tz(dbname_schema, get_schema(iq->usedb, -1), record, od_dta, &reason,
                                             iq->tzname);
         } else {
-            rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+            rc = ctag_to_stag_blobs_tz(iq->usedb, tag, record,
                                        WHOLE_BUFFER, fldnullmap, ".ONDISK",
                                        od_dta, (conv_flags | CONVERT_UPDATE),
                                        &reason, blobs, maxblobs, iq->tzname);
@@ -1205,8 +1205,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 int idx;
                 int ncols;
 
-                idx = get_schema_blob_field_idx((char *)iq->usedb->tablename,
-                                                ".ONDISK", blobno);
+                idx = get_schema_blob_field_idx(iq->usedb, ".ONDISK", blobno);
                 ncols = updCols[0];
 
                 if ((idx >= 0) && (idx < ncols) && (-1 == updCols[idx + 1]))
@@ -1382,8 +1381,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             int idx;
             int ncols;
 
-            idx = get_schema_blob_field_idx((char *)iq->usedb->tablename,
-                                            ".ONDISK", blobno);
+            idx = get_schema_blob_field_idx(iq->usedb, ".ONDISK", blobno);
             ncols = updCols[0];
 
             if ((idx >= 0) && (idx < ncols) && (-1 == updCols[idx + 1])) {
@@ -1534,12 +1532,12 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         blob_status_t new_rec_blobs = {0};
 
         /* old record no longer exists - don't set trans or rrn */
-        joldrec = javasp_alloc_rec(old_dta, od_len, iq->usedb->tablename);
+        joldrec = javasp_alloc_rec(old_dta, od_len, iq->usedb);
         javasp_rec_set_blobs(joldrec, &oldblobs);
         javasp_rec_set_trans(joldrec, iq->jsph, rrn, vgenid);
 
         /* new record now exists on disk */
-        jnewrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename);
+        jnewrec = javasp_alloc_rec(od_dta, od_len, iq->usedb);
 
         /* we also need to pass down blobs.  not all of them are necessarily
            specified in the 'blobs' variable (eg: static tag that omits a blob)
@@ -1881,7 +1879,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (!(flags & RECFLAGS_NO_TRIGGERS) &&
         javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_AFTER_DEL)) {
         struct javasp_rec *jrec;
-        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb->tablename);
+        jrec = javasp_alloc_rec(od_dta, od_len, iq->usedb);
         javasp_rec_set_trans(jrec, iq->jsph, rrn, genid);
         javasp_rec_set_blobs(jrec, &oldblobs);
         rc =
@@ -2025,7 +2023,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     }
 
     /* Remap the incoming updCols to new schema's updCols */
-    rc = remap_update_columns(iq->usedb->tablename, ".ONDISK", updCols,
+    rc = remap_update_columns(iq->usedb, ".ONDISK", updCols,
                               ".NEW..ONDISK", myupdatecols);
     if (iq->debug) {
         reqprintf(iq, "remap_update_columns returns %d", rc);
@@ -2074,7 +2072,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
 
         /* Get blobs too. We'll need them to determine whether blob_add() is needed. */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", new_dta, ".NEW..ONDISK", sc_new, NULL, outblobs,
+        rc = stag_to_stag_buf_blobs(iq->usedb, ".ONDISK", new_dta, ".NEW..ONDISK", sc_new, NULL, outblobs,
                                     MAXBLOBS, 1);
 
         if (rc == -1) {
@@ -2139,7 +2137,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
         /* convert old_dta and oldblobs to ".NEW..ONDISK" */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", old_dta,
+        rc = stag_to_stag_buf_blobs(iq->usedb, ".ONDISK", old_dta,
                                     ".NEW..ONDISK", sc_old, NULL, del_idx_blobs,
                                     del_idx_blobs ? MAXBLOBS : 0, 1);
         if (rc) {
@@ -2155,7 +2153,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             goto err;
         }
         /* convert new_dta and newblobs to ".NEW..ONDISK" */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", new_dta,
+        rc = stag_to_stag_buf_blobs(iq->usedb, ".ONDISK", new_dta,
                                     ".NEW..ONDISK", sc_new, NULL, add_idx_blobs,
                                     add_idx_blobs ? MAXBLOBS : 0, 1);
 
@@ -2196,8 +2194,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
             blob_buffer_t *blob;
             int oldcol, oldblobidx, idx;
 
-            idx = get_schema_blob_field_idx((char *)iq->usedb->tablename,
-                                            ".NEW..ONDISK", blobn);
+            idx = get_schema_blob_field_idx(iq->usedb, ".NEW..ONDISK", blobn);
             if (iq->debug) {
                 reqprintf(iq,
                           "get_schema_blob_field_idx returns %d for blobno %d",
@@ -2248,8 +2245,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
 
             /* Use the column of the old blob to map to an old blob index */
             oldcol = myupdatecols[idx + 1];
-            oldblobidx = get_schema_field_blob_idx((char *)iq->usedb->tablename,
-                                                   ".ONDISK", oldcol);
+            oldblobidx = get_schema_field_blob_idx(iq->usedb, ".ONDISK", oldcol);
             if (iq->debug) {
                 reqprintf(iq, "get_schema_field_blob_idx returns %d for blobno "
                               "%d oldcol %d",
@@ -2385,7 +2381,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
             goto err;
         }
         /* convert old_dta and oldblobs to ".NEW..ONDISK" */
-        rc = stag_to_stag_buf_blobs(iq->usedb->tablename, ".ONDISK", old_dta,
+        rc = stag_to_stag_buf_blobs(iq->usedb, ".ONDISK", old_dta,
                                     ".NEW..ONDISK", sc_old, NULL, del_idx_blobs,
                                     del_idx_blobs ? MAXBLOBS : 0, 1);
         if (rc) {
@@ -2618,7 +2614,7 @@ int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *re
 
     /* make sure the blobs are consistent with the record; if they're not then
      * we have a database corruption situation. */
-    rc = check_blob_consistency(iq, iq->usedb->tablename, tag, blobs, record);
+    rc = check_blob_consistency(iq, iq->usedb, tag, blobs, record);
     if (iq->debug)
         reqprintf(iq, "CHECK OLD BLOB CONSISTENCY RRN %d GENID 0x%llx RC %d",
                   rrn, genid, rc);
@@ -2731,7 +2727,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (tag_same_as_ondisktag)
         dbname_schema = get_schema(iq->usedb, -1);
     else
-        dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
+        dbname_schema = find_tag_schema(iq->usedb, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
             if (iq->debug)
@@ -2773,7 +2769,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ERR;
     }
 
-    rc = getidxnumbyname(iq->usedb->tablename, keyname, &ixnum);
+    rc = getidxnumbyname(iq->usedb, keyname, &ixnum);
     if (rc != 0) {
         if (iq->debug) {
             reqprintf(iq, "BAD KEY %s", keyname);
@@ -2807,7 +2803,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
         snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
 
-        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+        rc = ctag_to_stag_blobs_tz(iq->usedb, tag, record,
                                    WHOLE_BUFFER, fldnullmap, keytag, key,
                                    conv_flags, &reason /*fail reason*/, blobs,
                                    maxblobs, iq->tzname);

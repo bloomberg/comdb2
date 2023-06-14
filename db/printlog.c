@@ -94,7 +94,7 @@ void dump_record(DB_ENV *dbenv, __db_addrem_args *args, struct fname *f)
             } else {
                 sprintf(tag, gbl_ondisk_ver_fmt, odh.csc2vers);
             }
-            sc = find_tag_schema(f->table, tag);
+            sc = find_tag_schema(get_dbtable_by_name(f->table), tag);
             if (sc == NULL) {
                 printf("can't find schema for %s ", tag);
                 return;

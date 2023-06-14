@@ -811,7 +811,7 @@ convert_records:
      *- alter merge: in this case the schema is already populated with NEW tags
      *- create merge: we need to populate schema with NEW tags
      */
-    struct schema *tag = find_tag_schema(newdb->tablename, ".NEW..ONDISK");
+    struct schema *tag = find_tag_schema(newdb, ".NEW..ONDISK");
     if (!tag) {
         struct errstat err = {0};
         rc =

@@ -6713,8 +6713,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             /* Make sure this is sane before sending to upd_record. */
             for (int ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
-                    int idx = get_schema_blob_field_idx(iq->usedb->tablename,
-                                                        ".ONDISK", ii);
+                    int idx = get_schema_blob_field_idx(iq->usedb, ".ONDISK", ii);
                     assert(idx < ncols);
                     assert(-1 == (*updCols)[idx + 1]);
                 }

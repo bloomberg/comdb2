@@ -704,8 +704,8 @@ static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
     /* Check if we need to unpack vutf8. */
     assert(iq->usedb->sc_from != NULL && iq->usedb->sc_to != NULL);
 
-    from = find_tag_schema(iq->usedb->sc_from->tablename, ".ONDISK");
-    to = find_tag_schema(iq->usedb->sc_to->tablename, ".NEW..ONDISK");
+    from = find_tag_schema(iq->usedb->sc_from, ".ONDISK");
+    to = find_tag_schema(iq->usedb->sc_to, ".NEW..ONDISK");
 
     for (rc = 0, i = 0; i != to->nmembers; ++i) {
         /* If the field in the new schema is new, do nothing. */

@@ -1469,9 +1469,9 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
         /* Send length of -2 if this isn't being used in this update. */
         if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
             int idx =
-                get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK", i);
+                get_schema_blob_field_idx(pCur->db, ".ONDISK", i);
             /* AZ: is pCur->db->schema not set to ondisk so we can instead call
-             * get_schema_blob_field_idx_sc(pCur->db->schema,i); ?? */
+             * get_schema_blob_field_idx_sc(pCur->db,i); ?? */
             int ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 /* Put a token on the network if this isn't going to be used */

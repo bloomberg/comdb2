@@ -630,7 +630,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
             return NULL;
         }
     }
-    pCur->numblobs = get_schema_blob_count(pCur->db->tablename, ".ONDISK");
+    pCur->numblobs = get_schema_blob_count(pCur->db, ".ONDISK");
 
     if (need_bdbcursor) {
         pCur->bdbcur = bdb_cursor_open(
