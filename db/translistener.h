@@ -170,7 +170,7 @@ int javasp_custom_read(struct ireq *iq, const char *opname, const void *indata,
 /* Allocate a javasp_tagged_rec structure for use in communicating record
  * contents to the Java code. */
 struct javasp_rec *javasp_alloc_rec(const void *od_dta, size_t od_len,
-                                    const char *tblname);
+                                    struct dbtable *table);
 
 /* For an allocated record, set the Java transaction handle, rrn and genid.
  * This allows the record to retrieve unknown blobs. */

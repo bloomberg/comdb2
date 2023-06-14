@@ -42,8 +42,8 @@ extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 
-static void generate_fkconstraint_error(struct ireq *iq, const char *child, const char *fkey, const char *parent,
-                                        const char *rkey, const char *reason)
+static void generate_fkconstraint_error(struct ireq *iq, struct dbtable *child, const char *fkey,
+                                        struct dbtable *parent, const char *rkey, const char *reason)
 {
     /* foreign key and referenced key schema */
     const struct schema *fk, *rk;
@@ -59,10 +59,10 @@ static void generate_fkconstraint_error(struct ireq *iq, const char *child, cons
         return;
 
     ofs = sprintf(errstr, "Transaction violates foreign key constraint ");
-    ofs += sprintf(errstr + ofs, "%s(%s", child, fk->member[0].name);
+    ofs += sprintf(errstr + ofs, "%s(%s", child->tablename, fk->member[0].name);
     for (ii = 1; ii != fk->nmembers; ++ii)
         ofs += sprintf(errstr + ofs, ", %s", fk->member[ii].name);
-    ofs += sprintf(errstr + ofs, ") -> %s(%s", parent, rk->member[0].name);
+    ofs += sprintf(errstr + ofs, ") -> %s(%s", parent->tablename, rk->member[0].name);
     for (ii = 1; ii != rk->nmembers; ++ii)
         ofs += sprintf(errstr + ofs, ", %s", rk->member[ii].name);
     sprintf(errstr + ofs, "): %s", reason);
@@ -438,7 +438,8 @@ int check_update_constraints(struct ireq *iq, void *trans,
             if (strcasecmp(cnstrt->table[j], iq->usedb->tablename)) {
                 continue;
             }
-            rc = getidxnumbyname(cnstrt->table[j], cnstrt->keynm[j], &ixnum);
+            rc = getidxnumbyname(get_dbtable_by_name(cnstrt->table[j]),
+                                 cnstrt->keynm[j], &ixnum);
             if (rc) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT: UNKNOWN KEYTAG %s",
@@ -509,7 +510,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 }
             }
             /* here we convert the key into return db format */
-            rc = getidxnumbyname(cnstrt->lcltable->tablename,
+            rc = getidxnumbyname(get_dbtable_by_name(cnstrt->lcltable->tablename),
                                  cnstrt->lclkeyname, &rixnum);
             if (rc) {
                 if (iq->debug)
@@ -528,7 +529,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             int nulls = 0;
 
             rixlen = rc = stag_to_stag_buf_ckey(
-                iq->usedb->tablename, ondisk_tag, lkey,
+                iq->usedb, ondisk_tag, lkey,
                 cnstrt->lcltable->tablename, rondisk_tag, rkey, &nulls, PK2FK);
             if (rc == -1) {
 
@@ -577,7 +578,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                    new data for everyone else.
                 */
                 rixlen = rc =
-                    stag_to_stag_buf_ckey(iq->usedb->tablename, ondisk_tag,
+                    stag_to_stag_buf_ckey(iq->usedb, ondisk_tag,
                                           nkey, cnstrt->lcltable->tablename,
                                           rondisk_tag, rnkey, NULL, PK2FK);
                 if (rc == -1) {
@@ -777,8 +778,9 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
 
         int nullck = 0;
 
-        keylen = rc = stag_to_stag_buf_ckey(bct->tablename, ondisk_tag, skey, bct->dstdb->tablename, dondisk_tag, dkey,
-                                            &nullck, FK2PK);
+        keylen = rc = stag_to_stag_buf_ckey(get_dbtable_by_name(bct->tablename),
+                                            ondisk_tag, skey, bct->dstdb->tablename,
+                                            dondisk_tag, dkey, &nullck, FK2PK);
         if (rc == -1) {
             if (iq->debug)
                 reqprintf(iq,
@@ -929,7 +931,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
             char nullkey[MAXKEYLEN + 1];
-            rc = stag_set_key_null(bct->tablename, ondisk_tag, skey, keylen, nullkey);
+            rc = stag_set_key_null(iq->usedb, ondisk_tag, skey, keylen, nullkey);
 
             if (rc)
                 goto delnullerr;
@@ -1089,7 +1091,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 reqmoref(iq, " RC %d", rc);
             }
 
-            generate_fkconstraint_error(iq, bct->tablename, ondisk_tag, bct->dstdb->tablename, dondisk_tag,
+            generate_fkconstraint_error(iq, get_dbtable_by_name(bct->tablename), ondisk_tag, bct->dstdb, dondisk_tag,
                                         "key value is still referenced from child table");
             *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
             close_constraint_table_cursor(cur);
@@ -1618,8 +1620,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                 int ridx = 0, lixnum = -1;
                 char lkey[MAXKEYLEN + 1];
 
-                rc = getidxnumbyname(iq->usedb->tablename, ct->lclkeyname,
-                                     &lixnum);
+                rc = getidxnumbyname(iq->usedb, ct->lclkeyname, &lixnum);
                 if (rc) {
                     if (iq->debug)
                         reqprintf(iq, "VERKYCNSTRT: UNKNOWN LCL KEYTAG %s",
@@ -1680,7 +1681,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                         close_constraint_table_cursor(cur);
                         return ERR_BADREQ;
                     }
-                    rc = getidxnumbyname(ftable->tablename, ct->keynm[ridx], &fixnum);
+                    rc = getidxnumbyname(ftable, ct->keynm[ridx], &fixnum);
                     if (rc) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT: UNKNOWN KEYTAG %s",
@@ -1702,7 +1703,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
 
                     snprintf(fondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", fixnum);
                     fixlen = rc = stag_to_stag_buf_ckey(
-                        iq->usedb->tablename, ondisk_tag, lkey,
+                        iq->usedb, ondisk_tag, lkey,
                         ftable->tablename, fondisk_tag, fkey, &nulls, FK2PK);
                     if (rc == -1) {
                         if (iq->debug)
@@ -1762,8 +1763,9 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                             reqmoref(iq, " RC %d", rc);
                         }
 
-                        generate_fkconstraint_error(iq, ct->lcltable->tablename, ondisk_tag, ftable->tablename,
-                                                    fondisk_tag, "key value does not exist in parent table");
+                        generate_fkconstraint_error(iq, get_dbtable_by_name(ct->lcltable->tablename), ondisk_tag, 
+                                                    ftable, fondisk_tag,
+                                                    "key value does not exist in parent table");
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
@@ -2153,7 +2155,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
         } else {
             snprintf(keytag, sizeof(keytag), "%s", ct->lclkeyname);
         }
-        if (!(fky = find_tag_schema(from_db->tablename, keytag))) {
+        if (!(fky = find_tag_schema(from_db, keytag))) {
             /* Referencing a nonexistent key */
             constraint_err(s, from_db, ct, 0, "foreign key not found");
             n_errors++;
@@ -2190,13 +2192,18 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             }
             if (rdb == new_db) {
                 snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[jj]);
+                if (!(bky = find_tag_schema_by_name(ct->table[jj], keytag))) {
+                    /* Referencing a nonexistent key */
+                    constraint_err(s, from_db, ct, jj, "parent key not found");
+                    n_errors++;
+                }
             } else {
                 snprintf(keytag, sizeof(keytag), "%s", ct->keynm[jj]);
-            }
-            if (!(bky = find_tag_schema(ct->table[jj], keytag))) {
-                /* Referencing a nonexistent key */
-                constraint_err(s, from_db, ct, jj, "parent key not found");
-                n_errors++;
+                if (!(bky = find_tag_schema(rdb, keytag))) {
+                    /* Referencing a nonexistent key */
+                    constraint_err(s, from_db, ct, jj, "parent key not found");
+                    n_errors++;
+                }
             }
 
             if (constraint_key_check(fky, bky)) {
@@ -2224,7 +2231,7 @@ int populate_reverse_constraints(struct dbtable *db)
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
 
-        sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);
+        sc = find_tag_schema(db, cnstrt->lclkeyname);
         if (sc == NULL) {
             ++n_errors;
             logmsg(LOGMSG_ERROR,
@@ -2248,7 +2255,10 @@ int populate_reverse_constraints(struct dbtable *db)
                 continue;
             }
 
-            sckey = find_tag_schema(cnstrt->table[jj], cnstrt->keynm[jj]);
+            if (cttbl == db)
+                sckey = find_tag_schema_by_name(cnstrt->table[jj], cnstrt->keynm[jj]);
+            else
+                sckey = find_tag_schema(cttbl, cnstrt->keynm[jj]);
             if (sckey == NULL) {
                 ++n_errors;
                 logmsg(LOGMSG_ERROR, "constraint error for key %s: key %s is not found in "
@@ -2279,7 +2289,7 @@ int populate_reverse_constraints(struct dbtable *db)
  * can be multiple such rules */
 int check_single_key_constraint(struct ireq *ruleiq, const constraint_t *ct,
                                 const char *lcl_tag, const char *lcl_key,
-                                const char *tblname, void *trans, int *remote_ri)
+                                const struct dbtable *table, void *trans, int *remote_ri)
 {
     int rc = 0;
     if (remote_ri)
@@ -2295,7 +2305,7 @@ int check_single_key_constraint(struct ireq *ruleiq, const constraint_t *ct,
         if (ruledb == NULL)
             return ERR_CONSTR;
 
-        rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], &ridx);
+        rc = getidxnumbyname(ruledb, ct->keynm[ri], &ridx);
         if (rc != 0)
             return ERR_CONSTR;
 
@@ -2304,7 +2314,7 @@ int check_single_key_constraint(struct ireq *ruleiq, const constraint_t *ct,
             return ERR_BUF_TOO_SMALL;
 
         /* Key -> Key : local table -> referenced table */
-        int rixlen = stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
+        int rixlen = stag_to_stag_buf_ckey(table, lcl_tag, lcl_key, ruledb->tablename,
                                            rtag, rkey, &nulls, FK2PK);
 
         if (-1 == rixlen)
@@ -2344,7 +2354,7 @@ constraint_t *get_constraint_for_ix(struct dbtable *db_table, int ix)
     for (int ci = 0; ci < db_table->n_constraints; ci++) {
         constraint_t *ct = &(db_table->constraints[ci]);
         int lcl_idx;
-        int rc = getidxnumbyname(db_table->tablename, ct->lclkeyname, &lcl_idx);
+        int rc = getidxnumbyname(db_table, ct->lclkeyname, &lcl_idx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "could not get index for key %d\n", ix);
             return NULL;
@@ -2371,7 +2381,7 @@ int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
     if (ruledb == NULL)
         return 1;
 
-    if ((rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], ridx)))
+    if ((rc = getidxnumbyname(ruledb, ct->keynm[ri], ridx)))
         return rc;
 
     char rtag[MAXTAGLEN];
@@ -2381,8 +2391,8 @@ int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
 
     /* convert local Key -> foreign Key : local table -> referenced table */
     *rixlen = rc =
-        stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
-                              rtag, rkey, &nulls, FK2PK);
+        stag_to_stag_buf_ckey(get_dbtable_by_name(tblname), lcl_tag, lcl_key,
+                              ruledb->tablename, rtag, rkey, &nulls, FK2PK);
 
     if (-1 == rc)
         return rc;

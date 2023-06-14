@@ -6692,7 +6692,7 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     }
 
     if (!pCur->have_blob_descriptor) {
-        gather_blob_data_byname(pCur->db->tablename, ".ONDISK",
+        gather_blob_data_byname(pCur->db, ".ONDISK",
                                 &pCur->blob_descriptor, pd);
         pCur->have_blob_descriptor = 1;
     }
@@ -6749,7 +6749,7 @@ again:
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
 
-    if (check_one_blob_consistency(&iq, iq.usedb->tablename, ".ONDISK", &blobs,
+    if (check_one_blob_consistency(&iq, iq.usedb, ".ONDISK", &blobs,
                                    dta, f->blob_index, 0, pd)) {
         free_blob_status_data(&blobs);
         nretries++;
@@ -8173,7 +8173,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     /* check one time if we have blobs when we open the cursor,
      * so we dont need to run this code for every row if we dont even
      * have them */
-    rc = gather_blob_data_byname(cur->db->tablename, ".ONDISK", &cur->blobs, NULL);
+    rc = gather_blob_data_byname(cur->db, ".ONDISK", &cur->blobs, NULL);
     if (rc) {
        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: gather_blob_data error rc=%d\n", rc);
         return SQLITE_INTERNAL;
@@ -8531,7 +8531,7 @@ static int make_stat_record(struct sql_thread *thd, BtCursor *pCur,
                             blob_buffer_t blobs[MAXBLOBS])
 {
     int n = is_stat2(pCur->db->tablename) ? 3 : 2;
-    struct schema *sc = find_tag_schema(pCur->db->tablename, ".ONDISK_IX_0");
+    struct schema *sc = find_tag_schema(pCur->db, ".ONDISK_IX_0");
 
     /* extract first n fields from packed record */
     if (sqlite_to_ondisk(sc, pData, nData, pCur->ondisk_buf, pCur->clnt->tzname,

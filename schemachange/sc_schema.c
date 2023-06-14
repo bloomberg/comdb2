@@ -52,7 +52,7 @@ int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, vo
             rc = ERR_CONSTR;
             goto done;
         }
-        rc = stag_to_stag_buf(db->tablename, from, old_dta, ".NEW..ONDISK",
+        rc = stag_to_stag_buf(db, from, old_dta, ".NEW..ONDISK",
                               new_dta, &reason);
         if (rc) {
             rc = ERR_CONSTR;
@@ -79,7 +79,7 @@ int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, vo
 
         /* Name: .NEW.COLUMNNAME -> .NEW..ONDISK_IX_nn */
         snprintf(lcl_tag, sizeof lcl_tag, ".NEW.%s", ct->lclkeyname);
-        rc = getidxnumbyname(db->tablename, lcl_tag, &lcl_idx);
+        rc = getidxnumbyname(db, lcl_tag, &lcl_idx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "could not get index for %s\n", lcl_tag);
             rc = ERR_CONSTR;
@@ -98,7 +98,7 @@ int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, vo
         if (iq->idxInsert && !convert)
             memcpy(lcl_key, iq->idxInsert[lcl_idx], db->ix_keylen[lcl_idx]);
         else
-            rc = stag_to_stag_buf_blobs(db->tablename, from, od_dta, lcl_tag,
+            rc = stag_to_stag_buf_blobs(db, from, od_dta, lcl_tag,
                                         lcl_key, NULL, blobs, maxblobs, 0);
         if (rc) {
             rc = ERR_CONSTR;
@@ -113,7 +113,7 @@ int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, vo
 
         int ri;
         rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key,
-                                         db->tablename, trans, &ri);
+                                         db, trans, &ri);
         if (rc == RC_INTERNAL_RETRY) {
             break;
         } else if (rc && rc != ERR_CONSTR) {
@@ -169,7 +169,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             ldb = newdb;
             snprintf(ondisk_tag, sizeof(ondisk_tag), ".NEW.%s",
                      cnstrt->keynm[j]);
-            rc = getidxnumbyname(cnstrt->table[j], ondisk_tag, &ixnum);
+            rc = getidxnumbyname(ldb, ondisk_tag, &ixnum);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: unknown keytag '%s'\n", __func__,
                        ondisk_tag);
@@ -185,7 +185,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             snprintf(ondisk_tag, sizeof(ondisk_tag), ".NEW..ONDISK_IX_%d",
                      ixnum);
             /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
-            rc = stag_to_stag_buf(newdb->tablename, from, od_dta, ondisk_tag,
+            rc = stag_to_stag_buf(newdb, from, od_dta, ondisk_tag,
                                   lkey, NULL);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed to convert to '%s'\n",
@@ -193,7 +193,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                 return ERR_CONVERT_IX;
             }
             /* here we convert the key into return db format */
-            rc = getidxnumbyname(cnstrt->lcltable->tablename,
+            rc = getidxnumbyname(get_dbtable_by_name(cnstrt->lcltable->tablename),
                                  cnstrt->lclkeyname, &rixnum);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: unknown keytag '%s'\n", __func__,
@@ -206,7 +206,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             int nulls = 0;
 
             rixlen = rc = stag_to_stag_buf_ckey(
-                ldb->tablename, ondisk_tag, lkey, cnstrt->lcltable->tablename,
+                ldb, ondisk_tag, lkey, cnstrt->lcltable->tablename,
                 rondisk_tag, rkey, &nulls, PK2FK);
             if (rc == -1) {
                 /* I followed the logic in check_update_constraints */
@@ -438,7 +438,7 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
         exit(1);
     }
 
-    ondisk_schema = find_tag_schema(db->tablename, ".ONDISK");
+    ondisk_schema = find_tag_schema(db, ".ONDISK");
     if (NULL == ondisk_schema) {
         logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
                db->tablename);
@@ -609,7 +609,7 @@ void verify_schema_change_constraint(struct ireq *iq, void *trans,
     }
 
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
+    rc = stag_to_stag_buf_blobs(usedb->sc_to, ".ONDISK", od_dta,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
@@ -739,8 +739,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
     memset(plan, 0, sizeof(struct scplan));
 
-    oldsc = find_tag_schema(olddb->tablename, ".ONDISK");
-    newsc = find_tag_schema(olddb->tablename, ".NEW..ONDISK");
+    oldsc = find_tag_schema(olddb, ".ONDISK");
+    newsc = find_tag_schema(olddb, ".NEW..ONDISK");
     if (!oldsc || !newsc) {
         sc_errf(s, "%s: can't find both schemas! oldsc=%p newsc=%p\n", __func__,
                 oldsc, newsc);
@@ -816,8 +816,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
     for (blobn = 0; blobn < newdb->numblobs; blobn++) {
         int map;
-        map = tbl_blob_no_to_tbl_blob_no(newdb->tablename, ".NEW..ONDISK",
-                                         blobn, olddb->tablename, ".ONDISK");
+        map = tbl_blob_no_to_tbl_blob_no(newdb, ".NEW..ONDISK",
+                                         blobn, olddb, ".ONDISK");
         /* Sanity check, although I don't see how this can possibly
          * happen - make sure we haven't already decided to use this
          * blob file for anything. */
@@ -841,9 +841,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
             plan->blob_plan[blobn] = -1;
         } else if (map >= 0 && map < olddb->numblobs) {
             int oldidx =
-                get_schema_blob_field_idx(olddb->tablename, ".ONDISK", map);
-            int newidx = get_schema_blob_field_idx(newdb->tablename,
-                                                   ".NEW..ONDISK", blobn);
+                get_schema_blob_field_idx(olddb, ".ONDISK", map);
+            int newidx = get_schema_blob_field_idx(newdb, ".NEW..ONDISK", blobn);
 
             /* rebuild if the blob length changed */
             if (oldsc->member[oldidx].len != newsc->member[newidx].len) {
@@ -1326,7 +1325,7 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
 /* compatible change if type unchanged but get larger in size */
 int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
 {
-    struct schema *s1 = find_tag_schema(olddb->tablename, ixname);
+    struct schema *s1 = find_tag_schema(olddb, ixname);
     if (s1->nmembers != s2->nmembers) return 1;
     int i;
     for (i = 0; i < s1->nmembers; ++i) {

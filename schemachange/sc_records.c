@@ -296,8 +296,8 @@ static int convert_server_record_blobs(const void *inbufp, const char *from_tag,
 
     if (from_tag == NULL) from_tag = ".ONDISK";
 
-    int rc = stag_to_stag_buf_blobs(db->table, from_tag, inbuf, db->tag,
-                                    db->recbuf, &reason, blobs, maxblobs, 1);
+    int rc = stag_to_stag_buf_blobs(get_dbtable_by_name(db->table), from_tag, inbuf,
+                                    db->tag, db->recbuf, &reason, blobs, maxblobs, 1);
     if (rc) {
         convert_failure_reason_str(&reason, db->table, from_tag, db->tag, err,
                                    sizeof(err));
@@ -911,7 +911,7 @@ static int convert_record(struct convert_record_data *data)
             return -2;
         }
         rc = check_and_repair_blob_consistency(
-            &data->iq, data->iq.usedb->tablename, ".ONDISK", &data->blb, dta);
+            &data->iq, data->iq.usedb, ".ONDISK", &data->blb, dta);
 
         if (data->s->force_rebuild || data->s->use_old_blobs_on_rebuild) {
             for (int ii = 0; ii < data->from->numblobs; ii++) {
@@ -1198,7 +1198,7 @@ void *convert_records_thd(struct convert_record_data *data)
     data->outrc = -1;
     data->curkey = data->key1;
     data->lastkey = data->key2;
-    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
+    data->rec = allocate_db_record(data->to, ".NEW..ONDISK");
     data->dta_buf = malloc(data->from->lrl);
     if (!data->dta_buf) {
         sc_errf(data->s, "convert_records_thd: ran out of memory trying to "
@@ -1385,13 +1385,13 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         for (ii = 0; ii < data.blb.numcblobs; ii++) {
             data.blb.cblob_disk_ixs[ii] = ii;
             data.blb.cblob_tag_ixs[ii] =
-                get_schema_blob_field_idx(data.from->tablename, ".ONDISK", ii);
+                get_schema_blob_field_idx(data.from, ".ONDISK", ii);
         }
         for (ii = 0; ii < data.to->numblobs; ii++) {
             int map;
             map =
-                tbl_blob_no_to_tbl_blob_no(data.to->tablename, ".NEW..ONDISK",
-                                           ii, data.from->tablename, ".ONDISK");
+                tbl_blob_no_to_tbl_blob_no(data.to, ".NEW..ONDISK",
+                                           ii, data.from, ".ONDISK");
             if (map < 0 && map != -3) {
                 sc_errf(data.s,
                         "convert_all_records: error mapping blob %d "
@@ -3510,7 +3510,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
     /* init all buffer needed by this thread to do logical redo so we don't need
      * to malloc & free every single time */
-    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
+    data->rec = allocate_db_record(data->to, ".NEW..ONDISK");
     data->iq.usedb = data->to;
     data->blob_hash = hash_init_o(offsetof(struct blob_recs, genid),
                                   sizeof(unsigned long long));

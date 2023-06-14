@@ -883,7 +883,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                  * old record and the changes.
                  */
                 memcpy(od_dta, fnddta, od_len);
-                rc = ctag_to_stag_buf(iq.usedb->tablename, tag, req->record,
+                rc = ctag_to_stag_buf(iq.usedb, tag, req->record,
                                       WHOLE_BUFFER, fldnullmap, ".ONDISK",
                                       od_dta, CONVERT_UPDATE, &reason);
                 if (rc < 0) {

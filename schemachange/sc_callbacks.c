@@ -288,7 +288,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
+    rc = stag_to_stag_buf_blobs(usedb->sc_to, ".ONDISK", od_dta,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
@@ -360,7 +360,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK",
+    rc = stag_to_stag_buf_blobs(usedb->sc_to, ".ONDISK",
                                 (const char *)od_dta, ".NEW..ONDISK", new_dta,
                                 &reason, blobs, maxblobs, 1);
     if (rc) {
@@ -799,7 +799,7 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
         struct schema *ver_one;
         char tag[MAXTAGLEN];
 
-        ondisk_schema = find_tag_schema(db->tablename, ".ONDISK");
+        ondisk_schema = find_tag_schema(db, ".ONDISK");
         if (NULL == ondisk_schema) {
             logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
                    db->tablename);

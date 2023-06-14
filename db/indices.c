@@ -912,7 +912,7 @@ done:
 }
 
 // in sc_schema.h
-int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
+int verify_record_constraint(struct ireq *iq, const struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert);
@@ -986,7 +986,7 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                      mangled_key, partial_datacopy_tail, (char *)new_dta, nd_len, key);
         else {
             rc = create_key_from_schema(
-                iq->usedb, use_new_tag ? NULL : find_tag_schema(iq->usedb->tablename, ".ONDISK"), ixnum, &od_dta_tail,
+                iq->usedb, use_new_tag ? NULL : find_tag_schema(iq->usedb, ".ONDISK"), ixnum, &od_dta_tail,
                 &od_tail_len, mangled_key, partial_datacopy_tail, new_dta, nd_len, key, blobs, MAXBLOBS, NULL);
         }
 
@@ -1078,7 +1078,7 @@ int upd_new_record_indices(
             memcpy(key, iq->idxDelete[ixnum], keysize);
         } else {
             rc = create_key_from_schema_simple(iq->usedb,
-                                               use_new_tag ? NULL : find_tag_schema(iq->usedb->tablename, ".ONDISK"),
+                                               use_new_tag ? NULL : find_tag_schema(iq->usedb, ".ONDISK"),
                                                ixnum, use_new_tag ? sc_old : old_dta, key, del_idx_blobs, MAXBLOBS);
         }
 
@@ -1162,7 +1162,7 @@ int del_new_record_indices(struct ireq *iq, void *trans,
             rc = 0;
         } else {
             rc = create_key_from_schema_simple(iq->usedb,
-                                               use_new_tag ? NULL : find_tag_schema(iq->usedb->tablename, ".ONDISK"),
+                                               use_new_tag ? NULL : find_tag_schema(iq->usedb, ".ONDISK"),
                                                ixnum, use_new_tag ? sc_old : old_dta, key, del_idx_blobs, MAXBLOBS);
         }
 

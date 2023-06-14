@@ -5781,7 +5781,6 @@ int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
                                    int *blobnums, void **blobptrs)
 {
-    char *table = iq->usedb->tablename;
     struct schema *sch;
     struct field *fld;
     int i;
@@ -5790,7 +5789,7 @@ static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
     int blobidx = 0;      /* walk blobnums[numblobs] list for the tag */
     int diskblobidx = -1; /* walk ondisk blobs */
 
-    sch = find_tag_schema(table, ".ONDISK");
+    sch = find_tag_schema(iq->usedb, ".ONDISK");
     if (sch == NULL)
         return -1;
 

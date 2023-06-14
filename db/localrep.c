@@ -80,7 +80,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    s = find_tag_schema(iq->usedb->tablename, ".ONDISK_CLIENT");
+    s = find_tag_schema(iq->usedb, ".ONDISK_CLIENT");
     if (s == NULL) {
         return OP_FAILED_INTERNAL;
     }
@@ -91,7 +91,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     /* Now get the client version of the record and flush it out
        in a format the client can understand.  It goes out in this format to
        some intermediary machine (gsrv) from where it goes out via rmque. */
-    rc = stag_to_ctag_buf_tz(iq->usedb->tablename, ".ONDISK", od_dta, -1,
+    rc = stag_to_ctag_buf_tz(iq->usedb, ".ONDISK", od_dta, -1,
                              ".ONDISK_CLIENT", client_buf,
                              (unsigned char *)nulls, CONVERT_IGNORE_BLOBS, NULL,
                              NULL, "US/Eastern");
@@ -131,7 +131,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                      * That necessitates looking up the value in the ondisk
                      * schema. */
                     server_schema =
-                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
+                        find_tag_schema(iq->usedb, ".ONDISK");
                     if (server_schema == NULL) {
                         printf("can't find schema for %s\n",
                                iq->usedb->tablename);
@@ -181,7 +181,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
 
                 if (server_schema == NULL) {
                     server_schema =
-                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
+                        find_tag_schema(iq->usedb, ".ONDISK");
                     if (server_schema == NULL) {
                         printf("can't find schema for %s\n",
                                iq->usedb->tablename);
@@ -409,7 +409,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    s = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    s = find_tag_schema(iq->usedb, ".ONDISK");
     if (s == NULL) {
         rc = OP_FAILED_INTERNAL;
         goto done;
@@ -417,7 +417,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     odsz = get_size_of_schema(s);
     server_buf = malloc(odsz);
 
-    s = find_tag_schema(iq->usedb->tablename, ".ONDISK_CLIENT");
+    s = find_tag_schema(iq->usedb, ".ONDISK_CLIENT");
     if (s == NULL) {
         free(server_buf);
         server_buf = NULL;
@@ -448,7 +448,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     /* Now get the client version of the record and flush it out
        in a format the client can understand.  It goes out in this format to
        some intermediary machine (gsrv) from where it goes out via rmque. */
-    rc = stag_to_ctag_buf_tz(iq->usedb->tablename, ".ONDISK", server_buf, -1,
+    rc = stag_to_ctag_buf_tz(iq->usedb, ".ONDISK", server_buf, -1,
                              ".ONDISK_CLIENT", client_buf,
                              (unsigned char *)nulls, CONVERT_IGNORE_BLOBS, NULL,
                              NULL, "US/Eastern");
@@ -483,7 +483,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                      * That necessitates looking up the value in the ondisk
                      * schema. */
                     server_schema =
-                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
+                        find_tag_schema(iq->usedb, ".ONDISK");
                     if (server_schema == NULL) {
                         printf("can't find schema for %s\n",
                                iq->usedb->tablename);
@@ -532,7 +532,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
 
                 if (server_schema == NULL) {
                     server_schema =
-                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
+                        find_tag_schema(iq->usedb, ".ONDISK");
                     if (server_schema == NULL) {
                         printf("can't find schema for %s\n",
                                iq->usedb->tablename);
@@ -787,7 +787,7 @@ int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
     if (gbl_replicate_local == 0 || get_dbtable_by_name("comdb2_oplog") == NULL)
         return 0;
 
-    s = find_tag_schema(db->tablename, ".ONDISK_CLIENT");
+    s = find_tag_schema(db, ".ONDISK_CLIENT");
     if (s == NULL) {
         return OP_FAILED_INTERNAL;
     }

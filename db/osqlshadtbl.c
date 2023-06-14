@@ -1806,12 +1806,13 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
     int ncols;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     blob_key_t *tmptblkey;
+    struct dbtable *table = get_dbtable_by_name(tbl->tablename);
 
     /* identify the number of blobs */
     for (i = 0; i < tbl->nblobs; i++) {
 
         if (updCols && gbl_osql_blob_optimization) {
-            idx = get_schema_blob_field_idx(tbl->tablename, ".ONDISK", i);
+            idx = get_schema_blob_field_idx(table, ".ONDISK", i);
             ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 rc = osql_send_qblob(&osql->target, osql->rqid, osql->uuid, i,

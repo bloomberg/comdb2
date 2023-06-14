@@ -646,7 +646,7 @@ static int produce_update_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
             goto done;
         }
     } else {
-        int ix = get_schema_blob_field_idx((char *) pCur->table, ".ONDISK", dtafile - 1);
+        int ix = get_schema_blob_field_idx(pCur->db, ".ONDISK", dtafile - 1);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
                         ix, pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
@@ -755,7 +755,7 @@ static int produce_add_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
             goto done;
         }
     } else {
-        int ix = get_schema_blob_field_idx((char *) pCur->table, ".ONDISK", dtafile - 1);
+        int ix = get_schema_blob_field_idx(pCur->db, ".ONDISK", dtafile - 1);
         if ((rc = json_blob(pCur->record, pCur->reclen, pCur->db->schema,
                         ix, pCur->jsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
@@ -863,7 +863,7 @@ static int produce_delete_data_record(logicalops_cursor *pCur, DB_LOGC *logc,
             goto done;
         }
     } else {
-        int ix = get_schema_blob_field_idx((char *) pCur->table, ".ONDISK", dtafile - 1);
+        int ix = get_schema_blob_field_idx(pCur->db, ".ONDISK", dtafile - 1);
         if ((rc = json_blob(pCur->oldrecord, pCur->oldreclen, pCur->db->schema,
                         ix, pCur->oldjsonrec)) != 0) {
             logmsg(LOGMSG_ERROR, "%s line %d json_blob returns %d\n", __func__,
