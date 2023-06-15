@@ -77,7 +77,7 @@ static int reload_rename_table_alias(tran_type *tran, const char *name,
     return 0;
 }
 
-static int reload_stripe_info(tran_type *tran, uint8_t lid)
+static int reload_stripe_info(tran_type *tran, uint32_t lid)
 {
     int rc;
     int bdberr = 0;
