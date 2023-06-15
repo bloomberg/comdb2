@@ -69,6 +69,7 @@ int rep_qstat_has_fills(void);
 int rep_qstat_has_allreq(void);
 extern int db_is_exiting(void);
 
+extern int gbl_exit;
 extern int gbl_commit_lsn_map;
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
@@ -4365,8 +4366,16 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 				abort();
 			}
 			rq->used = 0;
-			thdpool_enqueue(dbenv->recovery_workers, worker_thd, rq,
+			int rc = thdpool_enqueue(dbenv->recovery_workers, worker_thd, rq,
 				0, NULL, 0);
+			if (rc != 0) {
+				if (!gbl_exit) {
+					logmsg(LOGMSG_ERROR, "%s: error %d dispatching worker thread\n",
+						__func__, rc);
+					abort();
+				}
+				rp->num_busy_workers--;
+			}
 			rq = listc_rtl(&queues);
 		}
 	}
@@ -6051,7 +6060,16 @@ bad_resize:	;
 	listc_abl(&dbenv->inflight_transactions, rp);
 	Pthread_mutex_unlock(&dbenv->recover_lk);
 
-	thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0);
+	int rc = thdpool_enqueue(dbenv->recovery_processors, processor_thd, rp, 0, NULL, 0);
+	if (rc != 0) {
+		if (!gbl_exit) {
+			logmsg(LOGMSG_ERROR, "%s: error %d running processor thread\n", __func__, rc);
+			abort();
+		}
+		Pthread_mutex_lock(&dbenv->recover_lk);
+		listc_rfl(&dbenv->inflight_transactions, rp);
+		Pthread_mutex_unlock(&dbenv->recover_lk);
+	}
 
 	if (txn_args)
 		__os_free(dbenv, txn_args);
