@@ -7426,6 +7426,67 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
     }
 }
 
+static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numShards, char *oCol,
+                                       uint32_t *oNumShards) 
+{
+    int column_exists = 0;
+    struct comdb2_column *current;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return -1;
+    }
+
+    if (column->n > MAXCOLNAME) {
+        setError(pParse, SQLITE_MISUSE, "Column name too long");
+        return -1;
+    }
+    LISTC_FOR_EACH(&ctx->schema->column_list, current, lnk)
+    {
+        if ((strcasecmp(column->z, current->name) == 0)) {
+            column_exists = 1;
+            break;
+        }
+    }
+    if (!column_exists) {
+        setError(pParse, SQLITE_MISUSE, "Column does not exist");
+        return -1;
+    }
+    strncpy0(oCol , column->z, column->n + 1);
+    if (_get_integer(numShards, (int32_t *)oNumShards)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid number of shards");
+        return -1;
+    }
+    return 0;
+}
+                                    
+
+/**
+ * Create Mod based Partition
+ *
+ */
+void comdb2CreateModPartition(Parse* pParse, Token *column, Token* numShards, ExprList *list)
+{
+    struct comdb2_partition *partition;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse, 0);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_MOD;
+    if (comdb2GetModPartitionParams(pParse, column, numShards,
+                                    partition->u.mod.column,
+                                    (uint32_t*)&partition->u.mod.num_shards)) {
+        free_ddl_context(pParse);
+    }
+}
+
 /**
  * Create Manual Partition
  *

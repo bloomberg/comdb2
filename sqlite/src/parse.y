@@ -250,6 +250,9 @@ partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
 partition_options ::= MANUAL RETENTION INTEGER(R). {
     comdb2CreateManualPartition(pParse, &R, 0);
 }
+partition_options ::= CASE STRING(P) REM INTEGER(N) case_exprlist(Y) END. {
+    comdb2CreateModPartition(pParse, &P, &N, Y);
+}
 merge ::= .
 merge ::= merge_with.
 merge_with ::= MERGE nm(Y) dbnm(Z). {

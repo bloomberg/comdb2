@@ -71,6 +71,7 @@ enum comdb2_partition_type {
     PARTITION_ADD_MANUAL = 21,
     PARTITION_ADD_COL_RANGE = 40,
     PARTITION_ADD_COL_HASH = 60,
+    PARTITION_ADD_MOD = 80,
 };
 
 struct comdb2_partition {
@@ -86,6 +87,10 @@ struct comdb2_partition {
             char tablename[MAXTABLELEN];
             int version;
         } mergetable;
+        struct mod {
+            char column[MAXCOLNAME];
+            uint32_t num_shards;
+        } mod;
     } u;
 };
 
