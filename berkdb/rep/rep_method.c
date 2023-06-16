@@ -300,13 +300,8 @@ __rep_start(dbenv, dbt, gen, flags)
 				gbl_rep_method_max_sleep_cnt > 0) {
 				logmsg(LOGMSG_FATAL, "%s:%d:%s: Exiting after waiting too long for replication message thread.\n",
 					__FILE__, __LINE__, __func__);
-				pid = getpid();
-				snprintf(cmd, sizeof(cmd), "pstack %d", (int)pid);
-				int rc = system(cmd);
-				if (rc == -1)
-					logmsg(LOGMSG_ERROR,
-						   "ERROR: %s:%d system() returns rc = %d\n",
-						   __FILE__,__LINE__, rc);
+                void pstack_self(void);
+                pstack_self();
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

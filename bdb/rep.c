@@ -3755,11 +3755,7 @@ static int process_rep_mon_hash(void *obj, void *arg)
     if (threshold > 0 && now - rm->starttime > threshold) {
         fprintf(stderr, "Thread %u host %s type %d hung for %d seconds\n",
             rm->tid, rm->host, rm->type, now - rm->starttime);
-        char pstack_cmd[128];
-        snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)rm->tid);
-        int rc = system(pstack_cmd);
-        (void)rc;
-        /* Linux pstacks tid, non-linux halts hash-for */
+        pstack_self();
 #ifndef _LINUX_SOURCE
         return 1;
 #endif
@@ -3777,8 +3773,7 @@ static void *rep_mon(void *thd)
     rep_mon_td = pthread_self();
     rep_mon_hash = hash_init(sizeof(pthread_t));
     logmsg(LOGMSG_INFO, "Starting replication monitor thread\n");
-    while(gbl_rep_mon_threshold > 0)
-    {
+    while(gbl_rep_mon_threshold > 0) {
         struct timespec waittime;
         clock_gettime(CLOCK_REALTIME, &waittime);
         waittime.tv_sec += 1;
@@ -5316,13 +5311,7 @@ void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
         (bdb_state->callback->threaddump_rtn)();
     lock_info_lockers(stderr, bdb_state);
     thd_dump();
-    char buf[100] = {0};
-    snprintf(buf, sizeof(buf), "pstack %d", (int)getpid());
-    int rc = system(buf);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: system(\"%s\") rc = %d\n",
-               __func__, buf, rc);
-    }
+    pstack_self();
     if (fatal) abort();
 }
 
