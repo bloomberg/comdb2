@@ -2170,34 +2170,33 @@ static void bdb_appsock(netinfo_type *netinfo, SBUF2 *sb)
         (bdb_state->callback->appsock_rtn)(bdb_state, sb);
 }
 
+void pstack_self(void)
+{
+    char buf[256];
+    pid_t pid = getpid();
+#   ifdef COMDB2_BBCMAKE
+    snprintf(buf, sizeof(buf), "/opt/bbinfra/bin/pstack %d", pid);
+#   else
+    snprintf(buf, sizeof(buf), "pstack %d", pid);
+#   endif
+    errno = 0;
+    int rc = system(buf);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: system(%s) rc:%d err:%s\n", __func__, buf, rc, strerror(errno));
+    }
+}
+
 static void panic_func(DB_ENV *dbenv, int errval)
 {
-    bdb_state_type *bdb_state;
-    char buf[100];
-    int len;
-    pid_t pid;
-
-    /* get a pointer back to our bdb_state */
-    bdb_state = (bdb_state_type *)dbenv->app_private;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
+    bdb_state_type *bdb_state = dbenv->app_private;
+    if (bdb_state->parent) bdb_state = bdb_state->parent;
 
     Pthread_mutex_lock(&(bdb_state->exit_lock));
 
-    logmsg(LOGMSG_FATAL, "PANIC: comdb2 shutting down (first pstack).  error %d\n",
-            errval);
+    pstack_self();
+    logmsg(LOGMSG_FATAL, "PANIC: comdb2 shutting down error:%d\n", errval);
 
-    pid = getpid();
-    snprintf(buf, sizeof(buf), "pstack %d", pid);
-    int lrc = system(buf);
-    if (lrc) {
-        logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
-               __FILE__,__LINE__, lrc);
-    }
-
-    /* this code sometimes deadlocks.  install a timer - if it
-       fires, we
+    /* this code sometimes deadlocks.  install a timer - if it fires, we
        abort.  We don't lose much since we are about to exit anyway. */
     signal(SIGALRM, SIG_DFL);
     alarm(15);
@@ -2205,17 +2204,14 @@ static void panic_func(DB_ENV *dbenv, int errval)
     /* Take a full diagnostic snapshot.  Disable the panic logic for this
      * to work. */
     if (bdb_state->attr->panic_fulldiag) {
-        len = snprintf(buf, sizeof(buf), "f %s/panic_full_diag fulldiag",
-                       bdb_state->dir);
-        logmsg(LOGMSG_FATAL, "PANIC: running bdb '%s' command to grab diagnostics\n",
-                buf);
+        char buf[100];
+        int len = snprintf(buf, sizeof(buf), "f %s/panic_full_diag fulldiag", bdb_state->dir);
+        logmsg(LOGMSG_FATAL, "PANIC: running bdb '%s' command to grab diagnostics\n", buf);
         dbenv->set_flags(dbenv, DB_NOPANIC, 1);
         bdb_process_user_command(bdb_state, buf, len, 0);
         dbenv->set_flags(dbenv, DB_NOPANIC, 0);
     }
-
     alarm(0);
-
     abort();
 }
 
