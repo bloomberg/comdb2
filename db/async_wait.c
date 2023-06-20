@@ -849,24 +849,27 @@ void *queue_processor(void *arg)
             if (item != NULL) {
                 /* Before going into a timed wait check if we've got new lsns in the meanwhile.
                    In this case, we shouldn't go into a timed wait... we should rather go over the lsn list */
+                Pthread_mutex_lock(&(item->bdb_state->seqnum_info->lock));
                 if (local_new_lsns != new_lsns) {
+                    Pthread_mutex_unlock(&(item->bdb_state->seqnum_info->lock));
                     if (gbl_async_dist_commit_verbose) {
                         logmsg(LOGMSG_USER, "Not going into timed wait as we got new lsns\n");
                     }
                     wait_rc = 0; /* since it's not ETIMEDOUT, we go through LSN list in next iteration */
                     continue;
+                } else {
+                    setup_waittime(&waittime, item->next_ts - comdb2_time_epochms());
+                    /* Check again under lock */ 
+                    if (gbl_async_dist_commit_verbose) {
+                        logmsg(LOGMSG_USER,
+                               "Current time(%d) before earliest time (%ld) a work item has to be checked. going into "
+                               "timedcondwait\n",
+                               comdb2_time_epochms(), item->next_ts);
+                    }
+                    wait_rc = pthread_cond_timedwait(&(item->bdb_state->seqnum_info->cond),
+                                                     &(item->bdb_state->seqnum_info->lock), &waittime);
+                    Pthread_mutex_unlock(&(item->bdb_state->seqnum_info->lock));
                 }
-                setup_waittime(&waittime, item->next_ts - comdb2_time_epochms());
-                if (gbl_async_dist_commit_verbose) {
-                    logmsg(LOGMSG_USER,
-                           "Current time(%d) before earliest time (%ld) a work item has to be checked. going into "
-                           "timedcondwait\n",
-                           comdb2_time_epochms(), item->next_ts);
-                }
-                Pthread_mutex_lock(&(item->bdb_state->seqnum_info->lock));
-                wait_rc = pthread_cond_timedwait(&(item->bdb_state->seqnum_info->cond),
-                                                 &(item->bdb_state->seqnum_info->lock), &waittime);
-                Pthread_mutex_unlock(&(item->bdb_state->seqnum_info->lock));
             } else {
                 if (gbl_async_dist_commit_verbose) {
                     logmsg(LOGMSG_USER, "List is empty... nothing to do\n");
