@@ -193,11 +193,7 @@ int add_to_async_wait_queue(struct ireq *iq, int rc)
     /* copy necessary iq fields */
     swait->iq = iq;
     swait->cur_state = INIT;
-    if (iq->usedb) {
-        swait->bdb_state = iq->usedb->handle;
-    } else {
-        swait->bdb_state = thedb->bdb_env;
-    }
+    swait->bdb_state = thedb->bdb_env;
     /* take ownership of osql sess */
     memcpy(&swait->seqnum, (seqnum_type *)iq->commit_seqnum, sizeof(seqnum_type));
     memcpy(&swait->errstat, &iq->errstat, sizeof(errstat_t));
