@@ -29,22 +29,17 @@ extern pthread_mutex_t lock;
 extern int last_slow_node_check_time;
 extern pthread_mutex_t slow_node_check_lk;
 extern pool_t *p_reqs;
-extern hash_t *seqnum_ts_hash;
-struct seqnum_hash_entry;
 uint64_t max_time_before_first_access = 0;
 
 extern int gbl_async_dist_commit_max_outstanding_trans;
 extern int gbl_async_dist_commit_verbose;
-extern int gbl_async_dist_commit_track_seqnum_times;
 extern int gbl_replicant_retry_on_not_durable;
 
 void finish_handling_ireq(struct ireq *iq, int rc);
 void cleanup_ireq(struct ireq *iq);
 void *get_bdb_handle_ireq(struct ireq *iq, int auxdb);
-extern pthread_mutex_t seqnum_hash_lk;
 void *queue_processor(void *);
 int nodeix(const char *node);
-uint64_t get_ent_ts(struct seqnum_hash_entry *entry);
 
 static struct async_wait_node *allocate_async_wait_node(void)
 {
@@ -86,9 +81,6 @@ int async_wait_init()
     listc_init(&work_queue->absolute_ts_list, offsetof(async_wait_node, absolute_ts_lnk));
     Pthread_mutex_init(&(work_queue->mutex), NULL);
     Pthread_cond_init(&(work_queue->cond), NULL);
-    if (gbl_async_dist_commit_track_seqnum_times) {
-        seqnum_ts_hash = hash_init(sizeof(DB_LSN));
-    }
     pthread_attr_init(&attr);
     Pthread_mutex_init(&async_wait_queue_pool_lk, NULL);
     Pthread_create(&dummy_tid, &attr, queue_processor, NULL);
@@ -268,20 +260,6 @@ int free_work_item(async_wait_node *item)
     return rc;
 }
 
-static void print_time_diff(async_wait_node *item)
-{
-    struct seqnum_hash_entry *ent;
-
-    Pthread_mutex_lock(&seqnum_hash_lk);
-    ent = hash_find(seqnum_ts_hash, &item->seqnum.lsn);
-    if (ent != NULL) {
-        logmsg(LOGMSG_USER,
-               " node with seqnum %d:%d, got_new_seqnum at: %ld, being considered for retirement at : %d\n",
-               item->seqnum.lsn.file, item->seqnum.lsn.offset, get_ent_ts(ent), comdb2_time_epochms());
-    }
-    Pthread_mutex_unlock(&seqnum_hash_lk);
-}
-
 void process_work_item(async_wait_node *item)
 {
     int lock_desired = 0;
@@ -290,13 +268,12 @@ void process_work_item(async_wait_node *item)
     switch (item->cur_state) {
     case INIT:
         diff = comdb2_time_epochms() - item->enqueue_time;
-        if (diff > max_time_before_first_access) {
-            logmsg(LOGMSG_USER, " diff (%ld) greater than max_time_before_first_access (%ld) for lsn %d:%d\n", diff,
-                   max_time_before_first_access, item->seqnum.lsn.file, item->seqnum.lsn.offset);
-            max_time_before_first_access = diff;
-        }
-        if (gbl_async_dist_commit_track_seqnum_times) {
-            print_time_diff(item);
+        if (gbl_async_dist_commit_verbose) {
+            if (diff > max_time_before_first_access) {
+                logmsg(LOGMSG_USER, " diff (%ld) greater than max_time_before_first_access (%ld) for lsn %d:%d\n", diff,
+                       max_time_before_first_access, item->seqnum.lsn.file, item->seqnum.lsn.offset);
+                max_time_before_first_access = diff;
+            }
         }
         time_metric_add(thedb->async_wait_time_before_first_access, diff);
         item->wait_init_start_time = comdb2_time_epochms();

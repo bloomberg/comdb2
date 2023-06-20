@@ -802,7 +802,6 @@ int gbl_async_dist_commit = 1;
 int gbl_async_dist_commit_max_outstanding_trans = 32;
 int gbl_async_dist_commit_verbose = 0;
 int gbl_async_dist_commit_init_success = 0;
-int gbl_async_dist_commit_track_seqnum_times = 0;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();

@@ -72,7 +72,6 @@ int gbl_dump_sql_on_repwait_sec = 10;
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
 extern int gbl_async_dist_commit;
-extern int gbl_async_dist_commit_track_seqnum_times;
 extern async_wait_queue *work_queue;
 /* osqlcomm.c code, hurray! */
 extern void osql_decom_node(char *decom_host);
@@ -113,18 +112,6 @@ BB_COMPILE_TIME_ASSERT(rep_type_berkdb_rep_buf_hdr,
 pthread_mutex_t max_lsn_so_far_lk = PTHREAD_MUTEX_INITIALIZER;
 DB_LSN max_lsn_so_far = {.file = 0, .offset = 0};
 uint64_t new_lsns = 0;
-
-hash_t *seqnum_ts_hash;
-pthread_mutex_t seqnum_hash_lk = PTHREAD_MUTEX_INITIALIZER;
-struct seqnum_hash_entry {
-    DB_LSN seqnum;
-    uint64_t timestamp;
-};
-
-uint64_t get_ent_ts(struct seqnum_hash_entry *entry)
-{
-    return entry->timestamp;
-}
 
 static uint8_t *rep_type_berkdb_rep_buf_hdr_put(
     const struct rep_type_berkdb_rep_buf_hdr *p_rep_type_berkdb_rep_buf_hdr,
@@ -2527,18 +2514,6 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         new_lsns += 1;
         // logmsg(LOGMSG_USER,"max_lsn unchanged\n");
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-        if (gbl_async_dist_commit_track_seqnum_times) {
-            struct seqnum_hash_entry entry;
-            memcpy(&entry.seqnum, &seqnum->lsn, sizeof(DB_LSN));
-            entry.timestamp = comdb2_time_epochms();
-            Pthread_mutex_lock(&seqnum_hash_lk);
-            int rc = hash_add(seqnum_ts_hash, &entry);
-            Pthread_mutex_unlock(&seqnum_hash_lk);
-            if (rc) {
-                logmsg(LOGMSG_USER, "COULD NOT ADD TO HASH!!\n");
-                abort();
-            }
-        }
     }
 
     /* wake up anyone who might be waiting to see this seqnum */

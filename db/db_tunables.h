@@ -2441,9 +2441,4 @@ REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
 REGISTER_TUNABLE("async_dist_commit_verbose",
                  "Enable detailed logging for debugging asynchronous distributed commit. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_async_dist_commit_verbose, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("async_dist_commit_track_seqnum_times",
-                 "Enable tracking of when leader node gets ack for seqnum and when the associated async wait item is "
-                 "actually considered for retirement. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_async_dist_commit_track_seqnum_times, 0, NULL, NULL, NULL, NULL);
-
 #endif /* _DB_TUNABLES_H */
