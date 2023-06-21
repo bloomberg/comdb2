@@ -4900,6 +4900,12 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
     clnt->deadlock_recovered = 0;
 
     Pthread_mutex_lock(&clnt_lk);
+    /* Reset clnt->thd: there's no guarantee that this clnt is going to be
+       dispatched to the same sql thread it previously ran under; Also, that
+       thread may not even exist any more (eg aged out), causing
+       reqlog_long_running_clnt() to segfault when reading clnt->thd, which is
+       alloca'd on the stack by the sql thread */
+    clnt->thd = NULL;
     clnt->done = 0;
     if (clnt->statement_timedout)
         fail_dispatch = 1;
