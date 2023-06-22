@@ -65,7 +65,7 @@
 /* moved here from csc2, better place */
 /*max length of index name, its char[64] in stat1 - 10 for $_12345678*/
 #define MAXIDXNAMELEN 54
-
+#define MAXSHARDS 4  // using 4 for testing purposes. Change later
 /*
   Print at the given offset, detect overflow and update offset
   accordingly.

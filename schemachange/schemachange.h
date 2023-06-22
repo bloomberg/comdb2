@@ -73,6 +73,10 @@ enum comdb2_partition_type {
     PARTITION_ADD_COL_HASH = 60,
     PARTITION_ADD_MOD = 80,
 };
+struct shard_map_ent {
+    int key;
+    char *value;
+};
 
 struct comdb2_partition {
     /* Type of the partition */
@@ -90,6 +94,8 @@ struct comdb2_partition {
         struct mod {
             char column[MAXCOLNAME];
             uint32_t num_shards;
+            uint32_t keys[MAXSHARDS];
+            char shards[MAXSHARDS][MAX_DBNAME_LENGTH];
         } mod;
     } u;
 };
