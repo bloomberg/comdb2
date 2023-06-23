@@ -62,7 +62,7 @@ pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
 /* HASH of all registered appsock handlers (one handler per appsock type) */
 hash_t *gbl_appsock_hash;
 
-static unsigned long long total_appsock_conns = 0;
+unsigned long long total_appsock_conns = 0;
 static unsigned long long num_bad_toks = 0;
 static unsigned long long total_toks = 0;
 static unsigned long long total_appsock_rejections = 0;

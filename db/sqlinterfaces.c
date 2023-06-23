@@ -6817,12 +6817,14 @@ static int close_lru_evbuffer(struct sqlclntstate *self)
 
 int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
 {
+    extern unsigned long long total_appsock_conns;
     if (clnt->admin) {
        return 0;
     }
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
     int lim = warn < max ? warn : max;
+    total_appsock_conns++;
     int current = ATOMIC_ADD32(active_appsock_conns, 1);
     if (current > lim) {
         static time_t last_trace = 0;
