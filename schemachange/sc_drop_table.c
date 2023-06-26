@@ -159,5 +159,9 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     if (gbl_replicate_local)
         local_replicant_write_clear(iq, tran, db);
 
+    /* lets not forget to free db */
+    freedb(s->db);
+    s->db = NULL;
+
     return 0;
 }
