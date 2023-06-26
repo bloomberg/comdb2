@@ -59,6 +59,8 @@ enum view_partition_errors {
     VIEW_ERR_SC = -10 /* error with schema change */
     ,
     VIEW_ERR_CREATE = -11 /* error with pthread create */
+    ,
+    VIEW_ERR_NOTFOUND = -12 /* could not find a view */
 };
 
 typedef struct timepart_view timepart_view_t;

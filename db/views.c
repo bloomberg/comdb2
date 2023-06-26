@@ -77,6 +77,8 @@ struct timepart_views {
                                 one is removed, if past retention */
 };
 
+
+
 pthread_rwlock_t views_lk;
 
 /*
@@ -3304,12 +3306,20 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
                 abort(); /* restart will fix this*/
             break;
         }
+        case PARTITION_ADD_MOD: {
+            rc = mod_create_inmem_view(sc->newshard);
+            break;
+        }
         } /*switch */
         int bdberr = 0;
+        if (sc->partition.type == PARTITION_ADD_MOD) {
+            rc = bdb_llog_partition(thedb->bdb_env, tran, (char *)mod_view_get_name(sc->newshard), &bdberr);
+        } else {
         rc = bdb_llog_partition(thedb->bdb_env, tran,
                                 partition_name ? partition_name
                                                : (char *)sc->timepartition_name,
                                 &bdberr);
+        }
         if (rc || bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
                    __func__, partition_name);
@@ -3335,6 +3345,10 @@ void partition_unpublish(struct schema_change_type *sc)
             int rc = timepart_create_inmem_view(sc->newpartition);
             if (rc)
                 abort(); /* restart will fix this*/
+            break;
+        }
+        case PARTITION_ADD_MOD: {
+            mod_destroy_inmem_view(sc->newshard);
             break;
         }
         }
