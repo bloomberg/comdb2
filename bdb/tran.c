@@ -2254,7 +2254,8 @@ int bdb_tran_commit_logical_with_seqnum_size(bdb_state_type *bdb_state,
 uint64_t bdb_tran_logbytes(tran_type *tran)
 {
     u_int64_t logbytes = 0;
-    tran->tid->getlogbytes(tran->tid, &logbytes);
+    if (tran->tid)
+        tran->tid->getlogbytes(tran->tid, &logbytes);
     return logbytes;
 }
 
