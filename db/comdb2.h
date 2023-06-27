@@ -1540,6 +1540,9 @@ typedef struct {
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
 
+extern int64_t gbl_num_auth_allowed;
+extern int64_t gbl_num_auth_denied;
+
 extern const char *const gbl_db_git_version_sha;
 extern const char gbl_db_version[];
 extern const char gbl_db_semver[];

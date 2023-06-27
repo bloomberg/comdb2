@@ -26,6 +26,7 @@
 #include <logical_cron.h>
 #include "cdb2_constants.h"
 #include "db_access.h" /* gbl_check_access_controls */
+#include "comdb2_atomic.h"
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 #define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
@@ -397,8 +398,11 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
          if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-         else if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename))
+         else if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename)) {
+             ATOMIC_ADD64(gbl_num_auth_denied, 1);
              return SQLITE_AUTH;
+         }
+         ATOMIC_ADD64(gbl_num_auth_allowed, 1);
          return SQLITE_OK;
      }
 
@@ -416,13 +420,17 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      {
         int rc = bdb_tbl_op_access_get(bdb_state, tran, 0, tablename, clnt->current_user.name, &bdberr);
         curtran_puttran(tran);
-        if (rc)
+        if (rc) {
+          ATOMIC_ADD64(gbl_num_auth_denied, 1);
           return SQLITE_AUTH;
-        else
+        } else {
+            ATOMIC_ADD64(gbl_num_auth_allowed, 1);
             return SQLITE_OK;
+        }
      }
      curtran_puttran(tran);
 
+     ATOMIC_ADD64(gbl_num_auth_denied, 1);
      return SQLITE_AUTH;
 }
 
@@ -434,8 +442,12 @@ static int comdb2CheckOpAccess(void) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
             return SQLITE_OK;
+         } else if (externalComdb2CheckOpAccess(clnt->authdata)) {
+             ATOMIC_ADD64(gbl_num_auth_denied, 1);
+             return SQLITE_AUTH;
          }
-         return externalComdb2CheckOpAccess(clnt->authdata);
+         ATOMIC_ADD64(gbl_num_auth_allowed, 1);
+         return SQLITE_OK;
     }
     if (comdb2AuthenticateUserDDL(""))
         return SQLITE_AUTH;
