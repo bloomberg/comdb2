@@ -423,7 +423,7 @@ function cfg {
 function setup {
     local isdocker
     isdocker=$(cat /proc/self/cgroup | cut -d/ -f2 | head -1)
-    if [[ "$isdocker" != "docker" ]]; then
+    if [[ "$isdocker" != "docker" && ! -f /.dockerenv ]]; then
         check-containers-ready || exit 1
         docker exec --user $(id -u) $(container-name 0) ${HOME}/bin/cluster setup $*
         return $?
