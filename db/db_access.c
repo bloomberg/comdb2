@@ -15,6 +15,7 @@
  */
 
 #include "comdb2.h"
+#include "comdb2_atomic.h"
 #include "sql.h"
 #include "bdb_api.h"
 #include "bdb_access.h"
@@ -99,9 +100,12 @@ static int check_user_password(struct sqlclntstate *clnt)
                  clnt->conninfo.pid);
         int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, client_info);
         if (rc) {
+            ATOMIC_ADD64(gbl_num_auth_denied, 1);
             write_response(clnt, RESPONSE_ERROR,
                            "User isn't allowed to make request on this db",
                             CDB2ERR_ACCESS);
+         } else {
+             ATOMIC_ADD64(gbl_num_auth_allowed, 1);
          }
          return rc;
     }
@@ -127,9 +131,11 @@ static int check_user_password(struct sqlclntstate *clnt)
     curtran_puttran(tran);
 
     if (password_rc != 0) {
+        ATOMIC_ADD64(gbl_num_auth_denied, 1);
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
         return 1;
     }
+    ATOMIC_ADD64(gbl_num_auth_allowed, 1);
     return 0;
 }
 
@@ -239,6 +245,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
         else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name)) {
+            ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
             snprintf(msg, sizeof(msg), "Write access denied for table %s",
                      table_name);
@@ -255,6 +262,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_WRITE, &bdberr);
             if (rc != 0) {
+                ATOMIC_ADD64(gbl_num_auth_denied, 1);
                 char msg[1024];
                 snprintf(msg, sizeof(msg),
                          "Write access denied to %s for user %s bdberr=%d",
@@ -267,7 +275,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
             }
         }
     }
-
+    ATOMIC_ADD64(gbl_num_auth_allowed, 1);
     pCur->permissions |= ACCESS_WRITE;
     return 0;
 }
@@ -318,6 +326,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
         else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name)) {
+            ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
             snprintf(msg, sizeof(msg), "Read access denied for table %s",
                      table_name);
@@ -332,6 +341,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_READ, &bdberr);
             if (rc != 0) {
+                ATOMIC_ADD64(gbl_num_auth_denied, 1);
                 char msg[1024];
                 snprintf(msg, sizeof(msg),
                          "Read access denied to %s for user %s bdberr=%d",
@@ -346,6 +356,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     }
 
     pCur->permissions |= ACCESS_READ;
+    ATOMIC_ADD64(gbl_num_auth_allowed, 1);
     return 0;
 }
 
