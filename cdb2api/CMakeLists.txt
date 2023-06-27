@@ -23,8 +23,8 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
 )
 
-if (COMDB2_EXTRA_PLUGINS)
-  include(${COMDB2_EXTRA_PLUGINS}/cdb2api/CMakeLists.txt)
+if (EXTRA_PLUGINS)
+  include(${EXTRA_PLUGINS}/cdb2api/CMakeLists.txt)
 endif()
 
 # common obj files for .so/.dylib and .a
