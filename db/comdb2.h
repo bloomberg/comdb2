@@ -1379,6 +1379,7 @@ struct ireq {
     uint32_t sc_host;
 
     uint64_t txnsize;
+    uint64_t total_txnsize;
     unsigned long long last_genid;
     uint64_t txn_ttl_ms; /* txn time to live -- abort after this time */
 

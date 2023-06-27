@@ -5864,9 +5864,9 @@ add_blkseq:
 
     /* update stats (locklessly so we may get gibberish - I know this
      * and don't care) */
-    if (iq->txnsize > iq->dbenv->biggest_txn)
-        iq->dbenv->biggest_txn = iq->txnsize;
-    iq->dbenv->total_txn_sz = iq->txnsize;
+    if (iq->total_txnsize > iq->dbenv->biggest_txn)
+        iq->dbenv->biggest_txn = iq->total_txnsize;
+    iq->dbenv->total_txn_sz = iq->total_txnsize;
     iq->dbenv->num_txns++;
     if (iq->timeoutms > iq->dbenv->max_timeout_ms)
         iq->dbenv->max_timeout_ms = iq->timeoutms;
@@ -5878,12 +5878,13 @@ add_blkseq:
     if (iq->debug) {
         uint64_t rate;
         if (iq->reptimems)
-            rate = iq->txnsize / iq->reptimems;
+            rate = iq->total_txnsize / iq->reptimems;
         else
             rate = 0;
-        reqprintf(iq, "%p:TRANSACTION SIZE %llu TIMEOUT %d REPTIME %d RATE "
-                      "%llu",
-                  trans, iq->txnsize, iq->timeoutms, iq->reptimems, rate);
+        reqprintf(iq,
+                  "%p:TRANSACTION SIZE %llu TIMEOUT %d REPTIME %d RATE "
+                  "%llu",
+                  trans, iq->total_txnsize, iq->timeoutms, iq->reptimems, rate);
     }
 
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);

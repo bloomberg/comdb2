@@ -534,6 +534,7 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
             bdb_handle, trans, blkseq, blklen, blkkey, blkkeylen,
             (seqnum_type*)seqnum, &iq->txnsize, &bdberr);
     }
+    iq->total_txnsize += iq->txnsize;
     iq->gluewhere = "bdb_tran_commit_with_seqnum_size done";
     if (bdberr != 0) {
         if (bdberr == BDBERR_DEADLOCK)
@@ -685,7 +686,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     }
 
     end_ms = comdb2_time_epochms();
-    iq->reptimems = end_ms - start_ms;
+    iq->reptimems += (end_ms - start_ms);
 
     return rc;
 }
@@ -850,6 +851,8 @@ int trans_abort_int(struct ireq *iq, void *trans, int *priority)
     int bdberr;
     bdb_state_type *bdb_handle = thedb->bdb_env;
     iq->gluewhere = "bdb_tran_abort";
+    iq->txnsize = bdb_tran_logbytes(trans);
+    iq->total_txnsize += iq->txnsize;
     bdb_tran_abort_priority(bdb_handle, trans, &bdberr, priority);
     iq->gluewhere = "bdb_tran_abort done";
     if (bdberr != 0) {
