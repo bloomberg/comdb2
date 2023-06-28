@@ -2174,7 +2174,7 @@ void pstack_self(void)
 {
     char buf[256];
     pid_t pid = getpid();
-#   ifdef COMDB2_BBCMAKE
+#   if defined(COMDB2_BBCMAKE) && defined(_LINUX_SOURCE)
     snprintf(buf, sizeof(buf), "/opt/bbinfra/bin/pstack %d", pid);
 #   else
     snprintf(buf, sizeof(buf), "pstack %d", pid);
