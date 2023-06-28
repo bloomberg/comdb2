@@ -1,0 +1,206 @@
+#!/bin/bash
+
+bash -n "$0" | exit 1
+
+set -e
+set -x
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+# Debug variable
+debug=0
+done=./doneinserts.txt
+dbnm=$1
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+drop_tables() 
+{
+    tables=$1
+    for i in `seq 1 $tables`; do
+        table="t$i"
+        ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${dbnm} default "DROP TABLE IF EXISTS $table"
+        if [[ $? != 0 ]]; then
+            failexit "drop table ${table}!"
+        fi
+    done
+}
+
+create_tables() 
+{
+    tables=$1
+    for i in `seq 1 $tables`; do
+        table="t${i}"
+        ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${dbnm} default "CREATE TABLE $table { `cat ./schema.csc2` }"
+        if [[ $? != 0 ]]; then
+            failexit "create table ${table}!"
+        fi
+    done
+}
+
+verify_tables_count()
+{
+    tables=$1
+    for i in `seq 1 $tables`; do
+        table="t${i}"
+        rc=`${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from comdb2_tables where tablename='$table'"`
+        if [[ $rc != "1" ]]; then
+            failexit "failed to find table ${table} which was allegedly created!!"
+        fi
+    done
+}
+
+COUNT=10000
+TRANSZ=1000
+NUMTABLES=50
+RUN=0 # 0 without tunable, 1 with tunable
+do_inserts()
+{
+
+    sleep 0.1 #give time to start all inserters
+    table=$1
+
+    local j=0
+    outfl=insert${table}.${RUN}.out
+    echo "" > $outfl
+
+    while [[ $j -lt $COUNT ]] ; do 
+      echo "begin"
+      local i=0
+      while [[ $i -lt $TRANSZ ]] ; do 
+        echo "insert into $table values ($j, $i)"
+        let j=j+1
+        let i=i+1
+      done
+      echo "commit"
+
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> $outfl  || failexit "do_inserts error in $table"
+
+    echo "done inserter $table"
+    touch $done.$table
+}
+
+start_inserters()
+{
+    tables=$1
+    for i in `seq 1 $tables`; do
+        table="t${i}"
+        do_inserts $table &
+    done
+}
+
+function wait_for_inserters
+{
+    tables=$1
+    donecount=0
+    while [[ $donecount -lt $tables ]]; do
+        sleep 1
+        donecount=0
+	for i in `seq 1 $tables`; do
+            table="t${i}"
+            if [[ -f $done.$table ]]; then
+                let donecount=donecount+1
+            fi
+        done
+
+	#if we found a failexit, don't wait endlessly
+	if [[ -f *.failexit ]]; then
+		failexit "inserts failed"
+	fi
+    done
+}
+
+run_test()
+{
+    drop_tables $NUMTABLES
+    create_tables $NUMTABLES
+    verify_tables_count $NUMTABLES
+    start_inserters $NUMTABLES
+    wait_for_inserters $NUMTABLES
+}
+
+assert_counts()
+{
+    tables=$1
+    target=$2
+    for i in `seq 1 $tables`; do
+        table="t${i}"
+        assertcnt $table $target
+    done
+
+}
+
+print_time_spent_in_queues() 
+{
+    master_node=$(get_master)
+    echo "handle_buf_queue_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="handle_buf_queue_time"'
+    echo "async_wait_queue_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_queue_time"'
+    echo "async_wait_init_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_init_time"'
+    echo "async_wait_wait_for_first_ack_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_wait_for_first_ack_time"'
+    echo "async_wait_wait_for_all_ack_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_wait_for_all_ack_time"'
+    echo "async_wait_wait_finish_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_wait_finish_time"'
+    echo "async_wait_wait_next_commit_timestamp_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_wait_next_commit_timestamp_time"'
+    echo "async_wait_wait_notify_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_wait_notify_time"'
+    echo "async_wait_time_before_first_access"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="async_wait_time_before_first_access"'
+    echo "block_processor_time"
+    $CDB2SQL_EXE --tabs $DBNAME --host $master_node 'select * from comdb2_metrics where name="block_processor_time"'
+}
+
+master_node=$(get_master)
+$CDB2SQL_EXE --tabs $DBNAME --host $master_node 'put tunable async_dist_commit 1'
+
+#verify that async commit is off on master
+value=`$CDB2SQL_EXE --tabs $DBNAME --host $master_node "select value from comdb2_tunables where name='async_dist_commit'"`
+assertres $value "ON"
+
+start_time=`date +%s`
+run_test
+end_time=`date +%s`
+timetakenwithtunableon=$((end_time - start_time))
+assert_counts $NUMTABLES $COUNT
+
+
+echo $timetakenwithtunableon
+
+print_time_spent_in_queues
+#clear done files before restarting test
+ls doneinserts.* | xargs rm
+
+#get master node again
+master_node=$(get_master)
+
+#turn on async_dist_commit
+$CDB2SQL_EXE --tabs $DBNAME --host $master_node 'put tunable async_dist_commit 0'
+
+#verify that async commit is on, on master
+value=`$CDB2SQL_EXE --tabs $DBNAME --host $master_node "select value from comdb2_tunables where name='async_dist_commit'"`
+assertres $value "OFF"
+
+RUN=$((RUN+1))
+start_time=`date +%s`
+run_test
+end_time=`date +%s`
+timetakenwithtunableoff=$((end_time - start_time))
+assert_counts $NUMTABLES $COUNT
+
+echo $timetakenwithtunableoff
+print_time_spent_in_queues
+output="we took ${timetakenwithtunableon} waiting asynchronously and took ${timetakenwithtunableoff} waiting in line"
+
+if [[ "$timetakenwithtunableon" > "$timetakenwithtunableoff" ]]; then
+    failexit $output
+fi
+
+echo $output
+echo "Success"

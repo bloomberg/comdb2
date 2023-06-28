@@ -58,7 +58,7 @@ enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
 
 /* request pool & queue */
 
-static pool_t *p_reqs; /* request pool */
+pool_t *p_reqs; /* request pool */
 
 struct dbq_entry_t {
     LINKC_T(struct dbq_entry_t) qlnk;
@@ -93,7 +93,7 @@ static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
 
-static pthread_mutex_t lock;
+pthread_mutex_t lock;
 pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_attr_t attr;
 
@@ -486,6 +486,38 @@ int signal_buflock(struct buf_lock_t *p_slock)
     return 0;
 }
 
+void cleanup_ireq(struct ireq *iq)
+{
+    if (iq->usedb && iq->ixused >= 0 && iq->ixused < iq->usedb->nix && iq->usedb->ixuse) {
+        iq->usedb->ixuse[iq->ixused] += iq->ixstepcnt;
+    }
+    iq->ixused = -1;
+    iq->ixstepcnt = 0;
+
+    if (iq->dbglog_file) {
+        sbuf2close(iq->dbglog_file);
+        iq->dbglog_file = NULL;
+    }
+    if (iq->nwrites) {
+        free(iq->nwrites);
+        iq->nwrites = NULL;
+    }
+    if (iq->vfy_genid_hash) {
+        hash_free(iq->vfy_genid_hash);
+        iq->vfy_genid_hash = NULL;
+    }
+    if (iq->vfy_genid_pool) {
+        pool_free(iq->vfy_genid_pool);
+        iq->vfy_genid_pool = NULL;
+    }
+    iq->vfy_genid_track = 0;
+#if 0
+    fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
+#endif
+    pool_relablk(p_reqs, iq); /* this request is done, so release
+                               * resource. */
+}
+
 /* request handler */
 static void *thd_req(void *vthd)
 {
@@ -504,7 +536,6 @@ static void *thd_req(void *vthd)
     ENABLE_PER_THREAD_MALLOC(__func__);
 
     thr_self = thrman_register(THRTYPE_REQ);
-    logger = thrman_get_reqlogger(thr_self);
 
     dbenv = thd->iq->dbenv;
     backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
@@ -568,13 +599,19 @@ static void *thd_req(void *vthd)
         thd->iq->startus = comdb2_time_epochus();
         thd->iq->where = "executing";
         /*PROCESS REQUEST*/
+        logger = thrman_get_reqlogger(thr_self);
         thd->iq->reqlogger = logger;
         iamwriter = is_req_write(thd->iq->opcode) ? 1 : 0;
         dbenv = thd->iq->dbenv;
         thrman_where(thr_self, req2a(thd->iq->opcode));
         thrman_origin(thr_self, getorigin(thd->iq));
         user_request_begin(REQUEST_TYPE_QTRAP, FLAG_REQUEST_TRACK_EVERYTHING);
-        handle_ireq(thd->iq);
+        rc = handle_ireq(thd->iq);
+        time_metric_add(thedb->bp_time, (comdb2_time_epochus() - thd->iq->startus) / 1000.0);
+        if (rc == RC_TRAN_ASYNC_WAIT) {
+            thrman_disown_logger(thr_self);
+            thd->iq = NULL;
+        }
         if (debug_this_request(gbl_debug_until) ||
             (gbl_who > 0 && !gbl_sdebug)) {
             struct per_request_stats *st;
@@ -588,7 +625,9 @@ static void *thd_req(void *vthd)
         thread_util_donework();
         thrman_origin(thr_self, NULL);
         thrman_where(thr_self, "idle");
-        thd->iq->where = "done executing";
+        if (thd->iq) {
+            thd->iq->where = "done executing";
+        }
 
         // before acquiring next request, yield
         comdb2bma_yield_all();
@@ -602,37 +641,12 @@ static void *thd_req(void *vthd)
             if (iamwriter) {
                 write_thd_count--;
             }
-
-            if (thd->iq->usedb && thd->iq->ixused >= 0 &&
-                thd->iq->ixused < thd->iq->usedb->nix &&
-                thd->iq->usedb->ixuse) {
-                thd->iq->usedb->ixuse[thd->iq->ixused] += thd->iq->ixstepcnt;
+            /* if transaction's commit is waiting asynchronously
+               for replication to complete, don't release iq yet.
+               the async_wait thread will handle it */
+            if (rc != RC_TRAN_ASYNC_WAIT) {
+                cleanup_ireq(thd->iq);
             }
-            thd->iq->ixused = -1;
-            thd->iq->ixstepcnt = 0;
-
-            if (thd->iq->dbglog_file) {
-                sbuf2close(thd->iq->dbglog_file);
-                thd->iq->dbglog_file = NULL;
-            }
-            if (thd->iq->nwrites) {
-                free(thd->iq->nwrites);
-                thd->iq->nwrites = NULL;
-            }
-            if (thd->iq->vfy_genid_hash) {
-                hash_free(thd->iq->vfy_genid_hash);
-                thd->iq->vfy_genid_hash = NULL;
-            }
-            if (thd->iq->vfy_genid_pool) {
-                pool_free(thd->iq->vfy_genid_pool);
-                thd->iq->vfy_genid_pool = NULL;
-            }
-            thd->iq->vfy_genid_track = 0;
-#if 0
-            fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
-#endif
-            pool_relablk(p_reqs, thd->iq); /* this request is done, so release
-                                            * resource. */
             /* get next item off hqueue */
             nxtrq = (struct dbq_entry_t *)listc_rtl(&q_reqs);
             thd->iq = 0;
@@ -956,6 +970,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     iq->cost = 0;
     iq->luxref = luxref;
+    iq->enque_request = 0;
 
     if (iq->is_fromsocket) {
         if (iq->frommach == gbl_myhostname)

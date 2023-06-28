@@ -4947,10 +4947,8 @@ int osql_comm_signal_sqlthr_rc(osql_target_t *target, unsigned long long rqid,
             }
         }
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
-        logmsg(LOGMSG_DEBUG,
-               "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
-               __func__, __LINE__, target->host, comdb2uuidstr(uuid, us), rc,
-               xerr->errval);
+        logmsg(LOGMSG_DEBUG, "%s:%d master signaling %s uuid %s with rc=%d xerr=%d type=%d\n", __func__, __LINE__,
+               target->host, comdb2uuidstr(uuid, us), rc, xerr->errval, type);
     } else {
         if (rc) {
             osql_done_xerr_t rpl_xerr = {{0}};
@@ -7206,7 +7204,7 @@ done:
     }
 
     if (sess)
-        osql_sess_close(&sess, added_to_repository);
+        osql_sess_close(&sess, added_to_repository, __func__);
 
     return rc;
 }
@@ -7826,7 +7824,6 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
             return -1;
         }
     }
-
     if (host == gbl_myhostname) {
         /* local save */
         rc = net_local_route_packet_tail(usertype, data, datalen, tail, tailen);
@@ -7873,8 +7870,7 @@ int offload_net_send(const char *host, int usertype, void *data, int datalen,
         } else if (rc) {
             unknownerror_retry++;
             if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host);
+                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s rc: %d\n", __FILE__, __LINE__, host, rc);
                 comdb2_linux_cheap_stack_trace();
                 return -1;
             }

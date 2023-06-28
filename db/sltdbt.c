@@ -35,6 +35,7 @@
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
 #include "sc_util.h"
+#include "async_wait.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -357,6 +358,40 @@ static inline int opcode_supported(int opcode)
     }
 }
 
+void finish_handling_ireq(struct ireq *iq, int rc)
+{
+    /* Unblock anybody waiting for stuff that was added in this transaction. */
+    clear_trans_from_repl_list(iq->repl_list);
+
+    /* records were added to queues, and we committed successfully.  wake
+     * up queue consumers. */
+    if (rc == 0 && iq->num_queues_hit > 0) {
+        if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
+            /* good heavens.  wake up all consumers */
+            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
+        } else {
+            unsigned ii;
+            for (ii = 0; ii < iq->num_queues_hit; ii++)
+                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
+        }
+    }
+
+    if (iq->sorese) {
+        /* Finish off logging. */
+        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
+        /* Free the sorese transaction buffer */
+        free(iq->p_buf_out_start);
+    }
+
+    reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
+    release_node_stats(NULL, NULL, iq->frommach);
+    if (gbl_print_deadlock_cycles)
+        osql_snap_info = NULL;
+
+    /* Make sure we do not leak locks */
+    bdb_checklock(thedb->bdb_env);
+}
+
 int handle_ireq(struct ireq *iq)
 {
     int rc;
@@ -417,8 +452,26 @@ int handle_ireq(struct ireq *iq)
 
         /* pack data at tail of reply */
         pack_tail(iq);
-
+        int enqueued = 0;
         if (iq->sorese) {
+            /* in async_wait mode */
+            if (rc == 0 && iq->enque_request) {
+                enqueued = add_to_async_wait_queue(iq, rc);
+                if (enqueued) {
+                    /* we can return now. The async wait logic
+                       will handle the rest. */
+                    rc = RC_TRAN_ASYNC_WAIT;
+                    return rc;
+                }
+                char out[37];
+                // We didn't farm off distributed commit wait. do it inline
+                logmsg(LOGMSG_USER, "could not enque in dist commit queue. %s\n", comdb2uuidstr(iq->sorese->uuid, out));
+                rc = trans_wait_for_seqnum(iq, gbl_myhostname, iq->commit_seqnum);
+                if (rc == BDBERR_NOT_DURABLE) {
+                    rc = ERR_NOT_DURABLE;
+                }
+                free(iq->commit_seqnum);
+            }
             /* we don't have a socket or a buffer for that matter,
              * instead, we need to send back the result of transaction from rc
              */
@@ -507,37 +560,7 @@ int handle_ireq(struct ireq *iq)
         }
     }
 
-    /* Unblock anybody waiting for stuff that was added in this transaction. */
-    clear_trans_from_repl_list(iq->repl_list);
-
-    /* records were added to queues, and we committed successfully.  wake
-     * up queue consumers. */
-    if (rc == 0 && iq->num_queues_hit > 0) {
-        if (iq->num_queues_hit > MAX_QUEUE_HITS_PER_TRANS) {
-            /* good heavens.  wake up all consumers */
-            dbqueuedb_wake_all_consumers_all_queues(iq->dbenv, 0);
-        } else {
-            unsigned ii;
-            for (ii = 0; ii < iq->num_queues_hit; ii++)
-                dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
-        }
-    }
-
-    if (iq->sorese) {
-        /* Finish off logging. */
-        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
-        /* Free the sorese transaction buffer */
-        free(iq->p_buf_out_start);
-    }
-    reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-    release_node_stats(NULL, NULL, iq->frommach);
-    if (gbl_print_deadlock_cycles)
-        osql_snap_info = NULL;
-
-    /* Make sure we do not leak locks */
-
-    bdb_checklock(thedb->bdb_env);
-
+    finish_handling_ireq(iq, rc);
     return rc;
 }
 

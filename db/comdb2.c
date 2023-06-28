@@ -24,7 +24,7 @@ void __berkdb_set_num_read_ios(long long *n);
 void __berkdb_set_num_write_ios(long long *n);
 void __berkdb_set_num_fsyncs(long long *n);
 void berk_memp_sync_alarm_ms(int);
-
+void set_stop_async_wait_thread();
 #include <pthread.h>
 #include <sys/resource.h>
 #include <sys/utsname.h>
@@ -141,6 +141,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "sc_csc2.h"
 #include "reverse_conn.h"
 
+#include "async_wait.h"
 #define tokdup strndup
 
 int gbl_thedb_stopped = 0;
@@ -148,7 +149,6 @@ int gbl_sc_timeoutms = 1000 * 60;
 char gbl_dbname[MAX_DBNAME_LENGTH];
 int gbl_largepages;
 int gbl_llmeta_open = 0;
-
 int gbl_sqlite_sortermult = 1;
 
 int gbl_sqlite_sorter_mem = 300 * 1024 * 1024; /* 300 meg */
@@ -797,6 +797,11 @@ int gbl_clean_exit_on_sigterm = 1;
 
 int gbl_is_physical_replicant;
 int gbl_server_admin_mode = 0;
+
+int gbl_async_dist_commit = 1;
+int gbl_async_dist_commit_max_outstanding_trans = 32;
+int gbl_async_dist_commit_verbose = 0;
+int gbl_async_dist_commit_init_success = 0;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -1507,6 +1512,13 @@ static void free_view_hash(hash_t *view_hash)
  */
 static void finish_clean()
 {
+    if (gbl_async_dist_commit && gbl_async_dist_commit_init_success) {
+        async_wait_cleanup();
+    }
+
+    if(gbl_is_physical_replicant)
+        stop_replication();
+
     int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
@@ -1601,6 +1613,9 @@ static void begin_clean_exit(void)
     comdb2_signal_timer();
     stop_threads(thedb);
     set_stop_mempsync_thread();
+    if (gbl_async_dist_commit && gbl_async_dist_commit_init_success) {
+        set_stop_async_wait_thread();
+    }
     flush_db();
 
     cleanup_q_vars();
@@ -2741,6 +2756,15 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->errstaton = 1; /* ON */
 
     dbenv->handle_buf_queue_time = time_metric_new("handle_buf_time_in_queue");
+    dbenv->async_wait_queue_time = time_metric_new("async_wait_time_in_queue");
+    dbenv->async_wait_init_time = time_metric_new("async_wait_init_time");
+    dbenv->async_wait_wait_for_first_ack_time = time_metric_new("async_wait_wait_for_first_ack_time");
+    dbenv->async_wait_wait_for_all_ack_time = time_metric_new("async_wait_wait_for_all_ack_time");
+    dbenv->async_wait_wait_finish_time = time_metric_new("async_wait_wait_finish_time");
+    dbenv->async_wait_wait_next_commit_timestamp_time = time_metric_new("async_wait_wait_next_commit_timestamp_time");
+    dbenv->async_wait_wait_notify_time = time_metric_new("async_wait_wait_notify_time");
+    dbenv->async_wait_time_before_first_access = time_metric_new("async_wait_time_before_first_access");
+    dbenv->bp_time = time_metric_new("block_processor_time");
     dbenv->sql_queue_time = time_metric_new("sql_time_in_queue");
     dbenv->service_time = time_metric_new("service_time");
     dbenv->queue_depth = time_metric_new("queue_depth");
@@ -4835,6 +4859,15 @@ void *statthd(void *p)
 
         /* Push out old metrics */
         time_metric_purge_old(thedb->handle_buf_queue_time);
+        time_metric_purge_old(thedb->bp_time);
+        time_metric_purge_old(thedb->async_wait_queue_time);
+        time_metric_purge_old(thedb->async_wait_init_time);
+        time_metric_purge_old(thedb->async_wait_wait_for_first_ack_time);
+        time_metric_purge_old(thedb->async_wait_wait_for_all_ack_time);
+        time_metric_purge_old(thedb->async_wait_wait_finish_time);
+        time_metric_purge_old(thedb->async_wait_wait_next_commit_timestamp_time);
+        time_metric_purge_old(thedb->async_wait_wait_notify_time);
+        time_metric_purge_old(thedb->async_wait_time_before_first_access);
         time_metric_purge_old(thedb->sql_queue_time);
         time_metric_purge_old(thedb->service_time);
         time_metric_purge_old(thedb->queue_depth);
@@ -5640,6 +5673,16 @@ int main(int argc, char **argv)
 
     logmsg(LOGMSG_USER, "hostname:%s  cname:%s\n", gbl_myhostname, gbl_mycname);
     logmsg(LOGMSG_USER, "I AM READY.\n");
+    /* Set up async seqnum_wait */
+    if (gbl_async_dist_commit) {
+        rc = async_wait_init();
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "Error while initialising seqnum_wait... Waiting for seqnums will happen sequentially %d\n", rc);
+        } else {
+            gbl_async_dist_commit_init_success = 1;
+        }
+    }
     gbl_ready = 1;
 
     pthread_t timer_tid;

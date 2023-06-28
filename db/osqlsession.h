@@ -49,7 +49,7 @@ osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_sess_close(osql_sess_t **sess, int is_linked);
+int osql_sess_close(osql_sess_t **sess, int is_linked, const char *func);
 
 /**
  * Register client

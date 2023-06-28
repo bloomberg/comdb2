@@ -404,6 +404,9 @@ extern int gbl_warn_on_equiv_type_mismatch;
 extern int gbl_warn_on_equiv_types;
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
+extern int gbl_async_dist_commit;
+extern int gbl_async_dist_commit_max_outstanding_trans;
+extern int gbl_async_dist_commit_verbose;
 
 /* Physical replication */
 extern int gbl_blocking_physrep;

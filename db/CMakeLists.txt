@@ -1,5 +1,6 @@
 set(src
   appsock_handler.c
+  async_wait.c
   autoanalyze.c
   block_internal.c
   bpfunc.c

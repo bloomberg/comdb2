@@ -635,6 +635,13 @@ struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr)
     }
 }
 
+void thrman_disown_logger(struct thr_handle *thr)
+{
+    if (thr) {
+        thr->reqlogger = NULL;
+    }
+}
+
 const char *thrman_get_where(struct thr_handle *thr)
 {
     return thr->where;

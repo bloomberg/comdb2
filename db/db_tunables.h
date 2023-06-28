@@ -2428,4 +2428,17 @@ REGISTER_TUNABLE("unexpected_last_type_warn",
 REGISTER_TUNABLE("unexpected_last_type_abort",
                  "Panic if the last response server sent before sockpool reset isn't LAST_ROW",
                  TUNABLE_INTEGER, &gbl_unexpected_last_type_abort, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit", 
+                 "Enable asynchronous wait for replicants to catch up to master node after a transaction commits. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit",
+                 "Enable asynchronous wait for replicants to catch up to master node after a transaction commits. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_max_outstanding_trans",
+                 "Maximum number of transactions that can be outstanding i.e waiting on asynchronous distributed "
+                 "commit. (Default : 8)",
+                 TUNABLE_INTEGER, &gbl_async_dist_commit_max_outstanding_trans, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("async_dist_commit_verbose",
+                 "Enable detailed logging for debugging asynchronous distributed commit. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_async_dist_commit_verbose, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

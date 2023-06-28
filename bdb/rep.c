@@ -28,6 +28,7 @@
 #include "debug_switches.h"
 
 #include "bdb_int.h"
+#include "bdb_api.h"
 #include "locks.h"
 #include "locks_wrap.h"
 #include <endian_core.h>
@@ -37,7 +38,7 @@
 #include "util.h"
 #include "crc32c.h"
 #include "gettimeofday_ms.h"
-
+#include "async_wait.h"
 #include <build/db_int.h>
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
@@ -70,7 +71,8 @@ int gbl_dump_sql_on_repwait_sec = 10;
 
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
-
+extern int gbl_async_dist_commit;
+extern async_wait_queue *work_queue;
 /* osqlcomm.c code, hurray! */
 extern void osql_decom_node(char *decom_host);
 
@@ -87,14 +89,10 @@ int gbl_net_lmt_upd_incoherent_nodes = 70;
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 void comdb2_dump_blockers(DB_ENV *);
 
-static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
-                                                    seqnum_type *seqnum,
-                                                    char *host);
-
 static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host);
 
-static int last_slow_node_check_time = 0;
-static pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
+int last_slow_node_check_time = 0;
+pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
 
 struct rep_type_berkdb_rep_buf_hdr {
     int recbufsz;
@@ -106,6 +104,14 @@ enum { REP_TYPE_BERKDB_REP_BUF_HDR_LEN = 4 + 4 };
 BB_COMPILE_TIME_ASSERT(rep_type_berkdb_rep_buf_hdr,
                        sizeof(struct rep_type_berkdb_rep_buf_hdr) ==
                            REP_TYPE_BERKDB_REP_BUF_HDR_LEN);
+/*
+  max_lsn_so_far and new_lsns are optimizations used
+  while asynchronously waiting for replicants
+  to catchup to commit lsn
+*/
+pthread_mutex_t max_lsn_so_far_lk = PTHREAD_MUTEX_INITIALIZER;
+DB_LSN max_lsn_so_far = {.file = 0, .offset = 0};
+uint64_t new_lsns = 0;
 
 static uint8_t *rep_type_berkdb_rep_buf_hdr_put(
     const struct rep_type_berkdb_rep_buf_hdr *p_rep_type_berkdb_rep_buf_hdr,
@@ -447,9 +453,7 @@ char *coherent_state_to_str(int state)
 }
 
 /* You should have the lock */
-static inline void set_coherent_state(bdb_state_type *bdb_state,
-                                      const char *hostname, int state,
-                                      const char *func, int line)
+void set_coherent_state(bdb_state_type *bdb_state, const char *hostname, int state, const char *func, int line)
 {
     if (bdb_state->coherent_state[nodeix(hostname)] != state) {
         bdb_state->coherent_state[nodeix(hostname)] = state;
@@ -597,8 +601,7 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
 }
 
-static inline int is_incoherent_complete(bdb_state_type *bdb_state,
-                                         const char *host, int *incohwait)
+int is_incoherent_complete(bdb_state_type *bdb_state, const char *host, int *incohwait)
 {
     int is_incoherent, state;
 
@@ -1657,7 +1660,7 @@ int gbl_dump_zero_coherency_timestamp;
 char coherency_master[128] = {0};
 
 /* Don't let anything commit on the master until after this */
-static uint64_t coherency_commit_timestamp = 0;
+uint64_t coherency_commit_timestamp = 0;
 
 uint64_t next_commit_timestamp(void)
 {
@@ -1667,9 +1670,7 @@ uint64_t next_commit_timestamp(void)
 /* Make sure that nothing commits before the timestamp set here.
  * This is called when a node changes to from STATE_COHERENT to
  * any other state.  The coherent_state_lock will be held. */
-static inline void defer_commits_int(bdb_state_type *bdb_state,
-                                     const char *host, const char *func,
-                                     int forupgrade)
+void defer_commits_int(bdb_state_type *bdb_state, const char *host, const char *func, int forupgrade)
 {
     int colease = bdb_state->attr->coherency_lease;
     int defer = bdb_state->attr->additional_deferms;
@@ -1688,8 +1689,7 @@ static inline void defer_commits_int(bdb_state_type *bdb_state,
            host ? host : "<all>", r.tm_hour, r.tm_min, r.tm_sec, coms);
 }
 
-static inline void defer_commits(bdb_state_type *bdb_state, const char *host,
-                                 const char *func)
+void defer_commits(bdb_state_type *bdb_state, const char *host, const char *func)
 {
     defer_commits_int(bdb_state, host, func, 0);
 }
@@ -2053,8 +2053,7 @@ void send_newmaster(bdb_state_type *bdb_state, int online)
  * NOTE: this will sometimes give a lsn which is less than the actual durable
  * lsn, but it will never return a value which is greater.
  */
-static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
-                                  uint32_t *gen, uint32_t flags)
+void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn, uint32_t *gen, uint32_t flags)
 {
     extern int gbl_durable_calc_trace;
     const char *nodelist[REPMAX];
@@ -2499,8 +2498,23 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     }
 
     /* if this was a node in startup advertising INT_MAX, we're done here */
-    if (seqnum->lsn.file == INT_MAX)
+    if (seqnum->lsn.file == INT_MAX) {
         return;
+    }
+
+    if (gbl_async_dist_commit) {
+        // set the max_lsn_so_far
+        Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+        if (log_compare(&seqnum->lsn, &max_lsn_so_far) > 0) {
+            // logmsg(LOGMSG_USER, "Changing max_lsn\n");
+            max_lsn_so_far.file = seqnum->lsn.file;
+            max_lsn_so_far.offset = seqnum->lsn.offset;
+        }
+        // increase new_lsns
+        new_lsns += 1;
+        // logmsg(LOGMSG_USER,"max_lsn unchanged\n");
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    }
 
     /* wake up anyone who might be waiting to see this seqnum */
     Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
@@ -2575,9 +2589,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 }
 
 /* returns -999 on timeout */
-static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
-                                                    seqnum_type *master_seqnum,
-                                                    char *host)
+int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state, seqnum_type *master_seqnum, const char *host)
 {
     seqnum_type *host_seqnum;
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
@@ -2630,8 +2642,7 @@ static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host) {
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
 
-static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
-                                     seqnum_type *seqnum)
+void bdb_slow_replicant_check(bdb_state_type *bdb_state, seqnum_type *seqnum)
 {
     double *proctime;
     const char *worst_node = NULL, *second_worst_node = NULL;
@@ -2776,8 +2787,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
 }
 
 /* expects seqnum_info lock held */
-static int bdb_track_replication_time(bdb_state_type *bdb_state,
-                                      seqnum_type *seqnum, const char *host)
+int bdb_track_replication_time(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host)
 {
     if (!bdb_state->attr->track_replication_times)
         return 0;
@@ -2803,7 +2813,7 @@ static int bdb_track_replication_time(bdb_state_type *bdb_state,
     return 0;
 }
 
-static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
+int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
 {
     switch (rc) {
     case 1:
@@ -2835,10 +2845,8 @@ static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
  *   Any of the SPECIAL CASES warrants removing that node from the list of nodes
  *   we wait for.  This counts against durability.
  */
-static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
-                                             seqnum_type *seqnum,
-                                             const char *host, int timeoutms, int lineno,
-                                             int fakeincoherent)
+int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host, int timeoutms,
+                                      int lineno, int fakeincoherent)
 {
     int rc, reset_ts = 1, wakecnt = 0, remaining = timeoutms;
     int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
@@ -2984,6 +2992,11 @@ again:
         }
     }
 
+    if (remaining == 0) {
+        logmsg(LOGMSG_USER, "%s called with waitms 0. The node hasn't caught up yet\n", __func__);
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+        return -999;
+    }
     /* Set timespec for first run and timeouts */
     if (reset_ts) {
         if (seqnum_wait_interval <= 50 || remaining < seqnum_wait_interval) {
@@ -3092,6 +3105,82 @@ static int node_in_list(int node, int list[], int listsz)
     return 0;
 }
 
+/*
+ Check if a commit was durably replicated
+*/
+int is_txn_durable(bdb_state_type *bdb_state, int total_commissioned, int num_successfully_acked, seqnum_type *seqnum)
+{
+    uint32_t cur_gen;
+    static uint32_t not_durable_count;
+    static uint32_t durable_count;
+    extern int gbl_durable_wait_seqnum_test;
+
+    int istest = 0;
+    int was_durable = 0;
+    int outrc = 0;
+
+    uint32_t cluster_size = total_commissioned + 1;
+    uint32_t number_with_this_update = num_successfully_acked + 1;
+    uint32_t durable_target = (cluster_size / 2) + 1;
+
+    if ((number_with_this_update < durable_target) ||
+        (gbl_durable_wait_seqnum_test && (istest = (0 == (rand() % 20))))) {
+        if (istest)
+            logmsg(LOGMSG_USER, "%s return not durable for durable wait seqnum test\n", __func__);
+        outrc = BDBERR_NOT_DURABLE;
+        not_durable_count++;
+        was_durable = 0;
+    } else {
+        /* We've released the bdb lock at this point- the master could have
+         * changed while
+         * we were waiting for this to propogate.  The simple fix: get
+         * rep_gen & return
+         * not durable if it's changed */
+        BDB_READLOCK("wait_for_seqnum");
+        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &cur_gen);
+        BDB_RELLOCK();
+
+        if (cur_gen != seqnum->generation) {
+            outrc = BDBERR_NOT_DURABLE;
+            not_durable_count++;
+            was_durable = 0;
+        } else {
+            Pthread_mutex_lock(&bdb_state->durable_lsn_lk);
+            bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &seqnum->lsn, cur_gen);
+            if (seqnum->lsn.file == 0) {
+                logmsg(LOGMSG_FATAL, "%s line %d: aborting on insane durable lsn\n", __func__, __LINE__);
+                abort();
+            }
+            Pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
+            durable_count++;
+            was_durable = 1;
+        }
+    }
+
+    if (bdb_state->attr->wait_for_seqnum_trace) {
+        DB_LSN calc_lsn;
+        uint32_t calc_gen;
+        calculate_durable_lsn(bdb_state, &calc_lsn, &calc_gen, 1);
+        /* This is actually okay- do_ack and the thread which broadcasts
+         * seqnums can race against each other.  If we got a majority of
+         * these during the commit we are okay */
+        if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
+            logmsg(LOGMSG_USER,
+                   "ERROR: calculate_durable_lsn trails seqnum, "
+                   "but this is durable (%d:%d vs %d:%d)?\n",
+                   calc_lsn.file, calc_lsn.offset, seqnum->lsn.file, seqnum->lsn.offset);
+        }
+        logmsg(LOGMSG_USER,
+               "Last txn was %s, tot_connected=%d tot_acked=%d, "
+               "durable-commit-count=%u not-durable-commit-count=%u "
+               "commit-lsn=[%d][%d] commit-gen=%u calc-durable-lsn=[%d][%d] "
+               "calc-durable-gen=%u\n",
+               was_durable ? "durable" : "not-durable", total_commissioned, num_successfully_acked, durable_count,
+               not_durable_count, seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation, calc_lsn.file,
+               calc_lsn.offset, calc_gen);
+    }
+    return outrc;
+}
 /*
   inside bdb_commit(), we get a seqnum from the log file,
   then wait for it if we are running with waitforacks set
@@ -3412,79 +3501,7 @@ done_wait:
     }
 
     if (durable_lsns) {
-        uint32_t cur_gen;
-        static uint32_t not_durable_count;
-        static uint32_t durable_count;
-        extern int gbl_durable_wait_seqnum_test;
-
-        int istest = 0;
-        int was_durable = 0;
-
-        uint32_t cluster_size = total_commissioned + 1;
-        uint32_t number_with_this_update = num_successfully_acked + 1;
-        uint32_t durable_target = (cluster_size / 2) + 1;
-
-        if ((number_with_this_update < durable_target) ||
-            (gbl_durable_wait_seqnum_test && (istest = (0 == (rand() % 20))))) {
-            if (istest)
-                logmsg(LOGMSG_USER, 
-                        "%s return not durable for durable wait seqnum test\n", __func__);
-            outrc = BDBERR_NOT_DURABLE;
-            not_durable_count++;
-            was_durable = 0;
-        } else {
-            /* We've released the bdb lock at this point- the master could have
-             * changed while
-             * we were waiting for this to propogate.  The simple fix: get
-             * rep_gen & return
-             * not durable if it's changed */
-            BDB_READLOCK("wait_for_seqnum");
-            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &cur_gen);
-            BDB_RELLOCK();
-
-            if (cur_gen != seqnum->generation) {
-                outrc = BDBERR_NOT_DURABLE;
-                not_durable_count++;
-                was_durable = 0;
-            } else {
-                Pthread_mutex_lock(&bdb_state->durable_lsn_lk);
-                bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv,
-                                                  &seqnum->lsn, cur_gen);
-                if (seqnum->lsn.file == 0) {
-                    logmsg(LOGMSG_FATAL, "%s line %d: aborting on insane durable lsn\n",
-                            __func__, __LINE__);
-                    abort();
-                }
-                Pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
-                durable_count++;
-                was_durable = 1;
-            }
-        }
-
-        if (bdb_state->attr->wait_for_seqnum_trace) {
-            DB_LSN calc_lsn;
-            uint32_t calc_gen;
-            calculate_durable_lsn(bdb_state, &calc_lsn, &calc_gen, 1);
-            /* This is actually okay- do_ack and the thread which broadcasts
-             * seqnums can race against each other.  If we got a majority of 
-             * these during the commit we are okay */
-            if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
-                logmsg(LOGMSG_USER,
-                       "ERROR: calculate_durable_lsn trails seqnum, "
-                       "but this is durable (%d:%d vs %d:%d)?\n",
-                       calc_lsn.file, calc_lsn.offset, seqnum->lsn.file,
-                       seqnum->lsn.offset);
-            }
-            logmsg(LOGMSG_USER, 
-                "Last txn was %s, tot_connected=%d tot_acked=%d, "
-                "durable-commit-count=%u not-durable-commit-count=%u "
-                "commit-lsn=[%d][%d] commit-gen=%u calc-durable-lsn=[%d][%d] "
-                "calc-durable-gen=%u\n",
-                was_durable ? "durable" : "not-durable", total_commissioned,
-                num_successfully_acked, durable_count, not_durable_count,
-                seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
-                calc_lsn.file, calc_lsn.offset, calc_gen);
-        }
+        outrc = is_txn_durable(bdb_state, total_commissioned, num_successfully_acked, seqnum);
     }
 
     return outrc;
@@ -5534,13 +5551,6 @@ void *watcher_thread(void *arg)
 
                 bdb_state->repinfo->rep_process_message_start_time = 0;
                 bdb_dump_threads_and_maybe_abort(bdb_state, 0, 0);
-            }
-
-            if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >
-                gbl_dump_sql_on_repwait_sec) {
-                logmsg(LOGMSG_USER, "SQL statements currently blocking the "
-                                    "replication thread:\n");
-                comdb2_dump_blockers(bdb_state->dbenv);
             }
 
             if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >

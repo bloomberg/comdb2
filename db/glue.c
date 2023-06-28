@@ -53,7 +53,8 @@
 #include "translistener.h"
 #include "prefault.h"
 #include "util.h"
-
+#include "bdb_int.h"
+#include "bdb_api.h"
 #include "sql.h"
 #include <sbuf2.h>
 #include <bdb_api.h>
@@ -95,7 +96,7 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
 #include <comdb2_atomic.h>
-
+#include "async_wait.h"
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
@@ -152,6 +153,7 @@ extern int gbl_lost_master_time;
 extern int gbl_use_fastseed_for_comdb2_seqno;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
+extern int gbl_async_dist_commit;
 
 extern int get_physical_transaction(bdb_state_type *bdb_state,
                                     tran_type *logical_tran,
@@ -181,7 +183,8 @@ int gbl_master_changes = 0;
 
 /* Dont block when removing old files */
 int gbl_txn_fop_noblock = 0;
-
+extern int gbl_async_dist_commit;
+extern int gbl_async_dist_commit_init_success;
 static void *get_bdb_handle(struct dbtable *db, int auxdb)
 {
     void *bdb_handle;
@@ -204,7 +207,7 @@ static void *get_bdb_handle(struct dbtable *db, int auxdb)
     return bdb_handle;
 }
 
-static void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
+void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
 {
     void *bdb_handle = NULL;
 
@@ -730,12 +733,14 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int blkkeylen, int release_schema_lk)
 {
     int rc;
-    db_seqnum_type ss;
+    db_seqnum_type *ss;
     char *cnonce = NULL;
     int cn_len;
+    int is_zero_seqnum = 0;
     void *bdb_handle = thedb->bdb_env;
 
-    memset(&ss, -1, sizeof(ss));
+    ss = (db_seqnum_type *)malloc(sizeof(db_seqnum_type));
+    memset(ss, -1, sizeof(db_seqnum_type));
 
     if (release_schema_lk && gbl_written_rows_warn > 0 && iq->written_row_count >= gbl_written_rows_warn) {
         uuidstr_t us;
@@ -743,8 +748,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
     }
 
-    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
-                                 blkseq, blklen, blkkey, blkkeylen);
+    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, ss, logical, blkseq, blklen, blkkey, blkkeylen);
 
     if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO_KEY(iq)) {
         cn_len = IQ_SNAPINFO(iq)->keylen;
@@ -768,9 +772,20 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     if (rc != 0) {
         return rc;
     }
+    is_zero_seqnum = (((seqnum_type *)ss)->lsn.file == 0 && ((seqnum_type *)ss)->lsn.offset == 0);
 
-    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
-                                   timeoutms, adaptive, &ss);
+    if (is_zero_seqnum) {
+        free(ss);
+        return rc;
+    }
+    /* If we need to wait for replicants to catch up asynchronously
+       then return here. */
+    if (gbl_async_dist_commit && iq->sorese) {
+        iq->commit_seqnum = ss;
+        iq->enque_request = 1;
+        return rc;
+    }
+    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, timeoutms, adaptive, ss);
 
     if (release_schema_lk && gbl_debug_add_replication_latency) {
         logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
@@ -778,12 +793,13 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     }
 
     if (cnonce) {
-        DB_LSN *lsn = (DB_LSN *)&ss;
+        DB_LSN *lsn = (DB_LSN *)ss;
         logmsg(LOGMSG_USER,
                "%s %s line %d: wait_for_seqnum [%d][%d] returns %d\n", cnonce,
                __func__, __LINE__, lsn->file, lsn->offset, rc);
     }
 
+    free(ss);
     return rc;
 }
 

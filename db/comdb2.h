@@ -365,7 +365,8 @@ enum RCODES {
     ERR_SQL_PREP = 2001,    /* block sql error in sqlite3_prepare */
     ERR_LIMIT = 2002,       /* sql request exceeds max cost */
     ERR_NOT_DURABLE = 2003, /* commit didn't make it to a majority */
-    ERR_RECOVER_DEADLOCK = 2004
+    ERR_RECOVER_DEADLOCK = 2004,
+    RC_TRAN_ASYNC_WAIT = 2005 /* async wait for transaction commit */
 };
 
 #define IS_BAD_IX_FND_RCODE(rc)                                                \
@@ -974,6 +975,15 @@ struct dbenv {
     struct time_metric* connections;
     struct time_metric *sql_queue_time;
     struct time_metric *handle_buf_queue_time;
+    struct time_metric *bp_time;
+    struct time_metric *async_wait_queue_time;
+    struct time_metric *async_wait_init_time;
+    struct time_metric *async_wait_wait_for_first_ack_time;
+    struct time_metric *async_wait_wait_for_all_ack_time;
+    struct time_metric *async_wait_wait_finish_time;
+    struct time_metric *async_wait_wait_next_commit_timestamp_time;
+    struct time_metric *async_wait_wait_notify_time;
+    struct time_metric *async_wait_time_before_first_access;
     LISTC_T(struct lrl_handler) lrl_handlers;
     LISTC_T(struct message_handler) message_handlers;
 
@@ -1429,6 +1439,8 @@ struct ireq {
 
     int sc_running;
     int comdbg_flags;
+    int enque_request;
+    db_seqnum_type *commit_seqnum;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 

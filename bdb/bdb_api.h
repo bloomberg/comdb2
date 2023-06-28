@@ -2353,8 +2353,19 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 /* Return 1 if this node is master, 0 otherwise */
 int bdb_iam_master(bdb_state_type *bdb_state);
 
+int bdb_track_replication_time(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host);
+
+int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host);
+int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host, int timeoutms,
+                                      int lineno, int fakeincoherent);
+void set_coherent_state(bdb_state_type *bdb_state, const char *hostname, int state, const char *func, int line);
+int is_incoherent_complete(bdb_state_type *bdb_state, const char *host, int *incohwait);
+void defer_commits(bdb_state_type *bdb_state, const char *host, const char *func);
+void bdb_slow_replicant_check(bdb_state_type *bdb_state, seqnum_type *seqnum);
+int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc);
 int32_t bdb_get_dbopen_gen(void);
 int is_incoherent(bdb_state_type *, const char *);
+int is_txn_durable(bdb_state_type *, int total_commissioned, int num_successfully_acked, seqnum_type *seqnum);
 
 #ifdef __APPLE__
 struct CDB2DBINFORESPONSE;

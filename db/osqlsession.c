@@ -133,10 +133,15 @@ static inline int is_sess_from_sockbplog(osql_sess_t *sess)
  *   THE REPO LOCK ALREADY, TO PREVENT REPO_REM FROM LOCKING
  *
  */
-int osql_sess_close(osql_sess_t **psess, int is_linked)
+int osql_sess_close(osql_sess_t **psess, int is_linked, const char *func)
 {
     osql_sess_t *sess = *psess;
 
+#ifdef TEST_QSQL_REQ
+    uuidstr_t us;
+    logmsg(LOGMSG_USER, "%s: closing request %llu %s. called from %s\n", __func__, sess->rqid,
+           comdb2uuidstr(sess->uuid, us), func);
+#endif
     if (is_linked && !is_sess_from_sockbplog(sess)) {
         /* unlink the request so no more messages are received */
         int rc = osql_repository_rem(sess);
@@ -325,7 +330,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         rc = osql_repository_put(sess);
         if (rc == 1) {
             /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, 1);
+            osql_sess_close(&sess, 1, __func__);
         }
         return 0;
     }
@@ -342,7 +347,7 @@ failed_stream:
     osql_repository_put(sess);
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_sess_close(&sess, 1);
+    osql_sess_close(&sess, 1, __func__);
 
     return rc;
 }
@@ -495,7 +500,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
     if (rc) {
         signal_replicant_error(&psess->target, psess->rqid, psess->uuid,
                                ERR_NOMASTER, "failed tp dispatch, queue full");
-        osql_sess_close(&psess, 1);
+        osql_sess_close(&psess, 1, __func__);
     }
     return rc;
 }
@@ -506,8 +511,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
 {
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
-    logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
-           comdb2uuidstr(uuid, us));
+    logmsg(LOGMSG_USER, "%s: Opening request %llu %s\n", __func__, rqid, comdb2uuidstr(uuid, us));
 #endif
 
 #if DEBUG_REORDER
