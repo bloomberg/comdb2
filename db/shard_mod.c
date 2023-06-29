@@ -1,6 +1,7 @@
 #include "shard_mod.h"
 #include <plhash_glue.h>
 #include "views.h"
+#include "cson/cson.h"
 struct mod_shard {
     int mod_val;
     char *dbname;
@@ -13,7 +14,6 @@ struct mod_view {
     char *keyname; 
     int num_shards;
     hash_t *shards;
-    uuid_t id;
 };
 
 static int free_mod_shard(void *obj, void *unused) {
@@ -46,11 +46,28 @@ mod_shard_t *create_mod_shard(int key, char *name)
     return mShard;
 }
 
-const char *mod_view_get_name(struct mod_view *shard) {
-    return shard->name;
+const char *mod_view_get_name(struct mod_view *view) {
+    return view->name;
 }
 
-mod_view_t *create_mod_view(char *name, char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
+const char *mod_view_get_keyname(struct mod_view *view) {
+    return view->keyname;
+}
+int mod_view_get_num_shards(struct mod_view *view) {
+    return view->num_shards;
+}
+
+hash_t *mod_view_get_shards(struct mod_view *view) {
+    return view->shards;
+}
+int mod_shard_get_mod_val(struct mod_shard *shard) {
+    return shard->mod_val;
+}
+
+const char *mod_shard_get_dbname(struct mod_shard *shard) {
+    return shard->dbname;
+}
+mod_view_t *create_mod_view(const char *name, const char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
 {
     mod_view_t *mView;
 
@@ -84,7 +101,6 @@ mod_view_t *create_mod_view(char *name, char *keyname, uint32_t num_shards, uint
         hash_add(mView->shards, tmp);
     }
 
-    comdb2uuid(mView->id);
     return mView;
 oom:
     if (mView) {
@@ -139,4 +155,112 @@ int mod_destroy_inmem_view(mod_view_t *view) {
                 __func__, view->name , rc);
     }
     return rc;
+}
+
+int mod_shard_llmeta_write(void *tran, mod_view_t *view, struct errstat *err) {
+    /* 
+     * Get serialized view string 
+     * write to llmeta
+     */
+    char *view_str = NULL;
+    int view_str_len;
+    int rc;
+
+    rc = mod_serialize_view(view, &view_str_len, &view_str);
+    if (rc!=VIEW_NOERR) {
+        errstat_set_strf(err, "Failed to serialize view %s", view->name);
+        errstat_set_rc(err, rc = VIEW_ERR_BUG);
+        goto done;
+    }
+
+    logmsg(LOGMSG_USER, "%s\n", view_str);
+    /* save the view */
+    rc = mod_views_write_view(tran, view->name, view_str, 0);
+    if (rc != VIEW_NOERR) {
+        if (rc == VIEW_ERR_EXIST)
+            errstat_set_rcstrf(err, VIEW_ERR_EXIST,
+                               "Shard %s already exists", view->name);
+        else
+            errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
+                               "Failed to llmeta save view %s", view->name);
+        goto done;
+    }
+
+done:
+    if (view_str)
+        free(view_str);
+    return rc;
+}
+
+char *mod_views_read_all_views();
+/*
+ * Create hash map of all mod based shards
+ *
+ */
+hash_t *mod_create_all_views()
+{
+    hash_t *mod_views;
+    char *views_str;
+    int rc;
+    struct mod_view *view = NULL;
+    cson_value *rootVal = NULL;
+    cson_object *rootObj = NULL;
+    cson_object_iterator iter;
+    cson_kvp *kvp = NULL;
+    struct errstat err;
+    mod_views = hash_init_strcaseptr(offsetof(struct mod_view, name));
+    views_str = mod_views_read_all_views();
+    if (!views_str) {
+        return mod_views;
+    }
+    /* populate global hash of all mod based table partitions */
+    rc = cson_parse_string(&rootVal, views_str, strlen(views_str));
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "error parsing cson string. rc: %d err: %s\n",
+                rc, cson_rc_string(rc));
+        goto done;
+    }
+    if (!cson_value_is_object(rootVal)) {
+        logmsg(LOGMSG_ERROR, "error parsing cson: expected object type\n");
+        goto done;
+    }
+
+    rootObj = cson_value_get_object(rootVal);
+
+    if (!rootObj) {
+        logmsg(LOGMSG_ERROR, "error parsing cson: couldn't retrieve object\n");
+        goto done;
+    }
+
+    cson_object_iter_init(rootObj, &iter);
+    kvp = cson_object_iter_next(&iter);
+    while (kvp) {
+        cson_string *key = cson_kvp_key(kvp);
+        logmsg(LOGMSG_USER, "THE CSON KEY IS : %s\n", cson_string_cstr(key));
+        cson_value *val = cson_kvp_value(kvp);
+        /*
+         * Each cson_value above is a cson string representation
+         * of a mod based partition. Validate that it's a string value
+         * and deserialize into an in-mem representation.
+         */
+        if (!cson_value_is_string(val)) {
+            logmsg(LOGMSG_ERROR, "error parsing cson: expected object type\n");
+            goto done;
+        }
+        const char *view_str = cson_string_cstr(cson_value_get_string(val));
+        view = mod_deserialize_view(view_str, &err);
+
+        if(!view) {
+            abort();
+        }
+        /* we've successfully deserialized a view. 
+         * now add it to the global hash of all mod-parititon based views */
+        hash_add(mod_views, view);
+        kvp = cson_object_iter_next(&iter);
+    }
+done:
+    if (rootVal) {
+        cson_value_free(rootVal);
+    }
+    return mod_views;
 }

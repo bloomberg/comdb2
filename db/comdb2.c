@@ -2384,6 +2384,14 @@ int llmeta_load_timepart(struct dbenv *dbenv)
     return thedb->timepart_views ? 0 : -1;
 }
 
+int llmeta_load_mod_shards(struct dbenv *dbenv)
+{
+    logmsg(LOGMSG_INFO, "Loading mod-based shards\n");
+    dbenv->mod_shard_views = mod_create_all_views();
+
+    return dbenv->mod_shard_views ? 0 : -1;
+}
+
 /* replace the table names and dbnums saved in the low level meta table with the
  * ones in the dbenv.  returns 0 on success and anything else otherwise */
 int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
@@ -3964,6 +3972,12 @@ static int init(int argc, char **argv)
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+            unlock_schema_lk();
+            return -1;
+        }
+
+        if (llmeta_load_mod_shards(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load mod based shards\n");
             unlock_schema_lk();
             return -1;
         }
@@ -6142,6 +6156,11 @@ retry_tran:
 
     if (llmeta_load_timepart(thedb)) {
         logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+        abort();
+    }
+
+    if (llmeta_load_mod_shards(thedb)) {
+        logmsg(LOGMSG_ERROR, "could not load table shards\n");
         abort();
     }
 

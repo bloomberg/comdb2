@@ -395,6 +395,12 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
             return SC_INTERNAL_ERROR;
         }
+    } else if (s->partition.type == PARTITION_ADD_MOD) {
+        struct errstat err = {0};
+        if (mod_shard_llmeta_write(tran, s->newshard, &err)) {
+            sc_errf(s, "failed to create shard. rc: %d - %s\n", rc, err.errstr);
+            return -1;
+        }
     }
 
     sc_printf(s, "Schema change ok\n");
