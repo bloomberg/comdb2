@@ -2641,6 +2641,14 @@ upgrade:
 	case GRANT:
 		newl->status = DB_LSTAT_HELD;
 		SH_TAILQ_INSERT_TAIL(&sh_obj->holders, newl, links);
+		if (gbl_bb_berkdb_enable_thread_stats) {
+			struct berkdb_thread_stats *t;
+			struct berkdb_thread_stats *p;
+			t = bb_berkdb_get_thread_stats();
+			p = bb_berkdb_get_process_stats();
+			p->n_locks++;
+			t->n_locks++;
+		}
 		break;
 	case HEAD:
 	case TAIL:
@@ -2842,6 +2850,8 @@ upgrade:
 			if (t->worst_lock_wait_time_us < d)
 				t->worst_lock_wait_time_us = d;
 			t->n_lock_waits++;
+			t->n_locks++;
+			p->n_locks++;
 
 			if (gbl_bb_log_lock_waits_fn) {
 				/* We had to wait on this lock - call our

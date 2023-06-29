@@ -768,11 +768,25 @@ const struct berkdb_thread_stats *bdb_get_process_stats(void)
 void bdb_print_stats(const struct berkdb_thread_stats *st, const char *prefix,
                      int (*printfn)(const char *, void *), void *context)
 {
-    char s[128];
+    char s[192];
+    if (st->rep_lock_time_us > 0) {
+        snprintf(s, sizeof(s), "%s%" PRIu64 " rep-locks took %u ms (%" PRIu64 " deadlocks)\n", prefix, st->n_locks,
+                 U2M(st->rep_lock_time_us), st->rep_deadlock_retries);
+        printfn(s, context);
+    }
+    if (!st->rep_lock_time_us && st->n_locks > 0) {
+        snprintf(s, sizeof(s), "%s%" PRIu64 " total locks acquired\n", prefix, st->n_locks);
+        printfn(s, context);
+    }
+    if (st->rep_log_cnt > 0) {
+        snprintf(s, sizeof(s),
+                 "%s%" PRIu64 " log-records applied (%" PRIu64 " bytes) collect-time %u ms exec-time %u ms\n", prefix,
+                 st->rep_log_cnt, st->rep_log_bytes, U2M(st->rep_collect_time_us), U2M(st->rep_exec_time_us));
+        printfn(s, context);
+    }
     if (st->n_lock_waits > 0) {
-        snprintf(s, sizeof(s), "%s%u lock waits took %u ms (%u ms/wait)\n",
-                 prefix, st->n_lock_waits, U2M(st->lock_wait_time_us),
-                 U2M(st->lock_wait_time_us / st->n_lock_waits));
+        snprintf(s, sizeof(s), "%s%u lock waits took %u ms (%u ms/wait)\n", prefix, st->n_lock_waits,
+                 U2M(st->lock_wait_time_us), U2M(st->lock_wait_time_us / st->n_lock_waits));
         printfn(s, context);
     }
     if (st->n_preads > 0) {

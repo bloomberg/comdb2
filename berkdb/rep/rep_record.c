@@ -38,6 +38,7 @@ static const char revid[] =
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 #include <limits.h>
+#include <thread_stats.h>
 
 #include "dbinc/hmac.h"
 #include <ctrace.h>
@@ -3740,6 +3741,12 @@ gap_check:		max_lsn_dbtp = NULL;
 
 				if (ret == DB_LOCK_DEADLOCK) {
 					rep->stat.retry++;
+					if (gbl_bb_berkdb_enable_thread_stats) {
+						struct berkdb_thread_stats *t = bb_berkdb_get_thread_stats();
+						struct berkdb_thread_stats *p = bb_berkdb_get_process_stats();
+						t->rep_deadlock_retries++;
+						p->rep_deadlock_retries++;
+					}
 					num_retries++;
 					if (num_retries > rep->stat.max_replication_trans_retries)
 						rep->stat.max_replication_trans_retries = num_retries;
@@ -4666,6 +4673,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	uint32_t lflags = 0;
 	int collect_before_locking = gbl_collect_before_locking;
 	int commit_lsn_map = gbl_commit_lsn_map;
+	int td_stats = gbl_bb_berkdb_enable_thread_stats;
+	struct berkdb_thread_stats *t, *p;
+	uint64_t x1, x2, d;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
@@ -4677,7 +4687,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	int i, ret, t_ret, line = 0;
 	u_int32_t txnid = 0;
 	u_int64_t utxnid = 0, child_utxnid = 0;
-    char *dist_txnid = NULL;
+	char *dist_txnid = NULL;
 	int got_txns = 0, free_lc = 0;
 	void *txninfo;
 	unsigned long long context = 0;
@@ -4690,6 +4700,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			maxlsn.offset);
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+	if (td_stats) {
+		t = bb_berkdb_get_thread_stats();
+		p = bb_berkdb_get_process_stats();
+	}
 
 	logc = NULL;
 	txninfo = NULL;
@@ -4955,6 +4970,10 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			}
 			Pthread_mutex_unlock(&dbenv->utxnid_lock);
 		}
+
+		if(td_stats)
+			x1 = bb_berkdb_fasttime();
+
 		if (!context) {
 			uint32_t flags =
 				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
@@ -4996,6 +5015,12 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 				set_commit_context(context, commit_gen,
 					&(rctl->lsn), args, rectype);
 			}
+		}
+
+		if (td_stats) {
+			x2 = bb_berkdb_fasttime(), d = (x2 - x1);
+			t->rep_lock_time_us += d;
+			p->rep_lock_time_us += d;
 		}
 
 		if (ret != 0) {
@@ -5109,6 +5134,9 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		goto err;
 	}
 
+	if (td_stats)
+		x1 = bb_berkdb_fasttime();
+
 	/* Phase 2: Apply updates. */
 	for (i = 0; i < lc.nlsns; i++) {
 		DBT lcin_dbt = { 0 };
@@ -5166,6 +5194,13 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			}
 		} else
 			ret = 0;
+	}
+
+	if (td_stats) {
+		x2 = bb_berkdb_fasttime();
+		d = (x2 - x1);
+		t->rep_exec_time_us += d;
+		p->rep_exec_time_us += d;
 	}
 
 err:
@@ -5815,6 +5850,16 @@ bad_resize:	;
 		got_schema_lk = 1;
 	}
 
+	int td_stats = gbl_bb_berkdb_enable_thread_stats;
+	struct berkdb_thread_stats *t, *p;
+	uint64_t x1, x2, d;
+
+	if (td_stats) {
+		t = bb_berkdb_get_thread_stats();
+		p = bb_berkdb_get_process_stats();
+		x1 = bb_berkdb_fasttime();
+	}
+
 	if (!rp->context) {
 		uint32_t flags =
 			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
@@ -5851,6 +5896,13 @@ bad_resize:	;
 			set_commit_context(rp->context, commit_gen,
 				&(rctl->lsn), args, rectype);
 		}
+	}
+
+	if (td_stats) {
+		x2 = bb_berkdb_fasttime();
+		d = (x2 - x1);
+		t->rep_lock_time_us += d;
+		p->rep_lock_time_us += d;
 	}
 
 	if (throwdeadlock)
@@ -6287,9 +6339,9 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 					lc->array[lc->nlsns].rec.data = NULL;
 				} else {
 					lc->array[lc->nlsns].rec = data;
-					lc->memused += data.size;
 				}
 			}
+			lc->memused += data.size;
 			lc->nlsns++;
 
 			/*
@@ -6359,10 +6411,9 @@ err:	if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 
 }
 
-
-// PUBLIC: int __rep_collect_txn_txnid __P((DB_ENV *, DB_LSN *, LSN_COLLECTION *, int *, struct __recovery_processor *, u_int32_t));
+// PUBLIC: int __rep_collect_txn_txnid_int __P((DB_ENV *, DB_LSN *, LSN_COLLECTION *, int *, struct __recovery_processor *, u_int32_t));
 int
-__rep_collect_txn_txnid(dbenv, lsnp, lc, had_serializable_records, rp, txnid)
+__rep_collect_txn_txnid_int(dbenv, lsnp, lc, had_serializable_records, rp, txnid)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp;
 	LSN_COLLECTION *lc;
@@ -6531,6 +6582,49 @@ check_failed:
 
 	return __rep_collect_txn_from_log(dbenv, lsnp, lc,
 		had_serializable_records, rp);
+}
+
+// PUBLIC: int __rep_collect_txn_txnid __P((DB_ENV *, DB_LSN *, LSN_COLLECTION *, int *, struct __recovery_processor *, u_int32_t));
+
+int
+__rep_collect_txn_txnid(dbenv, lsnp, lc, had_serializable_records, rp, txnid)
+	DB_ENV *dbenv;
+	DB_LSN *lsnp;
+	LSN_COLLECTION *lc;
+	int *had_serializable_records;
+	struct __recovery_processor *rp;
+	u_int32_t txnid;
+{
+	int rc = 0;
+	int td_stats = gbl_bb_berkdb_enable_thread_stats;
+	struct berkdb_thread_stats *t, *p;
+	uint64_t x1, x2, d;
+
+	if (td_stats) {
+		t = bb_berkdb_get_thread_stats();
+		p = bb_berkdb_get_process_stats();
+		x1 = bb_berkdb_fasttime();
+	}
+
+	rc = __rep_collect_txn_txnid_int(dbenv, lsnp, lc, had_serializable_records, rp, txnid);
+
+	if (td_stats) {
+		x2 = bb_berkdb_fasttime(), d = (x2 - x1);
+
+		/* log-count */
+		t->rep_log_cnt += lc->nlsns;
+		p->rep_log_cnt += lc->nlsns;
+
+		/* log-bytes */
+		t->rep_log_bytes += lc->memused;
+		p->rep_log_bytes += lc->memused;
+
+		/* rep-collect time */
+		t->rep_collect_time_us += d;
+		p->rep_collect_time_us += d;
+	}
+
+	return rc;
 }
 
 // PUBLIC: int __rep_collect_txn __P((DB_ENV *, DB_LSN *, LSN_COLLECTION *, int *, struct __recovery_processor *));

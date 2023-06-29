@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 struct berkdb_thread_stats {
+    uint64_t n_locks;
     unsigned n_lock_waits;
     uint64_t lock_wait_time_us;
     uint64_t worst_lock_wait_time_us;
@@ -43,6 +44,15 @@ struct berkdb_thread_stats {
 
     unsigned n_shalloc_frees;
     uint64_t shalloc_free_time_us;
+
+    uint64_t rep_lock_time_us;
+    uint64_t rep_deadlock_retries;
+
+    uint64_t rep_log_cnt;
+    uint64_t rep_log_bytes;
+
+    uint64_t rep_collect_time_us;
+    uint64_t rep_exec_time_us;
 };
 
 #endif
