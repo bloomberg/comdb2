@@ -380,6 +380,13 @@ static int exec_grant(void *tran, bpfunc_t *func, struct errstat *err)
 
     if (rc)
         errstat_set_rcstrf(err, rc, "%s access denied", __func__);
+
+    if (rc == 0) {
+        rc = net_send_authcheck_all(thedb->handle_sibling);
+    }
+
+    ++gbl_bpfunc_auth_gen;
+
     return rc;
 }
 
@@ -400,8 +407,15 @@ static int exec_password(void *tran, bpfunc_t *func, struct errstat *err)
                       : bdb_user_password_set(tran, pwd->user, pwd->password);
 
     if (rc == 0 && pwd->disable) {
-        /* Also delete all the table accesses for this user. */
-        rc = bdb_del_all_user_access(thedb->bdb_env, tran, pwd->user);
+        int bdberr;
+        /* Delete OP access for this user. */
+        rc = bdb_tbl_op_access_delete(thedb->bdb_env, tran, 0, "",
+                                      pwd->user, &bdberr);
+
+        if (rc == 0) {
+            /* Also delete all the table accesses for this user. */
+            rc = bdb_del_all_user_access(thedb->bdb_env, tran, pwd->user);
+        }
     }
 
     if (rc == 0) {

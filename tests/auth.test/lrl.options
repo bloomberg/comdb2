@@ -1,4 +1,2 @@
 table   dummy   dummy.csc2
-
-allow_user_schema
 create_dba_user off

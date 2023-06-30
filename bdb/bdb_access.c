@@ -276,6 +276,15 @@ static int bdb_del_user_tbl_access(bdb_state_type *bdb_state, tran_type *tran,
     int rc = 0;
     int bdberr;
 
+    if ((rc = bdb_tbl_op_access_delete(bdb_state, tran, 0, table_name,
+                                       user, &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error deleting user access information (user: %s, table: %s, "
+               "rc: %d, bdberr: %d)\n",
+               user, table_name, rc, bdberr);
+        return rc;
+    }
+
     if ((rc = bdb_tbl_access_read_delete(bdb_state, tran, table_name, user,
                                          &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR,
