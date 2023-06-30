@@ -32,6 +32,7 @@ select t.a, t.b, t2.c from t left outer join t2 on t.a = t2.c union all select t
 #explain distribution select count(*) from t, t2 where t.a > 0 union all select count(t3.e) from t3, t4  where t3.e == t4.h
 select count(*) from t, t2 where t.a > 0 union all select count(t3.e) from t3, t4  where t3.e == t4.h
 select 1 from t left join (select a from t) union all  select 1 from t left join (select a from t) limit 2
+select t.a from t left join (select a from t) tt where tt.a = t.a union all  select 1 from t left join (select a from t) limit 2
 delete from t
 delete from t2
 delete from t3
