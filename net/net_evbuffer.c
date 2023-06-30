@@ -1095,7 +1095,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", (size_t)(outstanding / MB(1)), (size_t) (max_bytes / MB(1)));
+    hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb)\n", (size_t)(outstanding / MB(1)), (size_t) (max_bytes / MB(1)));
 }
 
 static void message_done(struct event_info *e)
@@ -1131,16 +1131,6 @@ static void user_msg_callback(void *work)
         evbuffer_add_buffer(e->payload_buf, e->akq_buf);
         Pthread_mutex_unlock(&e->akq_lk);
     }
-    if (unlikely(e->rd_full)) {
-        uint64_t max_bytes = e->net_info->rd_max;
-        size_t outstanding = evbuffer_get_length(e->akq_buf) + evbuffer_get_length(e->payload_buf);
-        if (outstanding < (max_bytes * resume_lvl)) {
-            time_t diff = time(NULL) - e->rd_full;
-            hprintf("RESUMING RD outstanding:%zumb (max:%"PRIu64"mb ) after:%ds\n", outstanding / MB(1), max_bytes / MB(1), (int)diff);
-            e->rd_full = 0;
-            evtimer_once(rd_base, resume_read, e);
-        }
-    }
     if (likely(info->gen == e->akq_gen)) {
         struct iovec payload;
         if (evbuffer_get_contiguous_space(e->payload_buf) > datalen) {
@@ -1154,6 +1144,18 @@ static void user_msg_callback(void *work)
         user_msg(e, msg, payload.iov_base);
     }
     evbuffer_drain(e->payload_buf, datalen);
+    Pthread_mutex_lock(&e->akq_lk);
+    if (unlikely(e->rd_full)) {
+        uint64_t max_bytes = e->net_info->rd_max;
+        size_t outstanding = evbuffer_get_length(e->akq_buf) + evbuffer_get_length(e->payload_buf);
+        if (outstanding < (max_bytes * resume_lvl)) {
+            time_t diff = time(NULL) - e->rd_full;
+            hprintf("RESUMING RD outstanding:%zumb (max:%"PRIu64"mb) after:%ds\n", outstanding / MB(1), max_bytes / MB(1), (int)diff);
+            e->rd_full = 0;
+            evtimer_once(rd_base, resume_read, e);
+        }
+    }
+    Pthread_mutex_unlock(&e->akq_lk);
 }
 
 static int process_user_msg(struct event_info *e)
