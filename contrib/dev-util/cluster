@@ -335,25 +335,25 @@ function do_docker {
 }
 
 function tmux_int {
-	/usr/bin/tmux new-window
-	/usr/bin/tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
-	/usr/bin/tmux send-keys "${HOME}/bin/cluster c 1" Enter
+	tmux new-window
+	tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
+	tmux send-keys "${HOME}/bin/cluster c 1" Enter
 	n=$(get clusternum)
 	for ((i=2;i<=$n;++i)); do
-		/usr/bin/tmux split-window
-		/usr/bin/tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
-		/usr/bin/tmux send-keys "$HOME/bin/cluster c ${i}" Enter
-		/usr/bin/tmux select-layout tiled
+		tmux split-window
+		tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
+		tmux send-keys "$HOME/bin/cluster c ${i}" Enter
+		tmux select-layout tiled
 	done
 }
 
 function sync_panes {
-	/usr/bin/tmux set-window-option synchronize-panes
-	/usr/bin/tmux set-option window-status-style "bg=colour124"
-	/usr/bin/tmux set-option pane-active-border-style "fg=colour124"
+	tmux set-window-option synchronize-panes
+	tmux set-option window-status-style "bg=colour124"
+	tmux set-option pane-active-border-style "fg=colour124"
 }
 
-function tmux {
+function do_tmux {
 	tmux_int
 	sync_panes
 }
@@ -368,7 +368,7 @@ function db {
     if [[ -n "$TMUX" ]]; then
         tmux_int
         sync_panes
-        /usr/bin/tmux send-keys "comdb2 $1" Enter
+        tmux send-keys "comdb2 $1" Enter
     else
         local n=$(get clusternum)
         for ((i=1;i<=$n;++i)); do
@@ -382,7 +382,7 @@ function pmux {
     if [[ -n "$TMUX" && "$1" != "-n" ]]; then
         tmux_int
         sync_panes
-        /usr/bin/tmux send-keys "pmux -f" Enter
+        tmux send-keys "pmux -f" Enter
     else
         local n=$(get clusternum)
         for ((i=1;i<=$n;++i)); do
@@ -438,13 +438,13 @@ function setup {
 function gdb {
 	tmux_int
 	sync_panes
-	/usr/bin/tmux send-keys "gdb -q -ex run -args comdb2 $1" Enter
+	tmux send-keys "gdb -q -ex run -args comdb2 $1" Enter
 }
 
 function vg {
 	tmux_int
 	sync_panes
-	/usr/bin/tmux send-keys "valgrind comdb2 ${defaultdb}" Enter
+	tmux send-keys "valgrind comdb2 ${defaultdb}" Enter
 }
 
 function check-containers-ready {
@@ -584,7 +584,7 @@ elif [[ "$1" == "rm" ]] || [[ "$1" == "stop" ]] || [[ "$1" == "kill" ]] || [[ "$
     fi
 elif [[ "$1" == "tmux" ]]; then
     check-containers-ready || exit 1
-	tmux
+	do_tmux
 elif [[ "$1" == "db" ]]; then
     check-containers-ready || exit 1
 	db ${2:-${defaultdb}}
