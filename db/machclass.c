@@ -42,6 +42,7 @@ static machine_class_t default_classes[] = {
     {"beta", 4},        /* CLASS_BETA == 4  */
     {"prod", 5},        /* CLASS_PROD == 5 */
     {"integration", 6}, /* CLASS_INTEGRATION == 6 */
+    {"fuzz", 7},         /* CLASS_FUZZ == 7 */
 };
 
 static char *fdb_tiers[sizeof(default_classes) / sizeof(default_classes[0])];
