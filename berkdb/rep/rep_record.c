@@ -4674,8 +4674,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	int collect_before_locking = gbl_collect_before_locking;
 	int commit_lsn_map = gbl_commit_lsn_map;
 	int td_stats = gbl_bb_berkdb_enable_thread_stats;
-	struct berkdb_thread_stats *t, *p;
-	uint64_t x1, x2, d;
+	struct berkdb_thread_stats *t=NULL, *p=NULL;
+	uint64_t x1=0, x2=0, d;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
