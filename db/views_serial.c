@@ -2038,11 +2038,12 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         keys[i] = (uint32_t)val;
     }
 
+    view = create_mod_view(name, keyname, num_shards, keys, dbnames, err);
     if (rootVal) {
         cson_value_free(rootVal);
     }
-    return create_mod_view(name, keyname, num_shards, keys, dbnames, err);
 
+    return view;
 error:
     if (err_str) {
         errstat_set_rcstrf(err, VIEW_ERR_PARAM, err_str);

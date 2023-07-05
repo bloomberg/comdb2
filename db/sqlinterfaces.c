@@ -4379,6 +4379,18 @@ check_version:
                 }
             }
 
+            if (thedb->mod_shard_views) {
+                rc = mod_views_sqlite_update(thedb->mod_shard_views, thd->sqldb,
+                                            &xerr);
+                if (rc != VIEW_NOERR) {
+                    logmsg(LOGMSG_FATAL,
+                           "failed to create views rc=%d errstr=\"%s\"\n",
+                           xerr.errval, xerr.errstr);
+                    /* there is no really way forward */
+                    abort();
+                }
+            }
+
             /* save the views generation number */
             thd->views_gen = gbl_views_gen;
         }

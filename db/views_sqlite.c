@@ -325,6 +325,162 @@ static int _view_delete_if_missing(const char *name, sqlite3 *db, void *arg)
     return 0;
 }
 
+char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
+                            struct errstat *err)
+{
+    char *select_str = NULL;
+    char *cols_str = NULL;
+    char *tmp_str = NULL;
+    char *ret_str = NULL;
+    void *ent;
+    unsigned int bkt;
+    mod_shard_t *shard = NULL;
+    int num_shards = mod_view_get_num_shards(view);
+    const char * view_name = mod_view_get_name(view);
+    hash_t * shards = mod_view_get_shards(view);
+    int i;
+    if (num_shards == 0) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "View %s has no shards???\n",
+                 view_name);
+        return NULL;
+    }
+
+    cols_str = sqlite3_mprintf("rowid as __hidden__rowid, ");
+    if (!cols_str) {
+        goto malloc;
+    }
+
+    cols_str = _describe_row(view_name, cols_str, VIEWS_TRIGGER_QUERY, err);
+    if (!cols_str) {
+        abort();
+        /* preserve error, if any */
+        if (err->errval != VIEW_NOERR)
+            return NULL;
+        goto malloc;
+    } else {
+        logmsg(LOGMSG_USER, "GOT cols_str as %s\n", cols_str);
+    }
+
+    select_str = sqlite3_mprintf("");
+    i = 0;
+    for (shard=(mod_shard_t *)hash_first(shards, &ent, &bkt); shard != NULL;
+         shard=(mod_shard_t *)hash_next(shards, &ent, &bkt)) {
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%w\".\"%w\"", select_str,
+                                  (i > 0) ? " UNION ALL " : "", cols_str,
+                                  mod_shard_get_dbname(shard),mod_view_get_name(view));
+        sqlite3_free(select_str);
+        if (!tmp_str) {
+            sqlite3_free(cols_str);
+            goto malloc;
+        }
+        select_str = tmp_str;
+        i++;
+    }
+
+    ret_str = sqlite3_mprintf("CREATE VIEW view_%w AS %s", view_name, select_str);
+    if (!ret_str) {
+        sqlite3_free(select_str);
+        sqlite3_free(cols_str);
+        goto malloc;
+    }
+
+    sqlite3_free(select_str);
+    sqlite3_free(cols_str);
+
+    dbg_verbose_sqlite("Generated:\n\"%s\"\n", ret_str);
+
+    return ret_str;
+
+malloc:
+    err->errval = VIEW_ERR_MALLOC;
+    snprintf(err->errstr, sizeof(err->errstr), "View %s out of memory\n",
+             view_name);
+    return NULL;
+
+}
+
+int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
+{
+    char *errstr = NULL;
+    int rc;
+
+    /* create the view */
+    db->isTimepartView = 1;
+    rc = sqlite3_exec(db, stmt, NULL, NULL, &errstr);
+    db->isTimepartView = 0;
+    if (rc != SQLITE_OK) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"",
+                 errstr);
+        /* can't control sqlite errors */
+        err->errstr[sizeof(err->errstr) - 1] = '\0';
+
+        logmsg(LOGMSG_ERROR, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__,
+               errstr, stmt);
+
+        if (errstr)
+            sqlite3_free(errstr);
+        return err->errval;
+    }
+
+    /* use sqlite to add the view */
+    return VIEW_NOERR;
+
+}
+
+int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
+                            struct errstat *err)
+{
+    char *stmt_str;
+    int rc;
+
+    /* create the statement */
+    stmt_str = mod_views_create_view_query(view, db, err);
+    if (!stmt_str) {
+        return err->errval;
+    }
+
+    rc = mod_views_run_sql(db, stmt_str, err);
+
+    /* free the statement */
+    sqlite3_free(stmt_str);
+
+    if (rc != VIEW_NOERR) {
+        return err->errval;
+    }
+
+    return rc;
+}
+
+int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
+                        struct errstat *err)
+{
+    Table *tab;
+    int rc;
+    void *ent;
+    unsigned int bkt;
+    mod_view_t *view = NULL;
+
+    for (view=(mod_view_t *)hash_first(views, &ent, &bkt); view != NULL;
+         view=(mod_view_t *)hash_next(views, &ent, &bkt)) {
+        /* check if this exists?*/
+        tab = sqlite3FindTableCheckOnly(db, mod_view_get_name(view), NULL);
+        if (!tab) {
+            rc = mod_views_sqlite_add_view(view, db, err);
+            if (rc!=VIEW_NOERR) {
+                goto done;
+            }
+        } else {
+            logmsg(LOGMSG_USER, "View %s already exists\n", mod_view_get_name(view));
+        }
+    }
+    rc = VIEW_NOERR;
+done:
+    return rc;
+}
+
+
 #ifdef COMDB2_UPDATEABLE_VIEWS
 
 static int _views_create_triggers(timepart_view_t *view, sqlite3 *db,

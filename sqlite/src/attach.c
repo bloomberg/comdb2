@@ -676,6 +676,7 @@ int sqlite3FixSrcList(
   for(i=0, pItem=pList->a; i<pList->nSrc; i++, pItem++){
     if( pFix->bVarOnly==0 ){
       if( pItem->zDatabase && sqlite3StrICmp(pItem->zDatabase, zDb) ){
+          abort();
         sqlite3ErrorMsg(pFix->pParse,
             "%s %T cannot reference objects in database %s",
             pFix->zType, pFix->pName, pItem->zDatabase);
