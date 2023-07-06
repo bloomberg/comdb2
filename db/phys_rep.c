@@ -204,8 +204,9 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     // The specified host is a valid tier. Retrieve the host list from comdb2db.
 
     cdb2_hndl_tp *comdb2db;
-    const char *query = "select m.name from machines as m, clusters as c  databases as d"
-                        "  where c.name=@dbname and c.cluster_name=@class and m.cluster=c.cluster_machs and d.name=@dbname";
+    const char *query = "select m.name from machines as m, clusters as c, databases as d"
+                        "  where c.name=@dbname and c.cluster_name=@class and "
+                        "        m.cluster=c.cluster_machs and d.name=@dbname";
 
     const char *comdb2dbname = "comdb2db";
     const char *comdb2dbclass = "prod";
@@ -217,8 +218,9 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
 
     *rc = cdb2_open(&comdb2db, comdb2dbname, comdb2dbclass, 0);
     if (*rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to comdb2db (err: %s rc: %d)\n",
-                       __func__, __LINE__, cdb2_errstr(comdb2db), *rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (err: %s rc: %d)\n",
+                       __func__, __LINE__, comdb2dbname, comdb2dbclass,
+                       cdb2_errstr(comdb2db), *rc);
         goto err;
     }
 
@@ -239,8 +241,9 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
 
     *rc = cdb2_run_statement(comdb2db, query);
     if (*rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute query against comdb2db (rc: %d)\n",
-                       __func__, __LINE__, *rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute query against %s@%s (err: %s rc: %d)\n",
+                       __func__, __LINE__, comdb2dbname, comdb2dbclass,
+                       cdb2_errstr(comdb2db), *rc);
         goto err;
     }
 
@@ -250,6 +253,8 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
         bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, "%s'%s'", (count == 0) ? "" : ", ", host);
         ++count;
     }
+    if (*rc == CDB2_OK_DONE)
+        *rc = 0;
 
     cdb2_close(comdb2db);
     return bytes_written;
@@ -810,7 +815,7 @@ static int check_for_reverse_conn(cdb2_hndl_tp *hndl) {
             int64_t val = *(int64_t *)cdb2_column_value(hndl, 0);
             do_wait = (val != 0) ? 1 : 0;
             if (gbl_physrep_debug) {
-                physrep_logmsg(LOGMSG_USER, "%s:%d Will %s for connection from source cluster\n",
+                physrep_logmsg(LOGMSG_USER, "%s:%d Will %s for connection from source node(s)\n",
                                __func__, __LINE__, (do_wait) ?  "wait" : "not wait");
             }
         }

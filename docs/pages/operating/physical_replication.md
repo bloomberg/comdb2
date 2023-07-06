@@ -8,8 +8,8 @@ It is important to note that physreps are applying the logs out-of-band and, thu
 should not be considered part of the source cluster.
 
 In order to enable replication, `replicate_from` must be added to the copycomdb2-d
-physrep's lrl file. This line can either take a hostname or a valid Comdb2 cluster
-tier.
+physrep's lrl file. This line can either take a valid Comdb2 cluster tier, a
+hostname or a comma-separated list of hostnames (without any space).
 
 ```
 replicate_from source_dbname @source_host/source_tier
