@@ -582,6 +582,8 @@ struct Vdbe {
   u16 vTableFlags;        /* Pre-acquire rwlocks / mutexes for certain vtables */
   u16 numVTableLocks;
   char **vTableLocks;
+  u16 hasVTables;
+  u8 hasScalarFunc;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */

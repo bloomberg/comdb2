@@ -1181,6 +1181,12 @@ REGISTER_TUNABLE("toblock_net_throttle",
 REGISTER_TUNABLE("track_berk_locks", NULL, TUNABLE_INTEGER,
                  &gbl_berkdb_track_locks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("typessql", "Use typessql to attempt to buffer results until all columns are non-null. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_typessql, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "typessql_records_max",
+    "The maximum number of records for typessql to buffer and find non-null types before giving up. (Default: 1000)",
+    TUNABLE_INTEGER, &gbl_typessql_records_max, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("db_lock_maxid_override", "Override berkley lock_maxid for "
                  "testing. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_db_lock_maxid_override, EXPERIMENTAL | INTERNAL, NULL,

@@ -185,6 +185,7 @@ static void stmt_free_vtable_locks(sqlite3_stmt *pStmt) {
   free(vdbe->vTableLocks);
   vdbe->vTableLocks = 0;
   vdbe->numVTableLocks = 0;
+  vdbe->hasVTables = 0;
 }
 
 void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
@@ -233,12 +234,18 @@ int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt) {
   return 1;
 }
 
-void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks, int numVTableLocks, int flags){
+void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks, int numVTableLocks, int hasVTables, int flags){
   Vdbe *vdbe = (Vdbe *)pStmt;
   stmt_free_vtable_locks(pStmt);
   vdbe->numVTableLocks = numVTableLocks;
   vdbe->vTableLocks = vTableLocks;
+  vdbe->hasVTables = hasVTables;
   vdbe->vTableFlags = flags;
+}
+
+void stmt_set_has_scalar_func(sqlite3_stmt *pStmt, int hasScalarFunc) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  vdbe->hasScalarFunc = hasScalarFunc;
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
