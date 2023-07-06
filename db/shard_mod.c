@@ -9,7 +9,8 @@ struct mod_shard {
 };
 
 struct mod_view {
-    char *name;
+    char *viewname;
+    char *tblname;
     /* TODO: make separate key type */
     char *keyname; 
     int num_shards;
@@ -46,10 +47,13 @@ mod_shard_t *create_mod_shard(int key, char *name)
     return mShard;
 }
 
-const char *mod_view_get_name(struct mod_view *view) {
-    return view->name;
+const char *mod_view_get_viewname(struct mod_view *view) {
+    return view->viewname;
 }
 
+const char *mod_view_get_tablename(struct mod_view *view) {
+    return view->tblname;
+}
 const char *mod_view_get_keyname(struct mod_view *view) {
     return view->keyname;
 }
@@ -67,26 +71,31 @@ int mod_shard_get_mod_val(struct mod_shard *shard) {
 const char *mod_shard_get_dbname(struct mod_shard *shard) {
     return shard->dbname;
 }
-mod_view_t *create_mod_view(const char *name, const char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
+mod_view_t *create_mod_view(const char *viewname, const char *tablename, const char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
 {
     mod_view_t *mView;
 
     mView = (mod_view_t *)calloc(1, sizeof(mod_view_t));
 
     if (!mView) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to allocate view %s\n",__func__, name);
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate view %s\n",__func__, viewname);
         goto oom;
     }
 
-    mView->name = strdup(name);
-    if (!mView->name) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to allocate view name string %s\n",__func__, name);
+    mView->viewname = strdup(viewname);
+    if (!mView->viewname) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate view name string %s\n",__func__, viewname);
         goto oom;
     }
 
+    mView->tblname = strdup(tablename);
+    if (!mView->tblname) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate view name string %s\n",__func__, tablename);
+        goto oom;
+    }
     mView->keyname = strdup(keyname);
     if (!mView->keyname) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to allocate key name string %s\n",__func__, name);
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate key name string %s\n",__func__, keyname);
         goto oom;
     }
     mView->num_shards = num_shards;
@@ -104,8 +113,11 @@ mod_view_t *create_mod_view(const char *name, const char *keyname, uint32_t num_
     return mView;
 oom:
     if (mView) {
-        if (mView->name) {
-            free(mView->name);
+        if (mView->viewname) {
+            free(mView->viewname);
+        }
+        if (mView->tblname) {
+            free(mView->tblname);
         }
         if (mView->keyname) {
             free(mView->keyname);
@@ -128,7 +140,7 @@ static int create_inmem_view(hash_t *mod_views, mod_view_t *view) {
 }
 
 static int destroy_inmem_view(hash_t *mod_views, mod_view_t *view) {
-    struct mod_view *v = hash_find(mod_views, view->name);
+    struct mod_view *v = hash_find(mod_views, view->viewname);
 
     if (!v) {
         return VIEW_ERR_NOTFOUND;
@@ -142,7 +154,7 @@ int mod_create_inmem_view(mod_view_t *view) {
     rc = create_inmem_view(thedb->mod_shard_views, view);
     if (rc!=VIEW_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to create in-memory view %s. rc: %d\n",
-                __func__, view->name, rc);
+                __func__, view->viewname, rc);
     }
     return rc;
 }
@@ -152,7 +164,7 @@ int mod_destroy_inmem_view(mod_view_t *view) {
     rc = destroy_inmem_view(thedb->mod_shard_views, view);
     if (rc!=VIEW_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to destroy in-memory view %s. rc: %d\n",
-                __func__, view->name , rc);
+                __func__, view->viewname , rc);
     }
     return rc;
 }
@@ -168,21 +180,21 @@ int mod_shard_llmeta_write(void *tran, mod_view_t *view, struct errstat *err) {
 
     rc = mod_serialize_view(view, &view_str_len, &view_str);
     if (rc!=VIEW_NOERR) {
-        errstat_set_strf(err, "Failed to serialize view %s", view->name);
+        errstat_set_strf(err, "Failed to serialize view %s", view->viewname);
         errstat_set_rc(err, rc = VIEW_ERR_BUG);
         goto done;
     }
 
     logmsg(LOGMSG_USER, "%s\n", view_str);
     /* save the view */
-    rc = mod_views_write_view(tran, view->name, view_str, 0);
+    rc = mod_views_write_view(tran, view->viewname, view_str, 0);
     if (rc != VIEW_NOERR) {
         if (rc == VIEW_ERR_EXIST)
             errstat_set_rcstrf(err, VIEW_ERR_EXIST,
-                               "Shard %s already exists", view->name);
+                               "View %s already exists", view->viewname);
         else
             errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
-                               "Failed to llmeta save view %s", view->name);
+                               "Failed to llmeta save view %s", view->viewname);
         goto done;
     }
 
@@ -208,7 +220,7 @@ hash_t *mod_create_all_views()
     cson_object_iterator iter;
     cson_kvp *kvp = NULL;
     struct errstat err;
-    mod_views = hash_init_strcaseptr(offsetof(struct mod_view, name));
+    mod_views = hash_init_strcaseptr(offsetof(struct mod_view, viewname));
     views_str = mod_views_read_all_views();
     if (!views_str) {
         return mod_views;

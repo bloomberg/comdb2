@@ -336,7 +336,8 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
     unsigned int bkt;
     mod_shard_t *shard = NULL;
     int num_shards = mod_view_get_num_shards(view);
-    const char * view_name = mod_view_get_name(view);
+    const char *view_name = mod_view_get_viewname(view);
+    const char *table_name = mod_view_get_tablename(view);
     hash_t * shards = mod_view_get_shards(view);
     int i;
     if (num_shards == 0) {
@@ -351,9 +352,8 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
         goto malloc;
     }
 
-    cols_str = _describe_row(view_name, cols_str, VIEWS_TRIGGER_QUERY, err);
+    cols_str = _describe_row(table_name, cols_str, VIEWS_TRIGGER_QUERY, err);
     if (!cols_str) {
-        abort();
         /* preserve error, if any */
         if (err->errval != VIEW_NOERR)
             return NULL;
@@ -366,9 +366,9 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
     i = 0;
     for (shard=(mod_shard_t *)hash_first(shards, &ent, &bkt); shard != NULL;
          shard=(mod_shard_t *)hash_next(shards, &ent, &bkt)) {
-        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%w\".\"%w\"", select_str,
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %w.\"%w\"", select_str,
                                   (i > 0) ? " UNION ALL " : "", cols_str,
-                                  mod_shard_get_dbname(shard),mod_view_get_name(view));
+                                  mod_shard_get_dbname(shard),mod_view_get_viewname(view));
         sqlite3_free(select_str);
         if (!tmp_str) {
             sqlite3_free(cols_str);
@@ -378,7 +378,7 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
         i++;
     }
 
-    ret_str = sqlite3_mprintf("CREATE VIEW view_%w AS %s", view_name, select_str);
+    ret_str = sqlite3_mprintf("CREATE VIEW %w AS %s", view_name, select_str);
     if (!ret_str) {
         sqlite3_free(select_str);
         sqlite3_free(cols_str);
@@ -416,7 +416,7 @@ int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
         /* can't control sqlite errors */
         err->errstr[sizeof(err->errstr) - 1] = '\0';
 
-        logmsg(LOGMSG_ERROR, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__,
+        logmsg(LOGMSG_USER, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__,
                errstr, stmt);
 
         if (errstr)
@@ -441,8 +441,10 @@ int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
         return err->errval;
     }
 
+
     rc = mod_views_run_sql(db, stmt_str, err);
 
+    logmsg(LOGMSG_USER, "+++++++++++sql: %s, rc: %d\n", stmt_str, rc);
     /* free the statement */
     sqlite3_free(stmt_str);
 
@@ -465,14 +467,14 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
     for (view=(mod_view_t *)hash_first(views, &ent, &bkt); view != NULL;
          view=(mod_view_t *)hash_next(views, &ent, &bkt)) {
         /* check if this exists?*/
-        tab = sqlite3FindTableCheckOnly(db, mod_view_get_name(view), NULL);
+        tab = sqlite3FindTableCheckOnly(db, mod_view_get_viewname(view), NULL);
         if (!tab) {
             rc = mod_views_sqlite_add_view(view, db, err);
             if (rc!=VIEW_NOERR) {
                 goto done;
             }
         } else {
-            logmsg(LOGMSG_USER, "View %s already exists\n", mod_view_get_name(view));
+            logmsg(LOGMSG_USER, "View %s already exists\n", mod_view_get_viewname(view));
         }
     }
     rc = VIEW_NOERR;

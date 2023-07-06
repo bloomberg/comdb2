@@ -92,6 +92,7 @@ struct comdb2_partition {
             int version;
         } mergetable;
         struct mod {
+            char viewname[MAXTABLELEN];
             char column[MAXCOLNAME];
             uint32_t num_shards;
             uint32_t keys[MAXSHARDS];

@@ -4890,7 +4890,15 @@ void comdb2CreateTableEnd(
     if (sc == 0)
         goto oom;
 
-    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
+    if (ctx->partition && ctx->partition->type == PARTITION_ADD_MOD) {
+        char tmp_str[MAXTABLELEN] = {0};
+        strcpy(ctx->partition->u.mod.viewname, ctx->tablename); 
+        strcpy(tmp_str , "modshard_");
+        strcpy(tmp_str + 9, ctx->tablename);
+        strcpy(sc->tablename, tmp_str);
+    } else {
+        memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
+    }
 
     sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;

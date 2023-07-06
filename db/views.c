@@ -3313,7 +3313,7 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
         } /*switch */
         int bdberr = 0;
         if (sc->partition.type == PARTITION_ADD_MOD) {
-            rc = bdb_llog_partition(thedb->bdb_env, tran, (char *)mod_view_get_name(sc->newshard), &bdberr);
+            rc = bdb_llog_partition(thedb->bdb_env, tran, (char *)mod_view_get_viewname(sc->newshard), &bdberr);
         } else {
         rc = bdb_llog_partition(thedb->bdb_env, tran,
                                 partition_name ? partition_name

@@ -1915,12 +1915,17 @@ int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
 
     rootVal = cson_value_new_object();
     rootObj = cson_value_get_object(rootVal);
-    const char *tmp_str = mod_view_get_name(view);
-    rc = cson_object_set(rootObj, "NAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
+    const char *tmp_str = mod_view_get_viewname(view);
+    rc = cson_object_set(rootObj, "VIEWNAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
     if (rc) {
         goto err;
     }
 
+    tmp_str = mod_view_get_tablename(view);
+    rc = cson_object_set(rootObj, "TABLENAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
+    if (rc) {
+        goto err;
+    }
     tmp_str = mod_view_get_keyname(view);
     rc = cson_object_set(rootObj, "KEYNAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
     if (rc) {
@@ -1961,7 +1966,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
     cson_object *rootObj = NULL, *arrObj = NULL;
     cson_value *rootVal = NULL, *arrVal = NULL;
     cson_array *shards = NULL;
-    const char *name = NULL, *keyname = NULL, *tmp_str = NULL;
+    const char *viewname = NULL, *tablename = NULL, *keyname = NULL, *tmp_str = NULL;
     const char *err_str;
     int num_shards = 0;
     int rc;
@@ -1979,10 +1984,16 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
     rc = cson_value_is_object(rootVal);
     rootObj = cson_value_get_object(rootVal);
 
-    /* NAME */
-    name = _cson_extract_str(rootObj, "NAME", err);
-    if (!name) {
-        err_str = "INVALID CSON. Couldn't find 'NAME' key";
+    /* VIEWNAME */
+    viewname = _cson_extract_str(rootObj, "VIEWNAME", err);
+    if (!viewname) {
+        err_str = "INVALID CSON. Couldn't find 'VIEWNAME' key";
+        goto error;
+    }
+    /* TABLENAME */
+    tablename = _cson_extract_str(rootObj, "TABLENAME", err);
+    if (!tablename) {
+        err_str = "INVALID CSON. Couldn't find 'TABLENAME' key";
         goto error;
     }
 
@@ -2038,7 +2049,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         keys[i] = (uint32_t)val;
     }
 
-    view = create_mod_view(name, keyname, num_shards, keys, dbnames, err);
+    view = create_mod_view(viewname, tablename, keyname, num_shards, keys, dbnames, err);
     if (rootVal) {
         cson_value_free(rootVal);
     }
