@@ -12547,11 +12547,11 @@ void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm)
 ** The hard copy will be converted to ondisk format in mem_to_ondisk in
 ** function indexes_expressions_data.
 */
-int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
+int verify_indexes_column_value(struct sqlclntstate *clnt, sqlite3_stmt *stmt, void *sm)
 {
     struct schema_mem *psm = (struct schema_mem *)sm;
     Mem *pTo = psm->mout;
-    Mem *pFrom = sqlite3_column_value(stmt, 0);
+    Mem *pFrom = column_value(clnt, stmt, 0);
     if (pTo) {
         memcpy(pTo, pFrom, MEMCELLSIZE);
         pTo->db = NULL;

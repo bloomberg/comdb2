@@ -1081,6 +1081,7 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     assert(clnt->conns);
 
     clnt->backup = clnt->plugin;
+    clnt->adapter_backup = clnt->adapter;
 
     clnt->plugin.column_count = dohsql_dist_column_count;
     clnt->plugin.next_row = (clnt->conns->order) ? dohsql_dist_next_row_ordered
@@ -1093,6 +1094,7 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     clnt->plugin.column_blob = dohsql_dist_column_blob;
     clnt->plugin.column_datetime = dohsql_dist_column_datetime;
     clnt->plugin.column_interval = dohsql_dist_column_interval;
+    clnt->plugin.column_value = NULL; // TODO: Change to use dohsql_column_value
     clnt->plugin.sqlite_error = dohsql_dist_sqlite_error;
     clnt->plugin.param_count = dohsql_dist_param_count;
     clnt->plugin.param_value = dohsql_dist_param_value;

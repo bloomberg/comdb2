@@ -4009,6 +4009,9 @@ expr_code_doover:
       }else
 #endif
       {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        stmt_set_has_scalar_func((sqlite3_stmt *)v, 1);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3VdbeAddOp4(v, pParse->iSelfTab ? OP_PureFunc0 : OP_Function0,
                           constMask, r1, target, (char*)pDef, P4_FUNCDEF);
         sqlite3VdbeChangeP5(v, (u8)nFarg);

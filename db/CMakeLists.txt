@@ -91,6 +91,7 @@ set(src
   translistener.c
   trigger.c
   truncate_log.c
+  typessql.c
   utf8.c
   verify.c
   views.c

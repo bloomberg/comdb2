@@ -96,6 +96,7 @@ struct sql_authorizer_state {
     int numDdls;                       /* number of DDLs found */
     int numVTableLocks;
     char **vTableLocks;
+    int hasVTables;
 };
 
 /* Thread specific sql state */
@@ -319,6 +320,7 @@ void currange_free(CurRange *cr);
 
 struct stored_proc;
 struct lua_State;
+struct typessql;
 struct dohsql;
 struct dohsql_node;
 typedef struct fdb_push_connector fdb_push_connector_t;
@@ -481,6 +483,7 @@ struct plugin_callbacks {
     SQLITE_CALLBACK_API(int, bytes);                  /* sqlite3_column_bytes */
     SQLITE_CALLBACK_API(const void *, blob);          /* sqlite3_column_bytes */
     SQLITE_CALLBACK_API(const dttz_t *, datetime);    /* sqlite3_column_datetime */
+    SQLITE_CALLBACK_API(sqlite3_value *, value);      /* sqlite3_column_value */
     const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int, int);  /* sqlite3_column_interval*/
     int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);    /* sqlite3_errcode */
 };
@@ -542,6 +545,7 @@ struct plugin_callbacks {
         make_plugin_optional_null(clnt, blob);                                 \
         make_plugin_optional_null(clnt, datetime);                             \
         make_plugin_optional_null(clnt, interval);                             \
+        make_plugin_optional_null(clnt, value);                                \
         (clnt)->plugin.state = NULL;                                           \
         (clnt)->plugin.next_row = NULL;                                        \
         (clnt)->plugin.tzname = NULL;                                          \
@@ -645,6 +649,11 @@ struct sqlclntstate {
     void *appdata;
     struct plugin_callbacks plugin;
     struct plugin_callbacks backup; /* allow transient client state mutations */
+
+    /* typessql structs */
+    struct plugin_callbacks adapter;
+    struct plugin_callbacks adapter_backup;
+    struct typessql *typessql_state;
 
     /* bplog write plugin */
     int (*begin)(struct sqlclntstate *clnt, int retries, int keep_id);
@@ -1396,6 +1405,7 @@ int column_bytes(struct sqlclntstate *, sqlite3_stmt *, int);
 const void *column_blob(struct sqlclntstate *, sqlite3_stmt *, int);
 const dttz_t *column_datetime(struct sqlclntstate *, sqlite3_stmt *, int);
 const intv_t *column_interval(struct sqlclntstate *, sqlite3_stmt *, int, int);
+sqlite3_value *column_value(struct sqlclntstate *, sqlite3_stmt *, int);
 
 struct query_stats {
     int64_t nfstrap;

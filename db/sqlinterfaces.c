@@ -110,6 +110,7 @@
 
 #include "osqlsqlsocket.h"
 #include <net_appsock.h>
+#include <typessql.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -144,6 +145,7 @@ extern int gbl_old_column_names;
 extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
+extern int gbl_typessql;
 
 /* Once and for all:
 
@@ -448,6 +450,12 @@ const intv_t *column_interval(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int
     return sqlite3_column_interval(stmt, iCol, type);
 }
 
+sqlite3_value *column_value(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
+{
+    if (clnt && clnt->plugin.column_value) return clnt->plugin.column_value(clnt, stmt, iCol);
+    return sqlite3_column_value(stmt, iCol);
+}
+
 int sqlite_stmt_error(sqlite3_stmt *stmt, const char **errstr)
 {
     sqlite3 *db = sqlite3_db_handle(stmt);
@@ -731,14 +739,16 @@ void sqlinit(void)
         abort();
 }
 
-static char *vtable_lockname(sqlite3 *db, const char *vtable)
+static char *vtable_lockname(sqlite3 *db, const char *vtable, int *is_system_table)
 {
+    *is_system_table = 0;
     if (vtable == NULL || db == NULL || db->aModule.count == 0)
         return NULL;
     struct Module *module;
     char *lockname = NULL;
     sqlite3_mutex_enter(db->mutex);
     if ((module = sqlite3HashFind(&db->aModule, vtable)) != NULL) {
+        *is_system_table = 1;
         lockname = module->pModule->systable_lock;
     }
     sqlite3_mutex_leave(db->mutex);
@@ -757,7 +767,8 @@ static int vtable_search(char **vtables, int ntables, const char *table)
 
 static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const char *table)
 {
-    const char *vtable_lock = vtable_lockname(pAuthState->db, table);
+    int is_system_table;
+    const char *vtable_lock = vtable_lockname(pAuthState->db, table, &is_system_table);
     if (table != NULL && (strcmp(table, "comdb2_triggers") == 0)) {
         pAuthState->flags |= PREPARE_ACQUIRE_SPLOCK;
     }
@@ -778,6 +789,8 @@ static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const 
             (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * (pAuthState->numVTableLocks + 1));
         pAuthState->vTableLocks[pAuthState->numVTableLocks++] = strdup(vtable_lock);
     }
+    if (is_system_table && !pAuthState->hasVTables)
+        pAuthState->hasVTables = 1;
 }
 
 static int comdb2_authorizer_for_sqlite(
@@ -881,6 +894,7 @@ static void comdb2_set_authstate(struct sqlthdstate *thd, struct sqlclntstate *c
     thd->authState.numDdls = 0;
     thd->authState.numVTableLocks = 0;
     thd->authState.vTableLocks = NULL;
+    thd->authState.hasVTables = 0;
     thd->authState.db = thd->sqldb;
 }
 
@@ -973,11 +987,12 @@ int get_sqlite3_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                             int col, int skip_decltype)
 {
     int type = SQLITE_NULL;
+    int ncols = column_count(clnt, stmt);
 
     if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
         type = column_type(clnt, stmt, col);
         if (type == SQLITE_NULL && !skip_decltype) {
-            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col >= ncols ? col - ncols : col));
         }
         if (type == SQLITE_DECIMAL) {
             type = SQLITE_TEXT;
@@ -3135,9 +3150,11 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         if (rec->stmt) {
-            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks, thd->authState.flags);
+            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks,
+                                  thd->authState.hasVTables, thd->authState.flags);
             thd->authState.numVTableLocks = 0;
             thd->authState.vTableLocks = NULL;
+            thd->authState.hasVTables = 0;
         } else {
             for (int i = 0; i < thd->authState.numVTableLocks; i++) {
                 free(thd->authState.vTableLocks[i]);
@@ -3145,6 +3162,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             free(thd->authState.vTableLocks);
             thd->authState.numVTableLocks = 0;
             thd->authState.vTableLocks = NULL;
+            thd->authState.hasVTables = 0;
         }
 
         thd->authState.flags = 0;
@@ -3718,6 +3736,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     sqlite3_stmt *stmt = rec->stmt;
 
     run_stmt_setup(clnt, stmt);
+    if (gbl_typessql && clnt->isselect && !dohsql_is_parallel_shard() && !clnt->fdb_push &&
+        !((Vdbe *)stmt)->hasVTables && !((Vdbe *)stmt)->hasScalarFunc)
+        typessql_initialize(clnt, stmt);
 
     /* this is a regular sql query, add it to history */
     if (srs_tran_add_query(clnt))
@@ -3739,7 +3760,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->verify_indexes && steprc == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
-        return verify_indexes_column_value(stmt, clnt->schema_mems);
+        return verify_indexes_column_value(clnt, stmt, clnt->schema_mems);
     } else if (clnt->verify_indexes && steprc == SQLITE_DONE) {
         clnt->has_sqliterow = 0;
         return 0;
@@ -3850,6 +3871,8 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
     if (clnt->fdb_push)
         fdb_push_free(&clnt->fdb_push);
+    if (clnt->typessql_state)
+        typessql_end(clnt);
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt, stmt, outrc);
 
@@ -4562,7 +4585,7 @@ static int execute_verify_indexes(struct sqlthdstate *thd, struct sqlclntstate *
     run_stmt_setup(clnt, stmt);
     if ((clnt->step_rc = rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
-        rc = verify_indexes_column_value(stmt, clnt->schema_mems);
+        rc = verify_indexes_column_value(clnt, stmt, clnt->schema_mems);
         if (gbl_enable_internal_sql_stmt_caching) {
             if (cached_entry)
                 stmt_cache_requeue_old_entry(thd->stmt_cache, cached_entry);
@@ -7082,6 +7105,22 @@ void update_col_info(struct sql_col_info *info, int ncols)
 void clnt_plugin_reset(struct sqlclntstate *clnt)
 {
     struct plugin_callbacks *backup = &clnt->backup;
+    struct plugin_callbacks *adapter_backup = &clnt->adapter_backup;
+
+    clnt->adapter.column_count = adapter_backup->column_count;
+    clnt->adapter.next_row = adapter_backup->next_row;
+    clnt->adapter.column_type = adapter_backup->column_type;
+    clnt->adapter.column_int64 = adapter_backup->column_int64;
+    clnt->adapter.column_double = adapter_backup->column_double;
+    clnt->adapter.column_text = adapter_backup->column_text;
+    clnt->adapter.column_bytes = adapter_backup->column_bytes;
+    clnt->adapter.column_blob = adapter_backup->column_blob;
+    clnt->adapter.column_datetime = adapter_backup->column_datetime;
+    clnt->adapter.column_interval = adapter_backup->column_interval;
+    clnt->adapter.sqlite_error = adapter_backup->sqlite_error;
+    clnt->adapter.param_count = adapter_backup->param_count;
+    clnt->adapter.param_value = adapter_backup->param_value;
+    clnt->adapter.param_index = adapter_backup->param_index;
 
     clnt->plugin.column_count = backup->column_count;
     clnt->plugin.next_row = backup->next_row;

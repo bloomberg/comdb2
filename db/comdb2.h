@@ -3290,7 +3290,7 @@ extern unsigned long long gbl_delupd_blob_cnt;
 extern unsigned long long gbl_addupd_blob_cnt;
 
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
-int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
+int verify_indexes_column_value(struct sqlclntstate *clnt, sqlite3_stmt *stmt, void *sm);
 
 void verify_schema_change_constraint(struct ireq *iq, void *trans,
                                      unsigned long long newgenid, void *od_dta,
