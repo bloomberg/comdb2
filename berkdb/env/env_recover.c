@@ -87,7 +87,7 @@ static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
 int gbl_ufid_dbreg_test = 0;
-int gbl_ufid_log = 0;
+int gbl_ufid_log = 1;
 
 /* Get the recovery LSN. */
 int
