@@ -3287,7 +3287,14 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
     char *partition_name = NULL;
     int rc = VIEW_NOERR;
 
-    if (sc->partition.type != PARTITION_NONE) {
+    if (sc->partition.type == PARTITION_NONE) {
+        /* repartition. refresh the in-memory view. */
+        rc = timepart_destroy_inmem_view(sc->timepartition_name);
+        if (rc == 0)
+            rc = timepart_create_inmem_view(sc->newpartition);
+        if (rc)
+            abort(); /* restart will fix this*/
+    } else {
         switch (sc->partition.type) {
         case PARTITION_ADD_TIMED:
         case PARTITION_ADD_MANUAL: {

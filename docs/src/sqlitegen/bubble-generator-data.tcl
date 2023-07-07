@@ -838,7 +838,7 @@ stack
                       {line SET COMMIT PENDING }
                   }
               , }
-              {line {opt PARTITIONED BY {or
+              {line {opt {or PARTITIONED REPARTITIONED} BY {or
                         {line table-partition }
                         {line NONE }
                         }

@@ -5906,6 +5906,137 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     return rc;
 }
 
+/* callback on existing shards to repartition existing data */
+static int start_schema_change_tran_repartition(const char *tblname, timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct ireq *iq = sc->iq;
+    struct errstat err = {0};
+    int rc;
+
+    struct schema_change_type *newsc = clone_schemachange_type(sc);
+
+    /* this is a callback on the first shard. create a new partition struct */
+    if (arg->indx == 0) {
+        sc->newpartition = timepart_new_partition(
+                sc->tablename, sc->partition.u.tpt.period,
+                sc->partition.u.tpt.retention, sc->partition.u.tpt.start, NULL,
+                TIMEPART_ROLLOUT_TRUNCATE, &sc->timepartition_name, &err);
+
+        if (!sc->newpartition) {
+            logmsg(LOGMSG_ERROR, "failed recreating time partition rc %d \"%s\"\n", err.errval, err.errstr);
+            sc_client_error(sc, "failed recreating time partition failed rc %d \"%s\"", err.errval, err.errstr);
+            return ERR_SC;
+        }
+
+        rc = timepart_populate_shards(sc->newpartition, &err);
+        if (rc) {
+            timepart_free_view(sc->newpartition);
+            logmsg(LOGMSG_ERROR, "Failed to pre-populate the shards rc %d \"%s\"\n", err.errval, err.errstr);
+            sc_errf(sc, "Failed to pre-populate the shards rc %d \"%s\"", err.errval, err.errstr);
+            return ERR_SC;
+        }
+
+        newsc->newpartition = sc->newpartition;
+        newsc->publish = partition_publish;
+        newsc->unpublish = NULL;
+    }
+
+    newsc->kind = sc->kind;
+
+    /* determine the partition type */
+    if (arg->indx == 0) {
+        /* treat the first shard as a regular alter. */
+        newsc->partition.type = PARTITION_NONE;
+    } else if (arg->indx < sc->partition.u.tpt.retention) {
+        /* retention changed, however this shard will still be needed.
+         * merge this shard to the first shard, and truncate it. */
+        newsc->partition.type = sc->partition.type;
+    } else { /* merge + drop */
+        /* retention changed and this shard will no longer be needed.
+         * merge this shard to the first shard, and drop it. */
+        newsc->partition.type = PARTITION_MERGE;
+    }
+
+    strncpy0(newsc->tablename, tblname, sizeof(sc->tablename));
+    newsc->usedbtablevers = comdb2_table_version(newsc->tablename);
+
+    /* use the first shard as the target table. data on this shard
+     * will be merged to the first shard */
+    newsc->newdb = sc->newdb;
+    newsc->force_rebuild = 1; /* we are moving rows here */
+    /* alter only in parallel mode for live */
+    newsc->scanmode = SCAN_PARALLEL;
+    /* link the sc */
+    iq->sc = newsc;
+
+    rc = start_schema_change_tran(iq, NULL);
+
+    iq->sc->sc_next = iq->sc_pending;
+    iq->sc_pending = iq->sc;
+
+    if (arg->indx == 0)
+        sc->newdb = newsc->newdb;
+
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
+/* callback on new shards to extend the retention */
+static int start_schema_change_tran_extend(const char *tblname, timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct ireq *iq = sc->iq;
+    int rc;
+
+    struct schema_change_type *newsc = clone_schemachange_type(sc);
+    newsc->kind = SC_ADDTABLE;
+    strncpy0(newsc->tablename, tblname, sizeof(sc->tablename));
+    newsc->usedbtablevers = 0;
+    if (gbl_disable_tpsc_tblvers)
+        newsc->fix_tp_badvers = 1;
+    /* link the sc */
+    iq->sc = newsc;
+
+    rc = start_schema_change_tran(iq, NULL);
+
+    if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+        sc->preempted == SC_ACTION_RESUME) {
+        iq->sc = NULL;
+    } else {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        if (arg->nshards == arg->indx + 1)
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    }
+
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
+static int _process_partitioned_table_repartition(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    assert(sc->kind == SC_ALTERTABLE);
+
+    sc->nothrevent = 1;
+    sc->finalize = 0;
+
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+
+    rc = timepart_foreach_shard(sc->tablename, start_schema_change_tran_repartition, &arg, 0);
+
+    if (rc == 0 && arg.nshards < sc->partition.u.tpt.retention) {
+        /* retention increased. create more shards as needed */
+        arg.indx = arg.nshards;
+        rc = timepart_foreach_shard_lockless(sc->newpartition, start_schema_change_tran_extend, &arg);
+    }
+
+    return rc;
+}
+
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
 
 static int _process_single_table_sc_partitioning(struct ireq *iq) 
@@ -6049,20 +6180,24 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
         /* trying to create a duplicate time partition */
         logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
         sc_errf(sc, "Duplicate partition %s!", sc->tablename);
-        rc = SC_TABLE_ALREADY_EXIST;
-        goto out;
+        return SC_TABLE_ALREADY_EXIST;
     }
 
-    if (sc->partition.type == PARTITION_MERGE) {
+    if (sc->partition.type == PARTITION_MERGE) /* partitioned-by-none */
         return _process_partitioned_table_merge(iq);
+
+    if (sc->partition.type > PARTITION_MERGE) { /* repartition */
+        return _process_partitioned_table_repartition(iq);
     }
+
+    assert((sc->kind == SC_DROPTABLE || sc->kind == SC_DROPTABLE_INDEX)
+           || (sc->kind == SC_ALTERTABLE || sc->kind == SC_ALTERTABLE_INDEX));
 
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
     rc = timepart_foreach_shard(sc->tablename,
                                 start_schema_change_tran_wrapper, &arg, -1);
-out:
     return rc;
 }
 

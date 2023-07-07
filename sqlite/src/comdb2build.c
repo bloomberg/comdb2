@@ -7427,6 +7427,31 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
     }
 }
 
+void comdb2AlterTimePartition(Parse* pParse, Token* period, Token* retention,
+                              Token* start)
+{
+    struct comdb2_partition *partition;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse, 1);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_TIMED;
+
+    if (comdb2GetTimePartitionParams(pParse, period, retention, start,
+                                     (int32_t*)&partition->u.tpt.period,
+                                     (int32_t*)&partition->u.tpt.retention,
+                                     (int64_t*)&partition->u.tpt.start)) {
+        free_ddl_context(pParse);
+    }
+}
+
+
 /**
  * Create Manual Partition
  *
@@ -7441,6 +7466,31 @@ void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
     }
 
     partition = _get_partition(pParse, 0);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_MANUAL;
+    partition->u.tpt.period = VIEW_PARTITION_MANUAL;
+
+    int32_t tmp = 0;
+    if (comdb2GetManualPartitionParams(pParse, retention, start,
+                                     (int32_t*)&partition->u.tpt.retention,
+                                     &tmp)) {
+        free_ddl_context(pParse);
+    }
+    partition->u.tpt.start = tmp;
+}
+
+void comdb2AlterManualPartition(Parse *pParse, Token *retention, Token *start)
+{
+    struct comdb2_partition *partition;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create manual partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse, 1);
     if (!partition)
         return;
 

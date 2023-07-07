@@ -360,6 +360,7 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
 
 static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran);
+int do_fastinit(struct ireq *, struct schema_change_type *, tran_type *);
 static int optionsChanged(struct schema_change_type *sc, struct scinfo *scinfo){
     if(sc->headers != scinfo->olddb_odh || 
         sc->ip_updates != scinfo->olddb_inplace_updates ||
@@ -386,8 +387,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct scinfo scinfo;
     struct errstat err = {0};
 
-    if (s->partition.type == PARTITION_MERGE)
-        return do_merge_table(iq, s, tran);
+    if (s->partition.type >= PARTITION_MERGE) {
+        rc = do_merge_table(iq, s, tran);
+        if (rc == SC_OK && s->partition.type > PARTITION_MERGE)
+            rc = do_fastinit(iq, s, tran);
+        return rc;
+    }
 
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
@@ -908,6 +913,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (s->partition.type == PARTITION_MERGE)
         return finalize_merge_table(iq, s, transac);
+    if (s->partition.type > PARTITION_MERGE) {
+        s->kind = SC_TRUNCATETABLE;
+        s->same_schema = 1;
+        s->done_type = fastinit;
+    }
 
     iq->usedb = db;
 
