@@ -422,8 +422,9 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
     } else {
         /* NOTE: test is dev */
         if ((strncasecmp(class, "test", 4) == 0) ||
-                (strncasecmp(class, "dev", 3) == 0)) {
-            class = "dev";
+                (strncasecmp(class, "dev", 3) == 0) ||
+		(strncasecmp(class, "fuzz", 4) == 0)) {
+            class = (strncasecmp(class, "fuzz", 4) == 0) ? "fuzz" : "dev";
             comdb2dbname = strdup("comdb3db");
             comdb2dbclass = strdup("dev");
         } else {
