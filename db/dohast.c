@@ -266,14 +266,10 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         /* is it a subquery? */
         if (p->pSrc->a[i].zName) {
             if (p->pSrc->a[i].zDatabase)
-                tbl = sqlite3_mprintf("%s\"%w\".\"%w\"%s%s", tmp,
-                        p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName,
-                        p->pSrc->a[i].zAlias ? " " : "",
-                        p->pSrc->a[i].zAlias ? p->pSrc->a[i].zAlias : "");
+                tbl = sqlite3_mprintf("%s\"%w\".\"%w\"", tmp,
+                        p->pSrc->a[i].zDatabase, p->pSrc->a[i].zName);
             else
-                tbl = sqlite3_mprintf("%s\"%w\"%s%s", tmp, p->pSrc->a[i].zName,
-                        p->pSrc->a[i].zAlias ? " " : "",
-                        p->pSrc->a[i].zAlias ? p->pSrc->a[i].zAlias : "");
+                tbl = sqlite3_mprintf("%s\"%w\"", tmp, p->pSrc->a[i].zName);
         } else {
             /* subquery */
             dohsql_node_t *subnode = gen_select(v, p->pSrc->a[i].pSelect);
@@ -284,9 +280,7 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 sqlite3_free(where);
                 return NULL;
             }
-            tbl = sqlite3_mprintf("%s(%s)%s%s", tmp, subnode->sql,
-                    p->pSrc->a[i].zAlias ? " " : "",
-                    p->pSrc->a[i].zAlias ? p->pSrc->a[i].zAlias : "");
+            tbl = sqlite3_mprintf("%s(%s)", tmp, subnode->sql);
             node_free(&subnode, v->db);
         }
         sqlite3_free(tmp);
