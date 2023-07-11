@@ -280,7 +280,9 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                 sqlite3_free(where);
                 return NULL;
             }
-            tbl = sqlite3_mprintf("%s(%s)", tmp, subnode->sql);
+            tbl = sqlite3_mprintf("%s(%s)%s%s", tmp, subnode->sql,
+                    p->pSrc->a[i].zAlias ? " ": "",
+                    p->pSrc->a[i].zAlias ? p->pSrc->a[i].zAlias : "");
             node_free(&subnode, v->db);
         }
         sqlite3_free(tmp);
