@@ -1418,7 +1418,10 @@ static void *physrep_watcher(void *args) {
             //   1) Check and log hung replicants
 
             // Log whether this replicant has not been replicating for a while.
-            if ((now - physrep_hung_replicant_last_checked) >= gbl_physrep_hung_replicant_check_freq_sec) {
+            // In a replicated cluster the following check is only logical for
+            // the master node.
+            if (thedb->master == gbl_myhostname &&
+                ((now - physrep_hung_replicant_last_checked) >= gbl_physrep_hung_replicant_check_freq_sec)) {
                 am_i_hung(now);
                 physrep_hung_replicant_last_checked = now;
             }

@@ -1501,6 +1501,10 @@ REGISTER_TUNABLE("debug_partial_write", "Simulate partial write in net.  "
 REGISTER_TUNABLE("debug_verify_sleep", "Sleep one-second per record in verify.  "
                  "(Default: off)", TUNABLE_BOOLEAN, &gbl_debug_sleep_on_verify,
                  EXPERIMENTAL | INTERNAL, NULL,NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_drop_nth_rep_message", "Drop the Nth replication message "
+                 "for testing purposes (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_drop_nth_rep_message, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "max_clientstats",
     "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
