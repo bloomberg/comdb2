@@ -745,7 +745,7 @@ public class Comdb2Handle extends AbstractConnection {
             byte[] payload = protocol.write(io.getOut());
             io.flush();
 
-            if (inTxn && doAppend) {
+            if (inTxn && doAppend && snapshotFile > 0) {
                 queryList.add(new QueryItem(payload, sql, isRead));
             }
             tdlog(Level.FINEST, "sendQuery returns a good rcode");
