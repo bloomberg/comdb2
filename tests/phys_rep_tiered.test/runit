@@ -327,7 +327,7 @@ function setup_physrep_cluster()
             fi
         done
 
-        2. Start instances
+        # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
         ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 &

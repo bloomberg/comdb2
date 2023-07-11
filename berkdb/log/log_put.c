@@ -2324,6 +2324,8 @@ __log_rep_put(dbenv, lsnp, rec)
 			goto err;
 		}
 
+                // TODO (NC): enable?
+#if 0
 		/*
 		 * If we changed files and we're in a replicated
 		 * environment, we need to inform our clients now that
@@ -2334,7 +2336,6 @@ __log_rep_put(dbenv, lsnp, rec)
 		 * possible that the record we already put is a commit, so
 		 * we don't just want to return failure.
 		 */
-#if 0
 		if (!IS_ZERO_LSN(old_lsn))
 			(void)__rep_send_message(dbenv,
 			    db_eid_broadcast, REP_NEWFILE, &old_lsn, NULL, 0,

@@ -67,6 +67,7 @@ int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
 int gbl_dump_sql_on_repwait_sec = 10;
+int gbl_debug_drop_nth_rep_message = 0;
 
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
@@ -3905,9 +3906,16 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if (debug_switch_rep_delay())
         sleep(2);
 
-    r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
-                                              &host, &permlsn,
-                                              &commit_generation, online);
+    if (gbl_debug_drop_nth_rep_message > 0 &&
+        (bdb_state->repinfo->repstats.rep_process_message %
+         gbl_debug_drop_nth_rep_message) == 0) {
+        logmsg(LOGMSG_INFO, "%s:%d dropping message!\n", __func__, __LINE__);
+        r = 0;
+    } else {
+        r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
+                                                  &host, &permlsn,
+                                                  &commit_generation, online);
+    }
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {

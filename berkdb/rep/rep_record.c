@@ -81,6 +81,7 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_process_txn_time;
 extern int gbl_is_physical_replicant;
+extern int gbl_physrep_debug;
 extern int gbl_dumptxn_at_commit;
 
 int gbl_rep_badgen_trace;
@@ -3089,10 +3090,17 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	{
 		static uint32_t count=0;
 		count++;
-		logmsg(LOGMSG_INFO, "%s out-of-order lsn [%d][%d] instead of [%d][%d], "
-				"count %u\n", __func__, rp->lsn.file, rp->lsn.offset,
-				lp->ready_lsn.file, lp->ready_lsn.offset, count);
-		goto done;
+                if (gbl_physrep_debug == 1) {
+                    logmsg(LOGMSG_USER, "%s out-of-order lsn [%d][%d] instead of [%d][%d], count %u\n",
+                           __func__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file,
+                           lp->ready_lsn.offset, count);
+                }
+                /* A master node in a physical replication cluster would not
+                 * have the ability to 'ask' for missing log records.
+                 */
+                if (F_ISSET(rep, REP_F_MASTER)) {
+                    goto done;
+                }
 	}
 
 	if (cmp == 0) {
