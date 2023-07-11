@@ -3122,7 +3122,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         goto after_callback;
     }
 
-    if (trans_append) {
+    if (trans_append && hndl->snapshot_file > 0) {
         /* Retry number of transaction is different from that of query.*/
         cdb2_query_list *item = malloc(sizeof(cdb2_query_list));
         item->buf = buf;
