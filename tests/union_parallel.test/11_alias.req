@@ -1,0 +1,20 @@
+insert into t5(a,b) values (1, 100)
+insert into t6(c,d) values (1, 11000)
+
+#alias on left side
+select foo.a from t5 foo where foo.b = 100 union all select c from t6 where d = 11000
+
+#alias on left side with sub-query
+select t5.a from t5 left join (select a from t5) foo where foo.a = t5.a union all select a from t5
+
+#alias on right side 
+select a from t5 where b = 100 union all select bar.c from t6 bar where bar.d = 11000
+
+#alias on right side with sub-query
+select a from t5 where b = 100 union all select t5.a from t5 left join (select a from t5) bar where bar.a = t5.a
+
+#alias on both sides 
+select foo.a from t5 foo where foo.b = 100 union all select bar.a from t5 bar where bar.b = 100
+
+#alias on both sides with subquery 
+select t5.a from t5 left join (select a from t5) foo where foo.a = t5.a union all select t5.a from t5 left join (select a from t5) bar where bar.a = t5.a
