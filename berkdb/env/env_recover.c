@@ -57,6 +57,7 @@ static const char revid[] =
 #include "logmsg.h"
 
 #ifndef TESTSUITE
+extern void bdb_set_seqnum(void *);
 void bdb_get_writelock(void *bdb_state,
 	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
@@ -1660,6 +1661,15 @@ done:
 			goto err;
 	}
 
+	/* 'set-last-locked' fixes a race on the replicant where a seqnum can be set
+	 * before a commit is applied (between the time that the commit-record is
+	 * written and the time that the replication thread acquires locks).  Since 
+	 * this is recovery, the commit has been applied. */
+	if ((ret = __log_c_get(logc, &lsn, &data, DB_LAST)) != 0 ||
+		(ret = __rep_set_last_locked(dbenv, &lsn)) != 0) {
+		goto err;
+	}
+	bdb_set_seqnum(dbenv->app_private);
 
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_RECOVERY)) {
 		(void)time(&now);
