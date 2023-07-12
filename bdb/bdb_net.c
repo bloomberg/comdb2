@@ -846,13 +846,12 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
     for (i = 0; i < count; i++) {
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        int *coherent_state = retrieve_coherent_state(bdb_state, hostlist[i]);
 
-        if (!master_is_coherent || bdb_state->coherent_state[
-                nodeix(hostlist[i])] != STATE_COHERENT) {
+        if (!master_is_coherent || (*coherent_state) != STATE_COHERENT) {
             *inc_wait = 1;
         }
-        do_send = master_is_coherent && (bdb_state->coherent_state[
-                nodeix(hostlist[i])] == STATE_COHERENT);
+        do_send = master_is_coherent && (*coherent_state) == STATE_COHERENT;
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (do_send) {
