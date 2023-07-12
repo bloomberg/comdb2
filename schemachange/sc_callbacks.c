@@ -1092,7 +1092,7 @@ static int scdone_rowlocks(const char tablename[], void *arg, scdone_t type)
     return rc;
 }
 
-static int scdone_views(const char tablename[], void *arg, scdone_t type)
+static int scdone_timepart_views(const char tablename[], void *arg, scdone_t type)
 {
     tran_type *tran = NULL;
     uint32_t lid = 0;
@@ -1110,6 +1110,25 @@ static int scdone_views(const char tablename[], void *arg, scdone_t type)
 
     _untran(tran, lid);
 
+    return rc;
+}
+
+static int scdone_mod_views(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran = NULL;
+    uint32_t lid = 0;
+    int rc = 0;
+    int bdberr = 0;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+
+    rc = mod_views_update_replicant(tran, tablename);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
+    }
+
+    _untran(tran, lid);
     return rc;
 }
 
@@ -1251,11 +1270,11 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_drop,          &scdone_bulkimport,     &scdone_setcompr,
     &scdone_luareload,     &scdone_sc_analyze,     &scdone_bthash,
     &scdone_rowlocks,      &scdone_rowlocks,       &scdone_rowlocks,
-    &scdone_views,         &scdone_llmeta_queue,   &scdone_llmeta_queue,
-    &scdone_llmeta_queue,  &scdone_genid48,        &scdone_genid48,
-    &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
-    &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
-    &scdone_queue_file,    &scdone_rename_table};
+    &scdone_timepart_views,&scdone_mod_views,       &scdone_llmeta_queue,   
+    &scdone_llmeta_queue,  &scdone_llmeta_queue,   &scdone_genid48,        
+    &scdone_genid48,       &scdone_lua_sfunc,      &scdone_lua_afunc,      
+    &scdone_rename_table,  &scdone_change_stripe,  &scdone_user_view,      
+    &scdone_queue_file,    &scdone_queue_file,     &scdone_rename_table};
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,

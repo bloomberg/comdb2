@@ -6160,7 +6160,7 @@ retry_tran:
     }
 
     if (llmeta_load_mod_shards(thedb)) {
-        logmsg(LOGMSG_ERROR, "could not load table shards\n");
+        logmsg(LOGMSG_FATAL, "could not load table shards\n");
         abort();
     }
 

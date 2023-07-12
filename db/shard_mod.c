@@ -28,23 +28,32 @@ static int free_mod_shard(void *obj, void *unused) {
     return 0;
 }
 
-mod_shard_t *create_mod_shard(int key, char *name) 
+static mod_shard_t *create_mod_shard(int key, char *name) 
 {
     mod_shard_t *mShard;
     mShard = (mod_shard_t *)calloc(1, sizeof(mod_shard_t));
 
     if (!mShard) {
-        logmsg(LOGMSG_USER,"%s : Failed to allocate memory for shard with key: %d and dbname: %s\n", __func__, key, name);
-        return NULL;
+        goto oom;
     }
     mShard->mod_val = key;
     mShard->dbname = strdup(name);
     if (!mShard->dbname) {
-        logmsg(LOGMSG_USER,"%s : Failed to allocate memory for name of shard with key: %d and dbname: %s\n", __func__, key, name);
-        return NULL;
+        goto oom;
     }
 
     return mShard;
+
+oom:
+    logmsg(LOGMSG_ERROR,"%s : Failed to allocate memory for shard with key: %d and dbname: %s\n", __func__, key, name);
+    if (mShard) {
+        if (mShard->dbname) {
+            free(mShard->dbname);
+        }
+        free(mShard);
+    }
+
+    return NULL;
 }
 
 const char *mod_view_get_viewname(struct mod_view *view) {
@@ -71,6 +80,28 @@ int mod_shard_get_mod_val(struct mod_shard *shard) {
 const char *mod_shard_get_dbname(struct mod_shard *shard) {
     return shard->dbname;
 }
+
+static void free_inmem_view(mod_view_t *mView) {
+    if (mView) {
+        if (mView->viewname) {
+            free(mView->viewname);
+        }
+        if (mView->tblname) {
+            free(mView->tblname);
+        }
+        if (mView->keyname) {
+            free(mView->keyname);
+        }
+
+        if (mView->shards) {
+            hash_for(mView->shards, free_mod_shard, NULL);
+            hash_clear(mView->shards);
+            hash_free(mView->shards);
+        }
+        free(mView);
+    }
+}
+
 mod_view_t *create_mod_view(const char *viewname, const char *tablename, const char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
 {
     mod_view_t *mView;
@@ -90,7 +121,7 @@ mod_view_t *create_mod_view(const char *viewname, const char *tablename, const c
 
     mView->tblname = strdup(tablename);
     if (!mView->tblname) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to allocate view name string %s\n",__func__, tablename);
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate table name string %s\n",__func__, tablename);
         goto oom;
     }
     mView->keyname = strdup(keyname);
@@ -112,24 +143,7 @@ mod_view_t *create_mod_view(const char *viewname, const char *tablename, const c
 
     return mView;
 oom:
-    if (mView) {
-        if (mView->viewname) {
-            free(mView->viewname);
-        }
-        if (mView->tblname) {
-            free(mView->tblname);
-        }
-        if (mView->keyname) {
-            free(mView->keyname);
-        }
-
-        if (mView->shards) {
-            hash_for(mView->shards, free_mod_shard, NULL);
-            hash_clear(mView->shards);
-            hash_free(mView->shards);
-        }
-        free(mView);
-    }
+    free_inmem_view(mView);
     errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "calloc oom");
     return NULL;
 }
@@ -138,6 +152,7 @@ static int create_inmem_view(hash_t *mod_views, mod_view_t *view) {
     hash_add(mod_views, view);
     return VIEW_NOERR;
 }
+
 
 static int destroy_inmem_view(hash_t *mod_views, mod_view_t *view) {
     struct mod_view *v = hash_find(mod_views, view->viewname);
@@ -263,7 +278,9 @@ hash_t *mod_create_all_views()
         view = mod_deserialize_view(view_str, &err);
 
         if(!view) {
-            abort();
+            logmsg(LOGMSG_ERROR, "%s: failed to deserialize mod view %d %s\n", __func__,
+                    err.errval, err.errstr);
+            goto done;
         }
         /* we've successfully deserialized a view. 
          * now add it to the global hash of all mod-parititon based views */
@@ -275,4 +292,60 @@ done:
         cson_value_free(rootVal);
     }
     return mod_views;
+}
+
+
+int mod_views_update_replicant(void *tran, const char *name)
+{
+    hash_t *mod_views = thedb->mod_shard_views;
+    mod_view_t *view = NULL, *v = NULL;
+    int rc = VIEW_NOERR;
+    return rc;
+    logmsg(LOGMSG_USER, "Replicant updating views\n");
+    char *view_str = NULL;
+    struct errstat xerr = {0};
+
+    /* read the view str from updated llmeta */
+    rc = mod_views_read_view(tran, name, &view_str);
+    if (rc == VIEW_ERR_EXIST) {
+        view = NULL;
+        goto update_view_hash;
+    } else if (rc != VIEW_NOERR || !view_str) {
+        logmsg(LOGMSG_ERROR, "%s: Could not read metadata for view %s\n", __func__, name);
+        goto done;
+    }
+
+    /* create an in-mem view object */
+    view = mod_deserialize_view(view_str, &xerr); 
+    if (!view) {
+        logmsg(LOGMSG_ERROR, "%s: failed to deserialize mod view %d %s\n", __func__,
+                xerr.errval, xerr.errstr);
+        goto done;
+    }
+update_view_hash:
+    /* update global mod views hash.
+     * - If a view with the given name exists, destroy it, create a new view and add to hash
+     * - If a view with the given name does not exist, add to hash
+     * - If view is NULL (not there in llmeta), destroy the view and remove from hash */
+    
+    v = hash_find(mod_views, name);
+
+    if (v) {
+       hash_del(mod_views, v);
+       free_inmem_view(v);
+       if (view) {
+           hash_add(mod_views, view);
+       }
+    } else {
+        assert(view != NULL);
+        hash_add(mod_views, view);
+    }
+
+    rc = VIEW_NOERR;
+done:
+    if(view_str) {
+        free(view_str);
+    }
+
+    return rc;
 }

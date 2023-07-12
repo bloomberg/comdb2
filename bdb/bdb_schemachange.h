@@ -37,20 +37,21 @@ typedef enum scdone {
     rowlocks_on,             //  8
     rowlocks_on_master_only, //  9
     rowlocks_off,            // 10
-    views,                   // 11
-    llmeta_queue_add,        // 12
-    llmeta_queue_alter,      // 13
-    llmeta_queue_drop,       // 14
-    genid48_enable,          // 15
-    genid48_disable,         // 16
-    lua_sfunc,               // 17
-    lua_afunc,               // 18
-    rename_table,            // 19
-    change_stripe,           // 20
-    user_view,               // 21
-    add_queue_file,          // 22
-    del_queue_file,          // 23
-    alias_table              // 24
+    timepart_views,          // 11
+    mod_views,               // 12
+    llmeta_queue_add,        // 13
+    llmeta_queue_alter,      // 14
+    llmeta_queue_drop,       // 15
+    genid48_enable,          // 16
+    genid48_disable,         // 17
+    lua_sfunc,               // 18
+    lua_afunc,               // 19
+    rename_table,            // 20
+    change_stripe,           // 21
+    user_view,               // 22
+    add_queue_file,          // 23
+    del_queue_file,          // 24
+    alias_table              // 25
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
@@ -68,9 +69,11 @@ int bdb_llog_scdone(bdb_state_type *, scdone_t, const char *tablename,
                     int tablenamelen, int wait, int *bdberr);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_analyze(bdb_state_type *, int wait, int *bdberr);
-int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait,
+int bdb_llog_timepart_views(bdb_state_type *bdb_state, char *name, int wait,
                    int *bdberr);
-int bdb_llog_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
+int bdb_llog_time_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
+                       int *bdberr);
+int bdb_llog_mod_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
                        int *bdberr);
 int bdb_llog_rowlocks(bdb_state_type *, scdone_t, int *bdberr);
 int bdb_llog_genid_format(bdb_state_type *, scdone_t, int *bdberr);

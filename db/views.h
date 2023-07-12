@@ -505,6 +505,7 @@ int mod_serialize_view(mod_view_t *view, int *len, char **out);
 mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err);
 int mod_views_write_view(void *tran, const char *viewname, const char *str,
                      int override);
+int mod_views_read_view(void *tran, const char *name, char **pstr);
 int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
                         struct errstat *err);
 #endif

@@ -610,7 +610,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
             create_sqlmaster_records(tran);
             create_sqlite_master(); /* create sql statements */
 
-            BDB_BUMP_DBOPEN_GEN(views, "alias table");
+            BDB_BUMP_DBOPEN_GEN(timepart_views, "alias table");
         }
         db->tableversion = table_version_select(db, tran);
         db->timepartition_name = view->name;
@@ -1122,12 +1122,12 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
 
         if (rc == VIEW_NOERR) {
             /* send signal to replicants that partition configuration changed */
-            rc = bdb_llog_views(
+            rc = bdb_llog_timepart_views(
                 thedb->bdb_env, view->name,
                 0 /*not sure it is safe here to wait, so don't*/, &bdberr);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, 
-                        "%s -- bdb_llog_views view %s rc:%d bdberr:%d\n",
+                        "%s -- bdb_llog_timepart_views view %s rc:%d bdberr:%d\n",
                         __func__, view->name, rc, bdberr);
             }
         }
@@ -3008,7 +3008,7 @@ int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
         return rc;
     }
 
-    rc = bdb_llog_partition(thedb->bdb_env, tran, s->newpartition->name,
+    rc = bdb_llog_time_partition(thedb->bdb_env, tran, s->newpartition->name,
                             &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR,
@@ -3313,18 +3313,24 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
         } /*switch */
         int bdberr = 0;
         if (sc->partition.type == PARTITION_ADD_MOD) {
-            rc = bdb_llog_partition(thedb->bdb_env, tran, (char *)mod_view_get_viewname(sc->newshard), &bdberr);
+            rc = bdb_llog_mod_partition(thedb->bdb_env, tran, (char *)mod_view_get_viewname(sc->newshard), &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for mod partition %s\n",
+                       __func__, mod_view_get_viewname(sc->newshard));
+            }
         } else {
-        rc = bdb_llog_partition(thedb->bdb_env, tran,
+        rc = bdb_llog_time_partition(thedb->bdb_env, tran,
                                 partition_name ? partition_name
                                                : (char *)sc->timepartition_name,
                                 &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
+                       __func__, partition_name);
+            }
+            if (partition_name) {
+                free(partition_name);
+            }
         }
-        if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
-                   __func__, partition_name);
-        }
-        free(partition_name);
     }
     return rc;
 }

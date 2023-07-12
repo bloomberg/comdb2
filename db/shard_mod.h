@@ -19,4 +19,5 @@ int mod_shard_get_mod_val(struct mod_shard *shard);
 const char *mod_shard_get_dbname(struct mod_shard *shard);
 int mod_shard_llmeta_write(void *tran, mod_view_t *view, struct errstat *err);
 hash_t *mod_create_all_views();
+int mod_views_update_replicant(void *tran, const char *name);
 #endif
