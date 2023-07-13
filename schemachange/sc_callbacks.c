@@ -1125,7 +1125,7 @@ static int scdone_mod_views(const char tablename[], void *arg, scdone_t type)
 
     rc = mod_views_update_replicant(tran, tablename);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
+        logmsg(LOGMSG_ERROR, "failed to update mod views from llmeta!\n");
     }
 
     _untran(tran, lid);

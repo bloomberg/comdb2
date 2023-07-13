@@ -464,6 +464,7 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
     unsigned int bkt;
     mod_view_t *view = NULL;
 
+    Pthread_rwlock_rdlock(&mod_shard_lk);
     for (view=(mod_view_t *)hash_first(views, &ent, &bkt); view != NULL;
          view=(mod_view_t *)hash_next(views, &ent, &bkt)) {
         /* check if this exists?*/
@@ -479,6 +480,7 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
     }
     rc = VIEW_NOERR;
 done:
+    Pthread_rwlock_unlock(&mod_shard_lk);
     return rc;
 }
 

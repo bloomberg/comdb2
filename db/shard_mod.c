@@ -81,7 +81,7 @@ const char *mod_shard_get_dbname(struct mod_shard *shard) {
     return shard->dbname;
 }
 
-static void free_inmem_view(mod_view_t *mView) {
+static void free_mod_view(mod_view_t *mView) {
     if (mView) {
         if (mView->viewname) {
             free(mView->viewname);
@@ -143,25 +143,32 @@ mod_view_t *create_mod_view(const char *viewname, const char *tablename, const c
 
     return mView;
 oom:
-    free_inmem_view(mView);
+    free_mod_view(mView);
     errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "calloc oom");
     return NULL;
 }
 
 static int create_inmem_view(hash_t *mod_views, mod_view_t *view) {
+    Pthread_rwlock_wrlock(&mod_shard_lk);
     hash_add(mod_views, view);
+    Pthread_rwlock_unlock(&mod_shard_lk);
     return VIEW_NOERR;
 }
 
 
 static int destroy_inmem_view(hash_t *mod_views, mod_view_t *view) {
+    Pthread_rwlock_wrlock(&mod_shard_lk);
     struct mod_view *v = hash_find(mod_views, view->viewname);
-
+    int rc = VIEW_NOERR;
     if (!v) {
-        return VIEW_ERR_NOTFOUND;
+        rc = VIEW_ERR_NOTFOUND;
+        goto done;
     }
     hash_del(mod_views, v);
-    return VIEW_NOERR;
+    free_mod_view(v);
+done:
+    Pthread_rwlock_unlock(&mod_shard_lk);
+    return rc;
 }
 
 int mod_create_inmem_view(mod_view_t *view) {
@@ -237,10 +244,12 @@ hash_t *mod_create_all_views()
     struct errstat err;
     mod_views = hash_init_strcaseptr(offsetof(struct mod_view, viewname));
     views_str = mod_views_read_all_views();
+
     if (!views_str) {
-        return mod_views;
+        logmsg(LOGMSG_ERROR, "Failed to read mod views from llmeta\n"); 
+        goto done;
     }
-    /* populate global hash of all mod based table partitions */
+
     rc = cson_parse_string(&rootVal, views_str, strlen(views_str));
     if (rc) {
         logmsg(LOGMSG_ERROR, "error parsing cson string. rc: %d err: %s\n",
@@ -262,8 +271,6 @@ hash_t *mod_create_all_views()
     cson_object_iter_init(rootObj, &iter);
     kvp = cson_object_iter_next(&iter);
     while (kvp) {
-        cson_string *key = cson_kvp_key(kvp);
-        logmsg(LOGMSG_USER, "THE CSON KEY IS : %s\n", cson_string_cstr(key));
         cson_value *val = cson_kvp_value(kvp);
         /*
          * Each cson_value above is a cson string representation
@@ -271,7 +278,7 @@ hash_t *mod_create_all_views()
          * and deserialize into an in-mem representation.
          */
         if (!cson_value_is_string(val)) {
-            logmsg(LOGMSG_ERROR, "error parsing cson: expected object type\n");
+            logmsg(LOGMSG_ERROR, "error parsing cson: expected string type\n");
             goto done;
         }
         const char *view_str = cson_string_cstr(cson_value_get_string(val));
@@ -290,6 +297,10 @@ hash_t *mod_create_all_views()
 done:
     if (rootVal) {
         cson_value_free(rootVal);
+    }
+
+    if (views_str) {
+        free(views_str);
     }
     return mod_views;
 }
@@ -327,25 +338,34 @@ update_view_hash:
      * - If a view with the given name exists, destroy it, create a new view and add to hash
      * - If a view with the given name does not exist, add to hash
      * - If view is NULL (not there in llmeta), destroy the view and remove from hash */
-    
-    v = hash_find(mod_views, name);
 
-    if (v) {
-       hash_del(mod_views, v);
-       free_inmem_view(v);
-       if (view) {
-           hash_add(mod_views, view);
-       }
-    } else {
-        assert(view != NULL);
-        hash_add(mod_views, view);
+    if (!view) {
+        /* It's okay to do this lockless. The subsequent destroy method
+         * grabs a lock and does a find again */ 
+        v = hash_find(mod_views, name);
+        rc = mod_destroy_inmem_view(v);
+        if (rc != VIEW_NOERR) {
+            logmsg(LOGMSG_ERROR, "%s:%d Failed to destroy inmem view\n", __func__, __LINE__);
+        }
+    } else { 
+        rc = mod_destroy_inmem_view(view);
+        if (rc != VIEW_NOERR || rc != VIEW_ERR_NOTFOUND) {
+            logmsg(LOGMSG_ERROR, "%s:%d Failed to destroy inmem view\n", __func__, __LINE__);
+            goto done;
+        }
+        rc = mod_create_inmem_view(view);
+        if (rc != VIEW_NOERR) {
+            logmsg(LOGMSG_ERROR, "%s:%d Failed to create inmem view\n", __func__, __LINE__);
+            goto done;
+        }
     }
-
-    rc = VIEW_NOERR;
+    return rc;
 done:
     if(view_str) {
         free(view_str);
     }
-
+    if (view) {
+        free_mod_view(view);
+    }
     return rc;
 }

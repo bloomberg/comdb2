@@ -2387,6 +2387,7 @@ int llmeta_load_timepart(struct dbenv *dbenv)
 int llmeta_load_mod_shards(struct dbenv *dbenv)
 {
     logmsg(LOGMSG_INFO, "Loading mod-based shards\n");
+    Pthread_rwlock_init(&mod_shard_lk, NULL);
     dbenv->mod_shard_views = mod_create_all_views();
 
     return dbenv->mod_shard_views ? 0 : -1;
