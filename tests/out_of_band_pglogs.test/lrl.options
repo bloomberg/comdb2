@@ -1,0 +1,3 @@
+enable_new_snapshot
+enable_new_snapshot_asof
+debug_recover_pglogs_latency 1

@@ -190,7 +190,7 @@ void bdb_checkpoint_list_init()
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp)
 {
-    struct checkpoint_list *ckp = NULL;
+    struct checkpoint_list *ckp = NULL, *ckp_iter = NULL, *ckptmp = NULL;
     if (!ckp_lst_ready)
         return 0;
     ckp = malloc(sizeof(struct checkpoint_list));
@@ -200,6 +200,14 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp)
     ckp->ckp_lsn = ckp_lsn;
     ckp->timestamp = timestamp;
     Pthread_mutex_lock(&ckp_lst_mtx);
+    LISTC_FOR_EACH_SAFE(&ckp_lst, ckp_iter, ckptmp, lnk)
+    {
+        if (log_compare(&ckp_lsn, &ckp_iter->lsn) < 0) {
+            listc_add_before(&ckp_lst, ckp, ckp_iter);
+            Pthread_mutex_unlock(&ckp_lst_mtx);
+            return 0;
+        }
+    }
     listc_abl(&ckp_lst, ckp);
     Pthread_mutex_unlock(&ckp_lst_mtx);
 

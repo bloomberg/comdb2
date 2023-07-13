@@ -45,6 +45,7 @@ static const char revid[] =
 #include "dbinc/db_swap.h"
 #include "dbinc_auto/db_auto.h"
 #include <locks_wrap.h>
+#include <sys/poll.h>
 
 
 
@@ -2108,6 +2109,8 @@ extern pthread_mutex_t bdb_asof_current_lsn_mutex;
 extern int bdb_push_pglogs_commit_recovery(void *in_bdb_state, DB_LSN commit_lsn,
 	uint32_t gen, unsigned long long ltranid, int push);
 
+int gbl_debug_recover_pglogs_latency = 0;
+
 int
 __recover_logfile_pglogs(dbenv, fileid_tbl)
 	DB_ENV *dbenv;
@@ -2140,7 +2143,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 	void *free_ptr2 = NULL;
 
 	logc = NULL;
-    logc_prep = NULL;
+	logc_prep = NULL;
 	memset(&data, 0, sizeof(data));
 
 	/* Allocate a cursor for the log. */
@@ -2152,6 +2155,12 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 		ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
+
+		/* Brutal latency for testcase */
+		if (gbl_debug_recover_pglogs_latency) {
+			poll(NULL, 0, 100);
+		}
+
 		switch (rectype) {
 		case DB___txn_ckp:
 			if ((ret =

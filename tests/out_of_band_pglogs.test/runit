@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export debug=1
+[[ $debug == "1" ]] && set -x
+
+rm ${DBNAME}.failexit >/dev/null 2>&1
+
+function run_test
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)" >/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate t1" >/dev/null >/dev/null
+    j=0
+
+    while [[ $j -lt 100 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select * from generate_series(1, 10)"
+        let j=j+1
+    done
+
+    count=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
+    if [[ $count -ne 1000 ]]; then
+        stopcluster
+        failexit "Should see 1000 records"
+    fi
+
+    bounce_cluster
+
+    # debug_recover_pglogs_latency will cause pglogs to take 100 seconds to recover .. 
+    # we should be available for normal sql after maybe 15 seconds
+    echo "sleeping for 30"
+    sleep 30
+
+    for node in $CLUSTER; do
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null)
+        r=$?
+        if [[ $r -ne 0 ]]; then
+            echo "Node $node didn't recover in time"
+            stopcluster
+            failexit "Node $node didn't recover in time"
+        fi
+    done
+
+    # insert 10 more records
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select * from generate_series(1, 10)"
+
+    # Verify that point-in-time fails 
+    asoftime=$(date +%s)
+    echo "set transaction snapisol" > sql.txt
+    echo "begin transaction asof datetime $asoftime" >> sql.txt
+    echo "select count(*) from t1" >> sql.txt
+    echo "rollback" 
+
+    for node in $CLUSTER; do
+        x=$($CDB2SQL_EXE --tabs -f ./sql.txt $CDB2_OPTIONS $DBNAME --host $node 2>&1)
+        r=$?
+        if [[ $r == 0 ]]; then
+            stopcluster
+            failexit "Should have failed pit txn against $node while recovering pglogs"
+        fi
+    done
+
+    # Disable 'slow-pglogs' tunable on entire cluster
+    for node in $CLUSTER; do
+        $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME --host $node "put tunable 'debug_recover_pglogs_latency' '0'"
+    done
+
+    # Now just running it until it succeeds or the testcase times out
+    r=1
+    while [[ $r -ne 0 ]]; do
+        x=$($CDB2SQL_EXE --tabs -f ./sql.txt $CDB2_OPTIONS $DBNAME default 2>&1)
+        r=$?
+        if [[ $r -ne 0 ]]; then 
+            sleep 1
+        fi
+    done
+
+}
+
+if [[ -z "$CLUSTER" ]]; then 
+    echo "This test requires a cluster"
+    exit -1
+fi
+
+run_test
+stopcluster
+
+if [[ -f ${DBNAME}.failexit ]]; then
+    echo "Testcase failed: $(cat ${DBNAME}.failexit)"
+    exit 1
+fi
+
+echo "Success"

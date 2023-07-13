@@ -66,6 +66,13 @@ sendtocluster()
     done
 }
 
+stopcluster()
+{
+    for n in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"exit\")"
+    done
+}
+
 
 do_verify()
 {

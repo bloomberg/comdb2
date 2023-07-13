@@ -374,18 +374,21 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
      * after we set our startgenid and birthlsn
      */
     if (backfill_required) {
-        if (gbl_new_snapisol)
-            rc = bdb_prepare_newsi_bkfill(bdb_state,
-                                          &shadow_tran->bkfill_txn_list,
-                                          &shadow_tran->bkfill_txn_count,
-                                          &shadow_tran->oldest_txn_at_start);
-        else
-            rc = bdb_osql_trn_create_backfill_active_trans(
-                bdb_state, trn, bdberr, &bkfill_hndl);
+        if (gbl_new_snapisol) {
+            /* Prevent PIT until we have completed processing pglogs */
+            extern int bdb_gbl_ltran_pglogs_hash_processed;
+            if (!bdb_gbl_ltran_pglogs_hash_processed) {
+                logmsg(LOGMSG_INFO, "%s:%d backfill for newsi is not complete\n", __func__, __LINE__);
+                rc = -1;
+            } else {
+                rc = bdb_prepare_newsi_bkfill(bdb_state, &shadow_tran->bkfill_txn_list, &shadow_tran->bkfill_txn_count,
+                                              &shadow_tran->oldest_txn_at_start);
+            }
+        } else {
+            rc = bdb_osql_trn_create_backfill_active_trans(bdb_state, trn, bdberr, &bkfill_hndl);
+        }
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d failed to create backfill active trans, rc %d\n",
-                    __func__, __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "%s:%d failed to create backfill active trans, rc %d\n", __func__, __LINE__, rc);
             cleanup_trn(trn);
             trn = NULL;
             goto done;

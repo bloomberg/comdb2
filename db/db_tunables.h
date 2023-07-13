@@ -376,6 +376,9 @@ REGISTER_TUNABLE("enable_new_snapshot_logging",
                  TUNABLE_BOOLEAN, &gbl_new_snapisol_logging, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 */
+REGISTER_TUNABLE("debug_recover_pglogs_latency", "Add latency to recover pglogs for testing.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_recover_pglogs_latency, INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("enable_osql_blob_optimization",
                  "Replicant tracks which columns are modified in a transaction "
                  "to allow blob updates to be ommitted if possible. (Default: "
