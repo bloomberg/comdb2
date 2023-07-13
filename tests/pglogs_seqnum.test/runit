@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+#export debug=1
+export targetlog=5
+export countfound=0
+export tracegen=""
+
+[[ $debug == "1" ]] && set -x
+
+function create_tables
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int)"
+}
+
+function write_records
+{
+    typeset SZ=10000
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select * from generate_series(1, $SZ)" > /dev/null 2>&1
+    [[ $? != 0 ]] && failexit "failed to insert records"
+}
+
+function lsn_file
+{
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('bdb logstat')" | egrep st_cur_file | awk '{print $NF}')
+    echo "$x"
+}
+
+function write_lots
+{
+    logfile=$(lsn_file)
+    lastlog=-1
+    while [[ "$logfile" -lt "$targetlog" ]]; do
+        write_records
+        logfile=$(lsn_file)
+    done
+}
+
+function stop_cluster
+{
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send(\"exit\")"
+    done
+    sleep 5
+}
+
+function find_trace_gen_from_logs
+{
+    set -x
+    echo "0" > gen.txt
+    echo "-1" > node.txt
+    for node in $CLUSTER; do 
+    echo "Checking node $node"
+    egrep "NEWMASTER is ME" $TESTDIR/logs/${DBNAME}.${node}.db  | awk '{print $NF}' | tr -d '\r' | while read tgen; do
+        if [ $tgen -gt $(cat gen.txt) ]; then
+            #gen=$tgen
+            echo "$tgen" > gen.txt
+            echo "$node" > node.txt
+        fi
+    done
+    done
+}
+
+function search_logs_for_seqnum
+{
+    find_trace_gen_from_logs
+    set -x
+    node=$(cat node.txt)
+    gen=$(cat gen.txt)
+    search=0
+    cat $TESTDIR/logs/${DBNAME}.${node}.db | while read ln ; do
+        if [[ $search == 0 ]]; then
+            if [[ "$ln" == *"NEWMASTER is ME for GENERATION $gen"* ]]; then
+                echo "$ln"
+                echo "Setting search to TRUE"
+                search=1
+            fi
+        else
+            if [[ "$ln" == *"setting seqnum_info ptr"* && "$ln" == *"on master"* ]]; then
+                echo "$ln"
+                echo "Testing LSN"
+                sleft=${ln##*master to [} 
+                log=${sleft%%]*}
+                if [[ "$log" -lt $(( targetlog - 1 )) ]] ; then
+                    echo "Failing test- found log $ln less than target log of $(( targetlog - 1 ))"
+                    failexit "found log less than target log"
+                fi
+            fi
+        fi
+    done
+}
+
+function run_test
+{
+    typeset j=0
+    create_tables
+    echo "Inserting records up to logfile $targetlog"
+    while [[ "$j" -lt 10 ]]; do
+        write_lots &
+        let j=j+1
+    done
+    wait
+    echo "bounce cluster"
+    bounce_cluster
+
+    echo "Sleeping for 30 seconds"
+    sleep 30
+    #set -x
+    search_logs_for_seqnum
+    #failexit "exiting to examine logs"
+}
+
+if [[ -z "$CLUSTER" ]]; then 
+    echo "This test requires a cluster"
+    exit -1
+fi
+
+rm ${DBNAME}.failexit >/dev/null 2>&1
+run_test
+stop_cluster
+
+if [[ -f ${DBNAME}.failexit ]]; then
+    echo "Testcase failed: $(cat ${DBNAME}.failexit)"
+    exit 1
+fi
+
+echo "Success"
