@@ -2170,6 +2170,12 @@ static void dump_fileid_queues()
     Pthread_mutex_unlock(&del_queue_lk);
 }
 
+static int my_fileid_free(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
 static void *pglogs_asof_thread(void *arg)
 {
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
@@ -2184,6 +2190,28 @@ static void *pglogs_asof_thread(void *arg)
        Therefore we need to make sure that clean_exit
        waits for the thread to exit before closing the bdb env. */
     thrman_register(THRTYPE_PGLOGS_ASOF);
+
+    hash_t *fileid_tbl = NULL;
+    fileid_tbl = hash_init_o(0, DB_FILE_ID_LEN);
+    bdb_list_all_fileids_for_newsi(bdb_state, fileid_tbl);
+    int rc = __recover_logfile_pglogs(bdb_state->dbenv, fileid_tbl);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to bkfill gbl pglogs, new begin-as-of "
+               "snapshot might not work\n",
+               __func__);
+        Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
+        bdb_get_current_lsn(bdb_state, &(bdb_gbl_recoverable_lsn.file), &(bdb_gbl_recoverable_lsn.offset));
+        bdb_gbl_recoverable_timestamp = (int32_t)time(NULL);
+        Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
+        logmsg(LOGMSG_ERROR, "set gbl_recoverable_lsn as [%d][%d]\n", bdb_gbl_recoverable_lsn.file,
+               bdb_gbl_recoverable_lsn.offset);
+    }
+    hash_for(fileid_tbl, my_fileid_free, NULL);
+    hash_clear(fileid_tbl);
+    hash_free(fileid_tbl);
+    bdb_get_current_lsn(bdb_state, &bdb_asof_current_lsn.file, &bdb_asof_current_lsn.offset);
+    bdb_gbl_ltran_pglogs_hash_processed = 1;
 
     /* We need to stop this thread when truncating the log */
     if (!db_is_exiting()) {
@@ -2409,15 +2437,9 @@ void bdb_newsi_stat_init()
 }
 #endif
 
-static int my_fileid_free(void *obj, void *arg)
-{
-    free(obj);
-    return 0;
-}
-
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 {
-    int rc, bdberr;
+    int bdberr;
     pthread_t thread_id;
 
     if (gbl_new_snapisol_asof) {
@@ -2494,29 +2516,6 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 #       if defined(PTHREAD_STACK_MIN)
         Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 64 * 1024);
 #       endif
-        hash_t *fileid_tbl = NULL;
-        fileid_tbl = hash_init_o(0, DB_FILE_ID_LEN);
-        bdb_list_all_fileids_for_newsi(bdb_state, fileid_tbl);
-        rc = __recover_logfile_pglogs(bdb_state->dbenv, fileid_tbl);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed to bkfill gbl pglogs, new begin-as-of "
-                            "snapshot might not work\n",
-                    __func__);
-            Pthread_mutex_lock(&bdb_gbl_recoverable_lsn_mutex);
-            bdb_get_current_lsn(bdb_state, &(bdb_gbl_recoverable_lsn.file),
-                                &(bdb_gbl_recoverable_lsn.offset));
-            bdb_gbl_recoverable_timestamp = (int32_t)time(NULL);
-            Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
-            logmsg(LOGMSG_ERROR, "set gbl_recoverable_lsn as [%d][%d]\n",
-                   bdb_gbl_recoverable_lsn.file,
-                   bdb_gbl_recoverable_lsn.offset);
-        }
-        hash_for(fileid_tbl, my_fileid_free, NULL);
-        hash_clear(fileid_tbl);
-        hash_free(fileid_tbl);
-        bdb_get_current_lsn(bdb_state, &bdb_asof_current_lsn.file,
-                            &bdb_asof_current_lsn.offset);
-        bdb_gbl_ltran_pglogs_hash_processed = 1;
 
         Pthread_create(&thread_id, &thd_attr, pglogs_asof_thread, (void *)bdb_state);
     }
