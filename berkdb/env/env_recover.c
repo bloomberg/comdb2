@@ -2105,7 +2105,7 @@ extern pthread_mutex_t bdb_asof_current_lsn_mutex;
  */
 #define GOTOERR do{ lineno=__LINE__; goto err; } while(0);
 
-extern int bdb_push_pglogs_commit(void *in_bdb_state, DB_LSN commit_lsn,
+extern int bdb_push_pglogs_commit_recovery(void *in_bdb_state, DB_LSN commit_lsn,
 	uint32_t gen, unsigned long long ltranid, int push);
 
 int
@@ -2190,7 +2190,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_gen_args)) != 0) {
 				GOTOERR;
 		 }
-		 bdb_push_pglogs_commit(dbenv->app_private, lsn, 
+		 bdb_push_pglogs_commit_recovery(dbenv->app_private, lsn, 
 			   txn_gen_args->generation, 0, 0);
 			free_ptr = txn_gen_args;
 
@@ -2219,7 +2219,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 				&txn_dist_args)) != 0) {
 				GOTOERR;
 			}
-			bdb_push_pglogs_commit(dbenv->app_private, lsn, txn_dist_args->generation, 0, 0);
+			bdb_push_pglogs_commit_recovery(dbenv->app_private, lsn, txn_dist_args->generation, 0, 0);
 			ret = bdb_update_timestamp_lsn(dbenv->app_private,
 				txn_dist_args->timestamp, lsn, txn_dist_args->context);
 			if (ret) {
@@ -2267,7 +2267,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_args)) != 0) {
 				GOTOERR;
 		 }
-		 bdb_push_pglogs_commit(dbenv->app_private, lsn, 0, 0, 0);
+		 bdb_push_pglogs_commit_recovery(dbenv->app_private, lsn, 0, 0, 0);
 			free_ptr = txn_args;
 
 			ret =
@@ -2296,7 +2296,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_rl_args)) != 0) {
 				GOTOERR;
 		 }
-		 bdb_push_pglogs_commit(dbenv->app_private, lsn, 
+		 bdb_push_pglogs_commit_recovery(dbenv->app_private, lsn, 
 			   txn_rl_args->generation, 0, 0);
 			free_ptr = txn_rl_args;
 

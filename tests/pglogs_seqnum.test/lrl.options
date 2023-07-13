@@ -1,0 +1,8 @@
+dtastripe 16
+setattr REP_WORKERS 0
+setattr REP_PROCESSORS 0
+#decoupled_logputs off
+setattr MIN_KEEP_LOGS 100
+on durable_set_trace
+enable_snapshot_isolation
+enable_new_snapshot_asof
