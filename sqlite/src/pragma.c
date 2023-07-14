@@ -30,6 +30,12 @@
 ** ../tool/mkpragmatab.tcl. */
 #include "pragma.h"
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int handle_sql_pragma_chunk_on(Parse *pParse);
+int handle_sql_pragma_chunk_off(Parse *pParse);
+int handle_sql_pragma_chunk_cancel(Parse *pParse);
+#endif
+
 /*
 ** Interpret the given string as a safety level.  Return 0 for OFF,
 ** 1 for ON or NORMAL, 2 for FULL, and 3 for EXTRA.  Return 1 for an empty or 
@@ -2167,6 +2173,26 @@ void sqlite3Pragma(
       sqlite3_activate_cerod(&zRight[6]);
     }
 #endif
+  }
+  break;
+#endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  case PragTyp_CHUNK: {
+    if( zRight ){
+      if( sqlite3StrNICmp(zRight, "on", 2)==0 ){ /* begin chunking */
+        handle_sql_pragma_chunk_on(pParse);
+        break;
+      }
+      if( sqlite3StrNICmp(zRight, "off", 3)==0 ){ /* end chunking */
+        handle_sql_pragma_chunk_off(pParse);
+        break;
+      }
+      if( sqlite3StrNICmp(zRight, "cancel", 3)==0 ){ /* cancel current chunk */
+        handle_sql_pragma_chunk_cancel(pParse);
+        break;
+      }
+    }
+    sqlite3ErrorMsg(pParse, "expects on/off/cancel");
   }
   break;
 #endif

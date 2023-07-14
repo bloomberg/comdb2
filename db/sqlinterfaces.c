@@ -823,14 +823,13 @@ static int comdb2_authorizer_for_sqlite(
       return denyDdl ? SQLITE_DENY : SQLITE_OK;
     case SQLITE_PRAGMA:
       pAuthState->numDdls++;
-      if (denyDdl || denyPragma) {
-        return SQLITE_DENY;
+      if ((denyDdl || denyPragma) && (strcasecmp(zArg1, "CHUNK") != 0)) {
+          return SQLITE_DENY;
       } else if (pAuthState->clnt != NULL) {
-        logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-               __LINE__, __func__, pAuthState->clnt->sql);
-        return SQLITE_OK;
+          logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__, __LINE__, __func__, pAuthState->clnt->sql);
+          return SQLITE_OK;
       } else {
-        return SQLITE_DENY;
+          return SQLITE_DENY;
       }
     case SQLITE_CREATE_TRIGGER:
       pAuthState->numDdls++;
@@ -1546,6 +1545,10 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
 {
     int epoch = 0;
 
+    char *sql = skipws(clnt->sql);
+    if (strncasecmp(sql, "pragma", 6) == 0)
+        return 0;
+
     if (strlen(clnt->sql) > 6)
         epoch = retrieve_snapshot_info(&clnt->sql[6], clnt->tzname);
 
@@ -1572,7 +1575,7 @@ void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
  * are not handled by sqlite (transaction commands, pragma, stored proc,
  * blocked sql, and so on)
  */
-static void sql_update_usertran_state(struct sqlclntstate *clnt)
+static void sql_update_usertran_state(struct sqlclntstate *clnt, tsql_meta_command_t meta)
 {
     const char *sql = clnt->sql;
 
@@ -1587,7 +1590,8 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
     /* begin, commit, rollback should arrive over the socket only
        for socksql, recom, snapisol and serial */
-    tsql_meta_command_t meta = is_transaction_meta_sql(clnt->sql);
+    if (meta == TSMC_NONE)
+        meta = is_transaction_meta_sql(clnt->sql);
 
     if (meta == TSMC_BEGIN) {
         clnt->snapshot = 0;
@@ -3463,7 +3467,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
 static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
 {
-    sql_update_usertran_state(clnt);
+    sql_update_usertran_state(clnt, TSMC_NONE);
 
     switch (clnt->ctrl_sqlengine) {
 
@@ -3927,6 +3931,16 @@ retry_legacy_remote:
         /* get an sqlite engine */
         assert(rec.stmt == NULL);
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err, PREPARE_NONE);
+
+        /*
+         * chunk pragmas are treated as begin/commit/rollback and they
+         * call into handle_sql_begin() and handle_sql_commitrollback() which
+         * already send responses (errors, effects, etc). do not send again.
+         */
+        if (rc == 0 && clnt->chunk_pragma) {
+            clnt->chunk_pragma = 0;
+            goto done;
+        }
         if (rc == SQLITE_SCHEMA_REMOTE)
             continue;
         if (rc == SQLITE_SCHEMA_DOHSQL) {
@@ -4478,7 +4492,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->thd = thd;
     /* Reset the cancel-statement flag */
     thd->sqlthd->stop_this_statement = 0;
-    sql_update_usertran_state(clnt);
+    sql_update_usertran_state(clnt, TSMC_NONE);
 
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
@@ -7122,4 +7136,54 @@ char *clnt_tzname(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         return clnt->plugin.tzname(clnt, stmt);
 
     return stmt_tzname(stmt);
+}
+
+int handle_sql_pragma_chunk_on(Parse *pParse)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+
+    clnt->chunk_pragma = 1;
+    if (clnt->dbtran.maxchunksize == 0) {
+        sqlite3ErrorMsg(pParse, "chunk size must be specified");
+        return -1;
+    }
+
+    sql_update_usertran_state(clnt, TSMC_BEGIN);
+    if (clnt->ctrl_sqlengine == SQLENG_WRONG_STATE) {
+        sqlite3ErrorMsg(pParse, "wrong transaction state");
+        return -1;
+    }
+
+    return handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_NORMAL);
+}
+
+int handle_sql_pragma_chunk_off(Parse *pParse)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+
+    clnt->chunk_pragma = 1;
+    sql_update_usertran_state(clnt, TSMC_COMMIT);
+    if (clnt->ctrl_sqlengine == SQLENG_WRONG_STATE) {
+        sqlite3ErrorMsg(pParse, "wrong transaction state");
+        return -1;
+    }
+
+    return handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_NORMAL);
+}
+
+int handle_sql_pragma_chunk_cancel(Parse *pParse)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->clnt;
+
+    clnt->chunk_pragma = 1;
+    sql_update_usertran_state(clnt, TSMC_ROLLBACK);
+    if (clnt->ctrl_sqlengine == SQLENG_WRONG_STATE) {
+        sqlite3ErrorMsg(pParse, "wrong transaction state");
+        return -1;
+    }
+
+    return handle_sql_commitrollback(clnt->thd, clnt, TRANS_CLNTCOMM_NORMAL);
 }

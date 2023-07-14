@@ -41,12 +41,12 @@ EOF
 
 echo "Inserting chunks of 99 rows"
 echo "Inserting chunks of 99 rows" >> $outlog
-$r >> $outlog << "EOF" 
+$r 2>> $outlog << "EOF"
 set transaction blocksql
 set transaction chunk 99 
-begin 
+pragma chunk = on
 insert into t select * from t2
-commit
+pragma chunk = off
 EOF
 
 check_done
@@ -65,12 +65,12 @@ check_done
 
 echo "Inserting chunks of 1 row"
 echo "Inserting chunks of 1 row" >> $outlog
-$r >> $outlog << "EOF" 
+$r 2>> $outlog << "EOF" 
 set transaction blocksql
 set transaction chunk 1 
-begin
+pragma chunk = on
 insert into t select * from t2
-commit
+pragma chunk = off
 EOF
 
 check_done
@@ -89,17 +89,17 @@ check_done
 
 echo "Multiple inserts in a transaction chunks of 1"
 echo "Multiple inserts in a transaction chunks of 1" >> $outlog
-$r >> $outlog << "EOF"
+$r 2>> $outlog << "EOF"
 set transaction blocksql
 set transaction chunk 1
-begin
+pragma chunk = on
 insert into t values (1)
 insert into t values (2)
 insert into t values (3)
 insert into t values (4)
 insert into t values (5)
 insert into t values (6)
-commit
+pragma chunk = off
 EOF
 
 check_done

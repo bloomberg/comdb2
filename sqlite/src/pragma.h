@@ -50,6 +50,9 @@
 #define PragTyp_KEY                           42
 #define PragTyp_LOCK_STATUS                   43
 #define PragTyp_STATS                         44
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define PragTyp_CHUNK                         45
+#endif
 
 /* Property flags associated with various pragma. */
 #define PragFlg_NeedSchema 0x01 /* Force schema load before running */
@@ -194,6 +197,13 @@ static const PragmaName aPragmaName[] = {
   /* ePragFlg:  */ PragFlg_Result0|PragFlg_NoColumns1,
   /* ColNames:  */ 0, 0,
   /* iArg:      */ SQLITE_CkptFullFSync },
+#endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+ {/* zName:     */ "chunk",
+  /* ePragTyp:  */ PragTyp_CHUNK,
+  /* ePragFlg:  */ PragFlg_NoColumns,
+  /* ColNames:  */ 0, 0,
+  /* iArg:      */ 0 },
 #endif
 #if !defined(SQLITE_OMIT_SCHEMA_PRAGMAS)
  {/* zName:     */ "collation_list",

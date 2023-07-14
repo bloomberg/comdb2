@@ -747,6 +747,7 @@ struct sqlclntstate {
     struct query_effects effects;
     struct query_effects log_effects;
     struct query_effects chunk_effects;
+    int chunk_pragma; /* is it a chunk pragma? */
     int64_t nsteps;
 
     struct user current_user;

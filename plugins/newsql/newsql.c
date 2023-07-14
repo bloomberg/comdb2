@@ -1243,6 +1243,7 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
        send_intrans_response by setting INTRANSRESULTS to ON. */
     if (appdata->send_intrans_response != -1 && sqlquery->n_features > 0 &&
         gbl_disable_skip_rows == 0) {
+        appdata->send_intrans_response = 1;
         for (int ii = 0; ii < sqlquery->n_features; ii++) {
             if (CDB2_CLIENT_FEATURES__SKIP_INTRANS_RESULTS !=
                 sqlquery->features[ii])
