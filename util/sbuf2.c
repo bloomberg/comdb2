@@ -36,10 +36,12 @@
 #  ifndef SBUF2_DFL_SIZE
 #    define SBUF2_DFL_SIZE 1024ULL
 #  endif
-#  include "mem_util.h"
-#  define calloc comdb2_calloc_util
-#  define malloc(size) comdb2_malloc(sb->allocator, size)
-#  define free comdb2_free
+#  ifdef PER_THREAD_MALLOC
+#    include "mem_util.h"
+#    define calloc comdb2_calloc_util
+#    define malloc(size) comdb2_malloc(sb->allocator, size)
+#    define free comdb2_free
+#  endif
 #else /* SBUF2_SERVER */
 #  ifndef SBUF2_DFL_SIZE
 #    define SBUF2_DFL_SIZE (1024ULL * 128ULL)
@@ -88,7 +90,9 @@ struct sbuf2 {
     void *userptr;
 
 #if SBUF2_SERVER
+#   ifdef PER_THREAD_MALLOC
     comdb2ma allocator;
+#   endif
     struct sqlclntstate *clnt;
 #endif
 
@@ -135,11 +139,11 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
         free(sb->dbgout);
         sb->dbgout = NULL;
     }
-#if SBUF2_SERVER
+#if SBUF2_SERVER && defined(PER_THREAD_MALLOC)
     comdb2ma alloc = sb->allocator;
 #endif
     free(sb);
-#if SBUF2_SERVER
+#if SBUF2_SERVER && defined(PER_THREAD_MALLOC)
     comdb2ma_destroy(alloc);
 #endif
     return rc;
@@ -796,7 +800,7 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
         return NULL;
     }
     SBUF2 *sb = NULL;
-#if SBUF2_SERVER
+#if SBUF2_SERVER && defined(PER_THREAD_MALLOC)
     comdb2ma alloc = comdb2ma_create(0, 0, "sbuf2", 0);
     if (alloc == NULL) {
         goto error;
@@ -812,7 +816,9 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     sb->fd = fd;
     sb->flags = flags;
 #if SBUF2_SERVER
+#   ifdef PER_THREAD_MALLOC
     sb->allocator = alloc;
+#   endif
     sb->clnt = NULL;
 #endif
 
@@ -830,7 +836,7 @@ error:
     if (sb) {
         free(sb);
     }
-#if SBUF2_SERVER
+#if SBUF2_SERVER && defined(PER_THREAD_MALLOC)
     if (alloc) {
         comdb2ma_destroy(alloc);
     }
