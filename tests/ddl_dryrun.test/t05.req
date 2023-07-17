@@ -1,0 +1,1 @@
+dryrun create table t3 { schema { int a } keys { "foo" = foo } }
