@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -x
+
+dbname=$1
+dbdir=$DBDIR
+testdir=$TESTDIR
+cdb2config=$CDB2_CONFIG
+db1=
+db2= 
+
+populate_remote_db()
+{
+	DBNAME=$1
+	CDB2_OPTIONS=${2}
+	cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t(a int primary key)" >> output.actual 2>&1
+
+	cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t select * from generate_series(1,10)" >> output.actual 2>&1
+}
+
+create_remote_dbs()
+{
+	DBNAME=${dbname}"1"
+	DBDIR=$TESTDIR/$DBNAME
+	#effectively srcdb config -- needed to setup srcdb
+	CDB2_CONFIG=$DBDIR/comdb2db.cfg
+	CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
+
+
+	#setup remode db1
+	$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+	db1=${DBNAME}
+	populate_remote_db $db1 "$CDB2_OPTIONS"
+
+
+	DBNAME=${dbname}"2"
+	DBDIR=$TESTDIR/$DBNAME
+	#effectively srcdb config -- needed to setup srcdb
+	CDB2_CONFIG=$DBDIR/comdb2db.cfg
+	CDB2_OPTIONS="--cdb2cfg $CDB2_CONFIG"
+
+	#setup remode db2
+	$TESTSROOTDIR/setup &> $TESTDIR/logs/$DBNAME.setup
+	db2=${DBNAME}
+	populate_remote_db $db2 "$CDB2_OPTIONS"
+}
+
+destroy_remote_dbs()
+{
+    #unsetup remotedb1 
+	DBNAME=${dbname}"1"
+	DBDIR=$TESTDIR/$DBNAME
+
+    $TESTSROOTDIR/unsetup 1 &> $TESTDIR/logs/$DBNAME.unsetup
+
+    #unsetup remotedb2
+	DBNAME=${dbname}"2"
+	DBDIR=$TESTDIR/$DBNAME
+
+    $TESTSROOTDIR/unsetup 1 &> $TESTDIR/logs/$DBNAME.unsetup
+}
+
+create_mod_partition()
+{
+    cdb2sql $dbname --cdb2cfg $cdb2config default "create table t(a int primary key) partitioned by case 'a' % 2 when 0 then '${db1}' when 1 then '${db2}' end" >> output.actual 2>&1
+}
+
+create_remote_dbs
+create_mod_partition
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1 -r req
+rc=$?
+destroy_remote_dbs
+[ $rc -eq 0 ] || exit 1
+
+echo "SUCCESS"
+exit 0
