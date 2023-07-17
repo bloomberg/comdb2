@@ -43,7 +43,7 @@ static int whereLoopResize(sqlite3*, WhereLoop*, int);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_TEST) || defined(SQLITE_DEBUG) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int gbl_disable_seekscan_optimization = 0;
+int gbl_disable_seekscan_optimization = 1;
 int gbl_sqlite_stat4_scan = 0;
 
 int shard_check_parallelism(int iTable);

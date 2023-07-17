@@ -1,1 +1,2 @@
 enable_sql_stmt_caching NONE
+disable_seekscan_optimization 0 # enable seekscan optimization
