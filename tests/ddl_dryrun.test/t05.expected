@@ -1,0 +1,1 @@
+[dryrun create table t3 { schema { int a } keys { "foo" = foo } }] failed with rc 240 Error at line   0: SYMBOL NOT FOUND: foo.
