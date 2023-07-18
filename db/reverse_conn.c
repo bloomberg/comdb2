@@ -32,6 +32,11 @@
 #include "phys_rep.h"
 #include "machclass.h"
 
+#define revconn_logmsg(lvl, ...)                                               \
+    do {                                                                       \
+        logmsg(lvl, "revconn: " __VA_ARGS__);                                  \
+    } while (0)
+
 typedef struct reverse_conn_host_st {
     char *dbname;
     char *host;
@@ -50,7 +55,7 @@ extern char *gbl_physrep_metadb_host;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 
 int gbl_revsql_allow_command_exec;
-int gbl_revsql_debug;
+int gbl_revsql_debug = 0;
 int gbl_revsql_cdb2_debug;
 
 static pthread_t reverse_conn_manager;
@@ -92,8 +97,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     // Connect to the remote database
     sb = connect_remote_db(NULL, dbname, NULL, (char *) host, 0);
     if (!sb) {
-        logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s:%s\n",
-               __func__, __LINE__, dbname, host);
+        revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s:%s\n", __func__, __LINE__, dbname, host);
         return 1;
     }
 
@@ -104,7 +108,7 @@ int send_reversesql_request(const char *dbname, const char *host,
 
     if (netinfo_ptr->exiting || db_is_exiting()) {
         if (gbl_revsql_debug == 1) {
-            logmsg(LOGMSG_USER, "%s:%d Comdb2 is exiting\n", __func__, __LINE__);
+            revconn_logmsg(LOGMSG_USER, "%s:%d Comdb2 is exiting\n", __func__, __LINE__);
         }
         rc = 0;
         goto cleanup;
@@ -119,8 +123,8 @@ int send_reversesql_request(const char *dbname, const char *host,
     len = sizeof(flag);
     rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Couldn't turn off nagel on new_fd %d, flag=%d: %d %s\n",
-               __func__, new_fd, flag, errno, strerror(errno));
+        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't turn off nagel on new_fd %d, flag=%d: %d %s\n",
+                       __func__, new_fd, flag, errno, strerror(errno));
         rc = -1;
         goto cleanup;
     }
@@ -130,8 +134,8 @@ int send_reversesql_request(const char *dbname, const char *host,
     len = sizeof(on);
     rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Couldn't turn on keep alive on new fd %d: %d %s\n",
-               __func__, new_fd, errno, strerror(errno));
+        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't turn on keep alive on new fd %d: %d %s\n",
+                       __func__, new_fd, errno, strerror(errno));
         rc = -1;
         goto cleanup;
     }
@@ -141,9 +145,8 @@ int send_reversesql_request(const char *dbname, const char *host,
     len = sizeof(tcpbfsz);
     rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
     if (rc < 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s: Couldn't set tcp sndbuf size on listenfd %d: %d %s\n",
-               __func__, new_fd, errno, strerror(errno));
+        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't set tcp sndbuf size on listenfd %d: %d %s\n",
+                       __func__, new_fd, errno, strerror(errno));
         rc = -1;
         goto cleanup;
     }
@@ -152,9 +155,8 @@ int send_reversesql_request(const char *dbname, const char *host,
     len = sizeof(tcpbfsz);
     rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
     if (rc < 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s: Couldn't set tcp rcvbuf size on listenfd %d: %d %s\n",
-               __func__, new_fd, errno, strerror(errno));
+        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't set tcp rcvbuf size on listenfd %d: %d %s\n",
+                       __func__, new_fd, errno, strerror(errno));
         rc = -1;
         goto cleanup;
     }
@@ -167,8 +169,8 @@ int send_reversesql_request(const char *dbname, const char *host,
     len = sizeof(linger_data);
     if (setsockopt(new_fd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
                    len) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Couldn't turn off linger on new_fd %d: %d %s\n",
-                __func__, new_fd, errno, strerror(errno));
+        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't turn off linger on new_fd %d: %d %s\n",
+                       __func__, new_fd, errno, strerror(errno));
         rc = -1;
         goto cleanup;
     }
@@ -183,7 +185,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     sbuf2flush(sb);
 
     if (gbl_revsql_debug == 1) {
-        logmsg(LOGMSG_USER, "%s:%d Sent '%s' through fd:%d\n", __func__, __LINE__, msg, new_fd);
+        revconn_logmsg(LOGMSG_USER, "%s:%d Sent '%s' through fd:%d\n", __func__, __LINE__, msg, new_fd);
     }
 
     /* reasonable default for poll */
@@ -204,8 +206,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     /* drop connection on poll error */
     if (rc < 0) {
         findpeer(new_fd, paddr, sizeof(paddr));
-        logmsg(LOGMSG_ERROR, "%s: Error from poll: %s, peeraddr=%s\n", __func__,
-                strerror(errno), paddr);
+        revconn_logmsg(LOGMSG_ERROR, "%s: Error from poll: %s, peeraddr=%s\n", __func__, strerror(errno), paddr);
         rc = -1;
         goto cleanup;
     }
@@ -213,8 +214,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     /* drop connection on timeout */
     else if (0 == rc) {
         findpeer(new_fd, paddr, sizeof(paddr));
-        logmsg(LOGMSG_ERROR, "%s: Timeout reading from socket, peeraddr=%s\n",
-                __func__, paddr);
+        revconn_logmsg(LOGMSG_ERROR, "%s: Timeout reading from socket, peeraddr=%s\n", __func__, paddr);
         rc = -1;
         goto cleanup;
     }
@@ -222,8 +222,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     /* drop connection if i would block in read */
     if ((pol.revents & POLLIN) == 0) {
         findpeer(new_fd, paddr, sizeof(paddr));
-        logmsg(LOGMSG_ERROR, "%s: Cannot read without blocking, peeraddr=%s\n",
-                __func__, paddr);
+        revconn_logmsg(LOGMSG_ERROR, "%s: Cannot read without blocking, peeraddr=%s\n", __func__, paddr);
         rc = -1;
         goto cleanup;
     }
@@ -239,7 +238,7 @@ int send_reversesql_request(const char *dbname, const char *host,
         rc = evbuffer_read(buf, new_fd, -1);
         if (rc <= 0) {
             if (gbl_revsql_debug == 1) {
-                logmsg(LOGMSG_ERROR, "%s:%d Either remote host ignored the 'reversesql' request or an error has occurred (rc: %d)\n", __func__, __LINE__, rc);
+                revconn_logmsg(LOGMSG_ERROR, "%s:%d Either remote host ignored the 'reversesql' request or an error has occurred (rc: %d)\n", __func__, __LINE__, rc);
             }
             evbuffer_free(buf);
             sbuf2close(sb);
@@ -248,7 +247,7 @@ int send_reversesql_request(const char *dbname, const char *host,
 
         sbuf2free(sb);
         if (gbl_revsql_debug == 1) {
-            logmsg(LOGMSG_USER, "%s:%d Received 'newsql' request over 'reversesql' connection\n", __func__, __LINE__);
+            revconn_logmsg(LOGMSG_USER, "%s:%d Received 'newsql' request over 'reversesql' connection\n", __func__, __LINE__);
         }
         (void) do_appsock_evbuffer(buf, &cliaddr, new_fd, 1);
 
@@ -258,8 +257,7 @@ int send_reversesql_request(const char *dbname, const char *host,
         if (rc != 1) {
             if (errno != 0) {
                 findpeer(new_fd, paddr, sizeof(paddr));
-                logmsg(LOGMSG_ERROR, "%s: Readstream failed for = %s (errno: %d)\n", __func__,
-                       paddr, errno);
+                revconn_logmsg(LOGMSG_ERROR, "%s: Readstream failed for = %s (errno: %d)\n", __func__, paddr, errno);
                 rc = -1;
             } else {
                 rc = 0;
@@ -288,8 +286,7 @@ int replace_tier_by_hostname(reverse_conn_host_list_tp *new_reverse_conn_hosts) 
             int rc;
 
             if ((rc = cdb2_open(&hndl, new_host->dbname, new_host->host, 0)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n",
-                       __func__, __LINE__, new_host->dbname, new_host->host, rc);
+                revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n", __func__, __LINE__, new_host->dbname, new_host->host, rc);
                 free(new_host->dbname);
                 free(new_host->host);
                 free(listc_rfl(&new_reverse_conn_hosts, new_host));
@@ -317,9 +314,8 @@ static void *reverse_connection_worker(void *args) {
 
     host->worker_state = REVERSE_CONN_WORKER_RUNNING;
     if (gbl_revsql_debug == 1) {
-        logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' worker thread started "
-                            "for %s@%s\n",
-               __func__, __LINE__, host->dbname, host->host);
+        revconn_logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' worker thread started for %s@%s\n",
+                       __func__, __LINE__, host->dbname, host->host);
     }
 
     while (!db_is_exiting()) {
@@ -349,11 +345,11 @@ static void *reverse_connection_worker(void *args) {
 
         int rc = send_reversesql_request(host->dbname, host->host, "");
         if (rc != 0) {
-          logmsg(LOGMSG_ERROR, "%s:%d Failed to send 'reversesql' request to %s@%s\n",
-                 __func__, __LINE__, host->dbname, host->host);
+          revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to send 'reversesql' request to %s@%s\n",
+                         __func__, __LINE__, host->dbname, host->host);
         } else if (gbl_revsql_debug == 1) {
-            logmsg(LOGMSG_USER, "%s:%d 'reversesql' request sent to %s@%s\n",
-                   __func__, __LINE__, host->dbname, host->host);
+            revconn_logmsg(LOGMSG_USER, "%s:%d 'reversesql' request sent to %s@%s\n",
+                           __func__, __LINE__, host->dbname, host->host);
         }
         sleep(1);
     }
@@ -375,9 +371,8 @@ static int refresh_reverse_conn_hosts() {
         LISTC_FOR_EACH_SAFE(&reverse_conn_hosts, old_host, tmp, lnk) {
             if (old_host->worker_state == REVERSE_CONN_WORKER_EXITED) {
                 if (gbl_revsql_debug == 1) {
-                    logmsg(LOGMSG_USER, "%s:%d %s@%s removed from 'reverse-connection' "
-                                        "hosts list\n",
-                           __func__, __LINE__, old_host->dbname, old_host->host);
+                    revconn_logmsg(LOGMSG_USER, "%s:%d %s@%s removed from 'reverse-connection' hosts list\n",
+                                   __func__, __LINE__, old_host->dbname, old_host->host);
                 }
                 free(old_host->dbname);
                 free(old_host->host);
@@ -388,9 +383,8 @@ static int refresh_reverse_conn_hosts() {
     pthread_mutex_unlock(&reverse_conn_hosts_mu);
 
     if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-	logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for "
-			     "'replication metadb' (rc: %d)\n",
-	__func__, __LINE__, rc);
+	revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for 'replication metadb' (rc: %d)\n",
+                       __func__, __LINE__, rc);
         return 1;
     }
 
@@ -398,13 +392,13 @@ static int refresh_reverse_conn_hosts() {
 		  "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')",
 		  gbl_dbname, gbl_myhostname);
     if (rc < 0 || rc >= sizeof(cmd)) {
-	logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
+	revconn_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
         rc = 1;
         goto err;
     }
 
     if (gbl_revsql_debug == 1) {
-        logmsg(LOGMSG_USER, "%s:%d Executing %s\n", __func__, __LINE__, cmd);
+        revconn_logmsg(LOGMSG_USER, "%s:%d Executing %s\n", __func__, __LINE__, cmd);
     }
 
     if (gbl_revsql_cdb2_debug == 1) {
@@ -421,7 +415,7 @@ static int refresh_reverse_conn_hosts() {
 
 	    new_host = malloc(sizeof(reverse_conn_host_tp));
 	    if (!new_host) {
-		logmsg(LOGMSG_ERROR, "%s:%d Failed to allocate memory\n", __func__, __LINE__);
+		revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to allocate memory\n", __func__, __LINE__);
 
 		// Free the items added to the list
 		LISTC_FOR_EACH_SAFE(&new_reverse_conn_hosts, new_host, tmp, lnk) {
@@ -483,9 +477,8 @@ static int refresh_reverse_conn_hosts() {
 	// *Move* from new list to the main list
         if (found == 0) {
             if (gbl_revsql_debug == 1) {
-                logmsg(LOGMSG_USER, "%s:%d %s@%s added to the main 'reverse-connection' "
-                                    "hosts list\n",
-                       __func__, __LINE__, new_host->dbname, new_host->host);
+                revconn_logmsg(LOGMSG_USER, "%s:%d %s@%s added to the main 'reverse-connection' hosts list\n",
+                               __func__, __LINE__, new_host->dbname, new_host->host);
             }
 	    listc_abl(&reverse_conn_hosts,
                       listc_rfl(&new_reverse_conn_hosts, new_host));
@@ -520,12 +513,11 @@ static void *reverse_connection_manager(void *args) {
 
         // Refresh the 'reverse connection host' list
         if (gbl_revsql_debug == 1) {
-            logmsg(LOGMSG_USER, "%s:%d Refreshing 'reverse-connection' hosts list\n",
-                   __func__, __LINE__);
+            revconn_logmsg(LOGMSG_USER, "%s:%d Refreshing 'reverse-connection' hosts list\n", __func__, __LINE__);
         }
 
         if ((rc = refresh_reverse_conn_hosts()) != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d Failed to refresh 'reverse-connection host' list (rc: %d)\n", __func__, __LINE__, rc);
+            revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to refresh 'reverse-connection host' list (rc: %d)\n", __func__, __LINE__, rc);
             continue;
         }
 
@@ -546,9 +538,8 @@ static void *reverse_connection_manager(void *args) {
                 pthread_mutex_unlock(&host->mu);
 
                 if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "%s:%d Failed to create 'reverse-connection host' "
-                                         "worker thread for %s@%s\n",
-                           __func__, __LINE__, host->dbname, host->host);
+                    revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to create 'reverse-connection host' worker thread for %s@%s\n",
+                                   __func__, __LINE__, host->dbname, host->host);
                 }
             }
         }
@@ -559,31 +550,23 @@ static void *reverse_connection_manager(void *args) {
 }
 
 int start_reverse_connections_manager() {
-    /* Only allow source nodes to service 'reversesql' requests */
-    if (gbl_is_physical_replicant == 1 || gbl_physrep_metadb_name == NULL)
-        return 0;
-
-    if (gbl_physrep_metadb_name == NULL &&
-        get_dbtable_by_name("comdb2_physrep_sources") == NULL)
-        return 0;
-
     if (reverse_conn_manager_running == 1) {
-        logmsg(LOGMSG_ERROR, "Reverse connections manager thread is already running!\n");
+        revconn_logmsg(LOGMSG_ERROR, "Reverse connections manager thread is already running!\n");
         return 0;
     }
+
+    // Only source nodes are allowed to service 'reversesql' requests
+    assert(gbl_is_physical_replicant == 0);
 
     // Start the 'reverse-connection' manager thread
     int rc = pthread_create(&reverse_conn_manager, NULL, reverse_connection_manager, NULL);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s:%d pthread_create failed (rc: %d)\n",
-               __func__, __LINE__, rc);
+        revconn_logmsg(LOGMSG_ERROR, "%s:%d pthread_create failed (rc: %d)\n", __func__, __LINE__, rc);
         return rc;
     }
 
     if (gbl_revsql_debug == 1) {
-        logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' manager "
-                            "thread started\n",
-               __func__, __LINE__);
+        revconn_logmsg(LOGMSG_USER, "%s:%d 'reverse-connection' manager thread started\n", __func__, __LINE__);
     }
     reverse_conn_manager_running = 1;
 
@@ -600,10 +583,10 @@ int stop_reverse_connections_manager() {
     stop_reverse_conn_manager = 1;
 
     if ((rc = pthread_join(reverse_conn_manager, NULL)) != 0) {
-        logmsg(LOGMSG_ERROR, "Reverse connections manager thread failed to join (rc : %d)\n", rc);
+        revconn_logmsg(LOGMSG_ERROR, "Reverse connections manager thread failed to join (rc : %d)\n", rc);
         return 1;
     }
-    logmsg(LOGMSG_USER, "Reverse connections manager thread has stopped\n");
+    revconn_logmsg(LOGMSG_USER, "Reverse connections manager thread has stopped\n");
 
     reverse_conn_manager_running = 0;
     stop_reverse_conn_manager = 0;
@@ -624,13 +607,13 @@ static char *state2str(int worker_state) {
 int dump_reverse_connection_host_list() {
     reverse_conn_host_tp *host;
 
-    logmsg(LOGMSG_USER, "Reverse-connection host list:\n");
+    revconn_logmsg(LOGMSG_USER, "Reverse-connection host list:\n");
     pthread_mutex_lock(&reverse_conn_hosts_mu);
     {
         LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk) {
             pthread_mutex_lock(&host->mu);
             {
-                logmsg(LOGMSG_USER, "dbname: %s host: %s worker state: %s\n",
+                revconn_logmsg(LOGMSG_USER, "dbname: %s host: %s worker state: %s\n",
                        host->dbname, host->host, state2str(host->worker_state));
             }
             pthread_mutex_unlock(&host->mu);
