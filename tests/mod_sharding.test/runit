@@ -66,6 +66,8 @@ create_mod_partition()
 
 create_remote_dbs
 create_mod_partition
+CDB2_CONFIG=$cdb2config
+CDB2_OPTIONS="--cdb2cfg "${cdb2config}
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1 -r req
 rc=$?
 destroy_remote_dbs

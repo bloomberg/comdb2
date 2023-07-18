@@ -3662,5 +3662,5 @@ void csc2_free_all(void);
 void csc2_allow_bools(void);
 void csc2_disallow_bools(void);
 int csc2_used_bools(void);
-pthread_rwlock_t mod_shard_lk;
+extern pthread_rwlock_t mod_shard_lk;
 #endif /* !INCLUDED_COMDB2_H */

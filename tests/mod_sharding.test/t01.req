@@ -1,1 +1,1 @@
-select * from test order by a
+select * from t order by a

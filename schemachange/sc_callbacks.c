@@ -1122,7 +1122,9 @@ static int scdone_mod_views(const char tablename[], void *arg, scdone_t type)
 
     tran = _tran(&lid, &bdberr, __func__, __LINE__);
     if (!tran)
+        return bdberr;
 
+    logmsg(LOGMSG_USER, "++++++ %s : calling mod_views_update_replicant\n", __func__);
     rc = mod_views_update_replicant(tran, tablename);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "failed to update mod views from llmeta!\n");

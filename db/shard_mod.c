@@ -17,6 +17,7 @@ struct mod_view {
     hash_t *shards;
 };
 
+pthread_rwlock_t mod_shard_lk;
 static int free_mod_shard(void *obj, void *unused) {
     struct mod_shard *shard = (struct mod_shard *)obj;
     if (shard) {
@@ -157,8 +158,12 @@ static int create_inmem_view(hash_t *mod_views, mod_view_t *view) {
 
 
 static int destroy_inmem_view(hash_t *mod_views, mod_view_t *view) {
+    if (!view) {
+        logmsg(LOGMSG_USER, "SOMETHING IS WRONG. VIEW CAN'T BE NULL\n");
+        return VIEW_ERR_NOTFOUND;
+    }
     Pthread_rwlock_wrlock(&mod_shard_lk);
-    struct mod_view *v = hash_find(mod_views, view->viewname);
+    struct mod_view *v = hash_find_readonly(mod_views, &view->viewname);
     int rc = VIEW_NOERR;
     if (!v) {
         rc = VIEW_ERR_NOTFOUND;
@@ -311,8 +316,7 @@ int mod_views_update_replicant(void *tran, const char *name)
     hash_t *mod_views = thedb->mod_shard_views;
     mod_view_t *view = NULL, *v = NULL;
     int rc = VIEW_NOERR;
-    return rc;
-    logmsg(LOGMSG_USER, "Replicant updating views\n");
+    logmsg(LOGMSG_USER, "++++++ Replicant updating views\n");
     char *view_str = NULL;
     struct errstat xerr = {0};
 
@@ -326,6 +330,7 @@ int mod_views_update_replicant(void *tran, const char *name)
         goto done;
     }
 
+    logmsg(LOGMSG_USER, "The views string is %s\n", view_str);
     /* create an in-mem view object */
     view = mod_deserialize_view(view_str, &xerr); 
     if (!view) {
@@ -340,16 +345,22 @@ update_view_hash:
      * - If view is NULL (not there in llmeta), destroy the view and remove from hash */
 
     if (!view) {
+        logmsg(LOGMSG_USER,"The deserialized view is NULL. This is a delete case \n");
         /* It's okay to do this lockless. The subsequent destroy method
          * grabs a lock and does a find again */ 
-        v = hash_find(mod_views, name);
+        v = hash_find_readonly(mod_views, &name);
+        if (!v) {
+            logmsg(LOGMSG_ERROR,"Couldn't find view in llmeta or in-mem hash\n");
+            goto done;
+        }
         rc = mod_destroy_inmem_view(v);
         if (rc != VIEW_NOERR) {
             logmsg(LOGMSG_ERROR, "%s:%d Failed to destroy inmem view\n", __func__, __LINE__);
         }
-    } else { 
+    } else {
+        logmsg(LOGMSG_USER, "The deserialized view is NOT NULL. this is a view create/update case \n");
         rc = mod_destroy_inmem_view(view);
-        if (rc != VIEW_NOERR || rc != VIEW_ERR_NOTFOUND) {
+        if (rc != VIEW_NOERR && rc != VIEW_ERR_NOTFOUND) {
             logmsg(LOGMSG_ERROR, "%s:%d Failed to destroy inmem view\n", __func__, __LINE__);
             goto done;
         }
