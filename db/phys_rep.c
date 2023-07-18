@@ -1086,7 +1086,7 @@ repl_loop:
                 int wait_timeout_sec = 60;
 
                 if (gbl_physrep_debug)
-                    physrep_logmsg(LOGMSG_USER, "%s:%d Waiting for a connection from source cluster\n", __func__, __LINE__);
+                    physrep_logmsg(LOGMSG_USER, "%s:%d Waiting for a connection from source node(s)\n", __func__, __LINE__);
 
                 /*
                   Get a 'reverse' connection to one of the nodes in source db.
@@ -1100,7 +1100,7 @@ repl_loop:
                 */
                 rev_conn_hndl = wait_for_reverse_conn(wait_timeout_sec);
                 if (rev_conn_hndl == NULL) {
-                    physrep_logmsg(LOGMSG_ERROR, "%s:%d Could not get a connection from source cluster in %d secs\n",
+                    physrep_logmsg(LOGMSG_ERROR, "%s:%d Could not get a connection from source node(s) in %d secs\n",
                                    __func__, __LINE__, wait_timeout_sec);
                     cdb2_close(repl_metadb);
                     continue;
@@ -1446,6 +1446,37 @@ static void *physrep_watcher(void *args) {
     return NULL;
 }
 
+static int get_local_revconn_target_count() {
+    cdb2_hndl_tp *cdb2_hndl = NULL;
+    int count = 0;
+    char cmd[400];
+
+    int rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')", gbl_dbname, gbl_myhostname);
+    if (rc < 0 || rc >= sizeof(cmd)) {
+	physrep_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
+        return -1;
+    }
+
+    if ((rc = get_local_hndl(&cdb2_hndl)) != 0) {
+	physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to localhost (rc: %d)\n", __func__, __LINE__, rc);
+        return -1;
+    }
+
+    if (gbl_physrep_debug == 1) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Executing %s\n", __func__, __LINE__, cmd);
+    }
+
+    if ((rc = cdb2_run_statement(cdb2_hndl, cmd)) == CDB2_OK) {
+	while ((rc = cdb2_next_record(cdb2_hndl)) == CDB2_OK) {
+            ++count;
+	}
+    }
+
+    // Close the connection
+    cdb2_close(cdb2_hndl);
+    return count;
+}
+
 static int stop_physrep_watcher_thread() {
     int rc = 0;
 
@@ -1489,11 +1520,31 @@ int start_physrep_threads() {
 
     // If this is a 'physical replication' source, we would need to actively
     // try connecting to replicants in the lower tier. (See db/reverse_conn.c)
-    if (gbl_physrep_source_dbname == NULL && gbl_physrep_metadb_name != NULL) {
+    // This task is done by 'Reverse connections manager' thread. But before
+    // we start this thread we need to make sure that:
+    //
+    // 1. This node is not a physical replicant, AND
+    // 2.
+    //     2.1 This node was asked to connect to a replication metadb, in which case
+    //         the reverse connection manager and workers will periodically consult
+    //         comdb2_physrep_sources table to reverse connect. OR
+    //     2.2 This node is either a source node or replication metadb that has
+    //         comdb2_physrep_sources table, in which case we check whether this node
+    //         is supposed to reverse connect. Note: unlike the above case (2.1), we
+    //         only perform this check once to decide whether to start the reverse
+    //         connection manager thread. We do so to keep the manager and worker
+    //         threads from running on replication metadb, where they would not
+    //         normally be needed.
+    if (gbl_physrep_source_dbname == NULL &&                                                                 /* 1   */
+        (gbl_physrep_metadb_name != NULL ||                                                                  /* 2.1 */
+         (get_dbtable_by_name("comdb2_physrep_sources") != NULL && get_local_revconn_target_count() > 0))) { /* 2.2 */
+        physrep_logmsg(LOGMSG_USER, "Starting 'reverse connections' manager\n");
         if ((rc = start_reverse_connections_manager()) != 0) {
             physrep_logmsg(LOGMSG_ERROR, "Couldn't start 'reverse connections' manager (rc: %d)\n" ,rc);
             return -1;
         }
+    } else {
+        physrep_logmsg(LOGMSG_USER, "Not starting 'reverse connections' manager\n");
     }
 
     // Start physical replication worker
@@ -1505,6 +1556,8 @@ int start_physrep_threads() {
             return -1;
         }
         physrep_logmsg(LOGMSG_USER, "Worker thread has started!\n");
+    } else {
+        physrep_logmsg(LOGMSG_USER, "Not starting worker thread\n");
     }
 
     // Start physical replication watcher
@@ -1520,6 +1573,8 @@ int start_physrep_threads() {
             physrep_watcher_running = 1;
             physrep_logmsg(LOGMSG_USER, "Watcher thread has started!\n");
         }
+    } else {
+        physrep_logmsg(LOGMSG_USER, "Not starting watcher thread\n");
     }
 
     return 0;
@@ -1545,4 +1600,5 @@ void physrep_cleanup() {
 int physrep_exited() {
     return (physrep_worker_running == 1) ? 0 : 1;
 }
+
 

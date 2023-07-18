@@ -2324,23 +2324,11 @@ __log_rep_put(dbenv, lsnp, rec)
 			goto err;
 		}
 
-                // TODO (NC): enable?
-#if 0
-		/*
-		 * If we changed files and we're in a replicated
-		 * environment, we need to inform our clients now that
-		 * we've dropped the region lock.
-		 *
-		 * Note that a failed NEWFILE send is a dropped message
-		 * that our client can handle, so we can ignore it.  It's
-		 * possible that the record we already put is a commit, so
-		 * we don't just want to return failure.
-		 */
-		if (!IS_ZERO_LSN(old_lsn))
-			(void)__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_NEWFILE, &old_lsn, NULL, 0,
-			    usr_ptr);
-#endif
+                /* There is no need to send REP_NEWFILE here (unlike done in
+                 * __log_put_int_int()) as the physrep worker thread running
+                 * on this (master) node automatically detects and sends
+                 * REP_NEWFILE on log file change.
+                 */
 
 		/*
 		 * Then send the log record itself on to our clients.
