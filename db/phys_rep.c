@@ -357,7 +357,7 @@ static int get_metadb_hndl(cdb2_hndl_tp **hndl) {
         return 1;
     }
 
-    int rc = cdb2_open(hndl, dbname, host, CDB2_DIRECT_CPU);
+    int rc = cdb2_open(hndl, dbname, host, 0);
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n",
                        __func__, __LINE__, dbname, host, rc);
