@@ -2180,10 +2180,19 @@ void pstack_self(void)
     snprintf(buf, sizeof(buf), "pstack %d", pid);
 #   endif
     errno = 0;
-    int rc = system(buf);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: system(%s) rc:%d err:%s\n", __func__, buf, rc, strerror(errno));
+    FILE *out = popen(buf, "r");
+    if (!out) {
+        int old = gbl_logmsg_ctrace;
+        gbl_logmsg_ctrace = 0;
+        logmsg(LOGMSG_ERROR, "%s: popen(%s) err:%s\n", __func__, buf, strerror(errno));
+        gbl_logmsg_ctrace = old;
+        return;
     }
+    char line[LINE_MAX];
+    while (fgets(line, sizeof(line), out) == line) {
+        logmsg(LOGMSG_USER, "%s", line);
+    }
+    pclose(out);
 }
 
 static void panic_func(DB_ENV *dbenv, int errval)

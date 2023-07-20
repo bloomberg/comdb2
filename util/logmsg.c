@@ -23,6 +23,10 @@ static int do_thread = 0;
 static int do_prefix_level = 1;
 static int ended_with_newline = 1;
 
+#ifndef BUILDING_TOOLS
+#include <ctrace.h>
+#endif
+
 /* from io_override.c */
 
 static __thread FILE *ptr = NULL;
@@ -211,10 +215,13 @@ int logmsgv(loglvl lvl, const char *fmt, va_list args)
 }
 
 int logmsg(loglvl lvl, const char *fmt, ...) {
-    int ret;
     va_list args;
     va_start(args, fmt);
-    ret = logmsgv(lvl, fmt, args);
+#   ifndef BUILDING_TOOLS
+    int ret = gbl_logmsg_ctrace ? ctracev(fmt, args) : logmsgv(lvl, fmt, args);
+#   else
+    int ret = logmsgv(lvl, fmt, args);
+#   endif
     va_end(args);
     return ret;
 }
@@ -230,10 +237,13 @@ int logmsgvf(loglvl lvl, FILE *f, const char *fmt, va_list args) {
 }
 
 int logmsgf(loglvl lvl, FILE *f, const char *fmt, ...) {
-    int ret;
     va_list args;
     va_start(args, fmt);
-    ret = logmsgvf(lvl, f, fmt, args);
+#   ifndef BUILDING_TOOLS
+    int ret = gbl_logmsg_ctrace ? ctracev(fmt, args) : logmsgvf(lvl, f, fmt, args);
+#   else
+    int ret = logmsgvf(lvl, f, fmt, args);
+#   endif
     va_end(args);
     return ret;
 }

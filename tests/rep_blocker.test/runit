@@ -30,7 +30,7 @@ sleep 3
 # replicant's log
 
 # dump all the statements blocking the replication thread
-blockers=`cdb2sql ${CDB2_OPTIONS} $dbnm --host $rep 'exec procedure sys.cmd.send("sql dump repblockers")'`
+blockers=`cdb2sql ${CDB2_OPTIONS} $dbnm --host $rep 'exec procedure sys.cmd.send("sql dump repblockers")' | grep -v 'SQL statements currently blocking the replication thread'`
 
 wait
 

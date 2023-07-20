@@ -471,31 +471,45 @@ static char *ctrace_tstr(void)
     return tstr;
 }
 
-void ctrace(const char *format, ...)
-{
-    int mutex_enabled = g_mutex_enabled;
-    va_list ap;
+__thread int gbl_logmsg_ctrace = 0;
 
+int ctracev(const char *format, va_list ap)
+{
+    int a, b;
+    int mutex_enabled = g_mutex_enabled;
     LOCKIFNZ(&g_mutex, mutex_enabled)
     {
         if (!ctrace_ok_ll()) {
             errUNLOCKIFNZ(&g_mutex, mutex_enabled);
-            return;
+            return -1;
         }
         char *tstr = ctrace_tstr();
         CTRACE_TIMER_START(IOLIMIT_FAST);
         {
-            wr_lk(logmsgf(LOGMSG_USER, logf, "%s:", tstr));
-            va_start(ap, format);
-            wr_lk(logmsgvf(LOGMSG_USER, logf, format, ap));
+            int old_value = gbl_logmsg_ctrace;
+            gbl_logmsg_ctrace = 0;
+            a = logmsgf(LOGMSG_USER, logf, "%s:", tstr);
+            wr_lk(a);
+            b = logmsgvf(LOGMSG_USER, logf, format, ap);
+            wr_lk(b);
             fflush(logf);
+            gbl_logmsg_ctrace = old_value;
         }
         CTRACE_TIMER_END("fprintf()+vfprintf()+fflush()");
-        va_end(ap);
         if (warnat > 0 && filesz >= warnat)
             chkwarnsz_lk();
     }
     UNLOCKIFNZ(&g_mutex, mutex_enabled);
+    if (a < 0 || b < 0) return -1;
+    return a + b;
+}
+
+void ctrace(const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    ctracev(format, ap);
+    va_end(ap);
 }
 
 void ctracef(FILE *tee, const char *format, ...)

@@ -3,7 +3,6 @@ add_executable(pmux
   pmux.cpp
   ${PROJECT_SOURCE_DIR}/util/bb_daemon.c
 )
-add_definitions(-DBUILDING_TOOLS)
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/cdb2api

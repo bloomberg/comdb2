@@ -38,7 +38,6 @@ if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 add_definitions(
-  -DBUILDING_TOOLS
   -DDISABLE_HOSTADDR_CACHE
   -DSBUF2_SERVER=0
 )
