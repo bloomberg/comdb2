@@ -2074,7 +2074,7 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     if (clnt->rawnodestats == NULL) {
         clnt->rawnodestats =
             get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin,
-                               clnt->plugin.get_fileno(clnt));
+                               clnt->plugin.get_fileno(clnt), clnt->plugin.has_ssl(clnt));
     }
     if (process_set_commands(clnt, sql_query)) {
         return -1;
@@ -2101,6 +2101,9 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         return -1;
     }
     ATOMIC_ADD32(gbl_nnewsql, 1);
+    if (clnt->plugin.has_ssl(clnt))
+        ATOMIC_ADD32(gbl_nnewsql_ssl, 1);
+
     return 0;
 }
 

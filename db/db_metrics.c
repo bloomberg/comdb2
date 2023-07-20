@@ -53,6 +53,7 @@ struct comdb2_metrics_store {
     int64_t retries;
     int64_t sql_cost;
     int64_t sql_count;
+    int64_t sql_ssl_count;
     int64_t start_time;
     int64_t threads;
     int64_t current_connections;
@@ -174,6 +175,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_cost, NULL},
     {"sql_count", "Number of sql queries executed", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_count, NULL},
+    {"sql_ssl_count", "Number of sql queries executed, via SSL", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.sql_ssl_count, NULL},
     {"start_time", "Server start time", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.start_time, NULL},
     {"threads", "Number of threads", STATISTIC_INTEGER,
@@ -419,6 +422,7 @@ int refresh_metrics(void)
     stats.retries = n_retries;
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;
+    stats.sql_ssl_count = gbl_nnewsql_ssl;
     stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
 
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
