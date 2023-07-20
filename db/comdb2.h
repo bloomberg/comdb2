@@ -508,6 +508,7 @@ struct summary_nodestats {
     char *task;
     char *stack;
     int ref;
+    int is_ssl;
 
     unsigned finds;
     unsigned rngexts;
@@ -1707,6 +1708,7 @@ extern uint32_t gbl_nsql;
 extern long long gbl_nsql_steps;
 
 extern unsigned int gbl_nnewsql;
+extern unsigned int gbl_nnewsql_ssl;
 extern long long gbl_nnewsql_steps;
 
 extern unsigned int gbl_masterrejects;
@@ -2901,7 +2903,7 @@ void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host);
 struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
-                                        char *host, int fd);
+                                        char *host, int fd, int is_ssl);
 int release_node_stats(const char *task, const char *stack, char *host);
 struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);

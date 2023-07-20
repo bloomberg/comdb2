@@ -374,6 +374,7 @@ uint32_t gbl_nsql;
 long long gbl_nsql_steps;
 
 uint32_t gbl_nnewsql;
+uint32_t gbl_nnewsql_ssl;
 long long gbl_nnewsql_steps;
 
 uint32_t gbl_masterrejects = 0;
