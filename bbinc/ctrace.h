@@ -143,6 +143,11 @@ void ctrace_roll(void);
 /* Set max ctrace logs to keep */
 void ctrace_set_nlogs(int n);
 
+int ctracev(const char *format, va_list args)
+    __attribute_format__((printf, 1, 0));
+
+extern __thread int gbl_logmsg_ctrace;
+
 #if defined __cplusplus
 }
 #endif

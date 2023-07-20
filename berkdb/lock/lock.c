@@ -2067,12 +2067,14 @@ void comdb2_dump_blockers(DB_ENV *dbenv)
 		return;
 	}
 
+	if (SH_TAILQ_FIRST(&obj->holders, __db_lock)) {
+		logmsg(LOGMSG_USER, "SQL statements currently blocking the replication thread:\n");
+	}
 	for (hlp = SH_TAILQ_FIRST(&obj->holders, __db_lock);
 		hlp != NULL; hlp = SH_TAILQ_NEXT(hlp, links, __db_lock))
 	{
 		comdb2_dump_blocker(hlp->holderp->id);
 	}
-
 	unlock_obj_partition(region, partition);
 }
 

@@ -1,3 +1,4 @@
+add_definitions(-DBUILDING_TOOLS)
 add_subdirectory(comdb2ar)
 add_subdirectory(cdb2sockpool)
 add_subdirectory(cdb2_sqlreplay)
