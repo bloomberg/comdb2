@@ -7910,6 +7910,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
                           BtCursor *cur,   /* Write new cursor here */
                           struct sql_thread *thd)
 {
+    extern int gbl_ssl_allow_remsql;
     struct sqlclntstate *clnt = thd->clnt;
     fdb_tran_t *trans;
     fdb_t *fdb;
@@ -7961,7 +7962,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         Pthread_mutex_lock(&clnt->dtran_mtx);
 
 #if WITH_SSL
-    int usessl = sslio_has_ssl(clnt->sb);
+    int usessl = sslio_has_ssl(clnt->sb) && gbl_ssl_allow_remsql;
 #else
     int usessl = 0;
 #endif

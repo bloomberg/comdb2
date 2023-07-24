@@ -4911,7 +4911,7 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
     } else {
         *flags = FDB_MSG_CURSOR_OPEN_SQL_SSL;
 #if WITH_SSL
-        if (sslio_has_ssl(clnt->sb) || fdb->ssl >= SSL_REQUIRE) {
+        if ((sslio_has_ssl(clnt->sb) || fdb->ssl >= SSL_REQUIRE) && gbl_ssl_allow_remsql) {
             *flags |= FDB_MSG_CURSOR_OPEN_FLG_SSL;
         }
 #endif
