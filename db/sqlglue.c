@@ -11304,8 +11304,6 @@ sbuf:
         return NULL;
     }
 
-    logmsg(LOGMSG_INFO, "%s:%d connected to remote fd: %d\n", __func__, __LINE__, sbuf2fileno(sb));
-
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
     return sb;
