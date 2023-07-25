@@ -841,7 +841,7 @@ void *sc_resuming_watchdog(void *p)
         if (iq.sc->kind == SC_ADDTABLE) {
             delete_temp_table(&iq, iq.sc->db);
             if (iq.sc->add_state == SC_DONE_ADD) {
-                delete_db(iq.sc->tablename);
+                rem_dbtable_from_thedb_dbs(iq.sc->db);
             }
         }
         /* TODO: (NC) Also delete view? */
@@ -1547,7 +1547,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
         }
         if (s->kind == SC_ADDTABLE) {
             if (s->add_state == SC_DONE_ADD) {
-                delete_db(s->tablename);
+                rem_dbtable_from_thedb_dbs(s->db);
             }
             if (s->newdb) {
                 backout_schemas(s->newdb->tablename);

@@ -2391,8 +2391,8 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
-int add_db(struct dbtable *db);
-void delete_db(char *db_name);
+int add_dbtable_to_thedb_dbs(dbtable *table);
+void rem_dbtable_from_thedb_dbs(dbtable *table);
 void hash_sqlalias_db(dbtable *db, const char *newname);
 int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,

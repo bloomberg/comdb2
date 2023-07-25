@@ -580,7 +580,7 @@ static int delete_table_rep(char *table, void *tran)
         return -1;
     }
 
-    delete_db(table);
+    rem_dbtable_from_thedb_dbs(db);
     MEMORY_SYNC;
     delete_schema(table);
     return 0;
@@ -772,24 +772,19 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
     logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", tablename);
 
     rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran,
-                                  timepart_is_next_shard(table_copy, NULL));
+                                  timepart_is_next_shard(table_copy, NULL), &db);
     if (rc) {
         logmsg(LOGMSG_FATAL, "%s: error adding table %s.\n", __func__,
                tablename);
         exit(1);
     }
 
+    add_dbtable_to_thedb_dbs(db);
+
     _master_recs(tran, tablename, type);
 
     free(table_copy);
     free(csc2text);
-
-    db = get_dbtable_by_name(tablename);
-    if (!db) {
-        logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
-               __func__, tablename);
-        exit(1);
-    }
 
     set_odh_options_tran(db, tran);
     db->tableversion = table_version_select(db, tran);
