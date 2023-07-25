@@ -212,6 +212,7 @@ struct nodestats {
     struct in_addr addr;
     char *task;
     char *stack;
+    int is_ssl;
 
     int ref;
     pthread_mutex_t mtx;

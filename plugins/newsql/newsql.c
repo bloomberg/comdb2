@@ -2548,7 +2548,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         if (clnt.rawnodestats == NULL) {
             clnt.rawnodestats = get_raw_node_stats(
-                clnt.argv0, clnt.stack, clnt.origin, sbuf2fileno(clnt.sb));
+                clnt.argv0, clnt.stack, clnt.origin, sbuf2fileno(clnt.sb), sslio_has_ssl(clnt.sb));
         }
 
         if (process_set_commands(dbenv, &clnt, sql_query))
@@ -2577,6 +2577,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         clnt.heartbeat = 1;
         ATOMIC_ADD32(gbl_nnewsql, 1);
+        if (sslio_has_ssl(clnt.sb))
+            ATOMIC_ADD32(gbl_nnewsql_ssl, 1);
 
         int isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0) ||
                                (strncasecmp(clnt.sql, "rollback", 8) == 0);
