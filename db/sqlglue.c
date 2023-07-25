@@ -966,7 +966,9 @@ int sqlite3_unpacked_to_packed(Mem *mems, int nmems, char **ret_rec,
         total_data_sz += sqlite3VdbeSerialTypeLen(type);
         total_header_sz += sqlite3VarintLen(type);
     }
-    total_header_sz += sqlite3VarintLen(total_header_sz);
+    // adding header length to total_header_sz may change header length of total_header_sz, so calculate sqlite3VarintLen() twice
+    int header_length = sqlite3VarintLen(total_header_sz);
+    total_header_sz += sqlite3VarintLen(total_header_sz + header_length);
 
     /* create the sqlite row */
     rec = (char *)calloc(1, total_header_sz + total_data_sz);
@@ -1003,6 +1005,7 @@ int sqlite3_unpacked_to_packed(Mem *mems, int nmems, char **ret_rec,
     *ret_rec_len = total_header_sz + total_data_sz;
 
     if (remsz != 0) {
+        logmsg(LOGMSG_ERROR, "%s: remsz %d != 0\n", __func__, remsz);
         abort();
     }
 

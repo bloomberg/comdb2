@@ -1,0 +1,5 @@
+Test a rare bug in sqlite3_unpacked_to_packed.
+Use dohsql in test case so sqlite3_unpacked_to_packed gets called.
+In the test case total_header_sz is 127 when just accounting for headers from fields.
+This makes sqlite3VarintLen(total_header_sz) == 1, so then total_header_sz = 127 + 1 = 128.
+But now sqlite3VarintLen(total_header_sz) == 2. So we should add one more to total_header_sz so total_header_sz = 129.
