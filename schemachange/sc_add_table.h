@@ -20,7 +20,8 @@
 int do_add_table(struct ireq *, struct schema_change_type *, tran_type *);
 int add_table_to_environment(char *table, const char *csc2,
                              struct schema_change_type *s, struct ireq *iq,
-                             tran_type *trans, const char *timepartition_name);
+                             tran_type *trans, const char *timepartition_name,
+                             dbtable **pnewdb);
 int finalize_add_table(struct ireq *, struct schema_change_type *, tran_type *);
 
 #endif

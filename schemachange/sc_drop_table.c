@@ -36,7 +36,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
     }
 
     char *table = db->tablename;
-    delete_db(table);
+    rem_dbtable_from_thedb_dbs(db);
     MEMORY_SYNC;
     delete_schema(table);
     bdb_del_table_csonparameters(tran, table);

@@ -101,7 +101,8 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
  * the file written with the csc2. */
 int add_table_to_environment(char *table, const char *csc2,
                              struct schema_change_type *s, struct ireq *iq,
-                             tran_type *trans, const char *timepartition_name)
+                             tran_type *trans, const char *timepartition_name,
+                             struct dbtable **pnewdb)
 {
     int rc;
     struct dbtable *newdb;
@@ -162,12 +163,6 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    /* must re add the dbs if you're a physical replicant */
-    if (newdb->dbenv->master != gbl_myhostname || gbl_is_physical_replicant) {
-        /* This is a replicant calling scdone_callback */
-        add_db(newdb);
-    }
-
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
         if (rc == SC_CSC2_ERROR)
@@ -188,7 +183,9 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (s)
         s->newdb = newdb;
-
+    
+    if (pnewdb)
+        *pnewdb = newdb;
 
     return SC_OK;
 
@@ -234,7 +231,7 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans,
-                                  s->timepartition_name);
+                                  s->timepartition_name, &db);
 
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
@@ -305,7 +302,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     /* Set instant schema-change */
     db->instant_schema_change = db->odh && s->instant_sc;
 
-    rc = add_db(db);
+    rc = add_dbtable_to_thedb_dbs(db);
     if (rc) {
         sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);
         return rc;
