@@ -1609,6 +1609,7 @@ extern int gbl_sqlreadaheadthresh;
 extern int gbl_iothreads;
 extern int gbl_ioqueue;
 extern int gbl_prefaulthelperthreads;
+extern int gbl_max_parallel_partition_sc_threads;
 
 extern int gbl_osqlpfault_threads;
 extern osqlpf_step *gbl_osqlpf_step;

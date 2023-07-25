@@ -2432,4 +2432,7 @@ REGISTER_TUNABLE("unexpected_last_type_warn",
 REGISTER_TUNABLE("unexpected_last_type_abort",
                  "Panic if the last response server sent before sockpool reset isn't LAST_ROW",
                  TUNABLE_INTEGER, &gbl_unexpected_last_type_abort, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_parallel_partition_sc_threads",
+                 "If partition has more than this amount of shards, run each schema change alter serial",
+                 TUNABLE_INTEGER, &gbl_max_parallel_partition_sc_threads, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

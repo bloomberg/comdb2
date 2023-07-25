@@ -73,6 +73,7 @@ extern int gbl_partial_indexes;
 int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
 int gbl_selectv_writelock = 0;
+int gbl_max_parallel_partition_sc_threads = 10;
 
 extern int db_is_exiting();
 
@@ -5876,6 +5877,14 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     return rc;
 }
 
+static void _limit_parallel_sc_threads(struct schema_change_type *sc)
+{
+    if (gbl_max_parallel_partition_sc_threads > 1) {
+        int nshards = timepart_get_num_shards(sc->tablename);
+        sc->nothrevent = (nshards > gbl_max_parallel_partition_sc_threads);
+    }
+}
+
 static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
@@ -5901,6 +5910,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
+    _limit_parallel_sc_threads(sc);
     rc = timepart_foreach_shard(
         sc->tablename, start_schema_change_tran_wrapper_merge, &arg, 0);
     return rc;
@@ -5988,6 +5998,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.s->kind = SC_ADDTABLE;
         arg.indx = 1; /* first shard is already there */
     }
+    _limit_parallel_sc_threads(sc);
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
@@ -6060,6 +6071,7 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
+    _limit_parallel_sc_threads(sc);
     rc = timepart_foreach_shard(sc->tablename,
                                 start_schema_change_tran_wrapper, &arg, -1);
 out:
