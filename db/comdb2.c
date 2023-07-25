@@ -1482,6 +1482,8 @@ void clean_exit(void)
 
     stop_threads(thedb);
     flush_db();
+    if (gbl_backend_opened)
+        llmeta_dump_mapping(thedb);
 
 #   if 0
     /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
