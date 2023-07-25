@@ -473,7 +473,8 @@ static int thrman_check_threads_stopped_ll(void *context)
             thr_type_counts[THRTYPE_SQLENGINEPOOL] +
             thr_type_counts[THRTYPE_VERIFY] + thr_type_counts[THRTYPE_ANALYZE] +
             thr_type_counts[THRTYPE_PURGEBLKSEQ] +
-            thr_type_counts[THRTYPE_PGLOGS_ASOF])
+            thr_type_counts[THRTYPE_PGLOGS_ASOF] +
+            thr_type_counts[THRTYPE_TRIGGER])
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */
