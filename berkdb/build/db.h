@@ -2813,6 +2813,9 @@ struct __db_env {
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
+    void (*set_signal_catchup) __P((DB_ENV*, void(*)(DB_ENV*, DB_LSN*, char*)));
+    void (*signal_catchup_callback) __P((DB_ENV*, DB_LSN*, char*));
+
 	pthread_mutex_t utxnid_lock;
 	u_int64_t next_utxnid;
 

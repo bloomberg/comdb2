@@ -3914,11 +3914,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     } else {
         r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
                                                   &host, &permlsn,
-                                                  &commit_generation, online);
+                                                  &commit_generation, online, 0);
     }
-    r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
-                                              &host, &permlsn,
-                                              &commit_generation, online, 0);
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
