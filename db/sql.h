@@ -586,7 +586,8 @@ enum prepare_flags {
     PREPARE_NO_NORMALIZE = 32,
     PREPARE_ONLY = 64,
     PREPARE_ALLOW_TEMP_DDL = 128,
-    PREPARE_ACQUIRE_SPLOCK = 256
+    PREPARE_ACQUIRE_SPLOCK = 256,
+    PREPARE_ACQUIRE_VIEWSLK = 512
 };
 
 /* This structure is designed to hold several pieces of data related to

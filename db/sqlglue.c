@@ -7647,14 +7647,9 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         return 0;
     }
 
-    if (p->numVTableLocks > 0) {
-        /* system table: grab views_lk as long as there's time partitions, so that
-           we can maintain the same lock order as time partion rollout which may
-           happen while we're in the middle of this query */
+    if ((p->vTableFlags & PREPARE_ACQUIRE_VIEWSLK) && !clnt->dbtran.views_lk_held) {
         Pthread_rwlock_rdlock(&views_lk);
         clnt->dbtran.views_lk_held = 1;
-    } else {
-        clnt->dbtran.views_lk_held = 0;
     }
 
     for (int i = 0; i < p->numVTableLocks; i++) {
