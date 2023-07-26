@@ -2813,8 +2813,8 @@ struct __db_env {
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
-    void (*set_signal_catchup) __P((DB_ENV*, void(*)(DB_ENV*, DB_LSN*, char*)));
-    void (*signal_catchup_callback) __P((DB_ENV*, DB_LSN*, char*));
+    void (*set_signal_catchup) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN *lsnp, char *master)));
+    void (*signal_catchup_callback) __P((DB_ENV *, DB_LSN *lsnp, char *master));
 
 	pthread_mutex_t utxnid_lock;
 	u_int64_t next_utxnid;
@@ -2842,8 +2842,6 @@ struct __txn_commit_map {
 	hash_t *transactions;
 	hash_t *logfile_lists;
 
-    void (*set_signal_catchup) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN *lsnp, char *master)));
-    void (*signal_catchup_callback) __P((DB_ENV *, DB_LSN *lsnp, char *master));
 };
 
 #ifndef DB_DBM_HSEARCH

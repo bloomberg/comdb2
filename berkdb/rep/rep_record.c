@@ -1036,6 +1036,237 @@ done:
 	return will_recover;
 }
 
+const char* berkmsgtype(int type);
+const char *logrectype(u_int32_t type);
+
+const char* berkmsgtype(int type) {
+    switch (type){
+        case REP_ALIVE:
+            return "REP_ALIVE";
+        case REP_ALIVE_REQ:
+            return "REP_ALIVE_REQ";
+        case REP_ALL_REQ:
+            return "REP_ALL_REQ";
+        case REP_DUPMASTER:
+            return "REP_DUPMASTER";
+        case REP_FILE:
+            return "REP_FILE";
+        case REP_FILE_REQ:
+            return "REP_FILE_REQ";
+        case REP_LOG:
+            return "REP_LOG";
+        case REP_LOG_MORE:
+            return "REP_LOG_MORE";
+        case REP_LOG_REQ:
+            return "REP_LOG_REQ";
+        case REP_MASTER_REQ:
+            return "REP_MASTER_REQ";
+        case REP_NEWCLIENT:
+            return "REP_NEWCLIENT";
+        case REP_NEWFILE:
+            return "REP_NEWFILE";
+        case REP_NEWMASTER:
+            return "REP_NEWMASTER";
+        case REP_NEWSITE:
+            return "REP_NEWSITE";
+        case REP_PAGE:
+            return "REP_PAGE";
+        case REP_PAGE_REQ:
+            return "REP_PAGE_REQ";
+        case REP_PLIST:
+            return "REP_PLIST";
+        case REP_PLIST_REQ:
+            return "REP_PLIST_REQ";
+        case REP_VERIFY:
+            return "REP_VERIFY";
+        case REP_VERIFY_FAIL:
+            return "REP_VERIFY_FAIL";
+        case REP_VERIFY_REQ:
+            return "REP_VERIFY_REQ";
+        case REP_VOTE1:
+            return "REP_VOTE1";
+        case REP_VOTE2:
+            return "REP_VOTE2";
+        case REP_LOG_LOGPUT:
+            return "REP_LOG_LOGPUT";
+        case REP_PGDUMP_REQ:
+            return "REP_PGDUMP_REQ";
+        case REP_GEN_VOTE1:
+            return "REP_GEN_VOTE1";
+        case REP_GEN_VOTE2:
+            return "REP_GEN_VOTE2";
+        case REP_LOG_FILL:
+            return "REP_LOG_FILL";
+        case REP_MAX_TYPE:
+            return "REP_MAX_TYPE";
+        default:
+            return "???";
+    }
+}
+
+#include "dbinc/hash.h"
+#include "dbinc/llog_auto.h"
+#include "dbinc_auto/hash_auto.h"
+
+const char *logrectype(u_int32_t type) {
+    normalize_rectype(&type);
+    if (type > 1000 && type < 2000)
+        type -= 1000;
+    switch (type) {
+        case DB___txn_regop:
+            return "txn_regop";
+        case DB___txn_ckp:
+            return "txn_ckp";
+        case DB___txn_child:
+            return "txn_child";
+        case DB___txn_xa_regop:
+            return "txn_xa_regop";
+        case DB___txn_recycle:
+            return "txn_recycle";
+        case DB___txn_regop_rowlocks:
+            return "txn_regop_rowlocks";
+        case DB___txn_regop_gen:
+            return "txn_regop_gen";
+        case DB___txn_dist_prepare:
+            return "txn_dist_prepare";
+        case DB___txn_dist_abort:
+            return "txn_dist_abort";
+        case DB___txn_dist_commit:
+            return "txn_dist_commit";
+        case DB___crdel_metasub:
+            return "crdel_metasub";
+        case DB___dbreg_register:
+            return "dbreg_register";
+        case DB___bam_split:
+            return "bam_split";
+        case DB___bam_rsplit:
+            return "bam_rsplit";
+        case DB___bam_adj:
+            return "bam_adj";
+        case DB___bam_cadjust:
+            return "bam_cadjust";
+        case DB___bam_cdel:
+            return "bam_cdel";
+        case DB___bam_repl:
+            return "bam_repl";
+        case DB___bam_root:
+            return "bam_root";
+        case DB___bam_curadj:
+            return "bam_curadj";
+        case DB___bam_rcuradj:
+            return "bam_rcuradj";
+        case DB___bam_prefix:
+            return "bam_prefix";
+        case DB___bam_pgcompact:
+            return "bam_pgcompact";
+        case DB___db_addrem:
+            return "db_addrem";
+        case DB___db_big:
+            return "db_big";
+        case DB___db_ovref:
+            return "db_ovref";
+        case DB___db_relink:
+            return "db_relink";
+        case DB___db_debug:
+            return "db_debug";
+        case DB___db_noop:
+            return "db_noop";
+        case DB___db_pg_alloc:
+            return "db_pg_alloc";
+        case DB___db_pg_free:
+            return "db_pg_free";
+        case DB___db_cksum:
+            return "db_cksum";
+        case DB___db_pg_freedata:
+            return "db_pg_freedata";
+        case DB___db_pg_prepare:
+            return "db_pg_prepare";
+        case DB___db_pg_new:
+            return "db_pg_new";
+        case DB___fop_create:
+            return "fop_create";
+        case DB___fop_remove:
+            return "fop_remove";
+        case DB___fop_write:
+            return "fop_write";
+        case DB___fop_rename:
+            return "fop_rename";
+        case DB___fop_file_remove:
+            return "fop_file_remove";
+        case DB___qam_incfirst:
+            return "qam_incfirst";
+        case DB___qam_mvptr:
+            return "qam_mvptr";
+        case DB___qam_del:
+            return "qam_del";
+        case DB___qam_add:
+            return "qam_add";
+        case DB___qam_delext:
+            return "qam_delext";
+        case DB___ham_insdel:
+            return "ham_insdel";
+        case DB___ham_newpage:
+            return "ham_newpage";
+        case DB___ham_splitdata:
+            return "ham_splitdata";
+        case DB___ham_replace:
+            return "ham_replace";
+        case DB___ham_copypage:
+            return "ham_copypage";
+        case DB___ham_metagroup:
+            return "ham_metagroup";
+        case DB___ham_groupalloc:
+            return "ham_groupalloc";
+        case DB___ham_curadj:
+            return "ham_curadj";
+        case DB___ham_chgpg:
+            return "ham_chgpg";
+        case DB_llog_savegenid:
+            return "llog_savegenid";
+        case DB_llog_scdone:
+            return "llog_scdone";
+        case DB_llog_undo_add_dta:
+            return "llog_undo_add_dta";
+        case DB_llog_undo_add_ix:
+            return "llog_undo_add_ix";
+        case DB_llog_ltran_commit:
+            return "llog_ltran_commit";
+        case DB_llog_ltran_start:
+            return "llog_ltran_start";
+        case DB_llog_ltran_comprec:
+            return "llog_ltran_comprec";
+        case DB_llog_undo_del_dta:
+            return "llog_undo_del_dta";
+        case DB_llog_undo_del_ix:
+            return "llog_undo_del_ix";
+        case DB_llog_undo_upd_dta:
+            return "llog_undo_upd_dta";
+        case DB_llog_undo_upd_ix:
+            return "llog_undo_upd_ix";
+        case DB_llog_repblob:
+            return "llog_repblob";
+        case DB_llog_undo_add_dta_lk:
+            return "llog_undo_add_dta_lk";
+        case DB_llog_undo_add_ix_lk:
+            return "llog_undo_add_ix_lk";
+        case DB_llog_undo_del_dta_lk:
+            return "llog_undo_del_dta_lk";
+        case DB_llog_undo_del_ix_lk:
+            return "llog_undo_del_ix_lk";
+        case DB_llog_undo_upd_dta_lk:
+            return "llog_undo_upd_dta_lk";
+        case DB_llog_undo_upd_ix_lk:
+            return "llog_undo_upd_ix_lk";
+        case DB_llog_blkseq:
+            return "llog_blkseq";
+        case DB_llog_rowlocks_log_bench:
+            return "llog_rowlocks_log_bench";
+        case DB_llog_commit_log_bench:
+            return "llog_commit_log_bench";
+        default:
+            return "???";
+    }
+}
 
 
 /*
@@ -1124,8 +1355,29 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online, o
 	lp = dblp->reginfo.primary;
 	rp = (REP_CONTROL *)control->data;
 
+    // log records are still swapped, but the control record isn't
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
+
+#if 0
+	printf("-> %u:%u %s gen %d flags %x sz %d", rp->lsn.file, rp->lsn.offset, berkmsgtype(rp->rectype), rp->gen, rp->flags, rec ? (int) rec->size : 0);
+	if (rp->rectype == REP_LOG || rp->rectype == REP_LOG_MORE) {
+		u_int32_t type;
+		if (rec->size < sizeof(u_int32_t))
+			printf(" [ small record? sz %d ]", rec->size);
+		else {
+            if (oob)
+                memcpy(&type, rec->data, sizeof(u_int32_t));
+            else
+                LOGCOPY_32(&type, rec->data);
+			if (logrectype(type)[0] == '?')
+				printf(" [ type %d ]", type);
+			else
+				printf(" [ %s ]", logrectype(type));
+		}
+	}
+	printf("\n");
+#endif
 
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
@@ -1305,7 +1557,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online, o
 	 * NEW* and ALIVE_REQ.
 	 */
 	if (recovering) {
-        printf("recovering while got %u:%u\n", rp->lsn.file, rp->lsn.offset);
+        // printf("recovering while got %u:%u\n", rp->lsn.file, rp->lsn.offset);
 		switch (rp->rectype) {
 		case REP_VERIFY:
 			MUTEX_LOCK(dbenv, db_rep->db_mutexp);
@@ -3086,12 +3338,18 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 	lp = dblp->reginfo.primary;
 	cmp = log_compare(&rp->lsn, &lp->ready_lsn);
 
+    if (cmp == 0) {
+        fprintf(stderr, "got ready_lsn %u:%u\n", lp->ready_lsn.file, lp->ready_lsn.offset);
+    }
+#if 0
     int now = time(NULL);
     static int last = 0;
     if (cmp)  {
         printf("ready_lsn %u:%u got %u:%u cmp %d oob %d\n", lp->ready_lsn.file, lp->ready_lsn.offset, rp->lsn.file, rp->lsn.offset, cmp, oob);
         last = now;
     }
+#endif
+
 	/*
 	 * fprintf(stderr, "Rep log file %s line %d for %d:%d ready_lsn is %d:%d cmp=%d\n", 
 	 * __FILE__, __LINE__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file, 
@@ -3153,7 +3411,10 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 				max_lsn = rp->lsn;
 			}
 
-			LOGCOPY_32(&rectype, rec->data);
+            if (oob)
+                memcpy(&rectype, rec->data, sizeof(u_int32_t));
+            else
+                LOGCOPY_32(&rectype, rec->data);
 			normalize_rectype(&rectype);
 
 			/* 
@@ -3544,6 +3805,9 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 
 		if (do_req) {
+            if (oob)
+                goto done;
+
 			/* Request the LSN we are still waiting for. */
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			eid = db_rep->region->master_id;

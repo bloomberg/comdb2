@@ -2274,6 +2274,8 @@ __log_rep_put(dbenv, lsnp, rec)
 	LOG *lp;
 	int need_free, ret;
 
+    printf("%s %u:%u\n", __func__, lsnp->file, lsnp->offset);
+
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
 

@@ -100,6 +100,10 @@ static inline int is_logput(int type) {
 	}
 }
 
+
+
+extern const char* berkmsgtype(int type);
+
 /*
  * __rep_send_message --
  *	This is a wrapper for sending a message.  It takes care of constructing
@@ -236,6 +240,8 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	 * actual LSN so that they can coordinate with permanent records from
 	 * the client if they want to.
 	 */
+    printf("<- %u:%u %s %s gen %d flags %x\n", cntrl.lsn.file, cntrl.lsn.offset, eid, berkmsgtype(cntrl.rectype), cntrl.gen, cntrl.flags);
+
 
 	if (LOG_SWAPPED())
 		__rep_control_swap(&cntrl);

@@ -45,9 +45,6 @@ static void* catchup_thread(void *p) {
     cdb2_hndl_tp *db;
     DB_LSN last_lsn;
 
-    // race?  what race?
-    sleep(3);
-
     // TODO: destination - build from list of siblings
     int rc = cdb2_open(&db, gbl_bdb_state->name, c->master, CDB2_DIRECT_CPU);
     if (rc) {
@@ -164,6 +161,8 @@ static int apply_log_file(struct catchup *c, uint32_t lognum, uint8_t *log, uint
         dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0, 1);
         printf(">>>> newfile %u\n", last_lsn->file);
     }
+
+    printf("%s: log %d\n", __func__, lognum);
 
     do {
         rp.lsn.file = lognum;
