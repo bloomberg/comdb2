@@ -125,7 +125,7 @@ static int insert_add_index(struct ireq *iq, unsigned long long genid)
     if (iq->idxInsert == NULL)
         return 0;
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no thdinfo\n", __func__);
         return -1;
@@ -179,7 +179,7 @@ static int cache_delayed_indexes(struct ireq *iq, unsigned long long genid)
         iq->idxInsert = iq->idxDelete = NULL;
     }
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no thdinfo\n", __func__);
         return -1;
@@ -287,7 +287,7 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
     int err = 0;
     int rc = 0;
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "insert_add_op: no thdinfo\n");
         rc = -1;
@@ -356,7 +356,7 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
     cte cte_record;
     int err = 0;
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL)
         return -1;
 
@@ -647,7 +647,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
     int keylen;
     char key[MAXKEYLEN + 1];
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET DEL LIST CURSOR");
@@ -1165,7 +1165,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         return ERR_INTERNAL;
     }
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST CURSOR");
@@ -1476,7 +1476,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
         return ERR_INTERNAL;
     }
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         if (iq->debug)
             reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST CURSOR");
@@ -1882,7 +1882,7 @@ int truncate_constraint_table(void *table)
 
 int clear_constraints_tables(void)
 {
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL)
         return -1;
 
@@ -2423,7 +2423,7 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
     int err;
     int rc;
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d no thd_info\n", __func__, __LINE__);
         return -1;
@@ -2504,7 +2504,7 @@ int delete_constraint_genid(unsigned long long genid)
     int err;
     int rc;
 
-    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d no thd_info\n", __func__, __LINE__);
         return -1;

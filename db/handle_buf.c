@@ -52,6 +52,8 @@
 #include "comdb2_pthread_create.h"
 #endif
 
+pthread_key_t thd_info_key;
+
 void (*comdb2_ipc_sndbak)(int *, int) = 0;
 
 enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
@@ -222,8 +224,9 @@ int thd_init(void)
     listc_init(&idle, offsetof(struct thd, lnk));
     listc_init(&busy, offsetof(struct thd, lnk));
     bdb_set_io_control(thd_io_start, thd_io_complete);
-    logmsg(LOGMSG_INFO, "thd_init: thread subsystem initialized\n");
+    Pthread_key_create(&thd_info_key, free);
     Pthread_attr_setstacksize(&attr, 4096 * 1024);
+    logmsg(LOGMSG_INFO, "thd_init: thread subsystem initialized\n");
     return 0;
 }
 
@@ -509,7 +512,7 @@ static void *thd_req(void *vthd)
     dbenv = thd->iq->dbenv;
     backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
 
-    /* thdinfo is assigned to thread specific variable unique_tag_key which
+    /* thdinfo is assigned to thread specific variable thd_info_key which
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
@@ -554,7 +557,7 @@ static void *thd_req(void *vthd)
                __func__, __LINE__);
     }
 
-    Pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(thd_info_key, thdinfo);
 
     /*printf("started handler %ld thd %p thd->id %p\n", pthread_self(), thd,
      * thd->tid);*/

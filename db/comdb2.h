@@ -984,7 +984,7 @@ struct dbenv {
 extern struct dbenv *thedb;
 extern comdb2_tunables *gbl_tunables;
 
-extern pthread_key_t unique_tag_key;
+extern pthread_key_t thd_info_key;
 extern pthread_key_t query_info_key;
 
 struct req_hdr {
