@@ -450,7 +450,7 @@ static void *prefault_io_thread(void *arg)
 
     Pthread_setspecific(lockmgr_key, &lock_variable);
 
-    /* thdinfo is assigned to thread specific variable unique_tag_key which
+    /* thdinfo is assigned to thread specific variable thd_info_key which
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
@@ -462,7 +462,7 @@ static void *prefault_io_thread(void *arg)
     thdinfo->ct_add_table = NULL;
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_index = NULL;
-    Pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(thd_info_key, thdinfo);
 
     while (1) {
         req = NULL;

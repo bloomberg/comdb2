@@ -86,7 +86,7 @@ static void *prefault_helper_thread(void *arg)
 
     backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
 
-    /* thdinfo is assigned to thread specific variable unique_tag_key which
+    /* thdinfo is assigned to thread specific variable thd_info_key which
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
@@ -99,7 +99,7 @@ static void *prefault_helper_thread(void *arg)
     thdinfo->ct_del_table = NULL;
     thdinfo->ct_add_table = NULL;
     thdinfo->ct_del_table = NULL;
-    Pthread_setspecific(unique_tag_key, thdinfo);
+    Pthread_setspecific(thd_info_key, thdinfo);
 
     while (1) {
         Pthread_mutex_lock(&(dbenv->prefault_helper.mutex));

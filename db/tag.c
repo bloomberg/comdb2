@@ -62,8 +62,6 @@
 extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
 
-pthread_key_t unique_tag_key;
-
 char gbl_ver_temp_table[] = ".COMDB2.TEMP.VER.";
 char gbl_ondisk_ver[] = ".ONDISK.VER.";
 char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
@@ -144,7 +142,6 @@ int schema_init(void)
 {
     init_taglock();
     gbl_tag_hash = hash_init_strcaseptr(offsetof(struct dbtag, tblname));
-    Pthread_key_create(&unique_tag_key, free);
 
     logmsg(LOGMSG_INFO, "Schema module init ok\n");
     return 0;
@@ -4615,7 +4612,7 @@ static char *get_unique_tag(void)
     struct thread_info *thd;
     char *tag;
 
-    thd = pthread_getspecific(unique_tag_key);
+    thd = pthread_getspecific(thd_info_key);
     if (thd == NULL)
         return NULL;
 
