@@ -285,6 +285,20 @@ static int exec_create_modpart(void *tran, bpfunc_t *func, struct errstat *err)
     int replicated = 0;
     BpfuncCreateModpart *arg = func->arg->crt_mod;
     mod_view_t *view = NULL;
+
+    if(get_dbtable_by_name(arg->name)){
+        err->errval = VIEW_ERR_PARAM;
+        snprintf(err->errstr, sizeof(err->errstr),
+                 "Partition name %s matches an existing table", arg->name);
+        goto error;
+    }
+
+    if(mod_get_view_by_name(arg->name)){
+        err->errval = VIEW_ERR_PARAM;
+        snprintf(err->errstr, sizeof(err->errstr),
+                 "Partition name %s matches an existing partition", arg->name);
+        goto error;
+    }
     logmsg(LOGMSG_USER, "%s: o=mod part name is %s\n", __func__, arg->name);
     view = create_mod_view(arg->name, arg->name, arg->columns, arg->column, arg->n_shards,
                         arg->n_columns, arg->keys, arg->shards, err);

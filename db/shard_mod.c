@@ -188,7 +188,6 @@ static int create_inmem_view(hash_t *mod_views, mod_view_t *view) {
     return VIEW_NOERR;
 }
 
-
 static int destroy_inmem_view(hash_t *mod_views, mod_view_t *view) {
     if (!view) {
         logmsg(LOGMSG_USER, "SOMETHING IS WRONG. VIEW CAN'T BE NULL\n");
@@ -206,6 +205,19 @@ static int destroy_inmem_view(hash_t *mod_views, mod_view_t *view) {
 done:
     Pthread_rwlock_unlock(&mod_shard_lk);
     return rc;
+}
+
+mod_view_t *mod_get_view_by_name(char *name) {
+    mod_view_t *view = NULL;
+
+    Pthread_rwlock_wrlock(&mod_shard_lk);
+    if (!thedb->mod_shard_views) {
+        goto done;
+    }
+    view = hash_find_readonly(thedb->mod_shard_views, &name);
+done:
+    Pthread_rwlock_unlock(&mod_shard_lk);
+    return view;
 }
 
 int mod_create_inmem_view(mod_view_t *view) {
