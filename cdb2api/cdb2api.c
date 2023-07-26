@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2023, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -166,6 +166,8 @@ static int _PID; /* ONE-TIME */
 static int _MACHINE_ID; /* ONE-TIME */
 static char *_ARGV0; /* ONE-TIME */
 
+static int iam_identity = 0;
+
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 #define MAX_NODES 128
@@ -238,6 +240,12 @@ void (*cdb2_install)(void) = CDB2_INSTALL_LIBS;
 extern void CDB2_UNINSTALL_LIBS(void);
 #endif
 void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
+
+#ifndef CDB2_IDENTITY_CALLBACKS
+    struct cdb2_identity *identity_cb = NULL;
+#else
+    struct cdb2_identity *identity_cb = CDB2_IDENTITY_CALLBACKS;
+#endif
 
 #ifndef WITH_DL_LIBS
 #define WITH_DL_LIBS 0
@@ -400,6 +408,19 @@ static char *ibm_getargv0(void)
 #define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
 #define SQLCACHEHINTLENGTH 17
 
+static int value_on_off(const char *value) {
+    if (strcasecmp("on", value) == 0) {
+        return 1;
+    } else if (strcasecmp("off", value) == 0) {
+        return 0;
+    } else if (strcasecmp("no", value) == 0) {
+        return 0;
+    } else if (strcasecmp("yes", value) == 0) {
+        return 1;
+    }
+    return atoi(value);
+}
+
 static inline const char *cdb2_skipws(const char *str)
 {
     while (*str && isspace(*str))
@@ -421,8 +442,45 @@ char *cdb2_getargv0(void)
 #endif
 }
 
+static void atfork_prepare(void) {
+    pthread_mutex_lock(&cdb2_sockpool_mutex);
+    if (identity_cb)
+        identity_cb->resetIdentity_start();
+}
+
+static void atfork_me(void) {
+    if (identity_cb)
+        identity_cb->resetIdentity_end(1);
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
+static void sockpool_close_all(void);
+static void atfork_child(void) {
+    sockpool_close_all();
+    _PID = getpid();
+    if (identity_cb)
+        identity_cb->resetIdentity_end(0);
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
+static int init_once_has_run = 0;
+
 static void do_init_once(void)
 {
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    if (init_once_has_run == 0) {
+        pthread_mutex_lock(&lk);
+        if (!init_once_has_run) {
+            srandom(time(0));
+            _PID = getpid();
+            _MACHINE_ID = gethostid();
+            _ARGV0 = cdb2_getargv0();
+            pthread_atfork(atfork_prepare, atfork_me, atfork_child);
+            init_once_has_run = 1;
+        }
+        pthread_mutex_unlock(&lk);
+    }
+
     char *do_log = getenv("CDB2_LOG_CALLS");
     if (do_log)
         log_calls = 1;
@@ -431,9 +489,6 @@ static void do_init_once(void)
         /* can't call back cdb2_set_comdb2db_config from do_init_once */
         strncpy(CDB2DBCONFIG_NOBBENV, config, 511);
     }
-    _PID = getpid();
-    _MACHINE_ID = gethostid();
-    _ARGV0 = cdb2_getargv0();
 }
 
 /* if sqlstr is a read stmt will return 1 otherwise return 0
@@ -1286,6 +1341,13 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s, const char *comdb2db
                 tok = strtok_r(NULL, " :,", &last);
                 (*num_db_hosts)++;
             }
+        } else if (strcasecmp("comdb2_feature", tok) == 0) {
+            tok = strtok_r(NULL, " =:,", &last);
+            if ((strcasecmp("iam_identity_v6",tok) == 0)) {
+                tok = strtok_r(NULL, " =:,", &last);
+                if (tok)
+                    iam_identity = value_on_off(tok);
+            }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
             if (tok == NULL) continue;
@@ -1879,6 +1941,18 @@ static void sockpool_remove_fd(int fd)
             sp->sockpool_fd = -1;
             sp->in_use = 0;
             break;
+        }
+    }
+}
+
+static void sockpool_close_all(void)
+{
+    for (int i = 0; i < sockpool_fd_count; i++) {
+        struct sockpool_fd_list *sp = &sockpool_fds[i];
+        if (sp->sockpool_fd != -1) {
+            close(sp->sockpool_fd);
+            sp->sockpool_fd = -1;
+            sp->in_use = 0;
         }
     }
 }
@@ -2947,8 +3021,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
                            int retries_done, int do_append, int fromline)
 {
     int rc = 0;
-
     void *callbackrc;
+    CDB2SQLQUERY__IdentityBlob *id_blob = NULL;
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
@@ -3001,6 +3075,13 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     sqlquery.types = types;
     sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
     sqlquery.mach_class = cdb2_default_cluster;
+
+    if (iam_identity && identity_cb) {
+        id_blob = identity_cb->getIdentity();
+        if (id_blob->data.data) {
+            sqlquery.identity = id_blob;
+        }
+    }
 
     query.sqlquery = &sqlquery;
 
@@ -3145,6 +3226,13 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     rc = 0;
 
 after_callback:
+    if (iam_identity && identity_cb && id_blob) {
+        if (id_blob->principal)
+            free(id_blob->principal);
+        if (id_blob->data.data)
+            free(id_blob->data.data);
+        free(id_blob);
+    }
     while ((e = cdb2_next_callback(event_hndl, CDB2_AFTER_SEND_QUERY, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(event_hndl, e, 2, CDB2_SQL, sql,
