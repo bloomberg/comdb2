@@ -761,6 +761,18 @@ static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const 
     if (table != NULL && (strcmp(table, "comdb2_triggers") == 0)) {
         pAuthState->flags |= PREPARE_ACQUIRE_SPLOCK;
     }
+    if (table != NULL && (strncasecmp(table, "comdb2_", 7) == 0)) {
+        table += 7;
+        if (strcasecmp(table, "tables") == 0 ||
+            strcasecmp(table, "columns") == 0 ||
+            strcasecmp(table, "keys") == 0 ||
+            strcasecmp(table, "keycomponents") == 0 ||
+            strcasecmp(table, "timepartitions") == 0 ||
+            strcasecmp(table, "timepartshards") == 0 ||
+            strcasecmp(table, "timepartevents") == 0) {
+            pAuthState->flags |= PREPARE_ACQUIRE_VIEWSLK;
+        }
+    }
     if (vtable_lock && !vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_lock)) {
         pAuthState->vTableLocks =
             (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * (pAuthState->numVTableLocks + 1));
@@ -3123,7 +3135,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         if (rec->stmt) {
-            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks);
+            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks, thd->authState.flags);
             thd->authState.numVTableLocks = 0;
             thd->authState.vTableLocks = NULL;
         } else {
