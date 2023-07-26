@@ -95,8 +95,8 @@ struct comdb2_partition {
             char viewname[MAXTABLELEN];
             char column[MAXCOLNAME];
             uint32_t num_shards;
-            uint32_t keys[MAXSHARDS];
-            char shards[MAXSHARDS][MAX_DBNAME_LENGTH];
+            int32_t keys[MAXSHARDS];
+            char *shards[MAXSHARDS];
         } mod;
     } u;
 };

@@ -235,6 +235,11 @@ temp(A) ::= .      {A = 0;}
 create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F) partitioned merge. {
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
+
+create_table_args ::= LP columnlist conslist_opt RP comdb2opt table_options PARTITIONED BY CASE STRING(P) REM INTEGER(N) case_exprlist(Y) END. {
+    comdb2WriteTransaction(pParse);
+    comdb2CreateModPartition(pParse, &P, &N, Y);
+}
 partitioned ::= . 
 partitioned ::= partitioned_by.
 partitioned_by ::= PARTITIONED BY partition_options.
@@ -250,9 +255,10 @@ partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
 partition_options ::= MANUAL RETENTION INTEGER(R). {
     comdb2CreateManualPartition(pParse, &R, 0);
 }
+/*
 partition_options ::= CASE STRING(P) REM INTEGER(N) case_exprlist(Y) END. {
     comdb2CreateModPartition(pParse, &P, &N, Y);
-}
+}*/
 merge ::= .
 merge ::= merge_with.
 merge_with ::= MERGE nm(Y) dbnm(Z). {

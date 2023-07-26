@@ -335,9 +335,9 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
     void *ent;
     unsigned int bkt;
     mod_shard_t *shard = NULL;
+    mod_view_t *v = NULL;
     int num_shards = mod_view_get_num_shards(view);
     const char *view_name = mod_view_get_viewname(view);
-    const char *table_name = mod_view_get_tablename(view);
     hash_t * shards = mod_view_get_shards(view);
     int i;
     if (num_shards == 0) {
@@ -352,7 +352,18 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
         goto malloc;
     }
 
-    cols_str = _describe_row(table_name, cols_str, VIEWS_TRIGGER_QUERY, err);
+    if (!thedb->mod_shard_views) {
+        snprintf(err->errstr, sizeof(err->errstr), "View hash for mod shards not initialized!\n");
+        err->errval = VIEW_ERR_BUG;
+        return NULL;
+    }
+    v = hash_find_readonly(thedb->mod_shard_views, &view_name);
+    if (!v) {
+        snprintf(err->errstr, sizeof(err->errstr), "View hash for mod shards not initialized!\n");
+        err->errval = VIEW_ERR_BUG;
+        return NULL;
+    }
+    cols_str = mod_views_describe_row(v, cols_str, err);
     if (!cols_str) {
         /* preserve error, if any */
         if (err->errval != VIEW_NOERR)

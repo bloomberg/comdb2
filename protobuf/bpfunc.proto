@@ -71,6 +71,17 @@ message bpfunc_delete_from_sc_history
     required uint64 seed = 2;
 }
 
+message bpfunc_create_modpart {
+  required string name = 1;
+  required string column = 2;
+  repeated int32 keys = 4 [packed=true];
+  repeated string shards = 5;
+  repeated string columns = 6;
+}
+
+message bpfunc_drop_modpart {
+  required string name = 1;
+}
 message bpfunc_arg {
     required  int32 type = 1;
     optional  bpfunc_create_timepart crt_tp = 2;
@@ -85,5 +96,6 @@ message bpfunc_arg {
     optional  bpfunc_rowlocks_enable rl_enable = 11;
     optional  bpfunc_genid48_enable gn_enable = 12;
     optional  bpfunc_delete_from_sc_history tblseed = 13;
+    optional  bpfunc_create_modpart crt_mod = 14;
+    optional  bpfunc_drop_modpart drop_mod = 15;
 }
-

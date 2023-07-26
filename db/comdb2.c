@@ -616,7 +616,7 @@ int gbl_support_datetime_in_triggers = 1;
 int gbl_use_block_mode_status_code = 1;
 
 unsigned int gbl_delayed_skip = 0;
-int gbl_enable_osql_logging = 0;
+int gbl_enable_osql_logging = 1;
 int gbl_enable_osql_longreq_logging = 0;
 
 int gbl_broken_num_parser = 0;
