@@ -77,8 +77,6 @@ struct timepart_views {
                                 one is removed, if past retention */
 };
 
-
-
 pthread_rwlock_t views_lk;
 
 /*
@@ -3306,31 +3304,17 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
                 abort(); /* restart will fix this*/
             break;
         }
-        case PARTITION_ADD_MOD: {
-            rc = mod_create_inmem_view(sc->newshard);
-            break;
-        }
         } /*switch */
         int bdberr = 0;
-        if (sc->partition.type == PARTITION_ADD_MOD) {
-            rc = bdb_llog_mod_views(thedb->bdb_env, (char *)mod_view_get_viewname(sc->newshard), 1, &bdberr);
-            if (rc || bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for mod partition %s\n",
-                       __func__, mod_view_get_viewname(sc->newshard));
-            }
-        } else {
         rc = bdb_llog_time_partition(thedb->bdb_env, tran,
                                 partition_name ? partition_name
                                                : (char *)sc->timepartition_name,
                                 &bdberr);
-            if (rc || bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
-                       __func__, partition_name);
-            }
-            if (partition_name) {
-                free(partition_name);
-            }
+        if (rc || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
+                   __func__, partition_name);
         }
+        free(partition_name);
     }
     return rc;
 }
@@ -3351,10 +3335,6 @@ void partition_unpublish(struct schema_change_type *sc)
             int rc = timepart_create_inmem_view(sc->newpartition);
             if (rc)
                 abort(); /* restart will fix this*/
-            break;
-        }
-        case PARTITION_ADD_MOD: {
-            mod_destroy_inmem_view(sc->newshard);
             break;
         }
         }

@@ -114,7 +114,6 @@ enum table_chk_flags {
     ERROR_IGNORE = 2,
 };
 
-static void free_shard_map(hash_t *map);
 static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
@@ -3107,9 +3106,6 @@ static void free_ddl_context(Parse *pParse)
         return;
 
     free(ctx->partition_first_shardname);
-    /*if (ctx->partition && ctx->partition->type == PARTITION_ADD_MOD) {
-        free_shard_map(ctx->partition->u.mod.shard_map);
-    }*/
     free(ctx->partition);
     
     comdb2ma_destroy(ctx->mem);
@@ -4898,15 +4894,7 @@ void comdb2CreateTableEnd(
     if (sc == 0)
         goto oom;
 
-    if (ctx->partition && ctx->partition->type == PARTITION_ADD_MOD) {
-        char tmp_str[MAXTABLELEN] = {0};
-        strcpy(ctx->partition->u.mod.viewname, ctx->tablename); 
-        strcpy(tmp_str , "modshard_");
-        strcpy(tmp_str + 9, ctx->tablename);
-        strcpy(sc->tablename, tmp_str);
-    } else {
-        memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
-    }
+    memcpy(sc->tablename, ctx->tablename, MAXTABLELEN);
 
     sc->kind = SC_ADDTABLE;
     sc->nothrevent = 1;
@@ -7446,32 +7434,6 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
     }
 }
 
-static int free_shard_map_ent(void *obj, void *arg) {
-    struct shard_map_ent *e = (struct shard_map_ent *)obj;
-    if (e && e->value) {
-        free(e->value);
-    }
-    free(e);
-    return 0;
-}
-
-static int print_shard_map_ent(void *obj, void *arg) {
-    struct shard_map_ent *e = (struct shard_map_ent *)obj;
-    logmsg(LOGMSG_USER, "key : %d\n", e->key);
-    logmsg(LOGMSG_USER, "value : %s\n", e->value);
-    return 0;
-}
-
-static void free_shard_map(hash_t *map) {
-    hash_for(map, free_shard_map_ent, NULL);
-    hash_clear(map);
-    hash_free(map);
-}
-
-static void print_shard_map(hash_t *map){
-    hash_for(map, print_shard_map_ent, NULL);
-}
-
 static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numShards, ExprList *pList, 
                                         BpfuncCreateModpart *mod) 
 {
@@ -7594,23 +7556,6 @@ static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numS
         }
         strncpy0(mod->shards[i], then, sizeof(then) + 1);
         pListItem++;
-#if 0
-        /* Now add to shard  */
-        if (shard_map == NULL) {
-            shard_map = hash_init(sizeof(int));
-        }
-        struct shard_map_ent *e = hash_find(shard_map, &when);
-        if (e != NULL) {
-            /* */
-            setError(pParse, SQLITE_MISUSE, "Duplicate WHEN expression");
-            goto err;
-        }
-
-        e = calloc(1, sizeof(struct shard_map_ent));
-        e->key = when;
-        e->value = strdup(then);
-        hash_add(shard_map, e);
-#endif
     }
     logmsg(LOGMSG_USER, " SUCCESSFULLY ADDED VALUES \n");
     for(int i=0;i< mod->n_shards;i++) {
@@ -7733,18 +7678,6 @@ void comdb2CreateModPartition(Parse* pParse, Token *column, Token* numShards, Ex
     }
 #endif
 
-    struct comdb2_partition *partition;
-
-    if (!gbl_partitioned_table_enabled) {
-        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
-        return;
-    }
-
-    partition = _get_partition(pParse, 0);
-    if (!partition)
-        return;
-
-    partition->type = PARTITION_ADD_MOD;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));

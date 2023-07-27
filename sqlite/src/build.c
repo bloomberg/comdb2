@@ -30,6 +30,7 @@
 #include "comdb2Int.h"
 #include "pragma.h"
 #include "logmsg.h"
+#include "shard_mod.h"
 
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);

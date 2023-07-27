@@ -5908,46 +5908,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
 
-static int _process_single_table_sc_mod_partitioning(struct ireq *iq) 
-{
-    struct schema_change_type *sc = iq->sc;
-    int rc;
-    assert(sc->partition.type == PARTITION_ADD_MOD);
-
-    /* create a mod based shard */ 
-    struct errstat err = {0};
-    /*
-    sc->newshard = create_mod_view(sc->partition.u.mod.viewname, sc->tablename, sc->partition.u.mod.column,sc->partition.u.mod.num_shards, sc->partition.u.mod.keys, sc->partition.u.mod.shards, &err);
-    */
-
-    if (!sc->newshard) {
-        logmsg(LOGMSG_ERROR,
-                   "Failed to create new Mod partition rc %d \"%s\"\n",
-                   err.errval, err.errstr);
-        sc_errf(sc, "Failed to create new Mod partition rc %d \"%s\"",
-                err.errval, err.errstr);
-        rc = ERR_SC;
-        return rc;
-    }
-    /* set publish and unpublish callbacks to create/destroy inmem views */
-    sc->publish = partition_publish;
-    sc->unpublish = partition_unpublish;
-
-    /* schema change for a regular table */
-    rc = start_schema_change_tran(iq, NULL);
-    if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
-        sc->preempted == SC_ACTION_RESUME ||
-        sc->kind == SC_ALTERTABLE_PENDING) {
-        iq->sc = NULL;
-    } else {
-        iq->sc->sc_next = iq->sc_pending;
-        iq->sc_pending = iq->sc;
-        iq->osql_flags |= OSQL_FLAGS_SCDONE;
-    }
-    return rc;
-}
-
-static int _process_single_table_sc_time_partitioning(struct ireq *iq) 
+static int _process_single_table_sc_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
@@ -6208,11 +6169,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             rc = _process_single_table_sc(iq);
         } else if (sc->partition.type == PARTITION_MERGE) {
             rc = _process_single_table_sc_merge(iq);
-        } else if (sc->partition.type == PARTITION_ADD_TIMED || 
-                sc->partition.type == PARTITION_ADD_MANUAL) {
-            rc = _process_single_table_sc_time_partitioning(iq);
-        } else if (sc->partition.type == PARTITION_ADD_MOD) {
-            rc = _process_single_table_sc_mod_partitioning(iq);
+        } else {
+            rc = _process_single_table_sc_partitioning(iq);
         }
     } else {
         rc = _process_partition_alter_and_drop(iq);
