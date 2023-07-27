@@ -9,8 +9,12 @@ CREATE TABLE t1 { tag ondisk { int i } }\$\$
 INSERT INTO t1 VALUES (1)
 SELECT "-- The schema change below should fail --"
 ALTER TABLE t1 { tag ondisk { int i datetime t dbstore={now()} } }\$\$
+SELECT "-- The schema change below should fail, too --"
+ALTER TABLE t1 { tag ondisk { int i datetime t dbstore="CURRENT_TIMESTAMP" } }\$\$
 SELECT "-- The schema change below should succeed, instantly --"
 ALTER TABLE t1 { tag ondisk { int i datetime t dbstore={now()} null=yes } }\$\$
+SELECT "-- The schema change below should succeed instantly, too --"
+ALTER TABLE t1 { tag ondisk { int i datetime t dbstore="CURRENT_TIMESTAMP" null=yes } }\$\$
 INSERT INTO t1(i) VALUES (1)
 SELECT "-- Verify records --"
 SELECT COUNT(*) FROM t1 WHERE t IS NOT NULL
