@@ -452,6 +452,7 @@ extern uint64_t gbl_sc_headroom;
 
 extern int gbl_unexpected_last_type_warn;
 extern int gbl_unexpected_last_type_abort;
+extern int gbl_pstack_self;
 
 /*
   =========================================================

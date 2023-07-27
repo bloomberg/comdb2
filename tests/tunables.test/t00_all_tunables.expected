@@ -723,6 +723,7 @@
 (name='private_blkseq_maxtraverse', description='', type='INTEGER', value='4', read_only='N')
 (name='private_blkseq_stripes', description='Number of stripes for the blkseq table.', type='INTEGER', value='8', read_only='N')
 (name='protobuf_connectmsg', description='Use protobuf in net library for the connect message. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='pstack_self', description='Dump stack traces on certain slow events.', type='BOOLEAN', value='ON', read_only='N')
 (name='qscanmode', description='Enables queue scan mode optimisation.', type='BOOLEAN', value='OFF', read_only='N')
 (name='query_plan_percentage', description='Alarm if the average cost per row of current query plan is n percent above the cost for different query plan. (Default: 50)', type='DOUBLE', value='50', read_only='N')
 (name='query_plans', description='Keep track of query plans and their costs for each query', type='BOOLEAN', value='ON', read_only='N')
