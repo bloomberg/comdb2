@@ -7646,8 +7646,62 @@ error:
     }
     return -1;
 }
-                                    
+ 
+/**
+ * Drop a Mod base Partition
+ */
 
+void comdb2DropModPartition(Parse *pParse, SrcList *pName) 
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    if (comdb2IsDryrun(pParse)) {
+        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
+         return;
+    }
+#ifndef SQLITE_OMIT_AUTHORIZATION
+    {
+        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
+            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
+            return;
+        }
+    }
+#endif
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (!arg) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+    bpfunc_arg__init(arg);
+    BpfuncDropModpart *mod = malloc(sizeof(BpfuncDropModpart));
+    if (!mod) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+    bpfunc_drop_modpart__init(mod);
+    
+    arg->drop_mod = mod;
+    arg->type = BPFUNC_DROP_MODPART;
+
+    char *table = pName->a[0].zName;
+    mod->name = (char *)malloc(sizeof(table) + 1);
+    if (!mod->name) {
+        setError(pParse, SQLITE_NOMEM, "Out of Memory");
+        goto clean_arg;
+    }
+    strncpy0(mod->name, table, sizeof(table)+1); 
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
+    return;
+
+clean_arg:
+    if (arg) {
+        free_bpfunc_arg(arg);
+    }
+}
 /**
  * Create Mod based Partition
  */
