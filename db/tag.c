@@ -3934,6 +3934,12 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                         return SC_BAD_DBSTORE_FUNC_NOT_NULL;
                     }
 
+                    if ((fnew->in_default_type == SERVER_DATETIME || fnew->in_default_type == SERVER_DATETIMEUS) &&
+                        stype_is_null(fnew->in_default) && (fnew->flags & NO_NULL)) {
+                        if (out)
+                            logmsg(LOGMSG_ERROR, "field %s must be nullable to use CURRENT_TIMESTAMP\n", fold->name);
+                        return SC_BAD_DBSTORE_FUNC_NOT_NULL;
+                    }
                 } else {
                     assert(fold->in_default_len == fnew->in_default_len);
                     int len = fold->in_default_len;
@@ -4065,6 +4071,12 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
         }
         if (!found) {
             int allow_null = !(fnew->flags & NO_NULL);
+            int dbstore_type = fnew->in_default_type;
+            int is_datetime_type = (dbstore_type == SERVER_DATETIME || dbstore_type == SERVER_DATETIMEUS);
+            int is_current_timestamp = (is_datetime_type && stype_is_null(fnew->in_default));
+            int is_function = (is_current_timestamp || dbstore_type == SERVER_FUNCTION);
+            int requires_null = (is_function || dbstore_type == SERVER_SEQUENCE);
+
             if (SERVER_VUTF8 == fnew->type &&
                 fnew->in_default_len > (fnew->len - 5)) {
                 rc = SC_TAG_CHANGE;
@@ -4074,20 +4086,20 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                             old->tag, nidx, fnew->name);
                 }
                 break;
-            } else if (allow_null || (fnew->in_default && fnew->in_default_type != SERVER_SEQUENCE &&
-                                      fnew->in_default_type != SERVER_FUNCTION)) {
+            } else if (allow_null || (fnew->in_default && !requires_null)) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)\n",
                             old->tag, nidx, fnew->name);
                 }
-            } else if (!allow_null && fnew->in_default_type == SERVER_FUNCTION) {
+            } else if (!allow_null && is_function) {
                 rc = SC_BAD_DBSTORE_FUNC_NOT_NULL;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)"
                            "that uses a dbstore function but isn't nullable\n",
                            old->tag, nidx, fnew->name);
                 }
+                break;
             } else {
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s) without "
