@@ -2432,4 +2432,7 @@ REGISTER_TUNABLE("unexpected_last_type_warn",
 REGISTER_TUNABLE("unexpected_last_type_abort",
                  "Panic if the last response server sent before sockpool reset isn't LAST_ROW",
                  TUNABLE_INTEGER, &gbl_unexpected_last_type_abort, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("use_qrcv",
+                 "Have legacy queues use cdb2qrcv instead of bigsnd",
+                 TUNABLE_INTEGER, &gbl_use_qrcv, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
