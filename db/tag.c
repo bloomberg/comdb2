@@ -217,10 +217,7 @@ static void del_tag_schema_lk(const char *table, const char *tagname)
                               table, tagname);
 #endif
         listc_rfl(&tag->taglist, sc);
-        if (sc->datacopy) {
-            free(sc->datacopy);
-            sc->datacopy = NULL;
-        }
+        freeschema(sc);
     }
 }
 
@@ -4687,7 +4684,6 @@ void free_dynamic_schema(const char *table, struct schema *dsc)
         return;
 
     del_tag_schema(table, dsc->tag);
-    free_tag_schema(dsc);
 }
 
 struct schema *new_dynamic_schema(const char *s, int len, int trace)
@@ -6055,7 +6051,6 @@ struct schema *create_version_schema(char *csc2, int version,
 
     /* get rid of temp schema */
     del_tag_schema(ver_db->tablename, s->tag);
-    freeschema(s);
 
     /* get rid of temp table */
     delete_schema(ver_db->tablename);
@@ -6068,19 +6063,13 @@ done:
 
 static void clear_existing_schemas(dbtable *db)
 {
-    struct schema *schema;
     char tag[64];
     int i;
     for (i = 1; i <= db->schema_version; ++i) {
         sprintf(tag, gbl_ondisk_ver_fmt, i);
-        schema = find_tag_schema(db, tag);
         del_tag_schema(db->tablename, tag);
-        freeschema(schema);
     }
-
-    schema = find_tag_schema(db, ".ONDISK");
     del_tag_schema(db->tablename, ".ONDISK");
-    freeschema(schema);
 }
 
 static int load_new_versions(dbtable *db, tran_type *tran)
