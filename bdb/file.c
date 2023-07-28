@@ -2190,7 +2190,14 @@ void pstack_self(void)
     snprintf(cmd, sizeof(cmd), "pstack %d > %s", pid, output);
 #   endif
     errno = 0;
-    system(cmd);
+    int rc = system(cmd);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d system(\"%s\") failed (rc = %d)\n", __func__, __LINE__, cmd, rc);
+        close(fd);
+        unlink(output);
+        return;
+    }
+
     FILE *out = fdopen(fd, "r");
     if (!out) {
         logmsg(LOGMSG_ERROR, "%s: open(%s) err:%s\n", __func__, cmd, strerror(errno));
