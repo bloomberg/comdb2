@@ -181,12 +181,10 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
     remote_host[read_bytes-1] = 0; // discard trailing '\n'
 
     read_bytes = sbuf2gets(command, sizeof(command), sb);
-    if (read_bytes <= 1) {
-        logmsg(LOGMSG_INFO, "%s:%d No command in the request\n", __func__, __LINE__);
-    }
-    command[read_bytes-1] = 0; // discard trailing '\n'
+    if (read_bytes >= 1)           // Safety
+        command[read_bytes-1] = 0; // discard trailing '\n'
 
-    if (gbl_revsql_debug == 1) {
+    if (gbl_revsql_debug == 1 || command[0] != 0 /* Always log when there is a command */) {
         logmsg(LOGMSG_USER, "%s:%d Received 'reversesql' request from %s@%s",
                __func__, __LINE__, remote_dbname, remote_host);
         if (command[0] != 0) {

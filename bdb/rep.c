@@ -1410,7 +1410,12 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
                __func__, bdb_state->repinfo->master_host,
                bdb_state->repinfo->myhost);
         goto done;
-    } else if (gbl_write_dummy_trace) {
+    } else if (gbl_is_physical_replicant == 1) {
+	logmsg(LOGMSG_USER, "physrep: %s:%d: Not inserting a dummy record\n", __func__, __LINE__);
+        goto done;
+    }
+
+    if (gbl_write_dummy_trace) {
         logmsg(LOGMSG_USER,
                "%s: adding dummy record for master %s, host %s\n", __func__,
                bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);

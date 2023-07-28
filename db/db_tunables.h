@@ -1860,6 +1860,8 @@ REGISTER_TUNABLE("physrep_hung_replicant_threshold",
                  "Report if the physical replicant has been inactive for this duration. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_physrep_hung_replicant_threshold, 0, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
                  "Periodically send lsn to source node after this interval. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_physrep_keepalive_freq_sec, 0, NULL,
@@ -1907,13 +1909,21 @@ REGISTER_TUNABLE("revsql_allow_command_execution",
                  "testing. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_revsql_allow_command_exec, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_cdb2_debug",
+                 "Print extended reversql-sql cdb2 related trace. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_revsql_cdb2_debug, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_connect_freq_sec", "This node will attempt to (reverse) "
+                 "connect to the remote host at this frequency. (Default: 5secs)",
+                 TUNABLE_INTEGER, &gbl_revsql_connect_freq_sec, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("revsql_debug",
                  "Print extended reversql-sql trace. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_revsql_debug, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("revsql_cdb2_debug",
-                 "Print extended reversql-sql cdb2 related trace. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_revsql_cdb2_debug, EXPERIMENTAL | INTERNAL,
+REGISTER_TUNABLE("revsql_host_refresh_freq_sec", "The frequency at which the "
+                 "reverse connection host list will be refreshed (Default: 5secs)",
+                 TUNABLE_INTEGER, &gbl_revsql_host_refresh_freq_sec, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("logdelete_lock_trace",

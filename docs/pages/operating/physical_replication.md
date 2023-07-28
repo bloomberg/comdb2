@@ -136,12 +136,14 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 
 ## Tunables
 
+* blocking_physrep: The `SELECT .. FROM comdb2_transaction_logs` query executed by physical replicants blocks for the next log record. (Default: `false`)
 * physrep_check_minlog_freq_sec: Check the minimum log number to keep this often. (Default: `10`)
 * physrep_debug: Print extended physrep trace. (Default: `off`)
-* physrep_exit_on_invalid_logstream: Exit physreps on invalid logstream. * (Default: off)
+* physrep_exit_on_invalid_logstream: Exit physreps on invalid logstream. (Default: off)
 * physrep_fanout: Maximum number of physical replicants that a node can service (Default: `8`)
 * physrep_hung_replicant_check_freq_sec: Check for hung physical replicant this often. (Default: 10)
 * physrep_hung_replicant_threshold: Report if the physical replicant has been inactive for this duration. (Default: 60)
+* physrep_i_am_metadb: Marks the node as 'physical replcation metadb'. (Default: off)
 * physrep_keepalive_freq_sec: Periodically send lsn to source node after this interval. (Default: 10)
 * physrep_max_candidates: Maximum number of candidates that should be returned to a new physical replicant during registration. (Default: `6`)
 * physrep_max_pending_replicants: There can be no more than this many physical replicants in pending state. (Default: `10`)
@@ -149,9 +151,14 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * physrep_metadb_name: Physical replication metadb cluster name.
 * physrep_reconnect_penalty: Physrep wait seconds before retry to the same node. (Default: `5`)
 * physrep_register_interval: Interval for physical replicant re-registration. (Default: `3600`)
+* physrep_shuffle_host_list: Shuffle the host list returned by register_replicant() before connecting to the hosts. (Default: off)
 * physrep_source_dbname: Physical replication source cluster dbname.
 * physrep_source_host: List of physical replication source cluster hosts.
-* blocking_physrep: The `SELECT .. FROM comdb2_transaction_logs` query executed by physical replicants blocks for the next log record. (Default: `false`)
+* revsql_allow_command_execution : Allow processing and execution of command * over the `reverse connection` that has come in as part of the request. This is mostly intended for testing. (Default: off)
+* revsql_cdb2_debug: Print extended reversql-sql cdb2 related trace. (Default: off)
+* revsql_connect_freq_sec: This node will attempt to `reverse connect` to the remote host at this frequency. (Default: 5secs)
+* revsql_debug: Print extended reversql-sql trace. (Default: off)
+* revsql_host_refresh_freq_sec: The frequency at which the reverse connection host list will be refreshed. (Default: 5secs)
 
 ## lrl configurations
 

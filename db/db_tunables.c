@@ -414,6 +414,7 @@ extern int gbl_physrep_exit_on_invalid_logstream;
 extern int gbl_physrep_fanout;
 extern int gbl_physrep_hung_replicant_check_freq_sec;
 extern int gbl_physrep_hung_replicant_threshold;
+extern int gbl_physrep_i_am_metadb;
 extern int gbl_physrep_keepalive_freq_sec;
 extern int gbl_physrep_max_candidates;
 extern int gbl_physrep_max_pending_replicants;
@@ -430,6 +431,8 @@ extern char *gbl_physrep_metadb_host;
 extern int gbl_revsql_allow_command_exec;
 extern int gbl_revsql_debug;
 extern int gbl_revsql_cdb2_debug;
+extern int gbl_revsql_host_refresh_freq_sec;
+extern int gbl_revsql_connect_freq_sec;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
