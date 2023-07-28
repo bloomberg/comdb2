@@ -57,6 +57,10 @@ extern char gbl_dbname[MAX_DBNAME_LENGTH];
 int gbl_revsql_allow_command_exec;
 int gbl_revsql_debug = 0;
 int gbl_revsql_cdb2_debug;
+// 'reverse-connection host' list refresh frequency
+int gbl_revsql_host_refresh_freq_sec = 5;
+// 'reverse-connection' worker's new connection attempt frequency
+int gbl_revsql_connect_freq_sec = 5;
 
 static pthread_t reverse_conn_manager;
 static int reverse_conn_manager_running;
@@ -65,12 +69,6 @@ static int stop_reverse_conn_manager;
 static pthread_mutex_t reverse_conn_hosts_mu = PTHREAD_MUTEX_INITIALIZER;
 
 reverse_conn_host_list_tp reverse_conn_hosts;
-
-// 'reverse-connection host' list refresh frequency
-int gbl_reverse_connection_host_refresh_freq_sec = 5;
-
-// 'reverse-connection' worker's new connection attempt frequency
-int gbl_reverse_connection_connect_freq_sec = 5;
 
 int db_is_exiting();
 int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
@@ -321,7 +319,7 @@ static void *reverse_connection_worker(void *args) {
     while (!db_is_exiting()) {
         time_t now = time(NULL);
 
-        if ((now - last_conn_attempt) < gbl_reverse_connection_connect_freq_sec) {
+        if ((now - last_conn_attempt) < gbl_revsql_connect_freq_sec) {
             sleep(1);
             continue;
         }
@@ -504,7 +502,7 @@ static void *reverse_connection_manager(void *args) {
     while (!db_is_exiting() && stop_reverse_conn_manager == 0) {
         time_t now = time(NULL);
 
-        if ((now - last_refreshed) < gbl_reverse_connection_host_refresh_freq_sec) {
+        if ((now - last_refreshed) < gbl_revsql_host_refresh_freq_sec) {
             sleep(1);
             continue;
         }

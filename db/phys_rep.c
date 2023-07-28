@@ -69,6 +69,7 @@ int gbl_physrep_check_minlog_freq_sec = 10;
 int gbl_physrep_hung_replicant_check_freq_sec = 10;
 int gbl_physrep_hung_replicant_threshold = 60;
 int gbl_physrep_shuffle_host_list = 0;
+int gbl_physrep_i_am_metadb = 0;
 
 unsigned int physrep_min_logfile;
 unsigned int gbl_deferred_phys_update;
@@ -148,14 +149,14 @@ static void close_repl_connection(DB_Connection *cnct, cdb2_hndl_tp *repl_db,
 
 // Append the list of nodes in the local cluster to the specified buffer.
 static int append_quoted_local_hosts(char *buf, int buf_len, const char *separator) {
-    struct host_node_info nodes[REPMAX];
+    const char *nodes[REPMAX];
     bdb_state_type *bdb_state = gbl_bdb_state;
     int bytes_written = 0;
 
-    int num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
+    int num_nodes = net_get_sanctioned_node_list(bdb_state->repinfo->netinfo, REPMAX, nodes);
     for (int i = 0; i < num_nodes; ++i) {
         bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written,
-                                  "%s'%s'", (i>0) ? separator : "", nodes[i].host);
+                                  "%s'%s'", (i>0) ? separator : "", nodes[i]);
         if (bytes_written >= buf_len) {
             goto err;
         }
@@ -174,10 +175,7 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     int bytes_written = 0;
 
     // Source db plays the role of 'replication metadb', if latter is not
-    // specified.
-    // Note: this is the db we will be connecting to to retrieve the source
-    // node host information. This could either be the 'replication metadb'
-    // or the source db itself if metadb is not specified.
+    // explicitly specified.
     assert (gbl_physrep_source_dbname);
     assert (gbl_physrep_source_host);
 
@@ -207,13 +205,26 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     const char *query = "select m.name from machines as m, clusters as c, databases as d"
                         "  where c.name=@dbname and c.cluster_name=@class and "
                         "        m.cluster=c.cluster_machs and d.name=@dbname";
+    const char *comdb2dbclass = get_my_mach_class_str();
+    const char *comdb2dbname;
 
-    const char *comdb2dbname = "comdb2db";
-    const char *comdb2dbclass = "prod";
-
-    if (strncasecmp(gbl_physrep_source_host, "dev", 4) == 0) {
+    // Point to the right 'comdb2db' that we need to query
+    if ((strncasecmp(comdb2dbclass, "test", 4) == 0) ||
+        (strncasecmp(comdb2dbclass, "dev", 3) == 0) ||
+        (strncasecmp(comdb2dbclass, "fuzz", 4) == 0)) {
         comdb2dbname = "comdb3db";
         comdb2dbclass = "dev";
+    } else {
+        comdb2dbname = "comdb2db";
+        comdb2dbclass = "prod";
+    }
+
+    // Also fix the 'source tier' in case it is one of the following
+    if ((strncasecmp(gbl_physrep_source_host, "test", 4) == 0) ||
+        (strncasecmp(gbl_physrep_source_host,  "dev", 3) == 0) ||
+        (strncasecmp(gbl_physrep_source_host, "fuzz", 4) == 0)) {
+        // test is dev
+        gbl_physrep_source_host = (strncasecmp(gbl_physrep_source_host, "fuzz", 4) == 0) ? "fuzz" : "dev";
     }
 
     *rc = cdb2_open(&comdb2db, comdb2dbname, comdb2dbclass, 0);
@@ -1060,8 +1071,7 @@ repl_loop:
         if (thedb->master != gbl_myhostname) {
             if (gbl_physrep_debug)
                 physrep_logmsg(LOGMSG_USER, "I am not the LEADER node, skipping async-replication\n");
-            sleep(1);
-            continue;
+            goto sleep_and_retry;
         }
 
         if (repl_db_connected && (force_registration() ||
@@ -1078,8 +1088,7 @@ repl_loop:
             cdb2_hndl_tp *repl_metadb = NULL;
 
             if ((rc = get_metadb_hndl(&repl_metadb)) != 0) {
-                cdb2_close(repl_metadb);
-                continue;
+                goto sleep_and_retry;
             }
 
             if (do_wait_for_reverse_conn(repl_metadb) == 1) {
@@ -1103,7 +1112,7 @@ repl_loop:
                     physrep_logmsg(LOGMSG_ERROR, "%s:%d Could not get a connection from source node(s) in %d secs\n",
                                    __func__, __LINE__, wait_timeout_sec);
                     cdb2_close(repl_metadb);
-                    continue;
+                    goto sleep_and_retry;
                 }
 
                 if (gbl_physrep_debug)
@@ -1148,8 +1157,7 @@ repl_loop:
 
                 if (repl_db_cnct == NULL) {
                     cdb2_close(repl_metadb);
-                    sleep(1);
-                    continue;
+                    goto sleep_and_retry;
                 }
 
                 /* Perform truncation to start fresh */
@@ -1169,7 +1177,7 @@ repl_loop:
             prev_info = handle_truncation(repl_db, info);
             if (prev_info.file == 0) {
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
-                continue;
+                goto sleep_and_retry;
             }
 
             gen = prev_info.gen;
@@ -1179,12 +1187,11 @@ repl_loop:
         }
 
         if (repl_db_connected == 0)
-            continue;
+            goto sleep_and_retry;
 
         info = get_last_lsn(thedb->bdb_env);
         if (info.file <= 0) {
-            sleep(1);
-            continue;
+            goto sleep_and_retry;
         }
 
         prev_info = info;
@@ -1200,7 +1207,7 @@ repl_loop:
         if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK) {
             physrep_logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
-            continue;
+            goto sleep_and_retry;
         }
 
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
@@ -1208,7 +1215,7 @@ repl_loop:
                 physrep_logmsg(LOGMSG_USER, "%s:%d: Can't find the next record (rc: %d)\n",
                                __func__, __LINE__, rc);
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
-            continue;
+            goto sleep_and_retry;
         }
 
         /* our log matches, so apply each record log received */
@@ -1239,8 +1246,8 @@ repl_loop:
 
         if (rc != CDB2_OK_DONE || do_truncate) {
             do_truncate = 1;
-            continue;
         }
+sleep_and_retry:
         sleep(1);
     }
 
@@ -1446,37 +1453,6 @@ static void *physrep_watcher(void *args) {
     return NULL;
 }
 
-static int get_local_revconn_target_count() {
-    cdb2_hndl_tp *cdb2_hndl = NULL;
-    int count = 0;
-    char cmd[400];
-
-    int rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')", gbl_dbname, gbl_myhostname);
-    if (rc < 0 || rc >= sizeof(cmd)) {
-	physrep_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
-        return -1;
-    }
-
-    if ((rc = get_local_hndl(&cdb2_hndl)) != 0) {
-	physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to localhost (rc: %d)\n", __func__, __LINE__, rc);
-        return -1;
-    }
-
-    if (gbl_physrep_debug == 1) {
-        physrep_logmsg(LOGMSG_USER, "%s:%d Executing %s\n", __func__, __LINE__, cmd);
-    }
-
-    if ((rc = cdb2_run_statement(cdb2_hndl, cmd)) == CDB2_OK) {
-	while ((rc = cdb2_next_record(cdb2_hndl)) == CDB2_OK) {
-            ++count;
-	}
-    }
-
-    // Close the connection
-    cdb2_close(cdb2_hndl);
-    return count;
-}
-
 static int stop_physrep_watcher_thread() {
     int rc = 0;
 
@@ -1497,6 +1473,19 @@ static int stop_physrep_watcher_thread() {
     return 0;
 }
 
+static int is_a_physrep_source_or_dest() {
+    if (gbl_physrep_i_am_metadb == 1) {                   // Is not a physical replication metadb
+        return 0;
+    }
+
+    if (gbl_physrep_source_dbname == NULL &&              // Is not a plysical replicant, AND
+        gbl_physrep_metadb_name == NULL &&                // Does not connect to a replication metadb, AND
+        get_dbtable_by_name("comdb2_physreps") == NULL) { // There's no local 'comdb2_physreps' table, AND
+        return 0;
+    }
+    return 1;
+}
+
 /*
   The physical-log based replication is enabled via 3 types of threads.
   1. physrep worker:
@@ -1507,44 +1496,27 @@ static int stop_physrep_watcher_thread() {
          This thread performs bookkeeping tasks and runs on both physical
          replicants as well as the physical replication root (source) nodes.
   3. Reverse connections manager:
-         This thread, runs exclusively on replication root nodes, enables
-         cross-tier replication. (See db/reverse_conn.c)
+         This thread runs exclusively on replication source/root nodes to
+         enable cross-tier replication. (See db/reverse_conn.c)
 */
 int start_physrep_threads() {
     int rc;
 
-    if (gbl_physrep_source_dbname == NULL && gbl_physrep_metadb_name == NULL &&
-        get_dbtable_by_name("comdb2_physreps") == NULL) {
+    if (!is_a_physrep_source_or_dest()) {
         return 0;
     }
 
     // If this is a 'physical replication' source, we would need to actively
-    // try connecting to replicants in the lower tier. (See db/reverse_conn.c)
-    // This task is done by 'Reverse connections manager' thread. But before
-    // we start this thread we need to make sure that:
-    //
-    // 1. This node is not a physical replicant, AND
-    // 2.
-    //     2.1 This node was asked to connect to a replication metadb, in which case
-    //         the reverse connection manager and workers will periodically consult
-    //         comdb2_physrep_sources table to reverse connect. OR
-    //     2.2 This node is either a source node or replication metadb that has
-    //         comdb2_physrep_sources table, in which case we check whether this node
-    //         is supposed to reverse connect. Note: unlike the above case (2.1), we
-    //         only perform this check once to decide whether to start the reverse
-    //         connection manager thread. We do so to keep the manager and worker
-    //         threads from running on replication metadb, where they would not
-    //         normally be needed.
-    if (gbl_physrep_source_dbname == NULL &&                                                                 /* 1   */
-        (gbl_physrep_metadb_name != NULL ||                                                                  /* 2.1 */
-         (get_dbtable_by_name("comdb2_physrep_sources") != NULL && get_local_revconn_target_count() > 0))) { /* 2.2 */
-        physrep_logmsg(LOGMSG_USER, "Starting 'reverse connections' manager\n");
+    // try and connect to the replicants in the lower tier. (See db/reverse_conn.c)
+    // This task is done by 'Reverse connections' manager thread.
+    if (gbl_physrep_source_dbname == NULL) {
         if ((rc = start_reverse_connections_manager()) != 0) {
             physrep_logmsg(LOGMSG_ERROR, "Couldn't start 'reverse connections' manager (rc: %d)\n" ,rc);
             return -1;
-        }
+	}
+        physrep_logmsg(LOGMSG_USER, "'reverse connections' manager thread has started!\n");
     } else {
-        physrep_logmsg(LOGMSG_USER, "Not starting 'reverse connections' manager\n");
+        physrep_logmsg(LOGMSG_USER, "This is source node; not starting 'reverse connections' manager\n");
     }
 
     // Start physical replication worker
@@ -1581,8 +1553,17 @@ int start_physrep_threads() {
 }
 
 int stop_physrep_threads() {
+    if (!is_a_physrep_source_or_dest()) {
+        if (gbl_physrep_debug)
+            physrep_logmsg(LOGMSG_USER, "%s:%d: This node is neither a physical replication "
+                                        "source nor a replicant, nothing to stop here\n",
+                                        __func__, __LINE__);
+        return 0;
+    }
+
     if (gbl_physrep_debug)
         physrep_logmsg(LOGMSG_USER, "Stopping all physrep threads\n");
+
     stop_physrep_worker_thread();
     stop_physrep_watcher_thread();
     stop_reverse_connections_manager();
@@ -1590,6 +1571,10 @@ int stop_physrep_threads() {
 }
 
 void physrep_cleanup() {
+    if (!is_a_physrep_source_or_dest()) {
+        return;
+    }
+
     int rc = send_reset_nodes("Inactive");
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
@@ -1600,5 +1585,3 @@ void physrep_cleanup() {
 int physrep_exited() {
     return (physrep_worker_running == 1) ? 0 : 1;
 }
-
-
