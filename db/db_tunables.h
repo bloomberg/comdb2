@@ -1525,7 +1525,7 @@ REGISTER_TUNABLE(
     NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
                  "Use req_all if a replicant is behind by "
-                 "this amount or more.  (Default: 10000000)",
+                 "this amount or more.  (Default: 1048476)",
                  TUNABLE_INTEGER, &gbl_req_all_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
