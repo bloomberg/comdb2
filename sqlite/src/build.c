@@ -42,7 +42,6 @@ void comdb2_create_view(Parse *pParse, const char *view_name,
                         int view_name_len, const char *zStmt, int temp);
 void comdb2_drop_view(Parse *pParse, SrcList *pName);
 int timepart_allow_drop(const char *zPartitionName);
-void comdb2DropModPartition(Parse *pParse, SrcList *pName); 
 
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3210,11 +3209,6 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   if(isView && comdb2IsDryrun(pParse)){
       sqlite3ErrorMsg(pParse, "DRYRUN not supported for this operation");
       pParse->rc = SQLITE_MISUSE;
-      goto exit_drop_table;
-  }
-  mod_view_t *view = mod_get_view_by_name(pName->a[0].zName);
-  if (view) {
-      comdb2DropModPartition(pParse, pName);
       goto exit_drop_table;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

@@ -358,64 +358,17 @@ static int success_create_modpart(void *tran, bpfunc_t *func, struct errstat *er
 
 static int prepare_create_modpart(bpfunc_t *mod)
 {
+    logmsg(LOGMSG_USER, "CREATING MODPART BPFUNC methods\n");
     mod->exec = exec_create_modpart;
     mod->success = success_create_modpart;
 
     return 0;
 }
 
-/************************ DROP MOD PARTITIONS
+/************************ CREATE MOD PARTITIONS
  * ***********************************/
-static int exec_drop_modpart(void *tran, bpfunc_t *func, struct errstat *err)
-{
-    int rc = 0;
-    mod_view_t *view = NULL;
-    BpfuncDropModpart *arg = func->arg->drop_mod;
-
-    view = mod_get_view_by_name(arg->name);
-    if(!view) {
-        err->errval = VIEW_ERR_PARAM;
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Partition %s does not exist", arg->name);
-        return err->errval;
-    }
-
-    rc = mod_shard_llmeta_erase(tran, view, err);
-    if (rc) {
-        err->errval = rc;
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Failed to erase llmeta entry for view %s", arg->name);
-        return rc;
-    }
-
-    rc = mod_destroy_inmem_view(view);
-    if (rc) {
-        err->errval = rc;
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Failed to destroy in-mem view for partition %s", arg->name);
-        return rc;
-    }
-
-    return rc;
-}
-
-static int success_drop_modpart(void *tran, bpfunc_t *func, struct errstat *err)
-{
-    int rc = 0;
-    int bdberr = 0;
-
-    rc = bdb_llog_mod_views(thedb->bdb_env, func->arg->drop_mod->name, 1, &bdberr);
-    if (rc) {
-        errstat_set_rcstrf(err, rc, "%s rc:%d bdberr:%d",
-                           __func__, rc, bdberr);
-    }
-    return rc;
-}
-
 static int prepare_drop_modpart(bpfunc_t *mod)
 {
-    mod->exec = exec_drop_modpart;
-    mod->success = success_drop_modpart;
     return 0;
 }
 /*********************** GRANT ****************************/
