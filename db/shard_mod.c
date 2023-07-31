@@ -12,9 +12,7 @@ struct mod_view {
     char *viewname;
     char *tblname;
     /* TODO: make separate key type */
-    char *keyname;
-    int num_columns;
-    char **columns;
+    char *keyname; 
     int num_shards;
     hash_t *shards;
 };
@@ -72,13 +70,6 @@ const char *mod_view_get_keyname(struct mod_view *view) {
 int mod_view_get_num_shards(struct mod_view *view) {
     return view->num_shards;
 }
-int mod_view_get_num_columns(struct mod_view *view) {
-    return view->num_columns;
-}
-
-char **mod_view_get_columns(struct mod_view *view) {
-    return view->columns;
-}
 
 hash_t *mod_view_get_shards(struct mod_view *view) {
     return view->shards;
@@ -91,7 +82,7 @@ const char *mod_shard_get_dbname(struct mod_shard *shard) {
     return shard->dbname;
 }
 
-void free_mod_view(mod_view_t *mView) {
+static void free_mod_view(mod_view_t *mView) {
     if (mView) {
         if (mView->viewname) {
             free(mView->viewname);
@@ -103,14 +94,6 @@ void free_mod_view(mod_view_t *mView) {
             free(mView->keyname);
         }
 
-        if (mView->columns) {
-            for (int i=0;i<mView->num_columns;i++) {
-                if (mView->columns[i]){
-                    free(mView->columns[i]);
-                }
-            }
-            free(mView->columns);
-        }
         if (mView->shards) {
             hash_for(mView->shards, free_mod_shard, NULL);
             hash_clear(mView->shards);
@@ -120,7 +103,7 @@ void free_mod_view(mod_view_t *mView) {
     }
 }
 
-mod_view_t *create_mod_view(const char *viewname, const char *tablename, char **columns, const char *keyname, uint32_t num_shards, uint32_t num_columns, int32_t keys[], char *shards[], struct errstat *err) 
+mod_view_t *create_mod_view(const char *viewname, const char *tablename, const char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
 {
     mod_view_t *mView;
 
@@ -148,21 +131,6 @@ mod_view_t *create_mod_view(const char *viewname, const char *tablename, char **
         goto oom;
     }
     mView->num_shards = num_shards;
-    mView->num_columns = num_columns;
-
-    mView->columns = (char **)calloc(mView->num_columns, sizeof(char *));
-    if (!mView->columns) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to allocate columns\n",__func__);
-        goto oom;
-    }
-
-    for (int i=0;i<mView->num_columns; i++) {
-        mView->columns[i] = strdup(columns[i]);
-        if (!mView->columns[i]) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to allocate column %s\n",__func__, columns[i]);
-            goto oom;
-        }
-    }
 
     mView->shards = hash_init_o(offsetof(struct mod_shard, mod_val), sizeof(int));
     mod_shard_t *tmp = NULL;
@@ -224,16 +192,6 @@ int mod_destroy_inmem_view(mod_view_t *view) {
     if (rc!=VIEW_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to destroy in-memory view %s. rc: %d\n",
                 __func__, view->viewname , rc);
-    }
-    return rc;
-}
-
-int mod_shard_llmeta_erase(void *tran, mod_view_t *view, struct errstat *err) {
-    int rc = 0;
-    logmsg(LOGMSG_USER, "Erasing view %s\n", view->viewname);
-    rc = mod_views_write_view(tran, view->viewname, NULL, 0);
-    if (rc != VIEW_NOERR) {
-        logmsg(LOGMSG_USER, "Failed to erase llmeta entry for partition %s. rc: %d\n", view->viewname, rc);
     }
     return rc;
 }
@@ -421,29 +379,4 @@ done:
         free_mod_view(view);
     }
     return rc;
-}
-
-char *mod_views_describe_row(mod_view_t *view, const char *prefix, struct errstat *err)
-{
-    char *cols_str = NULL, *tmp_str = NULL;
-    cols_str = sqlite3_mprintf("%s", (prefix) ? prefix : "");
-    for (int i=0;i<view->num_columns;i++) {
-        tmp_str = sqlite3_mprintf(
-            "%s\"%w\"%s", cols_str,
-            view->columns[i],
-            (i < (view->num_columns - 1)) ? ", " : "");
-
-        sqlite3_free(cols_str);
-        if (!tmp_str) {
-            goto malloc;
-        }
-        cols_str = tmp_str;
-    }
-    errstat_set_rc(err, VIEW_NOERR);
-    return cols_str;
-
-malloc:
-    err->errval = VIEW_ERR_MALLOC;
-    snprintf(err->errstr, sizeof(err->errstr), "Out of memory\n");
-    return NULL;
 }

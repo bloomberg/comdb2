@@ -354,10 +354,10 @@ int bdb_llog_time_partition(bdb_state_type *bdb_state, tran_type *tran, char *na
                                 bdberr);
 }
 
-int bdb_llog_mod_views(bdb_state_type *bdb_state, char *name, int wait,
-                   int *bdberr)
+int bdb_llog_mod_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
+                       int *bdberr)
 {
-    return bdb_llog_scdone(bdb_state, mod_views,  name, strlen(name) + 1, wait,
+    return bdb_llog_scdone_tran(bdb_state, mod_views, tran, name, strlen(name) + 1,
                                 bdberr);
 }
 int bdb_llog_luareload(bdb_state_type *bdb_state, int wait, int *bdberr)

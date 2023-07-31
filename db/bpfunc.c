@@ -10,7 +10,6 @@
 #include <logmsg.h>
 #include "logical_cron.h"
 #include "db_access.h" /* gbl_check_access_controls */
-#include "shard_mod.h"
 
 /* Automatically create 'default' user when authentication is enabled. */
 int gbl_create_default_user;
@@ -33,8 +32,6 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func,
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errstat *err);
-static int prepare_create_modpart(bpfunc_t *mod);
-static int prepare_drop_modpart(bpfunc_t *mod);
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, struct errstat *err)
@@ -120,12 +117,7 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
     case BPFUNC_DELETE_FROM_SC_HISTORY:
         func->exec = exec_delete_from_sc_history;
         break;
-    case BPFUNC_CREATE_MODPART:
-        prepare_create_modpart(func);
-        break;
-    case BPFUNC_DROP_MODPART:
-        prepare_drop_modpart(func);
-        break;
+
 
     default:
         logmsg(LOGMSG_ERROR, "Unknown function_id in bplog function\n");
@@ -272,91 +264,6 @@ static int prepare_drop_timepart(bpfunc_t *tp)
     return 0;
 }
 
-/******************************** MOD PARTITIONS
- * ***********************************/
-
-/************************ CREATE MOD PARTITIONS
- * ***********************************/
-
-static int exec_create_modpart(void *tran, bpfunc_t *func, struct errstat *err)
-{
-    logmsg(LOGMSG_USER, "inside %s\n",__func__);
-    int rc = 0;
-    int replicated = 0;
-    BpfuncCreateModpart *arg = func->arg->crt_mod;
-    mod_view_t *view = NULL;
-    logmsg(LOGMSG_USER, "%s: o=mod part name is %s\n", __func__, arg->name);
-    view = create_mod_view(arg->name, arg->name, arg->columns, arg->column, arg->n_shards,
-                        arg->n_columns, arg->keys, arg->shards, err);
-    if (!view) {
-        logmsg(LOGMSG_USER, "Failed to create view for partition %s\n", arg->name);
-        goto error;
-    }
-
-    rc = mod_shard_llmeta_write(tran, view, err);
-    if (rc) {
-        logmsg(LOGMSG_USER, "Failed while writing to llmeta for partition %s\n", arg->name);
-        goto error;
-    }
-
-    /* partition is replicated to llmeta at this point.
-     * If we encounter any further errors in this function, we need 
-     * to undo this.*/
-    replicated = 1;
-    rc = mod_create_inmem_view(view);
-    if (rc) {
-        logmsg(LOGMSG_USER,"Failed to create in-mem view for partition %s\n", arg->name);
-        goto error;
-    }
-
-    logmsg(LOGMSG_USER, "Successfully create in-mem view\n");
-    return rc;
-error:
-    if (replicated) {
-        /* undo llmeta write by over-writing key with value NULL*/
-        int irc = 0;
-        irc = mod_shard_llmeta_erase(tran, view, err);
-        if (irc) {
-            /* we really shouldn't proceed any further here*/
-            logmsg(LOGMSG_FATAL, "couldn't undo replicated llmeta entry\n!!");
-            abort();
-        }
-    }
-    if (view) {
-        /* destroy view) */
-        free_mod_view(view);
-    }
-    return rc;
-}
-
-static int success_create_modpart(void *tran, bpfunc_t *func, struct errstat *err)
-{
-    int rc = 0;
-    int bdberr = 0;
-
-    rc = bdb_llog_mod_views(thedb->bdb_env, func->arg->crt_mod->name, 1, &bdberr);
-    if (rc) {
-        errstat_set_rcstrf(err, rc, "%s rc:%d bdberr:%d",
-                           __func__, rc, bdberr);
-    }
-    return rc;
-}
-
-static int prepare_create_modpart(bpfunc_t *mod)
-{
-    logmsg(LOGMSG_USER, "CREATING MODPART BPFUNC methods\n");
-    mod->exec = exec_create_modpart;
-    mod->success = success_create_modpart;
-
-    return 0;
-}
-
-/************************ CREATE MOD PARTITIONS
- * ***********************************/
-static int prepare_drop_modpart(bpfunc_t *mod)
-{
-    return 0;
-}
 /*********************** GRANT ****************************/
 
 static int grantAuth(void *tran, int permission, int command_type,

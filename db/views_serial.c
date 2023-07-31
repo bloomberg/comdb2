@@ -1909,7 +1909,7 @@ int mod_serialize_shard(void *obj, void *arg)
  */
 int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
 {
-    cson_value *rootVal, *arrVal;
+    cson_value *rootVal;
     cson_object *rootObj;
     int rc;
 
@@ -1931,30 +1931,12 @@ int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
     if (rc) {
         goto err;
     }
-
-    rc = cson_object_set(rootObj, "NUMCOLUMNS", cson_value_new_integer(mod_view_get_num_columns(view)));
-    if (rc) {
-        goto err;
-    }
-    arrVal = cson_value_new_array();
-    char **col_names = mod_view_get_columns(view);
-    int num_columns = mod_view_get_num_columns(view);
-    for(int i=0;i<num_columns;i++)
-    {
-        rc = cson_array_append(cson_value_get_array(arrVal), cson_value_new_string(col_names[i], strlen(col_names[i])));
-        if (rc) {
-            goto err;
-        }
-    }
-    rc = cson_object_set(rootObj, "COLUMNS", arrVal);
-    if (rc) {
-        goto err;
-    }
     rc = cson_object_set(rootObj, "NUMSHARDS", cson_value_new_integer(mod_view_get_num_shards(view)));
     if (rc) {
         goto err;
     }
-    arrVal = cson_value_new_array();
+
+    cson_value *arrVal = cson_value_new_array();
     hash_for(mod_view_get_shards(view), mod_serialize_shard, cson_value_get_array(arrVal));
     rc = cson_object_set(rootObj, "SHARDS", arrVal);
     if (rc) {
@@ -1983,10 +1965,10 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
     mod_view_t *view = NULL;
     cson_object *rootObj = NULL, *arrObj = NULL;
     cson_value *rootVal = NULL, *arrVal = NULL;
-    cson_array *shards = NULL, *columns = NULL;
+    cson_array *shards = NULL;
     const char *viewname = NULL, *tablename = NULL, *keyname = NULL, *tmp_str = NULL;
     const char *err_str;
-    int num_shards = 0, num_columns = 0;
+    int num_shards = 0;
     int rc;
 
     /* parse string */
@@ -2029,33 +2011,6 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         goto error;
     }
 
-    /* NUMCOLUMNS */
-    num_columns = _cson_extract_int(rootObj, "NUMCOLUMNS", err);
-    if (num_columns < 0) {
-        err_str = "INVALID CSON. couldn't find 'NUMCOLUMNS' key";
-        goto error;
-    }
-
-    /* COLUMNS */
-    columns = _cson_extract_array(rootObj, "COLUMNS", err);
-    if (!columns) {
-        err_str = "INVALID CSON. couldn't find 'COLUMNS' key";
-        goto error;
-    }
-    char **col_names = (char **)malloc(sizeof(char*) * num_columns);
-    for (int i=0;i<num_columns;i++) {
-        arrVal = cson_array_get(columns, i);
-        if (!cson_value_is_string(arrVal)) {
-            err_str = "INVALID CSON. Array element is not a string";
-            goto error;
-        }
-        col_names[i] = cson_value_get_cstr(arrVal);
-        if (!col_names[i]) {
-            err_str = "INVALID CSON. couldn't extract column name";
-            goto error;
-        }
-    }
-
     /* SHARDS */
     shards = _cson_extract_array(rootObj, "SHARDS", err);
     if (!shards) {
@@ -2063,9 +2018,8 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         goto error;
     }
 
-    int32_t *keys = (int32_t*)malloc(sizeof(int32_t) * num_shards);
-    char **dbnames = (char**)malloc(sizeof(char*) * num_shards);
-    
+    uint32_t keys[MAXSHARDS];
+    char dbnames[MAXSHARDS][MAX_DBNAME_LENGTH];
 
     for (int i = 0; i < num_shards; i++) {
         arrVal = cson_array_get(shards, i);
@@ -2084,7 +2038,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
             err_str = "INVALID CSON. couldn't find 'DBNAME' key";
             goto error;
         }
-        dbnames[i] = (char *)tmp_str;
+        strcpy(dbnames[i], tmp_str);
 
         /* MODVAL */
         int val = _cson_extract_int(arrObj, "MODVAL", err);
@@ -2095,7 +2049,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         keys[i] = (uint32_t)val;
     }
 
-    view = create_mod_view(viewname, tablename, col_names, keyname, num_shards, num_columns, keys, dbnames, err);
+    view = create_mod_view(viewname, tablename, keyname, num_shards, keys, dbnames, err);
     if (rootVal) {
         cson_value_free(rootVal);
     }

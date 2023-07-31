@@ -651,13 +651,12 @@ int comdb2SendBpfunc(OpFunc *f)
    struct sql_thread *thd = pthread_getspecific(query_info_key);
    int rc = 0;
    BpfuncArg *arg = (BpfuncArg*)f->arg;
-   logmsg(LOGMSG_USER," RUNNING BPFUNC LOGIC\n");
+
    rc = osql_bpfunc_logic(thd, arg);
     
    if (rc) {
        f->rc = rc;
        f->errorMsg = "FAIL"; // TODO This must be translated to a description
-       logmsg(LOGMSG_USER, "FAILED TO SEND Bpfunc\n");
    } else {
        f->rc = SQLITE_OK;
        f->errorMsg = "";
@@ -4863,8 +4862,6 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
 )
 {
-
-
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -7467,49 +7464,32 @@ static void print_shard_map(hash_t *map){
     hash_for(map, print_shard_map_ent, NULL);
 }
 
-static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numShards, ExprList *pList, 
-                                        BpfuncCreateModpart *mod) 
+static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numShards, ExprList *pList,
+                                       char *oCol, uint32_t *oNumShards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH]) 
 {
     int column_exists = 0, column_is_key = 0;
-
     struct comdb2_column *cur_col;
     struct comdb2_key *cur_key;
     struct comdb2_index_part *idx_col;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
-    int32_t num;
-    int i;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
         return -1;
     }
-
-    mod->name = (char *)malloc(sizeof(ctx->schema->name) + 1);
-    if (!mod->name) {
-        setError(pParse, SQLITE_NOMEM, "Failed to allocate memory");
-        goto error;
-    }
-    strncpy0(mod->name, ctx->schema->name, sizeof(ctx->schema->name)+1);
     assert (*column->z == '\'' || *column->z == '\"');
     column->z++;
     column->n -= 2;
-
-    mod->n_columns = listc_size(&ctx->schema->column_list);
-    assert(mod->num_columns == 0);
-    mod->columns = (char **)malloc(sizeof(char*) * mod->n_columns);
-    i = 0;
     LISTC_FOR_EACH(&ctx->schema->column_list, cur_col, lnk)
     {
-        if (column_exists == 0 && (strncasecmp(column->z, cur_col->name, column->n) == 0)) {
+        if ((strncasecmp(column->z, cur_col->name, column->n) == 0)) {
             column_exists = 1;
+            break;
         }
-        mod->columns[i] = (char *)malloc(cur_col->len);
-        strcpy(mod->columns[i], cur_col->name);
-        i++;
     }
     if (!column_exists) {
         setError(pParse, SQLITE_MISUSE, "Column does not exist");
-        goto error;
+        return -1;
     }
 
     /* Check if column to be used for sharding is a key */
@@ -7526,69 +7506,47 @@ static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numS
 
     if (!column_is_key) {
         setError(pParse, SQLITE_MISUSE, "Column used for sharding has to be a key");
-        goto error;
-    }
-    mod->column = (char *)malloc(column->n + 1);
-    if (!mod->column) {
-        setError(pParse, SQLITE_NOMEM, "Failed to allocate memory");
-        goto error;
-    }
-    strncpy0(mod->column , column->z, column->n + 1);
-    if (_get_integer(numShards, &num)) {
-        setError(pParse, SQLITE_MISUSE, "Invalid number of shards");
-        goto error;
+        return -1;
     }
 
-    logmsg(LOGMSG_USER, "Got numshards as %d\n", num);
-    mod->n_shards = num;
+    strncpy0(oCol , column->z, column->n + 1);
+    if (_get_integer(numShards, (int32_t *)oNumShards)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid number of shards");
+        return -1;
+    }
+
     /* We need an even number of expressions -> Valid syntax is pairs of WHEN-THEN clauses */
     if (pList && (pList->nExpr%2 != 0)) {
         setError(pParse, SQLITE_MISUSE, "Invalid syntax. Expected WHEN...THEN format");
-        goto error;
+        return -1;
     }
 
     /* numShards should be half of number of expressios 
        we expect one WHEN..THEN per shard , no more , no less */
-    if (pList && (pList->nExpr/2 != mod->n_shards)) {
+    if (pList && (pList->nExpr/2 != *oNumShards)) {
         setError(pParse, SQLITE_MISUSE, "Invalid syntax. Incorrect number of shards");
-        goto error;
+        return -1;
     }
-    mod->n_keys = mod->n_shards;
+
     /* Read WHEN .. THEN pairs*/
     struct ExprList_item *pListItem;
-    logmsg(LOGMSG_USER," Parsing expression list with %d expressions\n", pList->nExpr);
-    mod->keys = (int32_t *)malloc(sizeof(int32_t) * (mod->n_keys));
-    if (!mod->keys) {
-        setError(pParse, SQLITE_NOMEM, "Failed to allocate memory");
-        goto error;
-    } 
-
-    mod->shards = (char **)malloc(sizeof(char *) * (mod->n_shards));
-    if (!mod->shards) {
-        setError(pParse, SQLITE_NOMEM, "Failed to allocate memory");
-        goto error;
-    }
+    int i;
+        logmsg(LOGMSG_USER," Parsing expression list with %d expressions\n", pList->nExpr);
     for (i = 0, pListItem = pList->a; i*2 < pList->nExpr; i+=1) {
         /* expect integer after WHEN */
         if (pListItem->pExpr->op != TK_INTEGER) {
-            goto error;
+            goto err;
         }
         int when = pListItem->pExpr->u.iValue;
-        mod->keys[i] = when;
         pListItem++;
-
         /* expect shard name after THEN */
         if (pListItem->pExpr->op != TK_STRING) {
-            goto error;
+            goto err;
         }
         char *then = pListItem->pExpr->u.zToken;
-        mod->shards[i] = (char *)malloc(sizeof(then) + 1);
-        if (!mod->shards[i]) {
-            setError(pParse, SQLITE_NOMEM, "Failed to allocate memory");
-            goto error;
-        }
-        strncpy0(mod->shards[i], then, sizeof(then) + 1);
         pListItem++;
+        keys[i] = when;
+        strcpy(shards[i], then);
 #if 0
         /* Now add to shard  */
         if (shard_map == NULL) {
@@ -7608,37 +7566,14 @@ static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numS
 #endif
     }
     logmsg(LOGMSG_USER, " SUCCESSFULLY ADDED VALUES \n");
-    for(int i=0;i< mod->n_shards;i++) {
-        logmsg(LOGMSG_USER, "key: %d\n", mod->keys[i]);
-        logmsg(LOGMSG_USER, "shards: %s\n", mod->shards[i]);
+    for(int i=0;i< *oNumShards;i++) {
+        logmsg(LOGMSG_USER, "key: %d\n", keys[i]);
+        logmsg(LOGMSG_USER, "shards: %s\n", shards[i]);
     }
     return 0;
 
-error:
-    if (mod->column) {
-        free(mod->column);
-    }
-
-    if (mod->keys) {
-        free(mod->keys);
-    }
-
-    if (mod->columns) { 
-       for(int i=0;i<mod->n_columns;i++){
-           if (mod->columns[i]) {
-               free(mod->columns[i]);
-           }
-       }
-       free(mod->columns);
-    }
-    if (mod->shards) {
-       for(int i=0;i<mod->n_shards;i++){
-           if (mod->shards[i]) {
-               free(mod->shards[i]);
-           }
-       }
-       free(mod->shards);
-    }
+err :
+    setError(pParse, SQLITE_MISUSE, "Invalid syntax. Unexpected expression type");
     return -1;
 }
                                     
@@ -7648,32 +7583,6 @@ error:
  */
 void comdb2CreateModPartition(Parse* pParse, Token *column, Token* numShards, ExprList *list)
 {
-    int rc = 0;
-#if 0
-    if (comdb2GetModPartitionParams(pParse, column, numShards, list,
-                                    partition->u.mod.column,
-                                    (uint32_t*)&partition->u.mod.num_shards,
-                                    partition->u.mod.keys, partition->u.mod.shards)) {
-        free_ddl_context(pParse);
-    }
-#endif
-
-    if (comdb2IsPrepareOnly(pParse))
-        return;
-
-    if (comdb2IsDryrun(pParse)) {
-        setError(pParse, SQLITE_MISUSE, "DRYRUN not supported for this operation");
-         return;
-    }
-#ifndef SQLITE_OMIT_AUTHORIZATION
-    {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_PART, 0, 0, 0) ){
-            setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
-            return;
-        }
-    }
-#endif
-
     struct comdb2_partition *partition;
 
     if (!gbl_partitioned_table_enabled) {
@@ -7686,40 +7595,11 @@ void comdb2CreateModPartition(Parse* pParse, Token *column, Token* numShards, Ex
         return;
 
     partition->type = PARTITION_ADD_MOD;
-    Vdbe *v  = sqlite3GetVdbe(pParse);
-
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    if (!arg) {
-        setError(pParse, SQLITE_NOMEM, "Out of Memory");
-        goto clean_arg;
-    }
-    bpfunc_arg__init(arg);
-
-    BpfuncCreateModpart *mod = malloc(sizeof(BpfuncCreateModpart));
-    if (!mod) {
-        setError(pParse, SQLITE_NOMEM, "Out of Memory");
-        goto clean_arg;
-    }
-    bpfunc_create_modpart__init(mod);
-    
-    arg->crt_mod = mod;
-    arg->type = BPFUNC_CREATE_MODPART;
-
-    rc = comdb2GetModPartitionParams(pParse, column, numShards, list, mod);
-    logmsg(LOGMSG_USER, "mod->n_keys: %ld\n mod->n_shards: %ld\n", mod->n_keys, mod->n_shards);
-
-    if (rc) {
-        setError(pParse, SQLITE_ABORT, "Failed to parse statement parameters");
-        goto clean_arg;
-    }
-
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc,
-                        (vdbeFuncArgFree) &free_bpfunc_arg);
-    return;
-
-clean_arg:
-    if (arg) {
-        free_bpfunc_arg(arg);
+    if (comdb2GetModPartitionParams(pParse, column, numShards, list,
+                                    partition->u.mod.column,
+                                    (uint32_t*)&partition->u.mod.num_shards,
+                                    partition->u.mod.keys, partition->u.mod.shards)) {
+        free_ddl_context(pParse);
     }
 }
 
