@@ -206,11 +206,6 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             goto cleanup;
         }
 
-        mod_view_t *mod_view = mod_get_view_by_name(dst);
-        if ((db != NULL || mod_view != NULL) && (error_flag == ERROR_ON_TBL_FOUND)) {
-            rc = setError(pParse, SQLITE_ERROR, "Table already exists");
-            goto cleanup;
-        }
         if (check_shard && db && db->timepartition_name)
         {
             setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");

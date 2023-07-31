@@ -25,5 +25,4 @@ int mod_shard_llmeta_erase(void *tran, mod_view_t *view, struct errstat *err);
 hash_t *mod_create_all_views();
 int mod_views_update_replicant(void *tran, const char *name);
 char *mod_views_describe_row(mod_view_t *view, const char *prefix, struct errstat *err);
-mod_view_t *mod_get_view_by_name(char *name);
 #endif
