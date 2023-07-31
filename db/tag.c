@@ -200,24 +200,31 @@ void add_tag_schema(const char *table, struct schema *schema)
     unlock_taglock();
 }
 
+static void _tags_free_schema(struct dbtag *tag, struct schema *s,
+                              const char *tablename)
+{
+    if (_dbg_tags)
+        logmsg(LOGMSG_DEBUG, "2 Removing %s:%s\n", tablename, s->tag);
+    hash_del(tag->tags, s);
+    listc_rfl(&tag->taglist, s);
+    freeschema(s);
+}
+
+
 static void del_tag_schema_lk(const char *table, const char *tagname)
 {
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL)
         return;
 
-    struct schema *sc = hash_find(tag->tags, &tagname);
+    struct schema *s = hash_find(tag->tags, &tagname);
 
-    if (sc) {
-        if (_dbg_tags)
-            logmsg(LOGMSG_DEBUG, "2 Removing %s:%s\n", table, sc->tag);
-        hash_del(tag->tags, sc);
+    if (s) {
 #if defined DEBUG_STACK_TAG_SCHEMA
         comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
                               table, tagname);
 #endif
-        listc_rfl(&tag->taglist, sc);
-        freeschema(sc);
+        _tags_free_schema(tag, s, table);
     }
 }
 
@@ -1460,11 +1467,7 @@ void add_tag_alias(const char *table, struct schema *s, char *name, int table_nm
     /* Don't add dupes! */
     old = hash_find(tag->tags, &sc->tag);
     if (old) {
-        listc_rfl(&tag->taglist, old);
-        if (_dbg_tags)
-            logmsg(LOGMSG_DEBUG, "3 Removing %s:%s\n", table, old->tag);
-        hash_del(tag->tags, old);
-        freeschema(old);
+        _tags_free_schema(tag, old, table);
     }
 
     if (_dbg_tags)
@@ -5135,11 +5138,7 @@ static int backout_schemas_lockless(const char *tblname)
         tmp = sc->lnk.next;
         if (strncasecmp(sc->tag, ".NEW.", 5) == 0) {
             /* new addition? delete */
-            listc_rfl(&dbt->taglist, sc);
-            if (_dbg_tags)
-                logmsg(LOGMSG_DEBUG, "4 Removing %s:%s\n", tblname, sc->tag);
-            hash_del(dbt->tags, sc);
-            freeschema(sc);
+            _tags_free_schema(dbt, sc, tblname);
         }
         sc = tmp;
     }
