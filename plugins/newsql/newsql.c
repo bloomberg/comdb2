@@ -2070,6 +2070,9 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         if (sql_query->client_info->stack) {
             clnt->stack = strdup(sql_query->client_info->stack);
         }
+        if (sql_query->identity) {
+            clnt->externalAuthUser = sql_query->identity->principal;
+        }
     }
     if (clnt->rawnodestats == NULL) {
         clnt->rawnodestats =

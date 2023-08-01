@@ -933,6 +933,7 @@ struct sqlclntstate {
     int disable_fdb_push;
 
     int lastresptype;
+    char *externalAuthUser;
 };
 
 /* Query stats. */
