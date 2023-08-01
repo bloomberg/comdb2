@@ -101,9 +101,13 @@ static int check_user_password(struct sqlclntstate *clnt)
         int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata, client_info);
         if (rc) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
+            char errstr[1024];
+            snprintf(errstr, sizeof(errstr),
+                     "User %s isn't allowed to make request on this db",
+                     clnt->externalAuthUser ? clnt->externalAuthUser : "");
             write_response(clnt, RESPONSE_ERROR,
-                           "User isn't allowed to make request on this db",
-                            CDB2ERR_ACCESS);
+                           errstr,
+                           CDB2ERR_ACCESS);
          } else {
              ATOMIC_ADD64(gbl_num_auth_allowed, 1);
          }
