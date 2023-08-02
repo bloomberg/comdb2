@@ -11,8 +11,10 @@ struct mod_shard {
 struct mod_view {
     char *viewname;
     char *tblname;
-    /* TODO: make separate key type */
-    char *keyname; 
+    /* 'key' => shard key => column name 
+     * TODO: make separate key type */
+    int num_keys; 
+    char **keynames; 
     int num_shards;
     hash_t *shards;
 };
@@ -64,11 +66,14 @@ const char *mod_view_get_viewname(struct mod_view *view) {
 const char *mod_view_get_tablename(struct mod_view *view) {
     return view->tblname;
 }
-const char *mod_view_get_keyname(struct mod_view *view) {
-    return view->keyname;
+char **mod_view_get_keynames(struct mod_view *view) {
+    return view->keynames;
 }
 int mod_view_get_num_shards(struct mod_view *view) {
     return view->num_shards;
+}
+int mod_view_get_num_keys(struct mod_view *view) {
+    return view->num_keys;
 }
 
 hash_t *mod_view_get_shards(struct mod_view *view) {
@@ -90,10 +95,12 @@ static void free_mod_view(mod_view_t *mView) {
         if (mView->tblname) {
             free(mView->tblname);
         }
-        if (mView->keyname) {
-            free(mView->keyname);
+        if (mView->keynames) {
+            for (int i=0; i<mView->num_keys;i++) {
+                free(mView->keynames[i]);
+            }
+            free(mView->keynames);
         }
-
         if (mView->shards) {
             hash_for(mView->shards, free_mod_shard, NULL);
             hash_clear(mView->shards);
@@ -103,7 +110,7 @@ static void free_mod_view(mod_view_t *mView) {
     }
 }
 
-mod_view_t *create_mod_view(const char *viewname, const char *tablename, const char *keyname, uint32_t num_shards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH], struct errstat *err) 
+mod_view_t *create_mod_view(const char *viewname, const char *tablename, uint32_t num_columns, char columns[][MAXCOLNAME], uint32_t num_shards, uint32_t keys[], char shards[][MAXTABLELEN], struct errstat *err) 
 {
     mod_view_t *mView;
 
@@ -125,10 +132,19 @@ mod_view_t *create_mod_view(const char *viewname, const char *tablename, const c
         logmsg(LOGMSG_ERROR, "%s: Failed to allocate table name string %s\n",__func__, tablename);
         goto oom;
     }
-    mView->keyname = strdup(keyname);
-    if (!mView->keyname) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to allocate key name string %s\n",__func__, keyname);
+    mView->num_keys = num_columns;
+    mView->keynames = (char **)malloc(sizeof(char *) * mView->num_keys);
+    if (!mView->keynames) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to allocate keynames\n",__func__);
         goto oom;
+    }
+
+    for (int i=0;i<mView->num_keys; i++) {
+        mView->keynames[i] = strdup(columns[i]);
+        if (!mView->keynames[i]) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to allocate key name string %s\n",__func__, columns[i]);
+            goto oom;
+        }
     }
     mView->num_shards = num_shards;
 
@@ -380,3 +396,5 @@ done:
     }
     return rc;
 }
+
+

@@ -366,9 +366,9 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
     i = 0;
     for (shard=(mod_shard_t *)hash_first(shards, &ent, &bkt); shard != NULL;
          shard=(mod_shard_t *)hash_next(shards, &ent, &bkt)) {
-        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %w.\"%w\"", select_str,
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %s", select_str,
                                   (i > 0) ? " UNION ALL " : "", cols_str,
-                                  mod_shard_get_dbname(shard),mod_view_get_viewname(view));
+                                  mod_shard_get_dbname(shard));
         sqlite3_free(select_str);
         if (!tmp_str) {
             sqlite3_free(cols_str);
@@ -428,7 +428,40 @@ int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
     return VIEW_NOERR;
 
 }
+int mod_views_create_triggers(mod_view_t *view, sqlite3 *db,
+                                struct errstat *err)
+{
+    typedef char *(*PFUNC)(mod_view_t *, struct errstat *);
 
+    PFUNC funcs[3] = {(PFUNC)&mod_views_create_delete_trigger_query,
+                      (PFUNC)&mod_views_create_update_trigger_query,
+                      (PFUNC)&mod_views_create_insert_trigger_query};
+    PFUNC func;
+    char *stmt_str;
+    int i;
+    int rc;
+
+    for (i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
+        func = funcs[i];
+
+        /* create delete trigger of the view */
+        stmt_str = func(view, err);
+        if (!stmt_str) {
+            return err->errval;
+        }
+
+        rc = _views_run_sql(db, stmt_str, err);
+
+        sqlite3_free(stmt_str);
+        if (rc) {
+            return err->errval;
+        }
+    }
+    /* clear last side row, might break a racing sql otherwise */
+    clearClientSideRow(NULL);
+    return VIEW_NOERR;
+
+}
 int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
                             struct errstat *err)
 {
@@ -451,6 +484,8 @@ int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
     if (rc != VIEW_NOERR) {
         return err->errval;
     }
+
+    rc = mod_views_create_triggers(view, db, err);
 
     return rc;
 }

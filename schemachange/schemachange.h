@@ -93,10 +93,11 @@ struct comdb2_partition {
         } mergetable;
         struct mod {
             char viewname[MAXTABLELEN];
-            char column[MAXCOLNAME];
             uint32_t num_shards;
+            uint32_t num_columns;
+            char columns[MAXCOLUMNS][MAXCOLNAME];
             uint32_t keys[MAXSHARDS];
-            char shards[MAXSHARDS][MAX_DBNAME_LENGTH];
+            char shards[MAXSHARDS][MAXTABLELEN];
         } mod;
     } u;
 };

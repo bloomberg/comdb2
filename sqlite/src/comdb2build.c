@@ -7464,55 +7464,40 @@ static void print_shard_map(hash_t *map){
     hash_for(map, print_shard_map_ent, NULL);
 }
 
-static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numShards, ExprList *pList,
-                                       char *oCol, uint32_t *oNumShards, uint32_t keys[], char shards[][MAX_DBNAME_LENGTH]) 
+static int comdb2GetModPartitionParams(Parse* pParse, IdList *pColumn, ExprList *pList,
+                                       char cols[][MAXCOLNAME], uint32_t *oNumShards, uint32_t *oNumColumns,
+                                       uint32_t keys[], char shards[][MAXTABLELEN]) 
 {
-    int column_exists = 0, column_is_key = 0;
+    int column_exists = 0;
     struct comdb2_column *cur_col;
-    struct comdb2_key *cur_key;
-    struct comdb2_index_part *idx_col;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
         return -1;
     }
-    assert (*column->z == '\'' || *column->z == '\"');
-    column->z++;
-    column->n -= 2;
-    LISTC_FOR_EACH(&ctx->schema->column_list, cur_col, lnk)
-    {
-        if ((strncasecmp(column->z, cur_col->name, column->n) == 0)) {
-            column_exists = 1;
-            break;
-        }
-    }
-    if (!column_exists) {
-        setError(pParse, SQLITE_MISUSE, "Column does not exist");
-        return -1;
-    }
 
-    /* Check if column to be used for sharding is a key */
-    LISTC_FOR_EACH(&ctx->schema->key_list, cur_key, lnk)
-    {
-        LISTC_FOR_EACH(&cur_key->idx_col_list, idx_col, lnk)
+    assert(pColumn!=0 && pColumn->nId>0);
+
+    *oNumColumns = pColumn->nId;
+    int i;
+    for (i=0; i <pColumn->nId;i++) {
+        column_exists = 0;
+        LISTC_FOR_EACH(&ctx->schema->column_list, cur_col, lnk)
         {
-            if ((strncasecmp(column->z, idx_col->name, column->n) == 0)) {
-                column_is_key = 1;
+            if ((strcasecmp(pColumn->a[i].zName, cur_col->name) == 0)) {
+                column_exists = 1;
                 break;
             }
         }
-    }
-
-    if (!column_is_key) {
-        setError(pParse, SQLITE_MISUSE, "Column used for sharding has to be a key");
-        return -1;
-    }
-
-    strncpy0(oCol , column->z, column->n + 1);
-    if (_get_integer(numShards, (int32_t *)oNumShards)) {
-        setError(pParse, SQLITE_MISUSE, "Invalid number of shards");
-        return -1;
+        if (column_exists==0) {
+            setError(pParse, SQLITE_MISUSE, comdb2_asprintf("Column %s does not exist", 
+                    pColumn->a[i].zName));
+            return -1;
+        } else {
+            // column exists, copy it
+            strncpy0(cols[i], pColumn->a[i].zName, sizeof(pColumn->a[i].zName) + 1);
+        }
     }
 
     /* We need an even number of expressions -> Valid syntax is pairs of WHEN-THEN clauses */
@@ -7521,16 +7506,10 @@ static int comdb2GetModPartitionParams(Parse* pParse, Token *column, Token *numS
         return -1;
     }
 
-    /* numShards should be half of number of expressios 
-       we expect one WHEN..THEN per shard , no more , no less */
-    if (pList && (pList->nExpr/2 != *oNumShards)) {
-        setError(pParse, SQLITE_MISUSE, "Invalid syntax. Incorrect number of shards");
-        return -1;
-    }
+    *oNumShards = pList->nExpr/2;
 
     /* Read WHEN .. THEN pairs*/
     struct ExprList_item *pListItem;
-    int i;
         logmsg(LOGMSG_USER," Parsing expression list with %d expressions\n", pList->nExpr);
     for (i = 0, pListItem = pList->a; i*2 < pList->nExpr; i+=1) {
         /* expect integer after WHEN */
@@ -7581,7 +7560,7 @@ err :
 /**
  * Create Mod based Partition
  */
-void comdb2CreateModPartition(Parse* pParse, Token *column, Token* numShards, ExprList *list)
+void comdb2CreateModPartition(Parse* pParse, IdList *pColumn , ExprList *list)
 {
     struct comdb2_partition *partition;
 
@@ -7595,9 +7574,10 @@ void comdb2CreateModPartition(Parse* pParse, Token *column, Token* numShards, Ex
         return;
 
     partition->type = PARTITION_ADD_MOD;
-    if (comdb2GetModPartitionParams(pParse, column, numShards, list,
-                                    partition->u.mod.column,
+    if (comdb2GetModPartitionParams(pParse, pColumn, list,
+                                    partition->u.mod.columns,
                                     (uint32_t*)&partition->u.mod.num_shards,
+                                    (uint32_t*)&partition->u.mod.num_columns,
                                     partition->u.mod.keys, partition->u.mod.shards)) {
         free_ddl_context(pParse);
     }

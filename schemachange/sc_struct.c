@@ -123,6 +123,7 @@ static size_t dests_field_packed_size(struct schema_change_type *s)
 static size_t _partition_packed_size(struct comdb2_partition *p)
 {
     size_t shardNamesSize = 0;
+    size_t columnNamesSize = 0;
     switch (p->type) {
     case PARTITION_NONE:
     case PARTITION_REMOVE:
@@ -138,9 +139,13 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
         for(int i=0;i<p->u.mod.num_shards;i++) {
             shardNamesSize += sizeof(p->u.mod.shards[i]);
         }
-        return sizeof(p->type) + sizeof(p->u.mod.column) + sizeof(p->u.mod.viewname) + 
+
+        for(int i=0;i<p->u.mod.num_columns;i++) {
+            columnNamesSize += sizeof(p->u.mod.columns[i]);
+        }
+        return sizeof(p->type) + sizeof(p->u.mod.viewname) + 
                sizeof(p->u.mod.num_shards) + sizeof(p->u.mod.keys) +
-               shardNamesSize;
+               sizeof(p->u.mod.num_columns) + shardNamesSize + columnNamesSize;
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
         abort();
@@ -331,8 +336,12 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
     case PARTITION_ADD_MOD: {
         p_buf = buf_no_net_put(s->partition.u.mod.viewname,
                         sizeof(s->partition.u.mod.viewname), p_buf, p_buf_end);
-        p_buf = buf_no_net_put(s->partition.u.mod.column,
-                        sizeof(s->partition.u.mod.column), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.mod.num_columns,
+                        sizeof(s->partition.u.mod.num_columns), p_buf, p_buf_end);
+        for(int i=0;i<s->partition.u.mod.num_columns;i++) {
+            p_buf = buf_no_net_put(s->partition.u.mod.columns[i],
+                                sizeof(s->partition.u.mod.columns[i]), p_buf, p_buf_end);
+        }
         p_buf = buf_put(&s->partition.u.mod.num_shards,
                         sizeof(s->partition.u.mod.num_shards), p_buf, p_buf_end);
         p_buf = buf_no_net_put(&s->partition.u.mod.keys,
@@ -772,9 +781,14 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.viewname,
                                           sizeof(s->partition.u.mod.viewname),
                                           p_buf, p_buf_end);
-        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.column,
-                                          sizeof(s->partition.u.mod.column),
-                                          p_buf, p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.mod.num_columns,
+                                   sizeof(s->partition.u.mod.num_columns), p_buf,
+                                   p_buf_end);
+        for(int i=0;i<s->partition.u.mod.num_columns;i++) {
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.columns[i],
+                                              sizeof(s->partition.u.mod.columns[i]),
+                                              p_buf, p_buf_end);
+        }
         p_buf = (uint8_t *)buf_get(&s->partition.u.mod.num_shards,
                                    sizeof(s->partition.u.mod.num_shards), p_buf,
                                    p_buf_end);

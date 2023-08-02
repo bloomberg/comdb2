@@ -1909,7 +1909,7 @@ int mod_serialize_shard(void *obj, void *arg)
  */
 int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
 {
-    cson_value *rootVal;
+    cson_value *rootVal, *arrVal;
     cson_object *rootObj;
     int rc;
 
@@ -1926,17 +1926,31 @@ int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
     if (rc) {
         goto err;
     }
-    tmp_str = mod_view_get_keyname(view);
-    rc = cson_object_set(rootObj, "KEYNAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
+    int num_keys = mod_view_get_num_keys(view);
+    char **keys = mod_view_get_keynames(view);
+	rc = cson_object_set(rootObj, "NUMKEYS", cson_value_new_integer(num_keys));
     if (rc) {
         goto err;
     }
+	arrVal = cson_value_new_array();
+    for(int i=0;i<num_keys;i++)
+    {
+        rc = cson_array_append(cson_value_get_array(arrVal), cson_value_new_string(keys[i], strlen(keys[i])));
+        if (rc) {
+            goto err;
+        }
+    }
+    rc = cson_object_set(rootObj, "KEYNAMES", arrVal);
+    if (rc) {
+        goto err;
+    }
+
     rc = cson_object_set(rootObj, "NUMSHARDS", cson_value_new_integer(mod_view_get_num_shards(view)));
     if (rc) {
         goto err;
     }
 
-    cson_value *arrVal = cson_value_new_array();
+    arrVal = cson_value_new_array();
     hash_for(mod_view_get_shards(view), mod_serialize_shard, cson_value_get_array(arrVal));
     rc = cson_object_set(rootObj, "SHARDS", arrVal);
     if (rc) {
@@ -1965,10 +1979,10 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
     mod_view_t *view = NULL;
     cson_object *rootObj = NULL, *arrObj = NULL;
     cson_value *rootVal = NULL, *arrVal = NULL;
-    cson_array *shards = NULL;
-    const char *viewname = NULL, *tablename = NULL, *keyname = NULL, *tmp_str = NULL;
+    cson_array *shards = NULL, *keys_arr = NULL;
+    const char *viewname = NULL, *tablename = NULL, *tmp_str = NULL;
     const char *err_str;
-    int num_shards = 0;
+    int num_shards = 0, num_keys = 0;
     int rc;
 
     /* parse string */
@@ -1997,11 +2011,28 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         goto error;
     }
 
-    /* KEYNAME */
-    keyname = _cson_extract_str(rootObj, "KEYNAME", err);
-    if (!keyname) {
-        err_str = "INVALID CSON. couldn't find 'keyname' key";
+    /* NUMKEYS */
+    num_keys = _cson_extract_int(rootObj, "NUMKEYS", err);
+    if (num_keys < 0) {
+        err_str = "INVALID CSON. couldn't find 'NUMKEYS' key";
         goto error;
+    }
+
+    /* KEYNAMES */
+    keys_arr = _cson_extract_array(rootObj, "KEYNAMES", err);
+    if (!keys_arr) {
+        err_str = "INVALID CSON. couldn't find 'KEYNAMES' key";
+        goto error;
+    }
+
+    char keynames[MAXCOLUMNS][MAXCOLNAME];
+    for (int i = 0; i < num_keys; i++) {
+        arrVal = cson_array_get(keys_arr, i);
+        if (!cson_value_is_string(arrVal)) {
+            err_str = "INVALID CSON. Array element is not a string";
+            goto error;
+        }
+        strcpy(keynames[i], cson_value_get_cstr(arrVal));
     }
 
     /* NUMSHARDS */
@@ -2019,7 +2050,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
     }
 
     uint32_t keys[MAXSHARDS];
-    char dbnames[MAXSHARDS][MAX_DBNAME_LENGTH];
+    char dbnames[MAXSHARDS][MAXTABLELEN];
 
     for (int i = 0; i < num_shards; i++) {
         arrVal = cson_array_get(shards, i);
@@ -2049,7 +2080,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         keys[i] = (uint32_t)val;
     }
 
-    view = create_mod_view(viewname, tablename, keyname, num_shards, keys, dbnames, err);
+    view = create_mod_view(viewname, tablename, num_keys, keynames, num_shards, keys, dbnames, err);
     if (rootVal) {
         cson_value_free(rootVal);
     }

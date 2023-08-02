@@ -5916,7 +5916,7 @@ static int _process_single_table_sc_mod_partitioning(struct ireq *iq)
 
     /* create a mod based shard */ 
     struct errstat err = {0};
-    sc->newshard = create_mod_view(sc->partition.u.mod.viewname, sc->tablename, sc->partition.u.mod.column,sc->partition.u.mod.num_shards, sc->partition.u.mod.keys, sc->partition.u.mod.shards, &err);
+    sc->newshard = create_mod_view(sc->partition.u.mod.viewname, sc->tablename, sc->partition.u.mod.num_columns,sc->partition.u.mod.columns,sc->partition.u.mod.num_shards, sc->partition.u.mod.keys, sc->partition.u.mod.shards, &err);
     if (!sc->newshard) {
         logmsg(LOGMSG_ERROR,
                    "Failed to create new Mod partition rc %d \"%s\"\n",
