@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+export debug=1
+
+[[ $debug == "1" ]] && set -x
+
+master=$(get_master)
+
+function thedbmaster
+{
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master 'exec procedure sys.cmd.send("thedbmaster")')
+    echo "$x"
+}
+
+function forceelect
+{
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $master 'exec procedure sys.cmd.send("forceelect")')
+}
+
+if [[ -z "$CLUSTER" ]]; then 
+    echo "This test requires a cluster"
+    exit -1
+fi
+
+origtm=$(thedbmaster)
+forceelect
+sleep 30
+newtm=$(thedbmaster)
+
+if [[ "$origtm" != "$newtm" ]] ; then
+    echo "Testcase failed, thedbmaster changed from $origtm to $newtm"
+    exit 1
+fi
+
+echo "Success"
