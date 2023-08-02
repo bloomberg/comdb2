@@ -462,5 +462,6 @@ int db_is_stopped(void);
 int db_is_exiting(void);
 void stop_event_net(void);
 int sync_state_to_protobuf(int);
+void increase_net_buf(void);
 
 #endif

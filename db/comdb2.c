@@ -4204,43 +4204,31 @@ static int init(int argc, char **argv)
     if (gbl_net_max_queue) {
         net_set_max_queue(thedb->handle_sibling, gbl_net_max_queue);
     }
-
     if (gbl_net_max_mem) {
         uint64_t bytes;
         bytes = 1024 * 1024 * gbl_net_max_mem;
         net_set_max_bytes(thedb->handle_sibling, bytes);
     }
-
     if (gbl_net_throttle_percent) {
-        net_set_throttle_percent(thedb->handle_sibling,
-                                 gbl_net_throttle_percent);
+        net_set_throttle_percent(thedb->handle_sibling, gbl_net_throttle_percent);
     }
-
     if (gbl_net_portmux_register_interval) {
-        net_set_portmux_register_interval(thedb->handle_sibling,
-                                          gbl_net_portmux_register_interval);
+        net_set_portmux_register_interval(thedb->handle_sibling, gbl_net_portmux_register_interval);
     }
-
     if (gbl_enque_flush_interval) {
-        net_set_enque_flush_interval(thedb->handle_sibling,
-                                     gbl_enque_flush_interval);
+        net_set_enque_flush_interval(thedb->handle_sibling, gbl_enque_flush_interval);
     }
-
     if (gbl_enque_reorder_lookahead) {
-        net_set_enque_reorder_lookahead(thedb->handle_sibling,
-                                        gbl_enque_reorder_lookahead);
+        net_set_enque_reorder_lookahead(thedb->handle_sibling, gbl_enque_reorder_lookahead);
     }
-
     if (gbl_net_poll) {
         net_set_poll(thedb->handle_sibling, gbl_net_poll);
     }
-
     if (gbl_heartbeat_send) {
         net_set_heartbeat_send_time(thedb->handle_sibling, gbl_heartbeat_send);
     }
     if (gbl_heartbeat_check) {
-        net_set_heartbeat_check_time(thedb->handle_sibling,
-                                     gbl_heartbeat_check);
+        net_set_heartbeat_check_time(thedb->handle_sibling, gbl_heartbeat_check);
     }
 
     net_setbufsz(thedb->handle_sibling, gbl_netbufsz);
@@ -5647,6 +5635,7 @@ int main(int argc, char **argv)
 
     logmsg(LOGMSG_USER, "hostname:%s  cname:%s\n", gbl_myhostname, gbl_mycname);
     logmsg(LOGMSG_USER, "I AM READY.\n");
+    increase_net_buf();
     gbl_ready = 1;
 
     pthread_t timer_tid;
