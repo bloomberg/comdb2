@@ -1,5 +1,4 @@
 add_library(net
-  akq.c
   sqlwriter.c
   net_evbuffer.c
   info.c
