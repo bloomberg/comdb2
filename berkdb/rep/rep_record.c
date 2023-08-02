@@ -1440,10 +1440,8 @@ skip:				/*
 		memset(&data_dbt, 0, sizeof(data_dbt));
 		oldfilelsn = lsn = rp->lsn;
 
-		if (gbl_verbose_fills) {
-			logmsg(LOGMSG_USER, "%s line %d received REP_ALL_REQ from %s "
-					"%d:%d\n", __func__, __LINE__, *eidp, lsn.file, lsn.offset);
-		}
+		logmsg(LOGMSG_USER, "%s:%d received REP_ALL_REQ from:%s lsn=%u:%u\n",
+				__func__, __LINE__, *eidp, lsn.file, lsn.offset);
 
 		if (gbl_decoupled_logputs && rep_qstat_has_fills()) {
 			if (gbl_verbose_fills) {

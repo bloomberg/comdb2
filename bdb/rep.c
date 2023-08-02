@@ -3962,7 +3962,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     if ((time2 - time1) > bdb_state->attr->rep_longreq) {
         const struct berkdb_thread_stats *t = bdb_get_thread_stats();
-        logmsg(LOGMSG_WARN, "LONG rep_process_message: %d seconds, type %d r %d\n", time2 - time1, rep_control->rectype, r);
+        logmsg(LOGMSG_WARN, "LONG rep_process_message: %d seconds, type:%d r:%d host:%s\n",
+                time2 - time1, rep_control->rectype, r, host);
         bdb_fprintf_stats(t, "  ", stderr);
     }
 
@@ -4756,8 +4757,8 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         bdb_state->dbenv->rep_flush(bdb_state->dbenv);
 
-        logmsg(LOGMSG_INFO, "USER_TYPE_LSNCMP %d %d    %d %d\n", lsn_cmp.lsn.file,
-                cur_lsn.file, lsn_cmp.lsn.offset, cur_lsn.offset);
+        logmsg(LOGMSG_INFO, "USER_TYPE_LSNCMP %d %d    %d %d host:%s\n", lsn_cmp.lsn.file,
+                cur_lsn.file, lsn_cmp.lsn.offset, cur_lsn.offset, from_host);
 
         /* if he's ahead he's good */
         if (log_compare(&lsn_cmp.lsn, &cur_lsn) >= 0) {
