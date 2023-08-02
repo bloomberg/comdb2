@@ -34,9 +34,9 @@ struct catchup {
     DB_LSN start_lsn;
     u_int32_t gen;
     char *master;
+    DB_ENV *dbenv;
 };
 
-static int apply_log_file(struct catchup *c, uint32_t lognum, uint8_t *log, uint32_t size, DB_LSN *last_lsn);
 
 // TODO: ensure only of these is in flight at a time.  It should have no harm to have more -- they'll operate with
 //       different generation numbers, but only one can be doing useful work.
@@ -104,7 +104,7 @@ static void* catchup_thread(void *p) {
             first = 0;
         }
 
-        rc = apply_log_file(c, lognum, (uint8_t*) buf, size, &last_lsn);
+        rc = __apply_log_file(c->dbenv, c->gen, c->master, lognum, (uint8_t*) buf, size, &last_lsn);
         logmsg(LOGMSG_WARN, "apply log file %u gen %d rc %d last lsn %u:%u\n", lognum, c->gen, rc, last_lsn.file, last_lsn.offset);
         if (rc)
             goto done;
@@ -125,80 +125,7 @@ done:
     return NULL;
 }
 
-static int apply_log_file(struct catchup *c, uint32_t lognum, uint8_t *log, uint32_t size, DB_LSN *last_lsn) {
-    uint32_t hdrsize;
-    DB_ENV *dbenv = gbl_bdb_state->dbenv;
-    HDR *hdrp;
-    HDR hdr;
-    int is_hmac;
-    uint32_t off = 0;
-
-    if (CRYPTO_ON(dbenv)) {
-        hdrsize = HDR_CRYPTO_SZ;
-        is_hmac = 1;
-    } else {
-		hdrsize = HDR_NORMAL_SZ;
-		is_hmac = 0;
-	}
-    REP_CONTROL rp;
-
-    DBT control = { .data = &rp, .size = sizeof(rp) };
-    DBT rec = {0};
-    uint32_t commit_gen;
-    DB_LSN ret_lsn;
-    int rc = 0;
-
-    if (lognum != 1) {
-        rp.lsn.file = last_lsn->file;
-        rp.lsn.offset = last_lsn->offset;
-        rp.gen = c->gen;
-        rp.flags = 0;
-        rp.gen = c->gen;
-        rp.rep_version = DB_REPVERSION;
-        rp.log_version = DB_LOGVERSION;
-        rp.rectype = REP_NEWFILE;
-        __rep_control_swap(&rp);
-        dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0, 1);
-        printf(">>>> newfile %u\n", last_lsn->file);
-    }
-
-    printf("%s: log %d\n", __func__, lognum);
-
-    do {
-        rp.lsn.file = lognum;
-        rp.lsn.offset = off;
-        rp.gen = c->gen;
-        rp.flags = 0;
-        rp.gen = c->gen;
-        rp.rep_version = DB_REPVERSION;
-        rp.log_version = DB_LOGVERSION;
-        rp.rectype = REP_LOG;
-        __rep_control_swap(&rp);
-
-        hdrp = (HDR *) ((uint8_t*) log + off);
-        memcpy(&hdr, hdrp, hdrsize);
-
-        // swap our copy so we can figure out the size
-        if (LOG_SWAPPED())
-            __log_hdrswap(&hdr, is_hmac);
-
-        control.size = sizeof(rp);
-        rec.data = hdrp;
-        rec.size = hdr.len;
-
-        rc = dbenv->rep_process_message(gbl_bdb_state->dbenv, &control, &rec, &c->master, &ret_lsn, &commit_gen, 0, 1);
-        if (rc) {
-            printf("lsn %u:%u %d\n", lognum, off, rc);
-            return rc;
-        }
-        last_lsn->file = lognum;
-        last_lsn->offset = off;
-
-        off += hdr.len;
-    } while(off < size);
-
-    return 0;
-}
+int is_commit(u_int32_t rectype);
 
 void bdb_try_catchup(DB_ENV *dbenv, DB_LSN *lsnp, char *master) {
     char *master_out;
@@ -213,6 +140,7 @@ void bdb_try_catchup(DB_ENV *dbenv, DB_LSN *lsnp, char *master) {
     c->gen = gen;
     c->start_lsn = *lsnp;
     c->master = master;
+    c->dbenv = dbenv;
 
     int rc = pthread_create(&catchup_tid, NULL, catchup_thread, c);
     if (rc) {
