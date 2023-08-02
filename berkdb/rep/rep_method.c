@@ -44,7 +44,7 @@ int gbl_rep_method_max_sleep_cnt = 0;
 static int __rep_abort_prepared __P((DB_ENV *));
 static int __rep_bt_cmp __P((DB *, const DBT *, const DBT *));
 static int __rep_client_dbinit __P((DB_ENV *, int));
-static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
+static int __rep_elect __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, int *, char **));
 static int __rep_elect_init
 __P((DB_ENV *, DB_LSN *, int, int, int *, u_int32_t *));
 static int __rep_flush __P((DB_ENV *));
@@ -1182,11 +1182,12 @@ err:
  *	a new master.
  */
 static int
-__rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
+__rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	DB_ENV *dbenv;
 	int nsites, priority;
 	u_int32_t timeout;
 	u_int32_t *newgen;
+    int *already_master;
 	char **eidp;
 {
 	DB_LOG *dblp;
@@ -1197,6 +1198,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 	u_int32_t egen, committed_gen = 0, orig_tally, pid, sec, usec;
 	char *send_vote;
 
+	*already_master = 0;
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv, dbenv->rep_handle, "rep_elect", DB_INIT_REP);
 
@@ -1234,6 +1236,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, eidp)
 		&lsn, nsites, priority, &in_progress, &orig_tally)) != 0) {
 		if (ret == DB_REP_NEWMASTER) {
 			ret = 0;
+			*already_master = 1;
 			*eidp = dbenv->rep_eid;
 		}
 		goto err;

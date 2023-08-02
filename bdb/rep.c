@@ -1249,11 +1249,13 @@ elect_again:
        here.  */
     set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
 
+    int already_master = 0;
+
     /* Should be holding bdb readlock .. */
     BDB_READLOCK("rep_elect");
 
-    rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri,
-                                     elect_time, &newgen, &master_host);
+    rc = bdb_state->dbenv->rep_elect(bdb_state->dbenv, elect_count, rep_pri, elect_time, &newgen, &already_master,
+                                     &master_host);
     BDB_RELLOCK();
 
     if (rc != 0) {
@@ -1275,6 +1277,13 @@ elect_again:
     }
     /* replace now: if i was already master, rep-start wont be called */
     set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
+
+    /* Berkley says we are already master.  We won't get a rep-message and
+     * shouldn't call the newmaster-callback here (which would normally set this
+     * Just set thedb->master. */
+    if (already_master) {
+        thedb_set_master(master_host);
+    }
 
     /* Check if it's us. */
     if (rc == 0) {

@@ -819,6 +819,10 @@ clipper_usage:
         bdb_transfermaster(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "losemaster") == 0) {
         bdb_losemaster(dbenv->static_table.handle);
+    } else if (tokcmp(tok, ltok, "forceelect") == 0) {
+        call_for_election(thedb->bdb_env, __func__, __LINE__);
+    } else if (tokcmp(tok, ltok, "thedbmaster") == 0) {
+        logmsg(LOGMSG_USER, "%s\n", thedb->master);
     } else if (tokcmp(tok, ltok, "upgrade") == 0) {
         char *newmaster = 0;
         tok = segtok(line, lline, &st, &ltok);
@@ -864,8 +868,7 @@ clipper_usage:
         delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
-    }
-    else if (tokcmp(tok, ltok, "netpoll") == 0) {
+    } else if (tokcmp(tok, ltok, "netpoll") == 0) {
         int pval;
         tok = segtok(line, lline, &st, &ltok);
         pval = toknum(tok, ltok);
