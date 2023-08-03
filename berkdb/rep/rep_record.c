@@ -503,11 +503,42 @@ int gbl_verbose_repdups = 0;
 uint64_t subtract_lsn(void *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
-int gbl_dedup_rep_all_reqs = 0;
+int gbl_dedup_rep_all_reqs = 1;
+
+static pthread_mutex_t rep_all_lk = PTHREAD_MUTEX_INITIALIZER;
+static int send_rep_all_req_dedup(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line)
+{
+	int rc;
+	static DB_LSN last_lsn = {0};
+	static time_t last_time = 0;
+	static char *last_master = NULL;
+	Pthread_mutex_lock(&rep_all_lk);
+	time_t now = time(NULL);
+	int diff = now - last_time;
+	if (last_master != master_eid || last_lsn.file != lsn->file || last_lsn.offset != lsn->offset || diff > 10) {
+		rc = __rep_send_message(dbenv, master_eid, REP_ALL_REQ, lsn, NULL, flags, NULL);
+		logmsg(LOGMSG_INFO, "SENDING rep_all_req from %s line %d rc=%d lsn=%u:%u (last=%u:%u %usec ago)\n",
+				func, line, rc, lsn->file, lsn->offset, last_lsn.file, last_lsn.offset, diff);
+		if (rc == 0) {
+			last_master = master_eid;
+			last_lsn = *lsn;
+			last_time = now;
+		}
+	} else {
+		rc = 0;
+		logmsg(LOGMSG_INFO, "BLOCKING rep_all_req from %s line %d lsn=%d:%d %usec ago\n",
+				func, line, lsn->file, lsn->offset, diff);
+	}
+	Pthread_mutex_unlock(&rep_all_lk);
+	return rc;
+}
 
 int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 					 const char *func, int line)
 {
+	if (gbl_dedup_rep_all_reqs == 1) {
+		return send_rep_all_req_dedup(dbenv, master_eid, lsn, flags, func, line);
+	}
 	if (gbl_dedup_rep_all_reqs && rep_qstat_has_allreq()) {
 		if (gbl_verbose_fills) {
 			logmsg(LOGMSG_DEBUG, "BLOCKING rep_all_req from %s line %d\n", func, line);
