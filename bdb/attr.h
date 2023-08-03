@@ -670,6 +670,7 @@ DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10, "Check I/O in watchdog this often
 DEF_ATTR(TEST_SQL_TIME, test_sql_time, SECS, 0, "Check SQL in watchdog this often")
 DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
          "Spew debug info about deleting old files.")
+DEF_ATTR(DO_ALT_CATCHUP, do_alt_catchup, BOOLEAN, 0, "Do an SQL-based initial catchup on startup")
 
 /*
   BDB_ATTR_REPTIMEOUT

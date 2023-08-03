@@ -7,6 +7,7 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
+#include "printformats.h"
 
 #ifndef lint
 static const char revid[] =
@@ -130,7 +131,7 @@ extern int set_commit_context(unsigned long long context, uint32_t *generation,
 extern int gbl_berkdb_verify_skip_skipables;
 
 static int __rep_apply __P((DB_ENV *, REP_CONTROL *, DBT *, DB_LSN *,
-	uint32_t *, int));
+	uint32_t *, int, int));
 static int __rep_dorecovery __P((DB_ENV *, DB_LSN *, DB_LSN *, int, int *));
 int __rep_lsn_cmp __P((const void *, const void *));
 static int __rep_newfile __P((DB_ENV *, REP_CONTROL *, DB_LSN *));
@@ -157,19 +158,20 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 	(R) != DB___txn_dist_commit && (R) != DB___txn_ckp && (R) != DB___dbreg_register && \
     (R) != DB___txn_dist_prepare && (R) != DB___txn_dist_abort)
 
-int gbl_rep_process_msg_print_rc;
+int gbl_rep_process_msg_print_rc = 1;
 
 #define PRINT_RETURN(retrc, fromline)										\
 	do {																	\
 		static uint32_t lastpr = 0;											\
 		static uint32_t count = 0;											\
-		uint32_t now;														\
+		uint32_t now = time(NULL);											\
 		count++;															\
-		if (gbl_rep_process_msg_print_rc && ((now = time(NULL)) - lastpr)) {\
+		if (gbl_rep_process_msg_print_rc && rc && rc != DB_REP_NOTPERM && (now - lastpr)) {\
 			logmsg(LOGMSG_ERROR,											\
-				"td %" PRIxPTR "%s line %d from line %d returning %d, count=%u\n",	\
+				"td %" PRIxPTR "%s line %d from line %d returning %d for %u:%u, count=%u\n",	\
 				(intptr_t)pthread_self(), __func__, __LINE__, fromline,		\
-				retrc, count);												\
+				retrc, rp->lsn.file, rp->lsn.offset, count);												\
+            lastpr = now;                       \
 		}																	\
 		return retrc;														\
 	} while (0);
@@ -330,7 +332,7 @@ __rep_control_swap(rp)
 	M_32_SWAP(rp->flags);
 }
 
-int gbl_verify_rep_log_records = 0;
+int gbl_verify_rep_log_records = 1;
 
 extern int gbl_verbose_master_req;
 int gbl_last_master_req = 0;
@@ -505,9 +507,24 @@ void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 
 int gbl_dedup_rep_all_reqs = 0;
 
-int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
-					 const char *func, int line)
+int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line, int do_initial_catchup)
 {
+    if (do_initial_catchup && dbenv->signal_catchup_callback) {
+        DB_REP *db_rep;
+        REP *rep;
+
+        db_rep = (DB_REP*) dbenv->rep_handle;
+        rep = db_rep->region;
+
+        DB_LOG *dblp;
+        LOG *lp;
+
+        dblp = dbenv->lg_handle;
+        lp = dblp->reginfo.primary;
+        dbenv->signal_catchup_callback(dbenv, lsn, master_eid);
+        return 0;
+    }
+
 	if (gbl_dedup_rep_all_reqs && rep_qstat_has_allreq()) {
 		if (gbl_verbose_fills) {
 			logmsg(LOGMSG_DEBUG, "BLOCKING rep_all_req from %s line %d\n", func, line);
@@ -623,7 +640,7 @@ static void *apply_thread(void *arg)
 					last_applying_print = now;
 				}
 
-				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
+				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1, 0);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
 					bdb_set_seqnum(dbenv->app_private);
@@ -655,9 +672,9 @@ static void *apply_thread(void *arg)
 					R_UNLOCK(dbenv, &dblp->reginfo);
 
 					int flags = (DB_REP_NODROP|DB_REP_NOBUFFER);
-					if (master_eid != db_eid_invalid && 
-							(rc = send_rep_all_req(dbenv, master_eid, &lsn, 
-							 flags, __func__, __LINE__)) == 0) {
+					if (master_eid != db_eid_invalid &&
+                        (rc = send_rep_all_req(dbenv, master_eid, &lsn,
+                                               flags, __func__, __LINE__, 0)) == 0) {
 						last_fill = comdb2_time_epochms();
 						if (gbl_verbose_fills) {
 							logmsg(LOGMSG_USER, "%s line %d continue "
@@ -801,8 +818,8 @@ static void *apply_thread(void *arg)
 
 		if (request_all_records) {
 			/* Request all records from the master */
-			if ((ret = send_rep_all_req(dbenv, master_eid, &my_lsn, 0, 
-							__func__, __LINE__)) == 0) {
+			if ((ret = send_rep_all_req(dbenv, master_eid, &my_lsn, 0,
+                                        __func__, __LINE__, 0)) == 0) {
 				last_fill = comdb2_time_epochms();
 				if (gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ from %d:%d "
@@ -1022,6 +1039,237 @@ done:
 	return will_recover;
 }
 
+const char* berkmsgtype(int type);
+const char *logrectype(u_int32_t type);
+
+const char* berkmsgtype(int type) {
+    switch (type){
+        case REP_ALIVE:
+            return "REP_ALIVE";
+        case REP_ALIVE_REQ:
+            return "REP_ALIVE_REQ";
+        case REP_ALL_REQ:
+            return "REP_ALL_REQ";
+        case REP_DUPMASTER:
+            return "REP_DUPMASTER";
+        case REP_FILE:
+            return "REP_FILE";
+        case REP_FILE_REQ:
+            return "REP_FILE_REQ";
+        case REP_LOG:
+            return "REP_LOG";
+        case REP_LOG_MORE:
+            return "REP_LOG_MORE";
+        case REP_LOG_REQ:
+            return "REP_LOG_REQ";
+        case REP_MASTER_REQ:
+            return "REP_MASTER_REQ";
+        case REP_NEWCLIENT:
+            return "REP_NEWCLIENT";
+        case REP_NEWFILE:
+            return "REP_NEWFILE";
+        case REP_NEWMASTER:
+            return "REP_NEWMASTER";
+        case REP_NEWSITE:
+            return "REP_NEWSITE";
+        case REP_PAGE:
+            return "REP_PAGE";
+        case REP_PAGE_REQ:
+            return "REP_PAGE_REQ";
+        case REP_PLIST:
+            return "REP_PLIST";
+        case REP_PLIST_REQ:
+            return "REP_PLIST_REQ";
+        case REP_VERIFY:
+            return "REP_VERIFY";
+        case REP_VERIFY_FAIL:
+            return "REP_VERIFY_FAIL";
+        case REP_VERIFY_REQ:
+            return "REP_VERIFY_REQ";
+        case REP_VOTE1:
+            return "REP_VOTE1";
+        case REP_VOTE2:
+            return "REP_VOTE2";
+        case REP_LOG_LOGPUT:
+            return "REP_LOG_LOGPUT";
+        case REP_PGDUMP_REQ:
+            return "REP_PGDUMP_REQ";
+        case REP_GEN_VOTE1:
+            return "REP_GEN_VOTE1";
+        case REP_GEN_VOTE2:
+            return "REP_GEN_VOTE2";
+        case REP_LOG_FILL:
+            return "REP_LOG_FILL";
+        case REP_MAX_TYPE:
+            return "REP_MAX_TYPE";
+        default:
+            return "???";
+    }
+}
+
+#include "dbinc/hash.h"
+#include "dbinc/llog_auto.h"
+#include "dbinc_auto/hash_auto.h"
+
+const char *logrectype(u_int32_t type) {
+    normalize_rectype(&type);
+    if (type > 1000 && type < 2000)
+        type -= 1000;
+    switch (type) {
+        case DB___txn_regop:
+            return "txn_regop";
+        case DB___txn_ckp:
+            return "txn_ckp";
+        case DB___txn_child:
+            return "txn_child";
+        case DB___txn_xa_regop:
+            return "txn_xa_regop";
+        case DB___txn_recycle:
+            return "txn_recycle";
+        case DB___txn_regop_rowlocks:
+            return "txn_regop_rowlocks";
+        case DB___txn_regop_gen:
+            return "txn_regop_gen";
+        case DB___txn_dist_prepare:
+            return "txn_dist_prepare";
+        case DB___txn_dist_abort:
+            return "txn_dist_abort";
+        case DB___txn_dist_commit:
+            return "txn_dist_commit";
+        case DB___crdel_metasub:
+            return "crdel_metasub";
+        case DB___dbreg_register:
+            return "dbreg_register";
+        case DB___bam_split:
+            return "bam_split";
+        case DB___bam_rsplit:
+            return "bam_rsplit";
+        case DB___bam_adj:
+            return "bam_adj";
+        case DB___bam_cadjust:
+            return "bam_cadjust";
+        case DB___bam_cdel:
+            return "bam_cdel";
+        case DB___bam_repl:
+            return "bam_repl";
+        case DB___bam_root:
+            return "bam_root";
+        case DB___bam_curadj:
+            return "bam_curadj";
+        case DB___bam_rcuradj:
+            return "bam_rcuradj";
+        case DB___bam_prefix:
+            return "bam_prefix";
+        case DB___bam_pgcompact:
+            return "bam_pgcompact";
+        case DB___db_addrem:
+            return "db_addrem";
+        case DB___db_big:
+            return "db_big";
+        case DB___db_ovref:
+            return "db_ovref";
+        case DB___db_relink:
+            return "db_relink";
+        case DB___db_debug:
+            return "db_debug";
+        case DB___db_noop:
+            return "db_noop";
+        case DB___db_pg_alloc:
+            return "db_pg_alloc";
+        case DB___db_pg_free:
+            return "db_pg_free";
+        case DB___db_cksum:
+            return "db_cksum";
+        case DB___db_pg_freedata:
+            return "db_pg_freedata";
+        case DB___db_pg_prepare:
+            return "db_pg_prepare";
+        case DB___db_pg_new:
+            return "db_pg_new";
+        case DB___fop_create:
+            return "fop_create";
+        case DB___fop_remove:
+            return "fop_remove";
+        case DB___fop_write:
+            return "fop_write";
+        case DB___fop_rename:
+            return "fop_rename";
+        case DB___fop_file_remove:
+            return "fop_file_remove";
+        case DB___qam_incfirst:
+            return "qam_incfirst";
+        case DB___qam_mvptr:
+            return "qam_mvptr";
+        case DB___qam_del:
+            return "qam_del";
+        case DB___qam_add:
+            return "qam_add";
+        case DB___qam_delext:
+            return "qam_delext";
+        case DB___ham_insdel:
+            return "ham_insdel";
+        case DB___ham_newpage:
+            return "ham_newpage";
+        case DB___ham_splitdata:
+            return "ham_splitdata";
+        case DB___ham_replace:
+            return "ham_replace";
+        case DB___ham_copypage:
+            return "ham_copypage";
+        case DB___ham_metagroup:
+            return "ham_metagroup";
+        case DB___ham_groupalloc:
+            return "ham_groupalloc";
+        case DB___ham_curadj:
+            return "ham_curadj";
+        case DB___ham_chgpg:
+            return "ham_chgpg";
+        case DB_llog_savegenid:
+            return "llog_savegenid";
+        case DB_llog_scdone:
+            return "llog_scdone";
+        case DB_llog_undo_add_dta:
+            return "llog_undo_add_dta";
+        case DB_llog_undo_add_ix:
+            return "llog_undo_add_ix";
+        case DB_llog_ltran_commit:
+            return "llog_ltran_commit";
+        case DB_llog_ltran_start:
+            return "llog_ltran_start";
+        case DB_llog_ltran_comprec:
+            return "llog_ltran_comprec";
+        case DB_llog_undo_del_dta:
+            return "llog_undo_del_dta";
+        case DB_llog_undo_del_ix:
+            return "llog_undo_del_ix";
+        case DB_llog_undo_upd_dta:
+            return "llog_undo_upd_dta";
+        case DB_llog_undo_upd_ix:
+            return "llog_undo_upd_ix";
+        case DB_llog_repblob:
+            return "llog_repblob";
+        case DB_llog_undo_add_dta_lk:
+            return "llog_undo_add_dta_lk";
+        case DB_llog_undo_add_ix_lk:
+            return "llog_undo_add_ix_lk";
+        case DB_llog_undo_del_dta_lk:
+            return "llog_undo_del_dta_lk";
+        case DB_llog_undo_del_ix_lk:
+            return "llog_undo_del_ix_lk";
+        case DB_llog_undo_upd_dta_lk:
+            return "llog_undo_upd_dta_lk";
+        case DB_llog_undo_upd_ix_lk:
+            return "llog_undo_upd_ix_lk";
+        case DB_llog_blkseq:
+            return "llog_blkseq";
+        case DB_llog_rowlocks_log_bench:
+            return "llog_rowlocks_log_bench";
+        case DB_llog_commit_log_bench:
+            return "llog_commit_log_bench";
+        default:
+            return "???";
+    }
+}
 
 
 /*
@@ -1039,17 +1287,18 @@ done:
  *	(respectively).
  *
  * PUBLIC: int __rep_process_message __P((DB_ENV *, DBT *, DBT *, char**,
- * PUBLIC:	 DB_LSN *, uint32_t *,int));
+ * PUBLIC:	 DB_LSN *, uint32_t *,int,int));
  */
 
 int
-__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
+__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online, oob)
 	DB_ENV *dbenv;
 	DBT *control, *rec;
 	char **eidp;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 	int online;
+    int oob;
 {
 	int fromline = 0;
 	DB_LOG *dblp;
@@ -1065,7 +1314,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	REP_GEN_VOTE_INFO *vig;
 	u_int32_t bytes, egen, committed_gen, flags, sendflags, gen, gbytes, rectype, type;
 	unsigned long long bytes_sent;
-	int check_limit, cmp, done, do_req, rc, starttime, endtime, tottime;
+	int check_limit, cmp, done, do_req, rc=0, starttime, endtime, tottime;
 	int match, old, recovering, ret, t_ret, sendtime;
 	time_t savetime;
 #if defined INSTRUMENT_REP_APPLY
@@ -1109,8 +1358,26 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	lp = dblp->reginfo.primary;
 	rp = (REP_CONTROL *)control->data;
 
+    // log records are still swapped, but the control record isn't
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
+
+#if 0
+	printf("-> %u:%u %s oob %d gen %d flags %x sz %d", rp->lsn.file, rp->lsn.offset, berkmsgtype(rp->rectype), oob, rp->gen, rp->flags, rec ? (int) rec->size : 0);
+	if (rp->rectype == REP_LOG || rp->rectype == REP_LOG_MORE) {
+		u_int32_t type;
+		if (rec->size < sizeof(u_int32_t))
+			printf(" [ small record? sz %d ]", rec->size);
+		else {
+            LOGCOPY_32(&type, rec->data);
+			if (logrectype(type)[0] == '?')
+				printf(" [ type %d ]", type);
+			else
+				printf(" [ %s ]", logrectype(type));
+		}
+	}
+	printf("\n");
+#endif
 
 	if (gbl_verbose_master_req) {
 		switch (rp->rectype) {
@@ -1270,6 +1537,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 #endif
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		} else if (rp->rectype != REP_NEWMASTER) {
+            printf("huh? lsn %u:%u got gen %d my gen %d\n", rp->lsn.file, rp->lsn.offset, rp->gen, gen);
 			send_master_req(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
@@ -1289,6 +1557,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 	 * NEW* and ALIVE_REQ.
 	 */
 	if (recovering) {
+        // printf("recovering while got %u:%u\n", rp->lsn.file, rp->lsn.offset);
 		switch (rp->rectype) {
 		case REP_VERIFY:
 			MUTEX_LOCK(dbenv, db_rep->db_mutexp);
@@ -1424,6 +1693,7 @@ skip:				/*
 		bytes_sent = 0;
 		starttime = comdb2_time_epochms();
 		sendtime = 0;
+        printf(">> got REP_ALL_REQ for %u:%u from %s\n", rp->lsn.file, rp->lsn.offset, *eidp);
 
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		gbytes = rep->gbytes;
@@ -1594,10 +1864,13 @@ more:
 					goto errlock;
 			} else {
 				fromline = __LINE__;
-				ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
-								commit_gen, 0);
+                if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+								commit_gen, 0, /* HERE */oob)) != 0) {
+					goto errlock;
+                }
 			}
 		} else {
+            printf("in election tally for %u:%u\n", rp->lsn.file, rp->lsn.offset);
 			send_master_req(dbenv, __func__, __LINE__);
 			fromline = __LINE__;
 			goto errlock;
@@ -1623,7 +1896,7 @@ more:
 			if (master == db_eid_invalid)
 				ret = 0;
 			else if (send_rep_all_req(dbenv, master, &lsn, DB_REP_NODROP,
-						__func__, __LINE__) != 0) {
+                                      __func__, __LINE__, 0) != 0) {
 				if (gbl_verbose_fills) {
 					logmsg(LOGMSG_USER, "%s line %d failed continue REP_ALL_REQ"
 							" lsn %d:%d\n", __func__, __LINE__, lsn.file,
@@ -1923,7 +2196,7 @@ more:
 	case REP_NEWFILE:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
-		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, 0);
+		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, 0, 0);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWMASTER:
@@ -2954,13 +3227,14 @@ __thread int disable_random_deadlocks = 0;
  * process and manage incoming log records.
  */
 static int
-__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
+__rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 	int decoupled;
+    int oob;
 {
 	__dbreg_register_args dbreg_args;
 	__txn_ckp_args *ckp_args = NULL;
@@ -3064,6 +3338,18 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	lp = dblp->reginfo.primary;
 	cmp = log_compare(&rp->lsn, &lp->ready_lsn);
 
+    if (cmp == 0) {
+        fprintf(stderr, "got ready_lsn %u:%u waiting_lsn %u:%u\n", lp->ready_lsn.file, lp->ready_lsn.offset, lp->waiting_lsn.file, lp->waiting_lsn.offset);
+    }
+#if 0
+    int now = time(NULL);
+    static int last = 0;
+    if (cmp)  {
+        printf("ready_lsn %u:%u got %u:%u cmp %d oob %d\n", lp->ready_lsn.file, lp->ready_lsn.offset, rp->lsn.file, rp->lsn.offset, cmp, oob);
+        last = now;
+    }
+#endif
+
 	/*
 	 * fprintf(stderr, "Rep log file %s line %d for %d:%d ready_lsn is %d:%d cmp=%d\n", 
 	 * __FILE__, __LINE__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file, 
@@ -3102,6 +3388,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	}
 
 	if (cmp == 0) {
+        // printf("got expected at %u:%u\n", rp->lsn.file, rp->lsn.offset);
 		/* We got the log record that we are expecting. */
 		if (rp->rectype == REP_NEWFILE) {
 
@@ -3124,7 +3411,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 				max_lsn = rp->lsn;
 			}
 
-			LOGCOPY_32(&rectype, rec->data);
+            LOGCOPY_32(&rectype, rec->data);
 			normalize_rectype(&rectype);
 
 			/* 
@@ -3134,6 +3421,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 			 */
 
 			ret = __log_rep_put(dbenv, &rp->lsn, rec);
+            printf("__log_rep_put %u:%u rc %d\n", rp->lsn.file, rp->lsn.offset, ret);
 			if (ret == 0) {
 				/*
 				 * We may miscount if we race, since we
@@ -3515,53 +3803,56 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 
 		if (do_req) {
-			/* Request the LSN we are still waiting for. */
-			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-			eid = db_rep->region->master_id;
+            if (!oob) {
 
-			/*
-			 * If the master_id is invalid, this means that since
-			 * the last record was sent, somebody declared an
-			 * election and we may not have a master to request
-			 * things of.
-			 *
-			 * This is not an error;  when we find a new master,
-			 * we'll re-negotiate where the end of the log is and
-			 * try to to bring ourselves up to date again anyway.
-			 */
-			if (eid != db_eid_invalid) {
-				rep->stat.st_log_requested++;
-				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+                /* Request the LSN we are still waiting for. */
+                MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+                eid = db_rep->region->master_id;
 
-				if (max_lsn_dbtp) {
-					LOGCOPY_TOLSN(&tmp_lsn,
-						max_lsn_dbtp->data);
-					max_lsn_dbtp->data = &tmp_lsn;
-				}
+                /*
+                 * If the master_id is invalid, this means that since
+                 * the last record was sent, somebody declared an
+                 * election and we may not have a master to request
+                 * things of.
+                 *
+                 * This is not an error;  when we find a new master,
+                 * we'll re-negotiate where the end of the log is and
+                 * try to to bring ourselves up to date again anyway.
+                 */
+                if (eid != db_eid_invalid) {
+                    rep->stat.st_log_requested++;
+                    MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-				/*
-				 * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
-				 * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
-				 */
-				if (!gbl_decoupled_logputs) {
-					if ((rc = __rep_send_message(dbenv, eid,
-								REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
-								NULL)) == 0) {
-						if (gbl_verbose_fills) {
-							logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
-									"for %d:%d\n", __func__, __LINE__, 
-									next_lsn.file, next_lsn.offset);
-						}
-					} else if (gbl_verbose_fills) {
-						logmsg(LOGMSG_USER, "%s line %d failed REP_LOG_REQ "
-								"for %d:%d, %d\n", __func__, __LINE__, 
-								next_lsn.file, next_lsn.offset, rc);
-					}
-				}
-			} else {
-				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-				send_master_req(dbenv, __func__, __LINE__);
-			}
+                    if (max_lsn_dbtp) {
+                        LOGCOPY_TOLSN(&tmp_lsn,
+                                max_lsn_dbtp->data);
+                        max_lsn_dbtp->data = &tmp_lsn;
+                    }
+
+                    /*
+                     * fprintf(stderr, "Requesting file %s line %d lsn %d:%d\n", 
+                     * __FILE__, __LINE__, next_lsn.file, next_lsn.offset);
+                     */
+                    if (!gbl_decoupled_logputs) {
+                        if ((rc = __rep_send_message(dbenv, eid,
+                                        REP_LOG_REQ, &next_lsn, max_lsn_dbtp, 0,
+                                        NULL)) == 0) {
+                            if (gbl_verbose_fills) {
+                                logmsg(LOGMSG_USER, "%s line %d good REP_LOG_REQ "
+                                        "for %d:%d\n", __func__, __LINE__, 
+                                        next_lsn.file, next_lsn.offset);
+                            }
+                        } else if (gbl_verbose_fills) {
+                            logmsg(LOGMSG_USER, "%s line %d failed REP_LOG_REQ "
+                                    "for %d:%d, %d\n", __func__, __LINE__, 
+                                    next_lsn.file, next_lsn.offset, rc);
+                        }
+                    }
+                } else {
+                    MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+                    send_master_req(dbenv, __func__, __LINE__);
+                }
+            }
 		}
 
 		/*
@@ -3867,13 +4158,14 @@ int gbl_time_rep_apply = 0;
 static pthread_mutex_t apply_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static int
-__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
+__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 	DB_ENV *dbenv;
 	REP_CONTROL *rp;
 	DBT *rec;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 	int decoupled;
+    int oob;
 {
 	static unsigned long long rep_apply_count = 0;
 	static unsigned long long rep_apply_usc = 0;
@@ -3889,7 +4181,7 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 
 	Pthread_mutex_lock(&apply_lk);
 	getbbtime(&start);
-	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);
+	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob);
 	getbbtime(&end);
 	Pthread_mutex_unlock(&apply_lk);
 	usecs = diff_bbtime(&end, &start);
@@ -3937,7 +4229,7 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 
 	/* call with decoupled = 2 to differentiate from true master */
 	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp,
-			      (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2);
+			      (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2, 0);
 
 	if (ret == 0 || ret == DB_REP_ISPERM) {
 		bdb_set_seqnum(dbenv->app_private);
@@ -8406,7 +8698,7 @@ finish:ZERO_LSN(lp->waiting_lsn);
 		if (undid_schema_change && !online && dbenv->truncate_sc_callback)
 			dbenv->truncate_sc_callback(dbenv, &trunclsn);
 		if (send_rep_all_req(dbenv, master, &rp->lsn, DB_REP_NODROP,
-					__func__, __LINE__) == 0) {
+                             __func__, __LINE__, 1) == 0) {
 			last_fill = comdb2_time_epochms();
 			if (gbl_verbose_fills) {
 				logmsg(LOGMSG_USER, "%s line %d successful REP_ALL_REQ for "
@@ -8478,3 +8770,100 @@ __rep_inflight_txns_older_than_lsn(DB_ENV *dbenv, DB_LSN *lsn)
  * initialized in db, early in main.  It doesn't really belong in any one place. */
 char *db_eid_broadcast = NULL;
 char *db_eid_invalid = NULL;
+
+
+// PUBLIC: int __apply_log_file __P(( DB_ENV *dbenv, int gen, char *master, uint32_t lognum, uint8_t *log, uint32_t size, DB_LSN *last_lsn));
+int 
+__apply_log_file(DB_ENV *dbenv, int gen, char *master, uint32_t lognum, uint8_t *log, uint32_t size, DB_LSN *last_lsn) {
+    uint32_t hdrsize;
+    HDR *hdrp;
+    HDR hdr;
+    int is_hmac;
+    uint32_t off = 28;
+	DB_LOG *dblp;
+	LOG *lp;
+
+    dblp = dbenv->lg_handle;
+    lp = dblp->reginfo.primary;
+
+    if (CRYPTO_ON(dbenv)) {
+        hdrsize = HDR_CRYPTO_SZ;
+        is_hmac = 1;
+    } else {
+		hdrsize = HDR_NORMAL_SZ;
+		is_hmac = 0;
+	}
+    REP_CONTROL rp;
+
+    DBT control = { .data = &rp, .size = sizeof(rp) };
+    DBT rec = {0};
+    uint32_t commit_gen;
+    DB_LSN ret_lsn;
+    int rc = 0;
+
+    if (lognum != 1) {
+        rp.lsn.file = last_lsn->file;
+        rp.lsn.offset = last_lsn->offset;
+        rp.gen = gen;
+        rp.flags = 0;
+        rp.gen = gen;
+        rp.rep_version = DB_REPVERSION;
+        rp.log_version = DB_LOGVERSION;
+        rp.rectype = REP_NEWFILE;
+        __rep_control_swap(&rp);
+        dbenv->rep_process_message(dbenv, &control, &rec, &master, &ret_lsn, &commit_gen, 0, 1);
+        printf(">>>> newfile %u\n", last_lsn->file);
+    }
+
+    printf("%s: log %u dbenv %p lp %p lp->lsn %u:%u lp->ready_lsn %u:%u lp->waiting_lsn %u:%u\n", __func__, lognum, dbenv, lp, lp->lsn.file, lp->lsn.offset, lp->ready_lsn.file, lp->ready_lsn.offset, lp->waiting_lsn.file, lp->waiting_lsn.offset);
+    do {
+        rp.lsn.file = lognum;
+        rp.lsn.offset = off;
+        rp.gen = gen;
+        rp.flags = 0;
+        rp.gen = gen;
+        rp.rep_version = DB_REPVERSION;
+        rp.log_version = DB_LOGVERSION;
+        rp.rectype = REP_LOG;
+        __rep_control_swap(&rp);
+
+        hdrp = (HDR *) ((uint8_t*) log + off);
+        memcpy(&hdr, hdrp, hdrsize);
+
+        control.size = sizeof(rp);
+        rec.data = (char*) hdrp + hdrsize;
+
+        u_int32_t rectype;
+        LOGCOPY_32(&rectype, rec.data);
+        if (is_commit(rectype))
+            rp.flags |= DB_LOG_PERM;
+
+        // swap our copy so we can figure out the size
+        if (LOG_SWAPPED())
+            __log_hdrswap(&hdr, is_hmac);
+        rec.size = hdr.len;
+
+        DB_LSN ready = lp->ready_lsn;
+        DB_LSN current_lsn;
+        current_lsn.file = lognum;
+        current_lsn.offset = off;
+        rc = dbenv->rep_process_message(dbenv, &control, &rec, &master, &ret_lsn, &commit_gen, 0, 1);
+        if (rc) {
+            printf("rep_process_message lsn %u:%u %d\n", lognum, off, rc);
+            return rc;
+        }
+        if (!IS_ZERO_LSN(lp->ready_lsn) && log_compare(&lp->ready_lsn, &ready) == 0 && log_compare(&current_lsn, &lp->ready_lsn) >= 0) {
+            printf("ready_lsn not updated? was %u:%u, while applying %u:%u\n", ready.file, ready.offset, lognum, off);
+            sleep(1);
+        }
+
+        last_lsn->file = lognum;
+        last_lsn->offset = off;
+
+        off += hdr.len;
+    } while(off < size);
+
+    return 0;
+}
+
+

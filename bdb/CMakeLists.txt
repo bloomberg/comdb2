@@ -54,7 +54,7 @@ add_library(bdb
   tranread.c
   upd.c
   util.c
-)
+  bdb_catchup.c)
 
 set(module bdb)
 set(MODULE BDB)

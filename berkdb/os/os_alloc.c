@@ -258,7 +258,7 @@ __os_malloc(dbenv, size, storep)
 		p = DB_GLOBAL(j_malloc)(size);
 	else if (dbenv != NULL && dbenv->use_sys_malloc)
         p = malloc(size);
-	else if (dbenv != NULL && size > dbenv->bmaszthresh)
+	else if (dbenv != NULL && dbenv->bma && size > dbenv->bmaszthresh)
 		p = comdb2_bmalloc(dbenv->bma, size);
 	else
 		p = comdb2_malloc_berkdb(size);

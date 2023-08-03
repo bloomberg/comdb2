@@ -100,6 +100,10 @@ static inline int is_logput(int type) {
 	}
 }
 
+
+
+extern const char* berkmsgtype(int type);
+
 /*
  * __rep_send_message --
  *	This is a wrapper for sending a message.  It takes care of constructing
@@ -236,6 +240,8 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	 * actual LSN so that they can coordinate with permanent records from
 	 * the client if they want to.
 	 */
+    printf("<- %u:%u %s %s gen %d flags %x\n", cntrl.lsn.file, cntrl.lsn.offset, eid, berkmsgtype(cntrl.rectype), cntrl.gen, cntrl.flags);
+
 
 	if (LOG_SWAPPED())
 		__rep_control_swap(&cntrl);
@@ -407,7 +413,7 @@ __rep_set_gen(dbenv, func, line, gen)
 	egen = rep->egen;
 	if (rep->egen <= gen)
 		egen = gen + 1;
-	logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
+	fprintf(stderr, ">>>>>>> %s line %d setting rep->gen from %d to %d, egen from %d to %d <<<<<< \n",
 			func, line, rep->gen, gen, rep->egen, egen);
 	rep->gen = gen;
 	rep->egen = egen;
@@ -491,8 +497,7 @@ int gbl_abort_on_incorrect_upgrade;
 extern int last_fill;
 extern int gbl_decoupled_logputs;
 
-int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
-					 const char *func, int line);
+int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line, int do_initial_catchup);
 
 int
 __rep_new_master(dbenv, cntrl, eid)
@@ -593,8 +598,8 @@ __rep_new_master(dbenv, cntrl, eid)
 		} else {
 			/* Let the apply-thread make this request */
 			if (log_compare(&lsn, &cntrl->lsn) < 0 && !gbl_decoupled_logputs) {
-				if (send_rep_all_req(dbenv, eid, &lsn, DB_REP_NODROP|DB_REP_NOBUFFER,
-					__func__, __LINE__) == 0) {
+				if (send_rep_all_req(dbenv, eid, &lsn, DB_REP_NODROP | DB_REP_NOBUFFER,
+                                     __func__, __LINE__, 0) == 0) {
 					if (gbl_verbose_fills) {
 						logmsg(LOGMSG_USER, "%s line %d sending REP_ALL_REQ "
 								"for %d:%d\n", __func__, __LINE__, lsn.file,
@@ -643,7 +648,7 @@ empty:		MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 			lp->wait_recs = rep->max_gap;
 			MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 			if (send_rep_all_req(dbenv, rep->master_id, &lsn, DB_REP_NODROP,
-				__func__, __LINE__) == 0) {
+                                 __func__, __LINE__, 0) == 0) {
 				last_fill = comdb2_time_epochms();
 			}
 		} else

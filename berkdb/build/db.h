@@ -2571,7 +2571,7 @@ struct __db_env {
 	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, int *, char **));
 	int  (*rep_flush) __P((DB_ENV *));
 	int  (*rep_process_message) __P((DB_ENV *, DBT *, DBT *,
-		char **, DB_LSN *, uint32_t *, int));
+		char **, DB_LSN *, uint32_t *, int, int));
 	int  (*rep_verify_will_recover) __P((DB_ENV *, DBT *, DBT *));
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
@@ -2813,6 +2813,9 @@ struct __db_env {
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 
+    void (*set_signal_catchup) __P((DB_ENV *, void (*)(DB_ENV *, DB_LSN *lsnp, char *master)));
+    void (*signal_catchup_callback) __P((DB_ENV *, DB_LSN *lsnp, char *master));
+
 	pthread_mutex_t utxnid_lock;
 	u_int64_t next_utxnid;
 
@@ -2838,6 +2841,7 @@ struct __txn_commit_map {
 	pthread_mutex_t txmap_mutexp;
 	hash_t *transactions;
 	hash_t *logfile_lists;
+
 };
 
 #ifndef DB_DBM_HSEARCH

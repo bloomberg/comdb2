@@ -94,6 +94,7 @@ int systblTransactionStateInit(sqlite3 *db);
 int systblMemstatsInit(sqlite3 *db);
 int systblStacks(sqlite3 *db);
 int systblPreparedInit(sqlite3 *db);
+int systblLogfilesInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

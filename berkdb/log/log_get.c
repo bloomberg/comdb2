@@ -26,6 +26,7 @@ static const char revid[] = "$Id: log_get.c,v 11.98 2003/09/13 19:20:38 bostic E
 #include "dbinc/hash.h"
 #include <epochlib.h>
 #include <locks_wrap.h>
+#include "cheapstack.h"
 
 typedef enum { L_ALREADY, L_ACQUIRED, L_NONE } RLOCK;
 
@@ -1610,6 +1611,7 @@ err:	if (!F_ISSET(logc, DB_LOG_SILENT_ERR))
 		__db_err(dbenv,
 	    "DB_LOGC->get: LSN %lu/%lu: hdr=%p invalid log record header",
 		    (u_long)lsn->file, (u_long)lsn->offset, hdr);
+        cheap_stack_trace();
 	return (EIO);
 }
 
