@@ -5768,7 +5768,6 @@ static int start_schema_change_tran_wrapper(const char *tblname,
             /* fields not cloned */
             new_sc->iq = sc->iq;
             new_sc->tran = sc->tran;
-
             /* update the new sc */
             arg->s = new_sc;
             iq->sc = new_sc;
@@ -5908,6 +5907,33 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 
 static struct schema_change_type* _create_logical_cron_systable(const char *tblname);
 
+static int mod_sc_partition(void *obj, void *arg) {
+    mod_shard_t *shard = (mod_shard_t *)obj;
+    struct schema_change_type *sc = (struct schema_change_type *)arg;
+    struct ireq *iq = sc->iq;
+    struct schema_change_type *new_sc = clone_schemachange_type(sc);
+    int rc = 0;
+    new_sc->iq = sc->iq;
+    new_sc->tran = sc->tran;
+    iq->sc = new_sc; /* We won't lose iq->sc by doing this.
+                        we've kept track of it in iq->sc_pending
+                        which is set to sc_next below*/
+    /* copy shard name */
+    strncpy0(iq->sc->tablename, mod_shard_get_dbname(shard), sizeof(iq->sc->tablename));
+
+    logmsg(LOGMSG_USER, "RUNNING SC TRAN FOR TABLE %s\n", sc->tablename);
+    rc = start_schema_change_tran(iq, NULL);
+    if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+        iq->sc->preempted == SC_ACTION_RESUME ||
+        iq->sc->kind == SC_ALTERTABLE_PENDING) {
+        iq->sc = NULL;
+    } else {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+    }
+    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
 static int _process_single_table_sc_mod_partitioning(struct ireq *iq) 
 {
     struct schema_change_type *sc = iq->sc;
@@ -5939,8 +5965,11 @@ static int _process_single_table_sc_mod_partitioning(struct ireq *iq)
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
-        iq->osql_flags |= OSQL_FLAGS_SCDONE;
     }
+
+    /* Schemachange the individual partitions*/
+    rc = hash_for(mod_view_get_shards(sc->newshard), mod_sc_partition, iq->sc);
+    iq->osql_flags |= OSQL_FLAGS_SCDONE;
     return rc;
 }
 
