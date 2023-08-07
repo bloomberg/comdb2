@@ -2445,5 +2445,12 @@ REGISTER_TUNABLE("unexpected_last_type_abort",
 REGISTER_TUNABLE("pstack_self",
                  "Dump stack traces on certain slow events.",
                  TUNABLE_BOOLEAN, &gbl_pstack_self, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("noleader_retry_duration_ms",
+                 "The amount of time in milliseconds that a replicant retries if there isn't a leader. (Default: 50,000)",
+                 TUNABLE_INTEGER, &gbl_noleader_retry_duration_ms, INTERNAL, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("noleader_retry_poll_ms",
+                 "Wait this long before retrying on no-leader. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_noleader_retry_poll_ms, INTERNAL, NULL,
+                 NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

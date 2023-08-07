@@ -62,6 +62,8 @@ extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_allow_bplog_restarts = 600;
 int gbl_master_retry_poll_ms = 100;
+int gbl_noleader_retry_duration_ms = 50 * 1000; /* wait up to 50 seconds for a new leader */
+int gbl_noleader_retry_poll_ms = 10;
 
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype);
@@ -225,9 +227,9 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
     osqlstate_t *osql = &clnt->osql;
     int flags = 0;
     int rc = 0;
-    const int poll_ms = 10;
+    const int poll_ms = gbl_noleader_retry_poll_ms;
     int retries = 0;
-    const int max_retries = (50 * 1000) / poll_ms; /* wait up to 50 seconds for a new master */
+    const int max_retries = gbl_noleader_retry_duration_ms / poll_ms;
     int keep_rqid = start_flags & OSQL_START_KEEP_RQID;
 
     /* new id */
@@ -330,9 +332,11 @@ retry:
     if (rc) {
         sql_debug_logf(
             clnt, __func__, __LINE__,
-            "Tried %d times and failed rc %d returning SQLITE_BUSY\n", retries,
+            "Tried %d times and failed rc %d returning SQLITE_ABORT\n", retries,
             rc);
-        rc = SQLITE_BUSY;
+        errstat_set_rc(&osql->xerr, ERR_NOMASTER);
+        errstat_set_str(&osql->xerr, "No leader available");
+        rc = SQLITE_ABORT;
     }
 
     if (rc == 0) {
@@ -930,6 +934,8 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                            "osql_sock_start returns %d\n", rc);
             logmsg(LOGMSG_ERROR, "osql_sock_start error rc=%d, retries=%d\n",
                    rc, retries);
+            if (rc == SQLITE_ABORT)
+                break;
             continue;
         }
 
