@@ -12,7 +12,7 @@ select * from t1 where ymint < dsint order by ymint
 select * from t1 where ymint > dsint order by ymint
 select cast (dsint as REAL) from t1 order by dsint
 select cast (dsint as INT) from t1 order by dsint
-select cast (dsint as STRING) from t1 order by dsint
+select cast (dsint as TEXT) from t1 order by dsint
 select cast (ymint as REAL) from t1 order by ymint
 select cast (ymint as INT) from t1 order by ymint
-select cast (ymint as STRING) from t1 order by ymint
+select cast (ymint as TEXT) from t1 order by ymint
