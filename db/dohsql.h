@@ -21,6 +21,7 @@ limitations under the License.
 
 struct params_info {
     struct sqlclntstate *clnt;
+    hash_t *h; /* hash table to dedup bound parameters */
     int nparams;
     struct param_data *params;
 };

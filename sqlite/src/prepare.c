@@ -666,7 +666,8 @@ int sqlite3SchemaToIndex(sqlite3 *db, Schema *pSchema){
 void sqlite3ParserReset(Parse *pParse){
   sqlite3 *db = pParse->db;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( pParse->ast ) ast_destroy(&pParse->ast, db);
+  /* Done parsing. Mark the AST ready. */
+  if( db->ast ) ast_make_ready(db->ast);
   if( pParse->azSrcListOnly ){
     int i;
     for(i=0; i<pParse->nSrcListOnly; i++){
