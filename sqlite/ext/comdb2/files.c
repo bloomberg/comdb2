@@ -45,8 +45,6 @@ extern int patternCompare(const u8*,const u8*,const struct compareInfo*,u32);
 extern struct dbenv *thedb;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 
-static struct log_delete_state log_delete_state;
-
 /* Column numbers */
 enum {
     FILES_COLUMN_FILENAME,
@@ -96,16 +94,17 @@ typedef struct file_entry {
 } file_entry_t;
 
 typedef struct {
-    sqlite3_vtab_cursor base;
-    sqlite3_int64       rowid;
-    file_entry_t        *entries;
-    size_t              nentries;
-    off_t               content_offset;
-    size_t              content_size;
-    size_t              chunk_size;
-    int                 archive_fmt;
-    int                 compr_algo;
-    char                *file_pattern;
+    sqlite3_vtab_cursor     base;
+    sqlite3_int64           rowid;
+    file_entry_t            *entries;
+    size_t                  nentries;
+    off_t                   content_offset;
+    size_t                  content_size;
+    size_t                  chunk_size;
+    int                     archive_fmt;
+    int                     compr_algo;
+    char                    *file_pattern;
+    struct log_delete_state log_delete_state;
 } systbl_files_cursor;
 
 static int get_archive_format(const char *fmt)
@@ -532,8 +531,8 @@ static int filesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 
     *ppCursor = &pCur->base;
 
-    log_delete_state.filenum = 0;
-    log_delete_add_state(thedb, &log_delete_state);
+    pCur->log_delete_state.filenum = 0;
+    log_delete_add_state(thedb, &(pCur->log_delete_state));
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
     logmsg(LOGMSG_INFO, "disabling log file deletion\n");
 
@@ -546,12 +545,13 @@ static int filesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 
 static int filesClose(sqlite3_vtab_cursor *cur)
 {
+    systbl_files_cursor *pCur = (systbl_files_cursor *)cur;
+
     logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
-    log_delete_rem_state(thedb, &log_delete_state);
+    log_delete_rem_state(thedb, &(pCur->log_delete_state));
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
     backend_update_sync(thedb);
 
-    systbl_files_cursor *pCur = (systbl_files_cursor *)cur;
     release_files(pCur->entries, pCur->nentries);
     sqlite3_free(pCur);
     return SQLITE_OK;
