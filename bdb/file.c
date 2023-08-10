@@ -2293,7 +2293,8 @@ static void set_dbenv_stuff(DB_ENV *dbenv, bdb_state_type *bdb_state)
         exit(1);
     }
 
-    if (bdb_state->attr->do_alt_catchup)
+    extern int gbl_do_alt_catchup;
+    if (gbl_do_alt_catchup)
         dbenv->set_signal_catchup(dbenv, bdb_try_catchup);
 }
 

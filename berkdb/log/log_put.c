@@ -2274,8 +2274,6 @@ __log_rep_put(dbenv, lsnp, rec)
 	LOG *lp;
 	int need_free, ret;
 
-    printf("%s %u:%u\n", __func__, lsnp->file, lsnp->offset);
-
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
 
@@ -2389,7 +2387,6 @@ err:
 	R_UNLOCK(dbenv, &dblp->reginfo);
 	if (need_free)
 		__os_free(dbenv, t.data);
-    printf("ready_lsn %u:%u ret %d\n", lp->ready_lsn.file, lp->ready_lsn.offset, ret);
 	return (ret);
 }
 

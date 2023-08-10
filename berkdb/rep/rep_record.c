@@ -1292,6 +1292,8 @@ const char *logrectype(u_int32_t type) {
  * PUBLIC:	 DB_LSN *, uint32_t *,int,int));
  */
 
+int gbl_do_alt_catchup = 0;
+
 int
 __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online, oob)
 	DB_ENV *dbenv;
@@ -1363,6 +1365,11 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online, o
     // log records are still swapped, but the control record isn't
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
+
+    extern int gbl_do_alt_catchup;
+    if (rp->rectype == REP_LOG && gbl_do_alt_catchup) {
+        return 0;
+    }
 
 #if 0
 	printf("-> %u:%u %s oob %d gen %d flags %x sz %d", rp->lsn.file, rp->lsn.offset, berkmsgtype(rp->rectype), oob, rp->gen, rp->flags, rec ? (int) rec->size : 0);
@@ -3340,9 +3347,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 	lp = dblp->reginfo.primary;
 	cmp = log_compare(&rp->lsn, &lp->ready_lsn);
 
-    if (cmp == 0) {
-        fprintf(stderr, "got ready_lsn %u:%u waiting_lsn %u:%u\n", lp->ready_lsn.file, lp->ready_lsn.offset, lp->waiting_lsn.file, lp->waiting_lsn.offset);
-    }
 #if 0
     int now = time(NULL);
     static int last = 0;
@@ -3423,7 +3427,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled, oob)
 			 */
 
 			ret = __log_rep_put(dbenv, &rp->lsn, rec);
-            printf("__log_rep_put %u:%u rc %d\n", rp->lsn.file, rp->lsn.offset, ret);
 			if (ret == 0) {
 				/*
 				 * We may miscount if we race, since we
@@ -8803,6 +8806,7 @@ __apply_log_file(DB_ENV *dbenv, int gen, char *master, uint32_t lognum, uint8_t 
     DB_LSN ret_lsn;
     int rc = 0;
 
+#if 0
     if (lognum != 1) {
         rp.lsn.file = last_lsn->file;
         rp.lsn.offset = last_lsn->offset;
@@ -8816,6 +8820,7 @@ __apply_log_file(DB_ENV *dbenv, int gen, char *master, uint32_t lognum, uint8_t 
         dbenv->rep_process_message(dbenv, &control, &rec, &master, &ret_lsn, &commit_gen, 0, 1);
         printf(">>>> newfile %u\n", last_lsn->file);
     }
+#endif
 
     printf("%s: log %u dbenv %p lp %p lp->lsn %u:%u lp->ready_lsn %u:%u lp->waiting_lsn %u:%u\n", __func__, lognum, dbenv, lp, lp->lsn.file, lp->lsn.offset, lp->ready_lsn.file, lp->ready_lsn.offset, lp->waiting_lsn.file, lp->waiting_lsn.offset);
     do {

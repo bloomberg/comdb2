@@ -2435,5 +2435,7 @@ REGISTER_TUNABLE("unexpected_last_type_abort",
 REGISTER_TUNABLE("pstack_self",
                  "Dump stack traces on certain slow events.",
                  TUNABLE_BOOLEAN, &gbl_pstack_self, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("do_alt_catchup", "Do an SQL-based initial catchup on startup", TUNABLE_BOOLEAN, &gbl_do_alt_catchup, 0, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

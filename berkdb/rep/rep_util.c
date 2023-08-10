@@ -240,7 +240,7 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 	 * actual LSN so that they can coordinate with permanent records from
 	 * the client if they want to.
 	 */
-    printf("<- %u:%u %s %s gen %d flags %x\n", cntrl.lsn.file, cntrl.lsn.offset, eid, berkmsgtype(cntrl.rectype), cntrl.gen, cntrl.flags);
+    // printf("<- %u:%u %s %s gen %d flags %x\n", cntrl.lsn.file, cntrl.lsn.offset, eid, berkmsgtype(cntrl.rectype), cntrl.gen, cntrl.flags);
 
 
 	if (LOG_SWAPPED())
