@@ -120,7 +120,8 @@ static int authenticateSC(const char *table, Parse *pParse);
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                                   size_t name_len, enum table_chk_flags error_flag,
                                   int check_shard, int *table_exists,
-                                  char **partition_first_shard)
+                                  char **partition_first_shard,
+                                  char **mod_partition_table)
 {
     int rc = 0;
     char *table_name;
@@ -187,7 +188,13 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
 
     char *firstshard = timepart_shard_name(dst, 0, 0, NULL);
-    if(!firstshard) {
+
+    if(is_mod_partition(dst)) {
+        mod_view_t *view;
+        mod_get_inmem_view(dst, &view);
+        if(mod_partition_table)
+            *mod_partition_table = strdup(mod_view_get_tablename(view));
+    } else if(!firstshard) {
         struct dbtable *db = get_dbtable_by_name(dst);
 
         if (table_exists) {
@@ -283,7 +290,8 @@ static inline int copyNoSqlToken(
 static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
                                         Token *t2, enum table_chk_flags error_flag,
                                         int check_shard, int *table_exists,
-                                        char **partition_first_shard)
+                                        char **partition_first_shard,
+                                        char **mod_partition_table)
 {
     int rc;
 
@@ -294,7 +302,7 @@ static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
         return rc;
 
     if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, error_flag, check_shard,
-                              table_exists, partition_first_shard))) {
+                              table_exists, partition_first_shard,mod_partition_table))) {
         return rc;
     }
 
@@ -726,7 +734,7 @@ void comdb2CreateTableCSC2(
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2,
                               (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
-                              &table_exists, NULL))
+                              &table_exists, NULL, NULL))
         goto out;
 
     if (noErr && table_exists) {
@@ -792,7 +800,7 @@ void comdb2AlterTableCSC2(
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, pName1, pName2,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto out;
 
     sc->kind = SC_ALTERTABLE;
@@ -828,7 +836,7 @@ out:
 void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
     char *partition_first_shard = NULL;
-
+    char *mod_partition_table = NULL;
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -852,7 +860,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     Token table = {pName->a[0].zName, strlen(pName->a[0].zName)};
     if (chkAndCopyTableTokens(pParse, sc->tablename, &table, 0,
                               ERROR_ON_TBL_NOT_FOUND, 1, 0,
-                              &partition_first_shard))
+                              &partition_first_shard, &mod_partition_table))
         goto out;
 
     sc->same_schema = 1;
@@ -869,10 +877,15 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
 
     if (partition_first_shard)
         sc->partition.type = PARTITION_REMOVE;
+    // check if table is mod partitioned
+    if (mod_partition_table) {
+        sc->partition.type = PARTITION_REMOVE_MOD;
+    }
 
     tran_type *tran = curtran_gettran();
     int rc = get_csc2_file_tran(partition_first_shard ? partition_first_shard :
-                                sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+                                mod_partition_table? mod_partition_table : sc->tablename, 
+                                -1 , &sc->newcsc2, NULL, tran);
     curtran_puttran(tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: %s schema not found: %s\n", __func__,
@@ -906,7 +919,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto out;
 
     fillTableOption(sc, opt);
@@ -1049,7 +1062,7 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto out;
 
     sc->kind = SC_TRUNCATETABLE;
@@ -1114,7 +1127,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto out;
 
     sc->same_schema = 1;
@@ -1492,7 +1505,7 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     memset(tp->tablename, '\0', MAXTABLELEN);
     if (table &&
         chkAndCopyTableTokens(pParse, tp->tablename, table, 0,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto clean_arg;
 
     tp->partition_name = (char*) malloc(MAXTABLELEN);
@@ -1637,7 +1650,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
             goto err;
 
         if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                                  ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)) {
+                                  ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL)) {
             free(tablename);
             goto err;
         }
@@ -1693,7 +1706,7 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     if (!ancov_f->tablename) goto err;
 
     if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto clean_arg;
 
     ancov_f->newvalue = newscale;
@@ -1746,7 +1759,7 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
     if (!ancov_f->tablename) goto err;
 
     if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto clean_arg;
 
     ancov_f->newvalue = enable;
@@ -1891,7 +1904,7 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
         goto err;
 
     if (chkAndCopyTableTokens(pParse, anthr_f->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         return;
 
     anthr_f->newvalue = newthreshold;
@@ -1952,7 +1965,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     alias_f->name = (char*) malloc(MAXTABLELEN);
 
     if (chkAndCopyTableTokens(pParse, alias_f->name, name, 0,
-                              ERROR_ON_TBL_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_FOUND, 1, 0, NULL, NULL))
         goto clean_arg;
 
     assert (*url->z == '\'' || *url->z == '\"');
@@ -2082,7 +2095,7 @@ void comdb2grant(Parse *pParse, int revoke, int permission, Token *nm,
                 goto clean_arg;
             }
         } else if (chkAndCopyTableTokens(pParse, grant->table, nm, lnm,
-                                         ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)) {
+                                         ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL)) {
             goto clean_arg;
         }
     }
@@ -2407,7 +2420,7 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     char *tablename = (char*) malloc (MAXTABLELEN);
 
     if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage,
@@ -2435,7 +2448,7 @@ void comdb2CreateRangePartition(Parse *pParse, Token *nm, Token *col,
     char tblname[MAXTABLELEN];
 
     if (chkAndCopyTableTokens(pParse, tblname, nm, NULL,
-                              ERROR_ON_TBL_NOT_FOUND, 0, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 0, 0, NULL, NULL))
         return;
 
     shard_range_create(pParse, tblname, col, limits);
@@ -2485,7 +2498,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     char *tablename = (char*) malloc (MAXTABLELEN);
 
     if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold,
@@ -2590,7 +2603,7 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
         goto err;
 
     if (chkAndCopyTableTokens(pParse, tp_retention->timepartname, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto clean_arg;
 
     tp_retention->newvalue = retention;
@@ -2705,7 +2718,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName)
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, pSrcName, NULL,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto out;
 
     comdb2WriteTransaction(pParse);
@@ -4674,7 +4687,7 @@ void comdb2AlterTableStart(
 
     if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2,
                                ERROR_ON_TBL_NOT_FOUND, 1, 0,
-                               &ctx->partition_first_shardname)))
+                               &ctx->partition_first_shardname, NULL)))
         goto cleanup;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
@@ -4830,7 +4843,7 @@ void comdb2CreateTableStart(
 
     if (chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2,
                               (noErr) ? ERROR_IGNORE : ERROR_ON_TBL_FOUND, 1,
-                              &table_exists, NULL))
+                              &table_exists, NULL, NULL))
         goto cleanup;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
@@ -5871,7 +5884,7 @@ void comdb2CreateIndex(
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
                          strlen(ctx->schema->name), ERROR_ON_TBL_NOT_FOUND, 1, 0,
-                         &ctx->partition_first_shardname)))
+                         &ctx->partition_first_shardname, NULL)))
         goto cleanup;
 
     /*
@@ -6559,7 +6572,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         sqlite3Dequote(tbl_name);
 
         if ((chkAndCopyTable(pParse, sc->tablename, tbl_name, strlen(tbl_name),
-                             ERROR_ON_TBL_NOT_FOUND, 1, 0, &ctx->partition_first_shardname)))
+                             ERROR_ON_TBL_NOT_FOUND, 1, 0, &ctx->partition_first_shardname, NULL)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
@@ -6623,7 +6636,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         }
 
         if ((chkAndCopyTable(pParse, sc->tablename, table->tablename,
-                             strlen(table->tablename), ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)))
+                             strlen(table->tablename), ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
@@ -7151,7 +7164,7 @@ void comdb2SchemachangeControl(Parse *pParse, int action, Token *nm, Token *lnm)
     sc->preempted = action;
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL, NULL))
         goto out;
 
     if (authenticateSC(sc->tablename, pParse))
@@ -7640,7 +7653,7 @@ void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database, int alter
     char *partition_first_shardname = NULL;
 
     if (chkAndCopyTableTokens(pParse, partition->u.mergetable.tablename, name, database,
-                              ERROR_ON_TBL_NOT_FOUND, 1, NULL, &partition_first_shardname)) {
+                              ERROR_ON_TBL_NOT_FOUND, 1, NULL, &partition_first_shardname, NULL)) {
         return;                             
     }
 

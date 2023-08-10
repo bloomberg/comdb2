@@ -127,6 +127,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     switch (p->type) {
     case PARTITION_NONE:
     case PARTITION_REMOVE:
+    case PARTITION_REMOVE_MOD:
         return sizeof(p->type);
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL:

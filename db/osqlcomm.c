@@ -5938,19 +5938,30 @@ static int _process_single_table_sc_mod_partitioning(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    assert(sc->partition.type == PARTITION_ADD_MOD);
-
-    /* create a mod based shard */ 
     struct errstat err = {0};
-    sc->newshard = create_mod_view(sc->partition.u.mod.viewname, sc->tablename, sc->partition.u.mod.num_columns,sc->partition.u.mod.columns,sc->partition.u.mod.num_shards, sc->partition.u.mod.keys, sc->partition.u.mod.shards, &err);
-    if (!sc->newshard) {
-        logmsg(LOGMSG_ERROR,
-                   "Failed to create new Mod partition rc %d \"%s\"\n",
-                   err.errval, err.errstr);
-        sc_errf(sc, "Failed to create new Mod partition rc %d \"%s\"",
-                err.errval, err.errstr);
-        rc = ERR_SC;
-        return rc;
+    hash_t *shards = NULL;
+    mod_view_t *view = NULL;
+    assert(sc->partition.type == PARTITION_ADD_MOD || sc->partition.type == PARTITION_REMOVE_MOD);
+
+    if (sc->partition.type == PARTITION_ADD_MOD) {
+        /* create a mod based shard */ 
+        sc->newshard = create_mod_view(sc->partition.u.mod.viewname, sc->tablename, sc->partition.u.mod.num_columns,sc->partition.u.mod.columns,sc->partition.u.mod.num_shards, sc->partition.u.mod.keys, sc->partition.u.mod.shards, &err);
+        if (!sc->newshard) {
+            logmsg(LOGMSG_ERROR,
+                       "Failed to create new Mod partition rc %d \"%s\"\n",
+                       err.errval, err.errstr);
+            sc_errf(sc, "Failed to create new Mod partition rc %d \"%s\"",
+                    err.errval, err.errstr);
+            rc = ERR_SC;
+            return rc;
+        }
+        view = sc->newshard;
+    } else {
+        /* If it's a DROP then copy base table name */
+        /* Also, grab a pointer to the in-mem view structure */
+        mod_get_inmem_view(sc->tablename, &view);
+        sc->newshard = view;
+        strncpy(sc->tablename, mod_view_get_tablename(view), sizeof(sc->tablename));
     }
     /* set publish and unpublish callbacks to create/destroy inmem views */
     sc->publish = partition_publish;
@@ -5967,8 +5978,9 @@ static int _process_single_table_sc_mod_partitioning(struct ireq *iq)
         iq->sc_pending = iq->sc;
     }
 
+    shards = mod_view_get_shards(view); 
     /* Schemachange the individual partitions*/
-    rc = hash_for(mod_view_get_shards(sc->newshard), mod_sc_partition, iq->sc);
+    rc = hash_for(shards, mod_sc_partition, iq->sc);
     iq->osql_flags |= OSQL_FLAGS_SCDONE;
     return rc;
 }
@@ -6237,7 +6249,8 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         } else if (sc->partition.type == PARTITION_ADD_TIMED || 
                 sc->partition.type == PARTITION_ADD_MANUAL) {
             rc = _process_single_table_sc_time_partitioning(iq);
-        } else if (sc->partition.type == PARTITION_ADD_MOD) {
+        } else if (sc->partition.type == PARTITION_ADD_MOD ||
+                  sc->partition.type == PARTITION_REMOVE_MOD) {
             rc = _process_single_table_sc_mod_partitioning(iq);
         }
     } else {

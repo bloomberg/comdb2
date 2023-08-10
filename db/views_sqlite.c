@@ -490,6 +490,13 @@ int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
     return rc;
 }
 
+int mod_views_sqlite_delete_view(mod_view_t *view, sqlite3 *db,
+                            struct errstat *err)
+{
+    return _views_sqlite_del_view(mod_view_get_viewname(view), db, err);
+}
+
+
 int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
                         struct errstat *err)
 {
@@ -504,13 +511,24 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
          view=(mod_view_t *)hash_next(views, &ent, &bkt)) {
         /* check if this exists?*/
         tab = sqlite3FindTableCheckOnly(db, mod_view_get_viewname(view), NULL);
-        if (!tab) {
-            rc = mod_views_sqlite_add_view(view, db, err);
-            if (rc!=VIEW_NOERR) {
-                goto done;
+        if (tab) {
+            /* found view, is it the same version ? */
+            if (mod_view_get_sqlite_view_version(view) != tab->version) {
+                /* older version, destroy current view */
+                rc = mod_views_sqlite_delete_view(view, db, err);
+                if (rc != VIEW_NOERR) {
+                    logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n",
+                            __func__);
+                    goto done;
+                }
+            } else {
+                /* up to date, nothing to do */
+                continue;
             }
-        } else {
-            logmsg(LOGMSG_USER, "View %s already exists\n", mod_view_get_viewname(view));
+        }
+        rc = mod_views_sqlite_add_view(view, db, err);
+        if (rc!=VIEW_NOERR) {
+            goto done;
         }
     }
     rc = VIEW_NOERR;

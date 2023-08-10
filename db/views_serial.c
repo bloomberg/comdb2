@@ -1909,8 +1909,8 @@ int mod_serialize_shard(void *obj, void *arg)
  */
 int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
 {
-    cson_value *rootVal, *arrVal;
-    cson_object *rootObj;
+    cson_value *rootVal = NULL, *arrVal = NULL;
+    cson_object *rootObj = NULL;
     int rc;
 
     rootVal = cson_value_new_object();
@@ -1963,7 +1963,7 @@ int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
         logmsg(LOGMSG_ERROR, "%s cson_output_buffer error. rc: %d\n", __func__, rc);
         goto err;
     } else {
-        *out = strdup((char *)buf.mem);
+        *out = strndup((char *)buf.mem, buf.used);
         *outLen = strlen(*out);
         logmsg(LOGMSG_USER, "The serialized CSON string is %s\n", *out);
     }

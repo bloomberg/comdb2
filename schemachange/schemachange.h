@@ -72,6 +72,7 @@ enum comdb2_partition_type {
     PARTITION_ADD_COL_RANGE = 40,
     PARTITION_ADD_COL_HASH = 60,
     PARTITION_ADD_MOD = 80,
+    PARTITION_REMOVE_MOD = 100,
 };
 struct shard_map_ent {
     int key;

@@ -17,6 +17,7 @@ struct mod_view {
     char **keynames; 
     int num_shards;
     hash_t *shards;
+    int version;
 };
 
 pthread_rwlock_t mod_shard_lk;
@@ -76,6 +77,9 @@ int mod_view_get_num_keys(struct mod_view *view) {
     return view->num_keys;
 }
 
+int mod_view_get_sqlite_view_version(struct mod_view *view) {
+    return view->version;
+}
 hash_t *mod_view_get_shards(struct mod_view *view) {
     return view->shards;
 }
@@ -192,8 +196,67 @@ done:
     return rc;
 }
 
+static int find_inmem_view(hash_t *mod_views, const char *name, mod_view_t **oView){
+    int rc = VIEW_NOERR;
+    Pthread_rwlock_wrlock(&mod_shard_lk);
+    *oView = hash_find_readonly(mod_views, &name);
+    if (!(*oView)) {
+        rc = VIEW_ERR_NOTFOUND;
+        goto done;
+    }
+done:
+    Pthread_rwlock_unlock(&mod_shard_lk);
+    return rc;
+}
+
+unsigned long long mod_shard_get_partition_version(const char *name) {
+    struct dbtable *db = get_dbtable_by_name(name);
+    if (!db) {
+        logmsg(LOGMSG_USER, "Could not find partition %s\n", name);
+        return VIEW_ERR_NOTFOUND;
+    }
+    logmsg(LOGMSG_USER, "RETURNING PARTITION VERSION %lld\n", db->tableversion);
+    return db->tableversion;
+}
+
+int is_mod_partition(const char *name) {
+    struct mod_view *v = NULL;
+    mod_get_inmem_view(name, &v);
+    return v != NULL;
+}
+
+unsigned long long mod_view_get_version(const char *name) {
+    struct mod_view *v = NULL;
+    if (find_inmem_view(thedb->mod_shard_views, name, &v)){
+        logmsg(LOGMSG_USER, "Could not find partition %s\n", name);
+        return VIEW_ERR_NOTFOUND;
+    }
+
+    void *ent;
+    unsigned int bkt;
+    mod_shard_t *shard = (mod_shard_t *)hash_first(mod_view_get_shards(v), &ent, &bkt);
+    return mod_shard_get_partition_version(mod_shard_get_dbname(shard));
+}
+
+int mod_get_inmem_view(const char *name, mod_view_t **oView) {
+    int rc;
+    if (!name) {
+       logmsg(LOGMSG_ERROR, "%s: Trying to retrieve nameless view!\n", __func__);
+       return VIEW_ERR_NOTFOUND;
+    }
+    rc = find_inmem_view(thedb->mod_shard_views, name, oView);
+    if (rc!=VIEW_NOERR){
+        logmsg(LOGMSG_ERROR, "%s: failed to find in-memory view %s. rc: %d\n",
+                __func__, name, rc);
+    }
+    return rc;
+}
+
 int mod_create_inmem_view(mod_view_t *view) {
     int rc;
+    if (!view) {
+        return VIEW_ERR_NOTFOUND;
+    }
     rc = create_inmem_view(thedb->mod_shard_views, view);
     if (rc!=VIEW_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to create in-memory view %s. rc: %d\n",
@@ -204,6 +267,9 @@ int mod_create_inmem_view(mod_view_t *view) {
 
 int mod_destroy_inmem_view(mod_view_t *view) {
     int rc;
+    if (!view) {
+        return VIEW_ERR_NOTFOUND;
+    }
     rc = destroy_inmem_view(thedb->mod_shard_views, view);
     if (rc!=VIEW_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to destroy in-memory view %s. rc: %d\n",
@@ -211,7 +277,18 @@ int mod_destroy_inmem_view(mod_view_t *view) {
     }
     return rc;
 }
-
+int mod_partition_llmeta_erase(void *tran, mod_view_t *view, struct errstat *err) {
+    int rc = 0;
+    const char *view_name = mod_view_get_viewname(view);
+    logmsg(LOGMSG_USER, "Erasing view %s\n", view_name);
+    rc = mod_views_write_view(tran, view_name, NULL, 0);
+    if (rc != VIEW_NOERR) {
+        logmsg(LOGMSG_USER, "Failed to erase llmeta entry for partition %s. rc: %d\n", view_name, rc);
+    }
+    ++gbl_views_gen;
+    view->version = gbl_views_gen;
+    return rc;
+}
 int mod_shard_llmeta_write(void *tran, mod_view_t *view, struct errstat *err) {
     /* 
      * Get serialized view string 
@@ -240,6 +317,9 @@ int mod_shard_llmeta_write(void *tran, mod_view_t *view, struct errstat *err) {
                                "Failed to llmeta save view %s", view->viewname);
         goto done;
     }
+
+    ++gbl_views_gen;
+    view->version = gbl_views_gen;
 
 done:
     if (view_str)
@@ -326,6 +406,19 @@ done:
     return mod_views;
 }
 
+static int mod_update_partition_version(void *arg, void *tran) 
+{
+    struct mod_shard *shard = (struct mod_shard *)arg;
+
+    struct dbtable *db = get_dbtable_by_name(shard->dbname);
+    if (db) {
+        db->tableversion = table_version_select(db, tran);
+    } else {
+        logmsg(LOGMSG_USER, "UNABLE TO LOCATE partition %s\n", shard->dbname);
+        return -1;
+    }
+    return 0;
+}
 
 int mod_views_update_replicant(void *tran, const char *name)
 {
@@ -354,6 +447,7 @@ int mod_views_update_replicant(void *tran, const char *name)
                 xerr.errval, xerr.errstr);
         goto done;
     }
+    hash_for(mod_view_get_shards(view), mod_update_partition_version, tran);
 update_view_hash:
     /* update global mod views hash.
      * - If a view with the given name exists, destroy it, create a new view and add to hash
@@ -385,6 +479,11 @@ update_view_hash:
             logmsg(LOGMSG_ERROR, "%s:%d Failed to create inmem view\n", __func__, __LINE__);
             goto done;
         }
+    }
+
+    ++gbl_views_gen;
+    if (view) {
+        view->version = gbl_views_gen;
     }
     return rc;
 done:
