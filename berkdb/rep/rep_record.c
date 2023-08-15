@@ -2217,9 +2217,9 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		static unsigned long long send_verify_req_count = 0;
 		send_verify_req_count++;
 		if ((now = time(NULL)) > send_verify_req_print) {
-			logmsg(LOGMSG_INFO, "%s line %d: master sending %s count=%llu req-lsn [%d][%d]\n", 
+			logmsg(LOGMSG_INFO, "%s line %d: master sending %s count=%llu req-lsn [%d][%d] host:%s\n",
 					__func__, __LINE__, type == REP_VERIFY ? "REP_VERIFY" : "REP_VERIFY_FAIL", 
-					send_verify_req_count, rp->lsn.file, rp->lsn.offset);
+					send_verify_req_count, rp->lsn.file, rp->lsn.offset, *eidp);
 			send_verify_req_print = now;
 		}
 		(void)__rep_send_message(dbenv, *eidp, type, &rp->lsn, d, 0,
