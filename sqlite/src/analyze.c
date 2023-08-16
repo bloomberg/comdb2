@@ -1841,10 +1841,14 @@ static void decodeIntArray(
     pIndex->noSkipScan = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* assign noSkipScan, only if not foreign table */ 
-    if( pIndex->pTable && pIndex->pTable->iDb==0 ){
-      pIndex->noSkipScan = is_comdb2_index_disableskipscan(
-        pIndex->pTable->zName
-      );
+    if( pIndex->pTable ) {
+      if( pIndex->pTable->iDb==0 ){
+        pIndex->noSkipScan = is_comdb2_index_disableskipscan(
+                pIndex->pTable->zName
+                );
+      } else if( pIndex->pTable->iDb > 1 ){ /* foreign */
+        pIndex->noSkipScan = 1;
+      }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     while( z[0] ){
