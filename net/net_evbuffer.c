@@ -977,7 +977,7 @@ static void check_rd_full(struct event_info *e)
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
-    //hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
+    hprintf("SUSPENDING RD outstanding:%zumb\n", max_bytes / MB(1));
 }
 
 static void check_wr_full(struct event_info *e)
@@ -987,7 +987,7 @@ static void check_wr_full(struct event_info *e)
     size_t outstanding = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
     if (outstanding < max_bytes) return;
     e->wr_full = time(NULL);
-    //hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
+    hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
 }
 
 static void writecb(int fd, short what, void *data)
@@ -1021,7 +1021,7 @@ static void writecb(int fd, short what, void *data)
         if (len == 0) {
             event_del(e->wr_ev);
             if (e->wr_full) {
-                //hprintf("RESUMING WR after:%ds\n", (int)(time(NULL) - e->wr_full));
+                hprintf("RESUMING WR after:%ds\n", (int)(time(NULL) - e->wr_full));
                 e->wr_full = 0;
             }
         }
@@ -1537,7 +1537,7 @@ static void *rd_worker(void *data)
         e->rd_worker_sz = evbuffer_get_length(buf);
         if (e->rd_worker_sz < e->need) {
             if (e->rd_full) {
-                //hprintf("RESUMING RD after:%ds need:%zu\n", (int)(time(NULL) - e->rd_full), e->need);
+                hprintf("RESUMING RD after:%ds\n", (int)(time(NULL) - e->rd_full));
                 e->rd_full = 0;
                 evtimer_once(rd_base, resume_read, e);
             }
