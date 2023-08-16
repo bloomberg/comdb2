@@ -40,7 +40,6 @@
 #include <passfd.h>
 #include <sbuf2.h>
 #include <tcputil.h>
-#include <xstring.h>
 #include <sizeof_helpers.h>
 #include <epochlib.h>
 #include <cdb2_constants.h>
@@ -255,6 +254,36 @@ int portmux_deregister(const char *app, const char *service,
     return rc;
 }
 
+static int strIsEmpty(const char *psz)
+{
+    return (psz) ? '\0' == *psz : 1; /*	A null pointer is also empty.	*/
+}
+
+static const char szWhiteChars[] = " \t\n\r"; /*	Default white chars. */
+static char *strtrail(char *s, const char *trims)
+{
+    char *pTail = s;
+
+    /*	Detect trailing white spaces by default.
+     */
+    if (strIsEmpty(trims))
+        trims = szWhiteChars;
+
+    while (*s) {
+        if (!strchr(trims, *s++))
+            pTail = s;
+    }
+
+    return pTail;
+}
+
+static char *strrtrims(char *s, const char *trims)
+{
+    (*strtrail(s, trims)) = '\0';
+
+    return s;
+}
+
 static int portmux_get_int(const struct in_addr *in, const char *remote_host,
                            const char *app, const char *service,
                            const char *instance, int timeout_ms)
@@ -310,7 +339,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
 
     bool echo_get = PORTMUX_USE_ECHO_GET();
     if (echo_get) {
-        strrtrim(name);
+        strrtrims(name, NULL);
         sbuf2printf(ss, "get /echo %s\n", name);
     } else {
         sbuf2printf(ss, "get %s\n", name);

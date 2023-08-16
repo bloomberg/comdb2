@@ -284,8 +284,7 @@ char *eos(char *line) /* RETURNS END OF STRING */
     return line + strlen(line);
 }
 
-#if 0
-void strupper(char *c)				/* STRING TO UPPER CASE */
+static void strupper(char *c)				/* STRING TO UPPER CASE */
 {
     while (*c) {
         *c=toupper(*c);
@@ -293,16 +292,15 @@ void strupper(char *c)				/* STRING TO UPPER CASE */
     }
 }
 
-void strlower(char *c)				/* STRING TO LOWER CASE */
+static void strlower(char *c)				/* STRING TO LOWER CASE */
 {
     while (*c) {
         *c=tolower(*c);
         c++;
     }
 }
-#endif
 
-char *strcpylower(char *c) /* STRING TO LOWER CASE */
+static char *strcpylower(char *c) /* STRING TO LOWER CASE */
 {
     char *tmp, *c1 = (char *)csc2_malloc(strlen(c) * sizeof(char) + 1);
     strcpy(c1, c);
@@ -314,7 +312,7 @@ char *strcpylower(char *c) /* STRING TO LOWER CASE */
     return c1;
 }
 
-char *strcpyupper(char *c) /* STRING TO UPPER CASE */
+static char *strcpyupper(char *c) /* STRING TO UPPER CASE */
 {
     char *tmp, *c1;
     if (strlen(c) < 1)
@@ -1267,7 +1265,7 @@ void key_piece_add(char *buf,
         return;
     }
 
-    strlower(buf, strlen(buf));
+    strlower(buf);
     process_array_(el, rg, buf, &t, NULL);
     cp = strchr(buf, '(');
     if (cp)
@@ -1344,7 +1342,7 @@ void datakey_piece_add(char *buf) {
     int tidx = 0;
     struct partial_datacopy *temp;
 
-    strlower(buf, strlen(buf));
+    strlower(buf);
     int i = find_symbol(buf, &tidx);
     if (i == -1) { // will error
         return;
@@ -1428,7 +1426,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     } else
         siz = size;
 
-    strlower(name, strlen(name));
+    strlower(name);
 
     switch (typ) {
     case T_UINTEGER2:
@@ -2374,7 +2372,7 @@ void expr_add_pc(char *sym, int op, int num)
         return;
     }
     if (sym)
-        strlower(sym, strlen(sym));
+        strlower(sym);
 
     for (i = 0; i < 6 && el[i] != -1; i++)
         sprintf(eos(arrstr), "[%d]", el[i]);

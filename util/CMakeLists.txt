@@ -57,7 +57,6 @@ set(src
   tohex.c
   utilmisc.c
   walkback.c
-  xstring.c
 )
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
