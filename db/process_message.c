@@ -1118,6 +1118,11 @@ clipper_usage:
             return -1;
         }
 
+        if (ltok >= MAXTABLELEN) {
+            logmsg(LOGMSG_ERROR, "tablename too long. Max : %d\n", MAXTABLELEN);
+            return -1;
+        }
+
         if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "Can't delete files: I am not master\n");
             return -1;
@@ -1457,6 +1462,11 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "reload_ruleset") == 0) {
         char zFileName[PATH_MAX];
         tok = segtok(line, lline, &st, &ltok);
+        if (ltok >= PATH_MAX) {
+            logmsg(LOGMSG_ERROR,"file name too long. Max: %d\n",
+                    PATH_MAX - 1);
+            return -1;
+        }
         if (ltok != 0) {
             tokcpy(tok, ltok, zFileName);
             rc = comdb2_load_ruleset(zFileName, &gbl_ruleset);
@@ -1482,6 +1492,11 @@ clipper_usage:
     else if (tokcmp(tok, ltok, "save_ruleset") == 0) {
         char zFileName[PATH_MAX];
         tok = segtok(line, lline, &st, &ltok);
+        if (ltok >= PATH_MAX) {
+            logmsg(LOGMSG_ERROR,"file name too long. Max: %d\n",
+                    PATH_MAX - 1);
+            return -1;
+        }
         if (ltok != 0) {
             tokcpy(tok, ltok, zFileName);
             rc = comdb2_save_ruleset(zFileName, gbl_ruleset);
@@ -1540,6 +1555,11 @@ clipper_usage:
 
         if (tokcmp(tok, ltok, "set") == 0) {
             tok = segtok(line, lline, &st, &ltok);
+            if (ltok >= MAXTABLELEN) {
+                logmsg(LOGMSG_ERROR,"file name too long. Max: %d\n",
+                        MAXTABLELEN - 1);
+                return -1;
+            }
             tokcpy(tok, ltok, table);
 
             db = get_dbtable_by_name(table);
@@ -2127,6 +2147,10 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             dump_cache_default();
+        } else if (ltok >= PATH_MAX) {
+            logmsg(LOGMSG_ERROR,"file name too long. Max: %d\n",
+                    PATH_MAX - 1);
+            return -1;
         } else {
             tokcpy(tok, ltok, filename);
             tok = segtok(line, lline, &st, &ltok);
@@ -2242,6 +2266,11 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "pushlogs should be followed by an lsn\n");
+            return -1;
+        }
+        if (ltok >= 64) {
+            logmsg(LOGMSG_ERROR,"LSN too long. Max: %d\n",
+                    63);
             return -1;
         }
         tokcpy(tok, ltok, lsn);
@@ -2488,9 +2517,19 @@ clipper_usage:
 
             if (tokcmp(tok, ltok, "password") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"password too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, password);
 
                 rc = bdb_user_password_set(NULL, user, password);
@@ -2503,9 +2542,19 @@ clipper_usage:
                 }
             } else if (tokcmp(tok, ltok, "read") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= MAXTABLELEN) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            MAXTABLELEN-1);
+                    return -1;
+                }
                 tokcpy(tok, ltok, table);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 rc = bdb_tbl_access_read_set(dbenv->bdb_env, NULL, table, user,
@@ -2519,9 +2568,19 @@ clipper_usage:
                 }
             } else if (tokcmp(tok, ltok, "write") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= MAXTABLELEN) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            MAXTABLELEN-1);
+                    return -1;
+                }
                 tokcpy(tok, ltok, table);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 rc = bdb_tbl_access_write_set(dbenv->bdb_env, NULL, table, user,
@@ -2559,9 +2618,19 @@ clipper_usage:
 
             if (tokcmp(tok, ltok, "read") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= MAXTABLELEN) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            MAXTABLELEN-1);
+                    return -1;
+                }
                 tokcpy(tok, ltok, table);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 rc = bdb_tbl_access_read_get(dbenv->bdb_env, NULL, table, user,
@@ -2570,9 +2639,19 @@ clipper_usage:
                         (rc == 0) ? "enabled" : "disabled");
             } else if (tokcmp(tok, ltok, "write") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= MAXTABLELEN) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            MAXTABLELEN-1);
+                    return -1;
+                }
                 tokcpy(tok, ltok, table);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 rc = bdb_tbl_access_write_get(dbenv->bdb_env, NULL, table, user,
@@ -2598,9 +2677,19 @@ clipper_usage:
 
             if (tokcmp(tok, ltok, "read") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= MAXTABLELEN) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            MAXTABLELEN-1);
+                    return -1;
+                }
                 tokcpy(tok, ltok, table);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 rc = bdb_tbl_access_read_delete(dbenv->bdb_env, NULL, table,
@@ -2615,9 +2704,19 @@ clipper_usage:
                 }
             } else if (tokcmp(tok, ltok, "write") == 0) {
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= MAXTABLELEN) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            MAXTABLELEN-1);
+                    return -1;
+                }
                 tokcpy(tok, ltok, table);
 
                 tok = segtok(line, lline, &st, &ltok);
+                if (ltok >= 17) {
+                    logmsg(LOGMSG_ERROR,"user name too long. Max: %d\n",
+                            16);
+                    return -1;
+                }
                 tokcpy(tok, ltok, user);
 
                 rc = bdb_tbl_access_write_delete(dbenv->bdb_env, NULL, table,
@@ -2671,6 +2770,11 @@ clipper_usage:
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "usage: count tablename\n");
+            return -1;
+        }
+        if (ltok >= 100) {
+            logmsg(LOGMSG_ERROR,"DB name too long. Max: %d\n",
+                    99);
             return -1;
         }
         tokcpy(tok, ltok, dbname);
