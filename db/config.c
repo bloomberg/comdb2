@@ -742,6 +742,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
             tok = segtok(line, len, &st, &ltok);
             if (ltok == 0) break;
+            if (ltok >= 50) {
+                logmsg(LOGMSG_ERROR, "suffix name too long. max : %d\n",
+                                    49);
+                return -1;
+            }
             tokcpy(tok, ltok, suffix);
 
             if (net_add_to_subnets(suffix, options->lrlname)) {
@@ -1056,6 +1061,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
 
             /* optional dbnum */
             tok = segtok(line, len, &st, &ltok);
+            if (ltok >= MAXTABLELEN) {
+                logmsg(LOGMSG_ERROR, "dbnum too long. Max %d\n", MAXTABLELEN-1);
+                return -1;
+            }
             tokcpy(tok, ltok, tmpname);
             if (ltok == 0)
                 dbnum = 0;

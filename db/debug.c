@@ -72,13 +72,13 @@ void debug_trap(char *line, int lline)
     tok = segtok(line, lline, &st, &ltok);
     if (tokcmp(tok, ltok, "delsc") == 0) {
         tok = segtok(line, lline, &st, &ltok);
-        if (ltok > MAXTABLELEN || ltok <= 0) {
+        if (ltok >= MAXTABLELEN || ltok <= 0) {
            logmsg(LOGMSG_ERROR, "Invalid table.\n");
             return;
         }
         tokcpy(tok, ltok, table);
         tok = segtok(line, lline, &st, &ltok);
-        if (ltok > MAXTABLELEN || ltok <= 0) {
+        if (ltok >= MAXTABLELEN || ltok <= 0) {
            logmsg(LOGMSG_ERROR, "Invalid tag.\n");
             return;
         }
