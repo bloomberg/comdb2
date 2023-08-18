@@ -199,6 +199,7 @@ extern int gbl_skip_catchup_logic;
 extern int gbl_forbid_incoherent_writes;
 extern int gbl_durable_set_trace;
 extern int gbl_set_seqnum_trace;
+extern int gbl_wait_for_rtcpu_nodes;
 extern int gbl_enque_log_more;
 extern int gbl_trace_repmore_reqs;
 extern int gbl_verbose_repdups;
