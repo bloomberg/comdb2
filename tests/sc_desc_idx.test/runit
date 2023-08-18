@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} -<<'EOF'
+CREATE TABLE t {
+tag ondisk {
+    int a
+}
+keys {
+    "k" = a
+}}
+EOF
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} "INSERT INTO t SELECT value FROM generate_series(1, 10)"
+as=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} ${DBNAME} "SELECT group_concat(a, ' ') from t order by a")
+expected=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} ${DBNAME} "SELECT group_concat(a + 100, ' ') from t order by a")
+
+${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} - <<'EOF' &
+ALTER TABLE t {
+tag ondisk {
+    int a
+    int b null=yes
+}
+keys {
+    "k" = a + <DESCEND> b
+}}
+EOF
+
+for a in $as; do
+    ${CDB2SQL_EXE} ${CDB2_OPTIONS} ${DBNAME} "UPDATE t SET a = a + 100 where a = $a"
+    sleep 10
+done
+
+wait
+result=$(${CDB2SQL_EXE} -tabs ${CDB2_OPTIONS} ${DBNAME} "SELECT group_concat(a, ' ') from t order by a")
+if [[ $expected != $result ]]; then
+    exit 1
+fi
