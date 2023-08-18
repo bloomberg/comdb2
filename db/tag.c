@@ -3332,10 +3332,10 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
                     fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
                 return -1;
             }
-            if (to_field->flags & INDEX_DESCEND)
-                xorbuf(((char *)outbuf) + to_field->offset + rec_srt_off,
-                       to_field->len - rec_srt_off);
         }
+        if (to_field->flags & INDEX_DESCEND)
+            xorbuf(((char *)outbuf) + to_field->offset + rec_srt_off,
+                    to_field->len - rec_srt_off);
         return 0;
     }
     // else we have (field_idx != -1)
