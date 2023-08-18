@@ -936,19 +936,14 @@ int ix_isnullk(const dbtable *tbl, void *key, int ixnum)
     for (ifld = 0; ifld < dbixschema->nmembers; ifld++) {
         struct field *dbixfield = &dbixschema->member[ifld];
         if (dbixfield) {
-            const char *bkey = (const char *)key;
             int offset = dbixfield->offset;
-            if (offset >= 0 && stype_is_null((bkey + offset))) {
-                /* fprintf(stderr,
-                    "ix_isnullk: found NULL, tbl = %p, key = %p, ixnum = %d,
-                   ifld = %d\n", tbl, key, ixnum, ifld); */
-                return 1;
+            if (offset >= 0) {
+                char bkey = *((char *)key + offset);
+                if (dbixfield->flags & INDEX_DESCEND) bkey = ~bkey;
+                if (stype_is_null(&bkey)) return 1;
             }
         }
     }
-    /* fprintf(stderr,
-        "ix_isnullk: no NULL, tbl = %p, key = %p, ixnum = %d\n",
-        tbl, key, ixnum); */
     return 0;
 }
 
