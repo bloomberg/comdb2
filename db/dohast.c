@@ -964,6 +964,12 @@ int comdb2_check_push_remote(Parse *pParse)
     if (node->type != AST_TYPE_SELECT)
         return 0;
 
+    /* no params yet */
+    if (node->params && node->params->params &&
+        node->params->nparams > 0)
+        return 0;
+
+
     if (!pParse->explain)
         if (node->remotedb > 1)
             if (!fdb_push_run(pParse, node))
