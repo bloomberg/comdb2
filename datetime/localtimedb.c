@@ -2200,6 +2200,12 @@ static struct db_state *find_tz(const char *name)
     char key[NAME_KEY_MAX];
     tz_hash_entry_type *ptr;
 
+    if (strlen(name) > NAME_KEY_MAX) {
+        logmsg(LOGMSG_ERROR, "%s: key name too long. max: %d\n",
+                __func__, NAME_KEY_MAX);
+        return NULL;
+    }
+
     bzero(key, NAME_KEY_MAX);
     strcpy(key, name);
 
