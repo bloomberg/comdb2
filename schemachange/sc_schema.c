@@ -758,6 +758,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     struct schema *oldsc;
     struct schema *newsc;
     char *info;
+    sc_tag_change_subtype subtype;
 
     info = ">Schema change plan:-\n";
     scprint(s, info);
@@ -779,12 +780,15 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         return -1;
     }
 
-    rc = compare_tag_int(oldsc, newsc, NULL, 0 /*non-strict compliance*/);
+    rc = compare_tag_int(oldsc, newsc, NULL, 0 /*non-strict compliance*/, &subtype);
     if (rc < 0) {
         return rc;
     }
 
-    if (force_dta_rebuild) rc = SC_TAG_CHANGE;
+    if (force_dta_rebuild) {
+        rc = SC_TAG_CHANGE;
+        subtype = SC_TAG_CHANGE_REBUILD;
+    }
 
     if (rc != SC_TAG_CHANGE && (s->flg & SC_CHK_PGSZ)) {
         int sz1 = getpgsize(olddb->handle);
@@ -799,30 +803,23 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     if (rc == SC_COLUMN_ADDED) {
         if (newdb->odh && newdb->instant_schema_change) {
             info = ">    Will perform instant schema change\n";
-            if (s->dryrun)
-                sbuf2printf(s->sb, info);
-            else
-                sc_printf(s, info + 1);
+            scprint(s, info);
         } else if (newdb->odh) {
             rc = SC_TAG_CHANGE;
+            subtype = SC_TAG_CHANGE_ADDITION_ISC;
             info = ">    Instant schema change possible (but disabled)\n";
-            if (s->dryrun)
-                sbuf2printf(s->sb, info);
-            else
-                sc_printf(s, info + 1);
+            scprint(s, info);
         } else {
             rc = SC_TAG_CHANGE;
+            subtype = SC_TAG_CHANGE_ADDITION_ODH;
         }
     }
 
     if (rc == SC_TAG_CHANGE) {
         /* Rebuild data */
 
-        info = ">    Rebuild main data file\n";
-        if (s->dryrun)
-            sbuf2printf(s->sb, info);
-        else
-            sc_printf(s, info + 1);
+        info = ">    Rebuild main data file: %s\n";
+        scprint(s, info, sc_tag_change_subtype_text(subtype));
 
         plan->dta_plan = -1;
         plan->plan_convert = 1;
@@ -835,10 +832,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     } else {
         /* Rename old data file */
         info = ">    No changes to main data file\n";
-        if (s->dryrun)
-            sbuf2printf(s->sb, info);
-        else
-            sc_printf(s, info + 1);
+        scprint(s, info);
         plan->dta_plan = 0;
     }
 
@@ -865,11 +859,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         }
         if (force_blob_rebuild) {
             info = ">    Blob file %d rebuild forced\n";
-            if (s->dryrun)
-                sbuf2printf(s->sb, info, blobn);
-            else
-                sc_printf(s, info + 1, blobn);
-
+            scprint(s, info, blobn);
             plan->blob_plan[blobn] = -1;
         } else if (map >= 0 && map < olddb->numblobs) {
             int oldidx =
@@ -879,35 +869,22 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
             /* rebuild if the blob length changed */
             if (oldsc->member[oldidx].len != newsc->member[newidx].len) {
                 info = ">    Blob %d changed in record length\n";
-                if (s->dryrun)
-                    sbuf2printf(s->sb, info, blobn);
-                else
-                    sc_printf(s, info + 1, blobn);
+                scprint(s, info, blobn);
                 s->use_old_blobs_on_rebuild = 1;
             } else {
                 if (map == blobn) {
                     info = ">    No action for blob %d.\n";
-                    if (s->dryrun)
-                        sbuf2printf(s->sb, info, blobn);
-                    else
-                        sc_printf(s, info + 1, blobn);
+                    scprint(s, info, blobn);
                 } else {
-                    info =
-                        ">    Rename old blob file %d -> new blob file %d.\n";
-                    if (s->dryrun)
-                        sbuf2printf(s->sb, info, map, blobn);
-                    else
-                        sc_printf(s, info + 1, map, blobn);
+                    info = ">    Rename old blob file %d -> new blob file %d.\n";
+                    scprint(s, info, map, blobn);
                 }
                 plan->blob_plan[blobn] = map;
                 plan->old_blob_plan[map] = 1;
             }
         } else {
             info = ">    Blob file %d is new\n";
-            if (s->dryrun)
-                sbuf2printf(s->sb, info, blobn);
-            else
-                sc_printf(s, info + 1, blobn);
+            scprint(s, info, blobn);
             plan->blob_plan[blobn] = -1;
         }
     }
@@ -994,28 +971,44 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
             if (plan->ix_plan[ixn] == ixn) {
                 info = ">    No action for index %d (%s)%s%s\n";
-                if (s->dryrun)
-                    sbuf2printf(s->sb, info, ixn, newixs->csctag, str_datacopy,
-                                extra);
-                else
-                    sc_printf(s, info + 1, ixn, newixs->csctag, str_datacopy,
-                              extra);
+                scprint(s, info, ixn, newixs->csctag, str_datacopy, extra);
             } else {
                 info = ">    Rename .ix%d -> .ix%d (%s)%s%s\n";
-                if (s->dryrun)
-                    sbuf2printf(s->sb, info, plan->ix_plan[ixn], ixn,
-                                newixs->csctag, str_datacopy, extra);
-                else
-                    sc_printf(s, info + 1, plan->ix_plan[ixn], ixn,
-                              newixs->csctag, str_datacopy, extra);
+                scprint(s, info, plan->ix_plan[ixn], ixn, newixs->csctag, str_datacopy, extra);
             }
         } else {
             info = ">    Rebuild index %d (%s)%s\n";
-            if (s->dryrun)
-                sbuf2printf(s->sb, info, ixn, newixs->csctag, str_datacopy);
-            else
-                sc_printf(s, info + 1, ixn, newixs->csctag, str_datacopy);
+            scprint(s, info, ixn, newixs->csctag, str_datacopy);
         }
+    }
+
+    int nixadds = 0, nixdels = 0;
+    /*
+     * for every index in the new schema, if a matching index in the old schema
+     * can't be found, we're adding an index.
+     */
+    for (int newix = 0; newix < newdb->nix; ++newix) {
+        if (plan->ix_plan[newix] < 0) {
+            ++nixadds;
+        }
+    }
+    if (nixadds > 0) {
+        info = ">    %d index%s to be created\n";
+        scprint(s, info, nixadds, (nixadds > 1 ? "es" : ""));
+    }
+
+    /*
+     * for every index in the old schema, if a matching index in the new schema
+     * can't be found, we're dropping an index.
+     */
+    for (int oldix = 0; oldix < olddb->nix; ++oldix) {
+        if (plan->old_ix_plan[oldix] == 0) {
+            ++nixdels;
+        }
+    }
+    if (nixdels > 0) {
+        info = ">    %d index%s to be dropped\n";
+        scprint(s, info, nixdels, (nixdels > 1 ? "es" : ""));
     }
 
     char *str_constraints = "";
@@ -1031,10 +1024,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     else
         info = ">    Schema change does not require a table scan %s\n";
 
-    if (s->dryrun)
-        sbuf2printf(s->sb, info, str_constraints);
-    else
-        sc_printf(s, info + 1, str_constraints);
+    scprint(s, info, str_constraints);
 
     return 0;
 }
