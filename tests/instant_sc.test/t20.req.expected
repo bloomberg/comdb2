@@ -96,7 +96,7 @@ alter db with data compression
 (a=1, bl=NULL, b=NULL)
 (a=2, bl=NULL, b=NULL)
 Schema change plan:-
-    Rebuild main data file
+    Rebuild main data file: rebuild explicitly requested
     No action for blob 0.
     No action for index 0 (.NEW.A) [no datacopy]
     Rebuild index 1 (.NEW.ALL) [no datacopy]
@@ -146,7 +146,7 @@ alter db with blob compression
 (a=1, bl=NULL, b=NULL)
 (a=2, bl=NULL, b=NULL)
 Schema change plan:-
-    Rebuild main data file
+    Rebuild main data file: rebuild explicitly requested
     Blob file 0 rebuild forced
     No action for index 0 (.NEW.A) [no datacopy]
     Rebuild index 1 (.NEW.ALL) [no datacopy]
@@ -196,7 +196,7 @@ alter db compress data and blobs
 (a=1, bl=NULL, b=NULL)
 (a=2, bl=NULL, b=NULL)
 Schema change plan:-
-    Rebuild main data file
+    Rebuild main data file: rebuild explicitly requested
     Blob file 0 rebuild forced
     No action for index 0 (.NEW.A) [no datacopy]
     Rebuild index 1 (.NEW.ALL) [no datacopy]

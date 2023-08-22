@@ -758,6 +758,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
     struct schema *oldsc;
     struct schema *newsc;
     char *info;
+    sc_tag_change_subtype subtype;
 
     info = ">Schema change plan:-\n";
     scprint(s, info);
@@ -779,12 +780,15 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         return -1;
     }
 
-    rc = compare_tag_int(oldsc, newsc, NULL, 0 /*non-strict compliance*/);
+    rc = compare_tag_int(oldsc, newsc, NULL, 0 /*non-strict compliance*/, &subtype);
     if (rc < 0) {
         return rc;
     }
 
-    if (force_dta_rebuild) rc = SC_TAG_CHANGE;
+    if (force_dta_rebuild) {
+        rc = SC_TAG_CHANGE;
+        subtype = SC_TAG_CHANGE_REBUILD;
+    }
 
     if (rc != SC_TAG_CHANGE && (s->flg & SC_CHK_PGSZ)) {
         int sz1 = getpgsize(olddb->handle);
@@ -805,6 +809,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
                 sc_printf(s, info + 1);
         } else if (newdb->odh) {
             rc = SC_TAG_CHANGE;
+            subtype = SC_TAG_CHANGE_NEW_ISC;
             info = ">    Instant schema change possible (but disabled)\n";
             if (s->dryrun)
                 sbuf2printf(s->sb, info);
@@ -812,17 +817,18 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
                 sc_printf(s, info + 1);
         } else {
             rc = SC_TAG_CHANGE;
+            subtype = SC_TAG_CHANGE_NEW_ODH;
         }
     }
 
     if (rc == SC_TAG_CHANGE) {
         /* Rebuild data */
 
-        info = ">    Rebuild main data file\n";
+        info = ">    Rebuild main data file: %s\n";
         if (s->dryrun)
-            sbuf2printf(s->sb, info);
+            sbuf2printf(s->sb, info, sc_tag_change_subtype_text(subtype));
         else
-            sc_printf(s, info + 1);
+            sc_printf(s, info + 1, sc_tag_change_subtype_text(subtype));
 
         plan->dta_plan = -1;
         plan->plan_convert = 1;

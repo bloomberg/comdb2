@@ -198,6 +198,21 @@ enum {
     SC_BAD_DBSTORE_FUNC_NOT_NULL = -7,
 };
 
+typedef enum sc_tag_change_subtype {
+    SC_TAG_CHANGE_UNKNOWN,
+    SC_TAG_CHANGE_NEW_DBSTORE,
+    SC_TAG_CHANGE_NEW_ISC,
+    SC_TAG_CHANGE_NEW_ODH,
+    SC_TAG_CHANGE_NEW, /* new column added */
+    SC_TAG_CHANGE_TYPE_CHANGED,
+    SC_TAG_CHANGE_NULLABILITY_CHANGED,
+    SC_TAG_CHANGE_LENGTH_DECREASED,
+    SC_TAG_CHANGE_BLOB_CHANGED,
+    SC_TAG_CHANGE_COLUMN_DROPPED,
+    SC_TAG_CHANGE_RECSIZE,
+    SC_TAG_CHANGE_REBUILD
+} sc_tag_change_subtype;
+
 #define DBPAD_OR_DBSTORE_ERR(e) ((e) == SC_BAD_NEW_FIELD || (e) == SC_BAD_DBPAD || (e) == SC_BAD_DBSTORE_FUNC_NOT_NULL)
 
 extern hash_t *gbl_tag_hash;
