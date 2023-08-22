@@ -3603,8 +3603,8 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *err,
 // future refactoring
 
 int compare_tag(const char *table, const char *tag, FILE *out);
-int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
-                    int strict);
+int compare_tag_int(struct schema *old, struct schema *new, FILE *out, int strict, sc_tag_change_subtype *);
+const char *sc_tag_change_subtype_text(sc_tag_change_subtype);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
 int get_dbtable_idx_by_name(const char *tablename);
