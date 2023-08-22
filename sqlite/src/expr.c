@@ -14,6 +14,7 @@
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <alloca.h>
+#include <ctrace.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -6450,15 +6451,10 @@ default_prec:
     static int last;
 
     if( last != pExpr->op ){
-      const char *sql;
-
-      sql = comdb2_get_sql();
-
+      const char *sql = comdb2_get_sql();
       /* we only need one trace */
-      logmsg(LOGMSG_ERROR, "Unsupported expression for remote cursors\n");
-      logmsg(LOGMSG_ERROR, "%s; pExpr->op=%d\n", __func__, pExpr->op);
-      logmsg(LOGMSG_ERROR, "query:'%s'\n", (sql)?sql:"unavailable");
-
+      logmsg(LOGMSG_USER, "%s: Unsupported remcur expr op:%d query:%.16s (see trc.c)\n", __func__, pExpr->op, sql ? sql : "unavailable");
+      ctrace("%s: Unsupported remcur expr op:%d query:%s\n", __func__, pExpr->op, sql ? sql : "unavailable");
       last = pExpr->op;
     }
   }
