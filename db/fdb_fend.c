@@ -30,7 +30,7 @@
 #include <rtcpu.h>
 #include <list.h>
 #include <sbuf2.h>
-#include <rtcpu.h>
+#include <ctrace.h>
 
 #include <gettimeofday_ms.h>
 
@@ -2151,6 +2151,18 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     SBUF2 **psb = NULL;
     int tried_refresh = 0; /* ultimate resort, comdb2db */
     int tran_flags = 0;
+    sqlite3 *db;
+    const char *sql;
+
+    if ((db = clnt->thd->sqldb) != NULL && db->pVdbe != NULL && db->pVdbe->fdb_warn_this_op != 0) {
+        /* we only need one trace */
+        sql = clnt->sql ? clnt->sql : "unavailable";
+        logmsg(LOGMSG_INFO, "%s: Unsupported expr op for fdb cursor hints:%d query:%.16s (see trc.c for full query)\n",
+               __func__, db->pVdbe->fdb_warn_this_op, sql);
+        ctrace("%s: Unsupported expr op for fdb cursor hints:%d query:%s\n",
+               __func__, db->pVdbe->fdb_warn_this_op, sql);
+        db->pVdbe->fdb_warn_this_op = 0;
+    }
 
     host = _fdb_get_affinity_node(clnt, fdb, &was_bad);
     if (host == NULL) {
