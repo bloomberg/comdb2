@@ -14,7 +14,6 @@
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <alloca.h>
-#include <ctrace.h>
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -23,7 +22,6 @@
 
 extern int comdb2genidcontainstime(void);
 extern char* fdb_table_name(int iTable);
-extern const char* comdb2_get_sql(void);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /* Forward declarations */
@@ -6451,11 +6449,7 @@ default_prec:
     static int last;
 
     if( last != pExpr->op ){
-      const char *sql = comdb2_get_sql();
-      /* we only need one trace */
-      logmsg(LOGMSG_USER, "%s: Unsupported remcur expr op:%d query:%.16s (see trc.c)\n", __func__, pExpr->op, sql ? sql : "unavailable");
-      ctrace("%s: Unsupported remcur expr op:%d query:%s\n", __func__, pExpr->op, sql ? sql : "unavailable");
-      last = pExpr->op;
+      v->fdb_warn_this_op = last = pExpr->op;
     }
   }
   if (op == TK_AGG_FUNCTION) {
