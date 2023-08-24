@@ -7100,7 +7100,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     uuid_t uuid = {0};
     char *sql;
     int sqllen;
-    char *tzname;
+    char *tzname = NULL;
     int flags = 0;
     int send_rc = 1;
     const char *errmsg = "";
@@ -7122,7 +7122,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(uuid, ureq.uuid);
         flags = ureq.flags;
-        tzname = ureq.tzname;
+        tzname = strdup(ureq.tzname);
         sqllen = ureq.sqlqlen;
     } else {
         osql_req_t req;
@@ -7136,7 +7136,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         rqid = req.rqid;
         comdb2uuid_clear(uuid);
         flags = req.flags;
-        tzname = req.tzname;
+        tzname = strdup(req.tzname);
         sqllen = req.sqlqlen;
     }
 
@@ -7176,6 +7176,9 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
+    if (tzname)
+        free(tzname);
+
     if (added_to_repository) {
         /*
          * Add to repository was successful, let the session loose
