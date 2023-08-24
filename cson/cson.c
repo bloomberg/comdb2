@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -174,7 +175,7 @@ static void cson__not_reached_void(void)
 }
 static void *cson__not_reached_void_ptr(intptr_t arg, ...)
 {
-    abort();
+    raise(SIGABRT);
     return NULL;
 }
 static int cson__value_type(cson_value *val)
