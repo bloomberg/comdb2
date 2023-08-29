@@ -393,7 +393,9 @@ int handle_ireq(struct ireq *iq)
         rc = ERR_BADREQ;
     } else {
         if (gbl_rowlocks && (opcode->opcode != OP_BLOCK) &&
-            (opcode->opcode != OP_FWD_BLOCK)) {
+            (opcode->opcode != OP_FWD_BLOCK) &&
+            (opcode->opcode != OP_DBINFO2) &&
+            (opcode->opcode != OP_DBINFO)) {
             rc = ERR_BADREQ;
             iq->where = "opcode execution skipped";
         } else {
