@@ -2005,3 +2005,65 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     free(newparam);
     return *pparams = params;
 }
+
+int dohsql_clone_params(int nparams, struct param_data * params,
+                        int *pnparams, struct param_data **pparams)
+{
+    struct param_data *pout;
+    int i, tmp;
+
+    /* do not support param arrays yet */
+    for (i=0; i < nparams; i++) {
+        if (params[i].arraylen > 0) {
+            return -1;
+        }
+    }
+
+    pout = calloc(nparams, sizeof(struct param_data));
+    if (!pout)
+        return -1;
+    memcpy(pout, params, nparams * sizeof(struct param_data));
+    for (i=0; i < nparams; i++) {
+        if (params[i].name) {
+            pout[i].name = strdup(params[i].name);
+            if (!pout[i].name) {
+                goto err;
+            }
+        }
+        if ((params[i].type == CLIENT_CSTR||
+             params[i].type == CLIENT_BLOB)  && params[i].len > 0) {
+            pout[i].u.p = malloc(params[i].len);
+            if (!pout[i].u.p)
+                goto err;
+            memcpy(pout[i].u.p, params[i].u.p, params[i].len);
+        }
+    }
+
+    *pparams = pout;
+    *pnparams = nparams;
+    return 0;
+
+err:
+    tmp = nparams;
+    dohsql_free_params(&tmp, &pout, i);
+    return -1;
+}
+
+void dohsql_free_params(int *pnparams, struct param_data **pparams, int index)
+{
+    struct param_data * params = *pparams;
+
+    if (index >= *pnparams)
+        abort();
+
+    while (index--) {
+        free(params[index].name);
+        if ((params[index].type == CLIENT_CSTR ||
+             params[index].type == CLIENT_BLOB)  && params[index].len > 0) {
+            free(params[index].u.p);
+        }
+    }
+    free(params);
+    *pnparams = 0;
+    *pparams = NULL;
+}

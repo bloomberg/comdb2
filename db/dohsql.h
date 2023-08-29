@@ -114,4 +114,17 @@ void dohsql_signal_done(struct sqlclntstate *clnt);
 struct params_info *dohsql_params_append(struct params_info **pparams,
                                          const char *name, int index);
 
+/**
+ * Clone bound parameters; deep-copy pointers
+ *
+ */
+int dohsql_clone_params(int nparams, struct param_data * params,
+                        int *pnparams, struct param_data **pparams);
+
+/**
+ * Free bound parameters
+ *
+ */
+void dohsql_free_params(int *pnparams, struct param_data **pparams, int index);
+
 #endif
