@@ -106,7 +106,9 @@ static int fdb_push_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
     {                                                                          \
         fdb_push_connector_t *p = clnt->fdb_push;                              \
         ret rv;                                                                \
-        p->unprow = sqlite3UnpackedResult(stmt, p->ncols, p->row, p->rowlen);  \
+        if (!p->unprow)                                                        \
+            p->unprow = sqlite3UnpackedResult(stmt, p->ncols, p->row,          \
+                                              p->rowlen);                      \
         if (!p->unprow)                                                        \
             return err_ret;                                                    \
         if (iCol < 0 || iCol >= p->ncols)                                      \
