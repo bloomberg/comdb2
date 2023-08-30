@@ -131,7 +131,8 @@ static const intv_t *fdb_push_column_interval(struct sqlclntstate *clnt,
 {
     fdb_push_connector_t *p = clnt->fdb_push;
     const intv_t *rv;
-    p->unprow = sqlite3UnpackedResult(stmt, p->ncols, p->row, p->rowlen);
+    if (!p->unprow)
+        p->unprow = sqlite3UnpackedResult(stmt, p->ncols, p->row, p->rowlen);
     if (!p->unprow)
         return NULL;
     if (iCol < 0 || iCol >= p->ncols)
@@ -238,6 +239,13 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
                    (long long unsigned int)row_id);
             goto closing;
         }
+
+        /* we are done with the sqlite row, free it here */
+        if (push->unprow) {
+            sqlite3UnpackedResultFree(&push->unprow, push->ncols);
+            push->unprow = NULL;
+        }
+
 
         irc = comdb2_sql_tick();
         if (irc) {
