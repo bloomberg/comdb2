@@ -105,6 +105,30 @@ struct comdb2_metrics_store {
     int64_t weighted_standing_queue_time;
     int64_t auth_allowed;
     int64_t auth_denied;
+
+    /* Legacy request metrics */
+    int64_t fastsql_execute_inline_params;
+    int64_t fastsql_set_isolation_level;
+    int64_t fastsql_set_timeout;
+    int64_t fastsql_set_info;
+    int64_t fastsql_execute_inline_params_tz;
+    int64_t fastsql_set_heartbeat;
+    int64_t fastsql_pragma;
+    int64_t fastsql_reset;
+    int64_t fastsql_execute_replaceable_params;
+    int64_t fastsql_set_sql_debug;
+    int64_t fastsql_grab_dbglog;
+    int64_t fastsql_set_user;
+    int64_t fastsql_set_password;
+    int64_t fastsql_set_endian;
+    int64_t fastsql_execute_replaceable_params_tz;
+    int64_t fastsql_get_effects;
+    int64_t fastsql_set_planner_effort;
+    int64_t fastsql_set_remote_access;
+    int64_t fastsql_osql_max_trans;
+    int64_t fastsql_set_datetime_precision;
+    int64_t fastsql_sslconn;
+    int64_t fastsql_execute_stop;
 };
 
 static struct comdb2_metrics_store stats;
@@ -291,6 +315,79 @@ comdb2_metric gbl_metrics[] = {
     {"auth_denied", "Number of failed authentication requests",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.auth_denied,
      NULL},
+
+    {"fastsql_execute_inline_params", "Number of fastsql 'execute' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_execute_inline_params, NULL},
+    {"fastsql_set_isolation_level",
+     "Number of fastsql 'set isolation level' requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_set_isolation_level,
+     NULL},
+    {"fastsql_set_timeout", "Number of fastsql 'set timeout' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_timeout, NULL},
+    {"fastsql_set_info", "Number of fastsql 'set info' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_info, NULL},
+    {"fastsql_execute_inline_params_tz",
+     "Number of fastsql 'execute with timezone' requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_execute_inline_params_tz, NULL},
+    {"fastsql_set_heartbeat", "Number of fastsql 'set heartbeat' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_heartbeat, NULL},
+    {"fastsql_pragma", "Number of fastsql pragma requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_pragma, NULL},
+    {"fastsql_reset", "Number of fastsql reset requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_reset, NULL},
+    {"fastsql_execute_replaceable_params",
+     "Number of fastsql 'execute with replacable parameters' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_execute_replaceable_params, NULL},
+    {"fastsql_set_sql_debug", "Number of fastsql 'set sql debug' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_sql_debug, NULL},
+    {"fastsql_grab_dbglog", "Number of fastsql 'grab dbglog' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_grab_dbglog, NULL},
+    {"fastsql_set_user", "Number of fastsql 'set user' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_user, NULL},
+    {"fastsql_set_password", "Number of fastsql 'set password' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_password, NULL},
+    {"fastsql_set_endian", "Number of fastsql 'set endian' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_endian, NULL},
+    {"fastsql_execute_replaceable_params_tz",
+     "Number of fastsql 'execute with replacable parameters & timezone' "
+     "requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_execute_replaceable_params_tz, NULL},
+    {"fastsql_get_effects", "Number of fastsql 'get effects' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_get_effects, NULL},
+    {"fastsql_set_planner_effort",
+     "Number of fastsql 'set planner effort' requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_set_planner_effort,
+     NULL},
+    {"fastsql_set_remote_access",
+     "Number of fastsql 'set remote access' requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.fastsql_set_remote_access,
+     NULL},
+    {"fastsql_osql_max_trans", "Number of fastsql 'osql max trans' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_osql_max_trans, NULL},
+    {"fastsql_set_datetime_precision",
+     "Number of fastsql 'set datetime precision' requests", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_set_datetime_precision, NULL},
+    {"fastsql_sslconn", "Number of fastsql 'sslconn' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_sslconn, NULL},
+    {"fastsql_execute_stop", "Number of fastsql 'execute stop' requests",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.fastsql_execute_stop, NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -301,14 +398,61 @@ const char *metric_collection_type_string(comdb2_collection_type t) {
             return "latest";
     }
     return "???";
-} 
-
-
+}
 
 int gbl_metrics_count = sizeof(gbl_metrics) / sizeof(comdb2_metric);
 
 extern int n_commits;
 extern long n_fstrap;
+
+/* Legacy request metrics */
+int64_t gbl_fastsql_execute_inline_params;
+int64_t gbl_fastsql_set_isolation_level;
+int64_t gbl_fastsql_set_timeout;
+int64_t gbl_fastsql_set_info;
+int64_t gbl_fastsql_execute_inline_params_tz;
+int64_t gbl_fastsql_set_heartbeat;
+int64_t gbl_fastsql_pragma;
+int64_t gbl_fastsql_reset;
+int64_t gbl_fastsql_execute_replaceable_params;
+int64_t gbl_fastsql_set_sql_debug;
+int64_t gbl_fastsql_grab_dbglog;
+int64_t gbl_fastsql_set_user;
+int64_t gbl_fastsql_set_password;
+int64_t gbl_fastsql_set_endian;
+int64_t gbl_fastsql_execute_replaceable_params_tz;
+int64_t gbl_fastsql_get_effects;
+int64_t gbl_fastsql_set_planner_effort;
+int64_t gbl_fastsql_set_remote_access;
+int64_t gbl_fastsql_osql_max_trans;
+int64_t gbl_fastsql_set_datetime_precision;
+int64_t gbl_fastsql_sslconn;
+int64_t gbl_fastsql_execute_stop;
+
+static void update_fastsql_metrics() {
+    stats.fastsql_execute_inline_params = gbl_fastsql_execute_inline_params;
+    stats.fastsql_set_isolation_level = gbl_fastsql_set_isolation_level;
+    stats.fastsql_set_timeout = gbl_fastsql_set_timeout;
+    stats.fastsql_set_info = gbl_fastsql_set_info;
+    stats.fastsql_execute_inline_params_tz = gbl_fastsql_execute_inline_params_tz;
+    stats.fastsql_set_heartbeat = gbl_fastsql_set_heartbeat;
+    stats.fastsql_pragma = gbl_fastsql_pragma;
+    stats.fastsql_reset = gbl_fastsql_reset;
+    stats.fastsql_execute_replaceable_params = gbl_fastsql_execute_replaceable_params;
+    stats.fastsql_set_sql_debug = gbl_fastsql_set_sql_debug;
+    stats.fastsql_grab_dbglog = gbl_fastsql_grab_dbglog;
+    stats.fastsql_set_user = gbl_fastsql_set_user;
+    stats.fastsql_set_password = gbl_fastsql_set_password;
+    stats.fastsql_set_endian = gbl_fastsql_set_endian;
+    stats.fastsql_execute_replaceable_params_tz = gbl_fastsql_execute_replaceable_params_tz;
+    stats.fastsql_get_effects = gbl_fastsql_get_effects;
+    stats.fastsql_set_planner_effort = gbl_fastsql_set_planner_effort;
+    stats.fastsql_set_remote_access = gbl_fastsql_set_remote_access;
+    stats.fastsql_osql_max_trans = gbl_fastsql_osql_max_trans;
+    stats.fastsql_set_datetime_precision = gbl_fastsql_set_datetime_precision;
+    stats.fastsql_sslconn = gbl_fastsql_sslconn;
+    stats.fastsql_execute_stop = gbl_fastsql_execute_stop;
+}
 
 static int64_t refresh_diskspace(struct dbenv *dbenv, tran_type *tran)
 {
@@ -581,6 +725,8 @@ int refresh_metrics(void)
     stats.auth_allowed = gbl_num_auth_allowed;
     stats.auth_denied = gbl_num_auth_denied;
     curtran_puttran(trans);
+
+    update_fastsql_metrics();
 
     return 0;
 }
