@@ -1711,6 +1711,30 @@ extern unsigned int gbl_nnewsql;
 extern unsigned int gbl_nnewsql_ssl;
 extern long long gbl_nnewsql_steps;
 
+/* Legacy request metrics */
+extern int64_t gbl_fastsql_execute_inline_params;
+extern int64_t gbl_fastsql_set_isolation_level;
+extern int64_t gbl_fastsql_set_timeout;
+extern int64_t gbl_fastsql_set_info;
+extern int64_t gbl_fastsql_execute_inline_params_tz;
+extern int64_t gbl_fastsql_set_heartbeat;
+extern int64_t gbl_fastsql_pragma;
+extern int64_t gbl_fastsql_reset;
+extern int64_t gbl_fastsql_execute_replaceable_params;
+extern int64_t gbl_fastsql_set_sql_debug;
+extern int64_t gbl_fastsql_grab_dbglog;
+extern int64_t gbl_fastsql_set_user;
+extern int64_t gbl_fastsql_set_password;
+extern int64_t gbl_fastsql_set_endian;
+extern int64_t gbl_fastsql_execute_replaceable_params_tz;
+extern int64_t gbl_fastsql_get_effects;
+extern int64_t gbl_fastsql_set_planner_effort;
+extern int64_t gbl_fastsql_set_remote_access;
+extern int64_t gbl_fastsql_osql_max_trans;
+extern int64_t gbl_fastsql_set_datetime_precision;
+extern int64_t gbl_fastsql_sslconn;
+extern int64_t gbl_fastsql_execute_stop;
+
 extern unsigned int gbl_masterrejects;
 
 extern int gbl_selectv_rangechk;
