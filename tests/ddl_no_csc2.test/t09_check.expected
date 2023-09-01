@@ -11,7 +11,7 @@
 ')
 (rows inserted=1)
 (rows inserted=1)
-[ALTER TABLE t1 ADD CONSTRAINT valid_colors CHECK (color IN ('red', 'green', 'blue'))] failed with rc 240 Record violates foreign constraints rrn xx genid xx
+[ALTER TABLE t1 ADD CONSTRAINT valid_colors CHECK (color IN ('red', 'green', 'blue'))] failed with rc 240 Record violates check constraints rrn xx genid xx
 (csc2='schema
 	{
 		cstring color[11] null = yes 
