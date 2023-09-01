@@ -1418,6 +1418,36 @@ static void uncompressGzipFunc(
     return;
 }
 
+/* Return 0 if payload is utf8. Return (-N - 1), where N is the index
+ * of the first malformed character */
+int utf8_validate(const char *str, int len, int *valid_len);
+static void comdb2Utf8ValidateFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  int valid_len, rc, len;
+  const char *z;
+  assert(argc == 1);
+  UNUSED_PARAMETER(argc);
+
+  switch( sqlite3_value_type(argv[0]) ){
+    case SQLITE_BLOB:
+      len = sqlite3_value_bytes(argv[0]);
+      z = sqlite3_value_blob(argv[0]);
+      rc = utf8_validate(z, len, &valid_len);
+      break;
+    case SQLITE_TEXT:
+      len = sqlite3_value_bytes(argv[0]) + 1; /* +1 for \0 */
+      z = (const char *)sqlite3_value_text(argv[0]);
+      rc = utf8_validate(z, len, &valid_len);
+      break;
+    default:
+      rc = -1;
+      break;
+  }
+  sqlite3_result_int(context, rc == 0 ? rc : (-valid_len - 1));
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -3093,6 +3123,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
     FUNCTION(comdb2_last_cost,      0, 0, 0, comdb2LastCostFunc),
+    FUNCTION(utf8_validate,         1, 0, 0, comdb2Utf8ValidateFunc),
     FUNCTION(checksum_md5,          1, 0, 0, md5Func),
     FUNCTION(compress,              1, 0, 0, compressFunc),
     FUNCTION(uncompress,            1, 0, 0, uncompressFunc),

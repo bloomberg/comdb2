@@ -81,9 +81,9 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=223)
+(KEYWORDS_COUNT=224)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=66)
+(RESERVED_KW=67)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=157)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
@@ -104,6 +104,7 @@
 (name='DISTINCT', reserved='Y')
 (name='DROP', reserved='Y')
 (name='ELSE', reserved='Y')
+(name='ENCODING', reserved='Y')
 (name='ESCAPE', reserved='Y')
 (name='EXCEPT', reserved='Y')
 (name='EXISTS', reserved='Y')
