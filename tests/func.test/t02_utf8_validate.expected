@@ -1,0 +1,2 @@
+(utf8_validate('abc')=0)
+(utf8_validate(x'616263FF')=-4)
