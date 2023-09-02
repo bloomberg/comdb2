@@ -89,6 +89,7 @@ struct newsql_appdata_evbuffer {
 
     unsigned initial : 1; /* New connection or called newsql_reset */
     unsigned local : 1;
+    unsigned secure : 1;
 
     struct sqlwriter *writer;
     struct ssl_data *ssl_data;
@@ -553,7 +554,20 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
         }
     }
     clnt->sqlite_row_format = have_sqlite_fmt;
-    if (SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
+
+    /* If the connection is forwarded from a secure pmux port,
+     * both IAM and TLS must be enabled on the database. */
+    if (appdata->secure) {
+        int has_externalauth = gbl_uses_externalauth || gbl_uses_externalauth_connect;
+        int ssl_able = SSL_IS_ABLE(gbl_client_ssl_mode);
+        if (!has_externalauth || !ssl_able) {
+            logmsg(LOGMSG_ERROR, "can't handle a secure connection: externalauth %d ssl %d\n", has_externalauth,
+                   ssl_able);
+            goto err;
+        }
+    }
+
+    if (appdata->secure || SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
         switch(ssl_check(appdata, have_ssl)) {
         case 1: goto read;
         case 2: goto err;
@@ -1059,6 +1073,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     appdata->base = arg->base;
     appdata->initial = 1;
     appdata->local = local;
+    appdata->secure = arg->secure;
     appdata->fd = arg->fd;
     appdata->rd_buf = arg->rd_buf;
     appdata->rd_hdr_ev = event_new(appdata->base, arg->fd, EV_READ, rd_hdr, appdata);
