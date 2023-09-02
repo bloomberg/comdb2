@@ -12,6 +12,7 @@ struct sqlclntstate;
 struct appsock_handler_arg {
     int fd;
     int is_readonly;
+    int secure; /* whether connection is routed from a secure pmux port */
     struct sockaddr_in addr;
     struct evbuffer *rd_buf;
     struct event_base *base;

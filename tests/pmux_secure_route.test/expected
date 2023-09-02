@@ -1,0 +1,2 @@
+[select 1] failed with rc -1 cdb2_run_statement_typed_int: Cannot connect to db
+(2=2)
