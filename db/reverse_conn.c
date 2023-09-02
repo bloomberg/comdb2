@@ -247,7 +247,7 @@ int send_reversesql_request(const char *dbname, const char *host,
         if (gbl_revsql_debug == 1) {
             revconn_logmsg(LOGMSG_USER, "%s:%d Received 'newsql' request over 'reversesql' connection\n", __func__, __LINE__);
         }
-        (void) do_appsock_evbuffer(buf, &cliaddr, new_fd, 1);
+        (void)do_appsock_evbuffer(buf, &cliaddr, new_fd, 1, 0);
 
     } else {
         uint8_t firstbyte;
