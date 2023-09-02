@@ -768,6 +768,7 @@ static void host_connected_info_free(struct host_connected_info *info)
 
 struct accept_info {
     int fd;
+    int secure; /* whether connection is routed from a secure pmux port */
     struct evbuffer *buf;
     int to_len;
     char *to_host;
@@ -802,7 +803,7 @@ static int close_oldest_pending_connection(void)
     return 0;
 }
 
-static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd)
+static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure)
 {
     check_base_thd();
     if (pending_connections > max_pending_connections) {
@@ -813,6 +814,7 @@ static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct soc
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
     a->fd = fd;
+    a->secure = secure;
     a->ev = event_new(base, fd, EV_READ, do_read, a);
     event_add(a->ev, NULL);
     TAILQ_INSERT_TAIL(&accept_list, a, entry);
@@ -2650,7 +2652,7 @@ static void read_len(int fd, short what, void *data)
     }
 }
 
-int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly)
+int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure)
 {
     struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
@@ -2662,6 +2664,11 @@ int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, in
         char key[b.pos + 2];
         evbuffer_copyout(buf, key, b.pos + 1);
         key[b.pos + 1] = 0;
+        if (secure && strstr(key, "newsql") == NULL) {
+            logmsg(LOGMSG_ERROR, "appsock '%s' disallowed on secure port\n", key);
+            return 1;
+        }
+
         info = get_appsock_info(key);
     }
 
@@ -2673,6 +2680,7 @@ int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, in
     arg->addr = *ss;
     arg->rd_buf = buf;
     arg->is_readonly = is_readonly;
+    arg->secure = secure;
 
     static int appsock_counter = 0;
     arg->base = appsock_base[appsock_counter++];
@@ -2702,6 +2710,7 @@ static void do_read(int fd, short what, void *data)
     }
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
     struct sockaddr_in ss = a->ss;
+    int secure = a->secure;
     a->fd = -1;
     accept_info_free(a);
     a = NULL;
@@ -2715,7 +2724,7 @@ static void do_read(int fd, short what, void *data)
         return;
     }
 
-    if ((do_appsock_evbuffer(buf, &ss, fd, 0)) == 0)
+    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure)) == 0)
         return;
 
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
@@ -2728,7 +2737,17 @@ static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 0);
+}
+
+static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *addr, int len,
+                          void *data)
+{
+    check_base_thd();
+    struct net_info *n = data;
+    netinfo_type *netinfo_ptr = n->netinfo_ptr;
+    netinfo_ptr->num_accepts++;
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1);
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *data)
@@ -2766,7 +2785,7 @@ static void reopen_unix(int fd, struct net_info *n)
      (m)->cmsg_level == SOL_SOCKET && (m)->cmsg_type == SCM_RIGHTS)
 #endif
 
-static int recvfd(int pmux_fd)
+static int recvfd(int pmux_fd, int *secure)
 {
     int newfd = -1;
     char buf[sizeof("pmux") - 1];
@@ -2820,12 +2839,13 @@ static int recvfd(int pmux_fd)
     }
     newfd = *(int *)CMSG_DATA(m);
 #   endif
-    if (memcmp(buf, "pmux", sizeof(buf)) != 0) {
+    if (memcmp(buf, "pmux", sizeof(buf)) != 0 && memcmp(buf, "spmu", sizeof(buf)) != 0) {
         shutdown_close(newfd);
         logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d unexpected msg:%.*s\n", __func__,
                pmux_fd, (int)sizeof(buf), buf);
         return -1;
     }
+    *secure = (memcmp(buf, "spmu", sizeof(buf)) == 0);
     return newfd;
 }
 
@@ -2833,7 +2853,8 @@ static void do_recvfd(int pmux_fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
-    int newfd = recvfd(pmux_fd);
+    int secure;
+    int newfd = recvfd(pmux_fd, &secure);
     switch (newfd) {
     case 0: return;
     case -1: reopen_unix(pmux_fd, n); return;
@@ -2850,7 +2871,10 @@ static void do_recvfd(int pmux_fd, short what, void *data)
     struct sockaddr *addr = (struct sockaddr *)&saddr;
     socklen_t addrlen = sizeof(saddr);
     getpeername(newfd, addr, &addrlen);
-    accept_cb(NULL, newfd, addr, addrlen, n);
+    if (!secure)
+        accept_cb(NULL, newfd, addr, addrlen, n);
+    else
+        accept_secure(NULL, newfd, addr, addrlen, n);
 }
 
 static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
