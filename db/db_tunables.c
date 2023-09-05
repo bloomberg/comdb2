@@ -362,6 +362,8 @@ extern int gbl_pgcomp_dbg_ctrace;
 extern int gbl_warn_on_equiv_types;
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
+extern int gbl_fdb_io_error_retries_phase_1;
+extern int gbl_fdb_io_error_retries_phase_2_poll;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_page_order_table_scan;

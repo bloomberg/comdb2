@@ -64,6 +64,8 @@ int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
 int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
+int gbl_fdb_io_error_retries_phase_1 = 6;
+int gbl_fdb_io_error_retries_phase_2_poll = 100;
 
 struct fdb_tbl;
 struct fdb;
@@ -2951,6 +2953,30 @@ static void _update_fdb_version(BtCursor *pCur, char *errstr)
     pCur->bt->fdb->server_version = protocol_version;
 }
 
+/* implement a slow_start like scheme for polling
+ * (tcp slow_start for congestion windows).
+ * in this case, we retry immediately a few times to
+ * minimize latency, and back-off exponentially if
+ * previous fails still
+ * returns 1 to retry, 0 to stop
+ */
+static int _fdb_io_retry(int *pretry, int *pollms)
+{
+    int retry = *pretry;
+
+    if (retry >= gbl_fdb_io_error_retries)
+        return 0;
+
+    if (retry < gbl_fdb_io_error_retries_phase_1) {
+        (*pretry)++;
+        return 1;
+    }
+    poll(NULL, 0, *pollms);
+    *pollms *= 2;
+    (*pretry)++;
+    return 1;
+}
+
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
@@ -2960,6 +2986,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     unsigned long long start_rpc;
     unsigned long long end_rpc;
     int retry = 0;
+    int pollms = gbl_fdb_io_error_retries_phase_2_poll;
 
     int no_version_retry = how & NORETRY;
     how &= 0x0F;
@@ -3079,7 +3106,7 @@ retry:
                         logmsg(LOGMSG_USER,
                                "%s:%d blacklisting %s, retrying..\n", __func__,
                                __LINE__, fdbc->node);
-                    if (retry++ < gbl_fdb_io_error_retries)
+                    if (_fdb_io_retry(&retry, &pollms))
                         goto retry;
                     logmsg(LOGMSG_ERROR,
                            "%s:%d failed to reconnect after %d retries\n",
@@ -3141,6 +3168,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
     unsigned long long end_rpc;
     int no_version_retry = 0;
     int retry = 0;
+    int pollms = gbl_fdb_io_error_retries_phase_2_poll;
 
     if (fdbc) {
         int sqllen;
@@ -3249,7 +3277,7 @@ version_retry:
                         logmsg(LOGMSG_USER,
                                "%s:%d blacklisting %s, retrying..\n", __func__,
                                __LINE__, fdbc->node);
-                    if (retry++ < gbl_fdb_io_error_retries)
+                    if (_fdb_io_retry(&retry, &pollms))
                         goto retry;
                     logmsg(LOGMSG_ERROR,
                            "%s:%d failed to reconnect after %d retries\n",
