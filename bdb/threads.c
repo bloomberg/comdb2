@@ -30,10 +30,13 @@
 #include "thrman.h"
 #include <locks_wrap.h>
 
-extern int db_is_exiting(void);
-extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
-extern void *rep_catchup_add_thread(void *arg);
+
+int db_is_exiting(void);
+int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
+void *rep_catchup_add_thread(void *arg);
+
 extern pthread_attr_t gbl_pthread_attr_detached;
+extern int gbl_is_physical_replicant;
 
 void udp_backup(int dummyfd, short what, void *arg)
 {
@@ -70,7 +73,8 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     while (!db_is_exiting()) {
         ++count;
         udp_backup(-1, 0, bdb_state);
-        if (count % ((bdb_state->attr->chk_aa_time * 1000) / pollms) == 0) {
+        if ((gbl_is_physical_replicant == 0) /* No point running analyze on physical replicants */ &&
+            (count % ((bdb_state->attr->chk_aa_time * 1001) / pollms) == 0)) {
             auto_analyze(-1, 0, bdb_state);
         }
         poll(NULL, 0, pollms);

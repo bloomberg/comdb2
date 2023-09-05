@@ -168,6 +168,7 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * physrep_ignore <tables>: All the log records that belong to any of these tables are ignored by physical replicants
 * nonames: This configuration forces system database file names to not carry the database name. This setting is required for physical-log based replication to work properly.
 * elect_highest_committed_gen: Bias election by the highest generation in the logfile. This setting is required for physical-log based replication to work properly.
+* autoanalyze: Since physical replicants run in read-only mode, autoanalyze would not have any effect on the state of 'stat' tables. Thus, it is recommended to keep it turned off.
 
 ## Stored procedures
 
