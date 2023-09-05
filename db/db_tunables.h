@@ -2092,8 +2092,14 @@ REGISTER_TUNABLE("fdb_incoherence_percentage",
                  "Generate random incoherent errors in remsql", TUNABLE_INTEGER,
                  &gbl_fdb_incoherence_percentage, INTERNAL, NULL, percent_verify, NULL, NULL);
 REGISTER_TUNABLE("fdb_io_error_retries",
-                 "Number of retries for io error remsql", TUNABLE_INTEGER,
-                 &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
+                 "Number of retries for io error remsql; phase 1 is fast retry, phase 2 is polling",
+                 TUNABLE_INTEGER, &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_io_error_retries_phase_1",
+                 "Number of immediate retries; capped by fdb_io_error_retries",
+                 TUNABLE_INTEGER, &gbl_fdb_io_error_retries_phase_1, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_io_error_retries_phase_2_poll",
+                 "Poll initial value for slow retries in phase 2; doubled for each retry", TUNABLE_INTEGER,
+                 &gbl_fdb_io_error_retries_phase_2_poll, 0, NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */
