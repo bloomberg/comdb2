@@ -203,13 +203,11 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
         goto done;
     }
 
-    reverse_conn_handle_tp *rev_conn_hndl = NULL, *tmp = NULL;
+    reverse_conn_handle_tp *rev_conn_hndl = NULL;
 
     pthread_mutex_lock(&reverse_conn_handle_mu);
     {
-        LISTC_FOR_EACH_SAFE(&reverse_conn_wait_list, rev_conn_hndl, tmp, lnk) {
-            break;
-        }
+        rev_conn_hndl = listc_rtl(&reverse_conn_wait_list);
         if (rev_conn_hndl == NULL) {
             if (gbl_revsql_debug == 1) {
                 logmsg(LOGMSG_USER, "%s:%d No handle registered, ignoring reversesql request\n",
@@ -218,7 +216,6 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
             pthread_mutex_unlock(&reverse_conn_handle_mu);
             goto done;
         }
-        listc_rfl(&reverse_conn_wait_list, rev_conn_hndl);
     }
     pthread_mutex_unlock(&reverse_conn_handle_mu);
 
@@ -228,6 +225,8 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to connect via fd: %s\n",
                __func__, __LINE__, fd_str);
         rc = -1;
+        rev_conn_hndl->failed = 1;
+        rev_conn_hndl->hndl = NULL;
         cdb2_close(hndl);
         pthread_mutex_unlock(&rev_conn_hndl->mu);
         pthread_cond_signal(&rev_conn_hndl->cond);
@@ -256,6 +255,8 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to execute command: %s (error: %s)\n",
                __func__, __LINE__, cmd, cdb2_errstr(hndl));
         rc = -1;
+        rev_conn_hndl->failed = 1;
+        rev_conn_hndl->hndl = NULL;
         cdb2_close(hndl);
         pthread_mutex_unlock(&rev_conn_hndl->mu);
         pthread_cond_signal(&rev_conn_hndl->cond);

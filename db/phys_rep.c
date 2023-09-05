@@ -1516,7 +1516,7 @@ int start_physrep_threads() {
 	}
         physrep_logmsg(LOGMSG_USER, "'reverse connections' manager thread has started!\n");
     } else {
-        physrep_logmsg(LOGMSG_USER, "This is source node; not starting 'reverse connections' manager\n");
+        physrep_logmsg(LOGMSG_USER, "This is not a replication source; not starting 'reverse connections' manager\n");
     }
 
     // Start physical replication worker
