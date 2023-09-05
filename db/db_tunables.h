@@ -2436,6 +2436,12 @@ REGISTER_TUNABLE("fdb_incoherence_percentage",
 REGISTER_TUNABLE("fdb_io_error_retries",
                  "Number of retries for io error remsql", TUNABLE_INTEGER,
                  &gbl_fdb_io_error_retries, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_io_error_retries_phase_1",
+                 "Number of immediate retries; capped by fdb_io_error_retries",
+                 TUNABLE_INTEGER, &gbl_fdb_io_error_retries_phase_1, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_io_error_retries_phase_2_poll",
+                 "Poll initial value for slow retries in phase 2; doubled for each retry", TUNABLE_INTEGER,
+                 &gbl_fdb_io_error_retries_phase_2_poll, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("unexpected_last_type_warn",
                  "print a line of trace if the last response server sent before sockpool reset isn't LAST_ROW",
                  TUNABLE_INTEGER, &gbl_unexpected_last_type_warn, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -2453,4 +2459,6 @@ REGISTER_TUNABLE("noleader_retry_poll_ms",
                  "Wait this long before retrying on no-leader. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_noleader_retry_poll_ms, INTERNAL, NULL,
                  NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */
