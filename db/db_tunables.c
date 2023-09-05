@@ -407,6 +407,8 @@ extern int gbl_warn_on_equiv_type_mismatch;
 extern int gbl_warn_on_equiv_types;
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
+extern int gbl_fdb_io_error_retries_phase_1;
+extern int gbl_fdb_io_error_retries_phase_2_poll;
 
 /* Physical replication */
 extern int gbl_blocking_physrep;
