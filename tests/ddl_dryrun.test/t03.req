@@ -1,4 +1,6 @@
+put tunable forbid_ulonglong 1
 dryrun rebuild t1
 dryrun rebuild data t1
 dryrun rebuild index t1 key
 dryrun rebuild datablob t1 
+put tunable forbid_ulonglong 0
