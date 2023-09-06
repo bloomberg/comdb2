@@ -596,7 +596,7 @@ int do_dryrun(struct schema_change_type *s)
     }
 
     struct errstat err = {0};
-    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, 0, 0,
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, s->same_schema, 0,
                                &err);
     if (!newdb) {
         sc_client_error(s, "%s", err.errstr);

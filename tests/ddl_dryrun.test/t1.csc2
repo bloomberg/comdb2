@@ -3,9 +3,11 @@ schema
     int  id
     blob data null = yes
     blob inline_data[32]
+    u_longlong u
 }
 
 keys
 {
     "key" = id
+    "key_u" = u
 }
