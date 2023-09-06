@@ -17,6 +17,8 @@
 #include "sql.h"
 #include "dohsql.h"
 
+extern char *gbl_cdb2api_policy_override;
+
 struct fdb_push_connector {
     char *remotedb; /* name of the remote db; class matches stored fdb */
     enum mach_class class; /* what stage this db lives on */
@@ -33,6 +35,22 @@ struct fdb_push_connector {
 static void _master_clnt_set(struct sqlclntstate *clnt);
 static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
                                 struct errstat *err);
+
+static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
+    if (policy == NULL) {
+        return 0;
+    }
+
+    if (strcmp(policy, "CDB2_RANDOM") == 0) {
+        return CDB2_RANDOM;
+    } else if (strcmp(policy, "CDB2_RANDOMROOM") == 0) {
+        return CDB2_RANDOMROOM;
+    } else if (strcmp(policy, "CDB2_ROOM") == 0) {
+        return CDB2_ROOM;
+    } else {
+        return 0;
+    }
+}
 
 /**
  * Remote query push support
@@ -195,7 +213,7 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
     cdb2_hndl_tp *hndl = NULL;
     uint64_t row_id = 0;
     int first_row = 1;
-    int rc, irc;
+    int rc, irc, cdb2api_policy_flag;
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
@@ -204,10 +222,13 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
     if (push->local)
         rc = cdb2_open(&hndl, push->remotedb, "local", CDB2_SQL_ROWS);
     else if (push->class_override) {
+        cdb2api_policy_flag = convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
         const char *cls_ovrr = mach_class_class2name(push->class);
-        rc = cdb2_open(&hndl, push->remotedb, cls_ovrr, CDB2_SQL_ROWS);
-    } else /* default */
-        rc = cdb2_open(&hndl, push->remotedb, "default", CDB2_SQL_ROWS);
+        rc = cdb2_open(&hndl, push->remotedb, cls_ovrr, CDB2_SQL_ROWS | cdb2api_policy_flag);
+    } else { /* default */
+        cdb2api_policy_flag = convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
+        rc = cdb2_open(&hndl, push->remotedb, "default", CDB2_SQL_ROWS | cdb2api_policy_flag);
+    }
     if (rc) {
         errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
         return -1;

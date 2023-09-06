@@ -2459,6 +2459,6 @@ REGISTER_TUNABLE("noleader_retry_poll_ms",
                  "Wait this long before retrying on no-leader. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_noleader_retry_poll_ms, INTERNAL, NULL,
                  NULL, NULL, NULL);
-
-
+REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2api. (Default: none)",
+                TUNABLE_STRING, &gbl_cdb2api_policy_override, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
