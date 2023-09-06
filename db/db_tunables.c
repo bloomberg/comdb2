@@ -461,6 +461,9 @@ extern int gbl_unexpected_last_type_warn;
 extern int gbl_unexpected_last_type_abort;
 extern int gbl_pstack_self;
 
+/* For fdb connections using cdb2api */
+extern char *gbl_cdb2api_policy_override;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need

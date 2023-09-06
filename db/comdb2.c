@@ -816,6 +816,8 @@ int gbl_hostname_refresh_time = 60;
 
 int gbl_pstack_self = 1;
 
+char *gbl_cdb2api_policy_override = NULL;
+
 int close_all_dbs_tran(tran_type *tran);
 
 int open_all_dbs_tran(void *tran);

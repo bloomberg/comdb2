@@ -98,6 +98,7 @@
 (name='catchup_on_commit', description='Replicant to INCOHERENT_WAIT rather than INCOHERENT on commit if within CATCHUP_WINDOW.', type='BOOLEAN', value='OFF', read_only='N')
 (name='catchup_window', description='Start waiting in waitforseqnum if replicant is within this many bytes of master.', type='INTEGER', value='40000000', read_only='N')
 (name='cause_random_blkseq_replays', description='Cause random blkseq replays from replicant', type='BOOLEAN', value='OFF', read_only='N')
+(name='cdb2api_policy_override', description='Use this policy override with cdb2api. (Default: none)', type='STRING', value=NULL, read_only='N')
 (name='check_applied_lsns', description='Check transaction that its LSNs have been applied', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_applied_lsns_debug', description='Lots of verbose trace for debugging applied LSNs.', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_applied_lsns_fatal', description='Abort if check_applied_lsns fails', type='BOOLEAN', value='OFF', read_only='N')
