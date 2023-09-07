@@ -8496,12 +8496,17 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
     int bdberr = 0;
 
     uint8_t **pIdxInsert = NULL, **pIdxDelete = NULL;
+    unsigned long long ins_keys_saved = 0ULL;
+    unsigned long long del_keys_saved = 0ULL;
 
     if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
-
-        /* Latch expressional index keys. We do not want them to be
-           cleaned up by the micro transaction we are about to commit. */
-        if (gbl_expressions_indexes && pCur->db->ix_expr) {
+        /* Latch partial index/index on expression related data. We do not want
+           them to be cleaned up by the micro transaction we are about to commit. */
+        if (gbl_partial_indexes && pCur->db && pCur->db->ix_partial) {
+            ins_keys_saved = clnt->ins_keys;
+            del_keys_saved = clnt->del_keys;
+        }
+        if (gbl_expressions_indexes && pCur->db && pCur->db->ix_expr) {
             pIdxInsert = clnt->idxInsert;
             pIdxDelete = clnt->idxDelete;
             clnt->idxInsert = clnt->idxDelete = NULL;
@@ -8603,7 +8608,12 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
         clnt->dbtran.crtchunksize++;
     }
 done:
-    /* Restore the expressional index keys onto clnt for the next OP_Insert/OP_Delete. */
+    /* Restore the partial index/index on expression data onto clnt for the next
+       OP_Insert/OP_Delete. */
+    if (ins_keys_saved != 0 || del_keys_saved != 0) {
+        clnt->ins_keys = ins_keys_saved;
+        clnt->del_keys = del_keys_saved;
+    }
     if (pIdxInsert != NULL || pIdxDelete != NULL) {
         clnt->idxInsert = pIdxInsert;
         clnt->idxDelete = pIdxDelete;
