@@ -282,5 +282,8 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
 
 fi
 
-echo "Testcase passed."
+# Run rest of the tests
+${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
+[ $? -eq 0 ] || exit 1
 
+echo "Testcase passed."
