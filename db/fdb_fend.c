@@ -65,6 +65,7 @@ int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
 int gbl_fdb_push_remote = 0;
+int gbl_fdb_push_redirect_foreign = 0;
 int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
 int gbl_fdb_io_error_retries_phase_1 = 6;

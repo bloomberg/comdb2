@@ -8,3 +8,6 @@ round_robin_stripes
 off schemachange_perms
 allow writes from alpha
 ssl_allow_remsql 1
+
+foreign_db_push_remote 0
+foreign_db_push_redirect 0

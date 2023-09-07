@@ -60,6 +60,8 @@ cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cm
 # validate results 
 if [[ $a_dbname == "srcdbscremsqlfdbpushgenerated"* ]]; then
     active_output=output.log.fdbpush
+elif [[ $a_dbname == "srcdbscremsqlfdbpushredirectgenerated"* ]]; then # NOTE: Cost doesn't work for fdb_push_redirect so return NULL
+    active_output=output.log.fdbpushredirect
 else
     active_output=output.log
 fi

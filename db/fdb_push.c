@@ -216,22 +216,38 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
     cdb2_hndl_tp *hndl = NULL;
     uint64_t row_id = 0;
     int first_row = 1;
-    int rc, irc, cdb2api_policy_flag;
+    int rc, irc;
+
+    const char *class = "default";
+    int cdb2api_policy_flag = push->local ? 0 : convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
+    if (push->local)
+        class = "local";
+    else if (push->class_override) {
+        class = mach_class_class2name(push->class);
+        assert(class);
+    }
+
+    if (gbl_fdb_push_redirect_foreign && clnt->can_redirect_fdb) {
+        // tell cdb2api to run query directly on foreign db
+        // send back db, tier, flag
+        // NOTE: Cost will not work for this
+        if (push->local) { // this is local to server, not client. Return hostname to client
+            cdb2api_policy_flag |= CDB2_DIRECT_CPU;
+            class = gbl_myhostname;
+        }
+        rc = -1;
+        const char *foreign_db[2];
+        foreign_db[0] = push->remotedb;
+        foreign_db[1] = class;
+        write_response(clnt, RESPONSE_REDIRECT_FOREIGN, foreign_db, cdb2api_policy_flag);
+        goto reset;
+    }
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
         cdb2_set_comdb2db_config(conf);
 
-    if (push->local)
-        rc = cdb2_open(&hndl, push->remotedb, "local", CDB2_SQL_ROWS);
-    else if (push->class_override) {
-        cdb2api_policy_flag = convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
-        const char *cls_ovrr = mach_class_class2name(push->class);
-        rc = cdb2_open(&hndl, push->remotedb, cls_ovrr, CDB2_SQL_ROWS | cdb2api_policy_flag);
-    } else { /* default */
-        cdb2api_policy_flag = convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
-        rc = cdb2_open(&hndl, push->remotedb, "default", CDB2_SQL_ROWS | cdb2api_policy_flag);
-    }
+    rc = cdb2_open(&hndl, push->remotedb, class, CDB2_SQL_ROWS | cdb2api_policy_flag);
     if (rc) {
         errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
         return -1;
@@ -340,7 +356,7 @@ send_error:
 
 closing:
     cdb2_close(hndl);
-
+reset:
     clnt_plugin_reset(clnt);
 
     return rc;

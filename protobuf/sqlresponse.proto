@@ -166,4 +166,9 @@ message CDB2_SQLRESPONSE {
 
     /* sqlite row */
     optional bytes sqlite_row = 15;
+
+    /* query that should be run on foreign db */
+    optional string foreign_db = 16;
+    optional string foreign_class = 17;
+    optional int32 foreign_policy_flag = 18;
 }

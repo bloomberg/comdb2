@@ -361,6 +361,7 @@ enum {
     XRESPONSE(RESPONSE_ERROR_PREPARE)                                          \
     XRESPONSE(RESPONSE_ERROR_PREPARE_RETRY)                                    \
     XRESPONSE(RESPONSE_ERROR_REJECT)                                           \
+    XRESPONSE(RESPONSE_REDIRECT_FOREIGN)                                       \
     XRESPONSE(RESPONSE_FLUSH)                                                  \
     XRESPONSE(RESPONSE_HEARTBEAT)                                              \
     XRESPONSE(RESPONSE_QUERY_STATS)                                            \
@@ -924,6 +925,7 @@ struct sqlclntstate {
     unsigned skip_eventlog: 1;
     unsigned request_fp: 1;
     unsigned dohsql_disable: 1;
+    unsigned can_redirect_fdb: 1;
 
     char *sqlengine_state_file;
     int sqlengine_state_line;

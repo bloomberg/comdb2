@@ -963,6 +963,17 @@ static int newsql_cost(struct sqlclntstate *clnt)
     return 0;
 }
 
+static int newsql_redirect_foreign(struct sqlclntstate *clnt, char **foreign_db, int cdb2api_policy_flag)
+{
+    CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
+    r.response_type = RESPONSE_TYPE__COMDB2_INFO; // unused
+    r.foreign_db = foreign_db[0];
+    r.foreign_class = foreign_db[1];
+    r.has_foreign_policy_flag = 1;
+    r.foreign_policy_flag = cdb2api_policy_flag;
+    return newsql_response(clnt, &r, 1);
+}
+
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     switch (t) {
@@ -977,6 +988,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_ERROR_BAD_STATE: return newsql_error(c, a, CDB2ERR_BADSTATE);
     case RESPONSE_ERROR_PREPARE: return newsql_error(c, a, CDB2ERR_PREPARE_ERROR);
     case RESPONSE_ERROR_REJECT: return newsql_error(c, a, CDB2ERR_REJECTED);
+    case RESPONSE_REDIRECT_FOREIGN: return newsql_redirect_foreign(c, a, i);
     case RESPONSE_FLUSH: return c->plugin.flush(c);
     case RESPONSE_HEARTBEAT: return newsql_heartbeat(c);
     case RESPONSE_ROW:
@@ -1998,6 +2010,9 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             logmsg(LOGMSG_USER, "%s:%d cdb2api requested for 'fastsql' protocol\n",
                    __func__, __LINE__);
             appdata->protocol_version = 1; // FASTSQL's protocol version = 1
+            break;
+        case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB:
+            clnt->can_redirect_fdb = 1;
             break;
         }
     }
