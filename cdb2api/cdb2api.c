@@ -1081,13 +1081,13 @@ struct cdb2_hndl {
     char stack[MAX_STACK];
     int send_stack;
     void *user_arg;
-    int gbl_event_version; /* Cached global event version */
+    int *gbl_event_version; /* Cached global event version */
     int api_call_timeout;
     int connect_timeout;
     int comdb2db_timeout;
     int socket_timeout;
     int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
-    cdb2_event events;
+    cdb2_event *events;
     // Protobuf allocator data used only for row data i.e. lastresponse
     void *protobuf_data;
     int protobuf_size;
@@ -1095,6 +1095,8 @@ struct cdb2_hndl {
     int protobuf_used_sysmalloc;
     ProtobufCAllocator allocator;
     int auto_consume_timeout_ms;
+    struct cdb2_hndl *fdb_hndl;
+    int is_child_hndl;
 };
 
 static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
@@ -3107,6 +3109,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         if (retries_done >= hndl->num_hosts) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
         }
+        features[n_features++] = CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB;
 
         debugprint("sending to %s '%s' from-line %d retries is"
                    " %d do_append is %d\n",
@@ -3441,6 +3444,9 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
+
     while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_NEXT_RECORD, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 0);
@@ -3488,6 +3494,9 @@ after_callback:
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 {
     int rc = 0;
+
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
 
     while (cdb2_next_record_int(hndl, 0) == CDB2_OK)
         ;
@@ -3538,12 +3547,18 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 static void free_events(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;
-    curre = hndl->events.next;
+    if (!hndl->events)
+        return;
+    curre = hndl->events->next;
     while (curre != NULL) {
         preve = curre;
         curre = curre->next;
         free(preve);
     }
+    free(hndl->events);
+    hndl->events = NULL;
+    free(hndl->gbl_event_version);
+    hndl->gbl_event_version = NULL;
 }
 
 static void free_query_list(cdb2_query_list *head)
@@ -3576,6 +3591,11 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     if (!hndl)
         return 0;
+
+    if (hndl->fdb_hndl) {
+        cdb2_close(hndl->fdb_hndl);
+        hndl->fdb_hndl = NULL;
+    }
 
     if (hndl->ack)
         ack(hndl);
@@ -3623,7 +3643,11 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     if (hndl->protobuf_data)
         free(hndl->protobuf_data);
 
-    if (hndl->num_set_commands) {
+    if (hndl->num_set_commands && hndl->is_child_hndl) {
+        // don't free memory for this, parent handle will free
+        hndl->num_set_commands = 0;
+        hndl->commands = NULL;
+    } else if (hndl->num_set_commands) {
         while (hndl->num_set_commands) {
             hndl->num_set_commands--;
             free(hndl->commands[hndl->num_set_commands]);
@@ -3656,7 +3680,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         PROCESS_EVENT_CTRL_AFTER(hndl, curre, rc, callbackrc);
     }
 
-    free_events(hndl);
+    if (!hndl->is_child_hndl) // parent handle will free
+        free_events(hndl);
     free_query_list(hndl->query_list);
 
     free(hndl);
@@ -4297,6 +4322,58 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
         goto retry_queries;                                                    \
     } while (0);
 
+// make newly opened child handle have same settings (references) as parent
+static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
+{
+    child->is_child_hndl = 1;
+    child->bindvars = parent->bindvars;
+    child->n_bindvars = parent->n_bindvars;
+
+    // TODO: Maybe shouldn't have authentication commands in here
+    child->num_set_commands = parent->num_set_commands;
+    child->num_set_commands_sent = 0; // we are opening a new handle (child) so need to send all set commands again
+    child->commands = parent->commands;
+    // process_set_local
+    child->is_hasql = parent->is_hasql;
+    child->is_admin = parent->is_admin;
+
+    // process_ssl_set_command
+    // set ssl vars to parent since process set command might have updated parent handle
+    child->c_sslmode = parent->c_sslmode;
+    child->nid_dbname = parent->nid_dbname;
+    free(child->sslpath);
+    child->sslpath = parent->sslpath ? strdup(parent->sslpath) : NULL;
+    free(child->cert);
+    child->cert = parent->cert ? strdup(parent->cert) : NULL;
+    free(child->key);
+    child->key = parent->key ? strdup(parent->key) : NULL;
+    free(child->ca);
+    child->ca = parent->ca ? strdup(parent->ca) : NULL;
+    free(child->crl);
+    child->crl = parent->crl ? strdup(parent->crl) : NULL;
+    child->cache_ssl_sess = parent->cache_ssl_sess;
+    if (child->cache_ssl_sess)
+        cdb2_set_ssl_sessions(child, cdb2_get_ssl_sessions(child));
+    child->min_tls_ver = parent->min_tls_ver;
+    /* Reset ssl error flag. */
+    child->sslerr = 0;
+    /* Refresh connection if SSL config has changed. */
+    if (child->sb != NULL) { // should already be NULL
+        newsql_disconnect(child, child->sb, __LINE__);
+    }
+
+    child->min_retries = parent->min_retries;
+    child->max_retries = parent->max_retries;
+
+    child->debug_trace = parent->debug_trace;
+    child->use_hint = parent->use_hint;
+
+    free(child->events);
+    child->events = parent->events;
+    free(child->gbl_event_version);
+    child->gbl_event_version = parent->gbl_event_version;
+}
+
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
@@ -4827,6 +4904,29 @@ read_record:
         clear_snapshot_info(hndl, __LINE__);
     }
 
+    // TODO: other settings (contexts)
+    if (hndl->firstresponse->foreign_db) {
+        if (cdb2_open(&hndl->fdb_hndl, hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class, hndl->firstresponse->foreign_policy_flag)) {
+            cdb2_close(hndl->fdb_hndl);
+            hndl->fdb_hndl = NULL;
+            if (is_hasql_commit)
+                cleanup_query_list(hndl, commit_query_list, __LINE__);
+
+            sprintf(hndl->errstr, "%s: Can't open fdb %s:%s", __func__, hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class);
+            debugprint("Can't open fdb %s:%s\n", hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class);
+            clear_responses(hndl);  // signal to cdb2_next_record_int that we are done
+            PRINT_AND_RETURN(-1);
+        }
+        attach_to_handle(hndl->fdb_hndl, hndl);
+
+        return_value = cdb2_run_statement_typed(hndl->fdb_hndl, sql, ntypes, types);
+        if (is_hasql_commit)
+            cleanup_query_list(hndl, commit_query_list, __LINE__);
+
+        clear_responses(hndl);  // signal to cdb2_next_record_int that we are done
+        PRINT_AND_RETURN(return_value);
+    }
+
     if (hndl->firstresponse->response_type == RESPONSE_TYPE__COLUMN_NAMES) {
         /* Handle rejects from Server. */
         if (is_retryable(hndl->firstresponse->error_code) &&
@@ -4951,6 +5051,11 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
+    if (hndl->fdb_hndl) {
+        cdb2_close(hndl->fdb_hndl);
+        hndl->fdb_hndl = NULL;
+    }
+
     while ((e = cdb2_next_callback(hndl, CDB2_AT_ENTER_RUN_STATEMENT, e)) !=
            NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 1, CDB2_SQL, sql);
@@ -5026,6 +5131,8 @@ after_callback:
 int cdb2_numcolumns(cdb2_hndl_tp *hndl)
 {
     int rc;
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
     if (hndl->firstresponse == NULL)
         rc = 0;
     else
@@ -5040,6 +5147,8 @@ int cdb2_numcolumns(cdb2_hndl_tp *hndl)
 const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col)
 {
     const char *ret;
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
     if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = NULL;
     else
@@ -5103,6 +5212,8 @@ const char *cdb2_cnonce(cdb2_hndl_tp *hndl)
 {
     if (hndl == NULL)
         return "unallocated cdb2 handle";
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
 
     return hndl->cnonce.str;
 }
@@ -5113,12 +5224,16 @@ const char *cdb2_errstr(cdb2_hndl_tp *hndl)
 
     if (hndl == NULL)
         ret = "unallocated cdb2 handle";
-    else if (hndl->firstresponse == NULL) {
-        ret = hndl->errstr;
-    } else if (hndl->lastresponse == NULL) {
-        ret = hndl->firstresponse->error_string;
-    } else {
-        ret = hndl->lastresponse->error_string;
+    else {
+        if (hndl->fdb_hndl)
+            hndl = hndl->fdb_hndl;
+        if (hndl->firstresponse == NULL) {
+            ret = hndl->errstr;
+        } else if (hndl->lastresponse == NULL) {
+            ret = hndl->firstresponse->error_string;
+        } else {
+            ret = hndl->lastresponse->error_string;
+        }
     }
 
     if (!ret)
@@ -5132,6 +5247,8 @@ const char *cdb2_errstr(cdb2_hndl_tp *hndl)
 int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
 {
     int ret;
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
     if ((hndl->firstresponse == NULL) || (hndl->firstresponse->value == NULL))
         ret = 0;
     else
@@ -5150,6 +5267,8 @@ static int col_values_flattened(CDB2SQLRESPONSE *resp)
 
 int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
 {
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
     CDB2SQLRESPONSE *lastresponse = hndl->lastresponse;
     /* sanity check. just in case. */
     if (lastresponse == NULL)
@@ -5166,6 +5285,8 @@ int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
 
 void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
 {
+    if (hndl->fdb_hndl)
+        hndl = hndl->fdb_hndl;
     CDB2SQLRESPONSE *lastresponse = hndl->lastresponse;
     /* sanity check. just in case. */
     if (lastresponse == NULL)
@@ -5356,11 +5477,19 @@ notsupported:
 
 int cdb2_clearbindings(cdb2_hndl_tp *hndl)
 {
+    if (hndl->is_child_hndl) {
+        // don't free memory for this, parent handle will free
+        hndl->bindvars = NULL;
+        hndl->n_bindvars = 0;
+        return 0;
+    }
     if (log_calls)
         fprintf(stderr, "%p> cdb2_clearbindings(%p)\n", (void *)pthread_self(),
                 hndl);
     if (hndl->bindvars == NULL)
         return 0;
+    if (hndl->fdb_hndl)
+        cdb2_clearbindings(hndl->fdb_hndl);
     for (int i = 0; i < hndl->n_bindvars; i++) {
         CDB2SQLQUERY__Bindvalue *val = hndl->bindvars[i];
         if (val->carray) {
@@ -5980,6 +6109,7 @@ int cdb2_clone(cdb2_hndl_tp **handle, cdb2_hndl_tp *c_hndl)
         hndl->ports[i] = c_hndl->ports[i];
     }
     hndl->master = c_hndl->master;
+    // don't copy fdb_hndl
     if (log_calls)
         fprintf(stderr, "%p> cdb2_clone(%p) => %p\n", (void *)pthread_self(),
                 c_hndl, hndl);
@@ -6449,6 +6579,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     pthread_mutex_unlock(&cdb2_cfg_lock);
 
     *handle = hndl = calloc(1, sizeof(cdb2_hndl_tp));
+    hndl->events = calloc(1, sizeof(*hndl->events));
+    hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
     strncpy(hndl->dbname, dbname, sizeof(hndl->dbname) - 1);
     strncpy(hndl->cluster, type, sizeof(hndl->cluster) - 1);
     strncpy(hndl->type, type, sizeof(hndl->type) - 1);
@@ -6727,8 +6859,13 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
         ++cdb2_gbl_event_version;
         pthread_mutex_unlock(&cdb2_event_mutex);
     } else {
+        if (!hndl->events) {
+            assert(!hndl->gbl_event_version);
+            hndl->events = calloc(1, sizeof(*hndl->events));
+            hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
+        }
         ret->global = 0;
-        for (curr = &hndl->events; curr->next != NULL; curr = curr->next)
+        for (curr = hndl->events; curr->next != NULL; curr = curr->next)
             ;
         curr->next = ret;
     }
@@ -6754,14 +6891,15 @@ int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *event)
         prev->next = curr->next;
         ++cdb2_gbl_event_version;
         pthread_mutex_unlock(&cdb2_event_mutex);
-    } else {
-        for (prev = &hndl->events, curr = prev->next;
+    } else if (hndl->events) {
+        for (prev = hndl->events, curr = prev->next;
              curr != NULL && curr != event; prev = curr, curr = curr->next)
             ;
         if (curr != event)
             return EINVAL;
         prev->next = curr->next;
-    }
+    } else
+        return EINVAL;
     free(event);
     return 0;
 }
@@ -6775,7 +6913,7 @@ static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *hndl, cdb2_event_type type,
         /* Refresh once on new iteration. */
         if (refresh_gbl_events_on_hndl(hndl) != 0)
             return NULL;
-        e = hndl->events.next;
+        e = hndl->events->next;
     }
     for (; e != NULL && !(e->types & type); e = e->next)
         ;
@@ -6902,15 +7040,21 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     cdb2_event *gbl, *lcl, *tmp, *knot;
     size_t elen;
 
+    if (!hndl->events) {
+        assert(!hndl->gbl_event_version);
+        hndl->events = calloc(1, sizeof(*hndl->events));
+        hndl->gbl_event_version = calloc(1, sizeof(*hndl->gbl_event_version));
+    }
+
     /* Fast return if the version has not changed. */
-    if (hndl->gbl_event_version == cdb2_gbl_event_version)
+    if (*hndl->gbl_event_version == cdb2_gbl_event_version)
         return 0;
 
     /* Otherwise we must recopy the global events to the handle. */
     pthread_mutex_lock(&cdb2_event_mutex);
 
     /* Clear cached global events. */
-    gbl = hndl->events.next;
+    gbl = hndl->events->next;
     while (gbl != NULL && gbl->global) {
         tmp = gbl;
         gbl = gbl->next;
@@ -6921,7 +7065,7 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     knot = gbl;
 
     /* Clone and append global events to the handle. */
-    for (gbl = cdb2_gbl_events.next, lcl = &hndl->events; gbl != NULL;
+    for (gbl = cdb2_gbl_events.next, lcl = hndl->events; gbl != NULL;
          gbl = gbl->next) {
         elen = sizeof(cdb2_event) + gbl->argc * sizeof(cdb2_event_arg);
         tmp = malloc(elen);
@@ -6939,7 +7083,7 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     lcl->next = knot;
 
     /* Latch the global version. */
-    hndl->gbl_event_version = cdb2_gbl_event_version;
+    *hndl->gbl_event_version = cdb2_gbl_event_version;
 
     pthread_mutex_unlock(&cdb2_event_mutex);
     return 0;

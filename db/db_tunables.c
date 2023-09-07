@@ -74,6 +74,7 @@ extern int gbl_forbid_ulonglong;
 extern int gbl_force_highslot;
 extern int gbl_fdb_allow_cross_classes;
 extern int gbl_fdb_resolve_local;
+extern int gbl_fdb_push_redirect_foreign;
 extern int gbl_fdb_push_remote;
 extern int gbl_goslow;
 extern int gbl_heartbeat_send;

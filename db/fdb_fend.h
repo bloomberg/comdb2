@@ -143,6 +143,7 @@ enum fdb_errors {
 };
 
 extern int gbl_fdb_push_remote;
+extern int gbl_fdb_push_redirect_foreign;
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
 #define fdb_node_invalid(n) (fdb_is_error((n)))
