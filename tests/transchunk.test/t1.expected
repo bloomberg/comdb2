@@ -1,0 +1,8 @@
+[commit] failed with rc 299 add key constraint duplicate key 'KEY' on table 't1' index 0
+(count(*) = 1=1)
+(out='Verify succeeded.')
+(rows deleted=1)
+(rows inserted=10000)
+(count(*) = 0=1)
+(out='Verify succeeded.')
+(rows deleted=0)
