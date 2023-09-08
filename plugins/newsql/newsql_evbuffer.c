@@ -158,7 +158,7 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
             cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         }
         appdata->query = NULL;
-        rd_hdr(-1, 0, appdata);
+        evtimer_once(appdata->base, rd_hdr, appdata);
     } else {
         newsql_cleanup(appdata);
     }

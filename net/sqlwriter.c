@@ -322,7 +322,13 @@ int sql_write(struct sqlwriter *writer, void *arg, int flush)
     }
     writer->flush = flush;
     writer->wr_continue = 0;
+    int orig_packing = writer->packing;
+    writer->packing = 1; /* to skip locking in sql_flush_cb */
+    sql_flush_cb(event_get_fd(writer->flush_ev), EV_WRITE, writer);
+    writer->packing = orig_packing;
+    outstanding = evbuffer_get_length(writer->wr_buf);
     Pthread_mutex_unlock(&writer->wr_lock);
+    if (outstanding) return 0;
     return sql_flush_int(writer);
 }
 
