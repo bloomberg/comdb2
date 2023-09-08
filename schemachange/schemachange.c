@@ -553,7 +553,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
 
 int do_dryrun(struct schema_change_type *s)
 {
-    int rc;
+    int rc = 0;
     struct dbtable *db = NULL;
     struct dbtable *newdb = NULL;
     struct scinfo scinfo = {0};
