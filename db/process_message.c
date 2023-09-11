@@ -208,6 +208,7 @@ static const char *HELP_STAT[] = {
     "stat clnt [#] [rates|totals]- show per client request stats",
     "stat mtrap                 - show mtrap system stats",
     "stat dohsql                - show distributed sql stats",
+    "stat oldfile               - dump oldfile hash",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
     "dmpcts                     - show table constraints",
@@ -1933,6 +1934,9 @@ clipper_usage:
             upgrade_records_stats();
         } else if (tokcmp(tok, ltok, "dohsql") == 0) {
             dohsql_stats();
+        } else if (tokcmp(tok, ltok, "oldfile") == 0) {
+            void oldfile_dump(void);
+            oldfile_dump();
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
         } else {
