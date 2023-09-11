@@ -400,7 +400,6 @@ retry_read:
                 clnt->ready_for_heartbeats = 1;
             }
             newsql_heartbeat(clnt);
-            fdb_heartbeats(clnt);
             Pthread_mutex_unlock(&clnt->wait_mutex);
         }
 
@@ -441,7 +440,6 @@ retry_read:
             clnt->ready_for_heartbeats = 1;
         }
         newsql_heartbeat(clnt);
-        fdb_heartbeats(clnt);
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
     free(p);

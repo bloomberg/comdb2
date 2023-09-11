@@ -5062,12 +5062,6 @@ static int wait_for_sql_query(struct sqlclntstate *clnt)
                 if (diff.tv_sec >= clnt->heartbeat) {
                     last = st;
                     send_heartbeat(clnt);
-                    rc = fdb_heartbeats(clnt);
-                    if (rc) {
-                        logmsg(LOGMSG_ERROR, "%s: fdb_heartbeats, rc=%d\n",
-                               __func__, rc);
-                        return -1;
-                    }
                 }
                 if (clnt->query_timeout > 0 && !clnt->statement_timedout) {
                     TIMESPEC_SUB(st, first, diff);

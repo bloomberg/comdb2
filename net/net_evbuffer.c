@@ -129,6 +129,7 @@ enum policy {
 
 static int dedicated_appsock = 1;
 static int dedicated_timer = 0;
+static int dedicated_fdb = 1;
 static enum policy reader_policy = POLICY_PER_NET;
 static enum policy writer_policy = POLICY_PER_HOST;
 
@@ -144,6 +145,8 @@ static pthread_t base_thd;
 static struct event_base *base;
 static pthread_t timer_thd;
 static struct event_base *timer_base;
+static pthread_t fdb_thd;
+static struct event_base *fdb_base;
 
 #define NUM_APPSOCK_RD 4
 pthread_t appsock_thd[NUM_APPSOCK_RD];
@@ -183,6 +186,7 @@ struct event_base *appsock_base[NUM_APPSOCK_RD];
 
 #define check_base_thd() check_thd(base_thd)
 #define check_timer_thd() check_thd(timer_thd)
+#define check_fdb_thd() check_thd(fdb_thd)
 #define check_rd_thd() check_thd(rd_thd)
 #define check_wr_thd() check_thd(wr_thd)
 
@@ -1118,6 +1122,9 @@ static void exit_once_func(void)
     if (dedicated_timer) {
         stop_base(timer_base);
     }
+    if (dedicated_fdb) {
+        stop_base(fdb_base);
+    }
     if (gbl_libevent_appsock && dedicated_appsock) {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
             stop_base(appsock_base[i]);
@@ -1812,6 +1819,61 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
     event_add(e->hb_check_ev, &one_sec);
     event_add(e->hb_send_ev, &one_sec);
     evtimer_once(base, finish_host_setup, e);
+}
+
+extern int fdb_heartbeats(fdb_hbeats_type *hb);
+static void fdb_heartbeat(int dummyfd, short what, void *data)
+{
+    check_fdb_thd();
+
+    fdb_hbeats_type *hb = data; 
+    Pthread_mutex_lock(&hb->sb_mtx);
+    logmsg(LOGMSG_INFO, "Sending fdb heartbeat for tran %p\n", hb);
+    fdb_heartbeats(hb);
+    Pthread_mutex_unlock(&hb->sb_mtx);
+}
+
+static void do_enable_fdb_heartbeats(int dummyfd, short what, void *data)
+{
+    fdb_hbeats_type *hb = data;
+
+    check_fdb_thd();
+    if (hb->ev_hbeats)
+        abort();
+
+    hb->ev_hbeats = event_new(fdb_base, -1, EV_PERSIST, fdb_heartbeat, hb);
+    if (!hb->ev_hbeats) {
+        logmsg(LOGMSG_ERROR, "Failed to create new event for fdb_heartbeat\n");
+        return;
+    }
+    hb->tv.tv_sec = 5; /*IOTIMEOUTMS/2*/
+    hb->tv.tv_usec = 0;
+
+    event_add(hb->ev_hbeats, &hb->tv);
+}
+
+int enable_fdb_heartbeats(fdb_hbeats_type  *hb)
+{
+    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_enable_fdb_heartbeats,
+                           hb, NULL);
+}
+
+static void do_disable_fdb_heartbeats(int dummyfd, short what, void *data)
+{
+    fdb_hbeats_type *hb= data;
+
+    check_fdb_thd();
+    if (hb->ev_hbeats) {
+        event_del(hb->ev_hbeats);
+        event_free(hb->ev_hbeats);
+        hb->ev_hbeats = NULL;
+    }
+}
+
+int disable_fdb_heartbeats(fdb_hbeats_type *hb)
+{
+    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats,
+                           hb, NULL);
 }
 
 static void enable_read(int dummyfd, short what, void *data)
@@ -3025,6 +3087,12 @@ static void setup_bases(void)
     } else {
         timer_thd = base_thd;
         timer_base = base;
+    }
+    if (dedicated_fdb) {
+        init_base(&fdb_thd, &fdb_base, "fdb");
+    } else {
+        fdb_thd = base_thd;
+        fdb_base = base;
     }
     if (gbl_libevent_appsock) {
         if (dedicated_appsock) {

@@ -415,6 +415,14 @@ typedef struct ack_state_struct {
     netinfo_type *netinfo;
 } ack_state_type;
 
+struct fdb_tran;
+typedef struct fdb_hbeats {
+    struct fdb_tran *tran;
+    struct event *ev_hbeats;
+    pthread_mutex_t sb_mtx;
+    struct timeval tv;
+} fdb_hbeats_type;
+
 /* Trace functions */
 void host_node_printf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);
 void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, ...);

@@ -33,6 +33,7 @@
 #include <ctrace.h>
 
 #include <gettimeofday_ms.h>
+#include <event2/event.h>
 
 #include "comdb2.h"
 #include "sql.h"
@@ -3784,7 +3785,6 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         rc = _fdb_send_open_retries(clnt, fdb, NULL /* tran_begin */,
                                     -1 /*unused*/, tran, 0 /*flags*/,
                                     0 /*TODO: version */, msg, use_ssl);
-
         if (rc != FDB_NOERR || !tran->sb) {
             logmsg(LOGMSG_ERROR, "%s unable to connect to %s %s\n", __func__,
                     fdb->dbname, tran->host);
@@ -3792,6 +3792,11 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             free(msg);
             return NULL;
         }
+
+        /* need hbeats */
+        Pthread_mutex_init(&tran->hbeats.sb_mtx, NULL);
+        tran->hbeats.tran = tran;
+        enable_fdb_heartbeats(&tran->hbeats);
 
         tran->seq++;
 
@@ -3857,12 +3862,35 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
     return tran;
 }
 
+static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
+{
+    int rc, bdberr;
+
+    disable_fdb_heartbeats(&tran->hbeats);
+
+    listc_rfl(&dtran->fdb_trans, tran);
+
+    if (tran->sb)
+        sbuf2close(tran->sb);
+    if (tran->errstr)
+        free(tran->errstr);
+    if (tran->dedup_tbl != NULL) {
+        /* tempcursors are automatically closed in bdb_temp_table_close. */
+        if ((rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr)))
+            logmsg(LOGMSG_ERROR,
+                   "%s: error closing temptable, rc %d, bdberr %d\n",
+                   __func__, rc, bdberr);
+    }
+    Pthread_mutex_destroy(&tran->hbeats.sb_mtx);
+    free(tran);
+}
+
 int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc = 0, bdberr;
+    int rc = 0;
 
     if (!dtran)
         return 0;
@@ -3945,21 +3973,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
             continue;
 
-        listc_rfl(&dtran->fdb_trans, tran);
-
-        if (tran->sb)
-            sbuf2close(tran->sb);
-        if (tran->errstr)
-            free(tran->errstr);
-
-        if (tran->dedup_tbl != NULL) {
-            /* tempcursors are automatically closed in bdb_temp_table_close. */
-            rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr);
-            if (rc != 0)
-                logmsg(LOGMSG_ERROR, "%s: error closing temptable, rc %d, bdberr %d\n", __func__, rc, bdberr);
-        }
-
-        free(tran);
+        _free_fdb_tran(dtran, tran);
     }
 
     /*
@@ -3984,7 +3998,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc, bdberr;
+    int rc;
 
     if (!dtran)
         return 0;
@@ -4028,21 +4042,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
     /* free the dtran */
     LISTC_FOR_EACH_SAFE(&dtran->fdb_trans, tran, tmp, lnk)
     {
-        listc_rfl(&dtran->fdb_trans, tran);
-
-        if (tran->sb)
-            sbuf2close(tran->sb);
-        if (tran->errstr)
-            free(tran->errstr);
-
-        if (tran->dedup_tbl != NULL) {
-            /* tempcursors are automatically closed in bdb_temp_table_close. */
-            rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr);
-            if (rc != 0)
-                logmsg(LOGMSG_ERROR, "%s: error closing temptable, rc %d, bdberr %d\n", __func__, rc, bdberr);
-        }
-
-        free(tran);
+        _free_fdb_tran(dtran, tran);
     }
     free(clnt->dbtran.dtran);
     clnt->dbtran.dtran = NULL;
@@ -4740,30 +4740,19 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
  * Send heartbeats to remote dbs in a distributed transaction
  *
  */
-int fdb_heartbeats(struct sqlclntstate *clnt)
+int fdb_heartbeats(fdb_hbeats_type *hbeats)
 {
-    Pthread_mutex_lock(&clnt->dtran_mtx);
-    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
-    int out_rc = FDB_NOERR;
-    if (!dtran || dtran->remoted) {
-        goto out;
-    }
     fdb_msg_t *msg = alloca(fdb_msg_size());
-    fdb_tran_t *tran;
-    LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk) {
-        int rc = fdb_send_heartbeat(msg, tran->tid, tran->sb);
-        if (gbl_fdb_track) {
-            uuidstr_t us;
-            comdb2uuidstr((unsigned char *)tran->tid, us);
-            logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
-                   __func__, us, tran->fdb->dbname, rc);
-        }
-        if (!out_rc) {
-            out_rc = rc;
-        }
+    fdb_tran_t *tran = hbeats->tran;
+    bzero(msg, fdb_msg_size());
+    int rc = fdb_send_heartbeat(msg, tran->tid, tran->sb);
+    if (gbl_fdb_track) {
+        uuidstr_t us;
+        comdb2uuidstr((unsigned char *)tran->tid, us);
+        logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
+                __func__, us, tran->fdb->dbname, rc);
     }
-out:Pthread_mutex_unlock(&clnt->dtran_mtx);
-    return out_rc;
+    return rc;
 }
 
 /* check if the mentioned fdb has a preferred node, and get the status of last
