@@ -462,6 +462,9 @@ int db_is_stopped(void);
 int db_is_exiting(void);
 void stop_event_net(void);
 int sync_state_to_protobuf(int);
+struct fdb_hbeats;
 void increase_net_buf(void);
+int enable_fdb_heartbeats(struct fdb_hbeats*);
+int disable_fdb_heartbeats(struct fdb_hbeats*);
 
 #endif

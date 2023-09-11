@@ -182,6 +182,13 @@ if [[ -z $opt || "$opt" == "7" ]]; then
    run_test rollbackupdates.req output.7.log $output t2 a
 fi
 
+if [[ -z $opt || "$opt" == "8" ]]; then
+
+    output=./run.8.out
+    run_test pausedtxn.req output.8.log $output t2 a
+fi
+
+
 
 echo "Testcase passed."
 
