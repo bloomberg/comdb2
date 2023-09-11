@@ -7701,8 +7701,6 @@ static struct unused_file *of_list[OF_LIST_MAX];
 static int list_hd = 0, list_tl = 0;
 static pthread_mutex_t unused_files_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-/* to debug hash content can dump hash
-        hash_for(oldfile_hash, oldfile_hash_dump, NULL);
 static int oldfile_hash_dump(void *ptr, void *unused)
 {
     struct unused_file *obj = ptr;
@@ -7710,7 +7708,15 @@ static int oldfile_hash_dump(void *ptr, void *unused)
            obj->lognum, obj);
     return 0;
 }
- */
+
+void oldfile_dump(void)
+{
+    if (oldfile_hash == NULL) {
+        logmsg(LOGMSG_USER, "%s: oldfile hash is NULL\n", __func__);
+        return;
+    }
+    hash_for(oldfile_hash, oldfile_hash_dump, NULL);
+}
 
 /* use hash tbl to check if we have added file to list previously */
 static int oldfile_list_contains(const char *filename)
