@@ -2156,7 +2156,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     sqlite3 *db;
     const char *sql;
 
-    if ((db = clnt->thd->sqldb) != NULL && db->pVdbe != NULL && db->pVdbe->fdb_warn_this_op != 0) {
+    if (clnt->thd != NULL && (db = clnt->thd->sqldb) != NULL && db->pVdbe != NULL && db->pVdbe->fdb_warn_this_op != 0) {
         /* we only need one trace */
         sql = clnt->sql ? clnt->sql : "unavailable";
         logmsg(LOGMSG_INFO, "%s: Unsupported expr op for fdb cursor hints:%d query:%.16s (see trc.c for full query)\n",
