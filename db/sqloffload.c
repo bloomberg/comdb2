@@ -604,8 +604,6 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
     }
-    if (clnt->fdb_push)
-        fdb_push_free(&clnt->fdb_push);
 
     if (clnt->dbtran.shadow_tran) {
         /* for some reason the clnt contains an unfinished

@@ -32,6 +32,12 @@ cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remd
 # get the version V2
 cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
+# make sure clnt->fdb_push is cleared when running local stmt after foreign stmt (insert stmt will fail if clnt->fdb_push is not cleared)
+cdb2sql -s ${SRC_CDB2_OPTIONS} --host $mach $a_dbname - >> $output 2>&1 << EOF
+select * from LOCAL_${a_remdbname}.t order by id
+insert into t values (10, "hi")
+EOF
+
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
