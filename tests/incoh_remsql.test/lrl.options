@@ -3,3 +3,4 @@ table t2 t2.csc2
 machine_class dev
 fdb_incoherence_percentage 40
 ssl_client_mode OPTIONAL
+fdb_io_error_retries_phase_2_poll 25
