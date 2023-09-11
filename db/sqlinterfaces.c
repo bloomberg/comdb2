@@ -3848,6 +3848,8 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         dohsql_end_distribute(clnt, thd->logger);
         distributed = 1;
     }
+    if (clnt->fdb_push)
+        fdb_push_free(&clnt->fdb_push);
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt, stmt, outrc);
 
