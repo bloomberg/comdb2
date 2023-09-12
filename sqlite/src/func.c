@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 #include <memcompare.c>
+#include <zlib.h>
 #include "comdb2.h"
 #include "sql.h"
 #include "bdb_int.h"
@@ -1143,6 +1144,277 @@ static void comdb2UserFunc(
 
   sqlite3_result_text(context, get_current_user(get_sql_clnt()), -1,
                       SQLITE_STATIC);
+}
+
+/* The code below is based on the example presented here: https://www.zlib.net/zpipe.c */
+
+#define CHUNK 32768
+static unsigned char *compressFunc_int(sqlite3_context *context,
+                                       unsigned char *uncomprData,
+                                       unsigned int   uncomprLen,
+                                       unsigned int  *comprLen,
+                                       int(*deflateInitFunc)(z_stream*))  {
+    unsigned char buffer[CHUNK];     // Buffer to stage compressed data
+    unsigned char *comprData = NULL; // Final buffer (realloc-ed when needed)
+    int rc;
+    z_stream stream;
+
+    *comprLen = 0;
+
+    stream.zalloc = Z_NULL;
+    stream.zfree = Z_NULL;
+    stream.opaque = Z_NULL;
+
+    rc = deflateInitFunc(&stream);
+    if (rc != Z_OK) {
+        sqlite3_result_error(context, "zlib: failed to initialize", -1);
+        return NULL;
+    }
+
+    stream.avail_in = uncomprLen;
+    stream.next_in = uncomprData;
+
+    do {
+        stream.avail_out = CHUNK;
+        stream.next_out = buffer;
+
+        rc = deflate(&stream, Z_FINISH);
+        if (rc == Z_STREAM_ERROR) {
+            sqlite3_result_error(context, "zlib: stream error", -1);
+            deflateEnd(&stream);
+            return NULL;
+        }
+
+        unsigned int compr_bytes = CHUNK - stream.avail_out;
+        comprData = (comprData == NULL)
+            ? (unsigned char *)contextMalloc(context, compr_bytes)
+            : (unsigned char *)sqlite3_realloc(comprData, *comprLen + compr_bytes);
+        memcpy(comprData + *comprLen, buffer, compr_bytes);
+        *comprLen += compr_bytes;
+    } while (stream.avail_out == 0);
+
+    deflateEnd(&stream);
+    return comprData;
+}
+
+static unsigned char *uncompressFunc_int(sqlite3_context *context,
+                                         unsigned char *comprData,
+                                         unsigned int   comprLen,
+                                         unsigned int  *uncomprLen,
+                                         int(*inflateInitFunc)(z_stream *)) {
+    unsigned char buffer[CHUNK];       // Buffer to stage uncompressed data
+    unsigned char *uncomprData = NULL; // Final buffer (realloc-ed when needed)
+    int rc;
+    z_stream stream;
+
+    *uncomprLen = 0;
+
+    stream.zalloc = Z_NULL;
+    stream.zfree = Z_NULL;
+    stream.opaque = Z_NULL;
+
+    rc = inflateInitFunc(&stream);
+    if (rc != Z_OK) {
+        sqlite3_result_error(context, "zlib: failed to initialize", -1);
+        return NULL;
+    }
+
+    stream.avail_in = comprLen;
+    stream.next_in = comprData;
+
+    do {
+        stream.avail_out = CHUNK;
+        stream.next_out = buffer;
+
+        rc = inflate(&stream, Z_NO_FLUSH);
+        if (rc < 0) {
+            sqlite3_result_error(context, "zlib: internal error", -1);
+            inflateEnd(&stream);
+            return NULL;
+        }
+
+        unsigned int uncompr_bytes = CHUNK - stream.avail_out;
+        uncomprData = (uncomprData == NULL)
+            ? (unsigned char *)contextMalloc(context, uncompr_bytes)
+            : (unsigned char *)sqlite3_realloc(uncomprData, *uncomprLen + uncompr_bytes);
+        memcpy(uncomprData + *uncomprLen, buffer, uncompr_bytes);
+        *uncomprLen += uncompr_bytes;
+    } while (stream.avail_out == 0);
+
+    inflateEnd(&stream);
+    return uncomprData;
+}
+
+static int deflateInit__(z_stream *stream) {
+    return deflateInit(stream, Z_DEFAULT_COMPRESSION);
+}
+
+static int inflateInit__(z_stream *stream) {
+    return inflateInit(stream);
+}
+
+static int deflateInit2__(z_stream *stream) {
+    return deflateInit2(stream, Z_DEFAULT_COMPRESSION,
+                        Z_DEFLATED, 15 | 16 /* Add gzip header & trailer */, 8,
+                        Z_DEFAULT_STRATEGY);
+}
+
+static int inflateInit2__(z_stream *stream) {
+    return inflateInit2(stream, 15 | 16);
+}
+
+static void compressFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+  ){
+    unsigned char *uncomprData;
+    unsigned int uncomprLen;
+
+    int type = sqlite3_value_type(argv[0]);
+
+    switch (type) {
+        case SQLITE_TEXT:
+            uncomprData = (unsigned char *)sqlite3_value_text(argv[0]);
+            uncomprLen = strlen((char*) uncomprData);
+            break;
+
+        case SQLITE_BLOB:
+            uncomprData = (unsigned char *)sqlite3_value_blob(argv[0]);
+            uncomprLen = sqlite3_value_bytes(argv[0]);
+            break;
+
+        case SQLITE_NULL:
+            sqlite3_result_null(context);
+            return;
+
+        default:
+            sqlite3_result_error(context, "zlib: data type not supported", -1);
+            return;
+    }
+
+    unsigned char *comprData = NULL;
+    unsigned int comprLen = 0;
+    comprData = compressFunc_int(context, uncomprData, uncomprLen, &comprLen,
+                                 deflateInit__);
+
+    if (comprData != NULL) {
+        sqlite3_result_blob(context, comprData, comprLen, NULL);
+    }
+    return;
+}
+
+static void uncompressFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+  ){
+    unsigned char *comprData;
+    unsigned int comprLen;
+
+    int type = sqlite3_value_type(argv[0]);
+
+    switch (type) {
+        case SQLITE_BLOB:
+            comprData = (unsigned char *)sqlite3_value_blob(argv[0]);
+            comprLen = sqlite3_value_bytes(argv[0]);
+            break;
+
+        case SQLITE_NULL:
+            sqlite3_result_null(context);
+            return;
+
+        default:
+            sqlite3_result_error(context, "zlib: data type not supported", -1);
+            return;
+    }
+
+    unsigned char *uncomprData = NULL;
+    unsigned int uncomprLen = 0;
+    uncomprData = uncompressFunc_int(context, comprData, comprLen,
+                                     &uncomprLen, inflateInit__);
+
+    if (uncomprData != NULL) {
+        sqlite3_result_blob(context, uncomprData, uncomprLen, NULL);
+    }
+    return;
+}
+
+static void compressGzipFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+  ){
+    unsigned char *uncomprData;
+    unsigned int uncomprLen;
+
+    int type = sqlite3_value_type(argv[0]);
+
+    switch (type) {
+        case SQLITE_TEXT:
+            uncomprData = (unsigned char *)sqlite3_value_text(argv[0]);
+            uncomprLen = strlen((char*) uncomprData);
+            break;
+
+        case SQLITE_BLOB:
+            uncomprData = (unsigned char *)sqlite3_value_blob(argv[0]);
+            uncomprLen = sqlite3_value_bytes(argv[0]);
+            break;
+
+        case SQLITE_NULL:
+            sqlite3_result_null(context);
+            return;
+
+        default:
+            sqlite3_result_error(context, "zlib: data type not supported", -1);
+            return;
+    }
+
+    unsigned char *comprData = NULL;
+    unsigned int comprLen = 0;
+    comprData = compressFunc_int(context, uncomprData, uncomprLen, &comprLen,
+                                 deflateInit2__);
+
+    if (comprData != NULL) {
+        sqlite3_result_blob(context, comprData, comprLen, sqlite3_free);
+    }
+    return;
+}
+
+static void uncompressGzipFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+  ){
+    unsigned char *comprData;
+    unsigned int comprLen;
+
+    int type = sqlite3_value_type(argv[0]);
+
+    switch (type) {
+        case SQLITE_BLOB:
+            comprData = (unsigned char *)sqlite3_value_blob(argv[0]);
+            comprLen = sqlite3_value_bytes(argv[0]);
+            break;
+
+        case SQLITE_NULL:
+            sqlite3_result_null(context);
+            return;
+
+        default:
+            sqlite3_result_error(context, "zlib: data type not supported", -1);
+            return;
+    }
+
+    unsigned char *uncomprData = NULL;
+    unsigned int uncomprLen = 0;
+    uncomprData = uncompressFunc_int(context, comprData, comprLen,
+                                     &uncomprLen, inflateInit2__);
+
+    if (uncomprData != NULL) {
+        sqlite3_result_blob(context, uncomprData, uncomprLen, sqlite3_free);
+    }
+    return;
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2819,8 +3091,13 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
     FUNCTION(comdb2_last_cost,      0, 0, 0, comdb2LastCostFunc),
-
     FUNCTION(checksum_md5,          1, 0, 0, md5Func),
+    FUNCTION(compress,              1, 0, 0, compressFunc),
+    FUNCTION(uncompress,            1, 0, 0, uncompressFunc),
+    FUNCTION(compress_zlib,         1, 0, 0, compressFunc),
+    FUNCTION(uncompress_zlib,       1, 0, 0, uncompressFunc),
+    FUNCTION(compress_gzip,         1, 0, 0, compressGzipFunc),
+    FUNCTION(uncompress_gzip,       1, 0, 0, uncompressGzipFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),
