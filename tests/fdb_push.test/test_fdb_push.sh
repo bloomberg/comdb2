@@ -10,12 +10,15 @@ a_remdbname=$1
 a_remcdb2config=$2
 a_dbname=$3
 a_cdb2config=$4
-a_dbdir=$5
-a_testdir=$6
+a_remdbname2=$5
+a_remcdb2config2=$6
+a_dbdir=$7
+a_testdir=$8
 
 output=run.out
 
 REM_CDB2_OPTIONS="--cdb2cfg ${a_remcdb2config}"
+REM_CDB2_OPTIONS2="--cdb2cfg ${a_remcdb2config2}"
 SRC_CDB2_OPTIONS="--cdb2cfg ${a_cdb2config}"
 
 # Make sure we talk to the same host
@@ -33,11 +36,13 @@ cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remd
 cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 # make sure clnt->fdb_push is cleared when running local stmt after foreign stmt (insert stmt will fail if clnt->fdb_push is not cleared)
+echo "Test running fdb stmt followed by local stmt" >> $output
 cdb2sql -s ${SRC_CDB2_OPTIONS} --host $mach $a_dbname - >> $output 2>&1 << EOF
 select * from LOCAL_${a_remdbname}.t order by id
 insert into t values (10, "hi")
 EOF
 
+echo "Test parameters" >> $output
 cdb2sql -s ${REM_CDB2_OPTIONS} $a_remdbname default - >> $output 2>&1 << EOF
 insert into t2(i) values (10), (20)
 insert into t2(r) values (1.0), (1.2)
@@ -76,6 +81,13 @@ cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
 @bind CDB2_DATETIMEUS d2 2023-09-13T00:00:00.000001
 select * from LOCAL_${a_remdbname}.t2 where d2=@d2
 EOF
+
+# drop sqlite_stat1 table from remote and make sure can still retrieve data
+# needs to be first query sent to remote db, so use a new db
+echo "Test running with no sqlite_stat1" >> $output
+cdb2sql -s ${REM_CDB2_OPTIONS2} $a_remdbname2 default - < remdata.req >> $output 2>&1
+cdb2sql ${REM_CDB2_OPTIONS2} $a_remdbname2 default "drop table if exists sqlite_stat1" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname2}.t order by id" >> $output 2>&1
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual

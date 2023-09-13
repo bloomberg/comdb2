@@ -291,6 +291,10 @@ call_setup() {
         cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
     fi
 
+    if [[ -z "${cr}" ]] && [[ -n "${TERTIARY_DBNAME}" ]] ; then
+        cr=`find_cores ${TERTIARY_DBNAME} ${TERTIARY_DBDIR}`
+    fi
+
 
     if [[ -n "${cr}" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)" | tee -a ${TEST_LOG}
@@ -393,6 +397,10 @@ if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
+if [[ -z "${cr}" ]] && [[ -n "${TERTIARY_DBNAME}" ]] ; then
+    cr=`find_cores ${TERTIARY_DBNAME} ${TERTIARY_DBDIR}`
+fi
+
 if [[ -n "$cr" ]] ; then
     CHECK_DB_AT_FINISH=0
 elif [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
@@ -408,17 +416,24 @@ fi
 if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     dbdown=`check_db_at_finish ${DBNAME} $CDB2_CONFIG`
 
-    # if no crashes, check secondary
+    # if no crashes, check secondary/tertiary
     if [[ -z "${dbdown}" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
         dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
+    fi
+
+    if [[ -z "${dbdown}" ]] && [[ -n "${TERTIARY_DBNAME}" ]]; then
+        dbdown=`check_db_at_finish ${TERTIARY_DBNAME} $TERTIARY_CDB2_CONFIG`
     fi
 
     # if no crashes and $VERIFY_DB_AT_FINISH > 0 then run verify
     if [[ -z "${dbdown}" ]] && [[ $VERIFY_DB_AT_FINISH -gt 0 ]]; then
         verify_ret=`verify_db_at_finish ${DBNAME} $CDB2_CONFIG`
-        # if no issues with verify, run verify on secondary
+        # if no issues with verify, run verify on secondary/tertiary
         if [[ -z "${verify_ret}" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
             verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
+        fi
+        if [[ -z "${verify_ret}" ]] && [[ -n "${TERTIARY_DBNAME}" ]]; then
+            verify_ret=`verify_db_at_finish ${TERTIARY_DBNAME} $TERTIARY_CDB2_CONFIG`
         fi
         verify_phys=`verify_physical_at_finish ${DBNAME} $CDB2_CONFIG`
     fi
@@ -489,6 +504,10 @@ if [[ -z "$cr" ]] ; then
 
     if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
         cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+    fi
+
+    if [[ -z "${cr}" ]] && [[ -n "${TERTIARY_DBNAME}" ]] ; then
+        cr=`find_cores ${TERTIARY_DBNAME} ${TERTIARY_DBDIR}`
     fi
 
     if [[ -n "$cr" ]] ; then

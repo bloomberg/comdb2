@@ -250,5 +250,9 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     # setup secondary db for the test, if specified
     DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" unsetup_db
 fi
+if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
+    # setup tertiary db for the test, if specified
+    DBNAME="${TERTIARY_DBNAME}" DBDIR="${TERTIARY_DBDIR}" CDB2_OPTIONS="${TERTIARY_CDB2_OPTIONS}" unsetup_db
+fi
 
 echo "Unsetup completed"
