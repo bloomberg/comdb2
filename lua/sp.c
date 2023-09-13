@@ -3134,6 +3134,7 @@ static void drop_temp_tables(SP sp)
 // SP ready to run again
 static void reset_sp(SP sp)
 {
+    if (!sp) return;
     if (sp->lua) {
         lua_gc(sp->lua, LUA_GCCOLLECT, 0);
         drop_temp_tables(sp);
