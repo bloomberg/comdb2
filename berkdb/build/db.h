@@ -1402,6 +1402,7 @@ typedef enum {
 #define	DB_VERIFY_BAD		(-30976)/* Verify failed; bad format. */
 #define	DB_CUR_STALE		(-30975)/* Cursor deserialization failed since 
 					 * something had changed. comdb2 add */
+#define	DB_HAS_MAJORITY		(-30974)/* have enough votes to become a majority */
 #define DB_LOCK_DESIRED		(-31000)/* BDB needs  a long running operation
 					 *  out of the library */
 #define DB_LOCK_DEADLOCK_CUSTOM	(-31001)/* Deadlock on custom log record.  */
