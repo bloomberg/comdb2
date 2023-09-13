@@ -10,11 +10,13 @@ Table "sqlite_stat1" Rootp 1073741828 Remrootp 5 Version=0
 Table "sqlite_stat4" Rootp 1073741829 Remrootp 6 Version=0
 Index "$ID_52596C31" for table "t" Rootp 1073741827 Remrootp 3 Version=0
 Table "t" Rootp 1073741826 Remrootp 2 Version=0
+Test running fdb stmt followed by local stmt
 (id=1, b1='Hello1')
 (id=2, b1='Hello2')
 (id=3, b1='Hello3')
 (id=4, b1='Hello4')
 (rows inserted=1)
+Test parameters
 (rows inserted=2)
 (rows inserted=2)
 (rows inserted=2)
@@ -27,3 +29,12 @@ Table "t" Rootp 1073741826 Remrootp 2 Version=0
 (i=NULL, r=NULL, s=NULL, b=x'deadbeaf', d=NULL, d2=NULL)
 (i=NULL, r=NULL, s=NULL, b=NULL, d="2023-09-13T000000.000 America/New_York", d2=NULL)
 (i=NULL, r=NULL, s=NULL, b=NULL, d=NULL, d2="2023-09-13T000000.000001 America/New_York")
+Test running with no sqlite_stat1
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(id=1, b1='Hello1')
+(id=2, b1='Hello2')
+(id=3, b1='Hello3')
+(id=4, b1='Hello4')

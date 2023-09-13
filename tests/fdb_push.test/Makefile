@@ -1,4 +1,5 @@
 export SECONDARY_DB_PREFIX=srcdb
+export TERTIARY_DB_PREFIX=remdb2
 
 ifeq ($(TESTSROOTDIR),)
   include ../testcase.mk

@@ -337,6 +337,22 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     cd -
 fi
 
+if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
+    ter_vars="TERTIARY_DBNAME TERTIARY_DBDIR TERTIARY_CDB2_OPTIONS"
+    for required in $ter_vars; do
+        q=${!required}
+        if [[ -z "${q}" ]]; then
+            echo "$required not set" >&2
+            exit 1
+        fi
+        echo "$required=$q"
+    done
+
+
+    # setup tertiary db for the test, if specified
+    DBNAME="${TERTIARY_DBNAME}" DBDIR="${TERTIARY_DBDIR}" CDB2_CONFIG="$TERTIARY_CDB2_CONFIG" CDB2_OPTIONS="${TERTIARY_CDB2_OPTIONS}" setup_db
+    cd -
+fi
 
 if [[ $debug -eq 1 ]]; then
     set +x
@@ -367,6 +383,13 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
     echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
     echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
+fi
+if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
+    echo "export TERTIARY_DB_PREFIX=\"${TERTIARY_DB_PREFIX}\"" >> $SETENV
+    echo "export TERTIARY_DBNAME=\"${TERTIARY_DBNAME}\"" >> $SETENV
+    echo "export TERTIARY_DBDIR=\"${TERTIARY_DBDIR}\"" >> $SETENV
+    echo "export TERTIARY_CDB2_CONFIG=\"${TERTIARY_CDB2_CONFIG}\"" >> $SETENV
+    echo "export TERTIARY_CDB2_OPTIONS=\"${TERTIARY_CDB2_OPTIONS}\"" >> $SETENV
 fi
 echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
 echo "export PATH=${paths}"':${PATH}' >> $SETENV
