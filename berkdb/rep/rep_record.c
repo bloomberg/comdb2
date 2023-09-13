@@ -2515,7 +2515,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			logmsg(LOGMSG_DEBUG, "%s line %d elected master %s for egen %d\n",
 					__func__, __LINE__, rep->eid, vi_egen);
 			__rep_elect_master(dbenv, rep, eidp);
-			ret = DB_REP_NEWMASTER;
+			ret = (rep->votes > rep->nsites / 2 + 1) ? DB_HAS_MAJORITY : DB_REP_NEWMASTER;
 			goto errunlock;
 		} else {
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

@@ -4022,6 +4022,10 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         break;
 
+    case DB_HAS_MAJORITY:
+        logmsg(LOGMSG_WARN, "%s: received another vote for leader %s\n", __func__, host);
+        break;
+
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
 
