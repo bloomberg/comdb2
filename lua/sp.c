@@ -453,21 +453,14 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
         }
         Pthread_mutex_unlock(q->lock);
     }
-    int rc;
+    comdb2_sql_tick(); /* See comments in luabb_trigger_register(). */
     int retry = 10;
-    while (retry > 0) {
-        --retry;
-        rc = trigger_unregister_req(&q->info);
-        /* See comments in luabb_trigger_register(). */
-        comdb2_sql_tick();
-        if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
-            return;
-        if (L)
-            check_retry_conditions(L, &q->info, 1);
-        sleep(1);
-        /* See comments in luabb_trigger_register(). */
-        comdb2_sql_tick();
-    }
+    do {
+        int rc = trigger_unregister_req(&q->info);
+        if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER) return;
+        if (L) check_retry_conditions(L, &q->info, 1);
+    } while (--retry);
+    comdb2_sql_tick(); /* See comments in luabb_trigger_register(). */
 }
 
 static int stop_waiting(Lua L, dbconsumer_t *q)
