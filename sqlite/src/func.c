@@ -2677,6 +2677,67 @@ static void comdb2LastCostFunc(
 }
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static void convertDiskspace(sqlite3_context *context, double n) {
+    char *out;
+    if (n < 1024)
+        out = sqlite3_mprintf("%f", n);
+    else if (n < 1024*1024)
+        out = sqlite3_mprintf("%f KiB", n/1024);
+    else if (n < 1024*1024*1024)
+        out = sqlite3_mprintf("%f MiB", n/(1024*1024));
+    else if (n < ((double)1024*1024*1024*1024))
+        out = sqlite3_mprintf("%f GiB", n/(1024*1024*1024));
+    else if (n < ((double)1024*1024*1024*1024*1024))
+        out = sqlite3_mprintf("%f TiB", n/((double)1024*1024*1024*1024));
+    else
+        out = sqlite3_mprintf("%f PiB", n/((double)1024*1024*1024*1024*1024));
+    sqlite3_result_text(context, out, -1, sqlite3_free);
+}
+
+static void comdb2ConvertUnits(
+  sqlite3_context *context, 
+  int argc, 
+  sqlite3_value **argv){
+  sqlite3_value *number = argv[0];
+  sqlite3_value *from = argv[1];
+  sqlite3_value *to = argv[2];
+
+  if (sqlite3_value_type(number) != SQLITE_INTEGER && sqlite3_value_type(argv[0]) != SQLITE_FLOAT) {
+      sqlite3_result_error(context, "Expected numeric type as first argument to convert_units", -1);
+      return;
+  }
+  if (sqlite3_value_type(from) != SQLITE_NULL && sqlite3_value_type(from) != SQLITE_NULL) {
+      sqlite3_result_error(context, "Expected string type as second argument to convert_units", -1);
+      return;
+  }
+  if (sqlite3_value_type(to) != SQLITE_TEXT) {
+      sqlite3_result_error(context, "Expected string type as third argument to convert_units", -1);
+      return;
+  }
+
+  double n = sqlite3_value_double(number);
+
+  // NULL = no units
+  if (sqlite3_value_type(from) == SQLITE_NULL) {
+      if (strcmp((char*) sqlite3_value_text(to), "bytes") == 0) {
+          convertDiskspace(context, n);
+          return;
+      }
+      else
+          goto unknown_units;
+  }
+  else
+      goto unknown_units;
+  // expand as needed (from=inch to=mm, etc.).  Ideally define a table of default units for 
+  // every type, and conversions factors to that for all the other units.  For now, I'm leaving
+  // it be - just wanted a human-readable way to do 'select convert_units(bytes, null, 'bytes') as bytes from comdb2_tablesizes order by bytes desc'
+
+unknown_units:
+  sqlite3_result_error(context, "Unknown convert_units request", -1);
+}
+#endif
+
 /*
 ** All of the FuncDef structures in the aBuiltinFunc[] array above
 ** to the global function hash table.  This occurs at start-time (as
@@ -2833,6 +2894,9 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(coalesce,           1, 0, 0, 0                ),
     FUNCTION(coalesce,           0, 0, 0, 0                ),
     FUNCTION2(coalesce,         -1, 0, 0, noopFunc,  SQLITE_FUNC_COALESCE),
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    FUNCTION(convert_units,      3, 0, 0, comdb2ConvertUnits),
+#endif
   };
 #ifndef SQLITE_OMIT_ALTERTABLE
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
