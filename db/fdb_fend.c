@@ -1220,25 +1220,35 @@ static int __check_sqlite_stat(sqlite3 *db, fdb_tbl_ent_t *ent, Table *tab)
 
 static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
 {
+    int rc = SQLITE_OK;
     if (sqlite3_is_preparer(db))
         return SQLITE_OK;
 
+    char *dbname = fdb->local == 0 ? fdb->dbname :
+        sqlite3_mprintf("LOCAL_%s", fdb->dbname);
     fdb_tbl_ent_t *stat_ent;
     Table *stat_tab;
 
     stat_ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, "sqlite_stat1");
-    stat_tab = sqlite3FindTableCheckOnly(db, "sqlite_stat1", fdb->dbname);
+    stat_tab = sqlite3FindTableCheckOnly(db, "sqlite_stat1", dbname);
 
-    if (__check_sqlite_stat(db, stat_ent, stat_tab) != SQLITE_OK)
-        return SQLITE_SCHEMA_REMOTE;
+    if (__check_sqlite_stat(db, stat_ent, stat_tab) != SQLITE_OK) {
+        rc = SQLITE_SCHEMA_REMOTE;
+        goto remote;
+    }
 
     stat_ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, "sqlite_stat4");
-    stat_tab = sqlite3FindTableCheckOnly(db, "sqlite_stat4", fdb->dbname);
+    stat_tab = sqlite3FindTableCheckOnly(db, "sqlite_stat4", dbname);
 
-    if (__check_sqlite_stat(db, stat_ent, stat_tab) != SQLITE_OK)
-        return SQLITE_SCHEMA_REMOTE;
+    if (__check_sqlite_stat(db, stat_ent, stat_tab) != SQLITE_OK) {
+        rc = SQLITE_SCHEMA_REMOTE;
+        goto remote;
+    }
 
-    return SQLITE_OK;
+remote:
+    if (dbname != fdb->dbname)
+        sqlite3_free(dbname);
+    return rc;
 }
 
 static int _failed_AddAndLockTable(const char *dbname, int errcode,

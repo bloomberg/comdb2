@@ -38,6 +38,39 @@ select * from LOCAL_${a_remdbname}.t order by id
 insert into t values (10, "hi")
 EOF
 
+cdb2sql -s ${REM_CDB2_OPTIONS} $a_remdbname default - >> $output 2>&1 << EOF
+insert into t2(i) values (10), (20)
+insert into t2(r) values (1.0), (1.2)
+insert into t2(s) values ('hi'), ('ho')
+insert into t2(b) values (x'deadbeaf')
+insert into t2(d) values ('20230913T'), ('20230914T')
+EOF
+
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_INTEGER i 20
+select * from LOCAL_${a_remdbname}.t2 where i=@i
+EOF
+
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_REAL r 1.2
+select * from LOCAL_${a_remdbname}.t2 where r=@r
+EOF
+
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_CSTRING s hi
+select * from LOCAL_${a_remdbname}.t2 where s=@s
+EOF
+
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname  default - >> $output 2>&1 << EOF
+@bind CDB2_BLOB b x'deadbeaf'
+select * from LOCAL_${a_remdbname}.t2 where b=@b
+EOF
+
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_DATETIME d 2023-09-13T00:00:00
+select * from LOCAL_${a_remdbname}.t2 where d=@d
+EOF
+
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 

@@ -1,0 +1,8 @@
+tag ondisk
+{
+    int i null=yes
+    float r null=yes
+    cstring s[10] null=yes
+    blob b null=yes
+    datetime d null=yes
+}

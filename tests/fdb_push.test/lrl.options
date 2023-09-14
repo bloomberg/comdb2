@@ -1,2 +1,3 @@
 table t t.csc2
+table t2 t2.csc2
 ssl_allow_remsql 1
