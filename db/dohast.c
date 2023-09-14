@@ -961,6 +961,11 @@ int comdb2_check_push_remote(Parse *pParse)
 
     node = (dohsql_node_t *)ast->stack[0].obj;
 
+    /* no params yet */
+    if (node->params && node->params->params &&
+        node->params->nparams > 0)
+        return 0;
+
     if (node->type != AST_TYPE_SELECT)
         return 0;
 
