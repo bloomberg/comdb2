@@ -33,7 +33,7 @@ int gbl_dohsql_verbose = 0;
 int gbl_dohsql_max_queued_kb_highwm = 10000;    /* 10 MB */
 int gbl_dohsql_full_queue_poll_msec = 10;       /* 10msec */
 int gbl_dohsql_max_threads = 8; /* do not run more than 8 threads */
-int gbl_dohsql_pool_thr_slack = 1;
+int gbl_dohsql_pool_thr_slack = 24; /* half default sqlengine pool maxthds */
 /* for now we keep this tunning "private */
 static int gbl_dohsql_track_stats = 1;
 static int gbl_dohsql_que_free_highwm = 10;
@@ -1187,6 +1187,11 @@ int dohsql_distribute(dohsql_node_t *node)
         }
         flags = THDPOOL_FORCE_DISPATCH;
     }
+    /* there is a slack to allow non-coordinator tasks to drain;
+     * it is still possible to fill the sql queue; force the 
+     * worker shards on the queue in any case
+     */
+    flags |= THDPOOL_FORCE_QUEUE;
     clnt->conns = conns;
     /* augment interface */
     _master_clnt_set(clnt);
@@ -1208,8 +1213,12 @@ int dohsql_distribute(dohsql_node_t *node)
                                  clnt->conns->conns[i].clnt, 1,
                                  sr, flags);
             if (rc) {
+                /* this should not fail since we force queue */
+                abort();
+#if 0
                 put_ref(&sr);
                 return SHARD_ERR_GENERIC;
+#endif
             }
         }
     }
