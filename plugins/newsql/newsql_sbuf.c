@@ -351,7 +351,7 @@ retry_read:
             /* Print the error message in the sbuf2. */
             char err[256];
             sbuf2lasterror(sb, err, sizeof(err));
-            logmsg(LOGMSG_ERROR, "%s\n", err);
+            logmsg(LOGMSG_ERROR, "SSL_accept: %s\n", err);
             return NULL;
         }
 
