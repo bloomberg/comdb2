@@ -34,7 +34,8 @@ struct fdb_push_connector {
 
 static void _master_clnt_set(struct sqlclntstate *clnt);
 static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
-                                const char *tzname, struct errstat *err);
+                                const char *tzname, struct errstat *err,
+                                cdb2_client_datetime_t *dts);
 
 static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
     if (policy == NULL) {
@@ -239,12 +240,15 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
         return -1;
     }
 
-    rc = set_bound_parameters(push, hndl, clnt->tzname, err);
+    cdb2_client_datetime_t *dts = calloc(push->nparams, sizeof(*dts));
+    rc = set_bound_parameters(push, hndl, clnt->tzname, err, dts);
     if (rc) {
+        free(dts);
         return -1;
     }
 
     rc = cdb2_run_statement(hndl, clnt->sql);
+    free(dts);
     if (rc) {
         const char *errstr = cdb2_errstr(hndl);
         if (errstr &&
@@ -388,7 +392,8 @@ static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl)
 }
 
 static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
-                                const char *tzname, struct errstat *err)
+                                const char *tzname, struct errstat *err,
+                                cdb2_client_datetime_t *dts)
 {
     struct param_data *p;
     int i;
@@ -435,22 +440,39 @@ static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
                 }
             break;
             }
-            case CLIENT_DATETIMEUS:
-            case CLIENT_DATETIME: {
+            case CLIENT_DATETIMEUS: {
                 if (p->null) {
-                    rc = cdb2_bind_index(hndl, p->pos, p->type == CDB2_DATETIME ?
-                                     CDB2_DATETIME : CDB2_DATETIMEUS,
-                                     NULL, 0);
+                    rc = cdb2_bind_index(hndl, p->pos, CDB2_DATETIMEUS,
+                                         NULL, 0);
                 } else {
-                    cdb2_client_datetime_t dt = {0};
-                    rc = dttz_to_client_datetime(&p->u.dt, tzname, &dt);
+                    cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t *)(dts + i);
+                    rc = dttz_to_client_datetimeus(&p->u.dt, tzname, dt);
                     if (rc) {
                         errstat_set_rcstrf(err, -1, "error binding param %d", p->pos);
                         return -1;
                     }
-                    rc = cdb2_bind_index(hndl, p->pos, p->type == CDB2_DATETIME ?
-                                     CDB2_DATETIME : CDB2_DATETIMEUS,
-                                     &dt, sizeof(dt));
+                    rc = cdb2_bind_index(hndl, p->pos, CDB2_DATETIMEUS,
+                                         dt, sizeof(*dt));
+                }
+                if (rc) {
+                    errstat_set_rcstrf(err, -1, "error binding param %d", p->pos);
+                    return -1;
+                }
+            break;
+            }
+            case CLIENT_DATETIME: {
+                if (p->null) {
+                    rc = cdb2_bind_index(hndl, p->pos, CDB2_DATETIME,
+                                         NULL, 0);
+                } else {
+                    cdb2_client_datetime_t *dt = dts + i;
+                    rc = dttz_to_client_datetime(&p->u.dt, tzname, dt);
+                    if (rc) {
+                        errstat_set_rcstrf(err, -1, "error binding param %d", p->pos);
+                        return -1;
+                    }
+                    rc = cdb2_bind_index(hndl, p->pos, CDB2_DATETIME,
+                                         dt, sizeof(*dt));
                 }
                 if (rc) {
                     errstat_set_rcstrf(err, -1, "error binding param %d", p->pos);
@@ -498,22 +520,39 @@ static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
                 }
             break;
             }
-            case CLIENT_DATETIMEUS:
-            case CLIENT_DATETIME: {
+            case CLIENT_DATETIMEUS: {
                 if (p->null) {
-                    rc = cdb2_bind_param(hndl, p->name, p->type == CDB2_DATETIME ?
-                                         CDB2_DATETIME : CDB2_DATETIMEUS,
+                    rc = cdb2_bind_param(hndl, p->name, CDB2_DATETIMEUS,
                                          NULL, 0);
                 } else {
-                    cdb2_client_datetime_t dt = {0};
-                    rc = dttz_to_client_datetime(&p->u.dt, tzname, &dt);
+                    cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t *)(dts + i);
+                    rc = dttz_to_client_datetimeus(&p->u.dt, tzname, dt);
                     if (rc) {
                         errstat_set_rcstrf(err, -1, "error binding param %s", p->name);
                         return -1;
                     }
-                    rc = cdb2_bind_param(hndl, p->name, p->type == CDB2_DATETIME ?
-                                         CDB2_DATETIME : CDB2_DATETIMEUS,
-                                         &dt, sizeof(dt));
+                    rc = cdb2_bind_param(hndl, p->name, CDB2_DATETIMEUS,
+                                         dt, sizeof(*dt));
+                }
+                if (rc) {
+                    errstat_set_rcstrf(err, -1, "error binding param %s", p->name);
+                    return -1;
+                }
+            break;
+            }
+            case CLIENT_DATETIME: {
+                if (p->null) {
+                    rc = cdb2_bind_param(hndl, p->name, CDB2_DATETIME,
+                                         NULL, 0);
+                } else {
+                    cdb2_client_datetime_t *dt = dts + i;
+                    rc = dttz_to_client_datetime(&p->u.dt, tzname, dt);
+                    if (rc) {
+                        errstat_set_rcstrf(err, -1, "error binding param %s", p->name);
+                        return -1;
+                    }
+                    rc = cdb2_bind_param(hndl, p->name, CDB2_DATETIME,
+                                         dt, sizeof(*dt));
                 }
                 if (rc) {
                     errstat_set_rcstrf(err, -1, "error binding param %s", p->name);
