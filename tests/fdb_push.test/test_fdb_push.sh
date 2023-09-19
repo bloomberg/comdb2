@@ -44,6 +44,7 @@ insert into t2(r) values (1.0), (1.2)
 insert into t2(s) values ('hi'), ('ho')
 insert into t2(b) values (x'deadbeaf')
 insert into t2(d) values ('20230913T'), ('20230914T')
+insert into t2(d2) values ('2023-09-13T00:00:00.000001'), ('2023-09-14T00:00:00.000001')
 EOF
 
 cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
@@ -69,6 +70,11 @@ EOF
 cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
 @bind CDB2_DATETIME d 2023-09-13T00:00:00
 select * from LOCAL_${a_remdbname}.t2 where d=@d
+EOF
+
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+@bind CDB2_DATETIMEUS d2 2023-09-13T00:00:00.000001
+select * from LOCAL_${a_remdbname}.t2 where d2=@d2
 EOF
 
 #convert the table to actual dbname
