@@ -92,7 +92,6 @@ static int fdb_sqlstat_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
                                      unsigned long long oldgenid,
                                      unsigned long long genid, int datalen,
                                      char *data);
-static int fdb_sqlstat_curor_isuuid(BtCursor *pCur);
 
 static int insert_sqlstat_row_from_packedsqlite(fdb_t *fdb,
                                                 fdb_sqlstat_table_t *tbl,
@@ -489,7 +488,6 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
     fdbc_if->insert = fdb_sqlstat_cursor_insert;
     fdbc_if->delete = fdb_sqlstat_cursor_delete;
     fdbc_if->update = fdb_sqlstat_cursor_update;
-    fdbc_if->isuuid = fdb_sqlstat_curor_isuuid;
 
     return fdbc_if;
 }
@@ -601,8 +599,6 @@ static int fdb_sqlstat_cursor_move(BtCursor *pCur, int how)
 
     return rc;
 }
-
-static int fdb_sqlstat_curor_isuuid(BtCursor *pCur) { return 1; }
 
 static int fdb_sqlstat_cursor_find(BtCursor *pCur, Mem *key, int nfields,
                                    int bias)

@@ -133,7 +133,6 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master);
  * Retrieve the sqlclntstate for a certain rqid
  *
  */
-int osql_chkboard_get_clnt(unsigned long long rqid, struct sqlclntstate **clnt);
-int osql_chkboard_get_clnt_uuid(uuid_t uuid, struct sqlclntstate **clnt);
+int osql_chkboard_get_clnt(uuid_t uuid, struct sqlclntstate **clnt);
 
 #endif

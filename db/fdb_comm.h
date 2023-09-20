@@ -49,16 +49,12 @@ union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
 
 int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
-                  int flags, int version, int isuuid, SBUF2 *sb);
-int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int isuuid, int seq,
-                   SBUF2 *sb);
-int fdb_send_move(fdb_msg_t *msg, char *cid, int how, int isuuid, SBUF2 *sb);
-int fdb_send_find(fdb_msg_t *msg, char *cid, int last, char *key, int keylen,
-                  int isuuid, SBUF2 *sb);
+                  int flags, int version, SBUF2 *sb);
+int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int seq, SBUF2 *sb);
 
 int fdb_send_run_sql(fdb_msg_t *msg, char *cid, int sqllen, char *sql,
                      int version, int keylen, char *key,
-                     enum run_sql_flags flags, int isuuid, SBUF2 *sb);
+                     enum run_sql_flags flags, SBUF2 *sb);
 
 int fdb_recv_row_int(fdb_msg_t *msg, char *cid, SBUF2 *sb, const char *func, int line);
 #define fdb_recv_row(msg, cid, sb) \
@@ -74,40 +70,36 @@ char *fdb_msg_data(fdb_msg_t *msg);
 
 int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
                       unsigned long long genid, char *data, int datalen,
-                      char *datacopy, int datacopylen, int ret, int isuuid);
+                      char *datacopy, int datacopylen, int ret);
 
 int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
-                   enum transaction_level lvl, int flags, int isuuid,
-                   SBUF2 *sb);
-int fdb_send_prepare(fdb_msg_t *msg, char *tid, enum transaction_level lvl,
-                     int isuuid, SBUF2 *sb);
+                   enum transaction_level lvl, int flags, SBUF2 *sb);
 int fdb_send_commit(fdb_msg_t *msg, fdb_tran_t *trans,
-                    enum transaction_level lvl, int isuuid, SBUF2 *sb);
+                    enum transaction_level lvl, SBUF2 *sb);
 int fdb_send_rollback(fdb_msg_t *msg, fdb_tran_t *trans,
-                      enum transaction_level lvl, int isuuid, SBUF2 *sb);
+                      enum transaction_level lvl, SBUF2 *sb);
 int fdb_send_rc(fdb_msg_t *msg, char *tid, int rc, int errstrlen, char *errstr,
-                int isuuid, SBUF2 *sb);
+                SBUF2 *sb);
 
 int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long genid,
                     unsigned long long ins_keys, int datalen, char *data,
-                    int seq, int isuuid, SBUF2 *sb);
+                    int seq, SBUF2 *sb);
 int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long genid,
-                    unsigned long long del_keys, int seq, int isuuid,
+                    unsigned long long del_keys, int seq,
                     SBUF2 *sb);
 int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     char *tblname, unsigned long long oldgenid,
                     unsigned long long genid, unsigned long long ins_keys,
                     unsigned long long del_keys, int datalen, char *data,
-                    int seq, int isuuid, SBUF2 *sb);
+                    int seq, SBUF2 *sb);
 int fdb_send_index(fdb_msg_t *msg, char *cid, int version, int rootpage,
                    unsigned long long genid, int is_delete, int ixnum,
-                   int ixlen, char *ix, int seq, int isuuid, SBUF2 *sb);
-int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, int isuuid, SBUF2 *sb);
+                   int ixlen, char *ix, int seq, SBUF2 *sb);
+int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, SBUF2 *sb);
 
 void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
-void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
 void fdb_msg_clean_message(fdb_msg_t *msg);
 
 #endif

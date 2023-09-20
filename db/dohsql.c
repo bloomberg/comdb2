@@ -1018,7 +1018,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
 
     comdb2uuid(conn->clnt->osql.uuid);
     conn->clnt->appsock_id = getarchtid();
-    init_sqlclntstate(conn->clnt, (char *)conn->clnt->osql.uuid, 1);
+    init_sqlclntstate(conn->clnt, (char *)conn->clnt->osql.uuid);
     conn->clnt->origin = clnt->origin;
     conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);

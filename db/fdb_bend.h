@@ -36,14 +36,14 @@ void fdb_svc_destroy(void);
  *
  */
 svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int rootpage,
-                                  int version, int flags, int seq, int isuuid,
+                                  int version, int flags, int seq,
                                   struct sqlclntstate **clnt);
 
 /**
  * Close a local cursor serving remote requests
  *
  */
-int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **clnt);
+int fdb_svc_cursor_close(char *cid, struct sqlclntstate **clnt);
 
 /**
  * Move cursor
@@ -62,7 +62,7 @@ enum svc_move_types {
  */
 int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
                         int *datalen, unsigned long long *genid,
-                        char **datacopy, int *datacopylen, int isuuid);
+                        char **datacopy, int *datacopylen);
 
 /**
  * Find row matching a key, or the last match
@@ -70,7 +70,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
  */
 int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
                         unsigned long long *genid, int *datalen, char **data,
-                        char **datacopy, int *datacopylen, int isuuid);
+                        char **datacopy, int *datacopylen);
 
 /**
  * Transaction cursors support
@@ -78,7 +78,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
  * Init routine
  */
 int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
-                       enum transaction_level lvl, int seq, int isuuid);
+                       enum transaction_level lvl, int seq);
 
 /**
  * Transaction cursors support
@@ -91,7 +91,7 @@ void fdb_svc_trans_destroy(struct sqlclntstate *clnt);
  * Retrieve a transaction, if any, for a cid
  *
  */
-int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid);
+int fdb_svc_trans_get_tid(char *cid, char *tid);
 
 /**
  * Requests for the same transaction can come of differetn sockets

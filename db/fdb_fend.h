@@ -176,7 +176,6 @@ struct fdb_tran {
         cursors; /* list of cursors for tran (used on backend side) */
 
     uuid_t tiduuid;
-    int isuuid;
 
     int seq; /* sequencing tran begin/commit/rollback, writes, cursor open/close
                 */
@@ -234,7 +233,6 @@ typedef struct fdb_cursor_if {
     fdb_tbl_ent_t *(*table_entry)(BtCursor *pCur);
 
     int (*access)(BtCursor *pCur, int how);
-    int (*isuuid)(BtCursor *pCur);
 
 } fdb_cursor_if_t;
 
