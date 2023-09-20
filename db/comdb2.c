@@ -3733,6 +3733,11 @@ static int init(int argc, char **argv)
             if (!noabort)
                 exit(1);
         }
+        if (!gbl_noenv_messages) {
+            logmsg(LOGMSG_FATAL,
+                   "This server build cannot run with legacy messages! Please rollback\n");
+            abort();
+        }
     }
 
     /* Rules for setting cache size:

@@ -31,8 +31,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
  * Send back a streamed row with return code (marks also eos)
  *
  */
-int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int rc,
-                    int isuuid);
+int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int rc);
 
 /**
  * For requests where we want to avoid a dedicated genid lookup socket, this
@@ -47,14 +46,14 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
   *
   */
 int fdb_svc_cursor_open_sql(char *tid, char *cid, int rootpage, int version,
-                            int flags, int isuuid, struct sqlclntstate **clnt);
+                            int flags, struct sqlclntstate **clnt);
 
 /**
  * Start a transaction
  *
  */
 int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
-                        int seq, struct sql_thread *thd, int isuuid,
+                        int seq, struct sql_thread *thd,
                         struct sqlclntstate **pclnt);
 
 /**
@@ -100,7 +99,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
  * Return the sqlclntstate storing the shared transaction, if any
  *
  */
-struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid);
+struct sqlclntstate *fdb_svc_trans_get(char *tid);
 
 #endif
 

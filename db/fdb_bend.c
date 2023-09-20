@@ -93,12 +93,10 @@ struct svc_cursor {
         struct svc_cursor) lnk; /* list of cursors of the same transaction */
     uuid_t ciduuid;
     uuid_t tiduuid;
-    int isuuid;
 };
 
 typedef struct svc_center {
     hash_t *cursors_hash;
-    hash_t *cursorsuuid_hash;
     pthread_rwlock_t cursors_rwlock;
 } svc_center_t;
 
@@ -176,8 +174,7 @@ int fdb_svc_init(void)
     }
 
     Pthread_rwlock_init(&center->cursors_rwlock, NULL);
-    center->cursors_hash = hash_init_user(cidhash, cidcmp, 0, 0);
-    center->cursorsuuid_hash =
+    center->cursors_hash =
         hash_init_o(offsetof(svc_cursor_t, ciduuid), sizeof(uuid_t));
 
     return 0;
@@ -186,19 +183,11 @@ int fdb_svc_init(void)
 void fdb_svc_destroy(void)
 {
     hash_free(center->cursors_hash);
-    hash_free(center->cursorsuuid_hash);
     Pthread_rwlock_destroy(&center->cursors_rwlock);
 }
 
-svc_cursor_t *fdb_svc_cursor_open_master(char *tid, char *cid, int version)
-{
-    /* inline processing */
-
-    return NULL;
-}
-
 svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
-                                  int version, int flags, int seq, int isuuid,
+                                  int version, int flags, int seq,
                                   struct sqlclntstate **pclnt)
 {
     struct sqlclntstate *tran_clnt;
@@ -206,8 +195,11 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
     int rc;
     uuid_t zerouuid;
     fdb_tran_t *trans;
+    uuidstr_t cus, tus;
 
     comdb2uuid_clear(zerouuid);
+    comdb2uuidstr((unsigned char *)cid, cus);
+    comdb2uuidstr((unsigned char *)tid, tus);
 
     /* create cursor */
     cur = (svc_cursor_t *)calloc(1, sizeof(svc_cursor_t));
@@ -221,21 +213,13 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
     cur->tblnum = -1;
     cur->ixnum = -1;
 
-    if (isuuid) {
-        if (comdb2uuidcmp((unsigned char *)tid, zerouuid)) {
-            cur->autocommit = 0;
-        } else {
-            cur->autocommit = 1;
-        }
+    if (comdb2uuidcmp((unsigned char *)tid, zerouuid)) {
+        cur->autocommit = 0;
     } else {
-        if (*(unsigned long long *)tid != 0ULL) {
-            cur->autocommit = 0;
-        } else {
-            cur->autocommit = 1;
-        }
+        cur->autocommit = 1;
     }
 
-    rc = fdb_svc_cursor_open_sql(tid, cid, code_release, version, flags, isuuid,
+    rc = fdb_svc_cursor_open_sql(tid, cid, code_release, version, flags,
                                  pclnt);
     if (rc) {
         free(cur);
@@ -245,15 +229,15 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
 
     if (cur->autocommit == 0) {
         /* surprise, if tran_clnt != NULL, it is LOCKED, PINNED, FROZED */
-        tran_clnt = fdb_svc_trans_get(tid, isuuid);
+        tran_clnt = fdb_svc_trans_get(tid);
         /* check of out-of-order rollbacks */
         if (!tran_clnt || tran_clnt->dbtran.rollbacked) {
             if (!tran_clnt)
-                logmsg(LOGMSG_ERROR, "%s: missing client transaction %llx!\n",
-                       __func__, *(unsigned long long *)tid);
+                logmsg(LOGMSG_ERROR, "%s: missing client transaction %s!\n",
+                       __func__, tus);
             else {
-                logmsg(LOGMSG_ERROR, "%s: out of order rollback %llx!\n",
-                       __func__, *(unsigned long long *)tid);
+                logmsg(LOGMSG_ERROR, "%s: out of order rollback %s!\n",
+                       __func__, tus);
                 Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
             }
             free(cur);
@@ -281,68 +265,44 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
         Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
     }
 
-    if (isuuid) {
-        memcpy(cur->cid, cid, sizeof(uuid_t));
-        memcpy(cur->tid, tid, sizeof(uuid_t));
-    } else {
-        memcpy(cur->cid, cid, sizeof(unsigned long long));
-        memcpy(cur->tid, tid, sizeof(unsigned long long));
-    }
+    memcpy(cur->cid, cid, sizeof(uuid_t));
+    memcpy(cur->tid, tid, sizeof(uuid_t));
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_INFO, "added %p to tid=%llx cid=%llx\n", cur,
-               *(unsigned long long *)cur->tid,
-               *(unsigned long long *)cur->cid);
+        logmsg(LOGMSG_INFO, "added %p to tid=%s cid=%s\n", cur, tus, cus);
 
     Pthread_rwlock_wrlock(&center->cursors_rwlock);
-    if (isuuid)
-        hash_add(center->cursorsuuid_hash, cur);
-    else
-        hash_add(center->cursors_hash, cur);
+    hash_add(center->cursors_hash, cur);
     Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     return cur;
 }
 
-int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
+int fdb_svc_cursor_close(char *cid, struct sqlclntstate **pclnt)
 {
     struct sqlclntstate *tran_clnt;
     svc_cursor_t *cur;
     int rc = 0;
     int bdberr = 0;
+    uuidstr_t us;
+
+    comdb2uuidstr((unsigned char *)cid, us);
 
     /* retrieve cursor */
     Pthread_rwlock_wrlock(&center->cursors_rwlock);
-    if (isuuid) {
-        uuidstr_t us;
-        cur = hash_find(center->cursorsuuid_hash, cid);
-        if (!cur) {
-            comdb2uuidstr((unsigned char *)cid, us);
-            Pthread_rwlock_unlock(&center->cursors_rwlock);
+    cur = hash_find(center->cursors_hash, cid);
+    if (!cur) {
+        Pthread_rwlock_unlock(&center->cursors_rwlock);
 
-            logmsg(LOGMSG_ERROR, "%s: missing cursor %s\n", __func__, us);
-            return -1;
-        }
-
-        hash_del(center->cursorsuuid_hash, cur);
-    } else {
-        svc_cursor_t curkey = {0};
-        curkey.cid = cid;
-        cur = hash_find(center->cursors_hash, &curkey);
-        if (!cur) {
-            Pthread_rwlock_unlock(&center->cursors_rwlock);
-
-            logmsg(LOGMSG_ERROR, "%s: missing cursor %llx\n", __func__,
-                    *(unsigned long long *)cid);
-            return -1;
-        }
-
-        hash_del(center->cursors_hash, cur);
+        logmsg(LOGMSG_ERROR, "%s: missing cursor %s\n", __func__, us);
+        return -1;
     }
 
+    hash_del(center->cursors_hash, cur);
+
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p: CLosing rem cursor cid=%llx autocommit=%d\n", (void *)pthread_self(),
-               *(unsigned long long *)cur->cid, cur->autocommit);
+        logmsg(LOGMSG_USER, "%p: CLosing rem cursor cid=%s autocommit=%d\n",
+               (void *)pthread_self(), us, cur->autocommit);
 
     Pthread_rwlock_unlock(&center->cursors_rwlock);
 
@@ -363,10 +323,10 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
 
             /* NOTE: we don't synchonize cursor close with the updates, per
              * design */
-            tran_clnt = fdb_svc_trans_get(cur->tid, isuuid);
+            tran_clnt = fdb_svc_trans_get(cur->tid);
             if (!tran_clnt) {
-                logmsg(LOGMSG_ERROR, "%s: missing client transaction %llx!\n",
-                        __func__, *(unsigned long long *)cur->tid);
+                logmsg(LOGMSG_ERROR, "%s: missing client transaction %s!\n",
+                        __func__, us);
             } else {
                 /* link the guy in the transaction */
                 listc_rfl(&tran_clnt->dbtran.dtran->fdb_trans.top->cursors,
@@ -398,7 +358,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
  */
 int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
                         int *datalen, unsigned long long *genid,
-                        char **datacopy, int *datacopylen, int isuuid)
+                        char **datacopy, int *datacopylen)
 {
     svc_cursor_t *cur;
     int bdberr = 0;
@@ -407,13 +367,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
 
     /* retrieve cursor */
     Pthread_rwlock_rdlock(&center->cursors_rwlock);
-    if (isuuid)
-        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
-    else {
-        svc_cursor_t curkey = {0};
-        curkey.cid = cid;
-        cur = hash_find_readonly(center->cursors_hash, &curkey);
-    }
+    cur = hash_find_readonly(center->cursors_hash, cid);
     Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     /* TODO: we assumed here nobody can close this cursor except ourselves; pls
@@ -1085,7 +1039,7 @@ static int fdb_packed_sqlite_to_ondisk_key_tz(struct dbtable *db, struct schema 
  */
 int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
                         unsigned long long *genid, int *datalen, char **data,
-                        char **datacopy, int *datacopylen, int isuuid)
+                        char **datacopy, int *datacopylen)
 {
     svc_cursor_t *cur;
     struct dbtable *db;
@@ -1099,13 +1053,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
 
     /* retrieve cursor */
     Pthread_rwlock_rdlock(&center->cursors_rwlock);
-    if (isuuid)
-        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
-    else {
-        svc_cursor_t curkey = {0};
-        curkey.cid = cid;
-        cur = hash_find_readonly(center->cursors_hash, &curkey);
-    }
+    cur = hash_find_readonly(center->cursors_hash, cid);
     Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (cur) {
@@ -1166,8 +1114,9 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
             *genid = -1LL;
         }
     } else {
-        logmsg(LOGMSG_ERROR, "%s: unknown cursor id %llx\n", __func__,
-                *(unsigned long long *)cid);
+        uuidstr_t us;
+        comdb2uuidstr((unsigned char*)cid, us);
+        logmsg(LOGMSG_ERROR, "%s: unknown cursor id %s\n", __func__, us);
     }
 
     return rc;
@@ -1179,7 +1128,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
  * Init routine
  */
 int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
-                       enum transaction_level lvl, int seq, int isuuid)
+                       enum transaction_level lvl, int seq)
 {
     trans_t *trans = NULL;
     fdb_tran_t *fdb_tran = NULL;
@@ -1216,11 +1165,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     listc_init(&trans->dtran->fdb_trans, offsetof(struct fdb_tran, lnk));
     trans->dtran->remoted = 1;
     fdb_tran->seq = seq;
-    if (isuuid) {
-        comdb2uuidcpy((unsigned char *)fdb_tran->tid, (unsigned char *)tid);
-    } else {
-        memcpy(fdb_tran->tid, tid, sizeof(unsigned long long));
-    }
+    comdb2uuidcpy((unsigned char *)fdb_tran->tid, (unsigned char *)tid);
     listc_atl(&trans->dtran->fdb_trans, fdb_tran);
     listc_init(&fdb_tran->cursors, offsetof(svc_cursor_t, lnk));
 
@@ -1247,7 +1192,7 @@ void fdb_svc_trans_destroy(struct sqlclntstate *clnt)
  * Retrieve a transaction, if any, for a cid
  *
  */
-int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
+int fdb_svc_trans_get_tid(char *cid, char *tid)
 {
     svc_cursor_t *cur;
 
@@ -1255,32 +1200,17 @@ int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
 
     /* retrieve cursor */
     Pthread_rwlock_rdlock(&center->cursors_rwlock);
-    if (isuuid)
-        cur = hash_find_readonly(center->cursorsuuid_hash, cid);
-    else {
-        svc_cursor_t curkey = {0};
-        curkey.cid = cid;
-        cur = hash_find_readonly(center->cursors_hash, &curkey);
-    }
-
+    cur = hash_find_readonly(center->cursors_hash, cid);
     if (cur) {
-        if (isuuid)
-            memcpy(tid, cur->tiduuid, sizeof(uuid_t));
-        else
-            memcpy(tid, cur->tid, sizeof(unsigned long long));
+        memcpy(tid, cur->tiduuid, sizeof(uuid_t));
     }
-
     Pthread_rwlock_unlock(&center->cursors_rwlock);
 
     if (!cur) {
-        if (isuuid) {
-            uuidstr_t us;
-            comdb2uuidstr((unsigned char *)cid, us);
-            logmsg(LOGMSG_ERROR, "%s: looking for missing fdb tran for cid=%s\n",
-                    __func__, us);
-        } else
-            logmsg(LOGMSG_ERROR, "%s: looking for missing fdb tran for cid=%llx\n",
-                    __func__, *(unsigned long long *)cid);
+        uuidstr_t us;
+        comdb2uuidstr((unsigned char *)cid, us);
+        logmsg(LOGMSG_ERROR, "%s: looking for missing fdb tran for cid=%s\n",
+               __func__, us);
         return -1;
     }
 

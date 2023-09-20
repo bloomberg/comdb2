@@ -3597,7 +3597,7 @@ extern int gbl_ckp_sleep_before_sync;
 
 int set_rowlocks(void *trans, int enable);
 
-void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid);
+void init_sqlclntstate(struct sqlclntstate *clnt, char *tid);
 
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */

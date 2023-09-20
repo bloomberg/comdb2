@@ -198,7 +198,6 @@ struct fdb_cursor {
     Expr *hint;     /* expression passed down by sqlite */
     char *sql_hint; /* precreated sql query including hint */
     int is_schema;  /* special processing for accessing remote sqlite_master */
-    int isuuid;     /* use extended 128bit UUID instead of 64bit fastseed*/
 
     enum fdb_cur_stream_state streaming; /* used to track partial streams */
     uuid_t ciduuid;                      /* UUID/fastseed storage for cursor */
@@ -236,9 +235,6 @@ static void fdb_cursor_get_found_data(BtCursor *pCur, unsigned long long *genid,
                                       int *datalen, char **data);
 static int fdb_cursor_close(BtCursor *pCur);
 static void fdb_cursor_close_on_open(BtCursor *pCur, int cache);
-static int fdb_cursor_find(BtCursor *pCur, Mem *key, int nfields, int bias);
-static int fdb_cursor_find_last(BtCursor *pCur, Mem *key, int nfields,
-                                int bias);
 static int fdb_cursor_set_hint(BtCursor *pCur, void *hint);
 static void *fdb_cursor_get_hint(BtCursor *pCur);
 static int fdb_cursor_set_sql(BtCursor *pCur, const char *sql);
@@ -249,7 +245,6 @@ static int fdb_cursor_table_has_expridx(BtCursor *pCur);
 static char *fdb_cursor_dbname(BtCursor *pCur);
 static fdb_tbl_ent_t *fdb_cursor_table_entry(BtCursor *pCur);
 static int fdb_cursor_access(BtCursor *pCur, int how);
-static int fdb_cursor_is_uuid(BtCursor *pCur);
 
 /* REMSQL frontend implementation overrides */
 static int fdb_cursor_move_sql(BtCursor *pCur, int how);
@@ -2242,7 +2237,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
 
                 rc =
                     fdb_send_open(msg, fdbc->cid, trans, source_rootpage, flags,
-                                  version, fdbc->isuuid, fdbc->fcon.sock.sb);
+                                  version, fdbc->fcon.sock.sb);
 
                 /* cache the node info */
                 fdbc->node = host;
@@ -2254,7 +2249,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                     tran_flags = 0;
 
                 rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, tran_flags,
-                                    trans->isuuid, trans->sb);
+                                    trans->sb);
                 if (rc == FDB_NOERR) {
                     trans->host = host;
                 }
@@ -2373,18 +2368,12 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdb_cursor_t *fdbc;
     int rc;
     char *tid;
-    int isuuid =
-        (gbl_noenv_messages) & (fdb->server_version > FDB_VER_WR_NAMES);
     uuid_t zerouuid;
-    char zerotid[8] = {0};
 
     if (!trans) {
         /* transactionless stuff */
-        if (isuuid) {
-            comdb2uuid_clear(zerouuid);
-            tid = (char *)zerouuid;
-        } else
-            tid = zerotid;
+        comdb2uuid_clear(zerouuid);
+        tid = (char *)zerouuid;
     } else {
         tid = trans->tid;
     }
@@ -2422,7 +2411,6 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdbc_if->dbname = fdb_cursor_dbname;
     fdbc_if->table_entry = fdb_cursor_table_entry;
     fdbc_if->access = fdb_cursor_access;
-    fdbc_if->isuuid = fdb_cursor_is_uuid;
     fdbc_if->move = fdb_cursor_move_sql;
     fdbc_if->find = fdb_cursor_find_sql;
     fdbc_if->find_last = fdb_cursor_find_last_sql;
@@ -2433,15 +2421,9 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdbc->tid = (char *)fdbc->tiduuid;
     fdbc->cid = (char *)fdbc->ciduuid;
 
-    if (isuuid) {
-        comdb2uuid(fdbc->ciduuid);
-        memcpy(fdbc->tid, tid, sizeof(uuid_t));
-    } else {
-        *((unsigned long long *)fdbc->cid) = comdb2fastseed(1);
-        memcpy(fdbc->tid, tid, sizeof(unsigned long long));
-    }
+    comdb2uuid(fdbc->ciduuid);
+    memcpy(fdbc->tid, tid, sizeof(uuid_t));
     fdbc->flags = flags;
-    fdbc->isuuid = isuuid;
     fdbc->need_ssl = use_ssl;
 
     fdbc->intf = fdbc_if;
@@ -2623,7 +2605,7 @@ static int fdb_cursor_close(BtCursor *pCur)
         fdb_cursor_t *fdbc = pCur->fdbc->impl;
 
         fdb_send_close(fdbc->msg, fdbc->cid,
-              (fdbc->trans) ? fdbc->trans->tid : 0, fdbc->isuuid,
+              (fdbc->trans) ? fdbc->trans->tid : 0,
               (fdbc->trans) ? fdbc->trans->seq : 0,
               fdbc->fcon.sock.sb);
 
@@ -2875,50 +2857,6 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     return FDB_NOERR;
 }
 
-static int fdb_cursor_find_common(BtCursor *pCur, Mem *key, int nfields,
-                                  int last)
-{
-    fdb_cursor_t *fdbc = pCur->fdbc->impl;
-    int rc = 0;
-
-    rc = fdb_serialize_key(pCur, key, nfields);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to serialize sqlite key rc=%d\n", __func__,
-                rc);
-        return rc;
-    }
-
-    if (fdbc) {
-        rc = fdb_send_find(fdbc->msg, fdbc->cid, last, pCur->keybuf,
-                           pCur->keybuflen, fdbc->isuuid, fdbc->fcon.sock.sb);
-        if (!rc) {
-            /* read row */
-            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
-            if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
-                rc != IX_PASTEOF && rc != IX_EMPTY) {
-                logmsg(LOGMSG_ERROR, "%s: failed to retrieve row rc=%d\n", __func__,
-                        rc);
-                return FDB_ERR_READ_IO;
-            }
-        }
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
-        rc = FDB_ERR_BUG;
-    }
-
-    return rc;
-}
-
-static int fdb_cursor_find(BtCursor *pCur, Mem *key, int nfields, int _)
-{
-    return fdb_cursor_find_common(pCur, key, nfields, 0);
-}
-
-static int fdb_cursor_find_last(BtCursor *pCur, Mem *key, int nfields, int _)
-{
-    return fdb_cursor_find_common(pCur, key, nfields, 1);
-}
-
 static int fdb_cursor_set_hint(BtCursor *pCur, void *hint)
 {
     assert(pCur->fdbc);
@@ -3091,7 +3029,7 @@ retry:
             rc = fdb_send_run_sql(
                 fdbc->msg, fdbc->cid, sqllen, sql,
                 (fdbc->ent) ? fdb_table_version(fdbc->ent->tbl->version) : 0, 0,
-                NULL, flags, fdbc->isuuid, fdbc->fcon.sock.sb);
+                NULL, flags, fdbc->fcon.sock.sb);
 
             if (fdbc->sql_hint != sql) {
                 sqlite3_free(sql);
@@ -3271,7 +3209,7 @@ version_retry:
         rc = fdb_send_run_sql(
             fdbc->msg, fdbc->cid, sqllen, sql,
             (fdbc->ent) ? fdb_table_version(fdbc->ent->tbl->version) : 0,
-            packed_keylen, packed_key, FDB_RUN_SQL_TRIM, fdbc->isuuid,
+            packed_keylen, packed_key, FDB_RUN_SQL_TRIM,
             fdbc->fcon.sock.sb);
 
         if (fdbc->sql_hint != sql) {
@@ -3621,24 +3559,15 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
     char *tblname = _get_tblname(fdbc);
 
     if (gbl_fdb_track) {
-        if (fdbc->isuuid) {
-            uuidstr_t ciduuid;
-            uuidstr_t tiduuid;
-            logmsg(LOGMSG_USER,
-                   "Cursor %s: INSERT for transaction %s genid=%llx "
-                   "seq=%d %s%s\n",
-                   comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
-                   comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid,
-                   trans->seq, (tblname) ? "tblname=" : "",
-                   (tblname) ? tblname : "");
-        } else {
-            logmsg(LOGMSG_USER,
-                   "Cursor %llx: INSERT for transaction %llx genid=%llx "
-                   "seq=%d %s%s\n",
-                   *(unsigned long long *)fdbc->cid,
-                   *(unsigned long long *)trans->tid, genid, trans->seq,
-                   (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
-        }
+        uuidstr_t ciduuid;
+        uuidstr_t tiduuid;
+        logmsg(LOGMSG_USER,
+               "Cursor %s: INSERT for transaction %s genid=%llx "
+               "seq=%d %s%s\n",
+               comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
+               comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid,
+               trans->seq, (tblname) ? "tblname=" : "",
+               (tblname) ? tblname : "");
     }
 
     if (gbl_expressions_indexes && pCur->fdbc->tbl_has_expridx(pCur)) {
@@ -3650,7 +3579,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
                                 (char *)clnt->idxInsert[ixnum] + sizeof(int),
-                                trans->seq, trans->isuuid, trans->sb);
+                                trans->seq, trans->sb);
             if (rc)
                 return rc;
         }
@@ -3662,7 +3591,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->ins_keys
             : -1ULL,
-        datalen, data, trans->seq, trans->isuuid, trans->sb);
+        datalen, data, trans->seq, trans->sb);
 
     trans->seq++;
     trans->nwrites++;
@@ -3679,24 +3608,15 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
     char *tblname = _get_tblname(fdbc);
 
     if (gbl_fdb_track) {
-        if (fdbc->isuuid) {
-            uuidstr_t ciduuid;
-            uuidstr_t tiduuid;
-            logmsg(LOGMSG_USER,
-                   "Cursor %s: DELETE for transaction %s genid=%llx "
-                   "seq=%d %s%s\n",
-                   comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
-                   comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid,
-                   trans->seq, (tblname) ? "tblname=" : "",
-                   (tblname) ? tblname : "");
-        } else {
-            logmsg(LOGMSG_USER,
-                   "Cursor %llx: DELETE for transaction %llx genid=%llx"
-                   "seq=%d %s%s\n",
-                   *(unsigned long long *)fdbc->cid,
-                   *(unsigned long long *)trans->tid, genid, trans->seq,
-                   (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
-        }
+        uuidstr_t ciduuid;
+        uuidstr_t tiduuid;
+        logmsg(LOGMSG_USER,
+               "Cursor %s: DELETE for transaction %s genid=%llx "
+               "seq=%d %s%s\n",
+               comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
+               comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid,
+               trans->seq, (tblname) ? "tblname=" : "",
+               (tblname) ? tblname : "");
     }
 
     if (gbl_expressions_indexes && pCur->fdbc->tbl_has_expridx(pCur)) {
@@ -3708,7 +3628,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, genid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
                                 (char *)clnt->idxDelete[ixnum] + sizeof(int),
-                                trans->seq, trans->isuuid, trans->sb);
+                                trans->seq, trans->sb);
             if (rc)
                 return rc;
         }
@@ -3720,7 +3640,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->del_keys
             : -1ULL,
-        trans->seq, trans->isuuid, trans->sb);
+        trans->seq, trans->sb);
 
     trans->seq++;
     trans->nwrites++;
@@ -3744,23 +3664,14 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
     char *tblname = _get_tblname(fdbc);
 
     if (gbl_fdb_track) {
-        if (fdbc->isuuid) {
-            uuidstr_t ciduuid;
-            uuidstr_t tiduuid;
-            logmsg(LOGMSG_USER, "Cursor %s: UPDATE for transaction %s "
-                                "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
-                   comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
-                   comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid,
-                   oldgenid, trans->seq, (tblname) ? "tblname=" : "",
-                   (tblname) ? tblname : "");
-        } else {
-            logmsg(LOGMSG_USER, "Cursor %llx: UPDATE for transaction %llx "
-                                "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
-                   *(unsigned long long *)fdbc->cid,
-                   *(unsigned long long *)trans->tid, oldgenid, genid,
-                   trans->seq, (tblname) ? "tblname=" : "",
-                   (tblname) ? tblname : "");
-        }
+        uuidstr_t ciduuid;
+        uuidstr_t tiduuid;
+        logmsg(LOGMSG_USER, "Cursor %s: UPDATE for transaction %s "
+               "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
+               comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
+               comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid,
+               oldgenid, trans->seq, (tblname) ? "tblname=" : "",
+               (tblname) ? tblname : "");
     }
 
     if (gbl_expressions_indexes && pCur->fdbc->tbl_has_expridx(pCur)) {
@@ -3772,7 +3683,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, oldgenid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
                                 (char *)clnt->idxDelete[ixnum] + sizeof(int),
-                                trans->seq, trans->isuuid, trans->sb);
+                                trans->seq, trans->sb);
             if (rc)
                 return rc;
 
@@ -3784,7 +3695,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
                                 (char *)clnt->idxInsert[ixnum] + sizeof(int),
-                                trans->seq, trans->isuuid, trans->sb);
+                                trans->seq, trans->sb);
             if (rc)
                 return rc;
         }
@@ -3799,7 +3710,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->del_keys
             : -1ULL,
-        datalen, data, trans->seq, fdbc->isuuid, trans->sb);
+        datalen, data, trans->seq, trans->sb);
 
     trans->seq++;
     trans->nwrites++;
@@ -3842,12 +3753,12 @@ static fdb_distributed_tran_t *fdb_trans_create_dtran(struct sqlclntstate *clnt)
 
 static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
                                                fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb, int use_ssl,
-                                               int isuuid)
+                                               fdb_t *fdb, int use_ssl)
 {
     fdb_tran_t *tran;
     fdb_msg_t *msg;
     int rc = 0;
+    uuidstr_t us;
 
     tran = fdb_get_subtran(dtran, fdb);
 
@@ -3865,12 +3776,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             return NULL;
         }
         tran->tid = (char *)tran->tiduuid;
-
-        tran->isuuid = isuuid;
-        if (tran->isuuid) {
-            comdb2uuid((unsigned char *)tran->tid);
-        } else
-            *(unsigned long long *)tran->tid = comdb2fastseed(2);
+        comdb2uuid((unsigned char *)tran->tid);
 
         tran->fdb = fdb;
 
@@ -3893,27 +3799,16 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         free(msg);
 
         if (gbl_fdb_track) {
-            if (tran->isuuid) {
-                uuidstr_t us;
-                logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
-                       comdb2uuidstr((unsigned char *)tran->tid, us),
-                       fdb->dbname);
-            } else {
-                logmsg(LOGMSG_USER, "%s Created tid=%llx db=\"%s\"\n", __func__,
-                       *(unsigned long long *)tran->tid, fdb->dbname);
-            }
+            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
+                   comdb2uuidstr((unsigned char *)tran->tid, us),
+                   fdb->dbname);
         }
     } else {
         if (gbl_fdb_track) {
-            if (tran->isuuid) {
-                uuidstr_t us;
-                logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
                        fdb->dbname);
-            } else {
-                logmsg(LOGMSG_USER, "%s Reusing tid=%llx db=\"%s\"\n", __func__,
-                        *(unsigned long long *)tran->tid, fdb->dbname);
-            }
         }
     }
 
@@ -3925,7 +3820,6 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
-    int isuuid = gbl_noenv_messages && (fdb->server_version > FDB_VER_WR_NAMES);
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -3938,12 +3832,9 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, isuuid);
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl);
     if (tran) {
-        if (tran->isuuid) {
-            comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
-        } else
-            *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
+        comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
     }
 
     Pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -3959,11 +3850,7 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
     if (dtran) {
         tran = fdb_get_subtran(dtran, fdb);
         if (tran) {
-            if (tran->isuuid)
-                comdb2uuidcpy((unsigned char *)ptid,
-                              (unsigned char *)tran->tid);
-            else
-                *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
+            comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
         }
     }
 
@@ -4011,8 +3898,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
             continue;
 
-        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->isuuid,
-                             tran->sb);
+        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->sb);
 
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n",
@@ -4028,17 +3914,11 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         rc = fdb_recv_rc(msg, tran);
 
         if (gbl_fdb_track) {
-            if (tran->isuuid) {
-                uuidstr_t us;
-                logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%s db=\"%s\"\n",
-                       __func__, rc,
-                       comdb2uuidstr((unsigned char *)tran->tid, us),
-                       tran->fdb->dbname);
-            } else {
-                logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%llx db=\"%s\"\n",
-                        __func__, rc, *(unsigned long long *)tran->tid,
-                        tran->fdb->dbname);
-            }
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%s db=\"%s\"\n",
+                   __func__, rc,
+                   comdb2uuidstr((unsigned char *)tran->tid, us),
+                   tran->fdb->dbname);
         }
 
         if (rc) {
@@ -4130,8 +4010,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->isuuid,
-                               tran->sb);
+        rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->sb);
 
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n",
@@ -4276,12 +4155,6 @@ int fdb_cursor_access(BtCursor *pCur, int how)
 
     return rc;
 }
-
-/**
- * Return if cursor is identified by a uuid
- *
- */
-int fdb_cursor_is_uuid(BtCursor *pCur) { return pCur->fdbc->impl->isuuid; }
 
 /**
  * Check if master table access if local or remote
@@ -4878,16 +4751,12 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
     fdb_msg_t *msg = alloca(fdb_msg_size());
     fdb_tran_t *tran;
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk) {
-        int rc = fdb_send_heartbeat(msg, tran->tid, tran->isuuid, tran->sb);
+        int rc = fdb_send_heartbeat(msg, tran->tid, tran->sb);
         if (gbl_fdb_track) {
-            if (tran->isuuid) {
-                uuidstr_t us;
-                comdb2uuidstr((unsigned char *)tran->tid, us);
-                logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
-                        __func__, us, tran->fdb->dbname, rc);
-            } else
-                logmsg(LOGMSG_USER, "%s Send heartbeat tid=%llx db=\"%s\" rc=%d\n",
-                        __func__, *(unsigned long long *)tran->tid, tran->fdb->dbname, rc);
+            uuidstr_t us;
+            comdb2uuidstr((unsigned char *)tran->tid, us);
+            logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
+                   __func__, us, tran->fdb->dbname, rc);
         }
         if (!out_rc) {
             out_rc = rc;

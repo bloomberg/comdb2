@@ -698,13 +698,13 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master)
 }
 
 /**
- * Retrieve the sqlclntstate for a certain rqid
+ * Retrieve the sqlclntstate for a certain uuid
  *
  *
  * NOTE: the returned clnt structure is dtran_mtx LOCKED!!!
  *
  */
-int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
+int osql_chkboard_get_clnt(uuid_t uuid, struct sqlclntstate **clnt)
 {
     osql_sqlthr_t *entry = NULL;
     int rc = 0;
@@ -714,7 +714,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 
     Pthread_mutex_lock(&checkboard->mtx);
 
-    entry = hash_find_readonly(h, k);
+    entry = hash_find_readonly(checkboard->rqsuuid, uuid);
     if (!entry) {
         /* This happens naturally for example
            if the client drops the connection while block processor
@@ -743,24 +743,6 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 
     Pthread_mutex_unlock(&checkboard->mtx);
 
-    return rc;
-}
-
-int osql_chkboard_get_clnt(unsigned long long rqid, struct sqlclntstate **clnt)
-{
-    int rc;
-    rc = osql_chkboard_get_clnt_int(checkboard->rqs, &rqid, clnt);
-    if (*clnt == NULL) {
-        ctrace("%s: received result for missing session %llu\n", __func__,
-               rqid);
-    }
-    return rc;
-}
-
-int osql_chkboard_get_clnt_uuid(uuid_t uuid, struct sqlclntstate **clnt)
-{
-    int rc;
-    rc = osql_chkboard_get_clnt_int(checkboard->rqsuuid, uuid, clnt);
     if (*clnt == NULL) {
         uuidstr_t us;
         ctrace("%s: received result for missing session %s\n", __func__,

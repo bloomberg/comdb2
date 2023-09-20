@@ -5986,8 +5986,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
             if (res.z) {
                 /* now we have the packed sqlite row in Mem->z */
                 rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid, res.z,
-                                     res.n, IX_FNDMORE,
-                                     clnt->osql.rqid == OSQL_RQID_USE_UUID);
+                                     res.n, IX_FNDMORE);
                 if (rc) {
                     /*
                     fprintf(stderr, "%s: failed to send back sql row\n",
@@ -6026,12 +6025,10 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
         if (!rc) {
             if (sent == 1) {
                 rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid, res.z,
-                                     res.n, IX_FND,
-                                     clnt->osql.rqid == OSQL_RQID_USE_UUID);
+                                     res.n, IX_FND);
             } else {
                 rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid, res.z,
-                                     res.n, IX_EMPTY,
-                                     clnt->osql.rqid == OSQL_RQID_USE_UUID);
+                                     res.n, IX_EMPTY);
             }
             if (rc) {
                 /*
@@ -6134,8 +6131,7 @@ done:
         const char *tmp = errstat_get_str(&clnt->osql.xerr);
         tmp = tmp ? tmp : "error string not set";
         rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid, (char *)tmp,
-                             strlen(tmp) + 1, errstat_get_rc(&clnt->osql.xerr),
-                             clnt->osql.rqid == OSQL_RQID_USE_UUID);
+                             strlen(tmp) + 1, errstat_get_rc(&clnt->osql.xerr));
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s failed to send back error rc=%d errstr=%s\n", __func__,
