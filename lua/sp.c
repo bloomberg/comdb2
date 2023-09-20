@@ -767,14 +767,23 @@ static void dbconsumer_getargs(Lua L, dbconsumer_t *consumer)
             if (strcasecmp(key, "with_tid") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
                     consumer->push_tid = lua_toboolean(L, -1);
+                } else {
+                    luaL_error(L, "bad argument for 'with_tid'");
+                    return;
                 }
             } else if (strcasecmp(key, "with_sequence") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
                     consumer->push_seq = lua_toboolean(L, -1);
+                } else {
+                    luaL_error(L, "bad argument for 'with_sequence'");
+                    return;
                 }
             } else if (strcasecmp(key, "with_epoch") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
                     consumer->push_epoch = lua_toboolean(L, -1);
+                } else {
+                    luaL_error(L, "bad argument for 'with_epoch'");
+                    return;
                 }
             } else if (strcasecmp(key, "register_timeout") == 0) {
                 long long timeoutms = 0;
