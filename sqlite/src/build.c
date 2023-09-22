@@ -2767,9 +2767,7 @@ void sqlite3CreateView(
   sqlite3TwoPartName(pParse, pName1, pName2, &pName);
   iDb = sqlite3SchemaToIndex(db, p->pSchema);
   sqlite3FixInit(&sFix, pParse, iDb, "view", pName);
-#ifndef SQLITE_BUILDING_FOR_COMDB2
   if( sqlite3FixSelect(&sFix, pSelect) ) goto create_view_fail;
-#endif
 
   /* Make a copy of the entire SELECT statement that defines the view.
   ** This will force all the Expr.token.z values to be dynamically

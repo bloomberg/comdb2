@@ -194,6 +194,15 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         mod_get_inmem_view(dst, &view);
         if(mod_partition_table)
             *mod_partition_table = strdup(mod_view_get_tablename(view));
+        if (table_exists) {
+            if (view) {
+                *table_exists = 1;
+                rc = setError(pParse, SQLITE_ERROR, "Table already exists");
+                goto cleanup;
+            } else {
+                *table_exists = 0;
+            }
+        }
     } else if(!firstshard) {
         struct dbtable *db = get_dbtable_by_name(dst);
 

@@ -1,0 +1,5 @@
+create table t(a int primary key)$$
+drop table t
+select * from t
+drop table t
+drop table if exists t

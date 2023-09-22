@@ -3319,8 +3319,6 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
         } /*switch */
         int bdberr = 0;
         if (sc->partition.type == PARTITION_ADD_MOD || sc->partition.type == PARTITION_REMOVE_MOD) {
-                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for mod partition %s\n",
-                       __func__, partition_name);
             rc = bdb_llog_mod_partition(thedb->bdb_env, tran, partition_name, &bdberr);
             if (rc || bdberr != BDBERR_NOERROR) {
                 logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for mod partition %s\n",
