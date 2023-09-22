@@ -980,7 +980,7 @@
 (name='track_replication_times_max_lsns', description='Track replication times for up to this many transactions.', type='INTEGER', value='50', read_only='N')
 (name='tracked_locklist_init', description='Initial allocation count for tracked locks', type='INTEGER', value='10', read_only='N')
 (name='transient_page_reallocation', description='Orphaned pages are maintained locally', type='BOOLEAN', value='OFF', read_only='N')
-(name='typessql', description='Use typessql to attempt to buffer results until all columns are non-null. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='typessql', description='Use typessql to attempt to buffer results until all columns are non-null. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='typessql_records_max', description='The maximum number of records for typessql to buffer and find non-null types before giving up. (Default: 1000)', type='INTEGER', value='1000', read_only='N')
 (name='udp', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='udp_average_over_epochs', description='Average over these many TCP epochs.', type='INTEGER', value='4', read_only='N')

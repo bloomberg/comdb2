@@ -1,6 +1,6 @@
 #include <typessql.h>
 
-int gbl_typessql = 1;
+int gbl_typessql = 0;
 int gbl_typessql_records_max = 1000;
 
 struct row {

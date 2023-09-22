@@ -1181,7 +1181,7 @@ REGISTER_TUNABLE("toblock_net_throttle",
 REGISTER_TUNABLE("track_berk_locks", NULL, TUNABLE_INTEGER,
                  &gbl_berkdb_track_locks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("typessql", "Use typessql to attempt to buffer results until all columns are non-null. (Default: on)",
+REGISTER_TUNABLE("typessql", "Use typessql to attempt to buffer results until all columns are non-null. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_typessql, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "typessql_records_max",
