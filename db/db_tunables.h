@@ -1791,7 +1791,7 @@ REGISTER_TUNABLE(
 REGISTER_TUNABLE(
     "dohsql_pool_thread_slack",
     "Forbid parallel sql coordinators from running on this many sql engines"
-    " (if 0, defaults to 1).",
+    " (if 0, defaults to 24).",
     TUNABLE_INTEGER, &gbl_dohsql_pool_thr_slack, NOZERO, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
