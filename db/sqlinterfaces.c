@@ -5242,7 +5242,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
             free(clnt->idxDelete);
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
-    clnt_free_cursor_hints(clnt);
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
@@ -5377,7 +5376,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->snapshot = 0;
     clnt->num_retry = 0;
     clnt->early_retry = 0;
-    clnt_reset_cursor_hints(clnt);
 
     clear_session_tbls(clnt);
 
