@@ -145,8 +145,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         rc = mod_partition_llmeta_erase(tran, s->newshard, &err);
         if (rc) {
             /*sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);*/
-            logmsg(LOGMSG_USER, "Failed to remove partition llmeta. rc: %d. err: %s\n",
-                    err.errval, err.errstr);
+            logmsg(LOGMSG_USER, "Failed to remove partition llmeta. rc: %d. err: %s\n", err.errval, err.errstr);
             return SC_INTERNAL_ERROR;
         }
     }

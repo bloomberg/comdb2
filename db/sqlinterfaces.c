@@ -4379,18 +4379,14 @@ check_version:
                 }
             }
 
-
             /* save the views generation number */
             thd->views_gen = gbl_views_gen;
 
             /* populate engine with mod-based shard views */
             if (thedb->mod_shard_views) {
-                rc = mod_views_sqlite_update(thedb->mod_shard_views, thd->sqldb,
-                                            &xerr);
+                rc = mod_views_sqlite_update(thedb->mod_shard_views, thd->sqldb, &xerr);
                 if (rc != VIEW_NOERR) {
-                    logmsg(LOGMSG_FATAL,
-                           "failed to create views rc=%d errstr=\"%s\"\n",
-                           xerr.errval, xerr.errstr);
+                    logmsg(LOGMSG_FATAL, "failed to create views rc=%d errstr=\"%s\"\n", xerr.errval, xerr.errstr);
                     /* TODO: AAR -> review if abort() is warranted here */
                     abort();
                 }

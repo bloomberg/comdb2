@@ -241,15 +241,13 @@ char *mod_views_create_insert_trigger_query(mod_view_t *view, struct errstat *er
     const char *view_name = mod_view_get_viewname(view);
     const char *tbl_name = mod_view_get_tablename(view);
     const char *shard_name = NULL;
-    cols_str = _describe_row(tbl_name, NULL,
-                             VIEWS_TRIGGER_INSERT, err);
+    cols_str = _describe_row(tbl_name, NULL, VIEWS_TRIGGER_INSERT, err);
     if (!cols_str) {
         goto oom;
     }
 
-    ret_str = sqlite3_mprintf(
-        "CREATE TRIGGER \"%w_%w\" INSTEAD OF INSERT ON \"%w\" BEGIN",
-        view_name, TRIGGER_SUFFIX_INS, view_name);
+    ret_str = sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF INSERT ON \"%w\" BEGIN", view_name,
+                              TRIGGER_SUFFIX_INS, view_name);
     if (!ret_str) {
         goto oom;
     }
@@ -257,14 +255,13 @@ char *mod_views_create_insert_trigger_query(mod_view_t *view, struct errstat *er
     void *ent;
     unsigned int bkt;
     mod_shard_t *shard = NULL;
-    for (shard = (mod_shard_t *)hash_first(mod_view_get_shards(view), &ent, &bkt); shard!=NULL;
-            shard = (mod_shard_t *)hash_next(mod_view_get_shards(view), &ent, &bkt)) {
+    for (shard = (mod_shard_t *)hash_first(mod_view_get_shards(view), &ent, &bkt); shard != NULL;
+         shard = (mod_shard_t *)hash_next(mod_view_get_shards(view), &ent, &bkt)) {
         shard_name = mod_shard_get_dbname(shard);
-        tmp_str = sqlite3_mprintf( "%s\nINSERT INTO \"%w\" VALUES ( %s );\n", 
-                ret_str, shard_name, cols_str);
+        tmp_str = sqlite3_mprintf("%s\nINSERT INTO \"%w\" VALUES ( %s );\n", ret_str, shard_name, cols_str);
         ret_str = tmp_str;
     }
-    
+
     tmp_str = sqlite3_mprintf("%s\nEND;", ret_str);
     sqlite3_free(ret_str);
     ret_str = tmp_str;
@@ -281,12 +278,9 @@ oom:
     errstat_set_strf(err, "%s Malloc OOM", __func__);
 
     return NULL;
-    
 }
 
-
-char *mod_views_create_update_trigger_query(mod_view_t *view,
-                                         struct errstat *err)
+char *mod_views_create_update_trigger_query(mod_view_t *view, struct errstat *err)
 {
     char *ret_str = NULL;
     char *tmp_str = NULL;
@@ -296,15 +290,13 @@ char *mod_views_create_update_trigger_query(mod_view_t *view,
     const char *tbl_name = mod_view_get_tablename(view);
     const char *shard_name = NULL;
 
-    ret_str =
-        sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF UPDATE ON \"%w\" BEGIN",
-                        view_name, TRIGGER_SUFFIX_UPD, view_name);
+    ret_str = sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF UPDATE ON \"%w\" BEGIN", view_name,
+                              TRIGGER_SUFFIX_UPD, view_name);
     if (!ret_str) {
         goto oom;
     }
 
-    cols_str = _describe_row(tbl_name, NULL,
-                             VIEWS_TRIGGER_UPDATE, err);
+    cols_str = _describe_row(tbl_name, NULL, VIEWS_TRIGGER_UPDATE, err);
     if (!cols_str) {
         sqlite3_free(ret_str);
         return NULL;
@@ -313,11 +305,11 @@ char *mod_views_create_update_trigger_query(mod_view_t *view,
     void *ent;
     unsigned int bkt;
     mod_shard_t *shard = NULL;
-    for (shard = (mod_shard_t *)hash_first(mod_view_get_shards(view), &ent, &bkt); shard!=NULL;           shard = (mod_shard_t *)hash_next(mod_view_get_shards(view), &ent, &bkt)) {
+    for (shard = (mod_shard_t *)hash_first(mod_view_get_shards(view), &ent, &bkt); shard != NULL;
+         shard = (mod_shard_t *)hash_next(mod_view_get_shards(view), &ent, &bkt)) {
         shard_name = mod_shard_get_dbname(shard);
-        tmp_str = sqlite3_mprintf(
-            "%s\nUPDATE \"%w\" SET %s where rowid=old.__hidden__rowid;", ret_str,
-            shard_name, cols_str);
+        tmp_str =
+            sqlite3_mprintf("%s\nUPDATE \"%w\" SET %s where rowid=old.__hidden__rowid;", ret_str, shard_name, cols_str);
         sqlite3_free(ret_str);
         ret_str = tmp_str;
     }
@@ -339,28 +331,25 @@ oom:
     return NULL;
 }
 
-char *mod_views_create_delete_trigger_query(mod_view_t *view,
-                                         struct errstat *err)
+char *mod_views_create_delete_trigger_query(mod_view_t *view, struct errstat *err)
 {
     char *ret_str = NULL;
     char *tmp_str = NULL;
     const char *view_name = mod_view_get_viewname(view);
     const char *shard_name = NULL;
 
-    ret_str =
-        sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF DELETE ON \"%w\" BEGIN",
-                        view_name, TRIGGER_SUFFIX_DEL, view_name);
+    ret_str = sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF DELETE ON \"%w\" BEGIN", view_name,
+                              TRIGGER_SUFFIX_DEL, view_name);
     if (!ret_str) {
         goto oom;
     }
     void *ent;
     unsigned int bkt;
     mod_shard_t *shard = NULL;
-    for (shard = (mod_shard_t *)hash_first(mod_view_get_shards(view), &ent, &bkt); shard!=NULL;           shard = (mod_shard_t *)hash_next(mod_view_get_shards(view), &ent, &bkt)) {
+    for (shard = (mod_shard_t *)hash_first(mod_view_get_shards(view), &ent, &bkt); shard != NULL;
+         shard = (mod_shard_t *)hash_next(mod_view_get_shards(view), &ent, &bkt)) {
         shard_name = mod_shard_get_dbname(shard);
-        tmp_str = sqlite3_mprintf(
-            "%s\nDELETE FROM \"%w\" where rowid=old.__hidden__rowid;", ret_str,
-            shard_name);
+        tmp_str = sqlite3_mprintf("%s\nDELETE FROM \"%w\" where rowid=old.__hidden__rowid;", ret_str, shard_name);
         sqlite3_free(ret_str);
         ret_str = tmp_str;
     }

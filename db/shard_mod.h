@@ -6,8 +6,9 @@ typedef struct mod_shard mod_shard_t;
 typedef struct mod_view mod_view_t;
 typedef struct mod_views mod_views_t;
 
-
-mod_view_t *create_mod_view(const char *viewname, const char *tablename, uint32_t num_columns, char columns[][MAXCOLNAME], uint32_t num_shards, uint32_t keys[], char shards[][MAXTABLELEN], struct errstat *err); 
+mod_view_t *create_mod_view(const char *viewname, const char *tablename, uint32_t num_columns,
+                            char columns[][MAXCOLNAME], uint32_t num_shards, uint32_t keys[],
+                            char shards[][MAXTABLELEN], struct errstat *err);
 int mod_create_inmem_view(mod_view_t *);
 int mod_destroy_inmem_view(mod_view_t *);
 const char *mod_view_get_viewname(struct mod_view *view);

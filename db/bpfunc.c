@@ -206,11 +206,9 @@ int success_create_timepart(void *tran, bpfunc_t *func, struct errstat *err)
     int rc = 0;
     int bdberr = 0;
 
-    rc = bdb_llog_timepart_views(thedb->bdb_env, func->arg->crt_tp->partition_name, 1,
-                        &bdberr);
+    rc = bdb_llog_timepart_views(thedb->bdb_env, func->arg->crt_tp->partition_name, 1, &bdberr);
     if (rc)
-        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_timepart_views rc:%d bdberr:%d",
-                           __func__, rc, bdberr);
+        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_timepart_views rc:%d bdberr:%d", __func__, rc, bdberr);
     return rc;
 }
 
@@ -248,11 +246,9 @@ int success_drop_timepart(void *tran, bpfunc_t *func, struct errstat *err)
     int rc = 0;
     int bdberr = 0;
 
-    rc = bdb_llog_timepart_views(thedb->bdb_env, func->arg->drop_tp->partition_name, 1,
-                        &bdberr);
+    rc = bdb_llog_timepart_views(thedb->bdb_env, func->arg->drop_tp->partition_name, 1, &bdberr);
     if (rc)
-        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_timepart_views rc:%d bdberr:%d",
-                           __func__, rc, bdberr);
+        errstat_set_rcstrf(err, rc, "%s -- bdb_llog_timepart_views rc:%d bdberr:%d", __func__, rc, bdberr);
     return rc;
 }
 
@@ -521,11 +517,9 @@ int success_timepart_retention(void *tran, bpfunc_t *func, struct errstat *err)
      int rc = 0;
      int bdberr = 0;
 
-     rc = bdb_llog_timepart_views(thedb->bdb_env, func->arg->tp_ret->timepartname, 1,
-                         &bdberr);
+     rc = bdb_llog_timepart_views(thedb->bdb_env, func->arg->tp_ret->timepartname, 1, &bdberr);
      if(rc)
-         errstat_set_rcstrf(err, rc, "%s -- bdb_llog_timepart_views rc:%d bdberr:%d",
-                            __func__, rc, bdberr);
+         errstat_set_rcstrf(err, rc, "%s -- bdb_llog_timepart_views rc:%d bdberr:%d", __func__, rc, bdberr);
      return rc;
 }
 

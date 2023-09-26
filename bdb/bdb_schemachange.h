@@ -69,12 +69,9 @@ int bdb_llog_scdone(bdb_state_type *, scdone_t, const char *tablename,
                     int tablenamelen, int wait, int *bdberr);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_analyze(bdb_state_type *, int wait, int *bdberr);
-int bdb_llog_timepart_views(bdb_state_type *bdb_state, char *name, int wait,
-                   int *bdberr);
-int bdb_llog_time_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
-                       int *bdberr);
-int bdb_llog_mod_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
-                       int *bdberr);
+int bdb_llog_timepart_views(bdb_state_type *bdb_state, char *name, int wait, int *bdberr);
+int bdb_llog_time_partition(bdb_state_type *bdb_state, tran_type *tran, char *name, int *bdberr);
+int bdb_llog_mod_partition(bdb_state_type *bdb_state, tran_type *tran, char *name, int *bdberr);
 int bdb_llog_rowlocks(bdb_state_type *, scdone_t, int *bdberr);
 int bdb_llog_genid_format(bdb_state_type *, scdone_t, int *bdberr);
 int bdb_reload_rowlocks(bdb_state_type *, scdone_t, int *bdberr);

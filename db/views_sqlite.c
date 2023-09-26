@@ -325,8 +325,7 @@ static int _view_delete_if_missing(const char *name, sqlite3 *db, void *arg)
     return 0;
 }
 
-char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
-                            struct errstat *err)
+char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db, struct errstat *err)
 {
     char *select_str = NULL;
     char *cols_str = NULL;
@@ -338,12 +337,11 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
     int num_shards = mod_view_get_num_shards(view);
     const char *view_name = mod_view_get_viewname(view);
     const char *table_name = mod_view_get_tablename(view);
-    hash_t * shards = mod_view_get_shards(view);
+    hash_t *shards = mod_view_get_shards(view);
     int i;
     if (num_shards == 0) {
         err->errval = VIEW_ERR_BUG;
-        snprintf(err->errstr, sizeof(err->errstr), "View %s has no shards???\n",
-                 view_name);
+        snprintf(err->errstr, sizeof(err->errstr), "View %s has no shards???\n", view_name);
         return NULL;
     }
 
@@ -364,10 +362,9 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
 
     select_str = sqlite3_mprintf("");
     i = 0;
-    for (shard=(mod_shard_t *)hash_first(shards, &ent, &bkt); shard != NULL;
-         shard=(mod_shard_t *)hash_next(shards, &ent, &bkt)) {
-        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %s", select_str,
-                                  (i > 0) ? " UNION ALL " : "", cols_str,
+    for (shard = (mod_shard_t *)hash_first(shards, &ent, &bkt); shard != NULL;
+         shard = (mod_shard_t *)hash_next(shards, &ent, &bkt)) {
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %s", select_str, (i > 0) ? " UNION ALL " : "", cols_str,
                                   mod_shard_get_dbname(shard));
         sqlite3_free(select_str);
         if (!tmp_str) {
@@ -394,10 +391,8 @@ char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db,
 
 malloc:
     err->errval = VIEW_ERR_MALLOC;
-    snprintf(err->errstr, sizeof(err->errstr), "View %s out of memory\n",
-             view_name);
+    snprintf(err->errstr, sizeof(err->errstr), "View %s out of memory\n", view_name);
     return NULL;
-
 }
 
 int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
@@ -411,13 +406,11 @@ int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
     db->isTimepartView = 0;
     if (rc != SQLITE_OK) {
         err->errval = VIEW_ERR_BUG;
-        snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"",
-                 errstr);
+        snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"", errstr);
         /* can't control sqlite errors */
         err->errstr[sizeof(err->errstr) - 1] = '\0';
 
-        logmsg(LOGMSG_USER, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__,
-               errstr, stmt);
+        logmsg(LOGMSG_USER, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__, errstr, stmt);
 
         if (errstr)
             sqlite3_free(errstr);
@@ -426,15 +419,12 @@ int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
 
     /* use sqlite to add the view */
     return VIEW_NOERR;
-
 }
-int mod_views_create_triggers(mod_view_t *view, sqlite3 *db,
-                                struct errstat *err)
+int mod_views_create_triggers(mod_view_t *view, sqlite3 *db, struct errstat *err)
 {
     typedef char *(*PFUNC)(mod_view_t *, struct errstat *);
 
-    PFUNC funcs[3] = {(PFUNC)&mod_views_create_delete_trigger_query,
-                      (PFUNC)&mod_views_create_update_trigger_query,
+    PFUNC funcs[3] = {(PFUNC)&mod_views_create_delete_trigger_query, (PFUNC)&mod_views_create_update_trigger_query,
                       (PFUNC)&mod_views_create_insert_trigger_query};
     PFUNC func;
     char *stmt_str;
@@ -460,10 +450,8 @@ int mod_views_create_triggers(mod_view_t *view, sqlite3 *db,
     /* clear last side row, might break a racing sql otherwise */
     clearClientSideRow(NULL);
     return VIEW_NOERR;
-
 }
-int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
-                            struct errstat *err)
+int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db, struct errstat *err)
 {
     char *stmt_str;
     int rc;
@@ -473,7 +461,6 @@ int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
     if (!stmt_str) {
         return err->errval;
     }
-
 
     rc = mod_views_run_sql(db, stmt_str, err);
 
@@ -490,15 +477,12 @@ int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db,
     return rc;
 }
 
-int mod_views_sqlite_delete_view(mod_view_t *view, sqlite3 *db,
-                            struct errstat *err)
+int mod_views_sqlite_delete_view(mod_view_t *view, sqlite3 *db, struct errstat *err)
 {
     return _views_sqlite_del_view(mod_view_get_viewname(view), db, err);
 }
 
-
-int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
-                        struct errstat *err)
+int mod_views_sqlite_update(hash_t *views, sqlite3 *db, struct errstat *err)
 {
     Table *tab;
     int rc;
@@ -507,8 +491,8 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
     mod_view_t *view = NULL;
 
     Pthread_rwlock_rdlock(&mod_shard_lk);
-    for (view=(mod_view_t *)hash_first(views, &ent, &bkt); view != NULL;
-         view=(mod_view_t *)hash_next(views, &ent, &bkt)) {
+    for (view = (mod_view_t *)hash_first(views, &ent, &bkt); view != NULL;
+         view = (mod_view_t *)hash_next(views, &ent, &bkt)) {
         /* check if this exists?*/
         tab = sqlite3FindTableCheckOnly(db, mod_view_get_viewname(view), NULL);
         if (tab) {
@@ -517,8 +501,7 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
                 /* older version, destroy current view */
                 rc = mod_views_sqlite_delete_view(view, db, err);
                 if (rc != VIEW_NOERR) {
-                    logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n",
-                            __func__);
+                    logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n", __func__);
                     goto done;
                 }
             } else {
@@ -527,7 +510,7 @@ int mod_views_sqlite_update(hash_t *views, sqlite3 *db,
             }
         }
         rc = mod_views_sqlite_add_view(view, db, err);
-        if (rc!=VIEW_NOERR) {
+        if (rc != VIEW_NOERR) {
             goto done;
         }
     }
@@ -536,7 +519,6 @@ done:
     Pthread_rwlock_unlock(&mod_shard_lk);
     return rc;
 }
-
 
 #ifdef COMDB2_UPDATEABLE_VIEWS
 

@@ -1788,11 +1788,10 @@ REGISTER_TUNABLE(
     "Maximum number of parallel threads, otherwise run sequential.",
     TUNABLE_INTEGER, &gbl_dohsql_max_threads, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE(
-    "dohsql_pool_thread_slack",
-    "Forbid parallel sql coordinators from running on this many sql engines"
-    " (if 0, defaults to 24).",
-    TUNABLE_INTEGER, &gbl_dohsql_pool_thr_slack, NOZERO, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dohsql_pool_thread_slack",
+                 "Forbid parallel sql coordinators from running on this many sql engines"
+                 " (if 0, defaults to 24).",
+                 TUNABLE_INTEGER, &gbl_dohsql_pool_thr_slack, NOZERO, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
     "dohsql_full_queue_poll_msec",

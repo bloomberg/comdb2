@@ -1351,68 +1351,59 @@ static int _cson_extract_start_string(cson_object *cson_obj, const char *param,
     return ret_int;
 }
 
-static int _cson_set_int(cson_object *obj, const char *keyname,
-                          uint64_t value, struct errstat *err)
+static int _cson_set_int(cson_object *obj, const char *keyname, uint64_t value, struct errstat *err)
 {
-    int rc; 
+    int rc;
     cson_value *v = cson_value_new_integer(value);
     if (!v) {
         err->errval = VIEW_ERR_VALUE;
-        snprintf(err->errstr, sizeof(err->errstr),
-                "couldn't create cson value for integer %ld\n", value);
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't create cson value for integer %ld\n", value);
         return -1;
     }
 
     rc = cson_object_set(obj, keyname, v);
     if (rc) {
         err->errval = VIEW_ERR_VALUE;
-        snprintf(err->errstr, sizeof(err->errstr),
-                "couldn't set integer field %s with value %ld\n", keyname, value);
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't set integer field %s with value %ld\n", keyname, value);
         return -1;
     }
 
     return rc;
 }
 
-static int _cson_set_or_create_array(cson_object *obj, const char *keyname, 
-                            cson_value *arr_val, struct errstat *err)
+static int _cson_set_or_create_array(cson_object *obj, const char *keyname, cson_value *arr_val, struct errstat *err)
 {
     int rc;
     if (!arr_val) {
-       arr_val = cson_value_new_array();
-       if (!arr_val) {
-           err->errval = VIEW_ERR_VALUE;
-           snprintf(err->errstr, sizeof(err->errstr),
-                   "couldn't create empty cson array\n");
-           return -1;
-       }
-    } 
-   rc = cson_object_set(obj, keyname, arr_val);
-   if (rc) {
-       err->errval = VIEW_ERR_VALUE;
-       snprintf(err->errstr, sizeof(err->errstr),
-                "couldn't set array field %s\n", keyname);
-   }
-   return rc;
+        arr_val = cson_value_new_array();
+        if (!arr_val) {
+            err->errval = VIEW_ERR_VALUE;
+            snprintf(err->errstr, sizeof(err->errstr), "couldn't create empty cson array\n");
+            return -1;
+        }
+    }
+    rc = cson_object_set(obj, keyname, arr_val);
+    if (rc) {
+        err->errval = VIEW_ERR_VALUE;
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't set array field %s\n", keyname);
+    }
+    return rc;
 }
 
-static int _cson_set_string(cson_object *obj, const char *keyname,
-                          const char *value, struct errstat *err)
+static int _cson_set_string(cson_object *obj, const char *keyname, const char *value, struct errstat *err)
 {
-    int rc; 
+    int rc;
     cson_value *v = cson_value_new_string(value, strlen(value));
     if (!v) {
         err->errval = VIEW_ERR_VALUE;
-        snprintf(err->errstr, sizeof(err->errstr),
-                "couldn't create cson value for string %s\n", value);
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't create cson value for string %s\n", value);
         return -1;
     }
 
     rc = cson_object_set(obj, keyname, v);
     if (rc) {
         err->errval = VIEW_ERR_VALUE;
-        snprintf(err->errstr, sizeof(err->errstr),
-                "couldn't set string field %s with value %s\n", keyname, value);
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't set string field %s with value %s\n", keyname, value);
         return -1;
     }
     return rc;
@@ -1889,8 +1880,8 @@ done:
 }
 /*
  * Serialize a shard into a cson object
-*/
-int mod_serialize_shard(void *obj, void *arg) 
+ */
+int mod_serialize_shard(void *obj, void *arg)
 {
     mod_shard_t *shard = (mod_shard_t *)obj;
     cson_array *arr = (cson_array *)arg;
@@ -1898,9 +1889,9 @@ int mod_serialize_shard(void *obj, void *arg)
     cson_object *rootObj = cson_value_get_object(rootVal);
     int rc;
 
-    rc = cson_object_set(rootObj,"MODVAL",cson_value_new_integer(mod_shard_get_mod_val(shard)));
+    rc = cson_object_set(rootObj, "MODVAL", cson_value_new_integer(mod_shard_get_mod_val(shard)));
     const char *dbname = mod_shard_get_dbname(shard);
-    rc = cson_object_set(rootObj,"DBNAME",cson_value_new_string(dbname, strlen(dbname)));
+    rc = cson_object_set(rootObj, "DBNAME", cson_value_new_string(dbname, strlen(dbname)));
     rc = cson_array_append(arr, rootVal);
     return rc;
 }
@@ -1916,25 +1907,24 @@ int mod_serialize_view(mod_view_t *view, int *outLen, char **out)
     rootVal = cson_value_new_object();
     rootObj = cson_value_get_object(rootVal);
     const char *tmp_str = mod_view_get_viewname(view);
-    rc = cson_object_set(rootObj, "VIEWNAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
+    rc = cson_object_set(rootObj, "VIEWNAME", cson_value_new_string(tmp_str, strlen(tmp_str)));
     if (rc) {
         goto err;
     }
 
     tmp_str = mod_view_get_tablename(view);
-    rc = cson_object_set(rootObj, "TABLENAME", cson_value_new_string(tmp_str,strlen(tmp_str)));
+    rc = cson_object_set(rootObj, "TABLENAME", cson_value_new_string(tmp_str, strlen(tmp_str)));
     if (rc) {
         goto err;
     }
     int num_keys = mod_view_get_num_keys(view);
     char **keys = mod_view_get_keynames(view);
-	rc = cson_object_set(rootObj, "NUMKEYS", cson_value_new_integer(num_keys));
+    rc = cson_object_set(rootObj, "NUMKEYS", cson_value_new_integer(num_keys));
     if (rc) {
         goto err;
     }
-	arrVal = cson_value_new_array();
-    for(int i=0;i<num_keys;i++)
-    {
+    arrVal = cson_value_new_array();
+    for (int i = 0; i < num_keys; i++) {
         rc = cson_array_append(cson_value_get_array(arrVal), cson_value_new_string(keys[i], strlen(keys[i])));
         if (rc) {
             goto err;
@@ -1974,7 +1964,7 @@ err:
     return -1;
 }
 
-mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err) 
+mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
 {
     mod_view_t *view = NULL;
     cson_object *rootObj = NULL, *arrObj = NULL;
@@ -1988,12 +1978,10 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
     /* parse string */
     rc = cson_parse_string(&rootVal, view_str, strlen(view_str));
     if (rc) {
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
+        snprintf(err->errstr, sizeof(err->errstr), "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
         err->errval = VIEW_ERR_PARAM;
         goto done;
     }
-
 
     rc = cson_value_is_object(rootVal);
     rootObj = cson_value_get_object(rootVal);
@@ -2064,7 +2052,7 @@ mod_view_t *mod_deserialize_view(const char *view_str, struct errstat *err)
         }
 
         /* DBNAME */
-        tmp_str =  _cson_extract_str(arrObj, "DBNAME", err);
+        tmp_str = _cson_extract_str(arrObj, "DBNAME", err);
         if (!tmp_str) {
             err_str = "INVALID CSON. couldn't find 'DBNAME' key";
             goto error;
@@ -2101,7 +2089,6 @@ done:
     }
     return view;
 }
-
 
 #ifdef VIEWS_PERSIST_TEST
 

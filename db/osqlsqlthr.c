@@ -1818,13 +1818,14 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                 free(first_shardname);
             } else if (is_mod_partition(sc->tablename)) {
                 sc->usedbtablevers = mod_view_get_version(sc->tablename);
-            }else /* user view */
+            } else /* user view */
                 usedb = 0;
         }
 
         START_SOCKSQL;
         do {
-            logmsg(LOGMSG_USER, "SEnding sc->tablename : %s\n s->usedbtablevers: %d\n", sc->tablename, sc->usedbtablevers);
+            logmsg(LOGMSG_USER, "SEnding sc->tablename : %s\n s->usedbtablevers: %d\n", sc->tablename,
+                   sc->usedbtablevers);
             rc = osql_send_schemachange(&osql->target, osql->rqid,
                                         thd->clnt->osql.uuid, sc,
                                         NET_OSQL_SOCK_RPL);

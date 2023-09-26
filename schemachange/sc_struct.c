@@ -137,15 +137,14 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
         return sizeof(p->type) + sizeof(p->u.mergetable.tablename) +
                sizeof(p->u.mergetable.version);
     case PARTITION_ADD_MOD:
-        for(int i=0;i<p->u.mod.num_shards;i++) {
+        for (int i = 0; i < p->u.mod.num_shards; i++) {
             shardNamesSize += sizeof(p->u.mod.shards[i]);
         }
 
-        for(int i=0;i<p->u.mod.num_columns;i++) {
+        for (int i = 0; i < p->u.mod.num_columns; i++) {
             columnNamesSize += sizeof(p->u.mod.columns[i]);
         }
-        return sizeof(p->type) + sizeof(p->u.mod.viewname) + 
-               sizeof(p->u.mod.num_shards) + sizeof(p->u.mod.keys) +
+        return sizeof(p->type) + sizeof(p->u.mod.viewname) + sizeof(p->u.mod.num_shards) + sizeof(p->u.mod.keys) +
                sizeof(p->u.mod.num_columns) + shardNamesSize + columnNamesSize;
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
@@ -335,21 +334,17 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
         break;
     }
     case PARTITION_ADD_MOD: {
-        p_buf = buf_no_net_put(s->partition.u.mod.viewname,
-                        sizeof(s->partition.u.mod.viewname), p_buf, p_buf_end);
-        p_buf = buf_put(&s->partition.u.mod.num_columns,
-                        sizeof(s->partition.u.mod.num_columns), p_buf, p_buf_end);
-        for(int i=0;i<s->partition.u.mod.num_columns;i++) {
-            p_buf = buf_no_net_put(s->partition.u.mod.columns[i],
-                                sizeof(s->partition.u.mod.columns[i]), p_buf, p_buf_end);
+        p_buf = buf_no_net_put(s->partition.u.mod.viewname, sizeof(s->partition.u.mod.viewname), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.mod.num_columns, sizeof(s->partition.u.mod.num_columns), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.mod.num_columns; i++) {
+            p_buf =
+                buf_no_net_put(s->partition.u.mod.columns[i], sizeof(s->partition.u.mod.columns[i]), p_buf, p_buf_end);
         }
-        p_buf = buf_put(&s->partition.u.mod.num_shards,
-                        sizeof(s->partition.u.mod.num_shards), p_buf, p_buf_end);
-        p_buf = buf_no_net_put(&s->partition.u.mod.keys,
-                        sizeof(s->partition.u.mod.keys), p_buf, p_buf_end);
-        for(int i=0;i<s->partition.u.mod.num_shards;i++) {
-            p_buf = buf_no_net_put(s->partition.u.mod.shards[i],
-                                sizeof(s->partition.u.mod.shards[i]), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.mod.num_shards, sizeof(s->partition.u.mod.num_shards), p_buf, p_buf_end);
+        p_buf = buf_no_net_put(&s->partition.u.mod.keys, sizeof(s->partition.u.mod.keys), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.mod.num_shards; i++) {
+            p_buf =
+                buf_no_net_put(s->partition.u.mod.shards[i], sizeof(s->partition.u.mod.shards[i]), p_buf, p_buf_end);
         }
         break;
     }
@@ -779,27 +774,20 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         break;
     }
     case PARTITION_ADD_MOD: {
-        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.viewname,
-                                          sizeof(s->partition.u.mod.viewname),
-                                          p_buf, p_buf_end);
-        p_buf = (uint8_t *)buf_get(&s->partition.u.mod.num_columns,
-                                   sizeof(s->partition.u.mod.num_columns), p_buf,
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.viewname, sizeof(s->partition.u.mod.viewname), p_buf,
+                                          p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.mod.num_columns, sizeof(s->partition.u.mod.num_columns), p_buf,
                                    p_buf_end);
-        for(int i=0;i<s->partition.u.mod.num_columns;i++) {
-            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.columns[i],
-                                              sizeof(s->partition.u.mod.columns[i]),
+        for (int i = 0; i < s->partition.u.mod.num_columns; i++) {
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.columns[i], sizeof(s->partition.u.mod.columns[i]),
                                               p_buf, p_buf_end);
         }
-        p_buf = (uint8_t *)buf_get(&s->partition.u.mod.num_shards,
-                                   sizeof(s->partition.u.mod.num_shards), p_buf,
-                                   p_buf_end);
-        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.keys,
-                                   sizeof(s->partition.u.mod.keys), p_buf,
-                                   p_buf_end);
-        for(int i=0;i<s->partition.u.mod.num_shards;i++) {
-            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.shards[i],
-                                       sizeof(s->partition.u.mod.shards[i]), p_buf,
-                                       p_buf_end);
+        p_buf =
+            (uint8_t *)buf_get(&s->partition.u.mod.num_shards, sizeof(s->partition.u.mod.num_shards), p_buf, p_buf_end);
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.keys, sizeof(s->partition.u.mod.keys), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.mod.num_shards; i++) {
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mod.shards[i], sizeof(s->partition.u.mod.shards[i]), p_buf,
+                                              p_buf_end);
         }
         break;
     }

@@ -160,8 +160,7 @@ int mod_views_read_view(void *tran, const char *name, char **pstr)
  *  The view is internally saved as a parameter "viewname" for the table
  *  "mod_views".
  */
-int mod_views_write_view(void *tran, const char *viewname, const char *str,
-                     int override)
+int mod_views_write_view(void *tran, const char *viewname, const char *str, int override)
 {
     int rc;
 
@@ -169,9 +168,7 @@ int mod_views_write_view(void *tran, const char *viewname, const char *str,
         char *oldstr = NULL;
         rc = mod_views_read_view(tran, viewname, &oldstr);
         if (rc == VIEW_NOERR) {
-            logmsg(LOGMSG_ERROR,
-                   "View \"%s\" already exists, old string \"%s\"\n",
-                   viewname, oldstr);
+            logmsg(LOGMSG_ERROR, "View \"%s\" already exists, old string \"%s\"\n", viewname, oldstr);
             free(oldstr);
             return VIEW_ERR_EXIST;
         }
@@ -191,12 +188,10 @@ char *mod_views_read_all_views(void)
     int blob_len = 0;
     int rc;
 
-    rc =
-        bdb_get_table_csonparameters(NULL, LLMETA_MOD_VIEWS_TABLE, &blob, &blob_len);
+    rc = bdb_get_table_csonparameters(NULL, LLMETA_MOD_VIEWS_TABLE, &blob, &blob_len);
     if (rc) {
         return NULL;
     }
 
     return blob;
 }
-
