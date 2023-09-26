@@ -38,12 +38,7 @@ static struct timeval heartbeat_time = {.tv_sec = 0, .tv_usec = MSEC(100)};
 #define min_hb_time 1
 
 //writer will block if outstanding data hits:
-#define max_buf MB(1)
-
-//once blocked, writer drains to:
-#define resume_buf KB(128)
-
-BB_COMPILE_TIME_ASSERT(resume_max_buf, resume_buf < max_buf);
+#define max_buf KB(256)
 
 struct sqlwriter {
     struct sqlclntstate *clnt;
@@ -184,21 +179,17 @@ static void sql_flush_cb(int fd, short what, void *arg)
         UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
         return;
     }
-    const int min = (writer->done || writer->flush) ? 0 : resume_buf;
-    while (1) {
+    while (outstanding) {
         if ((n = wr_evbuffer(writer, fd)) <= 0) {
             break;
         }
         writer->sent_at = time(NULL);
         outstanding -= n;
-        if (outstanding <= min) {
-            break;
-        }
     }
     if (n <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         writer->bad = 1;
         event_del(writer->flush_ev);
-    } else if (outstanding <= min) {
+    } else {
         sql_disable_flush(writer);
     }
     UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
