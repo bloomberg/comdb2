@@ -71,7 +71,7 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
     if (clnt->disable_fdb_push)
         return -1;
 
-    if (clnt->intrans)
+    if (clnt->intrans || clnt->in_client_trans)
         return -1;
 
     if (pDb->version < FDB_VER_PROXY)

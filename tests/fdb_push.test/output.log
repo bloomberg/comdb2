@@ -34,3 +34,9 @@ Test running with no sqlite_stat1
 (rows inserted=1)
 (rows inserted=1)
 (rows inserted=1)
+Make sure disabled for client transactions
+(id=1, b1='Hello1')
+(id=2, b1='Hello2')
+(id=3, b1='Hello3')
+(id=4, b1='Hello4')
+(1=1)
