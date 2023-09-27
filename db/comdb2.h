@@ -3483,8 +3483,6 @@ extern int gbl_no_env;
 
 extern int gbl_hostname_refresh_time;
 
-extern int gbl_noenv_messages;
-
 extern int gbl_bbenv;
 
 extern int gbl_maxblobretries;

@@ -234,14 +234,8 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
 
     /* new id */
     if (!keep_rqid) {
-        if (gbl_noenv_messages) {
-            osql->rqid = OSQL_RQID_USE_UUID;
-            comdb2uuid(osql->uuid);
-        } else {
-            osql->rqid = comdb2fastseed(0);
-            comdb2uuid_clear(osql->uuid);
-            assert(osql->rqid);
-        }
+        osql->rqid = OSQL_RQID_USE_UUID;
+        comdb2uuid(osql->uuid);
     }
 
     osql->is_reorder_on = start_flags & OSQL_START_NO_REORDER
@@ -273,24 +267,16 @@ retry:
         if (retries < max_retries) {
             retries++;
             if (retries % (1000 / poll_ms) == 0) { /* reduce spew - once a second */
-                if (gbl_noenv_messages) {
-                    uuidstr_t us;
-                    comdb2uuidstr(osql->uuid, us);
-                    logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d uuid:%s\n", retries, us);
-                } else {
-                    logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d rqid:%llx\n", retries, osql->rqid);
-                }
+                uuidstr_t us;
+                comdb2uuidstr(osql->uuid, us);
+                logmsg(LOGMSG_WARN, "Retrying to find the master retries=%d uuid:%s\n", retries, us);
             }
             poll(NULL, 0, poll_ms);
             goto retry;
         } else {
-            if (gbl_noenv_messages) {
-                uuidstr_t us;
-                comdb2uuidstr(osql->uuid, us);
-                logmsg(LOGMSG_ERROR, "%s: no master for uuid:%s\n", __func__, us);
-            } else {
-                logmsg(LOGMSG_ERROR, "%s: no master for rqid:%llx\n", __func__, osql->rqid);
-            }
+            uuidstr_t us;
+            comdb2uuidstr(osql->uuid, us);
+            logmsg(LOGMSG_ERROR, "%s: no master for uuid:%s\n", __func__, us);
             errstat_set_rc(&osql->xerr, ERR_NOMASTER);
             errstat_set_str(&osql->xerr, "No master available");
             return SQLITE_ABORT;
@@ -317,13 +303,9 @@ retry:
     if (rc != 0 && retries < max_retries) {
         retries++;
         if (retries % (1000 / poll_ms) == 0) { /* reduce spew */
-            if (gbl_noenv_messages) {
-                uuidstr_t us;
-                comdb2uuidstr(osql->uuid, us);
-                logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d uuid:%s\n", retries, us);
-            } else {
-                logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d rqid:%llx\n", retries, osql->rqid);
-            }
+            uuidstr_t us;
+            comdb2uuidstr(osql->uuid, us);
+            logmsg(LOGMSG_WARN, "Retrying to find the master (2) retries=%d uuid:%s\n", retries, us);
         }
         poll(NULL, 0, poll_ms);
         goto retry;

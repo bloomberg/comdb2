@@ -678,8 +678,6 @@ char *gbl_recovery_options = NULL;
 
 int gbl_rcache = 0;
 
-int gbl_noenv_messages = 1;
-
 int gbl_check_sql_source = 0;
 int skip_clear_queue_extents = 0;
 
@@ -3733,11 +3731,6 @@ static int init(int argc, char **argv)
             if (!noabort)
                 exit(1);
         }
-        if (!gbl_noenv_messages) {
-            logmsg(LOGMSG_FATAL,
-                   "This server build cannot run with legacy messages! Please rollback\n");
-            abort();
-        }
     }
 
     /* Rules for setting cache size:
@@ -5142,9 +5135,6 @@ static void register_all_int_switches()
     register_int_switch("broadcast_check_rmtpol",
                         "Check rmtpol before sending triggers",
                         &gbl_broadcast_check_rmtpol);
-    register_int_switch("noenv_requests",
-                        "Send requests compatible with no environment",
-                        &gbl_noenv_messages);
     register_int_switch("track_curtran_locks", "Print curtran lockinfo",
                         &gbl_track_curtran_locks);
     register_int_switch("replicate_rowlocks", "Replicate rowlocks",
