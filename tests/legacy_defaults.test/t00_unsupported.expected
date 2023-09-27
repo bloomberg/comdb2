@@ -1,8 +1,0 @@
-(test='== UPSERT isn't supported, expect meaningful error ==')
-(rows inserted=1)
-(rows inserted=1)
-[INSERT INTO t1 VALUES(1) ON CONFLICT DO NOTHING] failed with rc -3 UPSERT not enabled
-[INSERT INTO t1 VALUES(1) ON CONFLICT(i) DO UPDATE SET i = i+1] failed with rc -3 UPSERT not enabled
-[INSERT OR IGNORE INTO t1 VALUES(1)] failed with rc -3 UPSERT not enabled
-[INSERT OR REPLACE INTO t1 VALUES(1)] failed with rc -3 UPSERT not enabled
-[REPLACE INTO t1 VALUES(1)] failed with rc -3 UPSERT not enabled
