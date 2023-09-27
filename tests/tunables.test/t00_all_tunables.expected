@@ -584,8 +584,6 @@
 (name='nocrc32c', description='Disables 'crc32c'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nodeid', description='', type='INTEGER', value='0', read_only='Y')
 (name='noearly', description='Disables 'early'', type='BOOLEAN', value='OFF', read_only='Y')
-(name='noenv_messages', description='', type='BOOLEAN', value='ON', read_only='Y')
-(name='noenv_requests', description='Send requests compatible with no environment', type='BOOLEAN', value='ON', read_only='N')
 (name='nokeycompr', description='Disables 'keycompr'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='nomaster_alert_seconds', description='Replicants will alarm if there's no master for this many seconds.', type='INTEGER', value='60', read_only='N')
 (name='nonames', description='', type='BOOLEAN', value='ON', read_only='Y')

@@ -637,11 +637,6 @@ void sqlite3Insert(
   if( v==0 ) goto insert_cleanup;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if ((onError != OE_None && onError != OE_Default) || pUpsert) {
-    extern int gbl_noenv_messages;
-    if (gbl_noenv_messages == 0) {
-      sqlite3ErrorMsg(pParse, "UPSERT not enabled");
-      goto insert_cleanup;
-    }
     if( onError==OE_Ignore ) comdb2SetIgnore(v);
     else if( onError==OE_Replace ) comdb2SetReplace(v);
   }
