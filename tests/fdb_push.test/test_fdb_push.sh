@@ -91,6 +91,15 @@ cdb2sql ${REM_CDB2_OPTIONS2} $a_remdbname2 default "drop table if exists sqlite_
 # for now just make sure db doesn't seg fault when this stmt is run
 cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname2}.t order by id" # >> $output 2>&1
 
+# problem when running fdb stmt followed by local stmt in client transaction
+echo "Make sure disabled for client transactions" >> $output
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+begin
+select * from LOCAL_${a_remdbname}.t order by id
+select 1
+commit
+EOF
+
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
 
