@@ -12,6 +12,7 @@ set(src
   comdb2_pthread_create.c
   comdb2file.c
   compat.c
+  consistent_hash.c
   ctrace.c
   debug_switches.c
   flibc.c
