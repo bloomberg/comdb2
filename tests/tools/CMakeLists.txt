@@ -70,6 +70,8 @@ add_exe(sqlite_clnt sqlite_clnt.c)
 add_exe(ssl_multi_certs_one_process ssl_multi_certs_one_process.c)
 add_exe(stepper stepper.c stepper_client.c)
 add_exe(test_threadpool test_threadpool.c)
+add_exe(test_consistent_hash test_consistent_hash.c)
+add_exe(test_consistent_hash_bench test_consistent_hash_bench.c)
 add_exe(updater updater.c testutil.c)
 add_exe(utf8 utf8.c)
 add_exe(verify_atomics_work verify_atomics_work.c)
@@ -77,6 +79,8 @@ add_exe(verify_atomics_work verify_atomics_work.c)
 target_link_libraries(cson_test cson)
 target_link_libraries(stepper util mem dlmalloc util)
 target_link_libraries(test_threadpool util mem dlmalloc util)
+target_link_libraries(test_consistent_hash util mem dlmalloc util)
+target_link_libraries(test_consistent_hash_bench util mem dlmalloc util)
 
 list(APPEND common-deps
   ${READLINE_LIBRARIES}
@@ -87,6 +91,7 @@ list(APPEND common-deps
   ${UNWIND_LIBRARY}
   ${CMAKE_DL_LIBS}
   m
+  crc32c
 )
 
 foreach(executable ${test-tools})

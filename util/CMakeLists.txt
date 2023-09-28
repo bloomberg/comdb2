@@ -12,6 +12,7 @@ set(src
   comdb2_pthread_create.c
   comdb2file.c
   compat.c
+  consistent_hash.c
   ctrace.c
   debug_switches.c
   flibc.c
@@ -79,6 +80,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/cdb2api
+  ${PROJECT_SOURCE_DIR}/crc32c
   ${PROJECT_SOURCE_DIR}/db
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
