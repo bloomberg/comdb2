@@ -1786,3 +1786,4 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (exec_rc=23, prepare_rc=23, ddl='DROP LUA CONSUMER no_ddl_proc1')
 ($0='{"emoji":"hello world 😁"}')
 ($0='{"control":"\u0007"}')
+($0='DEADBEEF')

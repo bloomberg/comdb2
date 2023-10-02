@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 [[ -n "$3" ]] && exec >$3 2>&1
+
 cdb2sql $SP_OPTIONS - <<'EOF'
 create table t {
 schema
@@ -1387,3 +1388,12 @@ local function main()
 end}$$
 EOF
 cdb2sql $SP_OPTIONS "exec procedure escape_controls()"
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure to_string_meta_method version 'sptest' {
+local function main()
+    local x = x'deadbeef'
+    db:emit(string.upper(x))
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure to_string_meta_method()"
