@@ -241,6 +241,8 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     if (pCur->db)
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
                                                   : pCur->db->tablename;
+    else
+        return 0;
 
     if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite) {
@@ -291,7 +293,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     struct sqlclntstate *clnt = thd->clnt;
 
-    if (pCur->cursor_class == CURSORCLASS_TEMPTABLE)
+    if (pCur->cursor_class == CURSORCLASS_TEMPTABLE || pCur->cursor_class == CURSORCLASS_REMOTE)
         return 0;
     if (pCur->permissions & ACCESS_READ) {
         return 0;
@@ -319,6 +321,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     if (pCur->db)
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
                                                   : pCur->db->tablename;
+    else
+        return 0;
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
