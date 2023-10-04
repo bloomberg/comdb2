@@ -1858,7 +1858,7 @@ int enable_fdb_heartbeats(fdb_hbeats_type  *hb)
                            hb, NULL);
 }
 
-static void do_disable_fdb_heartbeats(int dummyfd, short what, void *data)
+static void do_disable_fdb_heartbeats_and_free(int dummyfd, short what, void *data)
 {
     fdb_hbeats_type *hb= data;
 
@@ -1868,12 +1868,12 @@ static void do_disable_fdb_heartbeats(int dummyfd, short what, void *data)
         event_free(hb->ev_hbeats);
         hb->ev_hbeats = NULL;
     }
+    free(hb->tran);
 }
 
-int disable_fdb_heartbeats(fdb_hbeats_type *hb)
+int disable_fdb_heartbeats_and_free(fdb_hbeats_type *hb)
 {
-    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats,
-                           hb, NULL);
+    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats_and_free, hb, NULL);
 }
 
 static void enable_read(int dummyfd, short what, void *data)

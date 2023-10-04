@@ -465,6 +465,6 @@ int sync_state_to_protobuf(int);
 struct fdb_hbeats;
 void increase_net_buf(void);
 int enable_fdb_heartbeats(struct fdb_hbeats*);
-int disable_fdb_heartbeats(struct fdb_hbeats*);
+int disable_fdb_heartbeats_and_free(struct fdb_hbeats *);
 
 #endif

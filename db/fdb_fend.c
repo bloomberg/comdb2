@@ -3866,8 +3866,6 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
 {
     int rc, bdberr;
 
-    disable_fdb_heartbeats(&tran->hbeats);
-
     listc_rfl(&dtran->fdb_trans, tran);
 
     if (tran->sb)
@@ -3882,7 +3880,7 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
                    __func__, rc, bdberr);
     }
     Pthread_mutex_destroy(&tran->hbeats.sb_mtx);
-    free(tran);
+    disable_fdb_heartbeats_and_free(&tran->hbeats);
 }
 
 int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
