@@ -160,8 +160,28 @@ int typessql_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
                 break;
             }
 
-            // add row to queue
             null_col_exists = update_column_types(clnt, stmt);
+            if (typessql_state->size == 0) { // this is the first row we are looking at
+                if (!null_col_exists) // no need to add row to queue, there are no null types
+                    return r;
+                else { // allocate temp table
+                    int bdberr = 0;
+                    struct temp_table *db = bdb_temp_array_create(thedb->bdb_env, &bdberr);
+                    if (!db || bdberr) {
+                        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n", __func__, bdberr);
+                        abort();
+                    }
+                    struct temp_cursor *cur = bdb_temp_table_cursor(thedb->bdb_env, db, NULL, &bdberr);
+                    if (!cur) {
+                        logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr=%d\n", __func__, bdberr);
+                        abort();
+                    }
+                    typessql_state->db = db;
+                    typessql_state->cur = cur;
+                }
+            }
+
+            // add row to queue
             int bdberr = 0;
             int count = typessql_state->size++;
             long long packed_size;
@@ -340,25 +360,6 @@ int typessql_initialize(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         typessql_end(clnt);
     }
     clnt->typessql_state = typessql_state;
-
-    // create
-    int bdberr = 0;
-    struct temp_table *db = bdb_temp_array_create(thedb->bdb_env, &bdberr);
-    if (!db || bdberr) {
-        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n", __func__, bdberr);
-        free_typessql_state(clnt);
-        clnt->typessql_state = NULL;
-        return -1;
-    }
-    struct temp_cursor *cur = bdb_temp_table_cursor(thedb->bdb_env, db, NULL, &bdberr);
-    if (!cur) {
-        logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr=%d\n", __func__, bdberr);
-        free_typessql_state(clnt);
-        clnt->typessql_state = NULL;
-        return -1;
-    }
-    typessql_state->db = db;
-    typessql_state->cur = cur;
 
     _master_clnt_set(clnt, NULL);
     typessql_state->ncols = typessql_column_count(clnt, stmt);
