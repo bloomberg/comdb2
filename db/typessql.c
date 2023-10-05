@@ -172,7 +172,7 @@ int typessql_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
                         abort();
                     }
                     struct temp_cursor *cur = bdb_temp_table_cursor(thedb->bdb_env, db, NULL, &bdberr);
-                    if (!cur) {
+                    if (!cur || bdberr) {
                         logmsg(LOGMSG_ERROR, "%s: failed to create cursor bdberr=%d\n", __func__, bdberr);
                         abort();
                     }
