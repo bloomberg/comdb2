@@ -506,12 +506,21 @@ void comdb2_early_ack(DB_ENV *, DB_LSN, uint32_t generation);
 int gbl_dedup_rep_all_reqs = 1;
 
 static pthread_mutex_t rep_all_lk = PTHREAD_MUTEX_INITIALIZER;
+
+static DB_LSN last_lsn = {0};
+static time_t last_time = 0;
+static char *last_master = NULL;
+
+static void reset_rep_all_req_dedup_counters()
+{
+	Pthread_mutex_lock(&rep_all_lk);
+	ZERO_LSN(last_lsn);
+	Pthread_mutex_unlock(&rep_all_lk);
+}
+
 static int send_rep_all_req_dedup(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line)
 {
 	int rc;
-	static DB_LSN last_lsn = {0};
-	static time_t last_time = 0;
-	static char *last_master = NULL;
 	Pthread_mutex_lock(&rep_all_lk);
 	time_t now = time(NULL);
 	int diff = now - last_time;
@@ -2292,8 +2301,16 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			__rep_elect_done(dbenv, rep, vi_egen, __func__, __LINE__);
 			//rep->egen = vi_egen;
 		}
+
 		if (!IN_ELECTION(rep)) {
 			F_SET(rep, REP_F_TALLY);
+			/*
+			 * By lighting the REP_F_TALLY flag, We leave a tiny window on the replicant
+			 * where REP_LOG is dropped till the master is confirmed by a REP_MASTER_REQ.
+			 * Reset the dedup counters so we may continue after receiving a confirmation
+			 * (i.e., REP_NEWMASTER)
+			 */
+			reset_rep_all_req_dedup_counters();
 		}
 
 		/* Check if this site knows about more sites than we do. */
@@ -8163,6 +8180,14 @@ err:
 	MUTEX_LOCK(dbenv, db_rep->db_mutexp);
 	F_CLR(db_rep->rep_db, DB_AM_RECOVER);
 	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+
+	/*
+	 * We may need to request all log from the same LSN twice against the same
+	 * master, from 2 successive elections. Since any gap received between
+	 * the 1st and 2nd elections is discarded here, reset the dedup counters to
+	 * allow the 2nd all_req to proceed.
+	 */
+	reset_rep_all_req_dedup_counters();
 
 	return ret;
 }
