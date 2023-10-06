@@ -1388,7 +1388,7 @@ int sqlite3_is_success(int);
 int sqlite3_is_prepare_only(struct sqlclntstate *);
 int sqlite3_maybe_step(struct sqlclntstate *, sqlite3_stmt *);
 int get_sqlite3_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                            int col, int skip_decltype);
+                            int col, int skip_decltype, int non_null_type);
 int is_column_type_null(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col);
 
 int column_type(struct sqlclntstate *, sqlite3_stmt *, int);

@@ -984,15 +984,18 @@ int validate_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 }
 
 int get_sqlite3_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                            int col, int skip_decltype)
+                            int col, int skip_decltype, int non_null_type)
 {
     int type = SQLITE_NULL;
     int ncols = column_count(clnt, stmt);
 
     if (sqlite3_can_get_column_type_and_data(clnt, stmt)) {
-        type = column_type(clnt, stmt, col);
+        int colNum = col;
+        if (clnt->typessql_state && non_null_type)
+            colNum += ncols;
+        type = column_type(clnt, stmt, colNum);
         if (type == SQLITE_NULL && !skip_decltype) {
-            type = typestr_to_type(sqlite3_column_decltype(stmt, col >= ncols ? col - ncols : col));
+            type = typestr_to_type(sqlite3_column_decltype(stmt, col));
         }
         if (type == SQLITE_DECIMAL) {
             type = SQLITE_TEXT;
@@ -1004,7 +1007,7 @@ int get_sqlite3_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 int is_column_type_null(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
     if (!clnt->fdb_push) {
-        return get_sqlite3_column_type(clnt, stmt, col, 1) == SQLITE_NULL ||
+        return get_sqlite3_column_type(clnt, stmt, col, 1, 0) == SQLITE_NULL ||
                column_type(clnt, stmt, col) == SQLITE_NULL;
     }
 
