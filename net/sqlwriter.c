@@ -173,24 +173,15 @@ static void sql_flush_cb(int fd, short what, void *arg)
     }
     int n;
     LOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
-    int outstanding = evbuffer_get_length(writer->wr_buf);
-    if (outstanding == 0) {
-        sql_disable_flush(writer);
-        UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
-        return;
-    }
-    while (outstanding) {
-        if ((n = wr_evbuffer(writer, fd)) <= 0) {
-            break;
-        }
+    while (evbuffer_get_length(writer->wr_buf)) {
+        if ((n = wr_evbuffer(writer, fd)) <= 0) break;
         writer->sent_at = time(NULL);
-        outstanding -= n;
     }
-    if (n <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    if (evbuffer_get_length(writer->wr_buf) == 0) {
+        sql_disable_flush(writer);
+    } else if (n <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         writer->bad = 1;
         event_del(writer->flush_ev);
-    } else {
-        sql_disable_flush(writer);
     }
     UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
 }
