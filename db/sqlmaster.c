@@ -5,6 +5,7 @@
 #include <ctrace.h>
 #include <poll.h>
 #include <phys_rep_lsn.h>
+#include "locks_wrap.h"
 
 /**
  * sqlite master global entries
@@ -524,7 +525,7 @@ inline int get_copy_rootpages(struct sql_thread *thd)
     return ret;
 }
 
-pthread_rwlock_t sqlite_rootpages = PTHREAD_RWLOCK_INITIALIZER;
+Pthread_rwlock_t sqlite_rootpages = PPTHREAD_RWLOCK_INITIALIZER;
 
 /* used by dynamic remote tables only */
 int get_rootpage_numbers(int nums)

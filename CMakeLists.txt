@@ -14,6 +14,11 @@ if(COMDB2_BUILD_STATIC)
   SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
+option(DEBUG_RW_LOCKS "Turn ON to have rwlock lock track readers" OFF)
+if(DEBUG_RW_LOCKS)
+    add_definitions(-DDEBUG_RW_LOCKS)
+endif()
+
 option(WITH_TCL "Turn ON to compile with Tcl bindings" OFF)
 if(WITH_TCL)
   add_definitions(-DWITH_TCL=1)

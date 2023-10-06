@@ -55,6 +55,7 @@
 #include "ssl_io.h"
 #include "ssl_bend.h"
 #include "comdb2_query_preparer.h"
+#include "locks_wrap.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
@@ -136,7 +137,7 @@ struct fdb {
         h_ents_rootp;    /* FDB_TBL_ENT_T data and index entries, by rootpage */
     hash_t *h_ents_name; /* FDB_TBL_ENT_T data and index entries, by name */
     hash_t *h_tbls_name; /* FDB_TBL_T entries */
-    pthread_rwlock_t h_rwlock; /* hash lock */
+    Pthread_rwlock_t h_rwlock; /* hash lock */
 
     fdb_location_t *loc; /* where is the db located? */
     SBUF2 *dbcon;        /* cached db connection */
@@ -159,10 +160,10 @@ struct fdb_cache {
     int nalloc;                /* allocated array */
     int nused;                 /* number of foreign dbs */
     fdb_t **arr;               /* the array of foreign_db objects */
-    pthread_rwlock_t arr_lock; /* nalloc, nused and arr lock */
+    Pthread_rwlock_t arr_lock; /* nalloc, nused and arr lock */
 
     hash_t *h_curs;               /* list of cursors */
-    pthread_rwlock_t h_curs_lock; /* cursors lock, receive side */
+    Pthread_rwlock_t h_curs_lock; /* cursors lock, receive side */
 };
 
 typedef struct fcon_sock {

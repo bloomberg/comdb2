@@ -241,7 +241,7 @@ __dbreg_new_id(dbp, txn)
 	return (ret);
 }
 
-pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
+Pthread_rwlock_t gbl_dbreg_log_lock = PPTHREAD_RWLOCK_INITIALIZER;
 
 /*
  * __dbreg_get_id --

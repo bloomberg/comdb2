@@ -3440,7 +3440,7 @@ static int32_t gbl_min_truncate_file;
 static int32_t gbl_min_truncate_offset;
 static int32_t gbl_min_truncate_timestamp;
 
-static pthread_rwlock_t min_trunc_lk = PTHREAD_RWLOCK_INITIALIZER;
+static Pthread_rwlock_t min_trunc_lk = PPTHREAD_RWLOCK_INITIALIZER;
 
 static int bdb_calc_min_truncate(bdb_state_type *bdb_state)
 {
@@ -5767,7 +5767,7 @@ static bdb_state_type *bdb_open_int(
         bdb_state->usr_ptr = usr_ptr;
         bdb_state->callback = bdb_callback;
 
-        bdb_state->bdb_lock = mymalloc(sizeof(pthread_rwlock_t));
+        bdb_state->bdb_lock = mymalloc(sizeof(Pthread_rwlock_t));
         Pthread_rwlock_init(bdb_state->bdb_lock, NULL);
         Pthread_mutex_init(&(bdb_state->children_lock), NULL);
         bdb_state->have_children_lock = 0;

@@ -77,6 +77,7 @@
 
 #include <tohex.h>
 #include "string_ref.h"
+#include "locks_wrap.h"
 
 /* The normal case is for there to be no rules, just a long request threshold
  * which takes some default action on long requests.  If you want anything
@@ -2308,7 +2309,7 @@ inline void reqlog_set_truncate(int val)
 hash_t *clientstats = NULL;
 static LISTC_T(struct nodestats) clntlru;
 
-pthread_rwlock_t clientstats_lk = PTHREAD_RWLOCK_INITIALIZER;
+Pthread_rwlock_t clientstats_lk = PPTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t clntlru_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int gbl_max_clientstats_cache = 10000;

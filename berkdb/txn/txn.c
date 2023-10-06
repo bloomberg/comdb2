@@ -1025,7 +1025,7 @@ int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t 
 
 /* This prevents dbreg logs from being logged between the LOCK_PUT_READ and
  * the commit record */
-extern pthread_rwlock_t gbl_dbreg_log_lock;
+extern Pthread_rwlock_t gbl_dbreg_log_lock;
 #if defined DEBUG_STACK_AT_TXN_LOG
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif

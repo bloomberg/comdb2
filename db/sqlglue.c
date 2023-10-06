@@ -108,6 +108,7 @@
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
 #include <translistener.h>
+#include "locks_wrap.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -7622,7 +7623,7 @@ int gbl_assert_systable_locks = 1;
 #else
 int gbl_assert_systable_locks = 0;
 #endif
-extern pthread_rwlock_t views_lk;
+extern Pthread_rwlock_t views_lk;
 
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {

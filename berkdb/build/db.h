@@ -59,6 +59,7 @@
 #include "tunables.h"
 #include "dbinc/trigger_subscription.h"
 #include <dbinc/maxstackframes.h>
+#include "locks_wrap.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -2751,8 +2752,8 @@ struct __db_env {
 	DB_LSN last_mintruncate_ckp;
 	DB_LSN last_mintruncate_ckplsn;
 	db_recops recovery_pass;
-	pthread_rwlock_t dbreglk;
-	pthread_rwlock_t recoverlk;
+	Pthread_rwlock_t dbreglk;
+	Pthread_rwlock_t recoverlk;
 	DB_LSN recovery_start_lsn;
 	int (*get_recovery_lsn) __P((DB_ENV*, DB_LSN*));
 	int (*set_recovery_lsn) __P((DB_ENV*, DB_LSN*));

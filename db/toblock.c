@@ -79,6 +79,7 @@
 #include "str0.h"
 #include "schemachange.h"
 #include "views.h"
+#include "locks_wrap.h"
 
 #if 0
 #define TEST_OSQL
@@ -2475,7 +2476,7 @@ static int extract_blkseq2(struct ireq *iq, block_state_t *p_blkstate,
     return 0;
 }
 
-static pthread_rwlock_t commit_lock = PTHREAD_RWLOCK_INITIALIZER;
+static Pthread_rwlock_t commit_lock = PPTHREAD_RWLOCK_INITIALIZER;
 
 
 void handle_postcommit_bpfunc(struct ireq *iq)

@@ -140,6 +140,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "reverse_conn.h"
+#include "locks_wrap.h"
 
 #define tokdup strndup
 
@@ -521,8 +522,8 @@ history *reqhist;
 struct dbenv *thedb;              /*handles 1 db for now*/
 
 int gbl_exclusive_blockop_qconsume = 0;
-pthread_rwlock_t gbl_block_qconsume_lock = PTHREAD_RWLOCK_INITIALIZER;
-pthread_rwlock_t thedb_lock = PTHREAD_RWLOCK_INITIALIZER;
+Pthread_rwlock_t gbl_block_qconsume_lock = PPTHREAD_RWLOCK_INITIALIZER;
+Pthread_rwlock_t thedb_lock = PPTHREAD_RWLOCK_INITIALIZER;
 
 int gbl_malloc_regions = 1;
 int gbl_rowlocks = 0;

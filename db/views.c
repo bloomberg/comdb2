@@ -36,6 +36,7 @@
 #include "logical_cron.h"
 #include "sc_util.h"
 #include "bdb_int.h"
+#include "locks_wrap.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -77,7 +78,7 @@ struct timepart_views {
                                 one is removed, if past retention */
 };
 
-pthread_rwlock_t views_lk;
+Pthread_rwlock_t views_lk;
 
 /*
  Cron scheduler
@@ -1899,7 +1900,7 @@ int views_cron_restart(timepart_views_t *views)
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock
        if this is the case, abort the schema change */
-    rc = pthread_rwlock_trywrlock(&views_lk);
+    rc = Pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
         if (get_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "

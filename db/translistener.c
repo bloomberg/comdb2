@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <logmsg.h>
 #include "str0.h"
+#include "locks_wrap.h"
 
 struct javasp_trans_state {
     /* Which events we are subscribed for. */
@@ -85,7 +86,7 @@ struct stored_proc {
 LISTC_T(struct stored_proc) stored_procs;
 LISTC_T(struct stored_proc) delayed_stored_procs;
 
-static pthread_rwlock_t splk = PTHREAD_RWLOCK_INITIALIZER;
+static Pthread_rwlock_t splk = PPTHREAD_RWLOCK_INITIALIZER;
 #define SP_READLOCK() Pthread_rwlock_rdlock(&splk)
 #define SP_WRITELOCK() Pthread_rwlock_wrlock(&splk)
 #define SP_RELLOCK() Pthread_rwlock_unlock(&splk)

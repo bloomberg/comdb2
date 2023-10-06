@@ -16,6 +16,7 @@
 
 #include "cron.h"
 #include "cron_systable.h"
+#include "locks_wrap.h"
 
 /**
  * Primitive cron job that monitors a ordered list of epoch marked events,
@@ -37,7 +38,7 @@ struct cron_sched {
 
 typedef struct cron_scheds {
     LISTC_T(struct cron_sched) scheds; /* all global schedulers */
-    pthread_rwlock_t rwlock;
+    Pthread_rwlock_t rwlock;
 } cron_scheds_t;
 
 static cron_scheds_t crons;

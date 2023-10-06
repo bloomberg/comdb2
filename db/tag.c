@@ -58,6 +58,7 @@
 #include "logmsg.h"
 #include "schemachange.h" /* sc_errf() */
 #include "dynschematypes.h"
+#include "locks_wrap.h"
 
 extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
@@ -71,7 +72,7 @@ int _dbg_tags = 0;
 
 #define TAGLOCK_RW_LOCK
 #ifdef TAGLOCK_RW_LOCK
-static pthread_rwlock_t taglock;
+static Pthread_rwlock_t taglock;
 #else
 static pthread_mutex_t taglock;
 #endif

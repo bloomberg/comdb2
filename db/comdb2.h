@@ -99,6 +99,7 @@ typedef long long tranid_t;
 #include "constraints.h"
 #include "osqlrpltypes.h"
 #include "macc_glue.h"
+#include "locks_wrap.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -732,7 +733,7 @@ typedef struct dbtable {
 
     /* All writer threads have to grab the lock in read/write mode.  If a live
      * schema change is in progress then they have to do extra stuff. */
-    pthread_rwlock_t sc_live_lk;
+    Pthread_rwlock_t sc_live_lk;
 
     /* count the number of updates and deletes done by schemachange
      * when behind the cursor.  This helps us know how many
@@ -766,7 +767,7 @@ typedef struct dbtable {
     uint8_t vers_compat_ondisk[MAXVER + 1];
 
     /* lock for consumer list */
-    pthread_rwlock_t consumer_lk;
+    Pthread_rwlock_t consumer_lk;
 
     unsigned has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
     unsigned ix_partial : 1;      /* set to 1 if we have partial indexes */
@@ -2972,7 +2973,7 @@ int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
                            unsigned long long *genid);
 
 extern int gbl_exclusive_blockop_qconsume;
-extern pthread_rwlock_t gbl_block_qconsume_lock;
+extern Pthread_rwlock_t gbl_block_qconsume_lock;
 
 extern FILE *twophaselog;
 

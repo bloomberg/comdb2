@@ -61,6 +61,8 @@
 #include <util.h>
 #endif
 
+#include "locks_wrap.h"
+
 static int log_repo_lsns = 0;
 
 #include "bdb_osql_log_rec.h"
@@ -76,7 +78,7 @@ static int log_repo_lsns = 0;
 typedef struct bdb_osql_log_repo {
     LISTC_T(bdb_osql_log_t) logs; /* list of transactions */
     pthread_mutex_t clients_mtx;  /* common mutex for transaction counters */
-    pthread_rwlock_t tail_lock;   /* tail lock; lock insert path */
+    Pthread_rwlock_t tail_lock;   /* tail lock; lock insert path */
     int trak;
 } bdb_osql_log_repo_t;
 

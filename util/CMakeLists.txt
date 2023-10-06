@@ -14,6 +14,7 @@ set(src
   compat.c
   ctrace.c
   debug_switches.c
+  debug_rwlock.c
   flibc.c
   fsnapf.c
   hostname_support.c

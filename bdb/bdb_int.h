@@ -189,7 +189,7 @@ struct asof_cursor {
 struct fileid_pglogs_queue {
     unsigned char fileid[DB_FILE_ID_LEN];
     int deleteme;
-    pthread_rwlock_t queue_lk;
+    Pthread_rwlock_t queue_lk;
     LISTC_T(struct pglogs_queue_key) queue_keys;
 };
 
@@ -856,7 +856,7 @@ struct bdb_state_tag {
     struct bdb_state_tag *parent; /* pointer to our parent */
     short numchildren;
     struct bdb_state_tag *children[MAX_CHILDREN];
-    pthread_rwlock_t *bdb_lock;   /* we need this to do safe upgrades.  fetch
+    Pthread_rwlock_t *bdb_lock;   /* we need this to do safe upgrades.  fetch
                                      operations get a read lock, upgrade requires
                                      a write lock - this way we can close and
                                      re-open databases knowing that there
