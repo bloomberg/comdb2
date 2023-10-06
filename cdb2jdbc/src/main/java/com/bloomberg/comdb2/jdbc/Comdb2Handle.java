@@ -74,6 +74,12 @@ public class Comdb2Handle extends AbstractConnection {
     int connectTimeout = 100;
     int dbinfoTimeout = 500;
 
+    /* ternary:
+       null:  let driver figure out
+       true:  directcpu
+       false: cluster */
+    Boolean forceDirectcpu = null;
+
     private boolean in_retry = false;
     private boolean temp_trans = false;
     private boolean debug = false;
@@ -192,6 +198,8 @@ public class Comdb2Handle extends AbstractConnection {
         ret.sentClientInfo = sentClientInfo;
         ret.hasSendStack = hasSendStack;
         ret.sendStack = sendStack;
+
+        ret.forceDirectcpu = forceDirectcpu;
 
         return ret;
     }
@@ -485,6 +493,10 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setCluster(String cluster) {
         myDbCluster = cluster;
+    }
+
+    public void setForceDirectcpu(boolean val) {
+        forceDirectcpu = val;
     }
 
     private int retryQueries(int nretry, boolean runlast) {
