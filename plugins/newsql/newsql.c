@@ -341,19 +341,18 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int s)
 }
 
 static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col,
-                        int check_protocol_version)
+                        int check_protocol_version, int non_null_type)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sql_query = appdata->sqlquery;
     int type = -1;
-    int ncols = column_count(clnt, stmt);
     if (sql_query->n_types) {
-        type = sql_query->types[col >= ncols ? col - ncols : col];
+        type = sql_query->types[col];
         if (type == SQLITE_DECIMAL) {
             type = SQLITE_TEXT;
         }
     } else if (stmt) {
-        type = get_sqlite3_column_type(clnt, stmt, col, 0);
+        type = get_sqlite3_column_type(clnt, stmt, col, 0, non_null_type);
         if ((check_protocol_version == 1 && appdata->protocol_version == 1 /* fastsql */) ||
             type == SQLITE_NULL) {
             type = typestr_to_type(sqlite3_column_decltype(stmt, col));
@@ -390,7 +389,7 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;
-        cols[i].type = appdata->col_info.type[i] = get_col_type(clnt, stmt,clnt->typessql_state ? i + ncols : i, 1);
+        cols[i].type = appdata->col_info.type[i] = get_col_type(clnt, stmt, i, 1, clnt->typessql_state != NULL);
     }
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
     resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
@@ -447,7 +446,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
         cols[i].value.len = len;
         cols[i].has_type = 1;
         cols[i].type = appdata->col_info.type[i] =
-            sp_column_type(arg, i, n_types, get_col_type(clnt, stmt, i, 0));
+            sp_column_type(arg, i, n_types, get_col_type(clnt, stmt, i, 0, 0));
     }
     clnt->osql.sent_column_data = 1;
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
