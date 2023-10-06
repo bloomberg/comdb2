@@ -1260,8 +1260,10 @@ elect_again:
 
     if (rc != 0) {
         if (rc == DB_REP_UNAVAIL)
-            logmsg(LOGMSG_WARN, "failed to reach consensus in election with %f secs timeout\n",
-                ((double)elect_time) / 1000000.00);
+            logmsg(LOGMSG_WARN,
+                   "failed to reach consensus in election with %f secs timeout. "
+                   "network timeout or received votes of a different egen\n",
+                   ((double)elect_time) / 1000000.00);
         else
             logmsg(LOGMSG_ERROR, "got %d from rep_elect\n", rc);
 
@@ -4819,8 +4821,12 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
     case USER_TYPE_DOWNGRADEANDLOSE: {
         if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-            logmsg(LOGMSG_WARN, "i was told to downgrade and lose\n");
-            bdb_state->need_to_downgrade_and_lose = 1;
+            if (bdb_state->need_to_downgrade_and_lose) {
+                logmsg(LOGMSG_WARN, "i was already told to downgrade and lose. ignore this request.\n");
+            } else {
+                logmsg(LOGMSG_WARN, "i was told to downgrade and lose\n");
+                bdb_state->need_to_downgrade_and_lose = 1;
+            }
         }
 
         net_ack_message(ack_handle, 0);
@@ -5637,7 +5643,7 @@ void *watcher_thread(void *arg)
                         /* If there's no other node available, transfermaster
                          * will call
                          * for an election.  */
-                        else if (num > 1) {
+                        else if (num > 1 && !bdb_state->need_to_downgrade_and_lose) {
                             logmsg(LOGMSG_WARN, 
                                    "transfering master because im rtcpued off\n");
                             bdb_transfermaster(bdb_state);
@@ -5713,8 +5719,6 @@ void *watcher_thread(void *arg)
         }
 
         if (bdb_state->need_to_downgrade_and_lose) {
-            bdb_state->need_to_downgrade_and_lose = 0;
-
             /*
                signal to db layer we are rt-ed off
                this is extremely helpful for canceling
@@ -5736,6 +5740,7 @@ void *watcher_thread(void *arg)
                                 "downgraded\n",
                         __FILE__, __LINE__);
             }
+            bdb_state->need_to_downgrade_and_lose = 0;
         }
 
         /* downgrade ourselves if we are in a dupmaster situation */
