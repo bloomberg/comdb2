@@ -40,3 +40,6 @@ if [ $ratio -gt 1 ]; then
   echo "Ratio is too high: $ratio" >&2
   exit 1
 fi
+
+#Should read successfully
+cdb2sql --tabs $dbnm --host $host "select randomblob(1000000000)" > /dev/null
