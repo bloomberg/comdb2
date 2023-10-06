@@ -470,6 +470,7 @@ public class DatabaseDiscovery {
             hndl.myDbPorts.add(hndl.overriddenPort);
         } else if ( hndl.myDbCluster.equalsIgnoreCase("default")
                 || hndl.myDbCluster.equalsIgnoreCase("dev")
+                || hndl.myDbCluster.equalsIgnoreCase("integration")
                 || hndl.myDbCluster.equalsIgnoreCase("uat")
                 || hndl.myDbCluster.equalsIgnoreCase("alpha")
                 || hndl.myDbCluster.equalsIgnoreCase("beta")
