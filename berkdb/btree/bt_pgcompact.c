@@ -1071,7 +1071,7 @@ not_fit:
 		}
 
 		if (nh != NULL) {
-			if ((ret = __memp_fput(dbmfp, nh, 0)) != 0 && ret == 0)
+			if ((t_ret = __memp_fput(dbmfp, nh, 0)) != 0 && ret == 0)
 				ret = t_ret;
 			nh = NULL;
 		}
