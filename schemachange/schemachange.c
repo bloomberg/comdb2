@@ -613,6 +613,7 @@ int do_dryrun(struct schema_change_type *s)
 
     newdb->odh = s->headers;
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
+    newdb->iq = s->iq;
 
     if (dryrun_int(s, db, newdb, &scinfo)) {
         rc = SQLITE_ABORT;
