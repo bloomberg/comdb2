@@ -6,4 +6,6 @@ dryrun alter table t1 drop column id
 
 dryrun alter table t2 alter column f set data type byte(7)
 
-dryrun alter table t3 { `cat ./t4.csc2` }
+dryrun alter table t3 add index KEY_12345678901234567890123456789012345678901234567890(a,b) 
+
+drop table t3

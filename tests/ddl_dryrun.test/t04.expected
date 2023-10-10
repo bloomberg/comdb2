@@ -3,3 +3,5 @@
 [dryrun alter table t1 drop column id] failed with rc 240 constraint error for table "t2" key "k" -> <"t1":"key">: parent key not found
 [dryrun alter table t2 alter column f set data type byte(7)] failed with rc 240 Cannot change size of byte array without dbpad
 
+[dryrun alter table t3 add index KEY_12345678901234567890123456789012345678901234567890(a,b)] failed with rc 240 Failed to process schema!
+
