@@ -317,7 +317,6 @@
 (name='enablecursorser', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='enque_flush_interval', description='', type='INTEGER', value='0', read_only='Y')
 (name='enque_reorder_lookahead', description='', type='INTEGER', value='20', read_only='Y')
-(name='env_messages', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='epochms_repts', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='erroff', description='Disables 'erron'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='erron', description='', type='BOOLEAN', value='ON', read_only='Y')
