@@ -531,6 +531,7 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     init_fake_ireq(thedb, &iq);
     iq.errstrused = 1;
     s->iq = &iq;
+    iq.sc = s;
     FILE *fl = tmpfile();
     if (!fl) {
         fprintf(stderr, "%s:%d SYSTEM RAN OUT OF FILE DESCRIPTORS!!! EXITING\n",
