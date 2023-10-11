@@ -3144,7 +3144,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         features[n_features++] = CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT;
     }
 
-    if ((hndl->flags & CDB2_REQUIRE_FASTSQL) != 0) {
+    if (hndl && (hndl->flags & CDB2_REQUIRE_FASTSQL) != 0) {
         features[n_features++] = CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL;
     }
 
