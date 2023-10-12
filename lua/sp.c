@@ -377,7 +377,7 @@ static int check_retry_conditions(Lua L, trigger_reg_t *reg, int skip_incoherent
 
     if (bdb_curtran_has_waiters(thedb->bdb_env, sp->clnt->dbtran.cursor_tran) || bdb_lock_desired(thedb->bdb_env)) {
         int rc;
-        if ((rc = recover_deadlock(thedb->bdb_env, sp->thd->sqlthd, NULL, 0)) != 0) {
+        if ((rc = recover_deadlock(thedb->bdb_env, sp->clnt, NULL, 0)) != 0) {
             luabb_error(L, sp, "recover deadlock failed");
             return -3;
         }
@@ -3904,7 +3904,7 @@ static int db_recover_ddlk(Lua L)
 {
     SP sp = getsp(L);
     int rc = recover_deadlock_flags(
-        thedb->bdb_env, sp->thd->sqlthd, NULL, 1, __func__, __LINE__,
+        thedb->bdb_env, sp->clnt, NULL, 1, __func__, __LINE__,
         RECOVER_DEADLOCK_PTRACE | RECOVER_DEADLOCK_IGNORE_DESIRED);
     return push_and_return(L, rc);
 }

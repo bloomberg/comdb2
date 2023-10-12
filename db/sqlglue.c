@@ -112,8 +112,7 @@
 int gbl_delay_sql_lock_release_sec = 5;
 
 unsigned long long get_id(bdb_state_type *);
-static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
-                               int *bdberr);
+static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur, int *bdberr);
 
 struct temp_cursor;
 struct temp_table;
@@ -164,14 +163,10 @@ extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
                                    bdb_cursor_ifn_t *cur, void *key, int keylen,
                                    int is_temp_bdbcur, int bias, int *bdberr);
-static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *, BtCursor *,
-                                            bdb_cursor_ifn_t *, void *key,
-                                            int keylen, int keymax, bias_info *,
-                                            int *bdberr);
-static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
-                                   int flags, int *bdberr, int how,
-                                   struct ireq *iq_do_prefault,
-                                   int freshcursor);
+static int ddguard_bdb_cursor_find_last_dup(BtCursor *, bdb_cursor_ifn_t *, void *key,
+                                            int keylen, int keymax, bias_info *, int *bdberr);
+static int ddguard_bdb_cursor_move(BtCursor *pCur, int flags, int *bdberr, int how,
+                                   struct ireq *iq_do_prefault, int freshcursor);
 static int is_sql_update_mode(int mode);
 static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur);
 
@@ -676,7 +671,7 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
 
             } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
 
-                rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                rc = recover_deadlock(thedb->bdb_env, clnt, NULL, 0);
 
                 if ((rc = check_recover_deadlock(clnt)))
                     goto done;
@@ -2654,7 +2649,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         thd->nmove++;
 
     bdberr = 0;
-    rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, NULL, 0);
+    rc = ddguard_bdb_cursor_move(pCur, 0, &bdberr, how, NULL, 0);
     switch(bdberr) {
     case BDBERR_NOT_DURABLE: return SQLITE_CLIENT_CHANGENODE;
     case BDBERR_TRANTOOCOMPLEX: return SQLITE_TRANTOOCOMPLEX;
@@ -2788,7 +2783,7 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     }
 
     bdberr = 0;
-    rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, &iq, 0);
+    rc = ddguard_bdb_cursor_move(pCur, 0, &bdberr, how, &iq, 0);
     switch(bdberr) {
     case BDBERR_NOT_DURABLE: return SQLITE_CLIENT_CHANGENODE;
     case BDBERR_TRANTOOCOMPLEX: return SQLITE_TRANTOOCOMPLEX;
@@ -6051,7 +6046,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         /* find last dup? */
         if (pIdxKey->default_rc < 0) {
             rc = ddguard_bdb_cursor_find_last_dup(
-                thd, pCur, pCur->bdbcur, pCur->ondisk_key, ondisk_len,
+                pCur, pCur->bdbcur, pCur->ondisk_key, ondisk_len,
                 pCur->db->ix_keylen[pCur->ixnum], &info, &bdberr);
             if (is_good_ix_find_rc(rc)) {
                 uint8_t _;
@@ -6727,7 +6722,7 @@ again:
     if (rc) {
         if (bdberr == BDBERR_DEADLOCK) {
             nretries++;
-            if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
+            if ((rc = recover_deadlock(thedb->bdb_env, pCur->clnt, NULL, 0)) != 0) {
                 if (!gbl_rowlocks)
                     logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery, rc %d\n",
                            __func__, (void *)pthread_self(), rc);
@@ -9830,16 +9825,16 @@ static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
    carefull about double calling this function
  */
 static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
-                                      struct sql_thread *thd,
+                                      struct sqlclntstate *clnt,
                                       bdb_cursor_ifn_t *bdbcur, int sleepms,
                                       const char *func, int line,
                                       uint32_t flags)
 {
+    struct sql_thread *thd = clnt->thd->sqlthd;
     int ignore_desired = flags & RECOVER_DEADLOCK_IGNORE_DESIRED;
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     int force_fail = (flags & RECOVER_DEADLOCK_FORCE_FAIL);
     int fail_type = 0;
-    struct sqlclntstate *clnt = thd->clnt;
     BtCursor *cur = NULL;
     int rc = 0;
     uint32_t curtran_flags;
@@ -10055,34 +10050,32 @@ int comdb2_cheapstack_char_array(char *str, int maxln);
 int recover_deadlock_simple(bdb_state_type *bdb_state)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    assert(thd != NULL);
-    return recover_deadlock(bdb_state, thd, NULL, 0);
+    if (!thd || !thd->clnt) return -1;
+    return recover_deadlock(bdb_state, thd->clnt, NULL, 0);
 }
 
-int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
+int recover_deadlock_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
 {
-    int rc = thd->clnt->recover_deadlock_rcode =
-        recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, func, line, flags);
+    int rc = clnt->recover_deadlock_rcode = recover_deadlock_flags_int(bdb_state, clnt, bdbcur, sleepms, func, line, flags);
     if (rc != 0) {
-        put_curtran_flags(thedb->bdb_env, thd->clnt, CURTRAN_RECOVERY);
+        put_curtran_flags(thedb->bdb_env, clnt, CURTRAN_RECOVERY);
 #if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
-        thd->clnt->recover_deadlock_func = func;
-        thd->clnt->recover_deadlock_line = line;
-        thd->clnt->recover_deadlock_thd = pthread_self();
-        comdb2_cheapstack_char_array(thd->clnt->recover_deadlock_stack,
-                RECOVER_DEADLOCK_MAX_STACK);
+        clnt->recover_deadlock_func = func;
+        clnt->recover_deadlock_line = line;
+        clnt->recover_deadlock_thd = pthread_self();
+        comdb2_cheapstack_char_array(clnt->recover_deadlock_stack, RECOVER_DEADLOCK_MAX_STACK);
 #endif
-        recover_deadlock_sc_cleanup(thd);
+        recover_deadlock_sc_cleanup(clnt->thd->sqlthd);
         assert(bdb_lockref() == 0);
     } else {
         assert(bdb_lockref() > 0);
 #if INSTRUMENT_RECOVER_DEADLOCK_FAILURE
-        thd->clnt->recover_deadlock_func = NULL;
-        thd->clnt->recover_deadlock_line = 0;
-        thd->clnt->recover_deadlock_thd = 0;
-        thd->clnt->recover_deadlock_stack[0] = '\0';
+        clnt->recover_deadlock_func = NULL;
+        clnt->recover_deadlock_line = 0;
+        clnt->recover_deadlock_thd = 0;
+        clnt->recover_deadlock_stack[0] = '\0';
 #endif
     }
     return rc;
@@ -10157,7 +10150,7 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
         }
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if ((rc = recover_deadlock(thedb->bdb_env, thd,
+            if ((rc = recover_deadlock(thedb->bdb_env, clnt,
                                        (is_temp_bdbcur) ? cur : NULL, 0)) !=
                 0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
@@ -10292,26 +10285,17 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
     return rc;
 }
 
-static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
-                                            BtCursor *pCur,
+static int ddguard_bdb_cursor_find_last_dup(BtCursor *pCur,
                                             bdb_cursor_ifn_t *cur, void *key,
                                             int keylen, int keymax,
                                             bias_info *info, int *bdberr)
 {
     int bias = info->bias;
     int nretries = 0;
-    int max_retries =
-        gbl_move_deadlk_max_attempt >= 0 ? gbl_move_deadlk_max_attempt : 500;
+    int max_retries = gbl_move_deadlk_max_attempt >= 0 ? gbl_move_deadlk_max_attempt : 500;
     int rc = 0;
-
-    int fndlen;
-    void *buf;
-    int cmp;
-
-    struct sqlclntstate *clnt;
-    clnt = thd->clnt;
+    struct sqlclntstate *clnt = pCur->clnt;
     assert(bdb_lockref() > 0);
-    CurRangeArr **append_to;
     if (pCur->range) {
         if (pCur->range->idxnum == -1 && pCur->range->islocked == 0) {
             currange_free(pCur->range);
@@ -10319,11 +10303,8 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
         } else if (pCur->range->islocked || pCur->range->lkey ||
                    pCur->range->rkey || pCur->range->lflag ||
                    pCur->range->rflag) {
-            if (!pCur->is_recording ||
-                (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
-                 gbl_selectv_rangechk)) {
-                append_to =
-                    (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
+            if (!pCur->is_recording || (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE && gbl_selectv_rangechk)) {
+                CurRangeArr **append_to = (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
                     *append_to = malloc(sizeof(CurRangeArr));
                     currangearr_init(*append_to);
@@ -10354,7 +10335,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
         info->dirLeft = (bias == OP_SeekLE);
         rc = cur->find_last_dup(cur, key, keylen, keymax, info, bdberr);
         if (*bdberr == BDBERR_DEADLOCK) {
-            if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
+            if ((rc = recover_deadlock(thedb->bdb_env, clnt, NULL, 0)) != 0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
@@ -10407,9 +10388,9 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
                 break;
             }
         } else {
-            fndlen = cur->datalen(cur);
-            buf = cur->data(cur);
-            cmp = memcmp(key, buf, (keylen < fndlen) ? keylen : fndlen);
+            int fndlen = cur->datalen(cur);
+            void *buf = cur->data(cur);
+            int cmp = memcmp(key, buf, (keylen < fndlen) ? keylen : fndlen);
             switch (bias) {
             case OP_SeekLT:
             case OP_SeekLE:
@@ -10498,8 +10479,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
     return rc;
 }
 
-static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
-                                   int flags, int *bdberr, int how,
+static int ddguard_bdb_cursor_move(BtCursor *pCur, int flags, int *bdberr, int how,
                                    struct ireq *iq_do_prefault, int freshcursor)
 {
     bdb_cursor_ifn_t *cur = pCur->bdbcur;
@@ -10561,9 +10541,7 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
         }
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if ((rc = recover_deadlock(thedb->bdb_env, thd,
-                                       (freshcursor) ? pCur->bdbcur : NULL,
-                                       0)) != 0) {
+            if ((rc = recover_deadlock(thedb->bdb_env, pCur->clnt, (freshcursor) ? pCur->bdbcur : NULL, 0)) != 0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else
@@ -10781,6 +10759,7 @@ int gbl_direct_count = 1;
 int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
 {
     struct sql_thread *thd = pCur->thd;
+    struct sqlclntstate *clnt = pCur->clnt;
     int rc;
     i64 count;
     if (pCur->is_sampled_idx) {
@@ -10788,9 +10767,9 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
         rc = SQLITE_OK;
     } else if (pCur->cursor_count) {
         rc = pCur->cursor_count(pCur, &count);
-    } else if (gbl_direct_count && !pCur->clnt->intrans &&
-               pCur->clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-               pCur->clnt->dbtran.mode != TRANLEVEL_SERIAL &&
+    } else if (gbl_direct_count && !clnt->intrans &&
+               clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
+               clnt->dbtran.mode != TRANLEVEL_SERIAL &&
                (pCur->cursor_class == CURSORCLASS_TABLE ||
                 pCur->cursor_class == CURSORCLASS_INDEX)) {
         int nretries = 0;
@@ -10805,7 +10784,7 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
 
             rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count);
             if (rc == BDBERR_DEADLOCK &&
-                recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
+                recover_deadlock(thedb->bdb_env, clnt, NULL, 0)) {
                 break;
             }
         } while (rc == BDBERR_DEADLOCK && nretries++ < max_retries);
@@ -10827,7 +10806,7 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
         while (rc == 0 && res == 0) {
             if (!gbl_selectv_rangechk) {
                 if (pCur->is_recording &&
-                    thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+                    clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                     rc = osql_record_genid(pCur, thd, pCur->genid);
                     if (rc) {
                         logmsg(LOGMSG_ERROR, 
@@ -13066,7 +13045,7 @@ int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt)
                "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
                __func__, __LINE__, sleepms);
 
-    rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
+    rc = recover_deadlock(thedb->bdb_env, clnt, NULL, sleepms);
     if (rc)
         return rc;
 
