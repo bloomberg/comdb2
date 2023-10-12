@@ -192,6 +192,7 @@ struct thread_lock_info_tag {
     pthread_t threadid; /* which thread this is for */
 
     unsigned lockref;            /* how many people have this lock already */
+    unsigned callers;            /* how many people called in bdb_thread_event */
     const char *ident;           /* who in this thread locked it */
     enum bdb_lock_type locktype; /* type of lock currently held */
 
@@ -751,6 +752,7 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
 
     if (lk) {
         logmsg(LOGMSG_WARN, "%s: redundant thread start!\n", __func__);
+        lk->callers++;
         return;
     }
 
@@ -761,6 +763,7 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
     }
 
     lk->threadid = pthread_self();
+    lk->callers = 1;
 
     if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
         lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
@@ -794,7 +797,6 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
         logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
         return;
     }
-    Pthread_setspecific(lock_key, NULL);
 
     if (lk->lockref != 0) {
         logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
@@ -803,6 +805,19 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
                lk->lockref);
         abort_lk(lk);
     }
+
+    lk->callers--;
+
+    if (lk->callers > 0) {
+        /* if we have called bdb_thread_event nested, only
+         * the last caller frees it
+         * NOTE: obviously, only the first stack is saved ! 
+         */
+        return;
+    }
+
+
+    Pthread_setspecific(lock_key, NULL);
 
     Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
     listc_rfl(&bdb_state->thread_lock_info_list, lk);
