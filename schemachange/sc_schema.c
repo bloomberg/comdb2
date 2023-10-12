@@ -405,7 +405,38 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
 
 int mark_schemachange_over(const char *table)
 {
-    return mark_schemachange_over_tran(table, NULL);
+    tran_type *tran = NULL;
+    int rc, rc2;
+
+    struct ireq iq;
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = get_dbtable_by_name(table);
+
+    rc = trans_start_sc(&iq, NULL, &tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to create a txn rc %d, running non transactional!\n",
+               __func__, rc);
+        tran = NULL;
+    }
+    rc = mark_schemachange_over_tran(table, tran);
+
+    if (rc) {
+        rc2 = tran ? trans_abort(&iq, tran) : 0;
+        if (rc2) {
+            logmsg(LOGMSG_ERROR, "%s Failed to run and abort rc %d rc2 %d\n",
+                   __func__, rc, rc2);
+        } else {
+            logmsg(LOGMSG_ERROR, "%s Failed to run rc %d\n", __func__, rc);
+        }
+    } else if (tran) {
+        rc = trans_commit(&iq, tran, gbl_myhostname);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s Failed to commit rc %d\n", __func__, rc);
+        }
+    }
+
+    return rc;
 }
 
 int prepare_table_version_one(tran_type *tran, struct dbtable *db,
