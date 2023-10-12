@@ -4463,15 +4463,6 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
 
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
-    struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
-
-    /* Clear the client from the sql thread, so that sql-dump won't see it. */
-    if (thd) {
-        Pthread_mutex_lock(&gbl_sql_lock);
-        thd->clnt = NULL;
-        Pthread_mutex_unlock(&gbl_sql_lock);
-    }
-
     if (clnt->done_cb) {
         clnt->done_cb(clnt); /* newsql_done_cb */
     } else {
@@ -4480,6 +4471,10 @@ void signal_clnt_as_done(struct sqlclntstate *clnt)
         Pthread_cond_signal(&clnt->wait_cond);
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
+    Pthread_mutex_lock(&gbl_sql_lock);
+    struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
+    if (thd) thd->clnt = NULL;
+    Pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 void thr_set_user(const char *label, intptr_t id)
@@ -5202,6 +5197,10 @@ int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    Pthread_mutex_lock(&gbl_sql_lock);
+    struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
+    if (thd && thd->clnt == clnt) thd->clnt = NULL;
+    Pthread_mutex_unlock(&gbl_sql_lock);
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         handle_sql_intrans_unrecoverable_error(clnt);
     }
