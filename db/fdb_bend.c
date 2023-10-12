@@ -466,7 +466,7 @@ again:
                 thd = pthread_getspecific(query_info_key);
             }
 
-            if (recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
+            if (recover_deadlock_simple(thedb->bdb_env)) {
                 if (!gbl_rowlocks)
                     logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n", __func__, (void *)pthread_self());
                 return SQLITE_DEADLOCK;
