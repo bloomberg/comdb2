@@ -24,10 +24,6 @@
 extern "C" {
 #endif /* __cplusplus */
 
-extern const sqlite3_module systblTablesModule;
-extern const sqlite3_module systblColumnsModule;
-extern const sqlite3_module systblKeysModule;
-extern const sqlite3_module systblFieldsModule;
 extern const sqlite3_module systblConstraintsModule;
 extern const sqlite3_module systblTblSizeModule;
 extern const sqlite3_module systblSPsModule;
@@ -59,6 +55,10 @@ extern sqlite3_module systblTablePermissionsModule;
 extern sqlite3_module systblSystabPermissionsModule;
 extern sqlite3_module systblTimepartPermissionsModule;
 
+int systblTablesInit(sqlite3 *db);
+int systblColumnsInit(sqlite3 *db);
+int systblKeysInit(sqlite3 *db);
+int systblKeyComponentsInit(sqlite3 *db);
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
 int systblSqlpoolQueueInit(sqlite3 *db);
