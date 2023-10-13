@@ -6850,6 +6850,7 @@ int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
     int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
     int lim = warn < max ? warn : max;
     int current = ATOMIC_ADD32(active_appsock_conns, 1);
+    time_metric_add(thedb->connections, current);
     if (current > lim) {
         static time_t last_trace = 0;
         time_t now = time(NULL);
