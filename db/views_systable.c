@@ -25,6 +25,7 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
     int rc = 0;
     uuidstr_t us;
 
+    Pthread_rwlock_rdlock(&views_lk);
     arr = calloc(views->nviews, sizeof(systable_timepartition_t));
     if (!arr) {
         logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
@@ -55,6 +56,7 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
         }
     }
 done:
+    Pthread_rwlock_unlock(&views_lk);
     *data = arr;
     *nrecords = narr;
     return rc;
@@ -88,6 +90,8 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
     int nview;
     int rc = 0;
 
+    Pthread_rwlock_rdlock(&views_lk);
+
     narr = 0;
     for (nview = 0; nview < views->nviews; nview++) {
         narr += views->views[nview]->nshards;
@@ -120,6 +124,7 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
         }
     }
 done:
+    Pthread_rwlock_unlock(&views_lk);
     *data = arr;
     *nrecords = narr;
     return rc;
