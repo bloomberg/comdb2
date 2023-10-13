@@ -513,9 +513,7 @@ static char *last_master = NULL;
 
 static void reset_rep_all_req_dedup_counters()
 {
-	Pthread_mutex_lock(&rep_all_lk);
-	ZERO_LSN(last_lsn);
-	Pthread_mutex_unlock(&rep_all_lk);
+	last_master = db_eid_invalid;
 }
 
 static int send_rep_all_req_dedup(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags, const char *func, int line)
