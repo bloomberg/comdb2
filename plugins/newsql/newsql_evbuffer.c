@@ -859,7 +859,28 @@ static int newsql_pack_hb(struct sqlwriter *writer, void *arg)
 struct newsql_pack_arg {
     struct newsqlheader *hdr;
     const CDB2SQLRESPONSE *resp;
+    int resp_len;
 };
+
+static int newsql_pack_small(struct sqlwriter *writer, struct newsql_pack_arg *arg)
+{
+    const CDB2SQLRESPONSE *resp = arg->resp;
+    struct newsqlheader *hdr = arg->hdr;
+    struct evbuffer *wrbuf = sql_wrbuf(writer);
+    int len = arg->resp_len;
+    if (hdr) len += sizeof(*hdr);
+    struct iovec v[1];
+    if (evbuffer_reserve_space(wrbuf, len, v, 1) == -1) return -1;
+    v[0].iov_len = len;
+    uint8_t *out = v[0].iov_base;
+    if (hdr) {
+        memcpy(out, hdr, sizeof(*hdr));
+        out += sizeof(*hdr);
+    }
+    if (resp) cdb2__sqlresponse__pack(resp, out);
+    evbuffer_commit_space(wrbuf, v, 1);
+    return resp ? resp->response_type == RESPONSE_TYPE__LAST_ROW : 0;
+}
 
 struct pb_evbuffer_appender {
     ProtobufCBuffer vbuf;
@@ -881,6 +902,9 @@ static void pb_evbuffer_append(ProtobufCBuffer *vbuf, size_t len, const uint8_t 
 static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 {
     struct newsql_pack_arg *arg = data;
+    if (arg->resp_len <= SQLWRITER_MAX_BUF) {
+        return newsql_pack_small(sqlwriter, arg);
+    }
     struct pb_evbuffer_appender appender = PB_EVBUFFER_APPENDER_INIT(sqlwriter);
     if (arg->hdr) {
         pb_evbuffer_append(&appender.vbuf, sizeof(struct newsqlheader), (const uint8_t *)arg->hdr);
@@ -902,14 +926,14 @@ static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
                                  const CDB2SQLRESPONSE *resp, int flush)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    int response_len = resp ? cdb2__sqlresponse__get_packed_size(resp) : 0;
     struct newsql_pack_arg arg = {0};
+    arg.resp_len = resp ? cdb2__sqlresponse__get_packed_size(resp) : 0;
     struct newsqlheader hdr;
     if (type) {
         hdr.type = htonl(type);
         hdr.compression = 0;
         hdr.state = htonl(state);
-        hdr.length = htonl(response_len);
+        hdr.length = htonl(arg.resp_len);
         arg.hdr = &hdr;
     }
     arg.resp = resp;
