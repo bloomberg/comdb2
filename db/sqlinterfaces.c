@@ -371,7 +371,7 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 #ifdef DEBUG
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
 #endif
-    return clnt->plugin.write_response(clnt, R, D, I);
+    return clnt->plugin.write_response(clnt, R, D, I); /* newsql_write_response */
 }
 
 int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
