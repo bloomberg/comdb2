@@ -36,7 +36,7 @@ typedef timebasestruct_t bbhrtime_t;
 typedef hrtime_t bbhrtime_t;
 #endif
 
-#if defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
 typedef struct timespec bbhrtime_t;
 #endif
 

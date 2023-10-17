@@ -95,7 +95,7 @@ BB_COMPILE_TIME_ASSERT(intswp_size, sizeof(intswp_t) == sizeof(uint32_t));
 
 int flibc_snprintf_dbl(char *p_str, const size_t str_buf_len, double d);
 
-#if defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
 #include "flibc.amd64.h"
 #elif defined(_IBM_SOURCE)
 #include "flibc.powerpc.h"

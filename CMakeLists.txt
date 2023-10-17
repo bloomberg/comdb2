@@ -36,12 +36,18 @@ else()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+
+  execute_process(
+    COMMAND brew --prefix
+    OUTPUT_VARIABLE BREW_PREFIX_PATH
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
   # Homebrew will install here by default
   list(APPEND CMAKE_PREFIX_PATH
     ${CMAKE_PREFIX_PATH}
     "/usr/local"
-    "/usr/local/opt/openssl"
-    "/usr/local/opt/readline")
+    "${BREW_PREFIX_PATH}/opt/openssl@1.1"
+    "${BREW_PREFIX_PATH}/opt/readline")
 endif()
 
 if(COMDB2_BBCMAKE)
@@ -215,6 +221,9 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
     set(CMAKE_CXX_STANDARD 17)
   else()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
+  endif()
+  if (${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-but-set-variable")
   endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")

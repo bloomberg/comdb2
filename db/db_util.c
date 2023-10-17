@@ -63,7 +63,7 @@ void perror_errnum(const char *s, int errnum)
 /* we use the deprecated sys_errlist, as strerror_r isnt available
    on the version of sunos we use (5.9) */
 
-#ifdef _LINUX_SOURCE
+#if defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
     errmsg = strerror(errnum);
 #elif _SUN_SOURCE
     char errmsgb[100];

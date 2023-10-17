@@ -39,7 +39,7 @@ int getbbhrtime(bbhrtime_t *t)
     return 0;
 #elif defined(_AIX)
     return read_wall_time(t, TIMEBASE_SZ);
-#elif defined(_LINUX_SOURCE)
+#elif defined(_LINUX_SOURCE) | defined(_DARWIN_C_SOURCE)
     return clock_gettime(CLOCK_MONOTONIC, t);
 #else
     logmsg(LOGMSG_ERROR, "getbbhrtime: Not defined for arch.\n");
@@ -52,7 +52,7 @@ int getbbhrvtime(bbhrtime_t *t)
 #if defined(__sun)
     *t = gethrvtime();
     return 0;
-#elif defined(_AIX) || defined(_HP_SOURCE) || defined(_LINUX_SOURCE)
+#elif defined(_AIX) || defined(_HP_SOURCE) || defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
     return getbbhrtime(t);
 #else
     #error "getbbhrvtime: not defined for platform"
@@ -85,7 +85,7 @@ int64_t bbhrtimens(const bbhrtime_t *t_)
         nsecs += ONEBILLION;
     }
     return ONEBILLION * secs + nsecs;
-#elif defined(_LINUX_SOURCE)
+#elif defined(_LINUX_SOURCE) || defined(_DARWIN_C_SOURCE)
     return ONEBILLION * t_->tv_sec + t_->tv_nsec;
 #else
     logmsg(LOGMSG_ERROR, "%s: Not defined for arch.\n", __func__);
