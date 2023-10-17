@@ -1802,6 +1802,11 @@ REGISTER_TUNABLE(
     TUNABLE_INTEGER, &gbl_dohsql_full_queue_poll_msec, 0, NULL, NULL, NULL,
     NULL);
 
+REGISTER_TUNABLE(
+    "dohsql_sc_max_threads",
+    "If the partition has more shards than this, we run one shard at a time.",
+    TUNABLE_INTEGER, &gbl_dohsql_sc_max_threads, 8, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("random_fail_client_write_lock",
                  "Force a random client write-lock failure 1/this many times.  "
                  "(Default: 0)",

@@ -1863,6 +1863,7 @@ extern int gbl_dohsql_max_queued_kb_highwm;
 extern int gbl_dohsql_full_queue_poll_msec;
 extern int gbl_dohsql_max_threads;
 extern int gbl_dohsql_pool_thr_slack;
+extern int gbl_dohsql_sc_max_threads;
 extern int gbl_sockbplog;
 extern int gbl_sockbplog_sockpool;
 

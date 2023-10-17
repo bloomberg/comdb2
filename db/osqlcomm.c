@@ -5901,6 +5901,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
+    /* note: we have already set nothrevent depending on the number of shards */
     rc = timepart_foreach_shard(
         sc->tablename, start_schema_change_tran_wrapper_merge, &arg, 0);
     return rc;
@@ -5988,6 +5989,8 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.s->kind = SC_ADDTABLE;
         arg.indx = 1; /* first shard is already there */
     }
+    /* should we serialize ? */
+    arg.s->nothrevent = sc->partition.u.tpt.retention > gbl_dohsql_sc_max_threads;
     rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
@@ -6052,6 +6055,19 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
         rc = SC_TABLE_ALREADY_EXIST;
         goto out;
     }
+
+    int nshards = timepart_get_num_shards(sc->tablename);
+    if (nshards <= 0) {
+        /*somehow the time partition got away from us */
+        logmsg(LOGMSG_ERROR, "Failed to retrieve nshards in sc for %s\n",
+               sc->tablename);
+        sc_errf(sc, "Failed to retrieve nshards in sc for %s",
+               sc->tablename);
+        return ERR_SC;
+    }
+
+    /* should we serialize ? */
+    sc->nothrevent = nshards > gbl_dohsql_sc_max_threads;
 
     if (sc->partition.type == PARTITION_MERGE) {
         return _process_partitioned_table_merge(iq);

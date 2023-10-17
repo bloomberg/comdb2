@@ -108,6 +108,7 @@ Settings:
 |dohsql_max_queued_kb_highwm | 10000 | Maximum shard queue size, in KB; throttles amount of cached rows by each parallel component
 |dohsql_max_threads | 8 | Allow only up to 8 parallel components. If more are required, statement runs sequential
 |dohsql_pool_thread_slack | 1 | Reserve a number of sql engines to run only non-parallel load (including parallel components).  
+|dohsql_sc_max_threads | 8 | Allow only up to 8 parallel schema changes. If more are required, they runs sequential
 
 
 ### Networks

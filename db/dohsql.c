@@ -32,8 +32,9 @@ int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
 int gbl_dohsql_max_queued_kb_highwm = 10000;    /* 10 MB */
 int gbl_dohsql_full_queue_poll_msec = 10;       /* 10msec */
-int gbl_dohsql_max_threads = 8; /* do not run more than 8 threads */
+int gbl_dohsql_max_threads = 8; /* do not run more than 8 parallel shards */
 int gbl_dohsql_pool_thr_slack = 24; /* half default sqlengine pool maxthds */
+int gbl_dohsql_sc_max_threads = 8; /* do not run more than 8 parallel sc-s */
 /* for now we keep this tunning "private */
 static int gbl_dohsql_track_stats = 1;
 static int gbl_dohsql_que_free_highwm = 10;
