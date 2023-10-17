@@ -120,12 +120,27 @@ static int now_ms(void)
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
 }
 
-static void hexdump(FILE *f, void *datap, int len)
+static void hexdump(FILE *f, uint8_t *p, int len)
 {
-    uint8_t *data = (uint8_t *)datap;
-    int i;
-    for (i = 0; i < len; i++)
-        fprintf(f, "%02x", (unsigned int)data[i]);
+    char hex[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+    const int sz = 8 * 1024;
+    char buf[sz + 1];
+    buf[sz] = 0;
+    int counter = 0;
+    for (int i = 0; i < len; i++) {
+        uint8_t byte = *p;
+        ++p;
+        buf[counter++] = hex[byte >> 4];
+        buf[counter++] = hex[byte & 0x0f];
+        if (counter == sz) {
+            fprintf(f, "%s", buf);
+            counter = 0;
+        }
+    }
+    if (counter) {
+        buf[counter] = 0;
+        fprintf(f, "%s", buf);
+    }
 }
 
 void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
@@ -1067,7 +1082,7 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
                 exit(0);
             } else {
                 fprintf(f, "x'");
-                hexdump(f, val, cdb2_column_size(hndl, col));
+                hexdump(f, (uint8_t *)val, cdb2_column_size(hndl, col));
                 fprintf(f, "'");
             }
         }
