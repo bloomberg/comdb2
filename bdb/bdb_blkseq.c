@@ -463,9 +463,14 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
             goto done;
         }
 
+        Pthread_mutex_unlock(&bdb_state->blkseq_lk[stripe]);
+        /* DB_FIRST on many log files can be expensive. Do it without
+         * holding the blkseq mutex so that we do not block replication
+         * for too long */
         logdta.flags = DB_DBT_MALLOC;
         rc = logc->get(logc, &lsn, &logdta, DB_FIRST);
         logc->close(logc, 0);
+        Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: couldn't retrieve first log-record, rc=%d\n",

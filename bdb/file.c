@@ -3945,6 +3945,7 @@ low_headroom:
                     }
 
                     rc = unlink(logname);
+                    __log_invalidate(filenum);
                     if (rc) {
                         logmsg(LOGMSG_ERROR,
                                "delete_log_files: unlink for <%s> returned %d %d\n",

@@ -27,6 +27,8 @@ static const char revid[] = "$Id: log.c,v 11.133 2003/09/13 19:20:37 bostic Exp 
 #include "dbinc/txn.h"
 #include <logmsg.h>
 
+#include <plhash.h>
+
 static int	__log_init __P((DB_ENV *, DB_LOG *));
 static int	__log_recover __P((DB_LOG *));
 static size_t	__log_region_size __P((DB_ENV *));
@@ -615,6 +617,77 @@ err:	__os_dirfree(dbenv, names, fcnt);
 	return (ret);
 }
 
+/* simple logfile validity cache */
+static hash_t *log_validity_hash = NULL;
+static pthread_mutex_t log_validity_mtx = PTHREAD_MUTEX_INITIALIZER;
+typedef struct {
+	u_int32_t lognum;
+	logfile_validity status;
+} log_validity_hash_ent;
+
+/*
+ * __log_invalidate --
+ *  remove the logfile from the validility cache
+ *
+ *  PUBLIC: void __log_invalidate __P((u_int32_t));
+ */
+void
+__log_invalidate(num)
+	u_int32_t num;
+{
+	log_validity_hash_ent *e = NULL;
+	Pthread_mutex_lock(&log_validity_mtx);
+	if (log_validity_hash != NULL) {
+		e = hash_find(log_validity_hash, &num);
+		if (e != NULL)
+			hash_del(log_validity_hash, e);
+	}
+	Pthread_mutex_unlock(&log_validity_mtx);
+	free(e);
+}
+
+/* Get logfile validility from the cache. Return 0 if found. */
+static int
+__log_get_validity(num, statusp)
+	u_int32_t num;
+	logfile_validity *statusp;
+{
+	log_validity_hash_ent *e = NULL;
+	Pthread_mutex_lock(&log_validity_mtx);
+	if (log_validity_hash != NULL) {
+		e = hash_find(log_validity_hash, &num);
+		if (e != NULL)
+			*statusp = e->status;
+	}
+	Pthread_mutex_unlock(&log_validity_mtx);
+	return (e == NULL);
+}
+
+/* Set logfile validility in the cache */
+static void
+__log_set_validity(num, status)
+	u_int32_t num;
+	logfile_validity status;
+{
+	log_validity_hash_ent *e = NULL;
+	Pthread_mutex_lock(&log_validity_mtx);
+	if (log_validity_hash == NULL) {
+		log_validity_hash = hash_init(sizeof(u_int32_t));
+	}
+	if (log_validity_hash != NULL) {
+		e = hash_find(log_validity_hash, &num);
+		if (e != NULL) {
+			e->status = status;
+		} else {
+			e = malloc(sizeof(log_validity_hash_ent));
+			e->lognum = num;
+			e->status = status;
+			hash_add(log_validity_hash, e);
+		}
+	}
+	Pthread_mutex_unlock(&log_validity_mtx);
+}
+
 /*
  * log_valid --
  *	Validate a log file.  Returns an error code in the event of
@@ -653,6 +726,14 @@ __log_valid(dblp, number, set_persist, fhpp, flags, statusp)
 	persist = NULL;
 	status = DB_LV_NORMAL;
 	tmp = NULL;
+
+	/* If caller wants only the file validity not the file handle,
+	 * find the validity from cache and return it if found */
+	if (fhpp == NULL) {
+		ret = __log_get_validity(number, statusp);
+		if (ret == 0)
+			return (ret);
+	}
 
 	/* Return the file handle to our caller, on request */
 	if (fhpp != NULL)
@@ -831,6 +912,8 @@ err:	if (fname != NULL)
 		__os_free(dbenv, tmp);
 
 	*statusp = status;
+	if (ret == 0 && status != DB_LV_INCOMPLETE)
+		__log_set_validity(number, status);
 
 	return (ret);
 }
