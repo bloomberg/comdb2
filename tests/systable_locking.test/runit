@@ -331,7 +331,7 @@ function do_not_hold_onto_viewslk_from_consumer {
 	CREATE LUA CONSUMER baz ON (TABLE t1 FOR INSERT)
 	EOF
 
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE t2 (i INT) PARTITIONED BY MANUAL"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE t2 (i INT) PARTITIONED BY MANUAL RETENTION 7"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "EXEC PROCEDURE baz()" &
     sleep 1
     # rollout a shard; this would acquire views_lk
@@ -339,6 +339,8 @@ function do_not_hold_onto_viewslk_from_consumer {
     # make sure that we aren't blocked on anything
     timeout 3s $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "EXEC PROCEDURE sys.info.cluster()"
     if [[ $? -ne 0 ]]; then failexit "could not get sys.info.cluster"; fi
+    # ensure that the consumer gets an event and exits
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "INSERT INTO t1 VALUES(1)"
     wait
 }
 
