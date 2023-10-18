@@ -664,8 +664,6 @@ static void *apply_thread(void *arg)
 				ret = __rep_apply(dbenv, q->rp, &rec, &ret_lsnp, &q->gen, 1);
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				if (ret == 0 || ret == DB_REP_ISPERM) {
-					bdb_set_seqnum(dbenv->app_private);
-
 					if (ret == DB_REP_ISPERM && !gbl_early && !gbl_reallyearly) {
 						/* Call this but not really early anymore */
 						comdb2_early_ack(dbenv, ret_lsnp, q->gen);
@@ -3184,8 +3182,10 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 				 * don't currently hold the rep mutex.
 				 */
 				rep->stat.st_log_records++;
-				if (!is_commit(rectype))
+				if (!is_commit(rectype)) {
 					__rep_set_last_locked(dbenv, &(rp->lsn));
+					bdb_set_seqnum(dbenv->app_private);
+				}
 			}
 
 			if (dbenv->attr.cache_lc)
@@ -3265,8 +3265,10 @@ gap_check:		max_lsn_dbtp = NULL;
 				 */
 				if (ret == 0) {
 					rep->stat.st_log_records++;
-					if (!is_commit(rectype))
+					if (!is_commit(rectype)) {
 						__rep_set_last_locked(dbenv, &(rp->lsn));
+						bdb_set_seqnum(dbenv->app_private);
+					}
 				}
 
 				if (dbenv->attr.cache_lc)
@@ -3983,9 +3985,6 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp,
 			      (gbl_is_physical_replicant) ? &rep->log_gen : &rep->gen, 2);
 
-	if (ret == 0 || ret == DB_REP_ISPERM) {
-		bdb_set_seqnum(dbenv->app_private);
-	}
 	return ret;
 }
 
