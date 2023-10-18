@@ -857,9 +857,10 @@ static int newsql_pack_hb(struct sqlwriter *writer, void *arg)
 }
 
 struct newsql_pack_arg {
-    struct newsqlheader *hdr;
-    const CDB2SQLRESPONSE *resp;
+    struct newsql_appdata_evbuffer *appdata;
     int resp_len;
+    const CDB2SQLRESPONSE *resp;
+    struct newsqlheader *hdr;
 };
 
 static int newsql_pack_small(struct sqlwriter *writer, struct newsql_pack_arg *arg)
@@ -902,7 +903,7 @@ static void pb_evbuffer_append(ProtobufCBuffer *vbuf, size_t len, const uint8_t 
 static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 {
     struct newsql_pack_arg *arg = data;
-    if (arg->resp_len <= SQLWRITER_MAX_BUF) {
+    if (arg->resp_len <= SQLWRITER_MAX_BUF || arg->appdata->clnt.query_timeout) {
         return newsql_pack_small(sqlwriter, arg);
     }
     struct pb_evbuffer_appender appender = PB_EVBUFFER_APPENDER_INIT(sqlwriter);
@@ -936,6 +937,7 @@ static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
         hdr.length = htonl(arg.resp_len);
         arg.hdr = &hdr;
     }
+    arg.appdata = appdata;
     arg.resp = resp;
     return sql_write(appdata->writer, &arg, flush);
 }
