@@ -73,8 +73,14 @@ static void sql_disable_flush(struct sqlwriter *writer)
 static void sql_timeout_cb(int fd, short what, void *arg)
 {
     struct sqlwriter *writer = arg;
-    /* We'll block on the mutex if writer is still packing */
-    Pthread_mutex_lock(&writer->wr_lock);
+    check_thd(writer->timer_thd);
+    int rc = pthread_mutex_trylock(&writer->wr_lock);
+    if (rc == EBUSY) {
+        struct timeval retry = {.tv_usec = 100 * 1000};
+        event_add(writer->timeout_ev, &retry);
+    } else if (rc) {
+        abort();
+    }
     if (!writer->bad && !writer->done) {
         writer->do_timeout = 1;
         maxquerytime_cb(writer->clnt);
@@ -100,18 +106,27 @@ void sql_disable_heartbeat(struct sqlwriter *writer)
 
 void sql_enable_timeout(struct sqlwriter *writer, int timeout_sec)
 {
-    if (!writer->timeout_ev) {
-        writer->timeout_ev = event_new(writer->timer_base, -1, 0, sql_timeout_cb, writer);
+    check_thd(writer->timer_thd);
+    if (writer->timeout_ev) {
+        abort();
     }
+    writer->timeout_ev = event_new(writer->timer_base, -1, 0, sql_timeout_cb, writer);
     struct timeval timeout = {.tv_sec = timeout_sec};
     event_add(writer->timeout_ev, &timeout);
 }
 
+static void do_sql_disable_timeout(void *arg)
+{
+    struct sqlwriter *writer = arg;
+    check_thd(writer->timer_thd);
+    event_free(writer->timeout_ev);
+    writer->timeout_ev = NULL;
+}
+
 void sql_disable_timeout(struct sqlwriter *writer)
 {
-    if (writer->timeout_ev) {
-        event_del(writer->timeout_ev);
-    }
+    if (!writer->timeout_ev) return;
+    run_on_base(writer->timer_base, do_sql_disable_timeout, writer);
 }
 
 static int wr_evbuffer_ssl(struct sqlwriter *writer, int fd)
@@ -137,9 +152,9 @@ static int wr_evbuffer(struct sqlwriter *writer, int fd)
 /*
  * If a writer is packing a protobuf response (which may invoke sql_flush()
  * multiple times to write out partially serialized data), we don't give up
- * wr_lock. Heartbeat would become a nop; timeout would block on wr_lock.
- * The 2 macros below make sure that we do not double-lock wr_lock, and
- * that we do not release wr_lock when we're not supposed to.
+ * wr_lock. Heartbeat would become a nop; timeout would retry to enqueue an
+ * error message. The 2 macros below make sure that we do not double-lock
+ * wr_lock, and that we do not release wr_lock when we're not supposed to.
  */
 #define LOCK_WR_LOCK_ONLY_IF_NOT_PACKING(w)                                                                            \
     do {                                                                                                               \
