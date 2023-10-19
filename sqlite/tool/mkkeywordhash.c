@@ -386,6 +386,7 @@ static Keyword aKeywordTable[] = {
   { "READONLY",         "TK_READONLY",       ALWAYS               },
   { "REBUILD",          "TK_REBUILD",        ALWAYS               },
   { "REC",              "TK_REC",            ALWAYS               },
+  { "REPARTITIONED",    "TK_REPARTITIONED",  ALWAYS               },
   { "RESERVED",         "TK_RESERVED",       ALWAYS               },
   { "RESUME",           "TK_RESUME",         ALWAYS               },
   { "RETENTION",        "TK_RETENTION",      ALWAYS               },

@@ -349,7 +349,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MANUAL MERGE NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
-  REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
+  REBUILD READ READONLY REC REPARTITIONED RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
@@ -2038,6 +2038,19 @@ alter_table_commit_pending ::= SET COMMIT PENDING. {
 }
 
 alter_table_partitioned ::= partitioned_by.
+alter_table_repartitioned ::= REPARTITIONED BY new_partition_options.
+new_partition_options ::= TIME PERIOD STRING(P) RETENTION INTEGER(R) START STRING(S). {
+    comdb2AlterTimePartition(pParse, &P, &R, &S);
+}
+new_partition_options ::= NONE. {
+    comdb2SaveMergeTable(pParse, NULL, NULL, 1);
+}
+new_partition_options ::= MANUAL RETENTION INTEGER(R) START INTEGER(S). {
+    comdb2AlterManualPartition(pParse, &R, &S);
+}
+new_partition_options ::= MANUAL RETENTION INTEGER(R). {
+    comdb2AlterManualPartition(pParse, &R, 0);
+}
 alter_table_merge ::= merge_with_alter.
 
 // Even though they make the syntax a bit ugly, the parentheses were
@@ -2059,6 +2072,7 @@ alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
 alter_table_action ::= alter_table_commit_pending.
 alter_table_action ::= alter_table_partitioned.
+alter_table_action ::= alter_table_repartitioned.
 alter_table_action ::= alter_table_merge.
 alter_table_action ::= alter_table_alter_options.
 
