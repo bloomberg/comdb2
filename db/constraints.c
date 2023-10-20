@@ -281,8 +281,6 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   int blkpos, int rec_flags)
 {
     block_state_t *blkstate = iq->blkstate;
-    int type = CTE_ADD;
-    char key[MAXKEYLEN + 1];
     cte cte_record;
     int err = 0;
     int rc = 0;
@@ -306,9 +304,6 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
         rc = -1;
         goto ret;
     }
-    memcpy(key, &type, sizeof(type));
-    memcpy(key + sizeof(type), &blkstate->ct_id_key,
-           sizeof(blkstate->ct_id_key));
     cte_record.ct_type = CTE_ADD;
     struct forward_ct *fwdct = &cte_record.ctop.fwdct;
     fwdct->genid = genid;
@@ -320,8 +315,8 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
     fwdct->optype = optype;
     fwdct->flags = rec_flags;
 
-    rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
-                               sizeof(int) + sizeof(long long), &cte_record,
+    rc = bdb_temp_table_insert(thedb->bdb_env, cur, &blkstate->ct_id_key,
+                               sizeof(blkstate->ct_id_key), &cte_record,
                                sizeof(cte), &err);
 
     close_constraint_table_cursor(cur);
@@ -351,8 +346,7 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
                          int dixnum, int nonewrefs, int flags)
 {
     void *cur = NULL;
-    int type = CTE_DEL, rc = 0;
-    char key[MAXKEYLEN + 1];
+    int rc = 0;
     cte cte_record;
     int err = 0;
 
@@ -364,9 +358,6 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
     if (cur == NULL)
         return -1;
 
-    memcpy(key, &type, sizeof(type));
-    memcpy(key + sizeof(type), &blkstate->ct_id_key,
-           sizeof(blkstate->ct_id_key));
     cte_record.ct_type = CTE_DEL;
     struct backward_ct *bwdct = &cte_record.ctop.bwdct;
     strncpy(bwdct->tablename, srcdb->tablename, MAXTABLELEN);
@@ -386,8 +377,8 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
         memcpy(bwdct->newkey, innewkey, keylen);
     }
 
-    rc = bdb_temp_table_insert(thedb->bdb_env, cur, key,
-                               sizeof(int) + sizeof(long long), &cte_record,
+    rc = bdb_temp_table_insert(thedb->bdb_env, cur, &blkstate->ct_id_key,
+                               sizeof(blkstate->ct_id_key), &cte_record,
                                sizeof(cte), &err);
     close_constraint_table_cursor(cur);
     if (rc != 0)
@@ -1901,24 +1892,8 @@ int clear_constraints_tables(void)
 static int constraint_key_cmp(void *usermem, int key1len, const void *key1,
                               int key2len, const void *key2)
 {
-    const int *k1_type = (const int *)key1;
-    const int *k2_type = (const int *)key2;
-    unsigned long long k1_id;
-    unsigned long long k2_id;
-
-    memcpy(&k1_id, (char *)key1 + sizeof(int), sizeof(unsigned long long));
-    memcpy(&k2_id, (char *)key2 + sizeof(int), sizeof(unsigned long long));
-
-    assert(key1len == sizeof(int) + sizeof(long long));
-    assert(key2len == sizeof(int) + sizeof(long long));
-
-    if (*k1_type < *k2_type) {
-        return -1;
-    }
-
-    if (*k1_type > *k2_type) {
-        return 1;
-    }
+    long long k1_id = *(long long *)key1;
+    long long k2_id = *(long long *)key2;
 
     if (k1_id < k2_id) {
         return -1;
@@ -1972,7 +1947,7 @@ void *create_constraint_table()
 {
     struct temp_table *newtbl = NULL;
     int bdberr = 0;
-    newtbl = (struct temp_table *)bdb_temp_list_create(thedb->bdb_env, &bdberr);
+    newtbl = (struct temp_table *)bdb_temp_table_create(thedb->bdb_env, &bdberr);
     if (newtbl == NULL || bdberr != 0) {
         logmsg(LOGMSG_ERROR, "failed to create temp table err %d\n", bdberr);
         return NULL;
@@ -2469,11 +2444,17 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
         }
         curop = &ctrq->ctop.fwdct;
         if ((bdb_cmp_genids(curop->genid, old_genid)) == 0) {
-            if (iq->debug)
-                reqprintf(iq, "update_constraint_genid: OLDGENID 0x%llx NEWGENID 0x%llx",
-                          old_genid, new_genid);
-            curop->genid = new_genid; // directly update genid in the temp list
-            curop->flags |= flags;    // also update with the flags passed in
+            rc = bdb_temp_table_delete(thedb->bdb_env, cur, &err);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_delete() failed rc %d\n", __func__, __LINE__, rc);
+                goto done;
+            }
+
+            rc = insert_add_op(iq, opcode, rrn, -1, new_genid, ins_keys, blkpos, flags);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d insert_add_op() failed rc %d\n", __func__, __LINE__, rc);
+                goto done;
+            }
 
             /* old genid is not needed in hash at this point */
             hash_del(thdinfo->ct_add_table_genid_hash, &old_genid);

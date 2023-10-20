@@ -1199,7 +1199,6 @@ struct temp_table;
 struct temp_cursor;
 struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state,
                                          int *bdberr);
-struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr);
 struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr);
 struct temp_table *bdb_temp_array_create(bdb_state_type *bdb_state,
