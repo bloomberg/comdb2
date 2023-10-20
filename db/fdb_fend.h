@@ -160,6 +160,7 @@ typedef struct fdb_sqlstat_table fdb_sqlstat_table_t;
 typedef struct fdb_sqlstat_cursor fdb_sqlstat_cursor_t;
 
 struct fdb_tran {
+    char magic[4];
     char *tid; /* transaction id */
     char *
         host; /* what is the remote replicant this transaction is submitted to
@@ -409,6 +410,12 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent);
  *
  */
 int fdb_heartbeats(fdb_hbeats_type *hbeats);
+
+/**
+ * Close sbuf2, destroy mutex and free fdb-tran
+ *
+ */
+void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats);
 
 /**
  * Change association of a cursor to a table (see body note)

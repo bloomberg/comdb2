@@ -3776,6 +3776,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             free(msg);
             return NULL;
         }
+        memcpy(tran->magic, "FDBT", 4);
         tran->tid = (char *)tran->tiduuid;
         comdb2uuid((unsigned char *)tran->tid);
 
@@ -3795,6 +3796,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
 
         /* need hbeats */
         Pthread_mutex_init(&tran->hbeats.sb_mtx, NULL);
+        sbuf2setuserptr(tran->sb, tran);
         tran->hbeats.tran = tran;
         enable_fdb_heartbeats(&tran->hbeats);
 
@@ -3868,8 +3870,6 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
 
     listc_rfl(&dtran->fdb_trans, tran);
 
-    if (tran->sb)
-        sbuf2close(tran->sb);
     if (tran->errstr)
         free(tran->errstr);
     if (tran->dedup_tbl != NULL) {
@@ -3879,7 +3879,6 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
                    "%s: error closing temptable, rc %d, bdberr %d\n",
                    __func__, rc, bdberr);
     }
-    Pthread_mutex_destroy(&tran->hbeats.sb_mtx);
     disable_fdb_heartbeats_and_free(&tran->hbeats);
 }
 
@@ -4751,6 +4750,19 @@ int fdb_heartbeats(fdb_hbeats_type *hbeats)
                 __func__, us, tran->fdb->dbname, rc);
     }
     return rc;
+}
+
+/**
+ * Close sbuf2, destroy mutex and free fdb-tran
+ *
+ */
+void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats)
+{
+    if (hbeats->tran->sb) {
+        sbuf2close(hbeats->tran->sb);
+    }
+    Pthread_mutex_destroy(&hbeats->sb_mtx);
+    free(hbeats->tran);
 }
 
 /* check if the mentioned fdb has a preferred node, and get the status of last
