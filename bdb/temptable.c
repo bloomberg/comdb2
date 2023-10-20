@@ -126,12 +126,6 @@ int hashcmpfunc(const void *key1, const void *key2, int len)
     return -1;
 }
 
-struct temp_list_node {
-    LINKC_T(struct temp_list_node) lnk;
-    void *data;
-    int datalen;
-};
-
 /* code for SQL temp table support */
 struct temp_cursor {
     DBC *cur;
@@ -143,7 +137,6 @@ struct temp_cursor {
     /* void *usermem; */
     struct temp_table *tbl;
     int curid;
-    struct temp_list_node *list_cur;
     void *hash_cur;
     unsigned int hash_cur_buk;
     LINKC_T(struct temp_cursor) lnk;
@@ -196,7 +189,6 @@ typedef struct arr_elem {
 enum {
     TEMP_TABLE_TYPE_BTREE,
     TEMP_TABLE_TYPE_HASH,
-    TEMP_TABLE_TYPE_LIST,
     TEMP_TABLE_TYPE_ARRAY
 };
 
@@ -205,7 +197,6 @@ struct temp_table {
 
     int temp_table_type;
     DB *tmpdb; /* in-memory table */
-    LISTC_T(struct temp_list_node) temp_tbl_list;
     hash_t *temp_hash_tbl;
 
     tmptbl_cmp cmpfunc;
@@ -786,9 +777,6 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                 }
             }
             break;
-        case TEMP_TABLE_TYPE_LIST:
-            listc_init(&table->temp_tbl_list, offsetof(struct temp_list_node, lnk));
-            break;
         case TEMP_TABLE_TYPE_ARRAY:
             if (table->elements == NULL) {
                 table->elements = calloc(table->max_mem_entries, sizeof(arr_elem_t));
@@ -823,11 +811,6 @@ struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state, int *bdberr)
     return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_BTREE, bdberr);
 }
 
-struct temp_table *bdb_temp_list_create(bdb_state_type *bdb_state, int *bdberr)
-{
-    return bdb_temp_table_create_type(bdb_state, TEMP_TABLE_TYPE_LIST, bdberr);
-}
-
 struct temp_table *bdb_temp_hashtable_create(bdb_state_type *bdb_state,
                                              int *bdberr)
 {
@@ -854,11 +837,6 @@ struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state,
     cur->cur = NULL;
 
     switch (tbl->temp_table_type) {
-
-    case TEMP_TABLE_TYPE_LIST:
-        cur->list_cur = NULL;
-        break;
-
     case TEMP_TABLE_TYPE_HASH:
         cur->hash_cur = NULL;
         cur->hash_cur_buk = 0;
@@ -1025,10 +1003,6 @@ unsigned long long bdb_temp_table_new_rowid(struct temp_table *tbl)
         if (tbl->num_mem_entries == 0)
             tbl->rowid = 0;
         break;
-    case TEMP_TABLE_TYPE_LIST:
-        if (listc_size(&tbl->temp_tbl_list) == 0)
-            tbl->rowid = 0;
-        break;
     case TEMP_TABLE_TYPE_HASH:
         if (hash_first(tbl->temp_hash_tbl, &ent, &bkt) == NULL)
             tbl->rowid = 0;
@@ -1076,22 +1050,6 @@ static int bdb_temp_table_first_last(bdb_state_type *bdb_state,
 {
     DBT dkey, ddata;
     int rc, arrlen;
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        cur->valid = 0;
-        if (how != DB_FIRST) {
-            logmsg(LOGMSG_ERROR, "bdb_temp_table_first_last operation not supported "
-                            "for temp list.\n");
-            return -1;
-        }
-        if (listc_size(&(cur->tbl->temp_tbl_list)) == 0) {
-            return IX_EMPTY;
-        }
-        cur->list_cur = cur->tbl->temp_tbl_list.top;
-        cur->data = cur->list_cur->data;
-        cur->valid = 1;
-        return 0;
-    }
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         cur->valid = 0;
@@ -1177,21 +1135,6 @@ static int bdb_temp_table_next_prev_norewind(bdb_state_type *bdb_state,
     if (!cur->valid)
         return IX_PASTEOF;
     cur->valid = 0;
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        if (how != DB_NEXT) {
-            logmsg(LOGMSG_ERROR, "bdb_temp_table_next_prev_norewind operation not "
-                            "supported for temp list.\n");
-            return -1;
-        }
-        cur->list_cur = cur->list_cur->lnk.next;
-        if (cur->list_cur == 0) {
-            return IX_PASTEOF;
-        }
-        cur->data = cur->list_cur->data;
-        cur->valid = 1;
-        return 0;
-    }
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         cur->valid = 0;
@@ -1353,11 +1296,6 @@ int bdb_temp_table_datasize(struct temp_cursor *cur)
         rc = -1;
         goto done;
     }
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        logmsg(LOGMSG_ERROR, 
-                "bdb_temp_table_datasize operation not supported for temp list.\n");
-        return -1;
-    }
     rc = cur->datalen;
 done:
     dbgtrace(3, "temp_table_datasize(cursor %d) = %d\n", cur->curid, rc);
@@ -1370,11 +1308,6 @@ void *bdb_temp_table_key(struct temp_cursor *cur)
     if (!cur->valid) {
         rc = NULL;
         goto done;
-    }
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        logmsg(LOGMSG_ERROR, 
-                "bdb_temp_table_key operation not supported for temp list.\n");
-        return (void *)-1;
     }
 
 #if 0
@@ -1454,19 +1387,6 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
     arr_elem_t *elem;
 
     switch (tbl->temp_table_type) {
-    case TEMP_TABLE_TYPE_LIST: {
-        struct temp_list_node *c_node = NULL;
-        int not_the_end;
-        do {
-            c_node = (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
-            not_the_end = c_node != NULL;
-            if (c_node) {
-                free(c_node->data);
-                free(c_node);
-            }
-        } while (not_the_end);
-    } break;
-
     case TEMP_TABLE_TYPE_HASH:
         if (tbl->temp_hash_tbl) {
             void *hash_cur;
@@ -1702,17 +1622,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
     Pthread_mutex_unlock(&(bdb_state->temp_list_lock));
 
     switch (tbl->temp_table_type) {
-    case TEMP_TABLE_TYPE_LIST: {
-        struct temp_list_node *c_node =
-            (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
-        while (c_node) {
-            if (c_node->data)
-                free(c_node->data);
-            free(c_node);
-            c_node = (struct temp_list_node *)listc_rtl(&(tbl->temp_tbl_list));
-        }
-    } break;
-
     case TEMP_TABLE_TYPE_HASH: {
         void *hash_cur;
         unsigned int hash_cur_buk;
@@ -1783,11 +1692,6 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (!cur->valid) {
         rc = -1;
         goto done;
-    }
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        listc_rtl(&(cur->tbl->temp_tbl_list));
-        return 0;
     }
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
@@ -1903,12 +1807,7 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
     arr_elem_t *elem;
     DBT dkey, ddata;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        logmsg(LOGMSG_ERROR, 
-                "bdb_temp_table_find operation not supported for temp list.\n");
-        return -1;
-    }
-    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         return bdb_temp_table_find_hash(cur, key, keylen);
     }
 
@@ -2057,12 +1956,6 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     int exists = 0;
     arr_elem_t *elem;
     void *keydup;
-
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        logmsg(LOGMSG_ERROR, "bdb_temp_table_find_exact operation not supported for "
-                        "temp list.\n");
-        return -1;
-    }
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         return bdb_temp_table_find_exact_hash(cur, key, keylen);
@@ -2269,18 +2162,10 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur,
     logmsg(level, "TMPTABLE:\n");
     rc = bdb_temp_table_first(bdb_state, cur, &bdberr);
     while (!rc) {
-
-        if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-            key_sd = (void*)&rowid;
-            keysize_sd = sizeof(int);
-            dta_sd = cur->list_cur->data;
-            dtasize_sd = cur->list_cur->datalen;
-        } else {
-            key_sd = bdb_temp_table_key(cur);
-            keysize_sd = bdb_temp_table_keysize(cur);
-            dta_sd = bdb_temp_table_data(cur);
-            dtasize_sd = bdb_temp_table_datasize(cur);
-        }
+        key_sd = bdb_temp_table_key(cur);
+        keysize_sd = bdb_temp_table_keysize(cur);
+        dta_sd = bdb_temp_table_data(cur);
+        dtasize_sd = bdb_temp_table_datasize(cur);
 
         logmsg(level, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
         hexdump(level, key_sd, keysize_sd);
@@ -2369,16 +2254,6 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
     tmptbl_cmp cmpfn;
     arr_elem_t *elem;
     uint8_t *keycopy, *dtacopy;
-
-    if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
-        struct temp_list_node *c_node = calloc(1, sizeof(struct temp_list_node));
-        void *list_data = malloc(dtalen);
-        memcpy(list_data, data, dtalen);
-        c_node->data = list_data;
-        c_node->datalen = dtalen;
-        listc_abl(&(tbl->temp_tbl_list), c_node);
-        return 0;
-    }
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         void *hash_data;
