@@ -1682,7 +1682,7 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 }
 
 /* stuff goes as network endian */
-static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
+static int fdb_msg_write_message_lk(SBUF2 *sb, fdb_msg_t *msg, int flush)
 {
     int type;
     int tmp;
@@ -1701,7 +1701,7 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         return FDB_ERR_WRITE_IO;
     }
 
-    assert (msg->hd.type & FD_MSG_FLAGS_ISUUID);
+    assert(msg->hd.type & FD_MSG_FLAGS_ISUUID);
     idsz = sizeof(uuid_t);
 
     send_dk = 0;
@@ -1819,7 +1819,7 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
 
         int haveid;
 
-        assert (msg->hd.type & FD_MSG_FLAGS_ISUUID);
+        assert(msg->hd.type & FD_MSG_FLAGS_ISUUID);
         haveid = !comdb2uuid_is_zero((unsigned char *)msg->cc.tid);
 
         if (haveid) {
@@ -2268,18 +2268,28 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
     return 0;
 }
 
-static void _fdb_extract_source_id(struct sqlclntstate *clnt, SBUF2 *sb,
-                                   fdb_msg_t *msg)
+static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
+{
+    fdb_tran_t *tran = (fdb_tran_t *)sbuf2getuserptr(sb);
+    pthread_mutex_t *sb_mtx =
+        (tran && !memcmp(tran->magic, "FDBT", 4) && tran->hbeats.tran) ? &tran->hbeats.sb_mtx : NULL;
+    if (sb_mtx)
+        Pthread_mutex_lock(sb_mtx);
+    int rc = fdb_msg_write_message_lk(sb, msg, flush);
+    if (sb_mtx)
+        Pthread_mutex_unlock(sb_mtx);
+    return rc;
+}
+
+static void _fdb_extract_source_id(struct sqlclntstate *clnt, SBUF2 *sb, fdb_msg_t *msg)
 {
     clnt->conninfo.node = -1; /*get_origin_mach_by_fd(sbuf2fileno(sb));*/
 
     /* extract source */
     if (msg->co.srcname)
-        strncpy(clnt->conninfo.pename, msg->co.srcname,
-                sizeof(clnt->conninfo.pename));
+        strncpy(clnt->conninfo.pename, msg->co.srcname, sizeof(clnt->conninfo.pename));
     else
-        strncpy(clnt->conninfo.pename, "UNKNOWN",
-                sizeof(clnt->conninfo.pename));
+        strncpy(clnt->conninfo.pename, "UNKNOWN", sizeof(clnt->conninfo.pename));
     clnt->conninfo.pename[sizeof(clnt->conninfo.pename) - 1] = '\0';
     clnt->conninfo.pid = msg->co.srcpid;
 }
@@ -2294,8 +2304,7 @@ int fdb_bend_cursor_open(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     assert(msg->hd.type == FDB_MSG_CURSOR_OPEN);
 
     /* create a cursor */
-    if (!fdb_svc_cursor_open(tid, cid, msg->co.rootpage, msg->co.version,
-                             msg->co.flags, seq, &clnt)) {
+    if (!fdb_svc_cursor_open(tid, cid, msg->co.rootpage, msg->co.version, msg->co.flags, seq, &clnt)) {
         logmsg(LOGMSG_ERROR, "%s: failed to open cursor\n", __func__);
         arg->clnt = NULL;
         return -1;
@@ -2336,8 +2345,7 @@ int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
      */
     rc = fdb_svc_cursor_close(cid, (clnt) ? &clnt : NULL);
     if (rc < 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__,
-               rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__, rc);
     }
 
     return rc;
@@ -2365,8 +2373,7 @@ static enum svc_move_types move_type(int type)
     return -1;
 }
 
-int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
-                      unsigned long long genid, char *data, int datalen,
+int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid, unsigned long long genid, char *data, int datalen,
                       char *datacopy, int datacopylen, int ret)
 {
     int rc;
@@ -2400,8 +2407,7 @@ int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
     if (rc) {
         /* this happens natural for fractured streams */
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%s: failed send row back, rc=%d\n", __func__,
-                   rc);
+            logmsg(LOGMSG_USER, "%s: failed send row back, rc=%d\n", __func__, rc);
     }
 
     return rc;
@@ -2416,16 +2422,14 @@ int fdb_bend_cursor_move(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int datalen;
     int datacopylen;
 
-    rc = fdb_svc_cursor_move(move_type(msg->hd.type), msg->cm.cid, &data,
-                             &datalen, &genid, &datacopy, &datacopylen);
+    rc = fdb_svc_cursor_move(move_type(msg->hd.type), msg->cm.cid, &data, &datalen, &genid, &datacopy, &datacopylen);
     if (rc != IX_FND && rc != IX_NOTFND && rc != IX_PASTEOF && rc != IX_EMPTY) {
         logmsg(LOGMSG_ERROR, "%s: failed move rc %d\n", __func__, rc);
         /*TODO: notify the other side! */
         return rc;
     }
 
-    rc = fdb_bend_send_row(sb, msg, NULL, genid, data, datalen, datacopy,
-                           datacopylen, rc);
+    rc = fdb_bend_send_row(sb, msg, NULL, genid, data, datalen, datacopy, datacopylen, rc);
 
     return rc;
 }
@@ -2442,20 +2446,16 @@ int fdb_bend_cursor_find(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int datacopylen;
     int rc;
 
-    assert(msg->hd.type == FDB_MSG_CURSOR_FIND ||
-           msg->hd.type == FDB_MSG_CURSOR_FIND_LAST);
+    assert(msg->hd.type == FDB_MSG_CURSOR_FIND || msg->hd.type == FDB_MSG_CURSOR_FIND_LAST);
 
-    rc = fdb_svc_cursor_find(
-        cid, keylen, key, msg->hd.type == FDB_MSG_CURSOR_FIND_LAST, &genid,
-        &datalen, &data, &datacopy, &datacopylen);
+    rc = fdb_svc_cursor_find(cid, keylen, key, msg->hd.type == FDB_MSG_CURSOR_FIND_LAST, &genid, &datalen, &data,
+                             &datacopy, &datacopylen);
     if (rc != IX_FND && rc != IX_NOTFND && rc != IX_PASTEOF && rc != IX_EMPTY) {
-        logmsg(LOGMSG_ERROR, "%s: failed to execute a cursor find rc=%d\n",
-               __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to execute a cursor find rc=%d\n", __func__, rc);
         return rc;
     }
 
-    rc = fdb_bend_send_row(sb, msg, NULL, genid, data, datalen, datacopy,
-                           datacopylen, rc);
+    rc = fdb_bend_send_row(sb, msg, NULL, genid, data, datalen, datacopy, datacopylen, rc);
 
     return rc;
 }
@@ -2479,22 +2479,19 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     start_localrpc = osql_log_time();
     /*fprintf(stderr, "=== Calling appsock %llu\n", start_localrpc);*/
 
-    rc = fdb_appsock_work(cid, clnt, version, flags, sql, sqllen, trim_key,
-                          trim_keylen, sb);
+    rc = fdb_appsock_work(cid, clnt, version, flags, sql, sqllen, trim_key, trim_keylen, sb);
     if (rc) {
         /* this happens natural for fractured streams */
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%s: failed to dispatch request rc=%d \"%s\"\n",
-                   __func__, rc, sql);
+            logmsg(LOGMSG_USER, "%s: failed to dispatch request rc=%d \"%s\"\n", __func__, rc, sql);
         return -1;
     }
 
     end_localrpc = osql_log_time();
 
     if (gbl_time_fdb) {
-        logmsg(LOGMSG_USER,
-               "=== DONE running remsql time %llu [%llu -> %llu] rc=%d\n",
-               end_localrpc - start_localrpc, start_localrpc, end_localrpc, rc);
+        logmsg(LOGMSG_USER, "=== DONE running remsql time %llu [%llu -> %llu] rc=%d\n", end_localrpc - start_localrpc,
+               start_localrpc, end_localrpc, rc);
     }
 
     /* was there any error processing? */
@@ -2502,12 +2499,10 @@ int fdb_bend_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     if ((irc = errstat_get_rc(&clnt->fdb_state.xerr)) != 0) {
         /* we need to send back a rc code */
         const char *tmp = errstat_get_str(&clnt->fdb_state.xerr);
-        rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid,
-                             (char *)tmp, /* the actual row is the errstr */
+        rc = fdb_svc_sql_row(clnt->fdb_state.remote_sql_sb, cid, (char *)tmp, /* the actual row is the errstr */
                              strlen(tmp) + 1, irc);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: fdb_svc_sql_row failed rc=%d\n", __func__,
-                   rc);
+            logmsg(LOGMSG_ERROR, "%s: fdb_svc_sql_row failed rc=%d\n", __func__, rc);
         }
     }
 
