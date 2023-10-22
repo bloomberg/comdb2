@@ -2368,4 +2368,15 @@ void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
 
 void thedb_set_master(char *);
 
+time_t bdb_oldest_tran_age(bdb_state_type *bdb_state);
+void bdb_txn_stats(FILE *out, bdb_state_type *bdb_state);
+
+struct bdb_active_berk_transaction {
+    int64_t tid;
+    int     age;
+    char    *lsn;
+};
+
+int bdb_txn_stats_collect(bdb_state_type *bdb_state, struct bdb_active_berk_transaction **t, int *numtrans);
+
 #endif

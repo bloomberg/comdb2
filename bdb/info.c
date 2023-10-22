@@ -50,7 +50,6 @@ extern void __test_last_checkpoint(DB_ENV *dbenv);
 extern void __pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno);
 extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
 
-static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
 static void lock_stats(FILE *out, bdb_state_type *bdb_state);
 static void rep_stats(FILE *out, bdb_state_type *bdb_state);
@@ -109,12 +108,13 @@ static void ltran_stats(FILE *out, bdb_state_type *bdb_state)
     bdb_state->dbenv->txn_dump_ltrans(bdb_state->dbenv, out, 0);
 }
 
-static void txn_stats(FILE *out, bdb_state_type *bdb_state)
+void bdb_txn_stats(FILE *out, bdb_state_type *bdb_state)
 {
     DB_TXN_STAT *stats;
     DB_TXN_ACTIVE *active;
     int i;
     char str[100];
+    time_t now = time(NULL);
 
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
 
@@ -135,14 +135,48 @@ static void txn_stats(FILE *out, bdb_state_type *bdb_state)
 
     active = stats->st_txnarray;
     for (i = 0; i < stats->st_nactive; i++) {
-        logmsgf(LOGMSG_USER, out, "active transactions:\n");
-        logmsgf(LOGMSG_USER, out, " %d %d %s\n", active->txnid, active->parentid,
-                lsn_to_str(str, &(active->lsn)));
+        if (i == 0) logmsgf(LOGMSG_USER, out, "active transactions:\n");
+        logmsgf(LOGMSG_USER, out, " %d %d %s [%d sec old]\n", active->txnid,
+                active->parentid, lsn_to_str(str, &(active->lsn)),
+                (int) (now - active->start_time));
         active++;
     }
 
     free(stats);
 }
+
+int bdb_txn_stats_collect(bdb_state_type *bdb_state, struct bdb_active_berk_transaction **t, int *numtrans) {
+    DB_TXN_STAT *stats = NULL;
+    DB_TXN_ACTIVE *active = NULL;
+    int rc = 0;
+    time_t now = time(NULL);
+    *t = NULL;
+
+    rc = bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
+    if (rc)
+        goto done;
+    struct bdb_active_berk_transaction *ret = malloc(stats->st_nactive * sizeof(struct bdb_active_berk_transaction));
+    if (ret == NULL) {
+        rc = ENOMEM;
+        goto done;
+    }
+    active = stats->st_txnarray;
+    for (int i = 0; i < stats->st_nactive; i++) {
+        ret[i].tid = active->txnid;
+        ret[i].age = now - active->start_time;
+        if (asprintf(&ret[i].lsn, "%u:%u", active->lsn.file, active->lsn.offset) == -1) {
+            rc = ENOMEM;
+            goto done;
+        }
+        active++;
+    }
+    *t = ret;
+    *numtrans = stats->st_nactive;
+done:
+    free(stats);
+    return rc;
+}
+
 
 static void log_stats(FILE *out, bdb_state_type *bdb_state)
 {
@@ -950,6 +984,7 @@ int write_del(netinfo_type *n, const char *t, char *a)
     return write_del_impl(n, t, a);
 }
 
+
 static void process_add(bdb_state_type *bdb_state, char *host)
 {
     const char *hostlist[REPMAX];
@@ -1446,7 +1481,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "truncrepdb") == 0)
         bdb_truncate_repdb(bdb_state, out);
     else if (tokcmp(tok, ltok, "txnstat") == 0)
-        txn_stats(out, bdb_state);
+        bdb_txn_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "ltranstat") == 0)
         ltran_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "sanc") == 0)
@@ -1544,7 +1579,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         logmsgf(LOGMSG_USER, out, "==========[lock_stats]==========\n");
         lock_stats(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[txn_stats]==========\n");
-        txn_stats(out, bdb_state);
+        bdb_txn_stats(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[sanc_dump]==========\n");
         sanc_dump(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[lock conflicts]==========\n");
@@ -2290,4 +2325,26 @@ int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks) {
     *nrep_deadlocks = stats->retry;
     free(stats);
     return 0;
+}
+
+time_t bdb_oldest_tran_age(bdb_state_type *bdb_state)
+{
+    DB_TXN_STAT *stats;
+    DB_TXN_ACTIVE *active;
+    int i;
+    time_t now = time(NULL);
+    int maxage = 0;
+
+    bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
+
+    active = stats->st_txnarray;
+    for (i = 0; i < stats->st_nactive; i++) {
+        time_t age = now - active->start_time;
+        if (age > maxage) maxage = age;
+        active++;
+    }
+
+    free(stats);
+
+    return maxage;
 }

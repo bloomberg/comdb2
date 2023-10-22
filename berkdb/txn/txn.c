@@ -765,6 +765,8 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 		MUTEX_THREAD_UNLOCK(dbenv, mgr->mutexp);
 	}
 
+	td->start_time = time(NULL);
+
 	return (0);
 
 err:

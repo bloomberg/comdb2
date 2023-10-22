@@ -799,6 +799,9 @@ int gbl_clean_exit_on_sigterm = 1;
 int gbl_is_physical_replicant;
 int gbl_server_admin_mode = 0;
 
+int gbl_oldest_transaction_alarm_threshold = 120;
+int gbl_oldest_transaction_alarm_freq = 600;
+
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
@@ -1130,6 +1133,7 @@ static void *purge_old_blkseq_thread(void *arg)
     struct dbenv *dbenv;
     dbenv = arg;
     int loop;
+    int last_time_complained_about_old_transaction = 0;
 
     struct thr_handle *thr_self = thrman_register(THRTYPE_PURGEBLKSEQ);
     thread_started("blkseq");
@@ -1260,6 +1264,18 @@ static void *purge_old_blkseq_thread(void *arg)
 
         if ((loop % 30) == 0 && gbl_verify_dbreg)
             bdb_verify_dbreg(dbenv->bdb_env);
+
+        time_t oldest_tran_age = bdb_oldest_tran_age(dbenv->bdb_env);
+        time_t now = time(NULL);
+        if (oldest_tran_age > gbl_oldest_transaction_alarm_threshold) {
+            if (now - last_time_complained_about_old_transaction >
+                gbl_oldest_transaction_alarm_freq) {
+                last_time_complained_about_old_transaction = now;
+                logmsg(LOGMSG_WARN,
+                       "Suspiciously old transactions in the system:\n");
+                bdb_txn_stats(stderr, dbenv->bdb_env);
+            }
+        }
 
         sleep(1);
     }

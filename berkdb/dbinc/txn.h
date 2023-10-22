@@ -70,6 +70,7 @@ typedef struct __txn_detail {
 	u_int32_t gtrid;		/* gtrid_length from XID */
 	int32_t format;			/* XA format */
 	pthread_t tid;
+	time_t start_time;
 } TXN_DETAIL;
 
 /*

@@ -206,6 +206,7 @@ __txn_stat(dbenv, statp, flags)
 		if ((stats->st_txnarray[ndx].xa_status = txnp->xa_status) != 0)
 			memcpy(stats->st_txnarray[ndx].xid,
 				txnp->xid, DB_XIDDATASIZE);
+				stats->st_txnarray[ndx].start_time = txnp->start_time;
 	}
 
 	stats->st_region_wait = mgr->reginfo.rp->mutex.mutex_set_wait;
