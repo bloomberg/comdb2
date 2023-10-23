@@ -856,22 +856,42 @@ proc do_test {name cmd expected} {
   if {[catch {uplevel #0 "$cmd;\n"} result]} {
     puts "\nError: $result $cmd"
     fail_test $name
-  #AZ
-  flush stdout
-  #exit 1
+  } elseif {[regexp {^[~#]?/.*/$} $expected]} {
+    if {[string index $expected 0]=="~"} {
+      set re [string range $expected 2 end-1]
+      if {[string index $re 0]=="*"} {
+        # If the regular expression begins with * then treat it as a glob instead
+        set ok [string match $re $result]
+      } else {
+        set re [string map {# {[-0-9.]+}} $re]
+        set ok [regexp $re $result]
+      }
+      set ok [expr {!$ok}]
+    } else {
+      set re [string range $expected 1 end-1]
+      if {[string index $re 0]=="*"} {
+        # If the regular expression begins with * then treat it as a glob instead
+        set ok [string match $re $result]
+      } else {
+        set re [string map {# {[-0-9.]+}} $re]
+        set ok [regexp $re $result]
+      }
+    }
+    if { $ok == 1 } {
+      puts "Ok"
+    } else {
+      fail_test $name
+    }
   } elseif {[string compare $result $expected]} {
     puts "\nExpected: \[$expected\]\n     Got: \[$result\]"
     fail_test $name
-  #AZ
-  flush stdout
-  #exit 1
   } else {
     puts " Ok"
   }
   flush stdout
 }
     
-proc do_execsql_test {testname sql result} {
+proc do_execsql_test {testname sql {result {}}} {
   set r {}
   foreach x $result {lappend r $x}
   uplevel do_test $testname [list "execsql {$sql}"] [list $r]
@@ -1788,6 +1808,7 @@ proc ifcapable {expr code {else ""} {elsecode ""}} {
   #regsub -all {[a-z_0-9]+} $expr {$::sqlite_options(&)} e2
   #set e2 [fix_ifcapable_expr $expr]
   switch $expr {
+    view -
     update_delete_limit -
     explain -
     or_opt -

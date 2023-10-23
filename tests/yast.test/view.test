@@ -34,6 +34,7 @@ do_test view-1.0 {
 do_test view-1.1 {
   execsql {
     #BEGIN;
+    DROP VIEW IF EXISTS v1;
     CREATE VIEW IF NOT EXISTS v1 AS SELECT a,b FROM t1;
     SELECT * FROM v1 ORDER BY a;
   }

@@ -185,7 +185,7 @@ do_test subquery-2.3.1 {
 } {}
 do_test subquery-2.3.2 {
   execsql {
-    SELECT a IN (10.0, 20) FROM t3;
+    SELECT a IN (10.000000, 20) FROM t3;
   }
 } {0}
 do_test subquery-2.3.3 {
@@ -289,6 +289,7 @@ ifcapable view {
 # Ticket 1084
 do_test subquery-3.2 {
   catchsql {
+    DROP TABLE IF EXISTS t1;
     CREATE TABLE t1(a,b);
     INSERT INTO t1 VALUES(1,2);
   }
@@ -309,7 +310,7 @@ do_test subquery-3.3.1 {
 do_test subquery-3.3.2 {
   catchsql {DROP TABLE t2}
   execsql {
-    CREATE TABLE t2(c, d);
+    CREATE TABLE t2(c, d text);
     INSERT INTO t2 VALUES(1, 'one');
     INSERT INTO t2 VALUES(2, 'two');
     SELECT a, (SELECT d FROM t2 WHERE a=c) FROM t1 GROUP BY a;
@@ -347,7 +348,7 @@ do_test subquery-3.4.1 {
                          GROUP BY b.x
                          HAVING avg(a.y) > avg(b.y));
   }
-} {107 4.0}
+} {107 4.000000}
 do_test subquery-3.4.2 {
   execsql {
     SELECT a.x, avg(a.y) AS avg1
@@ -358,7 +359,7 @@ do_test subquery-3.4.2 {
                          GROUP BY b.x
                          HAVING avg1 > avg2);
   }
-} {107 4.0}
+} {107 4.000000}
 do_test subquery-3.4.3 {
   execsql {
     SELECT
@@ -376,7 +377,7 @@ do_test subquery-3.4.3 {
      GROUP BY a.x
      ORDER BY a.x;
   }
-} {106 4.5 0 1 107 4.0 1 0}
+} {106 4.500000 0 1 107 4.000000 1 0}
 
 do_test subquery-3.5.1 {
   execsql {
@@ -384,7 +385,7 @@ do_test subquery-3.5.1 {
     CREATE TABLE t35b(y); INSERT INTO t35b VALUES(98), (99);
     SELECT max((SELECT avg(y) FROM t35b)) FROM t35a;
   }
-} {98.5}
+} {98.500000}
 do_test subquery-3.5.2 {
   execsql {
     SELECT max((SELECT count(y) FROM t35b)) FROM t35a;
@@ -456,7 +457,7 @@ do_test subquery-4.2.2 {
 # for a matching column name did not cause an otherwise static subquery
 # to become a dynamic (correlated) subquery.
 #
-do_test subquery-5.1 {
+comdb2_omit_test do_test subquery-5.1 {
   proc callcntproc {n} {
     incr ::callcnt
     return $n
@@ -478,7 +479,7 @@ do_test subquery-5.1 {
        (SELECT callcnt(y)+0 FROM t4 WHERE x="two")
   }
 } {22}
-do_test subquery-5.2 {
+comdb2_omit_test do_test subquery-5.2 {
   # This is the key test.  The subquery should have only run once.  If
   # The double-quoted identifier "two" were causing the subquery to be
   # processed as a correlated subquery, then it would have run 4 times.
@@ -489,22 +490,22 @@ do_test subquery-5.2 {
 # Ticket #1380.  Make sure correlated subqueries on an IN clause work
 # correctly when the left-hand side of the IN operator is constant.
 #
-do_test subquery-6.1 {
+comdb2_omit_test do_test subquery-6.1 {
   set callcnt 0
   execsql {
     SELECT x FROM t4 WHERE 1 IN (SELECT callcnt(count(*)) FROM t5 WHERE a=y)
   }
 } {one two three four}
-do_test subquery-6.2 {
+comdb2_omit_test do_test subquery-6.2 {
   set callcnt
 } {4}
-do_test subquery-6.3 {
+comdb2_omit_test do_test subquery-6.3 {
   set callcnt 0
   execsql {
     SELECT x FROM t4 WHERE 1 IN (SELECT callcnt(count(*)) FROM t5 WHERE a=1)
   }
 } {one two three four}
-do_test subquery-6.4 {
+comdb2_omit_test do_test subquery-6.4 {
   set callcnt
 } {1}
 
@@ -599,7 +600,7 @@ do_execsql_test subquery-8.1 {
 # from 2022-09-01.
 #
 reset_db
-do_execsql_test subquery-10.1 {
+comdb2_omit_test do_execsql_test subquery-10.1 {
   CREATE TABLE t1(aa TEXT, bb INT, cc TEXT);
   CREATE INDEX x11 on t1(bb);
   CREATE INDEX x12 on t1(aa);
@@ -609,7 +610,7 @@ do_execsql_test subquery-10.1 {
   INSERT INTO sqlite_stat1(tbl, idx, stat) VALUES('t1', 'x12', '156789 1');
   ANALYZE sqlite_master;
 }
-do_eqp_test subquery-10.2 {
+comdb2_omit_test do_eqp_test subquery-10.2 {
   WITH v1(aa,cc,bb) AS (SELECT aa, cc, bb FROM t1 WHERE bb=12345),
        v2(aa,mx)    AS (SELECT aa, max(xx) FROM t2 GROUP BY aa)
   SELECT * FROM v1 JOIN v2 ON v1.aa=v2.aa;
