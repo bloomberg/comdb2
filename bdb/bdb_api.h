@@ -1356,6 +1356,7 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *offset);
 
 int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran);
+int bdb_set_tran_fop_noblock(bdb_state_type *bdb_state, tran_type *tran);
 
 void bdb_set_tran_verify_updateid(tran_type *tran);
 

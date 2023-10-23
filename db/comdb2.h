@@ -2046,6 +2046,7 @@ void tran_dump(struct long_trn_stat *tstats);
 /* transactional stuff */
 int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_sc_fop(struct ireq *, tran_type **out);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             int retries);
 int trans_start_logical(struct ireq *, tran_type **out);
