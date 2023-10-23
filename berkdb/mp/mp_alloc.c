@@ -135,6 +135,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	dbenv->txn_stat(dbenv, &txn_stats, 0);
    
 	logmsgf(LOGMSG_USER, out, "st_last_ckp: %u:%u\n",  txn_stats->st_last_ckp.file, txn_stats->st_last_ckp.offset);
+	logmsgf(LOGMSG_USER, out, "st_ckp_lsn: %u:%u\n",  txn_stats->st_ckp_lsn.file, txn_stats->st_ckp_lsn.offset);
 	logmsgf(LOGMSG_USER, out, "st_time_ckp: %lu\n", txn_stats->st_time_ckp);
 	logmsgf(LOGMSG_USER, out, "st_last_txnid: %u\n", txn_stats->st_last_txnid);
 	logmsgf(LOGMSG_USER, out, "st_maxtxns: %u\n", txn_stats->st_maxtxns);

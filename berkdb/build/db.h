@@ -278,6 +278,7 @@ struct __db_trigger_subscription;
 #define DB_TXN_DONT_GET_REPO_MTX   0x0080000 /* Get the repo mutex on this commit */
 #define DB_TXN_SCHEMA_LOCK         0x0100000 /* Get the schema-lock */
 #define DB_TXN_LOGICAL_GEN         0x0200000 /* Contains generation info (txn_regop_rl) */
+#define DB_TXN_FOP_NOBLOCK         0x0400000 /* Don't block on fop operations */
 /*
  * Flags private to DB_ENV->set_encrypt.
  */
@@ -1063,6 +1064,7 @@ struct __db_txn {
 #define	TXN_RESTORED	0x080		/* Transaction has been restored. */
 #define	TXN_SYNC	0x100		/* Sync on prepare and commit. */
 #define	TXN_RECOVER_LOCK	0x200 /* Transaction holds the recovery lock */
+#define TXN_FOP_NOBLOCK		0x400 /* Dont block on fop transactions */
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */
@@ -1098,6 +1100,7 @@ struct __db_txn_active {
 
 struct __db_txn_stat {
 	DB_LSN	  st_last_ckp;		/* lsn of the last checkpoint */
+	DB_LSN	  st_ckp_lsn;		/* ckp-lsn of last checkpoint */
 	time_t	  st_time_ckp;		/* time of last checkpoint */
 	u_int32_t st_last_txnid;	/* last transaction id given out */
 	u_int32_t st_maxtxns;		/* maximum txns possible */
@@ -2537,6 +2540,7 @@ struct __db_env {
 	/* overrides for minwrite deadlock */
 	int (*set_deadlock_override) __P((DB_ENV *, u_int32_t));
 	int (*set_tran_lowpri) __P((DB_ENV *, u_int32_t));
+	int (*set_tran_fop_noblock) __P((DB_ENV *, DB_TXN *tid));
 	int master_use_minwrite_ever;
 	int replicant_use_minwrite_noread;
 	int page_extent_size;

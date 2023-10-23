@@ -204,7 +204,7 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 		"txn_begin", flags,
 		DB_DIRTY_READ | DB_TXN_NOWAIT |
 		DB_TXN_NOSYNC | DB_TXN_SYNC | DB_TXN_RECOVERY |
-		DB_TXN_INTERNAL)) != 0)
+		DB_TXN_INTERNAL | DB_TXN_FOP_NOBLOCK)) != 0)
 		return (ret);
 	if ((ret = __db_fcchk(dbenv,
 		"txn_begin", flags, DB_TXN_NOSYNC, DB_TXN_SYNC)) != 0)

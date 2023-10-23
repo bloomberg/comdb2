@@ -1283,7 +1283,7 @@ static void *purge_old_files_thread(void *arg)
         /* ok, get to work now */
         retries = 0;
     retry:
-        rc = trans_start_sc(&iq, NULL, &trans);
+        rc = trans_start_sc_fop(&iq, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: failed to create transaction\n", __func__);
             sleep(empty_pause);

@@ -655,6 +655,10 @@ can be queried with the `stat autonalyze` command.
 |REP_VERIFY_LIMIT_ENABLED | 1 | Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.
 |TIMEPART_CHECK_SHARD_EXISTENCE | 0 | Check at startup/time partition creation that all shard files exist.
 |file_permissions | 0660 | Default filesystem permissions for database files.
+|DONT_BLOCK_DELETE_FILES_THREAD | 0 | Don't delete any files that would cause delete files thread to block
+|file_permissions | 0660 | Default filesystem permissions for database files.
+
+
 
 #### Log configuration
 

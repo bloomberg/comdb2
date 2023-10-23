@@ -175,6 +175,9 @@ static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
 
+/* Dont block when removing old files */
+int gbl_txn_fop_noblock = 0;
+
 void *get_bdb_handle(struct dbtable *db, int auxdb)
 {
     void *bdb_handle;
@@ -368,6 +371,16 @@ int trans_start_sc(struct ireq *iq, tran_type *parent_trans,
                    tran_type **out_trans)
 {
     return trans_start_int(iq, parent_trans, out_trans, 0, 0);
+}
+
+int trans_start_sc_fop(struct ireq *iq, tran_type **out_trans)
+{
+    int rc = trans_start_sc(iq, NULL, out_trans);
+    if (!rc && gbl_txn_fop_noblock) {
+        void *bdb_handle = bdb_handle_from_ireq(iq);
+        bdb_set_tran_fop_noblock(bdb_handle, (*out_trans));
+    }
+    return rc;
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
