@@ -64,7 +64,7 @@ echo "logs at: $HOSTNAME:$TMPDIR"
 RC=0
 for test in `ls $FILE`;
 do
-    echo -n "$test..."
+    echo "$test..."
     tclsh $test $DB $FILEPATH $TCLCDB2 $CDB2_CONFIG
     if [ "$?" == "0" ] ; then
         echo_color " PASS" "green"

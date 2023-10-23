@@ -202,11 +202,11 @@ foreach {tn sql} {
 #
 reset_db
 do_execsql_test 5.0 {
-  CREATE TABLE t1(x);
+  CREATE TABLE t1(x text);
   INSERT INTO t1 VALUES('ALFKI');
   INSERT INTO t1 VALUES('ANATR');
 
-  CREATE TABLE t2(y, z);
+  CREATE TABLE t2(y text, z text);
   CREATE INDEX t2y ON t2 (y);
   INSERT INTO t2 VALUES('ANATR', '1997-08-08 00:00:00');
   INSERT INTO t2 VALUES('ALFKI', '1997-08-25 00:00:00');
