@@ -265,7 +265,7 @@ static int inner_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     conn->ncols = ncols;
 
     for (i = 0; i < ncols; i++) {
-        conn->cols[i].type = get_sqlite3_column_type(clnt, stmt, i, 0, 0);
+        conn->cols[i].type = get_sqlite3_column_type(clnt, stmt, i, 0);
     }
     return 0;
 }
