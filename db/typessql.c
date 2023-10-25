@@ -123,8 +123,11 @@ static int typessql_column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, i
 static int update_column_types(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     int null_col_exists = 0;
+    int first_run = 0;
+    int type;
     typessql_t *typessql_state = clnt->typessql_state;
     if (!typessql_state->col_types) {
+        first_run = 1;
         typessql_state->col_types = malloc(typessql_state->ncols * sizeof(int));
         for (int i = 0; i < typessql_state->ncols; i++) {
             typessql_state->col_types[i] = SQLITE_NULL;
@@ -138,7 +141,21 @@ static int update_column_types(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         // not calling types column type here currently cuz this will read from queue
         int r = clnt->adapter.column_type ? clnt->adapter.column_type(clnt, stmt, i) : sqlite3_column_type(stmt, i);
         typessql_state->col_types[i] = r;
-        if (typessql_state->col_types[i] == SQLITE_NULL)
+        if (typessql_state->col_types[i] != SQLITE_NULL)
+            continue;
+
+        if (first_run) {
+            /*
+            check declared types if can't find type from first row
+            I decided to check the type of the first row and then declared type bc that is the same order that get_sqlite3_column_type uses
+            But if done in opposite order, then would be able to initialize array to sqlite3_column_decltype and have cleaner code
+            */
+            type = typestr_to_type(sqlite3_column_decltype(stmt, i));
+            if (type == SQLITE_TEXT) // assume SQLITE_TEXT means that this might be a null type, keep looking through rows
+                null_col_exists = 1;
+            else
+                typessql_state->col_types[i] = type;
+        } else
             null_col_exists = 1;
     }
 
