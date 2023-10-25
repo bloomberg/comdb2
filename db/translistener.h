@@ -192,28 +192,29 @@ int javasp_unload_procedure_int(const char *name);
 /* Check if stored procedure exists. */
 int javasp_exists(const char *name);
 
-/* Get info for qdb, suitable for comdb2_triggers */
-#include <list.h>
-typedef struct trigger_col_info trigger_col_info;
-struct trigger_col_info {
-    LINKC_T(trigger_col_info) lnk;
-    char *name;
-    int type;
-};
-typedef struct trigger_tbl_info trigger_tbl_info;
-struct trigger_tbl_info {
-    LINKC_T(trigger_tbl_info) lnk;
-    char *name;
-    LISTC_T(trigger_col_info) cols;
-};
-typedef struct {
-    LISTC_T(trigger_tbl_info) tbls;
-} trigger_info;
-void get_trigger_info(const char *, trigger_info *);
-void get_trigger_info_lk(const char *, trigger_info *);
-
 void javasp_splock_wrlock(void);
 void javasp_splock_rdlock(void);
 void javasp_splock_unlock(void);
+
+struct trigger_entry {
+  char *name;
+  char *type;
+  char *tbl_name;
+  char *event;
+  char *col;
+  char *seq;
+};
+
+struct gather_triggers_arg;
+struct gather_triggers_arg {
+    tran_type *tran;
+    char *user;
+    int(*func)(struct gather_triggers_arg *, struct trigger_entry *);
+    struct trigger_entry *entries;
+    int n;
+    int capacity;
+};
+
+int gather_triggers(struct gather_triggers_arg *);
 
 #endif
