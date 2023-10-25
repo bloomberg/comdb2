@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+
+dbname=$1
+VIEW1="testview1"
+OUT="run.log"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+
+# create the partition
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-3600)'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" >>    \$OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE create time partition"
+   exit 1
+fi
+
+# check the current partitions
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID"
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >>    \$OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE partinfo"
+   exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbname default >> $OUT <<EOF
+set transaction chunk 10000
+begin
+insert into ${VIEW1} select * from  generate_series(1,100000)
+commit
+EOF
+if (( $? != 0 )) ; then
+   echo "FAILURE insert"
+   exit 1
+fi
+
+master=$(get_master)
+
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "alter table ${VIEW1} {`cat new.csc2`}"
+cdb2sql ${CDB2_OPTIONS} $dbname default "alter table ${VIEW1} {`cat new.csc2`}" &
+
+sleep 3
+
+echo cdb2sql ${CDB2_OPTIONS} $dbname --host ${master} "exec procedure sys.cmd.send('scabort')"
+cdb2sql ${CDB2_OPTIONS} $dbname --host ${master} "exec procedure sys.cmd.send('scabort')"
+if (( $? != 0 )) ; then
+   echo "FAILURE scabort"
+   exit 1
+fi
+
+sleep 5
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('llmeta list')" | grep IN >> $OUT
+
+# we need to scrub dbname from alpha
+sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
+
+difs=`diff $OUT $OUT.alpha.actual`
+if [[ ! -z "${difs}" ]] ; then
+   echo "diff $OUT $OUT.alpha.actual"
+   echo ${difs}
+   echo "FAILURE diff"
+   exit 1
+fi
+
+echo "Success"

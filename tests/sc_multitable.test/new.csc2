@@ -1,0 +1,9 @@
+schema
+{
+    int a
+}
+
+keys
+{
+    dup "a" = a
+}
