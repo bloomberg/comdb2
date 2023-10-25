@@ -144,21 +144,23 @@ lz4_rmt=
 do_recovery=yes
 
 [ -z "$comdb2ar" ] && comdb2ar="${PREFIX}/bin/comdb2ar"
-[ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"
+[ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"  # set default lz4 path
 
 if [[ ! -x $comdb2ar ]]; then
-   comdb2ar=$(which comdb2ar 2>/dev/null)
+    comdb2ar=$(which comdb2ar 2>/dev/null)
 fi
 
+# if the lz4 executable is not on default path, use the one avaiable in PATH
 if [[ ! -x $lz4 ]]; then
-   lz4=$(which lz4 2>/dev/null)
-   if [[ -z "$lz4" ]]; then
-       ar_compress="cat"
-       ar_decompress="cat"
-   else
-       ar_compress="$lz4 stdin stdout"
-       ar_decompress="$lz4 -d stdin stdout"
-   fi
+    lz4=$(which lz4 2>/dev/null)
+fi
+
+if [[ -z "$lz4" ]]; then  # lz4 does not exist in the system
+    ar_compress="cat"
+    ar_decompress="cat"
+else                      # lz4 does exist in the system
+    ar_compress="$lz4 stdin stdout"
+    ar_decompress="$lz4 -d stdin stdout"
 fi
 
 set - `getopt "LC:ht:l:rdsSx:fmaZu:bpH:y:P:z:R" "$@"` || die
