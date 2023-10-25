@@ -38,8 +38,6 @@
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-extern pthread_mutex_t schema_change_in_progress_mutex;
-
 static char target[SIZEOF_SEQNUM];
 static int have_thread = 0;
 
@@ -114,7 +112,6 @@ static void *pushlogs_thread(void *voidarg)
             unlock_schema_lk();
             if (ret != 0) {
                 logmsg(LOGMSG_ERROR, "pushlogs_thread: failed opening meta\n");
-                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
                 Pthread_mutex_lock(&mutex);
                 have_thread = 0;
                 Pthread_mutex_unlock(&mutex);
