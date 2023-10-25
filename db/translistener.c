@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <strings.h>
 
+#include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -1410,62 +1411,56 @@ int javasp_exists(const char *name)
     return sp != NULL;
 }
 
-static void get_trigger_info_int(const char *name, trigger_info *info)
+int gbl_debug_sleep_in_trigger_info = 0;
+static int gather_triggers_lk(struct gather_triggers_arg *arg)
 {
-    listc_init(info, offsetof(trigger_tbl_info, lnk));
-    struct stored_proc *p;
-    LISTC_FOR_EACH(&stored_procs, p, lnk)
-    {
-        if (strcmp(name, p->name) == 0) break;
-    }
-    if (p == NULL) return;
-    struct sp_table *t;
-    LISTC_FOR_EACH(&p->tables, t, lnk)
-    {
-        trigger_tbl_info *i = malloc(sizeof(trigger_tbl_info));
-        i->name = strdup(t->name);
-        listc_init(&i->cols, offsetof(trigger_col_info, lnk));
-        struct sp_field *f;
-        LISTC_FOR_EACH(&t->fields, f, lnk)
-        {
-            trigger_col_info *col;
-            if (f->flags & JAVASP_TRANS_LISTEN_AFTER_ADD) {
-                col = malloc(sizeof(trigger_col_info));
-                col->name = strdup(f->name);
-                col->type = JAVASP_TRANS_LISTEN_AFTER_ADD;
-                listc_atl(&i->cols, col);
-            }
-            if (f->flags & JAVASP_TRANS_LISTEN_AFTER_DEL) {
-                col = malloc(sizeof(trigger_col_info));
-                col->name = strdup(f->name);
-                col->type = JAVASP_TRANS_LISTEN_AFTER_DEL;
-                listc_atl(&i->cols, col);
-            }
-            if (f->flags & JAVASP_TRANS_LISTEN_BEFORE_UPD) {
-                col = malloc(sizeof(trigger_col_info));
-                col->name = strdup(f->name);
-                col->type = JAVASP_TRANS_LISTEN_AFTER_UPD;
-                listc_atl(&i->cols, col);
+    if (gbl_debug_sleep_in_trigger_info && !(rand() % 5)) poll(NULL, 0, 10);
+    int bdberr;
+    struct trigger_entry e;
+    struct stored_proc *sp;
+    LISTC_FOR_EACH(&stored_procs, sp, lnk) {
+        e.name = sp->name;
+        if (strncmp(e.name, "__q", 3) == 0) e.name += 3;
+        struct dbtable *qdb = getqueuebyname(sp->name);
+        switch (dbqueue_consumer_type(qdb->consumers[0])) {
+        case CONSUMER_TYPE_LUA: e.type = "trigger"; break;
+        case CONSUMER_TYPE_DYNLUA: e.type = "consumer"; break;
+        default: continue;
+        }
+        e.seq = bdb_queuedb_has_seq(qdb->handle) ? "Y" : "N";
+        struct sp_table *tbl;
+        LISTC_FOR_EACH(&sp->tables, tbl, lnk) {
+            int rc = bdb_check_user_tbl_access_tran(thedb->bdb_env, arg->tran, arg->user, qdb->tablename, ACCESS_READ, &bdberr);
+            if (rc) continue;
+            e.tbl_name = tbl->name;
+            struct sp_field *col;
+            LISTC_FOR_EACH(&tbl->fields, col, lnk) {
+                e.col = col->name;
+                if (col->flags & JAVASP_TRANS_LISTEN_AFTER_ADD) {
+                    e.event = "add";
+                    rc = arg->func(arg, &e);
+                    if (rc) return rc;
+                }
+                if (col->flags & JAVASP_TRANS_LISTEN_AFTER_DEL) {
+                    e.event = "del";
+                    rc = arg->func(arg, &e);
+                    if (rc) return rc;
+                }
+                if (col->flags & JAVASP_TRANS_LISTEN_AFTER_UPD) {
+                    e.event = "upd";
+                    rc = arg->func(arg, &e);
+                    if (rc) return rc;
+                }
             }
         }
-        listc_atl(info, i);
     }
+    return 0;
 }
 
-#include <sys/poll.h>
-int gbl_debug_sleep_in_trigger_info = 0;
-
-void get_trigger_info_lk(const char *name, trigger_info *info)
-{
-    if (gbl_debug_sleep_in_trigger_info && !(rand() % 5)) {
-        poll(NULL, 0, 10);
-    }
-    get_trigger_info_int(name, info);
-}
-
-void get_trigger_info(const char *name, trigger_info *info)
+int gather_triggers(struct gather_triggers_arg *arg)
 {
     SP_READLOCK();
-    get_trigger_info_lk(name, info);
+    int rc = gather_triggers_lk(arg);
     SP_RELLOCK();
+    return rc;
 }

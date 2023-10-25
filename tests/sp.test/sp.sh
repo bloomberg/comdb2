@@ -755,11 +755,11 @@ cdb2sql $SP_OPTIONS "exec procedure gen('foraudit', 500)"
 cdb2sql $SP_OPTIONS "delete from foraudit where 1"
 sleep 20 # Wait for queues to drain
 cdb2sql $SP_OPTIONS - <<'EOF'
-select * from comdb2_triggers order by name, type, tbl_name, event
+select * from comdb2_triggers order by name, type, tbl_name, event, col
 drop lua trigger audit
 drop lua consumer cons0
 drop lua consumer cons1
-select * from comdb2_triggers order by name, type, tbl_name, event
+select * from comdb2_triggers order by name, type, tbl_name, event, col
 select added_by, type, count(*) from audit group by added_by, type
 EOF
 wait
@@ -779,7 +779,7 @@ create procedure a {local function main() end}$$
 create procedure b {local function main() end}$$
 create lua trigger a on (table for_trigger1 for insert and update and delete),(table for_trigger2 for insert and update and delete)
 create lua consumer b on (table for_trigger1 for insert of i, j and update of j and delete of i, j, k),(table for_trigger2 for insert of c,b,a and update of c,b and delete of c)
-select * from comdb2_triggers order by name, type, tbl_name, event
+select * from comdb2_triggers order by name, type, tbl_name, event, col
 EOF
 
 cdb2sql $SP_OPTIONS "select name, version, client_versioned, \"default\" from comdb2_procedures order by name, version, client_versioned, \"default\""

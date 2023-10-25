@@ -132,8 +132,6 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_queues", &systblQueuesModule, 0);
   if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_triggers", &systblTriggersModule, 0);
-  if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_keywords", &systblKeywordsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_limits", &systblLimitsModule, 0);
@@ -224,6 +222,8 @@ int comdb2SystblInit(
     rc = systblMemstatsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTransactionStateInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTriggersInit(db);
   if (rc == SQLITE_OK)  
     rc = systblStacks(db);
 #ifdef INCLUDE_DEBUG_ONLY_SYSTABLES
