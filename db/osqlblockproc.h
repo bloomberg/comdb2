@@ -67,11 +67,6 @@ extern int gbl_time_osql;
 blocksql_tran_t *osql_bplog_create(int is_uuid, int is_reorder);
 
 /**
- * Apply all schema changes
- */
-int osql_bplog_schemachange(struct ireq *iq);
-
-/**
  * Apply all the bplog updates
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,

@@ -1261,9 +1261,19 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     if (rc)
         csc2_free_all();
 
-    if (rc) {
-        /* free schema changes that have finished without marking schema change
-         * over in llmeta so new master can resume properly */
+
+    if (rc && !iq->sc_should_abort) {
+        /* IFF the schema changes are NOT aborted, clean in-mem structures but
+         * leave persistent and replicated changes (llmeta, new btree-s) so
+         * that a new master/resume will pick it up later
+         * NOTE: this clears iq->sc_pending, obviously (sc-s are freed), so
+         * the rest of schema change code -finalize, callback hooks- do NOT
+         * trigger anymore (they should not, they will do it when future resume
+         * finishes)
+         * NOTE2: if sc_should_abort is set, the bplog writer will call 
+         * backout_schema_change and sc_abort callback, which they will 
+         * clear any persistent and in-mem structures 
+         */
         struct schema_change_type *next;
         sc = iq->sc_pending;
         while (sc != NULL) {
