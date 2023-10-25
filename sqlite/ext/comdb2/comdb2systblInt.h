@@ -29,7 +29,6 @@ extern const sqlite3_module systblTblSizeModule;
 extern const sqlite3_module systblSPsModule;
 extern const sqlite3_module systblUsersModule;
 extern const sqlite3_module systblQueuesModule;
-extern const sqlite3_module systblTriggersModule;
 extern const sqlite3_module systblKeywordsModule;
 extern const sqlite3_module systblLimitsModule;
 extern const sqlite3_module systblTunablesModule;
@@ -55,6 +54,7 @@ extern sqlite3_module systblTablePermissionsModule;
 extern sqlite3_module systblSystabPermissionsModule;
 extern sqlite3_module systblTimepartPermissionsModule;
 
+int systblTriggersInit(sqlite3 *);
 int systblTablesInit(sqlite3 *db);
 int systblColumnsInit(sqlite3 *db);
 int systblKeysInit(sqlite3 *db);

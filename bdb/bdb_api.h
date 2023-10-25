@@ -2366,5 +2366,6 @@ void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
 #endif
 
 void thedb_set_master(char *);
+int bdb_queuedb_has_seq(bdb_state_type *);
 
 #endif
