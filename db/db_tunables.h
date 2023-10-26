@@ -2468,4 +2468,8 @@ REGISTER_TUNABLE("noleader_retry_poll_ms",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2api. (Default: none)",
                 TUNABLE_STRING, &gbl_cdb2api_policy_override, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("always_load_preupd_blobs", "For update triggers, always load pre-update blob values. (Default: on)", 
+                TUNABLE_BOOLEAN, &gbl_always_load_preupd_blobs, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
