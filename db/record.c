@@ -84,6 +84,7 @@ void free_cached_idx(uint8_t * *cached_idx);
     } while (0);
 
 int gbl_max_wr_rows_per_txn = 0;
+int gbl_always_load_preupd_blobs = 1;
 
 static inline int is_event_from_sc(int flags)
 {
@@ -1000,7 +1001,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
      * Handle deadlock correctly.
      */
     if (!(flags & RECFLAGS_NO_TRIGGERS) &&
-        javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_SAVE_BLOBS_UPD)) {
+        (gbl_always_load_preupd_blobs || javasp_trans_care_about(iq->jsph, JAVASP_TRANS_LISTEN_SAVE_BLOBS_UPD))) {
+        // translistener.c always packs pre, even if the config didn't request it.
+        // Always load old blobs.
         rc = save_old_blobs(iq, trans, ".ONDISK", old_dta, rrn, vgenid,
                             oldblobs);
         if (rc != 0) {
