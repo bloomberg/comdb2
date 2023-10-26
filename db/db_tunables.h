@@ -2101,5 +2101,8 @@ REGISTER_TUNABLE("fdb_io_error_retries_phase_2_poll",
                  "Poll initial value for slow retries in phase 2; doubled for each retry", TUNABLE_INTEGER,
                  &gbl_fdb_io_error_retries_phase_2_poll, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("always_load_preupd_blobs", "For update triggers, always load pre-update blob values. (Default: on)",
+                TUNABLE_BOOLEAN, &gbl_always_load_preupd_blobs, 0, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
