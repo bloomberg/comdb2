@@ -3653,6 +3653,7 @@ extern int gbl_throttle_txn_chunks_msec;
 extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_fail_client_write_lock;
 extern int gbl_server_admin_mode;
+extern int gbl_always_load_preupd_blobs;
 
 void csc2_free_all(void);
 
