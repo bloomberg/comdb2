@@ -1306,7 +1306,6 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
     int rc;
 
     init_schemachange_type(&sc);
-    strncpy0(sc.tablename, tableName, MAXTABLELEN);
     sc.onstack = 1;
     sc.kind = SC_TRUNCATETABLE;
     sc.nothrevent = 1;
@@ -1314,6 +1313,18 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
     sc.finalize = 1;
     sc.is_osql = 1;
     sc.newpartition = partition;
+
+
+    /* use real table name, not the sql alias */
+    struct dbtable *table = get_dbtable_by_name(tableName);
+    if (!table) {
+        logmsg(LOGMSG_ERROR, "%s: table not found: %s\n", __func__,
+               tableName);
+        errstat_set_rcstrf(xerr, SC_CSC2_ERROR,
+                           "Table %s not found", tableName);
+        return xerr->errval;
+    }
+    strncpy0(sc.tablename, table->tablename, MAXTABLELEN);
 
     /* note: we need to read csc2 non-transactionally, otherwise we
      * self-deadlock with the do_ddl
