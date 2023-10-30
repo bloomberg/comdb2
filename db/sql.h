@@ -923,6 +923,7 @@ struct sqlclntstate {
     replay_func *recover_ddlk_fail;
     unsigned skip_eventlog: 1;
     unsigned request_fp: 1;
+    unsigned dohsql_disable: 1;
 
     char *sqlengine_state_file;
     int sqlengine_state_line;

@@ -181,8 +181,7 @@ static int db_reset(Lua);
 static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
-static int recover_ddlk_sp(struct sqlclntstate *);
-static void *recover_ddlk_fail_sp(struct sqlclntstate *, void *);
+static void setup_clnt_for_sp(struct sqlclntstate *);
 
 static const int dbq_delay_ms = 1000; // ms
 
@@ -3232,8 +3231,7 @@ static int db_create_thread_int(Lua lua, const char *funcname)
     clnt->exec_lua_thread = 1;
     clnt->dbtran.trans_has_sp = 1;
     clnt->queue_me = 1;
-    clnt->recover_ddlk = recover_ddlk_sp;
-    clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
+    setup_clnt_for_sp(clnt);
     clnt->done_cb = thread_dispatch_failed;
     strcpy(clnt->tzname, parent_clnt->tzname);
     Pthread_mutex_init(&dbthd->lua_thread_mutex, NULL);
@@ -3961,6 +3959,14 @@ static void *recover_ddlk_fail_sp(struct sqlclntstate *clnt, void *arg)
     sqlite3_mutex_leave(sqlite3_db_mutex(sp->thd->sqldb));
     return NULL;
 }
+
+static void setup_clnt_for_sp(struct sqlclntstate *clnt)
+{
+    clnt->recover_ddlk = recover_ddlk_sp;
+    clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
+    clnt->dohsql_disable = 1;
+}
+
 
 static int db_udf_error(Lua L)
 {
@@ -7299,8 +7305,7 @@ void *exec_trigger(char *spname)
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
     clnt.thd = &thd;
-    clnt.recover_ddlk = recover_ddlk_sp;
-    clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
+    setup_clnt_for_sp(&clnt);
 
     get_curtran(thedb->bdb_env, &clnt);
 
@@ -7338,13 +7343,14 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)
 {
     clnt->ready_for_heartbeats = 1;
-    clnt->recover_ddlk = recover_ddlk_sp;
-    clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
     int osql_max_trans = clnt->osql_max_trans;
+    int dohsql_disable = clnt->dohsql_disable;
+    setup_clnt_for_sp(clnt);
     int rc = exec_procedure_int(thd, clnt, err, 0);
     clnt->osql_max_trans = osql_max_trans;
     clnt->recover_ddlk = NULL;
     clnt->recover_ddlk_fail = NULL;
+    clnt->dohsql_disable = dohsql_disable;
     if (clnt->sp) {
         reset_sp(clnt->sp);
     }
