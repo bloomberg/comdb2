@@ -537,22 +537,19 @@ static int get_high_availability(struct sqlclntstate *clnt)
 
 int has_parallel_sql(struct sqlclntstate *clnt)
 {
-    struct sql_thread *thd = NULL;
 
     if (!clnt) {
-        thd = pthread_getspecific(query_info_key);
-        if (thd)
-            clnt = thd->clnt;
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        if (thd) clnt = thd->clnt;
     }
     /* disable anything involving shared shadows;
        recom requires a read-only share;
        snapisol and serializable requires a read-write share
     */
-    if (!clnt || clnt->dbtran.mode != TRANLEVEL_SOSQL)
+    if (!clnt || clnt->dbtran.mode != TRANLEVEL_SOSQL || clnt->dohsql_disable)
         return 0;
 
-    return clnt && clnt->plugin.has_parallel_sql &&
-           clnt->plugin.has_parallel_sql(clnt);
+    return clnt && clnt->plugin.has_parallel_sql && clnt->plugin.has_parallel_sql(clnt);
 }
 
 static void setup_client_info(struct sqlclntstate *clnt, struct sqlthdstate *thd, char *replay)
