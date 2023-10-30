@@ -176,12 +176,25 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
     return SC_OK;
 }
 
+static const char *qtype(struct dbtable *db)
+{
+    switch (dbqueue_consumer_type(db->consumers[0])) {
+    case CONSUMER_TYPE_LUA: return "trigger";
+    case CONSUMER_TYPE_DYNLUA: return "consumer";
+    default: return "???";
+    }
+}
+
+static const char *pretty_qname(const char *q)
+{
+    if (strncmp(q, "__q", 3) == 0) return q + 3;
+    return q;
+}
+
 /* We are on on replicant, being called from scdone.  just create local
- * structures (db/consumer).
- * Lots of this code is in common with master, maybe call this from
- * perform_trigger_update()? */
-int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
-                                     scdone_t type)
+ * structures (db/consumer). Lots of this code is in common with master, maybe
+ * call this from perform_trigger_update()? */
+int perform_trigger_update_replicant(tran_type *tran, const char *queue_name, scdone_t type)
 {
     struct dbtable *db = NULL;
     int rc;
@@ -258,6 +271,7 @@ int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
             rc = -1;
             goto done;
         }
+        logmsg(LOGMSG_USER, "Replicant adding %s:%s\n", qtype(db), pretty_qname(queue_name));
     } else if (type == llmeta_queue_alter) {
         db = getqueuebyname(queue_name);
         if (db == NULL) {
@@ -285,7 +299,6 @@ int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
             rc = -1;
             goto done;
         }
-
     } else if (type == llmeta_queue_drop) {
         /* get us out of database list */
         db = getqueuebyname(queue_name);
@@ -296,6 +309,7 @@ int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
             goto done;
         }
 
+        logmsg(LOGMSG_USER, "Replicant dropping %s:%s\n", qtype(db), pretty_qname(queue_name));
         rc = bdb_queue_consumer(db->handle, 0, 0, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -466,14 +480,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     if (sc->kind != SC_DEL_TRIGGER && (rc = check_option_queue_coherency(sc, db)))
         goto done;
 
-    /* TODO: other checks: procedure with this name must not exist either */
-
-    char **dests = NULL;
-
+    /* For addding, there's no queue and no consumer/procedure, etc., so create
+     * those first. For other methods, we need to manage the existing consumer
+     * first. */
     if (sc->kind == SC_ADD_TRIGGER) {
-        struct dest *d;
-
-        dests = calloc(sc->dests.count, sizeof(char *));
+        char **dests = calloc(sc->dests.count, sizeof(char *));
         if (dests == NULL) {
             sbuf2printf(sb, "!Can't allocate memory for destination list\n");
             logmsg(LOGMSG_ERROR,
@@ -481,45 +492,35 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
         int i;
+        struct dest *d;
         for (i = 0, d = sc->dests.top; d; d = d->lnk.next, i++)
             dests[i] = d->dest;
 
-        /* check first - backing things out gets difficult once we've done
-         * things */
+        /* check first - backing things out gets difficult once we've done things */
         if (dbqueuedb_check_consumer(dests[0])) {
-            sbuf2printf(sb,
-                        "!Can't load procedure - check config/destinations?\n");
+            sbuf2printf(sb, "!Can't load procedure - check config/destinations?\n");
             sbuf2printf(sb, "FAILED\n");
             rc = -1;
             goto done;
         }
-    }
 
-    /* For addding, there's no queue and no consumer/procedure, etc., so create
-     * those first.  For
-     * other methods, we need to manage the existing consumer first. */
-    if (sc->kind == SC_ADD_TRIGGER) {
         rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
                                   sc->dests.count, dests, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n",
-                   __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n", __func__, rc);
             goto done;
         }
 
         scdone_type = llmeta_queue_add;
 
-        db = newqdb(thedb, sc->tablename, 65536 /* TODO: pass from comdb2sc? */,
-                    65536, 1);
+        db = newqdb(thedb, sc->tablename, 65536, 65536, 1);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: newqdb returned NULL\n", __func__);
             goto done;
         }
 
-        /* I am master: create new db */
-        db->handle =
-            bdb_create_queue_tran(tran, db->tablename, thedb->basedir, 65536,
-                                  65536, thedb->bdb_env, 1, &bdberr);
+        db->handle = bdb_create_queue_tran(tran, db->tablename, thedb->basedir, 65536, 65536,
+                                           thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -552,8 +553,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         db->odh = sc->headers;
-        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
-                                  sc->persistent_seq);
+        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress, sc->persistent_seq);
 
         /* create a procedure (needs to go away, badly) */
         rc = javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
@@ -564,10 +564,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        /* create a consumer for this guy */
-        /* TODO: needs locking */
-        rc = dbqueuedb_add_consumer(
-            db, 0, dests[0] /* TODO: multiple destinations */, 0);
+        rc = dbqueuedb_add_consumer(db, 0, dests[0], 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: newqdb returned NULL\n", __func__);
             goto done;
@@ -576,11 +573,13 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = bdb_queue_consumer(db->handle, 0, 1, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR,
-                   "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
-                   __func__, rc, bdberr);
+                   "%s: bdb_queue_consumer returned rc %d bdberr %d\n", __func__, rc, bdberr);
             goto done;
         }
+
+        logmsg(LOGMSG_USER, "Adding %s:%s\n", qtype(db), pretty_qname(sc->tablename));
     } else if (sc->kind == SC_DEL_TRIGGER) {
+        logmsg(LOGMSG_USER, "Dropping %s:%s\n", qtype(db), pretty_qname(sc->tablename));
         scdone_type = llmeta_queue_drop;
         /* stop */
         dbqueuedb_stop_consumers(db);
@@ -588,16 +587,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* get us out of llmeta */
         rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n",
-                   __func__, rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n", __func__, rc, bdberr);
             goto done;
         }
 
         /* close */
         rc = bdb_close_only_sc(db->handle, tran, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
-                   __func__, rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n", __func__, rc, bdberr);
             goto done;
         }
 
