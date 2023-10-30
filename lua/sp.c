@@ -63,8 +63,9 @@
 #include <tohex.h>
 #include <ctrace.h>
 #include <bb_oscompat.h>
-#include "comdb2_atomic.h"
-#include "sql_stmt_cache.h"
+#include <comdb2_atomic.h>
+#include <sql_stmt_cache.h>
+#include <debug_switches.h>
 
 #ifdef WITH_RDKAFKA    
 
@@ -3935,6 +3936,7 @@ static struct dbtable *find_and_lock_queue_table(Lua L)
 
 static int recover_ddlk_sp(struct sqlclntstate *clnt)
 {
+    if (debug_switch_recover_ddlk_sp_delay()) sleep(3);
     SP sp = clnt->sp;
     if (!sp) return 0;
     dbstmt_t *dbstmt, *tmp;
