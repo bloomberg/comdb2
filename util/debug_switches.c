@@ -81,6 +81,7 @@ static struct debug_switches {
     int convert_record_sleep;
     int abort_ufid_open;
     int bdb_handle_reset_delay;
+    int recover_ddlk_sp_delay;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -141,6 +142,8 @@ int init_debug_switches(void)
     debug_switches.convert_record_sleep = 0;
     debug_switches.abort_ufid_open = 0;
     debug_switches.bdb_handle_reset_delay = 0;
+
+    register_debug_switch("recover_ddlk_sp_delay", &debug_switches.recover_ddlk_sp_delay);
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -484,4 +487,8 @@ int debug_switch_abort_ufid_open(void)
 int debug_switch_bdb_handle_reset_delay(void)
 {
     return debug_switches.bdb_handle_reset_delay;
+}
+int debug_switch_recover_ddlk_sp_delay(void)
+{
+    return debug_switches.recover_ddlk_sp_delay;
 }
