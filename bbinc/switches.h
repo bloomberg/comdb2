@@ -43,7 +43,8 @@ void cleanup_switches();
 void int_on_fn(void *context);
 void int_off_fn(void *context);
 int int_stat_fn(void *context);
-void register_int_switch(const char *name, const char *descr, int *flag);
+void register_int_switch(const char *name, const char *descr, int *ptr);
+void register_debug_switch(const char *name, int *ptr);
 
 void switch_status(void);
 

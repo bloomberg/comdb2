@@ -44,9 +44,9 @@ static struct switch_type *switches = NULL;
 static int num_switches = 0;
 int maxnamelen = 0;
 
-void register_switch(const char *name, const char *descr, switch_on_fn on_fn,
-                     switch_off_fn off_fn, switch_stat_fn stat_fn,
-                     void *context)
+static void register_switch_flags(const char *name, const char *descr, switch_on_fn on_fn,
+                                  switch_off_fn off_fn, switch_stat_fn stat_fn, void *context,
+                                  int flags)
 {
     struct switch_type *p;
     int len;
@@ -76,8 +76,14 @@ void register_switch(const char *name, const char *descr, switch_on_fn on_fn,
         maxnamelen = len;
     }
 
-    REGISTER_TUNABLE((char *)name, (char *)descr, TUNABLE_BOOLEAN, context,
-                     NOARG, NULL, NULL, NULL, NULL);
+    REGISTER_TUNABLE((char *)name, (char *)descr, TUNABLE_BOOLEAN, context, flags, NULL, NULL, NULL, NULL);
+}
+
+void register_switch(const char *name, const char *descr, switch_on_fn on_fn,
+                     switch_off_fn off_fn, switch_stat_fn stat_fn,
+                     void *context)
+{
+    register_switch_flags(name, descr, on_fn, off_fn, stat_fn, context, NOARG);
 }
 
 void cleanup_switches()
@@ -113,9 +119,14 @@ int int_stat_fn(void *context)
     return *((const int *)context);
 }
 
-void register_int_switch(const char *name, const char *descr, int *flag)
+void register_int_switch(const char *name, const char *descr, int *ptr)
 {
-    register_switch(name, descr, int_on_fn, int_off_fn, int_stat_fn, flag);
+    register_switch(name, descr, int_on_fn, int_off_fn, int_stat_fn, ptr);
+}
+
+void register_debug_switch(const char *name, int *ptr)
+{
+    register_switch_flags(name, "", int_on_fn, int_off_fn, int_stat_fn, ptr, NOARG | INTERNAL);
 }
 
 void switch_status(void)
