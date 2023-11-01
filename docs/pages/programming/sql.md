@@ -662,7 +662,7 @@ are different, for example.  Consult the table below for a list.  New functions 
 |regexp(A,B) <br/> B regexp A      | <a id="replace"/>Returns `1` if string B matches the regular expression A. `0` is returned otherwise. |
 |replace(X,Y,Z)                    | <a id="replace"/>Return a string formed by substituting string Z for every occurrence of string Y in string X. If Y is an empty string then return X unchanged. If Z is not initially a string, it is cast to a UTF-8 string prior to processing. |
 |round(X) <br/> round(X,Y)         | <a id="round"/>Round off the number X to Y digits to the right of the decimal point. If the Y argument is omitted, 0 is assumed. |
-|rtrim(X) <br/ >rtrim(X,Y)         | <a id="rtrim"/>Return a string formed by removing any and all characters that appear in Y from the right side of X. If the Y argument is omitted, removes spaces from the right side of X. |
+|rtrim(X) <br/> rtrim(X,Y)         | <a id="rtrim"/>Return a string formed by removing any and all characters that appear in Y from the right side of X. If the Y argument is omitted, removes spaces from the right side of X. |
 |soundex(X)                        | <a id="soundex"/>Compute the soundex encoding of the string X. The string "?000" is returned if the argument is NULL. |
 |sqlite_source_id()                | <a id="sqlite_source_id"/>Returns a string that identifies the specific version of the SQLite library source code that was used: the date and time that the source code was checked in followed by the SHA1 hash for that check-in. |
 |sqlite_version()                  | <a id="sqlite_version"/>Return the version string for the SQLite library the software is based upon. |
