@@ -475,6 +475,7 @@ static void bdb_temp_table_reset(struct temp_table *tbl)
     tbl->num_mem_entries = 0;
 }
 
+static int bdb_temp_table_reset_cursors( bdb_state_type *bdb_state, struct temp_table *tbl, int *bdberr);
 static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr);
 
 static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
@@ -485,16 +486,9 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
 
     if (tbl->tmpdb) {
         /* Close all cursors that this table has open. */
-        struct temp_cursor *cur;
-        LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
-        {
-            /* Do not destory the temp cursor. Only reset it. The cursor may still
-               be referenced by others (e.g., SQLite's BtCursor). */
-            if ((rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor(%p, %p) rc %d\n", __func__, tbl, cur, rc);
-                return rc;
-            }
-        }
+        rc = bdb_temp_table_reset_cursors(bdb_state, tbl, bdberr);
+        if (rc)
+            goto done;
 
         rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
@@ -1339,6 +1333,21 @@ done:
 /* berkeley extension/kludge */
 extern long long __db_filesz(DB *dbp);
 
+static int bdb_temp_table_reset_cursors( bdb_state_type *bdb_state, struct temp_table *tbl, int *bdberr) {
+    int rc;
+    struct temp_cursor *cur;
+
+    LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
+    {
+        if ((rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor(%p, %p) rc %d\n", __func__, tbl, cur, rc);
+            return rc;
+        }
+    }
+    return 0;
+}
+
+
 static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
                                            struct temp_table *tbl, int *bdberr)
 {
@@ -1374,8 +1383,13 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
     }
     // assert(rc == DB_KEYEMPTY || rc == DB_NOTFOUND);
 
-    dbcur->c_close(dbcur);
-    return 0;
+    rc = dbcur->c_close(dbcur);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d close rc=%d\n", __func__, __LINE__, rc);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+    return bdb_temp_table_reset_cursors(bdb_state, tbl, bdberr);
 }
 
 int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
@@ -1414,7 +1428,6 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
         break;
 
     case TEMP_TABLE_TYPE_BTREE:
-
         if (tbl->num_mem_entries < 100)
             rc = bdb_temp_table_truncate_temp_db(bdb_state, tbl, bdberr);
         else
@@ -1429,6 +1442,9 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
     }
 
 done:
+    if (rc == 0)
+        tbl->num_mem_entries = 0;
+
 
     dbgtrace(3, "temp_table_truncate() = %d", rc);
     return rc;
@@ -1703,7 +1719,6 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         elem = &cur->tbl->elements[cur->ind];
         free(elem->key);
-        --cur->tbl->num_mem_entries;
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
                 sizeof(arr_elem_t) * (cur->tbl->num_mem_entries - cur->ind));
@@ -1720,6 +1735,8 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         return -1;
     }
 done:
+    if (cur->tbl->num_mem_entries > 0)
+        --cur->tbl->num_mem_entries;
     dbgtrace(3, "temp_table_delete(cursor %d) = %d", cur->curid, rc);
     return rc;
 }
