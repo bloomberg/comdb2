@@ -6475,6 +6475,8 @@ int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
 {
+    if (hndl->fdb_hndl)
+        hdnl = hndl->fdb_hndl;
     return hndl->sb == NULL ? 0 : sslio_has_ssl(hndl->sb);
 }
 
