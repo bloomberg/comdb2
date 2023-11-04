@@ -4322,7 +4322,12 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
         goto retry_queries;                                                    \
     } while (0);
 
-// make newly opened child handle have same settings (references) as parent
+/*
+Make newly opened child handle have same settings (references) as parent
+NOTE: ONLY WORKS CURRENTLY FOR PERIOD OF TIME
+      WHERE NUM BIND VARS, SET COMMANDS, AND CONTEXT MSGS
+      DO NOT CHANGE IN PARENT HANDLE
+*/
 static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
 {
     child->is_child_hndl = 1;
@@ -4372,6 +4377,10 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     child->events = parent->events;
     free(child->gbl_event_version);
     child->gbl_event_version = parent->gbl_event_version;
+
+    memcpy(&child->context_msgs, &parent->context_msgs, sizeof(child->context_msgs));
+    // this is a new handle so send if non-empty
+    child->context_msgs.has_changed = child->context_msgs.count > 0;
 }
 
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
@@ -4904,9 +4913,10 @@ read_record:
         clear_snapshot_info(hndl, __LINE__);
     }
 
-    // TODO: other settings (contexts)
     if (hndl->firstresponse->foreign_db) {
-        if (cdb2_open(&hndl->fdb_hndl, hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class, hndl->firstresponse->foreign_policy_flag)) {
+        int foreign_flags = hndl->firstresponse->foreign_policy_flag;
+        foreign_flags |= (hndl->flags & CDB2_REQUIRE_FASTSQL);
+        if (cdb2_open(&hndl->fdb_hndl, hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class, foreign_flags)) {
             cdb2_close(hndl->fdb_hndl);
             hndl->fdb_hndl = NULL;
             if (is_hasql_commit)
@@ -6748,7 +6758,8 @@ static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl)
     int i = 0;
 
     while (i < hndl->context_msgs.count) {
-        free(hndl->context_msgs.message[i]);
+        if (!hndl->is_child_hndl) // parent handle will free
+            free(hndl->context_msgs.message[i]);
         hndl->context_msgs.message[i] = 0;
         i++;
     }
