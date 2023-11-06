@@ -416,11 +416,10 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg, int register_timeou
         /* trigger_register_req() can take up to 1 second. Tick up immediately
            after this so that it's guaranteed that the appsock thread observes
            a good query state for the next heartbeat. */
-        comdb2_sql_tick();
+        comdb2_sql_tick_no_recover_deadlock();
         if (register_timeoutms) {
             if (retry == 0) {
-                luabb_error(L, sp, " trigger:%s registration timeout %dms",
-                            reg->spname, register_timeoutms);
+                luabb_error(L, sp, "trigger:%s registration timeout %dms", reg->spname, register_timeoutms);
                 rc = -2;
                 goto out;
             }
@@ -430,10 +429,10 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg, int register_timeou
             rc = luabb_error(L, sp, sp->error);
             goto out;
         }
-        sleep(1);
-        /* Tick up after the sleep(1). Again this is to make sure that
-           the appsock thread sends out a "good" heartbeat every second. */
-        comdb2_sql_tick();
+        if (rc != NET_SEND_FAIL_TIMEOUT) {
+            sleep(1);
+            comdb2_sql_tick_no_recover_deadlock();
+        }
     }
 
 out:
@@ -453,14 +452,12 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
         }
         Pthread_mutex_unlock(q->lock);
     }
-    comdb2_sql_tick(); /* See comments in luabb_trigger_register(). */
     int retry = 10;
     do {
         int rc = trigger_unregister_req(&q->info);
         if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER) return;
         if (L) check_retry_conditions(L, &q->info, 1);
     } while (--retry);
-    comdb2_sql_tick(); /* See comments in luabb_trigger_register(). */
 }
 
 static int stop_waiting(Lua L, dbconsumer_t *q)
@@ -677,7 +674,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     int rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd, &f.seq,
                      bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     Pthread_mutex_unlock(q->lock);
-    comdb2_sql_tick();
+    comdb2_sql_tick_no_recover_deadlock();
     sp->num_instructions = 0;
     if (rc == 0) {
         char *err;
