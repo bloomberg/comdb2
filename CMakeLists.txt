@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.3)
+cmake_minimum_required (VERSION 3.16)
 project (Comdb2 ${COMDB2_BBPROJECT})
 
 set(CMAKE_C_STANDARD 99)
