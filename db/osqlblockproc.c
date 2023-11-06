@@ -1262,44 +1262,53 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
         csc2_free_all();
 
 
-    if (rc && !iq->sc_should_abort) {
-        /* IFF the schema changes are NOT aborted, clean in-mem structures but
-         * leave persistent and replicated changes (llmeta, new btree-s) so
-         * that a new master/resume will pick it up later
-         * NOTE: this clears iq->sc_pending, obviously (sc-s are freed), so
-         * the rest of schema change code -finalize, callback hooks- do NOT
-         * trigger anymore (they should not, they will do it when future resume
-         * finishes)
-         * NOTE2: if sc_should_abort is set, the bplog writer will call 
-         * backout_schema_change and sc_abort callback, which they will 
-         * clear any persistent and in-mem structures 
-         */
-        struct schema_change_type *next;
-        sc = iq->sc_pending;
-        while (sc != NULL) {
-            next = sc->sc_next;
-            if (sc->newdb && sc->newdb->handle) {
-                int bdberr = 0;
-                live_sc_off(sc->db);
-                while (sc->logical_livesc) {
-                    usleep(200);
+    if (rc) {
+        if (!iq->sc_should_abort) {
+            /* IFF the schema changes are NOT aborted, clean in-mem structures but
+             * leave persistent and replicated changes (llmeta, new btree-s) so
+             * that a new master/resume will pick it up later
+             * NOTE: this clears iq->sc_pending, obviously (sc-s are freed), so
+             * the rest of schema change code -finalize, callback hooks- do NOT
+             * trigger anymore (they should not, they will do it when future resume
+             * finishes)
+             * NOTE2: if sc_should_abort is set, the bplog writer will call 
+             * backout_schema_change and sc_abort callback, which they will 
+             * clear any persistent and in-mem structures 
+             */
+            struct schema_change_type *next;
+            sc = iq->sc_pending;
+            while (sc != NULL) {
+                next = sc->sc_next;
+                if (sc->newdb && sc->newdb->handle) {
+                    int bdberr = 0;
+                    live_sc_off(sc->db);
+                    while (sc->logical_livesc) {
+                        usleep(200);
+                    }
+                    if (sc->db->sc_live_logical) {
+                        bdb_clear_logical_live_sc(sc->db->handle, 1);
+                        sc->db->sc_live_logical = 0;
+                    }
+                    if (rc == ERR_NOMASTER)
+                        sc_set_downgrading(sc);
+                    bdb_close_only(sc->newdb->handle, &bdberr);
+                    freedb(sc->newdb);
+                    sc->newdb = NULL;
                 }
-                if (sc->db->sc_live_logical) {
-                    bdb_clear_logical_live_sc(sc->db->handle, 1);
-                    sc->db->sc_live_logical = 0;
-                }
-                if (rc == ERR_NOMASTER)
-                    sc_set_downgrading(sc);
-                bdb_close_only(sc->newdb->handle, &bdberr);
-                freedb(sc->newdb);
-                sc->newdb = NULL;
-            }
-            sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
+                sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
                            __LINE__);
-            free_schema_change_type(sc);
-            sc = next;
+                free_schema_change_type(sc);
+                sc = next;
+            }
+            iq->sc_pending = NULL;
+        } else {
+            sc = iq->sc_pending;
+            while (sc != NULL) {
+                sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
+                           __LINE__);
+                sc = sc->sc_next;
+            }
         }
-        iq->sc_pending = NULL;
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
 
