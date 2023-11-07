@@ -1713,12 +1713,14 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         // AZ: address of data returned by hash_find: cur->key - sizeof(int)
         rc = hash_del(cur->tbl->temp_hash_tbl, cur->key - sizeof(int));
+        --cur->tbl->num_mem_entries;
         goto done;
     }
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         elem = &cur->tbl->elements[cur->ind];
         free(elem->key);
+        --cur->tbl->num_mem_entries;
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
                 sizeof(arr_elem_t) * (cur->tbl->num_mem_entries - cur->ind));
@@ -1734,9 +1736,10 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         *bdberr = rc;
         return -1;
     }
-done:
     if (cur->tbl->num_mem_entries > 0)
         --cur->tbl->num_mem_entries;
+
+done:
     dbgtrace(3, "temp_table_delete(cursor %d) = %d", cur->curid, rc);
     return rc;
 }
