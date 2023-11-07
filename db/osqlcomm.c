@@ -5756,6 +5756,13 @@ static int start_schema_change_tran_wrapper(const char *tblname,
         sc->preempted == SC_ACTION_RESUME ||
         sc->kind == SC_ALTERTABLE_PENDING) {
         iq->sc = NULL;
+        if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING && sc->nothrevent) {
+            /* we need to link the sc into sc_pending so that backout
+             * picks it up
+             */
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
+        }
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
