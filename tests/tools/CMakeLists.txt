@@ -1,3 +1,4 @@
+cmake_minimum_required (VERSION 3.3)
 find_package(Readline REQUIRED)
 find_package(SQLite3 REQUIRED)
 include_directories(
