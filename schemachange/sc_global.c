@@ -98,8 +98,12 @@ int get_stopsc(const char *func, int line)
     ret = stopsc;
     Pthread_mutex_unlock(&gbl_sc_progress_lk);
     if (gbl_verbose_set_sc_in_progress) {
-        logmsg(LOGMSG_USER, "%s line %d %s returning %d\n", func, line,
-               __func__, ret);
+        static int once = -1;
+        if (once != ret) {
+            logmsg(LOGMSG_USER, "%s line %d %s returning %d\n", func, line,
+                   __func__, ret);
+            once = ret;
+        }
     }
     return ret;
 }
@@ -160,8 +164,12 @@ int get_schema_change_in_progress(const char *func, int line)
     }
     Pthread_mutex_unlock(&gbl_sc_progress_lk);
     if (gbl_verbose_set_sc_in_progress) {
-        logmsg(LOGMSG_USER, "%s line %d %s returning %d stopsc is %d\n", func,
-               line, __func__, val, stopped);
+        static int once = -1;
+        if (once != val) {
+            logmsg(LOGMSG_USER, "%s line %d %s returning %d stopsc is %d\n", func,
+                   line, __func__, val, stopped);
+            once = val;
+        }
     }
     return val;
 }
