@@ -4373,9 +4373,8 @@ static void attach_to_handle(cdb2_hndl_tp *child, cdb2_hndl_tp *parent)
     child->debug_trace = parent->debug_trace;
     child->use_hint = parent->use_hint;
 
-    free(child->events);
+    free_events(child);
     child->events = parent->events;
-    free(child->gbl_event_version);
     child->gbl_event_version = parent->gbl_event_version;
 
     memcpy(&child->context_msgs, &parent->context_msgs, sizeof(child->context_msgs));
