@@ -1423,6 +1423,7 @@ int gather_triggers(struct gather_triggers_arg *arg)
         if (strncmp(e.name, "__q", 3) == 0) e.name += 3;
         struct dbtable *qdb = getqueuebyname(sp->name);
         if (!qdb) continue;
+        if (qdb->consumers[0] == NULL) continue;
         switch (dbqueue_consumer_type(qdb->consumers[0])) {
         case CONSUMER_TYPE_LUA: e.type = "trigger"; break;
         case CONSUMER_TYPE_DYNLUA: e.type = "consumer"; break;
