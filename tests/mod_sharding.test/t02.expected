@@ -1,0 +1,3 @@
+[create table t(a int primary key)] failed with rc -3 Table already exists
+[select * from t] failed with rc -3 no such table: t
+[drop table t] failed with rc -3 no such table: t

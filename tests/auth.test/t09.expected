@@ -119,6 +119,7 @@
 (candidate='MANUAL')
 (candidate='MATCH')
 (candidate='MERGE')
+(candidate='MOD')
 (candidate='NATURAL')
 (candidate='NEXTSEQUENCE')
 (candidate='NO')

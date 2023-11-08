@@ -325,6 +325,201 @@ static int _view_delete_if_missing(const char *name, sqlite3 *db, void *arg)
     return 0;
 }
 
+char *mod_views_create_view_query(mod_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    char *select_str = NULL;
+    char *cols_str = NULL;
+    char *tmp_str = NULL;
+    char *ret_str = NULL;
+    void *ent;
+    unsigned int bkt;
+    mod_shard_t *shard = NULL;
+    int num_shards = mod_view_get_num_shards(view);
+    const char *view_name = mod_view_get_viewname(view);
+    const char *table_name = mod_view_get_tablename(view);
+    hash_t *shards = mod_view_get_shards(view);
+    int i;
+    if (num_shards == 0) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "View %s has no shards???\n", view_name);
+        return NULL;
+    }
+
+    cols_str = sqlite3_mprintf("rowid as __hidden__rowid, ");
+    if (!cols_str) {
+        goto malloc;
+    }
+
+    cols_str = _describe_row(table_name, cols_str, VIEWS_TRIGGER_QUERY, err);
+    if (!cols_str) {
+        /* preserve error, if any */
+        if (err->errval != VIEW_NOERR)
+            return NULL;
+        goto malloc;
+    } else {
+        logmsg(LOGMSG_USER, "GOT cols_str as %s\n", cols_str);
+    }
+
+    select_str = sqlite3_mprintf("");
+    i = 0;
+    for (shard = (mod_shard_t *)hash_first(shards, &ent, &bkt); shard != NULL;
+         shard = (mod_shard_t *)hash_next(shards, &ent, &bkt)) {
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %s", select_str, (i > 0) ? " UNION ALL " : "", cols_str,
+                                  mod_shard_get_dbname(shard));
+        sqlite3_free(select_str);
+        if (!tmp_str) {
+            sqlite3_free(cols_str);
+            goto malloc;
+        }
+        select_str = tmp_str;
+        i++;
+    }
+
+    ret_str = sqlite3_mprintf("CREATE VIEW %w AS %s", view_name, select_str);
+    if (!ret_str) {
+        sqlite3_free(select_str);
+        sqlite3_free(cols_str);
+        goto malloc;
+    }
+
+    sqlite3_free(select_str);
+    sqlite3_free(cols_str);
+
+    dbg_verbose_sqlite("Generated:\n\"%s\"\n", ret_str);
+
+    return ret_str;
+
+malloc:
+    err->errval = VIEW_ERR_MALLOC;
+    snprintf(err->errstr, sizeof(err->errstr), "View %s out of memory\n", view_name);
+    return NULL;
+}
+
+int mod_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
+{
+    char *errstr = NULL;
+    int rc;
+
+    /* create the view */
+    db->isTimepartView = 1;
+    rc = sqlite3_exec(db, stmt, NULL, NULL, &errstr);
+    db->isTimepartView = 0;
+    if (rc != SQLITE_OK) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"", errstr);
+        /* can't control sqlite errors */
+        err->errstr[sizeof(err->errstr) - 1] = '\0';
+
+        logmsg(LOGMSG_USER, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__, errstr, stmt);
+
+        if (errstr)
+            sqlite3_free(errstr);
+        return err->errval;
+    }
+
+    /* use sqlite to add the view */
+    return VIEW_NOERR;
+}
+int mod_views_create_triggers(mod_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    typedef char *(*PFUNC)(mod_view_t *, struct errstat *);
+
+    PFUNC funcs[3] = {(PFUNC)&mod_views_create_delete_trigger_query, (PFUNC)&mod_views_create_update_trigger_query,
+                      (PFUNC)&mod_views_create_insert_trigger_query};
+    PFUNC func;
+    char *stmt_str;
+    int i;
+    int rc;
+
+    for (i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
+        func = funcs[i];
+
+        /* create delete trigger of the view */
+        stmt_str = func(view, err);
+        if (!stmt_str) {
+            return err->errval;
+        }
+
+        rc = _views_run_sql(db, stmt_str, err);
+
+        sqlite3_free(stmt_str);
+        if (rc) {
+            return err->errval;
+        }
+    }
+    /* clear last side row, might break a racing sql otherwise */
+    clearClientSideRow(NULL);
+    return VIEW_NOERR;
+}
+int mod_views_sqlite_add_view(mod_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    char *stmt_str;
+    int rc;
+
+    /* create the statement */
+    stmt_str = mod_views_create_view_query(view, db, err);
+    if (!stmt_str) {
+        return err->errval;
+    }
+
+    rc = mod_views_run_sql(db, stmt_str, err);
+
+    logmsg(LOGMSG_USER, "+++++++++++sql: %s, rc: %d\n", stmt_str, rc);
+    /* free the statement */
+    sqlite3_free(stmt_str);
+
+    if (rc != VIEW_NOERR) {
+        return err->errval;
+    }
+
+    rc = mod_views_create_triggers(view, db, err);
+
+    return rc;
+}
+
+int mod_views_sqlite_delete_view(mod_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    return _views_sqlite_del_view(mod_view_get_viewname(view), db, err);
+}
+
+int mod_views_sqlite_update(hash_t *views, sqlite3 *db, struct errstat *err)
+{
+    Table *tab;
+    int rc;
+    void *ent;
+    unsigned int bkt;
+    mod_view_t *view = NULL;
+
+    Pthread_rwlock_rdlock(&mod_shard_lk);
+    for (view = (mod_view_t *)hash_first(views, &ent, &bkt); view != NULL;
+         view = (mod_view_t *)hash_next(views, &ent, &bkt)) {
+        /* check if this exists?*/
+        tab = sqlite3FindTableCheckOnly(db, mod_view_get_viewname(view), NULL);
+        if (tab) {
+            /* found view, is it the same version ? */
+            if (mod_view_get_sqlite_view_version(view) != tab->version) {
+                /* older version, destroy current view */
+                rc = mod_views_sqlite_delete_view(view, db, err);
+                if (rc != VIEW_NOERR) {
+                    logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n", __func__);
+                    goto done;
+                }
+            } else {
+                /* up to date, nothing to do */
+                continue;
+            }
+        }
+        rc = mod_views_sqlite_add_view(view, db, err);
+        if (rc != VIEW_NOERR) {
+            goto done;
+        }
+    }
+    rc = VIEW_NOERR;
+done:
+    Pthread_rwlock_unlock(&mod_shard_lk);
+    return rc;
+}
+
 #ifdef COMDB2_UPDATEABLE_VIEWS
 
 static int _views_create_triggers(timepart_view_t *view, sqlite3 *db,
