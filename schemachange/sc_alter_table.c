@@ -1050,6 +1050,18 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     free_db_and_replace(db, newdb);
     fix_constraint_pointers(db, newdb);
 
+    /* do we have a piggybacked rename */
+    if (!strncasecmp(s->tablename, s->newtable, strlen(s->tablename))) {
+        rc = bdb_set_table_sqlalias(s->tablename, transac, NULL);
+        if (rc) {
+            sc_errf(s, "bdb_set_table_sqlalias failed rc %d\n", rc);
+            BACKOUT;
+        }
+        hash_del(thedb->sqlalias_hash, db);
+        free(db->sqlaliasname);
+        db->sqlaliasname = NULL;
+    }
+
     /* update tags in memory */
     commit_schemas(/*s->tablename*/ db->tablename);
     update_dbstore(db); // update needs to occur after refresh of hashtbl
@@ -1156,7 +1168,23 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
         /* make the in-memory alias */
         timepart_alias_table(s->newpartition, db);
+    } else if (s->partition.type == PARTITION_REMOVE && s->publish) {
+        /* if this is a shard, remove the llmeta partition entry */
+        if (!db->timepartition_name) {
+            sc_errf(s,
+                    "Drop partitioned table failed, shard %s not registered\n",
+                    db->tablename);
+            return SC_INTERNAL_ERROR;
+        }
+        struct errstat err = {0};
+        rc = partition_llmeta_delete(transac, s->timepartition_name, &err);
+        if (rc) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            return SC_INTERNAL_ERROR;
+        }
+        db->timepartition_name = NULL;
     }
+
 
     /* deletion of btree files we don't need is handled in
      * osql_scdone_commit_callback and osql_scdone_abort_callback */

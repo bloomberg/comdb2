@@ -54,6 +54,7 @@
 #include "osqlsqlsocket.h"
 #include "sc_global.h"
 #include "logical_cron.h"
+#include "sc_logic.h"
 
 
 #define MAX_CLUSTER REPMAX
@@ -5887,19 +5888,54 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
+    int start_shard = 0;
 
     assert(sc->kind == SC_ALTERTABLE);
 
-    /* create a table with the same name as the partition */
-    sc->nothrevent = 1; /* we need do_add_table to run first */
-    sc->finalize = 0;   /* make sure */
-    sc->kind = SC_ADDTABLE;
+    /* if this was a CREATE & ALTER, first shart is an aliased
+     * table with the same name as the partition
+     * use that as the destination for merging
+     * OTHERWISE, create a new table with the same name as 
+     * the partition
+     */
+    char *first_shard_name = timepart_shard_name(sc->tablename, 0, 0, NULL);
+    struct dbtable *first_shard = get_dbtable_by_name(first_shard_name);
+    free(first_shard_name);
 
-    rc = start_schema_change_tran(iq, NULL);
-    iq->sc->sc_next = iq->sc_pending;
-    iq->sc_pending = iq->sc;
-    if (rc != SC_COMMIT_PENDING) {
-        return ERR_SC;
+    if (!first_shard->sqlaliasname) {
+        /*
+         * create a table with the same name as the partition
+         */
+        sc->nothrevent = 1; /* we need do_add_table to run first */
+        sc->finalize = 0;   /* make sure */
+        sc->kind = SC_ADDTABLE;
+
+        rc = start_schema_change_tran(iq, NULL);
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        if (rc != SC_COMMIT_PENDING) {
+            return ERR_SC;
+        }
+    } else {
+        /*
+         * use the fast shard as the destination, after first altering it
+         */
+        sc->nothrevent = 1; /* we need do_alter_table to run first */
+        sc->finalize = 0;
+        enum comdb2_partition_type tt = sc->partition.type;
+        sc->partition.type = PARTITION_NONE;
+
+        strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
+
+        rc = start_schema_change_tran(iq, NULL);
+        sc->partition.type = tt;
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        if (rc != SC_COMMIT_PENDING) {
+            return ERR_SC;
+        }
+        start_shard = 1;
+        strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
     }
 
     /* at this point we have created the future btree, launch an alter
@@ -5908,9 +5944,16 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
+    arg.indx = start_shard;
     /* note: we have already set nothrevent depending on the number of shards */
     rc = timepart_foreach_shard(
-        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, 0);
+        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, start_shard);
+
+    if (first_shard->sqlaliasname) {
+        sc->partition.type = PARTITION_REMOVE; /* first shard is the collapsed table */
+        sc->publish = partition_publish;
+        sc->unpublish = partition_unpublish;
+    }
     return rc;
 }
 

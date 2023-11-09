@@ -138,7 +138,8 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran);
 static cron_sched_t *_get_sched_byname(enum view_partition_period period,
                                        const char *sched_name);
 static void _view_unregister_shards_lkless(timepart_views_t *views,
-                                           timepart_view_t *view);
+                                           timepart_view_t *view,
+                                           int *bump_dbopen);
 
 static int _create_inmem_view(timepart_views_t *views, timepart_view_t *view,
                               struct errstat *err);
@@ -456,7 +457,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
 
     if (view) {
 
-        _view_unregister_shards_lkless(views, view);
+        _view_unregister_shards_lkless(views, view, NULL);
 
         timepart_free_view(view);
 
@@ -566,6 +567,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
     char *str = NULL;
     struct errstat xerr = {0};
     int i;
+    int bump_dbopen = 0;
 
     Pthread_rwlock_wrlock(&views_lk);
 
@@ -605,10 +607,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
             }
             db = db2;
             /* we alias a table, we need to bump dbopen */
-            create_sqlmaster_records(tran);
-            create_sqlite_master(); /* create sql statements */
-
-            BDB_BUMP_DBOPEN_GEN(views, "alias table");
+            bump_dbopen = 1;
         }
         db->tableversion = table_version_select(db, tran);
         db->timepartition_name = view->name;
@@ -629,7 +628,8 @@ alter_struct:
 
             if (!view) {
                 /* this is drop view, unregister shards */
-                _view_unregister_shards_lkless(_views, _views->views[i]);
+                _view_unregister_shards_lkless(_views, _views->views[i],
+                                               &bump_dbopen);
             }
             timepart_free_view(_views->views[i]);
 
@@ -656,6 +656,13 @@ alter_struct:
 
         _views->views[_views->nviews] = view;
         _views->nviews++;
+    }
+
+    if (bump_dbopen) {
+        create_sqlmaster_records(tran);
+        create_sqlite_master(); /* create sql statements */
+
+        BDB_BUMP_DBOPEN_GEN(views, "alias table");
     }
 
     /* NOTE: this has to be done under schema change lock */
@@ -2351,7 +2358,8 @@ done:
 
 /* Unregister timepartition name for all its table shards */
 static void _view_unregister_shards_lkless(timepart_views_t *views,
-                                           timepart_view_t *view)
+                                           timepart_view_t *view,
+                                           int *bump_dbopen)
 {
     struct dbtable *db;
     int i;
@@ -2360,6 +2368,17 @@ static void _view_unregister_shards_lkless(timepart_views_t *views,
         db = get_dbtable_by_name(view->shards[i].tblname);
         if (db) {
             db->timepartition_name = NULL;
+            /* here we also need to dealiase, if the alias
+             * was created by alter partition
+             */
+            if (db->sqlaliasname &&
+                !strncasecmp(db->tablename, view->name, strlen(db->tablename))) {
+                hash_del(thedb->sqlalias_hash, db);
+                free(db->sqlaliasname);
+                db->sqlaliasname = NULL;
+                if (bump_dbopen)
+                    *bump_dbopen = 1;
+            }
         }
     }
 

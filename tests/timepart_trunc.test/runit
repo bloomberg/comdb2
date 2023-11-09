@@ -458,6 +458,57 @@ $cmd "select * from t15 order by a" >> $OUT
 echo $cmd "select * from t16 order by a"
 $cmd "select * from t16 order by a" >> $OUT 2>&1
 
+timepart_stats 0
+
+header 16 "Test PARTITION NONE on ALIASED table"
+echo $cmd "CREATE TABLE t17(a int)"
+$cmd "CREATE TABLE t17(a int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create t17"
+   exit 1
+fi
+
+
+echo $cmd "insert into t17 values (1000), (2000)"
+$cmd "insert into t17 values (1000), (2000)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t17"
+   exit 1
+fi
+
+echo $cmd "ALTER TABLE t17 PARTITIONED BY TIME PERIOD 'daily' RETENTION 3 start '2023-01-01T'"
+$cmd "ALTER TABLE t17 PARTITIONED BY TIME PERIOD 'daily' RETENTION 3 start '2023-01-01T'"
+if (( $? != 0 )) ; then
+   echo "FAILURE to partition t17"
+   exit 1
+fi
+
+echo $cmd "insert into t17 values (3000), (4000)"
+$cmd "insert into t17 values (3000), (4000)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into partition t17"
+   exit 1
+fi
+
+timepart_stats 0
+
+echo $cmd "ALTER TABLE t17 PARTITIONED BY NONE"
+$cmd "ALTER TABLE t17 PARTITIONED BY NONE"
+if (( $? != 0 )) ; then
+   echo "FAILURE to UNpartition t17"
+   exit 1
+fi
+
+echo $cmd "select * from t17 order by a"
+$cmd "select * from t17 order by a" >> $OUT 2>&1
+
+
+echo $cmd "select * from comdb2_tables where tablename='t17'"
+$cmd "select * from comdb2_tables where tablename='t17'" >> $OUT 2>&1
+
+echo $cmd "select * from comdb2_timepartshards where name='t17'"
+$cmd "select * from comdb2_timepartshards where name='t17'" >> $OUT 2>&1
+
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
 
