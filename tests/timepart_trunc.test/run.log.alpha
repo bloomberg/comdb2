@@ -978,3 +978,127 @@ Test ALTER table MERGE
 (a=100)
 (a=200)
 [select * from t16 order by a] failed with rc -3 no such table: t16
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t2",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_43868980",
+  },
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+(name='t2', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t2', shardname='$0_43868980')
+(name='t2', shardname='$2_CE9DB8D')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+TEST 16
+Test PARTITION NONE on ALIASED table
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t2",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_43868980",
+  },
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t17",
+  "PERIOD"    : "daily",
+  "RETENTION" : 3,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_41D9A045",
+  },
+  {
+   "TABLENAME"    : "$1_E76B54BE",
+  },
+  {
+   "TABLENAME"    : "$2_B9E973E6",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+(name='t2', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+(name='t17', period='daily', retention=3, nshards=3, version=1, shard0name='<none>')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t2', shardname='$0_43868980')
+(name='t2', shardname='$2_CE9DB8D')
+(name='t17', shardname='$0_41D9A045')
+(name='t17', shardname='$1_E76B54BE')
+(name='t17', shardname='$2_B9E973E6')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t17', arg2=NULL, arg3=NULL)
+(a=1000)
+(a=2000)
+(a=3000)
+(a=4000)
+(tablename='t17')
