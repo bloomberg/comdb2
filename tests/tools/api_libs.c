@@ -1,9 +1,9 @@
 #include <stdio.h>
+#include <cdb2api.h>
 
-#define CDB2_INSTALL_LIBS gbl_init_once
-#define CDB2_UNINSTALL_LIBS gbl_uninit
-#define WITH_DL_LIBS 1
-#include <cdb2api.c>
+typedef void (lib_cb)(void);
+void cdb2_set_install_libs(lib_cb *);
+void cdb2_set_uninstall_libs(lib_cb *);
 
 static void *my_open_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
 {
@@ -37,6 +37,9 @@ void gbl_uninit(void)
 
 int main(int argc, char **argv)
 {
+    cdb2_set_install_libs(gbl_init_once);
+    cdb2_set_uninstall_libs(gbl_uninit);
+
     char *conf = getenv("CDB2_CONFIG");
     char *tier = "local";
     char *db = argv[1];

@@ -41,11 +41,9 @@ if (COMDB2_BBCMAKE)
   comdb2_bb_target(opencdb2api)
 else()
 
-add_library(objlib OBJECT ${src})
-set_property(TARGET objlib PROPERTY POSITION_INDEPENDENT_CODE 1)
-add_dependencies(objlib proto)
+add_library(cdb2api STATIC ${src})
+add_dependencies(cdb2api proto)
 
-add_library(cdb2api STATIC $<TARGET_OBJECTS:objlib>)
 configure_file(cdb2api.pc cdb2api.pc @ONLY)
 install(TARGETS cdb2api ARCHIVE DESTINATION lib)
 install(FILES cdb2api.h DESTINATION include)
@@ -55,16 +53,10 @@ install(FILES
 )
 
 if(NOT COMDB2_SKIP_CDB2API_SO)
-  add_library(cdb2api_shared SHARED $<TARGET_OBJECTS:objlib>)
+  add_library(cdb2api_shared SHARED ${src})
+  add_dependencies(cdb2api_shared proto)
   set_target_properties(cdb2api_shared PROPERTIES OUTPUT_NAME cdb2api)
-  if (NOT COMDB2_BUILD_STATIC)
-    target_link_libraries(cdb2api_shared
-      ${OPENSSL_LIBRARIES}
-      ${ZLIB_LIBRARIES}
-      ${PROTOBUF-C_LIBRARY}
-      ${UNWIND_LIBRARY}
-    )
-  endif()
+  target_compile_definitions(cdb2api_shared PRIVATE WITH_DL_LIBS=1)
   install(TARGETS cdb2api_shared LIBRARY DESTINATION lib)
 endif()
 
