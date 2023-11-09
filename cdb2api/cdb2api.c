@@ -253,6 +253,8 @@ void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 
 #if WITH_DL_LIBS
 #include <dlfcn.h>
+void cdb2_set_install_libs(void (*ptr)(void)) { cdb2_install = ptr; }
+void cdb2_set_uninstall_libs(void (*ptr)(void)) { cdb2_uninstall = ptr; }
 #endif
 
 #define debugprint(fmt, args...)                                               \

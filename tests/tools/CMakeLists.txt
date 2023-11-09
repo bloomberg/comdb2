@@ -1,4 +1,3 @@
-cmake_minimum_required (VERSION 3.3)
 find_package(Readline REQUIRED)
 find_package(SQLite3 REQUIRED)
 include_directories(
@@ -24,7 +23,6 @@ macro(add_exe exe)
 endmacro()
 
 add_exe(api_events api_events.c)
-add_exe(api_libs api_libs.c)
 add_exe(blob blob.c)
 add_exe(bound bound.cpp)
 add_exe(breakloop breakloop.c nemesis.c testutil.c)
@@ -99,13 +97,17 @@ foreach(executable ${test-tools})
 endforeach()
 
 if(NOT COMDB2_SKIP_CDB2API_SO)
-  add_exe(cdb2_client cdb2_client.c)
-  add_exe(cdb2api_unit cdb2api_unit.c)
   add_library(api_hello_world_lib SHARED api_hello_world_lib.c)
   list(APPEND test-tools api_hello_world_lib)
+
+  add_exe(api_libs api_libs.c)
+  target_link_libraries(api_libs cdb2api_shared ${common-deps})
+
+  add_exe(cdb2_client cdb2_client.c)
   target_link_libraries(cdb2_client cdb2api_shared ${common-deps})
+
+  add_exe(cdb2api_unit cdb2api_unit.c)
   target_link_libraries(cdb2api_unit cdb2api_shared ${common-deps})
-  target_link_libraries(api_hello_world_lib cdb2api_shared ${common-deps})
 endif()
 
 add_custom_target(test-tools DEPENDS ${test-tools})
