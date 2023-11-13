@@ -488,7 +488,9 @@ static void bdb_temp_table_reset(struct temp_table *tbl)
     tbl->num_mem_entries = 0;
 }
 
+static int bdb_temp_table_reset_cursors(bdb_state_type *bdb_state, struct temp_table *tbl, int *bdberr);
 static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr);
+
 
 static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
                                        struct temp_table *tbl, int *bdberr)
@@ -498,17 +500,13 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
 
     if (tbl->tmpdb) {
         /* Close all cursors that this table has open. */
-        struct temp_cursor *cur;
-        LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
-        {
-            /* Do not destory the temp cursor. Only reset it. The cursor may still
-               be referenced by others (e.g., SQLite's BtCursor). */
-            if ((rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor(%p, %p) rc %d\n", __func__, tbl, cur, rc);
-                return rc;
-            }
+        /* Do not destroy the temp cursor. Only reset it. The cursor may still
+           be referenced by others (e.g., SQLite's BtCursor). */
+        rc = bdb_temp_table_reset_cursors(bdb_state, tbl, bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor rc %d %d\n", __func__,  rc, *bdberr);
+            return rc;
         }
-
         rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             *bdberr = rc;
@@ -1445,8 +1443,8 @@ static int bdb_temp_table_truncate_temp_db(bdb_state_type *bdb_state,
         rc = dbcur->c_get(dbcur, &dbt_key, &dbt_data, DB_NEXT);
     }
     // assert(rc == DB_KEYEMPTY || rc == DB_NOTFOUND);
-
     dbcur->c_close(dbcur);
+    bdb_temp_table_reset_cursors(bdb_state, tbl, bdberr);
     return 0;
 }
 
@@ -1515,6 +1513,9 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
     }
 
 done:
+    if (rc == 0)
+        tbl->num_mem_entries = 0;
+
 
     dbgtrace(3, "temp_table_truncate() = %d", rc);
     return rc;
@@ -1819,6 +1820,7 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         *bdberr = rc;
         return -1;
     }
+
 done:
     dbgtrace(3, "temp_table_delete(cursor %d) = %d", cur->curid, rc);
     return rc;
@@ -2217,6 +2219,22 @@ static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cu
 
     return rc;
 }
+
+static int bdb_temp_table_reset_cursors( bdb_state_type *bdb_state, struct temp_table *tbl, int *bdberr) {
+    int rc;
+    struct temp_cursor *cur;
+
+    LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
+    {
+        if ((rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor(%p, %p) rc %d\n", __func__, tbl, cur, rc);
+            return rc;
+        }
+    }
+    return 0;
+}
+
+
 
 /* The function closes the underlying berkdb cursor, removes the temp cursor from the temp table and frees it. */
 int bdb_temp_table_close_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr)
