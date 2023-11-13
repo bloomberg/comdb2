@@ -701,7 +701,6 @@ int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,
         return index_rc;
     }
 
-    /* no table should point to the index which changed */
     if (index_rc && fk_source_change(newdb, out, s)) {
         return SC_BAD_INDEX_CHANGE;
     }
@@ -1168,64 +1167,51 @@ int compare_constraints(const char *table, struct dbtable *newdb)
     return 0;
 }
 
-int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
-                                     int copyof)
+/*
+ * Removes all reverse constraints associated with `db`'s constraints
+ * and adds all reverse constraints associated with `newdb`'s constraints
+ *
+ * If `copyof` non-zero, then adds all of `db`'s reverse constraints to `newdb`.
+ */
+static void restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
+                                             int copyof, struct schema_change_type *sc)
 {
-    int i = 0;
-    /* lets deal with pointers...all tables pointing to me must be entered into
-     * my 'reverse' */
     if (copyof) {
         for (int i = 0; i < db->n_rev_constraints; i++) {
             add_reverse_constraint(newdb, db->rev_constraints[i]);
         }
     }
-    /* additionally, for each table i'm pointing to in old db, must get its
-     * reverse constraint array updated to get all reverse ct *'s removed */
-    for (i = 0; i < thedb->num_dbs; i++) {
+
+    // remove reverse constraints associated with `db`'s constraints
+    for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         if (!strcasecmp(rdb->tablename, newdb->tablename)) {
             rdb = newdb;
         }
         Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
-            constraint_t *ct = NULL;
-            ct = rdb->rev_constraints[j];
+            const constraint_t * const ct = rdb->rev_constraints[j];
             if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
                 delete_reverse_constraint(rdb, j);
                 j--;
             }
         }
         Pthread_mutex_unlock(&rdb->rev_constraints_lk);
-        for (int j = 0; j < newdb->n_constraints; j++) {
-            for (int k = 0; k < newdb->constraints[j].nrules; k++) {
-                int ridx = 0;
-                int dupadd = 0;
-
-                if (strcasecmp(newdb->constraints[j].table[k], rdb->tablename))
-                    continue;
-                for (ridx = 0; ridx < rdb->n_rev_constraints; ridx++) {
-                    if (rdb->rev_constraints[ridx] == &newdb->constraints[j]) {
-                        dupadd = 1;
-                        break;
-                    }
-                }
-                if (dupadd) continue;
-                add_reverse_constraint(rdb, &newdb->constraints[j]);
-            }
-        }
     }
 
-    return 0;
+    // add reverse constraints associated with `newdb`'s constraints
+    populate_reverse_constraints(newdb, /*track errors*/ 0, sc);
 }
 
-int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
+void restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb,
+                                 struct schema_change_type *sc)
 {
-    return restore_constraint_pointers_main(db, newdb, 1);
+    restore_constraint_pointers_main(db, newdb, 1, sc);
 }
 
-int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
+void backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
-    return restore_constraint_pointers_main(db, newdb, 0);
+    restore_constraint_pointers_main(db, newdb, 0, NULL);
 }
 
 /* did keys change which are also constraint sources? */
@@ -1237,10 +1223,10 @@ int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type
         struct schema *index = newdb->ixschema[i];
         int offset = get_offset_of_keyname(index->csctag);
         char *key = index->csctag + offset;
-        if (has_index_changed(olddb, key, 1, 0, NULL, 1))
-            if (compatible_constraint_source(olddb, newdb, index, key, out,
-                                             s) != 0)
-                return 1;
+        if (has_index_changed(olddb, key, 1, 0, NULL, 1)
+            && (compatible_constraint_source(olddb, newdb, index, key, out,
+                                             s) != 0))
+            return 1;
     }
     return 0;
 }
@@ -1345,9 +1331,23 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
 }
 
 /* compatible change if type unchanged but get larger in size */
-int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
+int change_to_ct_src_key_is_compatible(struct dbtable *olddb, struct schema *s2, const char *ixname)
 {
     struct schema *s1 = find_tag_schema(olddb, ixname);
+    if (!s1) { 
+        /*
+         * If we are here, then the index exists in the new
+         * schema but not in the old schema.
+         * 
+         * If there's a constraint on this index,
+         * then it must have been added in the same transaction
+         * in which this schema was changed.
+         * 
+         * We can return that the change is compatible because
+         * we're not changing the parent index of an existing fk constraint.
+         */
+        return 0;
+    }
     if (s1->nmembers != s2->nmembers) return 1;
     int i;
     for (i = 0; i < s1->nmembers; ++i) {
@@ -1376,7 +1376,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
             for (k = 0; k < ct->nrules; ++k) {
                 if (strcmp(dbname, ct->table[k]) == 0 &&
                     strcasecmp(key, ct->keynm[k]) == 0) {
-                    if (compat_chg(olddb, newsc, key) == 0) continue;
+                    if (change_to_ct_src_key_is_compatible(olddb, newsc, key) == 0) continue;
                     char *info = ">%s:%s -> %s:%s\n";
                     if (s && s->dryrun) {
                         sbuf2printf(s->sb, info, db->tablename, ct->lclkeyname,

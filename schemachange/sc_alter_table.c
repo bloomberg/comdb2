@@ -960,11 +960,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* No insert transactions should happen after this
        so lock the table. */
-    rc = restore_constraint_pointers(db, newdb);
-    if (rc != 0) {
-        sc_errf(s, "Error restoring constraing pointers!\n");
-        BACKOUT;
-    }
+    restore_constraint_pointers(db, newdb, s);
 
     /* from this point on failures should goto either backout if recoverable
      * or failure if unrecoverable */

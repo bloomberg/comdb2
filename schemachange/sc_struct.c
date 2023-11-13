@@ -1080,7 +1080,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
 
     set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
-    restore_constraint_pointers(db, newdb);
+    restore_constraint_pointers(db, newdb, NULL);
 
     /* create new csc2 file and modify lrl to reflect that (takes
      * llmeta into account and does the right thing ) */
@@ -1097,13 +1097,14 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     if (rc)
         logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__, __LINE__,
                rc, bdberr);
+    
     db->handle = old_bdb_handle;
-
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
 
     commit_schemas(table);
     update_dbstore(db);
+    try_to_populate_missing_reverse_constraints();
 
     free(new_bdb_handle);
     return 0;

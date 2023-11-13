@@ -74,6 +74,24 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
     return SC_OK;
 }
 
+static int process_constraints_for_new_table_on_master(struct dbtable * const newdb,
+                                                       struct schema_change_type *s)
+{
+    int rc = verify_constraints_exist(newdb, NULL, NULL, s);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
+        return -1;
+    }
+
+    rc = populate_reverse_constraints(newdb, /* track_errors */ 1, s);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
+        return -1;
+    }
+
+    return 0;
+}
+
 /* Add a new table.  Assume new table has no db number.
  * If csc2 is provided then a filename is chosen, the lrl updated and
  * the file written with the csc2. */
@@ -110,16 +128,10 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
 
-    if ((iq == NULL || iq->tranddl <= 1) &&
-        verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
-        rc = -1;
-        goto err;
-    }
-
-    if ((iq == NULL || iq->tranddl <= 1) &&
-        populate_reverse_constraints(newdb)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
+    const int i_am_master = newdb->dbenv->master == gbl_myhostname;
+    if (i_am_master && (iq == NULL || iq->tranddl <= 1)
+        && process_constraints_for_new_table_on_master(newdb, iq ? iq->sc : NULL)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to process constraints for new table\n", __func__);
         rc = -1;
         goto err;
     }
@@ -253,7 +265,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "error verifying constraints\n");
         return -1;
     }
-    if (iq && iq->tranddl > 1 && populate_reverse_constraints(db)) {
+    if (iq && iq->tranddl > 1
+        && populate_reverse_constraints(db, /* track_errors */ 1, s)) {
         sc_errf(s, "error populating reverse constraints\n");
         return -1;
     }

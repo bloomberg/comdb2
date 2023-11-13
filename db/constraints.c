@@ -2141,36 +2141,56 @@ static inline int key_has_expressions_members(struct schema *key)
     return 0;
 }
 
+static struct schema_change_type * get_schema_change_for_table_by_name(const char * const name, struct schema_change_type * sc)
+{
+    while (sc) {
+        if (strcasecmp(sc->tablename, name) == 0) {
+            return sc;
+        }
+        sc = sc->sc_next;
+    }
+
+    return NULL;
+}
+
+static struct schema * get_sckey(const char * const table_name,
+                                 const char * const key_name,
+                                 int has_new_btree) {
+    if (has_new_btree) {
+        char key_tag[MAXTAGLEN];
+        snprintf(key_tag, sizeof(key_tag), ".NEW.%s", key_name);
+        return find_tag_schema_by_name(table_name, key_tag);
+    } else {
+        return find_tag_schema_by_name(table_name, key_name);
+    }
+}
+
 /* Verify that the tables and keys referred to by this table's constraints all
  * exist & have the correct column count.  If they don't it's a bit of a show
- * stopper. */
+ * stopper.
+ * */
 int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                              struct dbtable *new_db,
                              struct schema_change_type *s)
 {
     int ii, jj;
-    char keytag[MAXTAGLEN];
     struct schema *bky, *fky;
     int n_errors = 0;
 
     if (!from_db) {
         for (ii = 0; ii < thedb->num_dbs; ii++) {
             from_db = get_newer_db(thedb->dbs[ii], new_db);
-            n_errors += verify_constraints_exist(
-                from_db, from_db == to_db ? NULL : to_db, new_db, s);
+            n_errors += verify_constraints_exist(from_db, from_db == to_db ? NULL : to_db, new_db, s);
         }
         return n_errors;
     }
 
     for (ii = 0; ii < from_db->n_constraints; ii++) {
         constraint_t *ct = &from_db->constraints[ii];
-
-        if (from_db == new_db) {
-            snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
-        } else {
-            snprintf(keytag, sizeof(keytag), "%s", ct->lclkeyname);
-        }
-        if (!(fky = find_tag_schema(from_db, keytag))) {
+        
+        const int from_db_has_new_btree = from_db == new_db;
+        fky = get_sckey(from_db->tablename, ct->lclkeyname, from_db_has_new_btree);
+        if (!fky) {
             /* Referencing a nonexistent key */
             constraint_err(s, from_db, ct, 0, "foreign key not found");
             n_errors++;
@@ -2181,44 +2201,41 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             n_errors++;
         }
         for (jj = 0; jj < ct->nrules; jj++) {
-            struct dbtable *rdb;
-
             /* If we have a target table (to_db) only look at rules pointing
              * to that table. */
             if (to_db && strcasecmp(ct->table[jj], to_db->tablename) != 0)
                 continue;
 
-            rdb = get_dbtable_by_name(ct->table[jj]);
-            if (rdb)
-                rdb = get_newer_db(rdb, new_db);
-            else if (strcasecmp(ct->table[jj], from_db->tablename) == 0)
-                rdb = from_db;
-            if (!rdb) {
+            struct schema_change_type *target_db_sc =
+                get_schema_change_for_table_by_name(ct->table[jj], s);
+
+            // If the constraint target table is being schema changed, then we want the new
+            // dbtable (from the schema change)
+            struct dbtable * target_db = target_db_sc && target_db_sc->db ? target_db_sc->db : get_dbtable_by_name(ct->table[jj]);
+
+            if (target_db) {
+                target_db = get_newer_db(target_db, new_db);
+            } else if (strcasecmp(ct->table[jj], from_db->tablename) == 0) {
+                target_db = from_db;
+            }
+            if (!target_db) {
                 /* Referencing a non-existent table */
                 constraint_err(s, from_db, ct, jj, "parent table not found");
                 n_errors++;
                 continue;
-            } else {
-                if (rdb->timepartition_name) {
-                    constraint_err(s, from_db, ct, jj, "A foreign key cannot refer to a time partition");
-                    n_errors++;
-                    continue;
-                }
+            } else if (target_db->timepartition_name) {
+                constraint_err(s, from_db, ct, jj, "A foreign key cannot refer to a time partition");
+                n_errors++;
+                continue;
             }
-            if (rdb == new_db) {
-                snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[jj]);
-                if (!(bky = find_tag_schema_by_name(ct->table[jj], keytag))) {
-                    /* Referencing a nonexistent key */
-                    constraint_err(s, from_db, ct, jj, "parent key not found");
-                    n_errors++;
-                }
-            } else {
-                snprintf(keytag, sizeof(keytag), "%s", ct->keynm[jj]);
-                if (!(bky = find_tag_schema(rdb, keytag))) {
-                    /* Referencing a nonexistent key */
-                    constraint_err(s, from_db, ct, jj, "parent key not found");
-                    n_errors++;
-                }
+
+            const int target_db_has_new_btree = target_db == new_db ||
+                (target_db->sc_from != NULL && target_db->sc_from != target_db->sc_to);
+            bky = get_sckey(ct->table[jj], ct->keynm[jj], target_db_has_new_btree);
+            if (!bky) {
+                /* Referencing a nonexistent key */
+                constraint_err(s, from_db, ct, jj, "parent key not found");
+                n_errors++;
             }
 
             if (constraint_key_check(fky, bky)) {
@@ -2232,58 +2249,72 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
     return n_errors;
 }
 
-/* creates a reverse constraint in the referenced table for each of the db's
- * constraint rules, if the referenced table already has the constraint a
- * duplicate is not added
- * this func also does a lot of verifications
- * returns the number of erorrs encountered */
-int populate_reverse_constraints(struct dbtable *db)
+/* 
+ * Creates a reverse constraint in the referenced table for each of the database's
+ * constraint rules. If the referenced table already has the constraint, a duplicate 
+ * is not added. 
+ *
+ * This function also performs several verifications.
+ *
+ * If `track_errors` is nonzero, the function returns the number of errors encountered
+ * and logs a message describing each error; otherwise, it returns zero and does not
+ * log on error.
+ */
+int populate_reverse_constraints(struct dbtable *db,
+                                 int track_errors,
+                                 struct schema_change_type *sc)
 {
-    int ii, n_errors = 0;
+    int n_errors = 0;
 
-    for (ii = 0; ii < db->n_constraints; ii++) {
-        int jj = 0;
+    for (size_t ii = 0; ii < db->n_constraints; ii++) {
         constraint_t *cnstrt = &db->constraints[ii];
-        struct schema *sc = NULL;
 
-        sc = find_tag_schema(db, cnstrt->lclkeyname);
-        if (sc == NULL) {
+        if (track_errors
+            && (find_tag_schema(db, cnstrt->lclkeyname) == NULL)) {
             ++n_errors;
             logmsg(LOGMSG_ERROR,
-                   "constraint error: key %s is not found in table %s\n",
-                   cnstrt->lclkeyname, db->tablename);
+                "constraint error: key %s is not found in table %s\n",
+                cnstrt->lclkeyname, db->tablename);
         }
 
-        for (jj = 0; jj < cnstrt->nrules; jj++) {
-            struct dbtable *cttbl = NULL;
-            struct schema *sckey = NULL;
-            int rcidx = 0, dupadd = 0;
-            cttbl = get_dbtable_by_name(cnstrt->table[jj]);
+        for (int jj = 0; jj < cnstrt->nrules; jj++) {
+            int dupadd = 0;
+
+            struct schema_change_type * const cttbl_sc =
+                get_schema_change_for_table_by_name(cnstrt->table[jj], sc);
+
+            // If the constraint target table is being schema changed, then we want the new
+            // dbtable (from the schema change)
+            struct dbtable *cttbl = cttbl_sc && cttbl_sc->db ? cttbl_sc->db : get_dbtable_by_name(cnstrt->table[jj]);
+
             if (cttbl == NULL &&
                 strcasecmp(cnstrt->table[jj], db->tablename) == 0)
                 cttbl = db;
 
             if (cttbl == NULL) {
-                ++n_errors;
-                logmsg(LOGMSG_ERROR, "constraint error for key %s: table %s is not found\n",
-                       cnstrt->lclkeyname, cnstrt->table[jj]);
+                if (track_errors) {
+                    ++n_errors;
+                    logmsg(LOGMSG_ERROR, "constraint error for key %s: table %s is not found\n",
+                        cnstrt->lclkeyname, cnstrt->table[jj]);
+                }
                 continue;
             }
 
-            if (cttbl == db)
-                sckey = find_tag_schema_by_name(cnstrt->table[jj], cnstrt->keynm[jj]);
-            else
-                sckey = find_tag_schema(cttbl, cnstrt->keynm[jj]);
+            const int cttbl_has_new_btree = (cttbl->sc_from != NULL) && (cttbl->sc_from != cttbl->sc_to);
+            const struct schema * const sckey = get_sckey(cnstrt->table[jj], cnstrt->keynm[jj],
+                                                          cttbl_has_new_btree);
             if (sckey == NULL) {
-                ++n_errors;
-                logmsg(LOGMSG_ERROR, "constraint error for key %s: key %s is not found in "
+                if (track_errors) {
+                    ++n_errors;
+                    logmsg(LOGMSG_ERROR, "constraint error for key %s: key %s is not found in "
                        "table %s\n",
                        cnstrt->lclkeyname, cnstrt->keynm[jj],
                        cnstrt->table[jj]);
+                }
                 continue;
             }
 
-            for (rcidx = 0; rcidx < cttbl->n_rev_constraints; rcidx++) {
+            for (size_t rcidx = 0; rcidx < cttbl->n_rev_constraints; rcidx++) {
                 if (cttbl->rev_constraints[rcidx] == cnstrt) {
                     dupadd = 1;
                     break;
@@ -2297,6 +2328,38 @@ int populate_reverse_constraints(struct dbtable *db)
     }
 
     return n_errors;
+}
+
+/*
+ * This function tries to populate missing reverse constraints for all tables.
+ * It is intended to be called as a create or alter schema change is replicated
+ * This provides support for adding a constraint before it is satisfied in a transaction.
+ *
+ * The following is an example of a transaction that adds a constraint before
+ * it is satisfied, along with an explanation of how this constraint
+ * is added during replication using this function:
+ *
+ * begin
+ * create table t { schema { int a } keys { "a" = a }
+ *     constraints { "a" -> "q":"a" on delete cascade } }$$
+ * create table q { schema { int a } keys { "a" = a } }$$
+ * commit
+ *
+ * This transaction will apply two schema changes, one for the creation of t
+ * and another for the creation of q.
+ *
+ * During t's schema change, this function will add t's constraint on q, and it will try to 
+ * add a corresponding reverse constraint on q. This will fail, since q doesn't
+ * yet exist, and the function will suppress the error.
+ *
+ * During q's schema change, this function will try to add q's missing reverse constraint.
+ * This time it will succeed since q exists.
+ */
+void try_to_populate_missing_reverse_constraints()
+{
+    for (int i=0; i<thedb->num_dbs; ++i) {
+        (void) populate_reverse_constraints(thedb->dbs[i], /* track_errors */ 0, NULL);
+    }
 }
 
 /* Iterate over all constraints which a key has 

@@ -66,12 +66,10 @@ void set_odh_options(struct dbtable *db);
 
 int compare_constraints(const char *table, struct dbtable *newdb);
 
-int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
-                                     int copyof);
+void restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb,
+                                 struct schema_change_type *sc);
 
-int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
-
-int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
+void backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 
 int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type *s);
 
