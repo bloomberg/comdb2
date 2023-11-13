@@ -38,7 +38,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "nodemap.h"
 #include "sqlresponse.pb-c.h"
 #include "logmsg.h"
 #include "thread_stats.h"
@@ -77,7 +76,7 @@ int __lock_dump_region_int(DB_ENV *, const char *area, FILE *,
                            int just_active_locks);
 int __lock_dump_active_locks(DB_ENV *, FILE *);
 int __db_cprint(DB *dbp);
-char *bdb_coherent_state_string(const char *host);
+char *bdb_coherent_state_string(struct interned_string *host);
 
 static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
                                   char *name);
@@ -712,8 +711,8 @@ void fill_dbinfo(CDB2DBINFORESPONSE *dbinfo_response, bdb_state_type *bdb_state)
             /* We can only query the master for cluster-coherent state */
             nodeinfos[i]->incoherent = 0;
             if (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host) {
-                if (bdb_state->coherent_state[nodeix(nodes[j].host)] !=
-                        STATE_COHERENT) {
+                struct hostinfo *h = retrieve_hostinfo(nodes[j].host_interned);
+                if (h->coherent_state != STATE_COHERENT) {
                     nodeinfos[i]->incoherent = 1;
                 } else {
                     nodeinfos[i]->incoherent = 0;
@@ -748,8 +747,8 @@ void fill_dbinfo(CDB2DBINFORESPONSE *dbinfo_response, bdb_state_type *bdb_state)
                     bdb_state->callback->getroom_rtn(bdb_state, nodes[j].host);
                 master->name = strdup(nodes[j].host);
             }
-            if (bdb_state->coherent_state[nodeix(nodes[j].host)] !=
-                STATE_COHERENT) {
+            struct hostinfo *h = retrieve_hostinfo(nodes[j].host_interned);
+            if (h->coherent_state != STATE_COHERENT) {
                 nodeinfos[i]->incoherent = 1;
             } else {
                 nodeinfos[i]->incoherent = 0;
@@ -801,15 +800,15 @@ static void netinfo_dump_hostname(FILE *out, bdb_state_type *bdb_state)
             status_mstr = " ";
         }
 
-        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
+        struct hostinfo *h = retrieve_hostinfo(nodes[ii].host_interned);
+        lsnp = &h->seqnum.lsn;
 
-        coherent_state = bdb_coherent_state_string(nodes[ii].host);
+        coherent_state = bdb_coherent_state_string(nodes[ii].host_interned);
 
         logmsgf(LOGMSG_USER, out, "%16s:%d %-6s %-1s fd %-3d lsn %s f %d %s\n",
                 nodes[ii].host, nodes[ii].port, status_mstr, status,
                 nodes[ii].fd, lsn_to_str(str, lsnp),
-                bdb_state->seqnum_info->filenum[nodeix(nodes[ii].host)],
-                coherent_state);
+                h->filenum, coherent_state);
     }
 }
 netinfo_dumper *netinfo_dump_impl = netinfo_dump_hostname;
@@ -850,16 +849,16 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
         } else {
             status = "c";
         }
+        struct hostinfo *h = retrieve_hostinfo(nodes[ii].host_interned);
         if (bdb_state->repinfo->master_host == nodes[ii].host)
             status_mstr = "MASTER";
         else {
-            switch (bdb_state->coherent_state[nodeix(nodes[ii].host)]) {
+            switch (h->coherent_state) {
             case STATE_INCOHERENT:
             case STATE_INCOHERENT_WAIT:
             case STATE_INCOHERENT_SLOW:
             default:
-                status_mstr = coherent_state_to_str(
-                    bdb_state->coherent_state[nodeix(nodes[ii].host)]);
+                status_mstr = coherent_state_to_str(h->coherent_state);
                 break;
             case STATE_COHERENT:
                 status_mstr = " ";
@@ -867,7 +866,7 @@ void bdb_short_netinfo_dump(FILE *out, bdb_state_type *bdb_state)
             }
         }
 
-        lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[ii].host)].lsn;
+        lsnp = &h->seqnum.lsn;
 
         logmsgf(LOGMSG_USER, out, "%10s %-1s lsn %s %s\n", nodes[ii].host, status,
                 lsn_to_str(str, lsnp), status_mstr);
@@ -879,7 +878,9 @@ void bdb_get_cur_lsn_str_node(bdb_state_type *bdb_state, uint64_t *lsnbytes,
                               char *lsnstr, size_t len, char *host)
 {
     char buf[64];
-    DB_LSN *lsn = &bdb_state->seqnum_info->seqnums[nodeix(host)].lsn;
+    struct interned_string *host_interned = intern_ptr(host);
+    struct hostinfo *h = retrieve_hostinfo(host_interned);
+    DB_LSN *lsn = &h->seqnum.lsn;
     lsn_to_str(buf, lsn);
     strncpy0(lsnstr, buf, len);
     *lsnbytes = ((uint64_t)lsn->file * (uint64_t)bdb_state->attr->logfilesize) +
@@ -2053,28 +2054,25 @@ void bdb_dump_table_dbregs(bdb_state_type *bdb_state)
 
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 {
-    const char *nodes[REPMAX];
+    struct interned_string *nodes[REPMAX];
     int numnodes;
     int numdisplayed = 0;
     int first = 1;
 
-    numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodes);
+    numnodes = net_get_all_nodes_interned(bdb_state->repinfo->netinfo, nodes);
     for (int i = 0; i < numnodes; i++) {
         double avg[2];
-        if (bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]) {
-            avg[0] = averager_avg(
-                bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]);
-            avg[1] = averager_avg(
-                bdb_state->seqnum_info->time_minute[nodeix(nodes[i])]);
-            if (avg[0] != 0 || avg[1] != 0) {
-                if (first) {
-                    first = 0;
-                    logmsg(LOGMSG_USER, "reptimes  ");
-                }
-                logmsg(LOGMSG_USER, "%s: %.2f %.2f   ", nodes[i], avg[0],
-                       avg[1]);
-                numdisplayed++;
+        struct hostinfo *h = retrieve_hostinfo(nodes[i]);
+        avg[0] = averager_avg(h->time_10seconds);
+        avg[1] = averager_avg(h->time_minute);
+        if (avg[0] != 0 || avg[1] != 0) {
+            if (first) {
+                first = 0;
+                logmsg(LOGMSG_USER, "reptimes  ");
             }
+            logmsg(LOGMSG_USER, "%s: %.2f %.2f   ", nodes[i]->str, avg[0],
+                    avg[1]);
+            numdisplayed++;
         }
     }
     if (numdisplayed > 0)
@@ -2083,22 +2081,18 @@ void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
 
 void bdb_show_reptimes(bdb_state_type *bdb_state)
 {
-    const char *nodes[REPMAX];
+    struct interned_string *nodes[REPMAX];
     int numnodes;
 
-    numnodes = net_get_all_nodes(bdb_state->repinfo->netinfo, nodes);
+    numnodes = net_get_all_nodes_interned(bdb_state->repinfo->netinfo, nodes);
     logmsg(LOGMSG_USER, "%5s %10s %10s    (rolling avg over interval)\n", "node",
            "10 seconds", "1 minute");
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     for (int i = 0; i < numnodes; i++) {
-        if (bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]) {
-            logmsg(
-                LOGMSG_USER, "%s %10.2f %10.2f\n", nodes[i],
-                averager_avg(
-                    bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]),
-                averager_avg(
-                    bdb_state->seqnum_info->time_minute[nodeix(nodes[i])]));
-        }
+        struct hostinfo *h = retrieve_hostinfo(nodes[i]);
+        logmsg(LOGMSG_USER, "%s %10.2f %10.2f\n", nodes[i]->str,
+                averager_avg(h->time_10seconds),
+                averager_avg(h->time_minute));
     }
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
@@ -2133,7 +2127,7 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table)
 repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
         bdb_state_type *bdb_state, int *pnnodes)
 {
-    int rc, i, nnodes, nodeidx;
+    int rc, i, nnodes;
     DB_LSN *lsnp, *master_lsnp;
     const char *host;
     struct host_node_info nodes[REPMAX];
@@ -2154,8 +2148,8 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
     if (rv == NULL) /* Malloc failed. */
         return NULL;
 
-    nodeidx = nodeix(bdb_state->repinfo->master_host);
-    master_lsnp = &bdb_state->seqnum_info->seqnums[nodeidx].lsn;
+    struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+    master_lsnp = &m->seqnum.lsn;
 
     for (i = 0; i != nnodes; ++i) {
         host = nodes[i].host;
@@ -2172,7 +2166,8 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
                                         &pos->bytes_read,
                                         &pos->throttle_waits,
                                         &pos->reorders);
-
+                                            
+        struct hostinfo *h = retrieve_hostinfo(nodes[i].host_interned);
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
         if (rc != 0) {
@@ -2188,27 +2183,12 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
             pos->lsn_text[0] = '\0';
             pos->lsn_bytes_behind = 0;
         } else {
-            nodeidx = nodeix(host);
-            if (bdb_state->seqnum_info->time_10seconds[nodeidx] == NULL) {
-                pos->avg_wait_over_10secs = 0;
-                pos->max_wait_over_10secs = 0;
-            } else {
-                pos->avg_wait_over_10secs = averager_avg(
-                    bdb_state->seqnum_info->time_10seconds[nodeidx]);
-                pos->max_wait_over_10secs = averager_max(
-                    bdb_state->seqnum_info->time_10seconds[nodeidx]);
-            }
+            pos->avg_wait_over_10secs = averager_avg(h->time_10seconds);
+            pos->max_wait_over_10secs = averager_max(h->time_10seconds);
+            pos->avg_wait_over_1min = averager_avg(h->time_minute);
+            pos->max_wait_over_1min = averager_max(h->time_minute);
 
-            if (bdb_state->seqnum_info->time_minute[nodeidx] == NULL) {
-                pos->avg_wait_over_1min = 0;
-                pos->max_wait_over_1min = 0;
-            } else {
-                pos->avg_wait_over_1min =
-                    averager_avg(bdb_state->seqnum_info->time_minute[nodeidx]);
-                pos->max_wait_over_1min =
-                    averager_max(bdb_state->seqnum_info->time_minute[nodeidx]);
-            }
-            lsnp = &bdb_state->seqnum_info->seqnums[nodeidx].lsn;
+            lsnp = &h->seqnum.lsn;
             lsn_to_str(pos->lsn_text, lsnp);
             pos->lsn_bytes_behind = subtract_lsn(bdb_state, master_lsnp, lsnp);
         }
@@ -2220,12 +2200,13 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
     return rv;
 }
 
-char *bdb_coherent_state_string(const char *host) {
+char *bdb_coherent_state_string(struct interned_string *host) {
     char *coherent_state;
     bdb_state_type *bdb_state = gbl_bdb_state;
     int iammaster = bdb_state->repinfo->myhost == bdb_state->repinfo->master_host;
+    struct hostinfo *h = retrieve_hostinfo(host);
 
-    switch (bdb_state->coherent_state[nodeix(host)]) {
+    switch (h->coherent_state) {
         case STATE_COHERENT:
             coherent_state = "";
             break;
@@ -2267,10 +2248,11 @@ int bdb_fill_cluster_info(void **data, int *num_nodes) {
         info[i].host = strdup(nodes[i].host);
         info[i].port = nodes[i].port;
         info[i].is_master = (nodes[i].host == gbl_bdb_state->repinfo->master_host) ? "Y" : "N";
-        info[i].coherent_state = bdb_coherent_state_string(nodes[i].host);
+        info[i].coherent_state = bdb_coherent_state_string(nodes[i].host_interned);
         if (info[i].coherent_state[0] == 0)
             info[i].coherent_state = "coherent";
-        DB_LSN *lsnp = &bdb_state->seqnum_info->seqnums[nodeix(nodes[i].host)].lsn;
+        struct hostinfo *h = retrieve_hostinfo(nodes[i].host_interned);
+        DB_LSN *lsnp = &h->seqnum.lsn;
         info[i].logfile = lsnp->file;
         info[i].logoffset = lsnp->offset;
     }

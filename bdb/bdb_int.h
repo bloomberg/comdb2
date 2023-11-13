@@ -706,20 +706,11 @@ struct waiting_for_lsn {
 typedef LISTC_T(struct waiting_for_lsn) wait_for_lsn_list;
 
 typedef struct {
-    seqnum_type *seqnums; /* 1 per node num */
     pthread_mutex_t lock;
     pthread_cond_t cond;
     pthread_key_t key;
-    wait_for_lsn_list **waitlist;
-    short *expected_udp_count;
-    short *incomming_udp_count;
-    short *udp_average_counter;
-    int *filenum;
 
     pool_t *trackpool;
-    /* need to do a bit better here... */
-    struct averager **time_10seconds;
-    struct averager **time_minute;
 } seqnum_info_type;
 
 typedef struct {
@@ -742,11 +733,13 @@ struct sockaddr_in;
 typedef struct {
     netinfo_type *netinfo;
 
+    struct interned_string *master_host_interned;
     char *master_host;
+
+    struct interned_string *myhost_interned;
     char *myhost;
 
     pthread_mutex_t elect_mutex;
-    int *appseqnum; /* application level (bdb lib) sequencing */
     pthread_mutex_t appseqnum_lock;
     pthread_mutex_t upgrade_lock; /* ensure only 1 upgrade at a time */
     pthread_mutex_t send_lock;
@@ -770,6 +763,23 @@ typedef struct {
     int should_reject_timestamp;
     int should_reject;
 } repinfo_type;
+
+struct hostinfo
+{
+    seqnum_type seqnum;
+    uint64_t last_downgrade_time;
+    uint64_t master_lease;
+    int coherent_state;
+    int appseqnum;
+    wait_for_lsn_list waitlist;
+    short expected_udp_count;
+    short incoming_udp_count;
+    short udp_average_counter;
+    int filenum;
+    struct averager *time_10seconds;
+    struct averager *time_minute;
+    LINKC_T (struct hostinfo) lnk;
+};
 
 enum {
     STATE_COHERENT = 0,
@@ -989,8 +999,6 @@ struct bdb_state_tag {
     signed char low_headroom_count;
 
     signed char pending_seqnum_broadcast;
-    int *coherent_state;
-    uint64_t *master_lease;
     pthread_mutex_t master_lease_lk;
 
     signed char after_llmeta_init_done;
@@ -1000,8 +1008,6 @@ struct bdb_state_tag {
     signed char
         not_coherent; /*master sets this if it knows were not coherent */
     int not_coherent_time;
-
-    uint64_t *last_downgrade_time;
 
     /* old databases with datacopy don't have odh in index */
     signed char datacopy_odh;
@@ -1752,14 +1758,16 @@ void auto_analyze(int, short, void *);
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
 void net_rep_throttle_init(netinfo_type *netinfo_ptr);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
+                        struct interned_string *from_host_interned,
                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
 void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
-                        int usertype, void *dta, int dtalen, uint8_t is_tcp);
+                        struct interned_string *from_interned, int usertype,
+                        void *dta, int dtalen, uint8_t is_tcp);
 void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
-                             int usertype, void *dta, int dtalen,
+                             struct interned_string *from_interned, int usertype, void *dta, int dtalen,
                              uint8_t is_tcp);
 void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
-                             int usertype, void *dta, int dtalen,
+                             struct interned_string *from_interned, int usertype, void *dta, int dtalen,
                              uint8_t is_tcp);
 uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
@@ -1850,7 +1858,7 @@ int deadlock_policy_max();
 
 char *coherent_state_to_str(int state);
 
-char *bdb_coherent_state_string(const char *);
+char *bdb_coherent_state_string(struct interned_string *);
 
 /* ugly, but need to signal shutdown */
 int osql_process_message_decom(char *);

@@ -33,7 +33,6 @@
 #include "truncate_log.h"
 #include "reversesql.h"
 #include "reverse_conn.h"
-#include "nodemap.h"
 
 #include <parse_lsn.h>
 #include <logmsg.h>

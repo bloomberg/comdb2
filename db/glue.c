@@ -622,13 +622,14 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
         if (source_node == gbl_myhostname)
             break;
         iq->gluewhere = "bdb_wait_for_seqnum_from_node";
+        struct interned_string *source_node_interned = intern_ptr(source_node);
 
         if (timeoutms == -1)
             rc = bdb_wait_for_seqnum_from_node(bdb_handle, (seqnum_type *)ss,
-                                               source_node);
+                                               source_node_interned);
         else
             rc = bdb_wait_for_seqnum_from_node_timeout(
-                bdb_handle, (seqnum_type *)ss, source_node, timeoutms);
+                bdb_handle, (seqnum_type *)ss, source_node_interned, timeoutms);
 
         iq->gluewhere = "bdb_wait_for_seqnum_from_node done";
         if (rc != 0) {
@@ -3124,6 +3125,7 @@ void backend_update_sync(struct dbenv *dbenv)
 }
 
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
+                              struct interned_string *frominterned,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
 {
@@ -3139,8 +3141,9 @@ struct net_sc_msg {
     char host[1];
 };
 
-static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
-                         void *dtap, int dtalen, uint8_t is_tcp)
+static void net_start_sc(void *hndl, void *uptr, char *fromnode,
+                         struct interned_string *frominterned,
+                         int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_sc_msg *sc;
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -3157,7 +3160,8 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
     BDB_RELLOCK();
 }
 
-static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
+static void net_stop_sc(void *hndl, void *uptr, char *fromnode,
+                        struct interned_string *frominterned, int usertype,
                         void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_sc_msg *sc;
@@ -3176,6 +3180,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
 }
 
 static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
+                            struct interned_string *frominterned,
                             int usertype, void *dtap, int dtalen,
                             uint8_t is_tcp)
 {
@@ -3184,7 +3189,8 @@ static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 
-static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
+static void net_flush_all(void *hndl, void *uptr, char *fromnode,
+                          struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
     logmsg(LOGMSG_DEBUG, "Received NET_FLUSH_ALL\n");
@@ -3196,8 +3202,8 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
-                   void *dtap, int dtalen, uint8_t is_tcp)
+void net_new_queue(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                   int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_new_queue_msg *msg = dtap;
     int rc;
@@ -3214,8 +3220,8 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, rc);
 }
 
-void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
-                   void *dtap, int dtalen, uint8_t is_tcp)
+void net_javasp_op(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                   int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct new_procedure_op_msg *msg = dtap;
     char *name;
@@ -3255,8 +3261,8 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, rc);
 }
 
-void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
-                      void *dtap, int dtalen, uint8_t is_tcp)
+void net_prefault_ops(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                      int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     /* TODO: Does nothing?  Refactor to remove it? */
 }
@@ -3264,13 +3270,15 @@ void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
 int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
                                int dtalen, int is_tcp);
 
-void net_prefault2_ops(void *hndl, void *uptr, char *fromnode, int usertype,
+void net_prefault2_ops(void *hndl, void *uptr, char *fromnode,
+                       struct interned_string *frominterned, int usertype,
                        void *dta, int dtalen, uint8_t is_tcp)
 {
     process_broadcast_prefault(thedb, dta, dtalen, is_tcp);
 }
 
-void net_add_consumer(void *hndl, void *uptr, char *fromnode, int usertype,
+void net_add_consumer(void *hndl, void *uptr, char *fromnode,
+                      struct interned_string *frominterned, int usertype,
                       void *dtap, int dtalen, uint8_t is_tcp)
 {
     struct net_add_consumer_msg *msg = dtap;
@@ -3299,6 +3307,7 @@ void net_add_consumer(void *hndl, void *uptr, char *fromnode, int usertype,
 }
 
 static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
+                            struct interned_string *frominterned,
                             int usertype, void *dtap, int dtalen,
                             uint8_t is_tcp)
 {
@@ -3317,6 +3326,7 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
 }
 
 static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
+                                 struct interned_string *frominterned,
                                  int usertype, void *dtap, int dtalen,
                                  uint8_t _)
 {
@@ -3326,6 +3336,7 @@ static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
 }
 
 static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
+                                   struct interned_string *frominterned,
                                    int usertype, void *dtap, int dtalen,
                                    uint8_t _)
 {
@@ -3335,12 +3346,14 @@ static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
 }
 
 static void net_trigger_start(void *hndl, void *uptr, char *fromnode,
+                              struct interned_string *frominterned,
                               int usertype, void *dtap, int dtalen, uint8_t _)
 {
     trigger_start(dtap);
 }
 
 static void net_authentication_check(void *hndl, void *uptr, char *fromhost,
+                             struct interned_string *frominterned,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
 {

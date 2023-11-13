@@ -432,7 +432,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         /* call the hostdown routine if provided */
         if (host_node_ptr->netinfo_ptr->hostdown_rtn) {
             (host_node_ptr->netinfo_ptr->hostdown_rtn)(
-                host_node_ptr->netinfo_ptr, host_node_ptr->host);
+                host_node_ptr->netinfo_ptr, host_node_ptr->host_interned);
             host_node_printf(LOGMSG_DEBUG, host_node_ptr, "back from hostdown_rtn\n");
         }
     }
@@ -2108,6 +2108,54 @@ int net_get_all_nodes(netinfo_type *netinfo_ptr, const char *hostlist[REPMAX])
     return count;
 }
 
+int net_get_all_nodes_interned(netinfo_type *netinfo_ptr, struct interned_string *hostlist[REPMAX])
+{
+    host_node_type *ptr;
+    int count = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        /* dont send to yourself */
+        if (ptr->host == netinfo_ptr->myhostname)
+            continue;
+
+        hostlist[count++] = ptr->host_interned;
+        if (count >= REPMAX)
+            break;
+    }
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return count;
+}
+
+
+
+int net_get_all_commissioned_nodes_interned(netinfo_type *netinfo_ptr, struct interned_string *hostlist[REPMAX])
+{
+    host_node_type *ptr;
+    int count = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        /* dont send to yourself */
+        if (ptr->host == netinfo_ptr->myhostname)
+            continue;
+
+        if (!ptr->decom_flag) {
+            hostlist[count++] = ptr->host_interned;
+            if (count >= REPMAX)
+                break;
+        }
+    }
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return count;
+}
+
 int net_get_all_commissioned_nodes(netinfo_type *netinfo_ptr,
                                    const char *hostlist[REPMAX])
 {
@@ -2126,6 +2174,36 @@ int net_get_all_commissioned_nodes(netinfo_type *netinfo_ptr,
             if (count >= REPMAX)
                 break;
         }
+    }
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return count;
+}
+
+int net_get_all_nodes_connected_interned(netinfo_type *netinfo_ptr, struct interned_string *hostlist[REPMAX])
+{
+    host_node_type *ptr;
+    int count = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        /* dont send to yourself */
+        if (ptr->host == netinfo_ptr->myhostname)
+            continue;
+
+        /* dont count disconected guys */
+        if (ptr->fd <= 0)
+            continue;
+
+        /* dont count guys that didnt hello us */
+        if (!ptr->got_hello)
+            continue;
+
+        hostlist[count++] = ptr->host_interned;
+        if (count >= REPMAX)
+            break;
     }
 
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
@@ -2494,7 +2572,8 @@ host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr, const char hostname
     ptr->fd = -1;
 
     ptr->next = netinfo_ptr->head;
-    ptr->host = intern(hostname);
+    ptr->host_interned = intern_ptr(hostname);
+    ptr->host = ptr->host_interned->str;
     ptr->hostname_len = strlen(ptr->host) + 1;
     /* ptr->addr will be set by connect_thread() */
     ptr->port = portnum;
@@ -2704,7 +2783,7 @@ int net_is_single_sanctioned_node(netinfo_type *netinfo_ptr)
 
     ptr = netinfo_ptr->sanctioned_list;
 
-    if (ptr && !ptr->next && !strcmp(ptr->host, netinfo_ptr->myhostname))
+    if (ptr && !ptr->next && !strcmp(ptr->host->str, netinfo_ptr->myhostname))
         single_node = 1;
 
     Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
@@ -2712,8 +2791,9 @@ int net_is_single_sanctioned_node(netinfo_type *netinfo_ptr)
     return single_node;
 }
 
-static int net_get_sanctioned_int(netinfo_type *netinfo_ptr, int max_nodes,
-                                 const char *hosts[REPMAX], int include_self)
+
+static int net_get_sanctioned_interned_int(netinfo_type *netinfo_ptr, int max_nodes,
+                                 struct interned_string *hosts[REPMAX], int include_self)
 {
     int count = 0;
     sanc_node_type *ptr;
@@ -2721,7 +2801,7 @@ static int net_get_sanctioned_int(netinfo_type *netinfo_ptr, int max_nodes,
     Pthread_mutex_lock(&(netinfo_ptr->sanclk));
 
     for (ptr = netinfo_ptr->sanctioned_list; ptr != NULL; ptr = ptr->next) {
-        if (ptr->host == netinfo_ptr->myhostname && !include_self)
+        if (ptr->host->str == netinfo_ptr->myhostname && !include_self)
             continue;
 
         if (count < max_nodes) {
@@ -2734,6 +2814,40 @@ static int net_get_sanctioned_int(netinfo_type *netinfo_ptr, int max_nodes,
     return count;
 }
 
+static int net_get_sanctioned_int(netinfo_type *netinfo_ptr, int max_nodes,
+                                 const char *hosts[REPMAX], int include_self)
+{
+    int count = 0;
+    sanc_node_type *ptr;
+
+    Pthread_mutex_lock(&(netinfo_ptr->sanclk));
+
+    for (ptr = netinfo_ptr->sanctioned_list; ptr != NULL; ptr = ptr->next) {
+        if (ptr->host->str == netinfo_ptr->myhostname && !include_self)
+            continue;
+
+        if (count < max_nodes) {
+            hosts[count] = ptr->host->str;
+        }
+        count++;
+    }
+    Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
+
+    return count;
+}
+
+int net_get_sanctioned_replicants_interned(netinfo_type *netinfo_ptr, int max_nodes,
+                                           struct interned_string *hosts[REPMAX])
+{
+    return net_get_sanctioned_interned_int(netinfo_ptr, max_nodes, hosts, 0);
+}
+
+int net_get_sanctioned_node_list_interned(netinfo_type *netinfo_ptr, int max_nodes,
+                                          struct interned_string *hosts[REPMAX])
+{
+    return net_get_sanctioned_interned_int(netinfo_ptr, max_nodes, hosts, 1);
+}
+
 int net_get_sanctioned_node_list(netinfo_type *netinfo_ptr, int max_nodes,
                                  const char *hosts[REPMAX])
 {
@@ -2744,6 +2858,53 @@ int net_get_sanctioned_replicants(netinfo_type *netinfo_ptr, int max_nodes,
                                  const char *hosts[REPMAX])
 {
     return net_get_sanctioned_int(netinfo_ptr, max_nodes, hosts, 0);
+}
+
+int net_sanctioned_and_connected_nodes_intern(netinfo_type *netinfo_ptr, int max_nodes,
+                                       struct interned_string *hosts[REPMAX])
+{
+    host_node_type *ptr;
+    sanc_node_type *ptr_sanc;
+    int count = 0;
+    int is_sanc = 0;
+
+    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
+
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        /* dont send to yourself */
+        if (ptr->host == netinfo_ptr->myhostname)
+            continue;
+
+        /* dont count disconected guys */
+        if (ptr->fd <= 0)
+            continue;
+
+        /* dont count guys that didnt hello us */
+        if (!ptr->got_hello)
+            continue;
+
+        is_sanc = 0;
+        Pthread_mutex_lock(&(netinfo_ptr->sanclk));
+        for (ptr_sanc = netinfo_ptr->sanctioned_list; ptr_sanc != NULL;
+             ptr_sanc = ptr_sanc->next) {
+            if (strcmp(ptr_sanc->host->str, ptr->host) == 0
+                /*&& ptr_sanc->port == ptr->port*/) {
+                is_sanc = 1;
+                break;
+            }
+        }
+        Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
+
+        if (is_sanc) {
+            hosts[count++] = ptr->host_interned;
+            if (count >= REPMAX)
+                break;
+        }
+    }
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+
+    return count;
 }
 
 int net_sanctioned_and_connected_nodes(netinfo_type *netinfo_ptr, int max_nodes,
@@ -2773,8 +2934,7 @@ int net_sanctioned_and_connected_nodes(netinfo_type *netinfo_ptr, int max_nodes,
         Pthread_mutex_lock(&(netinfo_ptr->sanclk));
         for (ptr_sanc = netinfo_ptr->sanctioned_list; ptr_sanc != NULL;
              ptr_sanc = ptr_sanc->next) {
-            if (strcmp(ptr_sanc->host, ptr->host) == 0
-                /*&& ptr_sanc->port == ptr->port*/) {
+            if (strcmp(ptr_sanc->host->str, ptr->host) == 0) {
                 is_sanc = 1;
                 break;
             }
@@ -2805,7 +2965,7 @@ int net_del_from_sanctioned(netinfo_type *netinfo_ptr, char *host)
     ptr = netinfo_ptr->sanctioned_list;
 
     last = NULL;
-    while (ptr != NULL && ptr->host != host) {
+    while (ptr != NULL && ptr->host->str != host) {
         last = ptr;
         ptr = ptr->next;
     }
@@ -2976,7 +3136,8 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     netinfo_ptr->throttle_percent = 50;
     netinfo_ptr->seqnum = ((unsigned int)getpid()) * 65537;
     netinfo_ptr->myport = myportnum;
-    netinfo_ptr->myhostname = intern(myhostname);
+    netinfo_ptr->myhost_interned = intern_ptr(myhostname);
+    netinfo_ptr->myhostname = netinfo_ptr->myhost_interned->str;
     netinfo_ptr->myhostname_len = strlen(netinfo_ptr->myhostname) + 1;
 
     netinfo_ptr->fake = fake;
@@ -3467,8 +3628,8 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         int64_t start_us = comdb2_time_epochus();
         /* run the user's function */
         netinfo_ptr->userfuncs[usertype].func(
-            ack_state, netinfo_ptr->usrptr, host_node_ptr->host, usertype,
-            data, datalen, 1);
+            ack_state, netinfo_ptr->usrptr, host_node_ptr->host, host_node_ptr->host_interned,
+            usertype, data, datalen, 1);
         netinfo_ptr->userfuncs[usertype].count++;
         netinfo_ptr->userfuncs[usertype].totus +=
             (comdb2_time_epochus() - start_us);
@@ -4865,7 +5026,7 @@ static void *connect_thread(void *arg)
         /* Also call the new node routine here - it shouldn't matter which
          * node initiated the connection. */
         if (netinfo_ptr->new_node_rtn)
-            netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
+            netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host_interned, host_node_ptr->port);
 
         /* wake writer, if exists */
         Pthread_cond_signal(&(host_node_ptr->write_wakeup));
@@ -5210,7 +5371,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     /* call the newhost routine if provided */
     if (host_node_ptr->netinfo_ptr->new_node_rtn) {
         (host_node_ptr->netinfo_ptr->new_node_rtn)(host_node_ptr->netinfo_ptr,
-                                                   host_node_ptr->host,
+                                                   host_node_ptr->host_interned,
                                                    host_node_ptr->port);
         host_node_printf(LOGMSG_DEBUG, host_node_ptr, "back from newnode_rtn\n");
     }
@@ -6095,7 +6256,7 @@ int net_sanctioned_list_ok(netinfo_type *netinfo_ptr)
 
     for (sanc_node_ptr = netinfo_ptr->sanctioned_list;
          ok && sanc_node_ptr != NULL; sanc_node_ptr = sanc_node_ptr->next) {
-        ok = is_ok(netinfo_ptr, sanc_node_ptr->host);
+        ok = is_ok(netinfo_ptr, sanc_node_ptr->host->str);
     }
 
     Pthread_mutex_unlock(&(netinfo_ptr->sanclk));
@@ -6111,7 +6272,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
     int count = 0;
     sanc_node_type *ptr = netinfo_ptr->sanctioned_list;
 
-    while (ptr != NULL && count < REPMAX && ptr->host != hostname) {
+    while (ptr != NULL && count < REPMAX && ptr->host->str != hostname) {
         ptr = ptr->next;
         count++;
     }
@@ -6127,7 +6288,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
 
     ptr = calloc(1, sizeof(sanc_node_type));
     ptr->next = netinfo_ptr->sanctioned_list;
-    ptr->host = hostname;
+    ptr->host = intern_ptr(hostname);
     ptr->port = portnum;
     ptr->timestamp = time(NULL);
 
@@ -6395,6 +6556,11 @@ char *net_get_mynode(netinfo_type *netinfo_ptr)
     return netinfo_ptr->myhostname;
 }
 
+struct interned_string *net_get_mynode_interned(netinfo_type *netinfo_ptr)
+{
+    return netinfo_ptr->myhost_interned;
+}
+
 void *net_get_usrptr(netinfo_type *netinfo_ptr) { return netinfo_ptr->usrptr; }
 
 void net_set_usrptr(netinfo_type *netinfo_ptr, void *usrptr)
@@ -6420,6 +6586,7 @@ int net_get_nodes_info(netinfo_type *netinfo_ptr, int max_nodes,
         if (max_nodes > 0) {
             out_nodes->fd = ptr->fd;
             out_nodes->host = ptr->host;
+            out_nodes->host_interned = ptr->host_interned;
             out_nodes->port = ptr->port;
 
             out_nodes++;
@@ -6704,16 +6871,16 @@ int net_send_all(netinfo_type *netinfo_ptr, int num, void **data, int *sz,
         return net_send_all_evbuffer(netinfo_ptr, num, data, sz, type, flag);
     }
     int rc = 0;
-    const char *hostlist[REPMAX];
-    int count = net_get_all_nodes_connected(netinfo_ptr, hostlist);
+    struct interned_string *hostlist[REPMAX];
+    int count = net_get_all_nodes_connected_interned(netinfo_ptr, hostlist);
     for (int i = 0; i < count; i++) {
-        const char *h = hostlist[i];
+        struct interned_string *h = hostlist[i];
         for (int j = 0; j < num; ++j) {
             if ((flag[j] & NET_SEND_LOGPUT) && netinfo_ptr->throttle_rtn &&
                 (netinfo_ptr->throttle_rtn)(netinfo_ptr, h)) {
                 continue;
             }
-            if (net_send_flags(netinfo_ptr, h, type[j], data[j], sz[j], flag[j])) {
+            if (net_send_flags(netinfo_ptr, h->str, type[j], data[j], sz[j], flag[j])) {
                 rc = 1;
             }
         }

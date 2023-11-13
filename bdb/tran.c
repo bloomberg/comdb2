@@ -58,7 +58,6 @@
 
 #include <assert.h>
 
-#include "nodemap.h"
 #include "logmsg.h"
 #include "txn_properties.h"
 #include <build/db.h>
@@ -850,30 +849,30 @@ tran_type *bdb_tran_begin_phys(bdb_state_type *bdb_state,
 
 static inline unsigned long long lag_bytes(bdb_state_type *bdb_state)
 {
-    const char *connlist[REPMAX];
+    struct interned_string *connlist[REPMAX];
     int count, i;
-    char *master_host = bdb_state->repinfo->master_host;
     uint64_t lagbytes;
     DB_LSN minlsn, masterlsn;
 
     /* MAX_LSN */
     minlsn.file = minlsn.offset = 0xffffffff;
 
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, connlist);
+    count = net_get_all_nodes_connected_interned(bdb_state->repinfo->netinfo, connlist);
 
     if (count == 0)
         return 0;
 
     for (i = 0; i < count; i++) {
+        struct hostinfo *h = retrieve_hostinfo(connlist[i]);
         if (!is_incoherent(bdb_state, connlist[i]) &&
-            log_compare(
-                &bdb_state->seqnum_info->seqnums[nodeix(connlist[i])].lsn,
-                &minlsn) < 0) {
-            minlsn = bdb_state->seqnum_info->seqnums[nodeix(connlist[i])].lsn;
+            log_compare(&h->seqnum.lsn, &minlsn) < 0) {
+            minlsn = h->seqnum.lsn;
         }
     }
 
-    masterlsn = bdb_state->seqnum_info->seqnums[nodeix(master_host)].lsn;
+    struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+
+    masterlsn = m->seqnum.lsn;
     if (log_compare(&minlsn, &masterlsn) >= 0)
         return 0;
 
@@ -1653,12 +1652,10 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             goto cleanup;
         } else {
             /* successful physical commit, lets increment our seqnum */
+            struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             /* dont let our global lsn go backwards */
-            memcpy(&old_lsn,
-                   &(bdb_state->seqnum_info
-                         ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                   sizeof(DB_LSN));
+            memcpy(&old_lsn, &h->seqnum.lsn, sizeof(DB_LSN));
 
             if (log_compare(&lsn, &old_lsn) > 0) {
                 /*fprintf(stderr, "%s:%d 2 updating my seqnum to %d:%d\n",
@@ -1666,12 +1663,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
                 // TODO not sure if this is necessary anymore 
                 // I should be setting this from a hook in log-put
-                memcpy(&(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                       &lsn, sizeof(DB_LSN));
-                bdb_state->seqnum_info
-                    ->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                    .generation = generation;
+                memcpy(&h->seqnum.lsn, &lsn, sizeof(DB_LSN));
+                h->seqnum.generation = generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         }
@@ -1940,22 +1933,16 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             seqnum->generation = generation;
             set_seqnum = 1;
 
+            struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
             /* dont let our global lsn go backwards */
-            memcpy(&old_lsn,
-                   &(bdb_state->seqnum_info
-                         ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                   sizeof(DB_LSN));
+            memcpy(&old_lsn, &h->seqnum.lsn, sizeof(DB_LSN));
 
             if (log_compare(&lsn, &old_lsn) > 0) {
                 /*fprintf(stderr, "%s:%d 2 updating my seqnum to %d:%d\n",
                   __func__, __LINE__, lsn.file, lsn.offset);*/
-                memcpy(&(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->myhost)]),
-                       &lsn, sizeof(DB_LSN));
-                bdb_state->seqnum_info
-                    ->seqnums[nodeix(bdb_state->repinfo->myhost)]
-                    .generation = generation;
+                memcpy(&h->seqnum.lsn, &lsn, sizeof(DB_LSN));
+                h->seqnum.generation = generation;
             }
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
         }

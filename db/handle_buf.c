@@ -997,7 +997,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->usedb = iq->origdb;
 
     if (iq->frommach == NULL)
-        iq->frommach = intern(gbl_myhostname);
+        iq->frommach = gbl_myhostname;
 
     return 0;
 }

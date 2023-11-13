@@ -335,7 +335,7 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
         node->has_port = 1;
         node->port = hosts[i]->port;
         node->name = hosts[i]->host;
-        node->incoherent = process_incoherent ? is_incoherent(thedb->bdb_env, node->name) : 0;
+        node->incoherent = process_incoherent ? is_incoherent(thedb->bdb_env, hosts[i]->host_interned) : 0;
         if (who && strcmp(who, node->name) == 0) {
             master = node;
         }

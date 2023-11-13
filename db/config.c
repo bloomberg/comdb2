@@ -862,7 +862,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
                 if (rc==0 && addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_myhostname = intern(name);
+                    gbl_myhostname_interned = intern_ptr(name);
+                    gbl_myhostname = gbl_myhostname_interned->str;
                     gbl_mynodeid = machine_num(gbl_myhostname);
                 }
                 if (strcmp(gbl_myhostname, name) == 0 &&

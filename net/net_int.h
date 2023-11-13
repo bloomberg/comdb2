@@ -181,6 +181,8 @@ struct host_node_tag {
     struct event_info *event_info;
     int fd;
     SBUF2 *sb;
+
+    struct interned_string *host_interned;
     char *host;
     int hostname_len;
     char subnet[HOSTNAME_LEN];
@@ -266,7 +268,7 @@ struct host_node_tag {
 
 /* Cut down data structure used for storing the sanc list. */
 struct sanc_node_tag {
-    const char *host;
+    struct interned_string *host;
     int port;
     int timestamp;
     struct sanc_node_tag *next;
@@ -294,6 +296,7 @@ struct netinfo_struct {
     new linux machines.  This change does not affect the wire protocol.
     */
     char *myhostname;
+    struct interned_string *myhost_interned;
     int myhostname_len;
     char myhostname_other[32];
     int myport;

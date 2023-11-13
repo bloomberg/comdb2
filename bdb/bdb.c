@@ -42,7 +42,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include "nodemap.h"
 #include "thread_stats.h"
 #include "logmsg.h"
 #include "locks_wrap.h"
@@ -232,8 +231,10 @@ int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset)
 int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,
                      int *offset)
 {
-    *logfile = bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.file;
-    *offset = bdb_state->seqnum_info->seqnums[nodeix(host)].lsn.offset;
+    struct interned_string *host_interned = intern_ptr(host);
+    struct hostinfo *h = retrieve_hostinfo(host_interned);
+    *logfile = h->seqnum.lsn.file;
+    *offset = h->seqnum.lsn.offset;
     return 0;
 }
 

@@ -29,6 +29,7 @@
 #include <perf.h>
 #include <sbuf2.h>
 #include <event2/buffer.h>
+#include <intern_strings.h>
 
 #ifndef HOST_NAME_MAX
 #   ifdef MAXHOSTNAMELEN
@@ -57,9 +58,10 @@ typedef void HELLOFP(struct netinfo_struct *netinfo, char name[]);
 typedef void APPSOCKFP(struct netinfo_struct *netinfo, SBUF2 *sb);
 
 typedef void NETFP(void *ack_handle, void *usr_ptr, char *fromhost,
-                   int usertype, void *dta, int dtalen, uint8_t is_tcp);
+                   struct interned_string *frominterned, int usertype,
+                   void *dta, int dtalen, uint8_t is_tcp);
 
-typedef int HOSTDOWNFP(netinfo_type *netinfo, char *host);
+typedef int HOSTDOWNFP(netinfo_type *netinfo, struct interned_string *host);
 
 /* Return -1 if we should enque before this item, 1 if we should insert after
  * this item */
@@ -69,7 +71,7 @@ typedef int NETCMPFP(struct netinfo_struct *netinfo, void *insert_item,
 
 typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
                      int *file, int *offset);
-typedef int NEWNODEFP(struct netinfo_struct *netinfo, char hostname[],
+typedef int NEWNODEFP(struct netinfo_struct *netinfo, struct interned_string *hostname,
                       int portnum);
 
 typedef void *QSTATINITFP(struct netinfo_struct *netinfo, const char *nettype,
@@ -92,7 +94,7 @@ typedef void UFUNCITERFP(struct netinfo_struct *netinfo, void *arg,
 
 typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
-typedef int NETTHROTTLEFP(struct netinfo_struct *netinfo, const char *hostname);
+typedef int NETTHROTTLEFP(struct netinfo_struct *netinfo, struct interned_string *hostname);
 
 void net_setbufsz(netinfo_type *info, int bufsz);
 
@@ -246,12 +248,21 @@ int net_init(netinfo_type *netinfo_ptr);
 /* return a list of all nodes (YOUR NODE IS NOT INCLUDED IN LIST) */
 int net_get_all_nodes(netinfo_type *netinfo_ptr, const char *hostlist[REPMAX]);
 
+/* return a list of interned nodes (YOUR NODE IS NOT INCLUDED IN LIST) */
+int net_get_all_nodes_interned(netinfo_type *netinfo_ptr, struct interned_string *hostlist[REPMAX]);
+
 /* "all" (registered) nodes, minus the decomissioned nodes */
 int net_get_all_commissioned_nodes(netinfo_type *netinfo_ptr, const char* hostlist[REPMAX]);
+
+/* "all" (registered) nodes, minus the decomissioned nodes */
+int net_get_all_commissioned_nodes_interned(netinfo_type *netinfo_ptr, struct interned_string *hostlist[REPMAX]);
 
 /* return a list of all connected nodes (YOUR NODE IS NOT INCLUDED IN LIST) */
 int net_get_all_nodes_connected(netinfo_type *netinfo_ptr,
                                 const char *hostlist[REPMAX]);
+
+/* return interned-structs for all connected nodes (YOUR NODE IS NOT INCLUDED IN LIST) */
+int net_get_all_nodes_connected_interned(netinfo_type *netinfo_ptr, struct interned_string *hostlist[REPMAX]);
 
 /* count all connected nodes, including your node */
 int net_count_connected_nodes(netinfo_type *netinfo_ptr);
@@ -270,14 +281,26 @@ sanc_node_type *net_add_to_sanctioned(netinfo_type *netinfo_ptr,
                                       char hostname[], int portnum);
 
 int net_is_single_sanctioned_node(netinfo_type *netinfo_ptr);
+
 int net_get_sanctioned_node_list(netinfo_type *netinfo_ptr, int max_nodes,
                                  const char *nodes[REPMAX]);
+
 int net_get_sanctioned_replicants(netinfo_type *netinfo_ptr, int max_nodes,
                                  const char *nodes[REPMAX]);
+
+int net_get_sanctioned_node_list_interned(netinfo_type *netinfo_ptr, int max_nodes,
+                                 struct interned_string *nodes[REPMAX]);
+
+int net_get_sanctioned_replicants_interned(netinfo_type *netinfo_ptr, int max_nodes,
+                                 struct interned_string *nodes[REPMAX]);
 
 /* return the list of sanc nodes that are connected */
 int net_sanctioned_and_connected_nodes(netinfo_type *netinfo_ptr, int max_nodes,
                                        const char *nodes[REPMAX]);
+
+/* return the list of sanc nodes that are connected */
+int net_sanctioned_and_connected_nodes_intern(netinfo_type *netinfo_ptr, int max_nodes,
+                                       struct interned_string *nodes[REPMAX]);
 
 /* Remove a node from the sanctioned list.  Returns 0 on success, -1 if
  * node was not in sanctioned list. */
@@ -326,6 +349,7 @@ char *net_get_osql_node(netinfo_type *netinfo_ptr);
 /* netinfo getters and setters so that we don't have tomake the entire
  * netinfo struct public. */
 char *net_get_mynode(netinfo_type *netinfo_ptr);
+struct interned_string *net_get_mynode_interned(netinfo_type *netinfo_ptr);
 void *net_get_usrptr(netinfo_type *netinfo_ptr);
 void net_set_usrptr(netinfo_type *netinfo_ptr, void *usrptr);
 
@@ -343,6 +367,7 @@ void net_end_appsock(SBUF2 *sb);
 struct host_node_info {
     int fd;
     char *host;
+    struct interned_string *host_interned;
     int port;
 };
 int net_get_nodes_info(netinfo_type *netinfo_ptr, int max_nodes,

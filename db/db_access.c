@@ -19,7 +19,6 @@
 #include "sql.h"
 #include "bdb_api.h"
 #include "bdb_access.h"
-#include "nodemap.h"
 #include "sql_stmt_cache.h"
 #include "views.h"
 
@@ -45,33 +44,10 @@ static void check_auth_enabled(struct dbenv *dbenv)
     }
 }
 
-static void check_tableXnode_enabled(struct dbenv *dbenv)
-{
-    int rc;
-    int bdberr;
-
-    rc = bdb_accesscontrol_tableXnode_get(dbenv->bdb_env, NULL, &bdberr);
-    if (rc) {
-        gbl_uses_accesscontrol_tableXnode = 0;
-        return;
-    }
-
-    if (bdb_access_create(dbenv->bdb_env, &bdberr)) {
-        logmsg(LOGMSG_ERROR,
-               "failed to enable tableXnode control (bdberr: %d\n)", bdberr);
-        gbl_uses_accesscontrol_tableXnode = 0;
-        return;
-    }
-
-    gbl_uses_accesscontrol_tableXnode = 1;
-    logmsg(LOGMSG_INFO, "access control tableXnode enabled\n");
-}
-
 /* Check whether access controls have been enabled. */
 void check_access_controls(struct dbenv *dbenv)
 {
     check_auth_enabled(dbenv);
-    check_tableXnode_enabled(dbenv);
 }
 
 int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
@@ -221,22 +197,6 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         return 0;
     }
 
-    if (gbl_uses_accesscontrol_tableXnode) {
-        rc = bdb_access_tbl_write_by_mach_get(
-            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
-            nodeix(thd->clnt->origin), &bdberr);
-        if (rc <= 0) {
-            char msg[1024];
-            snprintf(msg, sizeof(msg),
-                     "Write access denied to %s from %d bdberr=%d",
-                     pCur->db->tablename, nodeix(thd->clnt->origin), bdberr);
-            logmsg(LOGMSG_INFO, "%s\n", msg);
-            errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
-            errstat_set_str(&thd->clnt->osql.xerr, msg);
-
-            return SQLITE_ABORT;
-        }
-    }
     const char *table_name = NULL;
     if (pCur->db)
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
@@ -295,23 +255,6 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         return 0;
     if (pCur->permissions & ACCESS_READ) {
         return 0;
-    }
-
-    if (gbl_uses_accesscontrol_tableXnode) {
-        rc = bdb_access_tbl_read_by_mach_get(
-            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
-            nodeix(thd->clnt->origin), &bdberr);
-        if (rc <= 0) {
-            char msg[1024];
-            snprintf(msg, sizeof(msg),
-                     "Read access denied to %s from %d bdberr=%d",
-                     pCur->db->tablename, nodeix(thd->clnt->origin), bdberr);
-            logmsg(LOGMSG_INFO, "%s\n", msg);
-            errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
-            errstat_set_str(&thd->clnt->osql.xerr, msg);
-
-            return SQLITE_ABORT;
-        }
     }
 
     const char *table_name = NULL;
@@ -387,18 +330,6 @@ int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
     if (rc)
         return rc;
 
-    if (gbl_uses_accesscontrol_tableXnode) {
-        rc = bdb_access_tbl_write_by_mach_get(iq->dbenv->bdb_env, trans,
-                                              iq->usedb->tablename,
-                                              nodeix(iq->frommach), bdberr);
-        if (rc <= 0) {
-            reqerrstr(iq, ERR_ACCESS,
-                      "Write access denied to %s from %s bdberr=%d\n",
-                      iq->usedb->tablename, iq->corigin, *bdberr);
-            return ERR_ACCESS;
-        }
-    }
-
     return 0;
 }
 
@@ -409,18 +340,6 @@ int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
     rc = check_tag_access(iq);
     if (rc)
         return rc;
-
-    if (gbl_uses_accesscontrol_tableXnode) {
-        rc = bdb_access_tbl_read_by_mach_get(iq->dbenv->bdb_env, trans,
-                                             iq->usedb->tablename,
-                                             nodeix(iq->frommach), bdberr);
-        if (rc <= 0) {
-            reqerrstr(iq, ERR_ACCESS,
-                      "Read access denied to %s from %s bdberr=%d\n",
-                      iq->usedb->tablename, iq->corigin, *bdberr);
-            return ERR_ACCESS;
-        }
-    }
 
     return 0;
 }

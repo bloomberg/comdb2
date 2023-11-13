@@ -26,7 +26,6 @@
 #include "comdb2.h"
 #include "tag.h"
 #include "net.h"
-#include "nodemap.h"
 #include "logmsg.h"
 #include "time_accounting.h"
 #include "intern_strings.h"
@@ -182,18 +181,6 @@ void debug_trap(char *line, int lline)
                 }
             }
         }
-    } else if (tokcmp(tok, ltok, "nodeix") == 0) {
-        const char *hosts[REPMAX];
-        int numnodes;
-
-        numnodes = net_get_all_nodes_connected(thedb->handle_sibling, hosts);
-
-        hosts[numnodes] = gbl_myhostname;
-        numnodes++;
-
-        logmsg(LOGMSG_USER, "nodes:\n");
-        for (int i = 0; i < numnodes; i++)
-            logmsg(LOGMSG_USER, "  %s %d\n", hosts[i], nodeix(hosts[i]));
     } else if (tokcmp(tok, ltok, "timings") == 0) {
         print_all_time_accounting();
     } else if (tokcmp(tok, ltok, "help") == 0) {

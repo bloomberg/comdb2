@@ -114,7 +114,7 @@ typedef enum {
                                   data = no data
                                   does db use authentication? */
     ,
-    LLMETA_ACCESSCONTROL_TABLExNODE = 19
+    LLMETA_ACCESSCONTROL_TABLExNODE = 19  /* XXX Deprecated */
 
     ,
     LLMETA_SQLITE_STAT1_PREV_DONT_USE = 20 /* store previous sqlite-stat1 records- dont use this. */
@@ -6520,13 +6520,6 @@ int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, in
     return bdb_feature_set_int(bdb_state, input_trans, bdberr, enabled,
                                LLMETA_AUTHENTICATION);
 }
-int bdb_accesscontrol_tableXnode_set(bdb_state_type *bdb_state,
-                                     tran_type *input_trans, int *bdberr)
-{
-    return bdb_feature_set_int(bdb_state, input_trans, bdberr, 1,
-                               LLMETA_ACCESSCONTROL_TABLExNODE);
-}
-
 /* does db use authentication? */
 static int bdb_feature_get_int(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr, int file_type)
@@ -6566,13 +6559,6 @@ int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
         return 1;
     }
     return bdb_feature_get_int(bdb_state, tran, bdberr, LLMETA_AUTHENTICATION);
-}
-
-int bdb_accesscontrol_tableXnode_get(bdb_state_type *bdb_state, tran_type *tran,
-                                     int *bdberr)
-{
-    return bdb_feature_get_int(bdb_state, tran, bdberr,
-                               LLMETA_ACCESSCONTROL_TABLExNODE);
 }
 
 static int bdb_tbl_access_get(bdb_state_type *bdb_state, tran_type *input_trans,
@@ -7081,7 +7067,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         logmsg(LOGMSG_USER, "LLMETA_AUTHENTICATION is enabled\n");
         break;
     case LLMETA_ACCESSCONTROL_TABLExNODE:
-        logmsg(LOGMSG_USER, "LLMETA_ACCESSCONTROL_TABLExNODE is enabled\n");
+        logmsg(LOGMSG_USER, "LLMETA_ACCESSCONTROL_TABLExNODE_DONT_USE\n");
         break;
     case LLMETA_SQLITE_STAT1_PREV_DONT_USE:
         logmsg(LOGMSG_USER, "LLMETA_SQLITE_STAT1_PREV_DONT_USE\n");

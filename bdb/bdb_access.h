@@ -53,13 +53,6 @@ int bdb_access_tbl_read_by_mach_set(bdb_state_type *bdb_state, tran_type *tran,
                                     char *table, int hostnum, int *bdberr);
 
 /**
- * Enable access control for tableXnode
- *
- */
-int bdb_accesscontrol_tableXnode_set(bdb_state_type *bdb_state,
-                                     tran_type *input_trans, int *bdberr);
-
-/**
  * Init/Destroy functions per table
  *
  */

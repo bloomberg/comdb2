@@ -23,7 +23,6 @@ set(src
   logmsg.c
   memdup.c
   misc.c
-  nodemap.c
   object_pool.c
   parse_lsn.c
   pb_alloc.c

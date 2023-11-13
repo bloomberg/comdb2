@@ -25,13 +25,12 @@
 #include <dirent.h>
 
 #include "cdb2api.h"
-#include "nodemap.h"
+#include <clienthost.h>
 #include "intern_strings.h"
 #include "list.h"
 #include "cdb2_constants.h"
 #include "util.h"
 #include "epochlib.h"
-#include "nodemap.h"
 #include "machclass.h"
 #include "logmsg.h"
 #include "locks_wrap.h"
@@ -158,7 +157,6 @@ static int machine_my_class_default(void)
 {
     return machine_class_default(gbl_myhostname);
 }
-static int machine_dcs[MAXBBNODENUM];
 
 static int resolve_dc(const char *host)
 {
@@ -168,14 +166,16 @@ static int resolve_dc(const char *host)
 
 static int machine_dc_default(const char *host)
 {
-    int ix;
-    ix = nodeix(host);
-    if (machine_dcs[ix] == 0)
-        machine_dcs[ix] = resolve_dc(host);
-    return machine_dcs[ix];
+    struct interned_string *host_interned = intern_ptr(host);
+    struct clienthost *c = retrieve_clienthost(host_interned);
+
+    if (c->machine_dc == 0)
+        c->machine_dc = resolve_dc(host);
+    return c->machine_dc;
 }
 
 static int machine_num_default(const char *host)
 {
-    return nodeix(host);
+    struct interned_string *host_interned = intern_ptr(host);
+    return host_interned->ix;
 }

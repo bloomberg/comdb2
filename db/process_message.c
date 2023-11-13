@@ -825,16 +825,16 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "thedbmaster") == 0) {
         logmsg(LOGMSG_USER, "%s\n", thedb->master);
     } else if (tokcmp(tok, ltok, "upgrade") == 0) {
-        char *newmaster = 0;
+        struct interned_string *newmaster;
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected hostname for new master\n");
             return -1;
         }
         tok = tokdup(tok, ltok);
-        newmaster = intern(tok);
+        newmaster = intern_ptr(tok);
         free(tok);
-        logmsg(LOGMSG_USER, "Trying to transfer master to node %s\n", newmaster);
+        logmsg(LOGMSG_USER, "Trying to transfer master to node %s\n", newmaster->str);
         bdb_transfermaster_tonode(dbenv->static_table.handle, newmaster);
     } else if (tokcmp(tok, ltok, "synccluster") == 0) {
 
@@ -2497,7 +2497,6 @@ clipper_usage:
        access set read     <table> <user>
        access set write    <table> <user>
        access set authentication
-       access set tableXnode
 
        access delete read  <table> <user>
        access delete write <table> <user>
@@ -2505,7 +2504,6 @@ clipper_usage:
        access get read     <table> <user>
        access get write    <table> <user>
        access get authentication
-       access get tableXnode
      */
     else if (tokcmp(tok, ltok, "access") == 0) {
         char table[MAXTABLELEN];
@@ -2605,15 +2603,7 @@ clipper_usage:
                             rc, bdberr);
                 }
             } else if (tokcmp(tok, ltok, "tableXnode") == 0) {
-                rc = bdb_accesscontrol_tableXnode_set(dbenv->bdb_env, NULL,
-                                                      &bdberr);
-                if (rc == 0) {
-                    logmsg(LOGMSG_USER, "enabled access control tableXnode\n");
-                } else {
-                    logmsg(LOGMSG_ERROR,
-                            "FAILED enable tableXnode rc=%d bdberr=%d\n", rc,
-                            bdberr);
-                }
+                logmsg(LOGMSG_ERROR, "tablexnode is deprecated\n");
             } else {
                 logmsg(LOGMSG_ERROR, "unrecognized \"%.*s\"\n", ltok, tok);
             }
@@ -2668,10 +2658,7 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "rc = %d (\"%s\")\n", rc,
                         (rc == 0) ? "enabled" : "disabled");
             } else if (tokcmp(tok, ltok, "tableXnode") == 0) {
-                rc = bdb_accesscontrol_tableXnode_get(dbenv->bdb_env, NULL,
-                                                      &bdberr);
-                logmsg(LOGMSG_ERROR, "rc = %d (\"%s\")\n", rc,
-                        (rc == 0) ? "enabled" : "disabled");
+                logmsg(LOGMSG_ERROR, "Tablexnode is deprecated\n");
             } else {
                 logmsg(LOGMSG_ERROR, "unrecognized \"%.*s\"\n", ltok, tok);
             }
