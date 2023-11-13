@@ -31,15 +31,13 @@
 
 #include "comdb2.h"
 #include "intern_strings.h"
+#include <clienthost.h>
 #include "util.h"
 #include "rtcpu.h"
-#include "nodemap.h"
 #include "logmsg.h"
 
 struct rmtpol {
     const char *descr;
-    char explicit_allow_machs[MAX_CPU / 8];
-    char explicit_disallow_machs[MAX_CPU / 8];
     int explicit_allow_classes;
     int explicit_disallow_classes;
     int class_promotion; /* if 1, allowing class x implies that class x+1 also
@@ -49,9 +47,9 @@ struct rmtpol {
 
 enum mach_class mach_classes[MAX_CPU] = {CLASS_UNKNOWN};
 
-static struct rmtpol write_pol = {"write from", {0}, {0}, 0, 0, 1};
-static struct rmtpol brd_pol = {"broadcast to", {0}, {0}, 0, 0, 0};
-static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
+static struct rmtpol write_pol = {"write from", 0, 0, 1};
+static struct rmtpol brd_pol = {"broadcast to", 0, 0, 0};
+static struct rmtpol cluster_pol = {"cluster with", 0, 0, 0};
 
 enum mach_class get_my_mach_class(void)
 {
@@ -72,15 +70,16 @@ const char *get_mach_class_str(char *host)
     return mach_class_class2name(get_mach_class(host));
 }
 
-static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
+static int allow_action_from_remote(const char *host, const struct rmtpol *pol, struct hostpolicy *hpol)
 {
     enum mach_class rmtclass;
-    int ix = nodeix(host);
+    //struct interned_string *host_interned = intern_ptr(host);
+    //struct clienthost *r = retrieve_clienthost(host_interned);
 
-    if (btst(pol->explicit_disallow_machs, ix))
+    if (hpol->explicit_disallow)
         return 0;
 
-    if (btst(pol->explicit_allow_machs, ix))
+    if (hpol->explicit_allow)
         return 1;
 
     rmtclass = get_mach_class(host);
@@ -105,7 +104,9 @@ static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
 int allow_write_from_remote(const char *host)
 {
     int rc;
-    rc = allow_action_from_remote(host, &write_pol);
+    struct interned_string *host_interned = intern_ptr(host);
+    struct clienthost *c = retrieve_clienthost(host_interned);
+    rc = allow_action_from_remote(host, &write_pol, &c->write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
         if (get_mach_class(host) >= get_mach_class(gbl_myhostname))
@@ -119,7 +120,9 @@ int allow_write_from_remote(const char *host)
 int allow_cluster_from_remote(const char *host)
 {
     int rc;
-    rc = allow_action_from_remote(host, &cluster_pol);
+    struct interned_string *host_interned = intern_ptr(host);
+    struct clienthost *c = retrieve_clienthost(host_interned);
+    rc = allow_action_from_remote(host, &cluster_pol, &c->cluster_pol);
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
@@ -133,7 +136,9 @@ int allow_cluster_from_remote(const char *host)
 
 int allow_broadcast_to_remote(const char *host)
 {
-    int rc = allow_action_from_remote(host, &brd_pol);
+    struct interned_string *host_interned = intern_ptr(host);
+    struct clienthost *c = retrieve_clienthost(host_interned);
+    int rc = allow_action_from_remote(host, &brd_pol, &c->brd_pol);
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
@@ -168,16 +173,32 @@ static int parse_mach_or_group(char *tok, int ltok, char **mach,
  *
  * setclass # test/dev/alpha/beta/prod/reset
  */
+
+struct hostpolicy *global_policy_to_host_policy(struct clienthost *c, const struct rmtpol *pol)
+{
+    if (pol == &write_pol) {
+        return &c->write_pol;
+    }
+    if (pol == &cluster_pol) {
+        return &c->cluster_pol;
+    }
+    if (pol == &brd_pol) {
+        return &c->brd_pol;
+    }
+    return NULL;
+}
+
 int process_allow_command(char *line, int lline)
 {
     char *tok;
     int ltok, st;
     int allow = 1;
     struct rmtpol *pol = NULL;
+    struct hostpolicy *hostpol = NULL;
     enum mach_class cls = CLASS_UNKNOWN;
-    int mach = -1;
+    struct clienthost *r = NULL;
     int ii, mark;
-    char *new_mach;
+    char *new_mach = NULL;
 
     /* scan for end of line */
     for (mark = 0, ii = 0; ii < lline; ii++)
@@ -211,9 +232,9 @@ int process_allow_command(char *line, int lline)
         if (tokcmp(tok, ltok, "reset") != 0 &&
             parse_mach_or_group(tok, ltok, &new_mach, &new_cls) != 0)
             goto bad;
-        mach = nodeix(new_mach);
-        mach_classes[mach] = new_cls;
-
+        struct interned_string *mach_interned = intern_ptr(new_mach);
+        struct clienthost *r = retrieve_clienthost(mach_interned);
+        r->mach_class = new_cls;
         logmsg(LOGMSG_DEBUG, "processed <%*.*s>\n", lline, lline, line);
         return 0;
     } else
@@ -243,8 +264,11 @@ int process_allow_command(char *line, int lline)
         goto bad;
     if (parse_mach_or_group(tok, ltok, &new_mach, &cls) != 0)
         goto bad;
-    if (new_mach)
-        mach = nodeix(new_mach);
+    if (new_mach) {
+        struct interned_string *new_mach_interned = intern_ptr(new_mach);
+        r = retrieve_clienthost(new_mach_interned);
+        hostpol = global_policy_to_host_policy(r, pol);
+    }
 
     /* optional bit to only apply the update on a particular machine class */
     tok = segtok(line, lline, &st, &ltok);
@@ -263,19 +287,19 @@ int process_allow_command(char *line, int lline)
             goto ignore;
     }
 
-    if (mach >= 0) {
+    if (r != NULL) {
         if (allow == 1) {
-            bset(pol->explicit_allow_machs, mach);
-            bclr(pol->explicit_disallow_machs, mach);
-            logmsg(LOGMSG_USER, "allowing %s machine %d\n", pol->descr, mach);
+            hostpol->explicit_allow = 1;
+            hostpol->explicit_disallow = 0;
+            logmsg(LOGMSG_USER, "allowing %s machine %s\n", pol->descr, new_mach);
         } else if (allow == 0) {
-            bset(pol->explicit_disallow_machs, mach);
-            bclr(pol->explicit_allow_machs, mach);
-            logmsg(LOGMSG_USER, "disallowing %s machine %d\n", pol->descr, mach);
+            hostpol->explicit_disallow = 1;
+            hostpol->explicit_allow = 0;
+            logmsg(LOGMSG_USER, "disallowing %s machine %s\n", pol->descr, new_mach);
         } else if (allow == -1) {
-            bclr(pol->explicit_disallow_machs, mach);
-            bclr(pol->explicit_allow_machs, mach);
-            logmsg(LOGMSG_USER, "resetting policy for %s machine %d\n", pol->descr, mach);
+            hostpol->explicit_disallow = 0;
+            hostpol->explicit_allow = 0;
+            logmsg(LOGMSG_USER, "resetting policy for %s machine %s\n", pol->descr, new_mach);
         }
     } else if (cls != CLASS_UNKNOWN) {
         if (allow == 1) {
@@ -309,17 +333,29 @@ bad:
     return -1;
 }
 
+extern LISTC_T(struct clienthost) clienthost_list;
+
 void dump_policy_structure(const struct rmtpol *pol)
 {
     logmsg(LOGMSG_USER, "Policy '%s'\n", pol->descr);
-    for (int i = 0; i < sizeof(pol->explicit_disallow_machs); i++) {
-        if (btst(pol->explicit_disallow_machs, i))
-            logmsg(LOGMSG_USER, "  explicit_disallow mach %d\n", i);
+    struct clienthost *h;
+
+    clienthost_lock();
+    LISTC_FOR_EACH(&clienthost_list, h, lnk)
+    {
+        struct hostpolicy *p = global_policy_to_host_policy(h, pol);
+        if (p->explicit_disallow) {
+            logmsg(LOGMSG_USER, "  explicit_disallow mach %s\n", h->s->str);
+        }
     }
-    for (int i = 0; i < sizeof(pol->explicit_allow_machs); i++) {
-        if (btst(pol->explicit_allow_machs, i))
-            logmsg(LOGMSG_USER, "  explicit_allow mach %d\n", i);
+    LISTC_FOR_EACH(&clienthost_list, h, lnk)
+    {
+        struct hostpolicy *p = global_policy_to_host_policy(h, pol);
+        if (p->explicit_allow) {
+            logmsg(LOGMSG_USER, "  explicit_allow mach %s\n", h->s->str);
+        }
     }
+    clienthost_unlock();
 
     int c = 0;
     while (++c <= 6) { // start from dev

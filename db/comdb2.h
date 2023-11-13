@@ -1568,7 +1568,6 @@ extern int gbl_uses_externalauth;
 extern int gbl_uses_externalauth_connect;
 extern int gbl_externalauth_warn;
 extern int gbl_identity_cache_max;
-extern int gbl_uses_accesscontrol_tableXnode;
 extern char* gbl_foreign_metadb;
 extern char* gbl_foreign_metadb_class;
 extern char* gbl_foreign_metadb_config;
@@ -1631,6 +1630,7 @@ extern int gbl_maxthreads;   /* max number of threads allowed */
 extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_myhostname; /* my hostname */
+extern struct interned_string *gbl_myhostname_interned;
 extern char *gbl_machine_class; /* my machine class */
 extern struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */

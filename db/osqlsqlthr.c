@@ -43,7 +43,6 @@
 #include "comdb2.h"
 #include "genid.h"
 #include "comdb2uuid.h"
-#include "nodemap.h"
 #include <bpfunc.h>
 
 #include "debug_switches.h"

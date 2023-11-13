@@ -3,6 +3,7 @@ set(src
   autoanalyze.c
   block_internal.c
   bpfunc.c
+  clienthost.c
   comdb2.c
   comdb2uuid.c
   comdb2_ruleset.c

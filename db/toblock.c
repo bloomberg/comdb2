@@ -69,7 +69,6 @@
 #include "util.h"
 #include "tohex.h"
 #include "osqlcomm.h"
-#include "nodemap.h"
 #include <bdb_schemachange.h>
 #include "bpfunc.h"
 #include "debug_switches.h"

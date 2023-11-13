@@ -30,11 +30,7 @@
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t intern_lk = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *interned_strings = NULL;
-
-struct interned_string {
-    char *str;
-    int64_t ref;
-};
+static int node_ix;
 
 static void init_interned_strings(void)
 {
@@ -46,7 +42,7 @@ static void init_interned_strings(void)
 }
 
 /* Store a copy of parameter str in a hash tbl */
-char *intern(const char *str)
+struct interned_string *intern_ptr(const char *str)
 {
     struct interned_string *s;
 
@@ -60,6 +56,9 @@ char *intern(const char *str)
             return NULL;
         }
         s->str = strdup(str);
+        s->ix = node_ix++;
+        s->ptr = NULL;
+        s->clptr = NULL;
         if (s->str == NULL) {
             free(s);
             Pthread_mutex_unlock(&intern_lk);
@@ -67,8 +66,13 @@ char *intern(const char *str)
         }
         hash_add(interned_strings, s);
     }
-    s->ref++;
     Pthread_mutex_unlock(&intern_lk);
+    return s;
+}
+
+char *intern(const char *str)
+{
+    struct interned_string *s = intern_ptr(str);
     return s->str;
 }
 
@@ -96,8 +100,9 @@ int isinterned(const char *node)
     s = hash_find_readonly(interned_strings, &node);
     Pthread_mutex_unlock(&intern_lk);
 
-    if (s && s->str == node)
+    if (s && s->str == node) {
         return 1;
+    }
 
     return 0;
 }

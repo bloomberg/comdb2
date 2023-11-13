@@ -61,7 +61,6 @@
 #include "cdb2_constants.h"
 #include "comdb2_atomic.h"
 
-#include "nodemap.h"
 #include "intern_strings.h"
 #include "util.h"
 #include "tohex.h"
@@ -2337,7 +2336,7 @@ static int hash_free_element(void *elem, void *unused) {
 
 static nodestats_t *add_clientstats(unsigned checksum,
                                     const char *task_and_stack, int task_len,
-                                    int stack_len, int node, int fd)
+                                    int stack_len, char *host, int node, int fd)
 {
     int nclntstats;
     nodestats_t *old_entry = NULL;
@@ -2350,7 +2349,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
         return NULL;
     }
 
-    /* hashtable key is the checksum: crc32c(task + stack) + nodeix. */
+    /* hashtable key is the checksum: crc32c(task + stack) + intern->ix. */
     memcpy(entry->mem, task_and_stack, task_len + stack_len);
     entry->checksum = checksum;
     entry->node = node;
@@ -2373,7 +2372,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
         } else {
             entry->task = entry->mem;
             entry->stack = entry->mem + task_len;
-            entry->host = intern(nodeat(node));
+            entry->host = host;
             Pthread_mutex_init(&entry->mtx, 0);
             entry->ref = 1;
             entry->rawtotals.svc_time = time_metric_new("svc_time");
@@ -2507,9 +2506,10 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     int namelen, node;
     int task_len, stack_len = 0;
     char *tmp;
+    struct interned_string *host_interned = intern_ptr(host);
 
-    host = intern(host);
-    node = nodeix(host);
+    node = host_interned->ix;
+
     GET_NAME_AND_LEN(task, task_len);
     GET_NAME_AND_LEN(stack, stack_len);
 
@@ -2527,7 +2527,7 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     checksum = crc32c((const uint8_t *)tmp, namelen);
     if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
         nodestats =
-            add_clientstats(checksum, tmp, task_len, stack_len, node, fd);
+            add_clientstats(checksum, tmp, task_len, stack_len, host, node, fd);
         if (nodestats == NULL) {
             logmsg(
                 LOGMSG_ERROR,
@@ -2552,6 +2552,7 @@ int release_node_stats(const char *task, const char *stack, char *host)
     int namelen;
     int task_len, stack_len = 0;
     char *tmp;
+    struct interned_string *host_interned = intern_ptr(host);
 
     host = intern(host);
     GET_NAME_AND_LEN(task, task_len);
@@ -2567,10 +2568,10 @@ int release_node_stats(const char *task, const char *stack, char *host)
     memcpy(tmp, task, task_len);
     memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
-    if (release_clientstats(checksum, nodeix(host)) != 0) {
+    if (release_clientstats(checksum, host_interned->ix) != 0) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to release host=%s, node=%d, task=%s, stack=%s\n",
-               __func__, host, nodeix(host), task, stack);
+               __func__, host, host_interned->ix, task, stack);
         cheap_stack_trace();
     }
 

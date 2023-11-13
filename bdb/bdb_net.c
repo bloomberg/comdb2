@@ -37,7 +37,6 @@
 #include <gettimeofday_ms.h>
 
 #include <compat.h>
-#include "nodemap.h"
 #include "endian_core.h"
 #include "printformats.h"
 #include "crc32c.h"
@@ -60,7 +59,7 @@
 extern void fsnapf(FILE *, void *, int);
 extern int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum);
 extern int verify_master_leases_int(bdb_state_type *bdb_state,
-                                    const char **comlist, int comcount,
+                                    struct interned_string **comlist, int comcount,
                                     const char *func, uint32_t line);
 
 static unsigned int sent_udp = 0;
@@ -550,7 +549,8 @@ static void udp_reader(int fd, short what, void *arg)
         }
         return;
     }
-    from = intern(from);
+    struct interned_string *from_interned = intern_ptr(from);
+    from = from_interned->str;
 
 /* If to == 0 it was probably through udp_ping_ip */
 #if 0
@@ -565,7 +565,7 @@ static void udp_reader(int fd, short what, void *arg)
     switch (type) {
     case USER_TYPE_BERKDB_NEWSEQ:
         data = ack_info_data(info);
-        berkdb_receive_rtn(NULL, bdb_state, from, type, data, info->len, 0);
+        berkdb_receive_rtn(NULL, bdb_state, from, from_interned, type, data, info->len, 0);
         debug_trace("received lsn from: %s %s", from,
                     print_addr(paddr, straddr));
 #ifdef UDP_DEBUG
@@ -613,13 +613,13 @@ static void udp_reader(int fd, short what, void *arg)
 
     case USER_TYPE_COHERENCY_LEASE:
         data = ack_info_data(info);
-        receive_coherency_lease(NULL, bdb_state, from,
+        receive_coherency_lease(NULL, bdb_state, from, from_interned,
                                 USER_TYPE_COHERENCY_LEASE, data, info->len, 0);
         break;
 
     case USER_TYPE_PAGE_COMPACT:
         data = ack_info_data(info);
-        berkdb_receive_msg(NULL, bdb_state, from, USER_TYPE_PAGE_COMPACT, data,
+        berkdb_receive_msg(NULL, bdb_state, from, from_interned, USER_TYPE_PAGE_COMPACT, data,
                            info->len, 0);
         break;
 
@@ -773,8 +773,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 {
     int count, comcount, i, do_send, use_udp, master_is_coherent;
     uint8_t *p_buf, *p_buf_end, buf[COLEASE_TYPE_LEN];
-    const char *hostlist[REPMAX];
-    const char *comlist[REPMAX];
+    struct interned_string *hostlist[REPMAX];
+    struct interned_string *comlist[REPMAX];
     colease_t colease;
     static int last_count = 0;
 
@@ -801,9 +801,9 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
             abort();
     }
 
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+    count = net_get_all_nodes_connected_interned(bdb_state->repinfo->netinfo, hostlist);
     comcount =
-        net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, comlist);
+        net_get_all_commissioned_nodes_interned(bdb_state->repinfo->netinfo, comlist);
 
     if (count != comcount) {
         static time_t lastpr = 0;
@@ -819,9 +819,9 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
             machs[0] = '\0';
 
             for (i = 0; i < count; i++) {
-                machs_len += (strlen(hostlist[i]) + 2);
+                machs_len += (strlen(hostlist[i]->str) + 2);
                 machs = (char *)realloc(machs, machs_len);
-                strcat(machs, hostlist[i]);
+                strcat(machs, hostlist[i]->str);
                 strcat(machs, " ");
             }
             logmsg(LOGMSG_INFO,
@@ -845,14 +845,13 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         master_is_coherent = 1;
 
     for (i = 0; i < count; i++) {
+        struct hostinfo *h = retrieve_hostinfo(hostlist[i]);
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
-        if (!master_is_coherent || bdb_state->coherent_state[
-                nodeix(hostlist[i])] != STATE_COHERENT) {
+        if (!master_is_coherent || h->coherent_state != STATE_COHERENT) {
             *inc_wait = 1;
         }
-        do_send = master_is_coherent && (bdb_state->coherent_state[
-                nodeix(hostlist[i])] == STATE_COHERENT);
+        do_send = master_is_coherent && h->coherent_state == STATE_COHERENT; 
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (do_send) {
@@ -870,9 +869,9 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                 info->type = USER_TYPE_COHERENCY_LEASE;
                 info->len = COLEASE_TYPE_LEN;
 
-                udp_send(bdb_state, info, hostlist[i]);
+                udp_send(bdb_state, info, hostlist[i]->str);
             } else {
-                net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
+                net_send_message(bdb_state->repinfo->netinfo, hostlist[i]->str,
                                  USER_TYPE_COHERENCY_LEASE, buf,
                                  COLEASE_TYPE_LEN, 0, 0);
             }
@@ -884,7 +883,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                 logmsg(LOGMSG_ERROR,
                        "%s: not sending to %s: "
                        "master_is_coherent=%d\n",
-                       __func__, hostlist[i], master_is_coherent);
+                       __func__, hostlist[i]->str, master_is_coherent);
                 lastpr = now;
             }
         }

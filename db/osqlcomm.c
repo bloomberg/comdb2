@@ -2839,30 +2839,36 @@ static osql_comm_t *get_thecomm(void)
     return thecomm_obj;
 }
 
-static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
-                         void *dtap, int dtalen, uint8_t is_tcp);
+static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                         int usertype, void *dtap, int dtalen, uint8_t is_tcp);
 static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromnode,
                              int usertype, void *dtap, int dtalen, void *tail,
                              int tailen);
 
-static void net_sosql_req(void *hndl, void *uptr, char *fromnode, int usertype,
+static void net_sosql_req(void *hndl, void *uptr, char *fromnode,
+                          struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp);
-static void net_recom_req(void *hndl, void *uptr, char *fromnode, int usertype,
+static void net_recom_req(void *hndl, void *uptr, char *fromnode,
+                          struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp);
 static void net_snapisol_req(void *hndl, void *uptr, char *fromnode,
-                             int usertype, void *dtap, int dtalen,
+                             struct interned_string *frominterned,int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp);
-static void net_serial_req(void *hndl, void *uptr, char *fromnode, int usertype,
+static void net_serial_req(void *hndl, void *uptr, char *fromnode,
+                           struct interned_string *frominterned, int usertype,
                            void *dtap, int dtalen, uint8_t is_tcp);
 
-static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *node);
+static int net_osql_nodedwn(netinfo_type *netinfo_ptr, struct interned_string *node);
 static void net_osql_master_check(void *hndl, void *uptr, char *fromnode,
+                                  struct interned_string *frominterned,
                                   int usertype, void *dtap, int dtalen,
                                   uint8_t is_tcp);
 static void net_osql_master_checked(void *hndl, void *uptr, char *fromnode,
+                                    struct interned_string *frominterned,
                                     int usertype, void *dtap, int dtalen,
                                     uint8_t is_tcp);
 static void net_sorese_signal(void *hndl, void *uptr, char *fromnode,
+                              struct interned_string *frominterned,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp);
 
@@ -2877,26 +2883,33 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 static int netrpl2req(int netrpltype);
 
 static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromnode,
+                                   struct interned_string *frominterned,
                                    int usertype, void *dtap, int dtalen,
                                    uint8_t is_tcp);
 
 static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromnode,
-                                   int usertype, void *dtap, int dtalen,
+                                   struct interned_string *fromintern, int usertype,
+                                   void *dtap, int dtalen,
                                    uint8_t is_tcp);
-static void net_block_req(void *hndl, void *uptr, char *fromhost, int usertype,
+static void net_block_req(void *hndl, void *uptr, char *fromhost,
+                          struct interned_string *fromintern, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp);
 static void net_block_reply(void *hndl, void *uptr, char *fromhost,
+                            struct interned_string *frominterned,
                             int usertype, void *dtap, int dtalen,
                             uint8_t is_tcp);
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
+                             struct interned_string *frominterned,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp);
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
+                             struct interned_string *frominterned,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp);
 
-static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode, int usertype, void *dtap,
+static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode,
+                               struct interned_string *frominterned, int usertype, void *dtap,
                                int dtalen, uint8_t is_tcp)
 {
     /* NOP here, but needed for compat with 7.0 which will still send these */
@@ -3104,7 +3117,8 @@ int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen)
     return rc;
 }
 
-static void net_block_req(void *hndl, void *uptr, char *fromhost, int usertype,
+static void net_block_req(void *hndl, void *uptr, char *fromhost,
+                          struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
 
@@ -3130,6 +3144,7 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
 }
 
 static void net_block_reply(void *hndl, void *uptr, char *fromhost,
+                            struct interned_string *frominterned,
                             int usertype, void *dtap, int dtalen,
                             uint8_t is_tcp)
 {
@@ -3159,6 +3174,7 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
 }
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
+                             struct interned_string *frominterned,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
 {
@@ -3203,6 +3219,7 @@ void log_snap_info_key(snap_uid_t *snap_info)
 }
 
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
+                             struct interned_string *frominterned,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
 {
@@ -5081,6 +5098,7 @@ static void net_stopthread_rtn(void *arg)
 }
 
 static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
+                                  struct interned_string *frominterned,
                                   int usertype, void *dtap, int dtalen,
                                   uint8_t is_tcp)
 {
@@ -5180,6 +5198,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 }
 
 static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
+                                    struct interned_string *frominterned,
                                     int usertype, void *dtap, int dtalen,
                                     uint8_t is_tcp)
 {
@@ -5228,19 +5247,19 @@ static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
 }
 
 /* terminate node */
-static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *host)
+static int net_osql_nodedwn(netinfo_type *netinfo_ptr, struct interned_string *host)
 {
 
     int rc = 0;
 
     /* this is mainly for master, but we might not be a master anymore at
        this point */
-    rc = osql_repository_terminatenode(host);
+    rc = osql_repository_terminatenode(host->str);
 
     /* if only offload net drops, we might lose packets from connection but
        code will not be triggered to informed the sorese sessions that
        socket was dropped; call that here */
-    osql_checkboard_check_down_nodes(host);
+    osql_checkboard_check_down_nodes(host->str);
 
     return rc;
 }
@@ -5271,26 +5290,26 @@ static int net_local_route_packet_tail(int usertype, void *data, int datalen,
     case NET_OSQL_SOCK_REQ_COST:
     case NET_OSQL_SOCK_REQ_UUID:
     case NET_OSQL_SOCK_REQ_COST_UUID:
-        net_sosql_req(NULL, NULL, gbl_myhostname, usertype, data, datalen, 0);
+        net_sosql_req(NULL, NULL, gbl_myhostname, gbl_myhostname_interned, usertype, data, datalen, 0);
         break;
     case NET_OSQL_RECOM_REQ:
     case NET_OSQL_RECOM_REQ_UUID:
-        net_recom_req(NULL, NULL, gbl_myhostname, usertype, data, datalen, 0);
+        net_recom_req(NULL, NULL, gbl_myhostname, gbl_myhostname_interned, usertype, data, datalen, 0);
         break;
     case NET_OSQL_SNAPISOL_REQ:
     case NET_OSQL_SNAPISOL_REQ_UUID:
-        net_snapisol_req(NULL, NULL, gbl_myhostname, usertype, data, datalen,
+        net_snapisol_req(NULL, NULL, gbl_myhostname, gbl_myhostname_interned, usertype, data, datalen,
                          0);
         break;
     case NET_OSQL_SERIAL_REQ:
     case NET_OSQL_SERIAL_REQ_UUID:
-        net_serial_req(NULL, NULL, gbl_myhostname, usertype, data, datalen, 0);
+        net_serial_req(NULL, NULL, gbl_myhostname, gbl_myhostname_interned, usertype, data, datalen, 0);
         break;
     case NET_BLOCK_REQ:
-        net_block_req(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_block_req(NULL, NULL, 0, 0, usertype, data, datalen, 0);
         break;
     case NET_BLOCK_REPLY:
-        net_block_reply(NULL, NULL, 0, usertype, data, datalen, 0);
+        net_block_reply(NULL, NULL, 0, 0, usertype, data, datalen, 0);
         break;
     case NET_OSQL_SOCK_RPL:
     case NET_OSQL_RECOM_RPL:
@@ -5358,8 +5377,8 @@ static int offload_socket_send(SBUF2 *sb, int usertype, void *data, int datalen,
     return 0;
 }
 
-static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
-                         void *dtap, int dtalen, uint8_t is_tcp)
+static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, struct interned_string *frominterned,
+                         int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
     int found = 0;
     int rc = 0;
@@ -5520,8 +5539,8 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     return rc;
 }
 
-static void net_sosql_req(void *hndl, void *uptr, char *fromhost, int usertype,
-                          void *dtap, int dtalen, uint8_t is_tcp)
+static void net_sosql_req(void *hndl, void *uptr, char *fromhost, struct interned_string *frominterned,
+                          int usertype, void *dtap, int dtalen, uint8_t is_tcp)
 {
 
     int rc = 0;
@@ -5558,7 +5577,8 @@ static void net_sosql_req(void *hndl, void *uptr, char *fromhost, int usertype,
     }
 }
 
-static void net_recom_req(void *hndl, void *uptr, char *fromhost, int usertype,
+static void net_recom_req(void *hndl, void *uptr, char *fromhost, 
+                          struct interned_string *frominterned, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
 
@@ -5582,6 +5602,7 @@ static void net_recom_req(void *hndl, void *uptr, char *fromhost, int usertype,
 }
 
 static void net_snapisol_req(void *hndl, void *uptr, char *fromhost,
+                             struct interned_string *frominterned,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
 {
@@ -5605,7 +5626,8 @@ static void net_snapisol_req(void *hndl, void *uptr, char *fromhost,
         stats[OSQL_SNAPISOL_REQ].rcv_failed++;
 }
 
-static void net_serial_req(void *hndl, void *uptr, char *fromhost, int usertype,
+static void net_serial_req(void *hndl, void *uptr, char *fromhost,
+                           struct interned_string *fromintern, int usertype,
                            void *dtap, int dtalen, uint8_t is_tcp)
 {
 
@@ -7282,6 +7304,7 @@ done:
 
 /* transaction result */
 static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
+                              struct interned_string *frominterned,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
 {
@@ -7372,6 +7395,7 @@ static int netrpl2req(int netrpltype)
 }
 
 static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
+                                   struct interned_string *frominterned,
                                    int usertype, void *dtap, int dtalen,
                                    uint8_t is_tcp)
 {
@@ -7411,6 +7435,7 @@ static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
 }
 
 static void net_osql_rcv_echo_pong(void *hndl, void *uptr, char *fromhost,
+                                   struct interned_string *frominternd,
                                    int usertype, void *dtap, int dtalen,
                                    uint8_t is_tcp)
 {

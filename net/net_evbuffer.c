@@ -311,6 +311,7 @@ static struct appsock_info *get_appsock_info(const char *key)
 struct host_info {
     LIST_HEAD(, event_info) event_list;
     LIST_ENTRY(host_info) entry;
+    struct interned_string *host_interned;
     char *host;
     struct policy_info per_host;
 };
@@ -325,6 +326,7 @@ struct event_info {
     LIST_ENTRY(event_info) net_list_entry;
     int fd;
     int port;
+    struct interned_string *host_interned;
     char *host;
     char *service;
     int wirehdr_len;
@@ -495,7 +497,8 @@ static struct host_info *host_info_new(char *host)
 {
     check_base_thd();
     struct host_info *h = calloc(1, sizeof(struct host_info));
-    h->host = intern(host);
+    h->host_interned = intern_ptr(host);
+    h->host = h->host_interned->str;
     if (reader_policy == POLICY_PER_HOST) {
         init_base(&h->per_host.rdthd, &h->per_host.rdbase, h->host);
     }
@@ -636,6 +639,7 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     check_base_thd();
     struct event_info *e = calloc(1, sizeof(struct event_info));
     e->fd = -1;
+    e->host_interned = h->host_interned;
     e->host = h->host;
     e->service = n->service;
     e->host_info = h;
@@ -923,7 +927,7 @@ static void do_host_close(int dummyfd, short what, void *data)
     struct event_info *e = d->e;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     if (netinfo_ptr->hostdown_rtn) { /* net_hostdown_rtn or net_osql_nodedwn */
-        netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
+        netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host_interned);
     }
     host_node_close(e->host_node_ptr);
     evtimer_once(timer_base, disable_heartbeats, d);
@@ -1084,6 +1088,8 @@ static int process_user_msg(struct event_info *e)
         return -1;
     }
     char *host = e->host;
+    struct interned_string *host_interned = e->host_interned;
+
     void *usrptr = netinfo_ptr->usrptr;
     ack_state_type ack = {
         .seqnum = msg->seqnum,
@@ -1091,7 +1097,7 @@ static int process_user_msg(struct event_info *e)
         .fromhost = host,
         .netinfo = netinfo_ptr,
     };
-    func(&ack, usrptr, host, msg->usertype, e->rd_buf, msg->datalen, 1);
+    func(&ack, usrptr, host, host_interned, msg->usertype, e->rd_buf, msg->datalen, 1);
     message_done(e);
     return 0;
 }
@@ -2244,7 +2250,7 @@ static int accept_host(struct accept_info *a)
     update_event_port(e, port);
     update_wire_hdrs(e);
     if (netinfo_ptr->new_node_rtn) { /* net_newnode_rtn */
-        netinfo_ptr->new_node_rtn(netinfo_ptr, host, port);
+        netinfo_ptr->new_node_rtn(netinfo_ptr, h->host_interned, port);
     }
     hprintf("ACCEPTED NEW CONNECTION fd:%d\n", a->fd);
     host_connected(e, a->fd, 0);
@@ -3370,7 +3376,7 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len
     struct net_info *ni = net_info_find(netinfo_ptr->service);
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
-        if (logput && netinfo_ptr->throttle_rtn && (netinfo_ptr->throttle_rtn)(netinfo_ptr, e->host)) {
+        if (logput && netinfo_ptr->throttle_rtn && (netinfo_ptr->throttle_rtn)(netinfo_ptr, e->host_interned)) {
             continue;
         }
         Pthread_mutex_lock(&e->wr_lk);

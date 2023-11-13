@@ -1004,9 +1004,9 @@ void bdb_make_seqnum(seqnum_type *seqnum, uint32_t logfile, uint32_t logbyte);
 int bdb_wait_for_seqnum_from_all(bdb_state_type *bdb_state,
                                  seqnum_type *seqnum);
 int bdb_wait_for_seqnum_from_node(bdb_state_type *bdb_state,
-                                  seqnum_type *seqnum, const char *host);
+                                  seqnum_type *seqnum, struct interned_string *host);
 int bdb_wait_for_seqnum_from_node_timeout(bdb_state_type *bdb_state,
-                                          seqnum_type *seqnum, const char *host,
+                                          seqnum_type *seqnum, struct interned_string *host,
                                           int timeoutms);
 int bdb_wait_for_seqnum_from_all_timeout(bdb_state_type *bdb_state,
                                          seqnum_type *seqnum, int timeoutms);
@@ -1345,7 +1345,9 @@ int bdb_sync_cluster(bdb_state_type *bdb_state, int sync_all);
 int bdb_is_an_unconnected_master(bdb_state_type *bdb_state);
 void bdb_transfermaster(bdb_state_type *bdb_state);
 void bdb_losemaster(bdb_state_type *bdb_state);
-void bdb_transfermaster_tonode(bdb_state_type *bdb_state, char *tohost);
+void bdb_transfermaster_tonode(bdb_state_type *bdb_state, struct interned_string *tohost);
+struct hostinfo *retrieve_hostinfo(struct interned_string *h);
+struct hostinfo *retrieve_hostinfo_nocreate(struct interned_string *h);
 
 void bdb_exiting(bdb_state_type *bdb_state);
 
@@ -1799,8 +1801,6 @@ int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, in
                            int *bdberr);
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr);
-int bdb_accesscontrol_tableXnode_get(bdb_state_type *bdb_state, tran_type *tran,
-                                     int *bdberr);
 
 int bdb_user_password_set(tran_type *, char *user, char *passwd);
 int bdb_user_password_check(tran_type *, char *user, char *passwd, int *valid_user);
@@ -2353,7 +2353,7 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 int bdb_iam_master(bdb_state_type *bdb_state);
 
 int32_t bdb_get_dbopen_gen(void);
-int is_incoherent(bdb_state_type *, const char *);
+int is_incoherent(bdb_state_type *, struct interned_string *);
 
 #ifdef __APPLE__
 struct CDB2DBINFORESPONSE;

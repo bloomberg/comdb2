@@ -17,8 +17,16 @@
 #ifndef INCLUDED_INTERN_STRINGS_H
 #define INCLUDED_INTERN_STRINGS_H
 
+typedef struct interned_string {
+    char *str;
+    int ix;
+    void *ptr;
+    void *clptr;
+} interned_string_t;
+
 char *intern(const char *str);
 char *internn(const char *str, int len);
+struct interned_string *intern_ptr(const char *str);
 
 int isinterned(const char *str);
 void cleanup_interned_strings();

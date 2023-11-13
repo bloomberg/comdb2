@@ -78,7 +78,6 @@
 #include <time.h>
 #include <ctrace.h>
 #include <list.h>
-#include "nodemap.h"
 #include "intern_strings.h"
 #include <list.h>
 
@@ -115,6 +114,7 @@ extern int gbl_early;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern char *gbl_myhostname;
+extern struct interned_string *gbl_myhostname_interned;
 extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 extern int gbl_commit_lsn_map;
@@ -250,7 +250,8 @@ void set_repinfo_master_host(bdb_state_type *bdb_state, char *master,
         logmsg(LOGMSG_USER, "Setting repinfo master to %s from %s line %u\n",
                master, func, line);
     }
-    bdb_state->repinfo->master_host = master;
+    bdb_state->repinfo->master_host_interned = intern_ptr(master);
+    bdb_state->repinfo->master_host = bdb_state->repinfo->master_host_interned->str;
 
     if (master == db_eid_invalid) {
         /* whoismaster_rtn (new_master_callback) will be called when master is available */
@@ -1336,8 +1337,8 @@ char *bdb_trans(const char infile[], char outfile[])
     return outfile;
 }
 
-int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host);
-int net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum);
+int net_hostdown_rtn(netinfo_type *netinfo_ptr, struct interned_string *host);
+int net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *hostname, int portnum);
 int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
                    int ylen);
 int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
@@ -1733,20 +1734,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state->txndir);
     free(bdb_state->tmpdir);
 
-    free(bdb_state->seqnum_info->seqnums);
-    free(bdb_state->last_downgrade_time);
-    free(bdb_state->master_lease);
-    free(bdb_state->coherent_state);
-    free(bdb_state->seqnum_info->waitlist);
     free(bdb_state->seqnum_info->trackpool);
-    free(bdb_state->seqnum_info->time_10seconds);
-    free(bdb_state->seqnum_info->time_minute);
-    free(bdb_state->seqnum_info->expected_udp_count);
-    free(bdb_state->seqnum_info->incomming_udp_count);
-    free(bdb_state->seqnum_info->udp_average_counter);
-    free(bdb_state->seqnum_info->filenum);
-
-    free(bdb_state->repinfo->appseqnum);
 
     /* We can not free bdb_state because other threads get READLOCK
      * and it does not work well doing so on freed memory, so don't:
@@ -1907,13 +1895,16 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     const DB_LSN *lsnp, char *host, int flags, void *usr_ptr);
 
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,
-                        int usertype, void *dta, int dtalen, uint8_t is_tcp);
+                        struct interned_string *from_interned, int usertype,
+                        void *dta, int dtalen, uint8_t is_tcp);
 
 void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
-                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
+                         struct interned_string *from_interned, int usertype,
+                         void *dta, int dtalen, uint8_t is_tcp);
 
 void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
-                        int usertype, void *dta, int dtalen, uint8_t is_tcp);
+                        struct interned_string *from_host_interned, int usertype,
+                        void *dta, int dtalen, uint8_t is_tcp);
 
 void *watcher_thread(void *arg);
 void *checkpoint_thread(void *arg);
@@ -1943,10 +1934,8 @@ void get_master_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout)
 {
     char *master_host = bdb_state->repinfo->master_host;
     if (master_host != db_eid_invalid && master_host != bdb_master_dupe) {
-        memcpy(lsnout, &(bdb_state->seqnum_info
-                             ->seqnums[nodeix(bdb_state->repinfo->master_host)]
-                             .lsn),
-               sizeof(DB_LSN));
+        struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+        memcpy(lsnout, &h->seqnum.lsn, sizeof(DB_LSN));
     }
 }
 
@@ -3074,9 +3063,8 @@ again2:
         if ((master_host == db_eid_invalid) || (master_host == bdb_master_dupe))
             goto waitformaster;
 
-        memcpy(&master_seqnum,
-               &(bdb_state->seqnum_info->seqnums[nodeix(master_host)]),
-               sizeof(seqnum_type));
+        struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+        memcpy(&master_seqnum, &h->seqnum, sizeof(seqnum_type));
         memcpy(&master_lsn, &master_seqnum.lsn, sizeof(DB_LSN));
 
         rc = bdb_state->dbenv->log_stat(bdb_state->dbenv, &log_stats, 0);
@@ -3384,24 +3372,25 @@ int has_low_headroom(const char * path, int threshold, int debug)
 
 static int get_lowfilenum_sanclist(bdb_state_type *bdb_state)
 {
-    const char *nodes[REPMAX];
+    struct interned_string *nodes[REPMAX];
     int numnodes;
     int i;
     int lowfilenum;
 
-    numnodes = net_get_sanctioned_node_list(bdb_state->repinfo->netinfo, REPMAX,
+    numnodes = net_get_sanctioned_node_list_interned(bdb_state->repinfo->netinfo, REPMAX,
                                             nodes);
 
     lowfilenum = INT_MAX;
 
     for (i = 0; i < numnodes; i++) {
-        if (bdb_state->seqnum_info->filenum[nodeix(nodes[i])] < lowfilenum) {
-            lowfilenum = bdb_state->seqnum_info->filenum[nodeix(nodes[i])];
+        struct hostinfo *h = retrieve_hostinfo(nodes[i]);
+        if (h->filenum < lowfilenum) {
+            lowfilenum = h->filenum;
             if (bdb_state->attr->debug_log_deletion) {
                 logmsg(LOGMSG_USER,
                        "%s set lowfilenum to %d for machine "
                        "%s\n",
-                       __func__, lowfilenum, nodes[i]);
+                       __func__, lowfilenum, nodes[i]->str);
             }
         }
     }
@@ -3565,16 +3554,15 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         logmsg(LOGMSG_USER, "lowfilenum %d\n", lowfilenum);
 
     {
-        const char *hosts[REPMAX];
+        struct interned_string *hosts[REPMAX];
         int nhosts, i;
         char nodestr[128];
 
-        nhosts = net_get_sanctioned_node_list(bdb_state->repinfo->netinfo,
+        nhosts = net_get_sanctioned_node_list_interned(bdb_state->repinfo->netinfo,
                                               REPMAX, hosts);
         for (i = 0; i < nhosts; i++) {
-            int filenum;
-            filenum = bdb_state->seqnum_info->filenum[nodeix(hosts[i])];
-            snprintf(nodestr, sizeof(nodestr), "%s:%d ", hosts[i], filenum);
+            struct hostinfo *h = retrieve_hostinfo(hosts[i]);
+            snprintf(nodestr, sizeof(nodestr), "%s:%d ", hosts[i]->str, h->filenum);
             strcat(filenums_str, nodestr);
         }
     }
@@ -4031,8 +4019,8 @@ low_headroom:
 
     /* 0 means no-one should remove any logs */
     send_filenum_to_all(bdb_state, send_filenum, 0);
-    bdb_state->seqnum_info->filenum[nodeix(bdb_state->repinfo->myhost)] =
-        send_filenum;
+    struct hostinfo *h = retrieve_hostinfo(bdb_state->repinfo->myhost_interned);
+    h->filenum = send_filenum;
     if (bdb_state->attr->debug_log_deletion)
         logmsg(LOGMSG_WARN, "sending filenum %d\n", send_filenum);
     if (ctrace_info)
@@ -4110,17 +4098,18 @@ void bdb_print_log_files(bdb_state_type *bdb_state)
 int rep_caught_up(bdb_state_type *bdb_state)
 {
     int count;
-    const char *hostlist[REPMAX];
+    struct interned_string *hostlist[REPMAX];
     int i;
     int my_filenum;
+    struct interned_string *mynode = net_get_mynode_interned(bdb_state->repinfo->netinfo);
+    struct hostinfo *h = retrieve_hostinfo(mynode);
 
-    my_filenum =
-        bdb_state->seqnum_info
-            ->filenum[nodeix(net_get_mynode(bdb_state->repinfo->netinfo))];
+    my_filenum = h->filenum;
 
-    count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+    count = net_get_all_nodes_connected_interned(bdb_state->repinfo->netinfo, hostlist);
     for (i = 0; i < count; i++) {
-        if (bdb_state->seqnum_info->filenum[nodeix(hostlist[i])] != my_filenum)
+        h = retrieve_hostinfo(hostlist[i]);
+        if (h->filenum != my_filenum)
             return 0;
     }
 
@@ -5448,10 +5437,12 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     return rc;
 }
 
+extern void hostinfo_lock(void);
+extern void hostinfo_unlock(void);
+extern LISTC_T(struct hostinfo) hostinfo_list;
+
 int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
 {
-    int i;
-
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
@@ -5463,9 +5454,13 @@ int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done)
         logmsg(LOGMSG_USER, "%s line %d setting all seqnums to 0\n", __func__,
                __LINE__);
     }
-    for (i = 0; i < MAXNODES; i++) {
-        bdb_state->seqnum_info->seqnums[i].lsn.file = 0;
+    struct hostinfo *h = NULL;
+    hostinfo_lock();
+    LISTC_FOR_EACH(&hostinfo_list, h, lnk)
+    {
+        h->seqnum.lsn.file = 0;
     }
+    hostinfo_unlock();
 
     return bdb_upgrade_downgrade_reopen_wrap(bdb_state, UPGRADE, 30, newgen,
                                              done);
@@ -5680,13 +5675,7 @@ static bdb_state_type *bdb_open_int(
         Pthread_mutex_init(&(bdb_state->id_lock), NULL);
         Pthread_mutex_init(&(bdb_state->gblcontext_lock), NULL);
 
-        bdb_state->last_downgrade_time = calloc(sizeof(uint64_t), MAXNODES);
-        bdb_state->master_lease = calloc(sizeof(uint64_t), MAXNODES);
         Pthread_mutex_init(&(bdb_state->master_lease_lk), NULL);
-
-        bdb_state->coherent_state = malloc(sizeof(int) * MAXNODES);
-        for (int i = 0; i < MAXNODES; i++)
-            bdb_state->coherent_state[i] = STATE_COHERENT;
 
         Pthread_mutex_init(&(bdb_state->coherent_state_lock), NULL);
 
@@ -5716,13 +5705,6 @@ static bdb_state_type *bdb_open_int(
         /* init seqnum_info */
         bdb_state->seqnum_info = mymalloc(sizeof(seqnum_info_type));
         bzero(bdb_state->seqnum_info, sizeof(seqnum_info_type));
-
-        bdb_state->seqnum_info->seqnums =
-            mymalloc(sizeof(seqnum_type) * MAXNODES);
-        bzero(bdb_state->seqnum_info->seqnums, sizeof(seqnum_type) * MAXNODES);
-
-        bdb_state->seqnum_info->filenum = mymalloc(sizeof(int) * MAXNODES);
-        bzero(bdb_state->seqnum_info->filenum, sizeof(int) * MAXNODES);
     } else {
         /* share the parent */
         bdb_state->seqnum_info = parent_bdb_state->seqnum_info;
@@ -5740,20 +5722,8 @@ static bdb_state_type *bdb_open_int(
     if (!parent_bdb_state) {
         Pthread_mutex_init(&(bdb_state->seqnum_info->lock), NULL);
         Pthread_cond_init(&(bdb_state->seqnum_info->cond), NULL);
-        bdb_state->seqnum_info->waitlist =
-            calloc(MAXNODES, sizeof(wait_for_lsn_list *));
         bdb_state->seqnum_info->trackpool = pool_setalloc_init(
             sizeof(struct waiting_for_lsn), 100, malloc, free);
-        bdb_state->seqnum_info->time_10seconds =
-            calloc(MAXNODES, sizeof(struct averager *));
-        bdb_state->seqnum_info->time_minute =
-            calloc(MAXNODES, sizeof(struct averager *));
-        bdb_state->seqnum_info->expected_udp_count =
-            calloc(MAXNODES, sizeof(short));
-        bdb_state->seqnum_info->incomming_udp_count =
-            calloc(MAXNODES, sizeof(short));
-        bdb_state->seqnum_info->udp_average_counter =
-            calloc(MAXNODES, sizeof(short));
 
         for (i = 0; i < 16; i++)
             bdb_state->stripe_pool[i] = 255;
@@ -5904,7 +5874,8 @@ static bdb_state_type *bdb_open_int(
         bzero(bdb_state->repinfo, sizeof(repinfo_type));
 
         /* record who we are */
-        bdb_state->repinfo->myhost = gbl_myhostname;
+        bdb_state->repinfo->myhost_interned = intern_ptr(gbl_myhostname);
+        bdb_state->repinfo->myhost = bdb_state->repinfo->myhost_interned->str;
 
         /* we dont know who the master is yet */
         set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
@@ -5924,15 +5895,6 @@ static bdb_state_type *bdb_open_int(
         Pthread_mutex_init(&(bdb_state->repinfo->receive_lock), NULL);
 
         Pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
-
-        /* set up the appseqnum array.  we tag all packets we put out
-           on the network with our own application level sequence
-           number.  */
-        bdb_state->repinfo->appseqnum = mymalloc((sizeof(int) * MAXNODES));
-        bzero(bdb_state->repinfo->appseqnum, sizeof(int) * MAXNODES);
-
-        for (i = 0; i < MAXNODES; i++)
-            bdb_state->repinfo->appseqnum[i] = MAXNODES - i;
 
         bdb_set_key(bdb_state);
 
@@ -6097,10 +6059,10 @@ static bdb_state_type *bdb_open_int(
 
         whoismaster_rtn(bdb_state, 1);
 
+        struct hostinfo *h = retrieve_hostinfo(gbl_myhostname_interned);
+
         logmsg(
-            LOGMSG_INFO, "@LSN %u:%u\n",
-            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.file,
-            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.offset);
+            LOGMSG_INFO, "@LSN %u:%u\n", h->seqnum.lsn.file, h->seqnum.lsn.offset);
 
         BDB_RELLOCK();
     } else {
@@ -6405,12 +6367,11 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
 int get_seqnum(bdb_state_type *bdb_state, const char *host)
 {
     int seq;
+    struct interned_string *host_interned = intern_ptr(host);
+    struct hostinfo *h = retrieve_hostinfo(host_interned);
 
     Pthread_mutex_lock(&(bdb_state->repinfo->appseqnum_lock));
-
-    bdb_state->repinfo->appseqnum[nodeix(host)]++;
-    seq = bdb_state->repinfo->appseqnum[nodeix(host)];
-
+    seq = ++h->appseqnum;
     Pthread_mutex_unlock(&(bdb_state->repinfo->appseqnum_lock));
 
     return seq;

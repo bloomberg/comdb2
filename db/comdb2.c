@@ -226,7 +226,6 @@ int gbl_uses_externalauth = 0;
 int gbl_uses_externalauth_connect = 0;
 int gbl_externalauth_warn = 0;
 int gbl_identity_cache_max = 500;
-int gbl_uses_accesscontrol_tableXnode;
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
 int gbl_watchdog_watch_threshold = 60;
@@ -307,6 +306,7 @@ int gbl_report_last;
 long gbl_report_last_n;
 long gbl_report_last_r;
 char *gbl_myhostname;      /* my hostname */
+struct interned_string *gbl_myhostname_interned;
 char *gbl_mycname;      /* my cname */
 struct in_addr gbl_myaddr; /* my IPV4 address */
 int gbl_mynodeid = 0; /* node number, for backwards compatibility */
@@ -5342,7 +5342,8 @@ static void getmyid(void)
         logmsg(LOGMSG_FATAL, "gethostname failed rc:%d err:%s\n", rc, strerror(errno));
         abort();
     }
-    gbl_myhostname = intern(buf);
+    gbl_myhostname_interned = intern_ptr(buf);
+    gbl_myhostname = gbl_myhostname_interned->str;
     get_os_hostbyname()(&gbl_myhostname, &gbl_myaddr , &cname); // -> os_get_host_and_cname_by_name
     if (cname) {
         gbl_mycname = intern(cname);
@@ -5441,6 +5442,9 @@ static void hash_no_op_callback(hash_t *const restrict hash, plhash_event_t even
 { }
 #endif
 
+void hostinfo_init(void);
+void clienthost_init(void);
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -5456,6 +5460,10 @@ int main(int argc, char **argv)
 #   ifdef COMDB2_BBCMAKE
     hash_set_global_event_callback(hash_no_op_callback);
 #   endif
+
+    hostinfo_init();
+    clienthost_init();
+
 
     /* more reliable */
 #ifdef __linux__
