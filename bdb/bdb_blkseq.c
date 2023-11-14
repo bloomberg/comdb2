@@ -726,7 +726,13 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                     if (rectype == DB_llog_ltran_commit) {
                         bp = (logdta.data + sizeof(u_int32_t) + sizeof(u_int32_t));
                         LOGCOPY_TOLSN(&bslsn, bp);
-                        rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+
+                        /* Purge-old-files emits empty transactions in snapshot */
+                        if (IS_ZERO_LSN(bslsn)) {
+                            rc = -1;
+                        } else {
+                            rc = logc->get(logc, &bslsn, &logdta, DB_SET);
+                        }
                         if (rc == 0) {
                             LOGCOPY_32(&rectype, logdta.data);
                             normalize_rectype(&rectype);
