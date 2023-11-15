@@ -381,6 +381,7 @@
 (name='ignore_extra_blobs', description='ignore_extra_blobs', type='BOOLEAN', value='OFF', read_only='N')
 (name='ilock_step', description='Stepup for preallocated ilock-latches', type='INTEGER', value='2048', read_only='N')
 (name='incoherent_alarm_time', description='', type='INTEGER', value='120', read_only='Y')
+(name='incoherent_clnt_wait', description='Delay incoherent reject if without master (Default: 10sec)', type='INTEGER', value='10', read_only='N')
 (name='incoherent_msg_freq', description='', type='INTEGER', value='3600', read_only='Y')
 (name='incoherent_nodes', description='incoherent_nodes', type='BOOLEAN', value='ON', read_only='N')
 (name='index_priority_boost', description='Treat index pages as higher priority in the buffer pool.', type='BOOLEAN', value='ON', read_only='N')

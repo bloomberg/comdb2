@@ -4434,6 +4434,8 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
                    (base_ts - coherency_timestamp), no_lease_count);
             lastpr = now;
         }
+    } else {
+        dispatch_waiting_clients();
     }
 }
 
