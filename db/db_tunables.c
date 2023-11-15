@@ -467,6 +467,8 @@ extern int gbl_pstack_self;
 /* For fdb connections using cdb2api */
 extern char *gbl_cdb2api_policy_override;
 
+int gbl_incoherent_clnt_wait = 10;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need

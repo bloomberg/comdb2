@@ -2474,4 +2474,7 @@ REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2a
 REGISTER_TUNABLE("always_load_preupd_blobs", "For update triggers, always load pre-update blob values. (Default: on)", 
                 TUNABLE_BOOLEAN, &gbl_always_load_preupd_blobs, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("incoherent_clnt_wait", "Delay incoherent reject if without master (Default: 10sec)",
+                 TUNABLE_INTEGER, &gbl_incoherent_clnt_wait, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

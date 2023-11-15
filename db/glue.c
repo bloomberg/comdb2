@@ -2900,9 +2900,16 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
     return -1;
 }
 
+struct timeval last_elect_time;
 static void thedb_set_master_int(char *master)
 {
+    if (master != db_eid_invalid) {
+        gettimeofday(&last_elect_time, NULL);
+    }
     thedb->master = master;
+    if (master == gbl_myhostname) {
+        dispatch_waiting_clients();
+    }
 }
 
 static pthread_mutex_t new_master_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -2921,11 +2928,8 @@ static void new_master_callback_int(void *bdb_handle, int assert_sc_clear)
     char *host;
     uint32_t gen, egen;
     bdb_get_rep_master(bdb_handle, &host, &gen, &egen);
-    logmsg(LOGMSG_USER,
-           "%s: old old-master:%s old-gen:%d old-egen:%d\n"
-           "%s: new rep-master:%s rep-gen:%d rep-egen:%d\n"
-           ,__func__, thedb->master, thedb->gen, thedb->egen
-           ,__func__, host, gen, egen);
+    logmsg(LOGMSG_USER, "%s:  master:%s->%s  old-gen:%d->%d  old-egen:%d->%d\n",
+           __func__, thedb->master, host, thedb->gen, gen, thedb->egen, egen);
     if (host == db_eid_invalid) {
         logmsg(LOGMSG_USER, "%s: skipping callback\n", __func__);
         return;

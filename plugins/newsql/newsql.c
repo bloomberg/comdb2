@@ -25,6 +25,7 @@
 #include <sql.h>
 #include <sqloffload.h>
 #include <str0.h>
+#include <timer_util.h>
 
 #include <newsql.h>
 
@@ -34,6 +35,7 @@ extern int gbl_allow_incoherent_sql;
 extern int gbl_disable_skip_rows;
 extern int gbl_return_long_column_names;
 extern int gbl_typessql;
+extern int gbl_incoherent_clnt_wait;
 
 struct newsql_appdata {
     NEWSQL_APPDATA_COMMON
@@ -2030,7 +2032,16 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     return clnt->admin ? 0 : do_query_on_master_check(clnt, sql_query);
 }
 
-int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
+int leader_is_new(void)
+{
+    extern struct timeval last_elect_time;
+    struct timeval now, diff;
+    gettimeofday(&now, NULL);
+    timersub(&now, &last_elect_time, &diff);
+    return diff.tv_sec == 0; // considered new if less than 1sec
+}
+
+newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     Pthread_mutex_lock(&clnt->sql_lk);
     clnt->sql = sql_query->sql_query;
@@ -2069,7 +2080,7 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                  "DB name mismatch query:%s actual:%s", sql_query->dbname,
                  thedb->envname);
         write_response(clnt, RESPONSE_ERROR, errstr, CDB2__ERROR_CODE__WRONG_DB);
-        return -1;
+        return NEWSQL_ERROR;
     }
     if (sql_query->client_info) {
         if (clnt->rawnodestats) {
@@ -2109,7 +2120,7 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                                clnt->plugin.get_fileno(clnt), clnt->plugin.has_ssl(clnt));
     }
     if (process_set_commands(clnt, sql_query)) {
-        return -1;
+        return NEWSQL_ERROR;
     }
 
     /* Mark connection as readonly, if the
@@ -2125,18 +2136,19 @@ int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     if (gbl_rowlocks && clnt->dbtran.mode != TRANLEVEL_SERIAL) {
         clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
     }
-    /* avoid new accepting new queries/transaction on opened connections
-     if we are incoherent (and not in a transaction). */
-    if (incoh_reject(clnt->admin, thedb->bdb_env) &&
-        (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
-        logmsg(LOGMSG_DEBUG, "%s new query on incoherent node, dropping socket\n", __func__);
-        return -1;
-    }
-    ATOMIC_ADD32(gbl_nnewsql, 1);
-    if (clnt->plugin.has_ssl(clnt))
-        ATOMIC_ADD32(gbl_nnewsql_ssl, 1);
 
-    return 0;
+    ATOMIC_ADD32(gbl_nnewsql, 1);
+    if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD32(gbl_nnewsql_ssl, 1);
+
+    /* coherent  _or_ in middle of transaction */
+    if (!incoh_reject(clnt->admin, thedb->bdb_env) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
+        return NEWSQL_SUCCESS;
+    }
+    if (gbl_incoherent_clnt_wait > 0) {
+        if (bdb_whoismaster(thedb->bdb_env) == NULL) return NEWSQL_NO_LEADER;
+        if (leader_is_new()) return NEWSQL_NEW_LEADER;
+    }
+    return NEWSQL_INCOHERENT;
 }
 
 int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
