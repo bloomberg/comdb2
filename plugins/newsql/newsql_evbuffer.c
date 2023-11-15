@@ -389,88 +389,58 @@ static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
     event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
 }
 
-static int ssl_check(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
+static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl)
 {
     if (appdata->ssl_data && appdata->ssl_data->ssl) return 0;
-    for (int i = 0; i < query->sqlquery->n_features; ++i) {
-        if (CDB2_CLIENT_FEATURES__SSL == query->sqlquery->features[i]) {
-            newsql_write_hdr_evbuffer(&appdata->clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
-            return 1;
-        }
+    if (have_ssl) {
+        newsql_write_hdr_evbuffer(&appdata->clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
+        return 1;
     }
     if (ssl_whitelisted(appdata->clnt.origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode))) {
         /* allow plaintext local connections, or server is configured to prefer (but not disallow) SSL clients. */
         return 0;
     }
     write_response(&appdata->clnt, RESPONSE_ERROR, "database requires SSL connections", CDB2ERR_CONNECT_ERROR);
-    return -1;
+    return 2;
 }
 
-static void check_sqlite_row(struct newsql_appdata_evbuffer *appdata,
-                             CDB2QUERY *query)
+static void process_query(struct newsql_appdata_evbuffer *appdata)
 {
-    if (!query || !query->sqlquery)
-        return;
-
-    appdata->clnt.sqlite_row_format = 0;
-    for (int i = 0; i < query->sqlquery->n_features; ++i) {
-        if (CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT ==
-            query->sqlquery->features[i]) {
-            appdata->clnt.sqlite_row_format = 1;
-            break;
-        }
-    }
-}
-
-static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
-{
-    int do_read = 0;
-    int commit_rollback;
-
-    check_sqlite_row(appdata, query);
-
-    if (SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
-        switch (ssl_check(appdata, query)) {
-        case 0: break;
-        case 1: do_read = 1; // fallthrough
-        default: goto out;
-        }
-    }
-    appdata->query = query;
-    CDB2SQLQUERY *sqlquery = appdata->sqlquery = query->sqlquery;
     struct sqlclntstate *clnt = &appdata->clnt;
-    if (sqlquery == NULL) {
-        goto out;
-    }
-    if (appdata->initial) {
-        if (newsql_first_run(clnt, sqlquery) != 0) {
-            goto out;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery = appdata->query->sqlquery;
+    if (!sqlquery) goto err;
+    int have_ssl = 0;
+    int have_sqlite_fmt = 0;
+    for (int i = 0; i < sqlquery->n_features; ++i) {
+        switch (sqlquery->features[i]) {
+        case CDB2_CLIENT_FEATURES__SSL: have_ssl = 1; break;
+        case CDB2_CLIENT_FEATURES__SQLITE_ROW_FORMAT: have_sqlite_fmt = 1; break;
         }
-        appdata->initial = 0;
     }
-    if (newsql_loop(clnt, sqlquery) != 0) {
-        goto out;
+    clnt->sqlite_row_format = have_sqlite_fmt;
+    if (SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
+        switch(ssl_check(appdata, have_ssl)) {
+        case 1: goto read;
+        case 2: goto err;
+        }
     }
+    if (appdata->initial && newsql_first_run(clnt, sqlquery) != 0) goto err;
+    appdata->initial = 0;
+    if (newsql_loop(clnt, sqlquery) != 0) goto err;
+    int commit_rollback;
     if (newsql_should_dispatch(clnt, &commit_rollback) != 0) {
-        do_read = 1;
-        goto out;
+read:   cdb2__query__free_unpacked(appdata->query, &pb_alloc);
+        appdata->query = NULL;
+        evtimer_once(appdata->base, rd_hdr, appdata);
+        return;
     }
     sql_reset(appdata->writer);
     if (clnt->query_timeout) {
         sql_enable_timeout(appdata->writer, clnt->query_timeout);
     }
     sql_enable_heartbeat(appdata->writer);
-    if (dispatch_sql_query_no_wait(clnt) == 0) { /* newsql_done_cb */
-        return;
-    }
-out:
-    cdb2__query__free_unpacked(query, &pb_alloc);
-    appdata->query = NULL;
-    if (do_read) {
-        evtimer_once(appdata->base, rd_hdr, appdata);
-    } else {
-        newsql_cleanup(appdata);
-    }
+    if (dispatch_sql_query_no_wait(clnt) == 0) return;
+err:newsql_cleanup(appdata);
 }
 
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
@@ -481,7 +451,8 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
     }
     CDB2DBINFO *dbinfo = query->dbinfo;
     if (!dbinfo) {
-        process_query(appdata, query);
+        appdata->query = query;
+        process_query(appdata);
         return;
     }
     if (dbinfo->has_want_effects && dbinfo->want_effects) {
