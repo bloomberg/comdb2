@@ -8,4 +8,4 @@ Description: C API to talk to Comdb2
 Version: 1.0
 Libs: -L${libdir} -lcdb2api
 Cflags: -I${includedir} 
-Requires: libprotobuf-c libssl libcrypto
+Requires: libprotobuf-c libssl libcrypto libunwind
