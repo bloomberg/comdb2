@@ -2835,6 +2835,7 @@ static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
     }
 }
 
+int gbl_wait_for_rtcpu_nodes = 0;
 /*
  * Return values:
  *    GOOD RETURN CODE
@@ -2891,25 +2892,28 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
     /* node is rtcpued off:  we may need to make the node incoherent */
+    int wait_rtcpu = gbl_wait_for_rtcpu_nodes;
+    int rtcpu_state = wait_rtcpu ? STATE_INCOHERENT_WAIT : STATE_INCOHERENT;
     if (node_is_rtcpu) {
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
         if (bdb_state->coherent_state[node_ix] == STATE_COHERENT ||
-            bdb_state->coherent_state[node_ix] == STATE_INCOHERENT_WAIT) {
+            (!wait_rtcpu && bdb_state->coherent_state[node_ix] == STATE_INCOHERENT_WAIT)) {
             if (bdb_state->coherent_state[node_ix] == STATE_COHERENT)
                 defer_commits(bdb_state, host, __func__);
             bdb_state->last_downgrade_time[node_ix] = gettimeofday_ms();
-            set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
-                               __LINE__);
+            set_coherent_state(bdb_state, host, rtcpu_state, __func__, __LINE__);
             bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
         }
 
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
-        if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
-                   PARM_LSN(seqnum->lsn), host);
+        if (rtcpu_state == STATE_INCOHERENT) {
+            if (bdb_state->attr->wait_for_seqnum_trace) {
+                logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
+                        PARM_LSN(seqnum->lsn), host);
+            }
+            return -2;
         }
-        return -2;
     }
 
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));

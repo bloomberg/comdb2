@@ -1038,6 +1038,7 @@
 (name='view_feature', description='Enables support for VIEWs (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='views_dft_preempt_roll_secs', description='Amount of seconds to run phase 1 of time partition rollout before phase 2', type='INTEGER', value='1800', read_only='N')
 (name='views_dft_roll_delete_lag_secs', description='Amount of seconds to run phase 3 of time partition rollout after phase 2', type='INTEGER', value='5', read_only='N')
+(name='wait_for_rtcpu_nodes', description='Set rtcpu'd nodes to INCOHERENT_WAIT rather than INCOHERENT.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='wait_for_seqnum_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='wal_osync', description='Open WAL files using the O_SYNC flag (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='warn_cstr', description='Warn on validation of cstrings', type='BOOLEAN', value='ON', read_only='N')

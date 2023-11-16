@@ -1637,10 +1637,10 @@ REGISTER_TUNABLE("durable_set_trace",
                  "Trace setting durable lsn.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_durable_set_trace, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("set_seqnum_trace",
-                 "Trace setting setting seqnum.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_set_seqnum_trace,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("wait_for_rtcpu_nodes", "Set rtcpu'd nodes to INCOHERENT_WAIT rather than INCOHERENT.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_wait_for_rtcpu_nodes, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("set_seqnum_trace", "Trace setting setting seqnum.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_set_seqnum_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("elect_priority_bias",
                  "Bias this node's election priority by this amount.  "
                  "(Default: 0)",

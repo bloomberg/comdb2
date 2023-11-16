@@ -725,7 +725,8 @@ lease if a node is either not responding or is significantly slower than the oth
 |DOWNGRADE_PENALTY | 10000 | Prevent upgrades for at least this many ms after a downgrade
 |CATCHUP_WINDOW | 1000000 | Start waiting in waitforseqnum if replicant is within this many bytes of master
 |CATCHUP_ON_COMMIT | 1 | Replicant to INCOHERENT_WAIT rather than INCOHERENT on commit if within CATCHUP_WINDOW 
-|ADD_RECORD_INTERVAL | 1 | Add a record every <interval> seconds while there are incoherent_wait replicants
+|ADD_RECORD_INTERVAL | 1 | Add a record every <interval> seconds while there are INCOHERENT_WAIT replicants
+|WAIT_FOR_RTCPU_NODES|0 (BOOLEAN) | Set rtcpu nodes to INCOHERENT_WAIT rather than INCOHERENT
 
 ### Init time options
 
