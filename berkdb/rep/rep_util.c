@@ -842,6 +842,8 @@ __rep_elect_done(dbenv, rep, egen, func, line)
 	int inelect;
 
 	inelect = IN_ELECTION_TALLY(rep);
+	logmsg(LOGMSG_DEBUG, "%s line %d clearing PHASE1/PHASE2/TALLY, inelect is %d\n",
+		__func__, __LINE__, inelect);
 	F_CLR(rep, REP_F_EPHASE1 | REP_F_EPHASE2 | REP_F_TALLY);
 	rep->sites = 0;
 	rep->votes = 0;

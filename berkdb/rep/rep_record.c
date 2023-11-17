@@ -2411,6 +2411,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #endif
 			egen = rep->egen;
 			committed_gen = rep->committed_gen;
+			logmsg(LOGMSG_DEBUG, "%s line %d Setting PHASE2 clearing PHASE1\n", __func__, __LINE__);
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
 			if (master == rep->eid) {
@@ -6946,7 +6947,7 @@ __rep_cmp_vote2(dbenv, rep, eid, egen)
 	}
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-		__db_err(dbenv, "Did not find vote1 for eid %d, egen %lu",
+		__db_err(dbenv, "Did not find vote2 for eid %d, egen %lu",
 			eid, (u_long)egen);
 #endif
 	logmsg(LOGMSG_DEBUG,
