@@ -9022,6 +9022,12 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
 #endif
             cson_value_free(rootV);
             free(blob);
+            if (value == NULL) {
+                /* blob does not contain this param, and we are trying to 
+                 * delete it; we are done here 
+                 */
+                return 0;
+            }
             return 1;
         }
 
