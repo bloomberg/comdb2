@@ -1263,7 +1263,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
 
 
     if (rc) {
-        if (!iq->sc_should_abort) {
+        if (rc == ERR_NOMASTER) {
             /* IFF the schema changes are NOT aborted, clean in-mem structures but
              * leave persistent and replicated changes (llmeta, new btree-s) so
              * that a new master/resume will pick it up later
