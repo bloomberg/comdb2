@@ -211,8 +211,8 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name)) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
-            snprintf(msg, sizeof(msg), "Write access denied for table %s",
-                     table_name);
+            snprintf(msg, sizeof(msg), "Write access denied to table %s for user %s",
+                      table_name, clnt->externalAuthUser ? clnt->externalAuthUser : "");
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -275,8 +275,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name)) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
-            snprintf(msg, sizeof(msg), "Read access denied for table %s",
-                     table_name);
+            snprintf(msg, sizeof(msg), "Read access denied to table %s for user %s",
+                      table_name, clnt->externalAuthUser ? clnt->externalAuthUser : "");
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
