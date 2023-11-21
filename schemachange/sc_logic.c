@@ -343,8 +343,13 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         return rc;
     }
 
-    if ((rc = mark_schemachange_over_tran(s->tablename, tran)))
+    if ((rc = mark_schemachange_over_tran(s->tablename, tran))) {
+        if (input_tran == NULL) {
+            trans_abort(iq, tran);
+            sc_del_unused_files(s->db);
+        }
         return rc;
+    }
 
     if (bdb_set_schema_change_status(tran, s->tablename, iq->sc_seed, sc_nrecs,
                                      NULL, 0, BDB_SC_COMMITTED, NULL,
