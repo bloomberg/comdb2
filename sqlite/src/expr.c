@@ -5832,7 +5832,7 @@ static char* sqlite3ExprDescribe_inner(
   const Expr *pExpr,
   int atRuntime,
   struct params_info **pParamsOut,
-  int useFullColnames
+  SrcList *srcs 
 /*  int forJoins*/
 ){
   int op = pExpr->op;
@@ -5859,7 +5859,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_NOT: {
       char *expr = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if ( !expr ){
         return NULL;
       }
@@ -5893,7 +5893,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_CAST: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if (!left) return NULL;
 
       char *ret = sqlite3_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
@@ -5938,12 +5938,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_OR:
     case TK_IS: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -5961,18 +5961,18 @@ static char* sqlite3ExprDescribe_inner(
             return NULL;
         }
         char *col = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-                pParamsOut, useFullColnames);
+                pParamsOut, srcs);
         if (!col) {
             return NULL;
         }
         char *left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
-                atRuntime, pParamsOut, useFullColnames);
+                atRuntime, pParamsOut, srcs);
         if (!left) {
             sqlite3DbFree(v->db, col);
             return NULL;
         }
         char *right = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[1].pExpr,
-                atRuntime, pParamsOut, useFullColnames);
+                atRuntime, pParamsOut, srcs);
         if (!right) {
             sqlite3DbFree(v->db, left);
             sqlite3DbFree(v->db, col);
@@ -5997,7 +5997,7 @@ static char* sqlite3ExprDescribe_inner(
         }
 
         left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-                pParamsOut, useFullColnames);
+                pParamsOut, srcs);
         if( !left ){
           return NULL;
         }
@@ -6013,7 +6013,7 @@ static char* sqlite3ExprDescribe_inner(
 
         for(i =0; i< pExpr->x.pList->nExpr; i++){
           left = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
-                  atRuntime, pParamsOut, useFullColnames);
+                  atRuntime, pParamsOut, srcs);
           if( !left ){
             sqlite3_free(ret);
             return NULL;
@@ -6030,7 +6030,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_ISNULL: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !left ){
         return NULL;
       }
@@ -6042,7 +6042,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_NOTNULL: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !left ){
         return NULL;
       }
@@ -6059,12 +6059,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_LT :
     case TK_GE: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -6083,12 +6083,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_BITAND:
     case TK_BITOR: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -6111,12 +6111,12 @@ static char* sqlite3ExprDescribe_inner(
     case TK_REM:
     case TK_CONCAT: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !left ){
         return NULL;
       }
       char *right = sqlite3ExprDescribe_inner(v, pExpr->pRight, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if( !right ){
         sqlite3_free(left);
         return NULL;
@@ -6134,7 +6134,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_BITNOT: {
       char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-              pParamsOut, useFullColnames);
+              pParamsOut, srcs);
       if (!left)
         return NULL;
       char *ret = sqlite3_mprintf("( ~ %s )", left);
@@ -6254,7 +6254,7 @@ static char* sqlite3ExprDescribe_inner(
       int nelem = pExpr->x.pList->nExpr;
       if (pExpr->pLeft) {
         tmp = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-                pParamsOut, useFullColnames);
+                pParamsOut, srcs);
         if (!tmp)
             return NULL;
         ret = sqlite3_mprintf("case %s ", tmp);
@@ -6267,7 +6267,7 @@ static char* sqlite3ExprDescribe_inner(
 
       do { 
         char *c = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr,
-                atRuntime, pParamsOut, useFullColnames);
+                atRuntime, pParamsOut, srcs);
         if (!c) {
           sqlite3_free(ret);
           return NULL;
@@ -6281,7 +6281,7 @@ static char* sqlite3ExprDescribe_inner(
             break;
         } else {
           char *d = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i++].pExpr,
-                  atRuntime, pParamsOut, useFullColnames);
+                  atRuntime, pParamsOut, srcs);
           if (!d) {
             sqlite3_free(c);
             sqlite3_free(ret);
@@ -6373,7 +6373,7 @@ default_prec:
           return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
         char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
                                               atRuntime, pParamsOut,
-                                              useFullColnames);
+                                              srcs);
         if( !arg )
           return NULL;
         ret = sqlite3_mprintf(" %s ( %s", pExpr->u.zToken, arg);
@@ -6382,7 +6382,7 @@ default_prec:
         for( i = 1; i < pExpr->x.pList->nExpr; i++ ) {
           arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr,
                                         atRuntime, pParamsOut,
-                                        useFullColnames);
+                                        srcs);
           if( !arg )
             return NULL;
           ret2 = sqlite3_mprintf("%s, %s", ret, arg);
@@ -6419,17 +6419,31 @@ default_prec:
         name = pExpr->y.pTab->aCol[pExpr->iColumn].zName;
         break;
       }
-      if (useFullColnames)
-        return sqlite3_mprintf("\"%w\".\"%w\"", pExpr->y.pTab->zName, name);
-      else
+      if (srcs) {
+        /* we cannot just grab the table name here, we need to make sure we are
+         * not aliased, and this can only be done by looking at SrcList list
+         * of sources
+         * */
+        int src_ix;
+        for(src_ix = 0; src_ix<srcs->nSrc; src_ix++){
+          if( srcs->a[src_ix].iCursor == pExpr->iTable ){
+            if( srcs->a[src_ix].zAlias )
+              return sqlite3_mprintf("\"%w\".\"%w\"", srcs->a[src_ix].zAlias, name);
+            assert(pExpr->y.pTab == srcs->a[src_ix].pTab);
+            return sqlite3_mprintf("\"%w\".\"%w\"", pExpr->y.pTab->zName, name);
+          }
+        }
+        return NULL; /* an earlier parsing error will prevent this, but jic */
+      } else {
         return sqlite3_mprintf("\"%w\"", name);
+      }
     }
     case TK_AGG_FUNCTION: /* fallthrough */
     case TK_AGG_COLUMN:
       break;
     case TK_UMINUS : {
        char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-               pParamsOut, useFullColnames);
+               pParamsOut, srcs);
        if( !left ) return NULL;
        char *ret = sqlite3_mprintf("( - ( %s ) )", left);
 
@@ -6439,7 +6453,7 @@ default_prec:
     }
     case TK_UPLUS : {
        char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime,
-               pParamsOut, useFullColnames);
+               pParamsOut, srcs);
        if( !left ) return NULL;
        char *ret = sqlite3_mprintf("( + ( %s ) )", left);
 
@@ -6463,7 +6477,7 @@ default_prec:
         } else if (pExpr->x.pList->nExpr == 1) {
             char *arguments = sqlite3ExprDescribe_inner(v,
                     pExpr->x.pList->a[0].pExpr, atRuntime, pParamsOut,
-                    useFullColnames);
+                    srcs);
             if (arguments) {
                 char *ret = sqlite3_mprintf("count(%s)", arguments);
                 sqlite3_free(arguments);
@@ -6490,8 +6504,8 @@ char *sqlite3ExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr){
  *   - require NOT use a tablename in the case they are used for order by columns
  */
 char *sqlite3ExprDescribeParams(Vdbe *v, const Expr *pExpr, struct params_info **pParamsOut,
-        int useFullColnames){
-  return sqlite3ExprDescribe_inner(v, pExpr, 0, pParamsOut, useFullColnames);
+        SrcList *srcs){
+  return sqlite3ExprDescribe_inner(v, pExpr, 0, pParamsOut, srcs);
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
