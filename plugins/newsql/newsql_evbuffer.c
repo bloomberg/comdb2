@@ -338,7 +338,12 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     host_node_type *hosts[REPMAX];
     int num_hosts = get_hosts_evbuffer(REPMAX, hosts);
     int my_dc = machine_dc(gbl_myhostname);
-    int process_incoherent = bdb_amimaster(thedb->bdb_env);
+    int process_incoherent = 0;
+    if (bdb_amimaster(thedb->bdb_env)) {
+        if (gbl_incoherent_clnt_wait <= 0 || !leader_is_new()) {
+            process_incoherent = 1;
+        }
+    }
     const char *who = bdb_whoismaster(thedb->bdb_env);
     for (int i = 0; i < num_hosts; ++i) {
         CDB2DBINFORESPONSE__Nodeinfo *node;

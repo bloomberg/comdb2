@@ -94,4 +94,5 @@ void newsql_effects(CDB2SQLRESPONSE *, CDB2EFFECTS *, struct sqlclntstate *);
     appdata->write_hdr = newsql_write_hdr##_##name;                            \
     appdata->write_postponed = newsql_write_postponed##_##name;
 
+int leader_is_new(void);
 #endif /* INCLUDED_NEWSQL_H */
