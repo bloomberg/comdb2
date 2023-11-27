@@ -39,7 +39,6 @@
 #include <pb_alloc.h>
 
 #include <newsql.h>
-#include <fsnapf.h>
 
 extern int gbl_nid_dbname;
 extern SSL_CTX *gbl_ssl_ctx;
@@ -365,14 +364,6 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
     cdb2__dbinforesponse__pack(&response, out);
     evbuffer_add(buf, &hdr, sizeof(hdr));
     evbuffer_add(buf, out, len);
-    /* Keep this check temporarily */
-    CDB2DBINFORESPONSE *decode = cdb2__dbinforesponse__unpack(NULL, len, out);
-    if (!decode) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to decode dbinfo len:%d\n", __func__, __LINE__, len);
-        fsnapf(stderr, out, len);
-        abort();
-    }
-    cdb2__dbinforesponse__free_unpacked(decode, NULL);
 }
 
 static void process_dbinfo(struct newsql_appdata_evbuffer *appdata)
