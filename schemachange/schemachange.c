@@ -429,44 +429,6 @@ void delay_if_sc_resuming(struct ireq *iq)
     }
 }
 
-typedef struct {
-    struct ireq *iq;
-    void *trans;
-} finalize_t;
-
-static void *finalize_schema_change_thd_tran(void *varg)
-{
-    comdb2_name_thread(__func__);
-    finalize_t *arg = varg;
-    void *trans = arg->trans;
-    struct ireq *iq = arg->iq;
-    free(arg);
-    finalize_schema_change_thd(iq, trans);
-    return NULL;
-}
-
-int finalize_schema_change(struct ireq *iq, tran_type *trans)
-{
-    struct schema_change_type *s = iq->sc;
-    int rc;
-    assert(iq->sc->tran == NULL || iq->sc->tran == trans);
-    if (s->nothrevent) {
-        logmsg(LOGMSG_DEBUG, "Executing SYNCHRONOUSLY\n");
-        rc = finalize_schema_change_thd(iq, trans);
-    } else {
-        pthread_t tid;
-        finalize_t *arg = malloc(sizeof(finalize_t));
-        arg->iq = iq;
-        arg->trans = trans;
-        logmsg(LOGMSG_DEBUG, "Executing ASYNCHRONOUSLY\n");
-        Pthread_create(&tid, &gbl_pthread_attr_detached,
-                       finalize_schema_change_thd_tran, arg);
-        rc = SC_ASYNC;
-    }
-
-    return rc;
-}
-
 /* -99 if schema change already in progress */
 int change_schema(char *table, char *fname, int odh, int compress,
                   int compress_blobs)

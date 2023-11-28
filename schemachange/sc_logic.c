@@ -788,9 +788,10 @@ int do_schema_change_locked(struct schema_change_type *s, void *tran)
     return rc;
 }
 
-int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
+int finalize_schema_change(struct ireq *iq, tran_type *trans)
 {
     if (iq == NULL || iq->sc == NULL) abort();
+    assert(iq->sc->tran == NULL || iq->sc->tran == trans);
     struct schema_change_type *s = iq->sc;
     Pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
