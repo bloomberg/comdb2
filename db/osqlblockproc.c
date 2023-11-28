@@ -53,7 +53,7 @@
 #include "ctrace.h"
 #include "intern_strings.h"
 #include "sc_global.h"
-#include "schemachange.h"
+#include "sc_logic.h"
 #include "gettimeofday_ms.h"
 
 extern int gbl_reorder_idx_writes;
@@ -1341,6 +1341,7 @@ void *bplog_commit_timepart_resuming_sc(void *p)
     iq.sc = sc = sc_pending;
     sc_pending = NULL;
     while (sc != NULL) {
+        /* this will block until the asynchronous part finishes */
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
         Pthread_mutex_unlock(&sc->mtx);
