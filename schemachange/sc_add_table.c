@@ -346,14 +346,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     fix_lrl_ixlen_tran(tran);
 
-    if (s->finalize) {
-        if (create_sqlmaster_records(tran)) {
-            sc_errf(s, "create_sqlmaster_records failed\n");
-            return -1;
-        }
-        create_sqlite_master();
-    }
-
     db->sc_to = NULL;
     update_dbstore(db);
     sc_printf(s, "Add table ok\n");

@@ -73,12 +73,6 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
 
     gbl_sc_commit_count++;
 
-    if (create_sqlmaster_records(tran)) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        goto err;
-    }
-    create_sqlite_master();
-
     sc_printf(s, "Schema change ok\n");
     return 0;
 
@@ -105,12 +99,6 @@ int finalize_drop_view(struct ireq *iq, struct schema_change_type *s,
     }
 
     delete_view(s->tablename);
-
-    if (create_sqlmaster_records(tran)) {
-        sc_errf(s, "create_sqlmaster_records failed\n");
-        return -1;
-    }
-    create_sqlite_master();
 
     return 0;
 }

@@ -72,15 +72,6 @@ int finalize_alias_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-    if (s->finalize) {
-        if ((rc = create_sqlmaster_records(tran))) {
-            sc_errf(s, "create_sqlmaster_records failed rc %d\n", rc);
-            hash_sqlalias_db(db, db->tablename);
-            return rc;
-        }
-        create_sqlite_master();
-    }
-
     gbl_sc_commit_count++;
 
     /* TODO: review this, do we need it?*/
@@ -164,14 +155,6 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         sc_errf(s, "Failed to set table version for %s\n", db->tablename);
         goto tran_error;
-    }
-
-    if (s->finalize) {
-        if (create_sqlmaster_records(tran)) {
-            sc_errf(s, "create_sqlmaster_records failed\n");
-            goto recover_memory;
-        }
-        create_sqlite_master();
     }
 
     gbl_sc_commit_count++;

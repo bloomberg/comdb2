@@ -1172,6 +1172,9 @@ int sc_timepart_add_table(const char *existingTableName,
     } else
         xerr->errval = SC_VIEW_NOERR;
 
+    create_sqlmaster_records(NULL);
+    create_sqlite_master();
+
     return xerr->errval;
 
 error:
@@ -1254,6 +1257,10 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
     } else
         xerr->errval = SC_VIEW_NOERR;
+
+    create_sqlmaster_records(NULL);
+    create_sqlite_master();
+
     return xerr->errval;
 
 error:

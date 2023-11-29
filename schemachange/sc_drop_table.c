@@ -141,14 +141,6 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         }
     }
 
-    if (s->finalize) {
-        if (create_sqlmaster_records(tran)) {
-            sc_errf(s, "create_sqlmaster_records failed\n");
-            return -1;
-        }
-        create_sqlite_master();
-    }
-
     live_sc_off(db);
 
     if (!gbl_create_mode) {
