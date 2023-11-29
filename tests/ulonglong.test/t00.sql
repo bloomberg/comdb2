@@ -26,7 +26,7 @@ truncate t1;
 select * from t1 order by 1;
 
 # Ensure that time partition rollouts are not affected by 'forbid_ulonglong'
-create time partition on t1 as t1_tp period 'yearly' retention 2 start '2018-01-01';
+create time partition on t1 as t1_tp period 'yearly' retention 2 start '2020-01-01';
 select sleep(5);
 select count(*) from comdb2_timepartshards;
 insert into t1_tp values(3,3), (4,5);
