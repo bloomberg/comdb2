@@ -502,6 +502,10 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
             local_lock = 1;
         }
         rc = do_finalize(post, iq, s, tran);
+        if (!s->is_osql) {
+            create_sqlmaster_records(tran);
+            create_sqlite_master();
+        }
         if (local_lock)
             unlock_schema_lk();
         if (s->done_type == fastinit && gbl_replicate_local)
