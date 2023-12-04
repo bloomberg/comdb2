@@ -626,7 +626,7 @@ struct {
     {1, alter, do_alter_table, finalize_alter_table, NULL, NULL},
 };
 
-static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
+static int do_schema_change_tran_int(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
     tran_type *trans = arg->trans;
@@ -644,11 +644,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     Pthread_cond_signal(&s->condStart);
     Pthread_mutex_unlock(&s->mtxStart);
 
-    enum thrtype oldtype = 0;
     int detached = 0;
-
-    if (!no_reset)
-        oldtype = prepare_sc_thread(s);
 
     if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_myhostname) {
         logmsg(LOGMSG_INFO, "%s downgraded master\n", __func__);
@@ -723,20 +719,14 @@ downgraded:
                    "%s: failed to set bdb schema change status, bdberr %d\n",
                    __func__, bdberr);
         }
-        if (!no_reset)
-            reset_sc_thread(oldtype, s);
         Pthread_mutex_unlock(&s->mtx);
         return 0;
     } else if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING ||
                rc == SC_PREEMPTED || rc == SC_PAUSED ||
                (!s->nothrevent && !s->finalize)) {
-        if (!no_reset)
-            reset_sc_thread(oldtype, s);
         Pthread_mutex_unlock(&s->mtx);
         return rc;
     }
-    if (!no_reset)
-        reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (!s->is_osql) {
         if (rc == SC_MASTER_DOWNGRADE) {
@@ -752,7 +742,15 @@ downgraded:
 
 int do_schema_change_tran(sc_arg_t *arg)
 {
-    return do_schema_change_tran_int(arg, 0);
+    struct schema_change_type *s = arg->sc;
+    enum thrtype oldtype = prepare_sc_thread(s);
+    int rc;
+
+    rc = do_schema_change_tran_int(arg);
+
+    reset_sc_thread(oldtype, s);
+
+    return rc;
 }
 
 int do_schema_change_tran_thd(sc_arg_t *arg)
@@ -762,7 +760,7 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     bdb_state_type *bdb_state = thedb->bdb_env;
     thread_started("schema_change");
     bdb_thread_event(bdb_state, 1);
-    rc = do_schema_change_tran_int(arg, 1);
+    rc = do_schema_change_tran_int(arg);
     bdb_thread_event(bdb_state, 0);
     return rc;
 }
