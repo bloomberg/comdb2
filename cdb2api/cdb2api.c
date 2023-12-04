@@ -55,7 +55,6 @@ static char *SOCKPOOL_OTHER_NAME = NULL;
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
 #define MAX_BUFSIZE_ONSTACK 8192
-#define MAX_BIND_ARRAY 32768
 #define CDB2HOSTNAME_LEN 128
 
 #define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
@@ -5406,8 +5405,8 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
  */
 int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
 {
-    if (count <= 0 || count > MAX_BIND_ARRAY) {
-        sprintf(hndl->errstr, "%s: bad array length:%zd (max:%d)", __func__, count, MAX_BIND_ARRAY);
+    if (count <= 0 || count > CDB2_MAX_BIND_ARRAY) {
+        sprintf(hndl->errstr, "%s: bad array length:%zd (max:%d)", __func__, count, CDB2_MAX_BIND_ARRAY);
         return -1;
     }
 

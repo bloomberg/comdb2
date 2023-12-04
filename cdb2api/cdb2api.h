@@ -113,7 +113,8 @@ enum cdb2_api_const {
     CDB2_MAX_ASK_ARRAY = 1024,
     CDB2_MAX_ASK_SEGS = (CDB2_MAX_ASK_ARRAY - 2) / 2,
     CDB2_MAX_BLOB_FIELDS = 15,
-    CDB2_MAX_TZNAME = 36
+    CDB2_MAX_TZNAME = 36,
+    CDB2_MAX_BIND_ARRAY = 32767
 };
 
 /* New comdb2tm definition. */
