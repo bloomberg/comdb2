@@ -479,8 +479,9 @@ static int type_to_sptype(int type, int len)
     }
 }
 
-static void append_field(struct byte_buffer *bytes, struct field *f,
-                         struct javasp_rec *record)
+// TODO: Convert aborts to returns
+static int append_field(struct byte_buffer *bytes, struct field *f,
+                        struct javasp_rec *record)
 {
     long long i8;
     int i4;
@@ -645,6 +646,10 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
                 (uint8_t *)rec + f->offset, sizeof(server_datetime_t), NULL,
                 NULL, (cdb2_client_datetime_t *)&cdt, sizeof(cdt), &null,
                 &outdtsz, (void *)&outopts, NULL);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "datetime field conversion for %s failed rc %d\n", f->name, rc);
+                return -1;
+            }
             byte_buffer_append_datetime(bytes, &cdt);
         }
         break;
@@ -663,6 +668,10 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
                 (uint8_t *)rec + f->offset, sizeof(server_datetimeus_t), NULL,
                 NULL, (cdb2_client_datetimeus_t *)&cdt, sizeof(cdt), &null,
                 &outdtsz, (void *)&outopts, NULL);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "datetimeus field conversion for %s failed rc %d\n", f->name, rc);
+                return -1;
+            }
             byte_buffer_append_datetimeus(bytes, &cdt);
         }
         break;
@@ -749,6 +758,7 @@ static void append_field(struct byte_buffer *bytes, struct field *f,
         logmsg(LOGMSG_ERROR, "unknown type %d\n", f->type);
         /* abort(); */
     }
+    return 0;
 }
 
 /* This is the actual "stored procedure" call. */
@@ -825,11 +835,15 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
                 /* field name */
                 byte_buffer_append(&bytes, fld->name, field_name_len + 1);
                 if (before_flag == FIELD_FLAG_VALUE) {
-                    append_field(&bytes, f, oldrec);
+                    rc = append_field(&bytes, f, oldrec);
+                    if (rc)
+                        goto done;
                     nfields++;
                 }
                 if (after_flag == FIELD_FLAG_VALUE) {
-                    append_field(&bytes, f, newrec);
+                    rc = append_field(&bytes, f, newrec);
+                    if (rc)
+                        goto done;
                     nfields++;
                 }
                 break;
