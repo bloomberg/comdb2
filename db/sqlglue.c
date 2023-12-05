@@ -9027,8 +9027,9 @@ int sqlite3BtreeInsert(
                      */
                     rec_flags = ((comdb2UpsertIdx(pCur->vdbe) << 8) |
                                  OSQL_IGNORE_FAILURE);
-                } else if (flags & OPFLAG_FORCE_VERIFY) {
-                    rec_flags = OSQL_FORCE_VERIFY;
+                }
+                if (flags & OPFLAG_FORCE_VERIFY) {
+                    rec_flags |= OSQL_FORCE_VERIFY;
                 }
             }
 

@@ -494,6 +494,13 @@ struct DblquoteStr {
   char z[8];               /* Dequoted value for the string */
 };
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define Cdb2_OE_None 0
+#define Cdb2_OE_Ignore 1
+#define Cdb2_OE_Replace 2
+#define Cdb2_OE_Update 4
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** An instance of the virtual machine.  This structure contains the complete
 ** state of the virtual machine.
