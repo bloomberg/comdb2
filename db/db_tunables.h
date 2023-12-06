@@ -1094,8 +1094,9 @@ REGISTER_TUNABLE("slow_rep_process_txn_freq", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("slow_rep_process_txn_maxms", NULL, TUNABLE_INTEGER,
                  &gbl_slow_rep_process_txn_maxms, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("slowwrite", NULL, TUNABLE_INTEGER, &__slow_write_ns, READONLY,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("slow_rep_process_txn_minms", NULL, TUNABLE_INTEGER, &gbl_slow_rep_process_txn_minms, READONLY, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("slowwrite", NULL, TUNABLE_INTEGER, &__slow_write_ns, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sort_nulls_with_header",
                  "Using record headers in key sorting. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_sort_nulls_correctly, READONLY | NOARG,
@@ -1594,14 +1595,12 @@ REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
 REGISTER_TUNABLE("commit_lsn_map", "Maintain a map of transaction commit LSNs. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_commit_lsn_map,
                  NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("set_coherent_state_trace",
-                 "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE("finish_fill_threshold",
-                 "Fill to end if end is less than this.  (Default: 60000000)",
-                 TUNABLE_INTEGER, &gbl_finish_fill_threshold,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("incoherent_slow_inactive_timeout", "Periodically reset slow-nodes to incoherent.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_incoherent_slow_inactive_timeout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_set_coherent_state_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("finish_fill_threshold", "Fill to end if end is less than this.  (Default: 60000000)", TUNABLE_INTEGER,
+                 &gbl_finish_fill_threshold, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("req_delay_count_threshold",
                  "Request commit-delay if falling "
                  "behind this many times.  (Default: 5)",

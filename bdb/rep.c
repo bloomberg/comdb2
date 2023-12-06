@@ -2299,6 +2299,9 @@ static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seq
     return 1;
 }
 
+/* Added for testing- allows us to test slow-replicant-check and inactive-timeout separately */
+int gbl_incoherent_slow_inactive_timeout = 1;
+
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum, char *host,
                                      struct interned_string *hostinterned,
@@ -2426,8 +2429,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
      * give nodes a chance to dig themselves out if there's no activity (eg: if
      * they went incoherent because of a
      * read spike, but there's nomore reads or writes). */
-    if (change_coherency &&
-        h->coherent_state == STATE_INCOHERENT_SLOW) {
+    if (change_coherency && h->coherent_state == STATE_INCOHERENT_SLOW && gbl_incoherent_slow_inactive_timeout) {
+        int print_message = 0;
         Pthread_mutex_lock(&slow_node_check_lk);
         if ((comdb2_time_epochms() - last_slow_node_check_time) >
                 bdb_state->attr->slowrep_inactive_timeout &&
@@ -2436,9 +2439,14 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             if (h->coherent_state == STATE_INCOHERENT_SLOW) {
                 set_coherent_state(bdb_state, hostinterned, STATE_INCOHERENT, __func__,
                                    __LINE__);
+                print_message = 1;
             }
             Pthread_mutex_unlock(&bdb_state->coherent_state_lock);
             last_slow_node_check_time = comdb2_time_epochms();
+            if (print_message) {
+                logmsg(LOGMSG_USER, "Set %s from INCOHERENT_SLOW to INCOHERENT on inactive timeout\n",
+                       hostinterned->str);
+            }
         }
         Pthread_mutex_unlock(&slow_node_check_lk);
     }
@@ -2648,7 +2656,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
     int numnodes;
     struct interned_string *hosts[REPMAX];
     int print_message;
-    int made_incoherent_slow = 0;
+    int made_incoherent_slow = 0, mystate;
 
     numnodes =
         net_get_all_commissioned_nodes_interned(bdb_state->repinfo->netinfo, hosts);
@@ -2706,16 +2714,17 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     h->last_downgrade_time = gettimeofday_ms();
                     made_incoherent_slow = 1;
                 }
+                mystate = h->coherent_state;
             }
         }
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
     }
 
     if (print_message) {
-        logmsg(LOGMSG_USER, "replication time for %s (%.2fms) is much worse than "
-                        "second-worst node %s (%.2fms)\n",
-                worst_node->str, worst_time, second_worst_node->str,
-                second_worst_time);
+        logmsg(LOGMSG_USER,
+               "replication time for %s (%.2fms) is much worse than "
+               "second-worst node %s (%.2fms) state is %s\n",
+               worst_node->str, worst_time, second_worst_node->str, second_worst_time, coherent_state_to_str(mystate));
     }
 
     /* TODO: if we ever disable make_slow_replicants_incoherent and have
@@ -2730,22 +2739,34 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
             struct interned_string *host = hosts[i];
             struct hostinfo *h = retrieve_hostinfo(host);
             double avg = averager_avg(h->time_minute);
+            int print_stillslow = 0;
             print_message = 0;
 
             Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
-            if (h->coherent_state == STATE_INCOHERENT_SLOW &&
-                (avg < (worst_time * bdb_state->attr->slowrep_incoherent_factor +
-                  bdb_state->attr->slowrep_incoherent_mintime))) {
-                print_message = 1;
-                set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
-                                   __LINE__);
+            if (h->coherent_state == STATE_INCOHERENT_SLOW) {
+                if (avg < (worst_time * bdb_state->attr->slowrep_incoherent_factor +
+                           bdb_state->attr->slowrep_incoherent_mintime)) {
+                    print_message = 1;
+                    set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__, __LINE__);
+                } else {
+                    print_stillslow = 1;
+                }
             }
             Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
-            if (print_message)
+            if (print_message) {
                 logmsg(LOGMSG_USER,
                        "replication time for %s (%.2fms) is within "
                        "bounds of second-worst node %s (%.2fms)\n",
                        host->str, avg, worst_node->str, worst_time);
+            }
+            if (print_stillslow) {
+                double window = worst_time * bdb_state->attr->slowrep_incoherent_factor +
+                                bdb_state->attr->slowrep_incoherent_mintime;
+                logmsg(LOGMSG_USER,
+                       "replication time for %s (%.2fms) still slow, greater than %.2fms "
+                       "the required threshold for second-worst node %s (%.2fms)\n",
+                       host->str, avg, window, worst_node->str, worst_time);
+            }
         }
     }
 }

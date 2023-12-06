@@ -3743,6 +3743,7 @@ gap_check:		max_lsn_dbtp = NULL;
 
 			do {
 				extern int gbl_slow_rep_process_txn_maxms;
+				extern int gbl_slow_rep_process_txn_minms;
 				extern int gbl_slow_rep_process_txn_freq;
 
 				if (gbl_slow_rep_process_txn_maxms) {
@@ -3750,9 +3751,13 @@ gap_check:		max_lsn_dbtp = NULL;
 						!(rand() %
 						gbl_slow_rep_process_txn_freq))
 					{
-						poll(0, 0,
-							rand() %
-							gbl_slow_rep_process_txn_maxms);
+                        if (gbl_slow_rep_process_txn_maxms <= gbl_slow_rep_process_txn_minms) {
+                            gbl_slow_rep_process_txn_maxms = gbl_slow_rep_process_txn_minms + 1;
+                        }
+                        int range = gbl_slow_rep_process_txn_maxms - gbl_slow_rep_process_txn_minms;
+                        int polltime = gbl_slow_rep_process_txn_minms + (rand() % range);
+                        logmsg(LOGMSG_DEBUG, "%s polling an additional %d ms\n", __func__, polltime);
+						poll(0, 0, polltime);
 					}
 				}
 
