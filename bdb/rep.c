@@ -2728,7 +2728,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
         for (int i = 0; i < numnodes; i++) {
             //const char *host = hosts[i];
             struct interned_string *host = hosts[i];
-            struct hostinfo *h = retrieve_hostinfo(worst_node);
+            struct hostinfo *h = retrieve_hostinfo(host);
             double avg = averager_avg(h->time_minute);
             print_message = 0;
 
