@@ -522,7 +522,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
      * truncated prefix anyway */
     bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
 
-    rc = open_temp_db_resume(newdb, new_prefix, s->resume, 0, tran);
+    rc = open_temp_db_resume(iq, newdb, new_prefix, s->resume, 0, tran);
     if (rc) {
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");

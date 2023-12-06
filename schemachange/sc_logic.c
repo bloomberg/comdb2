@@ -1166,8 +1166,8 @@ int resume_schema_change(void)
 /****************** Functions down here will likely be moved elsewhere *****/
 
 /* this assumes threads are not active in db */
-int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
-                        tran_type *tran)
+int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int resume,
+                        int temp, tran_type *tran)
 {
     char *tmpname;
     int bdberr;
@@ -1207,17 +1207,34 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
 
     if (!db->handle) /* did not/could not open existing one, creating new one */
     {
+        int rc;
+        tran_type * tmp_tran = tran;
+        if (!tmp_tran) {
+            rc = trans_start(iq, NULL, &tmp_tran);
+            if (rc)
+                return -1;
+        }
+
         db->handle = bdb_create_tran(
             tmpname, db->dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
             db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */
-            db->dbenv->bdb_env, temp, &bdberr, tran);
+            db->dbenv->bdb_env, temp, &bdberr, tmp_tran);
         if (db->handle == NULL) {
+            if (tmp_tran != tran)
+                trans_abort(iq, tmp_tran);
+
             logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__,
                    tmpname, bdberr);
             free(tmpname);
             return -1;
+        }
+
+        if (tmp_tran != tran) {
+            rc = trans_commit(iq, tmp_tran, gbl_myhostname);
+            if (rc)
+                return -1;
         }
     }
 

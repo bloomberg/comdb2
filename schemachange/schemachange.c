@@ -975,7 +975,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 
     bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
 
-    rc = open_temp_db_resume(newdb, new_prefix, 1, 0, NULL);
+    rc = open_temp_db_resume(iq, newdb, new_prefix, 1, 0, NULL);
     if (rc) {
         backout_schemas(newdb->tablename);
         abort();
