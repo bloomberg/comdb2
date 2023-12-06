@@ -3550,6 +3550,17 @@ clipper_usage:
                 gbl_slow_rep_process_txn_maxms);
     }
 
+    else if (tokcmp(tok, ltok, "slow_rep_process_txn_minms") == 0) {
+        extern int gbl_slow_rep_process_txn_minms;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected value for slow_rep_process_txn_minms\n");
+            return 0;
+        }
+        gbl_slow_rep_process_txn_minms = toknum(tok, ltok);
+        logmsg(LOGMSG_USER, "slow_rep_process_txn_minms set to %d ms\n", gbl_slow_rep_process_txn_minms);
+    }
+
     else if (tokcmp(tok, ltok, "slow_rep_process_txn_freq") == 0) {
         extern int gbl_slow_rep_process_txn_freq;
         tok = segtok(line, lline, &st, &ltok);

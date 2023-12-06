@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+debug=1
+[[ "$debug" == "1" ]] && set -x
+
+function create_table
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int)"
+}
+
+function slow_replication
+{
+    typeset node=$1
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_maxms 2000"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_minms 2000"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_freq 1"
+}
+
+function restore_replication
+{
+    typeset node=$1
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_maxms 0"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_minms 0"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slow_rep_process_txn_freq 0"
+}
+
+function disable_slow_replicant_check
+{
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable make_slow_replicants_incoherent off"
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable warn_slow_replicants off"
+}
+
+function set_inactive_timeout
+{
+    typeset node=$(get_master)
+    typeset timeout=$1
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable slowrep_inactive_timeout $timeout"
+}
+
+function enable_inactive_timeout
+{
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable incoherent_slow_inactive_timeout 1"
+}
+
+function disable_inactive_timeout
+{
+    typeset node=$(get_master)
+    $CDB2SQL_EXE $CDB2_OPTIONS -admin --tabs $DBNAME --host $node "put tunable incoherent_slow_inactive_timeout 0"
+}
+
+function choose_replicant
+{
+    typeset master=$(get_master)
+    typeset host="unset"
+
+    for node in $CLUSTER ; do
+        if [[ "$node" != "$master" ]]; then
+            host=$node
+        fi
+    done
+    echo $host
+}
+
+function run_test
+{
+    typeset master=$(get_master)
+    typeset rep=$(choose_replicant)
+
+    echo "Disable the inactive timeout"
+    disable_inactive_timeout
+
+    echo "Enable slow replication for $rep"
+    slow_replication $rep
+
+    echo "Inserting 10 records"
+    j=0
+    while [[ $j -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+        let j=j+1
+    done
+
+    echo "Make sure that we are incoherent-slow"
+
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('bdb cluster')")
+    if [[ "$x" != *"INCOHERENT_SLOW"* ]]; then
+        failexit "Replicant never became incoherent-slow"
+    fi
+
+    echo "Keep tunable set for a minute"
+    sleep 60
+
+    echo "Make sure that we are still incoherent-slow"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('bdb cluster')")
+    if [[ "$x" != *"INCOHERENT_SLOW"* ]]; then
+        failexit "Replicant didn't stay incoherent-slow"
+    fi
+
+    echo "Restore replication"
+    restore_replication $rep
+
+    echo "Verify that we return to 'coherent'"
+    j=0
+    slow=1
+    while [[ "$j" -lt 200 && "$slow" == 1 ]]; do
+        let j=j+1
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('bdb cluster')")
+        if [[ "$x" == *"INCOHERENT_SLOW"* ]]; then
+            echo "Replicant is still incoherent-slow iteration $j"
+            slow=1
+            sleep 1
+        else
+            echo "Replicant is no longer incoherent-slow!"
+            slow=0
+        fi
+    done
+
+    echo "Search for is-within-bounds trace to verify this path out of incoherent-slow"
+    egrep "is within bounds of second-worst node" ${TESTDIR}/logs/${DBNAME}.${master}.db
+    r=$?
+    if [[ "$r" != "0" ]]; then
+        echo "couldn't find trace, slow-replicant-check didn't return this to coherency ??"
+        failexit "slow-replicant check didn't return this to coherency"
+    fi
+
+    echo "Make sure we can select against every node"
+    for node in $CLUSTER ; do
+        r=1
+        while [[ "$r" -ne "0" ]]; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1"
+            r=$?
+            [[ "$r" -ne "0" ]] && sleep 1
+        done
+    done
+
+    echo "Redoing the test: enabling slow replication for $rep"
+
+    slow_replication $rep
+
+    echo "Inserting 10 records"
+    j=0
+    while [[ $j -lt 10 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+        let j=j+1
+    done
+
+    echo "Make sure that we are incoherent-slow"
+
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('bdb cluster')")
+    if [[ "$x" != *"INCOHERENT_SLOW"* ]]; then
+        failexit "Replicant never became incoherent-slow"
+    fi
+
+    echo "Keep tunable set for a minute"
+    sleep 60
+
+    echo "Make sure that we are still incoherent-slow"
+    x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('bdb cluster')")
+    if [[ "$x" != *"INCOHERENT_SLOW"* ]]; then
+        failexit "Replicant didn't stay incoherent-slow"
+    fi
+
+    echo "Disable slow replicant check"
+    disable_slow_replicant_check
+
+    echo "Enable inactive-timeout"
+    enable_inactive_timeout
+
+    echo "Set inactive-timeout to 1 second"
+    set_inactive_timeout 1
+
+    echo "Restore replication"
+    restore_replication $rep
+
+    echo "Verify that we return to 'coherent'"
+    j=0
+    slow=1
+    while [[ "$j" -lt 200 && "$slow" == 1 ]]; do
+        let j=j+1
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('bdb cluster')")
+        if [[ "$x" == *"INCOHERENT_SLOW"* ]]; then
+            echo "Replicant is still incoherent-slow iteration $j"
+            slow=1
+            sleep 1
+        else
+            echo "Replicant is no longer incoherent-slow!"
+            slow=0
+        fi
+    done
+
+    echo "Search for inactive-timeout trace to verify this path out of incoherent-slow"
+    egrep "INCOHERENT_SLOW to INCOHERENT on inactive timeout" ${TESTDIR}/logs/${DBNAME}.${master}.db
+    r=$?
+    if [[ "$r" != "0" ]]; then
+        echo "couldn't find trace, inactive timeout didn't return this to coherency ??"
+        failexit "inactive timeout check didn't return this to coherency"
+    fi
+
+
+    echo "Make sure we can select against every node"
+    for node in $CLUSTER ; do
+        r=1
+        while [[ "$r" -ne "0" ]]; do
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1"
+            r=$?
+            [[ "$r" -ne "0" ]] && sleep 1
+        done
+    done
+}
+
+if [[ -z "$CLUSTER" ]]; then 
+    echo "This test requires a cluster"
+    exit -1
+fi
+
+create_table
+run_test
+
+echo "Success"

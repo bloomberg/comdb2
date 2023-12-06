@@ -737,6 +737,7 @@ int gbl_lock_get_list_start = 0;
 int gbl_dump_locks_on_repwait = 0;
 
 int gbl_slow_rep_process_txn_maxms = 0;
+int gbl_slow_rep_process_txn_minms = 0;
 int gbl_slow_rep_process_txn_freq = 0;
 int gbl_check_page_in_recovery = 0;
 int gbl_cmptxn_inherit_locks = 1;
