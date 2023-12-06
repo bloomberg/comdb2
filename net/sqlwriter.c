@@ -28,6 +28,7 @@
 #include <logmsg.h>
 #include <net_appsock.h>
 #include <sqlwriter.h>
+#include <ssl_evbuffer.h>
 
 //send heartbeat if no data every (seconds)
 #define min_hb_time 1
@@ -129,14 +130,9 @@ void sql_disable_timeout(struct sqlwriter *writer)
     run_on_base(writer->timer_base, do_sql_disable_timeout, writer);
 }
 
-static int wr_evbuffer_ssl(struct sqlwriter *writer, int fd)
+static int wr_evbuffer_ciphertext(struct sqlwriter *writer, int fd)
 {
-    int len = evbuffer_get_length(writer->wr_buf);
-    if (len > KB(16)) len = KB(16);
-    const void *buf = evbuffer_pullup(writer->wr_buf, len);
-    int rc = SSL_write(writer->ssl, buf, len);
-    if (rc > 0) evbuffer_drain(writer->wr_buf, rc);
-    return rc;
+    return wr_evbuffer_ssl(writer->ssl, writer->wr_buf);
 }
 
 static int wr_evbuffer_plaintext(struct sqlwriter *writer, int fd)
@@ -498,7 +494,7 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
 void sql_enable_ssl(struct sqlwriter *writer, SSL *ssl)
 {
     writer->ssl = ssl;
-    writer->wr_evbuffer_fn = wr_evbuffer_ssl;
+    writer->wr_evbuffer_fn = wr_evbuffer_ciphertext;
 }
 
 void sql_disable_ssl(struct sqlwriter *writer)
