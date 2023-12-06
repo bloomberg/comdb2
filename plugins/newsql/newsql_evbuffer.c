@@ -33,6 +33,7 @@
 #include <rtcpu.h>
 #include <sql.h>
 #include <sqlwriter.h>
+#include <ssl_evbuffer.h>
 #include <ssl_glue.h>
 #include <str0.h>
 #include <timer_util.h>
@@ -44,8 +45,6 @@ extern int gbl_nid_dbname;
 extern int gbl_incoherent_clnt_wait;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
-extern uint64_t gbl_ssl_num_full_handshakes;
-extern uint64_t gbl_ssl_num_partial_handshakes;
 
 struct ping_pong {
     int status;
@@ -100,7 +99,7 @@ struct newsql_appdata_evbuffer {
 static void add_rd_event(struct newsql_appdata_evbuffer *, struct event *, struct timeval *);
 static void rd_hdr(int, short, void *);
 static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *);
-static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *);
+static int rd_evbuffer_ciphertext(struct newsql_appdata_evbuffer *);
 static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *);
 static int newsql_write_hdr_evbuffer(struct sqlclntstate *, int, int);
 
@@ -626,7 +625,7 @@ static int enable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     int rc = verify_ssl(appdata);
     /* Enable SSL even if verification failed so we can return error */
     appdata->wr_dbinfo_fn = wr_dbinfo_ssl;
-    appdata->rd_evbuffer_fn = rd_evbuffer_ssl;
+    appdata->rd_evbuffer_fn = rd_evbuffer_ciphertext;
     appdata->add_rd_event_fn = add_rd_event_ssl;
     sql_enable_ssl(appdata->writer, appdata->ssl_data->ssl);
     ssl_set_clnt_user(&appdata->clnt);
@@ -649,77 +648,12 @@ static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     X509_free(cert);
 }
 
-static void ssl_accept_evbuffer(int dummyfd, short what, void *arg)
+static int rd_evbuffer_ciphertext(struct newsql_appdata_evbuffer *appdata)
 {
-    struct newsql_appdata_evbuffer *appdata = arg;
-    SSL *ssl = appdata->ssl_data->ssl;
-    /* clears openssl's error queue */
-    ERR_clear_error();
-
-    int rc = SSL_do_handshake(ssl);
-    if (rc == 1) {
-        /* keep track of number of full and partial handshakes */
-        if (SSL_session_reused(ssl))
-            ATOMIC_ADD64(gbl_ssl_num_partial_handshakes, 1);
-        else
-            ATOMIC_ADD64(gbl_ssl_num_full_handshakes, 1);
-
-        if (enable_ssl_evbuffer(appdata) == 0) {
-            rd_hdr(-1, 0, appdata);
-            return;
-        }
-        goto error;
-    }
-    int err = SSL_get_error(ssl, rc);
-    switch (err) {
-    case SSL_ERROR_WANT_READ:
-        event_base_once(appdata->base, appdata->fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
-        return;
-    case SSL_ERROR_WANT_WRITE:
-        event_base_once(appdata->base, appdata->fd, EV_WRITE, ssl_accept_evbuffer, appdata, NULL);
-        return;
-    case SSL_ERROR_SYSCALL:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d errno:%d [%s]\n",
-               __func__, __LINE__, rc, err, errno, strerror(errno));
-        break;
-    default:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d [%s]\n",
-               __func__, __LINE__, rc, err, ERR_error_string(err, NULL));
-        break;
-    }
-error:
-    write_response(&appdata->clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
-    newsql_cleanup(appdata);
-}
-
-static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
-{
-    SSL *ssl = appdata->ssl_data->ssl;
-    int len = KB(16);
-    struct iovec v = {0};
-    ERR_clear_error();
-    if (evbuffer_reserve_space(appdata->rd_buf, len, &v, 1) == -1) {
-        return -1;
-    }
-    int rc = SSL_read(ssl, v.iov_base, len);
-    if (rc > 0) {
-        v.iov_len = rc;
-        evbuffer_commit_space(appdata->rd_buf, &v, 1);
-        return rc;
-    }
-    int err = SSL_get_error(ssl, rc);
-    switch (err) {
-    case SSL_ERROR_ZERO_RETURN: disable_ssl_evbuffer(appdata); // fallthrough
-    case SSL_ERROR_WANT_READ: return 1;
-    case SSL_ERROR_SYSCALL:
-        if (errno == 0 || errno == ECONNRESET) break;
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d SSL_ERROR_SYSCALL errno:%d [%s]\n",
-               __func__, __LINE__, rc, errno, strerror(errno));
-        break;
-    default:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
-               __func__, __LINE__, rc, err, ERR_error_string(err, NULL));
-        break;
+    int eof;
+    int rc = rd_evbuffer_ssl(appdata->rd_buf, appdata->ssl_data->ssl, &eof);
+    if (eof) {
+        disable_ssl_evbuffer(appdata);
     }
     return rc;
 }
@@ -727,6 +661,23 @@ static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
 static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *appdata)
 {
     return evbuffer_read(appdata->rd_buf, appdata->fd, -1);
+}
+
+static void ssl_error_cb(void *data)
+{
+    struct newsql_appdata_evbuffer *appdata = data;
+    write_response(&appdata->clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
+    newsql_cleanup(appdata);
+}
+
+static void ssl_success_cb(void *data)
+{
+    struct newsql_appdata_evbuffer *appdata = data;
+    if (enable_ssl_evbuffer(appdata) == 0) {
+        rd_hdr(-1, 0, appdata);
+    } else {
+        ssl_error_cb(appdata);
+    }
 }
 
 static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
@@ -750,15 +701,10 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         rd_hdr(-1, 0, appdata);
         return;
     }
-
     if (!appdata->ssl_data) {
         appdata->ssl_data = calloc(1, sizeof(struct ssl_data));
     }
-    SSL *ssl = appdata->ssl_data->ssl = SSL_new(gbl_ssl_ctx);
-    SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
-    SSL_set_fd(ssl, appdata->fd);
-    SSL_set_accept_state(ssl);
-    ssl_accept_evbuffer(appdata->fd, EV_READ, appdata);
+    accept_evbuffer_ssl(&appdata->ssl_data->ssl, appdata->fd, appdata->base, ssl_error_cb, ssl_success_cb, appdata);
     return;
 
 cleanup:
