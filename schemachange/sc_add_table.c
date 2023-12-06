@@ -312,7 +312,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
         return rc;
 
-    if (llmeta_set_tables(tran, thedb)) {
+    if ((rc = llmeta_set_tables(tran, thedb))) {
         sc_errf(s, "Failed to set table names in low level meta\n");
         return rc;
     }
