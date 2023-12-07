@@ -9821,6 +9821,8 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                                       uint32_t flags)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd) return -1; /* Not an SQL thread */
+
     int ignore_desired = flags & RECOVER_DEADLOCK_IGNORE_DESIRED;
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     int force_fail = (flags & RECOVER_DEADLOCK_FORCE_FAIL);

@@ -2369,4 +2369,8 @@ void thedb_set_master(char *);
 int bdb_queuedb_has_seq(bdb_state_type *);
 void dispatch_waiting_clients(void);
 
+struct sqlclntstate;
+int release_locks_int(const char *trace, const char *func, int line, struct sqlclntstate *);
+#define release_locks(trace) release_locks_int(trace, __func__, __LINE__, NULL)
+
 #endif
