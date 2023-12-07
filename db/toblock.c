@@ -2502,7 +2502,6 @@ void handle_postabort_bpfunc(struct ireq *iq)
     }
 }
 
-int backout_schema_changes(struct ireq *iq, tran_type *tran);
 static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
                                       int rowlocks)
 {
