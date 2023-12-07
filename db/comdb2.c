@@ -5912,6 +5912,8 @@ static int put_all_csc2()
                        thedb->dbs[ii]->tablename);
                 return -1;
             }
+
+            rc = init_table_sequences(NULL, NULL, thedb->dbs[ii]);
         }
     }
 

@@ -373,6 +373,14 @@ function set_output_files
     update_output
 }
 
+function lrl_sequence
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into lrlsequence(a) select * from generate_series (1,100)"
+    [[ $? != 0 ]] && failexit "Failed lrl_sequence test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table lrlsequence"
+    [[ $? != 0 ]] && failexit "Failed to drop lrlsequence table"
+}
+
 function run_test
 {
     set_output_files
@@ -396,6 +404,7 @@ function run_test
     strict_csc2
     validate_type_ddl
     validate_type_csc2
+    lrl_sequence
 }
 
 run_test
