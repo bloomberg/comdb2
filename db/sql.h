@@ -1313,8 +1313,7 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err);
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
 void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
-int release_locks_on_emit_row(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt);
+int release_locks_on_emit_row(struct sqlclntstate *clnt);
 
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);

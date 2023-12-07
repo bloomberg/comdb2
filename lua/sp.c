@@ -5713,7 +5713,7 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         return luabb_error(lua, sp, "attempt to read %d cols (maxcols:%d)",
                            nargs, MAXCOLUMNS);
     }
-    rc = release_locks_on_emit_row(sp->thd, sp->clnt);
+    rc = release_locks_on_emit_row(sp->clnt);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s release_locks_on_emit_row %d\n", __func__, rc);
         return rc;
