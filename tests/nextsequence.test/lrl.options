@@ -1,5 +1,6 @@
 nowatch
 logmsg level info
 permit_small_sequences on
+table lrlsequence seqlonglong.csc2
 #setattr REP_PROCESSORS 0
 #setattr REP_WORKERS 0
