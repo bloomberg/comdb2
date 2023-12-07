@@ -2670,8 +2670,7 @@ int release_locks_int(const char *trace, const char *func, int line)
 /* Release-locks if rep-thread is blocked longer than this many ms */
 int gbl_rep_wait_release_ms = 60000;
 
-int release_locks_on_emit_row(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt)
+int release_locks_on_emit_row(struct sqlclntstate *clnt)
 {
     extern int gbl_locks_check_waiters;
     extern int gbl_sql_release_locks_on_emit_row;
@@ -3769,7 +3768,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         clnt->last_sent_row_sec = time(NULL);
 
         /* replication contention reduction */
-        rc = release_locks_on_emit_row(thd, clnt);
+        rc = release_locks_on_emit_row(clnt);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: release_locks_on_emit_row failed\n",
                    __func__);
