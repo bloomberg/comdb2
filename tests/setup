@@ -189,30 +189,29 @@ setup_db() {
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
             echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} ${NOCOLOR}"
-            exit 0
+        else
+            if [ -f ${TMPDIR}/${DBNAME}.pid ] ; then
+                rm ${TMPDIR}/${DBNAME}.pid
+            fi
+
+            echo "!$TESTCASE: starting single node"
+            ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
+            dbpid=$!
+            sleep 2
+
+            if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
+                echo "pid ${TMPDIR}/${DBNAME}.pid does not exist"
+                check_db_port_running_local # this error is immediate so we should be able to catch it early
+            fi
+
+            kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
+            if [ $? -eq 1 ] ; then
+                echo "pid ${TMPDIR}/${DBNAME}.pid: `cat ${TMPDIR}/${DBNAME}.pid` is not alive"
+                check_db_port_running_local # this error is immediate so we should be able to catch it early
+            fi
         fi
 
-        if [ -f ${TMPDIR}/${DBNAME}.pid ] ; then 
-            rm ${TMPDIR}/${DBNAME}.pid
-        fi
-
-        echo "!$TESTCASE: starting single node"
-        ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
-        dbpid=$!
-        sleep 2
         set +e
-
-        if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
-            echo "pid ${TMPDIR}/${DBNAME}.pid does not exist"
-            check_db_port_running_local # this error is immediate so we should be able to catch it early
-        fi
-
-        kill -0 `cat ${TMPDIR}/${DBNAME}.pid` > /dev/null
-        if [ $? -eq 1 ] ; then
-            echo "pid ${TMPDIR}/${DBNAME}.pid: `cat ${TMPDIR}/${DBNAME}.pid` is not alive"
-            check_db_port_running_local # this error is immediate so we should be able to catch it early
-        fi
-
         out=
         # wait until we can query it
         echo "!$TESTCASE: waiting until ready"
