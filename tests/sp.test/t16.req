@@ -25,3 +25,9 @@ exec procedure consumer()
 --fix for original bug: should work after running udf
 select udf()
 exec procedure consumer()
+
+create procedure hello version 'emit-test' {local function hello() return [[hello]] end}$$
+create lua scalar function hello
+create procedure world version 'emit-test' {local function main() db:column_name("world", 1) db:emit([[world]]) end}$$
+select hello()
+exec procedure world()

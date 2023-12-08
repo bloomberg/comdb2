@@ -5,3 +5,7 @@
 (emit='consumer result')
 (udf()='udf result')
 (emit='consumer result')
+(version='emit-test')
+(version='emit-test')
+(hello()='hello')
+(world='world')

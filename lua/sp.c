@@ -5146,6 +5146,24 @@ static void add_trigger_funcs(Lua L)
     lua_pop(L, 1);
 }
 
+static void add_emit(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushcfunction(L, db_emit);
+    lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
+
+    luaL_getmetatable(L, dbtypes.dbstmt);
+    lua_pushcfunction(L, dbstmt_emit);
+    lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
+
+    luaL_getmetatable(L, dbtypes.dbtable);
+    lua_pushcfunction(L, dbtable_emit);
+    lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
+}
+
 static void remove_emit(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
@@ -7145,6 +7163,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         }
         unlock_schema_lk();
         if (consumer) add_consumer_funcs(L);
+        add_emit(L);
         update_tran_funcs(L, clnt);
     }
 
