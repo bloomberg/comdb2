@@ -181,9 +181,9 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return rc;
 }
 
-int (*externalComdb2AuthenticateUserRead)(void *, const char *tablename) = NULL;
+int (*externalComdb2AuthenticateUserRead)(void *, const char *tablename, const char *) = NULL;
 int (*externalComdb2AuthenticateUserWrite)(void *,
-                                           const char *tablename) = NULL;
+                                           const char *tablename, const char *) = NULL;
 
 int access_control_check_sql_write(struct BtCursor *pCur,
                                    struct sql_thread *thd)
@@ -205,10 +205,16 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite) {
         clnt->authdata = get_authdata(clnt);
+        char client_info[1024];
+        snprintf(client_info, sizeof(client_info),
+                 "%s:origin:%s:pid:%d",
+                 clnt->argv0 ? clnt->argv0 : "?",
+                 clnt->origin ? clnt->origin: "?",
+                 clnt->conninfo.pid);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-        else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name)) {
+        else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name, client_info)) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
             snprintf(msg, sizeof(msg), "Write access denied to table %s for user %s",
@@ -269,10 +275,16 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
         && !clnt->current_user.bypass_auth /* not analyze */) {
         clnt->authdata = get_authdata(clnt);
+        char client_info[1024];
+        snprintf(client_info, sizeof(client_info),
+                 "%s:origin:%s:pid:%d",
+                 clnt->argv0 ? clnt->argv0 : "?",
+                 clnt->origin ? clnt->origin: "?",
+                 clnt->conninfo.pid);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-        else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name)) {
+        else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name, client_info)) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
             snprintf(msg, sizeof(msg), "Read access denied to table %s for user %s",
