@@ -26,6 +26,8 @@
 #include "bdb_int.h"
 #include "md5.h"
 #include "tohex.h"
+#include "db_features.h"
+#include "comdb2_atomic.h"
 
 pthread_mutex_t gbl_test_log_file_mtx = PTHREAD_MUTEX_INITIALIZER;
 char *gbl_test_log_file = NULL;
@@ -2677,6 +2679,19 @@ static void comdb2LastCostFunc(
 }
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static void testCounterFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2) {
+    static int64_t counter = 0;
+    ATOMIC_ADD64(counter, 1);
+    sqlite3_result_int64(context, counter);
+    feature_usage_bump(FEATURE_TEST_COUNTER);
+}
+#endif
+
+
 /*
 ** All of the FuncDef structures in the aBuiltinFunc[] array above
 ** to the global function hash table.  This occurs at start-time (as
@@ -2821,6 +2836,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_last_cost,      0, 0, 0, comdb2LastCostFunc),
 
     FUNCTION(checksum_md5,          1, 0, 0, md5Func),
+    FUNCTION(comdb2_test_counter,   0, 0, 0, testCounterFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),

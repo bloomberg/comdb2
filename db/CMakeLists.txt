@@ -10,6 +10,7 @@ set(src
   config.c
   constraints.c
   db_access.c
+  db_features.c
   db_fingerprint.c
   db_metrics.c
   db_query_plan.c

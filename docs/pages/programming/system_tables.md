@@ -753,3 +753,13 @@ Generic stack collection
 * `hits` - number of times this stack has been collected.
 * `stack` - flattened stack.
 
+
+## comdb2_features_used
+
+Keeps counters to track feature usage.
+
+    comdb2_features_used(id, description, num_uses)
+
+* `id` - short identifier for feature
+* `description` - human-readable description
+* `num_uses` - counter that's incremented when the feature is used
