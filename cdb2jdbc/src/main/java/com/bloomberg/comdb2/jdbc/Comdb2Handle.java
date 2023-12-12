@@ -95,6 +95,7 @@ public class Comdb2Handle extends AbstractConnection {
     private boolean ack = false;
     private boolean skipDrain = false;
     private boolean clearAckOnClose = true;
+    private boolean useIdentity = false;
 
     private boolean isRead;
     private String lastSql;
@@ -402,6 +403,10 @@ public class Comdb2Handle extends AbstractConnection {
         this.clearAckOnClose = val;
     }
 
+    public void setUseIdentity(boolean val){
+        this.useIdentity = val;
+    }
+
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
         if (this.myDbHosts.size() == 0) {
             this.lookup();
@@ -670,12 +675,18 @@ public class Comdb2Handle extends AbstractConnection {
         Cdb2Query query = new Cdb2Query();
         Cdb2SqlQuery sqlQuery = new Cdb2SqlQuery();
         query.cdb2SqlQuery = sqlQuery;
+        IdentityCreator ic;
+        Cdb2IdentityBlob idblob;
 
         if (!sentClientInfo) {
             sqlQuery.cinfo = new Cdb2ClientInfo();
             sqlQuery.cinfo.argv0 = Comdb2ClientInfo.getCallerClass();
             sqlQuery.cinfo.stack = Comdb2ClientInfo.getCallStack(32);
             sentClientInfo = true;
+        }
+
+        if (useIdentity && (ic = Driver.getIdentityCreator()) != null) {
+            sqlQuery.identity = ic.create();
         }
 
         sqlQuery.dbName = myDbName;

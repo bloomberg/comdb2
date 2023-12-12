@@ -231,6 +231,13 @@ public class ProtobufProtocol implements Protocol {
             if (cdb2SqlQuery.reqInfo != null)
                 _sqlquery.setReqInfo(CDB2_SQLQUERY.reqinfo.newBuilder().setTimestampus(cdb2SqlQuery.reqInfo.timestampus).setNumRetries(cdb2SqlQuery.reqInfo.numretries));
 
+            if (cdb2SqlQuery.identity != null)
+                _sqlquery.setIdentity(CDB2_SQLQUERY.IdentityBlob.newBuilder()
+                        .setPrincipal(cdb2SqlQuery.identity.principal)
+                        .setMajorVersion(cdb2SqlQuery.identity.majorVersion)
+                        .setMinorVersion(cdb2SqlQuery.identity.minorVersion)
+                        .setData(ByteString.copyFrom(cdb2SqlQuery.identity.data)));
+
             _query.setSqlquery(_sqlquery.build());
         }
 
