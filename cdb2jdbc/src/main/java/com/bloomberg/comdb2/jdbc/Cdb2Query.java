@@ -54,6 +54,13 @@ public class Cdb2Query implements Serializable {
         String stack;
     }
 
+    static class Cdb2IdentityBlob {
+        String principal;
+        long majorVersion;
+        long minorVersion;
+        byte[] data;
+    }
+
     static class Cdb2SqlQuery {
         String dbName;
         String sqlQuery;
@@ -75,6 +82,7 @@ public class Cdb2Query implements Serializable {
         int retry;
         List<Integer> features;
         Cdb2ReqInfo reqInfo;
+        Cdb2IdentityBlob identity;
 
         public Cdb2SqlQuery(String dbName, String sql) {
             String tz = System.getenv("COMDB2TZ");
