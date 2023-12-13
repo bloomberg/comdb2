@@ -891,6 +891,10 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     int rc;
     assert(arg->s);
     sc = arg->s;
+    /*shardname can be an alias*/
+    struct dbtable *db = get_dbtable_by_name(shardname);
+    if (db->sqlaliasname)
+        shardname = db->tablename; /* use the actual table name */
     while (sc) {
         /* already resumed */
         if (strcasecmp(shardname, sc->tablename) == 0)
@@ -912,7 +916,7 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     new_sc->sc_next = arg->s;
     arg->s = new_sc;
 
-    logmsg(LOGMSG_INFO, "Restarting schema change for view '%s' shard '%s'\n",
+    logmsg(LOGMSG_USER, "Restarting schema change for view '%s' shard '%s'\n",
            arg->view_name, new_sc->tablename);
     rc = start_schema_change(new_sc);
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
