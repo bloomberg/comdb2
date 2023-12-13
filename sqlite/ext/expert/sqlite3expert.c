@@ -14,7 +14,8 @@
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
-
+#include "logmsg.h"
+#include "views.h"
 #ifndef SQLITE_OMIT_VIRTUALTABLE 
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -154,7 +155,13 @@ struct sqlite3expert {
   char *zCandidates;              /* For EXPERT_REPORT_CANDIDATES */
 };
 
+sqlite3* sqlite3_expert_get_dbm(sqlite3expert *p){
+    return p->dbm;
+}
 
+sqlite3* sqlite3_expert_get_dbv(sqlite3expert *p){
+    return p->dbv;
+}
 /*
 ** Allocate and return nByte bytes of zeroed memory using sqlite3_malloc(). 
 ** If the allocation fails, set *pRc to SQLITE_NOMEM and return NULL.
@@ -951,29 +958,61 @@ static int idxCreateFromCons(
       for(i=0; zCols[i]; i++){
         h += ((h<<3) + zCols[i]);
       }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      int isTimePart;
+      char *timePartName = NULL;
+      isTimePart = timepart_is_shard(zTable, 0, &timePartName);
+      if(isTimePart){
+        timePartName = sqlite3_mprintf("%s",timePartName);
+        zName = sqlite3_mprintf("%s_idx_%08x", timePartName, h);
+      }else{
+        zName = sqlite3_mprintf("%s_idx_%08x", zTable, h);
+      }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       zName = sqlite3_mprintf("%s_idx_%08x", zTable, h);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( zName==0 ){ 
         rc = SQLITE_NOMEM;
       }else{
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         if( idxIdentifierRequiresQuotes(zTable) ){
           zFmt = "CREATE TEMP INDEX '%q' ON %Q(%s)";
-          zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
+          if(isTimePart){
+            if( idxIdentifierRequiresQuotes(timePartName) ){
+              zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
+            }else{
+              zFmt_p = "CREATE INDEX '%q' ON %s(%s)";
+            }
+          }else{
+            zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
+          }
         }else{
           zFmt = "CREATE TEMP INDEX %s ON %s(%s)";
-          zFmt_p = "CREATE INDEX %s ON %s(%s)";
+          if(isTimePart){
+            if( idxIdentifierRequiresQuotes(timePartName) ){
+              zFmt_p = "CREATE INDEX %s ON %Q(%s)";
+            }else{
+              zFmt_p = "CREATE INDEX %s ON %s(%s)";
+            }
+          }else{
+            zFmt_p = "CREATE INDEX %s ON %s(%s)";
+          }
         }
         zIdx = sqlite3_mprintf(zFmt, zName, zTable, zCols);
         if( !zIdx ){
           rc = SQLITE_NOMEM;
           goto error_out;
         }
-        zIdx_p = sqlite3_mprintf(zFmt_p, zName, zTable, zCols);
+        if(isTimePart){
+          zIdx_p = sqlite3_mprintf(zFmt_p, zName, timePartName, zCols, zTable, timePartName);
+        }else{
+          zIdx_p = sqlite3_mprintf(zFmt_p, zName, zTable, zCols);
+        }
         if( !zIdx_p ){
           rc = SQLITE_NOMEM;
           goto error_out;
         }
-        rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
+        rc = sqlite3_exec(dbm, zIdx_p, 0, 0, p->pzErrmsg);
         idxHashAdd(&rc, &p->hIdx, zName, zIdx_p);
 error_out:
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -993,6 +1032,9 @@ error_out:
         sqlite3_free(zName);
         sqlite3_free(zIdx);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if(timePartName){
+          sqlite3_free(timePartName);
+        }
         sqlite3_free(zIdx_p);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       }
@@ -1980,7 +2022,6 @@ int sqlite3_expert_analyze(sqlite3expert *p, char **pzErr){
   if( rc==SQLITE_OK ){
     rc = idxPopulateStat1(p, pzErr);
   }
-
   /* Formulate the EXPERT_REPORT_CANDIDATES text */
   for(pEntry=p->hIdx.pFirst; pEntry; pEntry=pEntry->pNext){
     p->zCandidates = idxAppendText(&rc, p->zCandidates, 

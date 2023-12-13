@@ -3680,10 +3680,28 @@ static void handle_expert_query(struct sqlthdstate *thd,
     comdb2_set_authstate(thd, clnt, PREPARE_RECREATE);
     rc = -1;
     sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
+    // If there are TimePartitions, populate the temp dbs with the views
+    if(thedb->timepart_views){
+        struct errstat xerr;
+        if (p) {
+            sqlite3 *db = sqlite3_expert_get_dbm(p);
+            rc = views_sqlite_update_temp(thedb->timepart_views, db, &xerr, 0);
+            if(rc != VIEW_NOERR){
+                logmsg(LOGMSG_FATAL, "Failed to create views in p->dbm. Expert mode may not work"
+                        "against TPT. rc=%d errstr=\"%s\"\n", xerr.errval, xerr.errstr);
+            }
+            db = sqlite3_expert_get_dbv(p);
+            rc = views_sqlite_update(thedb->timepart_views, db, &xerr, 0);
+            if(rc != VIEW_NOERR){
+                logmsg(LOGMSG_FATAL, "Failed to create views in p->dbv. Expert mode may not work"
+                        "against TPT. rc=%d errstr=\"%s\"\n", xerr.errval, xerr.errstr);
+            }
+        }
+    }
 
     if (p) {
         rc = sqlite3_expert_sql(p, clnt->sql, &zErr);
-    }
+    } 
 
     if (rc == SQLITE_OK) {
         rc = sqlite3_expert_analyze(p, &zErr);

@@ -6,7 +6,7 @@
 #include <sqliteInt.h>
 
 static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
-                                      struct errstat *err);
+                                      struct errstat *err, int isTemp);
 static char *_views_destroy_view_query(const char *view_name, sqlite3 *db,
                                        struct errstat *err);
 static int _views_run_sql(sqlite3 *db, const char *stmt_str,
@@ -29,8 +29,21 @@ static void dbg_verbose_sqlite(const char *fmt, ...);
  * Populate an sqlite db with views
  *
  */
+
 int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
                         struct errstat *err, int lock)
+{
+    return views_sqlite_update_int(views, db, err, lock, 0);
+}
+
+int views_sqlite_update_temp(timepart_views_t *views, sqlite3 *db,
+                        struct errstat *err, int lock)
+{
+    return views_sqlite_update_int(views, db, err, lock, 1);
+}
+
+int views_sqlite_update_int(timepart_views_t *views, sqlite3 *db,
+                        struct errstat *err, int lock, int isTemp)
 {
     timepart_view_t *view;
     Table *tab;
@@ -68,7 +81,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
         }
 
         /* add the view */
-        rc = views_sqlite_add_view(views->views[i], db, err);
+        rc = views_sqlite_add_view(views->views[i], db, err, isTemp);
         if (rc != VIEW_NOERR) {
             goto done;
         }
@@ -98,13 +111,13 @@ done:
  *
  */
 int views_sqlite_add_view(timepart_view_t *view, sqlite3 *db,
-                          struct errstat *err)
+                          struct errstat *err, int isTemp)
 {
     char *stmt_str;
     int rc;
 
     /* create the statement */
-    stmt_str = _views_create_view_query(view, db, err);
+    stmt_str = _views_create_view_query(view, db, err, isTemp);
     if (!stmt_str) {
         return err->errval;
     }
@@ -174,7 +187,7 @@ int views_sqlite_del_view(timepart_view_t *view, sqlite3 *db,
 }
 
 static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
-                                      struct errstat *err)
+                                      struct errstat *err, int isTemp)
 {
     char *select_str = NULL;
     char *cols_str = NULL;
@@ -226,7 +239,11 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
    ret_str = sqlite3_mprintf("CREATE VIEW \"%w\" (%s) AS %s",
       view->name, cols_str, select_str);
 #endif
+   if(isTemp){
+    ret_str = sqlite3_mprintf("CREATE TEMP VIEW \"%w\" AS %s", view->name, select_str);
+   } else {
     ret_str = sqlite3_mprintf("CREATE VIEW \"%w\" AS %s", view->name, select_str);
+   }
     if (!ret_str) {
         sqlite3_free(select_str);
         sqlite3_free(cols_str);
