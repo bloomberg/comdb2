@@ -47,6 +47,26 @@ ${COMDB2_EXE} --no-global-lrl $DB --lrl $TSTDBDIR/${DB}.lrl &> out
 grep "No such file or directory" out | grep "logs:" || failexit "expected 'No such file or directory'"
 
 echo "Check 7"
+# for tables with current timestamp in them there was a bug where create db stmt will fail if nullsort comes after table in lrl
+# normally in_default for dt field should be null if table has current timestamp
+# but in this bug stype_is_null() (called from sql_field_default_trans) will not recognize null of in_default for dt field in table
+# since nullsort may have changed null bit after table (and in_defaults) were already created
+# thus stype_is_null() and in_default have different null bits set
+# fix is to process table stmts in lrl file last. Then nullsort statements will happen before any tables are created
+echo "table t t.csc2" > $TSTDBDIR/${DB}.lrl # this has to come before setting nullsort
+echo "nullsort high" >> $TSTDBDIR/${DB}.lrl
+echo "schema { datetime dt dbstore=\"CURRENT_TIMESTAMP\" }" > $TSTDBDIR/t.csc2
+${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "Created database" out || failexit "expected 'Created database'"
+
+echo "Check 7.5"
+echo "table t t.csc2" > $TSTDBDIR/${DB}.lrl # this has to come before setting nullsort
+echo "nullsort low" >> $TSTDBDIR/${DB}.lrl # depending on machine this might fail instead of above
+echo "schema { datetime dt dbstore=\"CURRENT_TIMESTAMP\" }" > $TSTDBDIR/t.csc2
+${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+grep "Created database" out || failexit "expected 'Created database'"
+
+echo "Check 8"
 touch $TSTDBDIR/${DB}.lrl
 df $TSTDBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" > $TSTDBDIR/${DB}.lrl 
 ${COMDB2_EXE} --no-global-lrl ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
@@ -57,7 +77,7 @@ echo "dir     $TSTDBDIR" >> $TSTDBDIR/${DB}.lrl
 mkdir -p $TSTDBDIR/var/log/cdb2
 mkdir -p $TMPDIR
 
-echo "Check 8, bring up db and query it"
+echo "Check 9, bring up db and query it"
 if [[ -n "$CLUSTER" ]]; then
     echo "Use comdb2makecluster --nocreate to copy to cluster"
 
@@ -93,7 +113,7 @@ COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAM
 
 
 if [[ -n "$CLUSTER" ]]; then
-    echo "Check 9, Use comdb2makecluster bring up a new db"
+    echo "Check 10, Use comdb2makecluster bring up a new db"
 
     ${TESTSROOTDIR}/tools/comdb2makecluster --dir $TSTDBDIR $DB $CLUSTER
     rc=$?
