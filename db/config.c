@@ -60,7 +60,7 @@ extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
 static int pre_read_option(char *, int);
-static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int);
+static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int, int *);
 
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
@@ -188,7 +188,7 @@ static void read_cmd_line_tunables(struct dbenv *dbenv)
         .lineno = 0, .lrlname = "cmd_line_args", .dbname = dbenv->envname};
     struct CmdLineTunable *t, *tmp;
     STAILQ_FOREACH_SAFE(t, cmd_line_tunables, entry, tmp) {
-        read_lrl_option(dbenv, t->arg, &options, strlen(t->arg));
+        read_lrl_option(dbenv, t->arg, &options, strlen(t->arg), NULL);
         free(t);
     }
     free(cmd_line_tunables);
@@ -446,7 +446,7 @@ static void read_legacy_defaults(struct dbenv *dbenv,
     if (gbl_legacy_defaults != 1) return;
     gbl_legacy_defaults = 2;
     for (int i = 0; i < sizeof(legacy_options) / sizeof(legacy_options[0]); i++) {
-        read_lrl_option(dbenv, legacy_options[i], options, strlen(legacy_options[i]));
+        read_lrl_option(dbenv, legacy_options[i], options, strlen(legacy_options[i]), NULL);
     }
 }
 
@@ -525,6 +525,11 @@ static void pre_read_lrl_file(struct dbenv *dbenv, const char *lrlname)
     fclose(ff); /* lets get one fd back */
 }
 
+struct lrl_tables_holder {
+    char *line;
+    int lineno;
+};
+
 static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
                                        int required)
 {
@@ -555,12 +560,32 @@ static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
 
     logmsg(LOGMSG_INFO, "processing %s...\n", lrlname);
 
+    struct lrl_tables_holder *lrl_tables = NULL;
+    struct lrl_tables_holder *cur_table;
+    int num_lrl_tables = 0;
+    int is_table = 0;
     while (fgets(line, sizeof(line), ff)) {
         char *s = strchr(line, '\n');
         if (s) *s = 0;
         options.lineno++;
-        read_lrl_option(dbenv, line, &options, strlen(line));
+        read_lrl_option(dbenv, line, &options, strlen(line), &is_table);
+        if (is_table) { // read lrl tables last
+            num_lrl_tables++;
+            lrl_tables = realloc(lrl_tables, sizeof(*lrl_tables) * num_lrl_tables);
+            cur_table = &lrl_tables[num_lrl_tables - 1];
+            cur_table->line = strdup(line);
+            cur_table->lineno = options.lineno;
+        }
     }
+
+    // read lrl options for creating table last (since nullsort may mess up in_defaults if run after creating tables)
+    for (int i = 0; i < num_lrl_tables; i++) {
+        cur_table = &lrl_tables[i];
+        options.lineno = cur_table->lineno;
+        read_lrl_option(dbenv, cur_table->line, &options, strlen(cur_table->line), NULL);
+        free(cur_table->line);
+    }
+    free(lrl_tables);
 
     /* process legacy options (we deferred them) */
 
@@ -671,13 +696,17 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     } while (0)
 
 static int read_lrl_option(struct dbenv *dbenv, char *line,
-                           struct read_lrl_option_type *options, int len)
+                           struct read_lrl_option_type *options, int len,
+                           int *is_table)
 {
     char *tok;
     int st = 0;
     int ltok;
     int ii, kk;
     int rc;
+
+    if (is_table)
+        *is_table = 0;
 
     tok = segtok(line, len, &st, &ltok);
 
@@ -1018,6 +1047,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         thedb->qdbs[nqdbs] = qdb;
         ++thedb->num_qdbs;
     } else if (tokcmp(tok, ltok, "table") == 0) {
+        if (is_table) {
+            *is_table = 1;
+            return -1;
+        }
+
         /*
          * variants:
          * table foo foo.lrl        # load a table given secondary lrl files
