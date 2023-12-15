@@ -31,6 +31,8 @@
 #endif
 #include "logmsg.h"
 
+#define ALIGN(p, x) ( ((p) + (x) - 1) & ~((x) - 1) )
+
 struct pool {
     int entsz; /* entry size */
 
@@ -245,9 +247,12 @@ pool_t *pool_setalloc_verify_init(int entry_size, int stepsize,
 #endif
     if (verify)
         entry_size += sizeof(pool_t *);
-    entry_size = (entry_size + 3) & (-1 ^ 3);
-    if (entry_size < 4)
-        entry_size = 4;
+    /* must store a next-ptr in the block when it's on the free list */
+    entry_size = ALIGN(entry_size, sizeof(struct freeblk));
+    if (entry_size < sizeof(struct freeblk)) {
+        // if entry_size is zero.....
+        entry_size = sizeof(struct freeblk);
+    }
     p = (pool_t *)poolmalloc(sizeof(pool_t));
     if (p == 0)
         return 0;
