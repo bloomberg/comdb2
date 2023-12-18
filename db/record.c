@@ -1089,8 +1089,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (strncasecmp(tag, ".ONDISK", 7) == 0) {
             /* the input record is .ONDISK or a .ONDISK_IX_ (which would be the
              * case for a cascaded update) */
-            rc = stag_to_stag_buf_update_tz(dbname_schema, get_schema(iq->usedb, -1), vrecord, odv_dta, NULL,
-                                            iq->tzname);
+            rc = stag_to_stag_buf_update_tz(iq->usedb, dbname_schema, get_schema(iq->usedb, -1),
+                                            vrecord, odv_dta, NULL, iq->tzname);
         } else {
             rc = ctag_to_stag_buf_tz(iq->usedb, tag, vrecord,
                                      WHOLE_BUFFER, fldnullmap, ".ONDISK",
@@ -1137,8 +1137,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (strncasecmp(tag, ".ONDISK", 7) == 0) {
             /* the input record is .ONDISK or a .ONDISK_IX_ (which would be the
              * case for a cascaded update) */
-            rc = stag_to_stag_buf_update_tz(dbname_schema, get_schema(iq->usedb, -1), record, od_dta, &reason,
-                                            iq->tzname);
+            rc = stag_to_stag_buf_update_tz(iq->usedb, dbname_schema, get_schema(iq->usedb, -1),
+                                            record, od_dta, &reason, iq->tzname);
         } else {
             rc = ctag_to_stag_blobs_tz(iq->usedb, tag, record,
                                        WHOLE_BUFFER, fldnullmap, ".ONDISK",

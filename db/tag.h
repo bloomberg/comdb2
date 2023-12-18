@@ -235,8 +235,9 @@ int stag_to_ctag_buf_blobs_tz(struct dbtable *table, const char *stag,
                               blob_buffer_t *inblobs, blob_buffer_t *outblobs,
                               int maxblobs, const char *tzname);
 
-int stag_to_stag_buf_schemas(struct schema *fromsch, struct schema *tosch,
-                             const char *inbuf, char *outbuf, const char *tzname);
+int stag_to_stag_buf_schemas(const struct dbtable *table, struct schema *fromsch,
+                             struct schema *tosch, const char *inbuf, char *outbuf,
+                             const char *tzname);
 int stag_to_stag_buf_blobs(const struct dbtable *table, const char *fromtag,
                            const char *inbuf, const char *totag, char *outbuf,
                            struct convert_failure *reason, blob_buffer_t *blobs,
@@ -247,9 +248,9 @@ int ctag_to_stag_buf(struct dbtable *table, const char *ctag, const char *inbuf,
 
 int *get_tag_mapping(struct schema *fromsch, struct schema *tosch);
 
-int stag_to_stag_buf_cachedmap(int tagmap[], struct schema *from,
-                               struct schema *to, const char *inbuf,
-                               char *outbuf, int flags,
+int stag_to_stag_buf_cachedmap(const struct dbtable *table, int tagmap[],
+                               struct schema *from, struct schema *to,
+                               const char *inbuf, char *outbuf, int flags,
                                struct convert_failure *fail_reason,
                                blob_buffer_t *inblobs, int maxblobs);
 
@@ -360,7 +361,8 @@ int stag_to_stag_buf(const struct dbtable *table, const char *fromtag, const cha
 int stag_to_stag_buf_tz(struct schema *fromsch, const char *table, const char *inbuf, const char *totag, char *tobuf,
                         struct convert_failure *reason, const char *tzname);
 
-int stag_to_stag_buf_update_tz(struct schema *from, struct schema *to, const char *inbuf, char *tobuf,
+int stag_to_stag_buf_update_tz(const struct dbtable *tbl, struct schema *from,
+                               struct schema *to, const char *inbuf, char *tobuf,
                                struct convert_failure *reason, const char *tzname);
 
 /* Primary key to foreign key enums */

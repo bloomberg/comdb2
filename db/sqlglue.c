@@ -12013,13 +12013,15 @@ static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur)
     return clnt->is_overlapping;
 }
 
-static void ondisk_blob_to_sqlite_mem(struct field *f, Mem *m,
+static void ondisk_blob_to_sqlite_mem(const struct dbtable *tbl, struct field *f, Mem *m,
                                       blob_buffer_t *blobs, size_t maxblobs)
 {
     assert(!blobs || f->blob_index < maxblobs);
     if (blobs && blobs[f->blob_index].exists) {
-        m->z = blobs[f->blob_index].data;
-        m->n = blobs[f->blob_index].length;
+        blob_buffer_t *blob = &blobs[f->blob_index];
+        unodhfy_blob_buffer(tbl, blob, f->blob_index);
+        m->z = blob->data;
+        m->n = blob->length;
         if (m->z == NULL)
             m->z = "";
         else
@@ -12039,7 +12041,7 @@ static void ondisk_blob_to_sqlite_mem(struct field *f, Mem *m,
     }
 }
 
-static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
+static int get_data_from_ondisk(const struct dbtable *tbl, struct schema *sc, uint8_t *in,
                                 blob_buffer_t *blobs, size_t maxblobs, int fnum,
                                 Mem *m, uint8_t flip_orig, const char *tzname)
 {
@@ -12343,7 +12345,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
             /*fprintf(stderr, "m->n = %d\n", m->n); */
             m->flags |= MEM_Blob;
         } else {
-            ondisk_blob_to_sqlite_mem(f, m, blobs, maxblobs);
+            ondisk_blob_to_sqlite_mem(tbl, f, m, blobs, maxblobs);
         }
 
         break;
@@ -12368,13 +12370,13 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
             /*fprintf(stderr, "m->n = %d\n", m->n); */
             m->flags = MEM_Str | MEM_Ephem;
         } else {
-            ondisk_blob_to_sqlite_mem(f, m, blobs, maxblobs);
+            ondisk_blob_to_sqlite_mem(tbl, f, m, blobs, maxblobs);
         }
         break;
     }
 
     case SERVER_BLOB: {
-        ondisk_blob_to_sqlite_mem(f, m, blobs, maxblobs);
+        ondisk_blob_to_sqlite_mem(tbl, f, m, blobs, maxblobs);
         break;
     }
     case SERVER_DECIMAL:
@@ -12585,7 +12587,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
 
     for (i = 0; i < sc->nmembers; i++) {
         memset(&m[i], 0, sizeof(Mem));
-        rc = get_data_from_ondisk(sc, rec, blobs, maxblobs, i, &m[i], 0,
+        rc = get_data_from_ondisk(db, sc, rec, blobs, maxblobs, i, &m[i], 0,
                                   "America/New_York");
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to convert to ondisk\n", __func__);
@@ -12681,9 +12683,9 @@ char *indexes_expressions_unescape(char *expr)
     return new_expr;
 }
 
-int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
-                             blob_buffer_t *blobs, size_t maxblobs,
-                             struct field *f,
+int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc,
+                             const char *inbuf, char *outbuf, blob_buffer_t *blobs,
+                             size_t maxblobs, struct field *f,
                              struct convert_failure *fail_reason,
                              const char *tzname)
 {
@@ -12710,7 +12712,7 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
 
     for (i = 0; i < sc->nmembers; i++) {
         memset(&m[i], 0, sizeof(Mem));
-        rc = get_data_from_ondisk(sc, (uint8_t *)inbuf, blobs, maxblobs, i,
+        rc = get_data_from_ondisk(tbl, sc, (uint8_t *)inbuf, blobs, maxblobs, i,
                                   &m[i], 0, tzname);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to convert to ondisk\n", __func__);
@@ -12987,7 +12989,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
     for (int i = 0; i < sc->nmembers; ++i) {
         memset(&m[i], 0, sizeof(Mem));
-        rc = get_data_from_ondisk(sc, rec, blobs, maxblobs, i, &m[i], 0,
+        rc = get_data_from_ondisk(table, sc, rec, blobs, maxblobs, i, &m[i], 0,
                                   "America/New_York");
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to get field from record",
