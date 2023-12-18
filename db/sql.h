@@ -400,6 +400,7 @@ int sp_column_val(struct response_data *, int, int, void *);
 void *sp_column_ptr(struct response_data *, int, int, size_t *);
 
 typedef int(plugin_func)(struct sqlclntstate *);
+typedef const char *(api_type_func)(struct sqlclntstate *);
 typedef int(response_func)(struct sqlclntstate *, int, void *, int);
 typedef void *(replay_func)(struct sqlclntstate *, void *);
 typedef int(param_index_func)(struct sqlclntstate *, const char *, int64_t *);
@@ -470,6 +471,7 @@ struct plugin_callbacks {
     plugin_func *peer_check; /* newsql_peer_check_evbuffer */
     auth_func *get_authdata; /* newsql_get_authdata */
     override_type_func *set_timeout; /* newsql_set_timeout_sbuf */
+    api_type_func *api_type; /* newsql_api_type */
 
     /* Optional */
     void *state;
@@ -536,6 +538,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, peer_check);                          \
         make_plugin_callback(clnt, name, get_authdata);                        \
         make_plugin_callback(clnt, name, set_timeout);                         \
+        make_plugin_callback(clnt, name, api_type);                            \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
         make_plugin_optional_null(clnt, int64);                                \

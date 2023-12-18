@@ -124,6 +124,8 @@ struct reqlogger {
     char *error;
     char error_code;
 
+    const char *api_type;
+
     struct client_query_stats *path;
     int ncontext;
     char **context;
