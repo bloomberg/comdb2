@@ -4377,7 +4377,7 @@ deadlock_again:
             if (create) {
                 if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
                                             tmpname, sizeof(tmpname)))) {
-                    if (tid) tid->abort(tid);
+                    if (tmp_tid) tid->abort(tid);
                     return rc;
                 }
                 char new[PATH_MAX];
