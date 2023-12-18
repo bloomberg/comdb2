@@ -237,8 +237,9 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 			goto err;
 	}
 
-	__ufid_add_dbp(dbp->dbenv, dbp);
-
+	if (F_ISSET(dbp, DB_AM_RECOVER)) {
+		__ufid_add_dbp(dbp->dbenv, dbp);
+	}
 
 	if (dbp->pgsize > 65536) {
 		/* If we have large pages, we need a bias factor for accessing entries. */
