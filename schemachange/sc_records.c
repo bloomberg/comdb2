@@ -266,14 +266,14 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
 // because we only have one map from old schema to new schema
 //(ie no index mapping--that can speedup insertion into indices too)
 static inline int convert_server_record_cachedmap(
-    const char *table, int tagmap[], const void *inbufp, char *outbuf,
+    struct dbtable *db, const char *table, int tagmap[], const void *inbufp, char *outbuf,
     struct schema_change_type *s, struct schema *from, struct schema *to,
     blob_buffer_t *blobs, int maxblobs)
 {
     char err[1024];
     struct convert_failure reason;
     int rc =
-        stag_to_stag_buf_cachedmap(tagmap, from, to, (char *)inbufp, outbuf,
+        stag_to_stag_buf_cachedmap(db, tagmap, from, to, (char *)inbufp, outbuf,
                                    0 /*flags*/, &reason, blobs, maxblobs);
 
     if (rc) {
@@ -456,10 +456,10 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
 
         /* convert current.  this converts blob fields, but we need to make sure
          * we add the right blobs separately. */
-        rc = convert_server_record_cachedmap(
-            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
-            data->from->schema, data->to->schema, data->wrblb,
-            sizeof(data->wrblb) / sizeof(data->wrblb[0]));
+        rc = convert_server_record_cachedmap(data->to, data->to->tablename, data->tagmap,
+                                             dta, data->rec->recbuf, data->s, data->from->schema,
+                                             data->to->schema, data->wrblb,
+                                             sizeof(data->wrblb) / sizeof(data->wrblb[0]));
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d failed to convert record rc=%d\n",
                    __func__, __LINE__, rc);

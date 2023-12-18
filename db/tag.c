@@ -1655,7 +1655,8 @@ static int copy_partial_client_buf(const char *inbuf, int len, int isnull,
 }
 
 /* forward */
-static int _stag_to_stag_buf_flags_blobs(struct schema *fromsch, struct schema *tosch, const char *inbuf, char *outbuf,
+static int _stag_to_stag_buf_flags_blobs(const struct dbtable *tbl, struct schema *fromsch,
+                                         struct schema *tosch, const char *inbuf, char *outbuf,
                                          int flags, struct convert_failure *fail_reason, blob_buffer_t *inblobs,
                                          blob_buffer_t *outblobs, int maxblobs, const char *tzname);
 
@@ -2453,9 +2454,9 @@ int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len,
         memcpy(inbuf, rec, from_schema->recsize);
 
         /* call new cached version instead of stag_to_stag_buf_flags() */
-        rc = stag_to_stag_buf_cachedmap(
-            (int *)db->versmap[ver], from_schema, to_schema, inbuf, (char *)rec,
-            CONVERT_NULL_NO_ERROR, &reason, NULL, 0);
+        rc = stag_to_stag_buf_cachedmap(db, (int *)db->versmap[ver],
+                                        from_schema, to_schema, inbuf, (char *)rec,
+                                        CONVERT_NULL_NO_ERROR, &reason, NULL, 0);
 
         if (rc) {
             char err[1024];
@@ -2553,7 +2554,7 @@ int vtag_to_ondisk(const dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     }
     memcpy(from, rec, from_schema->recsize);
 
-    rc = _stag_to_stag_buf_flags_blobs(from_schema, find_tag_schema(db, ".ONDISK"), from, (char *)rec,
+    rc = _stag_to_stag_buf_flags_blobs(db, from_schema, find_tag_schema(db, ".ONDISK"), from, (char *)rec,
                                        CONVERT_NULL_NO_ERROR, &reason, NULL, NULL, 0, NULL);
 
     if (rc) {
@@ -3035,9 +3036,12 @@ void free_db_record(struct dbrecord *db)
     free(db);
 }
 
-int stag_to_stag_buf_schemas(struct schema *fromsch, struct schema *tosch, const char *inbuf, char *outbuf, const char *tzname)
+int stag_to_stag_buf_schemas(const struct dbtable *tbl, struct schema *fromsch,
+                             struct schema *tosch, const char *inbuf,
+                             char *outbuf, const char *tzname)
 {
-    return _stag_to_stag_buf_flags_blobs(fromsch, tosch, inbuf, outbuf, 0, NULL, NULL, NULL, 0, tzname);
+    return _stag_to_stag_buf_flags_blobs(tbl, fromsch, tosch, inbuf, outbuf, 0,
+                                         NULL, NULL, NULL, 0, tzname);
 }
 
 int stag_to_stag_buf_blobs(const struct dbtable *table, const char *fromtag,
@@ -3067,7 +3071,8 @@ int stag_to_stag_buf_blobs(const struct dbtable *table, const char *fromtag,
         maxblobs = 0;
     }
 
-    rc = _stag_to_stag_buf_flags_blobs(find_tag_schema(table, fromtag), find_tag_schema(table, totag), inbuf, outbuf,
+    rc = _stag_to_stag_buf_flags_blobs(table, find_tag_schema(table, fromtag),
+                                       find_tag_schema(table, totag), inbuf, outbuf,
                                        0 /*flags*/, reason, blobs, p_newblobs, maxblobs, NULL /*tzname*/);
 
     if (blobs && get_new_blobs) /* if we were given blobs */
@@ -3088,7 +3093,8 @@ int stag_to_stag_buf_blobs(const struct dbtable *table, const char *fromtag,
 
 int stag_ondisk_to_ix(const struct dbtable *db, int ixnum, const char *inbuf, char *outbuf)
 {
-    return _stag_to_stag_buf_flags_blobs(get_schema(db, -1), get_schema(db, ixnum), inbuf, outbuf, 0, NULL, NULL, NULL,
+    return _stag_to_stag_buf_flags_blobs(db, get_schema(db, -1), get_schema(db, ixnum),
+                                         inbuf, outbuf, 0, NULL, NULL, NULL,
                                          0, NULL);
 }
 
@@ -3114,8 +3120,9 @@ int stag_ondisk_to_ix_blobs(const struct dbtable *db, int ixnum, const char *inb
         maxblobs = 0;
     }
 
-    rc = _stag_to_stag_buf_flags_blobs(get_schema(db, -1), get_schema(db, ixnum), inbuf, outbuf, 0, NULL, blobs,
-                                       p_newblobs, maxblobs, NULL);
+    rc = _stag_to_stag_buf_flags_blobs(db, get_schema(db, -1), get_schema(db, ixnum),
+                                       inbuf, outbuf, 0, NULL, blobs, p_newblobs,
+                                       maxblobs, NULL);
     if (blobs)
         free_blob_buffers(newblobs, MAXBLOBS);
 
@@ -3126,14 +3133,17 @@ int stag_to_stag_buf(const struct dbtable *table, const char *fromtag, const cha
                      const char *totag, char *outbuf,
                      struct convert_failure *reason)
 {
-    return _stag_to_stag_buf_flags_blobs(find_tag_schema(table, fromtag), find_tag_schema(table, totag), inbuf, outbuf,
+    return _stag_to_stag_buf_flags_blobs(table, find_tag_schema(table, fromtag),
+                                         find_tag_schema(table, totag), inbuf, outbuf,
                                          0, reason, NULL /*inblobs*/, NULL /*outblobs*/, 0 /*maxblobs*/, NULL);
 }
 
-int stag_to_stag_buf_update_tz(struct schema *from, struct schema *to, const char *inbuf, char *outbuf,
+int stag_to_stag_buf_update_tz(const struct dbtable *tbl, struct schema *from,
+                               struct schema *to, const char *inbuf, char *outbuf,
                                struct convert_failure *reason, const char *tzname)
 {
-    return _stag_to_stag_buf_flags_blobs(from, to, inbuf, outbuf, CONVERT_UPDATE, reason, NULL /*inblobs*/,
+    return _stag_to_stag_buf_flags_blobs(tbl, from, to, inbuf, outbuf, CONVERT_UPDATE,
+                                         reason, NULL /*inblobs*/,
                                          NULL /*outblobs*/, 0 /*maxblobs*/, tzname);
 }
 
@@ -3217,12 +3227,14 @@ int describe_update_columns(const struct ireq *iq, const struct schema *chk, int
     return 0;
 }
 
-int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
+int indexes_expressions_data(const struct dbtable *tbl, struct schema *sc,
+                             const char *inbuf, char *outbuf,
                              blob_buffer_t *blobs, size_t maxblobs,
                              struct field *f,
                              struct convert_failure *fail_reason,
                              const char *tzname);
-static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
+static int stag_to_stag_field(const struct dbtable *tbl, const char *inbuf,
+                              char *outbuf, int flags,
                               struct convert_failure *fail_reason,
                               blob_buffer_t *inblobs, blob_buffer_t *outblobs,
                               int maxblobs, const char *tzname, int field_idx,
@@ -3285,7 +3297,7 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
                 fail_reason->reason = CONVERT_FAILED_INDEX_EXPRESSION;
             return -1;
         } else {
-            rc = indexes_expressions_data(fromsch, inbuf, outbuf, inblobs,
+            rc = indexes_expressions_data(tbl, fromsch, inbuf, outbuf, inblobs,
                                           maxblobs, to_field, fail_reason,
                                           tzname);
             if (rc) {
@@ -3454,9 +3466,11 @@ int stag_set_key_null(struct dbtable *table, const char *tag, const char *inkey,
  * On success only outblobs will be valid, there is no need to free up inblobs.
  * On failure the caller should free inblobs and outblobs.
  */
-static int _stag_to_stag_buf_flags_blobs(struct schema *fromsch, struct schema *tosch, const char *inbuf, char *outbuf,
-                                         int flags, struct convert_failure *fail_reason, blob_buffer_t *inblobs,
-                                         blob_buffer_t *outblobs, int maxblobs, const char *tzname)
+static int _stag_to_stag_buf_flags_blobs(const struct dbtable *tbl, struct schema *fromsch,
+                                         struct schema *tosch, const char *inbuf,char *outbuf,
+                                         int flags, struct convert_failure *fail_reason,
+                                         blob_buffer_t *inblobs, blob_buffer_t *outblobs,
+                                         int maxblobs, const char *tzname)
 {
     if (fail_reason)
         init_convert_failure_reason(fail_reason);
@@ -3480,7 +3494,7 @@ static int _stag_to_stag_buf_flags_blobs(struct schema *fromsch, struct schema *
         } else {
             field_idx = find_field_idx_in_tag(fromsch, tosch->member[field].name);
         }
-        int rc = stag_to_stag_field(inbuf, outbuf, flags, fail_reason, inblobs,
+        int rc = stag_to_stag_field(tbl, inbuf, outbuf, flags, fail_reason, inblobs,
                                     outblobs, maxblobs, tzname, field_idx,
                                     field, fromsch, tosch);
         if (rc)
@@ -3504,9 +3518,9 @@ int *get_tag_mapping(struct schema *fromsch, struct schema *tosch)
 /* use cached from -> to mapping
  * no blobs for now
  */
-int stag_to_stag_buf_cachedmap(int tagmap[], struct schema *from,
-                               struct schema *to, const char *inbuf,
-                               char *outbuf, int flags,
+int stag_to_stag_buf_cachedmap(const struct dbtable *tbl, int tagmap[],
+                               struct schema *from, struct schema *to,
+                               const char *inbuf, char *outbuf, int flags,
                                struct convert_failure *fail_reason,
                                blob_buffer_t *inblobs, int maxblobs)
 {
@@ -3553,7 +3567,7 @@ int stag_to_stag_buf_cachedmap(int tagmap[], struct schema *from,
     }
 
     for (int field = 0; field < to->nmembers; field++) {
-        rc = stag_to_stag_field(inbuf, outbuf, flags, fail_reason, inblobs,
+        rc = stag_to_stag_field(tbl, inbuf, outbuf, flags, fail_reason, inblobs,
                                 p_newblobs, maxblobs, NULL, tagmap[field],
                                 field, from, to);
 
@@ -6371,8 +6385,8 @@ int create_key_from_schema(const struct dbtable *db, struct schema *schema, int 
     fromsch = schema ? schema : get_schema(db, -1);
     tosch = get_schema(db, ixnum);
 
-    rc = _stag_to_stag_buf_flags_blobs(fromsch, tosch, inbuf, outbuf, 0 /*flags*/, NULL, inblobs, NULL /*outblobs*/,
-                                       maxblobs, tzname);
+    rc = _stag_to_stag_buf_flags_blobs(db, fromsch, tosch, inbuf, outbuf, 0 /*flags*/,
+                                       NULL, inblobs, NULL /*outblobs*/, maxblobs, tzname);
     if (rc)
         return rc;
 
@@ -6406,7 +6420,8 @@ int create_key_from_schema(const struct dbtable *db, struct schema *schema, int 
                 abort();
             }
             if (partial_datacopy_tail && (tosch->flags & SCHEMA_PARTIALDATACOPY)) {
-                rc = stag_to_stag_buf_schemas(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail, tzname);
+                rc = stag_to_stag_buf_schemas(db, fromsch, tosch->partial_datacopy,
+                                              inbuf, partial_datacopy_tail, tzname);
                 if (rc)
                     return rc;
                 *tail = (char *)partial_datacopy_tail;
@@ -6484,8 +6499,8 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
             struct schema *fromsch = get_schema(db, -1);
             struct schema *tosch = get_schema(db, ixnum);
             if (partial_datacopy_tail && (tosch->flags & SCHEMA_PARTIALDATACOPY)) {
-                rc = stag_to_stag_buf_schemas(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail,
-                                              iq->tzname);
+                rc = stag_to_stag_buf_schemas(db, fromsch, tosch->partial_datacopy,
+                                              inbuf, partial_datacopy_tail, iq->tzname);
                 if (rc)
                     return rc;
 

@@ -146,3 +146,24 @@ SELECT * FROM t3 ORDER BY 1;
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
+
+SELECT '11. Test for VUTF8s' as test;
+CREATE TABLE t1(foo_only vutf8(10), CHECK (foo_only="foo"))$$
+INSERT INTO t1 VALUES("foo");
+INSERT INTO t1 VALUES("long_fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo");
+INSERT INTO t1 VALUES("fooz");
+INSERT INTO t1 VALUES("bar");
+INSERT INTO t1 VALUES(NULL);
+SELECT * FROM t1 ORDER BY 1;
+
+CREATE TABLE t2(foo_only vutf8, CHECK (foo_only="foo"))$$
+INSERT INTO t2 VALUES("foo");
+INSERT INTO t2 VALUES("long_fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo");
+INSERT INTO t2 VALUES("fooz");
+INSERT INTO t2 VALUES("bar");
+INSERT INTO t2 VALUES(NULL);
+SELECT * FROM t2 ORDER BY 1;
+
+DROP TABLE t1;
+DROP TABLE t2;
+
