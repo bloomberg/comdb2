@@ -2779,6 +2779,7 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         logmsg(LOGMSG_USER, "SQL mode=%d [%s]\n", clnt->dbtran.mode, clnt->sql);
 
     reqlog_set_clnt(thd->logger, clnt);
+    reqlog_set_api_type(thd->logger, clnt->plugin.api_type(clnt));
 }
 
 int param_count(struct sqlclntstate *clnt)
@@ -7025,6 +7026,10 @@ static int internal_get_x509_attr(struct sqlclntstate *a, int b, void *c, int d)
 static int internal_set_timeout(struct sqlclntstate *clnt, int timeout_ms)
 {
     return -1;
+}
+static const char * internal_api_type(struct sqlclntstate *clnt)
+{
+    return "internal";
 }
 
 void start_internal_sql_clnt(struct sqlclntstate *clnt)

@@ -1462,6 +1462,11 @@ static int newsql_set_timeout(struct sqlclntstate *clnt, int timeout_ms)
     return 0;
 }
 
+static const char * newsql_api_type(struct sqlclntstate *clnt)
+{
+    return "cdb2api";
+}
+
 int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
 {
     int iswarn = 0;

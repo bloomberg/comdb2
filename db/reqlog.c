@@ -1591,6 +1591,10 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
 
     dumpf(logger, out, " rqid %s from %s", logger->id, reqorigin(logger));
 
+    if (logger->api_type) {
+        dumpf(logger, out, " clntapi %s", logger->api_type);
+    }
+
     if (out == long_request_out && is_running) {
         /* No need to include 'rc' if the request is still running. */
         dumpf(logger, out, " **running**\n");
@@ -1939,6 +1943,7 @@ void reqlog_long_running_clnt(struct sqlclntstate *clnt)
     logger.mask = logger.event_mask | logger.dump_mask;
 
     reqlog_set_clnt(&logger, clnt);
+    reqlog_set_api_type(&logger, clnt->plugin.api_type(clnt));
     reqlog_set_origin(&logger, "%s", clnt->origin);
     reqlog_set_vreplays(&logger, clnt->verify_retries);
     reqlog_set_sql(&logger, sql);
@@ -3066,6 +3071,11 @@ inline void reqlog_set_error(struct reqlogger *logger, const char *error,
     free(logger->error);
     logger->error = strdup(error);
     logger->error_code = error_code;
+}
+
+inline void reqlog_set_api_type(struct reqlogger *logger, const char *api_type)
+{
+    if (logger) logger->api_type = api_type;
 }
 
 inline int reqlog_get_error_code(const struct reqlogger *logger)
