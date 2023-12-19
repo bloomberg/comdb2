@@ -167,13 +167,13 @@ int osql_send_startgen(osql_target_t *target, unsigned long long rqid,
  *
  */
 int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *coordinator_dbname,
-                      const char *dist_txnid, const char *coordinator_tier, int type);
+                      const char *dist_txnid, const char *coordinator_tier, int64_t timestamp, int type);
 
 /**
  * Send dist-txnid to coordinator
  *
  */
-int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid, int type);
+int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid, int64_t timestamp, int type);
 
 /**
  * Send a participant to coordinator

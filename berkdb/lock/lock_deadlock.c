@@ -79,7 +79,7 @@ static void (*berkdb_deadlock_callback) (struct berkdb_deadlock_info *) = NULL;
 static int __dd_abort __P((DB_ENV *, locker_info *, u_int32_t *));
 static int __dd_build __P((DB_ENV *,
 	u_int32_t, u_int32_t **, sparse_map_t **, u_int32_t *, u_int32_t *,
-	locker_info **, int));
+	locker_info **, int **, int *, int));
 static int __dd_find __P((DB_ENV *, u_int32_t *, sparse_map_t *, locker_info *,
 	u_int32_t, u_int32_t, u_int32_t ***, u_int32_t **, int *));
 static int __dd_isolder __P((u_int32_t, u_int32_t, u_int32_t, u_int32_t));
@@ -528,10 +528,10 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	DB_TXNMGR *tmgr;
 	locker_info *idmap = NULL;
 	sparse_map_t *sparse_map = NULL, *sparse_copymap = NULL;
-	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
-	    *tmpmap;
+	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2, *tmpmap;
 	u_int32_t i, keeper, killid, limit = 0, nalloc = 0, nlockers = 0, dwhoix;
 	u_int32_t lock_max, txn_max;
+	int *tslst, tscnt;
 	int policy_override = gbl_deadlock_policy_override;
 	int is_client;
 	int ret;
@@ -596,7 +596,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 
 	/* Build the waits-for bitmap. */
 	ret = __dd_build(dbenv, atype, &bitmap, &sparse_map, &nlockers, &nalloc,
-	    &idmap, is_client);
+	    &idmap, &tslst, &tscnt, is_client);
 	lock_max = region->stat.st_cur_maxid;
 	unlock_lockers(region);
 
@@ -625,6 +625,12 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 
 	if (nlockers == 0)
 		return (0);
+
+	/* TODO: find & abort waitdie dependencies .. then rebuild map */
+	if (tscnt > 0) {
+	}
+	/* If no timestamps then just use map we've already built */
+
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_WAITSFOR))
 		 __dd_debug(dbenv, idmap, bitmap, sparse_map, nlockers, nalloc);
@@ -1073,11 +1079,13 @@ static inline int __resize_object(DB_ENV *dbenv, void **obj, size_t *obj_size,
 
 
 static int
-__dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
+__dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, tslst, tscnt, is_replicant)
 	DB_ENV *dbenv;
 	u_int32_t atype, **bmp, *nlockers, *allocp;
 	sparse_map_t **smap;
 	locker_info **idmap;
+	int **tslst;
+	int *tscnt;
 	int is_replicant;
 {
 	struct __db_lock *lp;
@@ -1090,14 +1098,17 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	sparse_map_t *sparse_map = NULL;
 	u_int8_t *pptr;
 	size_t allocSz;
-	int is_first, ret;
+	int timestamp_index_count;
+	int is_first, ret, ret2;
 
 	static u_int32_t *dd_bitmap = NULL;
 	static size_t dd_bitmap_size = 0;
 	static u_int32_t *dd_tmpmap = NULL;
 	static size_t dd_tmpmap_size = 0;
 	static locker_info *dd_id_array = NULL;
+	static int *dd_timestamp_indexes = NULL;
 	static size_t dd_id_array_size = 0;
+	static size_t dd_timestamp_indexes_size = 0;
 
 
 	lt = dbenv->lk_handle;
@@ -1143,10 +1154,12 @@ retry:	count = region->stat.st_nlockers;
 
 	ret = __resize_object(dbenv, (void**) &dd_id_array, 
 		&dd_id_array_size, allocSz);
-	if(ret) {
+	ret2 = __resize_object(dbenv, (void**) &dd_timestamp_indexes,
+		&dd_timestamp_indexes_size, count * sizeof(int));
+	if(ret || ret2) {
 		if (sparse_map) 
 			free_sparse_map(dbenv, sparse_map);
-		return ret;
+		return (ret || ret2);
 	}
 	memset(dd_id_array, 0, allocSz);
 
@@ -1166,15 +1179,19 @@ retry:	count = region->stat.st_nlockers;
 	 * to each master locker which is in waiting status 
 	 */
 	id = 0;
+	timestamp_index_count = 0;
 
 	for (DB_LOCKER *lip = SH_TAILQ_FIRST(&region->lockers, __db_locker);
 		lip != NULL; lip = SH_TAILQ_NEXT(lip, ulinks, __db_locker)) {
-		if (lip->wstatus == 1) {	/*only master lockers can be in waiting status */
+		if (lip->wstatus == 1 || (tscnt && lip->timestamp > 0)) {	/*only master lockers can be in waiting status */
 			lip->dd_id = id ++;
 			locker_info *ptr_idarr = &dd_id_array[lip->dd_id];
 			ptr_idarr->id = lip->id;
-
 			ptr_idarr->tid = lip->tid;
+			ptr_idarr->timestamp = lip->timestamp;
+			if (lip->timestamp > 0) {
+				dd_timestamp_indexes[timestamp_index_count++] = lip->dd_id;
+			}
 			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
 			ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
 			ptr_idarr->saveme = F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
@@ -1267,6 +1284,7 @@ obj_loop:
 		 * represents all the holders of this object.
 		 */
 		int has_master = 0;
+		int64_t min_timestamp = LLONG_MAX;
 
 		for (lp = SH_TAILQ_FIRST(&op->holders, __db_lock);
 			lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
@@ -1295,6 +1313,9 @@ obj_loop:
 			} else
 				dd = lockerp->dd_id;
 			dd_id_array[dd].valid = 1;
+			if (lockerp->timestamp > 0 && lockerp->timestamp < min_timestamp) {
+				min_timestamp = lockerp->timestamp;
+			}
 
 			if (verbose_deadlocks)
 				logmsg(LOGMSG_USER, 
@@ -1337,6 +1358,16 @@ look_waiters:
 				if (LOCK_TIME_GREATER(&min_timeout, &lockerp->lk_expire))
 					min_timeout = lockerp->lk_expire;
 
+				/* XXX We already stop this in lock_get
+				if (lockerp->timestamp > 0 && lockerp->timestamp >= min_timestamp) {
+					lp->status = DB_LSTAT_WAITDIE;
+					MUTEX_UNLOCK(dbenv, &lp->mutex);
+					continue;
+				}
+				if (lockerp->timestamp > 0 && lockerp->timestamp < min_timestamp) {
+					min_timestamp = lockerp->timestamp;
+				}
+				*/
 			}
 
 			if (expire_only)
@@ -1606,6 +1637,8 @@ out:
 	*idmap = dd_id_array;
 	*bmp = dd_bitmap;
 	*smap = sparse_map;
+	*tslst = dd_timestamp_indexes;
+	*tscnt = timestamp_index_count;
 
 	*allocp = nentries;
 	return (0);
@@ -1623,7 +1656,7 @@ __dd_find(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, deadp, deadwho,
 	int *found_tracked;
 {
 	u_int32_t i, j, k, *mymap, *tmpmap, endcnt, idx;
-	u_int32_t **retp, *whop;
+	u_int32_t **retp, *whop = NULL;
 	int ndead, ndeadalloc, ret;
 
 #undef	INITIAL_DEAD_ALLOC

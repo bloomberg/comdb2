@@ -119,7 +119,7 @@ static int sprintf_auto_resize(char **headp, int *offp, int len, const char *fmt
 }
 
 #ifndef BUILDING_TOOLS
-static unsigned int epochms(void)
+static unsigned long long epochms(void)
 {
     struct timeval tv;
     int rc;
@@ -184,8 +184,8 @@ int logmsgv(loglvl lvl, const char *fmt, va_list args)
         if (do_thread) {
 #ifndef BUILDING_TOOLS
             if (gbl_logmsg_epochms) {
-                unsigned int timems = epochms();
-                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d %u 0x%p ", tm.tm_year + 1900,
+                unsigned long long timems = epochms();
+                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d %llu 0x%p ", tm.tm_year + 1900,
                          tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, timems, (void *)pthread_self());
             } else
 #endif
@@ -195,8 +195,8 @@ int logmsgv(loglvl lvl, const char *fmt, va_list args)
         } else {
 #ifndef BUILDING_TOOLS
             if (gbl_logmsg_epochms) {
-                unsigned int timems = epochms();
-                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d %u ", tm.tm_year + 1900,
+                unsigned long long timems = epochms();
+                snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d %llu ", tm.tm_year + 1900,
                          tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, timems);
             } else
 #endif

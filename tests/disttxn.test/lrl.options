@@ -2,6 +2,9 @@ enable_2pc
 nowatch
 maxosqltransfer 10000000
 
+# Solution #1 for distributed deadlocks
+all_waitdie 1
+
 # Print block-op stats
 print_blockp_stats 1
 
@@ -75,4 +78,4 @@ gbl_extended_sql_debug_trace 1
 fdbdebg 1
 
 # extended bdb lock trace
-bdblock_debug 1
+#bdblock_debug 1

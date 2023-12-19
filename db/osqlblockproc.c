@@ -116,8 +116,8 @@ static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(int is_uuid, const char *rpl,
                                           int *tableversion);
 
-void get_dist_txnid_from_dist_txn_rpl(int is_uuid, char *rpl, int rplen, char **dist_txnid);
-void get_dist_txnid_from_prepare_rpl(int is_uuid, char *rpl, int rplen, char **dist_txnid);
+void get_dist_txnid_from_dist_txn_rpl(int is_uuid, char *rpl, int rplen, char **dist_txnid, int64_t *timestamp);
+void get_dist_txnid_from_prepare_rpl(int is_uuid, char *rpl, int rplen, char **dist_txnid, int64_t *timestamp);
 
 void get_participant_from_rpl(int is_uuid, char *rpl, int rplen, char **participant_name, char **participant_tier);
 
@@ -561,7 +561,8 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *
         }
         break;
     case OSQL_PREPARE:
-        get_dist_txnid_from_prepare_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid);
+        get_dist_txnid_from_prepare_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid, &sess->dist_timestamp);
+        assert(sess->dist_timestamp > 0);
         Pthread_mutex_lock(&sess->participant_lk);
         sess->is_participant = 1;
         sess->is_sanctioned = osql_register_disttxn(sess->dist_txnid, sess->rqid, sess->uuid, &sess->coordinator_dbname,
@@ -569,7 +570,8 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *
         Pthread_mutex_unlock(&sess->participant_lk);
         break;
     case OSQL_DIST_TXNID:
-        get_dist_txnid_from_dist_txn_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid);
+        get_dist_txnid_from_dist_txn_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid, &sess->dist_timestamp);
+        assert(sess->dist_timestamp > 0);
         sess->is_coordinator = 1;
         break;
     case OSQL_PARTICIPANT:

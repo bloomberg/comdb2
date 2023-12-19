@@ -2541,6 +2541,8 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, uint32_t flags,
             BDB_RELLOCK();
             return NULL;
         }
+        /* Sql threads will never deadlock (or block) if waitdie is enabled */
+        bdb_state->dbenv->locker_set_timestamp(bdb_state->dbenv, curtran->lockerid, 0);
         curtran->id = curtran_counter++;
     } else {
         logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
@@ -2752,6 +2754,16 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
     if (offset)
         *offset = outlsn.offset;
     return current_context;
+}
+
+int bdb_tran_get_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t *timestamp)
+{
+    return bdb_state->dbenv->locker_get_timestamp(bdb_state->dbenv, trans->tid->txnid, timestamp);
+}
+
+int bdb_tran_set_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t timestamp)
+{
+    return bdb_state->dbenv->locker_set_timestamp(bdb_state->dbenv, trans->tid->txnid, timestamp);
 }
 
 void bdb_set_tran_verify_updateid(tran_type *tran)

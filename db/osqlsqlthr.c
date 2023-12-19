@@ -1564,7 +1564,8 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
                 assert(listc_size(&clnt->participants) > 0);
                 osql->replicant_numops++;
 
-                rc = osql_send_dist_txnid(&osql->target, osql->rqid, osql->uuid, clnt->dist_txnid, nettype);
+                assert(clnt->dist_timestamp > 0);
+                rc = osql_send_dist_txnid(&osql->target, osql->rqid, osql->uuid, clnt->dist_txnid, clnt->dist_timestamp, nettype);
 
                 for (p = clnt->participants.top; rc == 0 && p != NULL; p = p->linkv.next) {
                     rc = osql_send_participant(&osql->target, osql->rqid, osql->uuid, p->participant_name,
@@ -1680,7 +1681,7 @@ int osql_begin_participant(struct sql_thread *thd)
 
     do {
         rc = osql_send_prepare(&osql->target, osql->rqid, osql->uuid, clnt->dist_txnid, clnt->coordinator_dbname,
-                               clnt->coordinator_tier, NET_OSQL_SOCK_RPL);
+                               clnt->coordinator_tier, clnt->dist_timestamp, NET_OSQL_SOCK_RPL);
         RESTART_SOCKSQL;
     } while (restarted);
     osql->replicant_numops++;

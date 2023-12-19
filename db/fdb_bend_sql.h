@@ -53,7 +53,8 @@ int fdb_svc_cursor_open_sql(char *tid, char *cid, int rootpage, int version,
  *
  */
 int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int seq, struct sql_thread *thd,
-                        char *dist_txnid, char *coordinator_dbname, char *coordinator_ter, struct sqlclntstate **pclnt);
+                        char *dist_txnid, char *coordinator_dbname, char *coordinator_tier, int64_t timestamp,
+                        struct sqlclntstate **pclnt);
 
 /**
  * Commit a transaction

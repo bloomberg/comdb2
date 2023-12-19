@@ -1190,6 +1190,7 @@ struct participant {
     char *participant_master;
     time_t last_heartbeat;
     int status;
+    pthread_mutex_t lk;
     LINKC_T(struct participant) linkv;
 };
 
@@ -1277,6 +1278,7 @@ struct osql_sess {
     char *coordinator_dbname;
     char *coordinator_tier;
     char *coordinator_master;
+    int64_t dist_timestamp;
     participant_list_t participants;
 
     /* these are set asynchronously */
@@ -1461,6 +1463,8 @@ struct ireq {
 
     int sc_running;
     int comdbg_flags;
+
+    int64_t timestamp;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -2099,6 +2103,8 @@ int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc_fop(struct ireq *, tran_type **out);
 int trans_start_sc_lowpri(struct ireq *, tran_type **out);
+int trans_set_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t timestamp);
+int trans_get_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t *timestamp);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             uint32_t retries, uint32_t priority);
 int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans);

@@ -2820,6 +2820,7 @@ osqlcomm_recgenid_uuid_rpl_type_get(osql_recgenid_uuid_rpl_t *p_recgenid,
 }
 
 typedef struct osql_prepare {
+    int64_t timestamp;
     unsigned short dist_txnid_len;
     unsigned short coordinator_dbname_len;
     unsigned short coordinator_tier_len;
@@ -2827,12 +2828,12 @@ typedef struct osql_prepare {
     char names[8];
 } osql_prepare_t;
 
-enum { OSQLCOMM_PREPARE_NAMES_OFFSET = 8, OSQLCOMM_PREPARE_TYPE_LEN = OSQLCOMM_PREPARE_NAMES_OFFSET + 8 };
+enum { OSQLCOMM_PREPARE_NAMES_OFFSET = 16, OSQLCOMM_PREPARE_TYPE_LEN = OSQLCOMM_PREPARE_NAMES_OFFSET + 8 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_prepare_type_len, sizeof(osql_prepare_t) == OSQLCOMM_PREPARE_TYPE_LEN);
 
 static uint8_t *osqlcomm_prepare_type_put(const char *dist_txnid, const char *coordinator_dbname,
-                                          const char *coordinator_tier, uint8_t *p_buf, const uint8_t *p_buf_end)
+                                          const char *coordinator_tier, int64_t timestamp, uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     unsigned short dist_txnid_len = strlen(dist_txnid) + 1;
     unsigned short coordinator_dbname_len = strlen(coordinator_dbname) + 1;
@@ -2842,6 +2843,7 @@ static uint8_t *osqlcomm_prepare_type_put(const char *dist_txnid, const char *co
     if (p_buf_end < p_buf || (OSQLCOMM_PREPARE_NAMES_OFFSET + stringslen) > p_buf_end - p_buf)
         return NULL;
 
+    p_buf = buf_put(&(timestamp), sizeof(timestamp), p_buf, p_buf_end);
     p_buf = buf_put(&(dist_txnid_len), sizeof(dist_txnid_len), p_buf, p_buf_end);
     p_buf = buf_put(&(coordinator_dbname_len), sizeof(coordinator_dbname_len), p_buf, p_buf_end);
     p_buf = buf_put(&(coordinator_tier_len), sizeof(coordinator_tier_len), p_buf, p_buf_end);
@@ -2853,7 +2855,7 @@ static uint8_t *osqlcomm_prepare_type_put(const char *dist_txnid, const char *co
 }
 
 static const uint8_t *osqlcomm_prepare_type_get(char **dist_txnid, char **coordinator_dbname, char **coordinator_tier,
-                                                const uint8_t *p_buf, const uint8_t *p_buf_end)
+                                                int64_t *timestamp, const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     unsigned short dist_txnid_len;
     unsigned short coordinator_dbname_len;
@@ -2863,6 +2865,7 @@ static const uint8_t *osqlcomm_prepare_type_get(char **dist_txnid, char **coordi
     if (p_buf_end < p_buf || OSQLCOMM_PREPARE_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
+    p_buf = buf_get(timestamp, sizeof(*timestamp), p_buf, p_buf_end);
     p_buf = buf_get(&(dist_txnid_len), sizeof(dist_txnid_len), p_buf, p_buf_end);
     p_buf = buf_get(&(coordinator_dbname_len), sizeof(coordinator_dbname_len), p_buf, p_buf_end);
     p_buf = buf_get(&(coordinator_tier_len), sizeof(coordinator_tier_len), p_buf, p_buf_end);
@@ -2883,7 +2886,7 @@ static const uint8_t *osqlcomm_prepare_type_get(char **dist_txnid, char **coordi
 }
 
 /* Extract dist_txnid from prepare */
-static const uint8_t *osqlcomm_prepare_type_get_dist_txnid(char **dist_txnid, const uint8_t *p_buf,
+static const uint8_t *osqlcomm_prepare_type_get_dist_txnid(char **dist_txnid, int64_t *timestamp, const uint8_t *p_buf,
                                                            const uint8_t *p_buf_end)
 {
     unsigned short dist_txnid_len = 0;
@@ -2894,6 +2897,7 @@ static const uint8_t *osqlcomm_prepare_type_get_dist_txnid(char **dist_txnid, co
     if (p_buf_end < p_buf || OSQLCOMM_PREPARE_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
+    p_buf = buf_get(timestamp, sizeof(*timestamp), p_buf, p_buf_end);
     p_buf = buf_get(&(dist_txnid_len), sizeof(dist_txnid_len), p_buf, p_buf_end);
     p_buf = buf_get(&(coordinator_dbname_len), sizeof(coordinator_dbname_len), p_buf, p_buf_end);
     p_buf = buf_get(&(coordinator_tier_len), sizeof(coordinator_tier_len), p_buf, p_buf_end);
@@ -2921,7 +2925,7 @@ enum {
 BB_COMPILE_TIME_ASSERT(osqlcomm_prepare_rpl_type_len, sizeof(osql_prepare_rpl_t) == OSQLCOMM_PREPARE_RPL_TYPE_LEN);
 
 static uint8_t *osqlcomm_prepare_rpl_type_put(const char *dist_txnid, const char *coordinator_dbname,
-                                              const char *coordinator_tier, const osql_rpl_t *p_osql_rpl,
+                                              const char *coordinator_tier, int64_t timestamp, const osql_rpl_t *p_osql_rpl,
                                               uint8_t *p_buf, uint8_t *p_buf_end)
 {
     int stringslen = strlen(dist_txnid) + strlen(coordinator_dbname) + strlen(coordinator_tier) + 3;
@@ -2929,20 +2933,20 @@ static uint8_t *osqlcomm_prepare_rpl_type_put(const char *dist_txnid, const char
         return NULL;
 
     p_buf = osqlcomm_rpl_type_put(p_osql_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_prepare_type_put(dist_txnid, coordinator_dbname, coordinator_tier, p_buf, p_buf_end);
+    p_buf = osqlcomm_prepare_type_put(dist_txnid, coordinator_dbname, coordinator_tier, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
 
 static const uint8_t *osqlcomm_prepare_rpl_type_get(char **dist_txnid, char **coordinator_dbname,
-                                                    char **coordinator_tier, osql_rpl_t *p_osql_rpl,
+                                                    char **coordinator_tier, int64_t *timestamp, osql_rpl_t *p_osql_rpl,
                                                     const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_PREPARE_RPL_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
     p_buf = osqlcomm_rpl_type_get(p_osql_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_prepare_type_get(dist_txnid, coordinator_dbname, coordinator_tier, p_buf, p_buf_end);
+    p_buf = osqlcomm_prepare_type_get(dist_txnid, coordinator_dbname, coordinator_tier, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -2958,7 +2962,7 @@ enum {
 };
 
 static uint8_t *osqlcomm_prepare_uuid_rpl_type_put(const char *dist_txnid, const char *coordinator_dbname,
-                                                   const char *coordinator_tier, const osql_uuid_rpl_t *p_osql_uuid_rpl,
+                                                   const char *coordinator_tier, int64_t timestamp, const osql_uuid_rpl_t *p_osql_uuid_rpl,
                                                    uint8_t *p_buf, uint8_t *p_buf_end)
 {
     int stringslen = strlen(dist_txnid) + strlen(coordinator_dbname) + strlen(coordinator_tier) + 3;
@@ -2966,20 +2970,20 @@ static uint8_t *osqlcomm_prepare_uuid_rpl_type_put(const char *dist_txnid, const
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_put(p_osql_uuid_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_prepare_type_put(dist_txnid, coordinator_dbname, coordinator_tier, p_buf, p_buf_end);
+    p_buf = osqlcomm_prepare_type_put(dist_txnid, coordinator_dbname, coordinator_tier, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
 
 static const uint8_t *osqlcomm_prepare_uuid_rpl_type_get(char **dist_txnid, char **coordinator_dbname,
-                                                         char **coordinator_tier, osql_uuid_rpl_t *p_osql_uuid_rpl,
+                                                         char **coordinator_tier, int64_t *timestamp, osql_uuid_rpl_t *p_osql_uuid_rpl,
                                                          const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_PREPARE_RPL_UUID_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_get(p_osql_uuid_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_prepare_type_get(dist_txnid, coordinator_dbname, coordinator_tier, p_buf, p_buf_end);
+    p_buf = osqlcomm_prepare_type_get(dist_txnid, coordinator_dbname, coordinator_tier, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -3117,29 +3121,31 @@ static const uint8_t *osqlcomm_participant_uuid_rpl_type_get(char **participant_
 }
 
 typedef struct osql_dist_txnid {
+    int64_t timestamp;
     unsigned short dist_txnid_len;
     unsigned short padding;
     char names[4];
 } osql_dist_txnid_t;
 
-enum { OSQLCOMM_DIST_TXNID_NAMES_OFFSET = 4, OSQLCOMM_DIST_TXNID_TYPE_LEN = OSQLCOMM_DIST_TXNID_NAMES_OFFSET + 4 };
+enum { OSQLCOMM_DIST_TXNID_NAMES_OFFSET = 12, OSQLCOMM_DIST_TXNID_TYPE_LEN = OSQLCOMM_DIST_TXNID_NAMES_OFFSET + 4 };
 
 BB_COMPILE_TIME_ASSERT(osqlcomm_dist_txnid_type_len, sizeof(osql_dist_txnid_t) == OSQLCOMM_DIST_TXNID_TYPE_LEN);
 
-static uint8_t *osqlcomm_dist_txnid_type_put(const char *dist_txnid, uint8_t *p_buf, const uint8_t *p_buf_end)
+static uint8_t *osqlcomm_dist_txnid_type_put(const char *dist_txnid, int64_t timestamp, uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     unsigned short dist_txnid_len = strlen(dist_txnid) + 1;
 
     if (p_buf_end < p_buf || (OSQLCOMM_DIST_TXNID_NAMES_OFFSET + dist_txnid_len) > p_buf_end - p_buf)
         return NULL;
 
+    p_buf = buf_put(&(timestamp), sizeof(timestamp), p_buf, p_buf_end);
     p_buf = buf_put(&(dist_txnid_len), sizeof(dist_txnid_len), p_buf, p_buf_end);
     p_buf = buf_no_net_put(dist_txnid, dist_txnid_len, p_buf, p_buf_end);
 
     return p_buf;
 }
 
-static const uint8_t *osqlcomm_dist_txnid_type_get(char **dist_txnid, const uint8_t *p_buf, const uint8_t *p_buf_end)
+static const uint8_t *osqlcomm_dist_txnid_type_get(char **dist_txnid, int64_t *timestamp, const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     unsigned short dist_txnid_len = 0;
     const uint8_t *p_buf_orig = p_buf;
@@ -3147,6 +3153,7 @@ static const uint8_t *osqlcomm_dist_txnid_type_get(char **dist_txnid, const uint
     if (p_buf_end < p_buf || OSQLCOMM_DIST_TXNID_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
+    p_buf = buf_get(timestamp, sizeof(*timestamp), p_buf, p_buf_end);
     p_buf = buf_get(&(dist_txnid_len), sizeof(dist_txnid_len), p_buf, p_buf_end);
 
     if ((OSQLCOMM_DIST_TXNID_NAMES_OFFSET + dist_txnid_len) > p_buf_end - p_buf_orig)
@@ -3172,7 +3179,7 @@ enum {
 BB_COMPILE_TIME_ASSERT(osqlcomm_dist_txnid_rpl_type_len,
                        sizeof(osql_dist_txnid_rpl_t) == OSQLCOMM_DIST_TXNID_RPL_TYPE_LEN);
 
-static uint8_t *osqlcomm_dist_txnid_rpl_type_put(const char *dist_txnid, const osql_rpl_t *p_osql_rpl, uint8_t *p_buf,
+static uint8_t *osqlcomm_dist_txnid_rpl_type_put(const char *dist_txnid, int64_t timestamp, const osql_rpl_t *p_osql_rpl, uint8_t *p_buf,
                                                  uint8_t *p_buf_end)
 {
     int stringslen = strlen(dist_txnid) + 1;
@@ -3181,19 +3188,19 @@ static uint8_t *osqlcomm_dist_txnid_rpl_type_put(const char *dist_txnid, const o
         return NULL;
 
     p_buf = osqlcomm_rpl_type_put(p_osql_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_dist_txnid_type_put(dist_txnid, p_buf, p_buf_end);
+    p_buf = osqlcomm_dist_txnid_type_put(dist_txnid, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
 
-static const uint8_t *osqlcomm_dist_txnid_rpl_type_get(char **dist_txnid, osql_rpl_t *p_osql_rpl, const uint8_t *p_buf,
+static const uint8_t *osqlcomm_dist_txnid_rpl_type_get(char **dist_txnid, int64_t *timestamp, osql_rpl_t *p_osql_rpl, const uint8_t *p_buf,
                                                        const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_DIST_TXNID_RPL_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
     p_buf = osqlcomm_rpl_type_get(p_osql_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_dist_txnid_type_get(dist_txnid, p_buf, p_buf_end);
+    p_buf = osqlcomm_dist_txnid_type_get(dist_txnid, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -3211,7 +3218,7 @@ enum {
 BB_COMPILE_TIME_ASSERT(osqlcomm_dist_txnid_rpl_uuid_type_len,
                        sizeof(osql_dist_txnid_rpl_uuid_t) == OSQLCOMM_DIST_TXNID_RPL_UUID_TYPE_LEN);
 
-static uint8_t *osqlcomm_dist_txnid_uuid_type_put(const char *dist_txnid, const osql_uuid_rpl_t *p_osql_uuid_rpl,
+static uint8_t *osqlcomm_dist_txnid_uuid_type_put(const char *dist_txnid, int64_t timestamp, const osql_uuid_rpl_t *p_osql_uuid_rpl,
                                                   uint8_t *p_buf, uint8_t *p_buf_end)
 {
     int stringslen = strlen(dist_txnid) + 1;
@@ -3220,19 +3227,19 @@ static uint8_t *osqlcomm_dist_txnid_uuid_type_put(const char *dist_txnid, const 
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_put(p_osql_uuid_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_dist_txnid_type_put(dist_txnid, p_buf, p_buf_end);
+    p_buf = osqlcomm_dist_txnid_type_put(dist_txnid, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
 
-static const uint8_t *osqlcomm_dist_txnid_uuid_rpl_type_get(char **dist_txnid, osql_uuid_rpl_t *p_osql_uuid_rpl,
+static const uint8_t *osqlcomm_dist_txnid_uuid_rpl_type_get(char **dist_txnid, int64_t *timestamp, osql_uuid_rpl_t *p_osql_uuid_rpl,
                                                             const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_DIST_TXNID_RPL_UUID_NAMES_OFFSET > p_buf_end - p_buf)
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_get(p_osql_uuid_rpl, p_buf, p_buf_end);
-    p_buf = osqlcomm_dist_txnid_type_get(dist_txnid, p_buf, p_buf_end);
+    p_buf = osqlcomm_dist_txnid_type_get(dist_txnid, timestamp, p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -3796,7 +3803,7 @@ int is_tablename_queue(const char *name)
 }
 
 int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid,
-                      const char *coordinator_dbname, const char *coordinator_tier, int type)
+                      const char *coordinator_dbname, const char *coordinator_tier, int64_t timestamp, int type)
 {
 
     int rc, msglen;
@@ -3815,7 +3822,7 @@ int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uui
         osql_uuid_rpl_t uuid_rpl = {0};
         uuid_rpl.type = OSQL_PREPARE;
         comdb2uuidcpy(uuid_rpl.uuid, uuid);
-        if (!(p_buf = osqlcomm_prepare_uuid_rpl_type_put(dist_txnid, coordinator_dbname, coordinator_tier, &uuid_rpl,
+        if (!(p_buf = osqlcomm_prepare_uuid_rpl_type_put(dist_txnid, coordinator_dbname, coordinator_tier, timestamp, &uuid_rpl,
                                                          p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_prepare_uuid_rpl_type_put");
             return -1;
@@ -3825,7 +3832,7 @@ int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uui
         osql_rpl_t rpl = {0};
         rpl.type = OSQL_PREPARE;
         rpl.sid = rqid;
-        if (!(p_buf = osqlcomm_prepare_rpl_type_put(dist_txnid, coordinator_dbname, coordinator_tier, &rpl, p_buf,
+        if (!(p_buf = osqlcomm_prepare_rpl_type_put(dist_txnid, coordinator_dbname, coordinator_tier, timestamp, &rpl, p_buf,
                                                     p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_prepare_rpl_type_put");
             return -1;
@@ -3834,8 +3841,8 @@ int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uui
 
     if (gbl_enable_osql_logging) {
         uuidstr_t us;
-        logmsg(LOGMSG_DEBUG, "[%llu %s] send OSQL_PREPARE %s %s %s\n", rqid, comdb2uuidstr(uuid, us), dist_txnid,
-               coordinator_dbname, coordinator_tier);
+        logmsg(LOGMSG_DEBUG, "[%llu %s] send OSQL_PREPARE %s %s %s %"PRId64"\n", rqid, comdb2uuidstr(uuid, us), dist_txnid,
+               coordinator_dbname, coordinator_tier, timestamp);
     }
 
     rc = target->send(target, type, buf, msglen, 0, NULL, 0);
@@ -3846,7 +3853,7 @@ int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uui
     return rc;
 }
 
-int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid, int type)
+int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid, int64_t timestamp, int type)
 {
     int rc, msglen;
     uint8_t *buf, *p_buf, *p_buf_end;
@@ -3865,7 +3872,7 @@ int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t 
         osql_uuid_rpl_t uuid_rpl = {0};
         uuid_rpl.type = OSQL_DIST_TXNID;
         comdb2uuidcpy(uuid_rpl.uuid, uuid);
-        if (!(p_buf = osqlcomm_dist_txnid_uuid_type_put(dist_txnid, &uuid_rpl, p_buf, p_buf_end))) {
+        if (!(p_buf = osqlcomm_dist_txnid_uuid_type_put(dist_txnid, timestamp, &uuid_rpl, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_dist_txnid_uuid_type_put");
             return -1;
         }
@@ -3874,7 +3881,7 @@ int osql_send_dist_txnid(osql_target_t *target, unsigned long long rqid, uuid_t 
         osql_rpl_t rpl = {0};
         rpl.type = OSQL_DIST_TXNID;
         rpl.sid = rqid;
-        if (!(p_buf = osqlcomm_dist_txnid_rpl_type_put(dist_txnid, &rpl, p_buf, p_buf_end))) {
+        if (!(p_buf = osqlcomm_dist_txnid_rpl_type_put(dist_txnid, timestamp, &rpl, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__, "osqlcomm_dist_txnid_rpl_type_put");
             return -1;
         }
@@ -6856,26 +6863,26 @@ const char *get_tablename_from_rpl(int is_uuid, const uint8_t *rpl,
     return tablename;
 }
 
-void get_dist_txnid_from_prepare_rpl(int is_uuid, char *inrpl, int rpllen, char **dist_txnid)
+void get_dist_txnid_from_prepare_rpl(int is_uuid, char *inrpl, int rpllen, char **dist_txnid, int64_t *timestamp)
 {
     uint8_t *rpl = (uint8_t *)inrpl;
     const uint8_t *p_buf_end = (rpl + rpllen);
     const uint8_t *p_buf = rpl + (is_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
 
-    p_buf = osqlcomm_prepare_type_get_dist_txnid(dist_txnid, p_buf, p_buf_end);
+    p_buf = osqlcomm_prepare_type_get_dist_txnid(dist_txnid, timestamp, p_buf, p_buf_end);
     if (!p_buf) {
         logmsg(LOGMSG_FATAL, "%s: error retrieveing dist-txnid from osql-stream\n", __func__);
         abort();
     }
 }
 
-void get_dist_txnid_from_dist_txn_rpl(int is_uuid, char *inrpl, int rpllen, char **dist_txnid)
+void get_dist_txnid_from_dist_txn_rpl(int is_uuid, char *inrpl, int rpllen, char **dist_txnid, int64_t *timestamp)
 {
     uint8_t *rpl = (uint8_t *)inrpl;
     const uint8_t *p_buf_end = (rpl + rpllen);
     const uint8_t *p_buf = rpl + (is_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
 
-    p_buf = osqlcomm_dist_txnid_type_get(dist_txnid, p_buf, p_buf_end);
+    p_buf = osqlcomm_dist_txnid_type_get(dist_txnid, timestamp, p_buf, p_buf_end);
     if (!p_buf) {
         logmsg(LOGMSG_FATAL, "%s: error retrieveing dist-txnid from osql-stream\n", __func__);
         abort();

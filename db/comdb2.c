@@ -619,6 +619,7 @@ int gbl_use_block_mode_status_code = 1;
 unsigned int gbl_delayed_skip = 0;
 int gbl_enable_osql_logging = 0;
 int gbl_enable_osql_longreq_logging = 0;
+long long gbl_distributed_deadlock_count = 0;
 
 int gbl_broken_num_parser = 0;
 

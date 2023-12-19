@@ -114,6 +114,8 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_id_set_logical_abort =
 		    __lock_id_set_logical_abort_pp;
 		dbenv->lock_put = __lock_put_pp;
+		dbenv->locker_set_timestamp = __locker_set_timestamp_pp;
+		dbenv->locker_get_timestamp = __locker_get_timestamp_pp;
 		dbenv->collect_locks = __lock_collect_pp;
 		dbenv->lock_stat = __lock_stat_pp;
 		dbenv->lock_locker_lockcount = __lock_locker_lockcount_pp;

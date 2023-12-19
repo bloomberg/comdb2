@@ -50,6 +50,7 @@
 #include "osqlsession.h"
 #include "util.h"
 #include "logmsg.h"
+#include <bbhrtime.h>
 
 #include "ssl_support.h"
 #include "ssl_io.h"
@@ -2267,13 +2268,16 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
 
                 if (clnt->use_2pc) {
                     if (!clnt->dist_txnid) {
+                        bbhrtime_t ts;
                         clnt->dist_txnid = fdb_generate_dist_txnid();
+                        getbbhrtime(&ts);
+                        clnt->dist_timestamp = bbhrtimens(&ts);
                     }
                     char *coordinator_dbname = strdup(gbl_dbname);
                     char *coordinator_tier = gbl_machine_class ? strdup(gbl_machine_class) : strdup(gbl_myhostname);
                     char *dist_txnid = strdup(clnt->dist_txnid);
                     rc = fdb_send_2pc_begin(msg, trans, clnt->dbtran.mode, tran_flags, dist_txnid, coordinator_dbname,
-                                            coordinator_tier, trans->sb);
+                                            coordinator_tier, clnt->dist_timestamp, trans->sb);
                 } else {
                     rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, tran_flags, trans->sb);
                 }

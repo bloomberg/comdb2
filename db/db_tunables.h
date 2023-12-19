@@ -234,6 +234,8 @@ REGISTER_TUNABLE("logmsg.epochms", "Show epochms in log-messages.  (Default: off
                  &gbl_logmsg_epochms, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_2pc", "Enable 2pc fdb transactions.  (Default: off)", TUNABLE_BOOLEAN, &gbl_2pc,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("all_waitdie", "Enable waitdie for all transactions.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_all_waitdie, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("coordinator_sync_on_commit", "Coordinator syncs log and waits on commit.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_coordinator_sync_on_commit, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("coordinator_block_until_durable", "Coordinator blocks until its commit is durable.  (Default: on)",
@@ -249,6 +251,9 @@ REGISTER_TUNABLE("debug_exit_coordinator_after_commit", "Coordinator exits after
                  NULL);
 REGISTER_TUNABLE("debug_sleep_coordinator_before_commit", "Coordinator sleeps before committing.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_sleep_coordinator_before_commit, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
+REGISTER_TUNABLE("debug_coordinator_dispatch_failure", "Fake failed dispatch in coordinator.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_coordinator_dispatch_failure, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("debug_sleep_on_set_read_only", "Sleep before setting to readonly.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_on_set_read_only, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
@@ -288,10 +293,6 @@ REGISTER_TUNABLE("disable_seekscan_optimization",
 REGISTER_TUNABLE("disable_skip_rows", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_skip_rows, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("disable_sparse_lockerid_map",
-                 "Disables 'enable_sparse_lockerid_map'", TUNABLE_BOOLEAN,
-                 &gbl_sparse_lockerid_map, INVERSE_VALUE | READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_sql_dlmalloc",
                  "If set, will use default system malloc for SQL state "
                  "machines. By default, each thread running SQL gets a "
@@ -442,18 +443,6 @@ REGISTER_TUNABLE("disable_selectv_range_check",
                  "Disables 'enable_selectv_range_check'", TUNABLE_BOOLEAN,
                  &gbl_selectv_rangechk, INVERSE_VALUE | NOARG, NULL, NULL, NULL,
                  NULL);
-/*
-REGISTER_TUNABLE("enable_snapshot_isolation",
-                 "Enable to allow SNAPSHOT level transactions to run against "
-                 "the database. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_snapisol, READONLY, NULL, NULL, NULL,
-                 NULL);
-*/
-REGISTER_TUNABLE("enable_sparse_lockerid_map",
-                 "If set, allocates a sparse map of lockers for deadlock "
-                 "resolution. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_sparse_lockerid_map, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
@@ -967,7 +956,7 @@ REGISTER_TUNABLE("osql_verify_ext_chk",
 REGISTER_TUNABLE("osql_verify_retry_max",
                  "Retry a transaction on a verify error this many times (see "
                  "optimistic concurrency control). (Default: 499)",
-                 TUNABLE_INTEGER, &gbl_osql_verify_retries_max, READONLY, NULL,
+                 TUNABLE_INTEGER, &gbl_osql_verify_retries_max, 0, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("override_cachekb", NULL, TUNABLE_INTEGER,
                  &db->override_cacheszkb, READONLY, NULL, NULL, NULL, NULL);
@@ -1420,6 +1409,8 @@ REGISTER_TUNABLE("debug_all_prepare_leak", "Prepare and leak all transactions. (
                  &gbl_all_prepare_leak, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_replicant_on_prepare", "Flush replicant log on prepare. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_flush_replicant_on_prepare, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sleep_before_dispatch", "Sleep before dispatching on master. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_debug_sleep_before_dispatch, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_sleep_before_prepare", "Sleep for 5 seconds before preparing. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_before_prepare, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("flush_on_prepare", "Flush master log on prepare. (Default: on)", TUNABLE_BOOLEAN,

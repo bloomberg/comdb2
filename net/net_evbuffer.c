@@ -1839,7 +1839,9 @@ static void dist_heartbeat(int dummyfd, short what, void *data)
 {
     check_dist_thd();
     dist_hbeats_type *dt = data;
-    dist_heartbeats(dt);
+    if (dt->ev_hbeats) {
+        dist_heartbeats(dt);
+    }
 }
 
 static void do_enable_dist_heartbeats(int dummyfd, short what, void *data)

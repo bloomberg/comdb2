@@ -291,6 +291,26 @@ static int trans_start_int(struct ireq *iq, tran_type *parent_trans,
         }
     }
 
+    if (*out_trans != NULL) {
+        if (iq->sorese && iq->sorese->dist_txnid) {
+            extern int gbl_debug_disttxn_trace;
+            assert(iq->sorese->dist_timestamp > 0);
+            if (gbl_debug_disttxn_trace) {
+                logmsg(LOGMSG_USER, "%s DISTTXN %s set-timestamp %"PRId64"\n", __func__, iq->sorese->dist_txnid, iq->sorese->dist_timestamp);
+            }
+            iq->timestamp = iq->sorese->dist_timestamp;
+        }
+
+        /* I don't know what to do about logical trans yet */
+        if (!logical) {
+            if (!iq->timestamp) {
+                trans_get_timestamp(bdb_handle, *out_trans, &iq->timestamp);
+            } else if (iq->timestamp > 0) {
+                trans_set_timestamp(bdb_handle, *out_trans, iq->timestamp);
+            }
+        }
+    }
+
     iq->gluewhere = "bdb_tran_begin done";
     if (*out_trans == 0) {
         /* dbenv->master can change between calling
@@ -365,6 +385,16 @@ int trans_start_sc_fop(struct ireq *iq, tran_type **out_trans)
 {
     struct txn_properties p = {.flags = DB_TXN_FOP_NOBLOCK};
     return trans_start_int(iq, NULL, out_trans, 0, 0, gbl_txn_fop_noblock ? &p : NULL, 0);
+}
+
+int trans_set_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t timestamp)
+{
+    return bdb_tran_set_timestamp(bdb_state, trans, timestamp);
+}
+
+int trans_get_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t *timestamp)
+{
+    return bdb_tran_get_timestamp(bdb_state, trans, timestamp);
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,

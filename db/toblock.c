@@ -2834,6 +2834,26 @@ static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t blkcd = PTHREAD_COND_INITIALIZER;
 static int prepared_count = 0;
 static int blkcnt = 0;
+__thread int waitdie_deadlock;
+
+void abort_disttxn(struct ireq *iq, int rc, int outrc)
+{
+    if (iq->sorese->is_coordinator) {
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn rc=%d outrc=%d\n", __func__,
+                    iq->sorese->dist_txnid, rc, outrc);
+        }
+        coordinator_failed(iq->sorese->dist_txnid);
+    } else {
+        assert(iq->sorese->is_participant);
+        participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                iq->sorese->coordinator_master, rc, outrc, iq->errstat.errstr);
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "%s DISTTXN %s participant failing disttxn rc=%d outrc=%d\n", __func__,
+                    iq->sorese->dist_txnid, rc, outrc);
+        }
+    }
+}
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -5158,9 +5178,25 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
 /*------ERROR CONDITION------*/
 
 backout:
-    if (gbl_verbose_toblock_backouts)
-        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
-               outrc, fromline);
+    /* wait-die deadlock on distributed txn -> verify-error */
+    if (rc == RC_INTERNAL_RETRY && iq->sorese && iq->sorese->dist_txnid && waitdie_deadlock) {
+        extern long long gbl_distributed_deadlock_count;
+        gbl_distributed_deadlock_count++;
+        rc = ERR_VERIFY;
+        outrc = ERR_BLOCK_FAILED;
+        err.errcode = ERR_VERIFY;
+        reqlog_set_error(iq->reqlogger, "Distributed deadlock", rc);
+    }
+
+    if (gbl_verbose_toblock_backouts) {
+        unsigned long long rqid = iq->sorese ? iq->sorese->rqid : -1;
+        uuidstr_t us = "(none)";
+        if (iq->sorese) {
+            comdb2uuidstr(iq->sorese->uuid, us);
+        }
+        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d rqid=%lld uuid=%s from line %d\n", rc,
+               outrc, rqid, us, fromline);
+    }
 
     if (!reqlog_get_error_code(iq->reqlogger))
         reqlog_set_error(iq->reqlogger, "Error Processing", rc);
@@ -5397,6 +5433,11 @@ backout:
             logmsg(LOGMSG_USER, "%" PRIxPTR "%s:%d Skipping add blkseq due to early "
                                 "bplog termination\n",
                    (intptr_t)pthread_self(), __FILE__, __LINE__);
+
+        /* Abort disttxn on master swing */
+        if (iq->sorese && iq->sorese->dist_txnid) {
+            abort_disttxn(iq, rc, outrc);
+        }
 
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
@@ -5850,6 +5891,7 @@ add_blkseq:
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                            iq->sorese ? iq->sorese->rcout : 0, irc);
                 }
+            /* else case for (rc == 0 && have_blkseq) */
             } else {
                 if (hascommitlock) {
                     Pthread_rwlock_unlock(&commit_lock);
@@ -5862,7 +5904,7 @@ add_blkseq:
                     }
                     backout_and_abort_tranddl(iq, parent_trans, 0);
                 } else {
-                    if (iq->sorese && iq->sorese->dist_txnid) {
+                    if (iq->sorese && iq->sorese->dist_txnid && rc != RC_INTERNAL_RETRY) {
                         if (iq->sorese->is_coordinator) {
                             if ((outrc == ERR_NOTSERIAL || (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
                                 can_retry) {

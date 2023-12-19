@@ -496,7 +496,8 @@ typedef enum  {
 	DB_LSTAT_PENDING=7,		/* Lock was waiting and has been
 					 * promoted; waiting for the owner
 					 * to run and upgrade it to held. */
-	DB_LSTAT_WAITING=8		/* Lock is on the wait queue. */
+	DB_LSTAT_WAITING=8,/* Lock is on the wait queue. */
+    DB_LSTAT_WAITDIE=9
 }db_status_t;
 
 /* Lock statistics structure. */
@@ -2534,6 +2535,8 @@ struct __db_env {
 	int  (*lock_id_free) __P((DB_ENV *, u_int32_t));
 	int  (*lock_id_has_waiters) __P((DB_ENV *, u_int32_t));
 	int  (*lock_id_set_logical_abort) __P((DB_ENV *, u_int32_t));
+	int  (*locker_set_timestamp) __P((DB_ENV *, u_int32_t, int64_t));
+	int  (*locker_get_timestamp) __P((DB_ENV *, u_int32_t, int64_t *));
 	int  (*lock_stat) __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
 	int  (*collect_locks) __P((DB_ENV *, collect_locks_f, void *arg));
 	int  (*collect_prepared) __P((DB_ENV *, collect_prepared_f, void *arg));

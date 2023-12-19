@@ -120,6 +120,7 @@ typedef struct {
     char *dist_txnid;
     char *coordinator_dbname;
     char *coordinator_tier;
+    int64_t timestamp;
 } fdb_msg_2pc_tran_t;
 
 typedef struct {
@@ -1026,6 +1027,13 @@ int fdb_msg_read_message_int(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags,
         rc = sbuf2fread((char *)msg->tv.coordinator_tier, 1, tmp, sb);
         if (rc != tmp)
             return -1;
+
+        /* timestamp */
+        rc = sbuf2fread((char *)&lltmp, 1, sizeof(lltmp), sb);
+        if (rc != sizeof(lltmp))
+            return -1;
+
+        msg->tv.timestamp = flibc_ntohll(lltmp);
 
         break;
 
@@ -1985,6 +1993,12 @@ static int fdb_msg_write_message_lk(SBUF2 *sb, fdb_msg_t *msg, int flush)
         tmp = ntohl(tmp);
         rc = sbuf2fwrite((char *)msg->tv.coordinator_tier, 1, tmp, sb);
         if (rc != tmp)
+            return FDB_ERR_WRITE_IO;
+
+        /* timestamp */
+        lltmp = flibc_htonll(msg->tv.timestamp);
+        rc = sbuf2fwrite((char *)&lltmp, 1, sizeof(lltmp), sb);
+        if (rc != sizeof(lltmp))
             return FDB_ERR_WRITE_IO;
 
         break;
@@ -3133,7 +3147,7 @@ int fdb_bend_index(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 }
 
 int fdb_send_2pc_begin(fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, int flags, char *dist_txnid,
-                       char *coordinator_dbname, char *coordinator_tier, SBUF2 *sb)
+                       char *coordinator_dbname, char *coordinator_tier, int64_t timestamp, SBUF2 *sb)
 {
     int rc;
 
@@ -3151,6 +3165,7 @@ int fdb_send_2pc_begin(fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level
     msg->tv.dist_txnid = dist_txnid;
     msg->tv.coordinator_dbname = coordinator_dbname;
     msg->tv.coordinator_tier = coordinator_tier;
+    msg->tv.timestamp = timestamp;
 
     assert(trans->seq == 0);
 
@@ -3331,7 +3346,7 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     int rc = 0;
     struct sqlclntstate *clnt;
 
-    rc = fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, NULL, NULL, NULL, &clnt);
+    rc = fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, NULL, NULL, NULL, 0, &clnt);
 
     /* clnt gets set to NULL on error. */
     arg->clnt = clnt;
@@ -3370,6 +3385,7 @@ int fdb_bend_trans_2pc_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     char *dist_txnid = msg->tv.dist_txnid;
     char *coordinator_dbname = msg->tv.coordinator_dbname;
     char *coordinator_tier = msg->tv.coordinator_tier;
+    int64_t timestamp = msg->tv.timestamp;
     enum transaction_level lvl = msg->tv.lvl;
     int flags = msg->tv.flags;
     int seq = msg->tv.seq;
@@ -3394,7 +3410,7 @@ int fdb_bend_trans_2pc_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
         return -1;
     }
 
-    rc = fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, dist_txnid, coordinator_dbname, coordinator_tier, &clnt);
+    rc = fdb_svc_trans_begin(tid, lvl, flags, seq, arg->thd, dist_txnid, coordinator_dbname, coordinator_tier, timestamp, &clnt);
 
     /* clnt gets set to NULL on error. */
     arg->clnt = clnt;
