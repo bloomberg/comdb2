@@ -199,6 +199,7 @@ int bdb_get_lsn_context_from_timestamp(bdb_state_type *bdb_state,
 int bdb_get_context_from_lsn(bdb_state_type *bdb_state, void *lsnp,
                              unsigned long long *ret_context, int *bdberr);
 
-int bdb_direct_count(bdb_cursor_ifn_t *, int ixnum, int64_t *count, int is_snapcur, uint32_t last_commit_lsn_file, uint32_t last_commit_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset);
+int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t modsnap_start_lsn_file, uint32_t modsnap_start_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset, int parallel_count);
+int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t modsnap_start_lsn_file, uint32_t modsnap_start_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset);
 
 #endif
