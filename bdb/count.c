@@ -208,6 +208,7 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
         return -1;
     }
 
+    // TODO: We are not using the smallest index here, why? We are using ix0
     rc = bdb_state->dbp_ix[0]->cursor(bdb_state->dbp_ix[0], 0, &dbcp, 0);
     if (rc != 0) {
         myfree(buffer);
@@ -300,7 +301,13 @@ int bdb_count(bdb_state_type *bdb_state, int *bdberr)
     int ret;
     BDB_READLOCK("bdb_count");
 
-    ret = bdb_count_int(bdb_state, bdberr);
+    // ret = bdb_count_int(bdb_state, bdberr);
+    int64_t count;
+    // bdb_count_int would use ix 0 if available, do the same thing here
+    ret = bdb_direct_count_int(bdb_state, bdb_state->numix > 0 ? 0 : -1, &count, 0);
     BDB_RELLOCK();
-    return ret;
+    if (ret == 0)
+        return count;
+    *bdberr = (ret == BDBERR_DEADLOCK ? ret : BDBERR_MISC);
+    return -1;
 }

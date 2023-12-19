@@ -8720,19 +8720,15 @@ static void *db_count(void *varg)
     return NULL;
 }
 
-int gbl_parallel_count = 0;
-int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
+int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int parallel_count)
 {
     int64_t count = 0;
-    int parallel_count;
-    bdb_state_type *state = cur->impl->state;
     DB **db;
     int stripes;
     pthread_attr_t attr;
     if (ixnum < 0) { // data
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
-        parallel_count = gbl_parallel_count;
         Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
         Pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
@@ -8776,4 +8772,10 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
     }
     if (rc == 0) *rcnt = count;
     return rc;
+}
+
+int gbl_parallel_count = 0;
+int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
+{
+    return bdb_direct_count_int(cur->impl->state, ixnum, rcnt, gbl_parallel_count);
 }
