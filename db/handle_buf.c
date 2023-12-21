@@ -52,6 +52,9 @@
 #include "comdb2_pthread_create.h"
 #endif
 
+extern int free_it(void *obj, void *arg);
+extern void destroy_hash(hash_t *h, int (*free_func)(void *, void *));
+
 pthread_key_t thd_info_key;
 
 void (*comdb2_ipc_sndbak)(int *, int) = 0;
@@ -631,6 +634,12 @@ static void *thd_req(void *vthd)
                 thd->iq->vfy_genid_pool = NULL;
             }
             thd->iq->vfy_genid_track = 0;
+            if (thd->iq->vfy_idx_hash) {
+                destroy_hash(thd->iq->vfy_idx_hash, free_it);
+                thd->iq->vfy_idx_hash = NULL;
+            }
+            thd->iq->vfy_idx_track = 0;
+            thd->iq->dup_key_insert = 0;
 #if 0
             fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
 #endif

@@ -1052,18 +1052,30 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     *nops = 0;
 
     /* if we've already had a few verify-failures, add extended checking now */
-    if (!iq->vfy_genid_track &&
-        iq->sorese->verify_retries >= gbl_osql_verify_ext_chk) {
-        iq->vfy_genid_track = 1;
-        iq->vfy_genid_hash = hash_init(sizeof(unsigned long long));
-        iq->vfy_genid_pool =
-            pool_setalloc_init(sizeof(unsigned long long), 0, malloc, free);
+    if (iq->sorese->verify_retries >= gbl_osql_verify_ext_chk) {
+        if (!iq->vfy_genid_track) {
+            iq->vfy_genid_track = 1;
+            iq->vfy_genid_hash = hash_init(sizeof(unsigned long long));
+            iq->vfy_genid_pool =
+                pool_setalloc_init(sizeof(unsigned long long), 0, malloc, free);
+        }
+        if (!iq->vfy_idx_track) {
+            iq->vfy_idx_track = 1;
+            iq->dup_key_insert = 0;
+
+            iq->vfy_idx_hash = hash_init(sizeof(int) + sizeof(int) + MAXKEYLEN);
+        }
     }
 
     /* clear everything- we are under store_mtx */
     if (iq->vfy_genid_track) {
         hash_clear(iq->vfy_genid_hash);
         pool_clear(iq->vfy_genid_pool);
+
+    }
+
+    if (iq->vfy_idx_track) {
+        hash_clear(iq->vfy_idx_hash);
     }
 
     /* create a cursor */

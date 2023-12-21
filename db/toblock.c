@@ -4792,7 +4792,16 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpopprefixes(iq, 1);
 
         if (rc != 0) {
-            check_serializability = 1;
+            if (iq->vfy_idx_track == 1 && iq->dup_key_insert == 1) {
+                rc = ERR_UNCOMMITABLE_TXN;
+                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
+                                               "duplicate key '%s' on "
+                                               "table '%s' index %d",
+                      get_keynm_from_db_idx(iq->usedb, ixout),
+                      iq->usedb->tablename, ixout);
+            } else {
+                check_serializability = 1;
+            }
             opnum = blkpos; /* so we report the failed blockop accurately */
             err.blockop_num = blkpos;
             err.errcode = errout;

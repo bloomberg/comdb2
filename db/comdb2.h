@@ -1352,6 +1352,12 @@ struct ireq {
     /* Support for //DBSTATS. */
     SBUF2 *dbglog_file;
     int *nwrites;
+
+    /* List of indices that we've written to detect uncommitable upsert txns */
+    hash_t *vfy_idx_hash; 
+
+    int dup_key_insert;
+
     /* List of genids that we've written to detect uncommitable txn's */
     hash_t *vfy_genid_hash;
     pool_t *vfy_genid_pool;
@@ -1419,6 +1425,7 @@ struct ireq {
 
     unsigned errstrused : 1;
     unsigned vfy_genid_track : 1;
+    unsigned vfy_idx_track : 1;
     unsigned have_blkseq : 1;
 
     unsigned sc_locked : 1;
