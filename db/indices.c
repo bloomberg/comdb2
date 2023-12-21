@@ -235,6 +235,33 @@ static int check_index(struct ireq *iq, void *trans, int ixnum, blob_buffer_t *b
     return 0;
 }
 
+/* Add unique key to per-transaction tracking structure.
+ *
+ * @return 1 : Fail. Key already exists in structure.
+ *         0 : Success.
+ */
+int track_record_index(struct ireq *iq, int ixnum, void *key, int ixkeylen)
+{
+    int is_dup;
+    char * store_key;
+
+    is_dup = 0;
+    store_key = calloc(sizeof(int) + sizeof(int) + MAXKEYLEN, sizeof(char));
+
+    memcpy(store_key, &iq->usedb->dbs_idx, sizeof(int));
+    memcpy(store_key + sizeof(int), &ixnum, sizeof(int));
+    memcpy(store_key + sizeof(int) + sizeof(int), key, ixkeylen);
+
+    char * s = hash_find(iq->vfy_idx_hash, store_key);
+    if (s) {
+        is_dup = 1;
+        free(store_key);
+    } else {
+        hash_add(iq->vfy_idx_hash, store_key);
+    }
+    return is_dup;
+}
+
 /* If a specific index has been used in the ON CONFLICT (idx) DO NOTHING
  * clause (aka upsert target/index), then we must first perform check for
  * that particular index and bail out (ignore) if there's a similar entry
@@ -305,6 +332,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        int flags, int reorder)
 {
     int rc = 0;
+    int dup_txn_insert = 0;
     char *od_dta_tail = NULL;
     int od_tail_len;
     if (iq->osql_step_ix)
@@ -427,6 +455,10 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             rc = ix_addk(iq, trans, key, ixnum, *genid, *rrn, od_dta_tail,
                          od_tail_len, isnullk);
 
+            if (iq->vfy_idx_track) {
+                dup_txn_insert = track_record_index(iq, ixnum, key, ixkeylen);
+            }
+
             if (vgenid && rc == IX_DUP) {
                 if (iq->usedb->ix_dupes[ixnum] || isnullk) {
                     rc = ERR_VERIFY;
@@ -446,6 +478,12 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                 *ixfailnum = ixnum;
                 /* If following changes, update OSQL_INSREC in osqlcomm.c */
                 *opfailcode = OP_FAILED_UNIQ; /* really? */
+
+                // If this transaction has already added this key and adding this key again
+                // violates a duplicate key constraint, then this txn is uncommittable. 
+                if (dup_txn_insert == 1) {
+                    iq->dup_key_insert = 1;
+                }
 
                 goto done;
             }
@@ -1317,6 +1355,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                           ditk->usedb->tablename, ditk->ixnum);
 
                 //*blkpos = curop->blkpos;
+
                 *errout = OP_FAILED_UNIQ;
                 *ixout = ditk->ixnum;
                 goto done;

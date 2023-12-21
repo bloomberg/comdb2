@@ -1132,7 +1132,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
 int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                      int *errout)
 {
-    int rc = 0, fndlen = 0, err = 0, limit = 0;
+    int rc = 0, fndlen = 0, err = 0, limit = 0, dup_txn_insert = 0;
     int idx = 0, ixkeylen = -1;
     void *od_dta = NULL;
     char key[MAXKEYLEN + 1];
@@ -1366,6 +1366,10 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             rc = ix_addk(iq, trans, key, doidx, genid, addrrn, od_dta_tail,
                          od_tail_len, ix_isnullk(iq->usedb, key, doidx));
 
+            if (iq->vfy_idx_track) {
+                dup_txn_insert = track_record_index(iq, doidx, key, ixkeylen);
+            }
+
             if (iq->debug) {
                 reqprintf(iq, "ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ",
                           iq->usedb->tablename, doidx, addrrn);
@@ -1374,6 +1378,10 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             }
 
             if (rc == IX_DUP) {
+                if (dup_txn_insert == 1) {
+                    iq->dup_key_insert = 1;
+                }
+
                 if ((flags & OSQL_FORCE_VERIFY) != 0) {
                     *errout = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;

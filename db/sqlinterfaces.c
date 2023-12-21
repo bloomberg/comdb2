@@ -1862,12 +1862,12 @@ static int free_clnt_ddl_context(void *obj, void *arg)
     free(ctx);
     return 0;
 }
-static int free_it(void *obj, void *arg)
+int free_it(void *obj, void *arg)
 {
     free(obj);
     return 0;
 }
-static inline void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
+void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
 {
     if (!h)
         return;

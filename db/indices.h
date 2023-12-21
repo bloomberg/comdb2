@@ -17,6 +17,8 @@
 #ifndef INCLUDED_INDICES_H
 #define INCLUDED_INDICES_H
 
+int track_record_index(struct ireq *iq, int ixnum, void *key, int ixkeylen);
+
 int check_for_upsert(struct ireq *iq, void *trans, blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                      int *ixfailnum, int *retrc, void *od_dta, size_t od_len, unsigned long long ins_keys,
                      int rec_flags);
