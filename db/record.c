@@ -1195,9 +1195,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                     retrc = ERR_INTERNAL;
                 goto err;
             }
-            blob_status_to_blob_buffer(&oldblobs, del_blobs_buf);
-            blob_status_to_blob_buffer(&oldblobs, add_blobs_buf);
         }
+        blob_status_to_blob_buffer(&oldblobs, del_blobs_buf);
+        blob_status_to_blob_buffer(&oldblobs, add_blobs_buf);
         for (blobno = 0;
              blobno < maxblobs && blobno < iq->usedb->schema->numblobs;
              blobno++) {
