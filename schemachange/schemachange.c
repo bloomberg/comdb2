@@ -1313,6 +1313,9 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
         return xerr->errval;
     }
 
+    create_sqlmaster_records(NULL);
+    create_sqlite_master();
+
     bzero(xerr, sizeof(*xerr));
     return 0;
 }
