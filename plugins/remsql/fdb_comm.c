@@ -2290,6 +2290,16 @@ static void _fdb_extract_source_id(struct sqlclntstate *clnt, SBUF2 *sb, fdb_msg
         strncpy(clnt->conninfo.pename, "UNKNOWN", sizeof(clnt->conninfo.pename));
     clnt->conninfo.pename[sizeof(clnt->conninfo.pename) - 1] = '\0';
     clnt->conninfo.pid = msg->co.srcpid;
+
+    /* set up reqlog */
+    clnt->argv0 = strdup(clnt->conninfo.pename); /* reset_clnt frees argv0 and stack */
+    clnt->stack = strdup("fdb");
+    clnt->origin = get_origin_mach_by_buf(sb);
+    if (clnt->origin == NULL)
+        clnt->origin = intern("???");
+
+    if (clnt->rawnodestats == NULL)
+        clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin, sbuf2fileno(sb), msg->co.ssl);
 }
 
 int fdb_bend_cursor_open(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
