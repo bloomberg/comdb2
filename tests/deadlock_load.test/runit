@@ -40,8 +40,8 @@ function run_tests
     start=$(date +%s)
     [ ! -f $deadlock_load ] && failexit $func "$deadlock_load missing"
     $deadlock_load -d $DBNAME -T $threads -r $records -i $iterations -c $CDB2_CONFIG
-    stop=$(date +%s)
     export r=$?
+    stop=$(date +%s)
     [[ $r != 0 ]] && failexit $func "deadlock_load test failed"
     master=$(get_master)
     deadlocks=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME -host $master "select value from comdb2_metrics where name='deadlocks'")

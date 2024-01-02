@@ -40,6 +40,7 @@ typedef struct {
 	u_int8_t valid;
 	u_int8_t in_abort;
 	u_int8_t tracked;
+	int64_t timestamp;
 } locker_info;
 
 #endif

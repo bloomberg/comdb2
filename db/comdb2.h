@@ -1182,6 +1182,19 @@ typedef struct bpfunc_lstnode {
 } bpfunc_lstnode_t;
 
 typedef LISTC_T(bpfunc_lstnode_t) bpfunc_list_t;
+
+struct participant {
+    char *participant_name;
+    char *participant_tier;
+    char *participant_master;
+    time_t last_heartbeat;
+    int status;
+    pthread_mutex_t lk;
+    LINKC_T(struct participant) linkv;
+};
+
+typedef LISTC_T(struct participant) participant_list_t;
+
 /*******************************************************************/
 
 enum OSQL_REQ_TYPE {
@@ -1255,6 +1268,22 @@ struct osql_sess {
     int is_tranddl;
     int is_tptlock;   /* needs tpt locking */
     int is_cancelled; /* 1 if session is cancelled */
+
+    /* 2pc maintained in session */
+    unsigned is_participant : 1;
+    unsigned is_coordinator : 1;
+
+    char *dist_txnid;
+    char *coordinator_dbname;
+    char *coordinator_tier;
+    char *coordinator_master;
+    int64_t dist_timestamp;
+    participant_list_t participants;
+
+    /* these are set asynchronously */
+    pthread_mutex_t participant_lk;
+    int is_done;
+    int is_sanctioned; /* set by fdb from coordinator-master */
 };
 typedef struct osql_sess osql_sess_t;
 
@@ -1301,6 +1330,9 @@ struct ireq {
     int luxref;
     uint8_t osql_rowlocks_enable;
     uint8_t osql_genid48_enable;
+
+    int commit_file;
+    int commit_offset;
 
     /************/
     /* REGION 2 */
@@ -1437,6 +1469,8 @@ struct ireq {
 
     int sc_running;
     int comdbg_flags;
+
+    int64_t timestamp;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -2075,6 +2109,8 @@ int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc_fop(struct ireq *, tran_type **out);
 int trans_start_sc_lowpri(struct ireq *, tran_type **out);
+int trans_set_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t timestamp);
+int trans_get_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t *timestamp);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             uint32_t retries, uint32_t priority);
 int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans);
@@ -2089,10 +2125,10 @@ tran_type *trans_start_modsnap(struct ireq *, int trak);
 tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
                                     int file, int offset, int *error,
                                     int is_ha_retry);
-tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file,
-                                int offset, int *error, int is_ha_retry);
+tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file, int offset, int *error, int is_ha_retry);
 tran_type *trans_start_socksql(struct ireq *, int trak);
 int trans_commit(struct ireq *iq, void *trans, char *source_host);
+int trans_commit_nowait(struct ireq *iq, void *trans, char *source_host);
 int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum);
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host);
 int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
@@ -2102,6 +2138,7 @@ int trans_abort(struct ireq *iq, void *trans);
 int trans_abort_priority(struct ireq *iq, void *trans, int *priority);
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *blkkey, int blkkeylen);
+int trans_discard_prepared(struct ireq *iq, void *trans);
 int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
                           db_seqnum_type *ss);
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host);
@@ -2773,15 +2810,14 @@ enum {
     RECFLAGS_DONT_SKIP_BLOBS = 1 << 7,
     RECFLAGS_ADD_FROM_SC_LOGICAL = 1 << 8,
     /* used for upgrade record */
-    RECFLAGS_UPGRADE_RECORD = RECFLAGS_DYNSCHEMA_NULLS_ONLY |
-                              RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
-                              RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS |
-                              1 << 9,
+    RECFLAGS_UPGRADE_RECORD = RECFLAGS_DYNSCHEMA_NULLS_ONLY | RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
+                              RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS | 1 << 9,
     RECFLAGS_IN_CASCADE = 1 << 10,
     RECFLAGS_DONT_LOCK_TBL = 1 << 11,
     RECFLAGS_COMDBG_FROM_LE = 1 << 12,
+    RECFLAGS_INLINE_CONSTRAINTS = 1 << 13,
 
-    RECFLAGS_MAX = 1 << 12
+    RECFLAGS_MAX = 1 << 13
 };
 
 /* flag codes */

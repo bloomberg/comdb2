@@ -141,6 +141,7 @@ enum policy {
 static int dedicated_appsock = 1;
 static int dedicated_timer = 1;
 static int dedicated_fdb = 1;
+static int dedicated_dist = 1;
 static enum policy reader_policy = POLICY_PER_NET;
 static enum policy writer_policy = POLICY_PER_HOST;
 
@@ -162,6 +163,10 @@ static struct timeval timer_tick;
 static pthread_t fdb_thd;
 static struct event_base *fdb_base;
 static struct timeval fdb_tick;
+
+static pthread_t dist_thd;
+static struct event_base *dist_base;
+static struct timeval dist_tick;
 
 #define NUM_APPSOCK_RD 4
 static pthread_t appsock_thd[NUM_APPSOCK_RD];
@@ -203,6 +208,7 @@ static struct timeval appsock_tick[NUM_APPSOCK_RD];
 #define check_base_thd() check_thd(base_thd)
 #define check_timer_thd() check_thd(timer_thd)
 #define check_fdb_thd() check_thd(fdb_thd)
+#define check_dist_thd() check_thd(dist_thd);
 #define check_rd_thd() check_thd(rd_thd)
 #define check_wr_thd() check_thd(wr_thd)
 
@@ -500,6 +506,12 @@ static void check_timers(int dummyfd, short what, void *arg)
     ms = timeval_to_ms(diff);
     if (ms >= gbl_timer_warn_interval) {
         logmsg(LOGMSG_WARN, "LONG FDB TICK:%dms\n", ms);
+        need_pstack = 1;
+    }
+    timersub(&now, &dist_tick, &diff);
+    ms = timeval_to_ms(diff);
+    if (ms >= gbl_timer_warn_interval) {
+        logmsg(LOGMSG_WARN, "LONG DIST TICK:%dms\n", ms);
         need_pstack = 1;
     }
 
@@ -1244,6 +1256,9 @@ static void exit_once_func(void)
     }
     if (dedicated_fdb) {
         stop_base(fdb_base);
+    }
+    if (dedicated_dist) {
+        stop_base(dist_base);
     }
     if (gbl_libevent_appsock && dedicated_appsock) {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
@@ -2054,6 +2069,75 @@ static void host_connected(struct event_info *e, int fd, int connect_msg, struct
         e->host_connected = i;
         do_close(e, do_open);
     }
+}
+
+extern int dist_heartbeats(dist_hbeats_type *dt);
+
+static void dist_heartbeat(int dummyfd, short what, void *data)
+{
+    check_dist_thd();
+    dist_hbeats_type *dt = data;
+    if (dt->ev_hbeats) {
+        dist_heartbeats(dt);
+    }
+}
+
+static void do_enable_dist_heartbeats(int dummyfd, short what, void *data)
+{
+    dist_hbeats_type *dt = data;
+
+    check_dist_thd();
+    if (dt->ev_hbeats)
+        abort();
+
+    dt->ev_hbeats = event_new(dist_base, -1, EV_PERSIST, dist_heartbeat, dt);
+    if (!dt->ev_hbeats) {
+        logmsg(LOGMSG_ERROR, "Failed to create new event for dist_heartbeat\n");
+        return;
+    }
+    dt->tv.tv_sec = 2;
+    dt->tv.tv_usec = 0;
+
+    event_add(dt->ev_hbeats, &dt->tv);
+}
+
+int enable_dist_heartbeats(dist_hbeats_type *dt)
+{
+    return event_base_once(dist_base, -1, EV_TIMEOUT, do_enable_dist_heartbeats, dt, NULL);
+}
+
+extern void dist_heartbeat_free_tran(dist_hbeats_type *dt);
+static void do_disable_dist_heartbeats_and_free(int dummyfd, short what, void *data)
+{
+    dist_hbeats_type *dt = data;
+    check_dist_thd();
+    if (dt->ev_hbeats) {
+        event_del(dt->ev_hbeats);
+        event_free(dt->ev_hbeats);
+        dt->ev_hbeats = NULL;
+    }
+    dist_heartbeat_free_tran(dt);
+}
+
+static void do_disable_dist_heartbeats(int dummyfd, short what, void *data)
+{
+    dist_hbeats_type *dt = data;
+    check_dist_thd();
+    if (dt->ev_hbeats) {
+        event_del(dt->ev_hbeats);
+        event_free(dt->ev_hbeats);
+        dt->ev_hbeats = NULL;
+    }
+}
+
+int disable_dist_heartbeats_and_free(dist_hbeats_type *dt)
+{
+    return event_base_once(dist_base, -1, EV_TIMEOUT, do_disable_dist_heartbeats_and_free, dt, NULL);
+}
+
+int disable_dist_heartbeats(dist_hbeats_type *dt)
+{
+    return event_base_once(dist_base, -1, EV_TIMEOUT, do_disable_dist_heartbeats, dt, NULL);
 }
 
 extern int fdb_heartbeats(fdb_hbeats_type *hb);
@@ -3292,6 +3376,13 @@ static void setup_bases(void)
     } else {
         fdb_thd = base_thd;
         fdb_base = base;
+    }
+    if (dedicated_dist) {
+        gettimeofday(&dist_tick, NULL);
+        init_base_priority(&dist_thd, &dist_base, "dist", 0, &dist_tick);
+    } else {
+        dist_thd = base_thd;
+        dist_base = base;
     }
     if (gbl_libevent_appsock) {
         if (dedicated_appsock) {
