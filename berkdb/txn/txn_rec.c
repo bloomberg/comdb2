@@ -348,6 +348,20 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 				ret = __db_txnlist_add(dbenv, info, argp->txnid->txnid, TXN_COMMIT, NULL);
 			} else {
 				logmsg(LOGMSG_DEBUG, "%s Recovering prepared txn %s\n", __func__, dist_txnid);
+				/* Election has to include this */
+				DB_REP *db_rep = dbenv->rep_handle;
+				REP *rep = db_rep->region;
+
+				MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+				if (argp->generation > rep->committed_gen ||
+					(argp->generation == rep->committed_gen && log_compare(lsnp, &rep->committed_lsn) > 0)) {
+					rep->committed_gen = argp->generation;
+					rep->committed_lsn = *lsnp;
+					if (argp->generation > rep->gen)
+						__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+				}
+
+				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 				if ((ret = __txn_recover_prepared(dbenv, argp->txnid, dist_txnid, lsnp, &argp->begin_lsn,
 								&argp->blkseq_key, argp->coordinator_gen, &argp->coordinator_name, &argp->coordinator_tier)) != 0)
 					abort();

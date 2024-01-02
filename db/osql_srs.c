@@ -142,6 +142,11 @@ int srs_tran_destroy(struct sqlclntstate *clnt)
 #if 0
    printf ("%d Destroying history %p \n", pthread_self(), osql->history);
 #endif
+    if (clnt->dist_txnid) {
+        free(clnt->dist_txnid);
+        clnt->dist_txnid = NULL;
+        clnt->dist_timestamp = 0;
+    }
 
     if (!osql->history)
         goto done;
@@ -236,6 +241,7 @@ int srs_tran_empty(struct sqlclntstate *clnt)
 }
 
 long long gbl_verify_tran_replays = 0;
+int gbl_disttxn_random_retry_poll = 500;
 
 /**
  * Replay transaction using the current history
@@ -266,6 +272,12 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
 
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
+        if (clnt->dist_timestamp > 0) {
+            int pval = gbl_disttxn_random_retry_poll;
+            if (pval > 1) {
+                poll(0, 0, rand() % pval);
+            }
+        }
 
         /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM /* not for modsnap */) {
