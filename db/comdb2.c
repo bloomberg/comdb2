@@ -70,6 +70,7 @@ void berk_memp_sync_alarm_ms(int);
 
 #include <net.h>
 #include <bdb_api.h>
+#include <disttxn.h>
 #include <sbuf2.h>
 #include "quantize.h"
 #include "timers.h"
@@ -618,6 +619,7 @@ int gbl_use_block_mode_status_code = 1;
 unsigned int gbl_delayed_skip = 0;
 int gbl_enable_osql_logging = 0;
 int gbl_enable_osql_longreq_logging = 0;
+long long gbl_distributed_deadlock_count = 0;
 
 int gbl_broken_num_parser = 0;
 
@@ -3595,6 +3597,8 @@ static int init(int argc, char **argv)
 
     run_init_plugins(COMDB2_PLUGIN_INITIALIZER_PRE);
 
+    disttxn_init();
+
     /* open database environment, and all dbs */
     thedb = newdbenv(dbname, lrlname);
     if (thedb == 0)
@@ -3831,6 +3835,8 @@ static int init(int argc, char **argv)
 
     if (gbl_berkdb_iomap) 
         bdb_berkdb_iomap_set(thedb->bdb_env, 1);
+
+    disttxn_init_recover_prepared();
 
     if (!gbl_exit && gbl_new_snapisol && gbl_snapisol) {
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);

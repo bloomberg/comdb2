@@ -18,6 +18,7 @@ set(src
   dbglog_iface.c
   dbqueuedb.c
   debug.c
+  disttxn.c
   endian.c
   envstubs.c
   errstat.c

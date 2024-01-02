@@ -104,6 +104,8 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_query = __lock_query_pp;
 
 		dbenv->lock_abort_waiters = __lock_abort_waiters_pp;
+		dbenv->lock_count_waiters = __lock_count_waiters_pp;
+		dbenv->lock_count_write_waiters = __lock_count_write_waiters_pp;
 		dbenv->lock_add_child_locker = __lock_add_child_locker_pp;
 		dbenv->lock_id = __lock_id_pp;
 		dbenv->lock_id_flags = __lock_id_flags_pp;
@@ -112,6 +114,9 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_id_set_logical_abort =
 		    __lock_id_set_logical_abort_pp;
 		dbenv->lock_put = __lock_put_pp;
+        dbenv->locker_set_track = __locker_set_track_pp;
+		dbenv->locker_set_timestamp = __locker_set_timestamp_pp;
+		dbenv->locker_get_timestamp = __locker_get_timestamp_pp;
 		dbenv->collect_locks = __lock_collect_pp;
 		dbenv->lock_stat = __lock_stat_pp;
 		dbenv->lock_locker_lockcount = __lock_locker_lockcount_pp;
