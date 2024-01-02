@@ -2392,8 +2392,8 @@ __dd_abort_waiters(dbenv, sh_obj)
 		/* Unlock this locker partition */
 		unlock_locker_partition(region, lockerp->partition);
 
+
 		/* Abort waiter */
-		logmsg(LOGMSG_DEBUG, "%s abort waiter with lock %ld\n", __func__, infop->last_lock);
 		if ((ret = __dd_abort(dbenv, infop, NULL))!=0) {
 			if (ret == DB_ALREADY_ABORTED) {
 				ret = 0;

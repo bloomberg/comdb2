@@ -74,8 +74,6 @@
 
 #define FDB_VER FDB_VER_PROXY
 
-#define FDB_2PC_VER 1
-
 /* cc2 ftw */
 #define fdb_ver_encoded(ver) (-(ver + 1))
 #define fdb_ver_decoded(ver) (-(ver + 1))
@@ -199,7 +197,6 @@ struct fdb_tran {
      * libevent heartbeats
      */
     fdb_hbeats_type hbeats;
-    int rmt2pcvers;
 };
 typedef struct fdb_tran fdb_tran_t;
 

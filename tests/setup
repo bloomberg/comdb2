@@ -256,8 +256,7 @@ setup_db() {
         done
 
         REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-        #echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${REP_ENV_VARS}
-        echo "export COMDB2_ROOT=$TESTDIR" >> ${REP_ENV_VARS}
+        echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${REP_ENV_VARS}
         CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
         echo "!$TESTCASE: starting"
         for node in $CLUSTER; do
@@ -316,32 +315,8 @@ setup_db() {
     fi
 }
 
-make_config_directories()
-{
-    echo "make_config_directories"
-    if [[ -n "$CLUSTER" ]]; then
-        echo "mkdir -p $TESTDIR/etc/cdb2/config.d/"
-        for node in $CLUSTER; do
-            ssh -n $SSH_OPT $node "mkdir -p $TESTDIR/etc/cdb2/config.d/"
-        done
-    fi
-}
-
-copy_config_to_cluster()
-{
-    typeset cfg=$1
-    typeset dbname=$2
-    if [[ -n "$CLUSTER" ]]; then
-        for node in $CLUSTER; do
-            scp $SSH_OPT $cfg $node:$TESTDIR/etc/cdb2/config.d/${dbname}.cfg
-        done
-    fi
-}
-
 # setup primary db for the test
 setup_db
-make_config_directories
-copy_config_to_cluster $CDB2_CONFIG $DBNAME
 
 if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     cd -
@@ -355,10 +330,9 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
         echo "$required=$q"
     done
 
+
     # setup secondary db for the test, if specified
     DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_CONFIG="$SECONDARY_CDB2_CONFIG" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" setup_db
-    echo "CONFIG IS $SECONDARY_CDB2_CONFIG"
-    copy_config_to_cluster $SECONDARY_CDB2_CONFIG $SECONDARY_DBNAME
     cd -
 fi
 
@@ -376,59 +350,6 @@ if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
 
     # setup tertiary db for the test, if specified
     DBNAME="${TERTIARY_DBNAME}" DBDIR="${TERTIARY_DBDIR}" CDB2_CONFIG="$TERTIARY_CDB2_CONFIG" CDB2_OPTIONS="${TERTIARY_CDB2_OPTIONS}" setup_db
-    copy_config_to_cluster $TERTIARY_CDB2_CONFIG $TERTIARY_DBNAME
-    cd -
-fi
-
-if [ -n "${QUATERNARY_DB_PREFIX}" ] ; then
-    ter_vars="QUATERNARY_DBNAME QUATERNARY_DBDIR QUATERNARY_CDB2_OPTIONS"
-    for required in $ter_vars; do
-        q=${!required}
-        if [[ -z "${q}" ]]; then
-            echo "$required not set" >&2
-            exit 1
-        fi
-        echo "$required=$q"
-    done
-
-    # setup QUATERNARY db for the test, if specified
-    DBNAME="${QUATERNARY_DBNAME}" DBDIR="${QUATERNARY_DBDIR}" CDB2_CONFIG="$QUATERNARY_CDB2_CONFIG" CDB2_OPTIONS="${QUATERNARY_CDB2_OPTIONS}" setup_db
-    copy_config_to_cluster $QUATERNARY_CDB2_CONFIG $QUATERNARY_DBNAME
-    cd -
-fi
-
-
-if [ -n "${QUINARY_DB_PREFIX}" ] ; then
-    ter_vars="QUINARY_DBNAME QUINARY_DBDIR QUINARY_CDB2_OPTIONS"
-    for required in $ter_vars; do
-        q=${!required}
-        if [[ -z "${q}" ]]; then
-            echo "$required not set" >&2
-            exit 1
-        fi
-        echo "$required=$q"
-    done
-
-    # setup QUINARY db for the test, if specified
-    DBNAME="${QUINARY_DBNAME}" DBDIR="${QUINARY_DBDIR}" CDB2_CONFIG="$QUINARY_CDB2_CONFIG" CDB2_OPTIONS="${QUINARY_CDB2_OPTIONS}" setup_db
-    copy_config_to_cluster $QUINARY_CDB2_CONFIG $QUINARY_DBNAME
-    cd -
-fi
-
-if [ -n "${SENARY_DB_PREFIX}" ] ; then
-    ter_vars="SENARY_DBNAME SENARY_DBDIR SENARY_CDB2_OPTIONS"
-    for required in $ter_vars; do
-        q=${!required}
-        if [[ -z "${q}" ]]; then
-            echo "$required not set" >&2
-            exit 1
-        fi
-        echo "$required=$q"
-    done
-
-    # setup SENARY db for the test, if specified
-    DBNAME="${SENARY_DBNAME}" DBDIR="${SENARY_DBDIR}" CDB2_CONFIG="$SENARY_CDB2_CONFIG" CDB2_OPTIONS="${SENARY_CDB2_OPTIONS}" setup_db
-    copy_config_to_cluster $SENARY_CDB2_CONFIG $SENARY_DBNAME
     cd -
 fi
 
@@ -469,28 +390,6 @@ if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
     echo "export TERTIARY_CDB2_CONFIG=\"${TERTIARY_CDB2_CONFIG}\"" >> $SETENV
     echo "export TERTIARY_CDB2_OPTIONS=\"${TERTIARY_CDB2_OPTIONS}\"" >> $SETENV
 fi
-if [ -n "${QUATERNARY_DB_PREFIX}" ] ; then
-    echo "export QUATERNARY_DB_PREFIX=\"${QUATERNARY_DB_PREFIX}\"" >> $SETENV
-    echo "export QUATERNARY_DBNAME=\"${QUATERNARY_DBNAME}\"" >> $SETENV
-    echo "export QUATERNARY_DBDIR=\"${QUATERNARY_DBDIR}\"" >> $SETENV
-    echo "export QUATERNARY_CDB2_CONFIG=\"${QUATERNARY_CDB2_CONFIG}\"" >> $SETENV
-    echo "export QUATERNARY_CDB2_OPTIONS=\"${QUATERNARY_CDB2_OPTIONS}\"" >> $SETENV
-fi
-if [ -n "${QUINARY_DB_PREFIX}" ] ; then
-    echo "export QUINARY_DB_PREFIX=\"${QUINARY_DB_PREFIX}\"" >> $SETENV
-    echo "export QUINARY_DBNAME=\"${QUINARY_DBNAME}\"" >> $SETENV
-    echo "export QUINARY_DBDIR=\"${QUINARY_DBDIR}\"" >> $SETENV
-    echo "export QUINARY_CDB2_CONFIG=\"${QUINARY_CDB2_CONFIG}\"" >> $SETENV
-    echo "export QUINARY_CDB2_OPTIONS=\"${QUINARY_CDB2_OPTIONS}\"" >> $SETENV
-fi
-if [ -n "${SENARY_DB_PREFIX}" ] ; then
-    echo "export SENARY_DB_PREFIX=\"${SENARY_DB_PREFIX}\"" >> $SETENV
-    echo "export SENARY_DBNAME=\"${SENARY_DBNAME}\"" >> $SETENV
-    echo "export SENARY_DBDIR=\"${SENARY_DBDIR}\"" >> $SETENV
-    echo "export SENARY_CDB2_CONFIG=\"${SENARY_CDB2_CONFIG}\"" >> $SETENV
-    echo "export SENARY_CDB2_OPTIONS=\"${SENARY_CDB2_OPTIONS}\"" >> $SETENV
-fi
-
 echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
 echo "export PATH=${paths}"':${PATH}' >> $SETENV
 [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV

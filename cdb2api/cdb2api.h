@@ -39,7 +39,6 @@ enum cdb2_hndl_alloc_flags {
     CDB2_SQL_ROWS = 128,
     CDB2_TYPE_IS_FD = 256,
     CDB2_REQUIRE_FASTSQL = 512,
-    CDB2_MASTER = 1024,
 };
 
 enum cdb2_request_type {
@@ -242,7 +241,6 @@ int cdb2_bind_array(cdb2_hndl_tp *, const char *, cdb2_coltype, const void *, si
 int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
-const char *cdb2_host(cdb2_hndl_tp *hndl);
 
 void cdb2_enable_sockpool(void);
 void cdb2_disable_sockpool(void);
@@ -255,9 +253,6 @@ int cdb2_init_ssl(int init_libssl, int init_libcrypto);
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
-
-int cdb2_send_2pc(cdb2_hndl_tp *hndl, char *dbname, char *pname, char *ptier, char *source, unsigned int op,
-                  char *dist_txnid, int rcode, int outrc, char *errmsg, int async);
 
 typedef enum cdb2_event_ctrl {
     CDB2_OVERWRITE_RETURN_VALUE = 1,

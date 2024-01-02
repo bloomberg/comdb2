@@ -1161,17 +1161,17 @@ __retrieve_logged_generation_commitlsn(dbenv, lsn, gen)
 				"recent-upgrade.\n", __func__);
 		ret = -1;
 	} else if (rectype == DB___txn_dist_commit) {
-		__txn_dist_commit_args *txn_dist_commit_args = NULL;
-		if ((ret = __txn_dist_commit_read(dbenv, rec.data,
-					&txn_dist_commit_args)) != 0)
-			goto err;
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		rep->committed_lsn = *lsn = curlsn;
-		rep->committed_gen = *gen = txn_dist_commit_args->generation;
-		if (rep->gen < rep->committed_gen)
-			__rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		__os_free(dbenv, txn_dist_commit_args);
+        __txn_dist_commit_args *txn_dist_commit_args = NULL;
+        if ((ret = __txn_dist_commit_read(dbenv, rec.data,
+                    &txn_dist_commit_args)) != 0)
+            goto err;
+        MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+        rep->committed_lsn = *lsn = curlsn;
+        rep->committed_gen = *gen = txn_dist_commit_args->generation;
+        if (rep->gen < rep->committed_gen)
+            __rep_set_gen(dbenv, __func__, __LINE__, rep->committed_gen);
+        MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+        __os_free(dbenv, txn_dist_commit_args);
 	}
 
 err:

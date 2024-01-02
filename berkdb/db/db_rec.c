@@ -849,7 +849,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
     XXX this caused a bug, backing it out XXX
     } else if (DB_UNDO(op) && (cmp_n == 0 || created || IS_ZERO_LSN(argp->page_lsn))) {
     */
-	} else if (DB_UNDO(op) && (cmp_n == 0 || created || (IS_ZERO_LSN(argp->page_lsn) && IS_ZERO_LSN(pagep->lsn)))) {
+	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {
 		/*
 		 * This is where we handle the case of a 0'd page (pagep->pgno
 		 * is equal to PGNO_INVALID).

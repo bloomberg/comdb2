@@ -154,11 +154,6 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type);
 int osql_query_dbglog(struct sql_thread *thd, int queryid);
 
 /**
- * Send participant dist-txn information early so we can begin heartbeats
- */
-int osql_begin_participant(struct sql_thread *thd);
-
-/**
  * Record a genid with the current transaction so we can
  * verify its existence upon commit
  *

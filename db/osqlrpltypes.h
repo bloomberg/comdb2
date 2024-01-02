@@ -51,10 +51,7 @@ XMACRO_OSQL_RPL_TYPES( OSQL_INSIDX,            25, "OSQL_INSIDX" ) /* for indexe
 XMACRO_OSQL_RPL_TYPES( OSQL_DBQ_CONSUME_UUID,  26, "OSQL_DBQ_CONSUME_UUID" ) /* not in use */                                \
 XMACRO_OSQL_RPL_TYPES( OSQL_STARTGEN,          27, "OSQL_STARTGEN" )                                                         \
 XMACRO_OSQL_RPL_TYPES( OSQL_DONE_WITH_EFFECTS, 28, "OSQL_DONE_WITH_EFFECTS" )                                                \
-XMACRO_OSQL_RPL_TYPES( OSQL_PREPARE,           29, "OSQL_PREPARE" ) /* participant should prepare */                         \
-XMACRO_OSQL_RPL_TYPES( OSQL_DIST_TXNID,        30, "OSQL_DIST_TXNID" ) /* send dist-txnid to coordinator */                  \
-XMACRO_OSQL_RPL_TYPES( OSQL_PARTICIPANT,       31, "OSQL_PARTICIPANT" ) /* a participant (to coordinator) */                 \
-XMACRO_OSQL_RPL_TYPES( MAX_OSQL_TYPES,         32, "OSQL_MAX")
+XMACRO_OSQL_RPL_TYPES( MAX_OSQL_TYPES,         29, "OSQL_MAX")
 
 // clang-format on
 

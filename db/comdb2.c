@@ -70,7 +70,6 @@ void berk_memp_sync_alarm_ms(int);
 
 #include <net.h>
 #include <bdb_api.h>
-#include <disttxn.h>
 #include <sbuf2.h>
 #include "quantize.h"
 #include "timers.h"
@@ -3870,8 +3869,6 @@ static int init(int argc, char **argv)
 
     if (gbl_berkdb_iomap) 
         bdb_berkdb_iomap_set(thedb->bdb_env, 1);
-
-    disttxn_init();
 
     if (!gbl_exit && gbl_new_snapisol && gbl_snapisol) {
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);

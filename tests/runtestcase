@@ -79,7 +79,7 @@ elif [[ "${DEBUG_PREFIX}" == "valgrind"* ]]; then
     TEST_TIMEOUT=$(($t * 10 + 2))m
 fi
 
-SETUP_TIMEOUT=${SETUP_TIMEOUT:-4m}
+SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 if [[ -n "$NUMNODESTOUSE" ]] ; then
     ncl=`echo $CLUSTER | tr ' *' '\n' | sed '/^[[:space:]]*$/d' | shuf -n $NUMNODESTOUSE | xargs echo`
@@ -295,17 +295,6 @@ call_setup() {
         cr=`find_cores ${TERTIARY_DBNAME} ${TERTIARY_DBDIR}`
     fi
 
-    if [[ -z "${cr}" ]] && [[ -n "${QUATERNARY_DBNAME}" ]] ; then
-        cr=`find_cores ${QUATERNARY_DBNAME} ${QUATERNARY_DBDIR}`
-    fi
-
-    if [[ -z "${cr}" ]] && [[ -n "${QUINARY_DBNAME}" ]] ; then
-        cr=`find_cores ${QUINARY_DBNAME} ${QUINARY_DBDIR}`
-    fi
-
-    if [[ -z "${cr}" ]] && [[ -n "${SENARY_DBNAME}" ]] ; then
-        cr=`find_cores ${SENARY_DBNAME} ${SENARY_DBDIR}`
-    fi
 
     if [[ -n "${cr}" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)" | tee -a ${TEST_LOG}
@@ -412,18 +401,6 @@ if [[ -z "${cr}" ]] && [[ -n "${TERTIARY_DBNAME}" ]] ; then
     cr=`find_cores ${TERTIARY_DBNAME} ${TERTIARY_DBDIR}`
 fi
 
-if [[ -z "${cr}" ]] && [[ -n "${QUATERNARY_DBNAME}" ]] ; then
-    cr=`find_cores ${QUATERNARY_DBNAME} ${QUATERNARY_DBDIR}`
-fi
-
-if [[ -z "${cr}" ]] && [[ -n "${QUINARY_DBNAME}" ]] ; then
-    cr=`find_cores ${QUINARY_DBNAME} ${QUINARY_DBDIR}`
-fi
-
-if [[ -z "${cr}" ]] && [[ -n "${SENARY_DBNAME}" ]] ; then
-    cr=`find_cores ${SENARY_DBNAME} ${SENARY_DBDIR}`
-fi
-
 if [[ -n "$cr" ]] ; then
     CHECK_DB_AT_FINISH=0
 elif [[ -z "${CHECK_DB_AT_FINISH}" ]] ; then
@@ -448,18 +425,6 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
         dbdown=`check_db_at_finish ${TERTIARY_DBNAME} $TERTIARY_CDB2_CONFIG`
     fi
 
-    if [[ -z "${dbdown}" ]] && [[ -n "${QUATERNARY_DBNAME}" ]]; then
-        dbdown=`check_db_at_finish ${QUATERNARY_DBNAME} $QUATERNARY_CDB2_CONFIG`
-    fi
-
-    if [[ -z "${dbdown}" ]] && [[ -n "${QUINARY_DBNAME}" ]]; then
-        dbdown=`check_db_at_finish ${QUINARY_DBNAME} $QUINARY_CDB2_CONFIG`
-    fi
-
-    if [[ -z "${dbdown}" ]] && [[ -n "${SENARY_DBNAME}" ]]; then
-        dbdown=`check_db_at_finish ${SENARY_DBNAME} $SENARY_CDB2_CONFIG`
-    fi
-
     # if no crashes and $VERIFY_DB_AT_FINISH > 0 then run verify
     if [[ -z "${dbdown}" ]] && [[ $VERIFY_DB_AT_FINISH -gt 0 ]]; then
         verify_ret=`verify_db_at_finish ${DBNAME} $CDB2_CONFIG`
@@ -470,16 +435,6 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
         if [[ -z "${verify_ret}" ]] && [[ -n "${TERTIARY_DBNAME}" ]]; then
             verify_ret=`verify_db_at_finish ${TERTIARY_DBNAME} $TERTIARY_CDB2_CONFIG`
         fi
-        if [[ -z "${verify_ret}" ]] && [[ -n "${QUATERNARY_DBNAME}" ]]; then
-            verify_ret=`verify_db_at_finish ${QUATERNARY_DBNAME} $QUATERNARY_CDB2_CONFIG`
-        fi
-        if [[ -z "${verify_ret}" ]] && [[ -n "${QUINARY_DBNAME}" ]]; then
-            verify_ret=`verify_db_at_finish ${QUINARY_DBNAME} $QUINARY_CDB2_CONFIG`
-        fi
-        if [[ -z "${verify_ret}" ]] && [[ -n "${SENARY_DBNAME}" ]]; then
-            verify_ret=`verify_db_at_finish ${SENARY_DBNAME} $SENARY_CDB2_CONFIG`
-        fi
-
         verify_phys=`verify_physical_at_finish ${DBNAME} $CDB2_CONFIG`
     fi
 fi
@@ -553,18 +508,6 @@ if [[ -z "$cr" ]] ; then
 
     if [[ -z "${cr}" ]] && [[ -n "${TERTIARY_DBNAME}" ]] ; then
         cr=`find_cores ${TERTIARY_DBNAME} ${TERTIARY_DBDIR}`
-    fi
-
-    if [[ -z "${cr}" ]] && [[ -n "${QUATERNARY_DBNAME}" ]] ; then
-        cr=`find_cores ${QUATERNARY_DBNAME} ${QUATERNARY_DBDIR}`
-    fi
-
-    if [[ -z "${cr}" ]] && [[ -n "${QUINARY_DBNAME}" ]] ; then
-        cr=`find_cores ${QUINARY_DBNAME} ${QUINARY_DBDIR}`
-    fi
-
-    if [[ -z "${cr}" ]] && [[ -n "${SENARY_DBNAME}" ]] ; then
-        cr=`find_cores ${SENARY_DBNAME} ${SENARY_DBDIR}`
     fi
 
     if [[ -n "$cr" ]] ; then
