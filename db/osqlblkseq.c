@@ -67,6 +67,7 @@ int osql_blkseq_unregister_cnonce(void *cnonce, int len)
     }
     memcpy(&fnd.key, cnonce, len);
     Pthread_mutex_lock(&hmtx);
+    fnd.keylen = len;
     iq_src = hash_find(hiqs_cnonce, &fnd);
     if (!iq_src) {
         logmsg(LOGMSG_FATAL, "%s: missing cnonce for recovered prepare\n", __func__);
@@ -93,6 +94,7 @@ int osql_blkseq_register_cnonce(void *cnonce, int len)
     if (!iq_src) {
         iq_src = calloc(sizeof(snap_uid_t), 1);
         memcpy(iq_src->key, cnonce, len);
+        iq_src->keylen = len;
         hash_add(hiqs_cnonce, iq_src);
     } else {
         logmsg(LOGMSG_FATAL, "%s: found cnonce for recovered prepare\n", __func__);

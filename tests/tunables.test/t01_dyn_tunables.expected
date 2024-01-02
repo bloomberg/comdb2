@@ -25,6 +25,7 @@
 (out='Tunable 'no_lock_conflict_trace' set to OFF')
 (lock_conflict_trace='OFF')
 (no_lock_conflict_trace='ON')
+(logmsg tunables='logmsg.epochms')
 (logmsg tunables='logmsg.level')
 (logmsg tunables='logmsg.notimestamp')
 (logmsg tunables='logmsg.syslog')

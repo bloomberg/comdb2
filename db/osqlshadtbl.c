@@ -2405,6 +2405,12 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     shad_tbl_t *tbl = NULL, *tmp = NULL;
 
+    if (clnt->dist_txnid) {
+        free(clnt->dist_txnid);
+        clnt->dist_txnid = NULL;
+        /* don't reset timestamp yet */
+    }
+
     osql->dirty = 0;
     osql_destroy_verify_temptbl(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);
