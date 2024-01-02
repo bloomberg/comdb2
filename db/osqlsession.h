@@ -109,4 +109,15 @@ int osql_sess_queryid(osql_sess_t *sess);
  */
 int osql_sess_try_terminate(osql_sess_t *psess, const char *node);
 
+/**
+ * Coordinator has asked this participant to prepare it's osql schedule
+ */
+int osql_prepare(const char *dist_txnid, const char *coordinator_dbname, const char *coordinator_tier,
+                 const char *coordinator_master);
+
+/**
+ * Coordinator has asked this participant to discard it's osql schedule
+ */
+int osql_discard(const char *dist_txnid);
+
 #endif

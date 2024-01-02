@@ -76,15 +76,20 @@ static inline int copy_sparse_map __P((DB_ENV *, sparse_map_t *,
 	sparse_map_t **));
 static void (*berkdb_deadlock_callback) (struct berkdb_deadlock_info *) = NULL;
 
-static int __dd_abort __P((DB_ENV *, locker_info *, u_int32_t *));
+static int __dd_abort __P((DB_ENV *, locker_info *, u_int32_t *, db_status_t));
 static int __dd_build __P((DB_ENV *,
 	u_int32_t, u_int32_t **, sparse_map_t **, u_int32_t *, u_int32_t *,
-	locker_info **, int));
+	locker_info **, int **, int *, int));
 static int __dd_find __P((DB_ENV *, u_int32_t *, sparse_map_t *, locker_info *,
 	u_int32_t, u_int32_t, u_int32_t ***, u_int32_t **, int *));
+static int __dd_find_timestamp __P((DB_ENV *, u_int32_t *, sparse_map_t *, locker_info *,
+	u_int32_t, u_int32_t, int *, int));
+static int __dd_abort_timestamp __P((DB_ENV *, u_int32_t *, sparse_map_t *, locker_info *,
+	u_int32_t, u_int32_t, int *, int));
 static int __dd_isolder __P((u_int32_t, u_int32_t, u_int32_t, u_int32_t));
 static int __dd_verify __P((locker_info *, u_int32_t *, u_int32_t *,
 	u_int32_t *, sparse_map_t *, u_int32_t, u_int32_t, u_int32_t));
+extern __thread int write_trace;
 
 #ifdef DIAGNOSTIC
 static void __dd_debug __P((DB_ENV *, locker_info *, u_int32_t *,
@@ -430,7 +435,7 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 	}
 	logmsg(LOGMSG_WARN, "\n");
 }
-    
+
 
 static void
 __dd_print_tracked(idmap, deadmap, nlockers, victim)
@@ -448,12 +453,12 @@ __dd_print_tracked(idmap, deadmap, nlockers, victim)
 		if (idmap[j].tracked) {
 			if (j == victim)
 				logmsg(LOGMSG_USER, 
-                    "LOCKID %u CHOOSEN AS DEADLOCK VICTIM\n",
-				    idmap[j].id);
+					"LOCKID %u CHOOSEN AS DEADLOCK VICTIM\n",
+					idmap[j].id);
 			else
 				logmsg(LOGMSG_USER, 
-                    "LOCKID %u PART OF DEADLOCK CYCLE\n",
-				    idmap[j].id);
+					"LOCKID %u PART OF DEADLOCK CYCLE\n",
+					idmap[j].id);
 		}
 	}
 }
@@ -513,6 +518,9 @@ __lock_detect(dbenv, atype, abortp)
 	return ret;
 }
 
+/* Verify that we can relibly reproduce "compound" distributed deadlocks */
+int gbl_debug_disable_waitdie_deadlock_detection = 0;
+
 static int
 __lock_detect_int(dbenv, atype, abortp, can_retry)
 	DB_ENV *dbenv;
@@ -528,10 +536,10 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	DB_TXNMGR *tmgr;
 	locker_info *idmap = NULL;
 	sparse_map_t *sparse_map = NULL, *sparse_copymap = NULL;
-	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
-	    *tmpmap;
+	u_int32_t *bitmap = NULL, *copymap, **deadp, *deadwho, **free_me, *free_me_2, *tmpmap;
 	u_int32_t i, keeper, killid, limit = 0, nalloc = 0, nlockers = 0, dwhoix;
 	u_int32_t lock_max, txn_max;
+	int *tslst, tscnt;
 	int policy_override = gbl_deadlock_policy_override;
 	int is_client;
 	int ret;
@@ -596,7 +604,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 
 	/* Build the waits-for bitmap. */
 	ret = __dd_build(dbenv, atype, &bitmap, &sparse_map, &nlockers, &nalloc,
-	    &idmap, is_client);
+	    &idmap, &tslst, &tscnt, is_client);
 	lock_max = region->stat.st_cur_maxid;
 	unlock_lockers(region);
 
@@ -625,6 +633,19 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 
 	if (nlockers == 0)
 		return (0);
+
+	/* Find & abort waitdie dependencies then rebuild map */
+	if (tscnt > 0 && !gbl_debug_disable_waitdie_deadlock_detection) {
+		__dd_find_timestamp(dbenv, bitmap, sparse_map, idmap, nlockers, nalloc, tslst, tscnt);
+        __dd_abort_timestamp(dbenv, bitmap, sparse_map, idmap, nlockers, nalloc, tslst, tscnt);
+		lock_lockers(region);
+		ret = __dd_build(dbenv, atype, &bitmap, &sparse_map, &nlockers, &nalloc,
+			&idmap, NULL, NULL, is_client);
+		lock_max = region->stat.st_cur_maxid;
+		unlock_lockers(region);
+	}
+	/* If no timestamps then just use map we've already built */
+
 #ifdef DIAGNOSTIC
 	if (FLD_ISSET(dbenv->verbose, DB_VERB_WAITSFOR))
 		 __dd_debug(dbenv, idmap, bitmap, sparse_map, nlockers, nalloc);
@@ -873,7 +894,7 @@ dokill:
 
 		u_int32_t num_retries = 0;
 		/* Kill the locker with lockid idmap[killid]. */
-		if ((ret = __dd_abort(dbenv, &idmap[killid], &num_retries))!=0) {
+		if ((ret = __dd_abort(dbenv, &idmap[killid], &num_retries, DB_LSTAT_ABORTED))!=0) {
 			/*
 			 * It's possible that the lock was already aborted;
 			 * this isn't necessarily a problem, so do not treat
@@ -1073,11 +1094,13 @@ static inline int __resize_object(DB_ENV *dbenv, void **obj, size_t *obj_size,
 
 
 static int
-__dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
+__dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, tslst, tscnt, is_replicant)
 	DB_ENV *dbenv;
 	u_int32_t atype, **bmp, *nlockers, *allocp;
 	sparse_map_t **smap;
 	locker_info **idmap;
+	int **tslst;
+	int *tscnt;
 	int is_replicant;
 {
 	struct __db_lock *lp;
@@ -1090,14 +1113,17 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	sparse_map_t *sparse_map = NULL;
 	u_int8_t *pptr;
 	size_t allocSz;
-	int is_first, ret;
+	int timestamp_index_count;
+	int is_first, ret, ret2;
 
 	static u_int32_t *dd_bitmap = NULL;
 	static size_t dd_bitmap_size = 0;
 	static u_int32_t *dd_tmpmap = NULL;
 	static size_t dd_tmpmap_size = 0;
 	static locker_info *dd_id_array = NULL;
+	static int *dd_timestamp_indexes = NULL;
 	static size_t dd_id_array_size = 0;
+	static size_t dd_timestamp_indexes_size = 0;
 
 
 	lt = dbenv->lk_handle;
@@ -1143,10 +1169,12 @@ retry:	count = region->stat.st_nlockers;
 
 	ret = __resize_object(dbenv, (void**) &dd_id_array, 
 		&dd_id_array_size, allocSz);
-	if(ret) {
+	ret2 = __resize_object(dbenv, (void**) &dd_timestamp_indexes,
+		&dd_timestamp_indexes_size, count * sizeof(int));
+	if(ret || ret2) {
 		if (sparse_map) 
 			free_sparse_map(dbenv, sparse_map);
-		return ret;
+		return (ret || ret2);
 	}
 	memset(dd_id_array, 0, allocSz);
 
@@ -1166,15 +1194,19 @@ retry:	count = region->stat.st_nlockers;
 	 * to each master locker which is in waiting status 
 	 */
 	id = 0;
+	timestamp_index_count = 0;
 
 	for (DB_LOCKER *lip = SH_TAILQ_FIRST(&region->lockers, __db_locker);
 		lip != NULL; lip = SH_TAILQ_NEXT(lip, ulinks, __db_locker)) {
-		if (lip->wstatus == 1) {	/*only master lockers can be in waiting status */
+		if (lip->wstatus == 1 || (tscnt && lip->timestamp > 0)) {	/*only master lockers can be in waiting status */
 			lip->dd_id = id ++;
 			locker_info *ptr_idarr = &dd_id_array[lip->dd_id];
 			ptr_idarr->id = lip->id;
-
 			ptr_idarr->tid = lip->tid;
+			ptr_idarr->timestamp = lip->timestamp;
+			if (lip->timestamp > 0) {
+				dd_timestamp_indexes[timestamp_index_count++] = lip->dd_id;
+			}
 			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
 			ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
 			ptr_idarr->saveme = F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
@@ -1267,6 +1299,7 @@ obj_loop:
 		 * represents all the holders of this object.
 		 */
 		int has_master = 0;
+		int64_t min_timestamp = LLONG_MAX;
 
 		for (lp = SH_TAILQ_FIRST(&op->holders, __db_lock);
 			lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
@@ -1307,8 +1340,9 @@ obj_loop:
 			 * If the holder has already been aborted, then
 			 * we should ignore it for now.
 			 */
-			if (lp->status == DB_LSTAT_HELD)
+			if (lp->status == DB_LSTAT_HELD) {
 				SET_MAP(dd_tmpmap, dd);
+			}
 		}
 
 		/*
@@ -1337,6 +1371,16 @@ look_waiters:
 				if (LOCK_TIME_GREATER(&min_timeout, &lockerp->lk_expire))
 					min_timeout = lockerp->lk_expire;
 
+				/* XXX We already stop this in lock_get
+				if (lockerp->timestamp > 0 && lockerp->timestamp >= min_timestamp) {
+					lp->status = DB_LSTAT_WAITDIE;
+					MUTEX_UNLOCK(dbenv, &lp->mutex);
+					continue;
+				}
+				if (lockerp->timestamp > 0 && lockerp->timestamp < min_timestamp) {
+					min_timestamp = lockerp->timestamp;
+				}
+				*/
 			}
 
 			if (expire_only)
@@ -1606,9 +1650,126 @@ out:
 	*idmap = dd_id_array;
 	*bmp = dd_bitmap;
 	*smap = sparse_map;
+	if (tslst && tscnt) {
+		*tslst = dd_timestamp_indexes;
+		*tscnt = timestamp_index_count;
+	}
 
 	*allocp = nentries;
 	return (0);
+}
+
+static int
+__dd_abort_timestamp(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, tslst, tscnt)
+	DB_ENV *dbenv;
+	u_int32_t *bmp, nlockers, nalloc;
+	sparse_map_t *sparse_map;
+	locker_info *idmap;
+	int *tslst;
+	int tscnt;
+{
+	u_int32_t *mymap;
+	int i, j, k, l;
+	int64_t timestamp, otherts;
+	for (k = 0; k < tscnt; k++) {
+		i = tslst[k];
+		timestamp = idmap[i].timestamp;
+		if (sparse_map) {
+			mymap = sparse_map->map[i];
+		} else {
+			mymap = bmp + (nalloc * i);
+		}
+		if (timestamp <= 0 || !mymap) {
+			continue;
+		}
+		int aborted = 0;
+		for (l = 0; !aborted && l < tscnt; l++) {
+			j = tslst[l];
+			if (!ISSET_MAP(mymap, j)) {
+				continue;
+			}
+			otherts = idmap[j].timestamp;
+			if (otherts > 0 && timestamp >= otherts) {
+				if (verbose_deadlocks && idmap[i].tracked) {
+					logmsg(LOGMSG_USER,
+						"LOCKID %u CHOOSEN AS TIMESTAMP DEADLOCK VICTIM\n", idmap[i].id);
+				}
+				__dd_abort(dbenv, &idmap[i], NULL, DB_LSTAT_WAITDIE);
+				aborted = 1;
+			}
+		}
+	}
+	return 0;
+}
+
+/* Find all dependencies for timestamp lockids, ignore cycles */
+static int
+__dd_find_timestamp(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, tslst, tscnt)
+	DB_ENV *dbenv;
+	u_int32_t *bmp, nlockers, nalloc;
+	sparse_map_t *sparse_map;
+	locker_info *idmap;
+	int *tslst;
+	int tscnt;
+{
+	u_int32_t *tmpmap, *cpymap = NULL, *mymap;
+	int ret, i, j, k, nlocker_iters = 0, iter_cnt, max_iter_cnt = 0;
+
+	if ((ret = __os_malloc(dbenv, sizeof(u_int32_t) * nalloc, &cpymap))!=0) {
+		goto err;
+	}
+
+	/* Iterate through timestamp lockids */
+	for (k = 0; k < tscnt; k++) {
+		i = tslst[k];
+
+		if (sparse_map) {
+			mymap = sparse_map->map[i];
+		} else {
+			mymap = bmp + (nalloc * i);
+		}
+
+		if (!idmap[i].valid || idmap[i].in_abort || !mymap) {
+			continue;
+		}
+
+		memset(cpymap, 0, sizeof(u_int32_t) * nalloc);
+		iter_cnt = 0;
+		/* OR dependencies until map doesn't change */
+		while (memcmp(mymap, cpymap, sizeof(u_int32_t) * nalloc) != 0) {
+			memcpy(cpymap, mymap, sizeof(u_int32_t) * nalloc);
+			iter_cnt++;
+			/* Count of total nlocker-iterations */
+			nlocker_iters++;
+			for (j = 0; j < nlockers; j++) {
+				if (!ISSET_MAP(mymap, j))
+					continue;
+	
+				if (sparse_map) {
+					tmpmap = sparse_map->map[j];
+				} else {
+					tmpmap = bmp + (nalloc * j);
+				}
+				if (tmpmap)
+					OR_MAP(mymap, tmpmap, nalloc);
+			}
+		}
+		/* max-number of nlocker-iterations per timestamp-lockid */
+		if (iter_cnt > max_iter_cnt) {
+			max_iter_cnt = iter_cnt;
+		}
+	}
+
+err:
+	if (cpymap) {
+		__os_free(dbenv, cpymap);
+	}
+
+	if (verbose_deadlocks) {
+		logmsg(LOGMSG_USER, "%s traversed %d tslockers, max-iters=%d total-nlocker-iters=%d\n", 
+			__func__, tscnt, max_iter_cnt, nlocker_iters);
+	}
+	return 0;
 }
 
 static int
@@ -1623,7 +1784,7 @@ __dd_find(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, deadp, deadwho,
 	int *found_tracked;
 {
 	u_int32_t i, j, k, *mymap, *tmpmap, endcnt, idx;
-	u_int32_t **retp, *whop;
+	u_int32_t **retp, *whop = NULL;
 	int ndead, ndeadalloc, ret;
 
 #undef	INITIAL_DEAD_ALLOC
@@ -1757,10 +1918,11 @@ already_aborted_trace(int lineno)
 }
 
 static int
-__dd_abort(dbenv, info, num_retries)
+__dd_abort(dbenv, info, num_retries, status)
 	DB_ENV *dbenv;
 	locker_info *info;
-    u_int32_t *num_retries;
+	u_int32_t *num_retries;
+	db_status_t status;
 {
 	struct __db_lock *lockp;
 	DB_LOCKER *lockerp;
@@ -1857,7 +2019,8 @@ __dd_abort(dbenv, info, num_retries)
 
 	/* Abort lock, take it off list, and wake up this lock. */
 	//SHOBJECT_LOCK(lt, region, sh_obj, ndx);
-	lockp->status = DB_LSTAT_ABORTED;
+	//lockp->status = DB_LSTAT_ABORTED;
+	lockp->status = status;
 	SH_TAILQ_REMOVE(&sh_obj->waiters, lockp, links, __db_lock);
 
 	/*
@@ -2218,7 +2381,7 @@ __dd_abort_holders(dbenv, sh_obj)
 		unlock_locker_partition(region, lockerp->partition);
 
 		/* Abort the holder */
-		if ((ret = __dd_abort(dbenv, infop, NULL))!=0) {
+		if ((ret = __dd_abort(dbenv, infop, NULL, DB_LSTAT_ABORTED))!=0) {
 			if (ret == DB_ALREADY_ABORTED) {
 				ret = 0;
 			} else {
@@ -2392,9 +2555,9 @@ __dd_abort_waiters(dbenv, sh_obj)
 		/* Unlock this locker partition */
 		unlock_locker_partition(region, lockerp->partition);
 
-
 		/* Abort waiter */
-		if ((ret = __dd_abort(dbenv, infop, NULL))!=0) {
+		logmsg(LOGMSG_DEBUG, "%s abort waiter with lock %ld\n", __func__, infop->last_lock);
+		if ((ret = __dd_abort(dbenv, infop, NULL, DB_LSTAT_ABORTED))!=0) {
 			if (ret == DB_ALREADY_ABORTED) {
 				ret = 0;
 			} else {

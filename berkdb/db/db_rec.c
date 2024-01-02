@@ -1164,11 +1164,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	    (IS_ZERO_LSN(argp->page_lsn) && IS_INIT_LSN(LSN(pagep))))) {
 		__db_pg_alloc_target_redo(file_dbp, pagep, argp, lsnp);
 		modified = 1;
-	/*
-    XXX this caused a bug, backing it out XXX
-    } else if (DB_UNDO(op) && (cmp_n == 0 || created || IS_ZERO_LSN(argp->page_lsn))) {
-    */
-	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {
+	} else if (DB_UNDO(op) && (cmp_n == 0 || created || (IS_ZERO_LSN(argp->page_lsn) && IS_ZERO_LSN(pagep->lsn)))) {
 		__db_pg_alloc_target_undo(file_dbp, pagep, argp);
 		modified = 1;
 	}
