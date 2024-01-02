@@ -104,8 +104,6 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_query = __lock_query_pp;
 
 		dbenv->lock_abort_waiters = __lock_abort_waiters_pp;
-		dbenv->lock_count_waiters = __lock_count_waiters_pp;
-		dbenv->lock_count_write_waiters = __lock_count_write_waiters_pp;
 		dbenv->lock_add_child_locker = __lock_add_child_locker_pp;
 		dbenv->lock_id = __lock_id_pp;
 		dbenv->lock_id_flags = __lock_id_flags_pp;

@@ -1,9 +1,0 @@
-schema {
-    cstring name[32]
-    int     dbnum      dbstore=0
-}
-
-keys
-{
-    "KEY_NAME"  = name
-}

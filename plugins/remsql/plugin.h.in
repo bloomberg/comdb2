@@ -22,17 +22,6 @@ struct comdb2_plugin @PLUGIN_SYM@[] = {
         &remtran_plugin        /* Plugin-specific data */
     },
     {
-        "rem2pc",             /* Plugin identifier */
-        "rem2pc plugin",      /* Plugin description */
-        COMDB2_PLUGIN_APPSOCK, /* Plugin type */
-        1,                     /* Plugin version */
-        1,                     /* Plugin interface version */
-        0,                     /* Plugin flags */
-        NULL,                  /* Initialization function */
-        NULL,                  /* Destroy function */
-        &rem2pc_plugin        /* Plugin-specific data */
-    },
-    {
         "alias",               /* Plugin identifier */
         "alias plugin",        /* Plugin description */
         COMDB2_PLUGIN_APPSOCK, /* Plugin type */

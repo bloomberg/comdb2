@@ -254,19 +254,5 @@ if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
     # setup tertiary db for the test, if specified
     DBNAME="${TERTIARY_DBNAME}" DBDIR="${TERTIARY_DBDIR}" CDB2_OPTIONS="${TERTIARY_CDB2_OPTIONS}" unsetup_db
 fi
-if [ -n "${QUATERNARY_DB_PREFIX}" ] ; then
-    # setup QUATERNARY db for the test, if specified
-    DBNAME="${QUATERNARY_DBNAME}" DBDIR="${QUATERNARY_DBDIR}" CDB2_OPTIONS="${QUATERNARY_CDB2_OPTIONS}" unsetup_db
-fi
-
-if [ -n "${QUINARY_DB_PREFIX}" ] ; then
-    # setup QUINARY db for the test, if specified
-    DBNAME="${QUINARY_DBNAME}" DBDIR="${QUINARY_DBDIR}" CDB2_OPTIONS="${QUINARY_CDB2_OPTIONS}" unsetup_db
-fi
-
-if [ -n "${SENARY_DB_PREFIX}" ] ; then
-    # setup SENARY db for the test, if specified
-    DBNAME="${SENARY_DBNAME}" DBDIR="${SENARY_DBDIR}" CDB2_OPTIONS="${SENARY_CDB2_OPTIONS}" unsetup_db
-fi
 
 echo "Unsetup completed"

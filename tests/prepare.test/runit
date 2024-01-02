@@ -102,7 +102,6 @@ function wait_for_election
 function check_cluster
 {
     typeset func="check_cluster"
-    sleep 10
     for node in $CLUSTER ; do
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" > /dev/null 2>&1
         r=$?

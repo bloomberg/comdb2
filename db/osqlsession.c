@@ -36,8 +36,6 @@
 #include "reqlog.h"
 #include "osqlsqlnet.h"
 
-#include <disttxn.h>
-
 struct sess_impl {
     int clients; /* number of threads using the session */
 
@@ -162,16 +160,6 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
     return 0;
 }
 
-static void _free_participants(osql_sess_t *sess)
-{
-    struct participant *p = NULL;
-    while ((p = listc_rtl(&sess->participants))) {
-        free(p->participant_name);
-        free(p->participant_tier);
-        free(p);
-    }
-}
-
 static void _destroy_session(osql_sess_t **psess)
 {
     osql_sess_t *sess = *psess;
@@ -181,24 +169,6 @@ static void _destroy_session(osql_sess_t **psess)
     }
 
     Pthread_mutex_destroy(&sess->impl->mtx);
-    Pthread_mutex_destroy(&sess->participant_lk);
-    if (sess->coordinator_dbname) {
-        free(sess->coordinator_dbname);
-        sess->coordinator_dbname = NULL;
-    }
-    if (sess->coordinator_tier) {
-        free(sess->coordinator_tier);
-        sess->coordinator_tier = NULL;
-    }
-    if (sess->coordinator_master) {
-        free(sess->coordinator_master);
-        sess->coordinator_master = NULL;
-    }
-    _free_participants(sess);
-    if (sess->dist_txnid) {
-        free(sess->dist_txnid);
-        sess->dist_txnid = NULL;
-    }
     if (!sess->impl->embedded_sql)
         free((char *)sess->sql);
 #ifndef NDEBUG
@@ -300,100 +270,6 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
         free(info);
 }
 
-extern int gbl_debug_disttxn_trace;
-
-/* If the participant cluster keeps changing masters then its possible
- * that the coordinator signal will preceed the osql-stream.  We'll
- * fail this for now: the system will recover.  */
-int osql_prepare(const char *dist_txnid, const char *coordinator_dbname, const char *coordinator_tier,
-                 const char *coordinator_master)
-{
-    int dispatch = 0, rc;
-    unsigned long long rqid;
-    uuid_t uuid;
-
-    if ((rc = osql_sanction_disttxn(dist_txnid, &rqid, &uuid, coordinator_dbname, coordinator_tier,
-                                    coordinator_master)) == 0) {
-        logmsg(LOGMSG_INFO, "%s: coordinator beat participant prepare dist-txn %s\n", __func__, dist_txnid);
-        return 0;
-    }
-
-    osql_sess_t *sess = osql_repository_get(rqid, uuid);
-    if (!sess) {
-        uuidstr_t us;
-        comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR, "%s couldn't find session %llx %s\n", __func__, rqid, us);
-        return -1;
-    }
-    Pthread_mutex_lock(&sess->participant_lk);
-    if (coordinator_master == NULL) {
-        abort();
-    }
-    sess->coordinator_dbname = strdup(coordinator_dbname);
-    sess->coordinator_tier = strdup(coordinator_tier);
-    sess->coordinator_master = strdup(coordinator_master);
-    if (sess->is_participant && sess->is_done) {
-        if (gbl_debug_disttxn_trace) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s dispatching %s uuid %s\n", __func__, dist_txnid, comdb2uuidstr(uuid, us));
-        }
-        dispatch = 1;
-    } else {
-        if (gbl_debug_disttxn_trace) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s sanctioning %s uuid %s\n", __func__, dist_txnid, comdb2uuidstr(uuid, us));
-        }
-        sess->is_sanctioned = 1;
-    }
-    Pthread_mutex_unlock(&sess->participant_lk);
-    if (!dispatch) {
-        int rc = osql_repository_put(sess);
-        if (rc == 1) {
-            /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, 1);
-            return -1;
-        }
-        return 0;
-    }
-    return handle_buf_sorese(sess);
-}
-
-/* Coordinator asked participant to discard this session */
-int osql_discard(const char *dist_txnid)
-{
-    int close = 0, rc;
-    unsigned long long rqid;
-    uuid_t uuid;
-
-    if ((rc = osql_cancel_disttxn(dist_txnid, &rqid, &uuid)) == 0) {
-        logmsg(LOGMSG_INFO, "%s: coordinator beat participant prepare dist-txn %s\n", __func__, dist_txnid);
-        return 0;
-    }
-
-    osql_sess_t *sess = osql_repository_get(rqid, uuid);
-
-    if (!sess) {
-        uuidstr_t us;
-        comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR, "%s couldn't find session %llx %s\n", __func__, rqid, us);
-        return -1;
-    }
-    Pthread_mutex_lock(&sess->participant_lk);
-    if (sess->is_participant && sess->is_done) {
-        close = 1;
-    } else {
-        sess->is_sanctioned = -1;
-    }
-    Pthread_mutex_unlock(&sess->participant_lk);
-    rc = osql_repository_put(sess);
-    if (close || rc == 1) {
-        osql_sess_close(&sess, 1);
-    }
-    return 0;
-}
-
-// int osql_abort_prepared(unsigned long long rqid, uuid_t uuid)
-
 /**
  * Handles a new op received for session "rqid"
  * It saves the packet in the local bplog
@@ -443,46 +319,15 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         /* failed to save into bplog; discard and be done */
         goto failed_stream;
     }
-    int dispatch = 0;
-    int cancel = 0;
-    if (is_msg_done) {
-        Pthread_mutex_lock(&sess->participant_lk);
-        if (sess->is_participant && sess->is_sanctioned == 1) {
-            if (gbl_debug_disttxn_trace) {
-                logmsg(LOGMSG_USER, "%s setting dispatch to 1 on sanctioned participant\n", __func__);
-            }
-            dispatch = 1;
-        } else if (sess->is_participant && sess->is_sanctioned == -1) {
-            cancel = 1;
-        } else {
-            sess->is_done = 1;
-        }
-        Pthread_mutex_unlock(&sess->participant_lk);
-    }
 
     /* release the session */
-    if (!is_msg_done || (sess->is_participant && !dispatch)) {
+    if (!is_msg_done) {
         rc = osql_repository_put(sess);
-        if (rc == 1 || cancel) {
+        if (rc == 1) {
             /* session was marked terminated and not finished*/
             osql_sess_close(&sess, 1);
         }
         return 0;
-    }
-
-    /* Handle 2pc protocol */
-    if (sess->is_coordinator) {
-        extern int gbl_debug_disttxn_trace;
-        if (gbl_debug_disttxn_trace) {
-            uuidstr_t us;
-            logmsg(LOGMSG_USER, "DISTTXN %s %s collect_participants rqid=%llu uuid=%s\n", __func__, sess->dist_txnid,
-                   rqid, comdb2uuidstr(sess->uuid, us));
-        }
-        rc = collect_participants(sess->dist_txnid, &sess->participants);
-        if (rc) {
-            rc = osql_repository_put(sess);
-            goto failed_stream;
-        }
     }
 
     /* IT WAS A DONE MESSAGE
@@ -675,9 +520,6 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
     /* init sync fields */
     Pthread_mutex_init(&sess->impl->mtx, NULL);
 
-    /* init participant mutex */
-    Pthread_mutex_init(&sess->participant_lk, NULL);
-
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
     sess->type = type;
@@ -688,7 +530,6 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
     if (tzname)
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
 
-    listc_init(&sess->participants, offsetof(struct participant, linkv));
     sess->impl->clients = 1;
     /* defaults to net */
     init_bplog_net(&sess->target);

@@ -705,7 +705,8 @@ int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
 
 /* abort the transaction referenced by the tran handle */
 int bdb_tran_abort(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
-int bdb_tran_abort_priority(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr, int *priority, int discard);
+int bdb_tran_abort_priority(bdb_state_type *bdb_handle, tran_type *tran,
+                            int *bdberr, int *priority);
 
 /* english doesn't have curses vile enough */
 int bdb_tran_abort_logical(bdb_state_type *bdb_handle, tran_type *tran,
@@ -2222,9 +2223,6 @@ int bdb_get_all_for_versioned_sp_tran(tran_type *tran, char *name, char ***versi
 int bdb_get_default_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps_tran(tran_type *tran, char ***names, int *num);
-void bdb_abort_waiters(bdb_state_type *bdb_state, tran_type *tran);
-uint32_t bdb_tran_count_waiters(bdb_state_type *bdb_state, tran_type *tran);
-uint32_t bdb_tran_count_write_waiters(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_user_exists(tran_type *tran, char *user);
 int bdb_create_dba_user(bdb_state_type *bdb_state);

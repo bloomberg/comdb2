@@ -38,17 +38,6 @@ message CDB2_FLAG {
   required int32 value = 2;
 }
 
-enum CDB2Dist {
-    PREPARE              = 1;
-    DISCARD              = 2;
-    PREPARED             = 3;
-    FAILED_PREPARE       = 4;
-    COMMIT               = 5;
-    ABORT                = 6;
-    PROPAGATED           = 7;
-    HEARTBEAT            = 8;
-}
-
 message CDB2_SQLQUERY {
   required string dbname = 1;
   required string sql_query = 2;
@@ -114,31 +103,15 @@ message CDB2_SQLQUERY {
   optional IdentityBlob identity = 18;
 }
 
+
 message CDB2_DBINFO {
   required string dbname = 1;
   required bool little_endian = 2;
   optional bool want_effects = 3;
 }
 
-message CDB2_DISTTXN {
-  required string dbname = 1;
-  message Disttxn {
-    required int32 operation = 1;
-    required bool async = 2;
-    required string txnid = 3;
-    optional string name = 4;
-    optional string tier = 5;
-    optional string master = 6;
-    optional int32 rcode = 7;
-    optional int32 outrc = 8;
-    optional string errmsg = 9;
-  }
-  optional Disttxn disttxn = 2;
-}
-
 message CDB2_QUERY {
   optional CDB2_SQLQUERY sqlquery = 1;
   optional CDB2_DBINFO   dbinfo = 2;
   optional string        spcmd  = 3;
-  optional CDB2_DISTTXN  disttxn = 4;
 }

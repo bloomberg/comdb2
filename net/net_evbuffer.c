@@ -130,7 +130,6 @@ enum policy {
 static int dedicated_appsock = 1;
 static int dedicated_timer = 0;
 static int dedicated_fdb = 1;
-static int dedicated_dist = 1;
 static enum policy reader_policy = POLICY_PER_NET;
 static enum policy writer_policy = POLICY_PER_HOST;
 
@@ -148,8 +147,6 @@ static pthread_t timer_thd;
 static struct event_base *timer_base;
 static pthread_t fdb_thd;
 static struct event_base *fdb_base;
-static pthread_t dist_thd;
-static struct event_base *dist_base;
 
 #define NUM_APPSOCK_RD 4
 pthread_t appsock_thd[NUM_APPSOCK_RD];
@@ -190,7 +187,6 @@ struct event_base *appsock_base[NUM_APPSOCK_RD];
 #define check_base_thd() check_thd(base_thd)
 #define check_timer_thd() check_thd(timer_thd)
 #define check_fdb_thd() check_thd(fdb_thd)
-#define check_dist_thd() check_thd(dist_thd);
 #define check_rd_thd() check_thd(rd_thd)
 #define check_wr_thd() check_thd(wr_thd)
 
@@ -1135,9 +1131,6 @@ static void exit_once_func(void)
     if (dedicated_fdb) {
         stop_base(fdb_base);
     }
-    if (dedicated_dist) {
-        stop_base(dist_base);
-    }
     if (gbl_libevent_appsock && dedicated_appsock) {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
             stop_base(appsock_base[i]);
@@ -1832,56 +1825,6 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
     event_add(e->hb_check_ev, &one_sec);
     event_add(e->hb_send_ev, &one_sec);
     evtimer_once(base, finish_host_setup, e);
-}
-
-extern int dist_heartbeats(dist_hbeats_type *dt);
-static void dist_heartbeat(int dummyfd, short what, void *data)
-{
-    check_dist_thd();
-    dist_hbeats_type *dt = data;
-    dist_heartbeats(dt);
-}
-
-static void do_enable_dist_heartbeats(int dummyfd, short what, void *data)
-{
-    dist_hbeats_type *dt = data;
-
-    check_dist_thd();
-    if (dt->ev_hbeats)
-        abort();
-
-    dt->ev_hbeats = event_new(dist_base, -1, EV_PERSIST, dist_heartbeat, dt);
-    if (!dt->ev_hbeats) {
-        logmsg(LOGMSG_ERROR, "Failed to create new event for dist_heartbeat\n");
-        return;
-    }
-    dt->tv.tv_sec = 5;
-    dt->tv.tv_usec = 0;
-
-    event_add(dt->ev_hbeats, &dt->tv);
-}
-
-int enable_dist_heartbeats(dist_hbeats_type *dt)
-{
-    return event_base_once(dist_base, -1, EV_TIMEOUT, do_enable_dist_heartbeats, dt, NULL);
-}
-
-extern void dist_heartbeat_free_tran(dist_hbeats_type *dt);
-static void do_disable_dist_heartbeats_and_free(int dummyfd, short what, void *data)
-{
-    dist_hbeats_type *dt = data;
-    check_dist_thd();
-    if (dt->ev_hbeats) {
-        event_del(dt->ev_hbeats);
-        event_free(dt->ev_hbeats);
-        dt->ev_hbeats = NULL;
-    }
-    dist_heartbeat_free_tran(dt);
-}
-
-int disable_dist_heartbeats_and_free(dist_hbeats_type *dt)
-{
-    return event_base_once(dist_base, -1, EV_TIMEOUT, do_disable_dist_heartbeats_and_free, dt, NULL);
 }
 
 extern int fdb_heartbeats(fdb_hbeats_type *hb);
@@ -2668,7 +2611,6 @@ int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, in
     return 0;
 }
 
-#include <fsnapf.h>
 static void do_read(int fd, short what, void *data)
 {
     check_base_thd();
@@ -3156,12 +3098,6 @@ static void setup_bases(void)
     } else {
         fdb_thd = base_thd;
         fdb_base = base;
-    }
-    if (dedicated_dist) {
-        init_base(&dist_thd, &dist_base, "dist");
-    } else {
-        dist_thd = base_thd;
-        dist_base = base;
     }
     if (gbl_libevent_appsock) {
         if (dedicated_appsock) {

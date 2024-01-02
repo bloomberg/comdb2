@@ -6356,87 +6356,6 @@ __lock_to_dbt(dbenv, lock, dbt)
 }
 
 static int
-__lock_count_waiters(dbenv, locker, count, flags)
-	DB_ENV *dbenv;
-	u_int32_t locker;
-	u_int32_t *count;
-	u_int32_t flags;
-{
-	DB_LOCKREGION *region;
-	DB_LOCKTAB *lt;
-	u_int32_t partition;
-	struct __db_lock *lp, *wlp;
-	DB_LOCKER *sh_locker;
-	u_int32_t locker_ndx;
-	int ret;
-
-	(*count) = 0;
-
-	lt = dbenv->lk_handle;
-	region = lt->reginfo.primary;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return (0);
-
-	/* Get the locker. */
-	LOCKER_INDX(lt, region, locker, locker_ndx);
-
-	/* Retrieve the locker */
-	if ((ret = __lock_getlocker(lt, locker, locker_ndx,
-			GETLOCKER_KEEP_PART, &sh_locker)) != 0) {
-		__db_err(dbenv, "Error in lock_getlocker for lid %u", locker);
-        abort();
-	}
-	partition = sh_locker->partition;
-
-	if (NULL == sh_locker) {
-		unlock_locker_partition(region, partition);
-		__db_err(dbenv, "Locker does not exist");
-		ret = EINVAL;
-		abort();
-	}
-
-	/* Mark the locker as deleted temporarily so I can unlock the partition */
-	F_SET(sh_locker, DB_LOCKER_DELETED);
-
-	/* Unlock the partition */
-	unlock_locker_partition(region, partition);
-
-	/* Loop through all locks held by this locker */
-	for (lp = SH_LIST_FIRST(&sh_locker->heldby, __db_lock); lp != NULL;
-		lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
-		DB_LOCKOBJ *lockobj;
-		u_int32_t ndx, part;
-
-		/* Get the object associated with this lock */
-		lockobj = lp->lockobj;
-
-		/* Get the index & partition */
-		ndx = lockobj->index;
-		part = lockobj->partition;
-
-		/* Lock the partition */
-		lock_obj_partition(region, part);
-
-		/* Count waiters list */
-		for (wlp = SH_TAILQ_FIRST(&lockobj->waiters, __db_lock);
-			 wlp != NULL; wlp = SH_TAILQ_NEXT(wlp, links, __db_lock)) {
-			 if (IS_WRITELOCK(wlp->mode) || !flags) {
-				(*count)++;
-			}
-		}
-
-		/* Unlock the partition */
-		unlock_obj_partition(region, part);
-	}
-
-	F_CLR(sh_locker, DB_LOCKER_DELETED);
-
-	return 0;
-}
-
-static int
 __lock_abort_waiters(dbenv, locker, flags)
 	DB_ENV *dbenv;
 	u_int32_t locker;
@@ -6462,7 +6381,7 @@ __lock_abort_waiters(dbenv, locker, flags)
 
 	/* Retrieve the locker */
 	if ((ret = __lock_getlocker(lt, locker, locker_ndx,
-			GETLOCKER_KEEP_PART, &sh_locker)) != 0) {
+		    GETLOCKER_KEEP_PART, &sh_locker)) != 0) {
 		__db_err(dbenv, "Error in lock_getlocker for lid %u", locker);
 		goto err;
 	}
@@ -6484,7 +6403,7 @@ __lock_abort_waiters(dbenv, locker, flags)
 
 	/* Loop through all locks held by this locker */
 	for (lp = SH_LIST_FIRST(&sh_locker->heldby, __db_lock); lp != NULL;
-		lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+	    lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
 		DB_LOCKOBJ *lockobj;
 		u_int32_t ndx, part;
 
@@ -6500,7 +6419,6 @@ __lock_abort_waiters(dbenv, locker, flags)
 
 		/* Abort anything blocked on its rowlocks */
 		if (!LF_ISSET(DB_LOCK_ABORT_LOGICAL) || is_comdb2_rowlock(lockobj->lockobj.size)) {
-			//logmsg(LOGMSG_DEBUG, "%s aborting 
 			/* This releases the lockobj */
 			if ((ret = __dd_abort_waiters(dbenv, lockobj)) != 0) {
 				__db_err(dbenv, "Error aborting waiters\n");
@@ -6517,48 +6435,6 @@ err:
 	return ret;
 }
 
-// PUBLIC: int __lock_count_waiters_pp __P((DB_ENV *, u_int32_t, u_int32_t *));
-int
-__lock_count_waiters_pp(dbenv, locker, count)
-	DB_ENV *dbenv;
-	u_int32_t locker;
-	u_int32_t *count;
-{
-	int ret;
-
-	PANIC_CHECK(dbenv);
-	ENV_REQUIRES_CONFIG(dbenv,
-		dbenv->lk_handle, "DB_ENV->lock_abort_waiters",
-		DB_INIT_LOCK);
-
-	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
-	ret = __lock_count_waiters(dbenv, locker, count, 0);
-	UNLOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
-
-	return (ret);
-}
-
-// PUBLIC: int __lock_count_write_waiters_pp __P((DB_ENV *, u_int32_t, u_int32_t *));
-int
-__lock_count_write_waiters_pp(dbenv, locker, count)
-	DB_ENV *dbenv;
-	u_int32_t locker;
-	u_int32_t *count;
-{
-	int ret;
-
-	PANIC_CHECK(dbenv);
-	ENV_REQUIRES_CONFIG(dbenv,
-		dbenv->lk_handle, "DB_ENV->lock_abort_waiters",
-		DB_INIT_LOCK);
-
-	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
-	ret = __lock_count_waiters(dbenv, locker, count, 1);
-	UNLOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
-
-	return (ret);
-}
-
 
 // PUBLIC: int __lock_abort_waiters_pp __P((DB_ENV *, u_int32_t, u_int32_t));
 int
@@ -6571,8 +6447,8 @@ __lock_abort_waiters_pp(dbenv, locker, flags)
 
 	PANIC_CHECK(dbenv);
 	ENV_REQUIRES_CONFIG(dbenv,
-		dbenv->lk_handle, "DB_ENV->lock_abort_waiters",
-		DB_INIT_LOCK);
+	    dbenv->lk_handle, "DB_ENV->lock_abort_waiters",
+	    DB_INIT_LOCK);
 
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	ret = __lock_abort_waiters(dbenv, locker, flags);

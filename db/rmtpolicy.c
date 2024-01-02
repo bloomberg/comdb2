@@ -73,6 +73,8 @@ const char *get_mach_class_str(char *host)
 static int allow_action_from_remote(const char *host, const struct rmtpol *pol, struct hostpolicy *hpol)
 {
     enum mach_class rmtclass;
+    //struct interned_string *host_interned = intern_ptr(host);
+    //struct clienthost *r = retrieve_clienthost(host_interned);
 
     if (hpol->explicit_disallow)
         return 0;

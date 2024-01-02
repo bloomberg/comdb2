@@ -24,7 +24,6 @@
 #include "sltpck.h"
 #include <poll.h>
 
-#include <disttxn.h>
 #include "socket_interfaces.h"
 #include "sqloffload.h"
 #include "osqlcomm.h"
@@ -161,10 +160,6 @@ static int handle_op_local(struct ireq *iq, int (*init)(struct ireq *),
         rc = init(iq);
         if (rc)
             goto done;
-    }
-
-    if (iq->sorese && iq->sorese->is_coordinator) {
-        dispatch_participants(iq->sorese->dist_txnid);
     }
 
 retry:

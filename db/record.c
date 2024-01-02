@@ -544,7 +544,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
          */
 
         if (has_constraint(flags)) {
-            if (!is_event_from_sc(flags) && !(flags & RECFLAGS_INLINE_CONSTRAINTS)) {
+            if (!is_event_from_sc(flags)) {
                 /* enqueue the add of the key for constraint checking purpose */
                 rc = insert_add_op(iq, opcode, *rrn, -1, *genid, ins_keys,
                                    blkpos, rec_flags);
@@ -562,7 +562,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             }
         }
 
-        if (!has_constraint(flags) || (flags & RECFLAGS_INLINE_CONSTRAINTS) || (rec_flags & OSQL_IGNORE_FAILURE) ||
+        if (!has_constraint(flags) || (rec_flags & OSQL_IGNORE_FAILURE) ||
             reorder) {
             retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, ixfailnum, rrn, genid, vgenid, ins_keys,
                                        opcode, blkpos, od_dta, od_len, flags, reorder);
