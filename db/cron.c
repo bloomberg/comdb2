@@ -67,9 +67,6 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
     int created;
     int rc;
 
-    logmsg(LOGMSG_DEBUG, "%s %s\n", (sched) ? "ADD_EVENT" : "ADD_SCHEDULER",
-           (sched) ? sched->impl.name : name);
-
     created = 0;
     if (!sched) {
         sched = (cron_sched_t *)calloc(1, sizeof(cron_sched_t));

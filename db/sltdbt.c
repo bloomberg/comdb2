@@ -26,6 +26,7 @@
 #include "sltpck.h"
 #include <poll.h>
 
+#include <disttxn.h>
 #include "socket_interfaces.h"
 #include "sqloffload.h"
 #include "osqlcomm.h"
@@ -46,6 +47,9 @@ void (*comdb2_ipc_sndbak_len_sinfo)(struct ireq *, int) = 0;
 
 /* HASH of all registered opcode handlers (one handler per opcode) */
 hash_t *gbl_opcode_hash;
+
+/* Debug-tunable to help coerce system into distributed deadlock */
+int gbl_debug_sleep_before_dispatch = 0;
 
 /* this is dumb, but it doesn't need to be clever for now */
 int a2req(const char *s)
@@ -131,12 +135,15 @@ static void adjust_maxwthreadpenalty(int *totpen_p,
     Pthread_mutex_unlock(&delay_lock);
 }
 
+extern __thread int waitdie_deadlock;
+
 static int handle_op_local(struct ireq *iq, int (*init)(struct ireq *),
                            int (*run)(struct ireq *))
 {
     int rc;
     int64_t startus, stopus;
     int deadlocksleepus;
+    int sleep_before_dispatch = gbl_debug_sleep_before_dispatch;
 
     static int avg_toblock_us;
 
@@ -164,7 +171,20 @@ static int handle_op_local(struct ireq *iq, int (*init)(struct ireq *),
             goto done;
     }
 
+    if (iq->sorese) {
+        if (iq->sorese->is_coordinator)
+            dispatch_participants(iq->sorese->dist_txnid);
+        if (iq->sorese->is_participant)
+            reenable_participant_heartbeats(iq->sorese->dist_txnid);
+    }
+
+    if (sleep_before_dispatch > 0) {
+        logmsg(LOGMSG_DEBUG, "%s sleeping %d before dispatching\n", __func__, sleep_before_dispatch);
+        sleep(sleep_before_dispatch);
+    }
+
 retry:
+    waitdie_deadlock = 0;
     startus = comdb2_time_epochus();
     rc = run(iq);
     stopus = comdb2_time_epochus();
@@ -208,6 +228,10 @@ retry:
             goto retry;
         }
 
+        if (iq->sorese && iq->sorese->dist_txnid) {
+            void abort_disttxn(struct ireq * iq, int rc, int outrc);
+            abort_disttxn(iq, rc, rc);
+        }
         logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
         thd_dump();
     }
