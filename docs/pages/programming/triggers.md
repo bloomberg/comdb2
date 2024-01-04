@@ -156,33 +156,18 @@ CREATE TABLE t(i int, d double, c cstring(10), b byte(4), t datetime, y interval
 CREATE PROCEDURE watch VERSION 'sample' {
 local function define_emit_columns()
     local num = db:exec("select count(*) as num from comdb2_columns where tablename='t'"):fetch().num
-    --temporary kludge: convert to Lua number
-    num = tonumber(tostring(num))
-    local total = 2 + num * 2 -- type, tablename, new columns, old columns
+    local total = 2 + (num * 2) -- type, tablename, new column values, old column values
     db:num_columns(total)
-
-    local i = 0
-    local cols = {}
-
-    i = i + 1
-    table.insert(cols, i, {n='tbl', t='cstring'})
-
-    i = i + 1
-    table.insert(cols, i, {n='type', t='cstring'})
-
+    db:column_name('tbl', 1)  db:column_type('cstring', 1)
+    db:column_name('type', 2) db:column_type('cstring', 2)
     local stmt = db:exec("select columnname as name, type as type from comdb2_columns where tablename='t'")
     local r = stmt:fetch()
+    local i = 2
     while r do
-        local n = tostring(r.name)
-        local t = tostring(r.type)
         i = i + 1
-        table.insert(cols, i, {n = n, t= t})
-        table.insert(cols, i + num, {n = 'old_'..n, t = t})
+        db:column_name(r.name, i)                db:column_type(r.type, i)
+        db:column_name('old_'..r.name, i + num)  db:column_type(r.type, i + num)
         r = stmt:fetch()
-    end
-    for k, v in ipairs(cols) do
-        db:column_name(v.n, k)
-        db:column_type(v.t, k)
     end
 end
 
