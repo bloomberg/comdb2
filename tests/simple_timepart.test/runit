@@ -36,6 +36,12 @@ function timepart_stats
         exit 1
     fi
 
+    cdb2sql ${CDB2_OPTIONS} $dbname default  "select shardname, size from comdb2_timepartshards"
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
     echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
     cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, shardname from comdb2_timepartshards" >> $OUT
     if (( $? != 0 )) ; then
