@@ -89,6 +89,7 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
     int narr = 0;
     int nview;
     int rc = 0;
+    struct dbtable *db;
 
     Pthread_rwlock_rdlock(&views_lk);
 
@@ -113,6 +114,9 @@ int timepart_systable_timepartshards_collect(void **data, int *nrecords)
             arr[narr].shardname = strdup(view->shards[nshard].tblname);
             arr[narr].low = view->shards[nshard].low;
             arr[narr].high = view->shards[nshard].high;
+            db = get_dbtable_by_name(view->shards[nshard].tblname);
+            if (db != NULL)
+                arr[narr].size_in_bytes = calc_table_size(db, 0);
             if (!arr[narr].name || !arr[narr].shardname) {
                 logmsg(LOGMSG_ERROR, "%s OOM\n", __func__);
                 timepart_systable_timepartshards_free(arr, narr);

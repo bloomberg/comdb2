@@ -33,6 +33,7 @@ typedef struct systable_timepartshard {
     char *shardname;
     int64_t low;
     int64_t high;
+    int64_t size_in_bytes;
 } systable_timepartshard_t;
 
 /**

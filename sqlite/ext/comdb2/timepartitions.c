@@ -83,6 +83,7 @@ static int systblTimepartitionsShardsInit(sqlite3 *db)
         CDB2_CSTRING, "shardname", -1, offsetof(systable_timepartshard_t, shardname),
         CDB2_INTEGER, "low", -1, offsetof(systable_timepartshard_t, low),
         CDB2_INTEGER, "high", -1, offsetof(systable_timepartshard_t, high),
+        CDB2_INTEGER, "size", -1, offsetof(systable_timepartshard_t, size_in_bytes),
         SYSTABLE_END_OF_FIELDS);
 }
 
