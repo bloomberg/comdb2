@@ -6676,25 +6676,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (err->errcode == OP_FAILED_UNIQ) {
                 int upsert_idx = dt.upsert_flags >> 8;
                 if ((dt.upsert_flags & OSQL_FORCE_VERIFY) != 0) {
-                    if (upsert_idx == err->ixnum) {
-                        err->errcode = OP_FAILED_VERIFY;
-                        rc = ERR_VERIFY;
-                    }
-                }
-
-                if ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) {
-                    if (upsert_idx == MAXINDEX + 1) {
-                        /* We're asked to ignore DUPs for all unique indices, no insert took place.*/
-                        return 0;
-                    } else if ((dt.upsert_flags & OSQL_FORCE_VERIFY) == 1) {
-                        return 0;
-                    } else if (upsert_idx == err->ixnum) {
-                            /* We're asked to ignore DUPs for this particular * index, no insert took place.*/
-                            return 0;
-                    }
-                }
-
-                if (rc != ERR_VERIFY) {
+                    err->errcode = OP_FAILED_VERIFY;
+                    rc = ERR_VERIFY;
+                } else if ((rc == IX_DUP) &&
+                           ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) &&
+                           ((upsert_idx == MAXINDEX + 1) ||
+                            (upsert_idx == err->ixnum))) {
+                    /* We're asked to ignore DUPs, no insert took place.*/
+                    return 0;
+                } else {
                     /* this can happen if we're skipping delayed key adds */
                     reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
                                                        "duplicate key '%s' on "
