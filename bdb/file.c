@@ -155,7 +155,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
-static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
+static int open_dbs(bdb_state_type *, int, int, int, DB_TXN **, uint32_t);
 static int close_dbs(bdb_state_type *bdb_state);
 static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state);
@@ -1110,7 +1110,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
 
     saved_name = bdb_state->name;
     bdb_state->name = newname;
-    rc = open_dbs(bdb_state, 1, 1, 0, tid, 0);
+    rc = open_dbs(bdb_state, 1, 1, 0, &tid, 0);
     if (rc != 0) {
         bdb_state->name = saved_name;
         bdb_state->origname = saved_origname;
@@ -1771,7 +1771,7 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, 0);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, &tid, 0);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         __dbreg_unlock_lazy_id(bdb_state->dbenv);
@@ -4141,7 +4141,7 @@ int calc_pagesize(int initsize, int recsize)
     return (initsize >= pagesize) ? initsize : pagesize;
 }
 
-int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN *tid, uint32_t flags)
+int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid, uint32_t flags)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4155,6 +4155,7 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     bdbtype_t bdbtype = bdb_state->bdbtype;
     int tmp_tid;
     tran_type tran = {0};
+    DB_TXN *tid = *ptid;
 
     if ((flags & BDB_OPEN_SKIP_SCHEMA_LK) == 0) {
         assert_wrlock_schema_lk();
@@ -4217,10 +4218,10 @@ deadlock_again:
                        "bdb_open_dbs: failed to update table and its file's "
                        "version number, bdberr %d\n",
                        bdberr);
-                if (tid)
+                if (tid) {
                     tid->abort(tid);
-
-                tid = NULL;
+                    *ptid = NULL;
+                }
                 if (tmp_tid && bdberr == BDBERR_DEADLOCK)
                     goto deadlock_again;
 
@@ -4341,8 +4342,10 @@ deadlock_again:
                     if (0 != rc)
                         logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n",
                                 tmpname, rc, db_strerror(rc));
-                    if (tid)
+                    if (tid) {
                         tid->abort(tid);
+                        *ptid = NULL;
+                    }
                     return -1;
                 }
 
@@ -4377,7 +4380,10 @@ deadlock_again:
             if (create) {
                 if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
                                             tmpname, sizeof(tmpname)))) {
-                    if (tmp_tid) tid->abort(tid);
+                    if (tmp_tid) {
+                        tid->abort(tid);
+                        *ptid = NULL;
+                    }
                     return rc;
                 }
                 char new[PATH_MAX];
@@ -4442,7 +4448,10 @@ deadlock_again:
                            "bdp_dta->close(%s) failed: rc=%d %s\n",
                            tmpname, rc, db_strerror(rc));
                 }
-                if (tid) tid->abort(tid);
+                if (tid) {
+                    tid->abort(tid);
+                    *ptid = NULL;
+                }
                 return -1;
             }
             rc = dbp->get_pagesize(dbp, &x);
@@ -4536,8 +4545,10 @@ deadlock_again:
                 logmsg(LOGMSG_ERROR, "bdp_dta->close(%s) failed: rc=%d %s\n",
                         tmpname, rc, db_strerror(rc));
 
-            if (tid)
+            if (tid) {
                 tid->abort(tid);
+                *ptid = NULL;
+            }
             return -1;
         }
 
@@ -4596,8 +4607,10 @@ deadlock_again:
                                                      DB_RECNUM);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "couldnt set recnum mode\n");
-                    if (tid)
+                    if (tid) {
                         tid->abort(tid);
+                        *ptid = NULL;
+                    }
                     return -1;
                 }
             }
@@ -4677,8 +4690,10 @@ deadlock_again:
                         tmpname, rc);
                 logmsg(LOGMSG_ERROR, "couldnt open ix db\n");
 
-                if (tid)
+                if (tid) {
                     tid->abort(tid);
+                    *ptid = NULL;
+                }
                 return -1;
             }
 
@@ -4981,7 +4996,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
         /* fprintf(stderr, "back from close_dbs\n"); */
 
         /* now reopen them as a client */
-        rc = open_dbs(bdb_state, 0, 1, 0, tid, 0);
+        rc = open_dbs(bdb_state, 0, 1, 0, &tid, 0);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "upgrade: open_dbs as client failed\n");
             outrc = 1;
@@ -5004,7 +5019,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             /* fprintf(stderr, "back from close_dbs\n"); */
 
             /* now reopen them as a client */
-            rc = open_dbs(child, 0, 1, 0, tid, 0);
+            rc = open_dbs(child, 0, 1, 0, &tid, 0);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "upgrade: open_dbs as client failed\n");
                 outrc = 1;
@@ -6099,7 +6114,7 @@ static bdb_state_type *bdb_open_int(
         /* open our databases as either a client or master */
         bdb_state->bdbtype = bdbtype;
         bdb_state->pagesize_override = pagesize_override;
-        rc = open_dbs(bdb_state, iammaster, upgrade, create, tid, flags);
+        rc = open_dbs(bdb_state, iammaster, upgrade, create, &tid, flags);
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
@@ -7199,7 +7214,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid,
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, flags);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, &tid, flags);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         BDB_RELLOCK();
