@@ -36,6 +36,7 @@ extern int gbl_disable_skip_rows;
 extern int gbl_return_long_column_names;
 extern int gbl_typessql;
 extern int gbl_incoherent_clnt_wait;
+extern int gbl_new_leader_duration;
 
 struct newsql_appdata {
     NEWSQL_APPDATA_COMMON
@@ -2043,7 +2044,7 @@ int leader_is_new(void)
     struct timeval now, diff;
     gettimeofday(&now, NULL);
     timersub(&now, &last_elect_time, &diff);
-    return diff.tv_sec == 0; // considered new if less than 1sec
+    return diff.tv_sec < gbl_new_leader_duration;
 }
 
 newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)

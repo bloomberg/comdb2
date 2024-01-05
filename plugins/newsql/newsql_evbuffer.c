@@ -43,6 +43,7 @@
 
 extern int gbl_nid_dbname;
 extern int gbl_incoherent_clnt_wait;
+extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
 
@@ -54,14 +55,16 @@ struct ping_pong {
 
 struct newsql_appdata_evbuffer;
 
-struct dispatch_sql {
+struct dispatch_sql_arg {
+    struct timeval start;
+    int wait_time;
     pthread_t thd;
     int dispatched;
     struct event *ev;
     struct newsql_appdata_evbuffer *appdata;
-    TAILQ_ENTRY(dispatch_sql) entry;
+    TAILQ_ENTRY(dispatch_sql_arg) entry;
 };
-static TAILQ_HEAD(, dispatch_sql) dispatch_list = TAILQ_HEAD_INITIALIZER(dispatch_list);
+static TAILQ_HEAD(, dispatch_sql_arg) dispatch_list = TAILQ_HEAD_INITIALIZER(dispatch_list);
 static pthread_mutex_t dispatch_lk = PTHREAD_MUTEX_INITIALIZER;
 
 struct ssl_data {
@@ -77,7 +80,7 @@ struct newsql_appdata_evbuffer {
     struct event *cleanup_ev;
     struct newsqlheader hdr;
     struct ping_pong *ping;
-    struct dispatch_sql *dispatch;
+    struct dispatch_sql_arg *dispatch;
 
     struct evbuffer *rd_buf;
     struct event *rd_hdr_ev;
@@ -425,13 +428,17 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl)
     return 2;
 }
 
-static void dispatch_waiting_client(int fd, short what, void * data)
+static void dispatch_waiting_client(int fd, short what, void *data)
 {
-    struct dispatch_sql *d = data;
+    struct dispatch_sql_arg *d = data;
     struct newsql_appdata_evbuffer *appdata = d->appdata;
     check_thd(d->thd);
     appdata->dispatch = NULL;
     event_free(d->ev);
+    struct timeval end, diff;
+    gettimeofday(&end, NULL);
+    timersub(&end, &d->start, &diff);
+    logmsg(LOGMSG_USER, "%s: waited %lds.%ldms for election fd:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, appdata->fd);
     if (!bdb_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
         newsql_cleanup(appdata);
@@ -444,7 +451,7 @@ static void dispatch_waiting_client(int fd, short what, void * data)
 void dispatch_waiting_clients(void)
 {
     Pthread_mutex_lock(&dispatch_lk);
-    struct dispatch_sql *d, *tmp;
+    struct dispatch_sql_arg *d, *tmp;
     TAILQ_FOREACH_SAFE(d, &dispatch_list, entry, tmp) {
         d->dispatched = 1;
         TAILQ_REMOVE(&dispatch_list, d, entry);
@@ -454,14 +461,31 @@ void dispatch_waiting_clients(void)
     Pthread_mutex_unlock(&dispatch_lk);
 }
 
-static void do_dispatch_sql(int fd, short what, void *data)
+static int do_dispatch_sql(struct newsql_appdata_evbuffer *appdata)
+{
+    struct dispatch_sql_arg *d = appdata->dispatch;
+    if (d->dispatched) return -1; /* already dispatched */
+    if (--d->wait_time <= 0) return 0; /* timed out, dispatch now */
+    if (bdb_am_i_coherent(thedb->bdb_env)) return 0; /* am coherent, dispatch now */
+    if (!bdb_whoismaster(thedb->bdb_env)) return -1; /* still no master, wait more */
+    if (leader_is_new()) {
+        if (d->wait_time > gbl_new_leader_duration) {
+            d->wait_time = gbl_new_leader_duration;
+            logmsg(LOGMSG_USER, "%s: have leader, waiting %ds for coherency lease fd:%d\n",
+                   __func__, d->wait_time, appdata->fd);
+        }
+        return -1; /* wait a bit more to catch up */
+    }
+    return 0; /* have established leader, dispatch now */
+}
+
+static void dispatch_sql(int fd, short what, void *data)
 {
     Pthread_mutex_lock(&dispatch_lk);
     struct newsql_appdata_evbuffer *appdata = data;
-    struct dispatch_sql *d = appdata->dispatch;
-    if (!d->dispatched) {
+    if (do_dispatch_sql(appdata) == 0) {
         TAILQ_REMOVE(&dispatch_list, appdata->dispatch, entry);
-        dispatch_waiting_client(-1, EV_TIMEOUT, d);
+        dispatch_waiting_client(-1, EV_TIMEOUT, appdata->dispatch);
     }
     Pthread_mutex_unlock(&dispatch_lk);
 }
@@ -473,10 +497,10 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
         newsql_cleanup(appdata);
         return;
     }
-    struct dispatch_sql *d = calloc(1, sizeof(struct dispatch_sql));
+    struct dispatch_sql_arg *d = calloc(1, sizeof(struct dispatch_sql_arg));
     d->appdata = appdata;
     d->thd = pthread_self();
-    d->ev = event_new(appdata->base, -1, EV_TIMEOUT, do_dispatch_sql, appdata);
+    d->ev = event_new(appdata->base, -1, EV_TIMEOUT | EV_PERSIST, dispatch_sql, appdata);
     Pthread_mutex_lock(&dispatch_lk);
     if (bdb_am_i_coherent(thedb->bdb_env)) {
         /* check again under lock to prevent race with concurrent leader-upgrade */
@@ -488,21 +512,21 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
         }
         return;
     }
-    struct timeval timeout;
-    timeout.tv_usec = 0;
     appdata->dispatch = d;
     if (incoherent == NEWSQL_NO_LEADER) {
-        timeout.tv_sec = gbl_incoherent_clnt_wait;
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, waiting %lds for election fd:%d\n",
-               __func__, timeout.tv_sec, appdata->fd);
+        d->wait_time = gbl_incoherent_clnt_wait;
+        logmsg(LOGMSG_USER, "%s: new query on incoherent node, waiting %ds for election fd:%d\n",
+               __func__, d->wait_time, appdata->fd);
     } else if (NEWSQL_NEW_LEADER) {
-        timeout.tv_sec = 1;
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, waiting %lds for coherency lease fd:%d\n",
-               __func__, timeout.tv_sec, appdata->fd);
+        d->wait_time = gbl_new_leader_duration;
+        logmsg(LOGMSG_USER, "%s: new query on incoherent node, waiting %ds for coherency lease fd:%d\n",
+               __func__, d->wait_time, appdata->fd);
     } else {
         logmsg(LOGMSG_FATAL, "%s: unknown incoherent state:%d\n", __func__, incoherent);
         abort();
     }
+    struct timeval timeout = {.tv_sec = 1};
+    gettimeofday(&d->start, NULL);
     event_add(d->ev, &timeout);
     TAILQ_INSERT_TAIL(&dispatch_list, d, entry);
     Pthread_mutex_unlock(&dispatch_lk);
