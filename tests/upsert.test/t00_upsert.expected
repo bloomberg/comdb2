@@ -228,3 +228,6 @@ keys
 (rows inserted=1)
 (i=1, j=11)
 (i=2, j=2)
+('---- DRQS#173941100 ----'='---- DRQS#173941100 ----')
+(rows inserted=1)
+(i=1, j=1)
