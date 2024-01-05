@@ -386,7 +386,7 @@ int arr[10] = {1,2,3,4...};
 cdb2_bind_array(hndl, "arr", CDB2_INTEGER, arr, 10, sizeof(int));
 
 //Run the SQL statement:
-cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)”);
+cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)");
 
 
 //Pass multiple arrays:
@@ -394,13 +394,13 @@ int64_t ids0[] = {...};
 int64_t ids1[] = {...};
 cdb2_bind_array(hndl, "arr0", CDB2_INTEGER, ids0, count0, sizeof(int64_t));
 cdb2_bind_array(hndl, "arr1", CDB2_INTEGER, ids1, count1, sizeof(int64_t));
-cdb2_run_statement(db, "SELECT * FROM a WHERE id IN CARRAY(@arr0) UNION SELECT * FROM b WHERE id IN CARRAY(@arr1)”);
+cdb2_run_statement(db, "SELECT * FROM a WHERE id IN CARRAY(@arr0) UNION SELECT * FROM b WHERE id IN CARRAY(@arr1)");
 
 
 //bind cstrings:
 char *strs[] = {"hello", "world"};
 cdb2_bind_array(hndl, "strings", CDB2_CSTRING, strs, 2, 0);
-cdb2_run_statement(db, `INSERT INTO b SELECT * FROM CARRAY(@strings)`.
+cdb2_run_statement(db, "INSERT INTO b SELECT * FROM CARRAY(@strings)");
 
 
 //bind blobs:
