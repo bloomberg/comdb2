@@ -567,6 +567,7 @@
 (name='netconndumptime', description='Dump connection statistics to ctrace this often.', type='INTEGER', value='3158070', read_only='N')
 (name='netpoll', description='Alias of net_poll', type='INTEGER', value='100', read_only='Y')
 (name='new_indexes', description='Let replicants send indexes values to master', type='BOOLEAN', value='OFF', read_only='N')
+(name='new_leader_duration', description='Time new query waits for replicanted-recovery (Default: 3sec)', type='INTEGER', value='3', read_only='N')
 (name='new_master_dummy_add_delay', description='Force a transaction after this delay, after becoming master.', type='INTEGER', value='5', read_only='N')
 (name='newqdelmode', description='Enables new queue deletion mode.', type='BOOLEAN', value='ON', read_only='N')
 (name='no_ack_trace', description='Disables 'ack_trace'', type='BOOLEAN', value='ON', read_only='Y')

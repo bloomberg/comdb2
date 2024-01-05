@@ -2476,4 +2476,7 @@ REGISTER_TUNABLE("always_load_preupd_blobs", "For update triggers, always load p
 REGISTER_TUNABLE("incoherent_clnt_wait", "Delay incoherent reject if without master (Default: 10sec)",
                  TUNABLE_INTEGER, &gbl_incoherent_clnt_wait, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("new_leader_duration", "Time new query waits for replicanted-recovery (Default: 3sec)",
+                 TUNABLE_INTEGER, &gbl_new_leader_duration, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

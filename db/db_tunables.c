@@ -470,6 +470,7 @@ extern int gbl_pstack_self;
 extern char *gbl_cdb2api_policy_override;
 
 int gbl_incoherent_clnt_wait = 10;
+int gbl_new_leader_duration = 3;
 
 /*
   =========================================================
