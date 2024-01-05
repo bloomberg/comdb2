@@ -3903,7 +3903,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                 /* We ignore the failure for REPLACE as same record could conflict
                  * for more that one unique indexes.
                  */
-                pCur->vdbe->oeFlag == OE_Replace) {
+                pCur->vdbe->oeFlag == Cdb2_OE_Replace) {
                 rc = bdb_tran_deltbl_isdeleted_dedup(pCur->bdbcur, pCur->genid, 0, &bdberr);
                 if (rc == 1) {
                     rc = SQLITE_OK;
@@ -3975,7 +3975,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                 /* We ignore the failure for REPLACE as same record could conflict
                  * for more that one unique indexes.
                  */
-                pCur->vdbe->oeFlag == OE_Replace) {
+                pCur->vdbe->oeFlag == Cdb2_OE_Replace) {
                 rc = fdb_is_genid_deleted(trans, pCur->genid);
                 if (rc == 1) {
                     rc = SQLITE_OK;
