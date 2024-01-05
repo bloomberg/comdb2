@@ -215,6 +215,3 @@ keys
 (rows inserted=1)
 [INSERT INTO t1 VALUES(2,1) ON CONFLICT(i) DO NOTHING] failed with rc 299 add key constraint duplicate key '$KEY_1E727833' on table 't1' index 1
 (i=1, j=1)
-(test='--- Test with 2 unique indices ----')
-(rows inserted=2)
-[INSERT INTO t1 VALUES(3,2) ON CONFLICT(i) DO UPDATE SET j=j+2] failed with rc 2 

@@ -1367,13 +1367,9 @@ void sqlite3GenerateConstraintChecks(
   sqlite3 *db;         /* Database connection */
   int i;               /* loop counter */
   int ix;              /* Index loop counter */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   int nCol;            /* Number of columns */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   int onError;         /* Conflict resolution strategy */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   int addr1;           /* Address of jump instruction */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   int seenReplace = 0; /* True if REPLACE is used to resolve INT PK conflict */
   int nPkField;        /* Number of fields in PRIMARY KEY. 1 for ROWID tables */
   Index *pUpIdx = 0;   /* Index to which to apply the upsert */
@@ -1395,10 +1391,8 @@ void sqlite3GenerateConstraintChecks(
   v = sqlite3GetVdbe(pParse);
   assert( v!=0 );
   assert( pTab->pSelect==0 );  /* This table is not a VIEW */
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   nCol = pTab->nCol;
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-
+  
   /* pPk is the PRIMARY KEY index for WITHOUT ROWID tables and NULL for
   ** normal rowid tables.  nPkField is the number of key fields in the 
   ** pPk index or 1 for a rowid table.  In other words, nPkField is the
@@ -1415,7 +1409,6 @@ void sqlite3GenerateConstraintChecks(
   VdbeModuleComment((v, "BEGIN: GenCnstCks(%d,%d,%d,%d,%d)",
                      iDataCur, iIdxCur, regNewData, regOldData, pkChng));
 
-#if !defined(SQLITE_BUILDING_FOR_COMDB2)
   /* Test all NOT NULL constraints.
   */
   for(i=0; i<nCol; i++){
@@ -1511,7 +1504,6 @@ void sqlite3GenerateConstraintChecks(
     pParse->iSelfTab = 0;
   }
 #endif /* !defined(SQLITE_OMIT_CHECK) */
-#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* UNIQUE and PRIMARY KEY constraints should be handled in the following
   ** order:
@@ -1727,6 +1719,7 @@ void sqlite3GenerateConstraintChecks(
     VdbeNoopComment((v, "uniqueness check for %s", pIdx->zName));
     iThisCur = iIdxCur+ix;
 
+
     /* Skip partial indices for which the WHERE clause is not true */
     if( pIdx->pPartIdxWhere ){
       sqlite3VdbeAddOp2(v, OP_Null, 0, aRegIdx[ix]);
@@ -1771,12 +1764,6 @@ void sqlite3GenerateConstraintChecks(
     ** primary key, then no collision is possible.  The collision detection
     ** logic below can all be skipped. */
     if( isUpdate && pPk==pIdx && pkChng==0 ){
-      sqlite3VdbeResolveLabel(v, addrUniqueOk);
-      continue;
-    }
-
-    /* Skip non-target indices */
-    if( pUpIdx && pUpIdx!=pIdx ) {
       sqlite3VdbeResolveLabel(v, addrUniqueOk);
       continue;
     }
