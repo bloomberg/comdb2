@@ -19,16 +19,15 @@
 #include "dynschematypes.h"
 #include "dynschemaload.h"
 
-static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum,
-                                  int dbix);
+static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum);
 static int init_check_constraints(dbtable *tbl);
 static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
                           int no_side_effects, struct errstat *err);
 
 struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int indx,
-                                   int sc_alt_tablename, int allow_ull,
-                                   int no_side_effects, struct errstat *err)
+                                   char *csc2, int dbnum, int sc_alt_tablename,
+                                   int allow_ull, int no_side_effects,
+                                   struct errstat *err)
 {
     struct dbtable *newtable = NULL;
     int rc;
@@ -47,7 +46,7 @@ struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
         goto err;
     }
 
-    newtable = newdb_from_schema(dbenv, tablename, dbnum, indx);
+    newtable = newdb_from_schema(dbenv, tablename, dbnum);
     if (!newtable) {
         errstat_set_rcstrf(err, -1, "newdb_from_schema failed for %s",
                            tablename);
@@ -111,8 +110,7 @@ done:
     return rc;
 }
 
-static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum,
-                                  int dbix)
+static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum)
 {
     dbtable *tbl;
     int ii;
@@ -124,8 +122,6 @@ static dbtable *newdb_from_schema(struct dbenv *env, char *tblname, int dbnum,
         logmsg(LOGMSG_FATAL, "%s: Memory allocation error\n", __func__);
         return NULL;
     }
-
-    tbl->dbs_idx = dbix;
 
     tbl->dbtype = DBTYPE_TAGGED_TABLE;
     tbl->tablename = strdup(tblname);

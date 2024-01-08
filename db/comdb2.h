@@ -2411,9 +2411,9 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
-void replace_db_idx(struct dbtable *p_db, int idx);
 int add_dbtable_to_thedb_dbs(dbtable *table);
 void rem_dbtable_from_thedb_dbs(dbtable *table);
+void re_add_dbtable_to_thedb_dbs(dbtable *table);
 void hash_sqlalias_db(dbtable *db, const char *newname);
 int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
@@ -3544,7 +3544,6 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
-int getdbidxbyname_ll(const char *p_name);
 int get_dbtable_idx_by_name(const char *tablename);
 int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int resume,
                         int temp, tran_type *tran);

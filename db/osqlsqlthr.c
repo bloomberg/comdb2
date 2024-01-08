@@ -1790,7 +1790,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     sc->usedbtablevers = comdb2_table_version(sc->tablename);
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb && getdbidxbyname_ll(sc->tablename) < 0) {
+        if (usedb && !get_dbtable_by_name(sc->tablename)) {
             unsigned long long version;
             char *first_shardname =
                 timepart_shard_name(sc->tablename, 0, 1, &version);

@@ -59,7 +59,6 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     int bdberr = 0;
     int datacopy_odh = 0;
     char new_prefix[32];
-    int foundix;
     struct scinfo scinfo;
     struct errstat err = {0};
 
@@ -81,15 +80,9 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
 
-    /* find which db has a matching name */
-    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
-        exit(1);
-    }
-
     int saved_broken_max_rec_sz = fix_broken_max_rec_sz(s->db->lrl);
     newdb = s->newdb =
-        create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum, foundix,
+        create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum,
                            1 /* sc_alt_name */, 1 /* allow ull */, 0, &err);
     gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
 

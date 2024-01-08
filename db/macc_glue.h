@@ -21,9 +21,9 @@
 
 /* create a dbtable with the provided schema "csc2" */
 struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int indx,
-                                   int sc_alt_tablename, int allow_ull,
-                                   int no_sideeffects, struct errstat *err);
+                                   char *csc2, int dbnum, int sc_alt_tablename,
+                                   int allow_ull, int no_sideeffects,
+                                   struct errstat *err);
 
 /* populate an existing db with .NEW tags for provided schema "csc2" */
 int populate_db_with_alt_schema(struct dbenv *dbenv, struct dbtable *db,
