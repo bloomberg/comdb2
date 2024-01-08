@@ -384,7 +384,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int changed;
     int i;
     char new_prefix[32];
-    int foundix;
     struct scinfo scinfo;
     struct errstat err = {0};
 
@@ -441,14 +440,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
 
-    /* find which db has a matching name */
-    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
-        exit(1);
-    }
-
     newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum,
-                               foundix, 1 /* sc_alt_name */,
+                               1 /* sc_alt_name */,
                                (s->same_schema) ? 1 : 0, 0, &err);
 
     if (!newdb) {

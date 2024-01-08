@@ -116,8 +116,8 @@ int add_table_to_environment(char *table, const char *csc2,
 
     struct errstat err = {0};
     newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/,
-                               thedb->num_dbs, 0 /*no altname*/,
-                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */, 
+                               0 /*no altname*/,
+                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */,
                                0 /* side effects */, &err);
     if (!newdb) {
         sc_client_error(s, "%s", err.errstr);

@@ -1029,15 +1029,9 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     int changed = 0;
     int rc;
 
-    int foundix = getdbidxbyname_ll(table);
-    if (foundix == -1) {
-        logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
-        exit(1);
-    }
-
     struct errstat err = {0};
-    newdb = create_new_dbtable(thedb, table, (char *)csc2, db->dbnum, foundix,
-                               1, 1, 0, &err);
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, db->dbnum, 1, 1, 0,
+                               &err);
 
     if (newdb == NULL) {
         /* shouldn't happen */

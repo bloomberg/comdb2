@@ -6053,7 +6053,7 @@ struct schema *create_version_schema(char *csc2, int version,
 
     ver_db = create_new_dbtable(
         thedb, gbl_ver_temp_table, csc2, 0 /* no altname */, 0 /* fake dbnum */,
-        0 /* fake dbs_idx */, 1 /* allow ull */, 1 /* no side effects */, &err);
+        1 /* allow ull */, 1 /* no side effects */, &err);
     if (!ver_db) {
         logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr, csc2);
         goto done;
@@ -6127,7 +6127,6 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
 {
     int rc;
     int bdberr;
-    int foundix = db->dbs_idx;
     int version = get_csc2_version_tran(db->tablename, tran);
     int len;
     void *old_bdb_handle, *new_bdb_handle;
@@ -6143,7 +6142,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
 
     struct errstat err = {0};
     dbtable *newdb = create_new_dbtable(thedb, db->tablename, csc2, db->dbnum,
-                                        foundix, 0, 1, 0, &err);
+                                        0, 1, 0, &err);
     if (!newdb) {
         logmsg(LOGMSG_ERROR, "%s (%s:%d)\n", err.errstr, __FILE__, __LINE__);
         goto err;
@@ -6188,7 +6187,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
                 bdberr);
     db->handle = old_bdb_handle;
 
-    replace_db_idx(db, foundix);
+    re_add_dbtable_to_thedb_dbs(db);
     fix_constraint_pointers(db, newdb);
 
     memset(newdb, 0xff, sizeof(dbtable));

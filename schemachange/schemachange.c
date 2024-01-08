@@ -558,7 +558,7 @@ int do_dryrun(struct schema_change_type *s)
     }
 
     struct errstat err = {0};
-    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, s->same_schema, 0,
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 1, s->same_schema, 0,
                                &err);
     if (!newdb) {
         sc_client_error(s, "%s", err.errstr);
@@ -937,21 +937,14 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     }
 
     char new_prefix[32];
-    int foundix;
 
     if (s->headers != db->odh) {
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
     }
 
-    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
-        abort();
-    }
-
     struct errstat err = {0};
     newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2,
-                               (s->dbnum != -1) ? s->dbnum : 0, foundix, 1, 1,
-                               0, &err);
+                               (s->dbnum != -1) ? s->dbnum : 0, 1, 1, 0, &err);
     if (!newdb) {
         logmsg(LOGMSG_FATAL, "Shouldn't happen in this piece of code %s:%d.\n",
                __FILE__, __LINE__);

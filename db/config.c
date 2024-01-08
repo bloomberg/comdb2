@@ -664,8 +664,7 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     }
 
     struct errstat err = {0};
-    db = create_new_dbtable(dbenv, tblname, csc2, dbnum, dbenv->num_dbs, 0, 0,
-                            0, &err);
+    db = create_new_dbtable(dbenv, tblname, csc2, dbnum, 0, 0, 0, &err);
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s\ncsc2:\"%s\"\n", err.errstr, csc2);
         free(csc2);
