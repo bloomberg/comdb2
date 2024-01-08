@@ -66,6 +66,7 @@ struct dispatch_sql_arg {
 };
 static TAILQ_HEAD(, dispatch_sql_arg) dispatch_list = TAILQ_HEAD_INITIALIZER(dispatch_list);
 static pthread_mutex_t dispatch_lk = PTHREAD_MUTEX_INITIALIZER;
+static struct event_base *dispatch_base;
 
 struct ssl_data {
     SSL *ssl;
@@ -448,7 +449,7 @@ static void dispatch_waiting_client(int fd, short what, void *data)
     free(d);
 }
 
-void dispatch_waiting_clients(void)
+static void do_dispatch_waiting_clients(int fd, short what, void *data)
 {
     Pthread_mutex_lock(&dispatch_lk);
     struct dispatch_sql_arg *d, *tmp;
@@ -459,6 +460,12 @@ void dispatch_waiting_clients(void)
         evtimer_once(appdata->base, dispatch_waiting_client, d);
     }
     Pthread_mutex_unlock(&dispatch_lk);
+}
+
+void dispatch_waiting_clients(void)
+{
+    if (!dispatch_base) return;
+    event_base_once(dispatch_base, -1, EV_TIMEOUT, do_dispatch_waiting_clients, NULL, NULL);
 }
 
 static int do_dispatch_sql(struct newsql_appdata_evbuffer *appdata)
@@ -1018,6 +1025,9 @@ static int allow_admin(int local)
 
 static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admin)
 {
+    if (!dispatch_base) {
+        dispatch_base = arg->base;
+    }
     int local = 0;
     if (arg->addr.sin_addr.s_addr == gbl_myaddr.s_addr) {
         local = 1;
