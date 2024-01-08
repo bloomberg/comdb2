@@ -469,7 +469,7 @@ extern int gbl_pstack_self;
 /* For fdb connections using cdb2api */
 extern char *gbl_cdb2api_policy_override;
 
-int gbl_incoherent_clnt_wait = 10;
+int gbl_incoherent_clnt_wait = 0;
 int gbl_new_leader_duration = 3;
 
 /*
