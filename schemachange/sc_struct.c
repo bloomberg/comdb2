@@ -33,7 +33,6 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->onstack = 0;
     sc->live = 0;
     sc->use_plan = 0;
-    sc->add_state = SC_NOT_ADD;
     /* default values: no change */
     sc->headers = -1;
     sc->compress = -1;

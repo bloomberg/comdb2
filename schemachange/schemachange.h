@@ -60,9 +60,6 @@ struct dest {
     LINKC_T(struct dest) lnk;
 };
 
-/* status for add table process, stored in sc->add_status */
-enum add_state { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
-
 enum comdb2_partition_type {
     PARTITION_NONE = 0,
     PARTITION_REMOVE = 1,
@@ -213,7 +210,6 @@ struct schema_change_type {
     SBUF2 *sb; /* socket to sponsoring program */
     int must_close_sb;
     int use_old_blobs_on_rebuild;
-    enum add_state add_state;
     int partialuprecs; /* count updated records in partial table upgrade */
 
     int resume;           /* if we are trying to resume a schema change,
