@@ -799,6 +799,10 @@ __db_add_recovery(dbenv, dtab, dtabsize, func, ndx)
 	return (0);
 }
 
+
+static int use_temptable_for_txnlist = 0;
+uint32_t gbl_txnlist_temptable_thresh = 0; /* 10 million */
+
 /*
  * __db_txnlist_init --
  *	Initialize transaction linked list.
@@ -837,6 +841,12 @@ __db_txnlist_init(dbenv, low_txn, hi_txn, trunc_lsn, retp)
 		/* See if we wrapped around. */
 		if (tmp > (TXN_MAXIMUM - TXN_MINIMUM) / 2)
 			tmp = (low_txn - TXN_MINIMUM) + (TXN_MAXIMUM - hi_txn);
+		if (tmp > gbl_txnlist_temptable_thresh) {
+			/* If there're too many transactions to run recovery through,
+			 * use the temptable implementation */
+			logmsg(LOGMSG_INFO, "use temptable for txnlist thresh %u est %u\n", gbl_txnlist_temptable_thresh, tmp);
+			use_temptable_for_txnlist = 1;
+		}
 		size = tmp / 5;
 		if (size < 100)
 			size = 100;
@@ -885,6 +895,105 @@ static int __txnlist_cmp(const void *key1, const void *key2, int len)
 	return 0;
 }
 
+void *get_bdb_env(void);
+typedef struct bdb_state_tag bdb_state_type;
+struct temp_table *bdb_temp_table_create(bdb_state_type *bdb_state, int *bdberr);
+int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *table, int *bdberr);
+struct temp_cursor *bdb_temp_table_cursor(bdb_state_type *bdb_state, struct temp_table *table, void *usermem, int *bdberr);
+int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cursor,
+                        const void *key, int keylen, void *unpacked, int *bdberr);
+void *bdb_temp_table_key(struct temp_cursor *cursor);
+void *bdb_temp_table_data(struct temp_cursor *cursor);
+int bdb_temp_table_insert(bdb_state_type *bdb_state, struct temp_cursor *cursor,
+                          void *key, int keylen, void *data, int dtalen, int *bdberr);
+int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cursor, int *bdberr);
+int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cursor,
+                          void *key, int keylen, void *data, int dtalen, int *bdberr);
+typedef int (*tmptbl_cmp)(void *, int, const void *, int, const void *);
+void bdb_temp_table_set_cmp_func(struct temp_table *table, tmptbl_cmp);
+
+typedef struct {
+	u_int32_t txnid;
+	u_int32_t generation;
+	u_int32_t cnt;
+} __txnlist_txnid;
+
+static int __txnlist_cmp_temptable(void *unused0, int unused1, const void *a, int unused2, const void *b)
+{
+	const __txnlist_txnid *keya = a, *keyb = b;
+	if (keya->txnid != keyb->txnid)
+		return (keya->txnid - keyb->txnid);
+	if (keya->generation != keyb->generation)
+		return (keya->generation - keyb->generation);
+	if (keya->cnt != keyb->cnt)
+		return (keya->cnt - keyb->cnt);
+	return (0);
+}
+
+static int
+__db_txnlist_add_temptable(dbenv, listp, txnid, status, lsn)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+	int32_t status;
+	DB_LSN *lsn;
+{
+	DB_TXNHEAD *hp = (DB_TXNHEAD *)listp;
+	__txnlist_txnid *key;
+	int ret, bdberr;
+	void *thebdbenv = get_bdb_env();
+
+	if ((ret = __os_malloc(dbenv, sizeof(__txnlist_txnid), &key)) != 0)
+		return (ret);
+
+	key->txnid = txnid;
+	key->generation = hp->generation;
+	key->cnt = 0;
+
+	if (txnid > hp->maxid)
+		hp->maxid = txnid;
+	if (lsn != NULL && IS_ZERO_LSN(hp->maxlsn) && status == TXN_COMMIT)
+		hp->maxlsn = *lsn;
+
+	DB_ASSERT(lsn == NULL ||
+			status != TXN_COMMIT || log_compare(&hp->maxlsn, lsn) >= 0);
+
+	if (hp->txnstore == NULL) {
+		hp->txnstore = bdb_temp_table_create(thebdbenv, &bdberr);
+		if (hp->txnstore == NULL) {
+			logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create() failed bdberr %d\n", __func__, bdberr);
+			return (-1);
+		}
+		bdb_temp_table_set_cmp_func(hp->txnstore, __txnlist_cmp_temptable);
+	}
+
+	if (hp->txnstorecur == NULL) {
+		hp->txnstorecur = bdb_temp_table_cursor(thebdbenv, hp->txnstore, NULL, &bdberr);
+		if (hp->txnstorecur == NULL) {
+			logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_cursor() failed bdberr %d\n", __func__, bdberr);
+			return (-1);
+		}
+	}
+
+	if (hp->txnstoremem == NULL) {
+		if ((ret = __os_malloc(dbenv, sizeof(DB_TXNLIST), &hp->txnstoremem)) != 0)
+			return (ret);
+		hp->txnstoremem->type = TXNLIST_TXNID;
+	}
+
+	while ((ret = bdb_temp_table_insert(thebdbenv, hp->txnstorecur,
+					key, sizeof(__txnlist_txnid), &status, sizeof(status), &bdberr)) == DB_KEYEXIST) {
+		++key->cnt;
+	}
+
+	if (ret != 0) {
+		logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert() failed rc %d bdberr %d\n", __func__, ret, bdberr);
+		return (-1);
+	}
+
+	return (0);
+}
+
 /*
  * __db_txnlist_add --
  *	Add an element to our transaction linked list.
@@ -903,6 +1012,9 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 	DB_TXNHEAD *hp;
 	DB_TXNLIST *elp, *fnd;
 	int ret;
+
+	if (use_temptable_for_txnlist)
+		return __db_txnlist_add_temptable(dbenv, listp, txnid, status, lsn);
 
 #if defined (DEBUG_PREPARE_TXNLIST)
 	comdb2_cheapstack_sym(stderr, "%s txnid %u/%x, status %d lsn [%d:%d]\n",
@@ -1035,6 +1147,11 @@ __db_txnlist_end(dbenv, listp)
 		__os_free(dbenv, hp->gen_array);
 	if (hp->h)
 		hash_free(hp->h);
+	if (hp->txnstore) {
+		int bdberr;
+		bdb_temp_table_close(get_bdb_env(), hp->txnstore, &bdberr);
+		__os_free(dbenv, hp->txnstoremem);
+	}
 	__os_free(dbenv, listp);
 }
 
@@ -1137,6 +1254,11 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 	if (ret == TXN_NOTFOUND || ret == TXN_IGNORE)
 		return (ret);
 	elp->u.t.status = status;
+	if (use_temptable_for_txnlist) {
+		int bdberr;
+		if (bdb_temp_table_update(get_bdb_env(), hp->txnstorecur, NULL, 0, &status, sizeof(status), &bdberr) != 0)
+			logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_update() failed bdberr %d\n", __func__, bdberr);
+	}
 
 #if defined (UFID_HASH_DEBUG)
 	comdb2_cheapstack_sym(stderr, "%s updating txnid 0x%x status %d [%d:%d], "
@@ -1147,6 +1269,47 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 	if (lsn != NULL && IS_ZERO_LSN(hp->maxlsn) && status == TXN_COMMIT)
 		hp->maxlsn = *lsn;
 
+	return (ret);
+}
+
+static int
+__db_txnlist_find_internal_temptable(hp, txnid, generation, txnlistp, delete)
+	DB_TXNHEAD *hp;
+	u_int32_t  txnid;
+	u_int32_t  generation;
+	DB_TXNLIST **txnlistp;
+	int delete;
+{
+	int bdberr;
+	void *thebdbenv = get_bdb_env();
+	__txnlist_txnid key = {.txnid = txnid, .generation = generation, .cnt = 0};
+	__txnlist_txnid *found;
+	int ret, *status;
+
+	if (hp->txnstorecur == NULL)
+		return (TXN_NOTFOUND);
+
+	if (bdb_temp_table_find(thebdbenv, hp->txnstorecur, &key, sizeof(key), NULL, &bdberr) != 0) {
+		logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_find() failed rc bdberr %d\n", __func__, bdberr);
+		return (TXN_NOTFOUND);
+	}
+	found = bdb_temp_table_key(hp->txnstorecur);
+	if (found == NULL || found->txnid != key.txnid || found->generation != key.generation)
+		return (TXN_NOTFOUND);
+	status = bdb_temp_table_data(hp->txnstorecur);
+	ret = *status;
+
+#if 0
+    /* no need to delete; bdb_temp_table_close would clean it up */
+	if (delete && (bdb_temp_table_delete(thebdbenv, hp->txnstorecur, &bdberr) != 0))
+		logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_delete() failed bdberr %d\n", __func__, bdberr);
+#endif
+
+	hp->txnstoremem->u.t.txnid = txnid;
+	hp->txnstoremem->u.t.generation = generation;
+	hp->txnstoremem->u.t.status = *status;
+
+	*txnlistp = hp->txnstoremem;
 	return (ret);
 }
 
@@ -1209,20 +1372,24 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 
 	head = &hp->head[DB_TXNLIST_MASK(hp, hash)];
 	p = LIST_FIRST(head);
-	if (type == TXNLIST_TXNID && hp->h) {
-		DB_TXNLIST fnd = {0};
-		fnd.type = type;
-		fnd.u.t.txnid = txnid;
-		fnd.u.t.generation = generation;
-		elp = hash_find(hp->h, &fnd);
+	if (type == TXNLIST_TXNID) {
+		if (use_temptable_for_txnlist) {
+			return (__db_txnlist_find_internal_temptable(hp, txnid, generation, txnlistp, delete));
+		} else if (hp->h) {
+			DB_TXNLIST fnd = {0};
+			fnd.type = type;
+			fnd.u.t.txnid = txnid;
+			fnd.u.t.generation = generation;
+			elp = hash_find(hp->h, &fnd);
 #if defined DEBUG_TXNLIST_PLHASH
-		chk = 1;
+			chk = 1;
 #else
-		if (elp == NULL)
-			return (TXN_NOTFOUND);
-		p = elp;
-		assert(elp->u.t.txnid == txnid && elp->u.t.generation == generation);
+			if (elp == NULL)
+				return (TXN_NOTFOUND);
+			p = elp;
+			assert(elp->u.t.txnid == txnid && elp->u.t.generation == generation);
 #endif
+		}
 	}
 
 	for (; p != NULL; p = LIST_NEXT(p, links)) {

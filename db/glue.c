@@ -6169,6 +6169,11 @@ void *get_bdb_env(void)
     return thedb->bdb_env;
 }
 
+void set_bdb_env(bdb_state_type *env)
+{
+    thedb->bdb_env = env;
+}
+
 int timepart_systable_next_allowed(sqlite3_int64 *tabId);
 
 /* This function can be used as an iterator to jump to the next
