@@ -127,8 +127,10 @@ int rd_evbuffer_ssl(struct evbuffer *rd_buf, SSL *ssl, int *eof)
                __func__, __LINE__, rc, err);
         break;
     case SSL_ERROR_SYSCALL:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
-               __func__, __LINE__, rc, err, errno, strerror(errno));
+        if (errno && errno != ECONNRESET) {
+            logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
+                   __func__, __LINE__, rc, err, errno, strerror(errno));
+        }
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
@@ -159,8 +161,10 @@ int wr_evbuffer_ssl(SSL *ssl, struct evbuffer *wr_buf)
                __func__, __LINE__, rc, err);
         break;
     case SSL_ERROR_SYSCALL:
-        logmsg(LOGMSG_ERROR, "%s:%d SSL_write rc:%d err:%d errno:%d [%s]\n",
-               __func__, __LINE__, rc, err, errno, strerror(errno));
+        if (errno && errno != ECONNRESET) {
+            logmsg(LOGMSG_ERROR, "%s:%d SSL_write rc:%d err:%d errno:%d [%s]\n",
+                   __func__, __LINE__, rc, err, errno, strerror(errno));
+        }
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s:%d SSL_write rc:%d err:%d [%s]\n",
