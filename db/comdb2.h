@@ -134,15 +134,11 @@ enum {
 #define MAXNULLBITS (MAXCOLUMNS / 8)
 
 enum SYNC_FLAGS {
-    REP_SYNC_FULL = 0 /* run asynchronously */
-    ,
-    REP_SYNC_SOURCE = 1 /* source node only is synchronized before ack */
-    ,
-    REP_SYNC_NONE = 2 /* all nodes are sync'd before ack */
-    ,
-    REP_SYNC_ROOM = 3 /* sync to nodes in my machine room */
-    ,
-    REP_SYNC_N = 4 /* wait for N machines */
+    REP_SYNC_FULL = 0,   /* all nodes are sync'd before ack */
+    REP_SYNC_SOURCE = 1, /* source node only is synchronized before ack */
+    REP_SYNC_NONE = 2,   /* run asynchronously */
+    REP_SYNC_ROOM = 3,   /* sync to nodes in my machine room */
+    REP_SYNC_N = 4       /* wait for N machines */
 };
 
 enum OPCODES {
