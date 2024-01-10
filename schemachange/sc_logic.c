@@ -848,7 +848,7 @@ void *sc_resuming_watchdog(void *p)
         mark_schemachange_over(iq.sc->tablename);
         if (iq.sc->kind == SC_ADDTABLE) {
             delete_temp_table(&iq, iq.sc->db);
-            if (iq.sc->add_state == SC_DONE_ADD) {
+            if (iq.sc->already_finalized) {
                 rem_dbtable_from_thedb_dbs(iq.sc->db);
             }
         }
@@ -1575,7 +1575,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             poll(NULL, 0, 100);
         }
         if (s->kind == SC_ADDTABLE) {
-            if (s->add_state == SC_DONE_ADD) {
+            if (s->already_finalized) {
                 rem_dbtable_from_thedb_dbs(s->db);
             }
             if (s->newdb) {
