@@ -78,11 +78,19 @@ static int collect_columns(void **pd, int *pn)
     Pthread_rwlock_rdlock(&views_lk);
 
     ntables = timepart_systable_num_tables_and_views();
-    for (; comdb2_next_allowed_table(&tableid) == SQLITE_OK && tableid < ntables; ++tableid) {
+
+    /* Get number of rows, and allocate a continuous chunk of memory. */
+    for (tableid = 0, ncols = 0; comdb2_next_allowed_table(&tableid) == SQLITE_OK && tableid < ntables; ++tableid) {
+        pDb = comdb2_get_dbtable_or_shard0(tableid);
+        ncols += pDb->schema->nmembers;
+    }
+
+    data = calloc(ncols, sizeof(struct systable_column));
+
+    for (tableid = 0, ncols = 0; comdb2_next_allowed_table(&tableid) == SQLITE_OK && tableid < ntables; ++tableid) {
         pDb = comdb2_get_dbtable_or_shard0(tableid);
         for (colid = 0; colid < pDb->schema->nmembers; ++colid) {
             pField = &pDb->schema->member[colid];
-            data = realloc(data, sizeof(struct systable_column) * (ncols + 1));
             p = &data[ncols];
             p->tablename = strdup(pDb->timepartition_name ? pDb->timepartition_name : pDb->tablename);
             p->columnname = strdup(pField->name);
@@ -92,7 +100,7 @@ static int collect_columns(void **pd, int *pn)
             sqltype(pField, p->sqltype, 15);
             if (pField->type == SERVER_BLOB2 || pField->type == SERVER_VUTF8) {
                 p->inlinesz = pField->len - 5;
-                p->pinlinesz = &p->inlinesz;
+                p->pinlinesz = &p->inlinesz; /* reference myself; must update if relocated */
             } else {
                 p->inlinesz = -1;
                 p->pinlinesz = NULL;
@@ -124,7 +132,7 @@ static int collect_columns(void **pd, int *pn)
                 } else {
                     p->nextseq = seq + 1;
                 }
-                p->pnextseq = &p->nextseq;
+                p->pnextseq = &p->nextseq; /* reference myself; must update if relocated */
                 curtran_puttran(trans);
             }
             ++ncols;
