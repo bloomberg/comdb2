@@ -367,7 +367,7 @@ Description:
 
 `cdb2_bind_array` is also used to bind an array of values passed to a stored procedure (without the `carray` keyword.) The `main` function in the procedure will receive a Lua array with corresponding values for every array parameter.
 
-`cdb2_bind_array` supports binding CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING and CDB2_BLOB values. The maximum number of elements in the array is `INT16_MAX`. The pointer `varaddr` accepts following types: `int32_t *` (or `int64_t *`) for `CDB2_INTEGER`, `double *` for `CDB2_REAL` and `char **` for `CDB2_STRING`. For `CDB2_BLOB`, the pointer should point to array of structures defined as:
+`cdb2_bind_array` supports binding CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING and CDB2_BLOB values. The maximum number of elements in the array is `CDB2_MAX_BIND_ARRAY` = `INT16_MAX` as defined in cdb2api.h. The pointer `varaddr` accepts following types: `int32_t *` (or `int64_t *`) for `CDB2_INTEGER`, `double *` for `CDB2_REAL` and `char **` for `CDB2_STRING`. For `CDB2_BLOB`, the pointer should point to array of structures defined as:
 
 ```c
 struct {
