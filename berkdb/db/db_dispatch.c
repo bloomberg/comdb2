@@ -801,7 +801,7 @@ __db_add_recovery(dbenv, dtab, dtabsize, func, ndx)
 
 
 static int use_temptable_for_txnlist = 0;
-uint32_t gbl_txnlist_temptable_thresh = 0; /* 10 million */
+uint32_t gbl_txnlist_temptable_thresh = 10000000; /* 10 million */
 
 /*
  * __db_txnlist_init --
