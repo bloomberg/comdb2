@@ -5924,6 +5924,9 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     struct dbtable *first_shard = get_dbtable_by_name(first_shard_name);
     free(first_shard_name);
 
+    /* we need to move data */
+    sc->force_rebuild = 1;
+
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition

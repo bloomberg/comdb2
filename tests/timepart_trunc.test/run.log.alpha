@@ -853,6 +853,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select * from t14 order by 1
 (a=10, b=20)
 (a=30, b=40)
 (a=50, b=60)
+(a=111, b=111)
+(a=222, b=222)
 cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
 [
  {
@@ -924,6 +926,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select * from t14 order by 1
 (a=10, b=20)
 (a=30, b=40)
 (a=50, b=60)
+(a=111, b=111)
+(a=222, b=222)
 cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
 [
  {
