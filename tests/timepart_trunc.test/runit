@@ -398,6 +398,21 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
+echo $cmd "insert into '\$1_9ABA178A' values (111,111)"
+$cmd "insert into '\$1_9ABA178A' values (111,111)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t14i shard 1"
+   exit 1
+fi
+
+echo $cmd "insert into '\$0_528953B1' values (222,222)"
+$cmd "insert into '\$0_528953B1' values (222,222)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t14i shard 0"
+   exit 1
+fi
+
+
 echo $cmd "select * from t14 order by 1"
 echo $cmd "select * from t14 order by 1" >> $OUT
 $cmd "select * from t14 order by 1" >> $OUT
