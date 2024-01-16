@@ -190,6 +190,22 @@ function max_sequence_ddl
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
 }
 
+function reset_sequence
+{
+    typeset master=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default 'select host from comdb2_cluster where is_master="Y"')
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b longlong autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('setseq t1 b 999')"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1")
+    [[ "$x" != "1000" ]] && failexit "Failed to reset sequence"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where 1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('setseq t1 b 99')"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1")
+    [[ "$x" != "100" ]] && failexit "Failed to reset sequence"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
 function max_sequence_csc2
 {
     disable_strict_mode
@@ -381,6 +397,71 @@ function lrl_sequence
     [[ $? != 0 ]] && failexit "Failed to drop lrlsequence table"
 }
 
+function allow_permissive_sequence_sc
+{
+    if [[ -n $CLUSTER ]]; then
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "put tunable 'permissive_sequence_sc' 1"
+        done
+    else
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "put tunable 'permissive_sequence_sc' 1"
+    fi
+}
+
+function verify_and_fix_corruption
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into lrlsequence(a) select * from generate_series (1,100)"
+    [[ $? == 0 ]] && failexit "lrlsequence table should have been corrupt"
+
+    # Drop table should fail
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table lrlsequence"
+    [[ $? == 0 ]] && failexit "lrlsequence table should have been corrupt for drop"
+
+    # Rename table should fail
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table lrlsequence2 rename to newlrlsequence2"
+    [[ $? == 0 ]] && failexit "lrlsequence2 table should have been corrupt for rename"
+
+    # Alter table should fail
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table lrlsequence3 drop column b"
+    [[ $? == 0 ]] && failexit "lrlsequence3 table should have been corrupt for alter"
+
+    # Make sure that verify returns a bad rcode for each of these
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('lrlsequence')")
+    [[ $? == 0 ]] && failexit "lrlsequence table should have failed verify"
+    echo "$x" 
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('lrlsequence2')")
+    [[ $? == 0 ]] && failexit "lrlsequencee2table should have failed verify"
+    echo "$x"
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('lrlsequence3')")
+    [[ $? == 0 ]] && failexit "lrlsequencee3 table should have failed verify"
+    echo "$x"
+
+    allow_permissive_sequence_sc
+
+    # Drop table should succeed
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table lrlsequence"
+    [[ $? != 0 ]] && failexit "lrlsequence table should have been allowed to drop"
+
+    # Rename table should succeed
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table lrlsequence2 rename to newlrlsequence2"
+    [[ $? != 0 ]] && failexit "lrlsequence2 table should have been renamed"
+
+    # Alter table should succeed
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table lrlsequence3 drop column b"
+    [[ $? != 0 ]] && failexit "lrlsequence3 table should have been allowed to alter"
+
+    # Verify on the new table should succeed
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('newlrlsequence2')")
+    [[ $? != 0 ]] && failexit "newlrlsequencee2table should have succeeded verify"
+    echo "$x"
+
+    x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('lrlsequence3')")
+    [[ $? != 0 ]] && failexit "lrlsequencee3 table should have succeeded verify"
+    echo "$x"
+}
+
 function run_test
 {
     set_output_files
@@ -404,7 +485,12 @@ function run_test
     strict_csc2
     validate_type_ddl
     validate_type_csc2
-    lrl_sequence
+    reset_sequence
+    if [[ "$DBNAME" == *"nextsequencereprocorruptiongenerated"* ]]; then
+        verify_and_fix_corruption
+    else
+        lrl_sequence
+    fi
 }
 
 run_test

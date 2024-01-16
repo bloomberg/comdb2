@@ -2812,6 +2812,41 @@ static int _stag_to_ctag_buf(struct dbtable *table, const char *stag,
     return tlen;
 }
 
+int reset_sequence(const char *table, const char *column, int64_t val)
+{
+    struct dbtable *db = get_dbtable_by_name(table);
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s couldn't find table %s\n", __func__, table);
+        return -1;
+    }
+
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (!strcmp(f->name, column)) {
+            if (f->in_default_type != SERVER_SEQUENCE) {
+                logmsg(LOGMSG_ERROR, "%s table %s column %s is not a sequence\n", __func__, table, column);
+                return -1;
+            }
+            int bdberr = 0, rc;
+            void *t = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+            if (!t) {
+                logmsg(LOGMSG_ERROR, "%s couldn't begin tran\n", __func__);
+                return -1;
+            }
+            rc = bdb_set_sequence(t, table, column, val, &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Error setting sequence %d bdberr %d\n", rc, bdberr);
+                bdb_tran_abort(db->handle, t, &bdberr);
+                return -1;
+            }
+            bdb_tran_commit(db->handle, t, &bdberr);
+            return 0;
+        }
+    }
+    logmsg(LOGMSG_ERROR, "%s couldn't find column %s in table %s\n", __func__, column, table);
+    return -1;
+}
+
 int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen)
 {
     tran_type *tran = (tran_type *)intrans;
@@ -5618,6 +5653,8 @@ void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)
     bdb_set_queue_odh_options(handle, odh, compr, persist);
 }
 
+int gbl_permissive_sequence_sc = 1;
+
 int delete_table_sequences(tran_type *tran, struct dbtable *db)
 {
     int rc = 0, bdberr = 0;
@@ -5625,9 +5662,14 @@ int delete_table_sequences(tran_type *tran, struct dbtable *db)
         struct field *f = &db->schema->member[i];
         if (f->in_default_type == SERVER_SEQUENCE) {
             if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr) != 0)) {
-                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
-                       f->name, rc, bdberr);
-                return rc;
+                if (gbl_permissive_sequence_sc) {
+                    logmsg(LOGMSG_INFO, "%s error %s %s rc=%d bdberr=%d, continuing.\n", __func__, db->tablename,
+                           f->name, rc, bdberr);
+                } else {
+                    logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                           f->name, rc, bdberr);
+                    return rc;
+                }
             }
         }
     }
@@ -5645,10 +5687,15 @@ int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbta
             int fn = find_field_idx_in_tag(newdb->schema, f->name);
             if (fn == -1 || newdb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
                 if ((rc = bdb_del_sequence(tran, olddb->tablename, f->name, &bdberr))) {
+                    if (gbl_permissive_sequence_sc) {
+                        logmsg(LOGMSG_INFO, "%s error %s %s rc=%d bdberr=%d, continuing.\n", __func__, olddb->tablename,
+                               f->name, rc, bdberr);
 
-                    logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__,
-                           olddb->tablename, f->name, rc, bdberr);
-                    return rc;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__,
+                               olddb->tablename, f->name, rc, bdberr);
+                        return rc;
+                    }
                 }
             }
         }
@@ -5694,14 +5741,25 @@ int rename_table_sequences(tran_type *tran, dbtable *db, const char *newname)
         if (f->in_default_type == SERVER_SEQUENCE) {
             int64_t s;
             if ((rc = bdb_get_sequence(tran, db->tablename, f->name, &s, &bdberr))) {
-                logmsg(LOGMSG_ERROR, "%s error getting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
-                       f->name, rc, bdberr);
-                return rc;
+                if (gbl_permissive_sequence_sc) {
+                    logmsg(LOGMSG_INFO, "%s error %s %s rc=%d bdberr=%d, continuing.\n", __func__, db->tablename,
+                           f->name, rc, bdberr);
+                    s = 0;
+                } else {
+                    logmsg(LOGMSG_ERROR, "%s error getting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                           f->name, rc, bdberr);
+                    return rc;
+                }
             }
             if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr))) {
-                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
-                       f->name, rc, bdberr);
-                return rc;
+                if (gbl_permissive_sequence_sc) {
+                    logmsg(LOGMSG_INFO, "%s error %s %s rc=%d bdberr=%d, continuing.\n", __func__, db->tablename,
+                           f->name, rc, bdberr);
+                } else {
+                    logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                           f->name, rc, bdberr);
+                    return rc;
+                }
             }
             if ((rc = bdb_set_sequence(tran, newname, f->name, s, &bdberr))) {
                 logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, newname, f->name, rc,

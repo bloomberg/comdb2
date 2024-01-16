@@ -312,6 +312,8 @@ extern int gbl_check_constraint_feature;
 extern int gbl_default_function_feature;
 extern int gbl_on_del_set_null_feature;
 extern int gbl_sequence_feature;
+extern int gbl_reproduce_sequence_corruption;
+extern int gbl_permissive_sequence_sc;
 extern int gbl_view_feature;
 
 extern char *gbl_kafka_topic;

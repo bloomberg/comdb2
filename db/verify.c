@@ -197,6 +197,22 @@ retry:
     }
 }
 
+int locprint(verify_common_t *par, char *fmt, ...);
+void verify_sequences(verify_common_t *par, const struct dbtable *db, tran_type *tran)
+{
+    int bdberr = 0, rc = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int64_t s;
+            if ((rc = bdb_get_sequence(tran, db->tablename, f->name, &s, &bdberr))) {
+                locprint(par, "Verify sequence failed for tbl %s col %s", db->tablename, f->name);
+                par->verify_status = 1;
+            }
+        }
+    }
+}
+
 static int verify_blobsizes_callback(const dbtable *tbl, void *dta,
                                      int blobsizes[16], int offset[16],
                                      int *nblobs)
@@ -363,6 +379,11 @@ int verify_table(const char *table, int progress_report_seconds,
             par.client_dropped_connection = 1;
         }
         sleep(1);
+    }
+    if (mode == VERIFY_SERIAL || mode == VERIFY_PARALLEL || mode == VERIFY_DATA) {
+        verify_sequences(&par, db, tran);
+    } else {
+        logmsg(LOGMSG_INFO, "%s not running verify-sequences on mode=%d\n", __func__, mode);
     }
     rc = par.verify_status;
 done:
