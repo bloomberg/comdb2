@@ -1074,6 +1074,10 @@ REGISTER_TUNABLE("sbuftimeout", NULL, TUNABLE_INTEGER, &gbl_sbuftimeout,
 REGISTER_TUNABLE("sc_del_unused_files_threshold", NULL, TUNABLE_INTEGER,
                  &gbl_sc_del_unused_files_threshold_ms, READONLY | NOZERO, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_repro_seq_corruption", "Reproduce init-sequence corruption (Default: OFF)", TUNABLE_BOOLEAN,
+                 &gbl_reproduce_sequence_corruption, EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("permissive_sequence_sc", "Allow schema-changes on corrupt sequences (Default: ON)", TUNABLE_BOOLEAN,
+                 &gbl_permissive_sequence_sc, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sequence_feature", "Enables support for SEQUENCES in column definitions (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_sequence_feature, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("simulate_rowlock_deadlock", NULL, TUNABLE_INTEGER,

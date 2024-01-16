@@ -5893,6 +5893,8 @@ void epoch2a(int epoch, char *buf, size_t buflen)
     }
 }
 
+int gbl_reproduce_sequence_corruption = 0;
+
 /* store our schemas in meta */
 static int put_all_csc2()
 {
@@ -5914,7 +5916,11 @@ static int put_all_csc2()
                 return -1;
             }
 
-            rc = init_table_sequences(NULL, NULL, thedb->dbs[ii]);
+            if (gbl_reproduce_sequence_corruption) {
+                logmsg(LOGMSG_USER, "%s reproducing table sequence corruption\n", __func__);
+            } else {
+                rc = init_table_sequences(NULL, NULL, thedb->dbs[ii]);
+            }
         }
     }
 

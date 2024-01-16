@@ -39,7 +39,7 @@ extern void fsnapf(FILE *, void *, int);
 extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
 int gbl_debug_sleep_on_verify = 0;
 
-static int locprint(verify_common_t *par, char *fmt, ...)
+int locprint(verify_common_t *par, char *fmt, ...)
 {
     char buf[LINE_MAX];
     va_list ap;
