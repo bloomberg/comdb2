@@ -6336,15 +6336,29 @@ int net_init(netinfo_type *netinfo_ptr)
     if (netinfo_ptr->fake)
         return 0;
 
+    int num = 0;
     /* add everything we have at this point to the sanctioned list */
     for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
          host_node_ptr = host_node_ptr->next) {
-        add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host,
-                                 host_node_ptr->port);
+        add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
         if (!gbl_libevent) host_node_printf(LOGMSG_USER, host_node_ptr, "adding to sanctioned\n");
         add_host(host_node_ptr);
+        ++num;
     }
     if (gbl_libevent) {
+        if (num > 1 && !netinfo_ptr->ischild) {
+            struct timeval a, b, c;
+            gettimeofday(&a, NULL);
+            /* wait up to 1s to connect to siblings */
+            const char *hostlist[REPMAX];
+            int retry = 100;
+            while (--retry >= 0 && (rc = net_get_all_nodes_connected(netinfo_ptr, hostlist)) < (num - 1)) {
+                usleep(10 * 1000); //10ms
+            }
+            gettimeofday(&b, NULL);
+            timersub(&b, &a, &c);
+            logmsg(LOGMSG_INFO, "%s %s waited:%ldms connected:%d\n", __func__, netinfo_ptr->service, c.tv_sec * 1000 + c.tv_usec / 1000, rc);
+        }
         return 0;
     }
 

@@ -3010,6 +3010,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
             return NULL;
         }
         print(bdb_state, "dbenv_open: started rep as CLIENT\n");
+        call_for_election(bdb_state, __func__, __LINE__);
     }
 
     if (bdb_state->rep_started) {
