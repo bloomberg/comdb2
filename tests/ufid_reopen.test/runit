@@ -5,14 +5,14 @@ bash -n "$0" | exit 1
 
 
 for node in $CLUSTER ; do
-    cdb2sql $dbnm --host $node 'EXEC PROCEDURE sys.cmd.send("abort_ufid_open 1")'
+    cdb2sql $CDB2_OPTIONS $DBNAME --host $node 'EXEC PROCEDURE sys.cmd.send("abort_ufid_open 1")'
 done
 
 set -e
 
 dbnm=$1
 
-master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select host from comdb2_cluster where is_master="Y"'`
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'select host from comdb2_cluster where is_master="Y"'`
 echo master is $master
 
 # The test demonstrates that a dbreg entry may be closed and reopened

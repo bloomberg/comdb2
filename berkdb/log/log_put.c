@@ -286,6 +286,9 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 	}
 
 	if (IS_REP_MASTER(dbenv)) {
+		if (contextp) {
+			dbenv->prev_commit_lsn = lsn;
+		}
 
 		/*
 		 * Replication masters need to drop the lock to send

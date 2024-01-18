@@ -194,6 +194,8 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		 * history with logs that (potentially) were replicated to a majority of nodes.  
 		 */
 	} else if (op == DB_TXN_FORWARD_ROLL) {
+		dbenv->prev_commit_lsn = *lsnp;
+
 		/*
 		 * If this was a 2-phase-commit transaction, then it
 		 * might already have been removed from the list, and
@@ -333,6 +335,7 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
 		abort();
    	} else if (op == DB_TXN_FORWARD_ROLL) {
+		dbenv->prev_commit_lsn = *lsnp;
 		/* If we are here then we already know that this committed. */
 #if 0
 	} else if ((!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -429,6 +432,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		 * history with logs that (potentially) were replicated to a majority of nodes.  
 		 */
 	} else if (op == DB_TXN_FORWARD_ROLL) {
+		dbenv->prev_commit_lsn = *lsnp;
 		/*
 		 * If this was a 2-phase-commit transaction, then it
 		 * might already have been removed from the list, and
@@ -546,6 +550,7 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 	if (op == DB_TXN_LOGICAL_BACKWARD_ROLL) {
 		abort();
 	} else if (op == DB_TXN_FORWARD_ROLL) {
+		dbenv->prev_commit_lsn = *lsnp;
 		/*
 		 * If this was a 2-phase-commit transaction, then it
 		 * might already have been removed from the list, and
@@ -694,6 +699,7 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	}
 	else if (op == DB_TXN_FORWARD_ROLL) 
 	{
+		dbenv->prev_commit_lsn = *lsnp;
 		if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
 		{
 			assert(NULL == lt);
