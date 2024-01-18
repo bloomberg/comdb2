@@ -184,7 +184,7 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     // specified in the lrl.
     if (!is_valid_mach_class(gbl_physrep_source_host)) {
         int count = 0;
-        char *saveptr;
+        char *saveptr = NULL;
         char *hosts = gbl_physrep_source_host;
 
         char *host = strtok_r(hosts, ",", &saveptr);
@@ -341,7 +341,7 @@ static int get_metadb_hndl(cdb2_hndl_tp **hndl) {
     char *host = (gbl_physrep_metadb_host) ? gbl_physrep_metadb_host : gbl_physrep_source_host;
 
     if (!is_valid_mach_class(host)) {
-        char *saveptr;
+        char *saveptr = NULL;
         char *hst = strtok_r(host, ",", &saveptr);
         while (hst != NULL)  {
             if (hst[0] == '@') ++hst;
