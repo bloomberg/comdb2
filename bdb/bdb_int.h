@@ -1147,8 +1147,6 @@ enum {
     FETCH_INT_CUR_BY_RECNUM = 4
 };
 
-extern pthread_key_t bdb_key;
-
 char *bdb_strerror(int error);
 char *bdb_trans(const char infile[], char outfile[]);
 
@@ -1160,7 +1158,6 @@ int bdb_upgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade(bdb_state_type *bdb_state, uint32_t newgen, int *done);
 int bdb_downgrade_noelect(bdb_state_type *bdb_state);
 int get_seqnum(bdb_state_type *bdb_state, const char *host);
-void bdb_set_key(bdb_state_type *bdb_state);
 
 uint64_t subtract_lsn(bdb_state_type *bdb_state, DB_LSN *lsn1, DB_LSN *lsn2);
 void get_my_lsn(bdb_state_type *bdb_state, DB_LSN *lsnout);

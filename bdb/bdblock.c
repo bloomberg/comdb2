@@ -33,14 +33,13 @@
 #include "locks_wrap.h"
 #include "logmsg.h"
 
-/* XXX stupid chicken/egg.  this variable cannot live in the bdb_state
-   cause it needs to get set before we have a bdb_state */
-extern bdb_state_type *gbl_bdb_state;
 extern int gbl_rowlocks;
 extern pthread_t gbl_invalid_tid;
 extern int gbl_exit;
 
 int gbl_bdblock_debug = 0;
+
+static pthread_key_t lock_key;
 
 void comdb2_cheap_stack_trace_file(FILE *f);
 
@@ -245,7 +244,9 @@ void bdb_lock_init(bdb_state_type *bdb_state)
     Pthread_mutex_init(&bdb_state->thread_lock_info_list_mutex, NULL);
 }
 
-void bdb_lock_destructor(void *ptr)
+/* Catches thread specific lock info structs that were not released in the
+ * proper way through a call to bdb_thread_event(). */
+static void bdb_lock_destructor(void *ptr)
 {
     thread_lock_info_type *lk = ptr;
     if (lk) {
@@ -253,7 +254,7 @@ void bdb_lock_destructor(void *ptr)
             /* We don't give up bdblock on exit */
             goto out;
         }
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
             "%s: thread has not called bdb_thread_event to destroy locks!\n",
             __func__);
         if (lk->lockref != 0) {
@@ -488,8 +489,7 @@ void bdb_get_writelock_abort_waiters(bdb_state_type *bdb_state,
  * simultaneously.  If a thread acquires the read lock twice it is reference
  * counted.  If a thread that holds the write lock calls this then it
  * continues to hold the write lock but with a higher reference count. */
-void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
-                      const char *funcname, int line)
+int bdb_get_readlock(bdb_state_type *bdb_state, int trylock, const char *idstr, const char *funcname, int line)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
@@ -511,16 +511,14 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
             lk->initpri = 1;
         }
 #endif
-
         rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
             logmsg(LOGMSG_INFO, "trying readlock (%s %p), last writelock is %s %p\n", idstr, (void *)pthread_self(),
                    lock_handle->bdb_lock_write_idstr, (void *)lock_handle->bdb_lock_write_holder);
-
+            if (trylock) return rc;
             Pthread_rwlock_rdlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
-            logmsg(LOGMSG_FATAL,
-                   "%s/%s(%s): pthread_rwlock_tryrdlock error %d %s\n", idstr,
+            logmsg(LOGMSG_FATAL, "%s/%s(%s): pthread_rwlock_tryrdlock error %d %s\n", idstr,
                    funcname, __func__, rc, strerror(rc));
             abort();
         }
@@ -549,11 +547,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
         }
     }
     lk->lockref++;
-}
-
-void bdb_get_the_readlock(const char *idstr, const char *function, int line)
-{
-    bdb_get_readlock(gbl_bdb_state, idstr, function, line);
+    return 0;
 }
 
 void bdb_assert_wrlock(bdb_state_type *bdb_state, const char *funcname,
@@ -631,7 +625,7 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
                      lk->readlockref);
                */
             while (lk->readlockref > 0) {
-                bdb_get_readlock(bdb_state, lk->readident, funcname, line);
+                bdb_get_readlock(bdb_state, 0, lk->readident, funcname, line);
                 lk->readlockref--;
             }
             lk->readident = NULL;
@@ -640,11 +634,6 @@ void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
         if (gbl_bdblock_debug)
             rel_lock_ref_log(bdb_state, lk->lockref);
     }
-}
-
-void bdb_relthelock(const char *funcname, int line)
-{
-    bdb_rellock(gbl_bdb_state, funcname, line);
 }
 
 /* Check that all the locks are released; this ensures that no
@@ -811,7 +800,7 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     if (lk->callers > 0) {
         /* if we have called bdb_thread_event nested, only
          * the last caller frees it
-         * NOTE: obviously, only the first stack is saved ! 
+         * NOTE: obviously, only the first stack is saved !
          */
         return;
     }
@@ -856,7 +845,7 @@ void bdb_stripe_done(bdb_state_type *bdb_state)
     return_threadid(parent, id);
 }
 
-void bdb_thread_event(bdb_state_type *bdb_state, int event)
+void bdb_thread_event(bdb_state_type *bdb_state, enum bdb_thr_event event)
 {
     bdb_state_type *parent;
 
@@ -941,4 +930,9 @@ void bdb_locks_dump(bdb_state_type *bdb_state, FILE *out)
     }
 
     Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
+}
+
+void bdb_init_lock_key(void)
+{
+    Pthread_key_create(&lock_key, bdb_lock_destructor);
 }

@@ -4221,6 +4221,18 @@ int bdb_am_i_coherent(bdb_state_type *bdb_state)
     return x;
 }
 
+int bdb_try_am_i_coherent(bdb_state_type *bdb_state)
+{
+    int coherent = 0;
+    if (bdb_state->parent) bdb_state = bdb_state->parent;
+    if (BDB_TRYREADLOCK("bdb_am_i_coherent") == 0) {
+        /* if we cannot get bdb-lock, we are not coherent */
+        coherent = bdb_am_i_coherent_int(bdb_state);
+        BDB_RELLOCK();
+    }
+    return coherent;
+}
+
 /* called when the master tells us we're not coherent */
 void bdb_set_notcoherent(bdb_state_type *bdb_state, int notcoherent)
 {
@@ -5845,7 +5857,10 @@ int bdb_master_should_reject(bdb_state_type *bdb_state)
     if (!bdb_state->attr->master_reject_requests)
         return 0;
 
-    BDB_READLOCK("bdb_master_should_reject");
+    if (BDB_TRYREADLOCK("bdb_master_should_reject") != 0) {
+        /* If I can't get bdb-lock, I am not master */
+        return 0;
+    }
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
         BDB_RELLOCK();

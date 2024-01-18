@@ -83,13 +83,10 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 #include "txn_properties.h"
 
 #ifndef TESTSUITE
-#include <thread_util.h>
-extern unsigned long long get_commit_context(const void *, uint32_t generation);
-void bdb_get_writelock(void *bdb_state,
-	const char *idstr, const char *funcname, int line);
-void bdb_rellock(void *bdb_state, const char *funcname, int line);
-int bdb_is_open(void *bdb_state);
 
+#include <thread_util.h>
+#include <bdbglue.h>
+extern unsigned long long get_commit_context(const void *, uint32_t generation);
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
@@ -97,9 +94,6 @@ int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 
 extern int gbl_is_physical_replicant;
 extern int gbl_commit_lsn_map;
-
-#define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
 
 #else
 

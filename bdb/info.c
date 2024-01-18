@@ -1004,8 +1004,6 @@ static void process_reptrca(bdb_state_type *bdb_state, int on_off)
     }
 }
 
-extern bdb_state_type *gbl_bdb_state;
-
 void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out)
 {
     if (bdb_state == NULL)

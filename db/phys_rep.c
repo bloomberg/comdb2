@@ -26,6 +26,7 @@
 #include <time.h>
 
 #include <bdb_int.h>
+#include <bdbglue.h>
 #include "phys_rep_lsn.h"
 #include "dbinc/rep_types.h"
 
@@ -101,7 +102,6 @@ static int add_replicant_host(char *hostname, char *dbname);
 static void delete_replicant_host(DB_Connection *cnct);
 
 extern struct dbenv *thedb;
-extern bdb_state_type *gbl_bdb_state;
 extern int gbl_replicant_retry_on_not_durable;
 extern char gbl_dbname[];
 

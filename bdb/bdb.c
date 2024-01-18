@@ -49,9 +49,6 @@
 extern void berkdb_dumptrans(DB_ENV *);
 extern int __db_panic(DB_ENV *dbenv, int err);
 
-pthread_key_t bdb_key;
-pthread_key_t lock_key;
-
 const char *readlockstr = "READLOCK";
 const char *writelockstr = "WRITELOCK";
 
@@ -69,22 +66,6 @@ void print(bdb_state_type *bdb_state, char *format, ...)
         logmsgvf(LOGMSG_USER, stderr, format, ap);
 
     va_end(ap);
-}
-
-extern bdb_state_type *gbl_bdb_state;
-
-void bdb_set_key(bdb_state_type *bdb_state)
-{
-    if (gbl_bdb_state)
-        return;
-
-    /* if we were passed a child, find his parent */
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    gbl_bdb_state = bdb_state;
-
-    Pthread_setspecific(bdb_key, bdb_state);
 }
 
 void *mymalloc(size_t size)

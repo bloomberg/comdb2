@@ -54,18 +54,7 @@ static int __bhlru __P((const void *, const void *));
 static int __memp_close_flush_files __P((DB_ENV *, DB_MPOOL *));
 static int __memp_sync_files __P((DB_ENV *, DB_MPOOL *));
 
-extern void *gbl_bdb_state;
-void bdb_get_writelock(void *bdb_state,
-    const char *idstr, const char *funcname, int line);
-void bdb_rellock(void *bdb_state, const char *funcname, int line);
-void bdb_get_readlock(void *bdb_state,
-    const char *idstr, const char *funcname, int line);
-int bdb_the_lock_desired(void);
-
-#define BDB_WRITELOCK(idstr)    bdb_get_writelock(gbl_bdb_state, (idstr), __func__, __LINE__)
-#define BDB_READLOCK(idstr)     bdb_get_readlock(gbl_bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()           bdb_rellock(gbl_bdb_state, __func__, __LINE__)
-int bdb_the_lock_designed(void);
+#include <bdbglue.h>
 
 #if defined (UFID_HASH_DEBUG)
 	void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -96,6 +85,7 @@ __memp_sync_pp(dbenv, lsnp)
 		    dbenv->lg_handle, "memp_sync", DB_INIT_LOG);
 
 	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+    struct bdb_state_tag *bdb_state = gbl_bdb_state;
 	BDB_READLOCK("__memp_sync");
 	if (rep_check)
 		__env_rep_enter(dbenv);
@@ -237,17 +227,6 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 	return 0;
 }
 
-/* TODO: violating many many rules here.  This code should move into bdb. */
-extern void bdb_set_key(void *);
-void bdb_thread_event(void *bdb_state, int event);
-
-enum {
-	BDBTHR_EVENT_DONE_RDONLY = 0,
-	BDBTHR_EVENT_START_RDONLY = 1,
-	BDBTHR_EVENT_DONE_RDWR = 2,
-	BDBTHR_EVENT_START_RDWR = 3
-};
-
 void set_stop_mempsync_thread()
 {
 	mempsync_thread_should_stop = 1;
@@ -259,16 +238,12 @@ void *mempsync_thd(void *p)
 {
 	int rc;
 	DB_LOGC *logc;
-	void *bdb_state;
 	DBT data_dbt;
 	DB_LSN lsn, sync_lsn;
 	DB_ENV *dbenv = p;
 	int rep_check = 0;
 
-	/* slightly kludgy, but necessary since this code gets
-	 * called in recovery */
-	bdb_state = dbenv->app_private;
-	bdb_set_key(bdb_state);
+	struct bdb_state_tag *bdb_state = gbl_bdb_state;
 	bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
 	thrman_register(THRTYPE_GENERIC);
 	thread_started("mempsync");
