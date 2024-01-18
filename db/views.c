@@ -611,13 +611,12 @@ int views_handle_replicant_reload(void *tran, const char *name)
         }
         db->tableversion = table_version_select(db, tran);
         db->timepartition_name = view->name;
-
-        if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
-            /* the order of the shards does not dictate current shard,
-             * determine the current shard here
-             */
-            _view_find_current_shard(view);
-        }
+    }
+    if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
+        /* the order of the shards does not dictate current shard,
+         * determine the current shard here
+         */
+        _view_find_current_shard(view);
     }
 
 alter_struct:
@@ -2944,6 +2943,7 @@ static void _view_find_current_shard(timepart_view_t *view)
     int newest_earlier_shard = -1;
     int i;
 
+
     /* Try to find a shard with time interval matching the current time;
      * Corner case: it is possible for the db to be down and miss a few
      * rollouts; at that point, no shard time interval will match; in this
@@ -2983,8 +2983,6 @@ static int _view_restart_new_rollout(timepart_view_t *view, struct errstat *err)
 
     print_dbg_verbose(view->name, &view->source_id, "III",
                       "Restart new rollout mode\n");
-
-    _view_find_current_shard(view);
 
     view->roll_time = view->shards[view->current_shard].high;
     rc = _view_new_rollout_lkless(strdup(view->name), view->period,
