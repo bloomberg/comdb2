@@ -82,9 +82,9 @@ int gbl_apprec_gen;
 
 static int __log_earliest __P((DB_ENV *, DB_LOGC *, int32_t *, DB_LSN *));
 static double __lsn_diff __P((DB_LSN *, DB_LSN *, DB_LSN *, u_int32_t, int));
-static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
+int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
-static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
+int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
 int gbl_ufid_dbreg_test = 0;
 int gbl_ufid_log = 1;
@@ -1765,7 +1765,7 @@ __lsn_diff(low, high, current, max, is_forward)
  * checkpoint (ie: of the checkpoint record), not the LSN IN the checkpoint
  * record.  If I had like 17 more braincells, I'd have __log_backup use
  * this routine, but I'd rather not break things. */
-static int
+int
 __log_find_latest_checkpoint_before_lsn(DB_ENV * dbenv, DB_LOGC * logc,
 	DB_LSN * max_lsn, DB_LSN * start_lsn)
 {
@@ -1814,7 +1814,7 @@ __log_find_latest_checkpoint_before_lsn(DB_ENV * dbenv, DB_LOGC * logc,
  * instead of traversing checkpoints in order, traverses the entire log.  This
  * may be needed if for some reason there's no checkpoint in the log, or if the 
  * checkpoint chain is broken (ie: last_ckp points to 0:0) */
-static int
+int
 __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV * dbenv,
 	DB_LOGC * logc, DB_LSN * max_lsn, DB_LSN * foundlsn)
 {

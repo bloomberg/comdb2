@@ -1055,8 +1055,9 @@ REGISTER_TUNABLE("rep_process_txn_trace",
                  "transactions. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_process_txn_time, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("reqldiffstat", NULL, TUNABLE_INTEGER, &diffstat_thresh,
-                 READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_skip_recovery", "Skip recovery if truncate won't unwind a transaction.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_rep_skip_recovery, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("reqldiffstat", NULL, TUNABLE_INTEGER, &diffstat_thresh, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reqltruncate", NULL, TUNABLE_INTEGER, &reqltruncate, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("retry", NULL, TUNABLE_INTEGER, &db->retry, READONLY, NULL,

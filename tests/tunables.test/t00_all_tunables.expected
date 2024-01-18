@@ -789,6 +789,7 @@
 (name='rep_processors', description='Try to apply this many transactions in parallel in the replication stream.', type='INTEGER', value='4', read_only='N')
 (name='rep_processors_rowlocks', description='Rowlocks touches 1 file/txn; it's handled by the processor thread.', type='INTEGER', value='0', read_only='N')
 (name='rep_skip_phase_3', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='rep_skip_recovery', description='Skip recovery if truncate won't unwind a transaction.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_verify_limit_enabled', description='Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.', type='BOOLEAN', value='ON', read_only='N')
 (name='rep_verify_max_time', description='Maximum amount of time we allow a replicant to roll back its logs in an attempt to sync up to the master.', type='INTEGER', value='300', read_only='N')
 (name='rep_verify_min_progress', description='Abort replicant if it doesn't make this much progress while rolling back logs to sync up to master.', type='INTEGER', value='10485760', read_only='N')
