@@ -1714,6 +1714,9 @@ static timepart_views_t *_create_all_views(const char *views_str)
             view = NULL;
             continue;
         }
+        if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
+            _view_find_current_shard(view);
+        }
 
         /* make sure view names are the same */
         if (strcmp(view->name, cson_string_cstr(ckey))) {
