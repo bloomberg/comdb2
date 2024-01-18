@@ -95,6 +95,8 @@ int gbl_track_sqlengine_states = 0;
 extern pthread_t gbl_break_lua;
 
 extern void reinit_sql_hint_table();
+extern void bdb_trans_leak(bdb_state_type *bdb_state);
+extern void bdb_trans_unleak(bdb_state_type *bdb_state);
 
 static void dump_table_sizes(struct dbenv *dbenv);
 static void request_stats(struct dbenv *dbenv);
@@ -2148,6 +2150,10 @@ clipper_usage:
         gbl_who = toknum(tok, ltok);
         gbl_debug = gbl_sdebug = 0;
         logmsg(LOGMSG_USER, "Set who to %d\n", gbl_who);
+    } else if (tokcmp(tok, ltok, "leaktxn") == 0) {
+        bdb_trans_leak(thedb->bdb_env);
+    } else if (tokcmp(tok, ltok, "unleaktxn") == 0) {
+        bdb_trans_unleak(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "sync") == 0) {
         rc = process_sync_command(dbenv, line, lline, st);
         if (rc != 0)
@@ -2462,8 +2468,7 @@ clipper_usage:
         tokcpy(tok, ltok, table);
 
         stat_bt_hash_table_reset(table);
-    } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
-               tokcmp(tok, ltok, "reinit") == 0) {
+    } else if (tokcmp(tok, ltok, "fastinit") == 0 || tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
         if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
@@ -2523,7 +2528,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
         wait_for_sc_to_stop("forceabort", __func__, __LINE__);
-    } else if (tokcmp(tok, ltok, "get_db_dir")==0) {
+    } else if (tokcmp(tok, ltok, "get_db_dir") == 0) {
         logmsg(LOGMSG_USER, "Database Base Directory: %s\n", thedb->basedir);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         debug_trap(line + st, lline - st);
@@ -2787,10 +2792,8 @@ clipper_usage:
         gbl_readonly = 1;
     } else if (tokcmp(tok, ltok, "readwrite") == 0) {
         gbl_readonly = 0;
-    } else if (tokcmp(tok, ltok, "allow") == 0 ||
-               tokcmp(tok, ltok, "disallow") == 0 ||
-               tokcmp(tok, ltok, "clrpol") == 0 ||
-               tokcmp(tok, ltok, "setclass") == 0) {
+    } else if (tokcmp(tok, ltok, "allow") == 0 || tokcmp(tok, ltok, "disallow") == 0 ||
+               tokcmp(tok, ltok, "clrpol") == 0 || tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
     } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;

@@ -2696,3 +2696,30 @@ void bdb_set_tran_verify_updateid(tran_type *tran)
 {
     tran->verify_updateid = 1;
 }
+
+static DB_TXN *leaktxn = NULL;
+
+void bdb_trans_leak(bdb_state_type *bdb_state)
+{
+    if (leaktxn != NULL) {
+        logmsg(LOGMSG_USER, "%s trans is already leaked %p\n", __func__, leaktxn);
+        return;
+    }
+    int rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &leaktxn, 0);
+    if (rc) {
+        logmsg(LOGMSG_USER, "%s error leaking a transaction, rc=%d\n", __func__, rc);
+        assert(leaktxn == NULL);
+    } else {
+        assert(leaktxn);
+    }
+}
+
+void bdb_trans_unleak(bdb_state_type *bdb_state)
+{
+    if (leaktxn == NULL) {
+        logmsg(LOGMSG_USER, "%s trans is not leaked\n", __func__);
+        return;
+    }
+    leaktxn->abort(leaktxn);
+    leaktxn = NULL;
+}

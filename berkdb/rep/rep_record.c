@@ -85,7 +85,7 @@ extern int gbl_physrep_debug;
 extern int gbl_dumptxn_at_commit;
 
 int gbl_rep_badgen_trace;
-int gbl_decoupled_logputs = 1;
+int gbl_decoupled_logputs = 0;
 int gbl_inmem_repdb = 0;
 int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
@@ -8246,6 +8246,13 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
 	return ret;
 }
 
+int gbl_rep_skip_recovery = 0;
+
+int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
+	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
+int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
+	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
+
 static int
 __rep_verify_match(dbenv, rp, savetime, online)
 	DB_ENV *dbenv;
@@ -8362,14 +8369,92 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
 
-	if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online,
-					&undid_schema_change)) != 0) {
-		Pthread_mutex_unlock(&apply_lk);
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		if (!online)
-			rep->in_recovery = 0;
-		F_CLR(rep, REP_F_READY);
-		goto errunlock;
+	/* Masters must run full recovery */
+	int i_am_master = F_ISSET(rep, REP_F_MASTER);
+	if (gbl_rep_skip_recovery && !i_am_master && log_compare(&dbenv->prev_commit_lsn, &rp->lsn) <= 0) {
+		DB_TXNREGION *region;
+		region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
+		dbenv->wrlock_recovery_lock(dbenv, __func__, __LINE__);
+
+		DB_LSN last_valid_checkpoint = { 0 }, max_lsn = rp->lsn;
+
+		DB_LOGC *logc;
+
+		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+			abort();
+
+		if ((ret =
+			__log_find_latest_checkpoint_before_lsn(dbenv, logc,
+				&max_lsn, &last_valid_checkpoint)) != 0) {
+			__db_err(dbenv,
+				"can't find last logged checkpoint max_lsn %u:%u",
+				max_lsn.file, max_lsn.offset);
+			ret =
+				__log_find_latest_checkpoint_before_lsn_try_harder
+				(dbenv, logc, &max_lsn, &last_valid_checkpoint);
+			if (ret == 0)
+				logmsg(LOGMSG_DEBUG, "tried harder and found %u:%u\n",
+					last_valid_checkpoint.file,
+					last_valid_checkpoint.offset);
+			else {
+				logmsg(LOGMSG_DEBUG, "tried harder and still failed rc; I'll be good unless I crash %d\n",
+					ret);
+			}
+		}
+
+		/* Save the checkpoint. */
+		if ((ret =
+			__checkpoint_save(dbenv, &last_valid_checkpoint,
+				1)) != 0) {
+			__db_err(dbenv, "can't save checkpoint %u:%u",
+				last_valid_checkpoint.file,
+				last_valid_checkpoint.offset);
+			goto err;
+		}
+
+		logmsg(LOGMSG_WARN, "TRUNCATING to %u:%u checkpoint lsn is %u:%u\n",
+			max_lsn.file, max_lsn.offset,
+			last_valid_checkpoint.file, last_valid_checkpoint.offset);
+
+		region->last_ckp = last_valid_checkpoint;
+
+		/* We are going to truncate, so we'd best close the cursor. */
+		if (logc != NULL && (ret = __log_c_close(logc)) != 0)
+			abort();
+
+		F_SET(region, TXN_IN_RECOVERY);
+		__log_vtruncate(dbenv, &rp->lsn, &region->last_ckp, &trunclsn);
+		F_CLR(region, TXN_IN_RECOVERY);
+
+		/* Recovery cleanup */
+		if (dbenv->rep_recovery_cleanup)
+			dbenv->rep_recovery_cleanup(dbenv, &trunclsn, i_am_master /* 0 */);
+
+		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
+
+		if (dbenv->rep_truncate_callback) {
+			uint32_t rep_truncate_flags = 0;
+			if (online)
+				rep_truncate_flags |= DB_REP_TRUNCATE_ONLINE;
+			dbenv->rep_truncate_callback(dbenv, &trunclsn, rep_truncate_flags);
+		}
+
+		logmsg(LOGMSG_WARN, "skip-recovery truncate log lsn [%d:%d]\n", trunclsn.file,
+				trunclsn.offset);
+	} else {
+		if (gbl_rep_skip_recovery) {
+			logmsg(LOGMSG_WARN, "skip-recovery cannot skip, prev-commit=[%d:%d] trunc-lsn=[%d:%d]\n",
+				dbenv->prev_commit_lsn.file, dbenv->prev_commit_lsn.offset, rp->lsn.file, rp->lsn.offset);
+		}
+		if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online,
+						&undid_schema_change)) != 0) {
+			Pthread_mutex_unlock(&apply_lk);
+			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
+			if (!online)
+				rep->in_recovery = 0;
+			F_CLR(rep, REP_F_READY);
+			goto errunlock;
+		}
 	}
 
 	dbenv->rep_gen = rep->gen;
