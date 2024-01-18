@@ -1319,6 +1319,8 @@ int bdb_del_list_free(void *list, int *bdberr)
 
 */
 
+/* XXX stupid chicken/egg.  this variable cannot live in the bdb_state
+   cause it needs to get set before we have a bdb_state */
 bdb_state_type *gbl_bdb_state;
 
 char *bdb_trans(const char infile[], char outfile[])
@@ -5533,10 +5535,7 @@ extern pthread_key_t lockmgr_key;
 static void run_once(void)
 {
     Pthread_key_create(&lockmgr_key, NULL);
-
-    Pthread_key_create(&bdb_key, NULL);
-
-    Pthread_key_create(&lock_key, bdb_lock_destructor);
+    bdb_init_lock_key();
 }
 
 static void deadlock_happened(struct berkdb_deadlock_info *deadlock_info)
@@ -5938,7 +5937,7 @@ static bdb_state_type *bdb_open_int(int envonly, const char name[], const char d
 
         Pthread_mutex_init(&(bdb_state->repinfo->appseqnum_lock), NULL);
 
-        bdb_set_key(bdb_state);
+        gbl_bdb_state = bdb_state;
 
         /* create a blkseq db before we open the main environment,
          * since recovery routines will expect it to exist */

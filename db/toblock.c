@@ -2795,8 +2795,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     uint8_t *p_buf_rsp_start;
     struct longblock_req_hdr lhdr;
     struct block_req hdr;
-
     int is_mixed_sqldyn = 0;
+    bdb_state_type *bdb_state = thedb->bdb_env;
 
 #if DEBUG_DID_REPLAY
     int did_replay = 0;
@@ -2964,8 +2964,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             void *replay_data = NULL;
             int replay_len = 0;
-            bdb_get_readlock(thedb->bdb_env, "early_replay_cnonce", __func__,
-                             __LINE__);
+            BDB_READLOCK("early_replay_cnonce");
             if (thedb->master != gbl_myhostname) {
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 outrc = ERR_NOMASTER;
@@ -2995,8 +2994,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (got_blockseq && got_osql && !IQ_HAS_SNAPINFO(iq)) {
             /* register this blockseq early to detect expensive replays
                of the same blocksql transactions */
-            bdb_get_readlock(thedb->bdb_env, "early_replay", __func__,
-                             __LINE__);
+            BDB_READLOCK("early_replay");
             if (thedb->master != gbl_myhostname) {
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
                 outrc = ERR_NOMASTER;
@@ -5223,8 +5221,7 @@ backout:
         } else {
             assert(trans == NULL);
             if (iq->tranddl) {
-                bdb_get_readlock(thedb->bdb_env, "sc_downgrade", __func__,
-                                 __LINE__);
+                BDB_READLOCK("sc_downgrade");
                 if (thedb->master != gbl_myhostname) {
                     backout_schema_changes(iq, NULL);
                 }

@@ -473,13 +473,13 @@ static int do_dispatch_sql(struct newsql_appdata_evbuffer *appdata)
     struct dispatch_sql_arg *d = appdata->dispatch;
     if (d->dispatched) return -1; /* already dispatched */
     if (--d->wait_time <= 0) return 0; /* timed out, dispatch now */
-    if (bdb_am_i_coherent(thedb->bdb_env)) return 0; /* am coherent, dispatch now */
+    if (bdb_try_am_i_coherent(thedb->bdb_env)) return 0; /* am coherent, dispatch now */
     if (!bdb_whoismaster(thedb->bdb_env)) return -1; /* still no master, wait more */
     if (leader_is_new()) {
         if (d->wait_time > gbl_new_leader_duration) {
+            logmsg(LOGMSG_USER, "%s: have leader, now waiting %ds (was %ds) for coherency lease fd:%d\n",
+                   __func__, gbl_new_leader_duration, d->wait_time, appdata->fd);
             d->wait_time = gbl_new_leader_duration;
-            logmsg(LOGMSG_USER, "%s: have leader, waiting %ds for coherency lease fd:%d\n",
-                   __func__, d->wait_time, appdata->fd);
         }
         return -1; /* wait a bit more to catch up */
     }
@@ -509,7 +509,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
     d->thd = pthread_self();
     d->ev = event_new(appdata->base, -1, EV_TIMEOUT | EV_PERSIST, dispatch_sql, appdata);
     Pthread_mutex_lock(&dispatch_lk);
-    if (bdb_am_i_coherent(thedb->bdb_env)) {
+    if (bdb_try_am_i_coherent(thedb->bdb_env)) {
         /* check again under lock to prevent race with concurrent leader-upgrade */
         Pthread_mutex_unlock(&dispatch_lk);
         event_free(d->ev);

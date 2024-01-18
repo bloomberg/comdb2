@@ -37,6 +37,7 @@
 #include "fwd_types.h"
 #include "bdb_net.h"
 #include <sqlglue.h>
+#include <bdbglue.h>
 
 #include <assert.h>
 
@@ -231,16 +232,6 @@ enum {
 #undef DEF_ATTR
 #undef DEF_ATTR_2
     BDB_ATTR_MAX
-};
-
-/*
- * Backend thread event constants.
- */
-enum {
-    BDBTHR_EVENT_DONE_RDONLY = 0,
-    BDBTHR_EVENT_START_RDONLY = 1,
-    BDBTHR_EVENT_DONE_RDWR = 2,
-    BDBTHR_EVENT_START_RDWR = 3
 };
 
 /*
@@ -1265,7 +1256,6 @@ void *bdb_temp_table_get_cur(struct temp_cursor *skippy);
 void bdb_get_cache_stats(bdb_state_type *bdb_state, uint64_t *hits,
                          uint64_t *misses, uint64_t *reads, uint64_t *writes,
                          uint64_t *thits, uint64_t *tmisses);
-void bdb_thread_event(bdb_state_type *bdb_state, int event);
 
 void bdb_stripe_get(bdb_state_type *bdb_state);
 void bdb_stripe_done(bdb_state_type *bdb_state);
@@ -1403,8 +1393,6 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *offset);
 
 void bdb_set_tran_verify_updateid(tran_type *tran);
-
-int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);
 void bdb_get_notcoherent_list(bdb_state_type *bdb_state,

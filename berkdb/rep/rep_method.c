@@ -76,13 +76,8 @@ extern int gbl_is_physical_replicant;
 extern int gbl_inmem_repdb;
 
 #ifndef TESTSUITE
-void bdb_get_writelock(void *bdb_state,
-	const char *idstr, const char *funcname, int line);
-void bdb_rellock(void *bdb_state, const char *funcname, int line);
-int bdb_is_open(void *bdb_state);
 
-#define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
+#include <bdbglue.h>
 
 #else
 

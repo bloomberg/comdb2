@@ -4397,8 +4397,6 @@ int bdb_osql_log_undo_required(tran_type *tran, bdb_osql_log_t *log)
     return 0;
 }
 
-extern bdb_state_type *gbl_bdb_state;
-
 int is_commit(u_int32_t rectype)
 {
     switch (rectype) {

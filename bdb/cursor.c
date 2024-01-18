@@ -6467,7 +6467,6 @@ again:
     return rc;
 }
 
-extern bdb_state_type *gbl_bdb_state;
 static int bdb_cursor_close(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;

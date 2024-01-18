@@ -59,13 +59,9 @@ static const char revid[] =
 #include "thread_util.h"
 #include "debug_switches.h"
 
-
 #ifndef TESTSUITE
-int bdb_am_i_coherent(void *bdb_state);
-void bdb_get_writelock(void *bdb_state,
-	const char *idstr, const char *funcname, int line);
-void bdb_rellock(void *bdb_state, const char *funcname, int line);
-int bdb_is_open(void *bdb_state);
+
+#include <bdbglue.h>
 int rep_qstat_has_fills(void);
 int rep_qstat_has_allreq(void);
 extern int db_is_exiting(void);
@@ -114,9 +110,6 @@ int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
 
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
-
-#define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
-#define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
 
 #else
 
@@ -489,9 +482,6 @@ static int apply_thd_created = 0;
 static LISTC_T(struct queued_log) log_queue;
 static LISTC_T(struct repdb_rec) repdb_queue;
 
-extern int bdb_the_lock_desired(void); 
-void bdb_relthelock(const char *funcname, int line);
-void bdb_get_the_readlock(const char *idstr, const char *function, int line);
 void bdb_thread_start_rw(void);
 void bdb_thread_done_rw(void);
 void get_master_lsn(void *bdb_state, DB_LSN *lsnout);
@@ -561,6 +551,7 @@ int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 
 static void *apply_thread(void *arg) 
 {
+	struct bdb_state_tag *bdb_state = gbl_bdb_state;
 	int ret, rc = 0, log_more_count = 0, log_fill_count, now;
 	int i_am_replicant;
 	uint32_t more_behind_count = 0;
@@ -602,7 +593,7 @@ static void *apply_thread(void *arg)
 
 		/* Lock order dance */
 		Pthread_mutex_unlock(&rep_queue_lock);
-		bdb_get_the_readlock("apply_thread", __func__, __LINE__);
+		BDB_READLOCK("apply_thread");
 		Pthread_mutex_lock(&rep_queue_lock);
 		Pthread_mutex_lock(&rep_candidate_lock);
 
@@ -720,7 +711,7 @@ static void *apply_thread(void *arg)
 				Pthread_mutex_unlock(&rep_candidate_lock);
 				ret = 0;
 			}
-			bdb_relthelock(__func__, __LINE__);
+			BDB_RELLOCK();
 
 			if (ret != 0 && ret != DB_REP_ISPERM && ret != DB_REP_NOTPERM)
 				abort();
@@ -731,7 +722,7 @@ static void *apply_thread(void *arg)
 			}
 			free(q);
 
-			bdb_get_the_readlock("apply_thread", __func__, __LINE__);
+			BDB_READLOCK("apply_thread");
 			Pthread_mutex_lock(&rep_queue_lock);
 			Pthread_mutex_lock(&rep_candidate_lock);
 		}
@@ -740,7 +731,7 @@ static void *apply_thread(void *arg)
 		Pthread_mutex_unlock(&rep_candidate_lock);
 
 		if (in_election) {
-			bdb_relthelock(__func__, __LINE__);
+			BDB_RELLOCK();
 			continue;
 		}
 
@@ -803,20 +794,20 @@ static void *apply_thread(void *arg)
 		/* Issue a REP_MASTER_REQ if we don't know who is master */
 		if (master_eid == db_eid_invalid) {
 			send_master_req(dbenv, __func__, __LINE__);
-			bdb_relthelock(__func__, __LINE__);
+			BDB_RELLOCK();
 			Pthread_mutex_lock(&rep_queue_lock);
 			continue;
 		}
 
 		if (!i_am_replicant || !gbl_decoupled_logputs ||
 				bdb_the_lock_desired()) {
-			bdb_relthelock(__func__, __LINE__);
+			BDB_RELLOCK();
 			Pthread_mutex_lock(&rep_queue_lock);
 			continue;
 		}
 
 		if (log_more_count || log_compare(&master_lsn, &my_lsn) <= 0) {
-			bdb_relthelock(__func__, __LINE__);
+			BDB_RELLOCK();
 			Pthread_mutex_lock(&rep_queue_lock);
 			continue;
 		}
@@ -824,7 +815,7 @@ static void *apply_thread(void *arg)
 		/* There's a log_more in the queue */
 		if (log_fill_count || comdb2_time_epochms() -
 				last_fill < gbl_fills_waitms) {
-			bdb_relthelock(__func__, __LINE__);
+			BDB_RELLOCK();
 			Pthread_mutex_lock(&rep_queue_lock);
 			continue;
 		}
@@ -880,7 +871,7 @@ static void *apply_thread(void *arg)
 				}
 			}
 		}
-		bdb_relthelock(__func__, __LINE__);
+		BDB_RELLOCK();
 		Pthread_mutex_lock(&rep_queue_lock);
 	}
 	apply_thd_created = 0;

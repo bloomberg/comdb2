@@ -49,6 +49,7 @@ __bam_init_print(DB_ENV *dbenv, int (***dtabp) (DB_ENV *, DBT *, DB_LSN *,
 #include "llog_ext.h"
 
 #include "bdb_int.h"
+#include "bdbglue.h"
 #include <crc32c.h>
 #include "util.h"
 
@@ -60,8 +61,6 @@ extern int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 extern char printlog_endline;
 
 extern pthread_key_t comdb2_open_key;
-
-extern bdb_state_type *gbl_bdb_state;
 
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 

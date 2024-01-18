@@ -151,7 +151,6 @@ static int get_row_lock_dta_minlk(bdb_state_type *bdb_state, DBC *dbcp,
                                      rlk, lkname, BDB_LOCK_WRITE);
 }
 
-extern bdb_state_type *gbl_bdb_state;
 extern int gbl_snapisol;
 extern int gbl_logical_live_sc;
 int bdb_logical_logging_enabled()
