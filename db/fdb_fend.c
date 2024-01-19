@@ -2622,7 +2622,8 @@ static int fdb_cursor_close(BtCursor *pCur)
 }
 
 static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
-                                      int bias, int *p_sqllen, int *error)
+                                      int bias, int *p_sqllen, int *error,
+                                      int at_least_one)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
     char *tableName = NULL;
@@ -2668,12 +2669,31 @@ static char *_build_run_sql_from_hint(BtCursor *pCur, Mem *m, int ncols,
     }
 
     if (whereDesc || hasCondition) {
-        sql = sqlite3_mprintf("SELECT %s%srowid FROM \"%w\" WHERE %s%s%s",
-                 (columnsDesc) ? columnsDesc : ((using_col_filter) ? "" : "*"),
-                 (columnsDesc) ? ", " : ((using_col_filter) ? "" : ", "),
-                 tableName, whereDesc ? whereDesc : "",
-                 (whereDesc != NULL && hasCondition) ? " AND " : "",
-                 orderDesc ? orderDesc : "");
+        char * single_select;
+        char * where_pred;
+        single_select = sqlite3_mprintf("SELECT %s%srowid FROM \"%w\"", 
+                    (columnsDesc) ? columnsDesc : ((using_col_filter) ? "" : "*"),
+                    (columnsDesc) ? ", " : ((using_col_filter) ? "" : ", "),
+                    tableName);
+        where_pred = sqlite3_mprintf("%s%s%s",
+                whereDesc ? whereDesc : "",
+                (whereDesc != NULL && hasCondition) ? " AND " : "",
+                orderDesc ? orderDesc : "");
+        if (at_least_one)
+            /* NOTE: in the rare case when this is a data cursor Rewind (i.e. CFIRST)
+             * since there is a predicate, we need to make sure at least one row is
+             * return, even if it does not match the predicate, if it exists, otherwise
+             * sqlite will believe the table is empty and will stop looking for other 
+             * keys (like, in a join)
+             */
+            sql = sqlite3_mprintf("%s WHERE %s union select * from (%s limit 1)",
+                    single_select, where_pred, single_select);
+        else {
+            sql = sqlite3_mprintf("%s WHERE %s",
+                    single_select, where_pred);
+        }
+        sqlite3_free(single_select);
+        sqlite3_free(where_pred);
     } else {
         sql = sqlite3_mprintf("SELECT %s%srowid FROM \"%w\"%s",
                  (columnsDesc) ? columnsDesc : ((using_col_filter) ? "" : "*"),
@@ -3018,8 +3038,9 @@ retry:
                 }
             } else {
                 sql = _build_run_sql_from_hint(
-                    pCur, NULL, 0, (how == CLAST) ? OP_Prev : OP_Next, &sqllen,
-                    &error);
+                    pCur, NULL, 0, (how == CLAST) ? OP_Prev : OP_Next, &sqllen, &error,
+                    /* is this a Rewind on a data cursor ? */
+                    how == CFIRST && fdbc->ent && fdbc->ent->ixnum < 0);
             }
 
             if (!sql) {
@@ -3196,7 +3217,7 @@ version_retry:
                 sqllen = strlen(sql) + 1;
             } else {
                 sql = _build_run_sql_from_hint(pCur, key, nfields, bias,
-                                               &sqllen, &error);
+                                               &sqllen, &error, 0);
             }
         }
 

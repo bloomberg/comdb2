@@ -1535,8 +1535,6 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
              (prefix) ? " " : "", (prefix) ? prefix : "");
     prefix = prf;
 
-    assert(msg->hd.type & FD_MSG_FLAGS_ISUUID);
-
     switch (msg->hd.type & FD_MSG_TYPE) {
     case FDB_MSG_TRAN_BEGIN:
     case FDB_MSG_TRAN_PREPARE:
