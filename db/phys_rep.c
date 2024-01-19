@@ -335,35 +335,76 @@ static int get_local_hndl(cdb2_hndl_tp **hndl) {
     return rc;
 }
 
+static char **physrep_metadb_hosts = NULL;
+static int physrep_metadb_host_count = 0;
+
 static int get_metadb_hndl(cdb2_hndl_tp **hndl) {
     // Source db becomes 'replication metadb', if latter is not specified
     char *dbname = (gbl_physrep_metadb_name) ? gbl_physrep_metadb_name : gbl_physrep_source_dbname;
     char *host = (gbl_physrep_metadb_host) ? gbl_physrep_metadb_host : gbl_physrep_source_host;
 
+
     if (!is_valid_mach_class(host)) {
-        char *saveptr = NULL;
-        char *hst = strtok_r(host, ",", &saveptr);
-        while (hst != NULL)  {
-            if (hst[0] == '@') ++hst;
-            int rc = cdb2_open(hndl, dbname, hst, CDB2_DIRECT_CPU);
+        static pthread_mutex_t physrep_metadb_hosts_mu = PTHREAD_MUTEX_INITIALIZER; // Protects physrep_metadb_hosts
+        static __thread int current_physrep_metadb_host = 0;
+
+        pthread_mutex_lock(&physrep_metadb_hosts_mu);
+
+        if (physrep_metadb_hosts == NULL) {
+            char *saveptr = NULL;
+            char *hst = strtok_r(host, ",", &saveptr);
+
+            physrep_metadb_host_count = 0;
+
+            while (hst != NULL)  {
+                if (hst[0] == '@') ++hst;
+                ++physrep_metadb_host_count;
+                physrep_metadb_hosts = realloc(physrep_metadb_hosts, sizeof(char *)*physrep_metadb_host_count);
+                physrep_metadb_hosts[physrep_metadb_host_count-1] = strdup(hst);
+
+                hst = strtok_r(NULL, ",", &saveptr);
+            }
+        }
+
+        int max_connect_attempts = 10 * physrep_metadb_host_count;
+        for (int i = 0; i < max_connect_attempts; ++i) {
+            char *direct_host = physrep_metadb_hosts[current_physrep_metadb_host];
+
+            // Move to the next host for the next attempt
+            current_physrep_metadb_host = (current_physrep_metadb_host + 1) % physrep_metadb_host_count;
+
+            int rc = cdb2_open(hndl, dbname, direct_host, CDB2_DIRECT_CPU);
             if (rc != 0) {
-                physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d)\n",
-                               __func__, __LINE__, dbname, hst, rc);
+                physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (rc: %d, attempt: %d)\n",
+                               __func__, __LINE__, dbname, direct_host, rc, i+1);
                 cdb2_close(*hndl);
 
                 // Try to connect to other hosts in the list (if any)
-                hst = strtok_r(NULL, ",", &saveptr);
+                sleep(1);
                 continue;
             }
 
+            rc = cdb2_run_statement(*hndl, "select 1");
+            if (rc != CDB2_OK) {
+                physrep_logmsg(LOGMSG_ERROR, "%s:%d: Couldn't execute 'select 1' against %s@%s (rc: %d error: %s)\n",
+                               __func__, __LINE__, dbname, direct_host, rc, cdb2_errstr(*hndl));
+
+                // Try to connect to other hosts in the list (if any)
+                sleep(1);
+                continue;
+            }
+            while (cdb2_next_record(*hndl) == CDB2_OK) {}
+
             if (gbl_physrep_debug) {
                 physrep_logmsg(LOGMSG_USER, "%s:%d Returning handle for: %s@%s\n",
-                               __func__, __LINE__, dbname, host);
+                               __func__, __LINE__, dbname, direct_host);
             }
+            pthread_mutex_unlock(&physrep_metadb_hosts_mu);
             return 0;
         }
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to any host in the list\n",
                        __func__, __LINE__);
+        pthread_mutex_unlock(&physrep_metadb_hosts_mu);
         return 1;
     }
 
@@ -634,6 +675,7 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
                                __func__, __LINE__);
         } else {
             physrep_logmsg(LOGMSG_ERROR, "%s:%d Query statement returned %d\n", __func__, __LINE__, rc);
+            return rc;
         }
         sleep(1);
     }
@@ -1107,7 +1149,7 @@ repl_loop:
                   (See db/reverse_conn.c)
                 */
                 rev_conn_hndl = wait_for_reverse_conn(wait_timeout_sec);
-                if (rev_conn_hndl == NULL) {
+                if (rev_conn_hndl == NULL || rev_conn_hndl->failed == 1) {
                     physrep_logmsg(LOGMSG_ERROR, "%s:%d Could not get a connection from source node(s) in %d secs\n",
                                    __func__, __LINE__, wait_timeout_sec);
                     cdb2_close(repl_metadb);
@@ -1147,9 +1189,14 @@ repl_loop:
                         level = LOGMSG_ERROR;
                     else
                         level = LOGMSG_DEBUG;
+
                     physrep_logmsg(level, "%s:%d Failed to register against cluster, attempt %d\n",
                                    __func__, __LINE__, notfound);
+
                     sleep(1);
+                    while ((rc = get_metadb_hndl(&repl_metadb)) != 0) {
+                        sleep(1);
+                    }
                 }
 
                 repl_db_cnct = find_new_repl_db(repl_metadb, &repl_db);
@@ -1573,6 +1620,11 @@ void physrep_cleanup() {
     if (!is_a_physrep_source_or_dest()) {
         return;
     }
+
+    for (int i = 0; i < physrep_metadb_host_count; ++i) {
+        free(physrep_metadb_hosts[i]);
+    }
+    free(physrep_metadb_hosts);
 
     int rc = send_reset_nodes("Inactive");
     if (rc != 0) {
