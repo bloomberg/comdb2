@@ -2482,18 +2482,15 @@ static int release_clientstats(unsigned checksum, int node)
     {
         if ((entry = hash_find_readonly(clientstats, &key)) != NULL) {
             Pthread_mutex_lock(&entry->mtx);
-            entry->ref--;
-            if (entry->ref < 0) {
-                logmsg(LOGMSG_ERROR,
-                       "key released more often than found, ref %d\n",
-                       entry->ref);
-                entry->ref = 0;
-            }
-            if (entry->ref == 0) {
-                Pthread_mutex_lock(&clntlru_mtx);
-                listc_abl(&clntlru, entry);
-                Pthread_mutex_unlock(&clntlru_mtx);
-            }
+            if (entry->ref > 0) {
+                entry->ref--;
+                if (entry->ref == 0) {
+                    Pthread_mutex_lock(&clntlru_mtx);
+                    listc_abl(&clntlru, entry);
+                    Pthread_mutex_unlock(&clntlru_mtx);
+                }
+            } else
+                logmsg(LOGMSG_ERROR, "attempting to release key more often than found, ref 0\n");
             Pthread_mutex_unlock(&entry->mtx);
         } else {
             rc = -1;
