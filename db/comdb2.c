@@ -2039,9 +2039,6 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
     }
 
     for (i = 0; i < fndnumtbls; ++i) {
-        int ver;
-        int bdberr;
-
         tbl = get_dbtable_by_name(tblnames[i]);
         if (tbl == NULL) {
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_IGNORE_BAD_TABLE)) {
@@ -2055,39 +2052,9 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
             goto cleanup;
         }
 
-        rc = bdb_get_csc2_highest(tran, tblnames[i], &ver, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "couldn't get highest version number for %s\n",
-                    tblnames[i]);
-            rc = 1;
+        if ((rc = load_csc2_versions(tbl, tran))) {
+            logmsg(LOGMSG_ERROR, "Loading schema for some tables failed\n");
             goto cleanup;
-        }
-
-        int isc = 0;
-        get_db_instant_schema_change_tran(tbl, &isc, tran);
-        if (isc) {
-            /* load schema for older versions */
-            for (int v = 1; v <= ver; ++v) {
-                char *csc2text;
-                if (get_csc2_file_tran(tbl->tablename, v, &csc2text, NULL,
-                                       tran)) {
-                    logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__,
-                            __LINE__);
-                    continue;
-                }
-
-                struct schema *s =
-                    create_version_schema(csc2text, v, tbl->dbenv);
-
-                if (s == NULL) {
-                    free(csc2text);
-                    rc = 1;
-                    goto cleanup;
-                }
-
-                add_tag_schema(tbl->tablename, s);
-                free(csc2text);
-            }
         }
     }
 cleanup:
