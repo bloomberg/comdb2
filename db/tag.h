@@ -433,4 +433,9 @@ int find_field_idx(struct dbtable *table, const char *tagname, const char *field
 int clone_server_to_client_tag(const char *tblname, const char *fromtag,
                                const char *newtag);
 
+/* this populates global schema hash (i.e. tags) for a table
+ * all versions of the schema are loaded
+ */
+int load_csc2_versions(struct dbtable *table, tran_type *tran);
+
 #endif
