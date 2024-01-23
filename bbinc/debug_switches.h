@@ -75,6 +75,7 @@ int debug_switch_convert_record_sleep(void);             /* 0 */
 int debug_switch_abort_ufid_open(void);                  /* 0 */
 int debug_switch_bdb_handle_reset_delay(void);           /* 0 */
 int debug_switch_recover_ddlk_sp_delay(void);
+int debug_switch_force_file_version_to_fail(void); /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */

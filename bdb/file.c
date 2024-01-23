@@ -155,7 +155,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
-static int open_dbs(bdb_state_type *, int, int, int, DB_TXN **, uint32_t);
+static int open_dbs(bdb_state_type *, int, int, int, DB_TXN **, uint32_t, int *);
 static int close_dbs(bdb_state_type *bdb_state);
 static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state);
@@ -1084,7 +1084,7 @@ backout:
 int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
                      int *bdberr)
 {
-    DB_TXN *tid = tran ? tran->tid : NULL;
+    DB_TXN **tid = tran ? &tran->tid : NULL;
     char *saved_name;
     char *saved_origname; /* certain sc set this, preserve */
     int rc;
@@ -1110,7 +1110,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
 
     saved_name = bdb_state->name;
     bdb_state->name = newname;
-    rc = open_dbs(bdb_state, 1, 1, 0, &tid, 0);
+    rc = open_dbs(bdb_state, 1, 1, 0, tid, 0, bdberr);
     if (rc != 0) {
         bdb_state->name = saved_name;
         bdb_state->origname = saved_origname;
@@ -1749,7 +1749,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
                           tran_type *cltrans)
 {
-    DB_TXN *tid = trans ? trans->tid : NULL;
+    DB_TXN **tid = trans ? &trans->tid : NULL;
     DB_TXN *cltid = cltrans ? cltrans->tid : NULL;
 
     /* Block others from assigning dbreg ID's, while we're reopening. */
@@ -1771,7 +1771,7 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, &tid, 0);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, 0, NULL);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         __dbreg_unlock_lazy_id(bdb_state->dbenv);
@@ -4141,7 +4141,8 @@ int calc_pagesize(int initsize, int recsize)
     return (initsize >= pagesize) ? initsize : pagesize;
 }
 
-int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid, uint32_t flags)
+int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid, uint32_t flags,
+             int *bdberr)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4154,8 +4155,10 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     int pagesize;
     bdbtype_t bdbtype = bdb_state->bdbtype;
     int tmp_tid;
+    int tmp_bdberr;
+    int *pbdberr = (bdberr != NULL) ? bdberr : &tmp_bdberr;
     tran_type tran = {0};
-    DB_TXN *tid = *ptid;
+    DB_TXN *tid = (ptid != NULL) ? *ptid : NULL;
 
     if ((flags & BDB_OPEN_SKIP_SCHEMA_LK) == 0) {
         assert_wrlock_schema_lk();
@@ -4163,6 +4166,7 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
 
 deadlock_again:
     tmp_tid = 0;
+    *pbdberr = BDBERR_MISC;
 
     db_flags = DB_THREAD;
     db_mode = 0666;
@@ -4210,20 +4214,20 @@ deadlock_again:
          * other function that uses the file version db or it will result in a
          * deadlock */
         if (iammaster && create && bdb_have_llmeta()) {
-            int bdberr;
-
-            if (bdb_new_file_version_all(bdb_state, &tran, &bdberr) ||
-                bdberr != BDBERR_NOERROR) {
+            if (bdb_new_file_version_all(bdb_state, &tran, pbdberr) || *pbdberr != BDBERR_NOERROR) {
                 logmsg(LOGMSG_ERROR,
                        "bdb_open_dbs: failed to update table and its file's "
                        "version number, bdberr %d\n",
-                       bdberr);
+                       *pbdberr);
                 if (tid) {
                     tid->abort(tid);
-                    *ptid = NULL;
+                    if (ptid != NULL)
+                        *ptid = NULL;
                 }
-                if (tmp_tid && bdberr == BDBERR_DEADLOCK)
+                if (tmp_tid && *pbdberr == BDBERR_DEADLOCK) {
+                    tid = NULL;
                     goto deadlock_again;
+                }
 
                 return -1;
             }
@@ -4635,20 +4639,18 @@ deadlock_again:
             /* get page sizes from the llmeta table if there */
             if (bdb_have_llmeta()) {
                 int rc;
-                int bdberr;
                 int llpagesize;
 
-                rc = bdb_get_pagesize_allindex(&tran, &llpagesize, &bdberr);
+                rc = bdb_get_pagesize_allindex(&tran, &llpagesize, pbdberr);
 
-                if ((rc == 0) && (bdberr == 0)) {
+                if ((rc == 0) && (*pbdberr == BDBERR_NOERROR)) {
                     if (llpagesize)
                         pagesize = llpagesize;
                 }
 
-                rc = bdb_get_pagesize_index(bdb_state, &tran, &llpagesize,
-                                            &bdberr);
+                rc = bdb_get_pagesize_index(bdb_state, &tran, &llpagesize, pbdberr);
 
-                if ((rc == 0) && (bdberr == 0)) {
+                if ((rc == 0) && (*pbdberr == BDBERR_NOERROR)) {
                     if (llpagesize)
                         pagesize = llpagesize;
                 }
@@ -4777,6 +4779,7 @@ deadlock_again:
             set_gblcontext(bdb_state, master_cmpcontext);
     }
 
+    *pbdberr = BDBERR_NOERROR;
     return 0;
 }
 
@@ -4996,7 +4999,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
         /* fprintf(stderr, "back from close_dbs\n"); */
 
         /* now reopen them as a client */
-        rc = open_dbs(bdb_state, 0, 1, 0, &tid, 0);
+        rc = open_dbs(bdb_state, 0, 1, 0, &tid, 0, NULL);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "upgrade: open_dbs as client failed\n");
             outrc = 1;
@@ -5019,7 +5022,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             /* fprintf(stderr, "back from close_dbs\n"); */
 
             /* now reopen them as a client */
-            rc = open_dbs(child, 0, 1, 0, &tid, 0);
+            rc = open_dbs(child, 0, 1, 0, &tid, 0, NULL);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "upgrade: open_dbs as client failed\n");
                 outrc = 1;
@@ -5584,15 +5587,13 @@ static void bdb_blobmem_init_once(void)
     }
 }
 
-static bdb_state_type *bdb_open_int(
-    int envonly, const char name[], const char dir[], int lrl, short numix,
-    const short ixlen[], const signed char ixdups[],
-    const signed char ixrecnum[], const signed char ixdta[], const int ixdtalen[],
-    const signed char ixcollattr[], const signed char ixnulls[],
-    int numdtafiles, bdb_attr_type *bdb_attr, bdb_callback_type *bdb_callback,
-    void *usr_ptr, netinfo_type *netinfo, int upgrade, int create, int *bdberr,
-    bdb_state_type *parent_bdb_state, int pagesize_override, bdbtype_t bdbtype,
-    DB_TXN *tid, int temp, char *recoverylsn, uint32_t flags)
+static bdb_state_type *bdb_open_int(int envonly, const char name[], const char dir[], int lrl, short numix,
+                                    const short ixlen[], const signed char ixdups[], const signed char ixrecnum[],
+                                    const signed char ixdta[], const int ixdtalen[], const signed char ixcollattr[],
+                                    const signed char ixnulls[], int numdtafiles, bdb_attr_type *bdb_attr,
+                                    bdb_callback_type *bdb_callback, void *usr_ptr, netinfo_type *netinfo, int upgrade,
+                                    int create, int *bdberr, bdb_state_type *parent_bdb_state, int pagesize_override,
+                                    bdbtype_t bdbtype, DB_TXN **tid, int temp, char *recoverylsn, uint32_t flags)
 {
     bdb_state_type *bdb_state;
     int rc;
@@ -6114,12 +6115,11 @@ static bdb_state_type *bdb_open_int(
         /* open our databases as either a client or master */
         bdb_state->bdbtype = bdbtype;
         bdb_state->pagesize_override = pagesize_override;
-        rc = open_dbs(bdb_state, iammaster, upgrade, create, &tid, flags);
+        rc = open_dbs(bdb_state, iammaster, upgrade, create, tid, flags, bdberr);
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
                 logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
-                *bdberr = BDBERR_MISC;
                 return NULL;
             } else {
                 logmsg(LOGMSG_FATAL, "error opening parent\n");
@@ -6230,7 +6230,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                 int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
                 int *bdberr, tran_type *trans)
 {
-    DB_TXN *tid = trans ? trans->tid : NULL;
+    DB_TXN **tid = trans ? &trans->tid : NULL;
     bdb_state_type *bdb_state, *ret;
 
     *bdberr = BDBERR_NOERROR;
@@ -6363,8 +6363,8 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
     BDB_READLOCK("bdb_open_more_tran");
 
     ret = bdb_open_int(0, /* envonly */
-                       name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta, ixdtalen,
-                       ixcollattr, ixnulls, numdtafiles, NULL, /* bdb_attr */
+                       name, dir, lrl, numix, ixlen, ixdups, ixrecnum, ixdta, ixdtalen, ixcollattr, ixnulls,
+                       numdtafiles, NULL,                  /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
@@ -6372,7 +6372,7 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                        parent_bdb_handle->attr->createdbs, /* create */
 
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
-                       BDBTYPE_TABLE, tran ? tran->tid : NULL, 0, NULL, flags);
+                       BDBTYPE_TABLE, tran ? &tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
 
@@ -6416,15 +6416,14 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
     BDB_READLOCK("bdb_open_more_lite");
 
     ret = bdb_open_int(0, /* envonly */
-                       name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta, ixdtalen,
-                       NULL, ixnulls, numdtafiles, NULL,   /* bdb_attr */
+                       name, dir, lrl, numix, &ixlen, ixdups, ixrecnum, ixdta, ixdtalen, NULL, ixnulls, numdtafiles,
+                       NULL,                               /* bdb_attr */
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
-                       bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE,
-                       tran ? tran->tid : NULL, 0, NULL, flags);
+                       bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, tran ? &tran->tid : NULL, 0, NULL, flags);
 
     BDB_RELLOCK();
 
@@ -6443,27 +6442,25 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
     bdb_state = parent_bdb_state;
     BDB_READLOCK("bdb_open_more_queue");
 
-    ret =
-        bdb_open_int(0,                    /* env only */
-                     name, dir, item_size, /* pass item_size in as lrl */
-                     0,                    /* numix */
-                     NULL,                 /* ixlen */
-                     NULL,                 /* ixdups */
-                     NULL,                 /* ixrecnum */
-                     NULL,                 /* ixdta */
-                     NULL,                 /* ixdtalen */
-                     NULL,                 /* ixcollattr */
-                     NULL,                 /* ixnulls */
-                     1,                    /* numdtafiles (berkdb queue file) */
-                     NULL,                 /* bdb_attr */
-                     NULL,                 /* bdb_callback */
-                     NULL,                 /* usr_ptr */
-                     NULL,                 /* netinfo */
-                     0,                    /* upgrade */
-                     parent_bdb_state->attr->createdbs,  /* create */
-                     bdberr, parent_bdb_state, pagesize, /* pagesize override */
-                     isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE,
-                     tran ? tran->tid : NULL, 0, NULL, 0);
+    ret = bdb_open_int(0,                                  /* env only */
+                       name, dir, item_size,               /* pass item_size in as lrl */
+                       0,                                  /* numix */
+                       NULL,                               /* ixlen */
+                       NULL,                               /* ixdups */
+                       NULL,                               /* ixrecnum */
+                       NULL,                               /* ixdta */
+                       NULL,                               /* ixdtalen */
+                       NULL,                               /* ixcollattr */
+                       NULL,                               /* ixnulls */
+                       1,                                  /* numdtafiles (berkdb queue file) */
+                       NULL,                               /* bdb_attr */
+                       NULL,                               /* bdb_callback */
+                       NULL,                               /* usr_ptr */
+                       NULL,                               /* netinfo */
+                       0,                                  /* upgrade */
+                       parent_bdb_state->attr->createdbs,  /* create */
+                       bdberr, parent_bdb_state, pagesize, /* pagesize override */
+                       isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tran ? &tran->tid : NULL, 0, NULL, 0);
 
     BDB_RELLOCK();
 
@@ -6476,7 +6473,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
                                       bdb_state_type *parent_bdb_state,
                                       int isqueuedb, int *bdberr)
 {
-    DB_TXN *tid = tran ? tran->tid : NULL;
+    DB_TXN **tid = tran ? &tran->tid : NULL;
     bdb_state_type *bdb_state, *ret = NULL;
 
     *bdberr = BDBERR_NOERROR;
@@ -7214,11 +7211,10 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid,
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, &tid, flags);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, &tid, flags, bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         BDB_RELLOCK();
-        *bdberr = BDBERR_MISC;
         return -1;
     }
     bdb_state->isopen = 1;

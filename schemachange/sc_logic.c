@@ -1211,6 +1211,7 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int r
     {
         int rc;
         tran_type * tmp_tran = tran;
+    retry:
         if (!tmp_tran) {
             rc = trans_start(iq, NULL, &tmp_tran);
             if (rc)
@@ -1224,11 +1225,18 @@ int open_temp_db_resume(struct ireq *iq, struct dbtable *db, char *prefix, int r
             db->numblobs + 1, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, temp, &bdberr, tmp_tran);
         if (db->handle == NULL) {
-            if (tmp_tran != tran)
+            if (tmp_tran != tran) {
                 trans_abort(iq, tmp_tran);
+                tmp_tran = NULL;
+                if (bdberr == BDBERR_DEADLOCK) {
+                    logmsg(LOGMSG_WARN, "%s: retrying on BDBERR_DEADLOCK\n", __func__);
+                    goto retry;
+                }
+            }
 
             logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__,
                    tmpname, bdberr);
+
             free(tmpname);
             return -1;
         }
