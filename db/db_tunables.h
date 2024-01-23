@@ -2484,4 +2484,7 @@ REGISTER_TUNABLE("incoherent_clnt_wait", "Delay incoherent reject if without mas
 REGISTER_TUNABLE("new_leader_duration", "Time new query waits for replicanted-recovery (Default: 3sec)",
                  TUNABLE_INTEGER, &gbl_new_leader_duration, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("txnlist_temptable_thresh",
+                 "Use temptable for txnlist if estimate number of transactions exceeds this number (Default: 10000000)",
+                 TUNABLE_INTEGER, &gbl_txnlist_temptable_thresh, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

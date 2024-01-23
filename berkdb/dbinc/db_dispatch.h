@@ -39,6 +39,10 @@
 #define	_DB_DISPATCH_H_
 
 #include <plhash.h>
+
+struct temp_table;
+struct temp_cursor;
+
 /*
  * Declarations and typedefs for the list of transaction IDs used during
  * recovery.  This is a generic list used to pass along whatever information
@@ -67,6 +71,10 @@ struct __db_txnhead {
 	} *gen_array;		/* Array of txnids associated with a gen. */
 	u_int nslots;
 	hash_t *h;
+	struct temp_table *txnstore;
+	struct temp_cursor *txnstorecur;
+	DB_TXNLIST *txnstoremem;
+    
 	LIST_HEAD(__db_headlink, __db_txnlist) head[1];
 };
 

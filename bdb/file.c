@@ -5584,6 +5584,8 @@ static void bdb_blobmem_init_once(void)
     }
 }
 
+void *set_bdb_env(bdb_state_type *env);
+
 static bdb_state_type *bdb_open_int(
     int envonly, const char name[], const char dir[], int lrl, short numix,
     const short ixlen[], const signed char ixdups[],
@@ -5929,7 +5931,11 @@ static bdb_state_type *bdb_open_int(
            when we come back from this call, we know if we
            are the master of our replication group
         */
+        if (envonly) /* temporarily set the global bdb state */
+            set_bdb_env(bdb_state);
         bdb_state->dbenv = dbenv_open(bdb_state);
+        if (envonly)
+            set_bdb_env(NULL);
         if (bdb_state->dbenv == NULL) {
             logmsg(LOGMSG_ERROR, "dbenv_open failed\n");
             *bdberr = BDBERR_MISC;
