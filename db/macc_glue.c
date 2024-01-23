@@ -733,11 +733,15 @@ static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
         schema->member = calloc(schema->nmembers, sizeof(struct field));
         schema->flags = SCHEMA_TABLE;
         schema->recsize = dyns_get_table_tag_size(rtag); /* wrong for .ONDISK */
-        /* we generate these later */
-        schema->ix = NULL;
-        schema->nix = 0;
         offset = 0;
         int is_disk_schema = (strncasecmp(rtag, ".ONDISK", 7) == 0);
+
+        if (is_disk_schema && !no_side_effects) {
+            db->schema = schema;
+            if (db->ixschema)
+                free(db->ixschema);
+            db->ixschema = calloc(sizeof(struct schema *), db->nix);
+        }
 
         for (field = 0; field < schema->nmembers; field++) {
             int padval;
@@ -886,11 +890,6 @@ static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
                   client_type_to_server_type(schema->member[field].type);
 #endif
                 if (!no_side_effects) {
-                    db->schema = schema;
-                    if (db->ixschema)
-                        free(db->ixschema);
-                    db->ixschema = calloc(sizeof(struct schema *), db->nix);
-
                     db->do_local_replication = have_comdb2_seqno_field;
                 }
             }
