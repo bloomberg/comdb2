@@ -34,6 +34,7 @@
 #include <sys/time.h>
 #include "lockmacros.h"
 #include <sys/poll.h>
+#include "debug_switches.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -2433,6 +2434,12 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
     int dtanum, ixnum, retries = 0;
     unsigned long long version_num;
     tran_type *tran;
+
+    if (debug_switch_force_file_version_to_fail()) {
+        logmsg(LOGMSG_WARN, "%s: debug_switch_force_file_version_to_fail is ON, faling this call\n", __func__);
+        *bdberr = BDBERR_DEADLOCK;
+        return -1;
+    }
 
     /*stop here if the db isn't open*/
     if (!llmeta_bdb_state) {

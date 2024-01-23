@@ -148,6 +148,7 @@ assert_vers nonexistent_table "NULL"
 assert_vers $tbl 0
 
 #fastinit does not increase counter
+cdb2sql -m ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('force_file_version_to_fail 1')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
 assert_vers $tbl 0
 
