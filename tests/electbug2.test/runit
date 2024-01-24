@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# We get here only if election works correctly
+echo "Passed."
+exit 0

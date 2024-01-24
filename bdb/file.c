@@ -2073,6 +2073,11 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
         logmsg(LOGMSG_WARN, "\n");
     }
 
+    /* Run the delayed logic only on the first-elected leader and that should be sufficient
+     * to reproduce the "electbug2" case. Nodes elected afterwards do no need to run this logic.
+     * This allows the electbug2 test to finish more quickly. */
+    debug_switch_set_rep_verify_req_delay(0);
+
     uint64_t behind = subtract_lsn(bdb_state, master_lsn, our_lsn);
     logmsg(LOGMSG_WARN,
            "catching up (%d):: us: %s "
@@ -3109,7 +3114,8 @@ again2:
         if (our_lsn.offset > master_lsn.offset)
             goto done2;
 
-        if ((master_lsn.offset - our_lsn.offset) >= 4096) {
+        int thresh = debug_switch_rep_verify_req_delay() ? 32 : 4096;
+        if ((master_lsn.offset - our_lsn.offset) >= thresh) {
             sleep(1);
             goto again2;
         }

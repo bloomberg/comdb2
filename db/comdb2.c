@@ -5617,6 +5617,17 @@ int main(int argc, char **argv)
 
     start_physrep_threads();
 
+    if (debug_switch_rep_verify_req_delay()) {
+        extern int gbl_rep_newmaster_processed_on_replicant;
+        while (!gbl_rep_newmaster_processed_on_replicant) {
+            /* spin till my REP_NEWMASTER is processed by replicants */
+            sleep(1);
+        }
+        /* downgrade leader before other nodes catch up.
+         * see code in __rep_process_message */
+        bdb_transfermaster(thedb->static_table.handle);
+    }
+
     if (!gbl_perform_full_clean_exit) {
         void *ret;
         rc = pthread_join(timer_tid, &ret);
