@@ -3937,8 +3937,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     if ((!bdb_state->caught_up) || (bdb_state->exiting))
         make_lsn(&permlsn, INT_MAX, INT_MAX);
 
-    if ((force_election) && (bdb_state->caught_up) &&
-        (host == bdb_state->repinfo->master_host)) {
+    if ((force_election) && (host == bdb_state->repinfo->master_host)) {
         logmsg(LOGMSG_WARN, "master %s requested election\n", host);
         r = DB_REP_HOLDELECTION;
         master_confused = 1;

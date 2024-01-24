@@ -301,8 +301,13 @@ setup_db() {
                 out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
                 $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.${node}.conn
             done
-            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $LOGDIR/${DBNAME}.${node}.conn
-            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
+            if [[ $TESTCASE == "electbug2" ]]; then
+                # The electbug2 test deliberately downgrades the leader as soon as one is elected.
+                # Nodes may switch between a coherent and an incoherent state because of that. Use admin mode.
+                use_admin_mode="--admin"
+            fi
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} ${use_admin_mode} --tabs --host $node $DBNAME 'select comdb2_host()' &>> $LOGDIR/${DBNAME}.${node}.conn
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} ${use_admin_mode} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
             if [ "$out" != "$node" ] ; then
                 sleep 1
                 failexit "comdb2_host() '$out' != expected '$node'"

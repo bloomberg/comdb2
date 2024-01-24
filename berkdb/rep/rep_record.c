@@ -107,6 +107,8 @@ int gbl_req_delay_count_threshold = 5;
 int gbl_getlock_latencyms = 0;
 int gbl_flush_log_at_checkpoint = 1;
 int gbl_flush_on_prepare = 0;
+int gbl_rep_newmaster_processed_on_replicant = 0;
+int gbl_rep_verify_delay_remaining = 10;
 extern int request_delaymore(void *bdb_state);
 int __rep_set_last_locked(DB_ENV *dbenv, DB_LSN *lsn);
 
@@ -2186,6 +2188,13 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		fromline = __LINE__;
 		goto errlock;
 	case REP_VERIFY_REQ:
+		if (debug_switch_rep_verify_req_delay() && gbl_rep_verify_delay_remaining-- >= 0) {
+			logmsg(LOGMSG_WARN, "told to delay replying to REP_VERIFY_REQ, going to sleep 5 second ...\n");
+			gbl_rep_newmaster_processed_on_replicant = 1;
+			/* This gives us a chance to downgrade the leader before replicants catch up.
+			 * See code in main(). */
+			sleep(5);
+		}
 		MASTER_ONLY(rep, rp);
 		type = REP_VERIFY;
 
