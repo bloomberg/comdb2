@@ -4815,8 +4815,8 @@ static int isAllZero(const char *z, int n){
 */
 SQLITE_NOINLINE int sqlite3BlobCompare(const Mem *pB1, const Mem *pB2){
   int c;
-  int n1 = pB1->n;
-  int n2 = pB2->n;
+  int n1 = pB1->flags&(MEM_Datetime) ? 0 : pB1->n;
+  int n2 = pB2->flags&(MEM_Datetime) ? 0 : pB2->n;
 
   /* It is possible to have a Blob value that has some non-zero content
   ** followed by zero content.  But that only comes up for Blobs formed
