@@ -934,8 +934,11 @@ static int add_cmacc_stmt(dbtable *db, int alt, int allow_ull,
                 }
             }
         }
-        if (create_key_schema(db, schema, alt, err) > 0)
-            return -1;
+        if (is_disk_schema || !strcasecmp(rtag, ".DEFAULT")) {
+            /* we really only use .ONDISK_IX tag names */
+            if (create_key_schema(db, schema, alt, err) > 0)
+                return -1;
+        }
         if (is_disk_schema) {
             int i, rc;
             /* csc2 doesn't have the correct recsize for ondisk schema - use
