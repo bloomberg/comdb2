@@ -1072,6 +1072,7 @@ void serialise_database(
         std::string templ_blkseq_dta;
         std::string templ_blkseq_freerec;
         std::string templ_blkseq_ix0;
+        std::string templ_static_table_meta = "_comdb2_static_table.metalite.dta";
 
         if(nonames) {
             templ_fstblk = "comdb2_fstblk.dta";
@@ -1103,7 +1104,7 @@ void serialise_database(
             if(recognize_data_file(filename,
                         is_data_file, is_queue_file, is_queuedb_file, table_name)) {
                 if(is_data_file &&
-                        table_names.find(table_name) == table_names.end()) {
+                        table_names.find(table_name) == table_names.end() && filename != templ_static_table_meta) {
                     continue;
                 }
                 if(is_queue_file &&
