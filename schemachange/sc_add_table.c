@@ -29,21 +29,6 @@
 
 extern int gbl_is_physical_replicant;
 
-static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
-                                       struct ireq *iq, void *trans)
-{
-    int rc;
-
-    fix_lrl_ixlen_tran(trans);
-
-    if (newdb->dbenv->master == gbl_myhostname) {
-        if ((rc = sql_syntax_check(iq, newdb)))
-            return SC_CSC2_ERROR;
-    }
-
-    return 0;
-}
-
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
@@ -156,7 +141,11 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    rc = adjust_master_tables(newdb, csc2, iq, trans);
+    if (newdb->dbenv->master == gbl_myhostname) {
+        if ((rc = sql_syntax_check(iq, newdb)))
+            return SC_CSC2_ERROR;
+    }
+
     if (rc) {
         if (rc == SC_CSC2_ERROR)
             sc_errf(s, "Failed to check syntax\n");
@@ -336,8 +325,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     gbl_sc_commit_count++;
-
-    fix_lrl_ixlen_tran(tran);
 
     db->sc_to = NULL;
     update_dbstore(db);

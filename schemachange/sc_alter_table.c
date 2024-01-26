@@ -1046,9 +1046,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (!have_all_schemas()) sc_errf(s, "Missing schemas (internal error)\n");
 
-    /* kludge: fix lrls */
-    fix_lrl_ixlen_tran(transac);
-
     live_sc_off(db);
 
     /* artificial sleep to aid testing */
