@@ -1701,11 +1701,13 @@ static int get_stat_from_user_msg(struct event_info *e, struct evbuffer *buf, st
     ++stat->type_counts[rep_ctrl.rectype];
     if (stat->min_lsn.file == 0) {
         stat->min_lsn = stat->max_lsn = rep_ctrl.lsn;
-    } else if (rep_ctrl.lsn.file <= stat->min_lsn.file) {
+    }
+    if (rep_ctrl.lsn.file <= stat->min_lsn.file) {
         if (rep_ctrl.lsn.file < stat->min_lsn.file || rep_ctrl.lsn.offset < stat->min_lsn.offset) {
             stat->min_lsn = rep_ctrl.lsn;
         }
-    } else if (rep_ctrl.lsn.file >= stat->max_lsn.file) {
+    }
+    if (rep_ctrl.lsn.file >= stat->max_lsn.file) {
         if (rep_ctrl.lsn.file > stat->max_lsn.file || rep_ctrl.lsn.offset > stat->max_lsn.offset) {
             stat->max_lsn = rep_ctrl.lsn;
         }

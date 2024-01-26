@@ -112,6 +112,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     struct sqlclntstate *clnt = &appdata->clnt;
     int fd = appdata->fd;
+
     rem_sql_evbuffer(clnt);
     rem_appsock_connection_evbuffer(clnt);
     if (appdata->dispatch) {
@@ -429,24 +430,36 @@ static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl)
     return 2;
 }
 
+static int dispatch_client(struct newsql_appdata_evbuffer *appdata)
+{
+    return dispatch_sql_query_no_wait(&appdata->clnt);
+}
+
+static void free_dispatch_sql_arg(struct dispatch_sql_arg *d)
+{
+    d->appdata->dispatch = NULL;
+    event_free(d->ev);
+    free(d);
+}
+
 static void dispatch_waiting_client(int fd, short what, void *data)
 {
     struct dispatch_sql_arg *d = data;
     struct newsql_appdata_evbuffer *appdata = d->appdata;
     check_thd(d->thd);
-    appdata->dispatch = NULL;
-    event_free(d->ev);
     struct timeval end, diff;
     gettimeofday(&end, NULL);
     timersub(&end, &d->start, &diff);
-    logmsg(LOGMSG_USER, "%s: waited %lds.%ldms for election fd:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, appdata->fd);
-    if (!bdb_am_i_coherent(thedb->bdb_env)) {
+    if (!bdb_try_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
         newsql_cleanup(appdata);
-    } else if (dispatch_sql_query_no_wait(&appdata->clnt) != 0) {
+    } else if (dispatch_client(appdata) == 0) {
+        logmsg(LOGMSG_USER, "%s: waited %lds.%ldms for election fd:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, appdata->fd);
+        sql_wait_for_leader(appdata->writer, NULL);
+    } else {
         newsql_cleanup(appdata);
     }
-    free(d);
+    free_dispatch_sql_arg(d);
 }
 
 static void do_dispatch_waiting_clients(int fd, short what, void *data)
@@ -497,6 +510,24 @@ static void dispatch_sql(int fd, short what, void *data)
     Pthread_mutex_unlock(&dispatch_lk);
 }
 
+static void timed_out_waiting_for_leader(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata_evbuffer *appdata = clnt->appdata;
+    struct dispatch_sql_arg *d = appdata->dispatch;
+    check_thd(d->thd);
+    Pthread_mutex_lock(&dispatch_lk);
+    TAILQ_REMOVE(&dispatch_list, d, entry);
+    Pthread_mutex_unlock(&dispatch_lk);
+
+    struct timeval end, diff;
+    gettimeofday(&end, NULL);
+    timersub(&end, &d->start, &diff);
+    logmsg(LOGMSG_USER, "%s: query timeout waiting for election waited:%lds fd:%d\n",
+           __func__, diff.tv_sec, appdata->fd);
+    free_dispatch_sql_arg(d);
+    newsql_cleanup(appdata);
+}
+
 static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop_result incoherent)
 {
     if (incoherent == NEWSQL_INCOHERENT) {
@@ -514,7 +545,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
         Pthread_mutex_unlock(&dispatch_lk);
         event_free(d->ev);
         free(d);
-        if (dispatch_sql_query_no_wait(&appdata->clnt) != 0) {
+        if (dispatch_client(appdata) != 0) {
             newsql_cleanup(appdata);
         }
         return;
@@ -532,6 +563,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
         logmsg(LOGMSG_FATAL, "%s: unknown incoherent state:%d\n", __func__, incoherent);
         abort();
     }
+    sql_wait_for_leader(appdata->writer, timed_out_waiting_for_leader);
     struct timeval timeout = {.tv_sec = 1};
     gettimeofday(&d->start, NULL);
     event_add(d->ev, &timeout);
@@ -577,7 +609,7 @@ read:   cdb2__query__free_unpacked(appdata->query, &pb_alloc);
     sql_enable_heartbeat(appdata->writer);
     if (incoherent) {
         wait_for_leader(appdata, incoherent);
-    } else if (dispatch_sql_query_no_wait(clnt) != 0) {
+    } else if (dispatch_client(appdata) != 0) {
 err:    newsql_cleanup(appdata);
     }
 }
