@@ -34,6 +34,7 @@
 #define min_hb_time 1
 
 struct sqlwriter {
+    sql_dispatch_timeout_fn *dispatch_timeout;
     struct sqlclntstate *clnt;
     struct evbuffer *wr_buf;
     pthread_mutex_t wr_lock;
@@ -142,7 +143,13 @@ static int wr_evbuffer_plaintext(struct sqlwriter *writer, int fd)
 
 static int wr_evbuffer(struct sqlwriter *writer, int fd)
 {
-    return writer->wr_evbuffer_fn(writer, fd);
+    int rc = writer->wr_evbuffer_fn(writer, fd);
+    if (writer->timed_out && writer->dispatch_timeout) {
+        /* Exceeded MAXQUERYTIME waiting for leader-election */
+        writer->dispatch_timeout(writer->clnt); /* -> timed_out_waiting_for_leader */
+        writer->dispatch_timeout = NULL;
+    }
+    return rc;
 }
 
 /*
@@ -357,8 +364,7 @@ static void sql_trickle_int(struct sqlwriter *writer, int fd)
     const int n = wr_evbuffer(writer, fd);
     if (n <= 0) {
         writer->bad = 1;
-        logmsg(LOGMSG_ERROR, "%s write failed fd:%d rc:%d err:%s\n", __func__,
-               fd, n, strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s write failed fd:%d rc:%d err:%s\n", __func__, fd, n, strerror(errno));
         sql_disable_heartbeat(writer);
         return;
     }
@@ -393,10 +399,11 @@ static void sql_heartbeat_cb(int fd, short what, void *arg)
 void sql_reset(struct sqlwriter *writer)
 {
     writer->bad = 0;
+    writer->dispatch_timeout = NULL;
     writer->done = 0;
+    writer->sent_at = time(NULL);
     writer->timed_out = 0;
     writer->wr_continue = 1;
-    writer->sent_at = time(NULL);
 }
 
 int sql_peer_check(struct sqlwriter *writer)
@@ -501,4 +508,9 @@ void sql_disable_ssl(struct sqlwriter *writer)
 {
     writer->ssl = NULL;
     writer->wr_evbuffer_fn = wr_evbuffer_plaintext;
+}
+
+void sql_wait_for_leader(struct sqlwriter *writer, sql_dispatch_timeout_fn *fn)
+{
+    writer->dispatch_timeout = fn;
 }

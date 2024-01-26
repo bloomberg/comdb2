@@ -23,6 +23,7 @@
 //writer will block if outstanding data hits:
 #define SQLWRITER_MAX_BUF KB(256)
 
+struct dispatch_sql_arg;
 struct evbuffer;
 struct event_base;
 struct iovec;
@@ -30,17 +31,12 @@ struct sqlclntstate;
 struct sqlwriter;
 
 int  sql_flush(struct sqlwriter *);
-//void sql_enable_flush(struct sqlwriter *);
-//void sql_disable_flush(struct sqlwriter *);
 
 void sql_enable_heartbeat(struct sqlwriter *);
 void sql_disable_heartbeat(struct sqlwriter *);
 
 void sql_enable_timeout(struct sqlwriter *, int);
 void sql_disable_timeout(struct sqlwriter *);
-
-//void sql_enable_trickle(struct sqlwriter *);
-//void sql_disable_trickle(struct sqlwriter *);
 
 int sql_write(struct sqlwriter *, void *, int);
 int sql_writev(struct sqlwriter *, struct iovec *, int);
@@ -70,5 +66,8 @@ int recover_deadlock_evbuffer(struct sqlclntstate *);
 
 void sql_enable_ssl(struct sqlwriter *, SSL *);
 void sql_disable_ssl(struct sqlwriter *);
+
+typedef void(sql_dispatch_timeout_fn)(struct sqlclntstate *);
+void sql_wait_for_leader(struct sqlwriter *, sql_dispatch_timeout_fn *);
 
 #endif /* INCLUDED_SQLWRITER_H */
