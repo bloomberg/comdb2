@@ -3793,8 +3793,8 @@ static void rem_rep_mon(struct rep_mon *rm)
     Pthread_mutex_unlock(&rep_mon_lk);
 }
 
-static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
-                          DBT *rec)
+static __thread pid_t process_berkdb_tid = 0;
+static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, DBT *rec)
 {
     int rc;
     int r;
@@ -3846,7 +3846,11 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     pthread_threadid_np(pthread_self(), &id);
     rm.tid = id;
 #elif defined _LINUX_SOURCE
-    rm.tid = syscall(__NR_gettid);
+    if (process_berkdb_tid == 0) {
+        process_berkdb_tid = rm.tid = syscall(__NR_gettid);
+    } else {
+        rm.tid = process_berkdb_tid;
+    }
 #else
     rm.tid = getpid();
 #endif
