@@ -27,6 +27,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
 
 //@formatter:off
@@ -47,6 +48,7 @@ public class UnpooledDataSource implements DataSource {
 	private ClassLoader driverClassLoader;
 	private Properties driverProperties;
 	private boolean driverInitialized;
+	private final ReentrantLock driverLock = new ReentrantLock();
 
 	private String driver;
 	private String url;
@@ -141,13 +143,25 @@ public class UnpooledDataSource implements DataSource {
 		this.driverProperties = driverProperties;
 	}
 
-	public synchronized String getDriver() {
-		return driver;
+	public String getDriver() {
+		driverLock.lock();
+
+		try {
+			return driver;
+		} finally {
+			driverLock.unlock();
+		}
 	}
 
-	public synchronized void setDriver(String driver) {
-		this.driver = driver;
-		driverInitialized = false;
+	public void setDriver(String driver) {
+		driverLock.lock();
+
+		try {
+			this.driver = driver;
+			driverInitialized = false;
+		} finally {
+			driverLock.unlock();
+		}
 	}
 
 	public String getUrl() {
@@ -254,7 +268,17 @@ public class UnpooledDataSource implements DataSource {
 		}
 	}
 
-	private synchronized void initializeDriver() {
+	private void initializeDriver() {
+		driverLock.lock();
+
+		try {
+			lockedInitializeDriver();
+		} finally {
+			driverLock.unlock();
+		}
+	}
+
+	private void lockedInitializeDriver() {
 		if (!driverInitialized) {
 			driverInitialized = true;
 			Class<?> driverType;

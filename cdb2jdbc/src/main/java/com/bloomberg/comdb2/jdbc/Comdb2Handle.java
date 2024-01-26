@@ -15,6 +15,7 @@ package com.bloomberg.comdb2.jdbc;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.*;
 import javax.net.ssl.*;
 import java.text.MessageFormat;
@@ -80,7 +81,7 @@ public class Comdb2Handle extends AbstractConnection {
     private Cdb2SqlResponse firstResp;
     private Cdb2SqlResponse lastResp;
 
-    private Object lock = new Object();
+    private final ReentrantLock lock = new ReentrantLock();
     private volatile boolean opened = false;
 
     /* flag to indicate if the handle is in a transaction */
@@ -1532,7 +1533,17 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     @Override
-    public synchronized int runStatement(String sql, List<Integer> types) {
+    public int runStatement(String sql, List<Integer> types) {
+        lock.lock();
+
+        try {
+            return lockedRunStatement(sql, types);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private int lockedRunStatement(String sql, List<Integer> types) {
         int rc, commit_rc;
 
         if (temp_trans && inTxn) {
@@ -1624,8 +1635,17 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     @Override
-    public synchronized int next() {
+    public int next() {
+        lock.lock();
 
+        try {
+            return lockedNext();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private int lockedNext() {
         if (isFirst)
             isFirst = false;
 
@@ -2182,7 +2202,9 @@ readloop:
     public void close() throws IOException {
 
         if (opened == true) {
-            synchronized (lock) {
+            lock.lock();
+
+            try {
                 if (opened == true) {
                     if (ack && clearAckOnClose) {
                         ack();
@@ -2197,6 +2219,8 @@ readloop:
                         io = null;
                     }
                 }
+            } finally {
+                lock.unlock();
             }
         }
     }
