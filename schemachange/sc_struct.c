@@ -1112,7 +1112,6 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     free(newdb);
 
     commit_schemas(table);
-    fix_lrl_ixlen_tran(tran);
     update_dbstore(db);
 
     free(new_bdb_handle);

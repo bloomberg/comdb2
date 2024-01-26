@@ -827,8 +827,6 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
     if (rc)
         goto done;
 
-    fix_lrl_ixlen_tran(tran);
-
 done:
     _untran(tran, lid);
 
@@ -891,8 +889,6 @@ static int scdone_fastinit(const char tablename[], void *arg, scdone_t type)
     rc = _db_dbnum(tran, db, &bdberr);
     if (rc)
         goto done;
-
-    fix_lrl_ixlen_tran(tran);
 
 done:
     _untran(tran, lid);
@@ -980,8 +976,6 @@ static int scdone_bulkimport(const char tablename[], void *arg, scdone_t type)
     if (rc)
         goto done;
 
-    fix_lrl_ixlen_tran(tran);
-
 done:
     _untran(tran, lid);
 
@@ -1025,8 +1019,6 @@ static int scdone_setcompr(const char tablename[], void *arg, scdone_t type)
         goto done;
     }
     db->dbnum = dbnum;
-
-    fix_lrl_ixlen_tran(tran);
 
     _master_recs(tran, tablename, type);
 

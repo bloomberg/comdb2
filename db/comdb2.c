@@ -3984,9 +3984,6 @@ static int init(int argc, char **argv)
             unlock_schema_lk();
             return -1;
         }
-
-        fix_lrl_ixlen(); /* set lrl, ix lengths: ignore lrl file, use info from
-                            schema */
     }
 
     /* historical requests */
@@ -5538,9 +5535,6 @@ int main(int argc, char **argv)
 
     handle_resume_sc();
 
-    /* Creating a server context wipes out the db #'s dbcommon entries.
-     * Recreate them. */
-    fix_lrl_ixlen();
     create_marker_file();
 
     create_watchdog_thread(thedb);
@@ -6168,8 +6162,6 @@ retry_tran:
                __func__, rc);
         abort();
     }
-
-    fix_lrl_ixlen_tran(tran);
 
     if ((rc = backend_open_tran(thedb, tran, 0)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: backend_open_tran returns %d\n", __func__,

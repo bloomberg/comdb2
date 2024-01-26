@@ -289,9 +289,7 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema);
 char *sqltype(struct field *f, char *buf, int len);
 char *csc2type(struct field *f);
 void debug_dump_tags(const char *tblname);
-void fix_lrl_ixlen(void);
 struct tran_tag;
-void fix_lrl_ixlen_tran(struct tran_tag *);
 int max_type_size(int type, int len);
 int getidxnumbyname(const struct dbtable *table, const char *tagname, int *ixnum);
 int partial_key_length(struct dbtable *dbname, const char *keyname,

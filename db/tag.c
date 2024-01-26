@@ -4466,33 +4466,6 @@ void printrecord(char *buf, struct schema *sc, int len)
     logmsg(LOGMSG_USER, "] ");
 }
 
-/* this routine is called from comdb2 when all is well
-   (we checked that all schemas are defined, etc.) */
-void fix_lrl_ixlen_tran(tran_type *tran)
-{
-    int tbl, ix;
-    char namebuf[MAXTAGLEN + 1];
-    dbtable *db;
-    int nix;
-
-    for (tbl = 0; tbl < thedb->num_dbs; tbl++) {
-        db = thedb->dbs[tbl];
-        struct schema *s = find_tag_schema(db, ".ONDISK");
-        db->lrl = get_size_of_schema(s);
-        nix = s->nix;
-        for (ix = 0; ix < nix; ix++) {
-            snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ix);
-            s = find_tag_schema(db, namebuf);
-            db->ix_keylen[ix] = get_size_of_schema(s);
-        }
-    }
-}
-
-void fix_lrl_ixlen()
-{
-    fix_lrl_ixlen_tran(NULL);
-}
-
 int have_all_schemas(void)
 {
     int tbl, ix;
@@ -4530,8 +4503,6 @@ int have_all_schemas(void)
                        thedb->dbs[tbl]->tablename);
             }
         }
-
-        thedb->dbs[tbl]->schema = s;
 
         for (ix = 0; s && ix < thedb->dbs[tbl]->nix; ix++) {
             snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ix);
@@ -5152,7 +5123,9 @@ void backout_schemas(char *tblname)
     unlock_taglock();
 }
 
-// datacopy_nmembers is -1 if cloning table schema, else the number of members in the table if cloning index schema
+/* datacopy_nmembers is -1 if cloning table schema,
+ * else the number of members in the table if cloning index schema
+ */
 struct schema *clone_schema_index(struct schema *from, const char *tag,
                                   int datacopy_nmembers)
 {
@@ -6217,7 +6190,6 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
 
     memset(newdb, 0xff, sizeof(dbtable));
     free(newdb);
-    fix_lrl_ixlen_tran(tran);
     free(csc2);
     free(new_bdb_handle);
     return 0;
