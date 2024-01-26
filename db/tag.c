@@ -62,7 +62,6 @@
 extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
 
-char gbl_ver_temp_table[] = ".COMDB2.TEMP.VER.";
 char gbl_ondisk_ver[] = ".ONDISK.VER.";
 char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
 const int gbl_ondisk_ver_len = sizeof ".ONDISK.VER.255xx";
@@ -81,6 +80,7 @@ hash_t *gbl_tag_hash;
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
+static void freeschema_internals(struct schema *schema);
 
 static inline void lock_taglock_read(void)
 {
@@ -207,7 +207,7 @@ static void _tags_free_schema(struct dbtag *tag, struct schema *s,
         logmsg(LOGMSG_DEBUG, "2 Removing %s:%s\n", tablename, s->tag);
     hash_del(tag->tags, s);
     listc_rfl(&tag->taglist, s);
-    freeschema(s);
+    freeschema(s, 0);
 }
 
 
@@ -1441,70 +1441,41 @@ void dump_tagged_buf(struct dbtable *table, const char *tag,
     dump_tagged_buf_with_schema(sc, buf);
 }
 
-/* assume schema has been added */
-void add_tag_alias(const char *table, struct schema *s, char *name, int table_nmembers)
+/* NOTE: tag is already strdup-ed */
+struct schema * alloc_schema(char *tag, int nmembers, int flags)
 {
-    struct dbtag *tag;
-    struct schema *sc;
-    struct schema *old;
+    struct schema *to;
+    if (!tag)
+        return NULL;
 
-    lock_taglock();
-    tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (tag == NULL) {
-        tag = malloc(sizeof(struct dbtag));
-        tag->tblname = strdup(table);
-        tag->tags = hash_init_strcaseptr(offsetof(struct schema, tag));
-        listc_init(&tag->taglist, offsetof(struct schema, lnk));
-        hash_add(gbl_tag_hash, tag);
+    to = calloc(1, sizeof(struct schema));
+    if (!to) {
+        free(tag);
+        return NULL;
     }
-    sc = clone_schema_index(s, table_nmembers);
-    free(sc->tag);
-    sc->tag = strdup(name);
-    if (s->csctag == NULL)
-        s->csctag = strdup(sc->tag);
-    listc_abl(&tag->taglist, sc);
-
-    /* Don't add dupes! */
-    old = hash_find(tag->tags, &sc->tag);
-    if (old) {
-        _tags_free_schema(tag, old, table);
+    to->tag = tag;
+    to->nmembers = nmembers;
+    to->member = calloc(to->nmembers, sizeof(struct field));
+    if (!to->member) {
+        free(to->tag);
+        free(to);
+        return NULL;
     }
-
-    if (_dbg_tags)
-        logmsg(LOGMSG_DEBUG, "2 Adding %s:%s\n", table, sc->tag);
-    hash_add(tag->tags, sc);
-#if defined DEBUG_STACK_TAG_SCHEMA
-    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
-                          name);
-    sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
-    sc->tid = pthread_self();
-#endif
-    unlock_taglock();
+    to->flags = flags;
+    return to;
 }
 
 /* used to clone ONDISK to ONDISK_CLIENT */
-int clone_server_to_client_tag(const char *tblname, const char *fromtag,
-                               const char *newtag)
+struct schema *clone_server_to_client_tag(struct schema *from, const char *newtag)
 {
-    struct schema *from, *to;
+    struct schema *to;
     int field, offset;
     struct field *from_field, *to_field;
     int rc;
 
-    lock_taglock();
-    from = find_tag_schema_lk(tblname, fromtag);
-    if (from == NULL) {
-        unlock_taglock();
-        return -1;
-    }
-
-    to = calloc(1, sizeof(struct schema));
-    to->tag = strdup(newtag);
-    to->nmembers = from->nmembers;
-    to->member = calloc(to->nmembers, sizeof(struct field));
-    to->flags = from->flags;
-    to->ix = NULL; /* don't need to copy indx yet */
-    to->nix = 0;
+    to = alloc_schema(strdup(newtag), from->nmembers, from->flags);
+    if (!to)
+        return NULL;
     to->numblobs = from->numblobs;
     offset = 0;
     for (field = 0; field < from->nmembers; field++) {
@@ -1520,23 +1491,8 @@ int clone_server_to_client_tag(const char *tblname, const char *fromtag,
             &to->member[field].type, (int *)&to->member[field].len);
 
         if (rc != 0) {
-            int i;
-
-            logmsg(LOGMSG_ERROR, 
-                   "clone_server_to_client_tag: severe error - returning\n");
-            for (i = 0; i <= field; i++) {
-                free(to->member[i].name);
-                if (to->member[i].in_default != NULL) {
-                    free(to->member[i].in_default);
-                    to->member[i].in_default = NULL;
-                    to->member[i].in_default_type = 0;
-                    to->member[i].in_default_len = 0;
-                }
-            }
-            free(to->tag);
-            free(to);
-            unlock_taglock();
-            return -1;
+            logmsg(LOGMSG_ERROR, "%s: severe error - returning\n", __func__);
+            goto err;
         }
         to->member[field].offset = offset;
         offset += to->member[field].len;
@@ -1547,11 +1503,10 @@ int clone_server_to_client_tag(const char *tblname, const char *fromtag,
          * .ONDISK tag itself */
     }
 
-    del_tag_schema_lk(tblname, newtag);
-    add_tag_schema_lk(tblname, to);
-
-    unlock_taglock();
-    return 0;
+    return to;
+err:
+    freeschema(to, 0);
+    return NULL;
 }
 
 /* Given a partial string, find the length of a key.
@@ -4770,18 +4725,14 @@ struct schema *new_dynamic_schema(const char *s, int len, int trace)
     if (nfields > MAXDYNTAGCOLUMNS)
         return NULL;
 
-    sc = calloc(1, sizeof(struct schema));
-    sc->recsize = 0;
-    sc->tag = get_unique_tag();
-    sc->nmembers = nfields;
-    sc->flags = SCHEMA_TABLE | SCHEMA_DYNAMIC;
+    sc = alloc_schema(get_unique_tag(), nfields, SCHEMA_TABLE | SCHEMA_DYNAMIC);
+    if (!sc)
+        return NULL;
+
     sc->nix = 0; /* note: we won't be adding ix schema records since
                     we never need to convert to client-form keys for
                     dynamic tags (all requests are new) */
-    sc->ix = NULL;
     sc->ixnum = -1;
-    sc->member = calloc(sc->nmembers, sizeof(struct field));
-    sc->numblobs = 0;
     s = &s[toff];
     for (field = 0; field < nfields; field++) {
         f = &sc->member[field];
@@ -5198,63 +5149,88 @@ void backout_schemas(char *tblname)
     unlock_taglock();
 }
 
-// table_nmembers is -1 if cloning table schema, else the number of members in the table if cloning index schema
-struct schema *clone_schema_index(struct schema *from, int table_nmembers)
+// datacopy_nmembers is -1 if cloning table schema, else the number of members in the table if cloning index schema
+struct schema *clone_schema_index(struct schema *from, const char *tag,
+                                  int datacopy_nmembers)
 {
     int i;
 
-    struct schema *sc = calloc(1, sizeof(struct schema));
-    sc->tag = strdup(from->tag);
-    sc->nmembers = from->nmembers;
-    sc->member = malloc(from->nmembers * sizeof(struct field));
-    sc->flags = from->flags;
+    struct schema *sc = alloc_schema(strdup(tag), from->nmembers, from->flags);
+    if (!sc)
+        goto err;
     sc->nix = from->nix;
-    if (sc->nix)
+    if (sc->nix) {
         sc->ix = calloc(from->nix, sizeof(struct schema *));
+        if (!sc->ix)
+            goto err;
+    }
 
     for (i = 0; i < from->nmembers; i++) {
         sc->member[i] = from->member[i];
         sc->member[i].name = strdup(from->member[i].name);
+        if (!sc->member[i].name)
+            goto err;
         if (from->member[i].in_default) {
             sc->member[i].in_default = malloc(sc->member[i].in_default_len);
+            if (!sc->member[i].in_default)
+                goto err;
             memcpy(sc->member[i].in_default, from->member[i].in_default,
                    from->member[i].in_default_len);
         }
         if (from->member[i].out_default) {
             sc->member[i].out_default = malloc(sc->member[i].out_default_len);
+            if (!sc->member[i].out_default)
+                goto err;
             memcpy(sc->member[i].out_default, from->member[i].out_default,
                    from->member[i].out_default_len);
         }
     }
 
     for (i = 0; i < from->nix; i++) {
-        if (from->ix && from->ix[i])
-            sc->ix[i] = clone_schema_index(from->ix[i], from->nmembers);
+        if (from->ix && from->ix[i]) {
+            sc->ix[i] = clone_schema_index(from->ix[i], from->ix[i]->tag,
+                                           from->nmembers);
+            if (!sc->ix[i])
+                goto err;
+        }
     }
 
     sc->ixnum = from->ixnum;
     sc->recsize = from->recsize;
     sc->numblobs = from->numblobs;
 
-    if (from->csctag)
+    if (from->csctag) {
         sc->csctag = strdup(from->csctag);
+        if (!sc->csctag)
+            goto err;
+    }
 
     if (from->partial_datacopy) {
-        sc->partial_datacopy = clone_schema(from->partial_datacopy);
-        table_nmembers = sc->partial_datacopy->nmembers; // update number of members in datacopy
+        sc->partial_datacopy = clone_schema_index(from->partial_datacopy,
+                                                  from->partial_datacopy->tag,
+                                                  -1);
+        if (!sc->partial_datacopy)
+            goto err;
+        datacopy_nmembers = sc->partial_datacopy->nmembers; // update number of members in datacopy
     } 
     if (from->datacopy) {
-        assert(table_nmembers != -1);
-        sc->datacopy = malloc(table_nmembers * sizeof(int));
-        memcpy(sc->datacopy, from->datacopy, table_nmembers * sizeof(int));
+        assert(datacopy_nmembers != -1);
+        sc->datacopy = malloc(datacopy_nmembers * sizeof(int));
+        if (!sc->datacopy)
+            goto err;
+        memcpy(sc->datacopy, from->datacopy, datacopy_nmembers * sizeof(int));
     }
     return sc;
+
+err:
+    freeschema(sc, 1);
+    return NULL;
 }
 
 
 
 struct schema *clone_schema(struct schema *from) {
-    return clone_schema_index(from, -1);
+    return clone_schema_index(from, from->tag, -1);
 }
 
 /* note: threads are quiesced before this is called - no locks */
@@ -5290,7 +5266,7 @@ void commit_schemas(const char *tblname)
             newname = strdup(sc->tag + 5);
             if (!newname) {
                 logmsg(LOGMSG_FATAL, 
-                        "commit_schemas: out of memory on strdup tag\n");
+                        "%s: out of memory on strdup tag\n", __func__);
                 exit(1);
             }
             sc->tag = newname;
@@ -5301,7 +5277,7 @@ void commit_schemas(const char *tblname)
                 newname = strdup(sc->csctag + 5);
                 if (!newname) {
                     logmsg(LOGMSG_FATAL, 
-                            "commit_schemas: out of memory on strdup tag\n");
+                            "%s: out of memory on strdup tag\n", __func__);
                     exit(1);
                 }
                 free(oldname);
@@ -5315,7 +5291,7 @@ void commit_schemas(const char *tblname)
                     char *newname = malloc(gbl_ondisk_ver_len);
                     if (newname == NULL) {
                         logmsg(LOGMSG_FATAL, 
-                                "commit_schemas: out of memory on malloc\n");
+                                "%s: out of memory on malloc\n", __func__);
                         exit(1);
                     }
                     sprintf(newname, "%s%d", gbl_ondisk_ver,
@@ -5408,7 +5384,7 @@ void commit_schemas(const char *tblname)
                     }
                     if (k == count) {
                         if (!hash_find_readonly(dbt->tags, &s[i]->ix[j]->tag))
-                            freeschema(s[i]->ix[j]);
+                            freeschema(s[i]->ix[j], 0);
                     }
                 }
                 free(s[i]->ix);
@@ -5897,7 +5873,7 @@ void replace_tag_schema(dbtable *db, struct schema *schema)
         tmp = old_schema->lnk.next;
         if (strcasecmp(old_schema->tag, schema->tag) == 0) {
             listc_rfl(&dbt->taglist, old_schema);
-            freeschema(old_schema);
+            freeschema(old_schema, 0);
         }
         old_schema = tmp;
     }
@@ -5921,7 +5897,7 @@ void delete_schema(const char *tblname)
         struct schema *tmp = schema;
         schema = schema->lnk.next;
         listc_rfl(&dbt->taglist, tmp);
-        freeschema(tmp);
+        freeschema(tmp, 0);
     }
     if (dbt->tags) {
         hash_clear(dbt->tags);
@@ -5948,17 +5924,13 @@ void rename_schema(const char *oldname, char *newname)
     unlock_taglock();
 }
 
-void freeschema_internals(struct schema *schema)
+static void freeschema_internals(struct schema *schema)
 {
     int i;
     free(schema->tag);
     for (i = 0; i < schema->nmembers; i++) {
-        if (schema->member[i].in_default) {
-            free(schema->member[i].in_default);
-        }
-        if (schema->member[i].out_default) {
-            free(schema->member[i].out_default);
-        }
+        free(schema->member[i].in_default);
+        free(schema->member[i].out_default);
         free(schema->member[i].name);
     }
     free(schema->member);
@@ -5973,15 +5945,20 @@ void freeschema_internals(struct schema *schema)
         schema->sqlitetag = NULL;
     }
     if (schema->partial_datacopy) {
-        freeschema(schema->partial_datacopy);
+        freeschema(schema->partial_datacopy, 0);
         schema->partial_datacopy = NULL;
     }
 }
 
-void freeschema(struct schema *schema)
+void freeschema(struct schema *schema, int free_ix)
 {
     if (!schema)
         return;
+    if (free_ix) {
+        int i;
+        for(i=0; i < schema->nix; i++)
+            freeschema(schema->ix[i], 0);
+    }
     freeschema_internals(schema);
     free(schema);
 }
@@ -6079,8 +6056,8 @@ void freedb(dbtable *db)
     freedb_int(db, NULL);
 }
 
-struct schema *create_version_schema(char *csc2, int version,
-                                     struct dbenv *dbenv)
+static struct schema *create_version_schema(char *csc2, int version,
+                                            struct dbenv *dbenv)
 {
     struct schema *ver_schema = NULL;
     dbtable *ver_db;
@@ -6090,7 +6067,7 @@ struct schema *create_version_schema(char *csc2, int version,
     Pthread_mutex_lock(&csc2_subsystem_mtx);
 
     ver_db = create_new_dbtable(
-        thedb, gbl_ver_temp_table, csc2, 0 /* no altname */, 0 /* fake dbnum */,
+        thedb, NULL, csc2, 0 /* no altname */, 0 /* fake dbnum */,
         1 /* allow ull */, 1 /* no side effects */, &err);
     if (!ver_db) {
         logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr, csc2);

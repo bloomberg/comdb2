@@ -201,7 +201,6 @@ enum {
 #define DBPAD_OR_DBSTORE_ERR(e) ((e) == SC_BAD_NEW_FIELD || (e) == SC_BAD_DBPAD || (e) == SC_BAD_DBSTORE_FUNC_NOT_NULL)
 
 extern hash_t *gbl_tag_hash;
-extern char gbl_ver_temp_table[];
 extern char gbl_ondisk_ver[];
 extern const int gbl_ondisk_ver_len;
 extern char gbl_ondisk_ver_fmt[];
@@ -402,10 +401,10 @@ void free_db_record(struct dbrecord *db);
 void delete_schema(const char *dbname);
 void rename_schema(const char *oldname, char *newname);
 
-void freeschema(struct schema *schema);
-void freeschema_internals(struct schema *schema);
+void freeschema(struct schema *schema, int free_indexes);
 
-struct schema *clone_schema_index(struct schema *from, int table_nmembers);
+struct schema *clone_schema_index(struct schema *from, const char *tag,
+                                  int datacopy_nmembers);
 struct schema *clone_schema(struct schema *from);
 
 void free_db_and_replace(struct dbtable *db, struct dbtable *newdb);
@@ -430,12 +429,14 @@ struct schema *get_schema(const struct dbtable *db, int ix);
 int find_field_idx(struct dbtable *table, const char *tagname, const char *field);
 
 /* used to clone ONDISK to ONDISK_CLIENT */
-int clone_server_to_client_tag(const char *tblname, const char *fromtag,
-                               const char *newtag);
+struct schema *clone_server_to_client_tag(struct schema *from, const char *newtag);
 
 /* this populates global schema hash (i.e. tags) for a table
  * all versions of the schema are loaded
  */
 int load_csc2_versions(struct dbtable *table, tran_type *tran);
+
+/* NOTE: tag is already strdup-ed */
+struct schema * alloc_schema(char *tag, int nmembers, int flags);
 
 #endif
