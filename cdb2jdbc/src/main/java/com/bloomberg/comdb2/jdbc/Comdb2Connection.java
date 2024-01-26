@@ -17,6 +17,7 @@ import java.io.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.*;
 
 /**
@@ -43,7 +44,7 @@ public class Comdb2Connection implements Connection {
     private boolean autoCommit = true;
     private boolean txnModeChanged = false;
 
-    private Object lock = new Object();
+    private final ReentrantLock lock = new ReentrantLock();
     private boolean opened = false;
 
     private Comdb2DatabaseMetaData md = null;
@@ -408,7 +409,9 @@ public class Comdb2Connection implements Connection {
 
     @Override
     public void close() throws SQLException {
-        synchronized (lock) {
+        lock.lock();
+
+        try {
             if (opened == true) {
 
                 for(Comdb2Statement stmt : stmts)
@@ -431,6 +434,8 @@ public class Comdb2Connection implements Connection {
                 md.conn.close();
                 md = null;
             }
+        } finally {
+            lock.unlock();
         }
     }
 

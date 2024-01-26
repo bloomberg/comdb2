@@ -15,6 +15,7 @@ package com.bloomberg.comdb2.jdbc;
 
 import java.io.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.*;
 import java.net.*;
 
@@ -44,13 +45,12 @@ public class DatabaseDiscovery {
     static final String CDB2DBCONFIG_SECONDARY_PATH = "/bb/etc/cdb2/config.d/";
 
     /* comdb2lcldb, per jvm. */
-    static class TimeAndHosts {
+    private static final class TimeAndHosts {
         long ms;
-        ArrayList<String> hosts = new ArrayList<String>();
+        List<String> hosts = new ArrayList<>();
     }
-    static HashMap<String, TimeAndHosts> comdb2lcldb = new HashMap<String, TimeAndHosts>();
-    /* Make it visible to us only. */
-    private static Object lock = new Object();
+
+    private static final Map<String, TimeAndHosts> comdb2lcldb = new ConcurrentHashMap<>();
 
     /**
      * Reads information from comdb2db cfg file. Returns true if the minimal
@@ -430,9 +430,7 @@ public class DatabaseDiscovery {
                     System.currentTimeMillis() + hndl.age * 1000L :
                     Long.MAX_VALUE;
                 record.hosts.addAll(hndl.myDbHosts);
-                synchronized(lock) {
-                    comdb2lcldb.put(hndl.myDbName + "/" + hndl.myDbCluster, record);
-                }
+                comdb2lcldb.put(hndl.myDbName + "/" + hndl.myDbCluster, record);
             }
         } finally {
             try {
@@ -479,20 +477,18 @@ public class DatabaseDiscovery {
 
             /* if the handle asks for cache, do it now. */
             if (hndl.age != 0) {
-                synchronized(lock) {
-                    TimeAndHosts record = comdb2lcldb.get(
-                            hndl.myDbName + "/" + hndl.myDbCluster);
-                    if (record != null) { /* found */
-                        long currtm = System.currentTimeMillis();
-                        if (currtm <= record.ms) { /* not expired */
-                            hndl.myDbHosts.addAll(record.hosts);
-                            if (debug) { 
-                                System.out.println("Found " + hndl.myDbName + " in hash" 
-                                        + record.hosts + " port is overridden:" +hndl.overriddenPort); 
-                            }
-                            for (int i = 0, len = hndl.myDbHosts.size(); i != len; ++i)
-                                hndl.myDbPorts.add(hndl.overriddenPort);
+                TimeAndHosts record = comdb2lcldb.get(
+                        hndl.myDbName + "/" + hndl.myDbCluster);
+                if (record != null) { /* found */
+                    long currtm = System.currentTimeMillis();
+                    if (currtm <= record.ms) { /* not expired */
+                        hndl.myDbHosts.addAll(record.hosts);
+                        if (debug) {
+                            System.out.println("Found " + hndl.myDbName + " in hash"
+                                    + record.hosts + " port is overridden:" +hndl.overriddenPort);
                         }
+                        for (int i = 0, len = hndl.myDbHosts.size(); i != len; ++i)
+                            hndl.myDbPorts.add(hndl.overriddenPort);
                     }
                 }
             }
