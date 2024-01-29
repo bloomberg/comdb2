@@ -391,11 +391,11 @@ int mark_schemachange_over_tran(const char *table, tran_type *tran)
                                  0 /*schema_change_data_len*/, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_WARN,
-               "POSSIBLY RESUMABLE: Could not mark schema change "
+               "POSSIBLY RESUMABLE: bdberr %d Could not mark schema change "
                "done in the low level meta table.  This usually means "
                "that the schema change failed in a potentially "
                "resumable way (ie there is a new master) if this is "
-               "the case, the new master will try to resume\n");
+               "the case, the new master will try to resume\n", bdberr);
 
         return SC_BDB_ERROR;
     }
