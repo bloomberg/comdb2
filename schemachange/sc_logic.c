@@ -224,6 +224,13 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
+    if (rc && iq->sc->kind == SC_ADDTABLE) {
+        delete_temp_table(iq, iq->sc->db);
+        if (iq->sc->already_finalized) {
+            rem_dbtable_from_thedb_dbs(iq->sc->db);
+        }
+    }
+
     sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
     if (do_free) {
         free_sc(s);
