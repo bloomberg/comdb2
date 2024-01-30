@@ -34,6 +34,91 @@ static int __db_pg_free_recover_int __P((DB_ENV *,
 
 extern int gbl_check_page_in_recovery;
 
+/*
+ * __db_addrem_undo_add_redo_del --
+ * Undo add or redo del
+ *
+ * public: int __db_addrem_undo_add_redo_del
+ * public:    __p((DBC *, __db_addrem_args *, PAGE *, db_recops, DB_LSN *));
+ */
+ int 
+ __db_addrem_undo_add_redo_del(dbc, argp, pagep, op, lsnp)
+ 	DBC *dbc;
+	__db_addrem_args *argp;
+	PAGE *pagep;
+	db_recops op;
+	DB_LSN *lsnp;
+{
+	int ret = 0;
+
+	if ((ret = __db_ditem(dbc, pagep, argp->indx, argp->nbytes)) != 0) {
+		goto out;
+	}
+
+	if (DB_UNDO(op)) {
+		LSN(pagep) = argp->pagelsn;
+	} else {
+		LSN(pagep) = *lsnp;
+	}
+
+out:
+	return ret;
+}
+
+/*
+ * __db_addrem_redo_add_undo_del --
+ * Redo add or undo del
+ *
+ * public: int __db_addrem_redo_add_undo_del
+ * public:    __p((DBC *, __db_addrem_args *, PAGE *, db_recops op, DB_LSN *lsnp));
+ */
+int 
+__db_addrem_redo_add_undo_del(dbc, argp, pagep, op, lsnp)
+ 	DBC *dbc;
+	__db_addrem_args *argp;
+	PAGE *pagep;
+	db_recops op;
+	DB_LSN *lsnp;
+{
+	int ret;
+
+	ret = 0;
+	BINTERNAL *bi = argp->hdr.data;
+	BOVERFLOW *bo = argp->hdr.data;
+
+	/* comdb2 endian changes */
+	/* if this is a b-internal page, swap the header read from the logfile */
+	if (LOG_SWAPPED() && argp->hdr.size >= 12 &&
+		TYPE(pagep) == P_IBTREE) {
+		M_16_SWAP(bi->len);
+		M_32_SWAP(bi->pgno);
+		M_32_SWAP(bi->nrecs);
+	}
+	/* if this is an overflow page, swap the header read from the logfile */
+	else if (LOG_SWAPPED() && argp->hdr.size >= 12 &&
+		B_OVERFLOW == B_TYPE(bo)) {
+		M_16_SWAP(bo->unused1);
+		M_32_SWAP(bo->pgno);
+		M_32_SWAP(bo->tlen);
+	}
+	/* Need to redo an add, or undo a delete. */
+	if ((ret = __db_pitem_opcode(dbc, pagep, argp->indx, argp->nbytes,
+			argp->hdr.size == 0 ? NULL : &argp->hdr,
+			argp->dbt.size == 0 ? NULL : &argp->dbt,
+			argp->opcode)) != 0) {
+		goto out;
+	}
+	
+	if (DB_UNDO(op)) {
+		LSN(pagep) = argp->pagelsn;
+	} else {
+		LSN(pagep) = *lsnp;
+	}
+
+out:
+	return ret;
+}
+
 int
 __db_addrem_verify_fileid(dbenv, dbp, lsnp, prevlsn, fileid)
 	DB_ENV *dbenv;
@@ -199,46 +284,17 @@ __db_addrem_recover(dbenv, dbtp, lsnp, op, info)
 
 	if ((cmp_p == 0 && DB_REDO(op) && argp->opcode == DB_ADD_DUP) ||
 	    (cmp_n == 0 && DB_UNDO(op) && IS_REM_OPCODE(argp->opcode))) {
-		BINTERNAL *bi = argp->hdr.data;
-		BOVERFLOW *bo = argp->hdr.data;
-
-		/* comdb2 endian changes */
-		/* if this is a b-internal page, swap the header read from the logfile */
-		if (LOG_SWAPPED() && argp->hdr.size >= 12 &&
-		    TYPE(pagep) == P_IBTREE) {
-			M_16_SWAP(bi->len);
-			M_32_SWAP(bi->pgno);
-			M_32_SWAP(bi->nrecs);
+		if ((ret = __db_addrem_redo_add_undo_del(dbc, argp, pagep, op, lsnp)) != 0) {
+			goto out;
 		}
-		/* if this is an overflow page, swap the header read from the logfile */
-		else if (LOG_SWAPPED() && argp->hdr.size >= 12 &&
-		    B_OVERFLOW == B_TYPE(bo)) {
-			M_16_SWAP(bo->unused1);
-			M_32_SWAP(bo->pgno);
-			M_32_SWAP(bo->tlen);
-		}
-		/* Need to redo an add, or undo a delete. */
-		if ((ret =
-			__db_pitem_opcode(dbc, pagep, argp->indx, argp->nbytes,
-			    argp->hdr.size == 0 ? NULL : &argp->hdr,
-			    argp->dbt.size == 0 ? NULL : &argp->dbt,
-			    argp->opcode)) != 0)
-			 goto out;
 		change = DB_MPOOL_DIRTY;
 	} else if ((cmp_n == 0 && DB_UNDO(op) && argp->opcode == DB_ADD_DUP) ||
 	    (cmp_p == 0 && DB_REDO(op) && IS_REM_OPCODE(argp->opcode))) {
 		/* Need to undo an add, or redo a delete. */
-		if ((ret = __db_ditem(dbc,
-			    pagep, argp->indx, argp->nbytes)) != 0)
+		if ((ret = __db_addrem_undo_add_redo_del(dbc, argp, pagep, op, lsnp)) != 0) {
 			goto out;
+		}
 		change = DB_MPOOL_DIRTY;
-	}
-
-	if (change) {
-		if (DB_REDO(op))
-			LSN(pagep) = *lsnp;
-		else
-			LSN(pagep) = argp->pagelsn;
 	}
     
     if (check_page) {
@@ -256,6 +312,111 @@ done:	*lsnp = argp->prev_lsn;
 out:	if (pagep != NULL)
 		(void)__memp_fput(mpf, pagep, 0);
 	REC_CLOSE;
+}
+
+/*
+ * __db_big_undo_add_redo_del --
+ * Undo big add or redo big del on the page with the data.
+ *
+ * PUBLIC: void __db_big_undo_add_redo_del
+ * PUBLIC:    __P((PAGE *, __db_big_args *, db_recops, DB_LSN *));
+ */
+void __db_big_undo_add_redo_del(pagep, argp, op, lsnp)
+	PAGE *pagep;
+	__db_big_args *argp;
+	db_recops op;
+	DB_LSN *lsnp;
+{
+	LSN(pagep) = DB_REDO(op) ? *lsnp : argp->pagelsn;
+}
+
+/*
+ * __db_big_redo_add_undo_del --
+ * Redo big add or undo big del on the page with the data.
+ * 
+ * PUBLIC: void __db_big_redo_add_undo_del
+ * PUBLIC:    __P((DB *, PAGE *, __db_big_args *, db_recops, DB_LSN *));
+ */
+void __db_big_redo_add_undo_del(file_dbp, pagep, argp, op, lsnp)
+	DB *file_dbp;
+	PAGE *pagep;
+	__db_big_args *argp;
+	db_recops op;
+	DB_LSN * lsnp;
+{
+	P_INIT(pagep, file_dbp->pgsize, argp->pgno, argp->prev_pgno,
+		argp->next_pgno, 0, P_OVERFLOW);
+	OV_LEN(pagep) = argp->dbt.size;
+	OV_REF(pagep) = 1;
+	memcpy((u_int8_t *)pagep + P_OVERHEAD(file_dbp), argp->dbt.data,
+		argp->dbt.size);
+	PREV_PGNO(pagep) = argp->prev_pgno;
+	LSN(pagep) = DB_REDO(op) ? *lsnp : argp->pagelsn;
+}
+
+/*
+ * __db_big_prev_redo_add_undo_del --
+ * Redo big add or undo big del on prev page.
+ *
+ * PUBLIC: void __db_big_prev_redo_add_undo_del
+ * PUBLIC:    __P((PAGE *, __db_big_args *, db_recops, DB_LSN *));
+ */
+void __db_big_prev_redo_add_undo_del(pagep, argp, op, lsnp)
+	PAGE *pagep;
+	__db_big_args *argp;
+	db_recops op;
+	DB_LSN *lsnp;
+{
+	NEXT_PGNO(pagep) = argp->pgno;
+	LSN(pagep) = DB_REDO(op) ? *lsnp : argp->prevlsn;
+}
+
+/*
+ * __db_big_prev_redo_del_undo_add --
+ * Redo big del or undo big add on prev page.
+ *
+ * PUBLIC: void __db_big_prev_redo_del_undo_add
+ * PUBLIC:    __P((PAGE *, __db_big_args *, db_recops, DB_LSN *));
+ */
+void __db_big_prev_redo_del_undo_add(pagep, argp, op, lsnp)
+	PAGE *pagep;
+	__db_big_args *argp;
+	db_recops op;
+	DB_LSN *lsnp;
+{
+	NEXT_PGNO(pagep) = argp->next_pgno;
+	LSN(pagep) = DB_REDO(op) ? *lsnp : argp->prevlsn;
+}
+
+/*
+ * __db_big_next_redo --
+ * Redo big on next page.
+ *
+ * PUBLIC: void __db_big_next_redo
+ * PUBLIC:    __P((PAGE *, __db_big_args *, DB_LSN *));
+ */
+void __db_big_next_redo(pagep, argp, lsnp)
+	PAGE *pagep;
+	__db_big_args *argp;
+	DB_LSN *lsnp;
+{
+	PREV_PGNO(pagep) = PGNO_INVALID;
+	LSN(pagep) = *lsnp;
+}
+
+/*
+ * __db_big_next_undo --
+ * Undo big on next page.
+ *
+ * PUBLIC: void __db_big_next_undo
+ * PUBLIC:    __P((PAGE *, __db_big_args *));
+ */
+void __db_big_next_undo(pagep, argp)
+	PAGE *pagep;
+	__db_big_args *argp;
+{
+	PREV_PGNO(pagep) = argp->pgno;
+	LSN(pagep) = argp->nextlsn;
 }
 
 /*
@@ -313,13 +474,7 @@ __db_big_recover(dbenv, dbtp, lsnp, op, info)
 	if ((cmp_p == 0 && DB_REDO(op) && argp->opcode == DB_ADD_BIG) ||
 	    (cmp_n == 0 && DB_UNDO(op) && argp->opcode == DB_REM_BIG)) {
 		/* We are either redo-ing an add, or undoing a delete. */
-		P_INIT(pagep, file_dbp->pgsize, argp->pgno, argp->prev_pgno,
-			argp->next_pgno, 0, P_OVERFLOW);
-		OV_LEN(pagep) = argp->dbt.size;
-		OV_REF(pagep) = 1;
-		memcpy((u_int8_t *)pagep + P_OVERHEAD(file_dbp), argp->dbt.data,
-		    argp->dbt.size);
-		PREV_PGNO(pagep) = argp->prev_pgno;
+		__db_big_redo_add_undo_del(file_dbp, pagep, argp, op, lsnp);
 		change = DB_MPOOL_DIRTY;
 	} else if ((cmp_n == 0 && DB_UNDO(op) && argp->opcode == DB_ADD_BIG) ||
 	    (cmp_p == 0 && DB_REDO(op) && argp->opcode == DB_REM_BIG)) {
@@ -328,10 +483,9 @@ __db_big_recover(dbenv, dbtp, lsnp, op, info)
 		 * The page is about to be reclaimed in either case, so
 		 * there really isn't anything to do here.
 		 */
+		__db_big_undo_add_redo_del(pagep, argp, op, lsnp);
 		change = DB_MPOOL_DIRTY;
 	}
-	if (change)
-		LSN(pagep) = DB_REDO(op) ? *lsnp : argp->pagelsn;
 
 	if ((ret = __memp_fput(mpf, pagep, change)) != 0)
 		goto out;
@@ -372,16 +526,14 @@ ppage:	if (argp->prev_pgno != PGNO_INVALID) {
 
 		if (cmp_p == 0 && DB_REDO(op) && argp->opcode == DB_ADD_BIG) {
 			/* Redo add, undo delete. */
-			NEXT_PGNO(pagep) = argp->pgno;
+			__db_big_prev_redo_add_undo_del(pagep, argp, op, lsnp);
 			change = DB_MPOOL_DIRTY;
 		} else if (cmp_n == 0 &&
 		    DB_UNDO(op) && argp->opcode == DB_ADD_BIG) {
 			/* Redo delete, undo add. */
-			NEXT_PGNO(pagep) = argp->next_pgno;
+			__db_big_prev_redo_del_undo_add(pagep, argp, op, lsnp);
 			change = DB_MPOOL_DIRTY;
 		}
-		if (change)
-			LSN(pagep) = DB_REDO(op) ? *lsnp : argp->prevlsn;
 		if ((ret = __memp_fput(mpf, pagep, change)) != 0)
 			goto out;
 	}
@@ -411,14 +563,12 @@ npage:	if (argp->next_pgno != PGNO_INVALID) {
 		CHECK_LSN(op, cmp_p, &LSN(pagep), &argp->nextlsn, lsnp,
 		    argp->fileid, argp->pgno);
 		if (cmp_p == 0 && DB_REDO(op)) {
-			PREV_PGNO(pagep) = PGNO_INVALID;
+			__db_big_next_redo(pagep, argp, lsnp);
 			change = DB_MPOOL_DIRTY;
 		} else if (cmp_n == 0 && DB_UNDO(op)) {
-			PREV_PGNO(pagep) = argp->pgno;
+			__db_big_next_undo(pagep, argp);
 			change = DB_MPOOL_DIRTY;
 		}
-		if (change)
-			LSN(pagep) = DB_REDO(op) ? *lsnp : argp->nextlsn;
 		if ((ret = __memp_fput(mpf, pagep, change)) != 0)
 			goto out;
 	}
@@ -430,6 +580,34 @@ done:	*lsnp = argp->prev_lsn;
 out:	if (pagep != NULL)
 		(void)__memp_fput(mpf, pagep, 0);
 	REC_CLOSE;
+}
+
+/*
+ * __db_ovref_redo --
+ * Redo ovref.
+ *
+ * PUBLIC: void __db_ovref_redo
+ * PUBLIC:    __P((PAGE *, __db_ovref_args *, DB_LSN *));
+ */
+void __db_ovref_redo(PAGE *pagep, __db_ovref_args *argp, DB_LSN *lsnp)
+{
+	OV_REF(pagep) += argp->adjust;
+
+	pagep->lsn = *lsnp;
+}
+
+/*
+ * __db_ovref_undo --
+ * Undo ovref.
+ *
+ * PUBLIC: void __db_ovref_undo
+ * PUBLIC:    __P((PAGE *, __db_ovref_args *));
+ */
+void __db_ovref_undo(PAGE *pagep, __db_ovref_args *argp)
+{
+	OV_REF(pagep) -= argp->adjust;
+
+	pagep->lsn = argp->lsn;
 }
 
 /*
@@ -472,15 +650,11 @@ __db_ovref_recover(dbenv, dbtp, lsnp, op, info)
 	    argp->pgno);
 	if (cmp == 0 && DB_REDO(op)) {
 		/* Need to redo update described. */
-		OV_REF(pagep) += argp->adjust;
-
-		pagep->lsn = *lsnp;
+		__db_ovref_redo(pagep, argp, lsnp);
 		modified = 1;
 	} else if (log_compare(lsnp, &LSN(pagep)) == 0 && DB_UNDO(op)) {
 		/* Need to undo update described. */
-		OV_REF(pagep) -= argp->adjust;
-
-		pagep->lsn = argp->lsn;
+		__db_ovref_undo(pagep, argp);
 		modified = 1;
 	}
 	if ((ret = __memp_fput(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0)) != 0)
@@ -497,6 +671,78 @@ out:	if (pagep != NULL)
 
 int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
     db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
+
+/*
+ * __db_relink_next_add_undo_rem_redo --
+ * Undo relink add or undo relink rem on next page.
+ *
+ * PUBLIC: void __db_relink_next_add_undo_rem_redo
+ * PUBLIC:    __P((PAGE *, __db_relink_args *, db_recops, DB_LSN *));
+ */
+void __db_relink_next_add_undo_rem_redo(PAGE *pagep, __db_relink_args *argp, db_recops op, DB_LSN *lsnp) {
+	pagep->prev_pgno = argp->prev;
+	pagep->lsn = DB_REDO(op) ? *lsnp : argp->lsn_next;
+}
+
+/*
+ * __db_relink_next_add_redo_rem_undo --
+ * Redo relink add or undo relink rem on next page.
+ *
+ * PUBLIC: void __db_relink_next_add_redo_rem_undo
+ * PUBLIC:    __P((PAGE *, __db_relink_args *, db_recops, DB_LSN *));
+ */
+void __db_relink_next_add_redo_rem_undo(PAGE *pagep, __db_relink_args *argp, db_recops op, DB_LSN *lsnp) {
+	pagep->prev_pgno = argp->pgno;
+	pagep->lsn = DB_REDO(op) ? *lsnp : argp->lsn_next;
+}
+
+/*
+ * __db_relink_target_rem_undo --
+ * Undo relink rem on relinked page.
+ *
+ * PUBLIC: void __db_relink_target_rem_undo
+ * PUBLIC:    __P((PAGE *, __db_relink_args *));
+ */
+void __db_relink_target_rem_undo(PAGE *pagep, __db_relink_args *argp) {
+	pagep->next_pgno = argp->next;
+	pagep->prev_pgno = argp->prev;
+	pagep->lsn = argp->lsn;
+}
+
+/*
+ * __db_relink_target_rem_redo --
+ * Redo relink rem on relinked page. 
+ *
+ * PUBLIC: void __db_relink_target_rem_redo
+ * PUBLIC:    __P((PAGE *, DB_LSN *));
+ */
+void __db_relink_target_rem_redo(PAGE *pagep, DB_LSN *lsnp) {
+	pagep->lsn = *lsnp;
+}
+
+/*
+ * __db_relink_prev_rem_undo --
+ * Undo relink rem on prev page.
+ *
+ * PUBLIC: void __db_relink_prev_rem_undo
+ * PUBLIC:    __P((PAGE *, __db_relink_args *));
+ */
+void __db_relink_prev_rem_undo(PAGE *pagep, __db_relink_args *argp) {
+	pagep->next_pgno = argp->pgno;
+	pagep->lsn = argp->lsn_prev;
+}
+
+/*
+ * __db_relink_prev_rem_redo --
+ * Redo relink rem on prev page.
+ *
+ * PUBLIC: void __db_relink_prev_rem_redo
+ * PUBLIC:    __P((PAGE *, __db_relink_args *, DB_LSN *));
+ */
+void __db_relink_prev_rem_redo(PAGE *pagep, __db_relink_args *argp, DB_LSN *lsnp) {
+	pagep->next_pgno = argp->next;
+	pagep->lsn = *lsnp;
+}
 /*
  * __db_relink_recover --
  *	Recovery function for relink.
@@ -552,14 +798,11 @@ __db_relink_recover(dbenv, dbtp, lsnp, op, info)
 	    argp->pgno);
 	if (cmp_p == 0 && DB_REDO(op)) {
 		/* Redo the relink. */
-		pagep->lsn = *lsnp;
+		__db_relink_target_rem_redo(pagep, lsnp);
 		modified = 1;
 	} else if (log_compare(lsnp, &LSN(pagep)) == 0 && DB_UNDO(op)) {
 		/* Undo the relink. */
-		pagep->next_pgno = argp->next;
-		pagep->prev_pgno = argp->prev;
-
-		pagep->lsn = argp->lsn;
+		__db_relink_target_rem_undo(pagep, argp);
 		modified = 1;
 	}
 next1:	if ((ret = __memp_fput(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0)) != 0)
@@ -581,21 +824,15 @@ next2:	if ((ret = __memp_fget(mpf, &argp->next, 0, &pagep)) != 0) {
 	if ((argp->opcode == DB_REM_PAGE && cmp_p == 0 && DB_REDO(op)) ||
 	    (argp->opcode == DB_ADD_PAGE && cmp_n == 0 && DB_UNDO(op))) {
 		/* Redo the remove or undo the add. */
-		pagep->prev_pgno = argp->prev;
+		__db_relink_next_add_undo_rem_redo(pagep, argp, op, lsnp);
 
 		modified = 1;
 	} else if ((argp->opcode == DB_REM_PAGE && cmp_n == 0 && DB_UNDO(op)) ||
 	    (argp->opcode == DB_ADD_PAGE && cmp_p == 0 && DB_REDO(op))) {
 		/* Undo the remove or redo the add. */
-		pagep->prev_pgno = argp->pgno;
+		__db_relink_next_add_redo_rem_undo(pagep, argp, op, lsnp);
 
 		modified = 1;
-	}
-	if (modified == 1) {
-		if (DB_UNDO(op))
-			pagep->lsn = argp->lsn_next;
-		else
-			pagep->lsn = *lsnp;
 	}
 	if ((ret = __memp_fput(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0)) != 0)
 		goto out;
@@ -616,20 +853,14 @@ prev:	if ((ret = __memp_fget(mpf, &argp->prev, 0, &pagep)) != 0) {
 	    argp->pgno);
 	if (cmp_p == 0 && DB_REDO(op)) {
 		/* Redo the relink. */
-		pagep->next_pgno = argp->next;
+		__db_relink_prev_rem_redo(pagep, argp, lsnp);
 
 		modified = 1;
 	} else if (log_compare(lsnp, &LSN(pagep)) == 0 && DB_UNDO(op)) {
 		/* Undo the relink. */
-		pagep->next_pgno = argp->pgno;
+		__db_relink_prev_rem_undo(pagep, argp);
 
 		modified = 1;
-	}
-	if (modified == 1) {
-		if (DB_UNDO(op))
-			pagep->lsn = argp->lsn_prev;
-		else
-			pagep->lsn = *lsnp;
 	}
 	if ((ret = __memp_fput(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0)) != 0)
 		goto out;
@@ -676,6 +907,30 @@ __db_debug_recover(dbenv, dbtp, lsnp, op, info)
 }
 
 /*
+ * __db_noop_redo --
+ * Redo noop.
+ *
+ * PUBLIC: void __db_noop_redo 
+ * PUBLIC:     __P((PAGE *, DB_LSN *));
+ */
+void __db_noop_redo(PAGE *pagep, DB_LSN *lsnp)
+{
+	LSN(pagep) = *lsnp;
+}
+
+/*
+ * __db_noop_undo --
+ * Undo noop.
+ *
+ * PUBLIC: void __db_noop_undo
+ * PUBLIC:     __P((PAGE *, __db_noop_args *));
+ */
+void __db_noop_undo(PAGE *pagep, __db_noop_args *argp)
+{
+	LSN(pagep) = argp->prevlsn;
+}
+
+/*
  * __db_noop_recover --
  *	Recovery function for noop.
  *
@@ -712,10 +967,10 @@ __db_noop_recover(dbenv, dbtp, lsnp, op, info)
 	    argp->pgno);
 	change = 0;
 	if (cmp_p == 0 && DB_REDO(op)) {
-		LSN(pagep) = *lsnp;
+		__db_noop_redo(pagep, lsnp);
 		change = DB_MPOOL_DIRTY;
 	} else if (cmp_n == 0 && DB_UNDO(op)) {
-		LSN(pagep) = argp->prevlsn;
+		__db_noop_undo(pagep, argp);
 		change = DB_MPOOL_DIRTY;
 	}
 	ret = __memp_fput(mpf, pagep, change);
@@ -728,6 +983,84 @@ out:	if (pagep != NULL)
 }
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+
+/*
+ * __db_pg_alloc_target_undo --
+ * Undo pg alloc on allocated page
+ *
+ * PUBLIC: void __db_pg_alloc_target_undo
+ * PUBLIC:    __P((DB *, PAGE *, __db_pg_alloc_args *));
+ */
+void __db_pg_alloc_target_undo(DB *file_dbp, PAGE *pagep, __db_pg_alloc_args *argp) {
+		/*
+		 * This is where we handle the case of a 0'd page (pagep->pgno
+		 * is equal to PGNO_INVALID).
+		 * Undo the allocation, reinitialize the page and
+		 * link its next pointer to the free list.
+		 */
+	P_INIT(pagep, file_dbp->pgsize,
+		argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
+
+	pagep->lsn = argp->page_lsn;
+}
+
+/*
+ * __db_pg_alloc_target_redo --
+ * Redo pg alloc on allocated page.
+ *
+ * PUBLIC: void __db_pg_alloc_target_redo
+ * PUBLIC:    __P((DB *, PAGE *, __db_pg_alloc_args *, DB_LSN *));
+ */
+void __db_pg_alloc_target_redo(DB *file_dbp, PAGE *pagep, __db_pg_alloc_args *argp, DB_LSN *lsnp) {
+	int level;
+
+	switch (argp->ptype) {
+	case P_LBTREE:
+	case P_LRECNO:
+	case P_LDUP:
+		level = LEAFLEVEL;
+		break;
+	default:
+		level = 0;
+		break;
+	}
+	P_INIT(pagep, file_dbp->pgsize,
+		argp->pgno, PGNO_INVALID, PGNO_INVALID, level, argp->ptype);
+
+	pagep->lsn = *lsnp;
+}
+
+/*
+ * __db_pg_alloc_meta_redo --
+ * Redo updates made by pg alloc to meta page.
+ *
+ * PUBLIC: void __db___db_pg_alloc_meta_redo
+ * PUBLIC:    __P((DBMETA *, __db_pg_alloc_args *, DB_LSN *));
+ */
+void __db_pg_alloc_meta_redo(DBMETA *meta, __db_pg_alloc_args *argp, DB_LSN *lsnp)
+{
+	LSN(meta) = *lsnp;
+	meta->free = argp->next;
+}
+
+/*
+ * __db_pg_alloc_meta_undo --
+ * Undo updates made by pg alloc to meta page.
+ *
+ * PUBLIC: void __db___db_pg_alloc_meta_undo
+ * PUBLIC:    __P((DB *, DBMETA *, __db_pg_alloc_args *));
+ */
+void __db_pg_alloc_meta_undo(DB *file_dbp, DBMETA *meta, __db_pg_alloc_args *argp) {
+	LSN(meta) = argp->meta_lsn;
+
+	/*
+	 * If the page has a zero LSN then its newly created
+	 * and will go into limbo rather than directly on the
+	 * free list.
+	 */
+	if (!IS_ZERO_LSN(argp->page_lsn))
+		meta->free = argp->pgno;
+}
 
 /*
  * __db_pg_alloc_recover --
@@ -751,7 +1084,7 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	DB_MPOOLFILE *mpf;
 	PAGE *pagep;
 	db_pgno_t pgno;
-	int cmp_n, cmp_p, created, level, modified, ret;
+	int cmp_n, cmp_p, created, modified, ret;
 
 	meta = NULL;
 	pagep = NULL;
@@ -829,37 +1162,14 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	if (DB_REDO(op) &&
 	    (cmp_p == 0 ||
 	    (IS_ZERO_LSN(argp->page_lsn) && IS_INIT_LSN(LSN(pagep))))) {
-		/* Need to redo update described. */
-		switch (argp->ptype) {
-		case P_LBTREE:
-		case P_LRECNO:
-		case P_LDUP:
-			level = LEAFLEVEL;
-			break;
-		default:
-			level = 0;
-			break;
-		}
-		P_INIT(pagep, file_dbp->pgsize,
-		    argp->pgno, PGNO_INVALID, PGNO_INVALID, level, argp->ptype);
-
-		pagep->lsn = *lsnp;
+		__db_pg_alloc_target_redo(file_dbp, pagep, argp, lsnp);
 		modified = 1;
 	/*
     XXX this caused a bug, backing it out XXX
     } else if (DB_UNDO(op) && (cmp_n == 0 || created || IS_ZERO_LSN(argp->page_lsn))) {
     */
 	} else if (DB_UNDO(op) && (cmp_n == 0 || created)) {
-		/*
-		 * This is where we handle the case of a 0'd page (pagep->pgno
-		 * is equal to PGNO_INVALID).
-		 * Undo the allocation, reinitialize the page and
-		 * link its next pointer to the free list.
-		 */
-		P_INIT(pagep, file_dbp->pgsize,
-			argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
-
-		pagep->lsn = argp->page_lsn;
+		__db_pg_alloc_target_undo(file_dbp, pagep, argp);
 		modified = 1;
 	}
 #if defined (UFID_HASH_DEBUG)
@@ -908,20 +1218,11 @@ do_meta:
 	/*CHECK_LSN(op, cmp_p, &LSN(meta), &argp->meta_lsn); */
 	if (cmp_p == 0 && DB_REDO(op)) {
 		/* Need to redo update described. */
-		LSN(meta) = *lsnp;
-		meta->free = argp->next;
+		__db_pg_alloc_meta_redo(meta, argp, lsnp);
 		modified = 1;
 	} else if (cmp_n == 0 && DB_UNDO(op)) {
 		/* Need to undo update described. */
-		LSN(meta) = argp->meta_lsn;
-
-		/*
-		 * If the page has a zero LSN then its newly created
-		 * and will go into limbo rather than directly on the
-		 * free list.
-		 */
-		if (!IS_ZERO_LSN(argp->page_lsn))
-			meta->free = argp->pgno;
+		__db_pg_alloc_meta_undo(file_dbp, meta, argp);
 		modified = 1;
 	}
 
@@ -952,6 +1253,72 @@ out:	if (pagep != NULL)
 
 #include <poll.h>
 int gbl_poll_in_pg_free_recover;
+
+/*
+ * __db_pg_free_undo --
+ * Undo pg free on freed page.
+ *
+ * PUBLIC: void __db_pg_free_undo
+ * PUBLIC:    __P((PAGE *, __db_pg_freedata_args *, int));
+ */
+void
+__db_pg_free_undo(PAGE *pagep, __db_pg_freedata_args *argp, int data)
+{
+	memcpy(pagep, argp->header.data, argp->header.size);
+	if (data)
+		memcpy((u_int8_t*)pagep + pagep->hf_offset,
+			 argp->data.data, argp->data.size);
+}
+
+/*
+ * __db_pg_free_redo --
+ * Redo pg free on freed page.
+ *
+ * PUBLIC: void __db_pg_free_redo
+ * PUBLIC:    __P((DB *, PAGE *, __db_pg_freedata_args *, DB_LSN *));
+ */
+void
+__db_pg_free_redo(DB *file_dbp, PAGE *pagep, __db_pg_freedata_args *argp, DB_LSN *lsnp)
+{
+	P_INIT(pagep, file_dbp->pgsize,
+		argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
+	pagep->lsn = *lsnp;
+}
+
+/*
+ * __db_pg_free_meta_undo --
+ * Undo updates made by pg free to meta page.
+ *
+ * PUBLIC: void __db_pg_free_meta_undo
+ * PUBLIC:    __P((DBMETA *, __db_pg_freedata_args *));
+ */
+void 
+__db_pg_free_meta_undo(DBMETA *meta, __db_pg_freedata_args *argp)
+{
+	meta->free = argp->next;
+	LSN(meta) = argp->meta_lsn;
+}
+
+/*
+ * __db_pg_free_meta_redo --
+ * Redo updates made by pg free to meta page.
+ *
+ * PUBLIC: void __db_pg_free_meta_redo
+ * PUBLIC:    __P((DBMETA *, __db_pg_freedata_args *, DB_LSN *));
+ */
+void 
+__db_pg_free_meta_redo(DBMETA *meta, __db_pg_freedata_args *argp, DB_LSN *lsnp)
+{
+	meta->free = argp->pgno;
+	/*
+	 * If this was a compensating transaction and
+	 * we are a replica, then we never executed the
+	 * original allocation which incremented meta->free.
+	 */
+	if (meta->last_pgno < meta->free)
+		meta->last_pgno = meta->free;
+	LSN(meta) = *lsnp;
+}
 
 /*
  * __db_pg_free_recover_int --
@@ -1000,17 +1367,12 @@ __db_pg_free_recover_int(dbenv, argp, file_dbp, lsnp, mpf, op, data)
 	if (DB_REDO(op) && (cmp_p == 0 || (IS_ZERO_LSN(copy_lsn) &&
 		    log_compare(&LSN(pagep), &argp->meta_lsn) <= 0))) {
 		/* Need to redo update described. */
-		P_INIT(pagep, file_dbp->pgsize,
-		    argp->pgno, PGNO_INVALID, argp->next, 0, P_INVALID);
-		pagep->lsn = *lsnp;
+		__db_pg_free_redo(file_dbp, pagep, argp, lsnp);
 
 		modified = 1;
 	} else if (cmp_n == 0 && DB_UNDO(op)) {
 		/* Need to undo update described. */
-		memcpy(pagep, argp->header.data, argp->header.size);
-		if (data)
-			memcpy((u_int8_t*)pagep + pagep->hf_offset,
-			     argp->data.data, argp->data.size);
+		__db_pg_free_undo(pagep, argp, data);
 
 		modified = 1;
 	}
@@ -1035,20 +1397,11 @@ __db_pg_free_recover_int(dbenv, argp, file_dbp, lsnp, mpf, op, data)
 	/*CHECK_LSN(op, cmp_p, &LSN(meta), &argp->meta_lsn); */
 	if (cmp_p == 0 && DB_REDO(op)) {
 		/* Need to redo the deallocation. */
-		meta->free = argp->pgno;
-		/*
-		 * If this was a compensating transaction and
-		 * we are a replica, then we never executed the
-		 * original allocation which incremented meta->free.
-		 */
-		if (meta->last_pgno < meta->free)
-			meta->last_pgno = meta->free;
-		LSN(meta) = *lsnp;
+		__db_pg_free_meta_redo(meta, argp, lsnp);
 		modified = 1;
 	} else if (cmp_n == 0 && DB_UNDO(op)) {
 		/* Need to undo the deallocation. */
-		meta->free = argp->next;
-		LSN(meta) = argp->meta_lsn;
+		__db_pg_free_meta_undo(meta, argp);
 		modified = 1;
 	}
 	if ((ret = __memp_fput(mpf, meta, modified ? DB_MPOOL_DIRTY : 0)) != 0)
@@ -1218,6 +1571,34 @@ __db_cksum_recover(dbenv, dbtp, lsnp, op, info)
 	__os_free(dbenv, argp);
 	return (ret);
 }
+
+/*
+ * __db_pg_prepare_undo --
+ * Undo pg prepare
+ *
+ * PUBLIC: int __db_pg_prepare_undo
+ * PUBLIC:   __P((DB_ENV *, DB *, PAGE *, __db_pg_prepare_args *, int, void *));
+ */
+int __db_pg_prepare_undo(DB_ENV *dbenv, DB *file_dbp, PAGE *pagep, __db_pg_prepare_args *argp, int update_limbo, void *info)
+{
+	int ret;
+
+	ret = 0;
+
+	P_INIT(pagep, file_dbp->pgsize,
+	    argp->pgno, PGNO_INVALID, PGNO_INVALID, 0, P_INVALID);
+	ZERO_LSN(pagep->lsn);
+
+	if (update_limbo) {
+		if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
+			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid, argp->pgno, 1);
+		} else {
+			ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);
+		}
+	}
+	return ret;
+}
+
 /*
  * __db_pg_prepare_recover --
  *	Recovery function for pg_prepare.
@@ -1265,14 +1646,7 @@ __db_pg_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		if ((ret = __memp_fget(
 		    mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
 			goto out;
-		P_INIT(pagep, file_dbp->pgsize,
-		    argp->pgno, PGNO_INVALID, PGNO_INVALID, 0, P_INVALID);
-		ZERO_LSN(pagep->lsn);
-		if ((argp->type > 1000 && argp->type < 2000) || (argp->type > 3000)) {
-			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid, argp->pgno, 1);
-		} else {
-			ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);
-		}
+		ret = __db_pg_prepare_undo(dbenv, file_dbp, pagep, argp, 1, info);
 		if ((t_ret =
 			__memp_fput(mpf, pagep, DB_MPOOL_DIRTY)) != 0 && ret == 0)
 			ret = t_ret;
