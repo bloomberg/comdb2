@@ -574,6 +574,11 @@ static int form_file_name_ex(
         buflen -= offset;
     }
 
+    if (is_data_file && bdb_state->dtavers[file_num] == 0)
+        bdb_state->dtavers[file_num] = version_num;
+    else if (!is_data_file && bdb_state->ixvers[file_num] == 0)
+        bdb_state->ixvers[file_num] = version_num;
+
     return orig_buflen - buflen;
 }
 
@@ -689,6 +694,7 @@ static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
         }
     }
     if (file_version != NULL) *file_version = local_file_version;
+    bdb_state->qvers[file_num] = local_file_version;
     return 0;
 }
 
@@ -720,6 +726,7 @@ static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
     if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver,
                                  &bdberr) == 0) {
         /* success, do nothing yet. */
+        bdb_state->qvers[file_num] = ver;
     } else {
         /* no version -AND- do fallback to versionless */
         ver = 0;
@@ -7319,20 +7326,19 @@ static uint64_t mystat(const char *filename)
     return st.st_size;
 }
 
-uint64_t bdb_index_size_tran(bdb_state_type *bdb_state, tran_type *tran, int ixnum)
+uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
 {
     char bdbname[PATH_MAX], physname[PATH_MAX];
 
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
 
-    form_indexfile_name(bdb_state, tran ? tran->tid : NULL, ixnum, bdbname, sizeof(bdbname));
+    form_file_name_ex(bdb_state, 0, ixnum, 1, 0, 0, bdb_state->ixvers[ixnum], bdbname, sizeof(bdbname));
     bdb_trans(bdbname, physname);
-
     return mystat(physname);
 }
 
-uint64_t bdb_data_size_tran(bdb_state_type *bdb_state, tran_type *tran, int dtanum)
+uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
 {
     int stripenum, numstripes = 1;
     uint64_t total = 0;
@@ -7345,7 +7351,7 @@ uint64_t bdb_data_size_tran(bdb_state_type *bdb_state, tran_type *tran, int dtan
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
         char bdbname[PATH_MAX], physname[PATH_MAX];
-        form_datafile_name(bdb_state, tran ? tran->tid : NULL, dtanum, stripenum, bdbname, sizeof(bdbname));
+        form_file_name_ex(bdb_state, 1, dtanum, 1, 1, stripenum, bdb_state->dtavers[dtanum], bdbname, sizeof(bdbname));
         bdb_trans(bdbname, physname);
         total += mystat(physname);
     }
@@ -7365,39 +7371,23 @@ static size_t dirent_buf_size(const char *dir)
                                              : sizeof(struct dirent));
 }
 
-uint64_t bdb_queuedb_size_tran(bdb_state_type *bdb_state, tran_type *tran)
+uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
 {
     uint64_t totalSize = 0;
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
     assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
     for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
-        unsigned long long old_qdb_file_ver;
-        if (should_stop_looking_for_queuedb_files(bdb_state, tran, dtanum, &old_qdb_file_ver)) {
+        if (bdb_state->qvers[dtanum] == 0)
             break;
-        }
         char tmpname[PATH_MAX];
-        form_queuedb_name_int(
-            bdb_state, tmpname, sizeof(tmpname), old_qdb_file_ver
-        );
+        form_queuedb_name_int(bdb_state, tmpname, sizeof(tmpname), bdb_state->qvers[dtanum]);
         char tmpnamenew[PATH_MAX];
-        struct stat st;
-        int rc = stat(bdb_trans(tmpname, tmpnamenew), &st);
-        if (rc == 0) {
-            totalSize += st.st_size;
-        } else {
-            logmsg(LOGMSG_ERROR, "%s: stat(%s) rc %d\n",
-                   __func__, tmpname, rc);
-        }
+        totalSize += mystat(bdb_trans(tmpname, tmpnamenew));
     }
     return totalSize;
 }
 
-uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
-{
-    return bdb_queuedb_size_tran(bdb_state, NULL);
-}
-
-uint64_t bdb_queue_size_tran(bdb_state_type *bdb_state, tran_type *tran, unsigned *num_extents)
+uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 {
     DIR *dh;
     struct dirent *dirent_buf;
@@ -7415,7 +7405,7 @@ uint64_t bdb_queue_size_tran(bdb_state_type *bdb_state, tran_type *tran, unsigne
     *num_extents = 0;
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
-        return bdb_queuedb_size_tran(bdb_state, tran);
+        return bdb_queuedb_size(bdb_state);
 
     prefix_len = snprintf(extent_prefix, sizeof(extent_prefix),
                           "__dbq.%s.queue.", bdb_state->name);

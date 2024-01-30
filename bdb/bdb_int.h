@@ -1060,6 +1060,11 @@ struct bdb_state_tag {
     pthread_mutex_t sc_redo_lk;
     pthread_cond_t sc_redo_wait;
     LISTC_T(struct sc_redo_lsn) sc_redo_list;
+
+    /* cached file versions */
+    unsigned long long dtavers[1 + MAXBLOBS];
+    unsigned long long ixvers[MAXINDEX];
+    unsigned long long qvers[BDB_QUEUEDB_MAX_FILES];
 };
 
 #include <net_types.h>

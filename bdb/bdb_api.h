@@ -553,11 +553,9 @@ int bdb_handle_dbp_hash_stat_reset(bdb_state_type *bdb_state);
 int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr);
 
 /* get file sizes for indexes and data files */
-uint64_t bdb_index_size_tran(bdb_state_type *bdb_state, tran_type *tran, int ixnum);
-uint64_t bdb_data_size_tran(bdb_state_type *bdb_state, tran_type *tran, int dtanum);
 uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum);
+uint64_t bdb_index_size(bdb_state_type *bdb_state, int dtanum);
 uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents);
-uint64_t bdb_queue_size_tran(bdb_state_type *bdb_state, tran_type *tran, unsigned *num_extents);
 uint64_t bdb_logs_size(bdb_state_type *bdb_state, unsigned *num_logs);
 uint64_t bdb_tmp_size(bdb_state_type *bdb_state, uint64_t *ptmptbls, uint64_t *psqlsorters, uint64_t *pblkseqs,
                       uint64_t *pothers);

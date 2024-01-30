@@ -85,14 +85,30 @@ function max_view
     [[ $? == 0 ]] && failexit "should have failed to create view"
 }
 
+function select_diskspace_in_a_loop
+{
+    while true; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default 'SELECT value FROM comdb2_metrics WHERE name = "diskspace"' >/dev/null
+    done &
+    selectpid=$!
+}
+
+
+function kill_the_select_loop
+{
+    kill -9 $selectpid
+}
+
 function run_tests
 {
+    select_diskspace_in_a_loop
     max_table
     rebuild
     max_queue
     rebuild
     max_view
     rebuild
+    kill_the_select_loop
     return 0
 }
 

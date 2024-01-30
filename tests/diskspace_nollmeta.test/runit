@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Verify that we do not get sizes from stale table files
+
+dbnm=$1
+set -e
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TABLE t1 (a BYTE(32) PRIMARY KEY, b BLOB)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 SELECT randomblob(32), randomblob(128) FROM generate_series(1, 49999)"
+
+# get table size after flushing changes to disk
+cdb2sql -m ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('flush')"
+oldsize=$(cdb2sql -m -tabs ${CDB2_OPTIONS} $dbnm default "SELECT value FROM comdb2_metrics WHERE name = 'diskspace'")
+
+# truncate this table and get the size again. This time size should be smaller.
+cdb2sql ${CDB2_OPTIONS} $dbnm default "TRUNCATE TABLE t1";
+newsize=$(cdb2sql -m -tabs ${CDB2_OPTIONS} $dbnm default "SELECT value FROM comdb2_metrics WHERE name = 'diskspace'")
+
+is_smaller=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "SELECT ($oldsize > $newsize) AS is_smaller")
+
+echo "diskspace before truncate $oldsize, after truncate $newsize"
+
+if [ "$is_smaller" -ne "1" ]; then
+    echo "diskspace does not come down?" >&2
+    exit 1
+fi
