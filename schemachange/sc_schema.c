@@ -452,9 +452,9 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
     rc = get_csc2_file_tran(db->tablename, -1, &ondisk_text, NULL, tran);
     if (rc) {
         logmsg(LOGMSG_FATAL,
-               "Couldn't get latest csc2 from llmeta for %s! PANIC!!\n",
-               db->tablename);
-        exit(1);
+               "Couldn't get latest csc2 from llmeta for %s rc %d\n",
+               db->tablename, rc);
+        return -1;
     }
 
     /* db's version has been reset */
@@ -465,28 +465,28 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
     rc = bdb_new_csc2(tran, db->tablename, 1, ondisk_text, &bdberr);
     free(ondisk_text);
     if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "Couldn't save in llmeta! PANIC!!");
-        exit(1);
+        logmsg(LOGMSG_FATAL, "Couldn't save in llmeta rc %d\n", rc);
+        return -1;
     }
 
     ondisk_schema = find_tag_schema(db, ".ONDISK");
     if (NULL == ondisk_schema) {
         logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
                db->tablename);
-        exit(1);
+        abort();
     }
     ver_one = clone_schema(ondisk_schema);
     if (ver_one == NULL) {
         logmsg(LOGMSG_FATAL, "clone schema failed %s @ %d\n", __func__,
                __LINE__);
-        exit(1);
+        abort();
     }
     sprintf(tag, "%s1", gbl_ondisk_ver);
     free(ver_one->tag);
     ver_one->tag = strdup(tag);
     if (ver_one->tag == NULL) {
         logmsg(LOGMSG_FATAL, "strdup failed %s @ %d\n", __func__, __LINE__);
-        exit(1);
+        abort();
     }
     *version = ver_one;
 
