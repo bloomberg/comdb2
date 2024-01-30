@@ -5553,20 +5553,20 @@ uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blob
 
     if (db->dbtype == DBTYPE_TAGGED_TABLE) {
         for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size_tran(db->handle, tran, ii);
+            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
             db->totalsize += db->ixsizes[ii];
         }
 
-        db->dtasize = bdb_data_size_tran(db->handle, tran, 0);
+        db->dtasize = bdb_data_size(db->handle, 0);
         db->totalsize += db->dtasize;
         size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size_tran(db->handle, tran, ii + 1);
+            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
             db->totalsize += db->blobsizes[ii];
         }
     } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
-        db->totalsize = bdb_queue_size_tran(db->handle, tran, &db->numextents);
+        db->totalsize = bdb_queue_size(db->handle, &db->numextents);
     } else {
         logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
                 __func__, db->dbtype);
