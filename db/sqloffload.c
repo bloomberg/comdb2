@@ -57,74 +57,11 @@
 #include "sc_callbacks.h"
 #include "views.h"
 
-#if 0
-#define TEST_QSQL_REQ
-#define TEST_OSQL
-#define TEST_OSQL_DATA
-#define TEST_BLOCKSOCK
-#define TEST_RECOM
-#endif
-
 int scdone_abort_cleanup(struct ireq *iq);
 
 int gbl_master_swing_osql_verbose = 1;
 
 int g_osql_ready = 0;
-int tran2netreq(int dbtran)
-{
-    switch (dbtran) {
-    case TRANLEVEL_SOSQL:
-        return NET_OSQL_SOCK_REQ;
-
-    case TRANLEVEL_RECOM:
-        return NET_OSQL_RECOM_REQ;
-
-    case TRANLEVEL_SNAPISOL:
-        return NET_OSQL_SNAPISOL_REQ;
-
-    case TRANLEVEL_SERIAL:
-        return NET_OSQL_SERIAL_REQ;
-    }
-
-    logmsg(LOGMSG_ERROR, "%s: unknown transaction mode %d\n", __func__, dbtran);
-    {
-        int once = 0;
-        if (!once) {
-            cheap_stack_trace();
-            once = 1;
-        }
-    }
-
-    return -1;
-}
-
-int tran2netrpl(int dbtran)
-{
-    switch (dbtran) {
-    case TRANLEVEL_SOSQL:
-        return NET_OSQL_SOCK_RPL;
-
-    case TRANLEVEL_RECOM:
-        return NET_OSQL_RECOM_RPL;
-
-    case TRANLEVEL_SNAPISOL:
-        return NET_OSQL_SNAPISOL_RPL;
-
-    case TRANLEVEL_SERIAL:
-        return NET_OSQL_SERIAL_RPL;
-    }
-
-    logmsg(LOGMSG_ERROR, "%s: unknown transaction mode %d\n", __func__, dbtran);
-    {
-        int once = 0;
-        if (!once) {
-            cheap_stack_trace();
-            once = 1;
-        }
-    }
-
-    return -1;
-}
 
 /******************************** API *****************************************/
 
@@ -181,23 +118,19 @@ void osql_cleanup(void)
     g_osql_ready = 0;
 
     osql_comm_destroy();
-    osql_checkboard_destroy();
     osql_repository_destroy();
     bdb_osql_destroy(&bdberr);
 }
 
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
-
-    struct thr_handle *thr_self = thrman_self();
-
+    uuidstr_t us;
+    comdb2uuidstr(iq->sorese->uuid, us);
     if (iq->debug)
-        reqprintf(iq, "%s received from node %s", __func__,
-                  iq->sorese->target.host);
-
-    thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
-                  breq2a(block2_type), iq->sorese->target.host,
-                  iq->sorese->rqid);
+        reqprintf(iq, "%s received uuid:%s from node %s", __func__, us, iq->sorese->target.host);
+    struct thr_handle *thr_self = thrman_self();
+    thrman_wheref(thr_self, "%s [%s %s %s]", req2a(iq->opcode), breq2a(block2_type),
+                  iq->sorese->target.host, us);
 }
 
 extern int gbl_early_verify;
@@ -214,7 +147,7 @@ extern int gbl_osql_send_startgen;
 int gbl_serialize_reads_like_writes = 0;
 
 static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
-                       char *tzname, int osqlreq_type, int is_distrib_tran)
+                       char *tzname, int is_distrib_tran)
 {
 
     int sentops = 0;
@@ -280,7 +213,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     clnt->osql.timings.commit_prep = osql_log_time();
 
     /* start the block processor session */
-    rc = osql_sock_start(clnt, osqlreq_type, is_distrib_tran);
+    rc = osql_sock_start(clnt, is_distrib_tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to start sorese transaction rc=%d\n",
                __func__, rc);
@@ -292,11 +225,11 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int sent_readsets = 0;
     if (!clnt->osql.is_reorder_on) {
         if (clnt->arr) {
-            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL_UUID);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
         if (clnt->selectv_arr) {
-            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL_UUID);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
         sent_readsets = 1;
@@ -308,12 +241,12 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     /* Preserve the sentops optimization */
     if (!sent_readsets && (force_master || sentops)) {
         if (clnt->arr) {
-            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL_UUID);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
 
         if (clnt->selectv_arr) {
-            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+            rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL_UUID);
             sql_debug_logf(clnt, __func__, __LINE__, "returning rc=%d\n", rc);
         }
     }
@@ -323,7 +256,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
         sql_debug_logf(clnt, __func__, __LINE__, "aborting\n");
 
-        irc = osql_sock_abort(clnt, osqlreq_type);
+        irc = osql_sock_abort(clnt);
         if (irc) {
             logmsg(LOGMSG_ERROR, "%s: failed to abort sorese transaction rc=%d\n",
                     __func__, rc);
@@ -339,7 +272,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
         /* close the block processor session and retrieve the result */
         sql_debug_logf(clnt, __func__, __LINE__, "committing\n");
-        rc = osql_sock_commit(clnt, osqlreq_type, TRANS_CLNTCOMM_NORMAL);
+        rc = osql_sock_commit(clnt, TRANS_CLNTCOMM_NORMAL);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
             rc != SQLITE_BUSY && rc != SQLITE_CLIENT_CHANGENODE) {
             // XXX HERE IS THE BUG .. SQLITE_ERROR IS 1 - THE SAME AS DUP
@@ -366,7 +299,7 @@ goback:
     return rc;
 }
 
-static int sorese_abort(struct sqlclntstate *clnt, int osqlreq_type)
+static int sorese_abort(struct sqlclntstate *clnt)
 {
     int rc = 0;
     int bdberr = 0;
@@ -397,7 +330,7 @@ int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         }
     }
 
-    return rese_commit(clnt, thd, tzname, OSQL_RECOM_REQ, is_distributed_tran);
+    return rese_commit(clnt, thd, tzname, is_distributed_tran);
 }
 
 int recom_abort(struct sqlclntstate *clnt)
@@ -413,33 +346,27 @@ int recom_abort(struct sqlclntstate *clnt)
         }
     }
 
-    return sorese_abort(clnt, OSQL_RECOM_REQ);
+    return sorese_abort(clnt);
 }
 
-int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
-                    char *tzname)
+int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd, char *tzname)
 {
-
-    return rese_commit(clnt, thd, tzname, OSQL_SNAPISOL_REQ, 0);
+    return rese_commit(clnt, thd, tzname, 0);
 }
 
 int snapisol_abort(struct sqlclntstate *clnt)
 {
-
-    return sorese_abort(clnt, OSQL_SNAPISOL_REQ);
+    return sorese_abort(clnt);
 }
 
-int serial_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
-                  char *tzname)
+int serial_commit(struct sqlclntstate *clnt, struct sql_thread *thd, char *tzname)
 {
-
-    return rese_commit(clnt, thd, tzname, OSQL_SERIAL_REQ, 0);
+    return rese_commit(clnt, thd, tzname, 0);
 }
 
 int serial_abort(struct sqlclntstate *clnt)
 {
-
-    return sorese_abort(clnt, OSQL_SERIAL_REQ);
+    return sorese_abort(clnt);
 }
 
 int selectv_range_commit(struct sqlclntstate *clnt)
@@ -467,7 +394,7 @@ int selectv_range_commit(struct sqlclntstate *clnt)
         return rc;
 
     if (!clnt->osql.sock_started) {
-        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
+        rc = osql_sock_start(clnt, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to start socksql transaction rc=%d\n", __func__,
@@ -480,92 +407,8 @@ int selectv_range_commit(struct sqlclntstate *clnt)
                        rc);
     }
 
-    rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
+    rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL_UUID);
     return rc;
-}
-
-int req2netreq(int reqtype)
-{
-    switch (reqtype) {
-    case OSQL_SOCK_REQ:
-        return NET_OSQL_SOCK_REQ;
-
-    case OSQL_RECOM_REQ:
-        return NET_OSQL_RECOM_REQ;
-
-    case OSQL_SNAPISOL_REQ:
-        return NET_OSQL_SNAPISOL_REQ;
-
-    case OSQL_SERIAL_REQ:
-        return NET_OSQL_SERIAL_REQ;
-    }
-
-    logmsg(LOGMSG_ERROR, "%s: unknown request type %d\n", __func__, reqtype);
-    {
-        int once = 0;
-        if (!once) {
-            cheap_stack_trace();
-            once = 1;
-        }
-    }
-
-    return -1;
-}
-
-int req2netrpl(int reqtype)
-{
-    switch (reqtype) {
-    case OSQL_SOCK_REQ:
-        return NET_OSQL_SOCK_RPL;
-
-    case OSQL_RECOM_REQ:
-        return NET_OSQL_RECOM_RPL;
-
-    case OSQL_SNAPISOL_REQ:
-        return NET_OSQL_SNAPISOL_RPL;
-
-    case OSQL_SERIAL_REQ:
-        return NET_OSQL_SERIAL_RPL;
-    }
-
-    logmsg(LOGMSG_ERROR, "%s: unknown request type %d\n", __func__, reqtype);
-    {
-        int once = 0;
-        if (!once) {
-            cheap_stack_trace();
-            once = 1;
-        }
-    }
-
-    return -1;
-}
-
-int tran2req(int dbtran)
-{
-    switch (dbtran) {
-    case TRANLEVEL_SOSQL:
-        return OSQL_SOCK_REQ;
-
-    case TRANLEVEL_RECOM:
-        return OSQL_RECOM_REQ;
-
-    case TRANLEVEL_SNAPISOL:
-        return OSQL_SNAPISOL_REQ;
-
-    case TRANLEVEL_SERIAL:
-        return OSQL_SERIAL_REQ;
-    }
-
-    logmsg(LOGMSG_ERROR, "%s: unknown transaction mode %d\n", __func__, dbtran);
-    {
-        int once = 0;
-        if (!once) {
-            cheap_stack_trace();
-            once = 1;
-        }
-    }
-
-    return OSQL_REQINV;
 }
 
 int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
@@ -581,11 +424,11 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
      */
     if (state != SQLENG_NORMAL_PROCESS /* most common case */
         && state != SQLENG_STRT_STATE  /* empty transactions */
-        && state != SQLENG_FNSH_ABORTED_STATE /* aborted transactions */) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %p\n", clnt, state, clnt->osql.rqid,
-               (void *)pthread_self());
-        if (clnt->sql)
-            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
+        && state != SQLENG_FNSH_ABORTED_STATE /* aborted transactions */
+    ){
+        uuidstr_t us;
+        logmsg(LOGMSG_ERROR, "ctrl engine has wrong state:%d uuid:%s thd:%p sql:%s\n", state,
+               comdb2uuidstr(clnt->osql.uuid, us), (void *)pthread_self(), clnt->sql ? clnt->sql : "(null)");
     }
 
     /* TODO: once Dr. Hipp fixes the plan, this should be moved
@@ -618,10 +461,9 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         }
     }
 
-    if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid)) {
+    if (osql_chkboard_sqlsession_exists(clnt->osql.uuid)) {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %p\n", clnt, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-               (void *)pthread_self());
+        logmsg(LOGMSG_ERROR, "%p [%s] in USE! %p\n", clnt, comdb2uuidstr(clnt->osql.uuid, us), (void *)pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();

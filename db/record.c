@@ -997,8 +997,6 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     /* light the prefault kill bit for this subop - olddta */
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
-    if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
     /*
      * Find the old record using either rrn+genid or primkey.  The old record
@@ -1724,8 +1722,6 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     /* light the prefault kill bit for this subop - olddta */
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
-    if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
         assert(!iq->sorese); // sorese codepaths will have locked it already

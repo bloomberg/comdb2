@@ -4647,41 +4647,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         net_ack_message(ack_handle, 0);
         break;
 
-    case USER_TYPE_DECOM_DEPRECATED: {
-        char *host;
-        if (!dta || dtalen < sizeof(int)) {
-            logmsg(LOGMSG_ERROR, "%s decom_dep called with bad args\n",
-                   __func__);
-        } else {
-            p_buf = (uint8_t *)dta;
-            p_buf_end = ((uint8_t *)dta + dtalen);
-            buf_get(&node, sizeof(int), p_buf, p_buf_end);
-            logmsg(LOGMSG_DEBUG, "--- got decom for node %d\n", node);
-            logmsg(LOGMSG_DEBUG, "acking message\n");
-            net_ack_message(ack_handle, 0);
-            host = hostname(node);
-            osql_decom_node(host);
-            net_decom_node(bdb_state->repinfo->netinfo, host);
-        }
-        break;
-    }
-
-    case USER_TYPE_DECOM_NAME_DEPRECATED: {
-        char *host;
-        if (!dta || ((char *)dta)[dtalen - 1] != '\0') {
-            logmsg(LOGMSG_ERROR, "%s decom_name_dep called with invalid args\n",
-                   __func__);
-        } else {
-            logmsg(LOGMSG_DEBUG, "--- got decom for node %s\n", (char *)dta);
-            logmsg(LOGMSG_DEBUG, "acking message\n");
-            net_ack_message(ack_handle, 0);
-            host = intern((char *)dta);
-            osql_decom_node(host);
-            net_decom_node(bdb_state->repinfo->netinfo, host);
-        }
-        break;
-    }
-
     case USER_TYPE_ADD_DUMMY: {
         extern pthread_attr_t gbl_pthread_attr_detached;
         pthread_t tid;

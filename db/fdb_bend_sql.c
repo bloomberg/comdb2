@@ -288,10 +288,7 @@ void init_sqlclntstate(struct sqlclntstate *clnt, char *tid)
 {
     start_internal_sql_clnt(clnt);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
-
-    clnt->osql.rqid = OSQL_RQID_USE_UUID;
     comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
-
     clnt->osql.timings.query_received = osql_log_time();
 }
 
@@ -338,22 +335,19 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     }
 
     /* we keep the uuid in osql_sock_start */
-    /* register transaction */
-    clnt->osql.rqid = OSQL_RQID_USE_UUID;
     comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
 
-    if (osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
+    if (osql_register_sqlthr(clnt)) {
         uuidstr_t us;
         comdb2uuidstr((unsigned char*)tid, us);
-        logmsg(LOGMSG_ERROR, "%s: unable to register blocksql thread %s\n",
-                __func__, us);
+        logmsg(LOGMSG_ERROR, "%s: unable to register blocksql thread %s\n", __func__, us);
     }
 
     if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
         return rc;
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->osql.sock_started)
-        rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 1);
+        rc = osql_sock_start(clnt, 1);
 
     return rc;
 }
@@ -421,7 +415,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
 
     case TRANLEVEL_SOSQL:
 
-        rc = osql_sock_commit(clnt, tran2req(clnt->dbtran.mode), TRANS_CLNTCOMM_NORMAL);
+        rc = osql_sock_commit(clnt, TRANS_CLNTCOMM_NORMAL);
         /* convert this to user code */
         if (rc == SQLITE_ABORT) {
             rc = blockproc2sql_error(clnt->osql.xerr.errval, __func__, __LINE__);
@@ -445,12 +439,10 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
         osql_shadtbl_done_query(thedb->bdb_env, clnt);
     }
 
-    //#if 0
     if (osql_unregister_sqlthr(clnt)) {
         logmsg(LOGMSG_ERROR, "%s: unable to unregister blocksql thread %s\n",
                 __func__, us);
     }
-    //#endif
 
     clnt->writeTransaction = 0;
     clnt->dbtran.shadow_tran = NULL;
@@ -503,7 +495,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 
     case TRANLEVEL_SOSQL: {
 
-        rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+        rc = osql_sock_abort(clnt);
 
     } break;
 

@@ -284,7 +284,6 @@ typedef
 thd
 HASql
 snd
-osqlprefaultthreads
 nonames
 requeue
 reptimes

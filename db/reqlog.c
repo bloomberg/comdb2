@@ -1874,13 +1874,9 @@ uint64_t reqlog_current_us(struct reqlogger *logger)
     return (comdb2_time_epochus() - logger->startus);
 }
 
-inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
+void reqlog_set_uuid(struct reqlogger *logger, uuid_t uuid)
 {
-    assert (idlen == sizeof(unsigned long long) || idlen == sizeof(uuid_t));
-    if (idlen == sizeof(uuid_t))
-        comdb2uuidstr(id, logger->id);
-    else
-        sprintf(logger->id, "%llx", *(unsigned long long *)id);
+    comdb2uuidstr(uuid, logger->id);
     logger->have_id = 1;
 }
 

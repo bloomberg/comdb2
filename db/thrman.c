@@ -554,8 +554,6 @@ void stop_threads(struct dbenv *dbenv)
     if (gbl_appsock_thdpool)
         thdpool_stop(gbl_appsock_thdpool);
     stop_all_sql_pools();
-    if (gbl_osqlpfault_thdpool)
-        thdpool_stop(gbl_osqlpfault_thdpool);
     if (gbl_udppfault_thdpool)
         thdpool_stop(gbl_udppfault_thdpool);
     if (gbl_pgcompact_thdpool)
@@ -589,8 +587,6 @@ void resume_threads(struct dbenv *dbenv)
     if (gbl_appsock_thdpool)
         thdpool_resume(gbl_appsock_thdpool);
     resume_all_sql_pools();
-    if (gbl_osqlpfault_thdpool)
-        thdpool_resume(gbl_osqlpfault_thdpool);
     allow_new_requests(dbenv);
     dbenv->no_more_sql_connections = 0;
     MEMORY_SYNC;

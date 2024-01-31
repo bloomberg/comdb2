@@ -36,7 +36,7 @@ void init_bplog_net(osql_target_t *target);
  * Handle to registration of thread for net multiplex purposes
  *
  */
-int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid);
+int osql_begin_net(struct sqlclntstate *clnt, int keep_rqid);
 
 /**
  * End the osql transaction

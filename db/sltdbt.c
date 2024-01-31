@@ -38,7 +38,6 @@
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
-extern int sorese_send_commitrc(struct ireq *iq, int rc);
 
 void (*comdb2_ipc_sndbak_len_sinfo)(struct ireq *, int) = 0;
 
@@ -251,20 +250,10 @@ static int handle_op_block(struct ireq *iq)
     return handle_op_local(iq, NULL, toblock);
 }
 
-int handle_op_sorese(struct ireq *iq)
-{
-    return handle_op_local(iq, to_sorese_init, to_sorese);
-}
-
 /* Builtin opcode handlers */
-static comdb2_opcode_t block_op_handler = {OP_BLOCK, "blockop",
-                                           handle_op_block};
-static comdb2_opcode_t fwd_block_op_handler = {OP_FWD_BLOCK, "fwdblockop",
-                                               handle_op_block};
-static comdb2_opcode_t sorese_op_handler = {OP_SORESE, "sorese",
-                                            handle_op_sorese};
-static comdb2_opcode_t fwd_block_le_op_handler = {OP_FWD_BLOCK_LE, "fwdblockople",
-                                               handle_op_block};
+static comdb2_opcode_t block_op_handler = {OP_BLOCK, "blockop", handle_op_block};
+static comdb2_opcode_t fwd_block_op_handler = {OP_FWD_BLOCK, "fwdblockop", handle_op_block};
+static comdb2_opcode_t fwd_block_le_op_handler = {OP_FWD_BLOCK_LE, "fwdblockople", handle_op_block};
 
 int init_opcode_handlers()
 {
@@ -275,7 +264,6 @@ int init_opcode_handlers()
     /* Also register the builtin opcode handlers. */
     hash_add(gbl_opcode_hash, &block_op_handler);
     hash_add(gbl_opcode_hash, &fwd_block_op_handler);
-    hash_add(gbl_opcode_hash, &sorese_op_handler);
     hash_add(gbl_opcode_hash, &fwd_block_le_op_handler);
 
     return 0;
@@ -445,18 +433,16 @@ int handle_ireq(struct ireq *iq)
             if (iq->debug) {
                 uuidstr_t us;
                 reqprintf(iq,
-                          "sorese returning rqid=%llu uuid=%s node=%s type=%d "
+                          "sorese returning uuid=%s node=%s type=%d "
                           "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
-                          iq->sorese->rqid, comdb2uuidstr(iq->sorese->uuid, us),
+                          comdb2uuidstr(iq->sorese->uuid, us),
                           iq->sorese->target.host, iq->sorese->type,
                           iq->sorese->nops, iq->sorese->rcout,
                           iq->sorese->verify_retries, rc, iq->errstat.errval);
             }
-
-            if (iq->sorese->rqid == 0)
+            if (comdb2uuid_is_zero(iq->sorese->uuid))
                 abort();
-            osql_comm_signal_sqlthr_rc(
-                &iq->sorese->target, iq->sorese->rqid, iq->sorese->uuid,
+            osql_comm_signal_sqlthr_rc(&iq->sorese->target, iq->sorese->uuid,
                 iq->sorese->nops, &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();
@@ -473,14 +459,13 @@ int handle_ireq(struct ireq *iq)
             if (iq->is_socketrequest) {
                 if (iq->sb == NULL) {
                     rc = offload_comm_send_blockreply(
-                        iq->frommach, iq->fwd_tag_rqid, iq->p_buf_out_start,
+                        iq->frommach, iq->request_data, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
                     free_bigbuf_nosignal(iq->p_buf_out_start);
                 } else {
                     /* The tag request is handled locally.
                        We know for sure `request_data' is a `buf_lock_t'. */
-                    struct buf_lock_t *p_slock =
-                        (struct buf_lock_t *)iq->request_data;
+                    struct buf_lock_t *p_slock = (struct buf_lock_t *)iq->request_data;
                     {
                         Pthread_mutex_lock(&p_slock->req_lock);
                         if (p_slock->reply_state == REPLY_STATE_DISCARD) {

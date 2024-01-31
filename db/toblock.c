@@ -94,7 +94,6 @@ extern int verbose_deadlocks;
 extern int gbl_goslow;
 extern int n_commits;
 extern int n_commit_time;
-extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
 extern int gbl_print_blockp_stats;
@@ -473,15 +472,13 @@ static int forward_longblock_to_master(struct ireq *iq,
 
     /*have a valid master to pass this off to. */
     if (iq->debug)
-        reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen "
-                      "%zu\n",
+        reqprintf(iq, "forwarded req from %s to master node %s db %d rqlen %zu\n",
                   getorigin(iq), mstr, iq->origdb->dbnum, req_len);
     if (iq->is_socketrequest) {
         if (iq->sb == NULL) {
             return ERR_INCOHERENT;
         } else {
-            rc = offload_comm_send_blockreq(mstr, iq->request_data,
-                                            iq->p_buf_out_start, req_len);
+            rc = offload_comm_send_blockreq(mstr, iq->request_data, iq->p_buf_out_start, req_len);
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
@@ -554,8 +551,7 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
         if (iq->sb == NULL) {
             return ERR_INCOHERENT;
         } else {
-            rc = offload_comm_send_blockreq(mstr, iq->request_data,
-                                            iq->p_buf_out_start, req_len);
+            rc = offload_comm_send_blockreq(mstr, iq->request_data, iq->p_buf_out_start, req_len);
             free_bigbuf_nosignal(iq->p_buf_out_start);
         }
     } else if (comdb2_ipc_swapnpasdb_sinfo) {
@@ -1964,52 +1960,6 @@ static int toblock_fwd_int(struct ireq *iq, block_state_t *p_blkstate)
     p_blkstate->source_host = iq->frommach;
 
     return RC_OK;
-}
-
-int to_sorese_init(struct ireq *iq)
-{
-    return -1;
-}
-
-int to_sorese(struct ireq *iq)
-{
-    int rc = 0;
-    int gotlk = 0;
-
-    /* check that I am the master */
-    if (!gbl_local_mode) {
-        char *mstr = iq->dbenv->master;
-
-        if (mstr != gbl_myhostname) {
-            /* Ask the replicant to retry against the new master. */
-            if (iq->sorese) {
-                iq->sorese->rcout = ERR_NOMASTER;
-            }
-            return ERR_REJECTED;
-        }
-    }
-
-    iq->jsph = javasp_trans_start(iq->debug);
-
-    if (gbl_exclusive_blockop_qconsume) {
-        Pthread_rwlock_rdlock(&gbl_block_qconsume_lock);
-        gotlk = 1;
-    }
-
-    bdb_stripe_get(iq->dbenv->bdb_env);
-
-    /* TODO
-    rc = to_sorese_main(iq->jsph, iq); */
-    rc = -1;
-
-    bdb_stripe_done(iq->dbenv->bdb_env);
-
-    if (gotlk)
-        Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
-
-    javasp_trans_end(iq->jsph);
-
-    return rc;
 }
 
 int toblock(struct ireq *iq)
@@ -4730,15 +4680,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             force_serial_error = 1;
         }
         send_prefault_udp = 0;
-
-        if (iq->osql_step_ix) {
-            gbl_osqlpf_step[*(iq->osql_step_ix)].rqid = 0;
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step = 0;
-            Pthread_mutex_lock(&osqlpf_mutex);
-            queue_add(gbl_osqlpf_stepq, iq->osql_step_ix);
-            Pthread_mutex_unlock(&osqlpf_mutex);
-            iq->osql_step_ix = NULL;
-        }
 
         delayed = iq->sorese->is_delayed ? 1 : 0;
 

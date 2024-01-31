@@ -1088,33 +1088,28 @@ void sql_dump_hist_statements(void)
 {
     struct sql_hist *h;
     struct tm tm;
-    char rqid[50];
+    uuidstr_t us;
 
     Pthread_mutex_lock(&gbl_sql_lock);
     LISTC_FOR_EACH(&thedb->sqlhist, h, lnk)
     {
         time_t t;
-        if (h->txnid)
-            snprintf(rqid, sizeof(rqid), "txn %016llx ",
-                     (unsigned long long)h->txnid);
-        else
-            rqid[0] = 0;
-
+        comdb2uuidstr(h->uuid, us);
         t = h->when;
         localtime_r((time_t *)&t, &tm);
         if (h->conn.pename[0]) {
-            logmsg(LOGMSG_USER, "%02d/%02d/%02d %02d:%02d:%02d %spindex %d task %.8s pid %d "
+            logmsg(LOGMSG_USER, "%02d/%02d/%02d %02d:%02d:%02d txn %s pindex %d task %.8s pid %d "
                    "mach %d time %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
+                   tm.tm_min, tm.tm_sec, us, h->conn.pindex,
                    (char *)h->conn.pename, h->conn.pid, h->conn.node,
                    (long long int)h->cost.time, (long long int)h->cost.prepTime,
                    h->cost.cost, string_ref_cstr(h->sql_ref));
         } else {
             logmsg(LOGMSG_USER,
-                   "%02d/%02d/%02d %02d:%02d:%02d %stime %lldms prepTime %lldms cost %f sql: %s\n",
+                   "%02d/%02d/%02d %02d:%02d:%02d txn %s time %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, (long long int)h->cost.time,
+                   tm.tm_min, tm.tm_sec, us, (long long int)h->cost.time,
                    (long long int)h->cost.prepTime, h->cost.cost, string_ref_cstr(h->sql_ref));
         }
     }
@@ -1233,12 +1228,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     thd->crtshard = 0;
 
-    unsigned long long rqid = clnt->osql.rqid;
-    if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(logger, &rqid, sizeof(rqid));
-    else if (!comdb2uuid_is_zero(clnt->osql.uuid)) {
-        /* have an "id_set" instead? */
-        reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+    if (!comdb2uuid_is_zero(clnt->osql.uuid)) {
+        reqlog_set_uuid(logger, clnt->osql.uuid);
     }
 
     LISTC_T(struct sql_hist) lst;
@@ -1254,17 +1245,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     h->cost.time = comdb2_time_epochms() - thd->startms;
     h->cost.prepTime = thd->prepms;
     h->when = thd->stime;
-    h->txnid = rqid;
+    comdb2uuidcpy(h->uuid, clnt->osql.uuid);
 
     time_metric_add(thedb->service_time, h->cost.time);
     clnt->last_cost = (int64_t) h->cost.cost;
 
     /* request logging framework takes care of logging long sql requests */
     reqlog_set_cost(logger, h->cost.cost);
-    if (rqid) {
-        reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
-    }
 
+    uuidstr_t us;
+    reqlog_logf(logger, REQL_INFO, "uuid=%s", comdb2uuidstr(clnt->osql.uuid, us));
 
     unsigned char fingerprint[FINGERPRINTSZ];
     int have_fingerprint = 0;
@@ -1884,7 +1874,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
 {
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_SOSQL:
-        osql_sock_abort(clnt, OSQL_SOCK_REQ);
+        osql_sock_abort(clnt);
         if (clnt->selectv_arr) {
             currangearr_free(clnt->selectv_arr);
             clnt->selectv_arr = NULL;
@@ -2120,7 +2110,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 if (gbl_selectv_rangechk)
                     rc = selectv_range_commit(clnt);
                 if (rc) {
-                    irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+                    irc = osql_sock_abort(clnt);
                     if (irc) {
                         logmsg(
                             LOGMSG_ERROR,
@@ -2129,7 +2119,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     }
                     rc = SQLITE_ABORT;
                 } else if (clnt->early_retry) {
-                    irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+                    irc = osql_sock_abort(clnt);
                     if (irc) {
                         logmsg(
                             LOGMSG_ERROR,
@@ -2152,7 +2142,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     clnt->early_retry = 0;
                     rc = SQLITE_ABORT;
                 } else {
-                    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, sideeffects);
+                    rc = osql_sock_commit(clnt, sideeffects);
                 }
                 if (rc == SQLITE_ABORT) {
                     /* convert this to user code */
@@ -2189,7 +2179,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 }
             } else {
                 reset_query_effects(clnt);
-                rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+                rc = osql_sock_abort(clnt);
                 sql_debug_logf(clnt, __func__, __LINE__,
                                "'%s' socksql abort rc=%d replay=%d\n",
                                clnt->sql ? clnt->sql : "(?)", rc,
@@ -4768,8 +4758,11 @@ void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
-        clnt->client_understands_query_stats && clnt->osql.rqid)
+        clnt->client_understands_query_stats &&
+        !comdb2uuid_is_zero(clnt->osql.uuid)
+    ){
         osql_query_dbglog(sqlthd, clnt->queryid);
+    }
 
     assert(clnt->dbtran.pStmt == NULL);
 
@@ -5956,10 +5949,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
     } else {
         bzero(&res, sizeof(res));
 
-        if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
-            cid = (char *)&clnt->osql.uuid;
-        else
-            cid = (char *)&clnt->osql.rqid;
+        cid = (char *)&clnt->osql.uuid;
 
         sent = 0;
         while (1) {
@@ -6069,10 +6059,7 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
         logmsg(LOGMSG_ERROR, "%s: no sql_thread\n", __func__);
         return SQLITE_INTERNAL;
     }
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
-        cid = (char *)&clnt->osql.uuid;
-    else
-        cid = (char *)&clnt->osql.rqid;
+    cid = (char *)&clnt->osql.uuid;
 
     if(!clnt->sql_ref)
         clnt->sql_ref = create_string_ref(clnt->sql);
@@ -6541,9 +6528,9 @@ void osql_log_time_done(struct sqlclntstate *clnt)
     if (tms->commit_prep == 0)
         tms->commit_prep = tms->commit_start;
 
-    logmsg(LOGMSG_USER, "rqid=%llu total=%llu (queued=%llu) sql=%llu (exec=%llu "
-            "prep=%llu commit=%llu)\n",
-            osql->rqid, tms->query_finished - tms->query_received, /*total*/
+    uuidstr_t us;
+    logmsg(LOGMSG_USER, "uuid=%s total=%llu (queued=%llu) sql=%llu (exec=%llu prep=%llu commit=%llu)\n",
+            comdb2uuidstr(osql->uuid, us), tms->query_finished - tms->query_received, /*total*/
             tms->query_dispatched - tms->query_received,           /*queued*/
             tms->query_finished - tms->query_dispatched, /*sql processing*/
             tms->commit_prep -

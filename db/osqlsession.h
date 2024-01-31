@@ -22,7 +22,6 @@
 #include "comdb2uuid.h"
 #include "sqloffload.h"
 
-typedef struct osql_req osql_req_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
 
 /**
@@ -30,16 +29,14 @@ typedef struct osql_uuid_req osql_uuid_req_t;
  * Returns created object if success, NULL otherwise
  *
  */
-osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
-                              int type, unsigned long long rqid, uuid_t uuid,
+osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname, int type, uuid_t uuid,
                               const char *host, int is_reorder_on);
 /**
  * Same as osql_sess_create, but sql is already a malloced cstr
  *
  */
 osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
-                                     unsigned long long rqid, uuid_t uuid,
-                                     const char *host, int is_reorder_on);
+                                     uuid_t uuid, const char *host, int is_reorder_on);
 
 /**
  * Terminates an in-use osql session (for which we could potentially
@@ -73,20 +70,20 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
 /**
  * Session information
  * Return malloc-ed string:
- * sess_type rqid uuid local/remote host
+ * sess_type uuid local/remote host
  *
  */
 #define OSQL_SESS_INFO_LEN 256
 char *osql_sess_info(osql_sess_t *sess);
 
 /**
- * Handles a new op received for session "rqid"
+ * Handles a new op received for session uuid 
  * It saves the packet in the local bplog
  * Return 0 if success
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
+int osql_sess_rcvop(uuid_t uuid, int type, void *data,
                     int datalen, int *found);
 
 /**

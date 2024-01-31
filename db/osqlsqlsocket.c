@@ -47,11 +47,9 @@ int gbl_sockbplog_sockpool = 0;
 
 static int _socket_send(osql_target_t *target, int usertype, void *data,
                         int datalen, int nodelay, void *tail, int tailen);
-static int osql_begin_socket(struct sqlclntstate *clnt, int type,
-                             int keep_rqid);
+static int osql_begin_socket(struct sqlclntstate *clnt, int keep_rqid);
 static int osql_end_socket(struct sqlclntstate *clnt);
-static int osql_wait_socket(struct sqlclntstate *clnt, int timeout,
-                            struct errstat *err);
+static int osql_wait_socket(struct sqlclntstate *clnt, int timeout, struct errstat *err);
 
 void init_bplog_socket(struct sqlclntstate *clnt)
 {
@@ -67,7 +65,7 @@ void init_bplog_socket_master(osql_target_t *target, SBUF2 *sb)
     target->send = _socket_send;
 }
 
-static int osql_begin_socket(struct sqlclntstate *clnt, int type, int keep_rqid)
+static int osql_begin_socket(struct sqlclntstate *clnt, int keep_rqid)
 {
     SBUF2 *sb = NULL;
     int rc;
@@ -280,42 +278,44 @@ int osql_read_buffer_default(char *buf, int buflen, SBUF2 *sb)
         }                                                                                                              \
     } while (0)
 
-int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
-                        int *type, uuid_t uuid, int *flags)
+int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB], int *type, uuid_t uuid,
+                        int *flags)
 {
-    int rqlen, sqlqlen;
-    int rc;
-    char pad[2], unused;
-    int totallen;
-
-    *sql = NULL;
-
-    GDATA(totallen);
-    totallen = htonl(totallen);
-
-    GDATA(*type);
-    *type = htonl(*type);
-
-    GDATA(rqlen);
-    rqlen = htonl(rqlen);
-
-    GDATA(sqlqlen);
-    sqlqlen = htonl(sqlqlen);
-
-    *sql = malloc(sqlqlen + 1);
+    int rc, user_type, unused, sqlqlen;
+    GDATA(unused); // total length
+    /*
+    Reading struct osql_uuid_req below. For ref:
+    struct osql_uuid_req {
+        int user_type;
+        int unused;
+        int sqlqlen;
+        int flags;
+        uuid_t uuid;
+        char tzname[DB_MAX_TZNAMEDB];
+        char pad[4];
+        char sqlq[0];
+    };
+    */
+    GDATA(user_type); user_type = htonl(user_type);
+    switch (user_type) {
+    case NET_OSQL_SOCK_REQ_UUID: *type = OSQL_SOCK_REQ; break;
+    case NET_OSQL_RECOM_REQ_UUID: *type = OSQL_RECOM_REQ; break;
+    case NET_OSQL_SERIAL_REQ_UUID: *type = OSQL_SERIAL_REQ; break;
+    case NET_OSQL_SNAPISOL_REQ_UUID: *type = OSQL_SNAPISOL_REQ; break;
+    default: abort();
+    }
+    GDATA(unused);
+    GDATA(sqlqlen); sqlqlen = htonl(sqlqlen);
+    GDATA(*flags); *flags = htonl(*flags);
+    GDATALEN(uuid, sizeof(uuid_t));
+    GDATALEN(tzname, DB_MAX_TZNAMEDB);
+    GDATA(unused);
+    *sql = malloc(sqlqlen);
     if (!*sql) {
         rc = ENOMEM;
         goto done;
     }
-    GDATA(*flags);
-    *flags = htonl(*flags);
-
-    GDATALEN(uuid, sizeof(uuid_t));
-    GDATALEN(tzname, DB_MAX_TZNAMEDB);
-    GDATA(unused);
-    GDATA(pad);
-    GDATALEN(*sql, sqlqlen + 1 /* there is an extra byte here */);
-
+    GDATALEN(*sql, sqlqlen);
 done:
     return rc;
 }

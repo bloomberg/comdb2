@@ -33,31 +33,23 @@
 struct errstat;
 struct sqlclntstate;
 
-struct osql_sqlthr {
+typedef struct {
     struct errstat err;  /* valid if done = 1 */
     pthread_cond_t cond;
-    unsigned long long rqid; /* osql rq id */
     uuid_t uuid;             /* request id, take 2 */
     const char *master;      /* who was the master I was talking to */
     struct sqlclntstate *clnt; /* cache clnt */
     pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
-    int done;            /* result of socksql, recom, snapisol and serial master
-                            transactions*/
-    int type;            /* type of the request, enum OSQL_REQ_TYPE */
-    int master_changed; /* set if we detect that node we were waiting for was
-                           disconnected */
+    int done;            /* result of socksql, recom, snapisol and serial master transactions*/
+    int master_changed; /* set if we detect that node we were waiting for was disconnected */
     int nops;
-
     unsigned long long register_time;
-
     int status;       /* poking support; status at the last check */
     int timestamp;    /* poking support: timestamp at the last check */
-    int last_updated; /* poking support: when was the last time I got info, 0 is
-                         never */
+    int last_updated; /* poking support: when was the last time I got info, 0 is never */
     int last_checked; /* poking support: when was the last poke sent */
     int progressing;  /* smartbeat support: 1 if sess is making progress on master */
-};
-typedef struct osql_sqlthr osql_sqlthr_t;
+} osql_sqlthr_t;
 
 /**
  * Initializes the checkboard
@@ -67,22 +59,14 @@ typedef struct osql_sqlthr osql_sqlthr_t;
 int osql_checkboard_init(void);
 
 /**
- * Destroy the checkboard
- * No more blocksql/socksql/recom/snapisol/serial threads can be created
- * after this.
- *
- */
-void osql_checkboard_destroy(void);
-
-/**
- * Checks the checkboard for sql session "rqid"
+ * Checks the checkboard for sql session "uuid"
  * Returns:
  * - 1 is the session exists
  * - 0 if no session
  * - <0 if error
  *
  */
-int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid);
+int osql_chkboard_sqlsession_exists(uuid_t uuid);
 
 /**
  * Register an osql thread with the checkboard
@@ -90,7 +74,7 @@ int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid);
  * of its sql peer
  *
  */
-int osql_register_sqlthr(struct sqlclntstate *clnt, int type);
+int osql_register_sqlthr(struct sqlclntstate *);
 
 /**
  * Unregister an osql thread from the checkboard
@@ -105,7 +89,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt);
  * A null errstat means no error.
  *
  */
-int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, void *data, struct errstat *errstat,
+int osql_chkboard_sqlsession_rc(uuid_t uuid, int nops, void *data, struct errstat *errstat,
                                 struct query_effects *effects, const char *from);
 
 /**
@@ -113,15 +97,13 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops, 
  * Upon return, sqlclntstate's errstat is set
  *
  */
-int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                int max_wait, struct errstat *xerr);
+int osql_chkboard_wait_commitrc(uuid_t uuid, int max_wait, struct errstat *xerr);
 
 /**
 * Update status of the pending sorese transaction, to support poking
  *
  */
-int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
-                                  int status, int timestamp);
+int osql_checkboard_update_status(uuid_t uuid, int status, int timestamp);
 /**
  * Reset fields when a session is retried
  * we're interested in things like master_changed
@@ -130,7 +112,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master);
 
 /**
- * Retrieve the sqlclntstate for a certain rqid
+ * Retrieve the sqlclntstate for a certain uuid 
  *
  */
 int osql_chkboard_get_clnt(uuid_t uuid, struct sqlclntstate **clnt);
