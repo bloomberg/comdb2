@@ -4171,7 +4171,13 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     int tmp_bdberr;
     int *pbdberr = (bdberr != NULL) ? bdberr : &tmp_bdberr;
     tran_type tran = {0};
-    DB_TXN *tid = (ptid != NULL) ? *ptid : NULL;
+    DB_TXN *tmptid = NULL;
+    DB_TXN *tid;
+
+    /* This function sets (*ptid) to NULL on txn abort. Make sure it points to something. */
+    if (ptid == NULL)
+        ptid = &tmptid;
+    tid = *ptid;
 
     if ((flags & BDB_OPEN_SKIP_SCHEMA_LK) == 0) {
         assert_wrlock_schema_lk();
