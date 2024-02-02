@@ -497,26 +497,26 @@ if [[ $replicant ]]; then
         exit -1
     fi
 
-    cdb2sql --tabs ${CDB2_OPTIONS} --host $replicant $dbnm 'needs_analyze t1'
+    cdb2sql --tabs ${CDB2_OPTIONS} --host $replicant $dbnm 'exclusive_analyze t1'
     rc=$?
     if [[ $rc = 0 ]] ; then
-        echo "needs_analyze should have failed on replicant"
+        echo "exclusive_analyze should have failed on replicant"
         echo "Failed"
         exit -1
     fi
 fi
 
-cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'needs_analyze t1'
+cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exclusive_analyze t1'
 rc=$?
 if [[ $rc != 0 ]] ; then
-    echo "needs_analyze should not have failed on master"
+    echo "exclusive_analyze should not have failed on master"
     echo "Failed"
     exit -1
 fi
 
 tablename=`cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'select tablename from comdb2_auto_analyze_tables where needs_analyze_time is not NULL'`
 if [[ $tablename ]] ; then
-    echo "needs_analyze should have cleared comdb2_auto_analyze_tables, got $tablename instead"
+    echo "exclusive_analyze should have cleared comdb2_auto_analyze_tables, got $tablename instead"
     echo "Failed"
     exit -1
 fi
@@ -524,7 +524,7 @@ fi
 if [[ $replicant ]] ; then
     tablename=`cdb2sql --tabs ${CDB2_OPTIONS} --host $replicant $dbnm 'select tablename from comdb2_auto_analyze_tables where needs_analyze_time is not NULL'`
     if [[ $tablename ]] ; then
-        echo "needs_analyze should have cleared comdb2_auto_analyze_tables on replicant, got $tablename instead"
+        echo "exclusive_analyze should have cleared comdb2_auto_analyze_tables on replicant, got $tablename instead"
         echo "Failed"
         exit -1
     fi

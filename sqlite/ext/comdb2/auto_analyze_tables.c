@@ -27,7 +27,7 @@ extern struct dbenv *thedb;
 
 sqlite3_module systblAutoAnalyzeTablesModule = {
     .access_flag = CDB2_ALLOW_USER,
-    .systable_lock = "comdb2_tables", // TODO: Check locks, think should be ok
+    .systable_lock = "comdb2_tables",
 };
 
 typedef struct systable_auto_analyze_tables {
@@ -50,7 +50,7 @@ int auto_analyze_tables_systable_collect(void **data, int *nrecords)
 
     int include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
 
-    if (NULL == get_dbtable_by_name("sqlite_stat1")) { // TODO: check if this will work
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         logmsg(LOGMSG_USER, "ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
         return 0;
     }
