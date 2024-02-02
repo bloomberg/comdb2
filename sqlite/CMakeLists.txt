@@ -161,9 +161,9 @@ configure_file(tool/mkopcodec.tcl mkopcodec.tcl COPYONLY)
 configure_file(tool/mkopcodeh.tcl mkopcodeh.tcl COPYONLY)
 configure_file(tool/mkvdbeauxinlines.tcl mkvdbeauxinlines.tcl COPYONLY)
 
-file(READ ${PROJECT_SOURCE_DIR}/lua/default_consumer_v1.lua default_consumer_v1)
-string(REPLACE "\n" "\\n\\\n" default_consumer_v1 ${default_consumer_v1})
-configure_file(src/default_consumer_v1.h.in default_consumer_v1.h @ONLY)
+file(READ ${PROJECT_SOURCE_DIR}/lua/default_consumer_v1.1.lua default_consumer)
+string(REPLACE "\n" "\\n\\\n" default_consumer ${default_consumer})
+configure_file(src/default_consumer.h.in default_consumer.h @ONLY)
 
 add_executable(mkkeywordhash tool/mkkeywordhash.c)
 target_compile_definitions(mkkeywordhash PRIVATE ${SQLITE_FLAGS})

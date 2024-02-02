@@ -14,7 +14,7 @@ CREATE DEFAULT LUA CONSUMER test4 ON (TABLE t4 FOR INSERT);
 INSERT INTO t4 VALUES (NOW());
 INSERT INTO t4 VALUES ("2023-12-12 America/New_York");
 DROP LUA CONSUMER test4
-DROP PROCEDURE test4 VERSION 'comdb2 default consumer 1.0'
+DROP PROCEDURE test4 VERSION 'comdb2 default consumer 1.1'
 DROP TABLE t4;
 
 -- Do the same thing with datetimeus
@@ -26,5 +26,5 @@ CREATE DEFAULT LUA CONSUMER test4 ON (TABLE t4 FOR INSERT);
 INSERT INTO t4 VALUES (NOW());
 INSERT INTO t4 VALUES ("2023-12-12 America/New_York");
 DROP LUA CONSUMER test4
-DROP PROCEDURE test4 VERSION 'comdb2 default consumer 1.0'
+DROP PROCEDURE test4 VERSION 'comdb2 default consumer 1.1'
 DROP TABLE t4;

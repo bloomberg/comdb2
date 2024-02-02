@@ -7500,19 +7500,19 @@ void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database, int alter
     free(partition_first_shardname);
 }
 
-#include <default_consumer_v1.h>
+#include <default_consumer.h>
 
 void create_default_consumer_sp(Parse *p, char *spname)
 {
     Vdbe *v = sqlite3GetVdbe(p);
     struct schema_change_type *sc;
-    const char *version = "comdb2 default consumer 1.0";
+    const char *version = "comdb2 default consumer 1.1";
 
     sc = new_schemachange_type();
     sc->kind = SC_ADDSP;
     strcpy(sc->tablename, spname);
     strcpy(sc->fname, version);
-    sc->newcsc2 = strdup(default_consumer_v1);
+    sc->newcsc2 = strdup(default_consumer);
     comdb2PrepareSC(v, p, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)&free_schema_change_type);
 
     sc = new_schemachange_type();

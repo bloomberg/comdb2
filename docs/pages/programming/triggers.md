@@ -275,7 +275,7 @@ transaction boundary or perhaps after every N records, etc.
 
 Here is an example stored procedure which consumes all events which belong to
 the same originating transaction. To reduce round-trips between client-server,
-it calls `db:emit()` for all events, and then emits a sentinal row using
+it calls `db:emit()` for all events, and then emits a sentinel row using
 `dbconsumer:emit()`, which waits for client to signal that it has finished
 processing all the events.
 
@@ -300,7 +300,7 @@ local function main()
         while true do
                 db:begin()
                 consume_a_txn(consumer)
-                consumer:emit('--sentinal--') -- Wait here for client to ack
+                consumer:emit('--sentinel--') -- Wait here for client to ack
                 db:commit() -- consume all events emitted so far
         end
 end
@@ -320,19 +320,19 @@ insert into t(data) select printf('row %d', value) from generate_series(6, 10)
 The client which executes this procedure will receive:
 ```
 ($0='first')
-($0='--sentinal--')
+($0='--sentinel--')
 ($0='second')
 ($0='third')
-($0='--sentinal--')
+($0='--sentinel--')
 ($0='fourth')
 ($0='fifth')
-($0='--sentinal--')
+($0='--sentinel--')
 ($0='row 6')
 ($0='row 7')
 ($0='row 8')
 ($0='row 9')
 ($0='row 10')
-($0='--sentinal--')
+($0='--sentinel--')
 ```
 
 
@@ -526,13 +526,26 @@ respectively to the emitted rows.
 By deafult, one event is consumed per transaction (dbconsumer:get() followed by
 dbconsumer:consume()), Application can change this to consume in batches which
 match originating transaction sizes (by using `dbconsumer:next()`.) To do this
-pass the following parameter to main:
+pass the following parameter to `main`:
 
 ```json
 {
     "batch_consume": true
 }
 ```
+
+To emit a sentinel value at trasaction boundary in `batch_consume` mode, pass
+the following parameters to `main`:
+```json
+{
+    "batch_consume": true,
+    "with_txn_sentinel": true
+}
+```
+
+When all events from a transaction have been emitted, system will generate a
+sentinel row and column `comdb2_event` will contain string `txn`.
+
 
 The default consumer makes blocking calls (`db:consumer()` and
 `dbconsumer:get()`.) The consumer also sets `emit_timeout` to 10 seconds. To

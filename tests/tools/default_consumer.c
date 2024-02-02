@@ -1,6 +1,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include <cdb2api.h>
 
@@ -71,6 +72,53 @@ static void test_register_timeout(void)
         abort();
     }
     cdb2_close(db);
+}
+
+static void test_with_txn_sentinel(void)
+{
+    cdb2_hndl_tp *hndl = db_handle();
+    should_pass(hndl, "CREATE DEFAULT LUA CONSUMER batch_consume ON (TABLE t FOR INSERT)");
+
+    const int num = 15;
+    for (int i = num; i >= 0; --i) {
+        char sql[128];
+        int n = pow(2, i);
+
+        sprintf(sql, "SET MAXTRANSIZE %d", n);
+        should_pass(hndl, sql);
+
+        sprintf(sql, "INSERT INTO T SELECT value FROM generate_series(1, %d)", n);
+        should_pass(hndl, sql);
+    }
+
+    const char *sp = "EXEC PROCEDURE batch_consume('{\"batch_consume\":true, \"with_txn_sentinel\": true, \"poll_timeout\":0 }')";
+    int rc = cdb2_run_statement(hndl, sp);
+    if (rc != CDB2_OK) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    int n = num, ctr = 0;
+    while (cdb2_next_record(hndl) == CDB2_OK) {
+        ++ctr;
+        if (strcmp(cdb2_column_value(hndl, 0), "poll_timeout") == 0) break;
+        if (strcmp(cdb2_column_value(hndl, 0), "txn") != 0) continue;
+        fprintf(stderr, "%s ctr:%d n:%d\n", (char *)cdb2_column_value(hndl, 0), ctr, n);
+        if (ctr != (pow(2, n) + 1)) break;
+        ctr = 0;
+        --n;
+    }
+    if (rc != CDB2_OK) {
+        fprintf(stderr, "cdb2_next_record failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    if (n + 1) {
+        fprintf(stderr, "unexpected #txn:%d last-batch:%d\n", num - n, ctr);
+        abort();
+    }
+    cdb2_close(hndl);
+    hndl = db_handle();
+    should_pass(hndl, "DROP LUA CONSUMER batch_consume");
+    cdb2_close(hndl);
 }
 
 int main(int argc, char **argv)
@@ -192,6 +240,8 @@ int main(int argc, char **argv)
 
     cdb2_close(hndl_1);
     cdb2_close(hndl_0);
+
+    test_with_txn_sentinel();
 
     puts("passed default-consumer");
 
