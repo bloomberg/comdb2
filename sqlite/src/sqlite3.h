@@ -459,34 +459,35 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_ROW         100  /* sqlite3_step() has another row ready */
 #define SQLITE_DONE        101  /* sqlite3_step() has finished executing */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-#define SQLITE_SCHEMA_REMOTE      50 /* distributed schema has inconsistent 
-                                      * local cache */
-#define SQLITE_SCHEMA_DOHSQL      51 /* see dohsql */
-#define SQLITE_EARLYSTOP_DOHSQL   52 /* see dohsql */
-#define SQLITE_SCHEMA_PUSH_REMOTE 53 /* push query to remote node */
-#define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
-#define SQLITE_ACCESS            201 /* failed permissions */
-#define SQLITE_LIMIT_DEPRECATED  202 /* SQLITE_LIMIT -- no longer used */
-#define SQLITE_TRANTOOCOMPLEX    204 /* I refuse to use 203 for this */
-#define SQLITE_TRAN_CANCELLED    205 /* resource had to be freed, transaction
-                                      * was aborted */
-#define SQLITE_TRAN_NOLOG        206 /* log has been freed, unable to maintain
-                                      * snapshot */
-#define SQLITE_TRAN_NOUNDO       207 /* the database suffered an NON-undoable
-                                      * operation: fastinit, sc */
-#define SQLITE_CONV_ERROR        208 /* error converting types, sqlite_column_*
-                                      * routines */
-#define SQLITE_COMDB2SCHEMA      209 /* The current Vdbe has been changed under
-                                      * the hood (the compiled statement
-                                      * executed comdb2 custom code) */
-#define SQLITE_CLIENT_CHANGENODE 210 /* Ask the client api to retry against
-                                      * another node */
-#define SQLITE_DDL_MISUSE        211 /* overlapping tables detected in
-                                      * transactional DDLs */
-#define SQLITE_TIMEDOUT          212 /* query timed out */
-#define SQLITE_COST_TOO_HIGH     213 /* query cost too high */
-#define SQLITE_NO_TEMPTABLES     214 /* temporary tables disallowed */
-#define SQLITE_NO_TABLESCANS     215 /* table scans disallowed */
+#define SQLITE_SCHEMA_REMOTE              50 /* distributed schema has inconsistent 
+                                              * local cache */
+#define SQLITE_SCHEMA_DOHSQL              51 /* see dohsql */
+#define SQLITE_EARLYSTOP_DOHSQL           52 /* see dohsql */
+#define SQLITE_SCHEMA_PUSH_REMOTE         53 /* push query to remote node */
+#define SQLITE_DEADLOCK                  200 /* deadlock happened, transaction aborted */
+#define SQLITE_ACCESS                    201 /* failed permissions */
+#define SQLITE_LIMIT_DEPRECATED          202 /* SQLITE_LIMIT -- no longer used */
+#define SQLITE_TRANTOOCOMPLEX            204 /* I refuse to use 203 for this */
+#define SQLITE_TRAN_CANCELLED            205 /* resource had to be freed, transaction
+                                              * was aborted */
+#define SQLITE_TRAN_NOLOG                206 /* log has been freed, unable to maintain
+                                              * snapshot */
+#define SQLITE_TRAN_NOUNDO               207 /* the database suffered an NON-undoable
+                                              * operation: fastinit, sc */
+#define SQLITE_CONV_ERROR                208 /* error converting types, sqlite_column_*
+                                              * routines */
+#define SQLITE_COMDB2SCHEMA              209 /* The current Vdbe has been changed under
+                                              * the hood (the compiled statement
+                                              * executed comdb2 custom code) */
+#define SQLITE_CLIENT_CHANGENODE         210 /* Ask the client api to retry against
+                                              * another node */
+#define SQLITE_DDL_MISUSE                211 /* overlapping tables detected in
+                                              * transactional DDLs */
+#define SQLITE_TIMEDOUT                  212 /* query timed out */
+#define SQLITE_COST_TOO_HIGH             213 /* query cost too high */
+#define SQLITE_NO_TEMPTABLES             214 /* temporary tables disallowed */
+#define SQLITE_NO_TABLESCANS             215 /* table scans disallowed */
+#define SQLITE_ANALYZE_ALREADY_RUNNING   216 /* analyze is already running on some table */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* end-of-error-codes */
 
