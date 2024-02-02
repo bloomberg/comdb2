@@ -115,6 +115,7 @@ extern int gbl_pmux_route_enabled;
 extern int gbl_debug_pb_connectmsg_dbname_check;
 extern int gbl_debug_pb_connectmsg_gibberish;
 extern int gbl_accept_on_child_nets;
+extern void pstack_self(void);
 
 static struct timeval one_sec = {1, 0};
 static struct timeval connect_timeout = {1, 0};
@@ -128,7 +129,7 @@ enum policy {
 };
 
 static int dedicated_appsock = 1;
-static int dedicated_timer = 0;
+static int dedicated_timer = 1;
 static int dedicated_fdb = 1;
 static enum policy reader_policy = POLICY_PER_NET;
 static enum policy writer_policy = POLICY_PER_HOST;
@@ -143,14 +144,19 @@ struct policy_info {
 static struct policy_info single;
 static pthread_t base_thd;
 static struct event_base *base;
+
 static pthread_t timer_thd;
 static struct event_base *timer_base;
+static struct timeval timer_tick;
+
 static pthread_t fdb_thd;
 static struct event_base *fdb_base;
+static struct timeval fdb_tick;
 
 #define NUM_APPSOCK_RD 4
-pthread_t appsock_thd[NUM_APPSOCK_RD];
-struct event_base *appsock_base[NUM_APPSOCK_RD];
+static pthread_t appsock_thd[NUM_APPSOCK_RD];
+static struct event_base *appsock_base[NUM_APPSOCK_RD];
+static struct timeval appsock_tick[NUM_APPSOCK_RD];
 
 #define get_rd_policy()                                                        \
     ({                                                                         \
@@ -385,7 +391,7 @@ static void make_event_hash_key(char *key, const char *service, const char *host
 struct net_dispatch_info {
     const char *who;
     struct event_base *base;
-    struct host_info *host_info;
+    struct timeval *tick;
 };
 
 struct user_msg_info {
@@ -403,7 +409,6 @@ struct user_event_info {
 };
 static LIST_HEAD(, user_event_info) user_event_list = LIST_HEAD_INITIALIZER(user_event_list);
 #endif
-
 static LIST_HEAD(, net_info) net_list = LIST_HEAD_INITIALIZER(net_list);
 static LIST_HEAD(, host_info) host_list = LIST_HEAD_INITIALIZER(host_list);
 
@@ -437,10 +442,72 @@ static void shutdown_close(int fd)
     close(fd);
 }
 
-static void nop(int dummyfd, short what, void *arg)
+static void event_tick(int dummyfd, short what, void *arg)
 {
-    /* EVLOOP_NO_EXIT_ON_EMPTY is not available in LibEvent v2.0. This keeps
-     * base around even if there are no events. */
+    struct net_dispatch_info *n = arg;
+    if (n->tick) gettimeofday(n->tick, NULL);
+}
+
+static void *do_pstack(void *arg)
+{
+    pstack_self();
+    return NULL;
+}
+
+#define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
+int gbl_timer_warn_interval = 1500; //msec
+int gbl_timer_pstack_interval =  5 * 60; //sec
+static struct timeval last_timer_check;
+static struct timeval last_timer_pstack;
+static struct event *check_timers_ev;
+static void check_timers(int dummyfd, short what, void *arg)
+{
+    if (gbl_timer_warn_interval == 0) return;
+
+    check_base_thd();
+    int ms, need_pstack = 0;
+    struct timeval now, diff;
+    gettimeofday(&now, NULL);
+
+    timersub(&now, &last_timer_check, &diff);
+    ms = timeval_to_ms(diff);
+    if (ms >= gbl_timer_warn_interval) {
+        logmsg(LOGMSG_WARN, "DELAYED TIMER CHECK:%dms\n", ms);
+        need_pstack = 1;
+    }
+
+    timersub(&now, &timer_tick, &diff);
+    ms = timeval_to_ms(diff);
+    if (ms >= gbl_timer_warn_interval) {
+        logmsg(LOGMSG_WARN, "LONG TIMER TICK:%dms\n", ms);
+        need_pstack = 1;
+    }
+
+    timersub(&now, &fdb_tick, &diff);
+    ms = timeval_to_ms(diff);
+    if (ms >= gbl_timer_warn_interval) {
+        logmsg(LOGMSG_WARN, "LONG FDB TICK:%dms\n", ms);
+        need_pstack = 1;
+    }
+
+    int thds = gbl_libevent_appsock && dedicated_appsock ? NUM_APPSOCK_RD : 0;
+    for (int i = 0; i < thds; ++i) {
+        timersub(&now, &appsock_tick[i], &diff);
+        ms = timeval_to_ms(diff);
+        if (ms < gbl_timer_warn_interval) continue;
+        logmsg(LOGMSG_WARN, "LONG APPSOCK TICK:%dms %p\n", ms, (void*) appsock_thd[i]);
+        need_pstack = 1;
+    }
+
+    last_timer_check = now;
+    if (!need_pstack) return;
+    timersub(&now, &last_timer_pstack, &diff);
+    if (diff.tv_sec < gbl_timer_pstack_interval) return;
+    last_timer_pstack = now;
+    logmsg(LOGMSG_WARN, "%s: Generating pstack\n", __func__);
+    pthread_t t;
+    Pthread_create(&t, NULL, do_pstack, NULL);
+    Pthread_detach(t);
 }
 
 static __thread struct event_base *current_base;
@@ -452,12 +519,12 @@ static void *net_dispatch(void *arg)
     comdb2_name_thread(n->who);
 
     current_base = n->base;
-    struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
-    struct timeval ten = {10, 0};
+    struct event *ev = event_new(n->base, -1, EV_PERSIST, event_tick, n);
+    struct timeval one = {1, 0};
 
     ENABLE_PER_THREAD_MALLOC(n->who);
 
-    event_add(ev, &ten);
+    event_add(ev, &one);
     if (start_callback) {
         start_callback(start_stop_callback_data);
     }
@@ -474,23 +541,24 @@ static void *net_dispatch(void *arg)
     return NULL;
 }
 
-static void init_base_priority(pthread_t *t, struct event_base **bb, const char *who, int priority)
+static void init_base_priority(pthread_t *t, struct event_base **bb, const char *who, int priority,
+                               struct timeval *tick)
 {
-    struct net_dispatch_info *info;
-    info = calloc(1, sizeof(struct net_dispatch_info));
+    struct net_dispatch_info *info = calloc(1, sizeof(struct net_dispatch_info));
     *bb = event_base_new();
     if (priority) {
         event_base_priority_init(*bb, priority);
     }
     info->who = who;
     info->base = *bb;
+    info->tick = tick;
     Pthread_create(t, NULL, net_dispatch, info);
     Pthread_detach(*t);
 }
 
 static void init_base(pthread_t *t, struct event_base **bb, const char *who)
 {
-    init_base_priority(t, bb, who, 0);
+    init_base_priority(t, bb, who, 0, NULL);
 }
 
 static struct host_info *host_info_new(char *host)
@@ -2214,11 +2282,11 @@ static void pmux_connect(int dummyfd, short what, void *data)
 static struct timeval ms_to_timeval(int ms)
 {
     struct timeval t = {0};
-    uint64_t usec = ms * 1000;
-    if (usec >= 1000000) {
-        t.tv_sec = usec / 1000000;
+    if (ms >= 1000) {
+        t.tv_sec = ms / 1000;
+        ms %= 1000;
     }
-    t.tv_usec = usec % 1000000;
+    t.tv_usec = ms * 1000;
     return t;
 }
 
@@ -3088,13 +3156,15 @@ static void setup_bases(void)
 {
     init_base(&base_thd, &base, "main");
     if (dedicated_timer) {
-        init_base(&timer_thd, &timer_base, "timer");
+        gettimeofday(&timer_tick, NULL);
+        init_base_priority(&timer_thd, &timer_base, "timer", 0, &timer_tick);
     } else {
         timer_thd = base_thd;
         timer_base = base;
     }
     if (dedicated_fdb) {
-        init_base(&fdb_thd, &fdb_base, "fdb");
+        gettimeofday(&fdb_tick, NULL);
+        init_base_priority(&fdb_thd, &fdb_base, "fdb", 0, &fdb_tick);
     } else {
         fdb_thd = base_thd;
         fdb_base = base;
@@ -3102,7 +3172,8 @@ static void setup_bases(void)
     if (gbl_libevent_appsock) {
         if (dedicated_appsock) {
             for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
-                init_base_priority(&appsock_thd[i], &appsock_base[i], "appsock", 2);
+                gettimeofday(&appsock_tick[i], NULL);
+                init_base_priority(&appsock_thd[i], &appsock_base[i], "appsock", 2, &appsock_tick[i]);
             }
         } else {
             for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
@@ -3125,8 +3196,12 @@ static void setup_bases(void)
         init_base(&single.rdthd, &single.rdbase, "read");
     }
 
-    logmsg(LOGMSG_USER, "Libevent %s with backend method %s\n",
-           event_get_version(), event_base_get_method(base));
+    gettimeofday(&last_timer_check, NULL);
+    check_timers_ev = event_new(base, -1, EV_PERSIST, check_timers, NULL);
+    struct timeval one = {1, 0};
+    event_add(check_timers_ev, &one);
+
+    logmsg(LOGMSG_USER, "Libevent %s with backend method %s\n", event_get_version(), event_base_get_method(base));
 }
 
 static void init_event_net(netinfo_type *netinfo_ptr)
