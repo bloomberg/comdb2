@@ -526,13 +526,26 @@ respectively to the emitted rows.
 By deafult, one event is consumed per transaction (dbconsumer:get() followed by
 dbconsumer:consume()), Application can change this to consume in batches which
 match originating transaction sizes (by using `dbconsumer:next()`.) To do this
-pass the following parameter to main:
+pass the following parameter to `main`:
 
 ```json
 {
     "batch_consume": true
 }
 ```
+
+To emit a sentinal value at trasaction boundary in `batch_consume` mode, pass
+the following parameters to `main`:
+```json
+{
+    "batch_consume": true,
+    "with_txn_sentinal": true
+}
+```
+
+When all events from a transaction have been emitted, system will generate a
+sentinal row and column `comdb2_event` will contain string `txn`.
+
 
 The default consumer makes blocking calls (`db:consumer()` and
 `dbconsumer:get()`.) The consumer also sets `emit_timeout` to 10 seconds. To
