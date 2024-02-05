@@ -58,6 +58,7 @@
 #include <net_int.h>
 #include <plhash.h>
 #include <portmuxapi.h>
+#include <timer_util.h>
 
 #include <connectmsg.pb-c.h>
 
