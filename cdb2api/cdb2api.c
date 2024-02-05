@@ -1093,7 +1093,6 @@ struct cdb2_hndl {
     void *protobuf_data;
     int protobuf_size;
     int protobuf_offset;
-    int protobuf_used_sysmalloc;
     ProtobufCAllocator allocator;
     int auto_consume_timeout_ms;
     struct cdb2_hndl *fdb_hndl;
@@ -1109,14 +1108,12 @@ static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
         hndl->protobuf_offset += size;
     } else {
         p = malloc(size);
-        hndl->protobuf_used_sysmalloc = 1;
     }
     return p;
 }
 void cdb2_protobuf_free(void *allocator_data, void *p)
 {
     struct cdb2_hndl *hndl = allocator_data;
-    hndl->protobuf_used_sysmalloc = 0;
     if (p < hndl->protobuf_data ||
         p > (hndl->protobuf_data + hndl->protobuf_size)) {
         free(p);
@@ -2922,9 +2919,8 @@ static int cdb2_convert_error_code(int rc)
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
     if (hndl->lastresponse) {
-        if (hndl->protobuf_used_sysmalloc)
-            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
-                                             &hndl->allocator);
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                         &hndl->allocator);
         hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
         hndl->last_buf = NULL;
@@ -3362,9 +3358,8 @@ retry_next_record:
 
     /* free previous response */
     if (hndl->lastresponse) {
-        if (hndl->protobuf_used_sysmalloc)
-            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
-                                             &hndl->allocator);
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                         &hndl->allocator);
         hndl->protobuf_offset = 0;
     }
 
@@ -3634,9 +3629,8 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     if (hndl->lastresponse) {
-        if (hndl->protobuf_used_sysmalloc)
-            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
-                                             &hndl->allocator);
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                         &hndl->allocator);
         hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
     }
