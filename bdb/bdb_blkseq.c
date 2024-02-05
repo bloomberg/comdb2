@@ -38,6 +38,7 @@
 #include "util.h"
 #include "locks_wrap.h"
 #include "tohex.h"
+#include "locks.h"
 
 extern int blkseq_get_rcode(void *data, int datalen);
 extern int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
@@ -429,7 +430,7 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key, int
 }
 
 /* Every N seconds, we shift all the trees down and delete the oldest */
-int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
+static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
 {
     time_t now, last;
     DB *to_be_deleted;
@@ -538,6 +539,15 @@ done:
     if (oldname)
         free(oldname);
 
+    return rc;
+}
+
+
+int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
+{
+    BDB_READLOCK("bdb_blkseq_clean");
+    int rc = bdb_blkseq_clean_int(bdb_state, stripe);
+    BDB_RELLOCK();
     return rc;
 }
 
