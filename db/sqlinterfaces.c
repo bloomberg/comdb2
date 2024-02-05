@@ -6272,6 +6272,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     case SQLITE_COST_TOO_HIGH:
     case SQLITE_NO_TEMPTABLES:
     case SQLITE_NO_TABLESCANS:
+    case SQLITE_ANALYZE_ALREADY_RUNNING:
         *errstr = sqlite3_errmsg(sqldb);
         break;
 
@@ -6443,6 +6444,8 @@ int sqlserver2sqlclient_error(int rc)
         return CDB2ERR_SCHEMA;
     case CDB2ERR_PREPARE_ERROR:
         return CDB2ERR_PREPARE_ERROR;
+    case SQLITE_ANALYZE_ALREADY_RUNNING:
+        return CDB2ERR_ANALYZE_ALREADY_RUNNING;
     default:
         return CDB2ERR_UNKNOWN;
     }
