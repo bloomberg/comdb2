@@ -3280,7 +3280,6 @@ static int init_sqlite_tables(struct dbenv *dbenv)
             logmsg(LOGMSG_ERROR, "%s\n", err.errstr);
             return -1;
         }
-        tbl->csc2_schema = strdup(sqlite_stats_csc2[i]);
 
         /* Add table to the hash. */
         _db_hash_add(tbl);
