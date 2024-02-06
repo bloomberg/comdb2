@@ -732,7 +732,6 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
      * later on
      */
     if (!newdb->csc2_schema) {
-        assert(bdb_have_llmeta() && s->kind == SC_ALTERTABLE);
         int ver;
         ver = get_csc2_version_tran(db->tablename, tran);
         if (ver > 0) {

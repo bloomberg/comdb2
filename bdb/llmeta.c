@@ -1258,14 +1258,11 @@ static const uint8_t *llmeta_tablename_alias_data_get(
     return p_buf;
 }
 
-/* returns true if we have a llmeta table open else false */
-int bdb_have_llmeta() { return llmeta_bdb_state != NULL; }
-
 /* opens the low level meta table, if this is not called, any calls to
  * bdb_get_file_version* will return successfully but with a 0 version_number
  * any calls to bdb_new_file_version will fail */
 int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
-                    int create_override, int *bdberr)
+                    int *bdberr)
 {
     bdb_state_type *bdb_state = parent_bdb_handle;
     BDB_READLOCK("bdb_llmeta_open");
@@ -1275,11 +1272,7 @@ int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
         return 0;
     }
 
-    if (create_override)
-        llmeta_bdb_state = bdb_create_more_lite(name, dir, 0, LLMETA_IXLEN, 0,
-                                                parent_bdb_handle, bdberr);
-    else
-        llmeta_bdb_state = bdb_open_more_lite(
+    llmeta_bdb_state = bdb_open_more_lite(
             name, dir, 0, LLMETA_IXLEN, 0, parent_bdb_handle, NULL, 0, bdberr);
 
     BDB_RELLOCK();
@@ -2952,12 +2945,6 @@ int bdb_add_dummy_llmeta_wait(int wait_for_seqnum)
     int bdberr;
     int retries = gbl_maxretries;
     uint8_t key[LLMETA_IXLEN] = {0};
-
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "%s got add_dummy request while opening backend.\n",
-                __func__);
-        return -1;
-    }
 
 retry:
     if (bdb_lock_desired(llmeta_bdb_state->parent)) {
@@ -7145,11 +7132,6 @@ int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc = 0;
 
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "%s:%d: No llmeta!\n", __FILE__, __LINE__);
-        return 0;
-    }
-
     rc = bdb_lite_list_records(llmeta_bdb_state, bdb_llmeta_print_record,
                                bdberr);
 
@@ -8372,11 +8354,6 @@ int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
 void llmeta_list_tablename_alias(void)
 {
     int bdberr = 0;
-
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "%s:%d: No llmeta!\n", __FILE__, __LINE__);
-        return;
-    }
 
     if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
         logmsg(LOGMSG_ERROR, "%s: low level meta table db not "

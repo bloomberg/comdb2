@@ -4179,6 +4179,7 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     if (ptid == NULL)
         ptid = &tmptid;
     tid = *ptid;
+    int llpagesize;
 
     if ((flags & BDB_OPEN_SKIP_SCHEMA_LK) == 0) {
         assert_wrlock_schema_lk();
@@ -4228,12 +4229,12 @@ deadlock_again:
     if (bdbtype == BDBTYPE_TABLE) {
         int dtanum, strnum;
 
-        /* if we are creating a new db, we are the master, and we have a low
-         * level meta table: give all the files version numbers
+        /* if we are creating a new db, we are the master:
+         * give all the files version numbers
          * WARNING this must be done before any calls to form_file_name or any
          * other function that uses the file version db or it will result in a
          * deadlock */
-        if (iammaster && create && bdb_have_llmeta()) {
+        if (iammaster && create) {
             if (bdb_new_file_version_all(bdb_state, &tran, pbdberr) || *pbdberr != BDBERR_NOERROR) {
                 logmsg(LOGMSG_ERROR,
                        "bdb_open_dbs: failed to update table and its file's "
@@ -4289,33 +4290,27 @@ deadlock_again:
                 else
                     pagesize = bdb_state->attr->pagesizeblob;
 
-                /* get page sizes from the llmeta table if there */
-                if (bdb_have_llmeta()) {
-                    int rc;
-                    int bdberr;
-                    int llpagesize;
+                /* get page sizes from the llmeta table */
+                if (dtanum == 0)
+                    rc = bdb_get_pagesize_alldata(&tran, &llpagesize,
+                                                  &tmp_bdberr);
+                else
+                    rc = bdb_get_pagesize_allblob(&tran, &llpagesize,
+                                                  &tmp_bdberr);
+                if (!rc && !tmp_bdberr) {
+                    if (llpagesize)
+                        pagesize = llpagesize;
+                }
 
-                    if (dtanum == 0)
-                        rc = bdb_get_pagesize_alldata(&tran, &llpagesize,
-                                                      &bdberr);
-                    else
-                        rc = bdb_get_pagesize_allblob(&tran, &llpagesize,
-                                                      &bdberr);
-                    if ((rc == 0) && (bdberr == 0)) {
-                        if (llpagesize)
-                            pagesize = llpagesize;
-                    }
-
-                    if (dtanum == 0)
-                        rc = bdb_get_pagesize_data(bdb_state, &tran,
-                                                   &llpagesize, &bdberr);
-                    else
-                        rc = bdb_get_pagesize_blob(bdb_state, &tran,
-                                                   &llpagesize, &bdberr);
-                    if ((rc == 0) && (bdberr == 0)) {
-                        if (llpagesize)
-                            pagesize = llpagesize;
-                    }
+                if (dtanum == 0)
+                    rc = bdb_get_pagesize_data(bdb_state, &tran,
+                                               &llpagesize, &tmp_bdberr);
+                else
+                    rc = bdb_get_pagesize_blob(bdb_state, &tran,
+                                               &llpagesize, &tmp_bdberr);
+                if (!rc && !tmp_bdberr) {
+                    if (llpagesize)
+                        pagesize = llpagesize;
                 }
 
                 if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
@@ -4656,24 +4651,17 @@ deadlock_again:
                     pagesize = calc_pagesize(bdb_state->attr->pagesizeix, bdb_state->ixlen[i]);
             }
 
-            /* get page sizes from the llmeta table if there */
-            if (bdb_have_llmeta()) {
-                int rc;
-                int llpagesize;
+            /* get page sizes from the llmeta table */
+            rc = bdb_get_pagesize_allindex(&tran, &llpagesize, &tmp_bdberr);
+            if (!rc && !tmp_bdberr) {
+                if (llpagesize)
+                    pagesize = llpagesize;
+            }
 
-                rc = bdb_get_pagesize_allindex(&tran, &llpagesize, pbdberr);
-
-                if ((rc == 0) && (*pbdberr == BDBERR_NOERROR)) {
-                    if (llpagesize)
-                        pagesize = llpagesize;
-                }
-
-                rc = bdb_get_pagesize_index(bdb_state, &tran, &llpagesize, pbdberr);
-
-                if ((rc == 0) && (*pbdberr == BDBERR_NOERROR)) {
-                    if (llpagesize)
-                        pagesize = llpagesize;
-                }
+            rc = bdb_get_pagesize_index(bdb_state, &tran, &llpagesize, &tmp_bdberr);
+            if (!rc && !tmp_bdberr) {
+                if (llpagesize)
+                    pagesize = llpagesize;
             }
 
             rc = bdb_state->dbp_ix[i]->set_pagesize(bdb_state->dbp_ix[i],
@@ -8203,12 +8191,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         logmsg(LOGMSG_ERROR, "%s: null or invalid argument\n", __func__);
         if (bdberr)
             *bdberr = BDBERR_BADARGS;
-        return -1;
-    }
-
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "%s: db is not llmeta\n", __func__);
-        *bdberr = BDBERR_MISC;
         return -1;
     }
 
