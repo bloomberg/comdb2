@@ -130,6 +130,11 @@ void bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
         free(bdb_state->blkseq_last_lsn[1]);
         bdb_state->blkseq_last_lsn[1] = NULL;
     }
+
+    if (bdb_state->blkseq_last_roll_time) {
+        free(bdb_state->blkseq_last_roll_time);
+        bdb_state->blkseq_last_roll_time = NULL;
+    }
 }
 
 int bdb_create_private_blkseq(bdb_state_type *bdb_state)
@@ -146,6 +151,7 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
     bdb_state->blkseq[1] = malloc(nstripes * sizeof(DB *));
     bdb_state->blkseq_last_lsn[0] = malloc(nstripes * sizeof(DB_LSN));
     bdb_state->blkseq_last_lsn[1] = malloc(nstripes * sizeof(DB_LSN));
+    bdb_state->blkseq_last_roll_time = malloc(nstripes * sizeof(time_t));
 
     bdb_state->blkseq_log_list = malloc(nstripes * sizeof(listc_t));
 
@@ -182,8 +188,8 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
         }
         listc_init(&bdb_state->blkseq_log_list[stripe],
                    offsetof(struct seen_blkseq, lnk));
+        bdb_state->blkseq_last_roll_time[stripe] = comdb2_time_epoch();
     }
-    bdb_state->blkseq_last_roll_time = comdb2_time_epoch();
 
     return 0;
 }
@@ -445,7 +451,7 @@ static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
 
     Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
 
-    last = bdb_state->blkseq_last_roll_time;
+    last = bdb_state->blkseq_last_roll_time[stripe];
 
     /* Not yet time?  Do nothing. */
     if ((now - last) < bdb_state->attr->private_blkseq_maxage)
@@ -500,7 +506,7 @@ static int bdb_blkseq_clean_int(bdb_state_type *bdb_state, uint8_t stripe)
     bdb_state->blkseq[0][stripe] = newdb;
     bdb_state->blkseq_last_lsn[1][stripe] = bdb_state->blkseq_last_lsn[0][stripe];
 
-    bdb_state->blkseq_last_roll_time = now;
+    bdb_state->blkseq_last_roll_time[stripe] = now;
 
     /* Clean up the old blkseq file. Get its name, close it, delete it. */
     rc =
