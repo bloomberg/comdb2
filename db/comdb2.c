@@ -2969,7 +2969,7 @@ int llmeta_open(void)
 
     /*open the table*/
     if (bdb_llmeta_open(llmetaname, thedb->basedir, thedb->bdb_env,
-                        0 /*create_override*/, &bdberr) ||
+                        &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
                bdberr);

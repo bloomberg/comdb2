@@ -4534,21 +4534,12 @@ void fix_lrl_ixlen_tran(tran_type *tran)
             db->csc2_schema = NULL;
         }
 
-        if (bdb_have_llmeta()) {
-            int ver;
-            ver = get_csc2_version_tran(db->tablename, tran);
-            if (ver > 0) {
-                get_csc2_file_tran(db->tablename, ver, &db->csc2_schema,
-                                   &db->csc2_schema_len, tran);
-            }
-        } else {
-            if (!db->csc2_schema)  
-                db->csc2_schema = load_text_file(db->lrlfname);
-            if (db->csc2_schema)
-                db->csc2_schema_len = strlen(db->csc2_schema);
+        int ver = get_csc2_version_tran(db->tablename, tran);
+        if (ver > 0) {
+            get_csc2_file_tran(db->tablename, ver, &db->csc2_schema,
+                    &db->csc2_schema_len, tran);
         }
     }
-    /* TODO: schema information for foreign tables */
 }
 
 void fix_lrl_ixlen()

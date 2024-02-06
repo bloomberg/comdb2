@@ -1768,8 +1768,6 @@ static int cancel_all_logical_transactions(bdb_state_type *bdb_state)
     return 0;
 }
 
-int llmeta_open(void);
-
 /* XXX
  * Have to think about how logical recovery is going to look on the replicants -
  * now, all of the replicant rowlocks are acquired strictly in

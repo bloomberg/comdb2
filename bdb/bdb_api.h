@@ -1419,9 +1419,8 @@ void bdb_register_rtoff_callback(bdb_state_type *bdb_state, void (*func)(void));
  * for, or 0 if no checkpoint is currently running. */
 int bdb_get_checkpoint_time(bdb_state_type *bdb_state);
 
-int bdb_have_llmeta();
 int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
-                    int create_override, int *bdberr);
+                    int *bdberr);
 int bdb_llmeta_set_tables(tran_type *input_trans, char **tblnames,
                           const int *dbnums, int numdbs, int *bdberr);
 int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
