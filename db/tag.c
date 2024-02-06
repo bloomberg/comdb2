@@ -4528,17 +4528,6 @@ void fix_lrl_ixlen_tran(tran_type *tran)
             s = find_tag_schema(db, namebuf);
             db->ix_keylen[ix] = get_size_of_schema(s);
         }
-
-        if (db->csc2_schema) {
-            free(db->csc2_schema);
-            db->csc2_schema = NULL;
-        }
-
-        int ver = get_csc2_version_tran(db->tablename, tran);
-        if (ver > 0) {
-            get_csc2_file_tran(db->tablename, ver, &db->csc2_schema,
-                    &db->csc2_schema_len, tran);
-        }
     }
 }
 

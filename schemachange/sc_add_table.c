@@ -35,13 +35,6 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
     int rc;
 
     fix_lrl_ixlen_tran(trans);
-    /* fix_lrl_ixlen() usually sets csc2_schema/csc2_schema_len, but for llmeta
-     * dbs, it grabs this info from llmeta and in the case where we are adding a
-     * table the schema is not yet in llmeta */
-    if (!newdb->csc2_schema && csc2) {
-        newdb->csc2_schema = strdup(csc2);
-        newdb->csc2_schema_len = strlen(newdb->csc2_schema);
-    }
 
     if (newdb->dbenv->master == gbl_myhostname) {
         if ((rc = sql_syntax_check(iq, newdb)))

@@ -671,7 +671,7 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
         return -1;
     }
 
-    db->csc2_schema = csc2;
+    free(csc2);
     db->dbs_idx = dbenv->num_dbs;
     dbenv->dbs[dbenv->num_dbs++] = db;
 

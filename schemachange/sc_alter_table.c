@@ -725,29 +725,13 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
         return SC_TABLE_DOESNOT_EXIST;
     }
 
-    newdb = s->newdb;
-
-    /* NOTE: add prepopulates newdb->csc2_schema, but alter does not
-     * we need this to be able to call populate_db_with_alt_schema
-     * later on
-     */
-    if (!newdb->csc2_schema) {
-        int ver;
-        ver = get_csc2_version_tran(db->tablename, tran);
-        if (ver > 0) {
-            get_csc2_file_tran(db->tablename, ver, &newdb->csc2_schema,
-                               &newdb->csc2_schema_len, tran);
-        } else {
-            sc_client_error(s, "Cannot get csc2 for the table %s",
-                            db->tablename);
-            return -1;
-        }
-    }
 
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
         goto convert_records;
     }
+
+    newdb = s->newdb;
 
     set_schemachange_options_tran(s, db, &scinfo, tran);
 
