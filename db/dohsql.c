@@ -2025,7 +2025,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     return *pparams = params;
 }
 
-int dohsql_clone_params(int nparams, struct param_data * params,
+int dohsql_clone_params(unsigned int nparams, struct param_data * params,
                         int *pnparams, struct param_data **pparams)
 {
     struct param_data *pout;
