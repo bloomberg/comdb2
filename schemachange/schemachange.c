@@ -1096,6 +1096,8 @@ int sc_timepart_add_table(const char *existingTableName,
     sc.kind = SC_ADDTABLE;
     sc.finalize = 1;
 
+    sc.keep_locked = 1;
+
     /* get new schema */
     db = get_dbtable_by_name(existingTableName);
     if (db == NULL) {
@@ -1168,6 +1170,8 @@ int sc_timepart_add_table(const char *existingTableName,
     create_sqlmaster_records(NULL);
     create_sqlite_master();
 
+    unlock_schema_lk();
+
     return xerr->errval;
 
 error:
@@ -1197,6 +1201,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     /* this is a table add */
     sc.kind = SC_DROPTABLE;
     sc.finalize = 1;
+
+    sc.keep_locked = 1;
 
     /* get new schema */
     db = get_dbtable_by_name(tableName);
@@ -1254,6 +1260,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     create_sqlmaster_records(NULL);
     create_sqlite_master();
 
+    unlock_schema_lk();
+
     return xerr->errval;
 
 error:
@@ -1276,6 +1284,7 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
     sc.is_osql = 1;
     sc.newpartition = partition;
 
+    sc.keep_locked = 1;
 
     /* use real table name, not the sql alias */
     struct dbtable *table = get_dbtable_by_name(tableName);
@@ -1308,6 +1317,8 @@ int sc_timepart_truncate_table(const char *tableName, struct errstat *xerr,
 
     create_sqlmaster_records(NULL);
     create_sqlite_master();
+
+    unlock_schema_lk();
 
     bzero(xerr, sizeof(*xerr));
     return 0;
