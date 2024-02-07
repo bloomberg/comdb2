@@ -721,7 +721,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
 
                 /* If another schemachange thread is deleting files,
                    we can't safely free the bdb state. Let it leak. */
-                if (iq->sc->drop_table && !bdb_is_delfiles_in_progress()) {
+                if (iq->sc->kind == SC_DROPTABLE && !bdb_is_delfiles_in_progress()) {
                     bdb_free(iq->sc->db->handle, &bdberr);
                     freedb(iq->sc->db);
                 }
