@@ -703,7 +703,7 @@ done:
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
-    } else if (sc->drop_table) {
+    } else if (sc->kind == SC_DROPTABLE) {
         bdb_free(db->handle, &bdberr);
         freedb(db);
     }
