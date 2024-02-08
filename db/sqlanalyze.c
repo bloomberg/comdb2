@@ -826,8 +826,11 @@ static int analyze_table_int(table_descriptor_t *td,
     if (sampled_tables_enabled)
         get_sampling_threshold(td->table, &sampling_threshold);
 
-    /* sample if enabled & large */
-    if (sampled_tables_enabled && totsiz > sampling_threshold) {
+    /* sample if enabled */
+    if (sampled_tables_enabled) {
+        if (totsiz <= sampling_threshold) {
+            td->scale = 100;
+        }
         logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", td->table, td->scale);
         sampled_table = 1;
         rc = sample_indicies(td, &clnt, tbl, td->scale, td->sb);
