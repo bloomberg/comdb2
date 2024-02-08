@@ -2946,6 +2946,11 @@ int bdb_add_dummy_llmeta_wait(int wait_for_seqnum)
     int retries = gbl_maxretries;
     uint8_t key[LLMETA_IXLEN] = {0};
 
+    if (llmeta_bdb_state == NULL) {
+        logmsg(LOGMSG_ERROR, "%s got add_dummy request while opening backend.\n", __func__);
+        return -1;
+    }
+
 retry:
     if (bdb_lock_desired(llmeta_bdb_state->parent)) {
         logmsg(LOGMSG_ERROR, "%s short-circuiting because bdb_lock_desired\n",
