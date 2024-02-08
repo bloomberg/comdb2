@@ -792,7 +792,9 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     uint8_t ver = 0;
+    u_int32_t lockerid;
 
+    bdb_get_tran_lockerid(tran, &lockerid);
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_walk %s\n", bdb_state->name);
 
@@ -817,8 +819,10 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
         DB *db = dbs[i]; if (db == NULL) continue;
         dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
+
+
         /* this API is a little nutty... */
-        rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
+        rc = db->paired_cursor_from_lid(db, lockerid, &dbcp, 0);
         if (rc != 0) {
             *bdberr = BDBERR_MISC;
             return -1;
