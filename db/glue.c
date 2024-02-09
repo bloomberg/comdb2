@@ -6257,3 +6257,8 @@ int sync_state_to_protobuf(int sync) {
 static int syncmode_callback(bdb_state_type *bdb_state) {
     return sync_state_to_protobuf(thedb->rep_sync);
 }
+
+void thread_assert_nolocks(void)
+{
+    bdb_thread_assert_nolocks(thedb->bdb_env);
+}

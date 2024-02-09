@@ -5997,7 +5997,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
             end = gettimeofday_ms();
             goto done;
         }
-        views_lock();
+        rdlock_views_lk();
     }
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
@@ -6015,7 +6015,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     }
 
     if (iq->tptlock)
-        views_unlock();
+        unlock_views_lk();
 
 done:
 

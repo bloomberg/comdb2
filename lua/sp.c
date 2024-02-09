@@ -697,6 +697,11 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay_ms)
 {
     SP sp = getsp(L);
     while (1) {
+
+        /* These should not be held here */
+        assert_no_schema_lk();
+        assert_no_views_lk();
+
         if (stop_waiting(L, q)) {
             return -1;
         }
@@ -942,6 +947,10 @@ static int dbconsumer_next(Lua L)
 static int db_emit_int(Lua);
 static int dbconsumer_emit(Lua L)
 {
+    /* Blocking call- should not hold either of these */
+    assert_no_schema_lk();
+    assert_no_views_lk();
+
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     lua_remove(L, 1);
 

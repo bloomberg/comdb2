@@ -30,11 +30,11 @@ static int systblTimepartitionsShardsInit(sqlite3 *db);
 static int systblTimepartitionsEventsInit(sqlite3 *db);
 
 sqlite3_module systblTimepartitionsModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_VIEWS_LK,
     .systable_lock = "comdb2_tables",
 };
 sqlite3_module systblTimepartitionShardsModule = {
-    .access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER | CDB2_VIEWS_LK,
     .systable_lock = "comdb2_tables",
 };
 sqlite3_module systblTimepartitionEventsModule = {
