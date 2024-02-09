@@ -7642,6 +7642,16 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         return 0;
     }
 
+    /* We should have the schema-lk here */
+    assert_lock_schema_lk();
+
+    /* Acquire views-lock first */
+    if (p->vTableFlags & CDB2_VIEWS_LK) {
+        logmsg(LOGMSG_USER, "%s td %p clnt %p auth %p getting views lk\n",
+            __func__, (void *)pthread_self(), clnt, p);
+        rdlock_views_lk();
+    }
+
     for (int i = 0; i < p->numVTableLocks; i++) {
         if ((rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, p->vTableLocks[i],
                                                   bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
@@ -7657,6 +7667,9 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             return rc;
         }
     }
+
+    if (!after_recovery)
+        clnt->dbtran.pStmt = pStmt;
 
     if (nTables == 0)
         return 0;
@@ -7841,9 +7854,6 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
         reqlog_add_table(thrman_get_reqlogger(thrman_self()), db->tablename);
     }
-
-    if (!after_recovery)
-        clnt->dbtran.pStmt = pStmt;
 
     /* we don't release remote table locks during sql recovery */
     if (!after_recovery && nRemoteTables > 0) {
@@ -9639,10 +9649,17 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     int is_recovery = (flags & CURTRAN_RECOVERY);
     int curtran_flags = 0;
     int bdberr = 0;
+    Vdbe *p = (Vdbe *)clnt->dbtran.pStmt;
 
 #ifdef DEBUG_TRAN
     fprintf(stderr, "%p, %s\n", (void *)pthread_self(), __func__);
 #endif
+
+    if (p && (p->vTableFlags & CDB2_VIEWS_LK)) {
+        assert_rdlock_views_lk();
+        unlock_views_lk();
+        assert_no_views_lk();
+    }
 
     if (!is_recovery) {
         if (clnt->dbtran.nLockedRemTables > 0) {

@@ -314,12 +314,6 @@ int views_cron_restart(timepart_views_t *views);
  */
 int timepart_update_retention(void *tran, const char *name, int value, struct errstat *err);
 
-/**
- * Locking the views subsystem, needed for ordering locks with schema
- *
- */
-void views_lock(void);
-void views_unlock(void);
 
 /**
  * Dump the timepartition json configuration
