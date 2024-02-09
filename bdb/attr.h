@@ -38,14 +38,14 @@
  *  description - description of the variable
  */
 
-/* If we reorder or delete any of thse you must do a full rebuild of bdb
+/* If we reorder or delete any of these you must do a full rebuild of bdb
  * and of db as the BDB_ATTR_ constants will have changed. */
 DEF_ATTR(REPTIMEOUT, reptimeout, SECS, 20, "Replication timeout")
 DEF_ATTR(CHECKPOINTTIME, checkpointtime, SECS, 60,
          "Write a checkpoint at this interval.")
 DEF_ATTR(CHECKPOINTTIMEPOLL, checkpointtimepoll, MSECS, 100,
          "Poll a random amount of time lesser than this before writing a "
-         "checkpoint (attempting to prevent mulitple databases from "
+         "checkpoint (attempting to prevent multiple databases from "
          "checkpointing at the same exact time).")
 DEF_ATTR(LOGFILESIZE, logfilesize, BYTES, 41943040,
          "Attempt to keep each log file around this size.")
@@ -89,7 +89,7 @@ DEF_ATTR(REPSLEEP, repsleep, QUANTITY, 0,
  * - bigrcv times out at 50 seconds, so don't wait that long
  * - single threaded on a 6x sparc cluster I got ~700bpms; with heavy
  *   concurrent load it could drop as low as ~100bpms; but let's be
- *   optimisitic here.
+ *   optimistic here.
  * - fudge it by adding 5 seconds to whatever we calculate.
  */
 DEF_ATTR(BLOBSTRIPE, blobstripe, BOOLEAN, 0,
@@ -181,7 +181,7 @@ DEF_ATTR(NEWQDELMODE, newqdelmode, BOOLEAN, 1,
 
 /* Set to true to make us take a full diagnostic on a panic.
  * This disables Berkeley's panic checks so there is a risk that other
- * threads may try to operate against the panicced environment once this
+ * threads may try to operate against the panicked environment once this
  * is done.
  */
 DEF_ATTR(PANICFULLDIAG, panic_fulldiag, BOOLEAN, 0,
@@ -312,10 +312,10 @@ DEF_ATTR(REP_PROCESSORS, rep_processors, QUANTITY, 4,
 DEF_ATTR(REP_PROCESSORS_ROWLOCKS, rep_processors_rowlocks, QUANTITY, 0,
          "Rowlocks touches 1 file/txn; it's handled by the processor thread.")
 DEF_ATTR(REP_LSN_CHAINING, rep_lsn_chaining, BOOLEAN, 0,
-         "If set, will force trasnactions on replicant to always release locks "
+         "If set, will force transactions on replicant to always release locks "
          "in LSN order.")
 DEF_ATTR(REP_MEMSIZE, rep_memsize, QUANTITY, 524288,
-         "Maximum size for a local copy of log records for transaciton "
+         "Maximum size for a local copy of log records for transaction "
          "processors on replicants. Larger transactions will read from the log "
          "directly.")
 DEF_ATTR(ELECT_DISABLE_NETSPLIT_PATCH, elect_forbid_perfect_netsplit, BOOLEAN,
@@ -482,7 +482,7 @@ DEF_ATTR(SC_DONE_SAME_TRAN, sc_done_same_tran, BOOLEAN, 1,
 DEF_ATTR(USE_VTAG_ONDISK_VERMAP, use_vtag_ondisk_vermap, BOOLEAN, 1,
          "Use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk.")
 DEF_ATTR(UDP_DROP_DELTA_THRESHOLD, udp_drop_delta_threshold, QUANTITY, 10,
-         "Warn if delta of dropped packets exceeds this treshold.")
+         "Warn if delta of dropped packets exceeds this threshold.")
 DEF_ATTR(UDP_DROP_WARN_PERCENT, udp_drop_warn_percent, PERCENT, 10,
          "Warn only if percentage of dropped packets exceeds this.")
 DEF_ATTR(UDP_DROP_WARN_TIME, udp_drop_warn_time, SECS, 300,
@@ -688,7 +688,7 @@ DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
      checkpoint during database update activity.  this is also the
      timer used for deletion of log files.
   BDB_ATTR_LOGFILESIZE
-     size in bytes of a log file.  log files are extented until they
+     size in bytes of a log file.  log files are extended until they
      reach BDB_ATTR_LOGFILESIZE, then a new log file is created
      with an extension of .N+1 if the previous log file was .N
   BDB_ATTR_LOGMEMSIZE
@@ -696,7 +696,7 @@ DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
      commits will not cause the log file to be flushed to stable
      storage.  the log file will be flushed only when this memory
      buffer fills.  when BDB_ATTR_SYNCTRANSACTIONS is set to 1, this
-     buffer is used as temorary storage between the bdb_tran_begin
+     buffer is used as temporary storage between the bdb_tran_begin
      phase and the bdb_tran_commit phase.
   BDB_ATTR_LOGDELETEAGE
      log files that are both no longer needed (no longer needed means
@@ -708,11 +708,11 @@ DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
      interval, immediately following a checkpoint.  two special
      values exist.  LOGDELETEAGE_NEVER means never delete log files.
      LOGDELETEAGE_NOW means immediately remove any unneeded log file.
-     the full range of positive integers >=0 are avaiable to the
+     the full range of positive integers >=0 are available to the
      application.
   BDB_ATTR_SYNCTRANSACTIONS
      when this attribute is set to 1, a call to bdb_tran_commit()
-     will cause the log files to be syncronously flushed before
+     will cause the log files to be synchronously flushed before
      control returns to the application.  when this attribute is
      set to 0, control will return to the application as soon as
      the transaction is reflected in cache.
@@ -733,8 +733,8 @@ DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
   BDB_ATTR_REPALWAYSWAIT
      when this is set, bdb_wait_for_seqnum_from_all() and
      bdb_wait_for_seqnum_from_node() will wait for nodes that do not have
-     an working comm at the moment of the call.  the wait can still succeed
-     if the node comes re-estabilishes comm.
+     a working comm at the moment of the call.  the wait can still succeed
+     if the node comes re-establishes comm.
   BDB_ATTR_PAGESIZEDTA
      the pagesize of the .dta file
   BDB_ATTR_PAGESIZEIX
