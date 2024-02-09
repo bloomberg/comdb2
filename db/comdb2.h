@@ -3717,7 +3717,7 @@ void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 extern int gbl_queue_walk_limit;
 extern int gbl_rcache;
 extern int gbl_throttle_txn_chunks_msec;
-extern int gbl_always_load_preupd_blobs;
+extern int gbl_sql_release_locks_on_slow_reader;
 
 #ifdef COMDB2_BBCMAKE
 hash_t *hash_init_strcase(int);
