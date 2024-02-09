@@ -2475,9 +2475,6 @@ REGISTER_TUNABLE("noleader_retry_poll_ms",
 REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2api. (Default: none)",
                 TUNABLE_STRING, &gbl_cdb2api_policy_override, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("always_load_preupd_blobs", "For update triggers, always load pre-update blob values. (Default: on)", 
-                TUNABLE_BOOLEAN, &gbl_always_load_preupd_blobs, 0, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("incoherent_clnt_wait", "Delay incoherent reject if without master (Default: 10sec)",
                  TUNABLE_INTEGER, &gbl_incoherent_clnt_wait, 0, NULL, NULL, NULL, NULL);
 
