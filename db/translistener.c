@@ -1359,8 +1359,11 @@ int javasp_load_procedure_int(const char *name, const char *param,
                     flags |= JAVASP_TRANS_LISTEN_BEFORE_UPD;
                     if (sp_field_is_a_blob(table->name, fieldname))
                         flags |= JAVASP_TRANS_LISTEN_SAVE_BLOBS_UPD;
-                } else if (strcasecmp(flagname, "post_upd") == 0)
+                } else if (strcasecmp(flagname, "post_upd") == 0) {
                     flags |= JAVASP_TRANS_LISTEN_AFTER_UPD;
+                    if (sp_field_is_a_blob(table->name, fieldname))
+                        flags |= JAVASP_TRANS_LISTEN_SAVE_BLOBS_UPD;
+                }
                 else {
                     logmsg(LOGMSG_ERROR, "field %s unknown flag (config file %s)\n",
                             fieldname, argv[0]);
