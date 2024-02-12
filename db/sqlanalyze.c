@@ -1113,6 +1113,10 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
     }
     td.current_user.bypass_auth = bypass_auth;
 
+    if (sampled_tables_enabled) {
+        flush_db();
+    }
+
     /* dispatch */
     int rc = dispatch_table_thread(&td);
 
@@ -1159,6 +1163,10 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = (thd) ? thd->clnt : NULL;
+
+    if (sampled_tables_enabled) {
+        flush_db();
+    }
 
     /* start analyzing each table */
     for (i = 0; i < thedb->num_dbs; i++) {
