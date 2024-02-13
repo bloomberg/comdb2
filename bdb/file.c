@@ -7346,7 +7346,15 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
         char bdbname[PATH_MAX], physname[PATH_MAX];
-        form_file_name_ex(bdb_state, 1, dtanum, 1, 1, stripenum, bdb_state->dtavers[dtanum], bdbname, sizeof(bdbname));
+
+        /* check for stripe-ness. non-stripe won't have the s[n] suffix */
+        int isstriped = 0;
+        if (dtanum > 0 && bdb_state->attr->blobstripe > 0)
+            isstriped = 1;
+        else if (dtanum == 0 && bdb_state->bdbtype == BDBTYPE_TABLE && bdb_state->attr->dtastripe > 0)
+            isstriped = 1;
+
+        form_file_name_ex(bdb_state, 1, dtanum, 1, isstriped, stripenum, bdb_state->dtavers[dtanum], bdbname, sizeof(bdbname));
         bdb_trans(bdbname, physname);
         total += mystat(physname);
     }
