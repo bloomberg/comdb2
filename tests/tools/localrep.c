@@ -379,28 +379,26 @@ int apply_del(cdb2_hndl_tp *db, void *opsp, int opsz) {
 }
 
 int apply_add(cdb2_hndl_tp *db, void *opsp, int opsz) {
-    int nfields;
-    uint8_t *ops = (uint8_t*) opsp;
-    char *table;
-    comdb2_field_type *fld;
-    strbuf *sql;
     int rc;
-    void **bound_values = NULL;
-    sql = strbuf_new();
+    uint8_t *ops = (uint8_t*) opsp;
 
     /* extract number of fields */
+    int nfields;
     memcpy(&nfields, ops, sizeof(int));
     nfields = ntohl(nfields);
+    if (nfields <= 0) return -1;
+    void *bound_values[nfields];
 
     ops += sizeof(int);
     /* extract table */
-    table = (char *)ops;
+    char *table = (char *)ops;
     ops += MAXTABLELEN;
 
     /* extract field descriptions */
-    fld = (comdb2_field_type *) ops;
+    comdb2_field_type *fld = (comdb2_field_type *) ops;
 
     /* construct sql */
+    strbuf *sql = strbuf_new();
     strbuf_appendf(sql, "insert into %s(", table);
 
     /* add each field to tag */
@@ -414,30 +412,20 @@ int apply_add(cdb2_hndl_tp *db, void *opsp, int opsz) {
     strbuf_append(sql, ")");
 
     cdb2_clearbindings(db);
-    bound_values = calloc(nfields, sizeof(void*));
     for (int i = 0; i < nfields; i++) {
         fld[i].type = htonl(fld[i].type);
         fld[i].len = htonl(fld[i].len);
         fld[i].off = htonl(fld[i].off);
         fld[i].isnull = htonl(fld[i].isnull);
-
         rc = bind_value(db, opsp, opsz, &fld[i], &bound_values[i]);
-        if (rc)
-            goto done;
-
-        // printf("%d %s type %d %s len %d off %d ??? %d\n", i, fld[i].name, fld[i].type, typestr(fld[i].type), fld[i].len, fld[i].off, fld[i].reserved[0]);
+        if (rc) goto done;
     }
     char *s = strbuf_disown(sql);
     rc = cdb2_run_statement(db, s);
-    // printf(">> %s rc %d %s\n", s, rc, cdb2_errstr(db));
     free(s);
 
 done:
-    if (bound_values) {
-        for (int i = 0; i < nfields; i++)
-            free(bound_values[i]);
-        free(bound_values);
-    }
+    for (int i = 0; i < nfields; i++) free(bound_values[i]);
     strbuf_free(sql);
     return rc;
 }
