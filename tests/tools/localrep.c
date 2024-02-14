@@ -414,7 +414,7 @@ int apply_add(cdb2_hndl_tp *db, void *opsp, int opsz) {
     strbuf_append(sql, ")");
 
     cdb2_clearbindings(db);
-    bound_values = calloc(nfields, sizeof(void*));
+    bound_values = (void **)calloc((size_t)nfields, sizeof(void*));
     for (int i = 0; i < nfields; i++) {
         fld[i].type = htonl(fld[i].type);
         fld[i].len = htonl(fld[i].len);
