@@ -1,0 +1,2 @@
+Reproduces bug Morgan found when newsi runs directly on master
+Immediate fix is to disable newsi
