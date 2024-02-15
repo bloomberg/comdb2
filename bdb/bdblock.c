@@ -486,6 +486,15 @@ void bdb_get_writelock(bdb_state_type *bdb_state, const char *idstr,
     bdb_get_writelock_int(bdb_state, idstr, funcname, line, 0);
 }
 
+int bdb_can_get_lock(bdb_state_type *bdb_state) 
+{
+    thread_lock_info_type *lk = pthread_getspecific(lock_key);
+    if (lk == NULL)
+        return 0;
+    else
+        return 1;
+}
+
 /* This flavor of get_writelock should be called from anything which cannot
  * be holding rowlocks */
 void bdb_get_writelock_abort_waiters(bdb_state_type *bdb_state,
@@ -806,10 +815,8 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
 static void delete_thread_lock_info(bdb_state_type *bdb_state)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
-    if (!lk) {
-        logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
+    if (!lk)
         return;
-    }
 
     if (lk->lockref != 0) {
         logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
@@ -860,6 +867,9 @@ void bdb_stripe_done(bdb_state_type *bdb_state)
 void bdb_thread_event(bdb_state_type *bdb_state, int event)
 {
     bdb_state_type *parent;
+
+    if (bdb_state == NULL)
+        return;
 
     if (bdb_state->parent)
         parent = bdb_state->parent;

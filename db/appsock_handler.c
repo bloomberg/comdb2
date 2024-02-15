@@ -180,12 +180,6 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
 
-    if (!thedb->dbs) {
-        logmsg(LOGMSG_ERROR, "%s: halt appsock request on NULL thedb->dbs\n",
-               __func__);
-        return 0;
-    }
-
     arg.table_name = strdup(COMDB2_STATIC_TABLE);
     arg.conv_flags = 0;
 
@@ -338,7 +332,7 @@ int appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, struct sockaddr_in cli
     now = time(NULL);
 
     /* reject requests if we're not up, going down, or not interested */
-    if (dbenv->stopped || gbl_exit || !gbl_ready) {
+    if (dbenv->stopped || gbl_exit || !gbl_appsock_thdpool) {
         if (header_read) {
             total_appsock_rejections++;
             sbuf2close(sb);
