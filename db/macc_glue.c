@@ -1102,7 +1102,7 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
             goto err;
         if (sch_default) {
             /* comdbg clients */
-            rc = create_keys_schemas(tbl, sch_default, alt, 0, &schs_indx[nschs_indx],
+            rc = create_keys_schemas(tbl, sch_default, alt, 0, schs_indx,
                                      &nschs_indx, err);
             if (rc)
                 goto err;
