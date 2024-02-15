@@ -1110,6 +1110,7 @@ static void _save_params(dohsql_node_t *node, struct param_data **p, int *np)
     if (node->params) {
         *np = node->params->nparams;
         *p = node->params->params;
+        hash_free(node->params->h);
         free(node->params);
         node->params = NULL;
     }
@@ -1976,7 +1977,6 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
 {
     struct params_info *params;
     struct param_data *newparam, *temparr;
-    int i = 0;
 
     /* alloc params, if not ready yet */
     if (!(params = *pparams)) {
@@ -1987,14 +1987,11 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         if (!params)
             return NULL;
         params->clnt = thd->clnt;
+        params->h = hash_init_ptr();
     } else {
         /* if already allocated, check to see if name is already in */
-        for (i = 0; i < params->nparams; i++) {
-            if (!strcmp(name, params->params[i].name)) {
-                /* done here */
-                return params;
-            }
-        }
+        if (hash_find(params->h, name) != NULL)
+            return params;
     }
 
     /* if name is not already in, retrieve value from client plugin
@@ -2004,6 +2001,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     newparam = clnt_find_param(params->clnt, name + 1, index);
     if (!newparam) {
         /* clnt parameters are incorrect, fallback to single thread to err */
+        hash_free(params->h);
         free(params->params);
         free(params);
         *pparams = NULL;
@@ -2013,6 +2011,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     temparr = realloc(params->params,
                       sizeof(struct param_data) * (params->nparams + 1));
     if (!temparr) {
+        hash_free(params->h);
         if (params->params)
             free(params->params);
         free(params);
@@ -2021,6 +2020,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     }
     params->params = temparr;
     params->params[params->nparams++] = *newparam;
+    hash_add(params->h, newparam->name);
     free(newparam);
     return *pparams = params;
 }

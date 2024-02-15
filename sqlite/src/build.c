@@ -276,20 +276,23 @@ void sqlite3FinishCoding(Parse *pParse){
     sqlite3VdbeMakeReady(v, pParse);
     pParse->rc = SQLITE_DONE;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( pParse->ast ){
+    if( db->ast ){
       if( comdb2_check_push_remote(pParse) ){
         pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
-        return;
-      }
-      if( comdb2_check_parallel(pParse) ){
+      }else if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
-        return;
       }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     pParse->rc = SQLITE_ERROR;
   }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( db->ast && pParse->rc!=SQLITE_DONE ){
+    /* If an error occurred or a dohsql reprepare is needed, reset the AST. */
+    ast_destroy(&db->ast, db);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 /*

@@ -435,14 +435,16 @@ struct ast {
     int nused;
     int nalloc;
     int unsupported;
+    int ready;
 };
 
 ast_t *ast_init(Parse *pParse, const char *caller)
 {
     ast_t *ast;
+    sqlite3 *db = pParse->db;
 
-    if (pParse->ast)
-        return pParse->ast->unsupported ? NULL : pParse->ast;
+    if (db->ast)
+        return db->ast->unsupported ? NULL : db->ast;
 
     if (gbl_dohast_verbose)
         logmsg(LOGMSG_USER, "TTT: %p %s from %s\n", (void *)pthread_self(), __func__, caller);
@@ -464,7 +466,7 @@ ast_t *ast_init(Parse *pParse, const char *caller)
         ast = NULL;
     }
 
-    return pParse->ast = ast;
+    return db->ast = ast;
 }
 
 void ast_destroy(ast_t **past, sqlite3 *db)
@@ -486,6 +488,11 @@ void ast_destroy(ast_t **past, sqlite3 *db)
     }
     free(ast->stack);
     free(ast);
+}
+
+void ast_make_ready(ast_t *ast)
+{
+    ast->ready = 1;
 }
 
 static dohsql_node_t *gen_oneselect(Vdbe *v, Select *p, Expr *extraRows,
@@ -776,6 +783,14 @@ int ast_push(ast_t *ast, enum ast_type op, Vdbe *v, void *obj)
     if (dohsql_is_parallel_shard())
         return 0;
 
+    /* Do not construct an AST if we're in sqlite3Init(). */
+    if (v->db->init.busy)
+        return 0;
+
+    /* A cached AST ready for use. */
+    if (ast->ready)
+        return 0;
+
     if (ast->nused >= ast->nalloc) {
         ast->stack = realloc(ast->stack, (ast->nalloc + AST_STACK_INIT) *
                                              sizeof(ast->stack[0]));
@@ -879,7 +894,7 @@ int comdb2_check_parallel(Parse *pParse)
     if (comdb2IsPrepareOnly(pParse))
         return 0;
 
-    ast_t *ast = pParse->ast;
+    ast_t *ast = pParse->db->ast;
     dohsql_node_t *node;
     int i;
 
@@ -950,7 +965,7 @@ int comdb2_check_push_remote(Parse *pParse)
     if (comdb2IsPrepareOnly(pParse))
         return 0;
 
-    ast_t *ast = pParse->ast;
+    ast_t *ast = pParse->db->ast;
     dohsql_node_t *node;
 
     if (!gbl_fdb_push_remote)

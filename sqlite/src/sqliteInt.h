@@ -1441,6 +1441,7 @@ void sqlite3CryptFunc(sqlite3_context*,int,sqlite3_value**);
 */
 struct sqlite3 {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ast_t *ast;
   int isPreparer;               /* Set by preparer plugin - must be first, must be an int. */
 #endif
   sqlite3_vfs *pVfs;            /* OS Interface */
@@ -3310,7 +3311,6 @@ struct Parse {
   u8 eOrconf;          /* Default ON CONFLICT policy for trigger steps */
   u8 disableTriggers;  /* True to disable triggers */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  ast_t *ast;
   int preserve_update;    /* statement replacement, preserve flags */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

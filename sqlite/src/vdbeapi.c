@@ -274,6 +274,9 @@ int sqlite3_finalize(sqlite3_stmt *pStmt){
     stmt_free_vtable_locks(pStmt);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3 *db = v->db;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( db->ast ) ast_destroy(&db->ast, db);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( vdbeSafety(v) ) return SQLITE_MISUSE_BKPT;
     sqlite3_mutex_enter(db->mutex);
     checkProfileCallback(db, v);
