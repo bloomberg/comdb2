@@ -6699,12 +6699,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 if ((dt.upsert_flags & OSQL_IGNORE_FAILURE) != 0) {
                     if (upsert_idx == MAXINDEX + 1) {
                         /* We're asked to ignore DUPs for all unique indices, no insert took place.*/
+                        err->errcode = 0;
                         return 0;
                     } else if ((dt.upsert_flags & OSQL_FORCE_VERIFY) == 1) {
+                        err->errcode = 0;
                         return 0;
                     } else if (upsert_idx == err->ixnum) {
-                            /* We're asked to ignore DUPs for this particular * index, no insert took place.*/
-                            return 0;
+                        /* We're asked to ignore DUPs for this particular * index, no insert took place.*/
+                        err->errcode = 0;
+                        return 0;
                     }
                 }
 
