@@ -314,8 +314,10 @@ static struct schema * _create_index_datacopy_schema(struct schema *sch, int ix,
         numMembers++;
     }
 
-    p = alloc_schema(strdup("PARTIAL_DATACOPY"), numMembers,
-                     SCHEMA_PARTIALDATACOPY_ACTUAL);
+    char *tmp = strdup("PARTIAL_DATACOPY");
+    if (tmp)
+        p = alloc_schema(tmp, numMembers,
+                         SCHEMA_PARTIALDATACOPY_ACTUAL);
     if (!p) {
         errstat_set_rcstrf(err, rc = -1,
                 "oom %s:%d index %d", __func__, __LINE__, ix);
@@ -355,14 +357,16 @@ err:
 static struct schema *_create_index_schema(const char *tag, int ix,
                                            struct errstat *err)
 {
-    struct schema *s;
+    struct schema *s = NULL;
     char buf[MAXCOLNAME + 1];
 
 
     snprintf(buf, sizeof(buf), "%s_ix_%d", tag, ix);
 
-    s = alloc_schema(strdup(buf), dyns_get_idx_piece_count(ix),
-                     SCHEMA_INDEX);
+    char *tmp = strdup(buf);
+    if (tmp)
+        s = alloc_schema(tmp, dyns_get_idx_piece_count(ix),
+                         SCHEMA_INDEX);
     if (!s) {
         errstat_set_rcstrf(err, -1, "oom: %s:%d", __func__, __LINE__);
         return NULL;
@@ -742,7 +746,7 @@ out:
 
 static struct schema * _create_table_schema(char *tag, int alt)
 {
-    struct schema *sch;
+    struct schema *sch = NULL;
     char *ondisk_tag;
 
     if (alt == 0) {
@@ -753,8 +757,9 @@ static struct schema * _create_table_schema(char *tag, int alt)
         ondisk_tag = strdup(tmptagname);
     }
 
-    sch = alloc_schema(ondisk_tag, dyns_get_table_field_count(tag),
-                       SCHEMA_TABLE);
+    if (ondisk_tag)
+        sch = alloc_schema(ondisk_tag, dyns_get_table_field_count(tag),
+                           SCHEMA_TABLE);
     if (!sch)
         return NULL;
 
