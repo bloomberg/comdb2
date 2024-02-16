@@ -4314,6 +4314,16 @@ deadlock_again:
                 else
                     rc = bdb_get_pagesize_allblob(&tran, &llpagesize,
                                                   &tmp_bdberr);
+                if (rc != 0 && tmp_bdberr == BDBERR_DEADLOCK) {
+                    if (tmp_tid) {
+                        tid->abort(tid);
+                        tid = NULL;
+                        goto deadlock_again;
+                    }
+                    logmsg(LOGMSG_ERROR, "deadlock getting pagesize on %s file %d\n", tmpname, dtanum);
+                    return -1;
+                }
+
                 if (!rc && !tmp_bdberr) {
                     if (llpagesize)
                         pagesize = llpagesize;
@@ -4325,6 +4335,16 @@ deadlock_again:
                 else
                     rc = bdb_get_pagesize_blob(bdb_state, &tran,
                                                &llpagesize, &tmp_bdberr);
+                if (rc != 0 && tmp_bdberr == BDBERR_DEADLOCK) {
+                    if (tmp_tid) {
+                        tid->abort(tid);
+                        tid = NULL;
+                        goto deadlock_again;
+                    }
+                    logmsg(LOGMSG_ERROR, "deadlock getting pagesize on %s file %d\n", tmpname, dtanum);
+                    return -1;
+                }
+
                 if (!rc && !tmp_bdberr) {
                     if (llpagesize)
                         pagesize = llpagesize;
@@ -4343,6 +4363,7 @@ deadlock_again:
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "unable to set pagesize on %s to %d\n",
                             tmpname, pagesize);
+                    return -1;
                 }
 
                 print(bdb_state, "opening %s ([%d][%d])\n", tmpname,

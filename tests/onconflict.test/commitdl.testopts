@@ -1,0 +1,5 @@
+# This version of this test wants to verify that we detect commit-after-deadlock
+debug_reproduce_deadlock_commit 1
+
+# Don't produce core- just sniff for trace
+abort_on_deadlock_commit 0
