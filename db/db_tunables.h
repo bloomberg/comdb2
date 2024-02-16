@@ -2166,6 +2166,9 @@ REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default:
 REGISTER_TUNABLE("collect_before_locking", "Collect a transaction from the log before acquiring locks.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_collect_before_locking, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("abort_on_deadlock_commit", "Abort if a transaction attempts to commit after deadlock.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_deadlock_commit, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_ddlk", "Generate random deadlocks.  (Default: 0)", TUNABLE_INTEGER, &gbl_ddlk,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
