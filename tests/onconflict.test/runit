@@ -73,21 +73,32 @@ function run_test
         sleep 1
     done
 
-    # Different thread failed the test
-    [[ -f "$stopfile" ]] && failexit "testcase failed"
-    touch "$stopfile"
-    wait
-
-    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('t1')")
-    if [[ "$x" != *"Verify succeeded"* ]] ; then
+    # 'commitdl' flavor of the test verifies that we observed a commit-after-deadlock
+    if [[ $DBNAME == *"onconflictcommitdl"* ]]; then
+        touch "$stopfile"
+        wait
+        echo "Searching logfiles for 'commit-after-deadlock' trace"
+        x=$(egrep "found commit-after-deadlock txnid" ${TESTDIR}/logs/${DBNAME}.*.db)
+        [[ -z "$x" ]] && failexit "Failed to find commit-after-deadlock"
         echo "$x"
-        failexit "Failed verify on t1"
-    fi
 
-    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('t2')")
-    if [[ "$x" != *"Verify succeeded"* ]] ; then
-        echo "$x"
-        failexit "Failed verify on t2"
+    # 'Normal' flavor of the test verifies that we haven't corrupted the database
+    else
+        # Different thread failed the test
+        [[ -f "$stopfile" ]] && failexit "testcase failed"
+        touch "$stopfile"
+        wait
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('t1')")
+        if [[ "$x" != *"Verify succeeded"* ]] ; then
+            echo "$x"
+            failexit "Failed verify on t1"
+        fi
+    
+        x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.verify('t2')")
+        if [[ "$x" != *"Verify succeeded"* ]] ; then
+            echo "$x"
+            failexit "Failed verify on t2"
+        fi
     fi
 }
 
