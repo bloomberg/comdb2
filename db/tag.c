@@ -1441,12 +1441,12 @@ void dump_tagged_buf(struct dbtable *table, const char *tag,
     dump_tagged_buf_with_schema(sc, buf);
 }
 
-/* NOTE: tag is already strdup-ed */
+/* NOTE: tag is already strdup-ed
+ * NOTE2: tag is NULL for bound parameters
+ */
 struct schema * alloc_schema(char *tag, int nmembers, int flags)
 {
     struct schema *to;
-    if (!tag)
-        return NULL;
 
     to = calloc(1, sizeof(struct schema));
     if (!to) {
@@ -1468,12 +1468,14 @@ struct schema * alloc_schema(char *tag, int nmembers, int flags)
 /* used to clone ONDISK to ONDISK_CLIENT */
 struct schema *clone_server_to_client_tag(struct schema *from, const char *newtag)
 {
-    struct schema *to;
+    struct schema *to = NULL;
     int field, offset;
     struct field *from_field, *to_field;
     int rc;
 
-    to = alloc_schema(strdup(newtag), from->nmembers, from->flags);
+    char *tmp = strdup(newtag);
+    if (tmp)
+        to = alloc_schema(tmp, from->nmembers, from->flags);
     if (!to)
         return NULL;
     to->numblobs = from->numblobs;
@@ -4725,6 +4727,7 @@ struct schema *new_dynamic_schema(const char *s, int len, int trace)
     if (nfields > MAXDYNTAGCOLUMNS)
         return NULL;
 
+    /* NOTE: for bound parameters get_unique_tag returns NULL, not an error */
     sc = alloc_schema(get_unique_tag(), nfields, SCHEMA_TABLE | SCHEMA_DYNAMIC);
     if (!sc)
         return NULL;
@@ -5153,9 +5156,12 @@ void backout_schemas(char *tblname)
 struct schema *clone_schema_index(struct schema *from, const char *tag,
                                   int datacopy_nmembers)
 {
+    struct schema *sc = NULL;
     int i;
 
-    struct schema *sc = alloc_schema(strdup(tag), from->nmembers, from->flags);
+    char *tmp = strdup(tag);
+    if (tmp)
+        sc = alloc_schema(tmp, from->nmembers, from->flags);
     if (!sc)
         goto err;
     sc->nix = from->nix;
