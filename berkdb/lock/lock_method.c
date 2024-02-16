@@ -107,6 +107,7 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_add_child_locker = __lock_add_child_locker_pp;
 		dbenv->lock_id = __lock_id_pp;
 		dbenv->lock_id_flags = __lock_id_flags_pp;
+		dbenv->locker_had_deadlock = __locker_had_deadlock_pp;
 		dbenv->lock_id_free = __lock_id_free_pp;
 		dbenv->lock_id_has_waiters = __lock_id_has_waiters_pp;
 		dbenv->lock_id_set_logical_abort =

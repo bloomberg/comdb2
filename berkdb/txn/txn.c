@@ -1017,6 +1017,7 @@ __txn_deallocate_ltrans(dbenv, lt)
 }
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;
+int gbl_abort_on_deadlock_commit = 1;
 int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl, 
 	pthread_mutex_t *mutexp, DB_LSN commit_lsn, uint32_t flags,
 	unsigned long long logical_tranid, int32_t timestamp,
@@ -1168,6 +1169,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 #endif
 
 	extern int gbl_dumptxn_at_commit;
+	u_int32_t locker_had_deadlock = 0;
+
+	if (gbl_abort_on_deadlock_commit && !dbenv->locker_had_deadlock(dbenv, txnp->txnid,
+		&locker_had_deadlock) && locker_had_deadlock) {
+		logmsg(LOGMSG_FATAL, "%s ABORTING on commit-after-deadlock txnid=%x\n", __func__, txnp->txnid);
+		abort();
+	}
 
 	if (gbl_dumptxn_at_commit && !is_prepare)
 		dumptxn(dbenv, &txnp->last_lsn);

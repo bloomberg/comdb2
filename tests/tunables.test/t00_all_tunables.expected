@@ -4,6 +4,7 @@
 (name='aa_min_percent_jitter', description='Additional jitter factor for determining percent change.', type='INTEGER', value='300', read_only='N')
 (name='aa_request_mode', description='Mark table in comdb2_auto_analyze_tables instead of performing auto-analyze ourselves', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_invalid_query_info_key', description='Abort in thread-teardown for invalid query_info_key', type='BOOLEAN', value='OFF', read_only='N')
+(name='abort_on_deadlock_commit', description='Abort if a transaction attempts to commit after deadlock.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='abort_on_in_use_rqid', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='abort_on_invalid_context', description='abort_on_invalid_context', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_on_replicant_log_write', description='Abort if replicant is writing to logs', type='BOOLEAN', value='OFF', read_only='N')
