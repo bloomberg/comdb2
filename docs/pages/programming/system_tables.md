@@ -434,6 +434,20 @@ This table lists the current state of the replication network queue per node.
 * `uncategorized` - Number of 'uncategorized' messages
 * `unknown` - Number of 'unknown' messages
 
+## comdb2_space_estimate
+
+Information about estimated page fill factor in files belonging to verious tables.
+
+Fields:
+
+* `name` - Table name
+* `datafile` - 0 is the table itself. > 0 are files corresponding to blob fields. eg: 1 is the first blob, 2 is the second, etc. NULL for index files (they are not stripped)
+* `stripe` - 0 to dtastripe value.  Tables are split into multiple files. NULL for index files (they are not stripped)
+* `indexnum` - The first index is 0, the second index is 1, etc.  datafile and stripe will be NULL.
+* `percent_free_pages` - what percentage of the pages examined were free pages (
+* `page_fill_factor` - For non-empty pages, average fill factor of the pages examined.
+
+
 ## comdb2_sqlpool_queue
 
 Information about SQL query pool status.

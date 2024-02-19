@@ -669,6 +669,7 @@ can be queried with the `stat autonalyze` command.
 |DELETE_OLD_FILE_DEBUG | 0 | Spew debug info about deleting old files during schema change.
 |DONT_BLOCK_DELETE_FILES_THREAD | 0 | Don't delete any files that would cause delete files thread to block
 |file_permissions | 0660 | Default filesystem permissions for database files.
+|FILL_ESTIMATE_SAMPLE_SIZE| 50 | How many pages per file will be examined by comdb2_space_estimate table queries
 
 #### Log configuration
 
