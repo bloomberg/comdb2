@@ -1118,6 +1118,7 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
     if (!no_side_effects) {
         char cname_buf[MAXTAGLEN];
         for (i = 0; i < tbl->nix; i++) {
+            struct schema *idxsch = sch_ondisk->ix[i];
             if (!alt) {
                 snprintf(cname_buf, sizeof(cname_buf),
                         ".ONDISK_CLIENT_IX_%d", i);
@@ -1127,11 +1128,14 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
             }
 
             schs_indx[nschs_indx] =
-                clone_server_to_client_tag(sch_ondisk->ix[i], cname_buf);
+                clone_server_to_client_tag(idxsch, cname_buf);
             if (!schs_indx[nschs_indx++]) {
                 rc = -1;
                 goto err;
             }
+            /* keys are also in ondisk format */
+            tbl->ix_keylen[i] = idxsch->member[idxsch->nmembers-1].offset +
+                idxsch->member[idxsch->nmembers-1].len;
         }
     }
 
