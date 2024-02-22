@@ -74,6 +74,7 @@ extern int gbl_partial_indexes;
 int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
 int gbl_selectv_writelock = 0;
+int gbl_debug_invalid_genid;
 
 extern int db_is_exiting();
 
@@ -6786,6 +6787,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             dt.del_keys = -1ULL;
         }
         genid = dt.genid;
+
+        if (gbl_debug_invalid_genid == 1) {
+            genid++;
+        }
 
         if (gbl_enable_osql_logging) {
             int jj = 0;
