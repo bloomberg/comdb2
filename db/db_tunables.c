@@ -418,6 +418,7 @@ extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
 extern int gbl_fdb_io_error_retries_phase_1;
 extern int gbl_fdb_io_error_retries_phase_2_poll;
+extern int gbl_debug_invalid_genid;
 
 /* Physical replication */
 extern int gbl_blocking_physrep;

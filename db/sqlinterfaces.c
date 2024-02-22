@@ -3534,7 +3534,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
 static int skip_response_int(struct sqlclntstate *clnt, int from_error)
 {
-    if (clnt->osql.replay == OSQL_RETRY_DO)
+    if (clnt->osql.replay == OSQL_RETRY_DO || clnt->osql.replay == OSQL_RETRY_LAST)
         return 1;
     if (clnt->isselect || is_with_statement(clnt->sql))
         return 0;

@@ -1354,6 +1354,10 @@ REGISTER_TUNABLE("debug.txn_sleep",
                  "Sleep during a transaction to test transaction state systable", TUNABLE_INTEGER,
                  &gbl_debug_txn_sleep, INTERNAL, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("debug.invalid_genid",
+                 "Deliberately introduce an invalid genid, FOR TESTING PURPOSE (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_invalid_genid,
+                 NOARG | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "query_plan_percentage",
     "Alarm if the average cost per row of current query plan is n percent above the cost for different query plan."
