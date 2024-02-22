@@ -74,7 +74,7 @@ static void test_register_timeout(void)
     cdb2_close(db);
 }
 
-static void test_with_txn_sentinal(void)
+static void test_with_txn_sentinel(void)
 {
     cdb2_hndl_tp *hndl = db_handle();
     should_pass(hndl, "CREATE DEFAULT LUA CONSUMER batch_consume ON (TABLE t FOR INSERT)");
@@ -91,7 +91,7 @@ static void test_with_txn_sentinal(void)
         should_pass(hndl, sql);
     }
 
-    const char *sp = "EXEC PROCEDURE batch_consume('{\"batch_consume\":true, \"with_txn_sentinal\": true, \"poll_timeout\":0 }')";
+    const char *sp = "EXEC PROCEDURE batch_consume('{\"batch_consume\":true, \"with_txn_sentinel\": true, \"poll_timeout\":0 }')";
     int rc = cdb2_run_statement(hndl, sp);
     if (rc != CDB2_OK) {
         fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
@@ -241,7 +241,7 @@ int main(int argc, char **argv)
     cdb2_close(hndl_1);
     cdb2_close(hndl_0);
 
-    test_with_txn_sentinal();
+    test_with_txn_sentinel();
 
     puts("passed default-consumer");
 

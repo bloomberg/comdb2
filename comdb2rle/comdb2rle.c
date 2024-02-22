@@ -564,7 +564,7 @@ int decompressComdb2RLE(Comdb2RLE *d)
  * r: output param */
 static int repeats_rev(const Data *input, uint32_t sz, uint32_t *r)
 {
-    uint8_t *first = input->dt - 1; //sentinal -- one before first
+    uint8_t *first = input->dt - 1; //sentinel -- one before first
     uint8_t *last = first + sz;
     uint8_t b = *last--;
     uint32_t dups = 0;

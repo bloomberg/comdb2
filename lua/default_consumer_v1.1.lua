@@ -123,7 +123,7 @@ local function validate_options(opt)
     valid_options.with_id = true --undocumented
     valid_options.with_sequence = true
     valid_options.with_tid = true
-    valid_options.with_txn_sentinal = true
+    valid_options.with_txn_sentinel = true
     for k, _ in pairs(opt) do
         if valid_options[k] == nil then
             return [[invalid option ']] .. k .. [[']]
@@ -184,7 +184,7 @@ local function batch_consumer(opt, consumer)
         local event = consumer:poll(0)
         if event then event_tid = db:get_event_tid(event) end
         if event == nil or event_tid ~= last_tid then
-            if opt.with_txn_sentinal then
+            if opt.with_txn_sentinel then
                 emit_value(opt, last, db)
                 consumer:emit({comdb2_event = [[txn]]})
             else
