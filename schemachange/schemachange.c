@@ -116,21 +116,17 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 uuidstr_t us;
                 comdb2uuidstr(stored_sc->uuid, us);
                 logmsg(LOGMSG_INFO,
-                       "Found ongoing schema change: rqid [%llx %s] "
-                       "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                       stored_sc->rqid, us, stored_sc->tablename,
-                       stored_sc->kind == SC_ADDTABLE,
-                       stored_sc->kind == SC_DROPTABLE, IS_FASTINIT(stored_sc),
-                       IS_ALTERTABLE(stored_sc));
-                if (stored_sc->rqid == iq->sorese->rqid &&
-                    comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
+                       "Found ongoing schema change: uuid %s table %s kind %s\n",
+                       us, stored_sc->tablename,
+                       schema_change_kind(stored_sc));
+                if (comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     if (last_sc)
                         last_sc->sc_next = stored_sc->sc_next;
                     else
                         sc_resuming = sc_resuming->sc_next;
                     stored_sc->sc_next = NULL;
                 } else {
-                    /* TODO: found an ongoing sc with different rqid
+                    /* TODO: found an ongoing sc with different uuid
                      * should we fail this one or override the old one?
                      *
                      * For now, I am failing this one.
@@ -160,12 +156,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
             logmsg(LOGMSG_INFO,
-                   "Resuming schema change: rqid [%llx %s] "
-                   "table %s, add %d, drop %d, fastinit %d, alter "
-                   "%d resume %d\n",
-                   s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
-                   s->kind == SC_DROPTABLE, IS_FASTINIT(s), IS_ALTERTABLE(s),
-                   s->resume);
+                   "Resuming schema change: uuid %s table %s"
+                   " kind %s resume %d\n",
+                   us, s->tablename, schema_change_kind(s), s->resume);
 
         } else {
             int bdberr;
@@ -200,19 +193,15 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             }
             if (stored_sc && !IS_UPRECS(stored_sc) &&
                 IS_SC_DBTYPE_TAGGED_TABLE(stored_sc)) {
-                if (stored_sc->rqid && stored_sc->rqid == iq->sorese->rqid &&
-                    comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
+                if (comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     s->rqid = stored_sc->rqid;
                     comdb2uuidcpy(s->uuid, stored_sc->uuid);
                     s->resume = 1;
                     uuidstr_t us;
                     comdb2uuidstr(s->uuid, us);
                     logmsg(LOGMSG_INFO,
-                           "Resuming schema change: rqid [%llx %s] "
-                           "table %s, add %d, drop %d, fastinit %d, alter %d\n",
-                           s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
-                           s->kind == SC_DROPTABLE, IS_FASTINIT(s),
-                           IS_ALTERTABLE(s));
+                           "Resuming schema change: uuid %s table %s kind %s\n",
+                           us, s->tablename, schema_change_kind(s));
                 }
                 free_schema_change_type(stored_sc);
             }
@@ -224,9 +213,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     const char *node = gbl_myhostname;
     if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
-        logmsg(LOGMSG_INFO, "Starting schema change: "
+        logmsg(LOGMSG_WARN, "Starting schema change: table %s kind %s "
                             "transactionally reuse seed 0x%llx\n",
-               seed);
+               s->tablename, schema_change_kind(s), seed);
     } else if (s->resume) {
         unsigned int host = 0;
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
@@ -258,7 +247,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
     } else {
         seed = bdb_get_a_genid(thedb->bdb_env);
-        logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
+        logmsg(LOGMSG_WARN, 
+               "Starting schema change: table %s kind %s new seed 0x%llx\n",
+               s->tablename, schema_change_kind(s), seed);
     }
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
@@ -266,8 +257,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
                         time(NULL), 0, __func__, __LINE__);
     if (rc != 0) {
-        logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
-               us, rc);
+        logmsg(LOGMSG_INFO, "Failed sc_set_running %s rc %d\n", us, rc);
         if (IS_UPRECS(s) || !s->db || !s->db->doing_upgrade) {
             errstat_set_strf(&iq->errstat, "Schema change already in progress");
         } else {
@@ -293,7 +283,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         return SC_CANT_SET_RUNNING;
     }
 
-    logmsg(LOGMSG_INFO, "sc_set_running schemachange [%llx %s]\n", s->rqid, us);
+    logmsg(LOGMSG_INFO, "sc_set_running schemachange %s\n", us);
 
     iq->sc_host = node ? crc32c((uint8_t *)node, strlen(node)) : 0;
     if (thedb->master == gbl_myhostname && !s->resume && iq->sc_seed != seed) {
@@ -1510,4 +1500,40 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
         Pthread_mutex_unlock(&schema_change_sbuf2_lock);
 
     va_end(args);
+}
+
+const char *schema_change_kind(struct schema_change_type *s)
+{
+    switch(s->kind) {
+    case SC_LEGACY_QUEUE: return "SC_LEGACY_QUEUE";
+    case SC_LEGACY_MORESTRIPE: return "SC_LEGACY_MORESTRIPE";
+    case SC_ADD_QDB_FILE: return "SC_ADD_QDB_FILE";
+    case SC_DEL_QDB_FILE: return "SC_DEL_QDB_FILE";
+    case SC_ADD_VIEW: return "SC_ADD_VIEW";
+    case SC_DROP_VIEW: return "SC_DROP_VIEW";
+    case SC_ADDSP: return "SC_ADDSP";
+    case SC_DELSP: return "SC_DELSP";
+    case SC_DEFAULTSP: return "SC_DEFAULTSP";
+    case SC_SHOWSP: return "SC_SHOWSP";
+    case SC_ADD_TRIGGER: return "SC_ADD_TRIGGER";
+    case SC_DEL_TRIGGER: return "SC_DEL_TRIGGER";
+    case SC_ADD_SFUNC: return "SC_ADD_SFUNC";
+    case SC_DEL_SFUNC: return "SC_DEL_SFUNC";
+    case SC_ADD_AFUNC: return "SC_ADD_AFUNC";
+    case SC_DEL_AFUNC: return "SC_DEL_AFUNC";
+    case SC_FULLUPRECS: return "SC_FULLUPRECS";
+    case SC_PARTIALUPRECS: return "SC_PARTIALUPRECS";
+    case SC_DROPTABLE: return "SC_DROPTABLE";
+    case SC_TRUNCATETABLE: return "SC_TRUNCATETABLE";
+    case SC_ADDTABLE: return "SC_ADDTABLE";
+    case SC_RENAMETABLE: return "SC_RENAMETABLE";
+    case SC_ALIASTABLE: return "SC_ALIASTABLE";
+    case SC_ALTERTABLE: return "SC_ALTERTABLE";
+    case SC_ALTERTABLE_PENDING: return "SC_ALTERTABLE_PENDING";
+    case SC_REBUILDTABLE: return "SC_REBUILDTABLE";
+    case SC_ALTERTABLE_INDEX: return "SC_ALTERTABLE_INDEX";
+    case SC_DROPTABLE_INDEX: return "SC_DROPTABLE_INDEX";
+    case SC_REBUILDTABLE_INDEX: return "SC_REBUILDTABLE_INDEX";
+    }
+    return "UNKNOWN";
 }
