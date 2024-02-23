@@ -477,4 +477,6 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
                                struct schema_change_type *s, tran_type *tran,
                                int *bdberr);
 
+const char *schema_change_kind(struct schema_change_type *s);
+
 #endif
