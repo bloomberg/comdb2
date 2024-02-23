@@ -222,7 +222,6 @@ struct schema_change_type {
     int use_new_genids;   /* rebuilding old genids needs to
                              get new genids to avoid name collission */
     int finalize;      /* Whether the schema change should be committed */
-    int finalize_only; /* only commit the schema change */
 
     pthread_mutex_t mtx; /* mutex for thread sync */
     pthread_mutex_t mtxStart; /* mutex for thread start */
