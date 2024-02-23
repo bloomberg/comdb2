@@ -43,6 +43,7 @@ public class Comdb2Connection implements Connection {
     private boolean inTxn = false;
     private boolean autoCommit = true;
     private boolean txnModeChanged = false;
+    private boolean useTxnForBatch = false;
 
     private final ReentrantLock lock = new ReentrantLock();
     private boolean opened = false;
@@ -153,6 +154,14 @@ public class Comdb2Connection implements Connection {
                 || "0".equalsIgnoreCase(v)
                 || "F".equalsIgnoreCase(v))
             usemicrodt = false;
+    }
+
+    public void setUseTxnForBatch(boolean usetxn) {
+        useTxnForBatch = usetxn;
+    }
+
+    public boolean getUseTxnForBatch() {
+        return useTxnForBatch;
     }
 
     /* wrappers to Comdb2Handle */

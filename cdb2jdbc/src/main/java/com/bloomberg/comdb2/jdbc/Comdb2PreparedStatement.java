@@ -364,11 +364,26 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
             return new int[0];
         }
 
+        boolean autocommit = conn.getAutoCommit();
+        boolean usetxn = conn.getUseTxnForBatch();
+
+        if (usetxn) {
+            /* Commit any open transactions. this will be a no-op if autocommit is true */
+            conn.commit();
+            conn.setAutoCommit(false);
+        }
+
         int[] results = new int[batch.size()];
 
         for (int i = 0; i < batch.size(); i++) {
             intBindVars = batch.get(i);
             results[i] = executeUpdate();
+        }
+
+        if (usetxn) {
+            /* commit this batch, and restore the autocommit-ness */
+            conn.commit();
+            conn.setAutoCommit(autocommit);
         }
 
         batch = null;

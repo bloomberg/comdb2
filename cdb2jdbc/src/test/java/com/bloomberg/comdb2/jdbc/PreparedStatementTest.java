@@ -294,5 +294,57 @@ public class PreparedStatementTest {
         rs.close();
         stmt.execute("drop table text_and_blob");
     }
+
+    @Test
+    public void testExecuteBatchWithoutUsingTxn() throws SQLException {
+        Connection c = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s", cluster, db));
+        Statement stmt = c.createStatement();
+        stmt.execute("DROP TABLE IF EXISTS t_batch");
+        stmt.execute("CREATE TABLE t_batch (i INTEGER)");
+        stmt.execute("SET maxtransize 9");
+
+        PreparedStatement ps = c.prepareStatement("INSERT INTO t_batch VALUES(?)");
+        ResultSet rs;
+
+        for (int i = 0; i != 10; ++i) {
+            ps.setInt(1, i);
+            ps.addBatch();
+        }
+        ps.executeBatch();
+
+        rs = ps.executeQuery("SELECT COUNT(*) FROM t_batch");
+        while (rs.next()) {
+            assertEquals(rs.getInt(1), 10);
+        }
+        rs.close();
+
+        stmt.execute("SET maxtransize 100");
+        stmt.execute("DELETE FROM t_batch");
+        stmt.execute("DROP TABLE t_batch");
+        c.close();
+    }
+
+    @Test
+    public void testExecuteBatchUsingTxn() throws SQLException {
+        Connection c = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s?use_txn_for_batch=1", cluster, db));
+        Statement stmt = c.createStatement();
+        stmt.execute("DROP TABLE IF EXISTS t_batch");
+        stmt.execute("CREATE TABLE t_batch (i INTEGER)");
+        stmt.execute("SET maxtransize 9");
+
+        PreparedStatement ps = c.prepareStatement("INSERT INTO t_batch VALUES(?)");
+        ResultSet rs;
+
+        for (int i = 0; i != 10; ++i) {
+            ps.setInt(1, i);
+            ps.addBatch();
+        }
+        try {
+            ps.executeBatch();
+        } catch (SQLException sqle) {
+            assertTrue("Should see correct error message.", sqle.getMessage().contains("transaction too big"));
+        }
+        c.close();
+    }
 }
 /* vim: set sw=4 ts=4 et: */
