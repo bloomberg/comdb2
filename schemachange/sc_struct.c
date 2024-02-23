@@ -1239,7 +1239,6 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->dryrun = sc->dryrun;
     newsc->use_new_genids = newsc->use_new_genids;
     newsc->finalize = sc->finalize;
-    newsc->finalize_only = sc->finalize_only;
     newsc->is_osql = sc->is_osql;
     newsc->timepartition_name = sc->timepartition_name;
     newsc->timepartition_version = sc->timepartition_version;
