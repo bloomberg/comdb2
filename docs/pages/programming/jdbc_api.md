@@ -266,6 +266,10 @@ The parameters are as follows:
 
       Toggle verifyretry. The default is `false`. See also [optimistic concurrency control](transaction_model.html#optimistic-concurrency-control).
 
+    * _use_txn_for_batch_=Boolean
+
+      Set it to true to execute a batch in its own transaction. The default is `false`.
+
         
     \* _To define multiple options, separate them by ampersands._
 

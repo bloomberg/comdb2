@@ -126,6 +126,7 @@ public class Driver implements java.sql.Driver {
             options.put("skip_rs_drain", new BooleanOption("skip_rs_drain", "SkipResultSetDrain"));
             options.put("clear_ack", new BooleanOption("clear_ack", "ClearAck"));
             options.put("use_identity", new BooleanOption("use_identity", "UseIdentity"));
+            options.put("use_txn_for_batch", new BooleanOption("use_txn_for_batch", "UseTxnForBatch"));
         } catch (Throwable e) {
             throw new SQLException(e);
         }
