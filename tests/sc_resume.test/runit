@@ -114,15 +114,16 @@ function assert_sc_seed
 
 function insert_records
 {
-    j=$1
-    nstop=$2
+    tbl=$1
+    j=$2
+    nstop=$3
     let nins=nins+1
     insfl=insert${nins}.out
-    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop) in $tbl."
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c) values ($j,'test1$j',$j)"  &>> $insfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into ${tbl}(a,b,c) values ($j,'test1$j',$j)"  &>> $insfl
         # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
     done
@@ -225,7 +226,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
-insert_records 1 200
+insert_records t1 1 200
 assertcnt t1 200
 
 #check via select * from t1 | make sure that a == b == c == 'test'$
@@ -240,7 +241,7 @@ echo "starting alter on master node $master"
 
 force_delay_master
 
-insert_records 201 400 &
+insert_records t1 201 400 &
 update_records 1 200 &
 
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.out || touch alter1.failed) &
@@ -590,5 +591,49 @@ if [[ $? == 0 ]]; then
     cat update.out
     failexit "expected updated column c"
 fi
+
+echo "TESTING KILLING MASTER WHILE PERFORMING TWO TABLE ALTERS"
+
+master=`getmaster`
+echo "master node now $master"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat t2.csc2 ` }"
+assert_vers t2 0
+assert_schema t2 t2.csc2
+insert_records t2 1 200
+assertcnt t2 200
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t3"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3  { `cat t2.csc2 ` }"
+assert_vers t3 0
+assert_schema t3 t2.csc2
+insert_records t3 1 200
+assertcnt t3 200
+
+echo Starting schema change
+cdb2sql ${CDB2_OPTIONS} $dbnm default - <<'EOF' &
+begin
+alter table t2 drop column b
+$$
+alter table t3 drop column c
+$$
+commit
+EOF
+
+sleep 30 
+
+kill_restart_node $master 1
+
+sleep 10
+
+master=`getmaster`
+echo "master node now $master"
+
+wait_for_sc
+
+assert_schema t2 t2.csc2.exp
+assertcnt t2 200
+assert_schema t3 t3.csc2.exp
+assertcnt t3 200
 
 echo "Success"
