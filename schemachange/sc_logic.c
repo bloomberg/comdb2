@@ -231,7 +231,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
         }
     }
 
-    sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
+    sc_set_running(iq, s, s->tablename, 0, NULL, 0, __func__, __LINE__);
     if (do_free) {
         free_sc(s);
     }
@@ -737,7 +737,7 @@ downgraded:
     Pthread_mutex_unlock(&s->mtx);
     if (!s->is_osql) {
         if (rc == SC_MASTER_DOWNGRADE) {
-            sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__,
+            sc_set_running(iq, s, s->tablename, 0, NULL, 0, __func__,
                            __LINE__);
             free_sc(s);
         } else {
@@ -1622,7 +1622,7 @@ int scdone_abort_cleanup(struct ireq *iq)
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     if (s->set_running)
-        sc_set_running(iq, s, s->tablename, 0, gbl_myhostname, time(NULL), 0,
+        sc_set_running(iq, s, s->tablename, 0, gbl_myhostname, time(NULL),
                        __func__, __LINE__);
     if (s->db && s->db->handle) {
         if (s->kind == SC_ADDTABLE) {
