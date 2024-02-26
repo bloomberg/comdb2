@@ -345,8 +345,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         // Don't want to call into __os_open_extend here, so use the same flags.
 #if defined(_AIX)
 		oflags |= O_CIO;
-#else
-		oflags |= O_DIRECT;
 #endif
     }
 
