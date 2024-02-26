@@ -274,6 +274,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                         sampler_t **samplerp, unsigned long long *outrecs,
                         unsigned long long *cmprecs, int *bdberr)
 {
+    static size_t METABUFLEN = 512;
     DB_ENV *dbenv = bdb_state->dbenv;
     int is_hmac = CRYPTO_ON(dbenv);
     uint8_t pfxbuf[KEYBUF];
@@ -282,7 +283,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     int rc = 0;
     DB dbp_ = {0}, *dbp;
     PAGE *page = NULL;
-    unsigned char metabuf[512];
+    void *metabuf;
     int pgsz = 0;
     sampler_t *sampler = *samplerp;
     unsigned long long nrecs = 0;
@@ -345,6 +346,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         // Don't want to call into __os_open_extend here, so use the same flags.
 #if defined(_AIX)
 		oflags |= O_CIO;
+#elif defined(__APPLE__)
+		fcntl(fhp->fd, F_SETFL, F_NOCACHE);
+#elif defined(_SUN_SOURCE)
+		(void)directio(fhp->fd, DIRECTIO_ON);
 #else
 		oflags |= O_DIRECT;
 #endif
@@ -358,8 +363,13 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         goto done;
     }
 
-    rc = read(fd, metabuf, sizeof(metabuf));
-    if (rc != sizeof(metabuf)) {
+    /* O_DIRECT: ensure the buffer is aligned on a 512-byte boundary. */
+    rc = posix_memalign(&metabuf, 512, METABUFLEN);
+    if (rc != 0)
+        goto done;
+
+    rc = read(fd, metabuf, METABUFLEN);
+    if (rc != METABUFLEN) {
         logmsg(LOGMSG_ERROR, "can't read meta page\n");
         goto done;
     }
