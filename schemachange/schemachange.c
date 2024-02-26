@@ -255,7 +255,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     comdb2uuidstr(s->uuid, us);
     s->seed = seed;
     rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
-                        time(NULL), 0, __func__, __LINE__);
+                        time(NULL), __func__, __LINE__);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running %s rc %d\n", us, rc);
         if (IS_UPRECS(s) || !s->db || !s->db->doing_upgrade) {
@@ -367,7 +367,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 free(arg);
             if (!s->is_osql) {
                 sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
-                               time(NULL), 0, __func__, __LINE__);
+                               time(NULL), __func__, __LINE__);
                 free_schema_change_type(s);
             }
             rc = SC_ASYNC_FAILED;
@@ -1137,7 +1137,7 @@ int sc_timepart_add_table(const char *existingTableName,
     }
 
     if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_myhostname, time(NULL),
-                       0, __func__, __LINE__) != 0) {
+                       __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1211,7 +1211,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     }
 
     if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_myhostname, time(NULL),
-                       0, __func__, __LINE__) != 0) {
+                       __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;

@@ -253,21 +253,14 @@ static int freesc(void *obj, void *arg)
     return 0;
 }
 
-/* Atomically set the schema change running status, and mark it in glm for
- * the schema change in progress dbdwn alarm.
+/* Atomically set or reset the schema change running status
+ * 
+ * NOTE: this only affects in memory list of schema changed tables,
+ * while the llmeta is updated somewhere else
  *
- * The seed was a silly idea to stop imaginary race conditions on the
- * replicants.  I'm not sure what race conditions I was thinking of at the
- * time, but this just seemed to cause problems with replicants getting
- * stuck in schema change mode.  Therefore we will always allow this operation
- * to succeed unless this is the master node, in which case the purpose of the
- * flag is as before to prevent 2 schema changes from running at once.
- *
- * If we are using the low level meta table then this isn't called on the
- * replicants at all when doing a schema change, its still called for queue or
- * dtastripe changes. */
+ */
 int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
-                   int running, const char *host, time_t time, int replicant,
+                   int running, const char *host, time_t time,
                    const char *func, int line)
 {
     sc_table_t *sctbl = NULL;
@@ -341,17 +334,16 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
     rc = 0;
 
 done:
-    ctrace("sc_set_running(table=%s running=%d): "
-           "gbl_schema_change_in_progress %d from %s:%d rc=%d\n",
-           table, running, get_schema_change_in_progress(__func__, __LINE__),
+    ctrace("%s(table=%s running=%d): gbl_schema_change_in_progress %d"
+           " from %s:%d rc=%d\n", __func__, table, running,
+           get_schema_change_in_progress(__func__, __LINE__),
            func, line, rc);
 
     /* I think there's a place that decrements this without waiting for
      * the async sc thread to complete (which is wrong) */
     logmsg(LOGMSG_INFO,
-           "sc_set_running(table=%s running=%d): from "
-           "%s:%d rc=%d\n",
-           table, running, func, line, rc);
+           "%s(table=%s running=%d): from %s:%d rc=%d\n",
+           __func__, table, running, func, line, rc);
 
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return rc;
