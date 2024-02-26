@@ -1,0 +1,6 @@
+schema
+	{
+		int a 
+		int c 
+	}
+
