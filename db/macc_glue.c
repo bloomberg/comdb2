@@ -293,7 +293,7 @@ static int _clone_column(struct field *src, struct field *m, int offset)
 }
 
 static struct schema * _create_index_datacopy_schema(struct schema *sch, int ix,
-        struct errstat *err)
+                                                     struct errstat *err)
 {
     struct partial_datacopy *pd;
     struct schema *p = NULL;
@@ -332,6 +332,9 @@ static struct schema * _create_index_datacopy_schema(struct schema *sch, int ix,
         m = &p->member[piece];
         m->idx = find_field_idx_in_tag(sch, temp->field);
         if (m->idx == -1) {
+            /* DEFAULT tag can fail here, but error is ignored, 
+             * no datacopy idx for comdbgi
+             */
             rc = -ix - 1;
             goto err;
         }
@@ -479,7 +482,7 @@ static int _set_schema_index_column(struct schema *sch, struct field *m,
         if (m->idx == -1) {
             errstat_set_rcstrf(err, -1, "field %s not found in %s",
                     m->name, sch->tag);
-            return -ix - 1;
+            return -ix - 1; /* this is ignored for DEFAULT tag */
         }
         m->type = sch->member[m->idx].type;
         m->len = sch->member[m->idx].len;
@@ -1109,7 +1112,26 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
             /* comdbg clients */
             rc = create_keys_schemas(tbl, sch_default, alt, 0, schs_indx,
                                      &nschs_indx, err);
-            if (rc)
+            /* NOTE: creating schemas for the indexes in the DEFAULT tag ignore the
+             * case when an index has columns that are not present in the DEFAULT tag!!!
+             * This is the behaviour 7.0 so I will not change it.  It is to be
+             * noticed though that this leaves schema for DEFAULT tag with no indexes
+             *
+             * Example:
+             * ondisk {
+             *    int a
+             *    int b
+             * }
+             * tag default {
+             *    int a
+             * }
+             * keys {
+             *    "a" = a -> this is something that default could use, but ..
+             *    "b" = b -> this fails all indexes for default
+             * }
+             *
+             */
+            if (rc > 0)
                 goto err;
         }
     }
