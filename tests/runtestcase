@@ -251,6 +251,20 @@ verify_physical_at_finish() {
     local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
+    # Ask database to keep logs
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "put tunable min_keep_logs '10000'" >/dev/null 2>&1
+        $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "put tunable min_keep_logs_age '10000'" >/dev/null 2>&1
+    else
+        for node in ${CLUSTER} ; do
+            $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node "put tunable min_keep_logs '10000'" >/dev/null 2>&1
+            $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node "put tunable min_keep_logs_age '10000'" >/dev/null 2>&1
+        done
+    fi
+
+    # we delete-files once every 5 seconds .. sleep for 6 seconds
+    sleep 6
+
     if [[ -z "$CLUSTER" ]]; then
         timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default "exec procedure sys.cmd.send('flush')" >/dev/null 2>&1
         ls ${DBDIR}/ | egrep "\.datas|\.index|\.blobs" | while read fl ; do 
