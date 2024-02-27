@@ -1,0 +1,16 @@
+schema
+{
+    int      a
+    int      b
+}
+
+tag default
+{
+    int a
+}
+
+keys
+{
+    "b" =  b
+}
+
