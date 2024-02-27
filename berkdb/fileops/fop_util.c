@@ -959,7 +959,7 @@ retry:	if (LOCKING_ON(dbenv)) {
 				goto err;
 		} else if (ret != DB_LOCK_NOTGRANTED)
 			goto err;
-		else if (F_ISSET(txn, TXN_FOP_NOBLOCK)) {
+		else if (txn && F_ISSET(txn, TXN_FOP_NOBLOCK)) {
 			int refc_rc = __memp_get_refcnt(dbenv, dbp->fileid, &cnt);
 			logmsg(LOGMSG_USER, "%s fop-lock held, ignoring %s refcnt rc=%d cnt=%d\n",
 						__func__, name, refc_rc, cnt);
