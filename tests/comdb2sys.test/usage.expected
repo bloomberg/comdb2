@@ -1,0 +1,6 @@
+(num_uses=0)
+[select num_uses from comdb2_features_used where id='FEATURE_TEST_COUNTER'] rc 0
+(comdb2_test_counter()=1)
+[select comdb2_test_counter()] rc 0
+(num_uses=1)
+[select num_uses from comdb2_features_used where id='FEATURE_TEST_COUNTER'] rc 0

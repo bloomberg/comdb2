@@ -1,0 +1,3 @@
+select num_uses from comdb2_features_used where id='FEATURE_TEST_COUNTER'
+select comdb2_test_counter()
+select num_uses from comdb2_features_used where id='FEATURE_TEST_COUNTER'
