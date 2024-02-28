@@ -102,8 +102,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
 
     /* This section looks for resumed / resuming schema changes:
-     * if there is one, then we attach to it here */
-    if (!s->resume &&
+     * if there is one, then we attach to it here
+     * NOTE: resuming a partition can create new schema changes
+     * for shards that did not get a chance to start, but alas,
+     * it is still a resume in which iq->sorese == NULL
+     */
+    if (!s->resume && iq->sorese &&
         (s->kind == SC_ADDTABLE || IS_FASTINIT(s) || IS_ALTERTABLE(s))) {
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
