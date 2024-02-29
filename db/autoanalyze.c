@@ -133,15 +133,14 @@ void *auto_analyze_table(void *arg)
     return NULL;
 }
 
-static void get_saved_counter_epochs(char *tblname, unsigned *aa_counter,
-                                          int64_t *aa_lastepoch,
-                                          int64_t *aa_needs_analyze_time)
+static void get_saved_counter_epochs(tran_type *trans, char *tblname, unsigned *aa_counter, int64_t *aa_lastepoch,
+                                     int64_t *aa_needs_analyze_time)
 {
     int rc;
     if (aa_counter) {
         *aa_counter = 0;
         char *counterstr = NULL;
-        rc = bdb_get_table_parameter(tblname, aa_counter_str, &counterstr);
+        rc = bdb_get_table_parameter_tran(tblname, aa_counter_str, &counterstr, trans);
         if (rc == 0) {
             *aa_counter = strtoul(counterstr, NULL, 10);
             free(counterstr);
@@ -151,7 +150,7 @@ static void get_saved_counter_epochs(char *tblname, unsigned *aa_counter,
     if (aa_lastepoch) {
         char *epochstr = NULL;
         *aa_lastepoch = 0;
-        rc = bdb_get_table_parameter(tblname, aa_lastepoch_str, &epochstr);
+        rc = bdb_get_table_parameter_tran(tblname, aa_lastepoch_str, &epochstr, trans);
         if (rc == 0) {
             *aa_lastepoch = atoll(epochstr);
             free(epochstr);
@@ -161,7 +160,7 @@ static void get_saved_counter_epochs(char *tblname, unsigned *aa_counter,
     if (aa_needs_analyze_time) {
         char *needs_analyze_time_str = NULL;
         *aa_needs_analyze_time = 0;
-        rc = bdb_get_table_parameter(tblname, aa_needs_analyze_time_str, &needs_analyze_time_str);
+        rc = bdb_get_table_parameter_tran(tblname, aa_needs_analyze_time_str, &needs_analyze_time_str, trans);
         if (rc == 0) {
             *aa_needs_analyze_time = atoll(needs_analyze_time_str);
             free(needs_analyze_time_str);
@@ -169,7 +168,7 @@ static void get_saved_counter_epochs(char *tblname, unsigned *aa_counter,
     }
 }
 
-int load_auto_analyze_counters(void)
+int load_auto_analyze_counters_tran(tran_type *trans)
 {
     int save_freq = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ);
 
@@ -184,7 +183,7 @@ int load_auto_analyze_counters(void)
             unsigned int saved_counter = 0;
             int64_t lastepoch = 0;
             int64_t needs_analyze_time = 0;
-            get_saved_counter_epochs(tbl->tablename, &saved_counter, &lastepoch, &needs_analyze_time);
+            get_saved_counter_epochs(trans, tbl->tablename, &saved_counter, &lastepoch, &needs_analyze_time);
             XCHANGE32(tbl->aa_saved_counter, saved_counter);
             XCHANGE64(tbl->aa_lastepoch, lastepoch);
             XCHANGE64(tbl->aa_needs_analyze_time, needs_analyze_time);
@@ -198,6 +197,11 @@ int load_auto_analyze_counters(void)
     }
 
     return 0;
+}
+
+int load_auto_analyze_counters()
+{
+    return load_auto_analyze_counters_tran(NULL);
 }
 
 static long long get_num_rows_from_stat1(struct dbtable *tbldb)
@@ -299,8 +303,11 @@ void get_auto_analyze_tbl_stats(struct dbtable *tbl, int include_updates, int *d
 void stat_auto_analyze(void)
 {
     // refresh from saved if we are not master
-    if (thedb->master != gbl_myhostname)
-        load_auto_analyze_counters();
+    if (thedb->master != gbl_myhostname) {
+        tran_type *trans = curtran_gettran();
+        load_auto_analyze_counters_tran(trans);
+        curtran_puttran(trans);
+    }
 
     logmsg(LOGMSG_USER, "AUTOANALYZE: %s\n",
            YESNO(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AUTOANALYZE)));
@@ -463,7 +470,7 @@ void *auto_analyze_main(void *unused)
             // save updated autoanalyze counter if there is a delta
             unsigned int llmeta_aa_saved_counter;
             // get saved counter from llmeta
-            get_saved_counter_epochs(tbl->tablename, &llmeta_aa_saved_counter, NULL, NULL);
+            get_saved_counter_epochs(NULL, tbl->tablename, &llmeta_aa_saved_counter, NULL, NULL);
             int delta = newautoanalyze_counter - llmeta_aa_saved_counter;
             if (delta > 0) {
                 ctrace("AUTOANALYZE: Table %s, saving counter (%d); last run time %s, needs analyze time %s\n",

@@ -44,9 +44,13 @@ int auto_analyze_tables_systable_collect(void **data, int *nrecords)
 {
     *nrecords = 0;
     *data = NULL;
+
     // refresh from saved if we are not master
-    if (thedb->master != gbl_myhostname)
-        load_auto_analyze_counters();
+    if (thedb->master != gbl_myhostname) {
+        tran_type *trans = curtran_gettran();
+        load_auto_analyze_counters_tran(trans);
+        curtran_puttran(trans);
+    }
 
     int include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
 
