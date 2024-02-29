@@ -132,7 +132,12 @@ function create_tables
     [[ $debug == "1" ]] && set -x
     for (( x = 0 ; x < MAXTABLES ; ++x )) ; do
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t$x (a int)"
+		r=$?
+		[[ "$r" != 0 ]] && failexit create_tables "Error creating table t$x $r"
+
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index ix$x on t$x(a)"
+		r=$?
+		[[ "$r" != 0 ]] && failexit create_tables "Error creating index ix$x $r"
     done
 }
 
