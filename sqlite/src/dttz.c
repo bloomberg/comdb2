@@ -13,6 +13,7 @@
 #include <time.h>
 #include <strings.h>
 #include <alloca.h>
+#include <math.h>
 
 #include <sys/types.h>
 #include <inttypes.h>
@@ -411,4 +412,15 @@ const char *get_clnt_tz()
 {
   struct sql_thread *thd = pthread_getspecific(query_info_key);
   return ( thd && thd->clnt ) ? thd->clnt->tzname : NULL;
+}
+
+void next_milliseconds(dttz_t *in)
+{
+    if (in->dttz_prec == 6) {
+        in->dttz_frac = ((int)ceil(in->dttz_frac / 1000.0)) * 1000;
+        while (in->dttz_frac >= 1000000) {
+            in->dttz_frac -= 1000000;
+            ++in->dttz_sec;
+        }
+    }
 }
