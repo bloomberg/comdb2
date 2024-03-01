@@ -20,6 +20,7 @@
 #include <comdb2.h>
 
 int load_auto_analyze_counters(void);
+int load_auto_analyze_counters_tran(tran_type *trans);
 void stat_auto_analyze(void);
 void *auto_analyze_main(void *);
 void *auto_analyze_table(void *);

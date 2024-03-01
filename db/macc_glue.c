@@ -292,8 +292,7 @@ static int _clone_column(struct field *src, struct field *m, int offset)
     return offset + m->len;
 }
 
-static struct schema * _create_index_datacopy_schema(struct schema *sch, int ix,
-                                                     struct errstat *err)
+static struct schema *_create_index_datacopy_schema(struct schema *sch, int ix, struct errstat *err)
 {
     struct partial_datacopy *pd;
     struct schema *p = NULL;
@@ -332,7 +331,7 @@ static struct schema * _create_index_datacopy_schema(struct schema *sch, int ix,
         m = &p->member[piece];
         m->idx = find_field_idx_in_tag(sch, temp->field);
         if (m->idx == -1) {
-            /* DEFAULT tag can fail here, but error is ignored, 
+            /* DEFAULT tag can fail here, but error is ignored,
              * no datacopy idx for comdbgi
              */
             rc = -ix - 1;
