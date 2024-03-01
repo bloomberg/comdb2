@@ -41,7 +41,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->instant_sc = -1;
     sc->persistent_seq = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
-    sc->original_master_node[0] = 0;
+    sc->source_node[0] = 0;
     sc->timepartition_name = NULL;
     sc->partition.type = PARTITION_NONE;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
@@ -161,7 +161,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->use_plan) + sizeof(s->commit_sleep) +
         sizeof(s->convert_sleep) + sizeof(s->same_schema) + sizeof(s->dbnum) +
         sizeof(s->flg) + sizeof(s->rebuild_index) +
-        sizeof(s->index_to_rebuild) + sizeof(s->original_master_node) +
+        sizeof(s->index_to_rebuild) + sizeof(s->source_node) +
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->lua_func_flags) + sizeof(s->newtable) +
         sizeof(s->usedbtablevers) + sizeof(s->qdb_file_ver) +
@@ -284,8 +284,7 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
     p_buf = buf_put(&s->index_to_rebuild, sizeof(s->index_to_rebuild), p_buf,
                     p_buf_end);
 
-    p_buf = buf_put(&s->original_master_node, sizeof(s->original_master_node),
-                    p_buf, p_buf_end);
+    p_buf = buf_put(&s->source_node, sizeof(s->source_node), p_buf, p_buf_end);
 
     p_buf = buf_put_dests(s, p_buf, p_buf_end);
 
@@ -513,8 +512,7 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&drop_table, sizeof(drop_table), p_buf, p_buf_end); /* s->drop_table */
 
     p_buf =
-        (uint8_t *)buf_get(&s->original_master_node,
-                           sizeof(s->original_master_node), p_buf, p_buf_end);
+        (uint8_t *)buf_get(&s->source_node, sizeof(s->source_node), p_buf, p_buf_end);
 
     p_buf = (uint8_t *)buf_get_dests(s, p_buf, p_buf_end);
 
@@ -699,8 +697,7 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
                                sizeof(s->index_to_rebuild), p_buf, p_buf_end);
 
     p_buf =
-        (uint8_t *)buf_get(&s->original_master_node,
-                           sizeof(s->original_master_node), p_buf, p_buf_end);
+        (uint8_t *)buf_get(&s->source_node, sizeof(s->source_node), p_buf, p_buf_end);
 
     p_buf = (uint8_t *)buf_get_dests(s, p_buf, p_buf_end);
 
