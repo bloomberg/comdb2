@@ -29,7 +29,12 @@ sqlite3_module systblMemstatsModule = {
 };
 
 int get_usages(void **data, int *num_points) {
+#ifdef USE_SYS_ALLOC
+    (*num_points) = 0;
+    return 0;
+#else
     return comdb2ma_usages((comdb2ma_usage **)data, num_points);
+#endif
 }
 
 void free_usages(void *data, int num_points) {
