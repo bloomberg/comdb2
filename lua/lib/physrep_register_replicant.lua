@@ -4,7 +4,7 @@
 -- this stored procedure on the source/replication metadb node in order to
 -- register themselves. The node, in return, sends back a list of "potential"
 -- nodes that the replicant can connect to to pull and apply physical logs.
-local function main(dbname, hostname, lsn, source_dbname, source_hosts)
+local function main(dbname, hostname, lsn, source_dbname, source_hosts, tier_affinity, host_affinity)
     db:begin()
 
     -- Retrieve physrep tunables
@@ -30,24 +30,39 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
         return
     end
 
+    local more_filters = " 1 "
+    if tier_affinity != nil and tier_affinity != '' then
+        more_filters = more_filters .. " AND tier IN (" .. tier_affinity .. ") "
+    end
+    if host_affinity != nil and host_affinity != '' then
+        more_filters = more_filters .. " AND host IN (" .. host_affinity .. ") "
+    end
+
     local rs, rc = db:exec("WITH RECURSIVE " ..
-                           "    tiers (dbname, host, tier) AS " ..
-                           "        (SELECT dbname, host, 0 " ..
+                           "    replication_tree (dbname, host, tier, depth) AS " ..
+                           "        (SELECT dbname, host, tier, 0 " ..
                            "             FROM comdb2_physreps " ..
-                           "             WHERE dbname = '" .. source_dbname .. "' AND " ..
-                           "                   host IN (" .. source_hosts ..") " ..
+                           "             WHERE dbname = '" .. source_dbname .. "' " ..
+                           "                   AND host IN (" .. source_hosts ..") " ..
+                           "                   AND " .. more_filters ..
                            "         UNION ALL " ..
-                           "         SELECT p.dbname, p.host, t.tier+1  " ..
-                           "             FROM comdb2_physrep_connections p, tiers t " ..
-                           "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host), " ..
-                           "    child_count (dbname, host, tier, cnt) AS " ..
-                           "        (SELECT t.dbname, t.host, t.tier, count (*) " ..
-                           "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
+                           "         SELECT c.dbname, c.host, p.tier, t.depth+1  " ..
+                           "             FROM comdb2_physreps p, comdb2_physrep_connections c, replication_tree t " ..
+                           "             WHERE c.source_dbname = t.dbname " ..
+                           "                   AND c.source_host = t.host " ..
+                           "                   AND c.dbname = p.dbname " ..
+                           "                   AND c.host = p.host " ..
+                           "                   AND " .. more_filters .. "), " ..
+                           "    child_count (dbname, host, depth, cnt) AS " ..
+                           "        (SELECT t.dbname, t.host, t.depth, count (*) " ..
+                           "             FROM replication_tree t LEFT OUTER JOIN comdb2_physrep_connections p " ..
                            "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
                            "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. tunables["physrep_fanout"] .. " ) " ..
-                           "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
-                           "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
-                           "    ORDER BY tier, cnt " ..
+                           "SELECT c.level, c.dbname, c.host, FROM child_count c, comdb2_physreps p " ..
+                           "    WHERE c.dbname = p.dbname " ..
+                           "          AND c.host = p.host " ..
+                           "          AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
+                           "    ORDER BY level, cnt " ..
                            "    LIMIT " .. tunables["physrep_max_candidates"])
 
     if rs then

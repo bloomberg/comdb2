@@ -77,6 +77,8 @@ char *gbl_physrep_source_dbname;
 char *gbl_physrep_source_host;
 char *gbl_physrep_metadb_name;
 char *gbl_physrep_metadb_host;
+char *gbl_physrep_host_affinity;
+char *gbl_physrep_tier_affinity;
 
 static int repl_db_connected = 0;
 
@@ -272,6 +274,51 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
 err:
     cdb2_close(comdb2db);
     return -1;
+}
+
+/*
+  Quote and append the elements from the specified comma-separated list to the
+  buffer.
+*/
+static int append_quoted_list(char *buf, int buf_len, char *list) {
+    int bytes_written = 0;
+
+    int count = 0;
+    char *saveptr;
+
+    if (list != NULL) {
+        bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, ", \"");
+        if (bytes_written >= buf_len) {
+            physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+            return -1;
+        }
+
+        char *element = strtok_r(list, ",", &saveptr);
+        while (element != NULL)  {
+            bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, "%s'%s'",
+                                      (count == 0) ? "" : ", ", element);
+            if (bytes_written >= buf_len) {
+                physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+                return -1;
+            }
+            ++count;
+            element = strtok_r(NULL, ",", &saveptr);
+        }
+
+	bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, "\"");
+	if (bytes_written >= buf_len) {
+	    physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+	    return -1;
+	}
+    } else {
+        bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, ", NULL");
+        if (bytes_written >= buf_len) {
+            physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+            return -1;
+        }
+    }
+
+    return bytes_written;
 }
 
 static int update_registry(cdb2_hndl_tp *repl_metadb,
@@ -640,8 +687,28 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
         return 1;
     }
+    bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, "\"");
+    if (bytes_written >= buf_len) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
+    }
 
-    bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, "\")");
+    int len;
+    len = append_quoted_list(buf+bytes_written, buf_len-bytes_written, gbl_physrep_tier_affinity);
+    if (len <= 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to append physrep_tier_affinity to "
+                                     "the request\n", __func__, __LINE__);
+        return 1;
+    }
+
+    len = append_quoted_list(buf+bytes_written, buf_len-bytes_written, gbl_physrep_host_affinity);
+    if (len <= 0) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to append physrep_host_affinity to "
+                                     "the request\n", __func__, __LINE__);
+        return 1;
+    }
+
+    bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, ")");
     if (bytes_written >= buf_len) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
         return 1;

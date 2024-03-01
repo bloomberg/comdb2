@@ -1869,6 +1869,9 @@ REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid 
 REGISTER_TUNABLE("physrep_fanout",
                  "Maximum number of physical replicants that a node can service (Default: 8)",
                  TUNABLE_INTEGER, &gbl_physrep_fanout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_host_affinity", "When set, the replicant only gets a list of source "
+                 "nodes from these (comma-separated) hosts during registration.",
+                 TUNABLE_STRING, &gbl_physrep_host_affinity, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_hung_replicant_check_freq_sec",
                  "Check for hung physical replicant this often. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_physrep_hung_replicant_check_freq_sec, 0, NULL,
@@ -1918,6 +1921,9 @@ REGISTER_TUNABLE("physrep_source_dbname", "Physical replication source cluster d
 REGISTER_TUNABLE("physrep_source_host", "List of physical replication source cluster hosts.",
                  TUNABLE_STRING, &gbl_physrep_source_host, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("physrep_tier_affinity", "When set, the replicant only gets a list of source "
+                 "nodes from these (comma-separated) tiers during registration.",
+                 TUNABLE_STRING, &gbl_physrep_tier_affinity, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
 REGISTER_TUNABLE("revsql_allow_command_execution",

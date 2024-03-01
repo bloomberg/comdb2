@@ -29,16 +29,16 @@ replicants, thus keeping some load off of the top-level source host/cluster.
 
 ```
 
-                            S       |                    -- tier 0 
+                            S       |                    -- depth 0 
                            / \      |
                           /   \     | log-flow
-                         R1   R2    |                    -- tier 1
+                         R1   R2    |                    -- depth 1
                         / \     \   |
                        /   \     \  v
-                      R3   R4    R5                      -- tier 2
+                      R3   R4    R5                      -- depth 2
 ```
 
-Note: The source cluster nodes are always considered at tier 0.
+Note: The source cluster nodes are always considered at depth 0.
 
 Setting up tiered replication topology requires 2 base tables to maintain the
 current state of replication as well as the replication topology.
@@ -104,6 +104,7 @@ separate database running in the a lower (development) tier.
 ```
 CREATE TABLE comdb2_physreps(dbname CSTRING(60),
                              host CSTRING(120),
+                             tier CSTRING(60),
                              file INT,
                              offset INT,
                              last_keepalive DATETIME,

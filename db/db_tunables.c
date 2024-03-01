@@ -439,6 +439,8 @@ extern char *gbl_physrep_source_dbname;
 extern char *gbl_physrep_source_host;
 extern char *gbl_physrep_metadb_name;
 extern char *gbl_physrep_metadb_host;
+extern char *gbl_physrep_host_affinity;
+extern char *gbl_physrep_tier_affinity;
 
 /* Reversql connection/sql */
 extern int gbl_revsql_allow_command_exec;
