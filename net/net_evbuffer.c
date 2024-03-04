@@ -102,7 +102,7 @@
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
 extern int count_newsqls;
-int gbl_pb_connectmsg = 0;
+int gbl_pb_connectmsg = 1;
 int gbl_libevent = 1;
 int gbl_libevent_appsock = 1;
 int gbl_libevent_rte_only = 0;
