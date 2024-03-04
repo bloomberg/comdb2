@@ -246,6 +246,9 @@ __txn_begin_pp(dbenv, parent, txnpp, flags)
 	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, 0);
 }
 
+/* Nightmare-recovery test might unleak a txn from a different td */
+int gbl_abort_on_unfound_txn = 1;
+
 static void remove_td_txn(DB_TXN *txn)
 {
 	int found = 0;
@@ -256,7 +259,7 @@ static void remove_td_txn(DB_TXN *txn)
 			break;
 		}
 	}
-	if (!found) {
+	if (!found && gbl_abort_on_unfound_txn) {
 		logmsg(LOGMSG_FATAL, "%s unable to locate td txn %p\n", __func__,
 				txn);
 		abort();
