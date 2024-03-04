@@ -1992,7 +1992,7 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: off)",
+REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_pb_connectmsg, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("libevent", "Use libevent in net library. (Default: on)",
