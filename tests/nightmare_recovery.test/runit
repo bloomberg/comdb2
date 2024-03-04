@@ -89,7 +89,8 @@ function run_test
     wait
 
     # We succeed if the replicants never run recovery
-    skip=$(egrep skip-recovery ${TESTDIR}/logs/${DBNAME}*db)
+    # Ignore truncates in the first file
+    skip=$(egrep skip-recovery ${TESTDIR}/logs/${DBNAME}*db | egrep -v "trunc-lsn=\[1:")
 
     if [[ -z "$skip" ]]; then
         failexit "skip-recovery messages not found"
@@ -99,6 +100,12 @@ function run_test
     if [[ $skip == *"skip-recovery cannot skip"* ]]; then
         failexit "skip-recovery ran recovery"
     fi
+
+    echo "Tell everything to unleak-txn"
+    for n in $CLUSTER ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS --host $n $DBNAME "exec procedure sys.cmd.send('unleaktxn')"
+    done
+
     echo "Nothing recovered- success!"
 }
 
