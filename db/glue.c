@@ -3407,27 +3407,6 @@ int send_forgetmenot(void)
         return -1;
 }
 
-int broadcast_close_all_dbs(void)
-{
-    return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, gbl_msgwaittime);
-}
-
-int broadcast_sc_end(const char *table, uint64_t seed)
-{
-    struct net_sc_msg *sc;
-    int len;
-    len = offsetof(struct net_sc_msg, host) + 1;
-
-    sc = alloca(len);
-    if (table)
-        strncpy0(sc->table, table, sizeof(sc->table));
-    else
-        sc->table[0] = '\0';
-    sc->seed = flibc_htonll(seed);
-
-    return send_to_all_nodes(sc, len, NET_STOP_SC, gbl_scwaittime);
-}
-
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
 int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,

@@ -2543,10 +2543,6 @@ int broadcast_add_new_queue(char *table, int avgitemsz);
 int broadcast_add_consumer(const char *queuename, int consumern,
                            const char *method);
 int broadcast_procedure_op(int op, const char *name, const char *param);
-int broadcast_close_db(char *table);
-int broadcast_close_only_db(char *table);
-int broadcast_close_all_dbs(void);
-int broadcast_sc_end(const char *table, uint64_t seed);
 int broadcast_sc_start(const char *table, uint64_t seed, uint32_t host,
                        time_t t);
 int broadcast_sc_ok(void);
