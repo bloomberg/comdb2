@@ -463,8 +463,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         s->sc_rc = SC_DETACHED;
     }
 
-    broadcast_sc_start(s->tablename, iq->sc_seed, iq->sc_host,
-                       time(NULL));                   // dont care rcode
     rc = pre(iq, s, NULL);                            // non-tran ??
     if (s->done_type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
@@ -491,7 +489,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         if (rc == SC_ABORTED)
             errstat_set_strf(&iq->errstat, "Schema change was aborted");
         mark_schemachange_over_tran(s->tablename, NULL); // non-tran ??
-        broadcast_sc_end(s->tablename, iq->sc_seed);
         if (bdb_set_schema_change_status(
                 NULL, s->tablename, iq->sc_seed, 0, NULL, 0, BDB_SC_ABORTED,
                 errstat_get_str(&iq->errstat), &bdberr) ||
@@ -519,7 +516,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
             unlock_schema_lk();
         if (s->done_type == fastinit && gbl_replicate_local)
             local_replicant_write_clear(iq, tran, s->db);
-        broadcast_sc_end(s->tablename, iq->sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
     }
@@ -542,8 +538,6 @@ int do_alter_queues(struct schema_change_type *s, struct ireq *unused)
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
 
-    broadcast_sc_end(s->tablename, s->iq->sc_seed);
-
     if (gbl_pushlogs_after_sc)
         push_next_log();
 
@@ -561,8 +555,6 @@ int do_alter_stripes(struct schema_change_type *s, struct ireq *unused)
     rc = do_alter_stripes_int(s);
 
     if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
-
-    broadcast_sc_end(s->tablename, s->iq->sc_seed);
 
     if (gbl_pushlogs_after_sc)
         push_next_log();
@@ -1634,7 +1626,6 @@ int scdone_abort_cleanup(struct ireq *iq)
             sc_del_unused_files(s->db);
         }
     }
-    broadcast_sc_end(s->tablename, iq->sc_seed);
     if (bdb_set_schema_change_status(NULL, s->tablename, iq->sc_seed, 0, NULL,
                                      0, BDB_SC_ABORTED,
                                      errstat_get_str(&iq->errstat), &bdberr) ||
