@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+. ${TESTSROOTDIR}/testutils
+
+testdb_start_testcase
+
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
@@ -106,7 +110,9 @@ call_unsetup() {
         return
     fi
 
+    testdb_note "unsetup start"
     ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
+    testdb_note "unsetup end"
 }
 
 warn_long_setup() {
@@ -314,12 +320,15 @@ call_setup() {
         echo "!$TESTCASE: setup failed with core dumped ($cr)" | tee -a ${TEST_LOG}
         call_unsetup
         sleep 0.1
+        testdb_end_testcase 1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TEST_LOG}
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
+        testdb_end_testcase 1
         call_unsetup
         sleep 0.1
+        testdb_end_testcase 1
         exit 1
     fi
 }
@@ -369,7 +378,7 @@ verify_db_at_finish() {
 }
 
 exit_if_above_max_test_failures () {
-    MAX_TEST_FAILURES=10    # stop running if more that this number of failures in test.log
+    MAX_TEST_FAILURES=${MAX_TEST_FAILURES:-10}    # stop running if more that this number of failures in test.log
     F=`grep failed ${TESTDIR}/test.log | wc -l`
     if [ "$F" -ge "$MAX_TEST_FAILURES" ] ; then 
         echo "$TESTCASE: Max number of allowed test failures ($MAX_TEST_FAILURES) reached" >> ${TESTDIR}/test.log
@@ -382,7 +391,9 @@ exit_if_above_max_test_failures
 
 # start the testing: setup, runit, check cores, unsetup
 
+testdb_note "setup start"
 call_setup
+testdb_note "setup end"
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo "!$TESTCASE: started running with timeout ${TEST_TIMEOUT} at $DATETIME"
@@ -391,8 +402,10 @@ if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     callgrind_control -i on
 fi
 
+testdb_note "test start"
 timeout --kill-after=5s ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 rc=${PIPESTATUS[0]}
+testdb_note "test end"
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo "!$TESTCASE: finished running with timeout ${TEST_TIMEOUT} at $DATETIME"
@@ -465,42 +478,54 @@ if [ -t 1 ] ; then
     NEUTRAL="\033[0m"
 fi
 
+teststatus=0
+
 if [[ -n "$dbdown" ]] ; then
     # if this is intentional, please run test with 'CHECK_DB_AT_FINISH=0' (ex. put in test Makefile:export CHECK_DB_AT_FINISH=0)
+    teststatus=2
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
     echo -e "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
+    teststatus=3
 elif [[ -n "$verify_ret" ]] && [[ $rc -ne 0 ]] ; then
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
     echo -e "!$TESTCASE: also ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: also failed verify ($verify_ret)" >> ${TEST_LOG}
+    teststatus=4
 elif [[ -n "$verify_phys" ]] && [[ $rc -ne 0 ]]; then
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
     echo "!$TESTCASE: also failed physical-verify ($verify_phys)" | tee -a ${TEST_LOG}
+    teststatus=4
 elif [[ -n "$verify_phys" ]]; then
     echo "!$TESTCASE: failed physical-verify ($verify_phys)" | tee -a ${TEST_LOG}
+    testdb_end_testcase 4
 elif [[ -f "${DBNAME}.failexit" ]] ; then
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} (found ${DBNAME}.failexit, logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed (found ${DBNAME}.failexit)" >> ${TEST_LOG}
+    teststatus=1
 elif [[ -n "$verify_ret" ]] ; then
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}
+    teststatus=4
 elif [[ -n "$cr" ]] ; then
     # if this is intentional, please move core before test exits
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
     cr=""
+    teststatus=5
 elif [[ $rc -eq 0 ]] ; then
     echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: success" >> ${TEST_LOG}
     successful=1
+    teststatus=0
 else
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
+    teststatus=1
 fi
 
 if [[ -n "$cr" ]] ; then
@@ -526,9 +551,11 @@ if [[ -z "$cr" ]] ; then
 
     if [[ -n "$cr" ]] ; then
         echo "!$TESTCASE: at unsetup found core ($cr)" | tee -a ${TEST_LOG}
+        testdb_end_testcase 5
         exit 1
     fi
 fi
+testdb_end_testcase $teststatus
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
