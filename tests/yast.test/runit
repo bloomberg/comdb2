@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+. $TESTSROOTDIR/testutils
+
 function echo_color
 {
     MSG=$1
@@ -65,6 +67,7 @@ RC=0
 for test in `ls $FILE`;
 do
     echo "$test..."
+    testdb_note "$test start"
     tclsh $test $DB $FILEPATH $TCLCDB2 $CDB2_CONFIG
     if [ "$?" == "0" ] ; then
         echo_color " PASS" "green"
@@ -73,6 +76,7 @@ do
         RC=1
         #exit $RC
     fi
+    testdb_note "$test end"
 done
 
 # cleanup since this was a successful run

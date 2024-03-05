@@ -1,0 +1,46 @@
+#!/bin/bash
+
+function testdb_start_run {
+    [[ -z "$TESTCASEDB" || -z "$TESTCASETIER" || -z "$TESTUUID" ]] && return 0
+    repo=$(git remote get-url origin | sed "s/'/''/")
+    if [[ -z "$repo" ]]; then
+        exit 0
+    fi
+    branch=$(git rev-parse --abbrev-ref HEAD | sed "s/'/''/")
+    if [[ -z "$branch" ]]; then
+        exit 0
+    fi
+    commit=$(git rev-parse HEAD | sed "s/'/''/")
+    if [[ -z "$commit" ]]; then
+        exit 0
+    fi
+    version=${TESTVERSION:-NULL}
+    [[ ${version} != "NULL" ]] && version=$(echo $version | sed "s/'/''/")
+    /opt/bb/bin/cdb2sql $TESTCASEDB $TESTCASETIER "insert into runs(start, end, testid, repo, branch, sha, version) values(now(), NULL, '$TESTUUID', '$repo', '$branch', '$commit', '$version')" >/dev/null
+}
+
+function testdb_start_testcase {
+    [[ -z "$TESTCASEDB" || -z "$TESTCASETIER" || -z "$TESTUUID" || -z "$TESTCASE" ]] && return 0
+    /opt/bb/bin/cdb2sql $TESTCASEDB $TESTCASETIER "insert into testcases(start, end, testcase, testid, result) values(now(), NULL, '$TESTCASE', '$TESTUUID', NULL)" >/dev/null
+}
+
+function testdb_end_testcase {
+    [[ -z "$TESTCASEDB" || -z "$TESTCASETIER" || -z "$TESTUUID" || -z "$TESTCASE" ]] && return 0
+    local status=$1
+    shift
+    [[ -z "$status" ]] && return 0
+    /opt/bb/bin/cdb2sql $TESTCASEDB $TESTCASETIER "update testcases set end=now(), result=$status where testid='$TESTUUID' and testcase='$TESTCASE'" >/dev/null
+}
+
+function testdb_note {
+    [[ -z "$TESTCASEDB" || -z "$TESTCASETIER" || -z "$TESTUUID" || -z "$TESTCASE" ]] && return 0
+    local note=$1
+    [[ -z "$note" ]] && return 0
+    note=$(echo "$note" | sed "s/'/''/")
+    /opt/bb/bin/cdb2sql $TESTCASEDB $TESTCASETIER "insert into notes(testid, testcase, timestamp, id, note) values('$TESTUUID', '$TESTCASE', now(), coalesce((select max(id) from notes where testid='$TESTUUID' and testcase='$TESTCASE'), 0)+1, '$note')" >/dev/null
+}
+
+function testdb_end_run {
+    [[ -z "$TESTCASEDB" || -z "$TESTCASETIER" || -z "$TESTUUID" || -z "$TESTCASE" ]] && return 0
+    /opt/bb/bin/cdb2sql $TESTCASEDB $TESTCASETIER "update runs set end=now() where testid='$TESTUUID'" >/dev/null
+}
