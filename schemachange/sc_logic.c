@@ -225,7 +225,9 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
         }
     }
     if (rc && iq->sc->kind == SC_ADDTABLE) {
-        delete_temp_table(iq, iq->sc->db);
+        if (iq->sc->db) {
+            delete_temp_table(iq, iq->sc->db);
+        }
         if (iq->sc->already_finalized) {
             rem_dbtable_from_thedb_dbs(iq->sc->db);
         }
