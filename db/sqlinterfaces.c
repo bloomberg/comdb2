@@ -5249,6 +5249,10 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
     memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
 
+    clear_session_tbls(clnt);
+    free(clnt->authdata);
+    clnt->authdata = NULL;
+
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
     clnt->ddl_tables = NULL;
