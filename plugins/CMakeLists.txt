@@ -14,6 +14,10 @@ set(PLUGIN_BASE_DIR "${PROJECT_SOURCE_DIR}/plugins")
 # Clear the list of static plugin libraries from cache.
 unset(PLUGIN_LIBRARIES CACHE)
 
+set(module plugins)
+set(MODULE PLUGINS)
+configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_plugins.h @ONLY)
+
 add_subdirectory(dbqueuedb)
 add_subdirectory(logdelete)
 add_subdirectory(newsql)
