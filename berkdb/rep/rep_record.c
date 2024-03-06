@@ -8389,7 +8389,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 		DB_LOGC *logc;
 
-		if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		if ((ret = __dbreg_close_files(dbenv)) != 0 || (ret = __log_cursor(dbenv, &logc)) != 0)
 			abort();
 
 		if ((ret =
