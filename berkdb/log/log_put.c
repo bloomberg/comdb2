@@ -207,8 +207,10 @@ __log_put_int_int(dbenv, lsnp, contextp, udbt, flags, off_context, usr_ptr)
 
 		if (dbenv->attr.warn_on_replicant_log_write)
 			logmsg(LOGMSG_USER, "not master and not in recovery - I shouldn't be writing logs!!!\n");
-		if (dbenv->attr.abort_on_replicant_log_write)
+		if (dbenv->attr.abort_on_replicant_log_write) {
+			logmsg(LOGMSG_USER, "not master and not in recovery: aborting on rep-log-write\n");
 			abort();
+		}
 	}
 
 	/*
