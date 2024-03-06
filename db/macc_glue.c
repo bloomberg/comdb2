@@ -1075,10 +1075,9 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
                 }
             }
         }
-        /* offset is the best format length measure, since it is accurate for
-         * both ondisk and no-ondisk tags
-         */
-        sch->recsize = offset;
+        /* offset is only computed for adjusted ondisk schema */
+        if (sch == sch_ondisk)
+            sch->recsize = offset;
     }
 
     /* add client schema for ondisk tag */
