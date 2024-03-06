@@ -435,7 +435,7 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
 {
     int rc, bdberr = 0;
 
-    if (s->resume == SC_OSQL_RESUME) {
+    if (s->finalize_only) {
         return s->sc_rc;
     }
     if (s->done_type != user_view) {
