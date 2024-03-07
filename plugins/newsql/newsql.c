@@ -2000,7 +2000,8 @@ static int incoh_reject(int admin, bdb_state_type *bdb_state)
 {
     /* If this isn't from an admin session and the node isn't coherent
        and we disallow running queries on an incoherent node, reject */
-    return (!admin && !bdb_am_i_coherent(bdb_state) && !gbl_allow_incoherent_sql);
+    if (admin || gbl_allow_incoherent_sql) return 0;
+    return !bdb_try_am_i_coherent(bdb_state);
 }
 
 int is_commit_rollback(struct sqlclntstate *clnt)
@@ -2153,7 +2154,8 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD32(gbl_nnewsql_ssl, 1);
 
     /* coherent  _or_ in middle of transaction */
-    if (!incoh_reject(clnt->admin, thedb->bdb_env) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
+    /* do cheaper check first */
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS || !incoh_reject(clnt->admin, thedb->bdb_env)) {
         return NEWSQL_SUCCESS;
     }
     if (gbl_incoherent_clnt_wait > 0) {

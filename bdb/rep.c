@@ -4217,6 +4217,15 @@ int bdb_am_i_coherent(bdb_state_type *bdb_state)
     return x;
 }
 
+int bdb_try_am_i_coherent(bdb_state_type *bdb_state)
+{
+    if (bdb_state->parent) bdb_state = bdb_state->parent;
+    if (bdb_try_readlock(bdb_state, "bdb_am_i_coherent", __func__, __LINE__) != 0) return 0;
+    int x = bdb_am_i_coherent_int(bdb_state);
+    BDB_RELLOCK();
+    return x;
+}
+
 /* called when the master tells us we're not coherent */
 void bdb_set_notcoherent(bdb_state_type *bdb_state, int notcoherent)
 {
