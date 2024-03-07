@@ -4048,7 +4048,7 @@ int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmet
     }
     if (nkey == 0)
         return 0;
-    sc_redo = calloc(nkey, sizeof(llmeta_sc_redo_data) * nkey);
+    sc_redo = calloc(nkey, sizeof(llmeta_sc_redo_data));
     if (sc_redo == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
         *bdberr = BDBERR_MALLOC;
@@ -4320,7 +4320,7 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
     }
     if (nkey == 0)
         return 0;
-    hist = calloc(nkey, sizeof(sc_hist_row) * nkey);
+    hist = calloc(nkey, sizeof(sc_hist_row));
     if (hist == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
         *bdberr = BDBERR_MALLOC;
@@ -4640,7 +4640,7 @@ int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status
     if (nkey == 0)
         return 0;
 
-    status = calloc(nkey, sizeof(llmeta_sc_status_data) * nkey);
+    status = calloc(nkey, sizeof(llmeta_sc_status_data));
     if (status == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
         *bdberr = BDBERR_MALLOC;
