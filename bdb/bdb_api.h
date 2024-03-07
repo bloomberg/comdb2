@@ -1405,6 +1405,7 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
 void bdb_set_tran_verify_updateid(tran_type *tran);
 
 int bdb_am_i_coherent(bdb_state_type *bdb_state);
+int bdb_try_am_i_coherent(bdb_state_type *);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);
 void bdb_get_notcoherent_list(bdb_state_type *bdb_state,

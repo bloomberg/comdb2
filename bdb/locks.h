@@ -37,6 +37,8 @@ void bdb_get_writelock_abort_waiters(bdb_state_type *bdb_state,
 void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
                       const char *funcname, int line);
 
+int bdb_try_readlock(bdb_state_type *, const char *id, const char *func, int line);
+
 /* Release the lock of either type (decrements reference count, releases
  * actual lock if reference count hits zero). */
 void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line);

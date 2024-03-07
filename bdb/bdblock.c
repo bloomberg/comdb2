@@ -488,8 +488,7 @@ void bdb_get_writelock_abort_waiters(bdb_state_type *bdb_state,
  * simultaneously.  If a thread acquires the read lock twice it is reference
  * counted.  If a thread that holds the write lock calls this then it
  * continues to hold the write lock but with a higher reference count. */
-void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
-                      const char *funcname, int line)
+static int bdb_get_readlock_try(bdb_state_type *bdb_state, const char *idstr, const char *funcname, int line, int try)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
@@ -514,9 +513,12 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
         rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
+            if (try) {
+                logmsg(LOGMSG_INFO, "%s readlock busy, last writelock is %s\n", idstr, lock_handle->bdb_lock_write_idstr);
+                return -1;
+            }
             logmsg(LOGMSG_INFO, "trying readlock (%s %p), last writelock is %s %p\n", idstr, (void *)pthread_self(),
                    lock_handle->bdb_lock_write_idstr, (void *)lock_handle->bdb_lock_write_holder);
-
             Pthread_rwlock_rdlock(lock_handle->bdb_lock);
         } else if (rc != 0) {
             logmsg(LOGMSG_FATAL,
@@ -549,6 +551,17 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
         }
     }
     lk->lockref++;
+    return 0;
+}
+
+void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr, const char *funcname, int line)
+{
+    bdb_get_readlock_try(bdb_state, idstr, funcname, line, 0);
+}
+
+int bdb_try_readlock(bdb_state_type *bdb_state, const char *idstr, const char *funcname, int line)
+{
+    return bdb_get_readlock_try(bdb_state, idstr, funcname, line, 1);
 }
 
 void bdb_get_the_readlock(const char *idstr, const char *function, int line)
