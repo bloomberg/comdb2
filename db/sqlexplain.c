@@ -1225,9 +1225,24 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_VCreate:
     case OP_VDestroy:
     case OP_VOpen:
+        strbuf_appendf(out, "Open %s cursor [%d] on ",
+                (op->opcode != OP_OpenWrite ? "read" : "write"), op->p1);
+        strbuf_appendf(out, "virtual table %s", op->p4.pVtab->pMod->zName);
+        break;
     case OP_VColumn:
+        /* zComment is of the form <systbl_name>.<systbl_columnname>*/
+        strbuf_appendf(out, "R[%d] = %s",op->p3, op->zComment);
+        break;
     case OP_VNext:
+        strbuf_appendf(
+            out, "Move cursor [%d] to next entry. If entry exists, go to %d",
+            op->p1, op->p2);
+        break;
     case OP_VFilter:
+        strbuf_appendf(
+            out, "Jump to %d if the filtered result set on cursor [%d] is empty", 
+            op->p2, op->p1);
+        break;
     case OP_VRename:
     case OP_VUpdate:
     default:
