@@ -1984,7 +1984,7 @@ static int do_query_on_master_check(struct sqlclntstate *clnt, CDB2SQLQUERY *sql
     if (thedb->nsiblings == 1 || thedb->rep_sync == REP_SYNC_NONE || clnt->plugin.local_check(clnt)) {
         return 0;
     }
-    if (bdb_master_should_reject(thedb->bdb_env) && allow_master_exec == 0) {
+    if (bdb_try_master_should_reject(thedb->bdb_env) && allow_master_exec == 0) {
         ATOMIC_ADD32(gbl_masterrejects, 1);
         if (allow_master_dbinfo) {
             struct newsql_appdata *appdata = clnt->appdata;
