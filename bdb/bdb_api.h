@@ -1962,6 +1962,7 @@ int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
                            int64_t *bpool_misses, int64_t *rw_evicts);
 
 int bdb_master_should_reject(bdb_state_type *bdb_state);
+int bdb_try_master_should_reject(bdb_state_type *);
 
 void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff);
 

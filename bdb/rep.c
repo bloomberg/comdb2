@@ -5842,7 +5842,7 @@ void bdb_set_rep_handle_dead(bdb_state_type *bdb_state)
     bdb_state->rep_handle_dead = 1;
 }
 
-int bdb_master_should_reject(bdb_state_type *bdb_state)
+static int bdb_master_should_reject_int(bdb_state_type *bdb_state, int try)
 {
     int time_now;
     int should_reject;
@@ -5850,7 +5850,12 @@ int bdb_master_should_reject(bdb_state_type *bdb_state)
     if (!bdb_state->attr->master_reject_requests)
         return 0;
 
-    BDB_READLOCK("bdb_master_should_reject");
+    if (try) {
+        if (bdb_try_readlock(bdb_state, "bdb_master_should_reject", __func__, __LINE__) != 0)
+            return 0; /* we are not master */
+    } else {
+        BDB_READLOCK("bdb_master_should_reject");
+    }
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
         BDB_RELLOCK();
@@ -5895,6 +5900,16 @@ int bdb_master_should_reject(bdb_state_type *bdb_state)
     BDB_RELLOCK();
 
     return should_reject;
+}
+
+int bdb_master_should_reject(bdb_state_type *bdb_state)
+{
+    return bdb_master_should_reject_int(bdb_state, 0);
+}
+
+int bdb_try_master_should_reject(bdb_state_type *bdb_state)
+{
+    return bdb_master_should_reject_int(bdb_state, 1);
 }
 
 int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset)
