@@ -1041,6 +1041,97 @@ void debug_dump_tags(const char *tblname)
     unlock_taglock();
 }
 
+static int _count_tag(const struct schema *s, void *count)
+{
+    *(int*)count += 1;
+    return 0;
+}
+
+static int _count_tag_cols(const struct schema *s, void *count)
+{
+    *(int*)count += s->nmembers;
+    return 0;
+}
+
+int get_table_tags_count(const char *tblname, int columns)
+{
+    struct dbtag *tag;
+    int count = 0;
+
+    lock_taglock_read();
+    tag = hash_find_readonly(gbl_tag_hash, &tblname);
+    if (tag == NULL) {
+        unlock_taglock();
+        return 0;
+    }
+    if (!columns)
+        hash_for(tag->tags, (hashforfunc_t *)_count_tag, &count);
+    else
+        hash_for(tag->tags, (hashforfunc_t *)_count_tag_cols, &count);
+
+    unlock_taglock();
+
+    return count;
+}
+
+struct tagc {
+    int num;
+    int maxnum;
+    void *p;
+    const char *tblname;
+    int columns;
+};
+
+struct systable_tag;
+struct systable_tag_col;
+extern int systable_set_tag(struct systable_tag *, int idx, const char *,
+                             const struct  schema *);
+extern int systable_set_tag_cols(struct systable_tag_col *, int, int,
+                                 const char *, const struct  schema *);
+
+static int _save_tags(const struct schema *s, void *pt)
+{
+    struct tagc *t = (struct tagc*)pt;
+
+
+    if (!t->columns) {
+        if (t->num >= t->maxnum)
+            return -1;
+        t->num += systable_set_tag(t->p, t->num, t->tblname, s);
+    } else {
+        if ((t->num + s->nmembers - 1)  >= t->maxnum)
+            return -1;
+        t->num += systable_set_tag_cols(t->p, t->num, t->maxnum, t->tblname, s);
+    }
+    
+    return 0;
+}
+
+int get_table_tags(const char *tblname, void *p, int columns, int maxn)
+{
+    struct tagc t = {0};
+    struct dbtag *tag;
+
+    t.maxnum = maxn;
+    t.p = p;
+    t.tblname = tblname;
+    t.columns = columns;
+
+    lock_taglock_read();
+
+    tag = hash_find_readonly(gbl_tag_hash, &tblname);
+    if (tag == NULL) {
+        unlock_taglock();
+        return 0;
+    }
+
+    hash_for(tag->tags, (hashforfunc_t *)_save_tags, &t);
+
+    unlock_taglock();
+
+    return t.num;
+}
+
 static void dumpval(char *buf, int type, int len)
 {
     int slen;
