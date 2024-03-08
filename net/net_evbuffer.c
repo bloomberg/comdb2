@@ -458,8 +458,8 @@ static void *do_pstack(void *arg)
 #define timeval_to_ms(x) x.tv_sec * 1000 + x.tv_usec / 1000
 int gbl_timer_warn_interval = 1500; //msec
 int gbl_timer_pstack_interval =  5 * 60; //sec
+extern struct timeval last_timer_pstack;
 static struct timeval last_timer_check;
-static struct timeval last_timer_pstack;
 static struct event *check_timers_ev;
 static void check_timers(int dummyfd, short what, void *arg)
 {
@@ -504,7 +504,6 @@ static void check_timers(int dummyfd, short what, void *arg)
     if (!need_pstack) return;
     timersub(&now, &last_timer_pstack, &diff);
     if (diff.tv_sec < gbl_timer_pstack_interval) return;
-    last_timer_pstack = now;
     logmsg(LOGMSG_WARN, "%s: Generating pstack\n", __func__);
     pthread_t t;
     Pthread_create(&t, NULL, do_pstack, NULL);
