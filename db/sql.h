@@ -1207,6 +1207,7 @@ struct connection_info {
     int node_int;
     int time_in_state_int;
     enum connection_state state_int;
+    int64_t in_transaction;
 };
 
 /* makes master swing verbose */
@@ -1549,5 +1550,7 @@ int comdb2_sql_tick(void);
 int comdb2_sql_tick_no_recover_deadlock(void);
 int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
                          struct errstat *err);
+
+void wait_for_transactions(void);
 
 #endif /* _SQL_H_ */

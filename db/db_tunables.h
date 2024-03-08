@@ -2489,4 +2489,9 @@ REGISTER_TUNABLE("timer_pstack_interval", "Skip pstack if last one was within sp
 REGISTER_TUNABLE("timer_warn_interval", "Flag timer thds which tick longer than specified interval in msec. To disable, set to 0 (Default: 1500ms)",
                  TUNABLE_INTEGER, &gbl_timer_warn_interval, INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("transaction_grace_period",
+                 "Time to wait for connections with pending transactions to go away on exit.  (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

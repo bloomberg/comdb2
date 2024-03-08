@@ -1586,6 +1586,8 @@ static void begin_clean_exit(void)
        here in a second, so letting new reads in would be bad. */
     block_new_requests(thedb);
 
+    wait_for_transactions();
+
     print_all_time_accounting();
     wait_for_sc_to_stop("exit", __func__, __LINE__);
 
@@ -1642,6 +1644,8 @@ void clean_exit(void)
     /* dont let any new requests come in.  we're going to go non-coherent
        here in a second, so letting new reads in would be bad. */
     block_new_requests(thedb);
+
+    wait_for_transactions();
 
     print_all_time_accounting();
     wait_for_sc_to_stop("exit", __func__, __LINE__);
