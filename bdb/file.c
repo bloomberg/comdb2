@@ -118,6 +118,7 @@ extern struct interned_string *gbl_myhostname_interned;
 extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 extern int gbl_commit_lsn_map;
+struct timeval last_timer_pstack;
 
 #define FILENAMELEN 100
 
@@ -2215,6 +2216,7 @@ void pstack_self(void)
     gbl_logmsg_ctrace = old;
     fclose(out);
     unlink(output);
+    gettimeofday(&last_timer_pstack, NULL);
 }
 
 static void panic_func(DB_ENV *dbenv, int errval)
