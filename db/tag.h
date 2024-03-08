@@ -437,4 +437,10 @@ int load_csc2_versions(struct dbtable *table, tran_type *tran);
 /* NOTE: tag is already strdup-ed */
 struct schema * alloc_schema(char *tag, int nmembers, int flags);
 
+/* return how many tags a table has */
+int get_table_tags_count(const char *tblname, int columns);
+
+/* fill in the tags info for a specific table, up to maxn entries */
+int get_table_tags(const char *tblname, void *p, int columns, int maxn);
+
 #endif
