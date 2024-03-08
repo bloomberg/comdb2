@@ -6681,6 +6681,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
         c->sql = NULL;
         c->fingerprint = NULL;
     }
+    c->in_transaction = clnt->in_client_trans;
     Pthread_mutex_unlock(&clnt->state_lk);
 }
 
@@ -7162,4 +7163,45 @@ char *clnt_tzname(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         return clnt->plugin.tzname(clnt, stmt);
 
     return stmt_tzname(stmt);
+}
+
+int gbl_transaction_grace_period = 60;
+void wait_for_transactions(void) {
+    int ntrans;
+    int nwaits = 0;
+
+
+    for (nwaits = 0; nwaits < gbl_transaction_grace_period; nwaits++) {
+        ntrans = 0;
+        struct connection_info *connections;
+        int nconnections;
+
+        int rc = gather_connection_info(&connections, &nconnections);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "failed to get connection info\n");
+            return;
+        }
+        for (int i = 0; i < nconnections; i++) {
+            struct connection_info *c = &connections[i];
+            if (c->in_transaction) {
+                ntrans++;
+                if (nwaits > 10) {
+                    if (ntrans == 1)
+                        logmsg(LOGMSG_INFO, "waiting for transactions:\n------------------------\n");
+                    logmsg(LOGMSG_INFO, "open transaction on connection from %s pid %d\n", c->host, (int) c->pid);
+                }
+            }
+        }
+        free_connection_info(connections, nconnections);
+        if (ntrans) {
+            if (nwaits > 10)
+                logmsg(LOGMSG_INFO, "------------------------\n");
+            sleep(1);
+            nwaits++;
+        }
+        else
+            break;
+    }
+    if (ntrans && nwaits)
+        logmsg(LOGMSG_INFO, "giving up and exiting with pending transactions\n");
 }
