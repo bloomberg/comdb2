@@ -506,6 +506,62 @@ Shows the sizes on disk of the tables.
 * `tablename` - Name of the table
 * `bytes` - Size of the table in bytes
 
+## comdb2_tag_columns
+
+Shows the columns for each schema tag
+
+    comdb2_tag_columns(tablename, tagname, name, indx, type, offset,
+                       length, datalength, flags, expr, defaultvalue,
+                       dbload, conversionflags, conversiondbpad,
+                       conversionstep, blobindx)
+
+* `tablename` - Name of the table
+* `tagname` - Name of the tag
+* `name` - Name of the column
+* `indx` - Index of the column in the tag
+* `type` - Type of the column
+* `offset` - Offset of the column in the tag
+* `length` - Bytes length of the column in the tag
+* `datalength` - For dyntags, length of the client supplied buffer
+* `flags` - Flags for column
+             INDEX_DESCENT = 1 set for index members, to reverse order
+             NO_NULL = 2 do not allow nulls
+* `expr` - Set if the column is an expression
+* `defaultvalue` - Dbstore default value for a column
+* `dbload` - Dbload value for a column
+* `conversionflags` - Flags the alter the conversion
+             FLD_CONV_DBPAD - special byte array handling
+             FLD_CONV_TZONE - timezone is specifed 
+             FLD_CONV_LENDIAN - column is little endian
+             FLD_CONV_TRUNCATE - special handling for out of range strings
+* `conversiondbpad` -  For byte arrays.
+             Converting from - if the destination is smaller,
+             the lost bytes must match dbpad or it is a conversion failure.
+             Converting to - if the destination is larger then the spare bytes
+             will be padded with dbpad.  If dbapd==-1 then the source and
+             destination must match.
+* `conversionstep` - Applies to out of range strings
+             0 for truncate only
+             1 for truncate and increment
+* `blobindex` - If the column is a blob, its index, otherwise -1
+
+## comdb2_tags
+
+Shows the schema tags for tables
+
+    comdb2_tags(tablename, tagname, ixnum, size, columns, sqlitetag, csctag,
+                numblobs, numindexes)
+
+* `tablename` - Name of the table
+* `tagname` - Name of the tag
+* `ixnum` - If this is a schema index, its index in the list of indexes
+* `size` - Length of the index (recsize)
+* `numcolumns` - Number of columns in the tag
+* `sqlitekeyname` - If this is a schema index, the name that sqlite uses for it
+* `keyname` - If this is an index, name of the index
+* `numblobs` - Number of blob columns in the tag
+* `numndexes` - If this is a table tag schema, how many indexes
+
 ## comdb2_temporary_file_sizes
 
 Reports sizes of temporary files.
