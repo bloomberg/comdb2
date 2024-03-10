@@ -177,7 +177,7 @@ static int alloc_port(const char *svc)
 }
 
 static void readcb(int, short, void *);
-static void routefd(int, short, void *);
+static void routefd(int serverfd, short what, void *arg);
 static void writecb(int, short, void *);
 
 /* accept_list is the list of accepted connections which don't "reg"ister with
@@ -215,7 +215,7 @@ static void set_max_active_connections(void)
 }
 
 struct connection {
-  private:
+  protected:
     in_addr_t addr;
     event ev;
     evbuffer *rdbuf;
@@ -240,6 +240,7 @@ struct connection {
         enable_read();
     }
   public:
+    char protocol[4];
     int fd;
     int is_unix;
     std::string svc;
@@ -250,7 +251,7 @@ struct connection {
         init();
     }
     connection(int f, uint32_t a)
-        : addr{a}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}, fd{f}, is_unix{0}
+        : addr{a}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}, fd{f}, is_unix{0}, protocol{'p', 'm', 'u', 'x'}
     {
         init();
     }
@@ -359,6 +360,15 @@ struct connection {
     }
 };
 
+struct secure_connection : connection {
+  public:
+    secure_connection(int f, uint32_t a) : connection(f, a)
+    {
+        char spmu[] = {'s', 'p', 'm', 'u'};
+        memcpy(protocol, spmu, sizeof(spmu));
+    }
+};
+
 static void close_oldest_active_connection(void)
 {
     connection *c = TAILQ_FIRST(&accept_list);
@@ -410,8 +420,7 @@ static void routefd(int serverfd, short what, void *arg)
     int clientfd = c->fd;
     make_socket_blocking(clientfd);
     debug_log("%s send fd:%d to fd:%d\n", __func__, clientfd, serverfd);
-    char buf[] = {'p', 'm', 'u', 'x'};
-    iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
+    iovec iov = {.iov_base = c->protocol, .iov_len = sizeof(c->protocol)};
     msghdr msg = {0};
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
@@ -431,9 +440,9 @@ static void routefd(int serverfd, short what, void *arg)
     ssize_t rc = sendmsg(serverfd, &msg, 0);
     // I wish protocol was to send 1 byte (not 4). Simplifies handing partial
     // writes by eliminating them. For now, terminate connection to server.
-    if (rc != sizeof(buf)) {
-        syslog(LOG_ERR, "%s:sendmsg fd:%d rc:%zd expected:%zu (%s)\n", __func__,
-               serverfd, rc, sizeof(buf), strerror(errno));
+    if (rc != sizeof(c->protocol)) {
+        syslog(LOG_ERR, "%s:sendmsg fd:%d rc:%zd expected:%zu (%s)\n", __func__, serverfd, rc, sizeof(c->protocol),
+               strerror(errno));
         const auto &s = connection_map.find(c->svc);
         if (s != connection_map.end()) {
             delete s->second;
@@ -627,6 +636,13 @@ static void tcp_cb(evconnlistener *listener, evutil_socket_t fd, sockaddr *addr,
     connection *c = new connection(fd, in.sin_addr.s_addr);
 }
 
+static void tcp_secure_cb(evconnlistener *listener, evutil_socket_t fd, sockaddr *addr, int len, void *unused)
+{
+    debug_log("%s new secure connection fd:%d\n", __func__, fd);
+    sockaddr_in &in = *(sockaddr_in *)addr;
+    connection *c = new secure_connection(fd, in.sin_addr.s_addr);
+}
+
 static void unix_cb(evconnlistener *listener, evutil_socket_t fd,
                     sockaddr *addr, int len, void *unused)
 {
@@ -794,12 +810,13 @@ int main(int argc, char **argv)
     std::string cluster("prod");
     std::string dbname("pmuxdb");
     std::vector<int> listen_ports;
+    std::vector<int> listen_secure_ports;
     enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2 };
     store_mode store_mode = MODE_NONE;
     std::pair<int, int> custom_range;
 
     int c;
-    while ((c = getopt(argc, argv, "hc:d:b:p:r:lnf")) != -1) {
+    while ((c = getopt(argc, argv, "hc:d:b:p:s:r:lnf")) != -1) {
         switch (c) {
         case 'h':
             return usage(stdout, EXIT_SUCCESS);
@@ -816,6 +833,9 @@ int main(int argc, char **argv)
             break;
         case 'p':
             listen_ports.push_back(atoi(optarg));
+            break;
+        case 's':
+            listen_secure_ports.push_back(atoi(optarg));
             break;
         case 'r':
             if (make_port_range(optarg, custom_range) != 0) {
@@ -909,6 +929,25 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
     }
+
+    for (auto port : listen_secure_ports) {
+        sockaddr_in addr = {0};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        socklen_t len = sizeof(addr);
+        listener = evconnlistener_new_bind(base, tcp_secure_cb, NULL, LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
+                                           SOMAXCONN, (sockaddr *)&addr, len);
+        if (listener) {
+            evconnlistener_set_error_cb(listener, accept_error_cb);
+            listeners.push_back(listener);
+            debug_log("accept on secure port:%d fd:%d\n", port, evconnlistener_get_fd(listener));
+            pmux_store->sav_port("pmux", port);
+        } else {
+            syslog(LOG_CRIT, "failed to listen on secure port:%d\n", port);
+            return EXIT_FAILURE;
+        }
+    }
+
     unlink_bind_path();
     sockaddr_un addr = {0};
     addr.sun_family = AF_UNIX;
