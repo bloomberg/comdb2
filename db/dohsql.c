@@ -1978,6 +1978,14 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
     struct param_data *newparam, *temparr;
     int i = 0;
 
+    /**
+     * skip the TK_VARIABLE prefix that is still in the Expr
+     * Either @, ?, : or $
+     *
+     */
+    assert(name[0] == '@' || name[0] == '?' || name[0] == ':' || name[0] == '$');
+    name = name + 1;
+
     /* alloc params, if not ready yet */
     if (!(params = *pparams)) {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1987,8 +1995,10 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
         if (!params)
             return NULL;
         params->clnt = thd->clnt;
-    } else {
-        /* if already allocated, check to see if name is already in */
+    } else if (name[0]) {
+        /* if already allocated, check to see if name is already in;
+         * NOTE: implicit '?' parameters are indexed based and are skipped
+         */
         for (i = 0; i < params->nparams; i++) {
             if (!strcmp(name, params->params[i].name)) {
                 /* done here */
@@ -2001,7 +2011,7 @@ struct params_info *dohsql_params_append(struct params_info **pparams,
        NOTE: it is important here that the clnt plugin callbacks are not
        changed yet
     */
-    newparam = clnt_find_param(params->clnt, name + 1, index);
+    newparam = clnt_find_param(params->clnt, name, index);
     if (!newparam) {
         /* clnt parameters are incorrect, fallback to single thread to err */
         free(params->params);
