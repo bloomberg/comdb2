@@ -524,6 +524,16 @@ $cmd "select * from comdb2_tables where tablename='t17'" >> $OUT 2>&1
 echo $cmd "select * from comdb2_timepartshards where name='t17'"
 $cmd "select * from comdb2_timepartshards where name='t17'" >> $OUT 2>&1
 
+
+echo $cmd "create table teststatsize(a int)"
+$cmd "create table teststatsize(a int)" >> $OUT 2>&1
+
+echo $cmd "alter table teststatsize partitioned by time period 'daily' retention 3 start '20240101T'"
+$cmd "alter table teststatsize partitioned by time period 'daily' retention 3 start '20240101T'" >> $OUT 2>&1
+
+echo $cmd "exec procedure sys.cmd.send('stat size')"
+$cmd "exec procedure sys.cmd.send('stat size')" | egrep -v "GRAND|FILESYSTEM|log files" >> $OUT 2>&1
+
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
 
