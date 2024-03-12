@@ -1,0 +1,3 @@
+# we're trying to prevent the db from exiting with pending transactions
+# so set "shutdown no matter what" higher than the grace period
+exitalarmsec 60
