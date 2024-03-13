@@ -234,7 +234,7 @@ function build {
 	ssh-keygen -q -t rsa -N '' -f $PWD/id_rsa
 	cat > config <<- EOF
 		LogLevel=quiet
-		HOST m*
+		HOST $(get mach-prefix)*
 			StrictHostKeyChecking no
 	EOF
 	cat >> Dockerfile <<- EOF
