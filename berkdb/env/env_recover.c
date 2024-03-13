@@ -61,6 +61,7 @@ void bdb_get_writelock(void *bdb_state,
 	const char *idstr, const char *funcname, int line);
 void bdb_rellock(void *bdb_state, const char *funcname, int line);
 int bdb_is_open(void *bdb_state);
+extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 
 extern int gbl_is_physical_replicant;
 int gbl_apprec_gen;
@@ -2097,13 +2098,131 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 extern DB_LSN bdb_latest_commit_lsn;
 extern pthread_mutex_t bdb_asof_current_lsn_mutex;
 
+#define GOTOERR do{ lineno=__LINE__; goto err; } while(0);
+
+int
+__scan_logfiles_for_asof_modsnap(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_LOGC *logc;
+	DB_LSN first_lsn, lsn;
+	DBT data;
+	int ret;
+	int lineno = 0;
+	int got_recoverable_lsn = 0;
+	DB *file_dbp;
+	DB_MPOOLFILE *mpf;
+	u_int32_t rectype;
+
+	__txn_ckp_args *ckp_args = NULL;
+	__txn_regop_args *txn_args = NULL;
+	__txn_regop_gen_args *txn_gen_args = NULL;
+	void *free_ptr = NULL;
+
+	logc = NULL;
+	memset(&data, 0, sizeof(data));
+
+	/* Allocate a cursor for the log. */
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		return ret;
+
+	for (ret = __log_c_get(logc, &first_lsn, &data, DB_FIRST), lsn =
+		first_lsn; ret == 0;
+		ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
+		LOGCOPY_32(&rectype, data.data);
+		normalize_rectype(&rectype);
+		switch (rectype) {
+		case DB___txn_ckp:
+			if ((ret =
+				__txn_ckp_read(dbenv, data.data,
+					&ckp_args)) != 0) {
+				GOTOERR;
+			}
+			free_ptr = ckp_args;
+
+			ret =
+				bdb_checkpoint_list_push(lsn, ckp_args->ckp_lsn,
+				ckp_args->timestamp);
+			if (ret) {
+				logmsg(LOGMSG_ERROR, 
+				  "%s: failed to push to checkpoint list, ret %d\n",
+					__func__, ret);
+				GOTOERR;
+			}
+
+			if (!got_recoverable_lsn) {
+				ret =
+					log_compare(&ckp_args->ckp_lsn, &first_lsn);
+				if (ret >= 0) {
+					bdb_set_gbl_recoverable_lsn(&lsn,
+						ckp_args->timestamp);
+					got_recoverable_lsn = 1;
+					logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
+						lsn.file, lsn.offset);
+				}
+			}
+
+			break;
+		case DB___txn_regop_gen:
+			if ((ret =
+				__txn_regop_gen_read(dbenv, data.data,
+					&txn_gen_args)) != 0) {
+				GOTOERR;
+			}
+			free_ptr = txn_gen_args;
+			if ((txn_gen_args->opcode == TXN_COMMIT) && 
+					(ret = __txn_commit_map_add(dbenv, txn_gen_args->txnid->utxnid, lsn))) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
+				GOTOERR;
+			}
+			break;
+		case DB___txn_regop:
+			if ((ret =
+				__txn_regop_read(dbenv, data.data,
+					&txn_args)) != 0) {
+				GOTOERR;
+			}
+			free_ptr = txn_args;
+			if ((txn_args->opcode == TXN_COMMIT) && 
+				(ret = __txn_commit_map_add(dbenv, txn_args->txnid->utxnid, lsn))) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
+				GOTOERR;
+			}
+			break;
+		default:
+			free_ptr = NULL;
+			break;
+		}
+		if (free_ptr) {
+			__os_free(dbenv, free_ptr);
+			free_ptr = NULL;
+		}
+	}
+
+	ret = 0;
+
+err:
+	if (lineno)
+		logmsg(LOGMSG_ERROR, "%s error from %d\n", __func__, lineno);
+
+	if (free_ptr) {
+		__os_free(dbenv, free_ptr);
+		free_ptr = NULL;
+	}
+
+	if (logc) {
+		logc->close(logc, 0);
+	}
+
+	return ret;
+}
+
 /*
  * __recover_logfile_pglogs
  *
  * recover the global pglogs structure from the log file
  *
  */
-#define GOTOERR do{ lineno=__LINE__; goto err; } while(0);
 
 extern int bdb_push_pglogs_commit_recovery(void *in_bdb_state, DB_LSN commit_lsn,
 	uint32_t gen, unsigned long long ltranid, int push);
@@ -2267,6 +2386,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 					&txn_args)) != 0) {
 				GOTOERR;
 		 }
+
 		 bdb_push_pglogs_commit_recovery(dbenv->app_private, lsn, 0, 0, 0);
 			free_ptr = txn_args;
 

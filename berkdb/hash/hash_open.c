@@ -486,7 +486,7 @@ __ham_new_subdb(mdbp, dbp, txn)
 	    0, dbp->meta_pgno, DB_LOCK_WRITE, 0, &metalock)) != 0)
 		goto err;
 	if ((ret =
-	    __memp_fget(mpf, &dbp->meta_pgno, DB_MPOOL_CREATE, &meta)) != 0)
+	    PAGEGET(dbc, mpf, &dbp->meta_pgno, DB_MPOOL_CREATE, &meta)) != 0)
 		goto err;
 
 	/* Initialize the new meta-data page. */
@@ -502,7 +502,7 @@ __ham_new_subdb(mdbp, dbp, txn)
 	mpgno = PGNO_BASE_MD;
 	if ((ret = __db_lget(dbc, 0, mpgno, DB_LOCK_WRITE, 0, &mmlock)) != 0)
 		goto err;
-	if ((ret = __memp_fget(mpf, &mpgno, 0, &mmeta)) != 0)
+	if ((ret = PAGEGET(dbc, mpf, &mpgno, 0, &mmeta)) != 0)
 		goto err;
 
 	/*
@@ -526,36 +526,36 @@ __ham_new_subdb(mdbp, dbp, txn)
 			goto err;
 
 	/* Release the new meta-data page. */
-	if ((ret = __memp_fput(mpf, meta, DB_MPOOL_DIRTY)) != 0)
+	if ((ret = PAGEPUT(dbc, mpf, meta, DB_MPOOL_DIRTY)) != 0)
 		goto err;
 	meta = NULL;
 
 	lpgno += mmeta->last_pgno;
 
 	/* Now allocate the final hash bucket. */
-	if ((ret = __memp_fget(mpf, &lpgno, DB_MPOOL_CREATE, &h)) != 0)
+	if ((ret = PAGEGET(dbc, mpf, &lpgno, DB_MPOOL_CREATE, &h)) != 0)
 		goto err;
 
 	mmeta->last_pgno = lpgno;
 	P_INIT(h, dbp->pgsize, lpgno, PGNO_INVALID, PGNO_INVALID, 0, P_HASH);
 	LSN(h) = LSN(mmeta);
-	if ((ret = __memp_fput(mpf, h, DB_MPOOL_DIRTY)) != 0)
+	if ((ret = PAGEPUT(dbc, mpf, h, DB_MPOOL_DIRTY)) != 0)
 		goto err;
 
 	/* Now put the master-metadata page back. */
-	if ((ret = __memp_fput(mpf, mmeta, DB_MPOOL_DIRTY)) != 0)
+	if ((ret = PAGEPUT(dbc, mpf, mmeta, DB_MPOOL_DIRTY)) != 0)
 		goto err;
 	mmeta = NULL;
 
 err:
 	if (mmeta != NULL)
-		if ((t_ret = __memp_fput(mpf, mmeta, 0)) != 0 && ret == 0)
+		if ((t_ret = PAGEPUT(dbc, mpf, mmeta, 0)) != 0 && ret == 0)
 			ret = t_ret;
 	if (LOCK_ISSET(mmlock))
 		if ((t_ret = __LPUT(dbc, mmlock)) != 0 && ret == 0)
 			ret = t_ret;
 	if (meta != NULL)
-		if ((t_ret = __memp_fput(mpf, meta, 0)) != 0 && ret == 0)
+		if ((t_ret = PAGEPUT(dbc, mpf, meta, 0)) != 0 && ret == 0)
 			ret = t_ret;
 	if (LOCK_ISSET(metalock))
 		if ((t_ret = __LPUT(dbc, metalock)) != 0 && ret == 0)

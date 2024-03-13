@@ -177,7 +177,7 @@ void myctrace(const char *c) { ctrace("%s", c); }
 void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
-
+extern int bdb_gbl_asof_modsnap_init(bdb_state_type *);
 extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
@@ -450,6 +450,8 @@ int gbl_disable_overflow_page_trace = 1;
 int gbl_simulate_rowlock_deadlock_interval = 0;
 int gbl_enable_berkdb_retry_deadlock_bias = 0;
 int gbl_enable_cache_internal_nodes = 1;
+int gbl_use_modsnap_for_snapshot = 0;
+int gbl_modsnap_asof = 0;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
@@ -3841,6 +3843,8 @@ static int init(int argc, char **argv)
         if (bdb_gbl_pglogs_init(thedb->bdb_env) != 0)
             exit(1);
         logmsg(LOGMSG_INFO, "new snapisol is running\n");
+    } else if (!gbl_exit && gbl_modsnap_asof) {
+        bdb_gbl_asof_modsnap_init(thedb->bdb_env);
     } else {
         logmsg(LOGMSG_INFO, "new snapisol is not running\n");
         gbl_new_snapisol = 0;

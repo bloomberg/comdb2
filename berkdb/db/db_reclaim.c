@@ -30,11 +30,12 @@ static const char revid[] = "$Id: db_reclaim.c,v 11.37 2003/06/30 17:19:47 bosti
  * where did_put is a return value indicating if the page in question has
  * already been returned to the mpool.
  *
- * PUBLIC: int __db_traverse_big __P((DB *,
+ * PUBLIC: int __db_traverse_big __P((DBC *, DB *,
  * PUBLIC:     db_pgno_t, int (*)(DB *, PAGE *, void *, int *), void *));
  */
 int
-__db_traverse_big(dbp, pgno, callback, cookie)
+__db_traverse_big(dbc, dbp, pgno, callback, cookie)
+	DBC *dbc;
 	DB *dbp;
 	db_pgno_t pgno;
 	int (*callback) __P((DB *, PAGE *, void *, int *));
@@ -48,12 +49,12 @@ __db_traverse_big(dbp, pgno, callback, cookie)
 
 	do {
 		did_put = 0;
-		if ((ret = __memp_fget(mpf, &pgno, 0, &p)) != 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &p)) != 0)
 			return (ret);
 		pgno = NEXT_PGNO(p);
 		if ((ret = callback(dbp, p, cookie, &did_put)) == 0 &&
 		    !did_put)
-			ret = __memp_fput(mpf, p, 0);
+			ret = PAGEPUT(dbc, mpf, p, 0);
 	} while (ret == 0 && pgno != PGNO_INVALID);
 
 	return (ret);

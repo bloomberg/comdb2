@@ -2202,7 +2202,7 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             pCur->db->handle, thd->clnt->dbtran.cursor_tran,
             thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL,
-            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr);
+            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr, thd->clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0);
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return SQLITE_INTERNAL;
@@ -2308,7 +2308,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
             db->handle, thd->clnt->dbtran.cursor_tran,
             thd->clnt->dbtran.shadow_tran, ix, BDB_OPEN_SHAD,
             osql_get_shadtbl_addtbl_newcursor(pCur), 0, 0, NULL, NULL, NULL,
-            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr);
+            NULL, NULL, thd->clnt->bdb_osql_trak, bdberr, thd->clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0);
         if (tmpcur == NULL) {
             logmsg(LOGMSG_ERROR, "%s:bdb_cursor_open ix %d rc %d\n", __func__, ix, *bdberr);
             return -1;

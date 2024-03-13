@@ -750,7 +750,7 @@ __bam_pgcompact(dbc, dbt, ff, tgtff)
 
 	/* We're going to scan siblings for merge. Get a write lock
 	   on the page. Release the page first so we don't deadlock */
-	if ((ret = __memp_fput(dbmfp, h, 0)) != 0)
+	if ((ret = PAGEPUT(dbc, dbmfp, h, 0)) != 0)
 		goto err_zero_h;
 	if ((ret = __LPUT(dbc, cp->csp->lock)) != 0)
 		goto err_zero_h;
@@ -824,7 +824,7 @@ retry:
 			if ((ret = __db_lget(dbc, 0, npgno, DB_LOCK_WRITE, 0, &dplock)) != 0)
 				goto err_zero_h;
 			nh = NULL;
-			if ((ret = __memp_fget(dbmfp, &npgno, 0, &nh)) != 0)
+			if ((ret = PAGEGET(dbc, dbmfp, &npgno, 0, &nh)) != 0)
 				goto err_zero_h;
 		}
 
@@ -919,7 +919,7 @@ retry:
 				if ((ret = __LPUT(dbc, dplock)) != 0)
 					goto err_zero_h;
 				LOCK_INIT(dplock);
-				if ((ret = __memp_fput(dbmfp, nh, 0)) != 0) {
+				if ((ret = PAGEPUT(dbc, dbmfp, nh, 0)) != 0) {
 					nh = NULL;
 					goto err_zero_h;
 				}
@@ -959,7 +959,7 @@ retry:
 				if ((ret = __db_lget(dbc, 0, npgno, DB_LOCK_WRITE,
 								0, &dplock)) != 0)
 					goto err_zero_h;
-				if ((ret = __memp_fget(dbmfp, &npgno, 0, &nh)) != 0)
+				if ((ret = PAGEGET(dbc, dbmfp, &npgno, 0, &nh)) != 0)
 					goto err_zero_h;
 
 				/* validate page LSNs */
@@ -1027,13 +1027,13 @@ retry:
 		epg = &cp->csp[-1];
 		ph = epg->page;
 		if (ph == NULL) {
-			if ((ret = __memp_fput(dbmfp, cp->csp->page, DB_MPOOL_DIRTY)) != 0)
+			if ((ret = PAGEPUT(dbc, dbmfp, cp->csp->page, DB_MPOOL_DIRTY)) != 0)
 				goto err_zero_h;
-			/* Clear references in case we fail to fget(). */
+			/* Clear references in case we fail to PAGEGET(dbc, ). */
 			h = cp->csp->page = NULL;
-			if ((ret = __memp_fget(dbmfp, &ppgno, 0, &ph)) != 0)
+			if ((ret = PAGEGET(dbc, dbmfp, &ppgno, 0, &ph)) != 0)
 				goto err_zero_h;
-			if ((ret = __memp_fget(dbmfp, &pgno, 0, &h)) != 0)
+			if ((ret = PAGEGET(dbc, dbmfp, &pgno, 0, &h)) != 0)
 				goto err_zero_h;
 			epg->page = ph;
 			cp->csp->page = h;
@@ -1071,7 +1071,7 @@ not_fit:
 		}
 
 		if (nh != NULL) {
-			if ((t_ret = __memp_fput(dbmfp, nh, 0)) != 0 && ret == 0)
+			if ((t_ret = PAGEPUT(dbc, dbmfp, nh, 0)) != 0 && ret == 0)
 				ret = t_ret;
 			nh = NULL;
 		}
@@ -1121,10 +1121,10 @@ err_zero_h:
 	if ((t_ret = __bam_stkrel(dbc, STK_CLRDBC)) != 0 && ret == 0)
 		ret = t_ret;
 	if (h != NULL)
-		if ((t_ret = __memp_fput(dbmfp, h, 0)) != 0 && ret == 0)
+		if ((t_ret = PAGEPUT(dbc, dbmfp, h, 0)) != 0 && ret == 0)
 			ret = t_ret;
 	if (nh != NULL)
-		if ((t_ret = __memp_fput(dbmfp, nh, 0)) != 0 && ret == 0)
+		if ((t_ret = PAGEPUT(dbc, dbmfp, nh, 0)) != 0 && ret == 0)
 			ret = t_ret;
 	if ((t_ret = __TLPUT(dbc, dplock)) != 0 && ret == 0)
 		ret = t_ret;
@@ -1448,7 +1448,7 @@ __bam_ispgcompactible(dbc, pgno, dbt, ff)
 	dbp = dbc->dbp;
 	dbmfp = dbp->mpf;
 
-	if ((ret = __memp_fget(dbmfp, &pgno, 0, &h)) != 0) {
+	if ((ret = PAGEGET(dbc, dbmfp, &pgno, 0, &h)) != 0) {
 		(void)__LPUT(dbc, cp->lock);
 		return (ret);
 	}
@@ -1481,7 +1481,7 @@ error_out:
 			ret = 1;
     }
 
-	if ((t_ret = __memp_fput(dbmfp, h, 0)) != 0 && ret == 0)
+	if ((t_ret = PAGEPUT(dbc, dbmfp, h, 0)) != 0 && ret == 0)
 		ret = t_ret;
 	if ((t_ret = __LPUT(dbc, cp->lock)) != 0 && ret == 0)
 		ret = t_ret;

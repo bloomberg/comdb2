@@ -147,9 +147,11 @@ int gbl_osql_random_restart = 0;
 static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
                                       int keep_rqid)
 {
+    // Modsnap is excluded because snapshot modes do not verifyretry.
     if (rc == OSQL_SEND_ERROR_WRONGMASTER &&
         (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-         clnt->dbtran.mode == TRANLEVEL_RECOM)) {
+         clnt->dbtran.mode == TRANLEVEL_RECOM
+         )) {
         return 1;
     }
 

@@ -93,7 +93,7 @@ int bdb_is_open(void *bdb_state);
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
-int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
 
 extern int gbl_is_physical_replicant;
 extern int gbl_commit_lsn_map;
@@ -1565,20 +1565,26 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		return 0;
 	}
 
+	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+
 	if (commit_lsn_map && !txnp->parent) {
-		ret = __txn_commit_map_add(dbenv, txnp->utxnid, txnp->last_lsn);
+		ret = __txn_commit_map_add_nolock(dbenv, txnp->utxnid, txnp->last_lsn);
 		if (ret != 0) {
+			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 			goto err;
 		}
 
 		/* No grandchildren in comdb2, so this is sufficient. */
 		LISTC_FOR_EACH(&txnp->committed_kids, utxnid_track, lnk) {
-			ret = __txn_commit_map_add(dbenv, utxnid_track->utxnid, txnp->last_lsn);
+			ret = __txn_commit_map_add_nolock(dbenv, utxnid_track->utxnid, txnp->last_lsn);
 			if (ret != 0) {
+				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 				goto err;
 			}
 		}
 	}
+
+	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 
 	remove_td_txn(txnp);
 	if (logbytes) {

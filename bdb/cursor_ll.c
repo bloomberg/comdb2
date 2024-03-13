@@ -303,6 +303,9 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                 curflags |= DB_DISCARD_PAGES;
         }
 
+	if (cur->use_snapcur) {
+		curflags |= DB_CUR_SNAPSHOT;
+	}
         dbc =
             get_cursor_for_cursortran_flags(cur->curtran, db, curflags, bdberr);
 
@@ -1666,6 +1669,8 @@ DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
     } else
         assert(dbc != NULL);
 
+    dbc->last_commit_lsn = curtran->last_commit_lsn;
+    dbc->last_checkpoint_lsn = curtran->last_checkpoint_lsn;
     return dbc;
 }
 

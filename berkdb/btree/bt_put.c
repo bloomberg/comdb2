@@ -510,7 +510,7 @@ __bam_build(dbc, op, dbt, h, indx, nbytes)
 		 * in the current record rather than allocate a separate copy.
 		 */
 		memset(&copy, 0, sizeof(copy));
-		if ((ret = __db_goff(dbp, &copy, bo->tlen,
+		if ((ret = __db_goff(dbc, dbp, &copy, bo->tlen,
 		    bo->pgno, &rdata->data, &rdata->ulen)) != 0)
 			return (ret);
 

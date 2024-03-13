@@ -795,6 +795,8 @@ __db_cursor_arg(dbp, flags)
 		if (pgorder || discardp || pausible)
 			return (__db_invwrite(dbenv, "DB->cursor"));
 		break;
+	case DB_CUR_SNAPSHOT:
+		break;
 	default:
 		return (__db_ferr(dbenv, "DB->cursor", 0));
 	}
