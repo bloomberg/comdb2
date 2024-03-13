@@ -11610,87 +11610,86 @@ void stat4dump(int more, char *table, int istrace)
         outFunc = ctracewrap;
     }
 
-    for (HashElem *i = sqliteHashFirst(&db->aDb[0].pSchema->idxHash); i;
-         i = sqliteHashNext(i)) {
+    for (HashElem *i = sqliteHashFirst(&db->aDb[0].pSchema->idxHash); i; i = sqliteHashNext(i)) {
         Index *idx = sqliteHashData(i);
         if (table != NULL && strcmp(idx->pTable->zName, table))
             continue;
         if (idx->aSample == NULL)
             continue;
-        outFunc("idx:%s.%s samples:%d cols:%d aAvgEq: ", idx->pTable->zName,
+        outFunc("idx:%s.%s  samples:%d  cols:%d  aAvgEq:[", idx->pTable->zName,
                 idx->zName, idx->nSample, idx->nSampleCol);
+        char *sep = "";
         for (int j = 0; j < idx->nSampleCol; ++j) {
-            outFunc("%d ", idx->aAvgEq[j]);
+            outFunc("%s%"PRIu64, sep, idx->aAvgEq[j]);
+            sep = ",";
         }
-        outFunc("\n");
-        if (istrace)
-            ctrace("\n");
+        outFunc("]\n");
+        if (istrace) ctrace("\n");
         for (int k = 0; k < idx->nSample; ++k) {
-            outFunc("sample:%d anEq:", k);
+            outFunc("sample:%d  anEq:[", k);
+            sep = "";
             for (int j = 0; j < idx->nSampleCol; ++j) {
-                outFunc("%d ", idx->aSample[k].anEq[j]);
+                outFunc("%s%"PRIu64, sep, idx->aSample[k].anEq[j]);
+                sep = ",";
             }
-            outFunc("anLt:");
+            outFunc("]  anLt:[");
+            sep = "";
             for (int j = 0; j < idx->nSampleCol; ++j) {
-                outFunc("%d ", idx->aSample[k].anLt[j]);
+                outFunc("%s%"PRIu64, sep, idx->aSample[k].anLt[j]);
+                sep = ",";
             }
-            outFunc("anDLt:");
+            outFunc("]  anDLt:[");
+            sep = "";
             for (int j = 0; j < idx->nSampleCol; ++j) {
-                outFunc("%d ", idx->aSample[k].anDLt[j]);
+                outFunc("%s%"PRIu64, sep, idx->aSample[k].anDLt[j]);
+                sep = ",";
             }
             if (!more) {
-                outFunc("\n");
-                if (istrace)
-                    ctrace("\n");
+                outFunc("]\n");
+                if (istrace) ctrace("\n");
                 continue;
             }
-            outFunc("sample => {");
-            {
-                void *in = idx->aSample[k].p;
-                u32 hdrsz;
-                u8 hdroffset = sqlite3GetVarint32(in, &hdrsz);
-                u32 dataoffset = hdrsz;
-                const char *comma = "";
-                while (hdroffset < hdrsz) {
-                    u32 type;
-                    Mem m = {{0}};
-                    hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
-                    dataoffset +=
-                        sqlite3VdbeSerialGet(in + dataoffset, type, &m);
-                    outFunc("%s", comma);
-                    comma = ", ";
-                    if (m.flags & MEM_Null) {
-                        outFunc("NULL");
-                    } else if (m.flags & MEM_Int) {
-                        outFunc("%" PRId64, m.u.i);
-                    } else if (m.flags & MEM_Real) {
-                        outFunc("%f", m.u.r);
-                    } else if (m.flags & MEM_Str) {
-                        outFunc("\"%.*s\"", m.n, m.z);
-                    } else if (m.flags & MEM_Datetime) {
-                        time_t t = m.du.dt.dttz_sec;
-                        char ct[64];
-                        ctime_r(&t, ct);
-                        ct[strlen(ct) - 1] = 0;
-                        outFunc(ct);
-                    } else if (m.flags & MEM_Blob) { /* a byte array */
-                        outFunc("x'");
-                        for (int i = 0; i != m.n; ++i)
-                            outFunc("%02X", (unsigned char)m.z[i]);
-                        outFunc("'");
-                    } else {
-                        outFunc("type:%d", m.flags);
-                    }
+            outFunc("]  sample:{");
+            void *in = idx->aSample[k].p;
+            u32 hdrsz;
+            u8 hdroffset = sqlite3GetVarint32(in, &hdrsz);
+            u32 dataoffset = hdrsz;
+            sep = "";
+            while (hdroffset < hdrsz) {
+                u32 type;
+                Mem m = {{0}};
+                hdroffset += sqlite3GetVarint32(in + hdroffset, &type);
+                dataoffset +=
+                    sqlite3VdbeSerialGet(in + dataoffset, type, &m);
+                if (m.flags & MEM_Null) {
+                    outFunc("%sNULL", sep);
+                } else if (m.flags & MEM_Int) {
+                    outFunc("%s%" PRId64, sep, m.u.i);
+                } else if (m.flags & MEM_Real) {
+                    outFunc("%s%f", sep, m.u.r);
+                } else if (m.flags & MEM_Str) {
+                    outFunc("%s\"%.*s\"", sep, m.n, m.z);
+                } else if (m.flags & MEM_Datetime) {
+                    time_t t = m.du.dt.dttz_sec;
+                    char ct[64];
+                    ctime_r(&t, ct);
+                    ct[strlen(ct) - 1] = 0;
+                    outFunc(ct);
+                } else if (m.flags & MEM_Blob) { /* a byte array */
+                    outFunc("%sx'", sep);
+                    for (int i = 0; i != m.n; ++i)
+                        outFunc("%02X", (unsigned char)m.z[i]);
+                    outFunc("'");
+                } else {
+                    outFunc("%stype:%d", sep, m.flags);
                 }
+                sep = ",";
             }
             outFunc("}\n");
-            if (istrace)
-                ctrace("\n");
+            if (istrace) ctrace("\n");
         }
     }
-
-    if (istrace)
-        ctrace("\n");
+    if (istrace) ctrace("\n");
 
 close:
     sqlite3_close_serial(&db);
