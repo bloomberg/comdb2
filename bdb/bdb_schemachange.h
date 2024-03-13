@@ -83,4 +83,7 @@ typedef int (*SCDONEFP)(bdb_state_type *, const char table[], void *arg,
 /* aborts a schema change if one is in progress and waits for it to finish */
 typedef void (*SCABORTFP)(void);
 
+void bdb_replace_cached_data_version(bdb_state_type *target, bdb_state_type *new);
+void bdb_replace_cached_blob_version(bdb_state_type *target, int targetnum, bdb_state_type *new, int newnum);
+void bdb_replace_cached_index_version(bdb_state_type *target, int targetnum, bdb_state_type *new, int newnum);
 #endif
