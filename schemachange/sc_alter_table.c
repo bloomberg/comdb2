@@ -215,6 +215,9 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
         rc = bdb_commit_temp_file_version_data(newdb->handle, tran,
                                                0 /*dtanum*/, &bdberr);
         if (rc) return SC_BDB_ERROR;
+    } else {
+        /* no changes to dta. stick with the old data version */
+        bdb_replace_cached_data_version(newdb->handle, db->handle);
     }
 
     /* get all out old file versions */
@@ -226,7 +229,8 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
 
     for (blobno = 0; blobno < newdb->numblobs; blobno++) {
         if (newdb->plan->blob_plan[blobno] == blobno) {
-            /* do nothing with this blob */
+            /* no changes to this blob. stick with the old blob version */
+            bdb_replace_cached_blob_version(newdb->handle, blobno, db->handle, blobno);
         } else if (newdb->plan->blob_plan[blobno] >= 0) {
             logmsg(LOGMSG_INFO, "bdb_file_version_change_dtanum:"
                                 " %d -> %d : data %d now points to %016llx\n",
@@ -238,8 +242,8 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
                 file_versions[newdb->plan->blob_plan[blobno] + 1], &bdberr);
 
             /* we're reusing the old blob */
-
             if (rc) return SC_BDB_ERROR;
+            bdb_replace_cached_blob_version(newdb->handle, blobno, db->handle, newdb->plan->blob_plan[blobno]);
         } else if (newdb->plan->blob_plan[blobno] == -1) {
             /* we made a new blob */
             rc = bdb_commit_temp_file_version_data(newdb->handle, tran,
@@ -259,7 +263,8 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
         if (newdb->plan->ix_plan[ixnum] == ixnum) {
             logmsg(LOGMSG_INFO, "ix %d being left alone\n", ixnum);
 
-            /* do nothing with this index */
+            /* no changes to this index. stick with the old index version */
+            bdb_replace_cached_index_version(newdb->handle, ixnum, db->handle, ixnum);
         } else if (newdb->plan->ix_plan[ixnum] >= 0) {
             logmsg(LOGMSG_INFO, "bdb_file_version_change_ixnum:"
                                 " %d -> %d : ix %d now points to %016llx\n",
@@ -272,7 +277,7 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
 
             /* we're re-using the old index */
             if (rc) return SC_BDB_ERROR;
-
+            bdb_replace_cached_index_version(newdb->handle, ixnum, db->handle, newdb->plan->ix_plan[ixnum]);
         } else if (newdb->plan->ix_plan[ixnum] == -1) {
             /* we rebuilt this index */
             rc = bdb_commit_temp_file_version_index(newdb->handle, tran, ixnum,
