@@ -490,6 +490,21 @@ const char *bdb_get_tmpdir(bdb_state_type *bdb_state)
     return bdb_state->tmpdir;
 }
 
+void bdb_replace_cached_data_version(bdb_state_type *target, bdb_state_type *new)
+{
+    target->dtavers[0] = new->dtavers[0];
+}
+
+void bdb_replace_cached_blob_version(bdb_state_type *target, int targetnum, bdb_state_type *new, int newnum)
+{
+    target->dtavers[targetnum + 1] = new->dtavers[newnum + 1];
+}
+
+void bdb_replace_cached_index_version(bdb_state_type *target, int targetnum, bdb_state_type *new, int newnum)
+{
+    target->ixvers[targetnum] = new->ixvers[newnum];
+}
+
 /* takes information about a file and constructs its filename, returns bytes
  * written not including NUL */
 static int form_file_name_ex(
