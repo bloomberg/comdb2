@@ -236,6 +236,8 @@ int comdb2SystblInit(
 #endif
   if (rc == SQLITE_OK)  
     rc = systblPreparedInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblSchemaVersionsInit(db);
 #endif
   return rc;
 }

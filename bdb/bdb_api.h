@@ -1610,6 +1610,41 @@ typedef struct {
 int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
                               int *bdberr, const char *tablename);
 
+typedef struct schema_version_row {
+    char *db_name;
+    int vers;
+    char *csc2;
+} schema_version_row;
+
+/*
+ * bdb_llmeta_free_schema_versions --
+ *
+ * Frees list of schema versions allocated by `bdb_llmeta_get_schema_versions`
+ * `data` is the list of schema versions to be freed 
+ * and `n` is the number of elements in this list.
+ */ 
+void bdb_llmeta_free_schema_versions(schema_version_row *data, int n);
+
+/*
+ * bdb_llmeta_get_schema_versions --
+ *
+ * Gets all schema versions stored in llmeta.
+ * 
+ * On success: 
+ * - returns zero
+ * - `data` points to a list of versions.
+ * Elements in this list are of type `schema_version_row`.
+ * *** This list must be freed with a call to `bdb_llmeta_free_schema_versions`***
+ * - `num` points to the number of entries in this list
+ *
+ * On failure:
+ * - returns nonzero
+ * - `data` points to NULL
+ * - `num` points to zero
+ */
+int bdb_llmeta_get_schema_versions(tran_type *t, schema_version_row **data, int *num,
+                                    int *bdberr);
+
 int bdb_del_schema_change_history(tran_type *t, const char *tablename,
                                   uint64_t seed);
 

@@ -62,6 +62,7 @@ add_library(sqlite
   ext/comdb2/users.c
   ext/comdb2/views.c
   ext/comdb2/fdb.c
+  ext/comdb2/schemaversions.c
   ext/misc/carray.c
   ext/misc/completion.c
   ext/misc/regexp.c
