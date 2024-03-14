@@ -38,6 +38,9 @@
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
+extern int get_csc2_version_tran(const char *table, tran_type *tran);
+extern int get_csc2_file_tran(const char *table, int version, char **text, int *len,
+                                tran_type *tran);
 
 static bdb_state_type *llmeta_bdb_state = NULL; /* the low level meta table */
 
@@ -4287,6 +4290,97 @@ int bdb_set_schema_change_history(tran_type *t, const char *tablename,
     int rc = kv_put(t, &u, p_buf_start, sizeof(llmeta_sc_hist_data), bdberr);
 
     *bdberr = BDBERR_NOERROR;
+    return rc;
+}
+
+void bdb_llmeta_free_schema_versions(schema_version_row *data, int n)
+{
+    for (int i = 0; i < n; i++) {
+        if (data[i].db_name != NULL) {
+            free(data[i].db_name);
+        }
+        if (data[i].csc2 != NULL) {
+            free(data[i].csc2);
+        }
+    }
+    free(data);
+}
+
+int bdb_llmeta_get_schema_versions(tran_type *t, schema_version_row **data, int *num,
+                                    int *bdberr)
+{
+    int len, version, rowidx;
+    int rc = 0, dbnums[MAX_NUM_TABLES], fndnumtbls;
+    char *tblnames[MAX_NUM_TABLES];
+    char *db_name;
+
+    *data = NULL;
+    *num = 0;
+    rowidx = fndnumtbls = 0;
+
+    rc = bdb_llmeta_get_tables(t, tblnames, dbnums, MAX_NUM_TABLES, &fndnumtbls, bdberr);
+    if (rc || *bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to get tables from llmeta\n", __func__);
+        rc = rc ? rc : 1;
+        goto err;
+    }
+
+    for (int tableidx = 0; tableidx < fndnumtbls; tableidx++) {
+        db_name = tblnames[tableidx];
+        version = get_csc2_version_tran(db_name, t);
+        if (version == -1) {
+            logmsg(LOGMSG_ERROR, "%s: Could not find csc2 version for table %s\n", __func__, db_name);
+            rc = 1;
+            goto err;
+        }
+        *num += version;
+    }
+
+    *data = calloc(*num, sizeof(schema_version_row));
+
+    for (int tableidx = 0; tableidx < fndnumtbls; tableidx++) {
+        db_name = tblnames[tableidx];
+        
+        version = get_csc2_version_tran(db_name, t);
+        if (version == -1) {
+            logmsg(LOGMSG_ERROR, "%s: Could not find csc2 version for table %s\n", __func__, db_name);
+            rc = 1;
+            goto err;
+        }
+
+        for (int vers=1; vers<=version; vers++) {
+            if (rowidx >= *num) {
+                logmsg(LOGMSG_ERROR, "%s: More versions found than anticipated.\n", __func__);
+                rc = 1;
+                goto err;
+            }
+            schema_version_row *row = *data + rowidx++;
+
+            row->db_name = strdup(db_name);
+            row->vers = vers;
+            rc = get_csc2_file_tran(db_name, vers, &row->csc2, &len, t);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to get csc2 file for db %s and version %d\n",
+                        __func__, db_name, vers);
+                goto err;
+            }
+        }
+    }
+
+err:
+
+    for (int i = 0; i < fndnumtbls; ++i) {
+        free(tblnames[i]);
+    }
+
+    if (rc != 0) {
+       if (*data != NULL) {
+            bdb_llmeta_free_schema_versions(*data, rowidx);
+            *data = NULL;
+       }
+       *num = 0;
+    }
+
     return rc;
 }
 

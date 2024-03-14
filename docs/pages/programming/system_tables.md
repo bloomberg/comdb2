@@ -721,6 +721,16 @@ Information about current/most recent schema change per table.
 * `converted` - Number of records converted.
 * `error` - Error message of the schema change.
 
+## comdb2_schemaversions
+
+List of all versions of table schemas stored in llmeta.
+
+    comdb2_schemaversions(name, csc2, version)
+
+* `tablename` - Name of the table.
+* `csc2` - Schema in csc2 format.
+* `version` - Numeric version associated with this schema version in llmeta.
+
 ## comdb2_views
 
 List of views in the database.
