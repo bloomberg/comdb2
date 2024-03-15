@@ -5,7 +5,6 @@
 # that node and fetch the percent freespace so we can
 # set it via cdb2sql send.
 
-#set -x
 args=$1
 dbnm=$2
 
