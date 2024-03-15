@@ -6682,6 +6682,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
         c->fingerprint = NULL;
     }
     c->in_transaction = clnt->in_client_trans;
+    c->argv0 = strdup(clnt->argv0);
     Pthread_mutex_unlock(&clnt->state_lk);
 }
 
@@ -6731,6 +6732,7 @@ void free_connection_info(struct connection_info *info, int num_connections)
     for (int i = 0; i < num_connections; i++) {
         if (info[i].sql) free(info[i].sql);
         if (info[i].fingerprint) free(info[i].fingerprint);
+        if (info[i].argv0) free(info[i].argv0);
         /* state is static, don't free */
     }
     free(info);
@@ -7166,15 +7168,18 @@ char *clnt_tzname(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 }
 
 int gbl_transaction_grace_period = 60;
+int gbl_transaction_grace_period_timeout = 300 ;
 void wait_for_transactions(void) {
     int ntrans;
     int nwaits = 0;
+    static int once = 1;
 
 
     for (nwaits = 0; nwaits < gbl_transaction_grace_period; nwaits++) {
         ntrans = 0;
         struct connection_info *connections;
         int nconnections;
+        int now = comdb2_time_epochms();
 
         int rc = gather_connection_info(&connections, &nconnections);
         if (rc) {
@@ -7183,15 +7188,20 @@ void wait_for_transactions(void) {
         }
         for (int i = 0; i < nconnections; i++) {
             struct connection_info *c = &connections[i];
-            if (c->in_transaction) {
+            int runtime = (now - c->time_in_state_int) / 1000;
+            if (c->in_transaction && runtime < gbl_transaction_grace_period_timeout) {
                 ntrans++;
                 if (nwaits > 10) {
                     if (ntrans == 1)
                         logmsg(LOGMSG_INFO, "waiting for transactions:\n------------------------\n");
-                    logmsg(LOGMSG_INFO, "open transaction on connection from %s pid %d\n", c->host, (int) c->pid);
+                    logmsg(LOGMSG_INFO, "open transaction on connection from %s pid %d argv0 %s age %d seconds\n", c->host, (int) c->pid, c->argv0, runtime);
                 }
             }
+            if (once && c->in_transaction && runtime >= gbl_transaction_grace_period_timeout) {
+                logmsg(LOGMSG_INFO, "old open transaction on connection from %s pid %d argv0 %s age %d seconds\n", c->host, (int) c->pid, c->argv0, runtime);
+            }
         }
+        once = 0;
         free_connection_info(connections, nconnections);
         if (ntrans) {
             if (nwaits > 10)

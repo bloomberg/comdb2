@@ -1208,6 +1208,7 @@ struct connection_info {
     int time_in_state_int;
     enum connection_state state_int;
     int64_t in_transaction;
+    char *argv0;
 };
 
 /* makes master swing verbose */
