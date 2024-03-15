@@ -3,9 +3,6 @@ bash -n "$0" | exit 1
 
 source $TESTSROOTDIR/tools/runstepper.sh
 
-set -x
-################################################################################
-
 # debug=1
 
 # args
