@@ -144,7 +144,6 @@ public class SockIO implements IO {
             if (tcpbufsz > 0)
                 sock.setReceiveBufferSize(tcpbufsz);
 
-            sock.bind(new InetSocketAddress(0));
             sock.connect(new InetSocketAddress(host, port), connectTimeout);
             out = new BufferedOutputStream(sock.getOutputStream());
             in = new BufferedInputStream(sock.getInputStream());
