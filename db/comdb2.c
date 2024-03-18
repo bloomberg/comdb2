@@ -324,7 +324,7 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
-int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
+int gbl_decom = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
 int gbl_loghist = 0;
 int gbl_loghist_verbose = 0;
@@ -4183,12 +4183,6 @@ static int init(int argc, char **argv)
     }
     if (gbl_net_poll) {
         net_set_poll(thedb->handle_sibling, gbl_net_poll);
-    }
-    if (gbl_heartbeat_send) {
-        net_set_heartbeat_send_time(thedb->handle_sibling, gbl_heartbeat_send);
-    }
-    if (gbl_heartbeat_check) {
-        net_set_heartbeat_check_time(thedb->handle_sibling, gbl_heartbeat_check);
     }
 
     net_setbufsz(thedb->handle_sibling, gbl_netbufsz);

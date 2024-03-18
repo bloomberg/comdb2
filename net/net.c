@@ -94,8 +94,8 @@ int gbl_verbose_net = 0;
 int gbl_dump_net_queue_on_partial_write = 0;
 int gbl_debug_partial_write = 0;
 int subnet_blackout_timems = 5000;
-
 int gbl_net_maxconn = 0;
+int gbl_heartbeat_check = 5;
 
 #ifdef PER_THREAD_MALLOC
 #define HOST_MALLOC(h, sz) ((gbl_libevent) ? malloc((sz)) : comdb2_malloc((h)->msp, (sz)))
@@ -3075,8 +3075,8 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     /* Only look 20 buffers ahead for reordering */
     netinfo_ptr->enque_reorder_lookahead = 20;
 
-    netinfo_ptr->heartbeat_send_time = 5;
-    netinfo_ptr->heartbeat_check_time = 10;
+    netinfo_ptr->heartbeat_send_time = 1;
+    netinfo_ptr->heartbeat_check_time = gbl_heartbeat_check;
 
     netinfo_ptr->bufsz = 1 * 1024 * 1024;
 
@@ -6474,27 +6474,6 @@ int net_set_pool_size(netinfo_type *netinfo_ptr, int size)
         logmsg(LOGMSG_INFO, "%s: set pool size to %d\n", __func__, size);
         netinfo_ptr->pool_size = size;
     }
-    return 0;
-}
-
-int net_set_heartbeat_send_time(netinfo_type *netinfo_ptr, int time)
-{
-    if (netinfo_ptr == NULL)
-        return 0;
-    netinfo_ptr->heartbeat_send_time = time;
-    return 0;
-}
-
-int net_get_heartbeat_send_time(netinfo_type *netinfo_ptr)
-{
-    return netinfo_ptr->heartbeat_send_time;
-}
-
-int net_set_heartbeat_check_time(netinfo_type *netinfo_ptr, int time)
-{
-    if (netinfo_ptr == NULL)
-        return 0;
-    netinfo_ptr->heartbeat_check_time = time;
     return 0;
 }
 

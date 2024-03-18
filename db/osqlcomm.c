@@ -3049,10 +3049,6 @@ int osql_comm_init(struct dbenv *dbenv)
      * calls. */
     net_set_callback_data(tmp->handle_sibling, dbenv->bdb_env);
 
-    /* set the heartbit for the offload network */
-    if (gbl_heartbeat_check)
-        net_set_heartbeat_check_time(tmp->handle_sibling, gbl_heartbeat_check);
-
     /* remote blocksql request handler. */
     net_register_handler(tmp->handle_sibling, NET_BLOCK_REQ, "block_req",
                          net_block_req);

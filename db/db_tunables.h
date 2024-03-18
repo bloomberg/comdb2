@@ -513,15 +513,8 @@ REGISTER_TUNABLE(
     "implies SQLITE_MAX_LENGTH, the limit imposed by sqlite. (Default: 0)",
     TUNABLE_INTEGER, &gbl_group_concat_mem_limit, READONLY, NULL, NULL, NULL,
     NULL);
-REGISTER_TUNABLE("heartbeat_check_time",
-                 "Raise an error if no heartbeat for this amount of time (in "
-                 "secs). (Default: 10 secs)",
-                 TUNABLE_INTEGER, &gbl_heartbeat_check, READONLY | NOZERO, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE("heartbeat_send_time",
-                 "Send heartbeats this often. (Default: 5secs)",
-                 TUNABLE_INTEGER, &gbl_heartbeat_send, READONLY | NOZERO, NULL,
-                 NULL, NULL, NULL);
+REGISTER_TUNABLE("heartbeat_check_time", "Raise an error if no heartbeat for this amount of time (in secs). (Default: 5 secs)",
+                 TUNABLE_INTEGER, &gbl_heartbeat_check, READONLY | NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_myhostname,
                  READONLY | READEARLY, NULL, NULL, hostname_update, NULL);
 REGISTER_TUNABLE("incoherent_alarm_time", NULL, TUNABLE_INTEGER,
