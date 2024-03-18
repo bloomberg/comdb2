@@ -316,11 +316,6 @@ int net_send_hello(netinfo_type *netinfo_ptr, const char *tohost);
 
 int net_set_pool_size(netinfo_type *netinfo_ptr, int size);
 
-int net_set_heartbeat_send_time(netinfo_type *netinfo_ptr, int time);
-int net_get_heartbeat_send_time(netinfo_type *netinfo_ptr);
-int net_set_heartbeat_check_time(netinfo_type *netinfo_ptr, int time);
-int net_set_decom_time(netinfo_type *netinfo_ptr, int time);
-
 int net_register_name(netinfo_type *netinfo_ptr, char name[]);
 int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func);
 

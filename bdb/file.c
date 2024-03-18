@@ -2418,8 +2418,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     master_host = bdb_state->repinfo->master_host;
 
-    net_set_heartbeat_check_time(bdb_state->repinfo->netinfo, 60);
-
     /* Create the environment handle. */
     rc = db_env_create(&dbenv, 0);
     if (rc != 0) {
@@ -3223,9 +3221,6 @@ done2:
        early acks wont send out a lsn messages on a checkpoint */
     is_early = gbl_early;
     gbl_early = 0;
-
-    /* expect heartbeats from every node every 5 seconds */
-    net_set_heartbeat_check_time(bdb_state->repinfo->netinfo, 10);
 
     /* this will make it so we start sending ACTUAL LSN values to the master
        instead of lying about our LSN (sending a MAX) which we have been doing.
