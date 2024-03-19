@@ -137,6 +137,41 @@ function run_test
     done
     touch $stopfile
     wait
+
+    # OKAY .. add a sleep here ..
+    echo "Sleeping for 10 in case schema-change resumes"
+    sleep 10
+
+    upcnt=0
+    r=1
+    maxu=30
+
+    # The master could have just downgraded - make sure we can select against every node
+    while [[ "$r" == 1 && "$upcnt" -lt $maxu ]]; do
+        r=0
+        for node in $CLUSTER ; do
+            $CDB2SQL_EXE --admin -tabs $CDB2_OPTIONS --host $node $DBNAME "select 1" > /dev/null 2>&1
+            if [[ "$?" != "0" ]] ; then
+                echo "Error selecing against $node"
+            fi
+        done
+        let upcnt=upcnt+1
+        [[ "$r" == "1" ]] && sleep 1
+    done
+    if [[ $upcnt -ge "$maxu" ]]; then
+        echo "Failed to access all nodes after $maxu second"
+    fi
+
+    # Re-enable checkpoints
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE --admin -tabs $CDB2_OPTIONS --host $node $DBNAME "PUT TUNABLE 'disable_ckp' 0"
+    done
+
+    # Force a checkpoint
+    for node in $CLUSTER ; do
+        echo "Flushing $node"
+        $CDB2SQL_EXE --admin -tabs $CDB2_OPTIONS --host $node $DBNAME "exec procedure sys.cmd.send('flush')"
+    done
 }
 
 # Globals
