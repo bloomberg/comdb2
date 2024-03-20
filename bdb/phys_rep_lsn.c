@@ -225,6 +225,7 @@ int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
         return send_truncate_to_master(bdb_state, file, offset);
     }
 
+    bdb_state->dbenv->trigger_pause_all(bdb_state->dbenv);
     if (online) {
         BDB_READLOCK(msg);
     } else {
@@ -234,6 +235,7 @@ int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file,
 
     /* have to get lock for recovery */
     BDB_RELLOCK();
+    bdb_state->dbenv->trigger_unpause_all(bdb_state->dbenv);
 
     return 0;
 }

@@ -3857,6 +3857,16 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     bdb_state->repinfo->repstats.rep_process_message++;
 
+    if (rectype == REP_VERIFY) {
+        /*
+         * We're going into rep-verify-match that may re-open
+         * triggers (see __bam_open()). Acquire all trigger locks
+         * before acquiring any exclusive locks (bdb-lock, recovery-lock, etc.),
+         * to maintain the same lock ordering as triggers.
+         */
+        bdb_state->dbenv->trigger_pause_all(bdb_state->dbenv);
+    }
+
     /* Rep_verify can set the recovery flag, which causes the code ignores
        locks.
        Grab the bdb_writelock here rather than inside of berkdb so that we avoid
@@ -3912,6 +3922,12 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     if (got_writelock) {
         BDB_RELLOCK();
+    }
+
+    if (rectype == REP_VERIFY) {
+        /* At this point, we shouldn't be holding any exclusive locks.
+         * We still hold onto the bdb-lock in read mode, but it's okay. */
+        bdb_state->dbenv->trigger_unpause_all(bdb_state->dbenv);
     }
 
     if (bdb_state->attr->repsleep)

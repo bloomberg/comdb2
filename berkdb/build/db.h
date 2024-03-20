@@ -2805,11 +2805,15 @@ struct __db_env {
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
 					 pthread_mutex_t **, const uint8_t **));
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
+	int(*trigger_lock) __P((DB_ENV *, const char *, const uint8_t **, void **));
+	int(*trigger_unlock) __P((DB_ENV *, void *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
 	int(*trigger_ispaused) __P((DB_ENV *, const char *));
 	int(*trigger_pause) __P((DB_ENV *, const char *));
 	int(*trigger_unpause) __P((DB_ENV *, const char *));
+	int(*trigger_pause_all) __P((DB_ENV *));
+	int(*trigger_unpause_all) __P((DB_ENV *));
 
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));

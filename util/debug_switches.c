@@ -84,6 +84,9 @@ static struct debug_switches {
     int recover_ddlk_sp_delay;
     int force_file_version_to_fail;
     int rep_verify_req_delay;
+    int test_trigger_deadlock;
+    int dbq_get_is_delayed;
+    int rep_rec_is_delayed;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -266,6 +269,7 @@ int init_debug_switches(void)
 
     register_debug_switch("force_file_version_to_fail", &debug_switches.force_file_version_to_fail);
     register_debug_switch("rep_verify_req_delay", &debug_switches.rep_verify_req_delay);
+    register_debug_switch("test_trigger_deadlock", &debug_switches.test_trigger_deadlock);
     return 0;
 }
 
@@ -511,4 +515,24 @@ int debug_switch_rep_verify_req_delay(void)
 void debug_switch_set_rep_verify_req_delay(int val)
 {
     debug_switches.rep_verify_req_delay = val;
+}
+int debug_switch_test_trigger_deadlock(void)
+{
+    return debug_switches.test_trigger_deadlock;
+}
+void debug_switch_set_dbq_get_delayed(int val)
+{
+    debug_switches.dbq_get_is_delayed = val;
+}
+int debug_switch_is_dbq_get_delayed(void)
+{
+    return debug_switches.dbq_get_is_delayed;
+}
+void debug_switch_set_rep_rec_delayed(int val)
+{
+    debug_switches.rep_rec_is_delayed = val;
+}
+int debug_switch_is_rep_rec_delayed(void)
+{
+    return debug_switches.rep_rec_is_delayed;
 }
