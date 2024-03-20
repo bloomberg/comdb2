@@ -1715,23 +1715,21 @@ static int get_host_by_name(const char *comdb2db_name, char comdb2db_hosts[][CDB
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *comdb2db_ports,
                               int *master, const char *comdb2db_name, int *num_hosts, int *comdb2db_num,
                               const char *dbname, char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts, int *dbnum,
-                              int read_cfg, int dbinfo_or_dns)
+                              int dbinfo_or_dns)
 {
     int rc;
 
     if (hndl)
         debugprint("entering\n");
 
-    if (read_cfg) {
-        rc = read_available_comdb2db_configs(
-            hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num,
-            dbname, db_hosts, num_db_hosts, dbnum, 0, 0);
-        if (rc == -1)
-            return rc;
-        if (master)
-            *master = -1;
-        set_cdb2_timeouts(hndl);
-    }
+    rc = read_available_comdb2db_configs(
+        hndl, comdb2db_hosts, comdb2db_name, num_hosts, comdb2db_num,
+        dbname, db_hosts, num_db_hosts, dbnum, 0, 0);
+    if (rc == -1)
+        return rc;
+    if (master)
+        *master = -1;
+    set_cdb2_timeouts(hndl);
 
     if (dbinfo_or_dns) {
         /* If previous call to the function successfully retrieved hosts,
@@ -5918,7 +5916,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
                             comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
                             hndl->dbname, hndl->hosts, &(hndl->num_hosts),
-                            &hndl->dbnum, 1, 0);
+                            &hndl->dbnum, 0);
 
     /* Before database destination discovery */
     cdb2_event *e = NULL;
@@ -5962,7 +5960,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
                                 comdb2db_name, &num_comdb2db_hosts,
                                 &comdb2db_num, hndl->dbname, hndl->hosts,
-                                &(hndl->num_hosts), &hndl->dbnum, 0, 1);
+                                &(hndl->num_hosts), &hndl->dbnum, 1);
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);
