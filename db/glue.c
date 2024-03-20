@@ -5331,6 +5331,27 @@ int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prevcu
 
     tran_type *tran = NULL;
 retry:
+    if (debug_switch_test_trigger_deadlock()) {
+        debug_switch_set_dbq_get_delayed(1);
+        /*
+         * We have trigger-lock at this point. We're about to begin a bdb tran
+         * that requires bdb-lock and recovery-lock, both in read mode.
+         * Wait a bit here. If rep-verify-match acquires these locks before we do,
+         * we'll deadlock.
+         */
+        int maxwaits = 50;
+        logmsg(LOGMSG_WARN, "%s: delayed. waiting for rep_recovery delay\n", __func__);
+        while (!debug_switch_is_rep_rec_delayed() && maxwaits-- > 0) {
+            logmsg(LOGMSG_WARN, "%s: still waiting remaining waits %d...\n", __func__, maxwaits);
+            poll(NULL, 0, 100);
+        }
+        if (debug_switch_is_rep_rec_delayed()) {
+            logmsg(LOGMSG_WARN, "%s: rep_recovery delayed. we're going to deadlock\n", __func__);
+        } else {
+            logmsg(LOGMSG_WARN, "%s: waited long enough and deadlock didn't happen\n", __func__);
+        }
+        debug_switch_set_dbq_get_delayed(0);
+    }
     rc = trans_start(iq, NULL, (void *)&tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
