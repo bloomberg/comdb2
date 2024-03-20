@@ -674,6 +674,9 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     int rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd, &f.seq,
                      bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     Pthread_mutex_unlock(q->lock);
+    if (debug_switch_test_trigger_deadlock()) {
+        logmsg(LOGMSG_WARN, "%s %p released q->lock\n",__func__, (void *)(intptr_t)pthread_self());
+    }
     comdb2_sql_tick_no_recover_deadlock();
     sp->num_instructions = 0;
     if (rc == 0) {
@@ -703,12 +706,19 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay_ms)
         int rc;
         uint8_t status;
         struct timespec ts;
+        if (debug_switch_test_trigger_deadlock()) {
+            logmsg(LOGMSG_WARN, "%s %p acquiring q->lock\n",__func__, (void *)(intptr_t)pthread_self());
+        }
         Pthread_mutex_lock(q->lock);
+        if (debug_switch_test_trigger_deadlock()) {
+            logmsg(LOGMSG_WARN, "%s %p acquired q->lock\n",__func__, (void *)(intptr_t)pthread_self());
+        }
 again:  status = *q->status;
         if (status == TRIGGER_SUBSCRIPTION_OPEN) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
             if (stop_waiting(L, q)) {
+                Pthread_mutex_unlock(q->lock);
                 return -1;
             }
             ts = setup_dbq_ts(delay_ms);

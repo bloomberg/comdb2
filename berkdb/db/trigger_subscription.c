@@ -32,3 +32,12 @@ struct __db_trigger_subscription *__db_get_trigger_subscription(const char *name
 	Pthread_mutex_unlock(&subscription_lk);
 	return s;
 }
+
+int __db_for_each_trigger_subscription(hashforfunc_t *func, int lock_it)
+{
+	Pthread_mutex_lock(&subscription_lk);
+	if (htab != NULL)
+		hash_for(htab, func, (void *)(intptr_t)lock_it);
+	Pthread_mutex_unlock(&subscription_lk);
+	return 0;
+}

@@ -1392,6 +1392,18 @@ int bdb_trigger_unsubscribe(bdb_state_type *bdb_state)
     return dbenv->trigger_unsubscribe(dbenv, bdb_state->name);
 }
 
+int bdb_trigger_lock(bdb_state_type *bdb_state, const uint8_t **status, void **retp)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_lock(dbenv, bdb_state->name, status, retp);
+}
+
+int bdb_trigger_unlock(bdb_state_type *bdb_state, void *ret)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_unlock(dbenv, ret);
+}
+
 int bdb_trigger_open(bdb_state_type *bdb_state)
 {
     DB_ENV *dbenv = bdb_state->dbenv;
