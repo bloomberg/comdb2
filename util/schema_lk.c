@@ -20,7 +20,7 @@
 #include <schema_lk.h>
 #include <assert.h>
 
-static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
+static Pthread_rwlock_t schema_lk = PPTHREAD_RWLOCK_INITIALIZER;
 static pthread_t last_schema_wrlock_owner;
 
 __thread int have_readlock = 0;
@@ -54,7 +54,7 @@ void rdlock_schema_int(const char *file, const char *func, int line)
 int tryrdlock_schema_int(const char *file, const char *func, int line)
 {
     assert(have_writelock == 0);
-    int rc = pthread_rwlock_tryrdlock(&schema_lk);
+    int rc = Pthread_rwlock_tryrdlock(&schema_lk);
     if (!rc)
         have_readlock++;
 #ifdef VERBOSE_SCHEMA_LK

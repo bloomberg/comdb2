@@ -58,6 +58,7 @@ static const char revid[] =
 #include "thrman.h"
 #include "thread_util.h"
 #include "debug_switches.h"
+#include "locks_wrap.h"
 
 
 #ifndef TESTSUITE

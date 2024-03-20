@@ -21,6 +21,32 @@
 #include <string.h>
 #include <stdlib.h>
 #include "logmsg.h"
+#include <thread_util.h>
+
+struct debug_rw_ref {
+    const char *file;
+    int line;
+    int ref;
+    arch_tid tid;
+};
+
+struct debug_rwlock {
+    pthread_rwlock_t lk;
+    pthread_mutex_t lklk;
+    struct debug_rw_ref *readrefs;
+    struct debug_rw_ref writeref;
+    int nreadrefs;
+    int warn_deref;
+};
+
+
+#ifndef DEBUG_RW_LOCKS
+typedef pthread_rwlock_t Pthread_rwlock_t;
+#else
+typedef struct debug_rwlock Pthread_rwlock_t;
+#endif
+
+
 
 #ifdef LOCK_DEBUG
 #  define LKDBG_TRACE(STR, FUNC, OBJ) logmsg(LOGMSG_USER, "%s:%d " #STR " " #FUNC "(0x%"PRIxPTR") thd:%p\n", __func__, __LINE__, (uintptr_t)OBJ, (void *)pthread_self())
@@ -63,11 +89,38 @@
 #define Pthread_mutex_lock(...)             WRAP_PTHREAD(pthread_mutex_lock, __VA_ARGS__)
 #define Pthread_mutex_unlock(...)           WRAP_PTHREAD(pthread_mutex_unlock, __VA_ARGS__)
 #define Pthread_once(...)                   WRAP_PTHREAD(pthread_once, __VA_ARGS__)
+
+#ifndef DEBUG_RW_LOCKS
+
 #define Pthread_rwlock_destroy(...)         WRAP_PTHREAD(pthread_rwlock_destroy, __VA_ARGS__)
 #define Pthread_rwlock_init(...)            WRAP_PTHREAD(pthread_rwlock_init, __VA_ARGS__)
 #define Pthread_rwlock_rdlock(...)          WRAP_PTHREAD(pthread_rwlock_rdlock, __VA_ARGS__)
 #define Pthread_rwlock_unlock(...)          WRAP_PTHREAD(pthread_rwlock_unlock, __VA_ARGS__)
 #define Pthread_rwlock_wrlock(...)          WRAP_PTHREAD(pthread_rwlock_wrlock, __VA_ARGS__)
+#define Pthread_rwlock_trywrlock(...)       pthread_rwlock_trywrlock(__VA_ARGS__)
+#define Pthread_rwlock_tryrdlock(...)       pthread_rwlock_tryrdlock(__VA_ARGS__)
+#define PPTHREAD_RWLOCK_INITIALIZER PTHREAD_RWLOCK_INITIALIZER
+
+#else
+
+extern int debug_rwlock_destroy(struct debug_rwlock *lk);
+extern int debug_rwlock_init(struct debug_rwlock *rwlock, const pthread_rwlockattr_t *attr);
+extern int debug_rwlock_rdlock(struct debug_rwlock *rwlock, const char *file, int line);
+extern int debug_rwlock_unlock(struct debug_rwlock *rwlock);
+extern int debug_rwlock_wrlock(struct debug_rwlock *rwlock, const char *file, int line);
+extern int debug_rwlock_tryrdlock(struct debug_rwlock *rwlock, const char *file, int line);
+extern int debug_rwlock_trywrlock(struct debug_rwlock *rwlock, const char *file, int line);
+#define Pthread_rwlock_destroy(lk) debug_rwlock_destroy(lk)
+#define Pthread_rwlock_init(lk, attr) debug_rwlock_init(lk, attr)
+#define Pthread_rwlock_rdlock(lk) debug_rwlock_rdlock(lk, __FILE__, __LINE__)
+#define Pthread_rwlock_unlock(lk) debug_rwlock_unlock(lk)
+#define Pthread_rwlock_wrlock(lk) debug_rwlock_wrlock(lk, __FILE__, __LINE__)
+#define Pthread_rwlock_trywrlock(lk) debug_rwlock_wrlock(lk, __FILE__, __LINE__)
+#define Pthread_rwlock_tryrdlock(lk) debug_rwlock_tryrdlock(lk, __FILE__, __LINE__)
+#define PPTHREAD_RWLOCK_INITIALIZER { PTHREAD_RWLOCK_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, NULL, {NULL, 0, 0, 0}, 0 }
+
+#endif
+
 #define Pthread_setspecific(...)            WRAP_PTHREAD(pthread_setspecific, __VA_ARGS__)
 
 extern void comdb2_name_thread(const char *name);

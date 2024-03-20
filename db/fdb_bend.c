@@ -69,6 +69,7 @@
 #include "comdb2uuid.h"
 
 #include "logmsg.h"
+#include "locks_wrap.h"
 
 extern int gbl_fdb_track;
 
@@ -97,7 +98,7 @@ struct svc_cursor {
 
 typedef struct svc_center {
     hash_t *cursors_hash;
-    pthread_rwlock_t cursors_rwlock;
+    Pthread_rwlock_t cursors_rwlock;
 } svc_center_t;
 
 static svc_center_t *center;

@@ -26,6 +26,7 @@
 #include <segstr.h>
 
 #include "comdb2.h"
+#include "locks_wrap.h"
 
 /* prox2-specific requests */
 
@@ -37,7 +38,7 @@ struct proxy_config_line {
 typedef LISTC_T(struct proxy_config_line) proxy_config;
 
 static proxy_config proxy_config_lines;
-static pthread_rwlock_t proxy_config_lk = PTHREAD_RWLOCK_INITIALIZER;
+static Pthread_rwlock_t proxy_config_lk = PPTHREAD_RWLOCK_INITIALIZER;
 
 void proxy_init(void)
 {
