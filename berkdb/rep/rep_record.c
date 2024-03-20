@@ -7067,6 +7067,27 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 		truncate_count++;
 	}
 
+	if (debug_switch_test_trigger_deadlock()) {
+		debug_switch_set_rep_rec_delayed(1);
+		/*
+		 * We have recovery-lock in write mode at this point.
+		 * We may also have bdb-lock in write mode too (if online_recovery is off).
+		 * We're about to acquire trigger-lock. Wait a bit here.
+		 * If dbq_poll() acquires the trigger-lock before we do, we'll deadlock.
+		 */
+		int maxwaits = 50;
+		logmsg(LOGMSG_WARN, "%s: delayed. waiting for dbq_get delay ...\n", __func__);
+		while (!debug_switch_is_dbq_get_delayed() && maxwaits-- > 0) {
+			logmsg(LOGMSG_WARN, "%s: still waiting remaining waits %d...\n", __func__, maxwaits);
+			poll(NULL, 0, 100);
+		}
+		if (debug_switch_is_dbq_get_delayed()) {
+			logmsg(LOGMSG_WARN, "%s: dbq_get delayed. we're going to deadlock\n", __func__);
+		} else {
+			logmsg(LOGMSG_WARN, "%s: waited long enough and deadlock didn't happen\n", __func__);
+		}
+	}
+
 	if ((ret = __txn_clear_all_prepared(dbenv)) != 0) {
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 		logmsg(LOGMSG_ERROR, "%s error clearing prepared txns\n", __func__);

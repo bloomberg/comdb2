@@ -77,10 +77,15 @@ int debug_switch_bdb_handle_reset_delay(void);           /* 0 */
 int debug_switch_recover_ddlk_sp_delay(void);
 int debug_switch_force_file_version_to_fail(void); /* 0 */
 int debug_switch_rep_verify_req_delay(void);       /* 0 */
+int debug_switch_test_trigger_deadlock(void);      /* 0 */
+int debug_switch_is_dbq_get_delayed(void);         /* 0 */
+int debug_switch_is_rep_rec_delayed(void);         /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */
 
 /* setters */
 void debug_switch_set_rep_verify_req_delay(int);
+void debug_switch_set_dbq_get_delayed(int);
+void debug_switch_set_rep_rec_delayed(int);
 #endif

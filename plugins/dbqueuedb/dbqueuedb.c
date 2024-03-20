@@ -367,8 +367,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     size_t fnddtaoff;
     uint32_t lockid;
     const uint8_t *status;
-    pthread_mutex_t *mu;
-    pthread_cond_t *cond;
+    void *trigger = NULL;
 
     init_fake_ireq(table->dbenv, &iq);
     iq.usedb = table;
@@ -378,15 +377,15 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     assert(lockid > 0);
     bdb_lock_table_read_fromlid(table->handle, lockid);
 
-    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &status);
+    rc = bdb_trigger_lock(table->handle, &status, &trigger);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR,
                "dbq_get_front_genid: bdb_trigger_subscribe "
                "failed (rc: %d)\n",
                rc);
+        bdb_trigger_unlock(table->handle, trigger);
         return 0;
     }
-    Pthread_mutex_lock(mu);
 
     if (*status != TRIGGER_SUBSCRIPTION_OPEN) {
         goto skip;
@@ -404,7 +403,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     }
 
 skip:
-    rc = bdb_trigger_unsubscribe(table->handle);
+    rc = bdb_trigger_unlock(table->handle, trigger);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR,
                "dbq_get_front_genid: bdb_trigger_unsubscribe "
@@ -412,7 +411,6 @@ skip:
                rc);
     }
     bdb_free_lock_id(thedb->bdb_env, lockid);
-    Pthread_mutex_unlock(mu);
 
     return genid;
 }
