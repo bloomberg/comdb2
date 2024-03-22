@@ -110,6 +110,20 @@ static const char *print_file_type(int type)
     return "unknown";
 }
 
+static const char *print_column_name(int col)
+{
+    switch (col) {
+        case FILES_COLUMN_FILENAME: return "filename";
+        case FILES_COLUMN_DIR: return "dir";
+        case FILES_COLUMN_TYPE: return "type";
+        case FILES_COLUMN_CONTENT: return "content";
+        case FILES_COLUMN_CONTENT_OFFSET: return "offset";
+        case FILES_COLUMN_CONTENT_SIZE: return "size";
+        case FILES_COLUMN_CHUNK_SIZE: return "chunk_size";
+    }
+    return "unknown";
+}
+
 static void release_files(void *data, int npoints)
 {
     db_file_t *files = data;
@@ -280,12 +294,14 @@ static int read_next_chunk(systbl_files_cursor *pCur)
 
         if (pCur->files[pCur->rowid].type == FILES_TYPE_LOGFILE) {
             if (check_and_append_new_log_files(pCur) != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d Failed to process file %s\n", __func__, __LINE__, pCur->files[pCur->rowid].name);
                 return SQLITE_ERROR;
             }
         }
 
         int rc = read_write_file(pCur->files[pCur->rowid].info, pCur, memory_writer);
         if (rc > 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d Failed to process file %s\n", __func__, __LINE__, pCur->files[pCur->rowid].name);
             return SQLITE_ERROR;
         } else if (rc == 0) {
             break;
@@ -569,8 +585,11 @@ static int filesFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
         pCur->chunk_size = 0;
     }
 
-    if (get_files((void **)&pCur->files, &pCur->nfiles, pCur->file_pattern, pCur->chunk_size))
+    if (get_files((void **)&pCur->files, &pCur->nfiles, pCur->file_pattern, pCur->chunk_size)) {
+        logmsg(LOGMSG_ERROR, "%s:%d: Failed to get files following filter\n",
+               __FILE__, __LINE__);
         return SQLITE_ERROR;
+    }
 
     pCur->rowid = 0;
 
@@ -594,6 +613,8 @@ static int filesBestIndex(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo)
         switch (pConstraint->iColumn) {
         case FILES_COLUMN_FILENAME:
             if (pConstraint->op != SQLITE_INDEX_CONSTRAINT_LIKE) {
+                logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with 'like'\n",
+                       __FILE__, __LINE__, print_column_name(FILES_COLUMN_FILENAME));
                 return SQLITE_ERROR;
             }
             idxNum |= FILES_FILE_PATTERN_FLAG;
@@ -601,6 +622,8 @@ static int filesBestIndex(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo)
             break;
         case FILES_COLUMN_CHUNK_SIZE:
             if (pConstraint->op != SQLITE_INDEX_CONSTRAINT_EQ) {
+                logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with '='\n",
+                       __FILE__, __LINE__, print_column_name(FILES_COLUMN_CHUNK_SIZE));
                 return SQLITE_ERROR;
             }
             idxNum |= FILES_CHUNK_SIZE_FLAG;
