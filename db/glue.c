@@ -3735,9 +3735,6 @@ int open_bdb_env(struct dbenv *dbenv)
         if (net_register_handler(dbenv->handle_sibling, NET_FLUSH_ALL,
                                  "flush_all", net_flush_all))
             return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_FORGETMENOT,
-                                 "forgetmenot", net_forgetmenot))
-            return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_TRIGGER_REGISTER,
                                  "trigger_register", net_trigger_register))
             return -1;

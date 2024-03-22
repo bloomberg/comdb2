@@ -7139,6 +7139,8 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     reqlog_set_event(thd->logger, EV_SP);
 
+    assert(!trigger || !gbl_is_physical_replicant);
+
     if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
 
@@ -7179,7 +7181,13 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
-    rc = push_args_and_run_sp(clnt, end_ptr, err);
+    if (gbl_is_physical_replicant && consumer) {
+        rc = -3;
+        (*err) = strdup("Cannot execute consumer on physical-replicant");
+    }
+    else {
+        rc = push_args_and_run_sp(clnt, end_ptr, err);
+    }
 
     if (trigger) {
         return rc;
