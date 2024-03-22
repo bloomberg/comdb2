@@ -1211,7 +1211,7 @@ static void *purge_old_blkseq_thread(void *arg)
             }
         }
 
-        if (gbl_private_blkseq) {
+        if (gbl_private_blkseq && !gbl_is_physical_replicant) {
             thrman_where(thr_self, "clean_blkseq");
             int nstripes;
 
@@ -1228,11 +1228,13 @@ static void *purge_old_blkseq_thread(void *arg)
         }
 
         /* queue consumer thread admin */
-        thrman_where(thr_self, "dbqueue_admin");
-        rdlock_schema_lk();
-        dbqueuedb_admin(dbenv);
-        unlock_schema_lk();
-        thrman_where(thr_self, NULL);
+        if (!gbl_is_physical_replicant) {
+            thrman_where(thr_self, "dbqueue_admin");
+            rdlock_schema_lk();
+            dbqueuedb_admin(dbenv);
+            unlock_schema_lk();
+            thrman_where(thr_self, NULL);
+        }
 
         /* purge old blobs.  i didn't want to make a whole new thread just
          * for this -- SJ */
@@ -1242,12 +1244,6 @@ static void *purge_old_blkseq_thread(void *arg)
 
         /* update per node stats */
         process_nodestats();
-
-        /* Claim is this is not needed in the new incoherency scheme
-         * if I am not coherent, make sure the master hasn't forgotten about me
-        if(!bdb_am_i_coherent(dbenv->bdb_env))
-            send_forgetmenot();
-         */
 
         if ((loop % 30) == 0 && gbl_verify_dbreg)
             bdb_verify_dbreg(dbenv->bdb_env);

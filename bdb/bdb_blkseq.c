@@ -234,6 +234,10 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
         return (0);
     }
 
+    if (gbl_is_physical_replicant) {
+        return (0);
+    }
+
     if (op == DB_TXN_APPLY || op == DB_TXN_FORWARD_ROLL) {
         stripe =
             get_stripe(bdb_state, (uint8_t *)args->key.data, args->key.size);

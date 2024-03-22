@@ -539,6 +539,47 @@ function generate_tests()
     ./generate_tests.sh
 }
 
+function verify_blkseq_dbname_node()
+{
+    local _repl_dbname=$1
+    local _repl_host=$2
+
+    x=$(cdb2sql --tabs ${CDB2_OPTIONS} $_repl_dbname --host $_repl_host  "select * from comdb2_blkseq")
+    if [[ -n "$x" ]]; then
+        echo "physrep $_repl_dbname node $_repl_host had blkseqs"
+        echo "$x"
+        cleanFailExit "physrep $_repl_dbname $_repl_host had blkseqs"
+    fi
+}
+
+function verify_blkseq()
+{
+    echo "== verify that blkseq behavior on all nodes"
+
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER ; do 
+            x=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME --host $node  "select * from comdb2_blkseq")
+            wc=$(echo "$x" | wc -l)
+            echo "node $node, blkseq $x"
+            if [[ -z "$x" || "$wc" -lt 5 ]]; then
+                cleanFailExit "Parent node $node missing or not enough blkseqs"
+            fi
+            verify_blkseq_dbname_node ${REPL_CLUS_DBNAME} $node
+            verify_blkseq_dbname_node ${REPL_DBNAME_PREFIX}_${node} $node
+        done
+    else
+        node=$(hostname)
+        x=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME --ndoe $node "select * from comdb2_blkseq")
+        wc=$(echo "$x" | wc -l)
+        echo "blkseq is $x"
+        if [[ -z "$x" || "$wc" -lt 5 ]]; then
+            cleanFailExit "Parent missing or not enough blkseq"
+        fi
+        verify_blkseq_dbname_node ${REPL_CLUS_DBNAME} $node
+        verify_blkseq_dbname_node ${REPL_DBNAME_PREFIX}_${node} $node
+    fi
+}
+
 function run_tests()
 {
     # iterate over each test: for every .src.sql and .src.sh file there is a .query.sql file to check
@@ -671,6 +712,7 @@ fi
 
 generate_tests
 run_tests
+verify_blkseq
 compare_end_lsns
 cleanup
 
