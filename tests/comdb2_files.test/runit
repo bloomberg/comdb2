@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+echo "restricted blahblah" > ${DBDIR}/foo
+chmod 000 ${DBDIR}/foo
+
+cdb2sql ${CDB2_OPTIONS} $dbnm local 'select count(*) from comdb2_files'
+exit $?
