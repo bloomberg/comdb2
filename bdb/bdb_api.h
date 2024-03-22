@@ -703,8 +703,7 @@ int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
 
 /* abort the transaction referenced by the tran handle */
 int bdb_tran_abort(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
-int bdb_tran_abort_priority(bdb_state_type *bdb_handle, tran_type *tran,
-                            int *bdberr, int *priority);
+int bdb_tran_abort_priority(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr, int *priority, int discard);
 
 /* english doesn't have curses vile enough */
 int bdb_tran_abort_logical(bdb_state_type *bdb_handle, tran_type *tran,
@@ -1403,6 +1402,9 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *offset);
 
 void bdb_set_tran_verify_updateid(tran_type *tran);
+
+int bdb_tran_set_timestamp(bdb_state_type *bdb_state, tran_type *tran, int64_t timestamp);
+int bdb_tran_get_timestamp(bdb_state_type *bdb_state, tran_type *tran, int64_t *timestamp);
 
 int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
@@ -2256,6 +2258,9 @@ int bdb_get_all_for_versioned_sp_tran(tran_type *tran, char *name, char ***versi
 int bdb_get_default_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps_tran(tran_type *tran, char ***names, int *num);
+void bdb_abort_waiters(bdb_state_type *bdb_state, tran_type *tran);
+uint32_t bdb_tran_count_waiters(bdb_state_type *bdb_state, tran_type *tran);
+uint32_t bdb_tran_count_write_waiters(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_user_exists(tran_type *tran, char *user);
 int bdb_create_dba_user(bdb_state_type *bdb_state);
@@ -2379,6 +2384,8 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
 /* Abort if this thread has an open transaction */
 void bdb_assert_notran(bdb_state_type *bdb_state);
+
+int bdb_trans_track(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 

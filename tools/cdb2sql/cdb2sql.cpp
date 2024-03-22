@@ -109,6 +109,7 @@ static int isadmin = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 static int connect_to_master = 0;
+static int cdb2_master = 0;
 
 static int now_ms(void)
 {
@@ -1497,6 +1498,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
             type = dbhostname;
         }
 
+        if (cdb2_master)
+            flags |= CDB2_MASTER;
+
         if (isadmin)
             flags |= CDB2_ADMIN;
 
@@ -2044,8 +2048,7 @@ int main(int argc, char *argv[])
         {"connect-to-master", no_argument, NULL, 'm'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:m",
-                               long_options, &opt_indx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mM", long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
             break;
@@ -2091,6 +2094,9 @@ int main(int argc, char *argv[])
             break;
         case 'm':
             connect_to_master = 1;
+            break;
+        case 'M':
+            cdb2_master = 1;
             break;
         case '?':
             cdb2sql_usage(EXIT_FAILURE);
