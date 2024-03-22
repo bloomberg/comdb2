@@ -2083,6 +2083,7 @@ int is_rowlocks_transaction(tran_type *);
 int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
 tran_type *trans_start_readcommitted(struct ireq *, int trak);
+tran_type *trans_start_modsnap(struct ireq *, int trak);
 tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
                                     int file, int offset, int *error,
                                     int is_ha_retry);

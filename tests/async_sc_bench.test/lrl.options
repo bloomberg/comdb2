@@ -4,3 +4,4 @@ enable_snapshot_isolation
 ssl_client_mode OPTIONAL
 cache 1000 mb
 maxosqltransfer 2000000
+use_modsnap_for_snapshot

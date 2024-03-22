@@ -217,7 +217,7 @@ __ham_c_close(dbc, root_pgno, rmroot)
 	}
 
 out:	if (hcp->page != NULL && (t_ret =
-	    __memp_fput(mpf, hcp->page, dirty)) != 0 && ret == 0)
+	    PAGEPUT(dbc, mpf, hcp->page, dirty)) != 0 && ret == 0)
 		ret = t_ret;
 	if (gotmeta != 0 && (t_ret = __ham_release_meta(dbc)) != 0 && ret == 0)
 		ret = t_ret;
@@ -300,7 +300,7 @@ __ham_c_count(dbc, recnop)
 
 	*recnop = recno;
 
-err:	if ((t_ret = __memp_fput(mpf, hcp->page, 0)) != 0 && ret == 0)
+err:	if ((t_ret = PAGEPUT(dbc, mpf, hcp->page, 0)) != 0 && ret == 0)
 		ret = t_ret;
 	hcp->page = NULL;
 	return (ret);
@@ -358,7 +358,7 @@ __ham_c_del(dbc)
 		ret = __ham_del_pair(dbc, 1);
 
 out:	if (hcp->page != NULL) {
-		if ((t_ret = __memp_fput(mpf,
+		if ((t_ret = PAGEPUT(dbc, mpf,
 		    hcp->page, ret == 0 ? DB_MPOOL_DIRTY : 0)) && ret == 0)
 			ret = t_ret;
 		hcp->page = NULL;
@@ -520,7 +520,7 @@ __ham_c_get(dbc, key, data, flags, pgnop)
 			case DB_LAST:
 			case DB_PREV:
 			case DB_PREV_NODUP:
-				ret = __memp_fput(mpf, hcp->page, 0);
+				ret = PAGEPUT(dbc, mpf, hcp->page, 0);
 				hcp->page = NULL;
 				if (hcp->bucket == 0) {
 					ret = DB_NOTFOUND;
@@ -538,7 +538,7 @@ __ham_c_get(dbc, key, data, flags, pgnop)
 			case DB_FIRST:
 			case DB_NEXT:
 			case DB_NEXT_NODUP:
-				ret = __memp_fput(mpf, hcp->page, 0);
+				ret = PAGEPUT(dbc, mpf, hcp->page, 0);
 				hcp->page = NULL;
 				hcp->indx = NDX_INVALID;
 				hcp->bucket++;
@@ -737,7 +737,7 @@ back_up:
 					    lock_mode, &pgno)) != 0) {
 						if (ret != DB_NOTFOUND)
 							return (ret);
-						if ((ret = __memp_fput(mpf,
+						if ((ret = PAGEPUT(dbc, mpf,
 						    cp->page, 0)) != 0)
 							return (ret);
 						cp->page = NULL;
@@ -934,7 +934,7 @@ get_space:
 			goto next_pg;
 		if (ret != DB_NOTFOUND)
 			return (ret);
-		if ((ret = __memp_fput(dbc->dbp->mpf, cp->page, 0)) != 0)
+		if ((ret = PAGEPUT(dbc, dbc->dbp->mpf, cp->page, 0)) != 0)
 			return (ret);
 		cp->page = NULL;
 		if ((ret = __ham_get_meta(dbc)) != 0)
@@ -1023,7 +1023,7 @@ __ham_c_put(dbc, key, data, flags, pgnop)
 			ret = 0;
 			if (hcp->seek_found_page != PGNO_INVALID &&
 			    hcp->seek_found_page != hcp->pgno) {
-				if ((ret = __memp_fput(mpf, hcp->page, 0)) != 0)
+				if ((ret = PAGEPUT(dbc, mpf, hcp->page, 0)) != 0)
 					goto err2;
 				hcp->page = NULL;
 				hcp->pgno = hcp->seek_found_page;
@@ -1149,7 +1149,7 @@ __ham_expand_table(dbc)
 		/* Page exists; get it so we can get its LSN */
 		pgno = BUCKET_TO_PAGE(hcp, new_bucket);
 		if ((ret =
-		    __memp_fget(mpf, &pgno, DB_MPOOL_CREATE, &h)) != 0)
+		    PAGEGET(dbc, mpf, &pgno, DB_MPOOL_CREATE, &h)) != 0)
 			goto err;
 		lsn = h->lsn;
 	} else {
@@ -1159,7 +1159,7 @@ __ham_expand_table(dbc)
 			if ((ret = __db_lget(dbc,
 			   0, mpgno, DB_LOCK_WRITE, 0, &metalock)) != 0)
 				goto err;
-			if ((ret = __memp_fget(mpf, &mpgno, 0, &mmeta)) != 0)
+			if ((ret = PAGEGET(dbc, mpf, &mpgno, 0, &mmeta)) != 0)
 				goto err;
 			got_meta = 1;
 		}
@@ -1201,7 +1201,7 @@ __ham_expand_table(dbc)
 		hcp->hdr->spares[logn + 1] = pgno - new_bucket;
 		pgno += hcp->hdr->max_bucket;
 
-		if ((ret = __memp_fget(mpf, &pgno, DB_MPOOL_CREATE, &h)) != 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, DB_MPOOL_CREATE, &h)) != 0)
 			goto err;
 
 		mmeta->last_pgno = pgno;
@@ -1214,7 +1214,7 @@ __ham_expand_table(dbc)
 
 	/* Write out whatever page we ended up modifying. */
 	h->lsn = lsn;
-	if ((ret = __memp_fput(mpf, h, DB_MPOOL_DIRTY)) != 0)
+	if ((ret = PAGEPUT(dbc, mpf, h, DB_MPOOL_DIRTY)) != 0)
 		goto err;
 	h = NULL;
 
@@ -1231,13 +1231,13 @@ __ham_expand_table(dbc)
 	ret = __ham_split_page(dbc, old_bucket, new_bucket);
 
 err:	if (got_meta)
-		(void)__memp_fput(mpf, mmeta, dirty_meta);
+		(void)PAGEPUT(dbc, mpf, mmeta, dirty_meta);
 
 	if (LOCK_ISSET(metalock))
 		(void)__TLPUT(dbc, metalock);
 
 	if (h != NULL)
-		(void)__memp_fput(mpf, h, 0);
+		(void)PAGEPUT(dbc, mpf, h, 0);
 
 	return (ret);
 }
@@ -1372,7 +1372,7 @@ __ham_dup_return(dbc, val, flags)
 				    HOFFPAGE_TLEN(hk), sizeof(u_int32_t));
 				memcpy(&pgno,
 				    HOFFPAGE_PGNO(hk), sizeof(db_pgno_t));
-				if ((ret = __db_moff(dbp, val,
+				if ((ret = __db_moff(dbc, dbp, val,
 				    pgno, tlen, dbp->dup_compare, &cmp)) != 0)
 					return (ret);
 			} else {
@@ -1716,7 +1716,7 @@ __ham_lookup(dbc, key, sought, mode, pgnop)
 			if (tlen == key->size) {
 				memcpy(&pgno,
 				    HOFFPAGE_PGNO(hk), sizeof(db_pgno_t));
-				if ((ret = __db_moff(dbp,
+				if ((ret = __db_moff(dbc, dbp,
 				    key, pgno, tlen, NULL, &match)) != 0)
 					return (ret);
 				if (match == 0)

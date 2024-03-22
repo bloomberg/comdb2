@@ -759,6 +759,12 @@ __db_c_idup(dbc_orig, dbcp, flags)
 #if USE_BTPF
 	btpf_copy_dbc(dbc_orig, dbc_n);
 #endif
+
+	// Flag should be set before cursor is positioned.
+	F_SET(dbc_n, F_ISSET(dbc_orig, DBC_SNAPSHOT));
+	dbc_n->last_commit_lsn = dbc_orig->last_commit_lsn;
+	dbc_n->last_checkpoint_lsn = dbc_orig->last_checkpoint_lsn;
+
 	/* If the user wants the cursor positioned, do it here.  */
 	if (flags == DB_POSITION) {
 		int_n = dbc_n->internal;
@@ -1157,7 +1163,7 @@ done:	/*
 	cp_n = dbc_n == NULL ? dbc_arg->internal : dbc_n->internal;
 	if (!F_ISSET(key, DB_DBT_ISSET)) {
 		if (cp_n->page == NULL && (ret =
-		    __memp_fget(mpf, &cp_n->pgno, 0, &cp_n->page)) != 0)
+		    PAGEGET(dbc_arg, mpf, &cp_n->pgno, 0, &cp_n->page)) != 0)
 			goto err;
 
 		if ((ret = __db_ret(dbp, cp_n->page, cp_n->indx,
@@ -1918,14 +1924,14 @@ __db_c_cleanup(dbc, dbc_n, failed)
 	/* Discard any pages we're holding. */
 	if (internal->page != NULL) {
 		if ((t_ret =
-		    __memp_fput(mpf, internal->page, 0)) != 0 && ret == 0)
+		    PAGEPUT(dbc, mpf, internal->page, 0)) != 0 && ret == 0)
 			ret = t_ret;
 		internal->page = NULL;
 	}
 	opd = internal->opd;
 	if (opd != NULL && opd->internal->page != NULL) {
 		if ((t_ret =
-		    __memp_fput(mpf, opd->internal->page, 0)) != 0 && ret == 0)
+		    PAGEPUT(dbc, mpf, opd->internal->page, 0)) != 0 && ret == 0)
 			ret = t_ret;
 		opd->internal->page = NULL;
 	}
@@ -1948,7 +1954,7 @@ __db_c_cleanup(dbc, dbc_n, failed)
 		return (ret);
 
 	if (dbc_n->internal->page != NULL) {
-		if ((t_ret = __memp_fput(
+		if ((t_ret = PAGEPUT(dbc_n,
 		    mpf, dbc_n->internal->page, 0)) != 0 && ret == 0)
 			ret = t_ret;
 		dbc_n->internal->page = NULL;
@@ -1956,7 +1962,7 @@ __db_c_cleanup(dbc, dbc_n, failed)
 	opd = dbc_n->internal->opd;
 	if (opd != NULL && opd->internal->page != NULL) {
 		if ((t_ret =
-		    __memp_fput(mpf, opd->internal->page, 0)) != 0 && ret == 0)
+		    PAGEPUT(dbc_n, mpf, opd->internal->page, 0)) != 0 && ret == 0)
 			ret = t_ret;
 		opd->internal->page = NULL;
 	}

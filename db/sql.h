@@ -49,7 +49,8 @@ enum transaction_level {
     */
     TRANLEVEL_RECOM = 10,
     TRANLEVEL_SERIAL = 11,
-    TRANLEVEL_SNAPISOL = 12
+    TRANLEVEL_SNAPISOL = 12,
+    TRANLEVEL_MODSNAP = 13
 };
 
 /* I'm now splitting handle_fastsql_requests into two functions.  The
@@ -939,6 +940,18 @@ struct sqlclntstate {
     // Latch last statement's cost for comdb2_last_cost to fetch
     int64_t last_cost;
     int disable_fdb_push;
+
+    /* Commit LSN prior to modsnap start point */
+    u_int32_t last_commit_lsn_file; 
+    u_int32_t last_commit_lsn_offset;
+
+    /* Checkpoint LSN prior to modsnap start point */
+    u_int32_t last_checkpoint_lsn_file;
+    u_int32_t last_checkpoint_lsn_offset;
+
+    void *modsnap_registration; 
+    
+    int modsnap_in_progress; 
 
     int lastresptype;
     char *externalAuthUser;

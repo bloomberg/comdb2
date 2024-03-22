@@ -146,6 +146,7 @@ extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
 extern int gbl_typessql;
+extern int gbl_modsnap_asof;
 
 /* Once and for all:
 
@@ -181,6 +182,7 @@ extern int gbl_disable_sql_dlmalloc;
 extern struct ruleset *gbl_ruleset;
 extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_sql_no_timeouts_on_release_locks;
+extern int get_snapshot(struct sqlclntstate *clnt, int *f, int *o);
 
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
@@ -601,6 +603,8 @@ char *tranlevel_tostr(int lvl)
         return "TRANLEVEL_SOSQL";
     case TRANLEVEL_RECOM:
         return "TRANLEVEL_RECOM";
+    case TRANLEVEL_MODSNAP:
+        return "TRANLEVEL_MODSNAP";
     case TRANLEVEL_SERIAL:
         return "TRANLEVEL_SERIAL";
     default:
@@ -1500,7 +1504,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                             return -1;
                         } else {
                             long long lcl_ret = flibc_ntohll(ret);
-                            if (gbl_new_snapisol_asof &&
+                            if ((gbl_new_snapisol_asof || gbl_modsnap_asof) &&
                                 bdb_is_timestamp_recoverable(thedb->bdb_env,
                                                              lcl_ret) <= 0) {
                                 logmsg(LOGMSG_ERROR,
@@ -1714,6 +1718,10 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
 {
+    int rc;
+
+    rc = SQLITE_OK;
+
     Pthread_mutex_lock(&clnt->wait_mutex);
     /* if this is a new chunk, do not stop the hearbeats.*/
     if (sideeffects != TRANS_CLNTCOMM_CHUNK)
@@ -1731,6 +1739,29 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* clients don't expect column data if it's a converted request */
     reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" new transaction\n",
                 (clnt->sql) ? clnt->sql : "(???.)");
+
+    /* Latch the last commit LSN */
+    struct dbtable *db = &thedb->static_table;
+    assert(db->handle);
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        if (clnt->is_hasql_retry) {
+            get_snapshot(clnt, (int *) &clnt->last_commit_lsn_file, (int *) &clnt->last_commit_lsn_offset);
+        }
+        if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot,
+                    &clnt->last_commit_lsn_file, &clnt->last_commit_lsn_offset, 
+                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
+            rc = SQLITE_INTERNAL;
+            goto done;
+        }
+
+        if (bdb_register_modsnap(db->handle, clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
+            rc = SQLITE_INTERNAL;
+            goto done;
+        }
+        clnt->modsnap_in_progress = 1;
+    }
 
     if (clnt->osql.replay)
         goto done;
@@ -1750,7 +1781,7 @@ done:
         reqlog_end_request(thd->logger, -1, __func__, __LINE__);
     }
 
-    return SQLITE_OK;
+    return rc;
 }
 
 static int handle_sql_wrongstate(struct sqlthdstate *thd,
@@ -1789,7 +1820,7 @@ void reset_query_effects(struct sqlclntstate *clnt)
     bzero(&clnt->chunk_effects, sizeof(clnt->chunk_effects));
 }
 
-static char *sqlenginestate_tostr(int state)
+char *sqlenginestate_tostr(int state)
 {
     switch (state) {
     case SQLENG_NORMAL_PROCESS:
@@ -1829,12 +1860,14 @@ inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
         return 0;
 
     if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-         clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
+         clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+         clnt->dbtran.mode == TRANLEVEL_MODSNAP) &&
         !get_asof_snapshot(clnt) && gbl_snapshot_serial_verify_retry)
         return !clnt->sent_data_to_client;
 
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-           clnt->dbtran.mode != TRANLEVEL_SERIAL;
+           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
+           clnt->dbtran.mode != TRANLEVEL_MODSNAP;
 }
 
 static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
@@ -1851,7 +1884,8 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
     /* Verify error can be retried in reccom or lower */
     return (rc == CDB2ERR_VERIFY_ERROR) &&
            (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
-           (clnt->dbtran.mode != TRANLEVEL_SERIAL);
+           (clnt->dbtran.mode != TRANLEVEL_SERIAL) && 
+           (clnt->dbtran.mode != TRANLEVEL_MODSNAP);
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -1892,6 +1926,7 @@ void abort_dbtran(struct sqlclntstate *clnt)
         break;
 
     case TRANLEVEL_RECOM:
+    case TRANLEVEL_MODSNAP:
         recom_abort(clnt);
         break;
 
@@ -1930,6 +1965,12 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     int irc = 0, rc = 0, bdberr = 0;
 
+    clnt->modsnap_in_progress = 0;
+    if (clnt->modsnap_registration) {
+        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+        clnt->modsnap_registration = NULL;
+    }
+
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
                     (clnt->sql) ? clnt->sql : "(???.)");
@@ -1940,7 +1981,8 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         sql_debug_logf(clnt, __func__, __LINE__, "starting\n");
 
         switch (clnt->dbtran.mode) {
-        case TRANLEVEL_RECOM: {
+        case TRANLEVEL_RECOM:
+        case TRANLEVEL_MODSNAP: {
             /* here we handle the communication with bp */
             if (clnt->ctrl_sqlengine == SQLENG_FNSH_STATE) {
                 rc = recom_commit(clnt, thd->sqlthd, clnt->tzname, 0);
@@ -2232,8 +2274,15 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt,
                               enum trans_clntcomm sideeffects)
 {
+
     int rc = 0;
     int outrc = 0;
+
+    clnt->modsnap_in_progress = 0;
+    if (clnt->modsnap_registration) {
+        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+        clnt->modsnap_registration = NULL;
+    }
 
     if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
     /* Don't setup(reset) logger for commits of individual chunks,
@@ -5432,6 +5481,12 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
     }
+
+    clnt->modsnap_in_progress = 0;
+    if (clnt->modsnap_registration) {
+        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+        clnt->modsnap_registration = NULL;
+    }
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5440,6 +5495,11 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
     clnt->has_recording = 0;
     clnt->statement_timedout = 0;
     clnt->writeTransaction = 0;
+    clnt->modsnap_in_progress = 0;
+    if (clnt->modsnap_registration) {
+        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+        clnt->modsnap_registration = NULL;
+    }
 }
 
 int sbuf_is_local(SBUF2 *sb)
@@ -5974,14 +6034,16 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
             Get the LOCK!
             */
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-                clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+                clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+                clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
                 Pthread_mutex_lock(&clnt->dtran_mtx);
             }
 
             ret = next_row(clnt, stmt);
 
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-                clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+                clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+                clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
                 Pthread_mutex_unlock(&clnt->dtran_mtx);
             }
 

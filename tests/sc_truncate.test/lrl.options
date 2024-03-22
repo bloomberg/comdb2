@@ -11,3 +11,4 @@ on logical_live_sc
 #Do this in the test
 #sc_logical_pause_seconds 20
 dtastripe   1
+use_modsnap_for_snapshot

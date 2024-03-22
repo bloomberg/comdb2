@@ -425,6 +425,27 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
     return out_trans;
 }
 
+tran_type *trans_start_modsnap(struct ireq *iq, int trak)
+{
+    bdb_state_type *bdb_handle = thedb->bdb_env;
+    tran_type *out_trans = NULL;
+    int bdberr = 0;
+
+    iq->gluewhere = "bdb_tran_begin_modsnap";
+    if (gbl_extended_sql_debug_trace) {
+        logmsg(LOGMSG_USER, "td=%" PRIxPTR "%s called\n", (intptr_t)pthread_self(), __func__);
+    }
+
+    out_trans = bdb_tran_begin_modsnap(bdb_handle, trak, &bdberr);
+    iq->gluewhere = "bdb_tran_begin_modsnap done";
+
+    if (out_trans == NULL) {
+        logmsg(LOGMSG_ERROR, "*ERROR* %s:failed err %d\n", __func__, bdberr);
+        return NULL;
+    }
+    return out_trans;
+}
+
 tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
                                 int offset, int *error, int is_ha_retry)
 {

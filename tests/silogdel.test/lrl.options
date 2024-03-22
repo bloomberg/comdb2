@@ -54,3 +54,4 @@ setattr DEBUG_LOG_DELETION 1
 # Agressively delete private blkseqs
 private_blkseq_maxage 1
 
+use_modsnap_for_snapshot

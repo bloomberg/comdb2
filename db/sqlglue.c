@@ -121,6 +121,8 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
 extern int gbl_debug_tmptbl_corrupt_mem;
+extern int gbl_commit_lsn_map;
+extern int gbl_utxnid_log;
 
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
@@ -128,6 +130,7 @@ static __thread struct temptable *tmptbl_clone = NULL;
 
 uint32_t gbl_sql_temptable_count;
 int gbl_throttle_txn_chunks_msec = 0;
+extern char *sqlenginestate_tostr(int state);
 
 void free_cached_idx(uint8_t **cached_idx)
 {
@@ -3677,11 +3680,14 @@ int sql_set_transaction_mode(sqlite3 *db, struct sqlclntstate *clnt, int mode)
     int i;
 
     /* snapshot/serializable protection */
-    if ((mode == TRANLEVEL_SERIAL || mode == TRANLEVEL_SNAPISOL) &&
-        !(gbl_rowlocks || gbl_snapisol)) {
+    if ((mode == TRANLEVEL_MODSNAP && (!gbl_snapisol || !gbl_commit_lsn_map || !gbl_utxnid_log)) || 
+        ((mode == TRANLEVEL_SERIAL || mode == TRANLEVEL_SNAPISOL) &&
+        !(gbl_rowlocks || gbl_snapisol))) {
         logmsg(LOGMSG_ERROR, "%s REQUIRES MODIFICATIONS TO THE LRL FILE\n",
                 (mode == TRANLEVEL_SNAPISOL) ? "SNAPSHOT ISOLATION"
-                                             : "SERIALIZABLE");
+                                             : (mode == TRANLEVEL_MODSNAP) 
+                                                ? "MODSNAP SNAPSHOT IMPLEMENTATION" 
+                                                : "SERIALIZABLE");
         return -1;
     }
 
@@ -4625,7 +4631,7 @@ void get_current_lsn(struct sqlclntstate *clnt)
     }
 }
 
-static int get_snapshot(struct sqlclntstate *clnt, int *f, int *o)
+int get_snapshot(struct sqlclntstate *clnt, int *f, int *o)
 {
     return clnt->plugin.get_snapshot(clnt, f, o);
 }
@@ -4717,6 +4723,19 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         break;
     /* we handle communication with a blockprocess when all is over */
 
+    case TRANLEVEL_MODSNAP:
+        /* create our special bdb transaction
+         * (i.e. w/out berkdb transaction */
+        clnt->dbtran.shadow_tran =
+            trans_start_modsnap(&iq, clnt->bdb_osql_trak);
+
+        if (!clnt->dbtran.shadow_tran) {
+           logmsg(LOGMSG_ERROR, "%s:trans_start_modsnap error\n", __func__);
+           return SQLITE_INTERNAL;
+        }
+
+        break;
+    /* we handle communication with a blockprocess when all is over */
     case TRANLEVEL_SOSQL:
         /* this is the first update of the transaction, open a
          * block processor on the master */
@@ -4824,7 +4843,7 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
  */
 
 int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersion)
-{
+{ 
     int rc = SQLITE_OK;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
@@ -4835,6 +4854,29 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
                clnt->ctrl_sqlengine);
     }
 #endif
+
+    struct dbtable *db =
+        &thedb->static_table; 
+    /* Latch last commit LSN */
+    if ((clnt->dbtran.mode == TRANLEVEL_MODSNAP) && !clnt->modsnap_in_progress && (db->handle != NULL)) {
+            if (clnt->is_hasql_retry) {
+                get_snapshot(clnt, (int *) &clnt->last_commit_lsn_file, (int *) &clnt->last_commit_lsn_offset);
+            }
+            if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot, 
+                    &clnt->last_commit_lsn_file, &clnt->last_commit_lsn_offset, &clnt->last_checkpoint_lsn_file, 
+                    &clnt->last_checkpoint_lsn_offset)) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
+                rc = SQLITE_INTERNAL;
+                goto done;
+            }
+
+            if (bdb_register_modsnap(db->handle, clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
+                rc = SQLITE_INTERNAL;
+                goto done;
+            }
+            clnt->modsnap_in_progress = 1;
+    }
 
     /* already have a transaction, keep using it until it commits/aborts */
     if (clnt->intrans || clnt->in_sqlite_init ||
@@ -4871,7 +4913,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         goto done;
     }
 
-    if (clnt->dbtran.mode <= TRANLEVEL_RECOM && wrflag == 0) { // read-only
+    if ((clnt->dbtran.mode <= TRANLEVEL_RECOM || clnt->dbtran.mode == TRANLEVEL_MODSNAP) && wrflag == 0) { // read-only
         if (clnt->has_recording == 0 ||                        // not selectv
             clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
             rc = SQLITE_OK;
@@ -4944,6 +4986,13 @@ int sqlite3BtreeCommit(Btree *pBt)
     if (clnt->selectv_arr)
         currangearr_coalesce(clnt->selectv_arr);
 
+    if (!clnt->in_sqlite_init && (clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE) && (clnt->ctrl_sqlengine != SQLENG_STRT_STATE)) {
+        clnt->modsnap_in_progress = 0;
+        if (clnt->modsnap_registration) {
+            bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+            clnt->modsnap_registration = NULL;
+        }
+    }
     if (!clnt->intrans || clnt->in_sqlite_init ||
         (!clnt->in_sqlite_init && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
@@ -4992,6 +5041,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         goto done;
 
     case TRANLEVEL_RECOM:
+    case TRANLEVEL_MODSNAP:
 
         /*
          * Because we don't see begin/commit here, this is processed only
@@ -5159,6 +5209,7 @@ int rollback_tran(struct sql_thread *thd, struct sqlclntstate *clnt)
         break;
 
     case TRANLEVEL_RECOM:
+    case TRANLEVEL_MODSNAP:
         if (clnt->dbtran.shadow_tran) {
             rc = recom_abort(clnt);
             if (rc)
@@ -5228,7 +5279,8 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     clear_session_tbls(clnt);
 
     /* UPSERT: Restore the isolation level back to what it was. */
-    if (clnt->dbtran.mode == TRANLEVEL_RECOM && clnt->translevel_changed) {
+	// No modsnap here -- we went from sosql to recom, not modsnap.
+    if ((clnt->dbtran.mode == TRANLEVEL_RECOM) && clnt->translevel_changed) {
         clnt->dbtran.mode = TRANLEVEL_SOSQL;
         clnt->translevel_changed = 0;
         logmsg(LOGMSG_DEBUG, "%s: switched back to %s\n", __func__,
@@ -7798,7 +7850,8 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         /* in snapshot and stronger isolations, check cached table versions */
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-             clnt->dbtran.mode == TRANLEVEL_SERIAL)) {
+             clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+             clnt->dbtran.mode == TRANLEVEL_MODSNAP)) {
             /* make sure btrees have not changed since the transaction started
              */
             rc = bdb_osql_check_table_version(
@@ -8141,6 +8194,11 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     }
     cur->tableversion = cur->db->tableversion;
 
+    clnt->dbtran.cursor_tran->last_commit_lsn.file = clnt->last_commit_lsn_file;
+    clnt->dbtran.cursor_tran->last_commit_lsn.offset = clnt->last_commit_lsn_offset;
+    clnt->dbtran.cursor_tran->last_checkpoint_lsn.file = clnt->last_checkpoint_lsn_file;
+    clnt->dbtran.cursor_tran->last_checkpoint_lsn.offset = clnt->last_checkpoint_lsn_offset;
+
     /* initialize the shadow, if any  */
     cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
 
@@ -8265,7 +8323,8 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
         clnt->dbtran.mode == TRANLEVEL_RECOM ||
         clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-        clnt->dbtran.mode == TRANLEVEL_SERIAL) {
+        clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
         shadow_tran = clnt->dbtran.shadow_tran;
     }
 
@@ -8284,7 +8343,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         rowlocks ? &clnt->holding_pagelocks_flag : NULL,
         rowlocks ? pause_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
         rowlocks ? count_pagelock_cursors : NULL, rowlocks ? (void *)thd : NULL,
-        clnt->bdb_osql_trak, &bdberr);
+        clnt->bdb_osql_trak, &bdberr, clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0); 
     if (cur->bdbcur == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_cursor_open rc %d\n", __func__, bdberr);
         if (bdberr == BDBERR_DEADLOCK)
@@ -10579,7 +10638,8 @@ static int is_sql_update_mode(int mode)
     case TRANLEVEL_SOSQL:
     case TRANLEVEL_RECOM:
     case TRANLEVEL_SNAPISOL:
-    case TRANLEVEL_SERIAL: return 1;
+    case TRANLEVEL_SERIAL:
+    case TRANLEVEL_MODSNAP: return 1;
     default: return 0;
     }
 }
@@ -10775,7 +10835,8 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
                 break;
             }
 
-            rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count);
+            rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count, pCur->clnt->dbtran.mode == TRANLEVEL_MODSNAP ? 1 : 0, pCur->clnt->last_commit_lsn_file, pCur->clnt->last_commit_lsn_offset, 
+                    pCur->clnt->last_checkpoint_lsn_file, pCur->clnt->last_checkpoint_lsn_offset);
             if (rc == BDBERR_DEADLOCK &&
                 recover_deadlock(thedb->bdb_env, clnt, NULL, 0)) {
                 break;
