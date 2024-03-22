@@ -267,22 +267,27 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
     int fd;
     int rc;
 
+    rc = 0;
+
     // Ensure large file support
     assert(sizeof(off_t) == 8);
 
     fd = open(f->filename, O_RDONLY);
     if (fd == -1) {
-        return 1;
+        rc = 1;
+        goto done;
     }
 
     struct stat st;
     if (fstat(fd, &st) == -1) {
-        return 1;
+        rc = 1;
+        goto done;
     }
 
     // Ignore special files
     if (!S_ISREG(st.st_mode)) {
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     const off_t current_file_offset = lseek(fd, f->offset, SEEK_SET);
@@ -293,7 +298,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
     if (bytes_left <= 0) {
         // The file has been fully read
-        return -1;
+        rc = -1;
+        goto done;
     }
 
     // Read the file a page at a time and copy to the output.
@@ -313,7 +319,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
 #if !defined(_SUN_SOURCE) && !defined(_HP_SOURCE)
         if (posix_memalign((void **)&(f->pagebuf), 512, f->bufsize)) {
-            return 1;
+            rc = 1;
+            goto done;
         }
 #else
         f->pagebuf = (uint8_t *)memalign(512, f->bufsize);
@@ -329,14 +336,16 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
         ssize_t bytes_read = read(fd, &pagebuf[0], nbytes);
         if (bytes_read <= 0) {
-            return 1;
+            rc = 1;
+            goto done;
         }
 
         if (dbfile_is_checksummed(f)) {
             // Save current offset
             const off_t offset = lseek(fd, 0, SEEK_CUR);
             if (offset == (off_t)-1) {
-                return 1;
+                rc = 1;
+                goto done;
             }
 
             int retry = 5;
@@ -359,7 +368,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
                 // checksum verification.
                 if (--retry == 0) {
                     // giving up on this page
-                    return 1;
+                    rc = 1;
+                    goto done;
                 }
 
                 // wait 500ms before reading page again
@@ -369,7 +379,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
                 off_t rewind = offset - (bytes_read - n);
                 rewind = lseek(fd, rewind, SEEK_SET);
                 if (rewind == (off_t)-1) {
-                    return 1;
+                    rc = 1;
+                    goto done;
                 }
 
                 ssize_t nread, totalread = 0;
@@ -377,7 +388,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
                     nread = read(fd, &pagebuf[0] + n + totalread,
                                  pagesize - totalread);
                     if (nread <= 0) {
-                        return 1;
+                        rc = 1;
+                        goto done;
                     }
                     totalread += nread;
                 }
@@ -385,13 +397,15 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
             // Restore to original offset
             if (offset != lseek(fd, offset, SEEK_SET)) {
-                return 1;
+                rc = 1;
+                goto done;
             }
         }
 
         rc = writer(writer_ctx, pagebuf, bytes_read, current_file_offset);
         if (rc < 0) {
-            return 1;
+            rc = 1;
+            goto done;
         }
 
         total_bytes_read += bytes_read;
@@ -400,5 +414,10 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
     f->offset = lseek(fd, 0, SEEK_CUR);
 
-    return 0;
+done:
+    if (fd != -1) {
+        close(fd);
+    }
+
+    return rc;
 }
