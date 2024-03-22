@@ -3,6 +3,14 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
+if [ -z $CLUSTER ];
+then
+	:
+else
+	node=`echo $CLUSTER | awk '{ print $1}'`
+	ssh $node
+fi
+
 echo "restricted blahblah" > ${DBDIR}/foo
 chmod 000 ${DBDIR}/foo
 
