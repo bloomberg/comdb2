@@ -2819,6 +2819,12 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
      * cache already freed */
     sqlite3UnlockStmtTablesRemotes(clnt); /*lose all the locks boyo! */
 
+    int bdberr = 0, rc = bdb_free_curtran_locks(thedb->bdb_env, clnt->dbtran.cursor_tran, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to unlock curtran locks for %p, rc=%d bdberr=%d\n", clnt->dbtran.cursor_tran, rc,
+               bdberr);
+    }
+
     /* terminate the current statement; we are gonna reprepare */
     sqlite3_finalize(rec->stmt);
     rec->stmt = NULL;
