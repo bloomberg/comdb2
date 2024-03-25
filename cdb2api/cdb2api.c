@@ -1105,7 +1105,13 @@ static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
     void *p = NULL;
     if (size <= hndl->protobuf_size - hndl->protobuf_offset) {
         p = hndl->protobuf_data + hndl->protobuf_offset;
-        hndl->protobuf_offset += size;
+        if (size%8) {
+            hndl->protobuf_offset += size + (8 - size%8);
+        } else {
+            hndl->protobuf_offset += size;
+        }
+        if (hndl->protobuf_offset > hndl->protobuf_size)
+            hndl->protobuf_offset = hndl->protobuf_size;
     } else {
         p = malloc(size);
     }
@@ -1115,7 +1121,7 @@ void cdb2_protobuf_free(void *allocator_data, void *p)
 {
     struct cdb2_hndl *hndl = allocator_data;
     if (p < hndl->protobuf_data ||
-        p > (hndl->protobuf_data + hndl->protobuf_size)) {
+        p >= (hndl->protobuf_data + hndl->protobuf_size)) {
         free(p);
     }
 }
