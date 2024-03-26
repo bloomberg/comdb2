@@ -5782,6 +5782,9 @@ static int start_schema_change_tran_wrapper(const char *tblname,
              */
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
+            /* mark scdone so that cleanup removes llmeta */
+            if (rc != SC_MASTER_DOWNGRADE)
+                iq->osql_flags |= OSQL_FLAGS_SCDONE;
         }
     } else {
         iq->sc->sc_next = iq->sc_pending;
@@ -5857,7 +5860,12 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     iq->sc_pending = iq->sc;
     iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
 
-    return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
+    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+        if (rc != SC_MASTER_DOWNGRADE)
+            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+        return rc;
+    }
+    return 0;
 }
 
 static int _process_single_table_sc_merge(struct ireq *iq)
@@ -5936,6 +5944,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
         if (rc != SC_COMMIT_PENDING) {
+            if (rc != SC_MASTER_DOWNGRADE)
+                iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
     } else {
@@ -5954,6 +5964,8 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
         if (rc != SC_COMMIT_PENDING) {
+            if (rc != SC_MASTER_DOWNGRADE)
+                iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
         start_shard = 1;
