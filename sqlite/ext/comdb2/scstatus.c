@@ -89,6 +89,7 @@ static int get_status(void **data, int *npoints)
     for (int i = 0; i < nkeys; i++) {
         dttz_t d;
         struct schema_change_type sc = {0}; // used for upacking
+        sc.onstack = 1;
 
         rc = unpack_schema_change_type(&sc, sc_data[i], status[i].sc_data_len);
         if (rc) {
@@ -132,6 +133,8 @@ static int get_status(void **data, int *npoints)
             sprintf(str, "%0#16" PRIx64, flibc_htonll(seed));
             sc_status_ents[i].seed = strdup(str);
         }
+
+        free_schema_change_type(&sc);
     }
 
     *npoints = nkeys;

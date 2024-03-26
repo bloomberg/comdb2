@@ -495,6 +495,8 @@ extern int gbl_altersc_delay_usec;
 extern int gbl_altersc_latency_thr;
 extern int gbl_altersc_sampling_sec;
 extern int gbl_altersc_latency_inc;
+extern int gbl_sc_history_max_rows;
+extern int gbl_sc_status_max_rows;
 
 /*
   =========================================================
