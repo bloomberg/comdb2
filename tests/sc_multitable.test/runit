@@ -18,15 +18,18 @@ touch $OUT
 # create the partition
 starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-3600)'`
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'"
-cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" >>    \$OUT
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE create time partition"
    exit 1
 fi
 
+# time to do a rollout
+sleep 10
+
 # check the current partitions
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID"
-cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >>    \$OUT
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE partinfo"
    exit 1
@@ -49,6 +52,66 @@ echo cdb2sql ${CDB2_OPTIONS} $dbname default "alter table ${VIEW1} {`cat new.csc
 cdb2sql ${CDB2_OPTIONS} $dbname default "alter table ${VIEW1} {`cat new.csc2`}" &
 
 sleep 3
+
+echo cdb2sql ${CDB2_OPTIONS} $dbname --host ${master} "exec procedure sys.cmd.send('scabort')"
+cdb2sql ${CDB2_OPTIONS} $dbname --host ${master} "exec procedure sys.cmd.send('scabort')"
+if (( $? != 0 )) ; then
+   echo "FAILURE scabort"
+   exit 1
+fi
+
+sleep 5
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('llmeta list')" | grep IN >> $OUT
+
+
+# create a large partition past limit
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()- 15*24*3600)'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t2 as tv2 PERIOD 'daily' RETENTION 15 START '${starttime}'"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t2 as tv2 PERIOD 'daily' RETENTION 15 START '${starttime}'" >>  $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE create time partition tv2"
+   exit 1
+fi
+
+# give time to do 15 rollouts
+sleep 30
+
+# check the current partitions
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID"
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE partinfo tv2"
+   exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into '\$0_B1ED0A83' (a) select * from generate_series(1,10)" >> $OUT 
+if (( $? != 0 )) ; then
+   echo "FAILURE insert tv2 shard 0"
+   exit 1
+fi
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into '\$15_697633E9' (a) select * from generate_series(101,110)" >> $OUT 
+if (( $? != 0 )) ; then
+   echo "FAILURE insert tv2 shard 1"
+   exit 1
+fi
+cdb2sql ${CDB2_OPTIONS} $dbname default >> $OUT <<EOF
+set transaction chunk 1000
+begin
+insert into '\$14_CC37A197' (a) select * from  generate_series(1,1000000)
+commit
+EOF
+if (( $? != 0 )) ; then
+   echo "FAILURE insert shard 3"
+   exit 1
+fi
+
+master=$(get_master)
+
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "alter table tv2 drop column b"
+cdb2sql ${CDB2_OPTIONS} $dbname default "alter table tv2 drop column b" &
+
+sleep 10
 
 echo cdb2sql ${CDB2_OPTIONS} $dbname --host ${master} "exec procedure sys.cmd.send('scabort')"
 cdb2sql ${CDB2_OPTIONS} $dbname --host ${master} "exec procedure sys.cmd.send('scabort')"
