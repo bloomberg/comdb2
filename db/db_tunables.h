@@ -2519,4 +2519,8 @@ REGISTER_TUNABLE("altersc_delay_usec",
                  "Extra microseconds to sleep each converted record during alter schema change, if latency on master increases",
                  TUNABLE_INTEGER, &gbl_altersc_delay_usec, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_history_max_rows", "Max number of rows returned in comdb2_sc_history (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_sc_history_max_rows, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc_status (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_sc_status_max_rows, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
