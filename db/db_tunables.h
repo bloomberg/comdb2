@@ -2490,5 +2490,9 @@ REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_history_max_rows", "Max number of rows returned in comdb2_sc_history (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_sc_history_max_rows, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc_status (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_sc_status_max_rows, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

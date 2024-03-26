@@ -480,6 +480,8 @@ extern int gbl_timer_warn_interval;
 int gbl_incoherent_clnt_wait = 10;
 int gbl_new_leader_duration = 3;
 extern int gbl_transaction_grace_period;
+extern int gbl_sc_history_max_rows;
+extern int gbl_sc_status_max_rows;
 
 /*
   =========================================================
