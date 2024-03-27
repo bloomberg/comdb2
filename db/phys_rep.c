@@ -70,6 +70,7 @@ int gbl_physrep_hung_replicant_check_freq_sec = 10;
 int gbl_physrep_hung_replicant_threshold = 60;
 int gbl_physrep_shuffle_host_list = 0;
 int gbl_physrep_i_am_metadb = 0;
+int gbl_started_physrep_threads = 0;
 
 unsigned int physrep_min_logfile;
 unsigned int gbl_deferred_phys_update;
@@ -1218,7 +1219,7 @@ repl_loop:
         physrep_logmsg(LOGMSG_USER, "Physical replicant is now replicating from %s@%s\n",
                        repl_db_cnct->dbname, repl_db_cnct->hostname);
 
-        if (do_truncate) {
+        if (do_truncate && repl_db) {
             info = get_last_lsn(thedb->bdb_env);
             prev_info = handle_truncation(repl_db, info);
             if (prev_info.file == 0) {
@@ -1595,12 +1596,13 @@ int start_physrep_threads() {
         physrep_logmsg(LOGMSG_USER, "Not starting watcher thread\n");
     }
 
+    gbl_started_physrep_threads = 1;
     return 0;
 }
 
 int stop_physrep_threads() {
-    if (!is_a_physrep_source_or_dest()) {
-        if (gbl_physrep_debug)
+    if (!is_a_physrep_source_or_dest() || !gbl_started_physrep_threads) {
+        if (gbl_physrep_debug && !gbl_started_physrep_threads)
             physrep_logmsg(LOGMSG_USER, "%s:%d: This node is neither a physical replication "
                                         "source nor a replicant, nothing to stop here\n",
                                         __func__, __LINE__);
@@ -1621,16 +1623,15 @@ void physrep_cleanup() {
         return;
     }
 
-    for (int i = 0; i < physrep_metadb_host_count; ++i) {
-        free(physrep_metadb_hosts[i]);
-    }
-    free(physrep_metadb_hosts);
-
     int rc = send_reset_nodes("Inactive");
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                        __func__, __LINE__, rc);
     }
+    for (int i = 0; i < physrep_metadb_host_count; ++i) {
+        free(physrep_metadb_hosts[i]);
+    }
+    free(physrep_metadb_hosts);
 }
 
 int physrep_exited() {

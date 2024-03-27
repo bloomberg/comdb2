@@ -608,8 +608,6 @@ void *clean_exit_thd(void *unused)
     if (!gbl_ready)
         return NULL;
 
-    physrep_cleanup();
-
     Pthread_mutex_lock(&exiting_lock);
     if (gbl_exit) {
         Pthread_mutex_unlock(&exiting_lock);
