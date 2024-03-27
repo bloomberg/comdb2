@@ -4287,9 +4287,9 @@ int bdb_set_schema_change_history(tran_type *t, const char *tablename,
     p_buf_end = p_buf_start + sizeof(llmeta_sc_hist_data);
     llmeta_sc_hist_data_put(&sc_hist, p_buf_start, p_buf_end);
 
+    *bdberr = BDBERR_NOERROR;
     int rc = kv_put(t, &u, p_buf_start, sizeof(llmeta_sc_hist_data), bdberr);
 
-    *bdberr = BDBERR_NOERROR;
     return rc;
 }
 

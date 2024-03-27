@@ -2527,6 +2527,7 @@ struct __db_env {
 	int  (*lock_id) __P((DB_ENV *, u_int32_t *));
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
 	int  (*lock_id_free) __P((DB_ENV *, u_int32_t));
+	int  (*locker_had_deadlock) __P((DB_ENV *, u_int32_t, u_int32_t *));
 	int  (*lock_id_has_waiters) __P((DB_ENV *, u_int32_t));
 	int  (*lock_id_set_logical_abort) __P((DB_ENV *, u_int32_t));
 	int  (*lock_stat) __P((DB_ENV *, DB_LOCK_STAT **, u_int32_t));
