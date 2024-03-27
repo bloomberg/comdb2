@@ -3780,19 +3780,6 @@ static int init(int argc, char **argv)
 
     berk_init_rep_lockobj();
 
-    /* disallow bools on test machines.  Prod will continue
-     * to allow them because at least one prod database uses them.
-     * Still alow bools for people who want to copy/test prod dbs
-     * that use them.  Don't allow new databases to have bools. */
-    if ((get_my_mach_class() == CLASS_TEST) && gbl_create_mode) {
-        if (csc2_used_bools()) {
-            logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
-            logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
-            exit(1);
-        }
-        csc2_disallow_bools();
-    }
-
     /* Now process all the directives we saved up from the lrl file. */
     for (ii = 0; ii < thedb->num_allow_lines; ii++) {
         char *line = thedb->allow_lines[ii];
