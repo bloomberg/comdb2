@@ -59,6 +59,8 @@ extern sqlite3_module systblTimepartPermissionsModule;
 int systblTriggersInit(sqlite3 *);
 int systblTablesInit(sqlite3 *db);
 int systblColumnsInit(sqlite3 *db);
+int systblTagsInit(sqlite3 *db);
+int systblTagColumnsInit(sqlite3 *db);
 int systblKeysInit(sqlite3 *db);
 int systblKeyComponentsInit(sqlite3 *db);
 int systblTypeSamplesInit(sqlite3 *db);

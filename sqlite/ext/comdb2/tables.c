@@ -118,6 +118,10 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblColumnsInit(db);
   if (rc == SQLITE_OK)
+    rc = systblTagsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTagColumnsInit(db);
+  if (rc == SQLITE_OK)
     rc = systblKeysInit(db);
   if (rc == SQLITE_OK)
     rc = systblKeyComponentsInit(db);
