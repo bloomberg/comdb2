@@ -82,13 +82,8 @@ static int collect_osql_session(void *obj, void *arg)
         memcpy(o->cnonce, snap.key, snap.keylen);
         o->cnonce[snap.keylen] = '\0';
     }
-    if (rq->rqid == 1) {
-        comdb2uuidstr(rq->uuid, us);
-        o->id = strdup(us);
-    } else {
-        o->id = malloc(20);
-        snprintf(o->id, 20, "%llx", rq->rqid);
-    }
+    comdb2uuidstr(rq->uuid, us);
+    o->id = strdup(us);
     o->nops = clnt->osql.replicant_numops;
     o->start_time = rq->register_time;
     o->commit_time = clnt->osql.timings.commit_start;
@@ -125,13 +120,8 @@ static int collect_bplog_session(void *obj, void *arg)
         memcpy(o->cnonce, IQ_SNAPINFO(iq)->key, IQ_SNAPINFO(iq)->keylen);
         o->cnonce[IQ_SNAPINFO(iq)->keylen] = '\0';
     }
-    if (sess->rqid == 1) {
-        comdb2uuidstr(sess->uuid, us);
-        o->id = strdup(us);
-    } else {
-        o->id = malloc(20);
-        snprintf(o->id, 20, "%llx", sess->rqid);
-    }
+    comdb2uuidstr(sess->uuid, us);
+    o->id = strdup(us);
     o->nops = sess->nops;
     o->start_time = U2M(sess->sess_startus);
     o->commit_time = U2M(sess->sess_endus);

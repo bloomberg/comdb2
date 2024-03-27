@@ -90,17 +90,9 @@ static char hex(unsigned char a)
 }
 
 /* this function should be called with theosql->hshlck lock held */
-static osql_sess_t *_get_sess(unsigned long long rqid, uuid_t uuid)
+static osql_sess_t *_get_sess(uuid_t uuid)
 {
-    osql_sess_t *sess = NULL;
-
-    if (rqid == OSQL_RQID_USE_UUID)
-        sess = hash_find_readonly(theosql->rqsuuid, uuid);
-    else {
-        sess = hash_find_readonly(theosql->rqs, &rqid);
-    }
-
-    return sess;
+    return hash_find_readonly(theosql->rqsuuid, uuid);
 }
 
 /**
@@ -113,7 +105,6 @@ static osql_sess_t *_get_sess(unsigned long long rqid, uuid_t uuid)
 int osql_repository_add(osql_sess_t *sess)
 {
     osql_sess_t *sess_chk;
-    int rc = 0;
 
     if (!theosql)
         return -1;
@@ -122,13 +113,13 @@ int osql_repository_add(osql_sess_t *sess)
     Pthread_mutex_lock(&theosql->hshlck);
 
     /* check if this session is added again due to an early replay */
-    sess_chk = _get_sess(sess->rqid, sess->uuid);
+    sess_chk = _get_sess(sess->uuid);
     if (sess_chk) {
         uuidstr_t us;
 
         logmsg(LOGMSG_ERROR,
-               "%s: trying to add another session with the same rqid, rqid=%llx uuid=%s\n",
-               __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
+               "%s: trying to add another session with the same uuid=%s\n",
+               __func__, comdb2uuidstr(sess->uuid, us));
 
         int keep = osql_sess_try_terminate(sess_chk, NULL);
         if (!keep) {
@@ -140,14 +131,9 @@ int osql_repository_add(osql_sess_t *sess)
         }
     }
 
-    if (sess->rqid == OSQL_RQID_USE_UUID)
-        rc = hash_add(theosql->rqsuuid, sess);
-    else
-        rc = hash_add(theosql->rqs, sess);
-
+    int rc = hash_add(theosql->rqsuuid, sess);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: Unable to hash_add the new request\n",
-               __func__);
+        logmsg(LOGMSG_ERROR, "%s: Unable to hash_add the new request\n", __func__);
         rc = -1;
     }
 
@@ -158,12 +144,7 @@ int osql_repository_add(osql_sess_t *sess)
 
 static int osql_repository_rem_unlocked(osql_sess_t *sess)
 {
-    int rc = 0;
-    if (sess->rqid == OSQL_RQID_USE_UUID) {
-        rc = hash_del(theosql->rqsuuid, sess);
-    } else {
-        rc = hash_del(theosql->rqs, sess);
-    }
+    int rc = hash_del(theosql->rqsuuid, sess);
     if (rc) {
         logmsg(LOGMSG_DEBUG, "%s: Unable to hash_del, session %p (not found)\n",
                __func__, sess);
@@ -192,7 +173,7 @@ int osql_repository_rem(osql_sess_t *sess)
  *
  * NOTE: if the session is dispatched, addclient * return NULL
  */
-osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
+osql_sess_t *osql_repository_get(uuid_t uuid)
 {
     osql_sess_t *sess = NULL;
 
@@ -200,7 +181,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
         return NULL;
 
     Pthread_mutex_lock(&theosql->hshlck);
-    sess = _get_sess(rqid, uuid);
+    sess = _get_sess(uuid);
     if (sess) {
         if (osql_sess_addclient(sess)) {
             /* session dispatched, ignore */
@@ -341,8 +322,7 @@ int osql_repository_cancelall(void)
  * used by socksql poking
  *
  */
-int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
-                                   int *rows_affected)
+int osql_repository_session_exists(uuid_t uuid, int *rows_affected)
 {
     if (!theosql)
         return 0;
@@ -355,7 +335,7 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
 
     Pthread_mutex_lock(&theosql->hshlck);
 
-    sess = _get_sess(rqid, uuid);
+    sess = _get_sess(uuid);
     if (sess) {
         exists = 1;
         if (rows_affected) {

@@ -18,6 +18,7 @@
 #define INCLUDED_REQLOG_H
 #include <stdarg.h>
 #include <stdint.h>
+#include <comdb2uuid.h>
 
 /* reqlog.c - new logging stuff */
 struct reqlogger;
@@ -81,7 +82,7 @@ void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
 uint64_t reqlog_get_queue_time(const struct reqlogger *logger);
 void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
-void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
+void reqlog_set_uuid(struct reqlogger *logger, uuid_t);
 void reqlog_set_event(struct reqlogger *logger, evtype_t evtype);
 evtype_t reqlog_get_event(struct reqlogger *logger);
 void reqlog_add_table(struct reqlogger *logger, const char *table);

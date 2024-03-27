@@ -122,9 +122,9 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype);
  * keep the same rqid
  *
  */
-int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid);
+int osql_sock_start(struct sqlclntstate *clnt, int keep_rqid);
 
-int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_rqid);
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int keep_rqid);
 
 /**
  * Start a sosql session if not already started
@@ -138,14 +138,14 @@ int osql_sock_start_deferred(struct sqlclntstate *clnt);
  * Returns the result of block processor commit
  *
  */
-int osql_sock_commit(struct sqlclntstate *clnt, int type, enum trans_clntcomm sideeffects);
+int osql_sock_commit(struct sqlclntstate *, enum trans_clntcomm sideeffects);
 
 /**
  * Terminates a sosql session
  * It notifies the block processor to abort the request
  *
  */
-int osql_sock_abort(struct sqlclntstate *clnt, int type);
+int osql_sock_abort(struct sqlclntstate *);
 
 /**
  * busy bee,

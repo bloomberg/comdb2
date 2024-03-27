@@ -323,8 +323,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
                     }
                 }
 
-                int type = tran2req(clnt->dbtran.mode);
-                osql_sock_abort(clnt, type);
+                osql_sock_abort(clnt);
             }
             break;
         }
@@ -332,7 +331,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
 
     if (clnt->verify_retries >= gbl_osql_verify_retries_max && osql->xerr.errval) {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "transaction %llx %s failed %d times with verify errors\n", osql->rqid,
+        logmsg(LOGMSG_ERROR, "transaction %s failed %d times with verify errors\n",
                comdb2uuidstr(osql->uuid, us), clnt->verify_retries);
         /* Set to NONE to suppress the error from srs_tran_destroy(). */
         osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);

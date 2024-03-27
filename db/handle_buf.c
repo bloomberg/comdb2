@@ -838,25 +838,15 @@ static int reterr_withfree(struct ireq *iq, int rc)
 
 int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
                              const uint8_t *p_buf_end, int debug,
-                             char *frommach, unsigned long long rqid)
+                             char *frommach, struct buf_lock_t *lock)
 {
     int length = p_buf_end - p_buf;
     uint8_t *p_bigbuf = get_bigbuf();
     memcpy(p_bigbuf, p_buf, length);
     int rc = handle_buf_main(dbenv, NULL, p_bigbuf, p_bigbuf + length, debug,
-                             frommach, 0, NULL, NULL, REQ_SOCKREQUEST, NULL, 0,
-                             rqid);
+                             frommach, 0, NULL, NULL, REQ_SOCKREQUEST, lock, 0);
 
     return rc;
-}
-
-int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
-                                   uint8_t *p_buf, const uint8_t *p_buf_end,
-                                   int debug, char *frommach, int frompid,
-                                   char *fromtask)
-{
-    return handle_buf_main(dbenv, sb, p_buf, p_buf_end, debug, frommach,
-                           frompid, fromtask, NULL, REQ_SOCKET, NULL, 0, 0);
 }
 
 void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
@@ -878,23 +868,11 @@ void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
     UNLOCK(&buf_lock);
 }
 
-/* handle a buffer from waitft */
-int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
-               int debug, char *frommach) /* 040307dh: 64bits */
-{
-    return handle_buf_main(dbenv, NULL, p_buf, p_buf_end, debug, frommach, 0,
-                           NULL, NULL, REQ_WAITFT, NULL, 0, 0);
-}
-
-int handled_queue;
-
-int q_reqs_len(void) { return q_reqs.count; }
-
 static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                             uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                             char *frommach, int frompid, char *fromtask,
                             osql_sess_t *sorese, int qtype, void *data_hndl,
-                            int luxref, unsigned long long rqid, void *p_sinfo,
+                            int luxref, void *p_sinfo,
                             intptr_t curswap, int comdbg_flags)
 {
     struct req_hdr hdr;
@@ -917,10 +895,8 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->debug = debug_this_request(gbl_debug_until) || (debug && gbl_debug);
     iq->debug_now = iq->nowus = nowus;
     iq->dbenv = dbenv;
-    iq->fwd_tag_rqid = rqid;
 
-    iq->p_buf_orig =
-        p_buf; /* need this for optimized fast fail (skip blkstate) */
+    iq->p_buf_orig = p_buf; /* need this for optimized fast fail (skip blkstate) */
     iq->p_buf_in = p_buf;
     iq->p_buf_in_end = p_buf_end;
     iq->p_buf_out = p_buf + REQ_HDR_LEN;
@@ -940,13 +916,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     iq->opcode = hdr.opcode;
 
-    if (qtype == REQ_PQREQUEST) {
-        iq->is_fake = 1;
-        iq->is_dumpresponse = 1;
-        iq->request_data = data_hndl;
-    }
-
-    if (qtype == REQ_SOCKET || qtype == REQ_SOCKREQUEST) {
+    if (qtype == REQ_SOCKREQUEST) {
         iq->sb = sb;
         iq->is_fromsocket = 1;
         iq->is_socketrequest = (qtype == REQ_SOCKREQUEST) ? 1 : 0;
@@ -977,10 +947,11 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
             snprintf(iq->corigin, sizeof(iq->corigin), "SRMT# %s PID %6.6d",
                      iq->frommach, frompid);
     } else if (sorese) {
+        uuidstr_t us;
+        comdb2uuidstr(sorese->uuid, us);
+        snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %s",
+                 sorese->target.host, osql_sorese_type_to_str(sorese->type), us);
         iq->sorese = sorese;
-        snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
-                 iq->sorese->target.host,
-                 osql_sorese_type_to_str(iq->sorese->type), iq->sorese->rqid);
         iq->timings.req_received = osql_log_time();
         /* cache these things so we don't change too much code */
         iq->tranddl = iq->sorese->is_tranddl;
@@ -1017,7 +988,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                      const uint8_t *p_buf_end, int debug, char *frommach,
                      int frompid, char *fromtask, osql_sess_t *sorese,
                      int qtype, void *data_hndl, int luxref,
-                     unsigned long long rqid, void *p_sinfo, intptr_t curswap,
+                     void *p_sinfo, intptr_t curswap,
                      int comdbg_flags)
 {
     struct ireq *iq = NULL;
@@ -1062,7 +1033,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 
         rc = init_ireq_legacy(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
                               frommach, frompid, fromtask, sorese, qtype,
-                              data_hndl, luxref, rqid, p_sinfo, curswap, comdbg_flags);
+                              data_hndl, luxref, p_sinfo, curswap, comdbg_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
             return reterr(curswap, /*thd*/ 0, iq, rc);
@@ -1078,8 +1049,6 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 
         Pthread_mutex_lock(&lock);
         {
-            ++handled_queue;
-
             /*count queue*/
             num = q_reqs.count;
             if (num >= MAXSTAT)
@@ -1293,11 +1262,11 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 int handle_buf_main(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     const uint8_t *p_buf_end, int debug, char *frommach,
                     int frompid, char *fromtask, osql_sess_t *sorese, int qtype,
-                    void *data_hndl, int luxref, unsigned long long rqid)
+                    void *data_hndl, int luxref)
 {
     return handle_buf_main2(dbenv, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,
-                            rqid, 0, 0, 0);
+                            0, 0, 0);
 }
 
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq)

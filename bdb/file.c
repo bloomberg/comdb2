@@ -2687,12 +2687,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DEL_NAME,
                          "del_name", berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_DEPRECATED, "decom",
-                         berkdb_receive_msg);
-
-    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_DECOM_NAME_DEPRECATED,
-                         "decom_name", berkdb_receive_msg);
-
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ADD_DUMMY,
                          "add_dummy", berkdb_receive_msg);
 
@@ -2980,7 +2974,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
     print(bdb_state, "starting network\n");
     rc = net_init(bdb_state->repinfo->netinfo);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "init_network failed\n");
+        logmsg(LOGMSG_ERROR, "%s: init_network failed\n", __func__);
         exit(1);
     }
 

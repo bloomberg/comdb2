@@ -42,11 +42,6 @@
 enum transaction_level {
     TRANLEVEL_INVALID = -1,
     TRANLEVEL_SOSQL = 9,
-    /* SQL MODE, so-called read-commited:
-       - server-side parsing
-       - transaction-internal updates are visible only inside transaction thread
-       - external (commited) updates are visible inside transaction thread
-    */
     TRANLEVEL_RECOM = 10,
     TRANLEVEL_SERIAL = 11,
     TRANLEVEL_SNAPISOL = 12
@@ -153,7 +148,6 @@ typedef struct osqlstate {
 
     /* == sql_thread == */
     osql_target_t target;    /* where to send the bplog */
-    unsigned long long rqid; /* per node offload request session */
     uuid_t uuid;             /* session id, take 2 */
     char *tablename;         /* malloc-ed cache of send tablename for usedb */
     int tablenamelen;        /* tablename length */
@@ -657,7 +651,7 @@ struct sqlclntstate {
     struct typessql *typessql_state;
 
     /* bplog write plugin */
-    int (*begin)(struct sqlclntstate *clnt, int retries, int keep_id);
+    int (*begin)(struct sqlclntstate *clnt, int keep_id);
     int (*end)(struct sqlclntstate *clnt);
     int (*wait)(struct sqlclntstate *clnt, int timeout, struct errstat *err);
 
@@ -1146,7 +1140,7 @@ struct sql_hist {
     struct string_ref *sql_ref;
     struct sql_hist_cost cost;
     int when;
-    int64_t txnid;
+    uuid_t uuid;
     struct conninfo conn;
 };
 

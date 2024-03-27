@@ -15,25 +15,42 @@
  */
 
 #include <uuid/uuid.h>
+#include <comdb2uuid.h>
 
-void comdb2uuid(uuid_t u) { uuid_generate(u); }
+static uuid_t zero;
 
-char *comdb2uuidstr(uuid_t u, char out[37]);
-inline char *comdb2uuidstr(uuid_t u, char out[37])
+void comdb2uuid(uuid_t u)
+{
+    uuid_generate(u);
+}
+
+char *comdb2uuidstr(const uuid_t u, uuidstr_t out)
 {
     uuid_unparse(u, out);
     return out;
 }
 
-void comdb2uuid_clear(uuid_t u) { uuid_clear(u); }
-
-int comdb2uuidcmp(uuid_t u1, uuid_t u2) { return uuid_compare(u1, u2); }
-
-void comdb2uuidcpy(uuid_t dst, uuid_t src) { uuid_copy(dst, src); }
-
-int comdb2uuid_is_zero(uuid_t u)
+void comdb2uuid_clear(uuid_t u)
 {
-    uuid_t zero;
-    comdb2uuid_clear(zero);
+    uuid_clear(u);
+}
+
+int comdb2uuidcmp(const uuid_t u1, const uuid_t u2)
+{
+    return uuid_compare(u1, u2);
+}
+
+void comdb2uuidcpy(uuid_t dst, const uuid_t src)
+{
+    uuid_copy(dst, src);
+}
+
+int comdb2uuid_is_zero(const uuid_t u)
+{
     return !comdb2uuidcmp(u, zero);
+}
+
+void init_zero_uuid(void)
+{
+    comdb2uuid_clear(zero);
 }

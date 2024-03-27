@@ -60,10 +60,6 @@ struct thr_handle;
 struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr);
 struct thr_handle *thrman_self(void);
 
-#if 0
-#define TEST_OSQL
-#endif
-
 #ifdef DEBUG_TYPES
 #define TYPES_INLINE
 extern int gbl_decimal_rounding;

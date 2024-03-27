@@ -741,8 +741,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
 
     if (release_schema_lk && gbl_written_rows_warn > 0 && iq->written_row_count >= gbl_written_rows_warn) {
         uuidstr_t us;
-        logmsg(LOGMSG_USER, "transaction-audit [%llu:%s] modified %u rows\n", iq->sorese->rqid,
-               comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
+        logmsg(LOGMSG_USER, "transaction-audit [%s] modified %u rows\n", comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
     }
 
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
@@ -3310,25 +3309,6 @@ void net_add_consumer(void *hndl, void *uptr, char *fromnode,
     net_ack_message(hndl, rc);
 }
 
-static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
-                            struct interned_string *frominterned,
-                            int usertype, void *dtap, int dtalen,
-                            uint8_t is_tcp)
-{
-
-    /* if this arrives too early, it will crash the master */
-    if (db_is_exiting() || gbl_exit || !gbl_ready) {
-        logmsg(LOGMSG_ERROR, "%s: received trap during lunch time\n", __func__);
-        return;
-    }
-
-    /*
-       Not needed  apparently
-       bdb_remind_incoherent(thedb->bdb_env, fromnode);
-
-       doesn't need an ack */
-}
-
 static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
                                  struct interned_string *frominterned,
                                  int usertype, void *dtap, int dtalen,
@@ -3394,18 +3374,6 @@ int send_to_all_nodes(void *dta, int len, int type, int waittime)
 
 int gbl_msgwaittime = 10000;
 int gbl_scwaittime = 1000;
-
-/* Send an async message to the master node reminding it that I appear to be
- * incoherent and would it kindly let me know if this isn't th case anymore. */
-int send_forgetmenot(void)
-{
-    char *master = thedb->master;
-    if (master > 0)
-        return net_send_message(thedb->handle_sibling, master, NET_FORGETMENOT,
-                                NULL, 0, 0, 0);
-    else
-        return -1;
-}
 
 int broadcast_close_all_dbs(void)
 {
@@ -3755,9 +3723,6 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_FLUSH_ALL,
                                  "flush_all", net_flush_all))
-            return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_FORGETMENOT,
-                                 "forgetmenot", net_forgetmenot))
             return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_TRIGGER_REGISTER,
                                  "trigger_register", net_trigger_register))

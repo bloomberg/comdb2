@@ -39,7 +39,6 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
     char tzname[CDB2_MAX_TZNAME] = {0};
     int type = OSQL_SOCK_REQ;
     uuid_t uuid;
-    unsigned long long rqid = OSQL_RQID_USE_UUID;
     int rc;
 
     /* received the request; */
@@ -54,7 +53,7 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
         logmsg(LOGMSG_ERROR, "Received req %d sql %s\n", type, sql);
 
     /* create a session/bplog */
-    sess = osql_sess_create_socket(sql, tzname, type, rqid, uuid, host,
+    sess = osql_sess_create_socket(sql, tzname, type, uuid, host,
                                    flags & OSQL_FLAGS_REORDER_ON);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "Malloc failure for new ireq\n");

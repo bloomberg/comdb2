@@ -64,7 +64,7 @@ extern int gbl_time_osql;
  * Returns 0 if success.
  *
  */
-blocksql_tran_t *osql_bplog_create(int is_uuid, int is_reorder);
+blocksql_tran_t *osql_bplog_create(int is_reorder);
 
 /**
  * Apply all the bplog updates
@@ -99,7 +99,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
 int osql_bplog_build_sorese_req(uint8_t **p_buf_start,
                                 const uint8_t **pp_buf_end, const char *sqlq,
                                 int sqlqlen, const char *tzname, int reqtype,
-                                unsigned long long rqid, uuid_t uuid);
+                                uuid_t uuid);
 
 /**
  * Set proper blkseq from session to iq

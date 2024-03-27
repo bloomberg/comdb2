@@ -26,6 +26,7 @@
 #include "sql.h"
 #include "osqlcheckboard.h"
 #include "osqlcomm.h"
+#include "osqlsqlnet.h"
 
 static int _send(osql_target_t *target, int usertype, void *data, int datalen,
                  int nodelay, void *tail, int tailen);
@@ -45,7 +46,7 @@ void init_bplog_net(osql_target_t *target)
  * Handle to registration of thread for net multiplex purposes
  *
  */ /* loop in caller */
-int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid)
+int osql_begin_net(struct sqlclntstate *clnt, int keep_rqid)
 {
     osqlstate_t *osql = &clnt->osql;
     int rc;
@@ -62,7 +63,7 @@ int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid)
 
     if (!keep_rqid) {
         /* register this new member */
-        rc = osql_register_sqlthr(clnt, type);
+        rc = osql_register_sqlthr(clnt);
     } else {
         /* this is a replay with same rqid, already registered */
         /* sets to the same node */

@@ -121,8 +121,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 comdb2uuidstr(stored_sc->uuid, us);
                 logmsg(LOGMSG_INFO,
                        "Found ongoing schema change: uuid %s table %s kind %s\n",
-                       us, stored_sc->tablename,
-                       schema_change_kind(stored_sc));
+                       us, stored_sc->tablename, schema_change_kind(stored_sc));
                 if (comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     if (last_sc)
                         last_sc->sc_next = stored_sc->sc_next;
@@ -160,10 +159,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
             logmsg(LOGMSG_INFO,
-                   "Resuming schema change: uuid %s table %s"
-                   " kind %s resume %d\n",
+                   "Resuming schema change: uuid %s table %s kind %s resume %d\n",
                    us, s->tablename, schema_change_kind(s), s->resume);
-
         } else {
             int bdberr;
             void *packed_sc_data = NULL;
@@ -198,7 +195,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (stored_sc && !IS_UPRECS(stored_sc) &&
                 IS_SC_DBTYPE_TAGGED_TABLE(stored_sc)) {
                 if (comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
-                    s->rqid = stored_sc->rqid;
                     comdb2uuidcpy(s->uuid, stored_sc->uuid);
                     s->resume = 1;
                     uuidstr_t us;
