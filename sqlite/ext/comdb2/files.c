@@ -356,6 +356,12 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
             continue;
         }
 
+        if (euidaccess(path, R_OK) == -1) {
+            logmsg(LOGMSG_DEBUG, "%s:%d: ignoring %s because access check failed with errno %d\n",
+                    __func__, __LINE__, de->d_name, errno);
+            continue;
+        }
+
         logmsg(LOGMSG_DEBUG, "%s:%d: using %s\n", __func__, __LINE__,
                de->d_name);
 
