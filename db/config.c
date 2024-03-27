@@ -38,6 +38,7 @@
 #include "phys_rep.h"
 #include "phys_rep_lsn.h"
 #include "macc_glue.h"
+#include "comdb2_appsock.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -296,6 +297,7 @@ static int defer_option(char *option, int len, int line)
     listc_abl(&deferred_options, opt);
     return 0;
 }
+
 
 int deferred_do_commands(struct dbenv *env, char *option,
                          struct read_lrl_option_type *p, int len)

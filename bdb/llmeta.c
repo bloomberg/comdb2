@@ -35,6 +35,7 @@
 #include "lockmacros.h"
 #include <sys/poll.h>
 #include "debug_switches.h"
+#include "tohex.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -6891,6 +6892,30 @@ int bdb_tbl_access_userschema_delete(bdb_state_type *bdb_state,
                                  ACCESS_USERSCHEMA, bdberr);
 }
 
+int bdb_llmeta_raw_dump_record(bdb_state_type *bdb_state, void *key, int keylen,
+                            void *data, int datalen, int *bdberr) {
+    int type = 0;
+    const uint8_t *p_buf_key;
+    const uint8_t *p_buf_end_key;
+
+    if (keylen <= 0) {
+        logmsg(LOGMSG_ERROR, "Invalid entry (keylen=%d)\n", keylen);
+    }
+
+    p_buf_key = key;
+    p_buf_end_key = (uint8_t *)key + keylen;
+
+    buf_get(&type, sizeof(type), p_buf_key, p_buf_end_key);
+
+    logmsg(LOGMSG_USER, "type %d keylen %d datalen %d key ", type, keylen, datalen);
+    hexdumpfp(NULL, key, keylen);
+    logmsg(LOGMSG_USER, " data ");
+    hexdumpfp(NULL, data, datalen);
+    logmsg(LOGMSG_USER, "\n");
+
+    return 0;
+}
+
 int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                             void *data, int datalen, int *bdberr)
 {
@@ -7227,6 +7252,17 @@ int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr)
 
     return rc;
 }
+
+int bdb_llmeta_dump_records(bdb_state_type *bdb_state, int *bdberr)
+{
+    int rc = 0;
+
+    rc = bdb_lite_list_records(llmeta_bdb_state, bdb_llmeta_raw_dump_record,
+                               bdberr);
+
+    return rc;
+}
+
 
 struct llmeta_analyzecoverage_key_type {
     int file_type;

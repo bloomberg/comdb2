@@ -288,7 +288,7 @@ done:
     if (dbc) {
         int crc;
         crc = dbc->c_close(dbc);
-        if (rc == 0) {
+        if (crc) {
             *errstr = comdb2_asprintf("close cursor rc %d\n", crc);
             rc = crc;
         }

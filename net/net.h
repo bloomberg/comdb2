@@ -486,5 +486,6 @@ struct fdb_hbeats;
 void increase_net_buf(void);
 int enable_fdb_heartbeats(struct fdb_hbeats*);
 int disable_fdb_heartbeats_and_free(struct fdb_hbeats *);
+int findpeer(int, char *, int);
 
 #endif

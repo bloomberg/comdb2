@@ -517,6 +517,14 @@ int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...)
     return sbuf2puts(sb, lbuf);
 }
 
+int SBUF2_FUNC(sbuf2printvf)(SBUF2 *sb, const char *fmt, va_list args) {
+    char lbuf[1024];
+    if (sb == 0)
+        return -1;
+    vsnprintf(lbuf, sizeof(lbuf), fmt, args);
+    return sbuf2puts(sb, lbuf);
+}
+
 int SBUF2_FUNC(sbuf2printfx)(SBUF2 *sb, char *buf, int lbuf, char *fmt, ...)
 {
     /*do sprintf to user supplied buffer*/

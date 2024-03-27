@@ -346,7 +346,10 @@ int run_init_plugins(int phase)
                     if (initer->post_recovery)
                         rc = initer->post_recovery();
                     break;
-
+                case COMDB2_PLUGIN_INITIALIZER_POST_LLMETA:
+                    if (initer->pre_llmeta)
+                        rc = initer->pre_llmeta();
+                    break;
             }
             if (rc) {
                 return 1;

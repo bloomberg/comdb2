@@ -445,7 +445,6 @@ uint8_t *net_wire_header_put(const wire_header_type *, uint8_t *, const uint8_t 
 void add_host(host_node_type *);
 void decom(char *);
 void do_appsock(netinfo_type *, struct sockaddr_in *, SBUF2 *, uint8_t);
-int findpeer(int, char *, int);
 int get_dedicated_conhost(host_node_type *, struct in_addr *);
 host_node_type *get_host_node_by_name_ll(netinfo_type *, const char *);
 host_node_type *add_to_netinfo_ll(netinfo_type *, const char hostname[], int portnum);

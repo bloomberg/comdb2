@@ -18,8 +18,9 @@
 #define INCLUDED_SBUF2
 
 #include <stddef.h> /* for size_t */
+#include <stdarg.h>
 
-/* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255 */
+/* sbuf2.h -  simple buffering for stream. fopen can't handle fd>255 (on solaris) */
 
 /* Server sbuf2 uses dlmalloc. Client does not. The simplest approach
    to avoid adding dlmalloc dependency to client API is to compile
@@ -130,7 +131,9 @@ int SBUF2_FUNC(sbuf2fread)(char *ptr, int size, int nitems, SBUF2 *sb);
 
 /* returns # of bytes written or <0 for err*/
 int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...);
+int SBUF2_FUNC(sbuf2printvf)(SBUF2 *sb, const char *fmt, va_list args);
 #define sbuf2printf SBUF2_FUNC(sbuf2printf)
+#define sbuf2printvf SBUF2_FUNC(sbuf2printvf)
 
 /* returns # of bytes written or <0 for err*/
 int SBUF2_FUNC(sbuf2printfx)(SBUF2 *sb, char *buf, int lbuf, char *fmt, ...);
