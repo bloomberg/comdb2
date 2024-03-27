@@ -20,6 +20,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <memory_sync.h>
+#include "schema_lk.h"
 
 #include "comdb2.h"
 #include "crc32c.h"
@@ -76,8 +77,6 @@ struct timepart_views {
                                 a new shard in before the oldest
                                 one is removed, if past retention */
 };
-
-pthread_rwlock_t views_lk;
 
 /*
  Cron scheduler
@@ -193,8 +192,6 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 
     time_cron_create(&tpt_cron, timepart_describe, timepart_event_describe);
 
-    Pthread_rwlock_init(&views_lk, NULL);
-
     /* create the timepart scheduler */
     timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
                                     NULL, NULL, NULL, NULL, NULL, &xerr,
@@ -256,15 +253,17 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         }
     }
 
+    wrlock_views_lk();
+
     /* publish in llmeta and signal sqlite about it; we do have the schema_lk
        for the whole function call */
     rc = partition_llmeta_write(tran, view, 0, err);
     if (rc != VIEW_NOERR) {
+        unlock_views_lk();
         return rc;
     }
     published = 1;
 
-    Pthread_rwlock_wrlock(&views_lk);
 
     /* create initial rollout */
     tm = _view_get_next_rollout(view->period, view->retention, view->starttime,
@@ -347,7 +346,7 @@ done:
             }
         }
     }
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -362,7 +361,8 @@ int timepart_view_set_retention(timepart_views_t *views, const char *name,
     timepart_view_t *view;
     int rc;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
+    
 
     view = _get_view(views, name);
     if (!view) {
@@ -376,7 +376,7 @@ int timepart_view_set_retention(timepart_views_t *views, const char *name,
 
     rc = VIEW_NOERR;
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -391,7 +391,7 @@ int timepart_view_set_period(timepart_views_t *views, const char *name,
     timepart_view_t *view;
     int rc;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
 
     view = _get_view(views, name);
     if (!view) {
@@ -405,7 +405,7 @@ int timepart_view_set_period(timepart_views_t *views, const char *name,
 
     rc = VIEW_NOERR;
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -445,7 +445,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
     int i;
     int rc = VIEW_NOERR;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
 
     view = NULL;
     for (i = 0; i < views->nviews; i++) {
@@ -477,7 +477,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
     }
 
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -503,9 +503,9 @@ static void timepart_free_views_unlocked(timepart_views_t *views)
  */
 static void timepart_free_views(timepart_views_t *views)
 {
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
     timepart_free_views_unlocked(views);
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 }
 
 /**
@@ -569,7 +569,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
     int i;
     int bump_dbopen = 0;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
 
     logmsg(LOGMSG_INFO, "Replicant updating views counter=%d\n", gbl_views_gen);
 
@@ -685,7 +685,7 @@ done:
     if (str)
         free(str);
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -845,7 +845,7 @@ static int _views_do_op(timepart_views_t *views, const char *name,
 
     int rc = VIEW_NOERR;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
 
     view = _get_view(views, name);
 
@@ -886,7 +886,7 @@ static int _views_do_op(timepart_views_t *views, const char *name,
 
 done:
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -928,7 +928,7 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
-        Pthread_rwlock_wrlock(&views_lk);
+        wrlock_views_lk();
 
         view = _get_view(thedb->timepart_views, name);
         if (!view) {
@@ -966,7 +966,7 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 
 done:
     if (run) {
-        Pthread_rwlock_unlock(&views_lk);
+        unlock_views_lk();
         /* commit_adaptive unlocks the schema-lk */
         if (rc != VIEW_NOERR)
             unlock_schema_lk();
@@ -1084,7 +1084,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
     if (run) {
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         rdlock_schema_lk();
-        Pthread_rwlock_wrlock(&views_lk);
+        wrlock_views_lk();
 
         view = _get_view(thedb->timepart_views, name);
         if (!view) {
@@ -1147,7 +1147,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
 
 done:
     if (run) {
-        Pthread_rwlock_unlock(&views_lk);
+        unlock_views_lk();
         unlock_schema_lk();
         csc2_free_all();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -1199,7 +1199,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
-        Pthread_rwlock_wrlock(&views_lk); /* I might decide to not lock this */
+        wrlock_views_lk();
 
         rc = _views_rollout_phase3(pShardName, err);
         if (rc != VIEW_NOERR) {
@@ -1207,7 +1207,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
                     err->errval, err->errstr);
         }
 
-        Pthread_rwlock_unlock(&views_lk);
+        unlock_views_lk();
         if (rc != VIEW_NOERR)
             unlock_schema_lk();
         csc2_free_all();
@@ -1329,7 +1329,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
     timepart_view_t *view;
     int rc = VIEW_NOERR;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     view = _check_shard_collision(views, tblname, indx, _CHECK_ALL_SHARDS);
     if(view) {
@@ -1341,7 +1341,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
         rc = VIEW_ERR_EXIST;
     }
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
     return rc;
 }
 
@@ -1357,7 +1357,7 @@ void comdb2_partition_info_all(const char *option)
     char *info;
 
     rdlock_schema_lk(); /* prevent race with partitions sc */
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     for(i=0; i<views->nviews; i++) {
         view = views->views[i];
@@ -1371,7 +1371,7 @@ void comdb2_partition_info_all(const char *option)
         }
     }
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
     unlock_schema_lk();
 }
 
@@ -1385,11 +1385,11 @@ char* comdb2_partition_info(const char *partition_name, const char *option)
 {
     char *ret_str = NULL;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     ret_str = comdb2_partition_info_locked(partition_name, option);
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return ret_str;
 }
@@ -1406,7 +1406,7 @@ int timepart_dump_timepartitions(FILE *dest)
     char *info;
     int has_tp = 0;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     has_tp = views->nviews > 0;
 
@@ -1423,7 +1423,7 @@ int timepart_dump_timepartitions(FILE *dest)
         }
     }
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return has_tp;
 }
@@ -1784,14 +1784,14 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                 /* we cannot jump into chron scheduler keeping locks that chron
                    functions
                    might acquire */
-                Pthread_rwlock_unlock(&views_lk);
+                unlock_views_lk();
 
                 rc = _schedule_drop_shard(view, evicted_shard,
                                           evicted_time - preemptive_rolltime,
                                           err);
 
                 /* get back views global lock */
-                Pthread_rwlock_wrlock(&views_lk);
+                wrlock_views_lk();
             }
 
             i++;
@@ -1905,7 +1905,7 @@ int views_cron_restart(timepart_views_t *views)
     /* corner case: master started and schema change for time partition
        submitted before watchdog thread has time to restart it, will deadlock
        if this is the case, abort the schema change */
-    rc = pthread_rwlock_trywrlock(&views_lk);
+    rc = trywrlock_views_lk();
     if (rc == EBUSY) {
         if (get_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "
@@ -1913,7 +1913,7 @@ int views_cron_restart(timepart_views_t *views)
             gbl_sc_abort = 1;
             MEMORY_SYNC;
         }
-        Pthread_rwlock_wrlock(&views_lk);
+        wrlock_views_lk();
     } else if (rc) {
         abort();
     }
@@ -1951,7 +1951,7 @@ int views_cron_restart(timepart_views_t *views)
 done:
     BDB_RELLOCK();
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     return rc;
 }
@@ -2243,13 +2243,13 @@ static int _view_get_next_rollout(enum view_partition_period period,
  */
 void views_signal(timepart_views_t *views)
 {
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     if (views) {
         cron_signal_all();
     }
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 }
 
 static void _remove_view_entry(timepart_views_t *views, int i)
@@ -2300,7 +2300,7 @@ static int _view_register_shards(timepart_views_t *views,
 
     rc = VIEW_NOERR;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     /* check partition name collision */
     chk_view = _check_shard_collision(views, view->name, &indx, 
@@ -2350,7 +2350,7 @@ static int _view_register_shards(timepart_views_t *views,
     _shard_timepartition_name_set(view, view->name);
 
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -2427,7 +2427,7 @@ int timepart_foreach_shard(const char *view_name,
     char next_shard[MAXTABLELEN + 1];
     int rc = 0;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     views = thedb->timepart_views;
 
@@ -2457,7 +2457,7 @@ int timepart_foreach_shard(const char *view_name,
     rc = timepart_foreach_shard_lockless(view, func, arg);
 
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return rc;
 }
@@ -2642,15 +2642,6 @@ done:
  * Locking the views subsystem, needed for ordering locks with schema
  *
  */
-void views_lock(void)
-{
-    Pthread_rwlock_rdlock(&views_lk);
-}
-void views_unlock(void)
-{
-    Pthread_rwlock_unlock(&views_lk);
-}
-
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
 {
     unsigned long long version;
@@ -2681,7 +2672,7 @@ int timepart_get_num_shards(const char *view_name)
     timepart_view_t *view;
     int nshards;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     views = thedb->timepart_views;
 
@@ -2691,7 +2682,7 @@ int timepart_get_num_shards(const char *view_name)
     else
         nshards = -1;
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return nshards;
 }
@@ -2746,7 +2737,7 @@ const char *timepart_is_next_shard(const char *shardname,
     const char *ret_name = NULL;
     int rc;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     views = thedb->timepart_views;
 
@@ -2786,7 +2777,7 @@ const char *timepart_is_next_shard(const char *shardname,
         }
     }
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return ret_name;
 }
@@ -3057,7 +3048,7 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
         wrlock_schema_lk();
-        Pthread_rwlock_wrlock(&views_lk);
+        wrlock_views_lk();
 
         view = _get_view(thedb->timepart_views, name);
         if (view) {
@@ -3093,7 +3084,7 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
         }
 
     done:
-        Pthread_rwlock_unlock(&views_lk);
+        unlock_views_lk();
         if (rc != VIEW_NOERR)
             unlock_schema_lk();
         BDB_RELLOCK();
@@ -3137,13 +3128,13 @@ int timepart_create_inmem_view(timepart_view_t *view)
     struct errstat err = {0};
     int rc;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
     rc = _create_inmem_view(thedb->timepart_views, view, &err);
 
     if (rc == VIEW_NOERR)
         _extract_info(view, &name_dup, &period, &rolltime, &source_id);
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     if (rc != VIEW_NOERR) {
         logmsg(LOGMSG_ERROR, "Unable to add view %s rc %d \"%s\"\n", view->name,
@@ -3176,18 +3167,18 @@ int timepart_destroy_inmem_view(const char *name)
     timepart_view_t *view;
     int idx;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
     view = _get_view_index(thedb->timepart_views, name, &idx);
     if (!view) {
         logmsg(LOGMSG_ERROR, "%s: unable to find partition %s\n", __func__,
                name);
-        Pthread_rwlock_unlock(&views_lk);
+        unlock_views_lk();
         return VIEW_ERR_EXIST;
     }
 
     _remove_view_entry(thedb->timepart_views, idx);
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     uuid_t source_id;
     comdb2uuidcpy(source_id, view->source_id);
@@ -3207,12 +3198,12 @@ int timepart_num_views(void)
 const char *timepart_name(int i)
 {
     const char *name = NULL;
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
 
     if (i >= 0 && i < thedb->timepart_views->nviews)
         name = thedb->timepart_views->views[i]->name;
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return name;
 }
@@ -3230,11 +3221,11 @@ int timepart_is_partition(const char *name)
     timepart_view_t *view;
     int ret = 0;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
     view = _get_view(thedb->timepart_views, name);
     if (view)
         ret = 1;
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return ret;
 }
@@ -3244,11 +3235,11 @@ int timepart_allow_drop(const char *zPartitionName)
     timepart_view_t *view;
     int ret = -1;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
     view = _get_view(thedb->timepart_views, zPartitionName);
     if (view && view->rolltype == TIMEPART_ROLLOUT_TRUNCATE)
         ret = 0;
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return ret;
 }
@@ -3281,7 +3272,7 @@ char *timepart_shard_name(const char *p, int i, int aliased,
     if (i < 0)
         return NULL;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
     view = _get_view(thedb->timepart_views, p);
     if (view && i < view->nshards) {
         struct dbtable *db = get_dbtable_by_name(view->shards[i].tblname);
@@ -3294,7 +3285,7 @@ char *timepart_shard_name(const char *p, int i, int aliased,
             fprintf(stderr, "Got %s version %llu\n", ret, *version);
         }
     }
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
     return ret;
 }
@@ -3363,7 +3354,7 @@ void partition_unpublish(struct schema_change_type *sc)
 int logical_partition_next_rollout(const char *name)
 {
     int ret = -1;
-    Pthread_rwlock_rdlock(&views_lk);
+    rdlock_views_lk();
     timepart_view_t *view = _get_view(thedb->timepart_views, name);
     if (!view) {
         logmsg(LOGMSG_ERROR, "Partition %s does not exist!\n", name);
@@ -3381,7 +3372,7 @@ int logical_partition_next_rollout(const char *name)
         }
     }
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
     return ret;
 }
 

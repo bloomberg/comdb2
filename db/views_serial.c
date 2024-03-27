@@ -207,7 +207,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
     *out = NULL;
 
     rdlock_schema_lk(); /* prevent race with partitions sc */
-    Pthread_rwlock_wrlock(&views_lk);
+    rdlock_views_lk();
 
     if (views->nviews == 0) {
         str = _concat(NULL, &len, "[]\n");
@@ -245,7 +245,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
     rc = VIEW_NOERR;
 
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
     unlock_schema_lk();
 
     *out = str;
@@ -812,7 +812,7 @@ static int timepart_copy_shard_names(char *view_name, char ***shard_names,
 
     views = thedb->timepart_views;
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
     for (int i = 0; i < views->nviews; i++) {
         view = views->views[i];
         if (!strcasecmp(view_name, view->name)) {
@@ -845,7 +845,7 @@ static int timepart_copy_shard_names(char *view_name, char ***shard_names,
         }
     }
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
     return rc;
 }
 
@@ -1803,17 +1803,17 @@ int timepart_apply_file(const char *filename)
         goto done;
     }
 
-    Pthread_rwlock_wrlock(&views_lk);
+    wrlock_views_lk();
 
     for (i = 0; i < views->nviews; i++) {
         rc = partition_llmeta_write(NULL, views->views[i], 1, &err);
         if (rc != VIEW_NOERR) {
-            Pthread_rwlock_unlock(&views_lk);
+            unlock_views_lk();
             goto done;
         }
     }
 
-    Pthread_rwlock_unlock(&views_lk);
+    unlock_views_lk();
 
 done:
     if (views)
