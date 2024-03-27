@@ -582,7 +582,11 @@ static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
     for (int i = 0; i < num_lrl_tables; i++) {
         cur_table = &lrl_tables[i];
         options.lineno = cur_table->lineno;
-        read_lrl_option(dbenv, cur_table->line, &options, strlen(cur_table->line), NULL);
+        int rc = read_lrl_option(dbenv, cur_table->line, &options, strlen(cur_table->line), NULL);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Initial table definitions failed, not continuing.\n");
+            exit(1);
+        }
         free(cur_table->line);
     }
     free(lrl_tables);
