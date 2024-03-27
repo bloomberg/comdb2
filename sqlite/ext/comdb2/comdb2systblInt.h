@@ -74,6 +74,7 @@ int systblTablePropertiesInit(sqlite3 *db);
 int systblTimepartInit(sqlite3*db);
 int systblCronInit(sqlite3*db);
 int systblFingerprintsInit(sqlite3 *);
+int systblQueriesInit(sqlite3 *db);
 int systblQueryPlansInit(sqlite3 *db);
 int systblViewsInit(sqlite3 *);
 int systblSQLClientStats(sqlite3 *);

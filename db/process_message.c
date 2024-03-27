@@ -5151,6 +5151,9 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "clear_query_plans") == 0) {
         int plans_count = clear_query_plans();
         logmsg(LOGMSG_USER, "Cleared %d plans\n", plans_count);
+    } else if (tokcmp(tok, ltok, "clear_sample_queries") == 0) {
+        int sqcount = clear_sample_queries();
+        logmsg(LOGMSG_USER, "Cleared %d sample queries\n", sqcount);
     } else if (tokcmp(tok, ltok, "get_verify_thdpool_status") == 0) {
         if (gbl_verify_thdpool)
             thdpool_print_stats(stdout, gbl_verify_thdpool);

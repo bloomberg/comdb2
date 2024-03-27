@@ -1293,12 +1293,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zOrigNormSql, cost, time, prepTime,
+                add_fingerprint(clnt, stmt, h->sql_ref, clnt->work.zOrigNormSql, cost, time, prepTime,
                                 rows, logger, fingerprint, is_lua);
                 have_fingerprint = 1;
             } else if (clnt->work.zNormSql &&
                        sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zNormSql, cost, time, prepTime,
+                add_fingerprint(clnt, stmt, h->sql_ref, clnt->work.zNormSql, cost, time, prepTime,
                                 rows, logger, fingerprint, is_lua);
                 have_fingerprint = 1;
             } else {
@@ -3226,12 +3226,12 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
     return rc;
 }
 
-static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
-                           struct sqlclntstate *clnt, char **err)
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                           struct sqlclntstate *clnt, char **err, int sample_queries)
 {
     int rc = 0;
     int params = param_count(clnt);
-    struct cson_array *arr = get_bind_array(logger, params);
+    struct cson_array *arr = get_bind_array(logger, params, sample_queries);
     struct param_data p = {0};
     char intspace[12]; // enough space to fit string representation of integer
     for (int i = 0; i < params; ++i) {
@@ -3239,10 +3239,10 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             rc = SQLITE_ERROR;
             goto out;
         }
-        if (p.pos == 0) {
+        if (!sample_queries && p.pos == 0) {
             p.pos = sqlite3_bind_parameter_index(stmt, p.name);
         }
-        if (p.pos == 0) {
+        if (!sample_queries && p.pos == 0) {
             rc = SQLITE_ERROR;
             goto out;
         }
@@ -3256,7 +3256,8 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             name = p.name;
 
         if (p.null || p.type == COMDB2_NULL_TYPE) {
-            rc = sqlite3_bind_null(stmt, p.pos);
+            if (!sample_queries)
+                rc = sqlite3_bind_null(stmt, p.pos);
             eventlog_bind_null(arr, name);
             if (rc) { /* position out-of-bounds, etc? */
                 goto out;
@@ -3284,17 +3285,20 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 logmsg(LOGMSG_ERROR, "carray_bind: invalid type:%d size:%d\n", p.type, p.len);
                 return -1;
             }
-            rc = sqlite3_carray_bind(stmt, p.pos, p.u.p, p.arraylen, flag, SQLITE_STATIC);
+            if (!sample_queries)
+                rc = sqlite3_carray_bind(stmt, p.pos, p.u.p, p.arraylen, flag, SQLITE_STATIC);
             continue;
         }
         switch (p.type) {
         case CLIENT_INT:
         case CLIENT_UINT:
-            rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
+            if (!sample_queries)
+                rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
             eventlog_bind_int64(arr, name, p.u.i, p.len);
             break;
         case CLIENT_REAL:
-            rc = sqlite3_bind_double(stmt, p.pos, p.u.r);
+            if (!sample_queries)
+                rc = sqlite3_bind_double(stmt, p.pos, p.u.r);
             eventlog_bind_double(arr, name, p.u.r, p.len);
             break;
         case CLIENT_CSTR:
@@ -3304,27 +3308,32 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
              * the string on first '\0'.
              */
             p.len = strnlen((char *)p.u.p, p.len);
-            rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
+            if (!sample_queries)
+                rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_text(arr, name, p.u.p, p.len);
             break;
         case CLIENT_VUTF8:
-            rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
+            if (!sample_queries)
+                rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_varchar(arr, name, p.u.p, p.len);
             break;
         case CLIENT_BLOB:
         case CLIENT_BYTEARRAY:
-            rc = sqlite3_bind_blob(stmt, p.pos, p.u.p, p.len, NULL);
+            if (!sample_queries)
+                rc = sqlite3_bind_blob(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_blob(arr, name, p.u.p, p.len);
             break;
         case CLIENT_DATETIME:
         case CLIENT_DATETIMEUS:
-            rc = sqlite3_bind_datetime(stmt, p.pos, &p.u.dt, clnt->tzname);
+            if (!sample_queries)
+                rc = sqlite3_bind_datetime(stmt, p.pos, &p.u.dt, clnt->tzname);
             eventlog_bind_datetime(arr, name, &p.u.dt, clnt->tzname);
             break;
         case CLIENT_INTVYM:
         case CLIENT_INTVDS:
         case CLIENT_INTVDSUS:
-            rc = sqlite3_bind_interval(stmt, p.pos, &p.u.tv);
+            if (!sample_queries)
+                rc = sqlite3_bind_interval(stmt, p.pos, &p.u.tv);
             eventlog_bind_interval(arr, name, &p.u.tv);
             break;
         default:
@@ -3345,7 +3354,7 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, struct errstat *err)
 {
     char *errstr = NULL;
-    int rc = bind_parameters(thd->logger, rec->stmt, clnt, &errstr);
+    int rc = bind_parameters(thd->logger, rec->stmt, clnt, &errstr, 0);
     if (rc) {
         errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
     }

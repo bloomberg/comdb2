@@ -66,6 +66,7 @@
 #include <comdb2_atomic.h>
 #include <sql_stmt_cache.h>
 #include <debug_switches.h>
+#include <string_ref.h>
 
 #ifdef WITH_RDKAFKA    
 
@@ -2312,8 +2313,10 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
             timeMs = time - pVdbe->luaStartTime + prepMs;
 
             unsigned char fingerprint[FINGERPRINTSZ];
-            add_fingerprint(clnt, pStmt, sqlite3_sql(pStmt), zNormSql, cost,
+            struct string_ref *sql_ref = create_string_ref(sqlite3_sql(pStmt));
+            add_fingerprint(clnt, pStmt, sql_ref, zNormSql, cost,
                             timeMs, prepMs, pVdbe->luaRows, NULL, fingerprint, 1); // TODO: Make work for query plans
+            put_ref(&sql_ref);
             if (clnt->rawnodestats)
                 add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, pVdbe->luaRows, timeMs);
 
