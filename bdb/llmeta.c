@@ -199,6 +199,8 @@ static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
                      void ***values, int *num, int *bdberr);
 static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v, size_t vlen, int *bdberr);
+typedef int kv_for_each_cb(void *k, void *v, void *data);
+static int kv_for_each_pair(tran_type *t, void *sk, size_t sklen, kv_for_each_cb *cb, void *data);
 
 static uint8_t *
 llmeta_file_type_key_put(const struct llmeta_file_type_key *p_file_type_key,
@@ -4384,13 +4386,69 @@ err:
     return rc;
 }
 
+int gbl_sc_history_max_rows = 1000;
+struct llmeta_sc_history_callback_data {
+    int cnt;
+    int max;
+    sc_hist_row *rows;
+};
+static int keep_most_recent_sc_history(void *k, void *v, void *data)
+{
+    struct llmeta_sc_history_callback_data *cb_data = data;
+    struct llmeta_hist_key key = {0};
+    sc_hist_row row = {0}, *replace;
+    int lo, hi, mid, nmove;
+
+    llmeta_sc_hist_key_get(&key, (const uint8_t *)k, (uint8_t *)k + sizeof(struct llmeta_hist_key));
+    strcpy(row.tablename, key.tablename);
+    row.seed = key.seed;
+    llmeta_sc_hist_data_get(&row, v, (uint8_t *)v + sizeof(llmeta_sc_hist_data));
+
+    lo = 0;
+    hi = cb_data->cnt - 1;
+    mid = 0;
+
+    /* find where the entry should be placed */
+    while (lo <= hi) {
+        mid = (lo + hi) >> 1;
+        if (row.start == cb_data->rows[mid].start) {
+            lo = mid;
+            break;
+        } else if (row.start > cb_data->rows[mid].start) {
+            hi = mid - 1;
+        } else {
+            lo = mid + 1;
+        }
+    }
+
+    /* most recent */
+    if (lo < cb_data->max) {
+        nmove = cb_data->cnt - lo;
+
+        /* Remove the last entry to make room for the new one */
+        if (cb_data->cnt == cb_data->max)
+            --nmove;
+
+        /* shift to the right and replace */
+        replace = &cb_data->rows[lo];
+        memmove(replace + 1, replace, sizeof(sc_hist_row) * (nmove));
+        *replace = row;
+
+        /* increment count as needed */
+        if (cb_data->cnt < cb_data->max)
+            ++cb_data->cnt;
+    }
+
+    return 0;
+}
+
 int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
                               int *bdberr, const char *tablename)
 {
-    void **data = NULL;
-    void **keys = NULL;
-    int nkey = 0, rc = 1;
-    sc_hist_row *hist = NULL;
+    int rc = 1;
+    *bdberr = BDBERR_NOERROR;
+
+    struct llmeta_sc_history_callback_data cb_data = {.cnt = 0, .max = gbl_sc_history_max_rows, .rows = NULL};
 
     *num = 0;
     *hist_out = NULL;
@@ -4407,39 +4465,21 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
         sz += sizeof(u.key.tablename);
     }
 
-    rc = kv_get_kv(t, &u, sz, &keys, &data, &nkey, bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
-        return -1;
-    }
-    if (nkey == 0)
-        return 0;
-    hist = calloc(nkey, sizeof(sc_hist_row));
-    if (hist == NULL) {
+    cb_data.rows = calloc(cb_data.max, sizeof(sc_hist_row));
+    if (cb_data.rows == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
         *bdberr = BDBERR_MALLOC;
         return -1;
     }
 
-    for (int i = 0; i < nkey; i++) {
-        struct llmeta_hist_key k = {0};
-        llmeta_sc_hist_key_get(&k, keys[i], (uint8_t *)(keys[i]) + sizeof(struct llmeta_hist_key));
-        strcpy(hist[i].tablename, k.tablename);
-        hist[i].seed = k.seed;
-        llmeta_sc_hist_data_get(&hist[i], data[i],
-                                (uint8_t *)(data[i]) +
-                                    sizeof(llmeta_sc_hist_data));
+    rc = kv_for_each_pair(t, &u, sz, keep_most_recent_sc_history, &cb_data);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed kv_for_each_pair rc %d\n", __func__, rc);
+        return -1;
     }
 
-    for (int i = 0; i < nkey; i++) {
-        free(keys[i]);
-        free(data[i]);
-    }
-    free(data);
-    free(keys);
-
-    *num = nkey;
-    *hist_out = hist;
+    *num = cb_data.cnt;
+    *hist_out = cb_data.rows;
     return 0;
 }
 
@@ -4698,124 +4738,114 @@ backout:
     return -1;
 }
 
+int gbl_sc_status_max_rows = 1000;
+struct llmeta_sc_status_callback_data {
+    int cnt;
+    int max;
+    llmeta_sc_status_data *status_ents;
+    void **sc_data;
+};
+
+static int keep_most_recent_sc_status(void *k, void *v, void *data)
+{
+    struct llmeta_sc_status_callback_data *cb_data = data;
+    const uint8_t *p_buf;
+    llmeta_sc_status_data status = {0};
+    void *replace;
+    int lo, hi, mid, nmove;
+
+    (void)k;
+    lo = 0;
+    hi = cb_data->cnt - 1;
+
+    p_buf = llmeta_sc_status_data_get(&status, v, (uint8_t *)v + sizeof(llmeta_sc_status_data));
+
+    /* find where the entry should be placed */
+    while (lo <= hi) {
+        mid = (lo + hi) >> 1;
+        if (status.start == cb_data->status_ents[mid].start) {
+            lo = mid;
+            break;
+        } else if (status.start > cb_data->status_ents[mid].start) {
+            hi = mid - 1;
+        } else {
+            lo = mid + 1;
+        }
+    }
+
+    /* most recent */
+    if (lo < cb_data->max) {
+        nmove = cb_data->cnt - lo;
+
+        /* Remove the last entry to make room for the new one */
+        if (cb_data->cnt == cb_data->max)
+            --nmove;
+
+        /* shift to the right and replace */
+        replace = &cb_data->status_ents[lo];
+        memmove((llmeta_sc_status_data *)replace + 1, replace, sizeof(llmeta_sc_status_data) * nmove);
+        cb_data->status_ents[lo] = status;
+
+        replace = &cb_data->sc_data[lo];
+        free(cb_data->sc_data[cb_data->max - 1]);
+        memmove((void **)replace + 1, replace, sizeof(void *) * nmove);
+        replace = cb_data->sc_data[lo] = malloc(status.sc_data_len);
+        memcpy(replace, p_buf, status.sc_data_len);
+
+        /* increment count as needed */
+        if (cb_data->cnt < cb_data->max)
+            ++cb_data->cnt;
+    }
+
+    return 0;
+}
+
 int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status_out, void ***sc_data_out, int *num,
                                  int *bdberr)
 {
     int rc = 1;
-    llmeta_sc_status_data *status = NULL;
-    void **sc_data = NULL;
+    *bdberr = BDBERR_NOERROR;
+
+    struct llmeta_sc_status_callback_data cb_data = {
+        .cnt = 0, .max = gbl_sc_status_max_rows, .status_ents = NULL, .sc_data = NULL};
 
     *num = 0;
     *status_out = NULL;
     *sc_data_out = NULL;
 
+    cb_data.status_ents = calloc(cb_data.max, sizeof(llmeta_sc_status_data));
+    if (cb_data.status_ents == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
+        *bdberr = BDBERR_MALLOC;
+        return -1;
+    }
+    cb_data.sc_data = calloc(cb_data.max, sizeof(void *));
+    if (cb_data.sc_data == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
+        *bdberr = BDBERR_MALLOC;
+        return -1;
+    }
+
     /* Extract old (v1) sc status data */
     llmetakey_t k_v1 = htonl(LLMETA_SCHEMACHANGE_STATUS);
-    int nkey_v1 = 0;
-    void **data_v1 = NULL;
-    rc = kv_get(tran, &k_v1, sizeof(k_v1), &data_v1, &nkey_v1, bdberr);
+    rc = kv_for_each_pair(tran, &k_v1, sizeof(k_v1), keep_most_recent_sc_status, &cb_data);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed kv_for_each_pair rc %d\n", __func__, rc);
         return -1;
     }
 
     /* Extract new (v2) sc status data */
     llmetakey_t k_v2 = htonl(LLMETA_SCHEMACHANGE_STATUS_V2);
-    int nkey_v2 = 0;
-    void **data_v2 = NULL;
-    rc = kv_get(tran, &k_v2, sizeof(k_v2), &data_v2, &nkey_v2, bdberr);
+    rc = kv_for_each_pair(tran, &k_v2, sizeof(k_v2), keep_most_recent_sc_status, &cb_data);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed kv_for_each_pair rc %d\n", __func__, rc);
         return -1;
     }
 
-    int nkey = nkey_v1 + nkey_v2;
-
-    if (nkey == 0)
-        return 0;
-
-    status = calloc(nkey, sizeof(llmeta_sc_status_data));
-    if (status == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-        *bdberr = BDBERR_MALLOC;
-        return -1;
-    }
-
-    sc_data = calloc(nkey, sizeof(void *));
-    if (sc_data == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-        free(status);
-        *bdberr = BDBERR_MALLOC;
-        return -1;
-    }
-
-    for (int i = 0; i < nkey_v1; i++) {
-        const uint8_t *p_buf;
-        p_buf = llmeta_sc_status_data_get(&status[i], data_v1[i],
-                                          (uint8_t *)(data_v1[i]) +
-                                              sizeof(llmeta_sc_status_data));
-        sc_data[i] = malloc(status[i].sc_data_len);
-        if (sc_data[i] == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-            *bdberr = BDBERR_MALLOC;
-            goto err;
-        }
-
-        memcpy(sc_data[i], p_buf, status[i].sc_data_len);
-    }
-
-    for (int i = 0; i < nkey_v1; i++) {
-        if (data_v1[i])
-            free(data_v1[i]);
-    }
-    free(data_v1);
-
-    for (int i = 0; i < nkey_v2; i++) {
-        const uint8_t *p_buf;
-        p_buf = llmeta_sc_status_data_get(&status[nkey_v1+i], data_v2[i],
-                                          (uint8_t *)(data_v2[i]) +
-                                              sizeof(llmeta_sc_status_data));
-        sc_data[nkey_v1 + i] = malloc(status[nkey_v1 + i].sc_data_len);
-        if (sc_data[nkey_v1 + i] == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-            *bdberr = BDBERR_MALLOC;
-            goto err;
-        }
-
-        memcpy(sc_data[nkey_v1 + i], p_buf, status[nkey_v1 + i].sc_data_len);
-    }
-
-    for (int i = 0; i < nkey_v2; i++) {
-        if (data_v2[i])
-            free(data_v2[i]);
-    }
-    free(data_v2);
-
-    *num = nkey;
-    *status_out = status;
-    *sc_data_out = sc_data;
+    *num = cb_data.cnt;
+    *status_out = cb_data.status_ents;
+    *sc_data_out = cb_data.sc_data;
     return 0;
-
-err:
-    for (int i = 0; i < nkey_v1; i++) {
-        if (data_v1[i])
-            free(data_v1[i]);
-        if (sc_data[i])
-            free(sc_data[i]);
-    }
-    free(data_v1);
-
-    for (int i = 0; i < nkey_v2; i++) {
-        if (data_v2[i])
-            free(data_v2[i]);
-        if (sc_data[nkey_v1 + i])
-            free(sc_data[nkey_v1 + i]);
-    }
-    free(data_v2);
-
-    free(status);
-    free(sc_data);
-    return -1;
 }
 
 /* updates the last processed genid for a stripe in the in progress schema
@@ -9640,6 +9670,34 @@ static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
     *num = n;
     *keys = names;
     *values = vals;
+    return rc;
+}
+
+static int kv_for_each_pair(tran_type *t, void *sk, size_t sklen, kv_for_each_cb *cb, void *data)
+{
+    int fnd, bdberr, vlen;
+    uint8_t key[LLMETA_IXLEN], next[LLMETA_IXLEN];
+    void *value;
+
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, sk, sklen, key, &fnd, &bdberr);
+    while (rc == 0 && fnd == 1) {
+        if (memcmp(sk, key, sklen) != 0) {
+            break;
+        }
+
+        rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, t, key, &value, &vlen, &bdberr);
+        if (rc || bdberr != BDBERR_NOERROR) {
+            break;
+        }
+        rc = cb(key, value, data);
+        free(value);
+        if (rc) {
+            break;
+        }
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, key, next, 1, &fnd, &bdberr);
+        memcpy(key, next, sizeof(key));
+    }
+
     return rc;
 }
 
