@@ -64,6 +64,7 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
 
     pthread_mutex_lock(&reverse_conn_handle_mu);
     {
+        hndl->onqueue = 1;
         listc_abl(&reverse_conn_wait_list, hndl);
     }
     pthread_mutex_unlock(&reverse_conn_handle_mu);
@@ -82,13 +83,15 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
             if (rc != 0 && rc != ETIMEDOUT) {
                 break;
             }
+            if (rc == ETIMEDOUT)
+                rc = 0;
             --timeout;
         }
     }
     pthread_mutex_unlock(&(hndl->mu));
 
     if (rc != 0 && hndl != NULL) {
-        free(hndl);
+       hndl->done = 1; 
         hndl = NULL;
     }
     return hndl;
@@ -220,6 +223,7 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
     pthread_mutex_unlock(&reverse_conn_handle_mu);
 
     pthread_mutex_lock(&rev_conn_hndl->mu);
+    rev_conn_hndl->onqueue = 0;
 
     if ((rc = cdb2_open(&hndl, remote_dbname, fd_str, CDB2_DIRECT_CPU|CDB2_TYPE_IS_FD)) != 0) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to connect via fd: %s\n",
