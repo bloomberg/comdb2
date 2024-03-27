@@ -7983,19 +7983,12 @@ void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt)
  */
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt)
 {
-    int rc = 0;
+    int rc = 0, bdberr = 0;
 
-    for (int i = 0; i < clnt->dbtran.nLockedRemTables; i++) {
-        /* missing lock */
-        if (clnt->dbtran.lockedRemTables[i] == NULL)
-            continue;
-
-        /* this is a remote table; we need to release remote locks */
-        rc = fdb_unlock_table(clnt->dbtran.lockedRemTables[i]);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to unlock remote table cache for \"%s\"\n",
-                    fdb_table_entry_tblname(clnt->dbtran.lockedRemTables[i]));
-        }
+    rc = bdb_free_curtran_locks(thedb->bdb_env, clnt->dbtran.cursor_tran, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to unlock curtran locks for %p, rc=%d bdberr=%d\n",
+            clnt->dbtran.cursor_tran, rc, bdberr);
     }
 
     /* This is required to recover from deadlocks.*/

@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/runit_common.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+
+function recreate_tables
+{
+    typeset tt=$1
+
+    echo "Recreating tables, int, $tt"
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1" >/dev/null 2>&1
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t2" >/dev/null 2>&1
+
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "drop table t1" >/dev/null 2>&1
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "drop table t2" >/dev/null 2>&1
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int, b $tt)" >/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t2(a int, b $tt)" >/dev/null
+
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "create table t1(a int, b $tt)" >/dev/null
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "create table t2(a int, b $tt)" >/dev/null
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a, b) select *,* from generate_series(1, 10)" >/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2(a, b) select *,* from generate_series(1, 10)" >/dev/null
+
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "insert into t1(a, b) select *,* from generate_series(1, 10)" >/dev/null
+    $CDB2SQL_EXE $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME default "insert into t2(a, b) select *,* from generate_series(1, 10)" >/dev/null
+
+    echo "-"
+}
+
+function test_sql
+{
+    typeset msg="$1"
+    typeset tt="$2"
+    typeset sql="$3"
+
+    echo "Testing $msg for type $tt"
+    echo "Running $sql"
+
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "$sql" 2>&1)
+    r=$?
+    if [[ "$r" != "0" ]] ; then
+        echo "$x"
+        failexit "$msg for type $tt"
+    fi
+    echo "-"
+}
+
+function test_remote_type
+{
+    typeset tt=$1
+    recreate_tables $tt
+
+    msg="local-local integer-integer"
+    test_sql "$msg" "$tt" "select l.a, r.a from t1 as l, t2 as r where l.a > r.a"
+
+    msg="local-local $tt-$tt"
+    test_sql "$msg" "$tt" "select l.b, r.b from t1 as l, t2 as r where l.b > r.b"
+
+    msg="local-local integer-$tt"
+    test_sql "$msg" "$tt" "select l.a, r.b from t1 as l, t2 as r where l.a > r.b"
+
+    msg="local-local $tt-integer"
+    test_sql "$msg" "$tt" "select l.a, r.b from t1 as l, t2 as r where l.b > r.a"
+
+    msg="local-remote integer-integer"
+    test_sql "$msg" "$tt" "select l.a, r.a from t1 as l, LOCAL_$SECONDARY_DBNAME.t2 as r where l.a > r.a"
+
+    msg="local-remote $tt-$tt"
+    test_sql "$msg" "$tt" "select l.b, r.b from t1 as l, LOCAL_$SECONDARY_DBNAME.t2 as r where l.b > r.b"
+
+    msg="local-remote integer-$tt"
+    test_sql "$msg" "$tt" "select l.a, r.b from t1 as l, LOCAL_$SECONDARY_DBNAME.t2 as r where l.a > r.b"
+
+    msg="local-remote $tt-integer"
+    test_sql "$msg" "$tt" "select l.a, r.b from t1 as l, LOCAL_$SECONDARY_DBNAME.t2 as r where l.b > r.a"
+}
+
+
+# TODO
+# This hangs forever .. it waits forever for the 'soft-lock' to be released
+function run_test_hangs_forever
+{
+    test_remote_type int
+    test_remote_type decimal64
+    #test_remote_type smallint
+    #test_remote_type largeint
+    #test_remote_type bigint
+    #test_remote_type float
+    #test_remote_type smallfloat
+    #test_remote_type double
+}
+
+function run_test
+{
+    test_remote_type decimal64
+}
+
+run_test
