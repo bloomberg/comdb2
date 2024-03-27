@@ -189,7 +189,7 @@ struct schema_change_type {
     uint8_t rebuild_index;    /* option to rebuild only one index */
     uint8_t index_to_rebuild; /* can use just a short for rebuildindex */
 
-    char original_master_node[256];
+    char source_node[256];
 
     LISTC_T(struct dest) dests;
 

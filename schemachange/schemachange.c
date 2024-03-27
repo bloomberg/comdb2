@@ -212,7 +212,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
     }
 
-    strcpy(s->original_master_node, gbl_myhostname);
     unsigned long long seed = 0;
     const char *node = gbl_myhostname;
     if (s->tran == trans && iq->sc_seed) {

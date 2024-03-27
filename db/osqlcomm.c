@@ -6248,9 +6248,6 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     else
         sc->nothrevent = 1;
     sc->finalize = 0;
-    if (sc->original_master_node[0] != 0 &&
-        strcmp(sc->original_master_node, gbl_myhostname))
-        sc->resume = 1;
 
     iq->sc = sc;
     sc->iq = iq;
@@ -6396,9 +6393,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // TODO (NC): Check why iq->sc_pending is not getting set for views
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            if (strcmp(iq->sc->original_master_node, gbl_myhostname) != 0) {
-                return -1;
-            }
             if (!iq->sc_locked) {
                 /* Lock schema from now on before we finalize any schema changes
                  * and hold on to the lock until the transaction commits/aborts.
@@ -7767,7 +7761,8 @@ int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
     if (check_master(target))
         return OSQL_SEND_ERROR_WRONGMASTER;
 
-    strcpy(sc->original_master_node, target->host);
+    /* we could this field to set the source host */
+    strcpy(sc->source_node, target->host);
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t hd_uuid = {0};
