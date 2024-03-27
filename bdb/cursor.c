@@ -8719,19 +8719,89 @@ static void *db_count(void *varg)
     return NULL;
 }
 
-int gbl_parallel_count = 0;
-int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
+static int find_recnum_first_last(DBC *dbcp, int *rnum, int last)
+{
+    DBT dbt_key, dbt_data;
+    int recnum;
+    int rc;
+    memset(&dbt_key, 0, sizeof(dbt_key));
+    memset(&dbt_data, 0, sizeof(dbt_data));
+    dbt_key.flags |= DB_DBT_MALLOC;
+    dbt_data.flags |= DB_DBT_MALLOC;
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, last ? DB_LAST : DB_FIRST);
+    if (rc)
+        return rc;
+    if (dbt_key.data)
+        free(dbt_key.data);
+    if (dbt_data.data)
+        free(dbt_data.data);
+
+    memset(&dbt_data, 0, sizeof(dbt_data));
+    dbt_data.data = &recnum;
+    dbt_data.ulen = sizeof(int);
+    dbt_data.flags |= DB_DBT_USERMEM;
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_GET_RECNO);
+    if (rc)
+        return rc;
+    *rnum = recnum;
+    return 0;
+}
+
+static int find_count_recnums(bdb_state_type *state, int64_t *rcnt)
+{
+    int lowrecnum;
+    int highrecnum;
+    int rc;
+    DBC *dbcp;
+    if (!state->have_recnums)
+        return -1;
+    for (int i = 0; i < state->numix; i++) {
+        if (!state->ixrecnum[i])
+            continue;
+        rc = state->dbp_ix[i]->cursor(state->dbp_ix[i], 0, &dbcp, 0);
+        if (rc)
+            return rc;
+        if ((rc = find_recnum_first_last(dbcp, &lowrecnum, 0))) {
+            dbcp->c_close(dbcp);
+            return rc;
+        }
+        if ((rc = find_recnum_first_last(dbcp, &highrecnum, 1))) {
+            dbcp->c_close(dbcp);
+            return rc;
+        }
+        dbcp->c_close(dbcp);
+        *rcnt = highrecnum - lowrecnum + 1;
+        return 0;
+    }
+    return -1;
+}
+
+int bdb_direct_count_int(bdb_state_type *state, int ixnum, int64_t *rcnt, int parallel_count)
 {
     int64_t count = 0;
-    int parallel_count;
-    bdb_state_type *state = cur->impl->state;
+    int rc = 0;
     DB **db;
     int stripes;
     pthread_attr_t attr;
+
+    // first try recnums optimization
+    if (state->have_recnums) {
+        rc = find_count_recnums(state, &count);
+        if (rc == DB_LOCK_DEADLOCK) {
+            rc = BDBERR_DEADLOCK;
+        } else if (rc == DB_NOTFOUND) {
+            rc = 0;
+        } else if (rc != 0) {
+            rc = -1;
+        }
+
+        if (rc == 0) *rcnt = count;
+        return rc;
+    }
+
     if (ixnum < 0) { // data
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
-        parallel_count = gbl_parallel_count;
         Pthread_attr_init(&attr);
 #ifdef PTHREAD_STACK_MIN
         Pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN + 512 * 1024);
@@ -8753,7 +8823,6 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
             db_count(&args[i]);
         }
     }
-    int rc = 0;
     void *ret;
     for (int i = 0; i < stripes; ++i) {
         if (parallel_count) {
@@ -8775,4 +8844,10 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
     }
     if (rc == 0) *rcnt = count;
     return rc;
+}
+
+int gbl_parallel_count = 0;
+int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
+{
+    return bdb_direct_count_int(cur->impl->state, ixnum, rcnt, gbl_parallel_count);
 }
