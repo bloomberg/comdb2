@@ -703,8 +703,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     }
                 }
             }
-
-            broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
             if (iq->sc->db) {
                 int rc;
                 tran_type *lock_trans = NULL;
