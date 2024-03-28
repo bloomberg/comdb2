@@ -5280,7 +5280,7 @@ static void dump_table_sizes(struct dbenv *dbenv)
             percent = (db->totalsize * 100ULL) / total;
         else
             percent = 0;
-        logmsg(LOGMSG_USER, "table %*s sz %12s %3d%%", maxtblname,
+        logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname,
                db->tablename, fmt_size(b, sizeof(b), db->totalsize), (int)percent);
         logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
         for (ii = 0; ii < db->nix; ii++) {
