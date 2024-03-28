@@ -1656,6 +1656,7 @@ void clean_exit(void)
     bdb_exiting(thedb->static_table.handle);
 
     stop_threads(thedb);
+    physrep_cleanup();
     flush_db();
     if (gbl_backend_opened)
         llmeta_dump_mapping(thedb);
@@ -5605,7 +5606,8 @@ int main(int argc, char **argv)
     Pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
     Pthread_attr_destroy(&timer_attr);
 
-    start_physrep_threads();
+    if (!gbl_exit)
+        start_physrep_threads();
 
     if (debug_switch_rep_verify_req_delay()) {
         extern int gbl_rep_newmaster_processed_on_replicant;

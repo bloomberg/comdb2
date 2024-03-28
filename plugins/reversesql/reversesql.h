@@ -22,6 +22,7 @@ typedef struct reverse_conn_handle_st {
     char *remote_host;
     cdb2_hndl_tp *hndl;
     int done;
+    int onqueue;
     int failed;
 
     pthread_mutex_t mu;
