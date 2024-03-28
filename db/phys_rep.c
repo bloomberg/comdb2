@@ -1599,8 +1599,8 @@ int start_physrep_threads() {
 }
 
 int stop_physrep_threads() {
-    if (!is_a_physrep_source_or_dest()) {
-        if (gbl_physrep_debug)
+    if (!is_a_physrep_source_or_dest() || gbl_exit) {
+        if (!gbl_exit && gbl_physrep_debug)
             physrep_logmsg(LOGMSG_USER, "%s:%d: This node is neither a physical replication "
                                         "source nor a replicant, nothing to stop here\n",
                                         __func__, __LINE__);
@@ -1617,7 +1617,7 @@ int stop_physrep_threads() {
 }
 
 void physrep_cleanup() {
-    if (!is_a_physrep_source_or_dest()) {
+    if (gbl_exit || !is_a_physrep_source_or_dest()) {
         return;
     }
 
