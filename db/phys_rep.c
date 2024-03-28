@@ -1218,7 +1218,7 @@ repl_loop:
         physrep_logmsg(LOGMSG_USER, "Physical replicant is now replicating from %s@%s\n",
                        repl_db_cnct->dbname, repl_db_cnct->hostname);
 
-        if (do_truncate) {
+        if (do_truncate && repl_db) {
             info = get_last_lsn(thedb->bdb_env);
             prev_info = handle_truncation(repl_db, info);
             if (prev_info.file == 0) {
