@@ -1621,16 +1621,15 @@ void physrep_cleanup() {
         return;
     }
 
-    for (int i = 0; i < physrep_metadb_host_count; ++i) {
-        free(physrep_metadb_hosts[i]);
-    }
-    free(physrep_metadb_hosts);
-
     int rc = send_reset_nodes("Inactive");
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
                        __func__, __LINE__, rc);
     }
+    for (int i = 0; i < physrep_metadb_host_count; ++i) {
+        free(physrep_metadb_hosts[i]);
+    }
+    free(physrep_metadb_hosts);
 }
 
 int physrep_exited() {

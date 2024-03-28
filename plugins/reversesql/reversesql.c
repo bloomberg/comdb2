@@ -64,7 +64,6 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
 
     pthread_mutex_lock(&reverse_conn_handle_mu);
     {
-        hndl->onqueue = 1;
         listc_abl(&reverse_conn_wait_list, hndl);
     }
     pthread_mutex_unlock(&reverse_conn_handle_mu);
@@ -88,23 +87,12 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
             --timeout;
         }
     }
-    pthread_mutex_unlock(&(hndl->mu));
 
     if (rc != 0 && hndl != NULL) {
-        pthread_mutex_lock(&reverse_conn_handle_mu);
-        pthread_mutex_lock(&(hndl->mu));
-        if (hndl->onqueue) {
-            listc_rfl(&reverse_conn_wait_list, hndl);
-            pthread_mutex_unlock(&(hndl->mu));
-            free(hndl);
-        } else {
-            hndl->done = 1; 
-            hndl->needsfree = 1; 
-            pthread_mutex_unlock(&(hndl->mu));
-        }
-        pthread_mutex_unlock(&reverse_conn_handle_mu);
+        hndl->done = 1; 
         hndl = NULL;
     }
+    pthread_mutex_unlock(&(hndl->mu));
     return hndl;
 }
 
@@ -161,7 +149,6 @@ static int execute_rev_command(const char *dbname, const char *fd, const char *c
 static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
     struct sbuf2 *sb;
     int rc = 0;
-    int freeit = 0;
     int fd;
     cdb2_hndl_tp *hndl;
     char fd_str[100];
@@ -234,15 +221,10 @@ retry:
         }
     }
     pthread_mutex_lock(&rev_conn_hndl->mu);
-    rev_conn_hndl->onqueue = 0;
     pthread_mutex_unlock(&reverse_conn_handle_mu);
 
     if (rev_conn_hndl->done) {
-        freeit = rev_conn_hndl->needsfree;
-        pthread_mutex_unlock(&rev_conn_hndl->mu);
-        if (freeit) {
-            free(rev_conn_hndl);
-        }
+        free(rev_conn_hndl);
         goto retry;
     }
 
@@ -253,7 +235,6 @@ retry:
         rev_conn_hndl->failed = 1;
         rev_conn_hndl->hndl = NULL;
         cdb2_close(hndl);
-        freeit = rev_conn_hndl->needsfree;
         pthread_mutex_unlock(&rev_conn_hndl->mu);
         pthread_cond_signal(&rev_conn_hndl->cond);
         goto done;
@@ -284,7 +265,6 @@ retry:
         rev_conn_hndl->failed = 1;
         rev_conn_hndl->hndl = NULL;
         cdb2_close(hndl);
-        freeit = rev_conn_hndl->needsfree;
         pthread_mutex_unlock(&rev_conn_hndl->mu);
         pthread_cond_signal(&rev_conn_hndl->cond);
         goto done;
@@ -301,7 +281,6 @@ retry:
             rev_conn_hndl->failed = 1;
             rev_conn_hndl->hndl = NULL;
             cdb2_close(hndl);
-            freeit = rev_conn_hndl->needsfree;
             pthread_mutex_unlock(&rev_conn_hndl->mu);
             pthread_cond_signal(&rev_conn_hndl->cond);
             goto done;
@@ -345,12 +324,6 @@ retry:
     free_reverse_conn_handle(rev_conn_hndl);
 
 done:
-    if (freeit) {
-        if (gbl_revsql_debug == 1)
-            logmsg(LOGMSG_USER, "%s:%d Freeing %p because needsfree is set\n", __func__, __LINE__, rev_conn_hndl);
-        free(rev_conn_hndl);
-    }
-
     if (gbl_revsql_debug == 1)
         logmsg(LOGMSG_USER, "%s:%d Reversesql appsock handler exiting\n", __func__, __LINE__);
 
