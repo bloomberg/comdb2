@@ -64,6 +64,7 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
 
     pthread_mutex_lock(&reverse_conn_handle_mu);
     {
+        hndl->onqueue = 1;
         listc_abl(&reverse_conn_wait_list, hndl);
     }
     pthread_mutex_unlock(&reverse_conn_handle_mu);
@@ -87,12 +88,22 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
             --timeout;
         }
     }
+    pthread_mutex_unlock(&(hndl->mu));
 
     if (rc != 0 && hndl != NULL) {
-        hndl->done = 1; 
+        pthread_mutex_lock(&reverse_conn_handle_mu);
+        pthread_mutex_lock(&(hndl->mu));
+        if (hndl->onqueue) {
+            listc_rfl(&reverse_conn_wait_list, hndl);
+            pthread_mutex_unlock(&(hndl->mu));
+            free(hndl);
+        } else {
+            hndl->done = 1; 
+            pthread_mutex_unlock(&(hndl->mu));
+        }
+        pthread_mutex_unlock(&reverse_conn_handle_mu);
         hndl = NULL;
     }
-    pthread_mutex_unlock(&(hndl->mu));
     return hndl;
 }
 
@@ -221,6 +232,7 @@ retry:
         }
     }
     pthread_mutex_lock(&rev_conn_hndl->mu);
+    rev_conn_hndl->onqueue = 0;
     pthread_mutex_unlock(&reverse_conn_handle_mu);
 
     if (rev_conn_hndl->done) {
