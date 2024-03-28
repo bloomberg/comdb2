@@ -1656,6 +1656,7 @@ void clean_exit(void)
     bdb_exiting(thedb->static_table.handle);
 
     stop_threads(thedb);
+    physrep_cleanup();
     flush_db();
     if (gbl_backend_opened)
         llmeta_dump_mapping(thedb);
