@@ -3405,6 +3405,8 @@ static void add_segment(mstate m, char* tbase, size_t tsize, flag_t mmapped) {
   }
 
   check_top_chunk(m, m->top);
+
+  (void)(nfences);
 }
 
 /* -------------------------- System allocation -------------------------- */
