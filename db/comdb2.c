@@ -5607,7 +5607,8 @@ int main(int argc, char **argv)
     Pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
     Pthread_attr_destroy(&timer_attr);
 
-    start_physrep_threads();
+    if (!gbl_exit)
+        start_physrep_threads();
 
     if (debug_switch_rep_verify_req_delay()) {
         extern int gbl_rep_newmaster_processed_on_replicant;
