@@ -36,12 +36,19 @@ else()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
-  # Homebrew will install here by default
-  list(APPEND CMAKE_PREFIX_PATH
-    ${CMAKE_PREFIX_PATH}
-    "/usr/local"
-    "/usr/local/opt/openssl"
-    "/usr/local/opt/readline")
+  if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+    list(APPEND CMAKE_PREFIX_PATH
+     ${CMAKE_PREFIX_PATH}
+     "/usr/local"
+     "/usr/local/opt/openssl"
+     "/usr/local/opt/readline")
+  else()
+    list(APPEND CMAKE_PREFIX_PATH
+     ${CMAKE_PREFIX_PATH}
+     "/opt/homebrew"
+     "/opt/homebrew/opt/openssl"
+     "/opt/homebrew/opt/readline")
+  endif()
 endif()
 
 if(COMDB2_BBCMAKE)
@@ -202,6 +209,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(
+    -D_LINUX_SOURCE
     -D_DARWIN_C_SOURCE
     -D_XOPEN_SOURCE=600
   )
@@ -217,7 +225,15 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
   endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-variable")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-deprecated-non-prototype")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-but-set-variable")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-single-bit-bitfield-constant-conversion")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-tautological-constant-out-of-range-compare")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-format")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-array-parameter")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-incompatible-pointer-types")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wignored-qualifiers")
   set(COMMON_FLAGS "${COMMON_FLAGS} -pthread")
   set(COMMON_FLAGS "${COMMON_FLAGS} -fno-strict-aliasing")
