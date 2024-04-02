@@ -735,6 +735,53 @@ static void test_bind_array_in_sp(void)
     }
 }
 
+static void test_bind_array_and_integer()
+{
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+    int val = 1, ids[] = {2, 3};
+
+    // bind the array first
+    cdb2_bind_array(hndl, "ids", CDB2_INTEGER, ids, sizeof(ids) / sizeof(ids[0]), sizeof(ids[0]));
+    cdb2_bind_param(hndl, "val", CDB2_INTEGER, &val, sizeof(val));
+    test_exec(hndl, "select @val union select * from carray(@ids) order by 1");
+    int rc, cnt = 1;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        int64_t ret = *(int64_t *)cdb2_column_value(hndl, 0);
+        if (ret != cnt) {
+            fprintf(stderr, "%s:%d unexpcted return:%"PRId64" vs expected:%d\n", __func__, __LINE__, ret, cnt);
+            abort();
+        }
+        ++cnt;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+
+    // bind the integer first
+    cdb2_bind_param(hndl, "val", CDB2_INTEGER, &val, sizeof(val));
+    cdb2_bind_array(hndl, "ids", CDB2_INTEGER, ids, sizeof(ids) / sizeof(ids[0]), sizeof(ids[0]));
+    test_exec(hndl, "select @val union select * from carray(@ids) order by 1");
+    cnt = 1;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        int64_t ret = *(int64_t *)cdb2_column_value(hndl, 0);
+        if (ret != cnt) {
+            fprintf(stderr, "%s:%d unexpcted return:%"PRId64" vs expected:%d\n", __func__, __LINE__, ret, cnt);
+            abort();
+        }
+        ++cnt;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+
+    test_close(hndl);
+}
+
 int main(int argc, char *argv[])
 {
     db = argv[1];
@@ -748,6 +795,7 @@ int main(int argc, char *argv[])
     test_bind_blob_array();
     test_pass_array_to_sp();
     test_bind_array_in_sp();
+    test_bind_array_and_integer();
 
     return 0;
 }
