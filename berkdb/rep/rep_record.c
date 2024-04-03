@@ -7256,6 +7256,7 @@ restart:
 	logmsg(LOGMSG_INFO, "%s finished truncate, trunclsnp is [%d:%d]\n", __func__,
 			trunclsnp->file, trunclsnp->offset);
 
+	__rep_set_last_locked(dbenv, trunclsnp);
 	dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 	have_recover_lk = 0;
 
