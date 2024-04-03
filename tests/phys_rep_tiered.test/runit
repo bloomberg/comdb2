@@ -16,6 +16,10 @@ SLEEPAMOUNT=120 # 2 minutes
 KILL_WAIT_TIME=10
 SLEEP_BETWEEN_CHECKS=.5
 PIDs=""
+export NOSOURCE=0
+if [[ $DBNAME == *"nosourcegenerated"* ]]; then
+    NOSOURCE=1
+fi
 
 if [[ -z "$TEST_TIMEOUT" ]]; then
     export TEST_TIMEOUT=5m
@@ -125,6 +129,105 @@ function add_to_physrep_sources() {
     if [ $? -ne 0 ]; then
         cleanFailExit "failed to insert record in ${_repl_metadb_name}@${_repl_metadb_host}"
     fi
+}
+
+function verify_lsn_db_node()
+{
+    local db=$1
+    local node=$2
+
+    file=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${node} $db "select logfile from comdb2_cluster where host='$node'")
+    offset=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host ${node} $db "select logoffset from comdb2_cluster where host='$node'")
+
+    if [[ "$file" == 0 || "$offset" == 0 || "$file" == "2147483647" || "$offset" == "2147483647" ]]; then
+        while :; do
+            echo "Error, have zero lsn $file:$offset for $db $node"
+            sleep 1
+        done
+        #cleanFailExit "Invalid lsn for $db node $node, $file:$offset"
+    fi
+}
+
+function verify_physrep_lsns()
+{
+    echo "== Verifying physrep lsns =="
+    local _repl_dbname_prefix=$1
+    local _repl_clus_dbname=$2
+    if [[ -z "$CLUSTER" ]]; then
+        node=$(hostname)
+        _repl_dbname=${_repl_dbname_prefix}_${node}
+
+        verify_lsn_db_node $_repl_clus_dbname $node
+        verify_lsn_db_node $_repl_dbname $node
+
+        # First check 'clustered' physrep
+    else
+        for node in $CLUSTER; do
+            _repl_dbname=${_repl_dbname_prefix}_${node}
+            verify_lsn_db_node $_repl_clus_dbname $node
+            verify_lsn_db_node $_repl_dbname $node
+        done
+    fi
+}
+
+function restart_source_nodes()
+{
+    echo "== Restarting source nodes =="
+    pushd $DBDIR
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER ; do
+            if [ $node == `hostname` ] ; then
+                PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+                $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
+            else
+                PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+                CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+                ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
+                echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+            fi
+        done
+
+        for node in $CLUSTER ; do
+            echo "$DBNAME: waiting until ready"
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${DBNAME} 'select 1' 2>/dev/null)
+            while [[ "$out" != "1" ]]; do
+                sleep $SLEEP_BETWEEN_CHECKS
+                out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${DBNAME}  'select 1' 2>/dev/null)
+            done
+        done
+
+    else
+        node=$(hostname)
+        PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+        echo "$COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db"
+        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
+
+        echo "$DBNAME: waiting until ready"
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${DBNAME} 'select 1' 2>/dev/null)
+        while [[ "$out" != "1" ]]; do
+            sleep $SLEEP_BETWEEN_CHECKS
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${DBNAME} 'select 1' 2>/dev/null)
+        done
+    fi
+    popd
+}
+
+function kill_source_nodes()
+{
+    echo "== Killing source nodes =="
+    pushd $DBDIR
+    export LOGDIR=$TESTDIR/logs
+    if [ -n "$CLUSTER" ]; then
+        for node in $CLUSTER ; do
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+            mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
+            #mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
+        done
+    else
+        kill -9 $(cat ${TMPDIR}/${DBNAME}.pid)
+        mv --backup=numbered $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.db.1
+    fi
+    popd
 }
 
 function setup_physrep_metadb()
@@ -483,6 +586,25 @@ function cleanup()
     echo "Killing ${PIDs}"
     kill -9 ${PIDs}
     [[ $dgpid != 0 ]] && kill -9 $dgpid
+
+    REPL_META_DBNAME=${TESTCASE}_META
+    REPL_META_DBDIR=${DBDIR}/${REPL_META_DBNAME}
+
+    REPL_CLUS_DBNAME=${TESTCASE}_CLUS
+    REPL_CLUS_DBDIR=${DBDIR}/${REPL_CLUS_DBNAME}
+
+    REPL_DBNAME_PREFIX=${TESTCASE}_REPL
+    REPL_DBDIR_PREFIX=${DBDIR}/${REPL_DBNAME_PREFIX}
+
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER ; do
+            _repl_dbname=${REPL_DBNAME_PREFIX}_${node}
+            _repl_dbdir=${REPL_DBDIR_PREFIX}_${node}
+            ssh ${node} "kill -9 \$(cat ${_repl_dbdir}/${_repl_dbname}.pid)"
+            ssh ${node} "kill -9 \$(cat ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid)"
+            ssh ${node} "kill -9 \$(cat ${REPL_META_DBDIR}/${REPL_META_DBNAME}.pid)"
+        done
+    fi
 }
 
 # Compare LSNs of all the replicants against the source cluster/node
@@ -524,6 +646,11 @@ SOURCE_HOST=${REPL_META_HOST}
 
 fix_lrl_and_restart_source_nodes ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
 
+# 2.5 No-source ensures physrep cluster can start if parent is not running
+if [[ "$NOSOURCE" == "1" ]]; then
+    kill_source_nodes
+fi
+
 # 3. Setup physical replication cluster (nodes share same hosts as the source cluster)
 REPL_CLUS_DBNAME=${TESTCASE}_CLUS
 REPL_CLUS_DBDIR=${DBDIR}/${REPL_CLUS_DBNAME}
@@ -534,6 +661,13 @@ setup_physrep_cluster ${REPL_CLUS_DBNAME} ${REPL_CLUS_DBDIR} ${SOURCE_DBNAME} ${
 REPL_DBNAME_PREFIX=${TESTCASE}_REPL
 REPL_DBDIR_PREFIX=${DBDIR}/${REPL_DBNAME_PREFIX}
 setup_physrep_replicants ${REPL_DBNAME_PREFIX} ${REPL_DBDIR_PREFIX} ${SOURCE_DBNAME} ${SOURCE_HOST} ${SOURCE_DBDIR} ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_META_DBDIR}
+
+# Verify LSNS whether or not NOSOURCE is lit 
+verify_physrep_lsns ${REPL_DBNAME_PREFIX} ${REPL_CLUS_DBNAME}
+
+if [[ "$NOSOURCE" == "1" ]]; then
+    restart_source_nodes
+fi
 
 generate_tests
 run_tests
