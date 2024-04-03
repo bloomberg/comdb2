@@ -4027,6 +4027,7 @@ static int init(int argc, char **argv)
     }
 
     if (!gbl_exit && !gbl_create_mode && (thedb->nsiblings == 1 || thedb->master == gbl_myhostname)) {
+        bdb_set_seqnum(thedb->bdb_env);
         bdb_upgrade_all_prepared(thedb->bdb_env);
     }
 

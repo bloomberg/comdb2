@@ -1412,6 +1412,10 @@ static void am_i_hung(time_t cur_time) {
             int64_t *file = (int64_t *)cdb2_column_value(repl_metadb, 0);
             int64_t *offset = (int64_t *)cdb2_column_value(repl_metadb, 1);
 
+            if (!file || !offset) {
+                continue;
+            }
+
             LOG_INFO info = get_last_lsn(thedb->bdb_env);
 
             if (info.file < *file || info.offset < *offset) {

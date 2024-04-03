@@ -2347,6 +2347,9 @@ int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
 /* Abort if this thread has an open transaction */
 void bdb_assert_notran(bdb_state_type *bdb_state);
 
++/* Set this node's sequence number */
+void bdb_set_seqnum(void *in_bdb_state);
+
 int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 
 /* Return 1 if this node is master, 0 otherwise */
