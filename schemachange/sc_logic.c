@@ -942,7 +942,7 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
     sc_arg.s = tpt_sc->s;
     /* start new sc for shards that were not resumed */
     timepart_foreach_shard(tpt_sc->viewname, verify_sc_resumed_for_shard,
-                           &sc_arg, -1);
+                           &sc_arg, -1, 0);
     assert(sc_arg.s != tpt_sc->s);
     tpt_sc->s = sc_arg.s;
     return 0;

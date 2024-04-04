@@ -79,6 +79,7 @@ typedef struct timepart_sc_arg {
     int nshards;
     int rc;
     void *tran; /*remove?*/
+    int last;
 } timepart_sc_arg_t;
 
 extern int gbl_partitioned_table_enabled;
@@ -288,7 +289,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
  */
 int timepart_foreach_shard(const char *view_name,
                            int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg, int first_shard);
+                           timepart_sc_arg_t *arg, int first_shard, int reorder);
 
 /**
  * Run "func" for each shard of a partition
@@ -298,7 +299,7 @@ int timepart_foreach_shard(const char *view_name,
  */
 int timepart_foreach_shard_lockless(timepart_view_t *view,
                                     int func(const char *, timepart_sc_arg_t *),
-                                    timepart_sc_arg_t *arg);
+                                    timepart_sc_arg_t *arg, int reorder);
 
 /**
  * Queue up the necessary events to rollout time partitions 

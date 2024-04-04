@@ -75,6 +75,7 @@ int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
 int gbl_selectv_writelock = 0;
 int gbl_debug_invalid_genid;
+int gbl_partition_sc_reorder = 1;
 
 extern int db_is_exiting();
 
@@ -5748,17 +5749,15 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     struct ireq *iq = sc->iq;
     int rc;
 
-    if (arg->indx == 0) {
-        /* is first shard aliased? */
-        struct dbtable *db = get_dbtable_by_name(tblname);
-        if (!(db && db->sqlaliasname &&
-              strncasecmp(db->sqlaliasname, tblname,
-                          strlen(db->sqlaliasname)) == 0))
-            strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
-
+    /* we need to use the actual table name here; it might match partition name
+     */
+    struct dbtable *db = get_dbtable_by_name(tblname);
+    if (db) {
+        strncpy0(sc->tablename, db->tablename, sizeof(sc->tablename));
     } else {
         strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
     }
+
     if (gbl_disable_tpsc_tblvers) {
         sc->fix_tp_badvers = 1;
     }
@@ -5789,7 +5788,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
-        if (arg->nshards == arg->indx + 1) {
+        if (arg->last) {
             /* last shard was done */
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         } else {
@@ -5981,7 +5980,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     arg.indx = start_shard;
     /* note: we have already set nothrevent depending on the number of shards */
     rc = timepart_foreach_shard(
-        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, start_shard);
+        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, start_shard, 0);
 
     if (first_shard->sqlaliasname) {
         sc->partition.type = PARTITION_REMOVE; /* first shard is the collapsed table */
@@ -6076,7 +6075,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     /* should we serialize ? */
     arg.s->nothrevent = sc->partition.u.tpt.retention > gbl_dohsql_sc_max_threads;
     rc = timepart_foreach_shard_lockless(
-            sc->newpartition, start_schema_change_tran_wrapper, &arg);
+            sc->newpartition, start_schema_change_tran_wrapper, &arg, 0);
 
     if (!rc&& sc->partition.type == PARTITION_ADD_MANUAL) {
         if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
@@ -6161,7 +6160,8 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     arg.s = sc;
     arg.s->iq = iq;
     rc = timepart_foreach_shard(sc->tablename,
-                                start_schema_change_tran_wrapper, &arg, -1);
+                                start_schema_change_tran_wrapper, &arg, -1,
+                                gbl_partition_sc_reorder ? sc->nothrevent : 0);
 out:
     return rc;
 }
