@@ -2057,7 +2057,7 @@ inline static void update_node_acks(bdb_state_type *bdb_state, struct interned_s
     if (h->expected_udp_count > 1 &&
         delta > bdb_state->attr->udp_drop_delta_threshold &&
         rate > bdb_state->attr->udp_drop_warn_percent) {
-        logmsg(LOGMSG_USER,
+        logmsg(LOGMSG_DEBUG,
                "update_node_acks: host %s, expected_udp_count = %d, delta = "
                "%.1f, loss = %f percent\n", host->str, h->expected_udp_count, delta, rate);
     }

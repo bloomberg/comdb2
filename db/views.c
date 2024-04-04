@@ -2393,20 +2393,44 @@ static void _view_unregister_shards_lkless(timepart_views_t *views,
  */
 int timepart_foreach_shard_lockless(timepart_view_t *view,
                                     int func(const char *, timepart_sc_arg_t *),
-                                    timepart_sc_arg_t *arg)
+                                    timepart_sc_arg_t *arg, int reorder)
 {
     int rc = 0;
     int i;
+    int skip = -1;
     arg->nshards = view->nshards;
+    if (reorder)
+        skip = (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) ? view->current_shard : 0;
+
     for (i = arg->indx; i < view->nshards; i++) {
-        if (arg)
+        if (skip >= 0 && i == skip) {
+            logmsg(LOGMSG_INFO, "%s Skipping %p for %s\n", __func__,
+                  func, view->shards[i].tblname);
+            continue;
+        }
+        if (arg) {
             arg->indx = i;
+            if (skip < 0)
+                arg->last = arg->nshards == arg->indx + 1;
+        }
         logmsg(LOGMSG_INFO, "%s Applying %p to %s (existing shard)\n", __func__,
                func, view->shards[i].tblname);
         rc = func(view->shards[i].tblname, arg);
         if (rc) {
             break;
         }
+    }
+    if (!rc && skip >= 0) {
+        /* process the current shard last to reduce the number of double writes
+         * during schema change
+         */
+        if (arg) {
+            arg->indx = skip;
+            arg->last = 1;
+        }
+        logmsg(LOGMSG_INFO, "%s Applying %p to current shard %s\n", __func__,
+               func, view->shards[skip].tblname);
+        rc = func(view->shards[skip].tblname, arg);
     }
     return rc;
 }
@@ -2420,7 +2444,8 @@ int timepart_foreach_shard_lockless(timepart_view_t *view,
  */
 int timepart_foreach_shard(const char *view_name,
                            int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg, int first_shard)
+                           timepart_sc_arg_t *arg, int first_shard,
+                           int reorder)
 {
     timepart_views_t *views;
     timepart_view_t *view;
@@ -2454,7 +2479,7 @@ int timepart_foreach_shard(const char *view_name,
         }
     }
 
-    rc = timepart_foreach_shard_lockless(view, func, arg);
+    rc = timepart_foreach_shard_lockless(view, func, arg, reorder);
 
 done:
     Pthread_rwlock_unlock(&views_lk);
