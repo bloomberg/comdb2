@@ -223,25 +223,95 @@ void fromhex(uint8_t *out, const uint8_t *in, size_t len)
     }
 }
 
-
 /* TODO: add all types supported */
-bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, 
-                 std::vector<uint8_t *> &blobs_vect)
+bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, std::vector<uint8_t *> &blobs_vect)
 {
     cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
-    if(bound_parameters == nullptr)
-        return true;
-
+    if(bound_parameters == nullptr) return true;
     unsigned int arr_len = cson_array_length_get(bound_parameters);
     for (int i = 0; i < arr_len; i++) {
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
-        int cdb2_type = 0;
+        cdb2_coltype cdb2_type;
         int length = 0;
         void *varaddr = NULL;
         int ret;
-        if(get_ispropnull(bp, "value")) {   /* bind null value as type INT for simplicity */
+        cson_array *carray;
+        if ((carray = get_arrprop(bp, "value")) != NULL) {
+            cson_value *val;
+            size_t count = cson_array_length_get(carray);
+            if (strcmp(type, "int") == 0) {
+                cdb2_type = CDB2_INTEGER;
+                length = sizeof(int32_t);
+                varaddr = malloc(sizeof(int32_t) * count);
+                int32_t *arr = (int32_t *)varaddr;
+                for (int i = 0; i < count; ++i) {
+                    val = cson_array_get(carray, i);
+                    arr[i] = cson_value_get_integer(val);
+                }
+            } else if (strcmp(type, "largeint") == 0) {
+                cdb2_type = CDB2_INTEGER;
+                length = sizeof(int64_t);
+                varaddr = malloc(sizeof(int64_t) * count);
+                int64_t *arr = (int64_t *)varaddr;
+                for (int i = 0; i < count; ++i) {
+                    val = cson_array_get(carray, i);
+                    arr[i] = cson_value_get_integer(val);
+                }
+            } else if (strcmp(type, "doublefloat") == 0) {
+                cdb2_type = CDB2_REAL;
+                varaddr = malloc(sizeof(double) * count);
+                double *arr = (double *)varaddr;
+                for (int i = 0; i < count; ++i) {
+                    val = cson_array_get(carray, i);
+                    arr[i] = cson_value_get_double(val);
+                }
+            } else if (strcmp(type, "char") == 0) {
+                cdb2_type = CDB2_CSTRING;
+                varaddr = malloc(sizeof(char *) * count);
+                char **arr = (char **)varaddr;
+                for (int i = 0; i < count; ++i) {
+                    val = cson_array_get(carray, i);
+                    arr[i] = strdup(cson_value_get_string(val));
+                    blobs_vect.push_back((uint8_t*) arr[i]);
+                }
+            } else if (strcmp(type, "blob") == 0) {
+                cdb2_type = CDB2_BLOB;
+                struct cdb2vec {
+                    size_t iov_len;
+                    void *iov_base;
+                } *vec;
+                varaddr = malloc(sizeof(*vec) * count);
+                vec = (struct cdb2vec *)varaddr;
+                for (int i = 0; i < count; ++i) {
+                    val = cson_array_get(carray, i);
+                    char *hex = cson_value_get_string(val);
+                    hex += 2; /* skip leading x' */
+                    int hex_len = strlen(hex) - 1; /* skip trailing ' */
+                    if (hex_len % 2 != 0) {
+                        std::cerr << "bad blob parameter name:" << name << " len:" << hex_len << std::endl;
+                        return false;
+                    }
+                    int bin_len = hex_len / 2;
+                    vec[i].iov_len = bin_len;
+                    vec[i].iov_base = malloc(bin_len);
+                    blobs_vect.push_back((uint8_t *)vec[i].iov_base);
+                    fromhex((uint8_t *)vec[i].iov_base, (uint8_t *)hex, hex_len);
+                }
+            } else {
+                std::cerr << "unknown carray param: " << name << " type: " << type << std::endl;
+                return false;
+            }
+            blobs_vect.push_back((uint8_t *)varaddr);
+            if ((ret = cdb2_bind_array(cdb2h, name, cdb2_type, varaddr, count, length)) != 0) {
+                std::cerr << "cdb2_bind_array failed for parameter name:" << name
+                          << " type:" << type << " count:" << count << " ret:" << ret << std::endl;
+                return false;
+            }
+            continue;
+        }
+        if (get_ispropnull(bp, "value")) {   /* bind null value as type INT for simplicity */
             cdb2_type = CDB2_INTEGER;
             varaddr = NULL;
             length = 0;
@@ -332,7 +402,6 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
         }
         blobs_vect.push_back((uint8_t*) varaddr);
     }
-
     return true;
 }
 
