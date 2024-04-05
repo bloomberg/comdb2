@@ -113,6 +113,25 @@ int averager_max(struct averager *avg)
     return max;
 }
 
+double averager_delta_avg(struct averager *avg)
+{
+    struct tick *t;
+    int val;
+    int sum = 0;
+
+    if (avg->ticks.count == 0)
+        return 0.0;
+
+    val = avg->ticks.top->value;
+
+    LISTC_FOR_EACH(&avg->ticks, t, lnk) {
+        sum += t->value - val;
+        val = t->value;
+    }
+
+    return sum/avg->ticks.count;
+}
+
 int averager_min(struct averager *avg)
 {
     int min = INT_MAX;

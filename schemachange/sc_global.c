@@ -41,6 +41,14 @@ static hash_t *sc_tables = NULL;
 pthread_mutex_t ongoing_alter_mtx = PTHREAD_MUTEX_INITIALIZER;
 hash_t *ongoing_alters = NULL;
 
+/* monitor queue latency on master during alter schema changes */
+int gbl_altersc_latency = 1; /* enable alter sc latency check and delay */
+int gbl_altersc_delay_usec = 0; /* wait this many useconds if threshold reached */
+int gbl_altersc_latency_thr = 5; /* threshold, default latency +1msec/sec */
+int gbl_altersc_sampling_sec = 5; /* every "sec" seconds we get the average of queue time */
+int gbl_altersc_latency_inc = 1000; /* increment for latency, 1 msec */
+static struct time_metric* latency;
+
 pthread_mutex_t sc_resuming_mtx = PTHREAD_MUTEX_INITIALIZER;
 struct schema_change_type *sc_resuming = NULL;
 
@@ -563,6 +571,7 @@ void add_ongoing_alter(struct schema_change_type *sc)
     if (ongoing_alters == NULL) {
         ongoing_alters =
             hash_init_strcase(offsetof(struct schema_change_type, tablename));
+        latency = time_metric_new("alter_latency");
     }
     hash_add(ongoing_alters, sc);
     Pthread_mutex_unlock(&ongoing_alter_mtx);
@@ -644,4 +653,36 @@ void clear_ongoing_alter()
         hash_clear(ongoing_alters);
     }
     Pthread_mutex_unlock(&ongoing_alter_mtx);
+}
+
+void sc_alter_latency(int counter)
+{
+    int doit = 0;
+    void *ent;
+    unsigned int bkt;
+
+    if (!gbl_altersc_latency)
+        return;
+
+    Pthread_mutex_lock(&ongoing_alter_mtx);
+    if (ongoing_alters && hash_first(ongoing_alters, &ent, &bkt))
+        doit = 1;
+    Pthread_mutex_unlock(&ongoing_alter_mtx);
+
+    if (doit) {
+        if (counter % gbl_altersc_sampling_sec == 0) {
+            /* add the average of master queue time */
+            time_metric_add(latency, time_metric_average(thedb->handle_buf_queue_time));
+            if (time_metric_delta_average(latency) > gbl_altersc_latency_thr) {
+                /* if queue latency increases too much, add a delay */
+                gbl_altersc_delay_usec += gbl_altersc_latency_inc;
+            }
+        }
+    } else {
+        /* no alters, if there are old latency points, clear them */
+        if (latency && time_metric_depth(latency) > 0) {
+            time_metric_clear(latency);
+            gbl_altersc_delay_usec = 0;
+        }
+    }
 }

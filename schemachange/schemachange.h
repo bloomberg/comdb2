@@ -461,6 +461,8 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...);
 int do_dryrun(struct schema_change_type *);
 
 extern int gbl_test_scindex_deadlock;
+extern int gbl_altersc_latency;
+extern int gbl_altersc_delay_usec;
 
 unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
                                           uint8_t *new_dta,
