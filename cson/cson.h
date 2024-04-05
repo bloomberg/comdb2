@@ -79,6 +79,7 @@ cson_value *cson_value_new_double(cson_double_t v);
 cson_value *cson_value_new_integer(cson_int_t v);
 cson_value *cson_value_new_object(void);
 cson_value *cson_value_new_string(char const *str, unsigned int n);
+cson_value *cson_value_new_blob(char *, size_t);
 cson_value *cson_value_null(void);
 int cson_array_append(cson_array *, cson_value *);
 int cson_array_set(cson_array *, unsigned int ndx, cson_value *);

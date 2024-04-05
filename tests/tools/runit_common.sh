@@ -10,18 +10,18 @@ failexit()
 }
 
 
-# assert expected value in $1 is the same as target in $2, optional comment in $3
-# assertres (expected, target, comment)
+# assert result value in $1 is the same as expected value in $2, optional comment in $3
+# assertres (result, expected, comment)
 assertres ()
 {
     if [[ $# != 2 ]] && [[ $# != 3 ]] ; then 
         failexit "Expecting 2 (opt 3) parameters but instead was passed $#"
     fi
-    local expected=$1
-    local target=$2
+    local result=$1
+    local expected=$2
     local comment=${3:+"($3)"}
-    if [ "$expected" != "$target" ] ; then
-        failexit "Expected is '$expected' but should be '$target' $comment"
+    if [ "$result" != "$expected" ] ; then
+        failexit "Result is '$result' but should be '$expected' $comment"
     fi
 }
 

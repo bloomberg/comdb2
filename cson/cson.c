@@ -643,6 +643,26 @@ int cson_value_fetch_string(cson_value *val, cson_string **str)
     *str = cson_value_get_string(val);
     return 0;
 }
+cson_value *cson_value_new_blob(char *ptr, size_t len)
+{
+    cson_value *val = calloc(1, sizeof(cson_value));
+    val->sql_type = SQLITE_TEXT;
+    size_t need = len * 2 + 3; /* hex encoding + x'' */
+    char *dest = need < sizeof(val->value_buf) ? val->value_buf
+                                               : malloc(need + 1);
+    val->value_text = dest;
+    val->value_bytes = need;
+    *dest++ = 'x';
+    *dest++ = '\'';
+    const char map[] = "0123456789abcdef";
+    for (size_t i = 0; i < len; ++i) {
+        *dest++ = map[(ptr[i] & 0xf0) >> 4];
+        *dest++ = map[ptr[i] & 0x0f];
+    }
+    *dest++ = '\'';
+    *dest = 0;
+    return val;
+}
 char const *cson_string_cstr(cson_string const *str)
 {
     return str;
