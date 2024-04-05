@@ -2490,5 +2490,6 @@ REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
-
+REGISTER_TUNABLE("max_num_consecutive_sql_resets", "Tunable to avoid stack overflow from recursive libevent callbacks",
+                 TUNABLE_INTEGER, &gbl_max_num_consecutive_sql_resets, INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

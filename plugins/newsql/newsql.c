@@ -2187,6 +2187,7 @@ void newsql_reset(struct sqlclntstate *clnt)
     clnt->osql.count_changes = 1;
     clnt->heartbeat = 1;
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    ++clnt->num_consecutive_sql_resets;
 }
 
 void free_newsql_appdata(struct sqlclntstate *clnt)

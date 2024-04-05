@@ -482,6 +482,13 @@ int gbl_new_leader_duration = 3;
 extern int gbl_transaction_grace_period;
 
 /*
+ * RESET is received on server twice, typically:
+ * sockpool resets once, and the client API resets again.
+ * For now, we need to allow at least 2 resets.
+ */
+int gbl_max_num_consecutive_sql_resets = 2;
+
+/*
   =========================================================
   Value/Update/Verify functions for some tunables that need
   special treatment.

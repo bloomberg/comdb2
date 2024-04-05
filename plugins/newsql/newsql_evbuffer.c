@@ -793,12 +793,30 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         newsql_cleanup(appdata);
         break;
     }
+
+    if (appdata->hdr.type != CDB2_REQUEST_TYPE__RESET)
+        appdata->clnt.num_consecutive_sql_resets = 0;
 }
 
+extern int gbl_max_num_consecutive_sql_resets;
 static void rd_payload(int dummyfd, short what, void *arg)
 {
     CDB2QUERY *query = NULL;
     struct newsql_appdata_evbuffer *appdata = arg;
+
+    /*
+     * We want to process user requests as fast as they are available.
+     * However if a user reopens connections multiple times without
+     * running a single query, don't process immediately. Instead,
+     * place the user back onto the event queue. This gives other users
+     * a chance to proceed, as well as avoids overflowing the call stack.
+     */
+    if (appdata->clnt.num_consecutive_sql_resets > gbl_max_num_consecutive_sql_resets) {
+        appdata->clnt.num_consecutive_sql_resets = 0;
+        add_rd_event(appdata, appdata->rd_payload_ev, NULL);
+        return;
+    }
+
     if (evbuffer_get_length(appdata->rd_buf) >= appdata->hdr.length) {
         goto payload;
     }
@@ -827,6 +845,14 @@ static void rd_hdr(int dummyfd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
+
+    /* see comments in rd_payload() */
+    if (appdata->clnt.num_consecutive_sql_resets > gbl_max_num_consecutive_sql_resets) {
+        appdata->clnt.num_consecutive_sql_resets = 0;
+        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
+        return;
+    }
+
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
     }

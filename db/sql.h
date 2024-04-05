@@ -905,6 +905,7 @@ struct sqlclntstate {
     int64_t total_sql;
     int64_t sql_since_reset;
     int64_t num_resets;
+    int64_t num_consecutive_sql_resets;
     time_t connect_time;
     time_t last_reset_time;
     int state_start_time;
