@@ -126,6 +126,18 @@ double time_metric_average(struct time_metric *t) {
     return averager_avg(t->avg);
 }
 
+double time_metric_delta_average(struct time_metric *t) {
+    return averager_delta_avg(t->avg);
+}
+
 int time_metric_max(struct time_metric *t) {
     return averager_max(t->avg);
+}
+
+int time_metric_depth(struct time_metric *t) {
+    return averager_depth(t->avg);
+}
+
+void time_metric_clear(struct time_metric *t) {
+    averager_clear(t->avg);
 }

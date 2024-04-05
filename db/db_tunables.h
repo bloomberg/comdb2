@@ -2495,4 +2495,24 @@ REGISTER_TUNABLE("dohsql_joins",
                  "Enable to support joins in parallel sql execution (default: on)",
                  TUNABLE_BOOLEAN, &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("altersc_latency",
+                 "Enable tracking master queue latency and delay alter schema changes if too high",
+                 TUNABLE_BOOLEAN, &gbl_altersc_latency, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("altersc_sampling_sec",
+                 "Sample average of master queue time every this many seconds",
+                 TUNABLE_INTEGER, &gbl_altersc_sampling_sec, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("altersc_latency_thr",
+                 "Threahoold for alter schema change impact on queue time, as msec/sec increase",
+                 TUNABLE_INTEGER, &gbl_altersc_latency_thr, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("altersc_latency_inc",
+                 "How many msec to add to altersc_queue_latency if altersc_latency_thr still reached",
+                 TUNABLE_INTEGER, &gbl_altersc_latency_inc, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("altersc_delay_usec",
+                 "Extra microseconds to sleep each converted record during alter schema change, if latency on master increases",
+                 TUNABLE_INTEGER, &gbl_altersc_delay_usec, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

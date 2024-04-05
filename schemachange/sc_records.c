@@ -651,6 +651,10 @@ static int convert_record(struct convert_record_data *data)
         usleep(gbl_sc_usleep);
     }
 
+    /* if master queue latency increased, slow down*/
+    if (gbl_altersc_latency && gbl_altersc_delay_usec > 0)
+        usleep(gbl_altersc_delay_usec);
+
     if (data->trans == NULL) {
         /* Schema-change writes are always page-lock, not rowlock */
         throttle_sc_logbytes(0);

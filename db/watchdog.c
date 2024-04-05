@@ -25,6 +25,7 @@
 #include "views.h"
 #include "logmsg.h"
 #include "reqlog.h"
+#include "sc_global.h"
 #include <comdb2_atomic.h>
 
 int gbl_client_queued_slow_seconds = 0;
@@ -378,6 +379,8 @@ static void *watchdog_thread(void *arg)
         }
 
         reqlog_log_all_longreqs();
+
+        sc_alter_latency(counter);
 
         /* we use counter to downsample the run events for lower frequence
            tasks, like deadlock detector */
