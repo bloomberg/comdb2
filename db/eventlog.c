@@ -46,6 +46,8 @@
 #include "comdb2_atomic.h"
 #include "string_ref.h"
 
+#include <carray.h>
+
 extern int64_t comdb2_time_epochus(void);
 
 static int gbl_print_cnonce_as_hex = 1;
@@ -193,16 +195,13 @@ static char *eventlog_fname(const char *dbname)
                            comdb2_time_epochus());
 }
 
-cson_array *get_bind_array(struct reqlogger *logger, int nfields, int sample_queries)
+cson_array *get_bind_array(struct reqlogger *logger, int sample_queries)
 {
     if (!sample_queries && (eventlog == NULL || !eventlog_enabled || !eventlog_detailed))
         return NULL;
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
-
-    cson_array *arr = cson_value_get_array(bind_list);
-
-    return arr;
+    return cson_value_get_array(bind_list);
 }
 
 static inline void eventlog_append_value(cson_array *arr, const char *name,
@@ -267,15 +266,7 @@ static void eventlog_bind_blob_int(cson_array *arr, const char *name,
     if (!arr)
         return;
     int datalen = min(dlen, 1024);         /* cap the datalen logged */
-    const int exp_len = (2 * datalen) + 3; /* x' ... ' */
-    char *expanded_buf = malloc(exp_len + 1);
-    expanded_buf[0] = 'x';
-    expanded_buf[1] = '\'';
-    util_tohex(&expanded_buf[2], val, datalen);
-    expanded_buf[exp_len - 1] = '\'';
-    expanded_buf[exp_len] = '\0';
-    eventlog_append_value(arr, name, type, cson_value_new_string(expanded_buf, exp_len));
-    free(expanded_buf);
+    eventlog_append_value(arr, name, type, cson_value_new_blob((char *)val, datalen));
 }
 
 void eventlog_bind_blob(cson_array *a, const char *n, const void *v, int l)
@@ -316,6 +307,55 @@ void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
     int n;
     intv_to_str(tv, str, sizeof(str), &n);
     eventlog_append_value(arr, name, type, cson_value_new_string(str, n));
+}
+
+void eventlog_bind_array(cson_array *arr, const char *name, void *p, int n, int type)
+{
+    if (!arr) return;
+    char *typestr;
+    cson_value *val= cson_value_new_array();
+    cson_array *carray = cson_value_get_array(val);
+    switch (type) {
+    case CARRAY_INT32:
+        typestr = "int";
+        for (int i = 0; i < n; ++i) {
+            int32_t v = *((int32_t *)p + i);
+            cson_array_append(carray, cson_value_new_integer(v));
+        }
+        break;
+    case CARRAY_INT64:
+        typestr = "largeint";
+        for (int i = 0; i < n; ++i) {
+            int64_t v = *((int64_t *)p + i);
+            cson_array_append(carray, cson_value_new_integer(v));
+        }
+        break;
+    case CARRAY_DOUBLE:
+        typestr = "doublefloat";
+        for (int i = 0; i < n; ++i) {
+            double v = *((double *)p + i);
+            cson_array_append(carray, cson_value_new_double(v));
+        }
+        break;
+    case CARRAY_TEXT:
+        typestr = "char";
+        for (int i = 0; i < n; ++i) {
+            char *v = *((char **)p + i);
+            cson_array_append(carray, cson_value_new_string(v, strlen(v)));
+        }
+        break;
+    case CARRAY_BLOB:
+        typestr = "blob";
+        for (int i = 0; i < n; ++i) {
+            struct cdb2vec *v = (struct cdb2vec *)p + i;
+            cson_array_append(carray, cson_value_new_blob(v->iov_base, v->iov_len));
+        }
+        break;
+    default:
+        logmsg(LOGMSG_ERROR, "%s unknown type:%d for name:%s\n", __func__, type, name);
+        return;
+    }
+    eventlog_append_value(arr, name, typestr, val);
 }
 
 void eventlog_tables(cson_object *obj, const struct reqlogger *logger)

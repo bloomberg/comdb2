@@ -4,7 +4,7 @@
 struct reqlogger;
 struct cson_array;
 
-struct cson_array *get_bind_array(struct reqlogger *logger, int nfields, int sample_queries);
+struct cson_array *get_bind_array(struct reqlogger *logger, int sample_queries);
 
 void eventlog_bind_null(struct cson_array *, const char *);
 void eventlog_bind_int64(struct cson_array *, const char *, int64_t, int);
@@ -14,6 +14,7 @@ void eventlog_bind_blob(struct cson_array *, const char *, const void *, int);
 void eventlog_bind_varchar(struct cson_array *, const char *, const void *, int);
 void eventlog_bind_datetime(struct cson_array *, const char *, dttz_t *, const char *);
 void eventlog_bind_interval(struct cson_array *, const char *, intv_t *);
+void eventlog_bind_array(struct cson_array *, const char *, void *array_ptr, int array_count, int type);
 
 void eventlog_init();
 void eventlog_status(void);
