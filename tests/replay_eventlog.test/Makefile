@@ -7,7 +7,3 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=5m
 endif
-
-
-tool:
-	make -skC $(TESTSROOTDIR)/tools cdb2api_caller

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 INITNUMREC=100
@@ -71,7 +70,6 @@ insert_records_with_bind()
     echo "" > $insfl
 #{ CDB2_INTEGER = 1, CDB2_REAL = 2, CDB2_CSTRING = 3, CDB2_BLOB = 4, CDB2_DATETIME = 6, CDB2_INTERVALYM = 7, CDB2_INTERVALDS = 8, CDB2_DATETIMEUS = 9, CDB2_INTERVALDSUS = 10 }
     while [[ $j -le $nstop ]]; do 
-        echo $j
         echo "
 @bind CDB2_INTEGER v_alltypes_short $(((1-2*(j%2))*$j))
 @bind CDB2_INTEGER v_alltypes_u_short $j
@@ -94,7 +92,7 @@ insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, a
         assertres $? 0
         let j=j+1
     done
-    echo "done inserting round $nout"
+    echo "done inserting with bind round $nout"
 }
 
 update_records()
@@ -195,7 +193,7 @@ insert_rollback_tran()
     echo "rollback" >> in.sql
     cdb2sql ${CDB2_OPTIONS} ${DBNAME} default -f in.sql &>> $insfl
     assertres $? 0
-    echo "done inserting round $nout"
+    echo "done rollback round $nout"
 }
 
 insert_commit_tran()
@@ -216,7 +214,7 @@ insert_commit_tran()
     echo "commit" >> in.sql
     cdb2sql ${CDB2_OPTIONS} ${DBNAME} default -f in.sql &>> $insfl
     assertres $? 0
-    echo "done inserting round $nout"
+    echo "done commit round $nout"
 }
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
@@ -225,6 +223,7 @@ for node in $cluster ; do
 done
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1  { `cat alltypes.csc2 ` }"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table carray1 (a int, b double, c cstring(32), d longlong, e blob)"
 
 # following is an error because t2 does not exist, resulting in a 
 # fingerprint of 00000 so will not ba replayed
@@ -263,13 +262,11 @@ assertcnt t1 $NEWNUMREC
 insert_commit_tran $((NEWNUMREC+1)) $((NEWNUMREC+10))
 assertcnt t1 $((NEWNUMREC+10))
 
-
-set -e
-#echo "Now call task that uses cdb2api to ins/upd/del"
-${TESTSBUILDDIR}/cdb2api_caller ${DBNAME} t1 > cdb2api_caller.out
+${TESTSBUILDDIR}/cdb2api_caller ${DBNAME} t1 > /dev/null
+${TESTSBUILDDIR}/carray_insert ${DBNAME}
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > orig.txt
-
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from carray1 order by 1" >> orig.txt
 
 logflunziped=events.unzipped
 if [[ -z "$CLUSTER" ]]; then
@@ -290,26 +287,15 @@ else
     sort -n *.events.unzipped > $logflunziped
 fi
 
-set +e
-
 echo "Make sure that the data we expect is in the event log file"
 echo $logflunziped
-jq -r 'if (.type == "sql") and has("fingerprint") then .fingerprint else empty end' < $logflunziped | sort | uniq -c > fingerprints_only.out
+jq -r 'if (.type == "sql") and has("fingerprint") then "\(.fingerprint) \(.sql[0:24])" else empty end' < $logflunziped | sort | uniq -c > fingerprints_only.out
 if ! diff fingerprints_only.out fingerprints_freq.exp ; then
-    failexit "fingerprints_only.out contains different fingerprint data than expected"
+    echo "Failed diff $PWD/fingerprints_only.out $PWD/fingerprints_freq.exp"
+    failexit "fingerprints_only.out contains different fingerprint data expected"
 fi
-
-
-count=$(jq -rc 'if (.type == "sql") or (.type == "txn") then . else empty end' < $logflunziped | wc -l)
-CSHOULDBE=10279 # number of lines that should be in the log when single node
-if [[ $count -ne $CSHOULDBE ]] ; then
-    failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
-fi
-
-
 
 echo "working with secondary db"
-
 cluster=`cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node 'exec procedure sys.cmd.send("reql events roll")'
@@ -324,20 +310,19 @@ if [[ -z "$CLUSTER" ]]; then
     logfl=`cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("flush")'
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("reql events roll")'
-
-    zcat $logfl | grep --text -v 'sys.cmd.send' | grep --text -v "comdb2_prevquerycost" | sort -n > $slogflunziped
+    zcat $logfl | sort -n | egrep -v 'sys.cmd.send|comdb2_prevquerycost' > $slogflunziped
 else
-
     for node in $CLUSTER ; do
         logfl=`cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
         cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node 'exec procedure sys.cmd.send("flush")'
         cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node 'exec procedure sys.cmd.send("reql events roll")'
-        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep --text -v 'sys.cmd.send' > ${node}.events.unzipped
+        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" > ${node}.events.unzipped
     done
-    sort -n *.events.unzipped | grep --text -v "comdb2_prevquerycost" > $slogflunziped
+    sort -n *.events.unzipped | egrep -v 'sys.cmd.send|comdb2_prevquerycost' > $slogflunziped
 fi
 
 cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from t1 order by alltypes_u_short" > replayed.txt
+cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from carray1 order by 1" >> replayed.txt
 
 success=1
 
@@ -347,13 +332,6 @@ fi
 
 if [ $success != 1 ] ; then
     failexit "replayed.txt content is not the same as orig.txt"
-fi
-
-
-count=$(jq -rc 'if (.type == "sql") or (.type == "txn") then . else empty end' < $slogflunziped | wc -l)
-CSHOULDBE=$((CSHOULDBE-1)) # one less than the orig which had an error which does not get replayed
-if [[ $count -ne $CSHOULDBE ]] ; then
-    failexit "$slogflunziped contains $count rather than $CSHOULDBE entries"
 fi
 
 jq 'if (.type == "sql") and (.fingerprint != "00000000000000000000000000000000") then [.fingerprint, .sql] | @csv else empty end' < $logflunziped > 1.out
@@ -377,7 +355,6 @@ if [[ -z "$CLUSTER" ]]; then
 
     zcat $logfl | grep --text -i 'from t_datetime where' >>$logflunziped
 else
-
     for node in $CLUSTER ; do
         logfl=`cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
         cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("flush")'

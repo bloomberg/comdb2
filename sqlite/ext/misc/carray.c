@@ -58,10 +58,6 @@ SQLITE_EXTENSION_INIT1
 #include <string.h>
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 # include <carray.h>
-  struct cdb2vec {
-    size_t iov_len;
-    void *iov_base;
-  };
 #else
 #ifdef _WIN32
   struct iovec {

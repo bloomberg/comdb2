@@ -23,6 +23,13 @@
 extern "C" {
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+struct cdb2vec {
+  size_t iov_len;
+  void *iov_base;
+};
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /* Use this interface to bind an array to the single-argument version
 ** of CARRAY().
 */

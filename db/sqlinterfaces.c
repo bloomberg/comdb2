@@ -3237,7 +3237,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
 {
     int rc = 0;
     int params = param_count(clnt);
-    struct cson_array *arr = get_bind_array(logger, params);
+    struct cson_array *arr = get_bind_array(logger);
     struct param_data p;
     char intspace[12]; // enough space to fit string representation of integer
     for (int i = 0; i < params; ++i) {
@@ -3288,10 +3288,15 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             }
             /* fall-through */
             default:
-                logmsg(LOGMSG_ERROR, "carray_bind: invalid type:%d size:%d\n", p.type, p.len);
-                return -1;
+                goto carray_err;
             }
             rc = sqlite3_carray_bind(stmt, p.pos, p.u.p, p.arraylen, flag, SQLITE_STATIC);
+            eventlog_bind_array(arr, name, p.u.p, p.arraylen, flag);
+            if (rc) {
+carray_err:     *err = sqlite3_mprintf("carray_bind: invalid param:%s count:%d type:%d size:%d\n",
+                                       name, p.arraylen, p.type, p.len);
+                return -1;
+            }
             continue;
         }
         switch (p.type) {
@@ -3314,7 +3319,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_text(arr, name, p.u.p, p.len);
             break;
-        case CLIENT_VUTF8:
+        case CLIENT_VUTF8: /* Unclear to me how sql client can bind a CLIENT_VUTF8 parameter */
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
             eventlog_bind_varchar(arr, name, p.u.p, p.len);
             break;
