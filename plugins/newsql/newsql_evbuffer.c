@@ -306,7 +306,7 @@ static void wr_dbinfo_int(struct newsql_appdata_evbuffer *appdata, int write_res
     }
     struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
     if (evbuffer_get_length(wr_buf) == 0) {
-        rd_hdr(-1, 0, appdata);
+        evtimer_once(appdata->base, rd_hdr, appdata);
         return;
     }
     event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
@@ -737,7 +737,7 @@ static void ssl_success_cb(void *data)
 {
     struct newsql_appdata_evbuffer *appdata = data;
     if (enable_ssl_evbuffer(appdata) == 0) {
-        rd_hdr(-1, 0, appdata);
+        evtimer_once(appdata->base, rd_hdr, appdata);
     } else {
         ssl_error_cb(appdata);
     }
@@ -761,7 +761,7 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         goto cleanup;
     }
     if (ssl_response == 'N') {
-        rd_hdr(-1, 0, appdata);
+        evtimer_once(appdata->base, rd_hdr, appdata);
         return;
     }
     if (!appdata->ssl_data) {
@@ -783,7 +783,7 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         break;
     case CDB2_REQUEST_TYPE__RESET:
         newsql_reset_evbuffer(appdata);
-        rd_hdr(-1, 0, appdata);
+        evtimer_once(appdata->base, rd_hdr, appdata);
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
         process_ssl_request(appdata);
