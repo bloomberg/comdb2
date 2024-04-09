@@ -129,6 +129,8 @@ static __thread struct temptable *tmptbl_clone = NULL;
 uint32_t gbl_sql_temptable_count;
 int gbl_throttle_txn_chunks_msec = 0;
 
+int gbl_verify_error_on_table_find_miss = 1;
+
 void free_cached_idx(uint8_t **cached_idx)
 {
     int i;
@@ -5654,6 +5656,10 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         verify = 1;
         *pRes = 0;
     }
+
+    /* Also verify error if we're being asked to find a real rowid and it doesn't exist. */
+    if (gbl_early_verify && gbl_verify_error_on_table_find_miss && intKey && !is_genid_synthetic(intKey))
+        verify = 1;
 
     /* check authentication */
     if (authenticate_cursor(pCur, AUTHENTICATE_READ) != 0) {
