@@ -224,7 +224,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    if (rc && iq->sc->kind == SC_ADDTABLE) {
+    if (rc && iq->sc->kind == SC_ADDTABLE && rc != SC_TABLE_ALREADY_EXIST) {
         if (iq->sc->db) {
             delete_temp_table(iq, iq->sc->db);
         }
