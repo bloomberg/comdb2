@@ -3962,8 +3962,8 @@ low_headroom:
                         ctrace("deleting log %s %d\n", logname, filenum);
                     }
 
-                    rc = unlink(logname);
                     __log_invalidate(filenum);
+                    rc = unlink(logname);
                     if (rc) {
                         logmsg(LOGMSG_ERROR,
                                "delete_log_files: unlink for <%s> returned %d %d\n",
