@@ -5370,7 +5370,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;
     clnt->is_fast_expert = 0;
-    clnt->authdata = NULL;
 
     /* Reset the version, we have to set it for every run */
     clnt->spname[0] = 0;
