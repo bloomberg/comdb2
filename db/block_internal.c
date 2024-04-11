@@ -1969,10 +1969,11 @@ int blkseq_get_rcode(void *data, int datalen)
                 blkseq_line = __LINE__;
                 goto error;
             }
-            if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(
-                      &errstat, p_fstblk_buf, p_fstblk_buf_end))) {
-                blkseq_line = __LINE__;
-                goto error;
+            if (snapinfo_outrc != 0) {
+                if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&errstat, p_fstblk_buf, p_fstblk_buf_end))) {
+                    blkseq_line = __LINE__;
+                    goto error;
+                }
             }
             struct query_effects unused;
             if (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(

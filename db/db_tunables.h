@@ -1916,6 +1916,8 @@ REGISTER_TUNABLE("physrep_source_dbname", "Physical replication source cluster d
 REGISTER_TUNABLE("physrep_source_host", "List of physical replication source cluster hosts.",
                  TUNABLE_STRING, &gbl_physrep_source_host, READONLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOOLEAN, &gbl_physrep_ignore_queues,
+                 READONLY, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
 REGISTER_TUNABLE("revsql_allow_command_execution",
