@@ -80,6 +80,7 @@ int debug_switch_rep_verify_req_delay(void);       /* 0 */
 int debug_switch_test_trigger_deadlock(void);      /* 0 */
 int debug_switch_is_dbq_get_delayed(void);         /* 0 */
 int debug_switch_is_rep_rec_delayed(void);         /* 0 */
+int debug_switch_get_tmp_dir_sleep(void);          /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */
@@ -88,4 +89,5 @@ int debug_switch_net_delay(void); /* 0 */
 void debug_switch_set_rep_verify_req_delay(int);
 void debug_switch_set_dbq_get_delayed(int);
 void debug_switch_set_rep_rec_delayed(int);
+int debug_switch_set_tmp_dir_sleep(int);
 #endif
