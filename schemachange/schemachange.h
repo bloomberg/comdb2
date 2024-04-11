@@ -138,7 +138,7 @@ enum schema_change_kind {
 struct schema_change_type {
     /*  ==========    persistent members ========== */
     enum schema_change_kind kind;
-    unsigned long long rqid;
+    unsigned long long not_used; /* old rqid */
     uuid_t uuid;
     size_t tablename_len;
     char tablename[MAXTABLELEN];    /* name of table/queue */
@@ -243,10 +243,8 @@ struct schema_change_type {
         timepartition_version; /* time partition tableversion, if any */
     struct comdb2_partition partition;
 
-    /*********************** temporary fields for in progress
-     * schemachange************/
-    /********************** it will change eventually (do not try to serialize)
-     * ************/
+    /*********************** temporary fields for in progress * schemachange************/
+    /********************** it will change eventually (do not try to serialize) * ************/
 
     struct dbtable *db;
     struct dbtable *newdb;
@@ -260,8 +258,7 @@ struct schema_change_type {
     int sc_thd_failed;
     int schema_change;
 
-    /*********************** temporary fields for table upgrade
-     * ************************/
+    /*********************** temporary fields for table upgrade * ************************/
     unsigned long long start_genid;
 
     int already_finalized;
@@ -274,10 +271,8 @@ struct schema_change_type {
     pthread_mutex_t livesc_mtx; /* mutex for logical redo */
     void *curLsn;
 
-    /*********************** temporary fields for sbuf packing
-     * ************************/
-    /*********************** not needed for anything else
-     * *****************************/
+    /*********************** temporary fields for sbuf packing * ************************/
+    /*********************** not needed for anything else * *****************************/
 
     size_t packed_len;
 

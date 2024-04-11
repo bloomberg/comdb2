@@ -279,7 +279,6 @@ int gbl_iothreads = 0;
 int gbl_sqlreadahead = 0;
 int gbl_ioqueue = 0;
 int gbl_prefaulthelperthreads = 0;
-int gbl_osqlpfault_threads = 0;
 int gbl_prefault_udp = 0;
 __thread int send_prefault_udp = 0;
 __thread snap_uid_t *osql_snap_info; /* contains cnonce */
@@ -3614,11 +3613,6 @@ static int init(int argc, char **argv)
 
     if (init_blob_cache() != 0) return -1;
 
-    if (osqlpfthdpool_init()) {
-        logmsg(LOGMSG_FATAL, "failed to initialise sql module\n");
-        return -1;
-    }
-
     if (gbl_ctrace_dbdir)
         ctrace_openlog_taskname(thedb->basedir, dbname);
     else {
@@ -5417,6 +5411,7 @@ int main(int argc, char **argv)
     hash_set_global_event_callback(hash_no_op_callback);
 #   endif
 
+    init_zero_uuid();
     hostinfo_init();
     clienthost_init();
 

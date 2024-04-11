@@ -60,12 +60,6 @@ int get_osql_maxtransfer(void);
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen,
                    int block2_type);
 
-int req2netreq(int reqtype);
-int req2netrpl(int reqtype);
-int tran2req(int dbtran);
-int tran2netreq(int dbtran);
-int tran2netrpl(int dbtran);
-
 int recom_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                  char *tzname, int is_distributed_tran);
 int recom_abort(struct sqlclntstate *clnt);

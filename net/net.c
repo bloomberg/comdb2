@@ -2069,18 +2069,6 @@ int net_send_tail(netinfo_type *netinfo_ptr, const char *host, int usertype,
                   void *data, int datalen, int nodelay, void *tail, int tailen)
 {
 
-#ifdef _BLOCKSQL_DBG
-    int i = 0;
-    printf("Sending data [%d]:\n", datalen);
-    for (i = 0; i < datalen; i++)
-        printf("%02x ", ((char *)data)[i]);
-    printf("\n");
-
-    printf("Sending tail[%d]:\n", tailen);
-    for (i = 0; i < tailen; i++)
-        printf("%02x ", ((char *)tail)[i]);
-    printf("\n");
-#endif
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay, 1,
                         &tail, &tailen, 0, 0, 0);
 }

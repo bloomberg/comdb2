@@ -122,7 +122,6 @@ void commit_bench(void *, int, int);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
-void osql_send_test(void);
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
@@ -1070,32 +1069,6 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "enable_pageorder_recsz_check") == 0) {
        logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
-    } else if (tokcmp(tok, ltok, "disable_osql_prefault") == 0) {
-        if (!gbl_osqlpfault_threads) {
-           logmsg(LOGMSG_USER, "Osql io prefault is already disabled\n");
-        } else {
-            gbl_osqlpfault_threads = 0;
-           logmsg(LOGMSG_USER, "Disabled osql io prefault.\n");
-        }
-    } else if (tokcmp(tok, ltok, "enable_osql_prefault") == 0) {
-        if (gbl_osqlpfault_threads) {
-           logmsg(LOGMSG_USER, "Osql io prefault is already enabled\n");
-        } else {
-            if (!thdpool_get_maxthds(gbl_osqlpfault_thdpool)) {
-                logmsg(LOGMSG_ERROR, "Please set max threads for osqlpfaultpool first\n");
-                logmsg(LOGMSG_ERROR, "Osql io prefault is NOT enabled\n");
-            } else {
-                gbl_osqlpfault_threads = 1;
-               logmsg(LOGMSG_USER, "Enabled osql io prefault.\n");
-            }
-        }
-    } else if (tokcmp(tok, ltok, "get_osql_prefault_status") == 0) {
-        if (gbl_osqlpfault_threads) {
-           logmsg(LOGMSG_USER, "Osql io prefault is ENABLED\n");
-        } else {
-           logmsg(LOGMSG_USER, "Osql io prefault is DISABLED\n");
-        }
-        thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
     } else if (tokcmp(tok, ltok, "set_udp_prefault_latency") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok) {
@@ -1753,7 +1726,6 @@ clipper_usage:
         } else if (tokcmp(tok, ltok, "sqlpool") == 0) {
             thdpool_print_stats(stdout, gbl_appsock_thdpool);
             print_all_sql_pool_stats(stdout);
-            thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
             thdpool_print_stats(stdout, gbl_udppfault_thdpool);
             thdpool_print_stats(stdout, gbl_pgcompact_thdpool);
         } else if (tokcmp(tok, ltok, "dumprevsql") == 0) {
@@ -2915,47 +2887,6 @@ clipper_usage:
             logmsg(LOGMSG_USER, "sql track sqlengine %s\n",
                    (gbl_track_sqlengine_states) ? "enabled" : "disabled");
         }
-
-    } else if (tokcmp(tok, ltok, "osqlecho") == 0) {
-        int stream;
-        unsigned long long *sent;
-        unsigned long long *replied;
-        unsigned long long *received;
-        char *host;
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected host for osqlecho\n");
-            return -1;
-        }
-        host = internn(tok, ltok);
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok) {
-            stream = toknum(tok, ltok);
-        } else {
-            stream = 1;
-        }
-
-        sent =
-            (unsigned long long *)malloc(stream * sizeof(unsigned long long));
-        replied =
-            (unsigned long long *)malloc(stream * sizeof(unsigned long long));
-        received =
-            (unsigned long long *)malloc(stream * sizeof(unsigned long long));
-        rc = osql_comm_echo(host, stream, sent, replied, received);
-        if (rc == 0) {
-            int i = 0;
-            for (i = 0; i < stream; i++) {
-               logmsg(LOGMSG_USER, "%s: total=%llu msec sent=%llu msec return=%llu msec "
-                       "(%llu %llu %llu)\n",
-                       host, received[i] - sent[i], replied[i] - sent[i],
-                       received[i] - replied[i], sent[i], replied[i],
-                       received[i]);
-            }
-        } else {
-            logmsg(LOGMSG_ERROR, "echo failed\n");
-        }
-
     } else if (tokcmp(tok, ltok, "dumprecord") == 0) {
         struct dbtable *db;
         int rrn;
@@ -3378,8 +3309,6 @@ clipper_usage:
         thdpool_process_message(gbl_appsock_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
         thdpool_process_message(get_default_sql_pool(0), line, lline, st);
-    } else if (tokcmp(tok, ltok, "osqlpfaultpool") == 0) {
-        thdpool_process_message(gbl_osqlpfault_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "udppfaultpool") == 0) {
         thdpool_process_message(gbl_udppfault_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "pgcompactpool") == 0) {
@@ -5100,8 +5029,6 @@ clipper_usage:
             Pthread_mutex_lock(&testguard);
             bdb_locktest(thedb->bdb_env);
             Pthread_mutex_unlock(&testguard);
-        } else if (tokcmp(tok, ltok, "bad_osql") == 0) {
-            osql_send_test();
         } else if (tokcmp(tok, ltok, "reversesql") == 0) {
             char *dbname;
             char *host;

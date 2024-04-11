@@ -95,8 +95,8 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
     size_t packed_sc_data_len;
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%llx %s]\n", __func__,
-           s->tablename, s->rqid, us);
+    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%s]\n", __func__,
+           s->tablename, us);
     if (pack_schema_change_type(s, &packed_sc_data, &packed_sc_data_len)) {
         sc_errf(s, "could not pack the schema change data for storage in "
                    "low level meta table\n");
@@ -1080,19 +1080,17 @@ int resume_schema_change(void)
             s->timepartition_name = thedb->dbs[i]->timepartition_name;
 
             logmsg(LOGMSG_INFO,
-                   "%s: resuming schema change: rqid [%llx %s] "
+                   "%s: resuming schema change: rqid [%s] "
                    "table %s, add %d, drop %d, fastinit %d, alter %d%s%s\n",
-                   __func__, s->rqid, us, s->tablename, s->kind == SC_ADDTABLE,
+                   __func__, us, s->tablename, s->kind == SC_ADDTABLE,
                    s->kind == SC_DROPTABLE, IS_FASTINIT(s), IS_ALTERTABLE(s),
                    s->timepartition_name ? " timepartition " : "",
                    s->timepartition_name ? s->timepartition_name : "");
 
-            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-                s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) && comdb2uuid_is_zero(s->uuid)) {
                 s->resume = SC_RESUME;
                 if (s->timepartition_name) {
-                    logmsg(LOGMSG_INFO,
-                           "Resuming schema change for view '%s' shard '%s'\n",
+                    logmsg(LOGMSG_INFO, "Resuming schema change for view '%s' shard '%s'\n",
                            s->timepartition_name, s->tablename);
                     s->finalize = 0;
                 } else {

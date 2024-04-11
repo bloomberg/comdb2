@@ -342,7 +342,6 @@
 (name='appsockpool')
 (name='loadcache')
 (name='memptrickle')
-(name='osqlpfaultpool')
 (name='pgcompactpool')
 (name='recovery_processors')
 (name='recovery_workers')

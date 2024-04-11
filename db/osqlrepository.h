@@ -41,7 +41,7 @@ int osql_repository_rem(osql_sess_t *sess);
  * Increments the users to prevent premature deletion
  *
  */
-osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid);
+osql_sess_t *osql_repository_get(uuid_t uuid);
 
 /**
  * Decrements the number of users
@@ -89,8 +89,7 @@ int osql_repository_cancelall(void);
  * used by socksql poking
  *
  */
-int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
-                                   int *rows_affected);
+int osql_repository_session_exists(uuid_t uuid, int *rows_affected);
 
 void osql_repository_for_each(void *arg, int (*func)(void *, void *));
 

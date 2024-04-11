@@ -335,8 +335,6 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     int dup_txn_insert = 0;
     char *od_dta_tail = NULL;
     int od_tail_len;
-    if (iq->osql_step_ix)
-        gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
     void *cur = NULL;
     dtikey_t ditk = {0};
@@ -399,8 +397,6 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
 
         /* light the prefault kill bit for this subop - newkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_NEWKEY);
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         if (reorder) {
             // if not datacopy, no need to save od_dta_tail
@@ -601,8 +597,6 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
         /* light the prefault kill bit for this subop - oldkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
         if (iq->idxDelete) {
             /* only create key if we need it */
@@ -659,9 +653,6 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             then we can only do the in place update if the genid (minus the
             updateid portion) didnt change, ie if an in place dta update
             happened here. */
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-
         int key_unique = (iq->usedb->ix_dupes[ixnum] == 0);
         int same_key = (memcmp(newkey, oldkey, keysize) == 0);
         if (!live_sc_delay && gbl_key_updates &&
@@ -899,8 +890,6 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode, int *ixfai
 
         /* light the prefault kill bit for this subop - oldkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_OLDKEY);
-        if (iq->osql_step_ix)
-            gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         if (reorder) {
             // if not datacopy, no need to save od_dta_tail

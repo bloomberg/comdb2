@@ -24,6 +24,7 @@
 
 struct ireq;
 struct dbtable;
+struct tran_tag;
 
 /* libcmacc2 populates these structures.
    Schema records are added from upon parsing a "csc" directive.
@@ -289,7 +290,8 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema);
 char *sqltype(struct field *f, char *buf, int len);
 char *csc2type(struct field *f);
 void debug_dump_tags(const char *tblname);
-struct tran_tag;
+void fix_lrl_ixlen(void);
+void fix_lrl_ixlen_tran(struct tran_tag *);
 int max_type_size(int type, int len);
 int getidxnumbyname(const struct dbtable *table, const char *tagname, int *ixnum);
 int partial_key_length(struct dbtable *dbname, const char *keyname,
@@ -432,7 +434,7 @@ struct schema *clone_server_to_client_tag(struct schema *from, const char *newta
 /* this populates global schema hash (i.e. tags) for a table
  * all versions of the schema are loaded
  */
-int load_csc2_versions(struct dbtable *table, tran_type *tran);
+int load_csc2_versions(struct dbtable *table, struct tran_tag *);
 
 /* NOTE: tag is already strdup-ed */
 struct schema * alloc_schema(char *tag, int nmembers, int flags);

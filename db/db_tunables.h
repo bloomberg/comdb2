@@ -917,10 +917,6 @@ REGISTER_TUNABLE("osql_net_poll",
 REGISTER_TUNABLE("osql_net_portmux_register_interval", NULL, TUNABLE_INTEGER,
                  &gbl_osql_net_portmux_register_interval, READONLY, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("osqlprefaultthreads",
-                 "If set, send prefaulting hints to nodes. (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_osqlpfault_threads, READONLY, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("osql_verify_ext_chk",
                  "For block transaction mode only - after this many verify "
                  "errors, check if transaction is non-commitable (see default "

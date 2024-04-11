@@ -236,16 +236,10 @@ enum OPCODES {
     OP_MAKE_NODE_INCOHERENT = 130,
     OP_CLIENT_STATS = 131,
     OP_FWD_BLOCK_LE = 132,
-    OP_UPGRADE = 133 /* dummy code for online upgrade */
-
-    ,
-    OP_SORESE = 134 /* no blk buffers here */
-    ,
-
-    MAXTYPCNT = 134
-
-    ,
-    OP_DEBUG = 200 /* for debugging (unused?) */
+    OP_UPGRADE = 133, /* dummy code for online upgrade */
+    //OP_SORESE = 134, /* no blk buffers here */
+    MAXTYPCNT = 134,
+    OP_DEBUG = 200, /* for debugging (unused?) */
 };
 
 /* if you add a new blockop, please update toblock_init() and breq2a()
@@ -1182,27 +1176,19 @@ typedef struct bpfunc_lstnode {
 typedef LISTC_T(bpfunc_lstnode_t) bpfunc_list_t;
 /*******************************************************************/
 
-enum OSQL_REQ_TYPE {
-    OSQL_REQINV = 0,
-    OSQL_BLOCK_REQ = 1, /* obsolete */
-    OSQL_SOCK_REQ = 2,
-    OSQL_RECOM_REQ = 3,
-    OSQL_SERIAL_REQ = 4,
-
-    OSQL_BLOCK_REQ_COST = 5, /* obsolete */
-    OSQL_SOCK_REQ_COST = 6,
-
-    OSQL_SNAPISOL_REQ = 7,
-    OSQL_SNAP_UID_REQ = 8,
-    OSQL_MAX_REQ = 9,
-};
+typedef enum {
+    OSQL_REQINV,
+    OSQL_SOCK_REQ,
+    OSQL_RECOM_REQ,
+    OSQL_SERIAL_REQ,
+    OSQL_SNAPISOL_REQ,
+    OSQL_MAX_REQ
+} OSQL_REQ_TYPE;
 
 #define IQ_SNAPINFO(iq) ((iq)->sorese->snap_info)
 #define IQ_HAS_SNAPINFO(iq) ((iq)->sorese && (iq)->sorese->snap_info)
 #define IQ_HAS_SNAPINFO_KEY(iq) (IQ_HAS_SNAPINFO(iq) && IQ_SNAPINFO(iq)->keylen > 0)
 
-/* Magic rqid value that means "please use uuid instead" */
-#define OSQL_RQID_USE_UUID 1
 typedef struct blocksql_tran blocksql_tran_t;
 typedef struct sess_impl sess_impl_t;
 
@@ -1220,7 +1206,6 @@ typedef struct osql_target osql_target_t;
 struct osql_sess {
 
     /* request part */
-    unsigned long long rqid; /* identifies the client request session */
     uuid_t uuid;
     snap_uid_t *snap_info;
     sess_impl_t *impl;
@@ -1228,7 +1213,7 @@ struct osql_sess {
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
 
-    enum OSQL_REQ_TYPE type; /* session version */
+    OSQL_REQ_TYPE type; /* session version */
 
     struct errstat xerr; /* error set when OSQL_XERR arrives */
 
@@ -1292,7 +1277,6 @@ struct ireq {
     uint8_t *p_buf_out;           /* pointer to current pos in output buf */
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
-    unsigned long long fwd_tag_rqid;
     int frompid;
     int debug;
     int opcode;
@@ -1370,9 +1354,6 @@ struct ireq {
     /* indexes on expressions */
     uint8_t **idxInsert;
     uint8_t **idxDelete;
-
-    /* osql prefault step index */
-    int *osql_step_ix;
 
     tran_type *sc_logical_tran;
     tran_type *sc_tran;
@@ -1536,12 +1517,6 @@ enum convert_scan_mode {
     SCAN_PAGEORDER = 5 /* 1 thread per stripe in page-order */
 };
 
-typedef struct {
-    unsigned long long rqid;
-    unsigned step;
-    uuid_t uuid;
-} osqlpf_step;
-
 /* global settings */
 extern int gbl_sc_timeoutms;
 extern int gbl_trigger_timepart;
@@ -1612,10 +1587,6 @@ extern int gbl_sqlreadaheadthresh;
 extern int gbl_iothreads;
 extern int gbl_ioqueue;
 extern int gbl_prefaulthelperthreads;
-
-extern int gbl_osqlpfault_threads;
-extern osqlpf_step *gbl_osqlpf_step;
-extern queue_type *gbl_osqlpf_stepq;
 
 extern int gbl_starttime;
 extern int gbl_early_blkseq_check;
@@ -1783,7 +1754,6 @@ extern int gbl_prefault_toblock_local;
 
 extern int gbl_appsock_pooling;
 extern struct thdpool *gbl_appsock_thdpool;
-extern struct thdpool *gbl_osqlpfault_thdpool;
 extern struct thdpool *gbl_udppfault_thdpool;
 
 extern int gbl_consumer_rtcpu_check;
@@ -1884,7 +1854,6 @@ void sqlnet_init(void);
 int clnt_stats_init(void);
 int sqlpool_init(void);
 int schema_init(void);
-int osqlpfthdpool_init(void);
 int init_opcode_handlers();
 void toblock_init(void);
 int mach_class_init(void);
@@ -1919,29 +1888,25 @@ void thd_dump(void);
 int thd_queue_depth(void);
 
 enum comdb2_queue_types {
-    REQ_WAITFT = 0,
-    REQ_SOCKET,
+    REQ_WAITFT,
     REQ_OFFLOAD,
     REQ_SOCKREQUEST,
-    REQ_PQREQUEST
 };
 
 int handle_buf_main(
     struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
     const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
     char *fromtask, osql_sess_t *sorese, int qtype,
-    void *data_hndl, // handle to data that can be used according to request
-                     // type
-    int luxref, unsigned long long rqid);
-int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
-               int debug, char *frommach); /* 040307dh: 64bits */
-int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
-                                   uint8_t *p_buf, const uint8_t *p_buf_end,
-                                   int debug, char *frommach, int frompid,
-                                   char *fromtask);
-int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
-                             const uint8_t *p_buf_end, int debug,
-                             char *frommach, unsigned long long rqid);
+    void *data_hndl, // handle to data that can be used according to request type
+    int luxref);
+
+int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
+                     const uint8_t *p_buf_end, int debug, char *frommach,
+                     int frompid, char *fromtask, osql_sess_t *sorese,
+                     int qtype, void *data_hndl, int luxref,
+                     void *p_sinfo, intptr_t curswap,
+                     int comdbg_flags);
+
 void req_stats(struct dbtable *db);
 void appsock_quick_stat(void);
 void appsock_stat(void);
@@ -1966,6 +1931,7 @@ struct buf_lock_t {
 
 #define MAX_BUFFER_SIZE 65536
 
+int handle_buf_block_offload(struct dbenv *, uint8_t *p_buf, const uint8_t *p_buf_end, int debug, char *frommach, struct buf_lock_t *);
 int signal_buflock(struct buf_lock_t *p_slock);
 int free_bigbuf(uint8_t *p_buf, struct buf_lock_t *p_slock);
 int free_bigbuf_nosignal(uint8_t *p_buf);
@@ -2634,8 +2600,6 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);
 int toblock(struct ireq *iq);
-int to_sorese_init(struct ireq *iq);
-int to_sorese(struct ireq *iq);
 void count_table_in_thread(const char *table);
 int findkl_enable_blob_verify(void);
 void sltdbt_get_stats(int *n_reqs, int *l_reqs);

@@ -599,7 +599,7 @@ int comdb2SqlSchemaChange_tran(OpFunc *f)
     int rc = 0;
     int sentops = 0;
     int bdberr = 0;
-    osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
+    osql_sock_start(clnt, 0);
     comdb2SqlSchemaChange(f);
     if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
         rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
@@ -607,13 +607,13 @@ int comdb2SqlSchemaChange_tran(OpFunc *f)
             logmsg(LOGMSG_ERROR,
                    "%s:%d failed to process shadow table, rc %d, bdberr %d\n",
                    __func__, __LINE__, rc, bdberr);
-            osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            osql_sock_abort(clnt);
             f->rc = osql->xerr.errval = ERR_INTERNAL;
             f->errorMsg = "Failed to process shadow table";
             return ERR_INTERNAL;
         }
     }
-    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
+    rc = osql_sock_commit(clnt, TRANS_CLNTCOMM_NORMAL);
     if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
         osql->xerr.errval = 0;
     }
@@ -7358,7 +7358,7 @@ int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
     struct sqlclntstate *clnt = get_sql_clnt();
     int rc = 0;
     if(!clnt->intrans) {
-        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) == 0)
+        if ((rc = osql_sock_start(clnt, 0)) == 0)
             clnt->intrans = 1;
     }
     if (!rc)
