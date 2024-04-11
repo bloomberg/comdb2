@@ -87,6 +87,7 @@ static struct debug_switches {
     int test_trigger_deadlock;
     int dbq_get_is_delayed;
     int rep_rec_is_delayed;
+    int get_tmp_dir_sleep;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -270,6 +271,7 @@ int init_debug_switches(void)
     register_debug_switch("force_file_version_to_fail", &debug_switches.force_file_version_to_fail);
     register_debug_switch("rep_verify_req_delay", &debug_switches.rep_verify_req_delay);
     register_debug_switch("test_trigger_deadlock", &debug_switches.test_trigger_deadlock);
+    register_debug_switch("get_tmp_dir_sleep", &debug_switches.get_tmp_dir_sleep);
     return 0;
 }
 
@@ -535,4 +537,12 @@ void debug_switch_set_rep_rec_delayed(int val)
 int debug_switch_is_rep_rec_delayed(void)
 {
     return debug_switches.rep_rec_is_delayed;
+}
+int debug_switch_get_tmp_dir_sleep(void)
+{
+    return debug_switches.get_tmp_dir_sleep;
+}
+void debug_switch_set_tmp_dir_sleep(int val)
+{
+    debug_switches.get_tmp_dir_sleep = val;
 }
