@@ -118,8 +118,8 @@ enum {
     NET_START_SC = 115,
     NET_STOP_SC = 116,
     NET_ODH_OPTIONS = 117,
-    NET_OSQL_BLOCK_REQ = 118,        /* obsolete */
-    NET_OSQL_BLOCK_RPL = 119,        /* obsolete */
+    NET_OSQL_BLOCK_REQ = 118, /* obsolete */
+    NET_OSQL_BLOCK_RPL = 119, /* obsolete */
     NET_SETLOCKS = 120,
     NET_SET_ALL_LOCKS = 121,
     NET_RELEASE_LOCKS = 122,
@@ -128,7 +128,7 @@ enum {
     NET_OSQL_RECOM_REQ = 125,        /* this goes only on offload net */
     NET_OSQL_RECOM_RPL = 126,        /* this goes only on offload net */
     NET_HBEAT_SQL = 127,             /* this goes only on offload net */
-    NET_FORGETMENOT = 128,           /* to remind master of an incoherent node */
+    NET_FORGETMENOT = 128,           /* depricated, no longer used */
     NET_USE_LLMETA = 129,            /* depricated, in this version of comdb2, * all dbs
                                         must be llmeta */
     NET_OSQL_POKE = 130,             /* obsolete */

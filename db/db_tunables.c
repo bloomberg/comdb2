@@ -434,6 +434,7 @@ extern int gbl_physrep_max_pending_replicants;
 extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_register_interval;
 extern int gbl_physrep_shuffle_host_list;
+extern int gbl_physrep_ignore_queues;
 
 extern char *gbl_physrep_source_dbname;
 extern char *gbl_physrep_source_host;
