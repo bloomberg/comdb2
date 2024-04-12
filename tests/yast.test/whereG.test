@@ -43,13 +43,23 @@ do_test 5.2.1 {
 } {200}
 
 if {[string match *stat4scangenerated* $env(DBNAME)]} then {
-  do_eqp_test 5.3.1.stat4 {
-    SELECT * FROM t1 WHERE a=100
-  } {3 0 0 {SCAN TABLE t1 (~48 rows)}}
+
+do_eqp_test 5.3.1.stat4 {
+SELECT * FROM t1 WHERE a=100
+} {
+  QUERY PLAN
+  `--SCAN TABLE t1
+}
+
 } else {
-  do_eqp_test 5.3.1 {
-    SELECT * FROM t1 WHERE a=100
-  } {5 0 0 {SEARCH TABLE t1 USING INDEX $I1_A82B8A75 (a=?) (~96 rows)}}
+
+do_eqp_test 5.3.1 {
+SELECT * FROM t1 WHERE a=100
+} {
+  QUERY PLAN
+  `--SEARCH TABLE t1 USING INDEX $I1_A82B8A75 (a=?)
+}
+
 }
 
 finish_test

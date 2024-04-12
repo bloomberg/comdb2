@@ -392,13 +392,11 @@ do_execsql_test index6-8.0 {
 
 do_eqp_test index6-8.1 {
   SELECT * FROM t8a LEFT JOIN t8b ON (x = 'value' AND y = a)
-} {7 0 0 {SCAN TABLE t8a (~1048576 rows)}
-   9 0 0 {SEARCH TABLE t8b USING INDEX $I8C_63F33D56 (y=?) (~9 rows)}
+} {
+  QUERY PLAN
+  |--SCAN TABLE t8a
+  `--SEARCH TABLE t8b USING INDEX $I8C_63F33D56 (y=?)
 }
-#{
-#  0 0 0 {SCAN TABLE t8a} 
-#  0 1 1 {SEARCH TABLE t8b USING INDEX i8c (y=?)}
-#}
 
 do_execsql_test index6-8.2 {
   SELECT * FROM t8a LEFT JOIN t8b ON (x = 'value' AND y = a) order by a

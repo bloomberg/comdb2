@@ -13,3 +13,5 @@ do_test types-1.0 {
 do_execsql_test types-1.1.1 {
   select a, quote(b) from t where a=1 union all select a, quote(b) from t where a=2;
 } {1 {} 2 X'0011'}
+
+finish_test

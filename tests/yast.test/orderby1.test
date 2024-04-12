@@ -77,9 +77,12 @@ do_test 1.2a {
 #
 do_eqp_test 1.2b {
   SELECT name FROM album JOIN track USING (aid) ORDER BY +title, +tn;
-} {8 0 0 {SCAN TABLE track (~1048576 rows)}
-   10 0 0 {SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?) (~1 row)}
-   27 0 0 {USE TEMP B-TREE FOR ORDER BY}}
+} {
+  QUERY PLAN
+  |--SCAN TABLE track
+  |--SEARCH TABLE album USING INDEX $PRIMARY_3FC26355 (aid=?)
+  `--USE TEMP B-TREE FOR ORDER BY
+}
 #{/ORDER BY/}   ;# separate sorting pass due to "+" on ORDER BY terms
 
 # The same query with ORDER BY optimizations turned off via built-in test.
@@ -562,13 +565,11 @@ do_execsql_test 8.0 {
 
 do_eqp_test 8.1 {
   SELECT * FROM t1 ORDER BY a, b;
-} {6 0 0 {SCAN TABLE t1 USING INDEX $I1_433F50E9 (~1048576 rows)}
-   23 0 0 {USE TEMP B-TREE FOR RIGHT PART OF ORDER BY}
+} {
+  QUERY PLAN
+  |--SCAN TABLE t1 USING INDEX $I1_433F50E9
+  `--USE TEMP B-TREE FOR RIGHT PART OF ORDER BY
 }
-#{
-#  0 0 0 {SCAN TABLE t1 USING INDEX i1} 
-#  0 0 0 {USE TEMP B-TREE FOR RIGHT PART OF ORDER BY}
-#}
 
 # LZ: 10000 might be too big for comdb2, let me use 8000
 do_execsql_test 8.2 {
