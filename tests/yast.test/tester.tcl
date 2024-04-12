@@ -371,6 +371,8 @@ proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
     if {[string index $sql 0] eq "#"} {return}
     maybe_append_query_to_log_file $sql $dbName $tier
     set doCost [expr {[string length $costVarName] > 0}]
+    set lastCost [string equal $costVarName lastcost]
+    if { $lastCost } { set doCost 0 }
 
     if {[info exists ::cdb2_config]} then {
       cdb2 configure $::cdb2_config true
@@ -388,6 +390,10 @@ proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
     if {$doCost} {
         upvar 1 $costVarName cost
         set cost ""; cdb2 run $db "SELECT comdb2_prevquerycost() AS Cost"
+        grab_cdb2_results $db cost tabs
+    } elseif {$lastCost} {
+        upvar 1 $costVarName cost
+        set cost ""; cdb2 run $db "SELECT comdb2_last_cost() AS Cost"
         grab_cdb2_results $db cost tabs
     }
 
@@ -895,6 +901,12 @@ proc do_execsql_test {testname sql {result {}}} {
   set r {}
   foreach x $result {lappend r $x}
   uplevel do_test $testname [list "execsql {$sql}"] [list $r]
+}
+
+proc do_lastcost_test {testname sql {result {}}} {
+  set r {}
+  foreach x $result {lappend r $x}
+  uplevel do_test $testname [list "execsql {$sql} lastcost"] [list $r]
 }
 
 proc do_catchsql_test {testname sql result} {
@@ -1634,6 +1646,12 @@ proc execsql {sql {options ""}} {
      || [lsearch -exact $options count_steps] != -1} {
       set cost ""
       catch {do_cdb2_defquery $query $format cost} outputs
+    } elseif {[string equal $options lastcost]} {
+      set rc [catch {do_cdb2_defquery $query $format lastcost} outputs]
+      if {$rc == 0} {
+        append outputs "\n" $lastcost
+        set lastcost ""
+      }
     } else {
       set rc [catch {do_cdb2_defquery $query $format} outputs]
       if {$rc == 0} {set cost ""}
