@@ -2068,30 +2068,6 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
     return pCol->zName;
 }
 
-/**
- * Retrieve/create space for a Btree schema change (per foreign db)
- *
- */
-Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes)
-{
-
-    assert(pBt->is_remote && pBt->fdb != NULL);
-
-    /* TODO: switch to sharing schemas for fdbs */
-    /*
-    fdb_t *fdb = pBt->fdb;
-    Pthread_mutex_lock(&fdb->dbcon_mtx);
-    if (fdb->schema == NULL)
-    {
-       fdb->schema = (Schema*)calloc(1, nbytes);
-    }
-    Pthread_mutex_unlock(&fdb->dbcon_mtx);
-
-    return fdb->schema;
-    */
-    return calloc(1, nbytes);
-}
-
 static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_cache)
 {
     SBUF2 *sb = *psb;
