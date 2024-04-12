@@ -299,12 +299,6 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
                                  int rootpage, fdb_tran_t *trans, int *ixnum,
                                  int need_ssl);
 
-/**
- * Retrieve/create space for a Btree schema change (per foreign db)
- *
- */
-Schema *fdb_sqlite_get_schema(Btree *pBt, int nbytes);
-
 /*
    This returns the sqlstats table under a mutex
  */
