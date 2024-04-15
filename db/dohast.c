@@ -23,6 +23,7 @@
 
 int gbl_dohast_disable = 0;
 int gbl_dohast_verbose = 0;
+int gbl_dohsql_joins = 1;
 
 static void node_free(dohsql_node_t **pnode, sqlite3 *db);
 static void _save_params(Parse *pParse, dohsql_node_t *node);
@@ -190,8 +191,9 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
         return NULL; /* no having */
     if (p->pGroupBy)
         return NULL; /* no group by */
-    /* if (p->pSrc->nSrc > 1)
-        return NULL;  no joins */
+    if ((!gbl_dohsql_joins && p->pSrc->nSrc > 1) || /* disable joins */
+        (p->pSrc->nSrc > 1 && p->pOrderBy)) /* ordered joins are not working now */
+        return NULL;
 
     if (p->pPrior && p->op != TK_ALL)
         return NULL; /* only union all */

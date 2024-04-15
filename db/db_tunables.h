@@ -2490,5 +2490,8 @@ REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("dohsql_joins",
+                 "Enable to support joins in parallel sql execution (default: on)",
+                 TUNABLE_BOOLEAN, &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
