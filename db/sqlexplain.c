@@ -518,12 +518,11 @@ void explain_data_delete(IndentInfo *p)
     p->nIndent = 0;
 }
 
-void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
+void get_one_explain_line(strbuf *out, Vdbe *v, Op *op, int indent,
                           int largestwidth, int pc, struct cursor_info *cur,
                           int *pSkipCount)
 {
     char str[2];
-    Op *op = &v->aOp[pc];
     if (op->opcode != OP_Column) {
         strbuf_appendf(out, "%3d [%*s]: ", pc, largestwidth,
                        sqlite3OpcodeName(op->opcode));
@@ -939,6 +938,13 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, ", then jump to %d", op->p2);
 
         break;
+    case OP_Program:
+        strbuf_appendf(out, "Call subprogram %p.  Goto %d if throws exception.  Params at R%d, save state in R%d", op->p4.pProgram, op->p2, op->p1, op->p3);
+        break;
+    case OP_Param:
+        strbuf_appendf(out, "Copy parameter from caller's R%d to this R%d\n", op->p1, op->p2);
+        break;
+    case OP_SeekRowid:
     case OP_NotExists:
         strbuf_appendf(out,
                        "If record id in R%d can't be found using cursor [%d], ",
@@ -1116,7 +1122,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_CursorHint:
         strbuf_appendf(out, "Cursor [%d] table ", op->p1);
         print_cursor_description(out, &cur[op->p1]);
-        char *descr = sqlite3ExprDescribe(hndl->pVdbe, op->p4.pExpr);
+        char *descr = sqlite3ExprDescribe(v, op->p4.pExpr);
         strbuf_appendf(out, " hint \"%s\"",
                        (descr) ? descr : "(expression not parseable, see 592)");
         if (descr)
@@ -1311,13 +1317,39 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
             indent = 0;
         int skipCount = 0;
         get_one_explain_line(
-            hndl, out, v, indent, maxwidth, pc, cur, &skipCount
+            out, v, &v->aOp[pc], indent, maxwidth, pc, cur, &skipCount
         );
         if (skipCount != 0) pc += skipCount;
         char *row[] = {(char*)strbuf_buf(out)};
         write_response(clnt, RESPONSE_ROW_STR, row, 1);
         strbuf_clear(out);
     }
+
+    // If there's subprograms, dump those as well:
+    for (int ppc = 0; ppc < v->nOp; ppc++) {
+        Op *op = &v->aOp[ppc];
+        if (op->opcode == OP_Program) {
+            SubProgram *p = op->p4.pProgram;
+            strbuf_appendf(out, "Subprogram %p", p);
+            char *row[] = {(char*)strbuf_buf(out)};
+            write_response(clnt, RESPONSE_ROW_STR, row, 1);
+            strbuf_clear(out);
+            for (int pc = 0; pc < p->nOp; pc++) {
+                int indent = indentation.aiIndent[pc];
+                if (indent < 0)
+                    indent = 0;
+                int skipCount = 0;
+                get_one_explain_line(
+                        out, v, &v->aOp[pc], indent, maxwidth, pc, cur, &skipCount
+                        );
+                if (skipCount != 0) pc += skipCount;
+                char *row[] = {(char*)strbuf_buf(out)};
+                write_response(clnt, RESPONSE_ROW_STR, row, 1);
+                strbuf_clear(out);
+            }
+        }
+    }
+
 
     //if this was verbose explain, get the cost from tmpfile f
     if (f) {

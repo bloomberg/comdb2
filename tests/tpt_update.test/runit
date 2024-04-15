@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+
+# Grab my database name.
+dbnm=$1
+
+(
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t(id int primary key, total_count int)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table p_0(id int primary key, total_count int)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t select value, 0 from generate_series(1, 10000)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into p_0 select value, 0 from generate_series(1, 10000)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create time partition on p_0 as p period 'daily' retention 5 start '$(date +%Y%m%dT235959)'"
+) >/dev/null
+
+start=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select total_count from t where id=74")
+${TESTSBUILDDIR}/tpt_update $dbnm default p 10000 2
+end=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select total_count from p where id=74")
+expected=20000
+echo "expected $expected   got $(($end-$start))"
+
+echo "Success"

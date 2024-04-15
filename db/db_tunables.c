@@ -481,6 +481,8 @@ int gbl_incoherent_clnt_wait = 10;
 int gbl_new_leader_duration = 3;
 extern int gbl_transaction_grace_period;
 
+extern int gbl_verify_error_on_table_find_miss;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
