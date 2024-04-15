@@ -245,6 +245,7 @@
 (name='dohast_verbose', description='Print debug information when creating AST for statements', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohsql_disable', description='Disable running queries in distributed mode', type='BOOLEAN', value='OFF', read_only='N')
 (name='dohsql_full_queue_poll_msec', description='Poll milliseconds while waiting for coordinator to consume from queue.', type='INTEGER', value='10', read_only='N')
+(name='dohsql_joins', description='Enable to support joins in parallel sql execution (default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='dohsql_max_queued_kb_highwm', description='Maximum shard queue size, in KB; shard sqlite will pause once queued bytes limit is reached.', type='INTEGER', value='10000', read_only='N')
 (name='dohsql_max_threads', description='Maximum number of parallel threads, otherwise run sequential.', type='INTEGER', value='8', read_only='N')
 (name='dohsql_pool_thread_slack', description='Forbid parallel sql coordinators from running on this many sql engines (if 0, defaults to 24).', type='INTEGER', value='24', read_only='N')
