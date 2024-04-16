@@ -356,8 +356,7 @@ int set_consumer_options(struct consumer *consumer, const char *opts)
 }
 
 /* Returns the genid of the event in the front of the queue. */
-static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
-                                                  int consumer)
+static unsigned long long dbqueue_get_front_genid(struct dbtable *table, int consumer)
 {
     unsigned long long genid;
     int rc;
@@ -405,10 +404,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
 skip:
     rc = bdb_trigger_unlock(table->handle, trigger);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR,
-               "dbq_get_front_genid: bdb_trigger_unsubscribe "
-               "failed (rc: %d)\n",
-               rc);
+        logmsg(LOGMSG_ERROR, "%s: bdb_trigger_unlock failed rc:%d\n", __func__, rc);
     }
     bdb_free_lock_id(thedb->bdb_env, lockid);
 
