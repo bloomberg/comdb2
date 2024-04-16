@@ -48,9 +48,10 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
 
 const struct bdb_queue_stats *bdb_queuedb_get_stats(bdb_state_type *bdb_state);
 
-int bdb_trigger_subscribe(bdb_state_type *, pthread_cond_t **,
-                          pthread_mutex_t **, const uint8_t **status);
-int bdb_trigger_unsubscribe(bdb_state_type *);
+
+struct __db_trigger_subscription;
+int bdb_trigger_subscribe(bdb_state_type *, pthread_cond_t **, pthread_mutex_t **, const uint8_t **status, struct __db_trigger_subscription **);
+int bdb_trigger_unsubscribe(bdb_state_type *, struct __db_trigger_subscription *);
 int bdb_trigger_lock(bdb_state_type *, const uint8_t **status, void **);
 int bdb_trigger_unlock(bdb_state_type *, void *);
 int bdb_trigger_open(bdb_state_type *);
