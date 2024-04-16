@@ -169,6 +169,8 @@ struct dbconsumer_t {
     pthread_mutex_t *lock;
     pthread_cond_t *cond;
     const uint8_t *status;
+    struct __db_trigger_subscription *hndl;
+
     trigger_reg_t info; // must be last in struct
 };
 
@@ -448,7 +450,7 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
         if (*q->status != TRIGGER_SUBSCRIPTION_CLOSED) {
-            bdb_trigger_unsubscribe(q->iq.usedb->handle);
+            bdb_trigger_unsubscribe(q->iq.usedb->handle, q->hndl);
         }
         Pthread_mutex_unlock(q->lock);
     }
@@ -4820,7 +4822,7 @@ static int register_queue_with_berkdb_and_master(Lua L, const char *type)
     consumer->iq.usedb = find_and_lock_queue_table(L);
 
     /* register with berkdb */
-    if (bdb_trigger_subscribe(consumer->iq.usedb->handle, &consumer->cond, &consumer->lock, &consumer->status) != 0) {
+    if (bdb_trigger_subscribe(consumer->iq.usedb->handle, &consumer->cond, &consumer->lock, &consumer->status, &consumer->hndl) != 0) {
         return luaL_error(L, "bdb_trigger_subscribe failed for %s:%s", type, sp->spname);
     }
 
