@@ -89,9 +89,10 @@ static int __dbenv_blobmem_yield __P((DB_ENV *));
 static int __dbenv_set_comdb2_dirs __P((DB_ENV *, char *, char *, char *));
 static int __dbenv_set_is_tmp_tbl __P((DB_ENV *, int));
 static int __dbenv_set_use_sys_malloc __P((DB_ENV *, int));
-static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
-	pthread_cond_t **, pthread_mutex_t **, const uint8_t **));
-static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
+
+struct __db_trigger_subscription;
+static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *, pthread_cond_t **, pthread_mutex_t **, const uint8_t **, struct __db_trigger_subscription **));
+static int __dbenv_trigger_unsubscribe __P((DB_ENV *, struct __db_trigger_subscription *));
 static int __dbenv_trigger_lock __P((DB_ENV *, const char *, const uint8_t **, void **));
 static int __dbenv_trigger_unlock __P((DB_ENV *, void *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
@@ -1418,12 +1419,13 @@ __dbenv_trigger_unpause_all(dbenv)
 }
 
 static int
-__dbenv_trigger_subscribe(dbenv, fname, cond, lock, status)
+__dbenv_trigger_subscribe(dbenv, fname, cond, lock, status, hndl)
 	DB_ENV *dbenv;
 	const char *fname;
 	pthread_cond_t **cond;
 	pthread_mutex_t **lock;
 	const uint8_t **status;
+    struct __db_trigger_subscription **hndl;
 {
 	int rc = 1;
 	struct __db_trigger_subscription *t;
@@ -1434,6 +1436,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, status)
 		*cond = &t->cond;
 		*lock = &t->lock;
 		*status = &t->status;
+		*hndl = t;
 		rc = 0;
 	}
 	Pthread_mutex_unlock(&t->lock);
@@ -1441,13 +1444,11 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, status)
 }
 
 static int
-__dbenv_trigger_unsubscribe(dbenv, fname)
+__dbenv_trigger_unsubscribe(dbenv, t)
 	DB_ENV *dbenv;
-	const char *fname;
+	struct __db_trigger_subscription *t;
 {
 	/* trigger_lock should be held by caller */
-	struct __db_trigger_subscription *t;
-	t = __db_get_trigger_subscription(fname);
 	--t->active;
 	return 0;
 }

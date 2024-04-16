@@ -147,6 +147,7 @@ struct __db_preplist;	typedef struct __db_preplist DB_PREPLIST;
 struct __db_qam_stat;	typedef struct __db_qam_stat DB_QUEUE_STAT;
 struct __db_rep;	typedef struct __db_rep DB_REP;
 struct __db_rep_stat;	typedef struct __db_rep_stat DB_REP_STAT;
+struct __db_trigger_subscription;
 struct __db_txn;	typedef struct __db_txn DB_TXN;
 struct __db_txn_prepared;   typedef struct __db_txn_prepared DB_TXN_PREPARED;
 struct __db_txn_active;	typedef struct __db_txn_active DB_TXN_ACTIVE;
@@ -2801,10 +2802,10 @@ struct __db_env {
     int (*wrlock_recovery_blocked)(DB_ENV *);
 	int (*lock_recovery_lock)(DB_ENV *, const char *func, int line);
 	int (*unlock_recovery_lock)(DB_ENV *, const char *func, int line);
+
 	/* Trigger/consumer signalling support */
-	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
-					 pthread_mutex_t **, const uint8_t **));
-	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
+	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **, pthread_mutex_t **, const uint8_t **, struct __db_trigger_subscription **));
+	int(*trigger_unsubscribe) __P((DB_ENV *, struct __db_trigger_subscription *));
 	int(*trigger_lock) __P((DB_ENV *, const char *, const uint8_t **, void **));
 	int(*trigger_unlock) __P((DB_ENV *, void *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
