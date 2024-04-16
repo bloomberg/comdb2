@@ -366,7 +366,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table, int con
     size_t fnddtaoff;
     uint32_t lockid;
     const uint8_t *status;
-    void *trigger = NULL;
+    struct __db_trigger_subscription *trigger = NULL;
 
     init_fake_ireq(table->dbenv, &iq);
     iq.usedb = table;
