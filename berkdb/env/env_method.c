@@ -93,8 +93,8 @@ static int __dbenv_set_use_sys_malloc __P((DB_ENV *, int));
 struct __db_trigger_subscription;
 static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *, pthread_cond_t **, pthread_mutex_t **, const uint8_t **, struct __db_trigger_subscription **));
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, struct __db_trigger_subscription *));
-static int __dbenv_trigger_lock __P((DB_ENV *, const char *, const uint8_t **, void **));
-static int __dbenv_trigger_unlock __P((DB_ENV *, void *));
+static int __dbenv_trigger_lock __P((DB_ENV *, const char *, const uint8_t **, struct __db_trigger_subscription **));
+static int __dbenv_trigger_unlock __P((DB_ENV *, struct __db_trigger_subscription *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
 static int __dbenv_trigger_ispaused __P((DB_ENV *, const char *));
@@ -1462,7 +1462,7 @@ __dbenv_trigger_lock(dbenv, fname, status, retp)
 	DB_ENV *dbenv;
 	const char *fname;
 	const uint8_t **status;
-	void **retp;
+	struct __db_trigger_subscription **retp;
 {
 	int rc = 1;
 	struct __db_trigger_subscription *t;
@@ -1477,11 +1477,10 @@ __dbenv_trigger_lock(dbenv, fname, status, retp)
 }
 
 static int
-__dbenv_trigger_unlock(dbenv, ret)
+__dbenv_trigger_unlock(dbenv, t)
 	DB_ENV *dbenv;
-	void *ret;
+	struct __db_trigger_subscription *t;
 {
-	struct __db_trigger_subscription *t = ret;
 	if (t != NULL) {
 		--t->active;
 		Pthread_mutex_unlock(&t->lock);
