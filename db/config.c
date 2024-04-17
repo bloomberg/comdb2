@@ -464,8 +464,10 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
         if ((strcmp(label, gbl_myhostname) != 0) &&
             (my_class == CLASS_UNKNOWN || my_class != mach_class_name2class(label))) {
+            free(label);
             return 0;
         }
+        free(label);
 
         tok = segtok(line, line_len, st, ltok);
         *tok_inout = tok;
