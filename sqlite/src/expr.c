@@ -5616,6 +5616,41 @@ char *print_mem(Mem *m){
       return  sqlite3_mprintf("%lld", m->u.i);
     case MEM_Real:
       return sqlite3_mprintf("%f", m->u.r);
+    case MEM_Interval: {
+      switch ( m->du.tv.type ){
+        case INTV_YM_TYPE: {
+          return sqlite3_mprintf("'%s%u-%2.2u'",
+            (m->du.tv.sign==-1)?"- ":"",
+            m->du.tv.u.ym.years, m->du.tv.u.ym.months);
+        }
+        case INTV_DS_TYPE: {
+          return sqlite3_mprintf("'%s%u %2.2u:%2.2u:%2.2u.%3.3u'",
+            (m->du.tv.sign==-1)?"- ":"",
+            m->du.tv.u.ds.days,
+            m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
+            m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
+        }
+        case INTV_DSUS_TYPE: {
+          return sqlite3_mprintf("'%s%u %2.2u:%2.2u:%2.2u.%6.6u' ",
+            (m->du.tv.sign==-1)?"- ":"",
+            m->du.tv.u.ds.days,
+            m->du.tv.u.ds.hours, m->du.tv.u.ds.mins,
+            m->du.tv.u.ds.sec, m->du.tv.u.ds.frac);
+        }
+        case INTV_DECIMAL_TYPE: {
+          char tmp[128];
+          if( sqlite3DecimalToString( &m->du.tv.u.dec, tmp, sizeof(tmp)) ){
+            logmsg(LOGMSG_ERROR, "Error converting decimal to string");
+            return sqlite3_mprintf("???");
+          }
+          return sqlite3_mprintf("'%.*q'", strlen(tmp), tmp);
+        }
+        default: {
+          logmsg(LOGMSG_ERROR, "%s unknown interval type, %d\n", __func__, m->du.tv.type);
+          return sqlite3_mprintf("???");
+        }
+      }
+    }
     case MEM_Blob: {
       char * key = alloca(2*m->n+1);
       int  i;
