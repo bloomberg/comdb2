@@ -125,6 +125,7 @@ void fdb_push_free(fdb_push_connector_t **pp)
         if (p->unprow) {
             sqlite3UnpackedResultFree(&p->unprow, p->ncols);
         }
+        free(p);
         *pp = NULL;
     }
 }
