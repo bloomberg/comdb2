@@ -110,8 +110,6 @@ showparams:
 	@echo CDB2_SQLREPLAY_EXE=${CDB2_SQLREPLAY_EXE}
 	@echo PMUX_EXE=${PMUX_EXE}
 
-
-
 %_generated: basicops
 	@N=`$(TESTSROOTDIR)/tools/get_test_counter.sh` && echo TESTID=${TESTID} running in $(TESTDIR) $@ $$N/${TOTAL}
 	@tools/create_generated_tests.sh `tools/get_testopts_path.sh $@` $(TESTDIR)
@@ -129,9 +127,6 @@ $(patsubst %.test,%,$(ALL_TESTS)): basicops
 
 %.setup: %.test
 	+$(MAKE) -C $(patsubst %.setup,%,$<) setup
-
-%.tool: %.test
-	+$(MAKE) -C $(patsubst %.tool,%,$<) tool
 
 generated_tests:
 	$(shell $(TESTSROOTDIR)/tools/create_generated_tests.sh)
@@ -155,4 +150,3 @@ clean: testclean
 testclean:
 	@rm -rf test_[0-9]* $(TESTDIR)/ *_generated.test/
 	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf $(TESTSROOTDIR)/test_[0-9]* $(TESTDIR)/' < /dev/null;)
-

@@ -7,6 +7,3 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=2m
 endif
-
-tool:
-	make -skC $(TESTSROOTDIR)/tools verify_atomics_work
