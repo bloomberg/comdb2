@@ -4,7 +4,3 @@ ifeq ($(TESTSROOTDIR),)
 else
   include $(TESTSROOTDIR)/testcase.mk
 endif
-
-tool:
-	make -skC $(TESTSROOTDIR)/tools crle
-
