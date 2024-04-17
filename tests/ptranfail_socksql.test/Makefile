@@ -6,7 +6,3 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=3m
 endif
-
-
-tool:
-	make -skC $(TESTSROOTDIR)/tools ptrantest
