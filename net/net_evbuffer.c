@@ -2688,6 +2688,7 @@ static void do_read(int fd, short what, void *data)
     struct evbuffer *buf = evbuffer_new();
     ssize_t n = evbuffer_read(buf, fd, SBUF2UNGETC_BUF_MAX);
     if (n <= 0) {
+        evbuffer_free(buf);
         accept_info_free(a);
         return;
     }
