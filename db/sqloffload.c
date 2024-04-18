@@ -674,38 +674,12 @@ extern int gbl_readonly_sc;
 static void osql_scdone_commit_callback(struct ireq *iq)
 {
     int bdberr = 0;
-    int write_scdone =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN) ? 0 : 1;
     gbl_readonly_sc = 0;
     if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            int rc = 0;
             sc_next = iq->sc->sc_next;
-            if (write_scdone) {
-                if (iq->sc->done_type == invalid ||
-                    (iq->sc->done_type != user_view && iq->sc->db == NULL)) {
-                    logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
-                           __func__, iq->sc->tablename);
-                } else {
-                    rc = llog_scdone_rename_wrapper(thedb->bdb_env, iq->sc,
-                                                    NULL, &bdberr);
-                    if (rc || bdberr != BDBERR_NOERROR) {
-                        /* We are here because we are running in R6 compatible
-                         * mode. For R7 or later, use SC_DONE_SAME_TRAN.
-                         *
-                         * Don't quite know what to do here, the schema change
-                         * is committed but one or more replicants dont get the
-                         * scdone to reload tables. We really need to somehow
-                         * bounce the replicants, but there's no way to do this.
-                         */
-                        logmsg(LOGMSG_ERROR,
-                               "%s: Failed to log scdone for table %s\n",
-                               __func__, iq->sc->tablename);
-                    }
-                }
-            }
             if (iq->sc->db) {
                 int rc;
                 tran_type *lock_trans = NULL;

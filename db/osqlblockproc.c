@@ -1327,6 +1327,35 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     return rc;
 }
 
+int get_schema_change_txns(struct ireq *iq, tran_type **logi,
+                           tran_type **ptran, tran_type **tran,
+                           int force)
+{
+    if (force) {
+        if (trans_start_logical_sc_with_force(iq, logi))
+            return -__LINE__;
+    } else
+        if (trans_start_logical_sc(iq, logi))
+            return -__LINE__;
+
+    if (gbl_rowlocks) {
+        if ((*ptran = bdb_get_sc_parent_tran(*logi)) == NULL)
+            return -__LINE__;
+
+        if (trans_start_sc(iq, *ptran, tran))
+            return -__LINE__;
+
+    } else {
+        if ((*ptran = bdb_get_physical_tran(*logi)) == NULL)
+            return -__LINE__;
+
+        if (trans_start(iq, *ptran, tran))
+            return -__LINE__;
+    }
+
+    return 0;
+}
+
 void *bplog_commit_timepart_resuming_sc(void *p)
 {
     comdb2_name_thread(__func__);
@@ -1379,24 +1408,13 @@ void *bplog_commit_timepart_resuming_sc(void *p)
         goto abort_sc;
     }
 
-    if (trans_start_logical_sc(&iq, &(iq.sc_logical_tran))) {
+    int rc;
+    if ((rc = get_schema_change_txns(&iq, &iq.sc_logical_tran, &parent_trans,
+                                     &iq.sc_tran, 0))) {
         logmsg(LOGMSG_ERROR,
                "%s:%d failed to start schema change transaction\n", __func__,
-               __LINE__);
-        goto abort_sc;
-    }
-
-    if ((parent_trans = bdb_get_physical_tran(iq.sc_logical_tran)) == NULL) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               __LINE__);
-        goto abort_sc;
-    }
-
-    if (trans_start(&iq, parent_trans, &(iq.sc_tran))) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               __LINE__);
+               -rc);
+        rc = -1;
         goto abort_sc;
     }
 

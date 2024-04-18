@@ -380,8 +380,6 @@ extern int get_physical_transaction(bdb_state_type *bdb_state,
 static int perform_trigger_update_int(struct schema_change_type *sc)
 {
     char *config = sc->newcsc2;
-    int same_tran = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN);
-    
 
     /* we are on on master
      * 1) write config/destinations to llmeta
@@ -402,30 +400,20 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     init_fake_ireq(thedb, &iq);
     iq.usedb = &thedb->static_table;
 
-    if (same_tran) {
-        rc = trans_start_logical_sc(&iq, &ltran);
-        if (rc) {
-            sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
+    rc = trans_start_logical_sc(&iq, &ltran);
+    if (rc) {
+        sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
                     rc, sc->tablename);
-            sbuf2printf(sb, "FAILED\n");
-            goto done;
-        }
-        bdb_ltran_get_schema_lock(ltran);
-        rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
-        if (rc != 0 || tran == NULL) {
-            sbuf2printf(sb, "!Error %d creating physical transaction for %s.\n",
+        sbuf2printf(sb, "FAILED\n");
+        goto done;
+    }
+    bdb_ltran_get_schema_lock(ltran);
+    rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
+    if (rc != 0 || tran == NULL) {
+        sbuf2printf(sb, "!Error %d creating physical transaction for %s.\n",
                     rc, sc->tablename);
-            sbuf2printf(sb, "FAILED\n");
-            goto done;
-        }
-    } else {
-        rc = trans_start(&iq, NULL, (void *)&tran);
-        if (rc) {
-            sbuf2printf(sb, "!Error %d creating a transaction for %s.\n", rc,
-                    sc->tablename);
-            sbuf2printf(sb, "FAILED\n");
-            goto done;
-        }
+        sbuf2printf(sb, "FAILED\n");
+        goto done;
     }
 
     rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
@@ -608,41 +596,12 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         remove_from_qdbs(db);
     }
 
-    if (!same_tran) {
-        rc = trans_commit(&iq, tran, gbl_myhostname);
-        tran = NULL;
-        if (rc) {
-            sbuf2printf(sb, "!Failed to commit transaction\n");
-            goto done;
-        }
-    }
-
-    /* log for replicants to do the same */
-    if (!same_tran) {
-        rc = bdb_llog_scdone(thedb->bdb_env, scdone_type, db->tablename,
-                             strlen(db->tablename) + 1, 1, &bdberr);
-        if (rc) {
-            sbuf2printf(sb, "!Failed to broadcast queue %s\n",
-                        sc->kind == SC_DROPTABLE ? "drop" : "add");
-            logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
-                   sc->kind == SC_DROPTABLE ? "drop" : "add");
-        }
-    }
-
     /* TODO: This is fragile - all the actions for the queue should be in one
      * transaction, including the
      * scdone. This needs to be a separate transaction right now because the
      * file handle is stil open on the
      * replicant until the scdone, and we can't delete it until it's closed. */
     if (sc->kind == SC_DEL_TRIGGER) {
-        if (!same_tran) {
-            rc = trans_start(&iq, NULL, (void *)&tran);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
-                goto done;
-            }
-        }
-
         /*
         ** NOTE: This call to bdb_get_file_version_qdb(), which ignores the
         **       returned file version number itself, is (apparently) being
@@ -663,30 +622,20 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        if (!same_tran) {
-            rc = trans_commit(&iq, tran, gbl_myhostname);
-            tran = NULL;
-            if (rc) {
-                sbuf2printf(sb, "!Failed to commit transaction\n");
-                goto done;
-            }
-        }
     }
 
-    if (same_tran) {
-        rc = bdb_llog_scdone_tran(thedb->bdb_env, scdone_type, tran, sc->tablename,
-                                  strlen(sc->tablename) + 1, &bdberr);
-        if (rc) {
-            sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
-            goto done;
-        }
-        rc = trans_commit(&iq, ltran, gbl_myhostname);
-        tran = NULL;
-        ltran = NULL;
-        if (rc || bdberr != BDBERR_NOERROR) {
-            sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
-            goto done;
-        }
+    rc = bdb_llog_scdone_tran(thedb->bdb_env, scdone_type, tran, sc->tablename,
+                              strlen(sc->tablename) + 1, &bdberr);
+    if (rc) {
+        sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
+        goto done;
+    }
+    rc = trans_commit(&iq, ltran, gbl_myhostname);
+    tran = NULL;
+    ltran = NULL;
+    if (rc || bdberr != BDBERR_NOERROR) {
+        sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
+        goto done;
     }
 
     if (sc->kind == SC_ADD_TRIGGER && db && rc == 0) {
