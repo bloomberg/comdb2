@@ -45,7 +45,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
         view = views->views[i];
 
         /* check if this exists?*/
-        tab = sqlite3FindTableCheckOnly(db, view->name, NULL);
+        tab = sqlite3FindTableCheckOnlyNoAlias(db, view->name, NULL);
         if (tab) {
             /* paranoia */
             if (tab->pSelect == NULL) {

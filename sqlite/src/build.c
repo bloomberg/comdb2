@@ -405,7 +405,8 @@ static Table *sqlite3FindTable_int(
   const char *zName,
   const char *czDatabase,
   int create,
-  int in_analysis_load
+  int in_analysis_load,
+  int skipAlias
 ){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 Table *sqlite3FindTable(sqlite3 *db, const char *zName, const char *zDatabase){
@@ -498,9 +499,11 @@ retry_after_fdb_creation:
   /* if we did not find the table and we don't have a database name
   ** check to see if this is an actual alias
   */
-  if( !zDatabase ){
+  if( !zDatabase && !db->init.busy && !skipAlias){
     /* NOTE: zDatabase is NOT null if we already looked up a foreign
     ** db and retried, so this code doesn't run twice
+    ** NOTE2: we can skip this if we are initializing an engine
+    ** since we do not use fdb aliases in that case
     */
     dbAlias = fdb_get_alias(&zName);
     zDatabase = dbAlias;
@@ -611,7 +614,7 @@ done:
 ** See also sqlite3LocateTable().
 */
 Table *sqlite3FindTable(sqlite3 *db, const char *zName, const char *zDatabase){
-   return sqlite3FindTable_int(db, zName, zDatabase, 1, 0);
+   return sqlite3FindTable_int(db, zName, zDatabase, 1, 0, 0);
 }
 
 /*
@@ -623,8 +626,22 @@ Table *sqlite3FindTableCheckOnly(
   const char *zName,
   const char *zDatabase
 ){
-   return sqlite3FindTable_int(db, zName, zDatabase, 0, 0);
+   return sqlite3FindTable_int(db, zName, zDatabase, 0, 0, 0);
 }
+
+/*
+** See sqlite3FindTable for definition
+** This make sure we don't try to create an unexisting table
+** This skips alias check, so we do not touch llmeta
+*/
+Table *sqlite3FindTableCheckOnlyNoAlias(
+  sqlite3 *db,
+  const char *zName,
+  const char *zDatabase
+){
+   return sqlite3FindTable_int(db, zName, zDatabase, 0, 0, 1);
+}
+
 
 /*
 ** Special case sqlite3FindTable, passes down information to sqlglue
@@ -636,7 +653,7 @@ Table *sqlite3FindTableByAnalysisLoad(
   const char *zName,
   const char *zDatabase
 ){
-  return sqlite3FindTable_int(db, zName, zDatabase, 1, 1);
+  return sqlite3FindTable_int(db, zName, zDatabase, 1, 1, 0);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

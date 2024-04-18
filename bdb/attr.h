@@ -477,8 +477,6 @@ DEF_ATTR(SC_DETACHED, sc_detached, BOOLEAN, 0,
          "Run schema changes in detached mode--just return seed to client.")
 DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
          "Max number of threads for asynchronous schema changes.")
-DEF_ATTR(SC_DONE_SAME_TRAN, sc_done_same_tran, BOOLEAN, 1,
-         "Write scdone record in the same logical transaction as DDLs.")
 DEF_ATTR(USE_VTAG_ONDISK_VERMAP, use_vtag_ondisk_vermap, BOOLEAN, 1,
          "Use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk.")
 DEF_ATTR(UDP_DROP_DELTA_THRESHOLD, udp_drop_delta_threshold, QUANTITY, 10,
