@@ -419,7 +419,6 @@ static char *legacy_options[] = {
     "setattr ENABLE_SEQNUM_GENERATIONS 0",
     "setattr MASTER_LEASE 0",
     "setattr NET_SEND_GBLCONTEXT 1",
-    "setattr SC_DONE_SAME_TRAN 0",
     "sqlsortermaxmmapsize 268435456",
     "unnatural_types 1",
     "wal_osync 1",

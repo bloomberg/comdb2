@@ -1081,9 +1081,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     bdb_handle_reset_tran(new_bdb_handle, transac, iq->sc_close_tran);
     iq->sc_closed_files = 1;
 
-    if (!s->same_schema ||
-        (!IS_FASTINIT(s) &&
-         BDB_ATTR_GET(thedb->bdb_attr, SC_DONE_SAME_TRAN) == 0)) {
+    if (!s->same_schema) {
         /* reliable per table versioning */
         if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
             rc = table_version_set(transac, db->tablename,

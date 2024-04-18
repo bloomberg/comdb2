@@ -329,9 +329,10 @@ static int do_finalize(ddl_t func, struct ireq *iq,
 {
     int rc, bdberr = 0;
     tran_type *tran = input_tran;
+    tran_type *ltran, *ptran;
 
-    if (tran == NULL) {
-        rc = trans_start_sc(iq, NULL, &tran);
+    if (input_tran == NULL) {
+        rc = get_schema_change_txns(iq, &ltran, &ptran, &tran, 1);
         if (rc) {
             sc_errf(s, "Failed to start finalize transaction\n");
             return rc;
@@ -344,19 +345,14 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     rc = func(iq, s, tran);
 
     if (rc) {
-        if (input_tran == NULL) {
-            trans_abort(iq, tran);
-            mark_schemachange_over(s->tablename);
-            sc_del_unused_files(s->db);
-        }
+        if (input_tran == NULL)
+            goto abort;
         return rc;
     }
 
     if ((rc = mark_schemachange_over_tran(s->tablename, tran))) {
-        if (input_tran == NULL) {
-            trans_abort(iq, tran);
-            sc_del_unused_files(s->db);
-        }
+        if (input_tran == NULL)
+            goto abort;
         return rc;
     }
 
@@ -377,32 +373,46 @@ static int do_finalize(ddl_t func, struct ireq *iq,
                    "Forcing replication error table %s '%s' for tran %p\n",
                    bdb_get_scdone_str(s->done_type), s->tablename, tran);
         }
-        if (s->keep_locked) {
-            rc = trans_commit(iq, tran, gbl_myhostname);
-        } else {
-            rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
-        }
-        if (debug_switch_fake_sc_replication_timeout())
-            rc = -1;
-        if (rc && !replication_only_error_code(rc)) {
-            sc_errf(s, "Failed to commit finalize transaction\n");
-            return rc;
-        }
 
-        rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, NULL, &bdberr);
+        rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
-            return -1;
+            rc = -1;
+            goto abort;
+        } else {
+            if (s->keep_locked) {
+                rc = trans_commit(iq, tran, gbl_myhostname);
+            } else {
+                rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
+            }
+            if (debug_switch_fake_sc_replication_timeout())
+                rc = -1;
+            if (rc && !replication_only_error_code(rc)) {
+                sc_errf(s, "Failed to commit finalize transaction\n");
+                return rc;
+            }
+
+            rc = trans_commit_logical(iq, ltran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0);
+            if (rc) {
+                abort();
+            }
         }
+
         sc_del_unused_files(s->db);
-    } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
+    } else {
         int bdberr = 0;
-        rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, input_tran, &bdberr);
+        rc = llog_scdone_rename_wrapper(thedb->bdb_env, s, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
     }
+    return rc;
+abort:
+    trans_abort(iq, tran);
+    trans_abort_logical(iq, ltran, NULL, 0, NULL, 0);
+    mark_schemachange_over(s->tablename);
+    sc_del_unused_files(s->db);
     return rc;
 }
 
