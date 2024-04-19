@@ -156,6 +156,69 @@ __lock_id_pp(dbenv, idp)
 	return __lock_id_flags_pp(dbenv, idp, 0);
 }
 
+static int
+__locker_had_deadlock(dbenv, locker, had_deadlock)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	u_int32_t *had_deadlock;
+{
+	DB_LOCKREGION *region;
+	DB_LOCKTAB *lt;
+	u_int32_t partition;
+	struct __db_lock *lp, *wlp;
+	DB_LOCKER *sh_locker;
+	u_int32_t locker_ndx;
+	int ret;
+
+	(*had_deadlock) = 0;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
+		return (0);
+
+	LOCKREGION(dbenv, lt);
+	LOCKER_INDX(lt, region, locker, locker_ndx);
+
+	if ((ret = __lock_getlocker(lt, locker, locker_ndx,
+			GETLOCKER_KEEP_PART, &sh_locker)) != 0 || NULL == sh_locker) {
+		UNLOCKREGION(dbenv, lt);
+		return EINVAL;
+	}
+
+	partition = sh_locker->partition;
+	(*had_deadlock) = F_ISSET(sh_locker, DB_LOCKER_HAD_DEADLOCK);;
+	unlock_locker_partition(region, partition);
+
+	return ret;
+}
+
+/*
+ * __locker_had_deadlock_pp --
+ *
+ * PUBLIC: int  __locker_had_deadlock_pp __P((DB_ENV *, u_int32_t, u_int32_t *));
+ */
+int
+__locker_had_deadlock_pp(dbenv, locker, had_deadlock)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	u_int32_t *had_deadlock;
+{
+	int rep_check, ret;
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+		dbenv->lk_handle, "DB_LOCK->locker_set_track", DB_INIT_LOCK);
+
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __locker_had_deadlock(dbenv, locker, had_deadlock);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+	return ret;
+}
+
 /*
  * __lock_id_flags_pp --
  *	DB_ENV->lock_id_flags pre/post processing.
@@ -2979,6 +3042,15 @@ expired:			obj_ndx = sh_obj->index;
 done:
 	ret = 0;
 err:
+	if (ret == DB_LOCK_DEADLOCK) {
+		F_SET(sh_locker, DB_LOCKER_HAD_DEADLOCK);
+#if defined (CORE_DEADLOCK)
+		static int cnt = 0;
+		char cmd[256];
+		snprintf(cmd, sizeof(cmd), "gcore -o dl%d %u", ++cnt, getpid()); 
+		system(cmd);
+#endif
+	}
 	if (newl != NULL &&
 	    (t_ret = __lock_freelock(lt, newl, sh_locker,
 		    DB_LOCK_FREE | DB_LOCK_UNLINK)) != 0 && ret == 0) {

@@ -282,6 +282,8 @@ extern int gbl_ufid_log;
 extern int gbl_utxnid_log;
 extern int gbl_ufid_add_on_collect;
 extern int gbl_collect_before_locking;
+extern int gbl_abort_on_deadlock_commit;
+extern int gbl_debug_reproduce_deadlock_commit;
 extern unsigned gbl_ddlk;
 extern int gbl_abort_on_missing_ufid;
 extern int gbl_ufid_dbreg_test;
