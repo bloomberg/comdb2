@@ -22,17 +22,11 @@
 #include "mem_util.h"
 #include "mem_override.h"
 #include "logmsg.h"
+#include "list.h"
+#include "stackutil.h"
 
-#ifndef NDEBUG
-#define TRACK_REFERENCES
-#endif
-
-#ifdef TRACK_REFERENCES
-#include <plhash_glue.h>
-
-static pthread_mutex_t srh_mtx = PTHREAD_MUTEX_INITIALIZER;
-static hash_t *sr_hash = NULL;
-#endif
+static pthread_mutex_t srl_mtx = PTHREAD_MUTEX_INITIALIZER;
+int gbl_stack_string_refs = 0;
 
 static int gbl_creation_count;
 
@@ -41,12 +35,13 @@ struct string_ref {
     size_t len;
     const char *func;
     int line;
-#ifdef STACK_STRING_REFERENCES
-    char stack[1024];
-#endif
+    LINKC_T(struct string_ref) lnk;
+    int stackid;
     char str[1];
 };
 
+static int inited = 0;
+LISTC_T(struct string_ref) sr_list;
 
 /* Makes a copy of the string passed and uses that as a reference counted object
  */
@@ -59,26 +54,19 @@ struct string_ref * create_string_ref_internal(const char *str, const char *func
     ref->len = len;
     ref->func = func;
     ref->line = line;
-#ifdef STACK_STRING_REFERENCES
-    extern void comdb2_cheapstack_sym_char_array(char *str, int maxln);
-    comdb2_cheapstack_sym_char_array(ref->stack, sizeof(ref->stack));
-#endif
+    ref->stackid = gbl_stack_string_refs ? stackutil_get_stack_id("strref") : -1;
     strcpy(ref->str, str);
 
-#ifdef TRACK_REFERENCES
-    Pthread_mutex_lock(&srh_mtx);
-    if(!sr_hash)
-        sr_hash = hash_init_ptr();
-    hash_add(sr_hash, ref);
+    Pthread_mutex_lock(&srl_mtx);
+    if (!inited) {
+        listc_init(&sr_list, offsetof(struct string_ref, lnk));
+        inited = 1;
+    }
+    listc_atl(&sr_list, ref);
     gbl_creation_count += 1;
-    Pthread_mutex_unlock(&srh_mtx);
-#else
-    ATOMIC_ADD32(gbl_creation_count, 1);
-#endif
+    Pthread_mutex_unlock(&srl_mtx);
     return ref;
 }
-
-
 
 /* Get a reference by increasing the count */
 struct string_ref * get_ref(struct string_ref *ref)
@@ -105,22 +93,14 @@ void put_ref(struct string_ref **ref_p)
         abort();
 
     if (cnt == 0) {
-#ifdef TRACK_REFERENCES
-        Pthread_mutex_lock(&srh_mtx);
-        int rc = hash_del(sr_hash, ref);
-        if (rc != 0) {
-            abort();
-        }
+        Pthread_mutex_lock(&srl_mtx);
+        listc_rfl(&sr_list, ref);
         gbl_creation_count -= 1;
-        Pthread_mutex_unlock(&srh_mtx);
-#else
-        ATOMIC_ADD32(gbl_creation_count, -1);
-#endif
+        Pthread_mutex_unlock(&srl_mtx);
         free(ref);
     }
     *ref_p = NULL;
 }
-
 
 /* Transfer ownership of the reference from pointer 'from' to 'to'
  * use this instead of assigning 'to = from'
@@ -141,36 +121,52 @@ size_t string_ref_len(struct string_ref *ref)
     return ref->len;
 }
 
-#ifdef TRACK_REFERENCES
 static int print_it(void *obj, void *arg)
 {
     struct string_ref *ref = obj;
-#ifdef STACK_STRING_REFERENCES
-    logmsg(LOGMSG_USER, "%s:%d allocated %s:%d %s\n", ref->str, ref->cnt, ref->func, ref->line, ref->stack);
-#else
-    logmsg(LOGMSG_USER, "%s:%d allocated %s:%d\n", ref->str, ref->cnt, ref->func, ref->line);
-#endif
+    char *stack = ref->stackid >= 0 ? stackutil_get_stack_str(ref->stackid, NULL, NULL, NULL) : NULL;
+    if (stack) {
+        logmsg(LOGMSG_USER, "%s:%d allocated %s:%d %s\n", ref->str, ref->cnt, ref->func, ref->line, stack);
+    } else {
+        logmsg(LOGMSG_USER, "%s:%d allocated %s:%d\n", ref->str, ref->cnt, ref->func, ref->line);
+    }
     return 0;
 }
 
-static void print_all_string_references()
+void print_all_string_references()
 {
     if (gbl_creation_count > 0) {
-        Pthread_mutex_lock(&srh_mtx);
+        assert(inited);
+        struct string_ref *r;
+        Pthread_mutex_lock(&srl_mtx);
         logmsg(LOGMSG_USER, "Remaining not-cleaned-up string references:\n");
-        hash_for(sr_hash, print_it, NULL);
-        Pthread_mutex_unlock(&srh_mtx);
+        LISTC_FOR_EACH(&sr_list, r, lnk)
+        {
+            print_it(r, NULL);
+        }
+        Pthread_mutex_unlock(&srl_mtx);
     }
 }
-#endif
 
+int collect_stringrefs(collect_stringrefs_t func, void *args)
+{
+    if (gbl_creation_count > 0) {
+        assert(inited);
+        struct string_ref *r;
+        Pthread_mutex_lock(&srl_mtx);
+        LISTC_FOR_EACH(&sr_list, r, lnk)
+        {
+            (*func)(args, r->str, r->func, r->line, r->cnt, r->stackid);
+        }
+        Pthread_mutex_unlock(&srl_mtx);
+    }
+    return 0;
+}
 
 int all_string_references_cleared()
 {
     int res = (gbl_creation_count == 0);
-#ifdef TRACK_REFERENCES
     if (!res)
         print_all_string_references();
-#endif
     return res;
 }

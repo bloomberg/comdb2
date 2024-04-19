@@ -52,6 +52,7 @@
 [select 1 from comdb2_timepartshards limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
+[select 1 from comdb2_stringrefs limit 1] failed with rc -5 authorization denied
 ( replicant =' limited access to following system tables ')
 ( replicant =' can following system tables ')
 (1=1)
@@ -80,6 +81,7 @@
 [select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_transaction_logs limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
+[select 1 from comdb2_stringrefs limit 1] failed with rc -5 authorization denied
 ( sysmon =' limited access to following system tables ')
 ( sysmon =' can access following system tables ')
 (1=1)
@@ -111,6 +113,7 @@
 [select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_transaction_logs limit 1] failed with rc -5 authorization denied
 [select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
+[select 1 from comdb2_stringrefs limit 1] failed with rc -5 authorization denied
 ( other =' limited access to following system tables ')
 ( other =' can access following system tables ')
 (1=1)
