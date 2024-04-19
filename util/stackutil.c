@@ -82,7 +82,8 @@ int stackutil_get_stack_id(const char *type)
 
 int stackutil_get_stack(int id, char **type, int *nframes, void *frames[MAX_STACK_FRAMES], int64_t *hits)
 {
-    *type = NULL;
+    if (type)
+        *type = NULL;
 #ifndef __GLIBC__
     return -1;
 #endif
@@ -91,27 +92,36 @@ int stackutil_get_stack(int id, char **type, int *nframes, void *frames[MAX_STAC
         Pthread_mutex_unlock(&stacklk);
         return -1;
     }
-    *nframes = stacks[id]->nframes;
+    if (nframes)
+        *nframes = stacks[id]->nframes;
     for (int i = 0; i < stacks[id]->nframes; i++) {
         frames[i] = stacks[id]->frames[i];
     }
-    *hits = stacks[id]->hits;
-    *type = strdup(stacks[id]->type);
+    if (hits)
+        *hits = stacks[id]->hits;
+    if (type)
+        *type = strdup(stacks[id]->type);
     Pthread_mutex_unlock(&stacklk);
     return 0;
 }
 
-char *stackutil_get_stack_str(int id, char **type, int *nframes, int64_t *hits)
+char *stackutil_get_stack_str(int id, char **type, int *in_nframes, int64_t *hits)
 {
     char *str = NULL;
+    int inframes;
+    if (type)
+        *type = NULL;
+    if (in_nframes)
+        *in_nframes = 0;
 #ifdef __GLIBC__
     void *frames[MAX_STACK_FRAMES];
-    *type = NULL;
-    if (stackutil_get_stack(id, type, nframes, frames, hits) == 0) {
+    if (stackutil_get_stack(id, type, &inframes, frames, hits) == 0) {
+        if (in_nframes)
+            *in_nframes = inframes;
         char **strings = NULL;
-        strings = backtrace_symbols(frames, *nframes);
+        strings = backtrace_symbols(frames, inframes);
         strbuf *b = strbuf_new();
-        for (int j = 0, pr = 0; j < *nframes; j++) {
+        for (int j = 0, pr = 0; j < inframes; j++) {
             char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
             if (p && q) {
                 (*p) = (*q) = '\0';

@@ -36,6 +36,7 @@ extern int __berkdb_read_alarm_ms;
 #include "timer.h"
 #include "sigutil.h"
 #include "memdebug.h"
+#include "string_ref.h"
 #include "verify.h"
 #include "switches.h"
 
@@ -1779,6 +1780,8 @@ clipper_usage:
             tail = tokdup(line + st, lline - st);
             javasp_stat(tail);
             free(tail);
+        } else if (tokcmp(tok, ltok, "strref") == 0) {
+            print_all_string_references();
         } else if (tokcmp(tok, ltok, "csc2vers") == 0) {
             int ii;
             for (ii = 0; ii < thedb->num_dbs; ii++) {

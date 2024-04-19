@@ -51,7 +51,7 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
 {
     int64_t hits;
     int nframes;
-    char *type;
+    char *type = NULL;
     getactivelocks_t *a = (getactivelocks_t *)args;
     systable_activelocks_t *l;
     a->count++;
@@ -76,8 +76,9 @@ static int collect(void *args, int64_t threadid, int32_t lockerid,
 
     if ((l->stack = stackutil_get_stack_str(stackid, &type, &nframes, &hits)) == NULL) {
         l->stack = strdup("(no-stack)");
-        free(type);
     }
+    if (type)
+        free(type);
     return 0;
 }
 

@@ -49,6 +49,9 @@ void put_ref(struct string_ref **ref);
 void transfer_ref(struct string_ref **from, struct string_ref **to);
 const char *string_ref_cstr(struct string_ref *ref);
 size_t string_ref_len(struct string_ref *ref);
-int all_string_references_cleared();
+int all_string_references_cleared(void);
+void print_all_string_references(void);
+typedef int (*collect_stringrefs_t)(void *args, char *string, const char *func, int line, int refcnt, int stackid);
+int collect_stringrefs(collect_stringrefs_t f, void *args);
 
 #endif

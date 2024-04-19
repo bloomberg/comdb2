@@ -230,6 +230,8 @@ int comdb2SystblInit(
     rc = systblTriggersInit(db);
   if (rc == SQLITE_OK)  
     rc = systblStacks(db);
+  if (rc == SQLITE_OK)
+    rc = systblStringRefsInit(db);
 #ifdef INCLUDE_DEBUG_ONLY_SYSTABLES
   if (rc == SQLITE_OK)
     rc = systblTranCommitInit(db);

@@ -400,6 +400,7 @@
 (name='comdb2_sql_client_stats')
 (name='comdb2_sqlpool_queue')
 (name='comdb2_stacks')
+(name='comdb2_stringrefs')
 (name='comdb2_systablepermissions')
 (name='comdb2_systables')
 (name='comdb2_table_properties')
