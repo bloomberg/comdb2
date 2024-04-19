@@ -170,6 +170,7 @@ int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
 int gbl_perform_full_clean_exit = 1;
+int gbl_abort_on_dangling_stringrefs = 0;
 struct ruleset *gbl_ruleset = NULL;
 
 void myctrace(const char *c) { ctrace("%s", c); }
@@ -1743,7 +1744,7 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     clear_sqlhist();
-    if(!all_string_references_cleared())
+    if (!all_string_references_cleared() && gbl_abort_on_dangling_stringrefs)
         abort();
 
     logmsg(LOGMSG_USER, "goodbye\n");
