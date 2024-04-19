@@ -7334,6 +7334,7 @@ void *exec_trigger(char *spname)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
+    clnt.current_user.bypass_auth = 1;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd = {0};

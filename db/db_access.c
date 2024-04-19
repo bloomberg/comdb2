@@ -203,7 +203,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
                                                   : pCur->db->tablename;
 
     if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
-        externalComdb2AuthenticateUserWrite) {
+        externalComdb2AuthenticateUserWrite && !clnt->current_user.bypass_auth) {
         clnt->authdata = get_authdata(clnt);
         char client_info[1024];
         snprintf(client_info, sizeof(client_info),
