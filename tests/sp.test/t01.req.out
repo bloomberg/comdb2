@@ -1787,3 +1787,4 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 ($0='{"emoji":"hello world 😁"}')
 ($0='{"control":"\u0007"}')
 ($0='DEADBEEF')
+($0='incompatible values from SQL string of length 13 to bint4 field 'i' for table 't'')

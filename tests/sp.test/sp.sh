@@ -1397,3 +1397,16 @@ local function main()
 end}$$
 EOF
 cdb2sql $SP_OPTIONS "exec procedure to_string_meta_method()"
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+DROP TABLE IF EXISTS t
+CREATE TABLE t(i INTEGER)$$
+CREATE PROCEDURE dbtable_insert VERSION 'sptest' {
+local function main()
+    local t = db:table("t")
+    local rc = t:insert({i = 'hello, world!'})
+    if rc ~= 0 then db:emit(db:error())
+    else db:emit("failed dbtable:insert()") end
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure dbtable_insert()"
