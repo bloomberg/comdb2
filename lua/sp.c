@@ -2486,10 +2486,7 @@ static int dbtable_insert(Lua lua)
     sqlite3_stmt *stmt = NULL;
     rc = lua_prepare_sql(sp, sqlstr, &stmt);
     free(sqlstr);
-    if (rc != 0) {
-        lua_pushinteger(lua, rc); /* Failure return code. */
-        return 1;
-    }
+    if (rc != 0) goto out;
 
     // Iterate lua table again to bind params to stmt
     lua_pushnil(lua);
@@ -2506,12 +2503,15 @@ static int dbtable_insert(Lua lua)
         lua_another_step(sp->clnt, stmt, rc);
     }
     lua_end_step(sp->clnt, sp, stmt);
-
     if (rc == SQLITE_DONE) rc = 0;
-
-out:
+out:if (rc) {
+        const char *errstr = NULL;
+        sqlite3 *sqldb = getdb(sp);
+        sql_check_errors(sp->clnt, sqldb, stmt, &errstr);
+        luabb_error(lua, sp, errstr);
+    }
     sqlite3_finalize(stmt);
-    lua_pushinteger(lua, rc); /* Success return code. */
+    lua_pushinteger(lua, rc);
     return 1;
 }
 
