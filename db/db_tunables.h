@@ -2056,6 +2056,8 @@ REGISTER_TUNABLE("perform_full_clean_exit",
                  TUNABLE_BOOLEAN, &gbl_perform_full_clean_exit,
                  NOARG, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("abort_on_dangling_string_refs", "Abort-on-exit on dangling stringrefs.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_dangling_stringrefs, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("clean_exit_on_sigterm",
                  "Attempt to do orderly shutdown on SIGTERM (Default: on)",
