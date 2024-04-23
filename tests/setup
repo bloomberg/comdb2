@@ -155,6 +155,7 @@ setup_db() {
     done >> ${LRL}
 
     mkdir -p $DBDIR/rulesets
+    echo "extra_dirents rulesets" >> ${LRL}
     for ruleset in $(ls *.ruleset 2>/dev/null); do
         cp $PWD/$ruleset $DBDIR/rulesets/
     done

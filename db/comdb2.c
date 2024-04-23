@@ -52,6 +52,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <poll.h>
 #include <pwd.h>
 #include <libgen.h>
+#include <bb_oscompat.h>
 
 #include <mem_uncategorized.h>
 
@@ -169,6 +170,9 @@ int gbl_recovery_lsn_offset = 0;
 int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
+char * gbl_extra_dirents_str = NULL;
+char ** gbl_extra_dirents = NULL;
+int gbl_num_extra_dirents = 0;
 int gbl_perform_full_clean_exit = 1;
 struct ruleset *gbl_ruleset = NULL;
 
@@ -255,6 +259,10 @@ int gbl_serialise_sqlite3_open = 0;
 
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
+
+// Upon initialization the db directory can have entries with these extensions.
+// Additional entries can be whitelisted via the extra_direntries tunable.
+const char *gbl_accepted_extensions_on_init[] = {".lrl", ".csc2", ".cfg", ""};
 
 int gbl_nullfkey = 1;
 
@@ -3421,6 +3429,76 @@ cleanup:
     free(backupdir);
 }
 
+/*
+ * Validates that a database directory only has directory 
+ * entries with valid extensions. See `gbl_accepted_extensions_on_init` for 
+ * valid extensions.
+ *
+ * dbdir: The name of the database directory to be validated.
+ *
+ * Returns
+ *      0 if all directory entry names end in a valid extension.
+ *      1 if any directory entry has a name not ending in a valid extension.
+ *      -1 on error.
+ */
+static int validate_dbdir(const char *dbdir) {
+    struct dirent buf;
+    struct dirent *de;
+    int isAllowed = 0;
+    int rc = 0;
+
+    DIR *d = opendir(dbdir);
+    if (!d) {
+        logmsg(LOGMSG_ERROR, "failed to read data directory\n");
+        rc = -1;
+        goto done;
+    }
+
+    while (bb_readdir(d, &buf, &de) == 0 && de) {
+        if ((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0)) {
+            continue;
+        }
+
+        char * ext = strrchr(de->d_name, '.');
+        if (ext) {
+            int i=0;
+            const char * extension = NULL;
+
+            while (!isAllowed &&
+                  ((extension = gbl_accepted_extensions_on_init[i++]),
+                  extension[0] != '\0')) {
+                if (strcmp(ext, extension) == 0) {
+                    isAllowed = 1;
+                }
+            }
+        }
+
+        for (int i=0; !isAllowed && i<gbl_num_extra_dirents; ++i) {
+            if (strcmp(de->d_name, gbl_extra_dirents[i]) == 0) {
+                isAllowed = 1;
+                break;
+            }
+        }
+
+        if (!isAllowed) {
+            logmsg(LOGMSG_ERROR,
+            "Trying to init a database in a directory with a dirent "
+            "('%s') that failed validation.\n", de->d_name);
+            rc = 1;
+            goto done;
+        }
+
+        isAllowed = 0;
+    }
+
+done:
+    if (d) {
+        closedir(d);
+    }
+
+    return rc;
+}
+
 static int init(int argc, char **argv)
 {
     char *dbname, *lrlname = NULL, ctmp[64];
@@ -3620,6 +3698,11 @@ static int init(int argc, char **argv)
     thedb = newdbenv(dbname, lrlname);
     if (thedb == 0)
         return -1;
+
+    if (gbl_create_mode && (validate_dbdir(thedb->basedir) != 0)) {
+       logmsg(LOGMSG_FATAL, "Database directory failed validation.\n");
+       return -1; 
+    }
 
     /* Initialize SSL backend before creating any net.
        If we're exiting, don't bother. */

@@ -57,6 +57,8 @@ extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **sfuncs;
 extern char **afuncs;
+extern char **gbl_extra_dirents;
+extern int gbl_num_extra_dirents;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
 static int pre_read_option(char *, int);
@@ -1241,6 +1243,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
+    } else if (tokcmp(tok, ltok, "extra_dirents") == 0) {
+        char *rest = tok + strlen("extra_dirents");
+        // Size passed to malloc is an upper bound on the number of tokens.
+        gbl_extra_dirents = malloc(sizeof(char *) * (strlen(rest)/2+1));
+
+        while ((tok = segtok(line, len, &st, &ltok)) != NULL && ltok > 0) {
+            gbl_extra_dirents[gbl_num_extra_dirents++] = tokdup(tok, ltok);
+        }
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {

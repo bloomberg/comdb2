@@ -113,9 +113,9 @@ if [ $CREATEDB == 1 ] ; then
     cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
 name    $DBNAME
 dir     $DBDIR
+extra_dirents   tmp var
 
 EOPTIONS
-
 
     pmux_port=5105
     pmux_cmd='pmux -n'

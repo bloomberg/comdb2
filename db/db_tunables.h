@@ -2145,6 +2145,10 @@ REGISTER_TUNABLE("longreq_log_freq_sec",
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("extra_direntries", "Ignore these entries in the db directory"
+                 " during initialization", TUNABLE_STRING, &gbl_extra_dirents_str,
+                 READONLY | READEARLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("waitalive_iterations",
                  "Wait this many iterations for a "
                  "socket to be usable.  (Default: 3)",
