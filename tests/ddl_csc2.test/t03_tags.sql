@@ -105,3 +105,4 @@ keys
 
 SELECT * FROM comdb2_tags order by tablename, ixnum
 SELECT * FROM comdb2_tag_columns order by tablename, tagname, indx
+EXEC PROCEDURE sys.cmd.send('dumptags')

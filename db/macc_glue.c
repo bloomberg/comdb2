@@ -414,7 +414,7 @@ static int _set_schema_index_column(struct schema *sch, struct field *m,
         m->idx = -1;
         if (expr == NULL) {
             errstat_set_rcstrf(err, -1, "unterminated string literal");
-            return -1;
+            return 1;
         }
         switch (m->type) {
             case 0:
@@ -423,13 +423,13 @@ static int _set_schema_index_column(struct schema *sch, struct field *m,
             case SERVER_VUTF8:
             case SERVER_BLOB2:
                 errstat_set_rcstrf(err, -1, "blob index is not supported.");
-                return -1;
+                return 1;
             case SERVER_BCSTR:
                 if (m->len < 2) {
                     errstat_set_rcstrf(
                             err, -1,
                             "string must be at least 2 bytes in in length.");
-                    return -1;
+                    return 1;
                 }
                 break;
             case SERVER_DATETIME:
@@ -474,7 +474,7 @@ static int _set_schema_index_column(struct schema *sch, struct field *m,
         }
         if (offset + m->len > MAXKEYLEN) {
             errstat_set_rcstrf(err, -1, "index %d is too large.", ix);
-            return -1;
+            return 1;
         }
     } else {
         m->name = strdup(buf);
@@ -523,24 +523,29 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
     int rc;
     char *tblname = tbl->tablename;
     struct schema *s;
+    int backup = *pnlst;
 
     sch->nix = tbl->nix;
     sch->ix = calloc(sch->nix, sizeof(struct schema *));
     if (!sch->ix) {
         errstat_set_rcstrf(err, rc = -1, "oom: %s:%d", __func__, __LINE__);
-        return -1;
+        goto err;
     }
 
     for (ix = 0; ix < sch->nix; ix++) {
         sch->ix[ix] = s = _create_index_schema(sch->tag, ix, err);
-        if (!s)
-            return -1;
+        if (!s) {
+            rc = -1;
+            goto err;
+        }
 
         if (dyns_is_idx_partial_datacopy(ix)) {
             s->flags |= SCHEMA_PARTIALDATACOPY;
             s->partial_datacopy = _create_index_datacopy_schema(sch, ix, err);
-            if (!s->partial_datacopy)
-                return -1;
+            if (!s->partial_datacopy) {
+                rc = -1;
+                goto err;
+            }
             tbl->ix_datacopylen[ix] =
                 s->partial_datacopy->member[s->partial_datacopy->nmembers-1].offset +
                 s->partial_datacopy->member[s->partial_datacopy->nmembers-1].len;
@@ -552,8 +557,8 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
 
         offset = 0;
         for (piece = 0; piece < s->nmembers; piece++) {
-            if (_set_schema_index_column(sch, &s->member[piece], ix, piece, offset, err))
-                return -1;
+            if ((rc = _set_schema_index_column(sch, &s->member[piece], ix, piece, offset, err)))
+                goto err;
             offset += s->member[piece].len;
 
             /* we could check here if there are decimals in the index, and mark
@@ -588,7 +593,7 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
                 if (!s_alias)  {
                     errstat_set_rcstrf(err, rc = -1, "Failed to clone tag %s",
                                        s_alias->tag);
-                    return -1;
+                    return 1;
                 }
             } else {
                 char tmptagname[MAXTAGLEN + sizeof(".NEW.")];
@@ -597,24 +602,35 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
                 if (!s_alias)  {
                     errstat_set_rcstrf(err, rc = -1, "Failed to clone tag %s",
                                        s_alias->tag);
-                    return -1;
+                    return 1;
                 }
             }
             if (!s->csctag) {
                 s->csctag = strdup(s_alias->tag);
                 if (!s->csctag)
-                    return -1;
+                    return 1;
             }
             lst[(*pnlst)++] = s_alias;
             if (where) {
                 s->where = strdup(where);
                 if (!s->where)
-                    return -1;
+                    return 1;
                 tbl->ix_partial = 1;
             }
         }
     }
     return 0;
+
+err:
+    for (ix = backup; ix < *pnlst; ix++) {
+        freeschema(lst[ix], 0);
+        lst[ix] = NULL;
+    }
+    *pnlst = backup;
+    free(sch->ix);
+    sch->ix = NULL;
+    sch->nix = 0;
+    return rc;
 }
 
 /* Setup the dbload/dbstore values for a field.  Only do this for the
