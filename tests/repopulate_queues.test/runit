@@ -27,6 +27,7 @@ for i in `seq 1 5`; do
     rm -rf $DBDIR/$db.repop
     mkdir -p $DBDIR/$db.repop
     $COMDB2_EXE $db --repopnewlrl $DBDIR/$db.repop/$db.lrl --lrl $DBDIR/$db/$db.lrl
+    echo "extra_dirents $(ls $DBDIR/$db | tr "\n" " ")" >> $DBDIR/$db.repop/$db.lrl
     $COMDB2_EXE $db --create --lrl $DBDIR/$db.repop/$db.lrl
     $COMDB2_EXE $db --lrl $DBDIR/$db.repop/$db.lrl &
     sleep 10

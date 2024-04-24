@@ -538,7 +538,7 @@ static struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
                                        int required)
 {
     FILE *ff;
-    char line[512] = {0}; // valgrind doesn't like sse42 instructions
+    char line[2048] = {0}; // valgrind doesn't like sse42 instructions
     struct lrlfile *lrlfile;
     struct read_lrl_option_type options = {
         .lineno = 0, .lrlname = lrlname, .dbname = dbenv->envname,
