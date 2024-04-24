@@ -83,8 +83,6 @@ reverse_conn_handle_tp *wait_for_reverse_conn(int timeout /*secs*/) {
             if (rc != 0 && rc != ETIMEDOUT) {
                 break;
             }
-            if (rc == ETIMEDOUT)
-                rc = 0;
             --timeout;
         }
     }
