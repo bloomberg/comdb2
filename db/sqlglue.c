@@ -8711,7 +8711,11 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
              */
             rdlock_schema_lk();
             assert(pCur->vdbe == (Vdbe*)clnt->dbtran.pStmt);
-            newlocks_rc = sqlite3LockStmtTables(clnt->dbtran.pStmt);
+            /* remote table locks aren't berkeleydb locks. release them here */
+            if (clnt->dbtran.nLockedRemTables > 0)
+                newlocks_rc = sqlite3UnlockStmtTablesRemotes(clnt);
+            if (newlocks_rc == 0)
+                newlocks_rc = sqlite3LockStmtTables(clnt->dbtran.pStmt);
             unlock_schema_lk();
 
             if (newlocks_rc) {

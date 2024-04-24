@@ -132,6 +132,10 @@ SELECT 'inserted 6 records from remote to remote; remote should have 12 records'
 SELECT COUNT(*) FROM LOCAL_${dbname}.chunky
 EOF
 
+###### Verify that we do not leak fdb users counter ######
+cdb2sql --cdb2cfg ${cdb2config} $dbname default "CREATE TABLE yet_another_table(a INTEGER)"
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbname}.yet_another_table"
+
 # validate results
 testcase_output=$(cat output.actual)
 expected_output=$(cat output.expected)
