@@ -1202,6 +1202,12 @@ int dohsql_distribute(dohsql_node_t *node)
      * worker shards on the queue in any case
      */
     flags |= THDPOOL_FORCE_QUEUE;
+    /**
+     * Lets put the non-coordinator tasks at the beginning of the
+     * queue since we have already dispatched the coordinator
+     * This will clear the parallel load faster and in proper order
+     */
+    flags |= THDPOOL_ENQUEUE_FRONT; 
     clnt->conns = conns;
     /* augment interface */
     _master_clnt_set(clnt);
@@ -1257,6 +1263,9 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
 
     if (!clnt->conns)
         return SHARD_NOERR;
+
+    /* if we got here anyhow, make sure we tell all the shards to finish */
+    _signal_children_master_is_done(conns);
 
     donate_current_row(conns, 0);
 
