@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+dir=$DBDIR
+
+function runtest {
+	echo "Verifying that comdb2_files skips read-restricted files"
+	echo "restricted blahblah" > $dir/foo
+	chmod 000 $dir/foo
+	cdb2sql $dbnm local 'select count(*) from comdb2_files' > /dev/null
+	rc=$?
+	if (( rc != 0 ));
+	then
+		echo "Exiting with rc $rc"
+		exit $rc
+	fi
+
+	echo "Verifying that comdb2_files skips read-restricted directories"
+	mkdir $dir/restrictedDir
+	touch $dir/restrictedDir/f
+	chmod 000 $dir/restrictedDir
+	cdb2sql $dbnm local 'select count(*) from comdb2_files' > /dev/null
+	rc=$?
+	if (( rc != 0 ));
+	then
+		echo "Exiting with rc $rc"
+		exit $rc
+	fi
+
+	echo "Verifying that comdb2_files fails on a broken symlink"
+	ln -s idonutexist $dir/link
+	! cdb2sql $dbnm local 'select count(*) from comdb2_files' > /dev/null
+	rc=$?
+	echo "Exiting with rc $rc"
+	exit $rc
+}
+
+if [ -z "$CLUSTER" ];
+then
+	runtest $dbnm $DBDIR
+else
+	node=`echo $CLUSTER | awk '{ print $1}'`
+	ssh $node "export PATH=$PATH; export dir=$DBDIR; export dbnm=$dbnm; $(typeset -f runtest); runtest"
+	rc=$?
+	exit $rc
+fi
+
