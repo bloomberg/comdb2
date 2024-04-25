@@ -319,6 +319,7 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
     struct dirent *de;
     struct stat st;
     int rc = 0;
+    int t_rc = 0;
 
     DIR *d = opendir(dirname);
     if (!d) {
@@ -338,6 +339,20 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
             logmsg(LOGMSG_ERROR, "%s:%d couldn't stat %s (%s)\n", __func__,
                    __LINE__, path, strerror(errno));
             break;
+        }
+
+        t_rc = access(path, R_OK);
+        if (t_rc == -1) {
+            if (errno == EACCES) {
+                logmsg(LOGMSG_WARN, "%s:%d: ignoring %s because access check failed with errno %d\n",
+                        __func__, __LINE__, de->d_name, errno);
+                continue;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s:%d: checking access permissions for %s failed with errno %d\n",
+                        __func__, __LINE__, de->d_name, errno);
+                rc = t_rc;
+                break;
+            }
         }
 
         if (S_ISDIR(st.st_mode)) {
