@@ -413,7 +413,7 @@ b[0].len = 4;
 b[0].ptr = 0x600dcafe;
 
 b[1].len = 2;
-b[2].ptr = 0xf00d;
+b[1].ptr = 0xf00d;
 cdb2_bind_array(hndle, "blobs", CDB2_BLOB, b, 2, 0);
 
 
