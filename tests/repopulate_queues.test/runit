@@ -6,9 +6,9 @@ db=$DBNAME
 
 rm -rf $DBDIR
 mkdir -p $DBDIR
-df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DBDIR/$db/$db.lrl
 
 $COMDB2_EXE $db --create --dir $DBDIR/$db >/dev/null 2>&1
+df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DBDIR/$db/$db.lrl
 $COMDB2_EXE $db --lrl $DBDIR/$db/$db.lrl >/dev/null 2>&1 &
 sleep 10
 
