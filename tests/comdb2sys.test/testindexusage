@@ -1,9 +1,11 @@
 #!/bin/bash
 
 a_dbn=$1
-default=default
+replicant=$(cdb2sql ${CDB2_OPTIONS} $a_dbn default 'select host from comdb2_cluster where is_master="N" limit 1')
+replicant=$(echo $replicant | grep -oP \'\(.*?\)\')
+replicant=${replicant:1:-1}
 
-cdb2sql ${CDB2_OPTIONS} $a_dbn $default - <<EOF
+cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<EOF
 create table ixtest(a int, b int); \$\$
 create index ixtest_a on ixtest(a);
 create index ixtest_b on ixtest(b);
@@ -24,9 +26,9 @@ echo 'select a from ixtest where a between 1 and 10'
 echo 'select a from ixtest where a between 1 and 10'
 echo 'select a from ixtest where a between 1 and 10'
 echo 'select b from ixtest where b between 1 and 10'
-) | cdb2sql ${CDB2_OPTIONS} $a_dbn $default - >/dev/null
+) | cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant - >/dev/null
 
-cdb2sql ${CDB2_OPTIONS} $a_dbn $default 'select * from comdb2_index_usage where table_name="ixtest"' > testindexusage.out
+cdb2sql ${CDB2_OPTIONS} $a_dbn default --host $replicant 'select * from comdb2_index_usage where table_name="ixtest"' > testindexusage.out
 diff testindexusage.out testindexusage.expected >/dev/null
 rc=$?
 if [[ $rc -ne 0 ]]; then
