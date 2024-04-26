@@ -1830,6 +1830,7 @@ void cleanup_newdb(dbtable *tbl)
         free(tbl->ixuse);
         tbl->ixuse = NULL;
     }
+
     if (tbl->sqlixuse) {
         free(tbl->sqlixuse);
         tbl->sqlixuse = NULL;

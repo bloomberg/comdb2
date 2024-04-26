@@ -6440,8 +6440,16 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
     /* update cursor use counts.  don't lock for now.
      * analyze shouldnt' affect cursor stats */
     if (pCur->db && !clnt->is_analyze) {
-        if (pCur->ixnum != -1)
+        if (pCur->ixnum != -1) {
             pCur->db->sqlixuse[pCur->ixnum] += (pCur->nfind + pCur->nmove);
+            pCur->db->index_used_count++;
+        } else {
+            pCur->db->read_count += (pCur->nfind + pCur->nmove);
+
+            if (pCur->nfind && pCur->nmove) {
+                pCur->db->read_count -= 1;  // double-counts if an index was used 
+            }
+        }
     }
 
     if (thd && thd->query_hash) {

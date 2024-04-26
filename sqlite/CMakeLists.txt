@@ -47,9 +47,10 @@ add_library(sqlite
   ext/comdb2/prepared.c
   ext/comdb2/stringrefs.c
   ext/comdb2/systables.c
-  ext/comdb2/table_properties.c
   ext/comdb2/tables.c
   ext/comdb2/tablesizes.c
+  ext/comdb2/table_metrics.c
+  ext/comdb2/table_properties.c
   ext/comdb2/tags.c
   ext/comdb2/tag_columns.c
   ext/comdb2/temporary_file_sizes.c

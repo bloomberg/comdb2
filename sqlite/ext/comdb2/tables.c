@@ -244,6 +244,8 @@ int comdb2SystblInit(
     rc = systblPreparedInit(db);
   if (rc == SQLITE_OK)
     rc = systblSchemaVersionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTableMetricsInit(db);
 #endif
   return rc;
 }

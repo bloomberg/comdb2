@@ -2,7 +2,6 @@
 
 a_dbn=$1
 default=default
-#default=local
 
 cdb2sql ${CDB2_OPTIONS} $a_dbn $default - <<EOF
 create table ixtest(a int, b int); \$\$
@@ -30,9 +29,9 @@ echo 'select b from ixtest where b between 1 and 10'
 cdb2sql ${CDB2_OPTIONS} $a_dbn $default 'select * from comdb2_index_usage where table_name="ixtest"' > testindexusage.out
 diff testindexusage.out testindexusage.expected >/dev/null
 rc=$?
-if [[ $rc -ne 0  ]]; then
+if [[ $rc -ne 0 ]]; then
     echo "Failed index usage test"
     echo diff $(pwd)/testindexusage.out $(pwd)/testindexusage.expected
 fi
 
-exit $?
+exit $rc
