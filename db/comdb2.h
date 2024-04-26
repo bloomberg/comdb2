@@ -641,7 +641,7 @@ typedef struct dbtable {
     unsigned typcnt[MAXTYPCNT + 1];
     unsigned blocktypcnt[BLOCK_MAXOPCODE];
     unsigned blockosqltypcnt[MAX_OSQL_TYPES];
-    unsigned nsql;
+    unsigned nsql;  // counter for queries to this table 
     /*prev counters for diff*/
     unsigned prev_typcnt[MAXTYPCNT + 1];
     unsigned prev_blocktypcnt[BLOCK_MAXOPCODE];
@@ -660,6 +660,8 @@ typedef struct dbtable {
     unsigned aa_counter_upd;   // counter which includes updates
     unsigned aa_counter_noupd; // does not include updates
     int64_t aa_needs_analyze_time; // time when analyze is needed for table in request mode, otherwise 0
+    int64_t read_count; // counter for reads to this table
+    int64_t index_used_count;   // counter for number of times a table index was used
 
     /* Foreign key constraints */
     constraint_t *constraints;

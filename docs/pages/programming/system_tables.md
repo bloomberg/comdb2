@@ -463,9 +463,52 @@ Table of permissions for system tables in the database.
 * `WRITE` - `Y` if `username` has write access to `tablename`
 * `DDL` - `Y` if `username` can modify `tablename` schema
 
+## comdb2_tables
+
+List of all tables in the database
+
+    comdb2_tables(tablename)
+
+* `tablename` - Name of the table
+
+## comdb2_tablepermissions
+
+Permissions for tables in the database
+
+    comdb2_tablepermissions(tablename, username, READ, WRITE, DDL)
+
+* `tablename` - Name of the table
+* `username` - Name of the user
+* `READ` - `Y` if `username` has read access to `tablename`
+* `WRITE` - `Y` if `username` has write access to `tablename`
+* `DDL` - `Y` if `username` can modify `tablename` schema
+
+## comdb2_tablesizes
+
+Sizes on disk of tables in the database
+
+    comdb2_tablesizes(tablename, bytes)
+
+* `tablename` - Name of the table
+* `bytes` - Size of the table in bytes
+
+## comdb2_table_metrics
+
+Lists real-time metrics for tables in the database
+
+    comdb2_table_metrics(tablename)
+
+* `table_name` - Name of the table
+* `num_queries` - Number of queries ran on the table
+* `num_index_used` - Number of times a table index was used
+* `num_records_read` - Number of data records read
+* `num_records_inserted` - Number of data records inserted
+* `num_records_updated` - Number of data records updated
+* `num_records_deleted` - Number of data records deleted
+
 ## comdb2_table_properties
 
-This table lists miscellaneous table properties
+Lists miscellaneous table properties
 
     comdb2_table_properties(table_name, odh, compress, blob_compress, 
     in_place_updates, instant_schema_change)
@@ -476,35 +519,6 @@ This table lists miscellaneous table properties
 * `blob_compress` - Type of blob compression used
 * `in_place_updates` - `Y` if in-place updates are enabled
 * `instant_schema_change` - `Y` if instant schema change is enabled
-
-## comdb2_tablepermissions
-
-Table of permissions for tables in the database.
-
-    comdb2_tablepermissions(tablename, username, READ, WRITE, DDL)
-
-* `tablename` - Name of the table
-* `username` - Name of the user
-* `READ` - `Y` if `username` has read access to `tablename`
-* `WRITE` - `Y` if `username` has write access to `tablename`
-* `DDL` - `Y` if `username` can modify `tablename` schema
-
-## comdb2_tables
-
-This is a table of all the existing tables in the database.
-
-    comdb2_tables(tablename)
-
-* `tablename` - Name of the table
-
-## comdb2_tablesizes
-
-Shows the sizes on disk of the tables.
-
-    comdb2_tablesizes(tablename, bytes)
-
-* `tablename` - Name of the table
-* `bytes` - Size of the table in bytes
 
 ## comdb2_tag_columns
 

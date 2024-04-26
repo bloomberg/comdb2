@@ -404,6 +404,7 @@
 (name='comdb2_stringrefs')
 (name='comdb2_systablepermissions')
 (name='comdb2_systables')
+(name='comdb2_table_metrics')
 (name='comdb2_table_properties')
 (name='comdb2_tablepermissions')
 (name='comdb2_tables')
