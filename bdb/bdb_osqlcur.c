@@ -708,6 +708,7 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
         /* check genid cases the genid limit */
         switch (cur->shadow_tran->tranclass) {
         case TRANCLASS_READCOMMITTED: break;
+        case TRANCLASS_MODSNAP: break;
         case TRANCLASS_SERIALIZABLE:
         case TRANCLASS_SNAPISOL:
             if (/*!ignore_limit &&*/ cur->shadow_tran->startgenid &&

@@ -2,3 +2,4 @@ enable_snapshot_isolation
 
 table t1 t1.csc2
 ssl_client_mode OPTIONAL
+use_modsnap_for_snapshot

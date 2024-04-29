@@ -49,6 +49,8 @@ extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
+extern int gbl_modsnap_asof;
+extern int gbl_use_modsnap_for_snapshot;
 
 int gbl_disable_access_controls;
 
@@ -427,7 +429,7 @@ static char *legacy_options[] = {
     "usenames",
     "setattr max_sql_idle_time 864000",
     "utxnid_log off",
-    "commit_lsn_map off"
+    "commit_lsn_map off",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
@@ -1208,6 +1210,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
+        // If use_modsnap_for_snapshot is set then we don't want 
+        // to enable the new snapisol tunables.
+        if (!gbl_use_modsnap_for_snapshot) {
         /* Disable- will circle back to fix */
 /*
         gbl_new_snapisol = 1;
@@ -1215,6 +1220,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         gbl_new_snapisol_logging = 1;
         logmsg(LOGMSG_INFO, "Enabled snapshot isolation (default newsi)\n");
 */
+        }
         logmsg(LOGMSG_INFO, "Enabled snapshot isolation\n");
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
@@ -1241,6 +1247,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
+    } else if (tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
+        gbl_snapisol = 1;
+        gbl_modsnap_asof = 1;
+        gbl_use_modsnap_for_snapshot = 1;
+
+        // Turn off new snapisol tunables. modsnap asof and newsi asof don't work together.
+        // If use_modsnap_for_snapshot is defaulted remember to turn these off by default as well.
+        gbl_new_snapisol = 0;
+        gbl_new_snapisol_asof = 0;
+        gbl_new_snapisol_logging = 0;
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {

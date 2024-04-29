@@ -77,6 +77,7 @@ int tran2netreq(int dbtran)
         return NET_OSQL_SOCK_REQ;
 
     case TRANLEVEL_RECOM:
+    case TRANLEVEL_MODSNAP:
         return NET_OSQL_RECOM_REQ;
 
     case TRANLEVEL_SNAPISOL:
@@ -105,6 +106,7 @@ int tran2netrpl(int dbtran)
         return NET_OSQL_SOCK_RPL;
 
     case TRANLEVEL_RECOM:
+    case TRANLEVEL_MODSNAP:
         return NET_OSQL_RECOM_RPL;
 
     case TRANLEVEL_SNAPISOL:
@@ -356,7 +358,7 @@ goback:
     /* if this is read committed and we just got a verify error,
        don't close the shadow tables since this will get retried */
     if (clnt->osql.xerr.errval == ERR_VERIFY &&
-        clnt->dbtran.mode == TRANLEVEL_RECOM &&
+        clnt->dbtran.mode == TRANLEVEL_RECOM /* don't do this on modsnap */ &&
         clnt->osql.replay != OSQL_RETRY_LAST) {
     } else {
         /* CLOSE the temporary tables */
@@ -547,6 +549,7 @@ int tran2req(int dbtran)
         return OSQL_SOCK_REQ;
 
     case TRANLEVEL_RECOM:
+    case TRANLEVEL_MODSNAP:
         return OSQL_RECOM_REQ;
 
     case TRANLEVEL_SNAPISOL:

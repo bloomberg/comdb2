@@ -138,7 +138,7 @@ extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
 extern void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 extern void allow_sc_to_run(void);
-extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
+extern int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
@@ -659,7 +659,7 @@ static void *apply_thread(void *arg)
 				if (ret == 0 || ret == DB_REP_ISPERM) {
 					bdb_set_seqnum(dbenv->app_private);
 
-					if (ret == DB_REP_ISPERM && !gbl_early && !gbl_reallyearly) {
+					if (ret == DB_REP_ISPERM && (!gbl_early && !gbl_reallyearly)) {
 						/* Call this but not really early anymore */
 						comdb2_early_ack(dbenv, ret_lsnp, q->gen);
 					}
@@ -4205,6 +4205,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
     int is_fuid;
 	int inline_worker;
 	int polltm;
+	int commit_lsn_map = gbl_commit_lsn_map;
 	DB_LOGC *logc = NULL;
 	DB_ENV *dbenv;
 	int ret, t_ret = 0, last_fileid = -1;
@@ -4554,6 +4555,21 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		rp->ltrans = NULL;
 	}
 
+	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+	
+	if (commit_lsn_map && (rp->lc.child_utxnids != NULL)) {
+		UTXNID *elt;
+
+		LISTC_FOR_EACH(rp->lc.child_utxnids, elt, lnk) {
+			if ((ret = __txn_commit_map_add_nolock(dbenv, elt->utxnid, rp->commit_lsn)) != 0) {
+				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+				goto err;
+			}
+		}
+	}
+
+	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+
 
 	/* cleanup - similar to __rep_process_txn */
 err:
@@ -4783,6 +4799,11 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	LOGCOPY_32(&rectype, rec->data);
 	normalize_rectype(&rectype);
 	memset(&lc, 0, sizeof(lc));
+	if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &lc.child_utxnids) != 0)) {
+		goto err;
+	}
+
+	listc_init(lc.child_utxnids, offsetof(UTXNID, lnk));
 
 	if (rectype == DB___txn_regop_rowlocks) {
 
@@ -4880,11 +4901,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		prev_lsn = txn_args->prev_lsn;
 		lock_dbt = &txn_args->locks;
 		(*commit_gen) = 0;
-
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
 	} else if (rectype == DB___txn_regop_gen) {
 		/*
 		 * We're the end of a transaction.  Make sure this is
@@ -4911,11 +4927,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		assert(*commit_gen);
 		rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
 	} else if (rectype == DB___txn_dist_commit) {
 		if ((ret = __txn_dist_commit_read(dbenv, rec->data, &txn_dist_commit_args)) != 0) {
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
@@ -4947,11 +4958,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		dist_txnid = alloca(txn_dist_commit_args->dist_txnid.size + 1);
 		memcpy(dist_txnid, txn_dist_commit_args->dist_txnid.data, txn_dist_commit_args->dist_txnid.size);
 		dist_txnid[txn_dist_commit_args->dist_txnid.size] = '\0';
-
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -4960,6 +4966,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			__txn_xa_regop_read(dbenv, rec->data, &prep_args)) != 0)
 			return (ret);
 		prev_lsn = prep_args->prev_lsn;
+		utxnid = prep_args->txnid->utxnid;
 		lock_dbt = &prep_args->locks;
 	}
 
@@ -5098,6 +5105,36 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			static int lastpr = 0;
 			int now;
 
+			// Must add to commit lsn map after acquiring locks but before early acking.
+			//
+			// Why?
+			//
+			// 1) Must add to commit lsn map before early acking. If not:
+			//		DB early acks to the client ->
+			//		client starts snapshot txn. snapshot target lsn may be less than the lsn of 
+			//		the client's previous committed txn ->
+			//		snapshot rolls back the client's previous committed txn.
+			//
+			// * By adding to the commit lsn map before early acking, we ensure that snapshot 
+			// txns never roll back a txn that committed before it started from the client's perspective.
+			//
+			// 2) Must acquire locks before adding to the commit lsn map. If not:
+			// 		txn commit lsn is added to the map ->
+			//		new snapshot starts with this txn's commit lsn as its target lsn ->
+			//		if snapshot views a page before the other txn acquires a lock on it, it uses the old state;
+			//		otherwise, it blocks on the lock and uses the new state.
+			//
+			// * By adding to the commit lsn map after acquiring locks we ensure that a snapshot txn whose 
+			// target lsn is the commit lsn of an incompletely applied transaction sees all of its updates.
+			//
+			if (commit_lsn_map) {
+				if ((ret = __txn_commit_map_add(dbenv, 
+						utxnid, rctl->lsn)), ret != 0) {
+					logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
+					return ret;
+				}
+			}
+
 			if (gbl_early_ack_trace && ((now = time(NULL)) - lastpr)) {
 				logmsg(LOGMSG_USER, "%s line %d send early-ack for %d:%d "
 						"commit-gen %d\n", __func__, __LINE__, maxlsn.file,
@@ -5168,17 +5205,6 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	}
 #endif
 
-	if (commit_lsn_map && (lc.child_utxnids != NULL)) {
-		UTXNID *elt;
-
-		LISTC_FOR_EACH(lc.child_utxnids, elt, lnk) {
-			if (__txn_commit_map_get(dbenv, utxnid, &parent_commit_lsn) == 0) {
-				if ((ret = __txn_commit_map_add(dbenv, elt->utxnid, parent_commit_lsn)) != 0) {
-					goto err;
-				}
-			}
-		}
-	}
 
 	/*
 	 * The set of records for a transaction may include dbreg_register
@@ -5251,6 +5277,34 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		} else
 			ret = 0;
 	}
+
+
+	// We don't need to worry about a snapshot txn that started after the parent was early acked seeing a page 
+	// that these children updated before they are added to the commit lsn map: 
+	//		We had locks before we early acked, and we still have locks at this point.
+	//
+	// We don't need to worry about a snapshot that started after the parent was early acked rolling back
+	// these children's updates: 
+	// 		The children have the same commit lsn as the parent, and the parent's commit lsn
+	// 		was added to the map before the early ack. 
+	//		This means that any snapshot txn that started after this early ack 
+	// 		will have a target lsn >= the parent/child commit lsn.
+
+	Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+
+	if (commit_lsn_map && (lc.child_utxnids != NULL)) {
+		UTXNID *elt;
+
+		LISTC_FOR_EACH(lc.child_utxnids, elt, lnk) {
+			if ((ret = __txn_commit_map_add_nolock(dbenv, elt->utxnid, rctl->lsn)) != 0) {
+				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+				goto err;
+			}
+		}
+	}
+
+	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+
 
 	if (td_stats) {
 		x2 = bb_berkdb_fasttime();
@@ -5558,6 +5612,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
+	DB_LSN commit_lsn;
 	DB_REP *db_rep;
 	DB_LOCK lsnlock;
 	REP *rep = NULL;
@@ -5580,7 +5635,6 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int get_schema_lk = 0, got_schema_lk = 0;
 	int dontlock = 0;
 
-
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	rp = listc_rtl(&dbenv->inactive_transactions);
 	Pthread_mutex_unlock(&dbenv->recover_lk);
@@ -5591,6 +5645,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 		Pthread_mutex_init(&rp->lk, NULL);
 		Pthread_cond_init(&rp->wait, NULL);
 		memset(&rp->lc, 0, sizeof(rp->lc));
+
 		rp->recovery_queues = NULL;
 		rp->recpool =
 			pool_setalloc_init(sizeof(struct __recovery_record), 0,
@@ -5647,6 +5702,10 @@ bad_resize:	;
 	rp->lc.memused = 0;
 	rp->txninfo = NULL;
 	rp->context = 0;
+	if ((ret= __os_malloc(dbenv, sizeof(LISTC_T(UTXNID)), &rp->lc.child_utxnids) != 0)) {
+		goto err;
+	}
+	listc_init(rp->lc.child_utxnids, offsetof(UTXNID, lnk));
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
@@ -5735,11 +5794,6 @@ bad_resize:	;
 		}
 		prev_lsn = txn_rl_args->prev_lsn;
 		lock_dbt = &txn_rl_args->locks;
-
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
 	} else if (rectype == DB___txn_regop) {
 		/*
 		 * We're the end of a transaction.  Make sure this is
@@ -5763,10 +5817,6 @@ bad_resize:	;
 		prev_lsn = txn_args->prev_lsn;
 		lock_dbt = &txn_args->locks;
 
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
 	} else if (rectype == DB___txn_regop_gen) {
 		/*
 		 * We're the end of a transaction.  Make sure this is
@@ -5796,10 +5846,6 @@ bad_resize:	;
 		rep->committed_lsn = rctl->lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
 	} else if (rectype == DB___txn_dist_commit) {
 		if ((ret = __txn_dist_commit_read(dbenv, rec->data, &txn_dist_commit_args)) != 0) {
 			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
@@ -5832,11 +5878,6 @@ bad_resize:	;
 		memcpy(dist_txnid, txn_dist_commit_args->dist_txnid.data, txn_dist_commit_args->dist_txnid.size);
 		dist_txnid[txn_dist_commit_args->dist_txnid.size] = '\0';
 
-		if (commit_lsn_map && (ret = __txn_commit_map_add(dbenv, utxnid, rctl->lsn))) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
-		}
-
 	} else {
 		/* We're a prepare. */
 		DB_ASSERT(rectype == DB___txn_xa_regop);
@@ -5845,6 +5886,7 @@ bad_resize:	;
 			__txn_xa_regop_read(dbenv, rec->data, &prep_args)) != 0)
 			return (ret);
 		prev_lsn = prep_args->prev_lsn;
+		utxnid = prep_args->txnid->utxnid;
 		lock_dbt = &prep_args->locks;
 	}
 
@@ -5981,6 +6023,13 @@ bad_resize:	;
 		) {
 		static int lastpr = 0;
 		int now;
+		if (commit_lsn_map) {
+			if ((ret = __txn_commit_map_add(dbenv, 
+					utxnid, ctrllsn)), ret != 0) {
+				logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
+				return ret;
+			}
+		}
 
 		/* got all the locks.  ack back early */
 		if (gbl_early_ack_trace && ((now = time(NULL)) - lastpr)) {
@@ -6150,6 +6199,7 @@ bad_resize:	;
 	}
 
 	/* Dispatch to a processor thread. */
+	rp->utxnid = utxnid;
 	rp->txninfo = txninfo;
 	rp->commit_lsn = ctrllsn;
 	rp->has_logical_commit = 0;
@@ -6346,12 +6396,14 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 			c_lsn = argp->c_lsn;
 			*lsnp = argp->prev_lsn;
 
-			if (commit_lsn_map && __txn_commit_map_get(dbenv, argp->txnid->utxnid, &parent_commit_lsn) == 0) {
-				if ((ret = __txn_commit_map_add(dbenv, argp->child_utxnid, parent_commit_lsn)) != 0) {
-					logmsg(LOGMSG_ERROR, "__rep_collect_txn lsn %u:%u rc %d\n", lsnp->file, lsnp->offset, ret);
-					goto err;
-				}
+			UTXNID *utxnid_track;
+
+			if ((ret = __os_malloc(dbenv, sizeof(UTXNID), &utxnid_track)) != 0) {
+				goto err;
 			}
+
+			utxnid_track->utxnid = argp->child_utxnid;
+			listc_atl(lc->child_utxnids, utxnid_track);
 
 			__os_free(dbenv, argp);
 

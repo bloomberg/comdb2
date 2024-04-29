@@ -120,7 +120,8 @@ typedef enum {
     /* TRANCLASS_QUERYISOLATION = 6, */
     TRANCLASS_LOGICAL_NOROWLOCKS = 7, /* used in fetch.c for table locks */
     TRANCLASS_SOSQL = 8,
-    TRANCLASS_SNAPISOL = 9
+    TRANCLASS_SNAPISOL = 9,
+    TRANCLASS_MODSNAP = 10
 } tranclass_type;
 
 #define PAGE_KEY                                                               \
@@ -561,6 +562,7 @@ struct bdb_cursor_impl_tag {
     bdb_state_type *state;  /* state for */
     cursor_tran_t *curtran; /* all cursors (but comdb2 mode have this */
     tran_type *shadow_tran; /* read committed and snapshot/serializable modes */
+    int use_snapcur;
 
     /* cursor position */
     int rrn;                  /* == 2 (don't need this) */
@@ -1699,6 +1701,8 @@ int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
 struct cursor_tran {
     uint32_t lockerid;
     uint32_t flags;
+    DB_LSN last_commit_lsn; /* Commit LSN prior to modsnap start point */
+    DB_LSN last_checkpoint_lsn; /* Checkpoint LSN prior to modsnap start point */
     int id; /* debugging */
 };
 
@@ -1742,6 +1746,7 @@ extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_asof;
 extern int gbl_new_snapisol_logging;
 extern int gbl_early;
+extern int gbl_modsnap;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_verify_all_pools;

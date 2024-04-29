@@ -656,6 +656,9 @@ tran_type *bdb_tran_begin_socksql(bdb_state_type *, int trak, int *bdberr);
 tran_type *bdb_tran_begin_readcommitted(bdb_state_type *, int trak,
                                         int *bdberr);
 
+tran_type *bdb_tran_begin_modsnap(bdb_state_type *, int trak,
+                                        int *bdberr);
+
 tran_type *bdb_tran_begin_serializable(bdb_state_type *bdb_state, int trak,
                                        int *bdberr, int epoch, int file,
                                        int offset, int is_ha_retry);
@@ -1391,6 +1394,68 @@ int bdb_genid_exists(bdb_state_type *bdb_state, unsigned long long genid,
 unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *file,
                                        unsigned int *offset);
+/*
+ * bdb_get_lowest_modsnap_file --
+ * Gets the lowest logfile in use by a modsnap transaction.
+ *
+ * bdb_state: Caller's bdb state.
+ *
+ * Returns the minimum logfile in use by a modsnap transaction or -1 if there 
+ *  are no ongoing modsnap transactions.
+ */
+int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state);
+
+/*
+ * bdb_unregister_modsnap --
+ * Unregister a finished modsnap transaction.
+ *
+ * bdb_state: Caller's bdb state.
+ * registration: Opaque registration handle set in `bdb_register_modsnap`
+ */
+void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration);
+
+/* bdb_register_modsnap --
+ * Register a new modsnap transaction.
+ *
+ * bdb_state: Caller's bdb state.
+ * last_checkpoint_lsn_file: File of the checkpoint lsn preceding the modsnap start point.
+ * last_checkpoint_lsn_offset: Offset of the checkpoint lsn preceding the modsnap start point.
+ * registration: This gets set to point to a berkdb structure that holds registration state. 
+ *      This is used to unregister a modsnap transaction once it finishes (see `bdb_unregister_modsnap`).
+ *      Callers should never access it.
+ *
+ * Returns 0 on success and non-0 on failure.
+ */
+int bdb_register_modsnap(bdb_state_type *bdb_state,
+                        unsigned int last_checkpoint_lsn_file,
+                        unsigned int last_checkpoint_lsn_offset,
+                        void ** registration);
+
+/* bdb_get_modsnap_start_state --
+ * Get the start state for a new modsnap transaction. A modsnap transaction's start state includes 
+ * the the preceding commit lsn (its target lsn) and the preceding checkpoint lsn.
+ *
+ * bdb_state: Caller's bdb state.
+ * is_ha_retry: 1 if transaction is a hasql retry. 0 otherwise.
+ * snapshot_epoch: Snapshot epoch if a PIT snapshot or 0 if not a PIT snapshot.
+ * last_commit_lsn_file: This gets set to the preceding commit lsn file.
+ *                       If transaction is a hasql retry, 
+ *                       then this should be set by the caller to the retry start lsn file.
+ * last_commit_lsn_offset: This gets set to the preceding commit lsn offset.
+ *                         If transaction is a hasql retry, 
+ *                         then this should be set by the caller to the retry start lsn offset.
+ * last_checkpoint_lsn_file: This gets set to the preceding checkpoint lsn file.
+ * last_checkpoint_lsn_offset: This gets set to the preceding checkpoint lsn offset.
+ *
+ * Returns 0 on success and non-0 on failure.
+ */
+int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
+                        int is_hasql_retry,
+                        int snapshot_epoch,
+                        unsigned int *last_commit_lsn_file,
+                        unsigned int *last_commit_lsn_offset,
+                        unsigned int *last_checkpoint_lsn_file,
+                        unsigned int *last_checkpoint_lsn_offset);
 
 void bdb_set_tran_verify_updateid(tran_type *tran);
 

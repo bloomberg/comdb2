@@ -81,11 +81,11 @@ __ham_stat(dbc, spp, flags)
 	    pgno != PGNO_INVALID;) {
 		++sp->hash_free;
 
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0)
 			goto err;
 
 		pgno = h->next_pgno;
-		(void)__memp_fput(mpf, h, 0);
+		(void)PAGEPUT(dbc, mpf, h, 0);
 	}
 
 	/* Now traverse the rest of the table. */
@@ -258,7 +258,7 @@ __ham_traverse(dbc, mode, callback, cookie, look_past_max)
 			(void)__lock_put(dbp->dbenv, &hcp->lock);
 
 		if (hcp->page != NULL) {
-			if ((ret = __memp_fput(mpf, hcp->page, 0)) != 0)
+			if ((ret = PAGEPUT(dbc, mpf, hcp->page, 0)) != 0)
 				return (ret);
 			hcp->page = NULL;
 		}

@@ -194,6 +194,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
             /* for transactional mode, preserve the path;
                tid will have the needed lockid
                */
+
             rc = bdb_get_unpack_blob(bdb_state, dbp, tid, &dbt_key, &dbt_data, &args->ver, 0, args->fn_malloc,
                                      args->fn_free);
 
@@ -351,8 +352,10 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                 } else {
                     /* rc = dbp->paired_cursor(dbp,
                      * (DBC*)bdb_cursor_dbcp(parent), &dbcp, 0); */
+
                     dbcp = get_cursor_for_cursortran_flags(parent->curtran, dbp,
-                                                           0, bdberr);
+                                                           parent->use_snapcur ? DB_CUR_SNAPSHOT : 0, bdberr);
+
                     rc = (dbcp == 0);
                     if (rc) {
                         logmsg(LOGMSG_ERROR, 

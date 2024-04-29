@@ -1065,7 +1065,7 @@ overflow:		if (!ovflok) {
 			 * was just pointing at a non-overflow item.)
 			 */
 			p2->data = buf2;
-			if ((ret = __db_goff(dbp,
+			if ((ret = __db_goff(NULL, dbp,
 			    p2, bo->tlen, bo->pgno, NULL, NULL)) != 0) {
 				isbad = 1;
 				EPRINT((dbenv,
@@ -1995,7 +1995,7 @@ __bam_vrfy_treeorder(dbp, pgno, h, lp, rp, func, flags)
 			dbt.size = lp->len;
 		} else if (B_TYPE_NOCOMP(lp) == B_OVERFLOW) {
 			bo = (BOVERFLOW *)lp->data;
-			if ((ret = __db_goff(dbp, &dbt, bo->tlen, bo->pgno,
+			if ((ret = __db_goff(NULL, dbp, &dbt, bo->tlen, bo->pgno,
 			    NULL, NULL)) != 0)
 				return (ret);
 		} else {
@@ -2031,7 +2031,7 @@ __bam_vrfy_treeorder(dbp, pgno, h, lp, rp, func, flags)
 			dbt.size = rp->len;
 		} else if (B_TYPE_NOCOMP(rp) == B_OVERFLOW) {
 			bo = (BOVERFLOW *)rp->data;
-			if ((ret = __db_goff(dbp, &dbt, bo->tlen, bo->pgno,
+			if ((ret = __db_goff(NULL, dbp, &dbt, bo->tlen, bo->pgno,
 			    NULL, NULL)) != 0)
 				return (ret);
 		} else {
@@ -2479,7 +2479,7 @@ __bam_safe_getdata(dbp, h, i, ovflok, dbt, freedbtp)
 		F_SET(dbt, DB_DBT_MALLOC);
 
 		*freedbtp = 1;
-		return (__db_goff(dbp, dbt, bo->tlen, bo->pgno, NULL, NULL));
+		return (__db_goff(NULL, dbp, dbt, bo->tlen, bo->pgno, NULL, NULL));
 	} else {
 		dbt->data = bk->data;
 		dbt->size = bk->len;

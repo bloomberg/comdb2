@@ -40,8 +40,8 @@ static inline int advance_on_tree(DBC *dbc);
 #define LOAD(mpf,x) enqueue_touch_page(mpf, x);
 
 #define LOAD_SYNC(mpf,x,page) {                                                     \
-    __memp_fget(mpf, &x, DB_MPOOL_PFGET, &page);                                    \
-    __memp_fput(mpf,page, 0);                                                       \
+    PAGEGET(dbc, mpf, &x, DB_MPOOL_PFGET, &page);                                    \
+    PAGEPUT(dbc, mpf,page, 0);                                                       \
 }                                                                                   \
 
 #define BTPF_DEBUG 0
@@ -531,18 +531,18 @@ advance_on_tree(DBC *dbc)
 		if ((ret = __db_lget(dbc, 0, pgno, lock_mode, 0, &lock)) != 0)
 			goto end;
 
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) == 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) == 0)
 		{   
 			if (memcmp(&h->lsn, &pf->lsn[up_level], sizeof(DB_LSN)) == 0)
 			{
 				pgno = GET_BINTERNAL(dbp, h, pf->curindx[up_level])->pgno; 
 				pf->curlf[up_level -1] = pgno;
 
-				(void)__memp_fput(mpf, h, 0);
+				PAGEPUT(dbc, mpf, h, 0);
 				ret = tree_walk(dbc, FIRST, pf->curlf[up_level - 1], up_level );
 			} else 
 			{
-				(void)__memp_fput(mpf, h, 0);
+				PAGEPUT(dbc, mpf, h, 0);
 				ret = DIFF_LSN;
 			}
             
@@ -594,7 +594,7 @@ advanceb_on_tree(DBC *dbc)
 		if ((ret = __db_lget(dbc, 0, pgno, lock_mode, 0, &lock)) != 0)
 			goto end;
         
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) == 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) == 0)
 		{    
             
 			if (memcmp(&h->lsn, &pf->lsn[up_level], sizeof(DB_LSN)) == 0)
@@ -602,11 +602,11 @@ advanceb_on_tree(DBC *dbc)
 				pgno = GET_BINTERNAL(dbp, h, pf->curindx[up_level])->pgno; 
 				pf->curlf[up_level -1] = pgno; 
               
-				(void)__memp_fput(mpf, h, 0);
+				PAGEPUT(dbc, mpf, h, 0);
 				ret = tree_walk(dbc, LAST, pf->curlf[up_level - 1], up_level); 
 			} else
 			{
-				(void)__memp_fput(mpf, h, 0);
+				PAGEPUT(dbc, mpf, h, 0);
 				ret = DIFF_LSN;
 			}
 		} 
@@ -645,9 +645,9 @@ page_load_f(btpf * pf, DBC *dbc)
 			goto end;
 
         
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0 || memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0)
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0 || memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0)
 		{
-			(void)__memp_fput(mpf, h, 0);
+			PAGEPUT(dbc, mpf, h, 0);
 			(void)__LPUT(dbc, lock);
 			ret = DIFF_LSN;
 			goto end;
@@ -668,7 +668,7 @@ page_load_f(btpf * pf, DBC *dbc)
 
 		c += p_cnt;
 		pf->curindx[1] += p_cnt;
-		(void)__memp_fput(mpf, h, 0);
+		PAGEPUT(dbc, mpf, h, 0);
 		(void)__LPUT(dbc, lock);
 
 		if (c >= pf->wndw)
@@ -727,9 +727,9 @@ page_load_b(btpf * pf, DBC *dbc)
 			(void)__LPUT(dbc, lock);
 			goto end;
 		}
-		if ((ret = __memp_fget(mpf, &pgno, 0, &h)) != 0 ||
+		if ((ret = PAGEGET(dbc, mpf, &pgno, 0, &h)) != 0 ||
 		    memcmp(&h->lsn, &pf->lsn[1], sizeof(DB_LSN)) != 0) {
-			(void)__memp_fput(mpf, h, 0);
+			PAGEPUT(dbc, mpf, h, 0);
 			(void)__LPUT(dbc, lock);
 			ret = DIFF_LSN;
 			goto end;
@@ -754,7 +754,7 @@ page_load_b(btpf * pf, DBC *dbc)
 		c += (pf->curindx[1] - p_cnt);
 		pf->curindx[1] = p_cnt;
 
-		(void)__memp_fput(mpf, h, 0);
+		PAGEPUT(dbc, mpf, h, 0);
 		(void)__LPUT(dbc, lock);  // release lock
 
 		if (c >= pf->wndw)
