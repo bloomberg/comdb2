@@ -119,6 +119,7 @@ extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
 extern int gbl_commit_lsn_map;
 struct timeval last_timer_pstack;
+extern int gbl_modsnap_asof;
 
 #define FILENAMELEN 100
 
@@ -3852,6 +3853,33 @@ low_headroom:
                            "lwm_lowfilenum %d\n",
                            filenum, lwm_lowfilenum);
                 break;
+            }
+
+            int lowest_in_use_modsnap_file = bdb_get_lowest_modsnap_file(bdb_state);
+            if (lowest_in_use_modsnap_file != -1 && filenum >= lowest_in_use_modsnap_file) {
+                if (bdb_state->attr->debug_log_deletion) {
+                    logmsg(LOGMSG_USER, "not ok to delete log %d, log file "
+                                    "needed to maintain current modsnap "
+                                    "transactions\n",
+                          filenum);
+                }
+                break;
+            }
+            if (gbl_modsnap_asof) {
+                /* check if we still can maintain snapshot that begin as of
+                 * min_keep_logs_age seconds ago */
+                if (!bdb_checkpoint_list_ok_to_delete_log(
+                        bdb_state->attr->min_keep_logs_age, filenum)) {
+                    if (bdb_state->attr->debug_log_deletion)
+                        logmsg(LOGMSG_USER, "not ok to delete log, log file needed "
+                                        "to recover to at least %ds ago\n",
+                                bdb_state->attr->min_keep_logs_age);
+                    if (ctrace_info)
+                        ctrace("not ok to delete log, log file needed to "
+                               "recover to at least %ds ago\n",
+                               bdb_state->attr->min_keep_logs_age);
+                    break;
+                }
             }
 
             if (gbl_new_snapisol_asof) {

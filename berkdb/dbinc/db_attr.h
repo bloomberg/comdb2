@@ -62,3 +62,5 @@ BERK_DEF_ATTR(tracked_locklist_init, "Initial allocation count for tracked locks
 BERK_DEF_ATTR(transient_page_reallocation, "Orphaned pages are maintained locally", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(elect_highest_committed_gen, "Bias election by the highest generation in the logfile", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(sync_standalone, "Force a log-sync at commit for standalone instances", BERK_ATTR_TYPE_BOOLEAN, 0)
+BERK_DEF_ATTR(mempv_max_cache_entries, "Maximum number of cache entries in versioned memory pool", BERK_ATTR_TYPE_INTEGER, 50)
+BERK_DEF_ATTR(mempv_debug, "Produce debug output in versioned memory pool", BERK_ATTR_TYPE_BOOLEAN, 0)

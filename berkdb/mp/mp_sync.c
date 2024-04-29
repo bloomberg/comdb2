@@ -224,6 +224,13 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 		return EINVAL;
 	}
 
+	if (dbenv->txmap != NULL) {
+		Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+		// Since checkpoint lsn is lt begin lsn of oldest in-flight txn, any lsn that we get to before the checkpoint lsn was made by a committed txn.
+		dbenv->txmap->highest_checkpoint_lsn = *lsn; 
+		Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+	}
+
 	return 0;
 }
 

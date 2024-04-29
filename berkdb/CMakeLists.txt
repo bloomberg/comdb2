@@ -12,6 +12,7 @@ set(BERK_C
   btree/bt_prefix.c
   btree/bt_put.c
   btree/bt_rec.c
+  btree/bt_snaprec.c
   btree/bt_reclaim.c
   btree/bt_recno.c
   btree/bt_rsearch.c
@@ -51,6 +52,7 @@ set(BERK_C
   db/db_pgdump.c
   db/db_pr.c
   db/db_rec.c
+  db/db_snaprec.c
   db/db_reclaim.c
   db/db_remove.c
   db/db_rename.c
@@ -112,6 +114,8 @@ set(BERK_C
   mp/mp_stat.c
   mp/mp_sync.c
   mp/mp_trickle.c
+  mp/mp_versioned.c
+  mp/mp_vcache.c
 
   mutex/mut_pthread.c
   mutex/mutex.c

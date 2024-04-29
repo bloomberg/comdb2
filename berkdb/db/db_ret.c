@@ -52,7 +52,7 @@ __db_ret(dbp, h, indx, dbt, memp, memsize)
 		hk = P_ENTRY(dbp, h, indx);
 		if (HPAGE_PTYPE(hk) == H_OFFPAGE) {
 			memcpy(&ho, hk, sizeof(HOFFPAGE));
-			return (__db_goff(dbp, dbt,
+			return (__db_goff(NULL, dbp, dbt,
 			    ho.tlen, ho.pgno, memp, memsize));
 		}
 		len = LEN_HKEYDATA(dbp, h, dbp->pgsize, indx);
@@ -69,7 +69,7 @@ __db_ret(dbp, h, indx, dbt, memp, memsize)
 			ASSIGN_ALIGN(u_int32_t, tlen, bo->tlen);
 
 			ASSIGN_ALIGN(db_pgno_t, pgno, bo->pgno);
-			return (__db_goff(dbp, dbt, tlen, pgno, memp, memsize));
+			return (__db_goff(NULL, dbp, dbt, tlen, pgno, memp, memsize));
 		}
 		if (bk_decompress(dbp, h, &bk, alloca(KEYBUF), KEYBUF) != 0)
 			abort();

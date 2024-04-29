@@ -1,0 +1,10 @@
+1 drop table if exists z
+1 set transaction snapshot isolation
+2 set transaction snapshot isolation
+1 create table z(i decimal128 primary key)
+2 create procedure insert_itrs_sequence version 'v1' { local function main(itrs, start) for i=1,itrs do local result, rc = db:exec("insert into z values(" .. start+i .. ")"); end end }
+2 exec procedure insert_itrs_sequence(11, 1) 
+1 begin
+2 delete from z order by i desc limit 5
+1 select count(*) from z
+1 commit

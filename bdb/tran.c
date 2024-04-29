@@ -65,6 +65,8 @@
 static unsigned int curtran_counter = 0;
 extern int gbl_debug_txn_sleep;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
+extern int __txn_commit_map_get_highest_checkpoint_lsn(DB_ENV *dbenv, DB_LSN *out_highest_checkpoint_lsn, int lock); 
+extern int __txn_commit_map_get_highest_commit_lsn(DB_ENV *dbenv, DB_LSN *out_last_commit_lsn, int lock); 
 
 #if 0
 int __lock_dump_region_lockerid __P((DB_ENV *, const char *, FILE *, u_int32_t lockerid));
@@ -1105,6 +1107,7 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
     case TRANCLASS_SOSQL:
     case TRANCLASS_READCOMMITTED:
+    case TRANCLASS_MODSNAP:
         break;
 
     case TRANCLASS_PHYSICAL:
@@ -1210,7 +1213,8 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
         tran->trak = trak;
 
         if (tran->tranclass == TRANCLASS_SNAPISOL ||
-            tran->tranclass == TRANCLASS_SERIALIZABLE) {
+            tran->tranclass == TRANCLASS_SERIALIZABLE ||
+            tran->tranclass == TRANCLASS_MODSNAP) {
             rc = bdb_osql_cache_table_versions(bdb_state, tran, trak, bdberr);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
@@ -1219,19 +1223,21 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
             }
 
             /* register transaction so we start receiving log undos */
-            tran->osql =
-                bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
-                                      file, offset, is_ha_retry);
-            if (!tran->osql) {
-                if (*bdberr != BDBERR_NOT_DURABLE)
-                    logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
+            if (tran->tranclass != TRANCLASS_MODSNAP) {
+                tran->osql =
+                    bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
+                                          file, offset, is_ha_retry);
+                if (!tran->osql) {
+                    if (*bdberr != BDBERR_NOT_DURABLE)
+                        logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
 
-                myfree(tran);
-                return NULL;
-            }
+                    myfree(tran);
+                    return NULL;
+                }
 
-            listc_init(&tran->open_cursors,
-                       offsetof(struct bdb_cursor_ifn, lnk));
+                listc_init(&tran->open_cursors,
+                           offsetof(struct bdb_cursor_ifn, lnk));
+           }
         }
     }
 
@@ -1368,6 +1374,13 @@ tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state, int trak,
 {
     return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SOSQL, trak, bdberr,
                                      0, 0, 0, 0);
+}
+
+tran_type *bdb_tran_begin_modsnap(bdb_state_type *bdb_state, int trak,
+                                       int *bdberr)
+{
+    return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_MODSNAP, trak,
+                                     bdberr, 0, 0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
@@ -1566,6 +1579,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     /* fallthrough */
     case TRANCLASS_SOSQL:
     case TRANCLASS_READCOMMITTED:
+    case TRANCLASS_MODSNAP:
         bdb_tran_free_shadows(bdb_state, tran);
         break;
 
@@ -2196,6 +2210,8 @@ int bdb_tran_commit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_READCOMMITTED)
         has_bdblock = 0;
+    else if (tran->tranclass == TRANCLASS_MODSNAP)
+        has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_SNAPISOL)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_SERIALIZABLE)
@@ -2277,6 +2293,7 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
     /* fallthrough */
     case TRANCLASS_SOSQL:
     case TRANCLASS_READCOMMITTED:
+    case TRANCLASS_MODSNAP:
         bdb_tran_free_shadows(bdb_state, tran);
         break;
 
@@ -2398,6 +2415,8 @@ int bdb_tran_abort_wrap(bdb_state_type *bdb_state, tran_type *tran, int *bdberr,
     else if (tran->tranclass == TRANCLASS_SOSQL)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_READCOMMITTED)
+        has_bdblock = 0;
+    else if (tran->tranclass == TRANCLASS_MODSNAP)
         has_bdblock = 0;
     else if (tran->tranclass == TRANCLASS_SNAPISOL)
         has_bdblock = 0;
@@ -2666,6 +2685,128 @@ int bdb_add_rep_blob(bdb_state_type *bdb_state, tran_type *tran, int session,
         *bdberr = BDBERR_MISC;
         rc = -1;
     }
+    return rc;
+}
+
+int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv;
+    MODSNAP_TXN *outstanding_modsnap;
+    int itr, min_file;
+
+    itr = 0;
+    min_file = -1;
+    dbenv = bdb_state->dbenv;
+
+    pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
+
+    LISTC_FOR_EACH(&dbenv->outstanding_modsnaps, outstanding_modsnap, lnk) {
+        min_file = itr++ == 0 || outstanding_modsnap->prior_checkpoint_lsn.file < min_file 
+        ? outstanding_modsnap->prior_checkpoint_lsn.file : min_file;
+    }
+
+    pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
+
+    return min_file;
+}
+
+void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration)
+{
+    DB_ENV *dbenv;
+    MODSNAP_TXN *outstanding_modsnap;
+
+    dbenv = bdb_state->dbenv;
+    outstanding_modsnap = (MODSNAP_TXN *) registration;
+
+    pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
+    listc_rfl(&dbenv->outstanding_modsnaps, outstanding_modsnap);
+    pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
+
+    free(outstanding_modsnap);
+}
+
+int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
+                        int is_ha_retry,
+                        int snapshot_epoch,
+                        unsigned int *last_commit_lsn_file,
+                        unsigned int *last_commit_lsn_offset,
+                        unsigned int *last_checkpoint_lsn_file,
+                        unsigned int *last_checkpoint_lsn_offset)
+{
+    DB_ENV *dbenv;
+    DB_LSN last_commit_lsn;
+    DB_LSN last_checkpoint_lsn;
+    DB_TXN_COMMIT_MAP *txmap;
+    int rc;
+
+    rc = 0;
+    dbenv = bdb_state->dbenv;
+    txmap = dbenv->txmap;
+
+    if (is_ha_retry) {
+        last_commit_lsn.file = *last_commit_lsn_file;
+        last_commit_lsn.offset = *last_commit_lsn_offset;
+
+        bdb_checkpoint_list_get_ckplsn_before_lsn(last_commit_lsn, &last_checkpoint_lsn);
+    } else if (snapshot_epoch) {
+        // This LSN is not necessarily a commit LSN but this is okay --
+        // it can still serve as our start point.
+        bdb_get_lsn_context_from_timestamp(bdb_state, snapshot_epoch, &last_commit_lsn, 0, &rc); 
+        if (rc != 0) {
+            return rc;
+        }
+
+        bdb_checkpoint_list_get_ckplsn_before_lsn(last_commit_lsn, &last_checkpoint_lsn);
+    } else {
+        Pthread_mutex_lock(&txmap->txmap_mutexp);
+        if ((rc = __txn_commit_map_get_highest_checkpoint_lsn(dbenv, &last_checkpoint_lsn, 0)) != 0) {
+            Pthread_mutex_unlock(&txmap->txmap_mutexp);
+            return rc;
+        }
+        if ((rc = __txn_commit_map_get_highest_commit_lsn(dbenv, &last_commit_lsn, 0)) != 0) {
+            Pthread_mutex_unlock(&txmap->txmap_mutexp);
+            return rc;
+        }
+        Pthread_mutex_unlock(&txmap->txmap_mutexp);
+    }
+
+    *last_commit_lsn_file = last_commit_lsn.file;
+    *last_commit_lsn_offset = last_commit_lsn.offset;
+    *last_checkpoint_lsn_file = last_checkpoint_lsn.file;
+    *last_checkpoint_lsn_offset = last_checkpoint_lsn.offset;
+
+    logmsg(LOGMSG_DEBUG, "Starting a new modsnap transaction with last commit lsn "
+            "%"PRIu32":%"PRIu32" and last checkpoint %"PRIu32":%"PRIu32"\n",
+            last_commit_lsn.file, last_commit_lsn.offset, last_checkpoint_lsn.file, last_checkpoint_lsn.offset);
+
+    return rc;
+}
+
+int bdb_register_modsnap(bdb_state_type *bdb_state,
+                        unsigned int last_checkpoint_lsn_file,
+                        unsigned int last_checkpoint_lsn_offset,
+                        void ** registration)
+{
+    DB_ENV *dbenv;
+    int rc;
+
+    rc = 0;
+    dbenv = bdb_state->dbenv;
+
+    MODSNAP_TXN *outstanding_modsnap = malloc(sizeof(MODSNAP_TXN));
+    if (!outstanding_modsnap) {
+        rc = ENOMEM;
+        return rc;
+    }
+    outstanding_modsnap->prior_checkpoint_lsn.file = last_checkpoint_lsn_file;
+    outstanding_modsnap->prior_checkpoint_lsn.offset = last_checkpoint_lsn_offset;
+
+    pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
+    listc_atl(&dbenv->outstanding_modsnaps, outstanding_modsnap);
+    pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
+
+    * (void **)registration = (void *) outstanding_modsnap;
+    
     return rc;
 }
 

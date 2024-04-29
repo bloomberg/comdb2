@@ -1,0 +1,9 @@
+1 set transaction snapshot isolation
+2 set transaction snapshot isolation
+1 create table z(i decimal128)
+2 create procedure insert_itrs version 'v1' { local function main(itrs) for i=1,itrs do local result, rc = db:exec("insert into z values(1)"); end end }
+1 insert into z values(1)
+1 begin
+2 exec procedure insert_itrs(10)
+1 select * from z
+1 commit

@@ -383,7 +383,7 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 		if (needlock && (ret = __db_lget(dbc,
 		    0, pagep->next_pgno, DB_LOCK_WRITE, 0, &npl)) != 0)
 			goto err;
-		if ((ret = __memp_fget(mpf, &pagep->next_pgno, 0, &np)) != 0) {
+		if ((ret = PAGEGET(dbc, mpf, &pagep->next_pgno, 0, &np)) != 0) {
 			ret = __db_pgerr(dbp, pagep->next_pgno, ret);
 			goto err;
 		}
@@ -393,7 +393,7 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 		if (needlock && (ret = __db_lget(dbc,
 		    0, pagep->prev_pgno, DB_LOCK_WRITE, 0, &ppl)) != 0)
 			goto err;
-		if ((ret = __memp_fget(mpf, &pagep->prev_pgno, 0, &pp)) != 0) {
+		if ((ret = PAGEGET(dbc, mpf, &pagep->prev_pgno, 0, &pp)) != 0) {
 			ret = __db_pgerr(dbp, pagep->prev_pgno, ret);
 			goto err;
 		}
@@ -436,7 +436,7 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 		else
 			np->prev_pgno = pagep->prev_pgno;
 		if (new_next == NULL) {
-			ret = __memp_fput(mpf, np, DB_MPOOL_DIRTY);
+			ret = PAGEPUT(dbc, mpf, np, DB_MPOOL_DIRTY);
 		} else {
 			*new_next = np;
 			ret = __memp_fset(mpf, np, DB_MPOOL_DIRTY);
@@ -450,7 +450,7 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 
 	if (pp != NULL) {
 		pp->next_pgno = pagep->next_pgno;
-		if ((ret = __memp_fput(mpf, pp, DB_MPOOL_DIRTY)) != 0)
+		if ((ret = PAGEPUT(dbc, mpf, pp, DB_MPOOL_DIRTY)) != 0)
 			goto err;
 		if (needlock)
 			(void)__TLPUT(dbc, ppl);
@@ -458,11 +458,11 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 	return (0);
 
 err:	if (np != NULL)
-		(void)__memp_fput(mpf, np, 0);
+		PAGEPUT(dbc, mpf, np, 0);
 	if (needlock)
 		(void)__TLPUT(dbc, npl);
 	if (pp != NULL)
-		(void)__memp_fput(mpf, pp, 0);
+		PAGEPUT(dbc, mpf, pp, 0);
 	if (needlock)
 		(void)__TLPUT(dbc, ppl);
 	return (ret);
