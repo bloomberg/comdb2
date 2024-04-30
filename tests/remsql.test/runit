@@ -136,6 +136,16 @@ EOF
 cdb2sql --cdb2cfg ${cdb2config} $dbname default "CREATE TABLE yet_another_table(a INTEGER)"
 cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbname}.yet_another_table"
 
+
+###### Verify that we don't block writing results of a remote SELECT into another remote table, when chunking ######
+cdb2sql -s --cdb2cfg ${CDB2_CONFIG} $srcdbname default - >>output.actual 2>&1 <<EOF
+SET TRANSACTION CHUNK 1
+BEGIN
+INSERT INTO LOCAL_${dbname}.yet_another_table SELECT a FROM LOCAL_${dbname}.chunky
+COMMIT
+SELECT * FROM LOCAL_${dbname}.yet_another_table ORDER BY a
+EOF
+
 # validate results
 testcase_output=$(cat output.actual)
 expected_output=$(cat output.expected)
