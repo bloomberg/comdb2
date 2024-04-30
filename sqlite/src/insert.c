@@ -199,6 +199,21 @@ static int readsTable(Parse *p, int iDb, Table *pTab){
     VdbeOp *pOp = sqlite3VdbeGetOp(v, i);
     assert( pOp!=0 );
     if( pOp->opcode==OP_OpenRead && pOp->p3==iDb ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      /*
+       * Make a remote insert that reads from the same remote database always use a temporary table
+       * (eg INSERT INTO remote.t1 SELECT * FROM remote.t2).
+       *
+       * The fdb backend protocol expects all cursors to be closed before committing a transaction.
+       * A chunk remote insert retains a remote read cursor across chunks. Therefore when using a non-temptable
+       * plan, it clearly violates the fdb protocol (it holds onto a read cursor while committing a chunk).
+       * A simple solution to overcome this is to always use a temptable to store results of the SELECT,
+       * such that there will not be outstanding read cursors when tranaction chunks are committed.
+       */
+      if( iDb>1 ){
+        return 1;
+      }
+#endif
       Index *pIndex;
       int tnum = pOp->p2;
       if( tnum==pTab->tnum ){
