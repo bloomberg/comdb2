@@ -5,6 +5,7 @@
 #include <string.h>
 #include <openssl/sha.h>
 #include <openssl/md5.h>
+#include <openssl/evp.h>
 #include <pthread.h>
 #include <locks_wrap.h>
 #include <crc32c.h>
@@ -33,11 +34,25 @@ uint32_t get_num_keyhashes(ch_hash_t *ch_node) {
 
 int ch_hash_sha(uint8_t *buf, size_t buf_len, uint32_t *hash){ 
     uint8_t sha_hash[32];
-    SHA256_CTX sha256;
 
+#if OPENSSL_VERSION_NUMBER > 0x10100000L
+    unsigned int hash_len = 0;
+    EVP_MD_CTX *sha256 = EVP_MD_CTX_new();
+    if (!sha256) {
+        return CH_ERR_HASH;
+    }
+    const EVP_MD *md = EVP_get_digestbyname("SHA256");
+    EVP_MD_CTX_init(sha256);
+    EVP_DigestInit_ex(sha256, md, NULL);
+    EVP_DigestUpdate(sha256, buf, buf_len);
+    EVP_DigestFinal_ex(sha256, sha_hash, &hash_len);
+    EVP_MD_CTX_free(sha256);
+#else
+    SHA256_CTX sha256;
     SHA256_Init(&sha256);
     SHA256_Update(&sha256, buf, buf_len);
     SHA256_Final(sha_hash, &sha256);
+#endif
     uint32_t lowbits = 0;
     lowbits = sha_hash[3] << 24 | sha_hash[2] << 16 | sha_hash[1] << 8 | sha_hash[0];
     *hash = lowbits;
@@ -46,11 +61,25 @@ int ch_hash_sha(uint8_t *buf, size_t buf_len, uint32_t *hash){
 
 int ch_hash_md5(uint8_t *buf, size_t buf_len, uint32_t *hash) {
     uint8_t md5_hash[16];
+#if OPENSSL_VERSION_NUMBER > 0x10100000L
+    unsigned int hash_len = 0;
+    EVP_MD_CTX *md5 = EVP_MD_CTX_new();
+    if (!md5) {
+        return CH_ERR_HASH;
+    }
+    const EVP_MD *md = EVP_get_digestbyname("MD5");
+    EVP_MD_CTX_init(md5);
+    EVP_DigestInit_ex(md5, md, NULL);
+    EVP_DigestUpdate(md5, buf, buf_len);
+    EVP_DigestFinal_ex(md5, md5_hash, &hash_len);
+    EVP_MD_CTX_free(md5);
+#else    
     MD5_CTX md5;
 
     MD5_Init(&md5);
     MD5_Update(&md5, buf, buf_len);
     MD5_Final(md5_hash, &md5);
+#endif
     uint32_t lowbits = 0;
     lowbits = md5_hash[3] << 24 | md5_hash[2] << 16 | md5_hash[1] << 8 | md5_hash[0];
     *hash = lowbits;
