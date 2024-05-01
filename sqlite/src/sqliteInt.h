@@ -2594,7 +2594,11 @@ typedef int ynVar;
 ** allocated, regardless of whether or not EP_Reduced is set.
 */
 struct Expr {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  u16 op;                 /* Operation performed by this node */
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   u8 op;                 /* Operation performed by this node */
+#endif 
   char affinity;         /* The affinity of the column or 0 if not a column */
   u32 flags;             /* Various flags.  EP_* See below */
   union {
