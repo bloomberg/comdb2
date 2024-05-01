@@ -444,7 +444,7 @@ function gdb {
 function vg {
 	tmux_int
 	sync_panes
-	tmux send-keys "valgrind comdb2 ${defaultdb}" Enter
+	tmux send-keys "valgrind comdb2 $1" Enter
 }
 
 function check-containers-ready {
@@ -602,7 +602,7 @@ elif [[ "$1" == "cfg" ]]; then
 elif [[ "$1" == "gdb" ]]; then
 	gdb ${2:-${defaultdb}}
 elif [[ "$1" == "vg" ]]; then
-	vg
+	vg ${2:-${defaultdb}}
 elif [[ "$1" == "info" ]]; then
     sqlite3 -separator '	' ${config} "select * from getput"
 elif [[ "$1" == "init" ]]; then
