@@ -1283,6 +1283,7 @@ static void *purge_old_files_thread(void *arg)
     int empty_pause = 5; // seconds
     int retries = 0;
     extern int gbl_all_prepare_leak;
+    void *resume = NULL;
 
     thrman_register(THRTYPE_PURGEFILES);
     thread_started("purgefiles");
@@ -1304,14 +1305,15 @@ static void *purge_old_files_thread(void *arg)
             continue;
 
         if (!bdb_have_unused_files() && gbl_master_changed_oldfiles) {
-            gbl_master_changed_oldfiles = 0;
-            if ((rc = bdb_process_each_table_version_entry(
-                     dbenv->bdb_env, bdb_check_files_on_disk, &bdberr)) != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: bdb_list_unused_files failed with rc=%d\n",
-                       __func__, rc);
-                sleep_with_check_for_exiting(empty_pause);
+            if ((rc = bdb_process_each_table_version_entry_resumable(dbenv->bdb_env, bdb_check_files_on_disk, &resume,
+                                                                     &bdberr)) != 0) {
+                if (!bdb_have_unused_files()) {
+                    logmsg(LOGMSG_ERROR, "%s: bdb_list_unused_files failed with rc=%d\n", __func__, rc);
+                    sleep_with_check_for_exiting(empty_pause);
+                }
                 continue;
+            } else {
+                gbl_master_changed_oldfiles = 0;
             }
         }
 
@@ -1363,6 +1365,7 @@ static void *purge_old_files_thread(void *arg)
         }
     }
 
+    free(resume);
     dbenv->purge_old_files_is_running = 0;
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
 
