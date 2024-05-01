@@ -36,4 +36,16 @@ if [[ $leaked_pages -lt 0 ]]; then
     cat out.res
     exit 1
 fi
+count=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t")
+if [[ $count != 10000 ]]; then
+    echo "Expected count 10000, got count $count"
+    exit 1
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t"
+count=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t")
+if [[ $count != 0 ]]; then
+    echo "Expected count 0, got count $count"
+    exit 1
+fi
 exit 0
