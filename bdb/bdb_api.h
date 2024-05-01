@@ -2274,6 +2274,12 @@ int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
                                                      const char *tblname,
                                                      int *bdberr),
                                          int *bdberr);
+int bdb_process_each_table_version_entry_resumable(bdb_state_type *bdb_state,
+                                         int (*func)(bdb_state_type *bdb_state,
+                                                     const char *tblname,
+                                                     int *bdberr),
+                                         void **resume,
+                                         int *bdberr);
 
 int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, tran_type *tran,
                                      const char *tblname,
