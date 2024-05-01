@@ -2799,11 +2799,13 @@ filter_opt(A) ::= FILTER LP WHERE expr(X) RP.  { A = X; }
 ** number that TK_SPAN is no more than 255, or else the new tokens must
 ** appear after this line.
 */
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 %include {
 #if TK_SPAN>255
 # error too many tokens in the grammar
 #endif
 }
+%endif
 
 /*
 ** The TK_SPACE and TK_ILLEGAL tokens must be the last two tokens.  The
