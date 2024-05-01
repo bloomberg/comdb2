@@ -8179,6 +8179,9 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname, int 
 
         if (oldfile_add(munged_name, lognum, __func__, __LINE__, spew_debug)) {
             print(bdb_state, "failed to add old file to hash: %s\n", ent->d_name);
+            /* oldfile list full */
+            rc = E2BIG;
+            *bdberr = BDBERR_MISC;
             break;
         } else {
             if (spew_debug)
@@ -8190,8 +8193,9 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname, int 
 
     closedir(dirp);
     free(buf);
-    *bdberr = BDBERR_NOERROR;
-    return 0;
+    if (rc == 0)
+        *bdberr = BDBERR_NOERROR;
+    return rc;
 }
 
 

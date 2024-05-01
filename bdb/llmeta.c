@@ -10182,6 +10182,50 @@ static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran, vo
     return irc ? irc : rc;
 }
 
+static int bdb_process_each_entry_resumable(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen,
+                                            int (*func)(bdb_state_type *bdb_state, tran_type *tran, void *arg,
+                                                        void *rec),
+                                            void *arg, void **resume, int *bdberr)
+{
+    int fnd;
+    uint8_t *out;
+    uint8_t nxt[LLMETA_IXLEN];
+    int rc;
+    int irc = 0;
+    void *searchkey;
+    int searchkeylen;
+
+    assert(*resume == NULL || memcmp(key, *resume, klen) == 0);
+
+    *bdberr = BDBERR_NOERROR;
+
+    if (*resume == NULL) {
+        searchkey = key;
+        searchkeylen = klen;
+        *resume = calloc(1, LLMETA_IXLEN);
+    } else {
+        searchkey = *resume;
+        searchkeylen = LLMETA_IXLEN;
+    }
+
+    out = *resume;
+
+    rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, searchkey, searchkeylen, out, &fnd, bdberr);
+
+    while (rc == 0 && fnd == 1) {
+        if (memcmp(key, out, klen) != 0) {
+            break;
+        }
+
+        if ((irc = (*func)(bdb_state, tran, arg, out)) != 0)
+            break;
+
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1, &fnd, bdberr);
+        memcpy(out, nxt, LLMETA_IXLEN);
+    }
+    return irc ? irc : rc;
+}
+
 static int table_version_callback(bdb_state_type *bdb_state, tran_type *tran, void *arg,
                                   struct llmeta_sane_table_version *rec)
 {
@@ -10220,6 +10264,23 @@ int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
     return bdb_process_each_entry(bdb_state, NULL, &key, sizeof(key.file_type),
                                   (int (*)(bdb_state_type *, tran_type *, void *, void *))table_version_callback,
                                   (void *)func, bdberr);
+}
+
+int bdb_process_each_table_version_entry_resumable(bdb_state_type *bdb_state,
+                                                   int (*func)(bdb_state_type *bdb_state, const char *tblname,
+                                                               int *bdberr),
+                                                   void **resume, int *bdberr)
+{
+    struct llmeta_file_type_key key = {0};
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    key.file_type = htonl(LLMETA_TABLE_VERSION);
+
+    return bdb_process_each_entry_resumable(
+        bdb_state, NULL, &key, sizeof(key.file_type),
+        (int (*)(bdb_state_type *, tran_type *, void *, void *))table_version_callback, (void *)func, resume, bdberr);
 }
 
 static int table_file_callback(bdb_state_type *bdb_state, tran_type *tran, unsigned long long *file_version,
