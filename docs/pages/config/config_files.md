@@ -765,6 +765,7 @@ These options are toggable at start time of the server.
 |largepages | 0 | Enables large pages.
 |dedicated_network_suffixes       |            | Suffix to append to node name when server has extra network interfaces that comdb2 is able to use to ensure resiliency when losing one network, example: if eth1 and eth2 are extra network cards on the server and the dns hostnames assigned to the ips of the respective cards are node1_eth1 and node1_eth2, then the option here should be set as: dedicated_network_suffixes _eth1 _eth2
 |remsql_whitelist databases       |            | If this option is set, when another DB makes a connection to this DB, we will only allown processing of that request if that other DB's name is in the whitelist, otherwise it will receive an error, example: `remsql_whitelist databases db1 db2 db3`.
+|archive_on_init                  | ON         | Archive preexisting database files on init.
 
 
 ### Runtime options
