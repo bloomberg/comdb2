@@ -4,4 +4,3 @@ round_robin_stripes
 enable_snapshot_isolation
 enable_selectv_range_check
 ssl_client_mode OPTIONAL
-use_modsnap_for_snapshot

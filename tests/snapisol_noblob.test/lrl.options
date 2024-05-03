@@ -9,4 +9,3 @@ pagesizeix 512
 pagesizedta 512
 dtastripe 1
 keycompr OFF
-use_modsnap_for_snapshot

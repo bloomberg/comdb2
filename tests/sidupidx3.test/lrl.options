@@ -3,4 +3,3 @@ table t2 t2.csc2
 round_robin_stripes
 enable_snapshot_isolation
 ssl_client_mode OPTIONAL
-use_modsnap_for_snapshot

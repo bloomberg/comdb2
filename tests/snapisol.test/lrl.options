@@ -4,6 +4,5 @@ dtastripe 4
 blobstripe
 init_with_inplace_updates
 round_robin_stripes
-use_modsnap_for_snapshot
 enable_snapshot_isolation
 nowatch
