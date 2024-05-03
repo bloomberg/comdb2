@@ -9,3 +9,4 @@
 (name='tbl1', shardname='$0_828B7B36', sizemb=17)
 (name='tbl1', shardname='$1_AABB76F6', sizemb=3)
 (name='tbl1', shardname='$2_13E6EE2D', sizemb=3)
+(out='table         tbl2 sz      16.68MB   5% (dta 2.83MB, ix0 1.57MB, ix1 1.78MB, blob0 1024.00KB, blob1 1024.00KB, blob2 8.50MB)')
