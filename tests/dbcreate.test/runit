@@ -12,6 +12,7 @@ source ${TESTSROOTDIR}/tools/runit_common.sh
 i=1
 DB=$DBNAME
 TSTDBDIR=$DBDIR
+SAVEDIR=$TSTDBDIR/savs
 
 echo "Check 1"
 ${COMDB2_EXE} --no-global-lrl --create $DB --lrl $TSTDBDIR/${DB}.lrl &> out
@@ -77,7 +78,52 @@ echo "dir     $TSTDBDIR" >> $TSTDBDIR/${DB}.lrl
 mkdir -p $TSTDBDIR/var/log/cdb2
 mkdir -p $TMPDIR
 
-echo "Check 9, bring up db and query it"
+echo "Check 9 -- archive old files on create"
+
+move="oldfile.dta oldfile.index oldfile.datas1 oldfile.blobs1"
+dontmove="oldfile.data oldfile.inde oldfile.indexs1 ${DB}.lrl oldfile.cfg oldfile.blob1"
+
+gohome=$(pwd)
+
+cd $TSTDBDIR
+touch $move
+touch $dontmove
+
+echo "tag ondisk { int i }" >> $TSTDBDIR/q.csc2
+echo "name    $DB" >> $TSTDBDIR/${DB}.lrl
+echo "dir     $TSTDBDIR" >> $TSTDBDIR/${DB}.lrl
+echo "table q q.csc2" >> $TSTDBDIR/${DB}.lrl
+
+${COMDB2_EXE} ${DB} --create --dir $TSTDBDIR --lrl $TSTDBDIR/${DB}.lrl &> out
+
+cd $SAVEDIR
+t_rc=$?
+if (( t_rc != 0 )); then
+    failexit "expected $SAVEDIR to exist"
+fi
+
+ls $move
+t_rc=$?
+if (( t_rc != 0 )); then
+    failexit "expected to find '$move' in $SAVEDIR"
+fi
+
+cd $TSTDBDIR
+ls $dontmove
+t_rc=$?
+if (( t_rc != 0 )); then
+    failexit "Expected to find '$dontmove' in $TSTDBDIR"
+fi
+
+ls q_*.data*
+t_rc=$?
+if (( t_rc != 0 )); then
+    failexit "Expected to find table q's data files"
+fi
+
+cd $gohome
+
+echo "Check 10, bring up db and query it"
 if [[ -n "$CLUSTER" ]]; then
     echo "Use comdb2makecluster --nocreate to copy to cluster"
 
@@ -113,7 +159,7 @@ COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAM
 
 
 if [[ -n "$CLUSTER" ]]; then
-    echo "Check 10, Use comdb2makecluster bring up a new db"
+    echo "Check 11, Use comdb2makecluster bring up a new db"
 
     ${TESTSROOTDIR}/tools/comdb2makecluster --dir $TSTDBDIR $DB $CLUSTER
     rc=$?

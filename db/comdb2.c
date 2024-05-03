@@ -1,4 +1,5 @@
 /*
+
    Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -234,6 +235,7 @@ int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
 int gbl_reject_osql_mismatch = 1;
 int gbl_abort_on_clear_inuse_rqid = 1;
+int gbl_archive_on_init = 1;
 
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
 
@@ -256,6 +258,9 @@ int gbl_serialise_sqlite3_open = 0;
 
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
+
+/* Wildcards only supported at the end of the extension. */
+const char *gbl_database_extensions[] = {".dta", ".index", ".datas*", ".blobs*", "" /* sentinal */};
 
 int gbl_nullfkey = 1;
 
@@ -3423,6 +3428,115 @@ cleanup:
     free(backupdir);
 }
 
+static int archive_file(const char *fname, const char *savdir) {
+    char src[PATH_MAX], dst[PATH_MAX];
+
+    snprintf(src, sizeof(src), "%s/%s", thedb->basedir, fname);
+    snprintf(dst, sizeof(dst), "%s/%s", savdir, fname);
+
+    logmsg(LOGMSG_DEBUG, "Moving %s to %s\n", src, dst);
+
+    return rename(src, dst);
+}
+
+/*
+ * Determines whether a file has a database extension.
+ *
+ * fname: The name of the file to examine
+ *
+ * Returns:
+ *  1 if the file has a database extension
+ *  0 if the file does not have a database extension
+ */
+static int does_file_have_db_extension(const char *fname) {
+    const char * extension;
+    char * pos;
+    char * ext;
+    int cmp;
+
+    ext = strrchr(fname, '.');
+    if (ext) {
+        for (int i=0; (extension = gbl_database_extensions[i]), extension[0] != '\0'; ++i) {
+            pos = strchr(extension, '*');
+            cmp = pos ? strncmp(ext, extension, pos-extension) : strcmp(ext, extension);
+
+            if (cmp == 0) {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Archives files in the database directory belonging to a prior 
+ * database. Files are moved into the directory given by `get_savdir`
+ *
+ * An entry is moved if its extension matches one of `gbl_database_extensions`.
+ *
+ * dbdir: The name of the database directory.
+ *
+ * Returns
+ *  0 if archiving is successful
+ *  non-0 if archiving fails
+ */ 
+static int archive_old_files(const char *dbdir) {
+    char savdir[PATH_MAX];
+    char txndir[PATH_MAX];
+    struct dirent buf;
+    struct dirent *de;
+    struct stat st;
+    int rc = 0;
+
+    DIR *d = opendir(dbdir);
+    if (!d) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to read data directory\n", __func__);
+        rc = -1;
+        goto err;
+    }
+
+    get_savdir(savdir, sizeof(savdir));
+    if (mkdir(savdir, 0774) != 0 && errno != EEXIST) {
+        logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", savdir, strerror(errno));
+        rc = -1;
+        goto err;
+    }
+
+    while (bb_readdir(d, &buf, &de) == 0 && de) {
+        logmsg(LOGMSG_DEBUG, "%s: Considering whether to archive %s\n", __func__, de->d_name);
+
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s/%s", dbdir, de->d_name);
+        if (stat(path, &st)) {
+            logmsg(LOGMSG_WARN, "%s:%d couldn't stat %s (%s)\n", __func__,
+                   __LINE__, path, strerror(errno));
+            continue;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            continue;
+        }
+
+        if (does_file_have_db_extension(de->d_name)) {
+            if ((rc = archive_file(de->d_name, savdir)), rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to archive %s. Errno %s\n",
+                    __func__, de->d_name, strerror(errno));
+                goto err;
+            }
+            logmsg(LOGMSG_WARN, "%s: Archived %s\n", __func__, de->d_name);
+        }
+   }
+
+err:
+
+    if (d) {
+        closedir(d);
+    }
+
+    return rc;
+}
+
 static int init(int argc, char **argv)
 {
     char *dbname, *lrlname = NULL, ctmp[64];
@@ -3622,6 +3736,15 @@ static int init(int argc, char **argv)
     thedb = newdbenv(dbname, lrlname);
     if (thedb == 0)
         return -1;
+
+    if (gbl_create_mode && gbl_archive_on_init) { 
+        rc = archive_old_files(thedb->basedir);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "There were preexisting database files in the "
+            "database directory. Failed to archive them.\n");
+            return -1;
+        }
+    }
 
     /* Initialize SSL backend before creating any net.
        If we're exiting, don't bother. */

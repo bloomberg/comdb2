@@ -68,6 +68,11 @@ REGISTER_TUNABLE("analyze_tbl_threads",
                  "generating index statistics. (Default: 5)",
                  TUNABLE_INTEGER, &analyze_max_table_threads, READONLY, NULL,
                  NULL, analyze_set_max_table_threads, NULL);
+REGISTER_TUNABLE("archive_on_init",
+                 "Archive files with database extensions in the database directory "
+                 "at the time of init. (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_archive_on_init, READONLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("badwrite_intvl", NULL, TUNABLE_INTEGER,
                  &gbl_test_badwrite_intvl, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("bbenv", NULL, TUNABLE_BOOLEAN, &gbl_bbenv,

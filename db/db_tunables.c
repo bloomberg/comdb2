@@ -44,6 +44,7 @@ extern int gbl_waitalive_iterations;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
+extern int gbl_archive_on_init;
 extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
