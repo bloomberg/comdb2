@@ -51,6 +51,7 @@ extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
+extern int gbl_do_not_use_modsnap_for_snapshot;
 
 int gbl_disable_access_controls;
 
@@ -429,6 +430,7 @@ static char *legacy_options[] = {
     "setattr max_sql_idle_time 864000",
     "utxnid_log off",
     "commit_lsn_map off",
+    "use_modsnap_for_snapshot off"
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

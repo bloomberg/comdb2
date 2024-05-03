@@ -4,4 +4,3 @@ enable_snapshot_isolation
 
 # Disable parallel rep (this was causing crashes)
 
-use_modsnap_for_snapshot

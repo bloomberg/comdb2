@@ -13,4 +13,3 @@ setattr WAIT_FOR_SEQNUM_TRACE 1
 logmsg level info
 set_coherent_state_trace on
 #on extended_sql_debug_trace
-use_modsnap_for_snapshot

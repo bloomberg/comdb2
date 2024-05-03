@@ -10,4 +10,3 @@ physrep_register_interval 30
 verbose_physrep on
 online_recovery on
 ack_trace
-use_modsnap_for_snapshot

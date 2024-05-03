@@ -14,4 +14,3 @@ cache 512 mb
 dtastripe 16
 blobstripe
 verbose_toblock_backouts on
-use_modsnap_for_snapshot

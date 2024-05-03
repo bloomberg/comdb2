@@ -1,3 +1,2 @@
 dtastripe 1
 enable_snapshot_isolation
-use_modsnap_for_snapshot

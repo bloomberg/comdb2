@@ -5,4 +5,3 @@ setattr PRIVATE_BLKSEQ_ENABLED 1
 setattr MIN_KEEP_LOGS_AGE 300
 berkattr mempv_debug 1
 enable_snapshot_isolation
-use_modsnap_for_snapshot
