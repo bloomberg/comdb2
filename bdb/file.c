@@ -590,9 +590,9 @@ static int form_file_name_ex(
         buflen -= offset;
     }
 
-    if (is_data_file && bdb_state->dtavers[file_num] == 0)
+    if (is_data_file)
         bdb_state->dtavers[file_num] = version_num;
-    else if (!is_data_file && bdb_state->ixvers[file_num] == 0)
+    else
         bdb_state->ixvers[file_num] = version_num;
 
     return orig_buflen - buflen;
