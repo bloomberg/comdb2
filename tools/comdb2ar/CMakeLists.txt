@@ -9,6 +9,7 @@ add_executable(comdb2ar
   incr_manifest.cpp
   increment.cpp
   logholder.cpp
+  logmsg.c
   lrlerror.cpp
   repopnewlrl.cpp
   riia.cpp

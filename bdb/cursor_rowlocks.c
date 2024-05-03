@@ -480,9 +480,6 @@ static inline int bdb_berkdb_rowlocks_firstlast_int(bdb_berkdb_t *berkdb,
     DBT key = {0};
     DBT data = {0};
 
-    /* Debug variable which counts retries */
-    int trycnt = 0;
-
     /* Got the endlock flag */
     int got_endlk = 0;
 
@@ -553,9 +550,6 @@ static inline int bdb_berkdb_rowlocks_firstlast_int(bdb_berkdb_t *berkdb,
     r->eof = 0;
 
 again:
-    /* Increment debug-try counter */
-    trycnt++;
-
     /* If this is null then we are in a retry */
     if (NULL == r->pagelock_cursor) {
         rc = open_pagelock_cursor(berkdb);
@@ -833,9 +827,6 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     /* Have lock flag */
     int have_lock = 0;
 
-    /* Debug counter */
-    int trycnt = 0;
-
     /* Current index */
     int curidx;
 
@@ -946,9 +937,6 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     }
 
 again:
-    /* Increment debug-try counter */
-    trycnt++;
-
     /* Return the cursor to the original position */
     if (NULL == r->pagelock_cursor) {
         /* Sanity */
@@ -1362,9 +1350,6 @@ static inline int bdb_berkdb_rowlocks_find_idx_int(bdb_berkdb_t *berkdb,
     DBT key = {0};
     DBT data = {0};
 
-    /* Debug variable which counts retries */
-    int trycnt = 0;
-
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r;
     bdb_cursor_impl_t *cur;
@@ -1383,9 +1368,6 @@ static inline int bdb_berkdb_rowlocks_find_idx_int(bdb_berkdb_t *berkdb,
     assert(0 == r->have_lock);
 
 again:
-    /* Increment debug-try counter */
-    trycnt++;
-
     /* If this is null then we are in a retry */
     if (NULL == r->pagelock_cursor) {
         rc = open_pagelock_cursor(berkdb);
@@ -1694,9 +1676,6 @@ static inline int bdb_berkdb_rowlocks_find_dta_int(bdb_berkdb_t *berkdb,
     DBT key = {0};
     DBT data = {0};
 
-    /* Debug variable which counts retries */
-    int trycnt = 0;
-
     /* Pointers to cursors */
     bdb_rowlocks_tag_t *r;
     bdb_cursor_impl_t *cur;
@@ -1730,8 +1709,6 @@ static inline int bdb_berkdb_rowlocks_find_dta_int(bdb_berkdb_t *berkdb,
     r->dta = r->dtamem;
 
 again:
-    trycnt++;
-
     /* Copy key */
     memcpy(key.data, inkey, keylen);
 

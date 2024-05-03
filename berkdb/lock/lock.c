@@ -1676,7 +1676,10 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 			if (objlist != NULL) {
 				assert(counttot - ntable == nwrites);
 				assert(countwl == nwritelatches);
-
+				(void)counttot;
+				(void)ntable;
+				(void)countwl;
+				(void)nwritelatches;
 				if ((ret = __lock_fix_list(dbenv,
 					    objlist, nwrites,
 					    has_pglk_lsn)) != 0)
@@ -2045,7 +2048,7 @@ void berk_init_rep_lockobj() {
 
 void comdb2_dump_blockers(DB_ENV *dbenv)
 {
-	struct __db_lock *hlp, *lp;
+	struct __db_lock *hlp;
 	DB_LOCKTAB *lt;
 	DB_LOCKREGION *region;
 	DB_LOCKOBJ *obj;
@@ -3634,7 +3637,6 @@ __lock_addfamilylocker(dbenv, pid, id)
 	DB_ENV *dbenv;
 	u_int32_t pid, id;
 {
-    struct txn_properties prop = {0};
 	return __lock_addfamilylocker_int(dbenv, pid, id, 0);
 }
 
@@ -3734,6 +3736,7 @@ __lock_locker_getpriority(lt, locker, priority)
 	*priority = 0;
 
 	dbenv = lt->dbenv;
+	(void)dbenv;
 	region = lt->reginfo.primary;
 
 	LOCKREGION(dbenv, lt);
@@ -3880,6 +3883,7 @@ __lock_set_timeout(dbenv, locker, timeout, op)
 	int ret;
 
 	lt = dbenv->lk_handle;
+	(void)lt;
 
 	LOCKREGION(dbenv, lt);
 	ret = __lock_set_timeout_internal(dbenv, locker, timeout, op);
@@ -5112,7 +5116,6 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 	struct __db_lock_lsn *next_lsnp;
 
 	void *endptr;
-	int oldsize;
 
 	void *baseptr;
 	void *ptr;
@@ -5290,14 +5293,11 @@ not_ilock:
 		/* Add the number of nonstandard locks and get their size. */
 		nfid += nlocks - i;
 
-		oldsize = size;
-
 		baseptr = NULL;
 		ptr = baseptr;
 
 		if (has_pglk_lsn) {
 			for (; i < nlocks; i++) {
-				oldsize += obj_lsn[i].size;
 				ptr =
 				    (u_int8_t *)ptr + ALIGN(obj_lsn[i].size,
 				    sizeof(u_int32_t));
@@ -5306,7 +5306,6 @@ not_ilock:
 			}
 		} else {
 			for (; i < nlocks; i++) {
-				oldsize += obj_dbt[i].size;
 				ptr =
 				    (u_int8_t *)ptr + ALIGN(obj_dbt[i].size,
 				    sizeof(u_int32_t));
@@ -5316,8 +5315,6 @@ not_ilock:
 
 
 		size += (unsigned char *)ptr - (unsigned char *)baseptr;
-
-		/*fprintf(stderr, "oldsize %d size %d\n", oldsize, size); */
 
 		if (gbl_new_snapisol_logging) {
 			size += sizeof(u_int32_t);	// flag to indicate new logging format
@@ -6404,19 +6401,9 @@ __lock_abort_waiters(dbenv, locker, flags)
 	/* Loop through all locks held by this locker */
 	for (lp = SH_LIST_FIRST(&sh_locker->heldby, __db_lock); lp != NULL;
 	    lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
-		DB_LOCKOBJ *lockobj;
-		u_int32_t ndx, part;
-
-		/* Get the object associated with this lock */
-		lockobj = lp->lockobj;
-
-		/* Get the index & partition */
-		ndx = lockobj->index;
-		part = lockobj->partition;
-
-		/* Lock the partition */
+		DB_LOCKOBJ *lockobj = lp->lockobj;
+		u_int32_t part = lockobj->partition;
 		lock_obj_partition(region, part);
-
 		/* Abort anything blocked on its rowlocks */
 		if (!LF_ISSET(DB_LOCK_ABORT_LOGICAL) || is_comdb2_rowlock(lockobj->lockobj.size)) {
 			/* This releases the lockobj */
@@ -6477,10 +6464,7 @@ int
 __nlocks_for_thread(DB_ENV *dbenv, int *locks, int *lockers)
 {
 	DB_LOCKTAB *lt;
-	DB_LOCKER *sh_locker;
 	DB_LOCKREGION *region;
-	u_int32_t locker_ndx;
-	int ret;
 	int nlocks = 0;
 	int nlockers = 0;
 

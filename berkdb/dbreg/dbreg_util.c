@@ -468,10 +468,8 @@ __ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
 	char *name;
 	DB_LSN *lsnp;
 {
-	DB_LOG *dblp;
 	DB *dbp = NULL;
 	int ret = 0;
-	dblp = dbenv->lg_handle;
 
 	extern int gbl_abort_ufid_open;
 	if (gbl_abort_ufid_open)
@@ -914,7 +912,6 @@ __dbreg_id_to_fname(dblp, lid, have_lock, fnamep)
 	FNAME **fnamep;
 {
 	DB_ENV *dbenv;
-	FNAME *fnp;
 	LOG *lp;
 	int ret;
 
@@ -1356,13 +1353,13 @@ __bb_dbreg_print_all_dblist(dbenv, prncallback, userptr)
 	void (*prncallback)(void *userptr, const char *fmt, ...);
 	void *userptr;
 {
-    DB *ldbp;
+	DB *ldbp;
 	FNAME *fnp;
-	int del, first;
+	int first;
 	char *name;
 
-    MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
-    DB_MPOOL *dbmp = dbenv->mp_handle;
+	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
+	DB_MPOOL *dbmp = dbenv->mp_handle;
 	int longest_len = 0;
 
 	for (ldbp = LIST_FIRST(&dbenv->dblist);

@@ -430,14 +430,12 @@ int bdb_reconstruct_add(bdb_state_type *bdb_state, DB_LSN *startlsn, void *key,
     int have_record = 0;
     int outlen;
     DB_LSN nextlsn = {1, 0};
-    static int nadd = 0;
     DB_LSN lsn = *startlsn;
 
     if (!p_dtalen)
         p_dtalen = &outlen;
     if (!p_keylen)
         p_keylen = &outlen;
-    nadd++;
 
     rc = get_next_addrem_buffer(bdb_state, &lsn, data, datalen, p_dtalen, NULL,
                                 NULL, &have_record, &nextlsn);
@@ -544,11 +542,8 @@ int bdb_reconstruct_delete(bdb_state_type *bdb_state, DB_LSN *startlsn,
     int indexes[2] = {0};
     int alloclen;
     int i = 0;
-    static int cnt = 0;
     DB_LSN nextlsn;
     DB_LSN lsn = *startlsn;
-
-    cnt++;
 
     if (keylen > datalen)
         alloclen = keylen;
@@ -1894,7 +1889,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
                               DB_LSN *outlsn, int about_to_commit)
 {
     DB_LOGC *cur;
-    int rc = 0, deadlkcnt = 0;
+    int rc = 0;
     int did_something = 0;
     DBT logdta;
     DB_LSN lsn, undolsn, getlsn, start_phys_txn = {0}, last_regop_lsn;
@@ -2004,7 +1999,6 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
             rc = cur->get(cur, &lsn, &logdta, DB_SET);
             LOGCOPY_32(&rectype, logdta.data);
             normalize_rectype(&rectype);
-            ++deadlkcnt;
             goto again;
         }
 
@@ -3404,9 +3398,7 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     int rc;
     int inplace = 0;
     void *olddta = NULL;
-    static int cnt = 0;
 
-    cnt++;
     /* bdb_dump_log(bdb_state->dbenv, undolsn); */
 
     *prev = upd_dta_lk->prevllsn;

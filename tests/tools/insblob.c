@@ -12,7 +12,7 @@ int main(int argc, char **argv)
     int st_idx = atoi(argv[1]);
     int end_idx = atoi(argv[2]);
     int size = atoi(argv[3]);
-    void *buf = calloc(1, size);
+    void *buf = malloc(size);
     char *dbname = "dorintdb";
     char *stage = "dev";
 
@@ -20,7 +20,7 @@ int main(int argc, char **argv)
         st_idx = atoi(argv[1]);
         end_idx = atoi(argv[2]);
         size = atoi(argv[3]);
-        void *buf = calloc(1, size);
+        buf = realloc(buf, size);
         if (argc > 4) {
             dbname = argv[4];
         }

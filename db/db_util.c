@@ -187,7 +187,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
     char newlrlname[256];
     char savlrlname[256];
     char line[1024];
-    int ntables = 0;
     int err = 0;
 
     if (!lrlname)
@@ -238,7 +237,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 
         /* if this line is a table def, skip it */
         if (ltok && tokcmp(tok, ltok, "table") == 0) {
-            ++ntables;
             continue;
         }
 
@@ -262,17 +260,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 
     sbuf2close(sbold);
     sbuf2close(sbnew);
-
-    /* If we didn't see as many definitions as we have tables */
-#if 0
-    if (ntables != thedb->num_dbs) {
-        fprintf(stderr,
-                "rewrite_lrl_remove_tables: something confused me because"
-                " I found %d table definitions instead of %d\n",
-                ntables, thedb->num_dbs);
-        return -1;
-    }
-#endif
 
     if (rename(lrlname, savlrlname) == -1) {
         logmsg(LOGMSG_ERROR, 

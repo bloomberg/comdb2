@@ -232,8 +232,6 @@ __db_close_cq(db)
 	DBC *dbc;
 	DB_CQ *cq;
 	DB_CQ_HASH *h;
-	void *hashent;
-	unsigned int pos;
 	int ret, t_ret;
 
 	ret = 0;

@@ -1778,7 +1778,7 @@ int gbl_dump_full_net_queue = 0;
 
 static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
-    int now, cnt = 0, logput_cnt = 0, non_logput_cnt = 0;
+    int now, logput_cnt = 0, non_logput_cnt = 0;
 
     if (netinfo_ptr->getlsn_rtn == NULL)
         return;
@@ -1790,7 +1790,6 @@ static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
         Pthread_mutex_lock(&(host_node_ptr->enquelk));
         ptr = host_node_ptr->write_head;
         while (ptr != NULL) {
-            cnt++;
             if ((rc = (netinfo_ptr->getlsn_rtn)(netinfo_ptr, ptr->payload.raw,
                                                 ptr->len, &file, &offset)) ==
                 0) {

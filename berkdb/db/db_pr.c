@@ -711,7 +711,6 @@ __db_pr(p, len, fp)
 	u_int32_t len;
 	FILE *fp;
 {
-	u_int32_t i;
 	int lastch;
 
 	logmsgf(LOGMSG_USER, fp, "len: %3lu", (u_long)len);

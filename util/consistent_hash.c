@@ -117,7 +117,7 @@ static int validate_input(ch_hash_t *ch, uint8_t *data, size_t data_len) {
 
 static void print_key_hashes(ch_hash_t *ch) {
     for (int i=0; i< ch->num_keyhashes; i++) {
-        printf("%ld\n", ch->key_hashes[i]->hash_val);
+        printf("%"PRIu64"\n", ch->key_hashes[i]->hash_val);
     }
 }
 
@@ -159,7 +159,7 @@ ch_keyhash_t* ch_hash_find_hashval_locked(ch_hash_t *ch, uint64_t hashval) {
     }
 
     if (hashval<0 || hashval > HASH_VAL_COUNT) {
-        logmsg(LOGMSG_ERROR, "%s:%d Invalid hash value :%ld\n",__func__, __LINE__, hashval); 
+        logmsg(LOGMSG_ERROR, "%s:%d Invalid hash value :%"PRIu64"\n",__func__, __LINE__, hashval);
         return NULL;
     }
     if (ch->num_keyhashes==0) {
@@ -195,10 +195,10 @@ static int ch_hash_add_node_to_hashval_locked(ch_hash_t *ch, ch_hash_node_t *nod
     keyhash = ch_hash_find_hashval_locked(ch, hashval);
     if (keyhash) {
         if (debug_ch) {
-            logmsg(LOGMSG_USER, "%s:%d keyhash %ld already exists\n",__func__, __LINE__, hashval);
+            logmsg(LOGMSG_USER, "%s:%d keyhash %"PRIu64" already exists\n",__func__, __LINE__, hashval);
         }
         if (keyhash->node) {
-            logmsg(LOGMSG_ERROR, "%s:%d keyhash %ld has a node associated with it. Not adding new node\n", __func__, __LINE__, hashval);
+            logmsg(LOGMSG_ERROR, "%s:%d keyhash %"PRIu64" has a node associated with it. Not adding new node\n", __func__, __LINE__, hashval);
             return CH_ERR_DUP;
         }
     } else {        
@@ -220,7 +220,7 @@ static int ch_hash_add_node_to_hashval_locked(ch_hash_t *ch, ch_hash_node_t *nod
         temp = NULL;
     }
     if (debug_ch) {
-        logmsg(LOGMSG_USER, "Adding node to hashval %ld\n", hashval);
+        logmsg(LOGMSG_USER, "Adding node to hashval %"PRIu64"\n", hashval);
     }
     keyhash->node = node;
     if (ch->num_keyhashes > 1) {
@@ -257,7 +257,7 @@ static ch_keyhash_t* ch_keyhash_upper_bound(ch_hash_t *ch, uint64_t hash) {
         return NULL;
     }
     if (debug_ch) {
-        logmsg(LOGMSG_USER, "Looking for hash %ld\n",hash);
+        logmsg(LOGMSG_USER, "Looking for hash %"PRIu64"\n",hash);
     }
     int l=0, mid=0, r=ch->num_keyhashes-1, ans=0;
     while (l<=r) {
@@ -286,7 +286,7 @@ static ch_keyhash_t* ch_keyhash_lower_bound(ch_hash_t *ch, uint64_t hash) {
     }
 
     if (debug_ch) {
-        logmsg(LOGMSG_USER, "Looking for hash %ld\n",hash);
+        logmsg(LOGMSG_USER, "Looking for hash %"PRIu64"\n",hash);
     }
     int l=0, mid=0, r=ch->num_keyhashes-1, ans=0;
     while (l<=r) {
@@ -401,7 +401,7 @@ ch_hash_t *ch_hash_create(uint64_t num_nodes, hash_func func) {
     hash_range_increment = HASH_VAL_COUNT / num_nodes;
 
     if (debug_ch) {
-        logmsg(LOGMSG_USER, "the hash_range_increment is %ld\n", hash_range_increment);
+        logmsg(LOGMSG_USER, "the hash_range_increment is %"PRIu64"\n", hash_range_increment);
     }
     listc_init(&ch->nodes, offsetof(struct consistent_hash_node, lnk)); 
     /* 
@@ -425,7 +425,7 @@ ch_hash_t *ch_hash_create(uint64_t num_nodes, hash_func func) {
         curHashVal += hash_range_increment;
 
         if (debug_ch) {
-            logmsg(LOGMSG_USER, "assigning hash val %ld\n",ch->key_hashes[i]->hash_val);
+            logmsg(LOGMSG_USER, "assigning hash val %"PRIu64"\n",ch->key_hashes[i]->hash_val);
         }
     }
     ch->func = func;
@@ -456,7 +456,7 @@ int ch_hash_add_replica(ch_hash_t *hash, uint8_t *data, size_t data_len, uint64_
     int rc = 0;
 
     if (hashval < 0 || hashval > HASH_VAL_COUNT) {
-        logmsg(LOGMSG_ERROR, "Cannot add node at %ld. Invalid hash value\n", hashval);
+        logmsg(LOGMSG_ERROR, "Cannot add node at %"PRIu64". Invalid hash value\n", hashval);
         return -1;
     }
 
@@ -483,7 +483,7 @@ int ch_hash_add_node(ch_hash_t *ch, uint8_t *data, size_t data_len, uint64_t has
     int rc = 0;
 
     if (hashval < 0 || hashval > HASH_VAL_COUNT) {
-        logmsg(LOGMSG_ERROR, "Cannot add node at %ld. Invalid hash value\n", hashval);
+        logmsg(LOGMSG_ERROR, "Cannot add node at %"PRIu64". Invalid hash value\n", hashval);
         return -1;
     }
     rc = validate_input(ch, data, data_len);

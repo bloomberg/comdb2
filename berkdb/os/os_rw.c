@@ -161,7 +161,7 @@ __berkdb_pwrite(DB_ENV *dbenv, int fd, void *buf, size_t bufsz,
 	void *abuf;
 	int rc;
 	int nretries = 0;
-	DB_LSN lsn_before, lsn_after;
+	DB_LSN lsn_before;
 
 	pthread_once(&once, init_iobuf);
 
@@ -169,7 +169,7 @@ __berkdb_pwrite(DB_ENV *dbenv, int fd, void *buf, size_t bufsz,
 		abuf = get_aligned_buffer(buf, bufsz, 1);
 	else
 		abuf = buf;
-again:
+
 	LOGCOPY_TOLSN(&lsn_before, abuf);
 	do {
 		rc = pwrite(fd, abuf, bufsz, offset);

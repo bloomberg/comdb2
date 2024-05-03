@@ -94,6 +94,8 @@ __db_mutex_setup(dbenv, infop, ptr, flags)
 #endif
 
 	ret = __db_mutex_init(dbenv, mutex, offset, iflags, infop, maint);
+	(void)maint;
+	(void)offset;
 err:
 #if	defined(MUTEX_NO_MALLOC_LOCKS) || defined(HAVE_MUTEX_SYSTEM_RESOURCES)
 	if (!LF_ISSET(MUTEX_NO_RLOCK))

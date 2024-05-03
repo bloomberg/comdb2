@@ -290,7 +290,6 @@ int __mempv_cache_get(dbp, cache, file_id, pgno, target_lsn, bhp)
 	MEMPV_CACHE_PAGE_KEY key;
 	MEMPV_CACHE_PAGE_HEADER *page_header;
 	int ret;
-	u_int8_t cks;
 
 	versions = NULL;
 	page_header = NULL;

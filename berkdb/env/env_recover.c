@@ -698,14 +698,14 @@ void verify_list(dbenv)
 int __dbenv_build_mintruncate_list(dbenv)
 	DB_ENV *dbenv;
 {
-	struct mintruncate_entry *mt, *newmt, *prev_mt;
+	struct mintruncate_entry *mt, *newmt;
 
 	u_int32_t type;
 	int optype = 0;
 	__txn_ckp_args *ckp_args;
 	__db_debug_args *debug_args;
 	DBT rec = {0};
-	DB_LSN lsn, last_ckp_lsn = {0}, last_dbreg_start = {0}, last_add;
+	DB_LSN lsn, last_ckp_lsn = {0}, last_dbreg_start = {0};
 	DB_LOGC *logc = NULL;
 	int ret = 0, caught_up = 0;
 
@@ -739,9 +739,9 @@ int __dbenv_build_mintruncate_list(dbenv)
 				/* Normal log traffic can be adding to the other end: find
 				 * correct place to insert */
 
-				for (prev_mt = NULL, mt = LISTC_BOT(&dbenv->mintruncate) ;
+				for (mt = LISTC_BOT(&dbenv->mintruncate) ;
 						mt && log_compare(&mt->lsn, &lsn) < 0;
-						prev_mt = mt, mt = mt->lnk.prev)
+						mt = mt->lnk.prev)
 					;
 				if (!mt || log_compare(&mt->lsn, &lsn) > 0) {
 					newmt = malloc(sizeof(*newmt));
@@ -776,9 +776,9 @@ int __dbenv_build_mintruncate_list(dbenv)
 
 			if (ckp_args->ckp_lsn.file > last_ckp_lsn.file) {
 				Pthread_mutex_lock(&dbenv->mintruncate_lk);
-				for (prev_mt = NULL, mt = LISTC_BOT(&dbenv->mintruncate) ;
+				for (mt = LISTC_BOT(&dbenv->mintruncate) ;
 						mt && log_compare(&mt->lsn, &lsn) < 0;
-						prev_mt = mt, mt = mt->lnk.prev)
+						mt = mt->lnk.prev)
 					;
 
 				if (!mt || log_compare(&mt->lsn, &lsn) > 0) {
@@ -814,7 +814,6 @@ int __dbenv_build_mintruncate_list(dbenv)
 	dbenv->mintruncate_state = MINTRUNCATE_READY;
 	Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
-err:
 	if (logc)
 		__log_c_close(logc);
 
@@ -2104,8 +2103,6 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 	int ret;
 	int lineno = 0;
 	int got_recoverable_lsn = 0;
-	DB *file_dbp;
-	DB_MPOOLFILE *mpf;
 	u_int32_t rectype;
 
 	__txn_ckp_args *ckp_args = NULL;

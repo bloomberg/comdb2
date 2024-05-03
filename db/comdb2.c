@@ -3437,8 +3437,8 @@ cleanup:
 static int archive_file(const char *fname, const char *savdir) {
     char src[PATH_MAX], dst[PATH_MAX];
 
-    snprintf(src, sizeof(src), "%s/%s", thedb->basedir, fname);
-    snprintf(dst, sizeof(dst), "%s/%s", savdir, fname);
+    snprintf0(src, sizeof(src), "%s/%s", thedb->basedir, fname);
+    snprintf0(dst, sizeof(dst), "%s/%s", savdir, fname);
 
     logmsg(LOGMSG_DEBUG, "Moving %s to %s\n", src, dst);
 
@@ -3489,7 +3489,6 @@ static int does_file_have_db_extension(const char *fname) {
  */ 
 static int archive_old_files(const char *dbdir) {
     char savdir[PATH_MAX];
-    char txndir[PATH_MAX];
     struct dirent buf;
     struct dirent *de;
     struct stat st;
@@ -5786,10 +5785,8 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    int wait_counter = 0;
     while (!db_is_exiting()) {
         sleep(1);
-        wait_counter++;
     }
 
     /* wait until THRTYPE_CLEANEXIT thread has exited

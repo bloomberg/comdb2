@@ -2195,7 +2195,6 @@ int verify_master_leases_int(bdb_state_type *bdb_state, struct interned_string *
     static int last_rc = 0;
     time_t now = 0;
     uint64_t ctime = gettimeofday_ms();
-    static uint64_t bad_count = 0;
 
     if (!bdb_state->attr->enable_seqnum_generations) {
         if (verify_trace && (now = time(NULL)) != lastpr) {
@@ -2228,8 +2227,6 @@ int verify_master_leases_int(bdb_state_type *bdb_state, struct interned_string *
         last_rc = 1;
         return 1;
     }
-
-    bad_count++;
 
     if (verify_trace && (last_rc == 1 || (now = time(NULL)) != lastpr)) {
         logmsg(LOGMSG_USER,
@@ -2828,7 +2825,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                                              struct interned_string *host, int timeoutms, int lineno,
                                              int fakeincoherent)
 {
-    int rc, reset_ts = 1, wakecnt = 0, remaining = timeoutms;
+    int rc, reset_ts = 1, remaining = timeoutms;
     int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
     struct timespec waittime;
     int i, coherent_state;
@@ -2983,9 +2980,6 @@ again:
     rc = pthread_cond_timedwait(&(bdb_state->seqnum_info->cond),
                                 &(bdb_state->seqnum_info->lock), &waittime);
 
-    /* Keep track of the number of wakeups */
-    wakecnt++;
-
     /* Come up to check lock-desired */
     if (rc == ETIMEDOUT && remaining > 0) {
         reset_ts = 1;
@@ -3110,7 +3104,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int numskip;
     int numfailed = 0;
     int outrc;
-    int num_incoh = 0;
 
     int begin_time, end_time;
     int we_used = 0;
@@ -3196,7 +3189,6 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                     numwait++;
             } else {
                 numskip++;
-                num_incoh++;
             }
         }
 
@@ -3793,7 +3785,9 @@ static void rem_rep_mon(struct rep_mon *rm)
     Pthread_mutex_unlock(&rep_mon_lk);
 }
 
+#if defined _LINUX_SOURCE && !defined __APPLE__
 static __thread pid_t process_berkdb_tid = 0;
+#endif
 static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, DBT *rec)
 {
     int rc;
@@ -5351,10 +5345,8 @@ void *watcher_thread(void *arg)
     char *master_host = db_eid_invalid;
     int stopped_count = 0;
     int i;
-    int j;
     int time_now, time_then;
     int rc;
-    int master_is_bad = 0;
     int done = 0;
     char *rep_master = 0;
     int list_start;
@@ -5380,7 +5372,6 @@ void *watcher_thread(void *arg)
     poll(NULL, 0, (rand() % 100) + 1000);
 
     i = 0;
-    j = 0;
 
     bdb_state->repinfo->disable_watcher = 0;
 
@@ -5418,7 +5409,6 @@ void *watcher_thread(void *arg)
         stopped_count = 0;
 
         i++;
-        j++;
 
         BDB_READLOCK("watcher_thread");
 
@@ -5671,8 +5661,6 @@ void *watcher_thread(void *arg)
             if ((master_host != mynode) &&
                 (!(bdb_state->callback->nodeup_rtn)(bdb_state, master_host)) &&
                 ((bdb_state->callback->nodeup_rtn)(bdb_state, mynode))) {
-                master_is_bad++;
-
                 logmsg(LOGMSG_WARN,
                        "master %s is marked down and i am up telling him to "
                        "yield\n",
@@ -5680,8 +5668,6 @@ void *watcher_thread(void *arg)
                 send_downgrade_and_lose(bdb_state);
                 /* Don't call for election- the other node will transfer
                  * master. */
-            } else {
-                master_is_bad = 0;
             }
         }
 

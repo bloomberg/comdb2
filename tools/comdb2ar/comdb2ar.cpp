@@ -86,6 +86,7 @@ void errexit(int code)
 
 int main(int argc, char *argv[])
 {
+    crc32c_init(0);
     extern char *optarg;
     extern int optind, optopt;
 

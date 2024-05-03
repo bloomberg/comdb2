@@ -421,7 +421,7 @@ char * sqltypetxt(int t, int size)
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
     int ii, jj = 0;
-    int ondisktag = 0, numnormtags = 0;
+    int ondisktag = 0;
     struct table *tables = macc_globals->tables;
 
     /* current restriction on SQL is that it does not support arrays, nor any
@@ -435,7 +435,6 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
 
         if (strcmp(tables[jj].table_tag, DEFAULTTAG) &&
             strcmp(tables[jj].table_tag, ONDISKTAG)) {
-            numnormtags++;
         }
 
         if (tables[jj].nsym == 0) {
@@ -535,7 +534,7 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
 
     for (ii = 0; ii < numkeys(); ii++) {
         struct key *ck = macc_globals->keys[ii];
-        int jj = 0, cnt = 0, goterr = 0;
+        int jj = 0, goterr = 0;
         while (ck) {
             /* skip indexes on expressions */
             if (ck->expr)
@@ -565,7 +564,6 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
             if (goterr)
                 break;
             ck = ck->cmp;
-            cnt++;
         }
     }
     if (!ondisktag) {

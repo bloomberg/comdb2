@@ -2358,7 +2358,6 @@ static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
 
 static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
 {
-    int fd = -1;
     int rc = 0;
     SBUF2 *sb = NULL;
     void *callbackrc;
@@ -2374,10 +2373,9 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
         goto after_callback;
 
     char *endptr;
-    fd = strtol(hndl->type, &endptr, 10);
-    if ((errno == ERANGE && (fd == LONG_MAX || fd == LONG_MIN))
-        || (errno != 0 && fd == 0)) {
-        debugprint("ERROR: %s:%d invalid fd", __func__, __LINE__);
+    int fd = strtol(hndl->type, &endptr, 10);
+    if (endptr != 0 || fd < 3) { /* shouldn't be stdin, stdout, stderr */
+        debugprint("ERROR: %s:%d invalid fd:%s", __func__, __LINE__, hndl->type);
     } else {
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
@@ -3974,7 +3972,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     }
 
     cdb2_query_list *item = hndl->query_list;
-    int i = 0;
     while (item != NULL) { /* Send all but the last query. */
 
         /* This is the case when we got disconnected while reading the
@@ -3996,7 +3993,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         clear_responses(hndl);
 
         int len = 0;
-        i++;
 
         if (!hndl->read_intrans_results && !item->is_read) {
             item = item->next;
@@ -4021,12 +4017,10 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             hndl->sb = NULL;
             return 1;
         }
-        int num_read = 0;
         int read_rc;
 
-        while ((read_rc = cdb2_next_record_int(hndl, 0)) == CDB2_OK) {
-            num_read++;
-        }
+        while ((read_rc = cdb2_next_record_int(hndl, 0)) == CDB2_OK)
+            ;
 
         if (hndl->sb == NULL) {
             debugprint("sb is NULL, next_record_int returns "

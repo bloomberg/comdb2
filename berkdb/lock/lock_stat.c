@@ -936,22 +936,13 @@ __lock_dump_object(lt, op, fp, just_active_locks)
 	int just_active_locks;
 {
 	struct __db_lock *lp;
-	int printed;
-
 	for (lp =
 		SH_TAILQ_FIRST(&op->holders, __db_lock);
 		lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock))
-		printed =
 			__lock_printlock_int(lt, lp, 1, fp, just_active_locks);
 	for (lp = SH_TAILQ_FIRST(&op->waiters, __db_lock); lp !=NULL;
 		lp = SH_TAILQ_NEXT(lp, links, __db_lock))
-		printed =
 			__lock_printlock_int(lt, lp, 1, fp, just_active_locks);
-
-	/*
-	 * if (printed)
-	 * fprintf(fp, "\n");
-	 */
 }
 
 /* XXX It's easier to diff against master & replicant locks if I don't print the lid */

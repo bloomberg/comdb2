@@ -393,7 +393,6 @@ static int bdb_hash_table_copy_to_temp_db(bdb_state_type *bdb_state,
                                           struct temp_table *tbl, int *bdberr)
 {
     int rc = 0;
-    int num_recs = 0;
     DBT dbt_key, dbt_data;
     bzero(&dbt_key, sizeof(DBT));
     bzero(&dbt_data, sizeof(DBT));
@@ -427,7 +426,6 @@ static int bdb_hash_table_copy_to_temp_db(bdb_state_type *bdb_state,
         dbt_key.data = key;
 
         rc = tbl->tmpdb->put(tbl->tmpdb, NULL, &dbt_key, &dbt_data, 0);
-        num_recs++;
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s:%d put rc %d\n", __FILE__, __LINE__, rc);
             return rc;

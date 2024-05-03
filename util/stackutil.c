@@ -108,12 +108,12 @@ int stackutil_get_stack(int id, char **type, int *nframes, void *frames[MAX_STAC
 char *stackutil_get_stack_str(int id, char **type, int *in_nframes, int64_t *hits)
 {
     char *str = NULL;
+#ifdef __GLIBC__
     int inframes;
     if (type)
         *type = NULL;
     if (in_nframes)
         *in_nframes = 0;
-#ifdef __GLIBC__
     void *frames[MAX_STACK_FRAMES];
     if (stackutil_get_stack(id, type, &inframes, frames, hits) == 0) {
         if (in_nframes)

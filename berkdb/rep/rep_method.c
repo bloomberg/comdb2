@@ -283,9 +283,6 @@ __rep_start(dbenv, dbt, gen, flags)
 	if (role_chg) {
 	}
 	else {
-		pid_t pid;
-		char cmd[32];
-
 		for (sleep_cnt = 0; rep->msg_th != 0;) {
 			if (++sleep_cnt % 60 == 0)
 				__db_err(dbenv,
@@ -296,8 +293,8 @@ __rep_start(dbenv, dbt, gen, flags)
 				gbl_rep_method_max_sleep_cnt > 0) {
 				logmsg(LOGMSG_FATAL, "%s:%d:%s: Exiting after waiting too long for replication message thread.\n",
 					__FILE__, __LINE__, __func__);
-                void pstack_self(void);
-                pstack_self();
+				void pstack_self(void);
+				pstack_self();
 				abort();
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);

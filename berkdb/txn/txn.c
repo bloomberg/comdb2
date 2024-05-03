@@ -493,7 +493,7 @@ static void __txn_assert_notran(dbenv)
 int __txn_assert_notran_pp(dbenv)
 	DB_ENV *dbenv;
 {
-	int rep_check, ret;
+	int rep_check;
 	PANIC_CHECK(dbenv);
 	if (IS_REP_CLIENT(dbenv))
 		return (0);
@@ -1161,6 +1161,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	if (IS_ZERO_LSN(txnp->last_lsn)) {
 		/* Put a breakpoint here */
 		iszero = 1;
+		(void)iszero;
 	}
 #endif
 
@@ -2771,7 +2772,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	DB_ENV *dbenv;
 	u_int32_t kbytes, minutes, flags;
 {
-	struct mintruncate_entry *mt, *newmt;
+	struct mintruncate_entry *newmt;
 	DB_LSN ckp_lsn, last_ckp, ltrans_ckp_lsn, ckp_lsn_sav, prepared;
 	DB_TXNMGR *mgr;
 	DB_TXNREGION *region;

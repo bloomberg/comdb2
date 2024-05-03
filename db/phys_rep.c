@@ -90,7 +90,6 @@ static volatile sig_atomic_t physrep_watcher_running;
 
 static volatile sig_atomic_t stop_physrep_worker;
 static volatile sig_atomic_t stop_physrep_watcher;
-static volatile sig_atomic_t stop_physrep_revconn_manager;
 
 static DB_Connection **repl_dbs = NULL;
 static size_t repl_dbs_sz;

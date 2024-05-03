@@ -229,7 +229,7 @@ void *sampler_key(sampler_t *sampler)
     return sampler->data;
 }
 
-sampler_t *sampler_init(bdb_state_type *bdb_state, int *bdberr)
+static sampler_t *sampler_init(bdb_state_type *bdb_state, int *bdberr)
 {
     sampler_t *sampler;
     sampler = calloc(1, sizeof(sampler_t));

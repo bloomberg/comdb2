@@ -19,8 +19,8 @@
 #include <list.h>
 
 struct hostpolicy {
-    char explicit_allow : 1;
-    char explicit_disallow : 1;
+    unsigned explicit_allow : 1;
+    unsigned explicit_disallow : 1;
 };
 
 struct clienthost {

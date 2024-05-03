@@ -454,7 +454,7 @@ static void dispatch_waiting_client(int fd, short what, void *data)
         logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
         newsql_cleanup(appdata);
     } else if (dispatch_client(appdata) == 0) {
-        logmsg(LOGMSG_USER, "%s: waited %lds.%ldms for election fd:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, appdata->fd);
+        logmsg(LOGMSG_USER, "%s: waited %lds.%dms for election fd:%d\n", __func__, diff.tv_sec, (int)diff.tv_usec / 1000, appdata->fd);
         sql_wait_for_leader(appdata->writer, NULL);
     } else {
         newsql_cleanup(appdata);

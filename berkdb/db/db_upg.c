@@ -24,8 +24,8 @@ static const char revid[] = "$Id: db_upg.c,v 11.33 2003/06/06 14:55:40 bostic Ex
 #include "dbinc/hash.h"
 #include "dbinc/qam.h"
 
-static int (* const func_31_list[P_PAGETYPE_MAX])
-    __P((DB *, char *, u_int32_t, DB_FH *, PAGE *, int *)) = {
+typedef int(*func_31_list)(DB *, char *, u_int32_t, DB_FH *, PAGE *, int *);
+static func_31_list funcs[] = {
 	NULL,			/* P_INVALID */
 	NULL,			/* __P_DUPLICATE */
 	__ham_31_hash,		/* P_HASH */
@@ -41,8 +41,7 @@ static int (* const func_31_list[P_PAGETYPE_MAX])
 	NULL,			/* P_LDUP */
 };
 
-static int __db_page_pass __P((DB *, char *, u_int32_t, int (* const [])
-	       (DB *, char *, u_int32_t, DB_FH *, PAGE *, int *), DB_FH *));
+static int __db_page_pass __P((DB *, char *, u_int32_t, DB_FH *));
 
 /*
  * __db_upgrade_pp --
@@ -141,8 +140,7 @@ __db_upgrade(dbp, fname, flags)
 			 */
 			memcpy(&dbp->pgsize, mbuf + 20, sizeof(u_int32_t));
 
-			if ((ret = __db_page_pass(
-			    dbp, real_name, flags, func_31_list, fhp)) != 0)
+			if ((ret = __db_page_pass(dbp, real_name, flags, fhp)) != 0)
 				goto err;
 			/* FALLTHROUGH */
 		case 8:
@@ -198,8 +196,7 @@ __db_upgrade(dbp, fname, flags)
 			 */
 			memcpy(&dbp->pgsize, mbuf + 20, sizeof(u_int32_t));
 
-			if ((ret = __db_page_pass(
-			    dbp, real_name, flags, func_31_list, fhp)) != 0)
+			if ((ret = __db_page_pass(dbp, real_name, flags, fhp)) != 0)
 				goto err;
 			/* FALLTHROUGH */
 		case 7:
@@ -280,12 +277,10 @@ err:	if (fhp != NULL &&
  *	Walk the pages of the database, upgrading whatever needs it.
  */
 static int
-__db_page_pass(dbp, real_name, flags, fl, fhp)
+__db_page_pass(dbp, real_name, flags, fhp)
 	DB *dbp;
 	char *real_name;
 	u_int32_t flags;
-	int (* const fl[P_PAGETYPE_MAX])
-	    __P((DB *, char *, u_int32_t, DB_FH *, PAGE *, int *));
 	DB_FH *fhp;
 {
 	DB_ENV *dbenv;
@@ -315,8 +310,8 @@ __db_page_pass(dbp, real_name, flags, fl, fhp)
 		if ((ret = __os_read(dbenv, fhp, page, dbp->pgsize, &n)) != 0)
 			break;
 		dirty = 0;
-		if (fl[TYPE(page)] != NULL && (ret = fl[TYPE(page)]
-		    (dbp, real_name, flags, fhp, page, &dirty)) != 0)
+		func_31_list fl = funcs[TYPE(page)];
+		if (fl != NULL && (ret = fl(dbp, real_name, flags, fhp, page, &dirty)) != 0)
 			break;
 		if (dirty) {
 			if ((ret = __os_seek(dbenv,

@@ -1980,11 +1980,6 @@ __log_sync_range(dblp, off)
 {
 	/* Linux only: hint the OS that we're about to fsync the log file. */
 #ifdef __linux__
-	DB_ENV *dbenv;
-	LOG *lp;
-	dbenv = dblp->dbenv;
-	lp = dblp->reginfo.primary;
-
 	if (!gbl_wal_osync)
 		sync_file_range(dblp->lfhp->fd, off, 0, SYNC_FILE_RANGE_WRITE);
 #endif

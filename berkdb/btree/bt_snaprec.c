@@ -169,7 +169,6 @@ __bam_adj_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 	__bam_adj_undo(dbc, pagep, argp);
 
 done:
-out:
 	REC_CLOSE;
 }
 
@@ -224,10 +223,7 @@ __bam_cdel_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 	DB *file_dbp;
 	DBC *dbc;
 	DB_MPOOLFILE *mpf;
-	u_int32_t indx;
-	int cmp_n, cmp_p, modified, ret;
-
-	ret = 0;
+	int ret = 0;
 	REC_INTRO_PANIC(__bam_cdel_read, 1);
 
 	__bam_cdel_undo(file_dbp, pagep, argp, 0 /* Snapshot rollback should not affect other cursors */);
@@ -255,13 +251,10 @@ __bam_repl_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 	BKEYDATA *bk;
 	DB *file_dbp;
 	DBC *dbc;
-	DBT dbt;
 	DB_MPOOLFILE *mpf;
 	int ret;
-	u_int8_t *p;
 
 	ret = 0;
-	p = NULL;
 	REC_INTRO_PANIC(__bam_repl_read, 1);
 
 	bk = GET_BKEYDATA(file_dbp, pagep, argp->indx);
@@ -292,10 +285,7 @@ __bam_prefix_snap_recover(dbenv, dbtp, lsnp, op, pagep)
 	DB *file_dbp;
 	DBC *dbc;
 	DB_MPOOLFILE *mpf;
-	PAGE *c = NULL;
-	int cmp_n, cmp_p, ret;
-
-	ret = 0;
+	int ret = 0;
 	REC_INTRO(__bam_prefix_read, 1);
 
 	ret = __bam_prefix_undo(dbenv, dbc, pagep, argp);

@@ -1111,8 +1111,7 @@ int __txn_recover_abort_prepared(dbenv, dist_txnid, prep_lsn, blkseq_key, coordi
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
-	int ret;
-	DB_TXN_PREPARED *p, *fnd;
+	DB_TXN_PREPARED *p;
 
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) == NULL) {
@@ -1686,7 +1685,6 @@ int __txn_discard_recovered(dbenv, dist_txnid)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
 	DB_TXN_PREPARED *p;
-	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		hash_del(dbenv->prepared_txn_hash, p);
@@ -1718,7 +1716,6 @@ int __rep_commit_dist_prepared(dbenv, dist_txnid)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
 	DB_TXN_PREPARED *p;
-	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		hash_del(dbenv->prepared_txn_hash, p);
@@ -1756,7 +1753,6 @@ int __rep_abort_dist_prepared(dbenv, dist_txnid)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
 	DB_TXN_PREPARED *p;
-	int ret;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {
 		hash_del(dbenv->prepared_txn_hash, p);
@@ -1773,7 +1769,7 @@ int __rep_abort_dist_prepared(dbenv, dist_txnid)
 #endif
 	}
 
-    dist_txn_abort_write_blkseq(NULL, p->blkseq_key.data, p->blkseq_key.size);
+	dist_txn_abort_write_blkseq(NULL, p->blkseq_key.data, p->blkseq_key.size);
 	assert(!F_ISSET(p, DB_DIST_HAVELOCKS));
 	__free_prepared_txn(dbenv, p);
 	return 0;
@@ -1902,7 +1898,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	DBT data_dbt = {0};
 	DB_LOGC *logc = NULL;
 	int had_serializable_records = 0;
-	uint32_t rectype = 0;
 	void *txninfo = NULL;
 
 	if ((ret = __rep_collect_txn(dbenv, &p->prepare_lsn, &lc, &had_serializable_records, NULL)) != 0) {
@@ -1926,7 +1921,6 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	F_SET(&data_dbt, DB_DBT_REALLOC);
 
 	for (int i = 0; i < lc.nlsns; i++) {
-		DBT lcin_dbt = { 0 };
 		uint32_t rectype = 0;
 		DB_LSN lsn = lc.array[i].lsn, *lsnp = &lsn;
 

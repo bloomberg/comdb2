@@ -333,9 +333,6 @@ extern int rep_qstat_has_master_req(void);
 
 static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line)
 {
-	static unsigned long long call_count = 0;
-
-	call_count++;
 	__rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,
 			NULL, NULL, 0, NULL);
 
@@ -895,7 +892,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 	DBT *rec;
 	uint32_t gen;
 {
-	int rc, now;
+	int now;
 	int start, elapsed;
 	static unsigned long long count=0;
 	struct queued_log *q = (struct queued_log *)malloc(
@@ -946,7 +943,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 					listc_size(&log_queue), count);
 			lastpr = now;
 		}
-		rc = pthread_cond_timedwait(&release_cond, &rep_queue_lock, &ts);
+		pthread_cond_timedwait(&release_cond, &rep_queue_lock, &ts);
 	}
 
 	/* Set before enqueing */
@@ -2016,7 +2013,6 @@ more:
 			 * far, we want to notice and not do it. */
 			uint32_t timestamp;
 			time_t t;
-			char start_time[30], my_time[30];
 			__txn_regop_args a;
 
 			/* I feel slightly bad hardcoding the timestamp offset, but I'd rather not call 
@@ -3025,7 +3021,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	u_int32_t rectype = 0, txnid;
 	int cmp, do_req, gap, ret, t_ret, rc;
 	int num_retries;
-	int utxnid_logged = 0;
 	int disabled_minwrite_noread = 0;
 	char *eid, *dist_txnid = NULL;
 
@@ -3106,6 +3101,7 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	dbp = db_rep->rep_db;
 	count_in_func++;
 	assert(count_in_func == 1);
+	(void)count_in_func;
 	lp = dblp->reginfo.primary;
 	cmp = log_compare(&rp->lsn, &lp->ready_lsn);
 
@@ -3249,7 +3245,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			rp = (REP_CONTROL *)control_dbt.data;
 			rec = &rec_dbt;
 			LOGCOPY_32(&rectype, rec->data);
-			utxnid_logged = normalize_rectype(&rectype);
+			normalize_rectype(&rectype);
 
 			if (rp->rectype != REP_NEWFILE) {
 
@@ -3965,8 +3961,6 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 
 	DBT rec = {0};
 	DB_LSN ret_lsnp;
-	uint32_t *commit_gen;
-	int rc, decoupled;
 	DB_REP* db_rep; 
 	REP* rep; 
 
@@ -4020,7 +4014,6 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	DB_LOGC *logc = NULL;
 	DBT tmpdbt;
 	u_int32_t rectype;
-	int recnum = 0;
 	LISTC_T(struct recovery_record) q;
 
 	listc_init(&q, offsetof(struct __recovery_record, lnk));
@@ -4035,7 +4028,6 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	rr = listc_rtl(&rq->records);
 
 	while (rr) {
-		recnum++;
 		if (rr->logdbt.data == NULL) {
 			if (logc == NULL) {
 				if (__log_cursor(dbenv, &logc)) {
@@ -4198,11 +4190,9 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	struct __recovery_record *rr;
 	hash_t *fuid_hash = NULL;
 	u_int8_t fuid[DB_FILE_ID_LEN] = {0};
-	u_int8_t last_fuid[DB_FILE_ID_LEN] = {0};
 	DBT data_dbt, lock_prev_lsn_dbt;
 	DB_LOCK prev_lsn_lk;
 	int i;
-    int is_fuid;
 	int inline_worker;
 	int polltm;
 	int commit_lsn_map = gbl_commit_lsn_map;
@@ -4704,7 +4694,6 @@ static int retrieve_locks_from_prepare(DB_ENV *dbenv, DB_LSN *lsn, DBT *locks, u
 	(*lflags) = argpp->lflags;
 	ret = 0;
 
-done:		
 	if (logc != NULL) {
 		__log_c_close(logc);
 	}
@@ -4739,7 +4728,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	LSN_COLLECTION lc;
 	DB_LOCKREQ req, *lvp;
 	DB_LOGC *logc;
-	DB_LSN prev_lsn, parent_commit_lsn, *lsnp;
+	DB_LSN prev_lsn, *lsnp;
 	DB_REP *db_rep;
 	REP *rep;
 	uint32_t lflags = 0;
@@ -4758,9 +4747,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	u_int32_t rectype;
 	int i, ret, t_ret, line = 0;
 	u_int32_t txnid = 0;
-	u_int64_t utxnid = 0, child_utxnid = 0;
+	u_int64_t utxnid = 0;
 	char *dist_txnid = NULL;
-	int got_txns = 0, free_lc = 0;
 	void *txninfo;
 	unsigned long long context = 0;
 	int had_serializable_records = 0;
@@ -5254,9 +5242,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			LOGCOPY_32(&rectype, lcin_dbt.data);
 			needed_to_get_record_from_log = 0;
 		}
-		normalize_rectype(&rectype);
 
-		int utxnid_logged = normalize_rectype(&rectype);
+		normalize_rectype(&rectype);
 
 		if (dispatch_rectype(rectype)) {
 			if ((ret = __db_dispatch(dbenv, dbenv->recover_dtab,
@@ -5612,7 +5599,6 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
-	DB_LSN commit_lsn;
 	DB_REP *db_rep;
 	DB_LOCK lsnlock;
 	REP *rep = NULL;
@@ -6342,14 +6328,12 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 {
 	__txn_child_args *argp;
 	DB_LOGC *logc;
-	DB_LSN c_lsn, parent_commit_lsn;
+	DB_LSN c_lsn;
 	DBT data;
 	u_int32_t rectype;
-	int nalloc, ret, t_ret, commit_lsn_map;
+	int nalloc, ret, t_ret;
 	int switched_to_realloc = 0;
-	int recnum = 0;
 
-	commit_lsn_map = gbl_commit_lsn_map;
 	memset(&data, 0, sizeof(data));
 
 #if 0
@@ -6368,7 +6352,6 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 		return (ret);
 
 	while (!IS_ZERO_LSN(*lsnp)) {
-		recnum++;
 		ret = __log_c_get(logc, lsnp, &data, DB_SET);
 		if (rp) {
 			if (ret == ENOMEM && rp &&
@@ -7024,7 +7007,6 @@ recovery_getlocks(dbenv, lockid, lock_dbt, lsn)
 	DB_LSN lsn;
 {
 	int ret;
-	int t_ret;
 	void *pglogs = NULL;
 	unsigned long long context;
 	u_int32_t keycnt;
@@ -7068,19 +7050,13 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	DBT mylog;
 	DB_LOGC *logc = NULL;
 	DB_LOGC *logc_dist = NULL;
-	DBT *lock_dbt = NULL;
-	int ret, t_ret, undo, count=0;
+	int ret, t_ret, undo;
 	int have_recover_lk = 0;
-	int found_scdone = 0;
-	int recover_at_commit = 1;
 	int schema_lk_count = 0;
 	int i_am_master = 0;
 	static int truncate_count = 0;
-	int maxlocks = gbl_online_recovery_maxlocks;
 	u_int32_t rectype;
-	u_int32_t keycnt = 0;
 	u_int32_t logflags = DB_LAST;
-	u_int32_t lockcnt;
 	u_int32_t lockid = DB_LOCK_INVALIDID;
 	DB_REP *db_rep;
 	REP *rep;
@@ -7154,10 +7130,8 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 
 restart:
 	lockid = DB_LOCK_INVALIDID;
-	count = 0;
 	logflags = DB_LAST;
 
-	count++;
 	if (online && ((ret = __lock_id(dbenv, &lockid)) != 0)) {
 		logmsg(LOGMSG_FATAL, "%s could not acquire lockid\n", __func__);
 		abort();
@@ -7168,7 +7142,6 @@ restart:
 	while ((ret = __log_c_get(logc, &lsn, &mylog, logflags)) == 0 &&
 		log_compare(&lsn, lsnp) > 0) {
 		logflags = DB_PREV;
-		lockcnt = 0;
 		LOGCOPY_32(&rectype, mylog.data);
 		normalize_rectype(&rectype);
 		if (rectype == DB___txn_regop_rowlocks) {
@@ -8177,7 +8150,6 @@ __truncate_repdb(dbenv)
 		u_int32_t flags;
 		char *repdbname;
 		del_repdb_args_t *delr;
-		int rc;
 		pthread_t tid;
 		pthread_attr_t attr;
 
@@ -8315,6 +8287,7 @@ int __dbenv_rep_verify_match(DB_ENV* dbenv, unsigned int file, unsigned int offs
 			log_compare(&lsnp, &dbenv->mintruncate_first) < 0) {
 		rc = __dbenv_build_mintruncate_list(dbenv);
 		assert(rc || dbenv->mintruncate_state == MINTRUNCATE_READY);
+		(void)rc;
 	}
 	ret = __rep_verify_match(dbenv, &rp, rep->timestamp, online);
 	return ret;
@@ -8548,7 +8521,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 	 * fprintf(stderr, "Set readylsn file %s line %d to %d:%d\n", __FILE__, 
 	 * __LINE__, lp->ready_lsn.file, lp->ready_lsn.offset);
 	 */
-finish:ZERO_LSN(lp->waiting_lsn);
+	ZERO_LSN(lp->waiting_lsn);
 	lp->wait_recs = 0;
 	lp->rcvd_recs = 0;
 	ZERO_LSN(lp->verify_lsn);
