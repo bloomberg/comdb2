@@ -353,8 +353,8 @@ __txn_regop_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	argp = NULL;
 
 
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
+	if (argp != NULL)
+		__os_free(dbenv, argp);
 
 	return (ret);
 }
@@ -758,7 +758,7 @@ __txn_ckp_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 
     argp = NULL;
 
-err:if (argp != NULL)
+	if (argp != NULL)
 		__os_free(dbenv, argp);
 
 	return (ret);
@@ -814,7 +814,6 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 {
 	__txn_ckp_args *argp;
 	u_int32_t uinttmp;
-	u_int64_t uint64tmp;
 	u_int8_t *bp;
 	int ret;
 
@@ -1156,7 +1155,7 @@ __txn_child_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 
     argp = NULL;
 
-err:if (argp != NULL)
+	if (argp != NULL)
 		__os_free(dbenv, argp);
 
 	return (ret);
@@ -1607,8 +1606,8 @@ __txn_xa_regop_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 
 	argp = NULL;
 
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
+	if (argp != NULL)
+		__os_free(dbenv, argp);
 
 	return (ret);
 }
@@ -1998,8 +1997,8 @@ __txn_recycle_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 
 	argp = NULL;
 
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
+	if (argp != NULL)
+		__os_free(dbenv, argp);
 
 	return (ret);
 }
@@ -2460,8 +2459,8 @@ __txn_regop_rowlocks_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 
 	argp = NULL;
 
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
+	if (argp != NULL)
+		__os_free(dbenv, argp);
 
 	return (ret);
 }
@@ -2938,8 +2937,8 @@ __txn_regop_gen_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 
 	argp = NULL;
 
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
+	if (argp != NULL)
+		__os_free(dbenv, argp);
 
 	return (ret);
 }
@@ -3132,7 +3131,6 @@ __txn_dist_prepare_log(dbenv, txnid, ret_lsnp, flags, generation, begin_lsn, dis
 	u_int8_t *bp;
 	int is_durable, ret;
 	int used_malloc = 0;
-	int off_context = -1;
 	int utxnid_log = gbl_utxnid_log;
 
 #ifdef __txn_DEBUG
@@ -3441,19 +3439,8 @@ __txn_dist_prepare_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
-	__txn_dist_prepare_args *argp;
 	int ret = 0;
-
 	COMPQUIET(notused1, DB_TXN_ABORT);
-
-	argp = NULL;
-	t = (TXN_RECS *)summary;
-
-
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
-
 	return (ret);
 }
 #endif /* HAVE_REPLICATION */
@@ -3670,7 +3657,7 @@ __txn_dist_prepare_print(dbenv, dbtp, lsnp, notused2, notused3)
 {
 	DBT logrec;
 	DB_TXNLOGREC *lr;
-	DB_LSN *lsnp, null_lsn;
+	DB_LSN *lsnp;
 	u_int32_t uinttmp, rectype, txn_num;
 	u_int64_t txn_unum;
 	u_int64_t uint64tmp;
@@ -3885,19 +3872,8 @@ __txn_dist_abort_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
-	__txn_dist_abort_args *argp;
 	int ret = 0;
-
 	COMPQUIET(notused1, DB_TXN_ABORT);
-
-	argp = NULL;
-	t = (TXN_RECS *)summary;
-
-
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
-
 	return (ret);
 }
 #endif /* HAVE_REPLICATION */
@@ -4294,19 +4270,8 @@ __txn_dist_commit_getallpgnos(dbenv, rec, lsnp, notused1, summary)
 	db_recops notused1;
 	void *summary;
 {
-	TXN_RECS *t;
-	__txn_dist_commit_args *argp;
 	int ret = 0;
-
 	COMPQUIET(notused1, DB_TXN_ABORT);
-
-	argp = NULL;
-	t = (TXN_RECS *)summary;
-
-
-err:	if (argp != NULL)
-	__os_free(dbenv, argp);
-
 	return (ret);
 }
 #endif /* HAVE_REPLICATION */

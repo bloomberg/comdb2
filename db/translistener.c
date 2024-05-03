@@ -774,7 +774,6 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
     int i;
     struct sp_field *fld;
     struct dbtable *usedb;
-    int nfields = 0;
 
     /* TODO: can cache most of this information, don't allocate 2 buffers per
        record, don't
@@ -838,13 +837,11 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
                     rc = append_field(&bytes, f, oldrec);
                     if (rc)
                         goto done;
-                    nfields++;
                 }
                 if (after_flag == FIELD_FLAG_VALUE) {
                     rc = append_field(&bytes, f, newrec);
                     if (rc)
                         goto done;
-                    nfields++;
                 }
                 break;
             }

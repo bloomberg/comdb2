@@ -79,14 +79,16 @@ int auto_analyze_tables_systable_collect(void **data, int *nrecords)
         arr[idx].new_aa_percnt = new_aa_percnt;
         int64_t lastepoch = ATOMIC_LOAD64(tbl->aa_lastepoch);
         if (lastepoch != 0) {
+            time_t t = lastepoch;
             arr[idx].lastepoch = calloc(1, sizeof(*arr[0].lastepoch));
-            gmtime_r(&lastepoch, (struct tm*)&arr[idx].lastepoch->tm);
+            gmtime_r(&t, (struct tm*)&arr[idx].lastepoch->tm);
             strcpy(arr[idx].lastepoch->tzname, "UTC");
         }
         int64_t needs_analyze_time = ATOMIC_LOAD64(tbl->aa_needs_analyze_time);
         if (needs_analyze_time != 0) {
+            time_t t = needs_analyze_time;
             arr[idx].needs_analyze_time = calloc(1, sizeof(*arr[0].needs_analyze_time));
-            gmtime_r(&needs_analyze_time, (struct tm*)&arr[idx].needs_analyze_time->tm);
+            gmtime_r(&t, (struct tm*)&arr[idx].needs_analyze_time->tm);
             strcpy(arr[idx].needs_analyze_time->tzname, "UTC");
         }
     }

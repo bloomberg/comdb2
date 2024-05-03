@@ -285,7 +285,6 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 
 	}
 
-search:
 	while (!found) 
 	{
 		if (mempv_debug) {

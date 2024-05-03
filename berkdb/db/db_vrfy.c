@@ -605,15 +605,12 @@ __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, pgno)
 	void *handle;
 	int (*callback) __P((void *, const void *));
 	u_int32_t flags;
-    db_pgno_t pgno;
+	db_pgno_t pgno;
 {
-	DB_ENV *dbenv;
 	DB_MPOOLFILE *mpf;
 	PAGE *h;
-	db_pgno_t i;
 	int ret, t_ret, isbad;
 
-	dbenv = dbp->dbenv;
 	mpf = dbp->mpf;
 	ret = isbad = t_ret = 0;
 

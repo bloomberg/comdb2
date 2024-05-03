@@ -444,14 +444,14 @@ function log_function() {
 	printf("\tu_int64_t txn_num_uint64;\n") >> CFILE;
 	printf("\tu_int npad;\n") >> CFILE;
 	printf("\tu_int8_t *bp;\n") >> CFILE;
-	if(has_dbp == 0)
-		printf("\tDB *dbp = NULL;\n") >> CFILE;
 	printf("\tint ") >> CFILE;
 	if (dbprivate) {
 		printf("is_durable, ") >> CFILE;
 	}
 	printf("ret;\n") >> CFILE;
-	printf("\tint used_malloc = 0;\n\n") >> CFILE;
+	if (dbprivate) {
+		printf("\tint used_malloc = 0;\n\n") >> CFILE;
+	}
 
 	printf("#ifdef %s_DEBUG\n", prefix) >> CFILE;
 	printf("\tfprintf(stderr,\"%s_log: begin\\n\");\n", funcname) >> CFILE;
@@ -570,7 +570,8 @@ function log_function() {
 	printf("\tbp += sizeof(DB_LSN);\n\n") >> CFILE;
 	printf("\tif (utxnid_log) {\n") >> CFILE;
 	printf("\t\tLOGCOPY_64(bp, &txn_num_uint64);\n") >> CFILE;
-	printf("\t\tbp += sizeof(txn_num_uint64);\n}\n") >> CFILE;
+	printf("\t\tbp += sizeof(txn_num_uint64);\n") >> CFILE;
+	printf("\t}\n") >> CFILE;
 
 	for (i = 0; i < nvars; i ++) {
 		if (modes[i] == "ARG" || modes[i] == "TIME") {
@@ -915,8 +916,6 @@ function read_function_int() {
 		printf("\tu_int64_t uint64tmp;\n") >> CFILE;
 	printf("\tu_int8_t *bp;\n") >> CFILE;
 
-	printf("\tDB *dbp = NULL;\n") >> CFILE;
-
 	if (dbprivate) {
 		# We only use dbenv and ret in the private malloc case.
 		printf("\tint ret;\n\n") >> CFILE;
@@ -985,6 +984,7 @@ function read_function_int() {
 				printf("\tbp += sizeof(uinttmp);\n") >> CFILE;
 			}
 		} else if (modes[i] == "DB") {
+			printf("\tDB *dbp = NULL;\n") >> CFILE;
 			printf("\tif ((argp->type == (DB_%s + 1000)) || (argp->type == (DB_%s + 3000))) {\n", funcname, funcname) >> CFILE;
 			printf("\t\tmemcpy(argp->ufid_%s, bp, DB_FILE_ID_LEN);\n", vars[i]) >> CFILE;
 			printf("\t\targp->%s = -1;\n", vars[i]) >> CFILE;
@@ -1148,17 +1148,16 @@ function getallpgnos_function() {
 		}
 	}
 
-	printf("\tTXN_RECS *t;\n") >> CFILE;
-	printf("\t%s_args *argp;\n", funcname) >> CFILE;
 	printf("\tint ret = 0;\n\n") >> CFILE;
-
 	# Shut up compiler.
 	printf("\tCOMPQUIET(notused1, DB_TXN_ABORT);\n\n") >> CFILE;
-
-	printf("\targp = NULL;\n") >> CFILE;
-	printf("\tt = (TXN_RECS *)summary;\n\n") >> CFILE;
-
 	if (has_fileid && npages > 0) {
+		printf("\tTXN_RECS *t;\n") >> CFILE;
+		printf("\t%s_args *argp;\n", funcname) >> CFILE;
+
+		printf("\targp = NULL;\n") >> CFILE;
+		printf("\tt = (TXN_RECS *)summary;\n\n") >> CFILE;
+
 		printf("\tif ((ret = %s_read(dbenv, rec->data, &argp)) != 0)\n", \
 				funcname) >> CFILE;
 		printf("\t\treturn (ret);\n") >> CFILE;
@@ -1177,13 +1176,12 @@ function getallpgnos_function() {
 				printf("\tt->npages++;\n", indent) >> CFILE;
 			}
 		}
+
+		printf("\nerr:\n") >> CFILE;
+		printf("\tif (argp != NULL)\n") >> CFILE;
+		write_free("\t\t", "argp", CFILE);
 	}
-
-	printf("\nerr:\tif (argp != NULL)\n") >> CFILE;
-	write_free("\t\t", "argp", CFILE);
-
 	printf("\treturn (ret);\n") >> CFILE;
-
 	printf("}\n#endif /* HAVE_REPLICATION */\n\n") >> CFILE;
 }
 

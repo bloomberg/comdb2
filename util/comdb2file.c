@@ -59,7 +59,6 @@ static int load_locations_from(char *path)
     FILE *f;
     char *e, *tok;
     char *s;
-    int linenum = 0;
     char *type, *dir;
 
     f = fopen(path, "r");
@@ -67,7 +66,6 @@ static int load_locations_from(char *path)
         return 1;
 
     while (fgets(line, sizeof(line), f)) {
-        linenum++;
         s = line;
         while (isspace(*s))
             s++;

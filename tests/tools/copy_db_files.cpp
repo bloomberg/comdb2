@@ -1,3 +1,5 @@
+#include <string>
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -112,19 +114,17 @@ int main(int argc, char *argv[])
         void *content = cdb2_column_value(cdb2, 2);
         int content_len = cdb2_column_size(cdb2, 2);
 
-        char fullpath[4096];
-        char path[4096];
+        std::string fullpath(datadir);
         if (strlen(dir) > 0) {
-            snprintf(path, sizeof(path), "%s/%s", datadir, dir);
-            mkdir(path, 0755);
-        } else {
-            snprintf(path, sizeof(path), "%s", datadir);
+            fullpath += "/";
+            fullpath += dir;
+            mkdir(fullpath.c_str(), 0755);
         }
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, file);
-
-        int fd = open(fullpath, O_WRONLY | O_CREAT | O_APPEND, 0755);
+        fullpath += "/";
+        fullpath += file;
+        int fd = open(fullpath.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0755);
         if (fd  == -1) {
-            printf("failed to open file %s (errno: %s)\n", fullpath, strerror(errno));
+            printf("failed to open file %s (errno: %s)\n", fullpath.c_str(), strerror(errno));
             exit(1);
         }
         ssize_t bytes_written = write(fd, content, content_len);

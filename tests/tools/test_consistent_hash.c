@@ -234,7 +234,6 @@ fail:
 }
 
 void test_replica(hash_func func, int func_type) {
-    int rc = 0;
     ch_hash_t *ch = ch_hash_create(2, func);
     if (!ch) {
         goto fail;
@@ -278,10 +277,10 @@ void test_replica(hash_func func, int func_type) {
      */
     switch (func_type) {
         case CH_HASH_SHA:
-            rc = ch_hash_add_replica(ch, (uint8_t *)"SHARD2", 6, 4180816000);
+            ch_hash_add_replica(ch, (uint8_t *)"SHARD2", 6, 4180816000);
             break;
         case CH_HASH_MD5:
-            rc = ch_hash_add_replica(ch, (uint8_t *)"SHARD1", 6, 49952000);
+            ch_hash_add_replica(ch, (uint8_t *)"SHARD1", 6, 49952000);
             break;
         default:
             goto fail;

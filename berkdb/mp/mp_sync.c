@@ -355,10 +355,8 @@ static DB_ENV *gblenv;
 void
 mempsync_out_of_band_init(void)
 {
-	int rc;
 	Pthread_mutex_init(&mempsync_lk, NULL);
 	Pthread_cond_init(&mempsync_wait, NULL);
-
 	Pthread_create(&mempsync_tid, NULL, mempsync_thd, gblenv);
 }
 
@@ -1603,11 +1601,11 @@ int __memp_sync_files(dbenv, dbmp)
 	DB_MPOOLFILE *dbmfp;
 	MPOOL *mp;
 	MPOOLFILE *mfp;
-	int final_ret, ret, had_files, didnt_have_files;
+	int final_ret, ret;
 	u_int32_t flags;
 
 	flags = dbenv->close_flags;
-	had_files = didnt_have_files = final_ret = 0;
+	final_ret = 0;
 	mp = dbmp->reginfo[0].primary;
 
 	/* if all dbs are opened O_SYNC or O_DIRECT, there's no reason to 
@@ -1649,7 +1647,6 @@ int __memp_sync_files(dbenv, dbmp)
 				}
 			}
 			mfp->flushed = 1;
-			had_files++;
 		}
 		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 		/*
@@ -1675,7 +1672,6 @@ int __memp_sync_files(dbenv, dbmp)
 				if (final_ret == 0)
 					final_ret = ret;
 			}
-			didnt_have_files++;
 		}
 	} else {
 		for (mfp = SH_TAILQ_FIRST(&mp->mpfq, __mpoolfile);
@@ -2003,7 +1999,6 @@ output_fileid_page(void *obj, void *arg)
 {
 	struct sbuf_env *sbenv = (struct sbuf_env *)arg;
 	u_int8_t *p;
-	DB_ENV *dbenv = sbenv->dbenv;
 	SBUF2 *s = sbenv->s;
 	fileid_page_list_t *pagelist = (fileid_page_list_t *)obj;
 	qsort(pagelist->pages, pagelist->cnt, sizeof(db_pgno_t), pgcmp);
@@ -2134,13 +2129,11 @@ __memp_load(dbenv, s, pagecount, lines)
 	fileid_page_env_t *fileid_env = NULL;
  	u_int32_t lineno = 0, start, end;
 	int ret = 0, endofline = 0, max_pages = gbl_load_cache_max_pages;
-	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
 	char cpage[64];
-	char *sp, c;
+	char c;
 	db_pgno_t pg;
 	unsigned int hx;
-	void *addrp = NULL;
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
 	pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
@@ -2274,17 +2267,14 @@ __memp_dump(dbenv, s, max_pages, pagecount)
 	u_int64_t *pagecount;
 {
 	BH *bhp;
-	BH_TRACK *bharray;
-	BH **bhparray;
 	DB_MPOOL *dbmp;
 	DB_MPOOL_HASH *hp;
-	DB_MPOOL_HASH **hparray;
 	MPOOL *c_mp = NULL, *mp;
 	MPOOLFILE *mfp;
 	u_int32_t n_cache;
 	u_int64_t dump_pages;
-	int i, j, ret, t_ret, first = 1;
-	u_int8_t *fileid, *p, *pp, last_fileid[DB_FILE_ID_LEN] = {0};
+	int i, ret;
+	u_int8_t *fileid;
 	hash_t *fileid_pages = NULL;
 	sorted_page_list_t pagearray = {0};
 
@@ -2344,6 +2334,7 @@ __memp_dump(dbenv, s, max_pages, pagecount)
 		assert((page_fget->fget_count <= lastfget) ||
 				(dump_pages == pagearray.cnt));
 		lastfget = page_fget->fget_count;
+		(void)lastfget;
 		add_page_to_fileid_list(dbenv, page_fget->fileid_page_list, page_fget->page);
 		(*pagecount)++;
 	}
@@ -2436,9 +2427,7 @@ __memp_dump_default(dbenv, force)
 	DB_ENV *dbenv;
 	u_int32_t force;
 {
-	static int count = 0;
 	int fd, ret = 0;
-	u_int32_t lines;
 	u_int64_t cnt = 0;
 	int thresh = gbl_memp_dump_cache_threshold;
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;

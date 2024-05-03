@@ -43,7 +43,6 @@
  * Standard initialization and shutdown macros for all recovery functions.
  */
 #define	REC_INTRO(func, inc_count) do {					\
-	extern int __log_flush(DB_ENV *dbenv, const DB_LSN *); \
 	argp = NULL;							\
 	dbc = NULL;							\
 	file_dbp = NULL;						\
@@ -81,6 +80,7 @@
 	}										   \
 	F_SET(dbc, DBC_RECOVER);					\
 	mpf = file_dbp->mpf;						\
+	(void)mpf;							\
 } while (0)
 
 
@@ -125,6 +125,7 @@ int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 	}								\
 	F_SET(dbc, DBC_RECOVER);					\
 	mpf = file_dbp->mpf;						\
+	(void)mpf;							\
 } while (0)
 
 #define	REC_CLOSE {							\

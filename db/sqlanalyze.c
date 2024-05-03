@@ -657,7 +657,6 @@ int delete_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
                int stat_tbl, const char *table)
 {
     char *sql = NULL;
-    int ii = 0;
     int more = 1;
     int rc = 0;
     sql = sqlite3_mprintf(
@@ -675,7 +674,6 @@ int delete_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
 #ifdef DEBUG
     printf("deleted %d from tbl='cdb2.%s.sav'\n", more, table);
 #endif
-    ii++;
     sqlite3_free(sql); sql = NULL;
     return 0;
 }
@@ -685,7 +683,6 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
                int stat_tbl, const char *table)
 {
     char *sql = NULL;
-    int ii = 0;
     int more = 1;
     int rc = 0;
     sql = sqlite3_mprintf(
@@ -702,7 +699,6 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
 #ifdef DEBUG
     printf("updated %d from tbl='cdb2.%s.sav'\n", more, table);
 #endif
-    ii++;
     sqlite3_free(sql); sql = NULL;
     return 0;
 }

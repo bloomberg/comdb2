@@ -80,10 +80,11 @@ void reset_aa_counter(char *tblname)
            ctime_r((time_t *)&tbl->aa_needs_analyze_time, my_buf2));
 }
 
-static inline void loc_print_date(const time_t *timep)
+static inline void loc_print_date(int64_t *timep)
 {
+    time_t t = *timep;
     struct tm tmresult;
-    localtime_r(timep, &tmresult);
+    localtime_r(&t, &tmresult);
     char outresult[128];
     strftime(outresult, sizeof(outresult), "%F %T (%s)", &tmresult);
     logmsg(LOGMSG_USER, "%s", outresult);
@@ -443,8 +444,10 @@ void *auto_analyze_main(void *unused)
                 if (!needs_analyze_time) {
                     needs_analyze_time = time(NULL);
                     XCHANGE64(tbl->aa_needs_analyze_time, needs_analyze_time);
+                    time_t t1 = tbl->aa_lastepoch;
+                    time_t t2 = needs_analyze_time;
                     ctrace("AUTOANALYZE: Requesting analyze be run for Table %s, counter (%d) (setting needs analyze time); last run time %s, needs analyze time %s\n",
-                           tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf), ctime_r(&needs_analyze_time, my_buf2));
+                           tbl->tablename, newautoanalyze_counter, ctime_r(&t1, my_buf), ctime_r(&t2, my_buf2));
 
                     if (save_freq > 0) {
                         char needs_analyze_time_str[30] = {0};
@@ -452,8 +455,10 @@ void *auto_analyze_main(void *unused)
                         bdb_set_table_parameter(NULL, tbl->tablename, aa_needs_analyze_time_str, needs_analyze_time_str);
                     }
                 } else {
+                    time_t t1 = tbl->aa_lastepoch;
+                    time_t t2 = needs_analyze_time;
                     ctrace("AUTOANALYZE: Table %s, counter (%d) needs analyze time already set, doing nothing; last run time %s, needs analyze time %s\n",
-                           tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf), ctime_r(&needs_analyze_time, my_buf2));
+                           tbl->tablename, newautoanalyze_counter, ctime_r(&t1, my_buf), ctime_r(&t2, my_buf2));
                 }
             } else {
                 ctrace(

@@ -3518,7 +3518,7 @@ uByte * decimal128ToPackedBCD(
     return((uByte *) NULL);
 
   if(globalContext.dfpRealMode==PPCHW) {
-    dec128DataXchg xrhs, xres, xshiftr;
+    dec128DataXchg xrhs, xres = {0}, xshiftr;
     dfp_integer exp;
     dfp_pad qwpad=0.0;
 

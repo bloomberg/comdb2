@@ -72,13 +72,8 @@ add_custom_command(
   COMMAND dist/genrec.sh ${CMAKE_CURRENT_SOURCE_DIR}/llog.src llog_auto.c llog_auto.h rec_llog
   COMMAND dist/geninc.sh llog llog_ext.h llog_auto.c
 )
-
-if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
-  set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
-  set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label -Wno-unused-but-set-variable")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
-  set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
+if (${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+  set_source_files_properties(llog_auto.c PROPERTIES COMPILE_FLAGS "-Wno-deprecated-non-prototype")
 endif()
 
 include_directories(

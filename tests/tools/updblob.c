@@ -41,6 +41,7 @@ int main(int argc, char **argv)
     srand(ix);
 
     int *ibuf = (int*)buf;
+    int rows = 0;
 
     for (i=0; i<size/sizeof(int); i++)
         ibuf[i] = rand();
@@ -52,7 +53,6 @@ int main(int argc, char **argv)
     }
     cdb2_bind_param(hndl, "data", CDB2_BLOB, buf, size);
     cdb2_bind_param(hndl, "i", CDB2_INTEGER, &i, sizeof(i));
-    int rows = 0;
     for (i = st_idx; i <= end_idx; i++) {
         if (rand() % 3 != 0) continue;
         rows++;

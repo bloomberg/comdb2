@@ -645,12 +645,11 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 	DB_ENV *dbenv;
 	MPOOLFILE *tmp, *loop_mfp;
 	DB_MPOOL *dbmp;
-	DB_MPOOLFILE *tmp_dbmfp;
 	MPOOL *mp;
 	db_pgno_t last_pgno;
 	size_t maxmap;
 	u_int32_t mbytes, bytes, oflags;
-	int refinc, ret, i;
+	int refinc, ret;
 	char *rpath, *recp_path, *recp_ext;
 	struct __fileid_mpf *fileid_mpf;
 	void *p;

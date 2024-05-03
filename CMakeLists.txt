@@ -36,18 +36,18 @@ else()
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
-  if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+  if(EXISTS /opt/homebrew)
     list(APPEND CMAKE_PREFIX_PATH
-     ${CMAKE_PREFIX_PATH}
-     "/usr/local"
-     "/usr/local/opt/openssl"
-     "/usr/local/opt/readline")
+      ${CMAKE_PREFIX_PATH}
+      "/opt/homebrew"
+      "/opt/homebrew/opt/openssl"
+      "/opt/homebrew/opt/readline")
   else()
     list(APPEND CMAKE_PREFIX_PATH
-     ${CMAKE_PREFIX_PATH}
-     "/opt/homebrew"
-     "/opt/homebrew/opt/openssl"
-     "/opt/homebrew/opt/readline")
+      ${CMAKE_PREFIX_PATH}
+      "/usr/local"
+      "/usr/local/opt/openssl"
+      "/usr/local/opt/readline")
   endif()
 endif()
 
@@ -189,16 +189,19 @@ else()
   add_definitions(-DUSE_SYS_ALLOC)
 endif()
 
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
-  # This is mostly misused as little-endian
+message("CMAKE_SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR}")
+message("CMAKE_SYSTEM_NAME ${CMAKE_SYSTEM_NAME}")
+message("CMAKE_C_COMPILER_ID ${CMAKE_C_COMPILER_ID}")
+
+# _LINUX_SOURCE is mostly misused as little-endian
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL arm64)
   add_definitions(-D_LINUX_SOURCE)
-elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64)
   add_definitions(-D_LINUX_SOURCE)
-  include(crc32c/arm.cmake)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   add_definitions(-D_GNU_SOURCE)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lrt")
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
   add_definitions(-D_IBM_SOURCE)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
@@ -209,37 +212,23 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(
-    -D_LINUX_SOURCE
     -D_DARWIN_C_SOURCE
     -D_XOPEN_SOURCE=600
   )
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
-  if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
-     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
-  elseif(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
-    set(CMAKE_CXX_STANDARD 17)
-  else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
-  endif()
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-variable")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-deprecated-non-prototype")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-but-set-variable")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-single-bit-bitfield-constant-conversion")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-tautological-constant-out-of-range-compare")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-format")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-array-parameter")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-incompatible-pointer-types")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wignored-qualifiers")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
+  if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-stringop-truncation")
+  endif()
   set(COMMON_FLAGS "${COMMON_FLAGS} -pthread")
   set(COMMON_FLAGS "${COMMON_FLAGS} -fno-strict-aliasing")
-  if(NOT ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lrt")
-  endif()
 elseif(${CMAKE_C_COMPILER_ID} STREQUAL XL)
   set(COMMON_FLAGS "${COMMON_FLAGS} -qdfp")
   set(COMMON_FLAGS "${COMMON_FLAGS} -qtls")
@@ -255,14 +244,6 @@ elseif(${CMAKE_C_COMPILER_ID} STREQUAL SunPro)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lsocket")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lnsl")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lresolv")
-endif()
-
-if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
-  if ((DEFINED CMAKE_C_COMPILER_VERSION) AND
-      ((CMAKE_C_COMPILER_VERSION VERSION_GREATER 8.0) OR (CMAKE_C_COMPILER_VERSION VERSION_EQUAL 8.0)))
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-stringop-truncation")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-array-bounds")
-  endif()
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_FLAGS}")

@@ -80,7 +80,6 @@ static int __prepared_collect_hashfor(void *obj, void *arg)
 static int
 __prepared_collect(DB_ENV *dbenv, collect_prepared_f func, void *arg)
 {
-	DB_TXN_PREPARED *p;
 	struct collect_prepared c = {.func = func, .arg = arg };
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	hash_for(dbenv->prepared_txn_hash, __prepared_collect_hashfor, &c);

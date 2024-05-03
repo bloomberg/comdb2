@@ -404,9 +404,8 @@ int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 
 int column_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
 {
-    if (clnt && clnt->plugin.column_type)
-        return clnt->plugin.column_type(clnt, stmt, iCol);               \
-    return sqlite3_column_type(stmt, iCol);                              \
+    if (clnt && clnt->plugin.column_type) return clnt->plugin.column_type(clnt, stmt, iCol);
+    return sqlite3_column_type(stmt, iCol);
 }
 
 sqlite_int64 column_int64(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol)
@@ -5666,6 +5665,7 @@ retry:
                 }
             }
 #endif
+            (void)retry;
             goto retry;
         }
         if (pd.revents & POLLOUT) {

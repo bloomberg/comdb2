@@ -20,9 +20,47 @@
 #include <stdint.h>
 #include <string.h>
 #include <poll.h>
-#include "cdb2_constants.h"
+
+#include <cdb2_constants.h>
+#include <crc32c.h>
+
 #include "ar_wrap.h"
-#include "ar_checksum.h"
+
+static uint32_t comdb2_ham_func4(const uint8_t *k, uint32_t len)
+{
+	uint32_t h, loop;
+
+	if (len == 0)
+		return (0);
+
+#define	HASH4a	h = (h << 5) - h + *k++;
+#define	HASH4b	h = (h << 5) + h + *k++;
+#define	HASH4	HASH4b
+	h = 0;
+
+	loop = (len + 8 - 1) >> 3;
+	switch (len & (8 - 1)) {
+	case 0:
+		do {
+			HASH4;
+	case 7:
+			HASH4;
+	case 6:
+			HASH4;
+	case 5:
+			HASH4;
+	case 4:
+			HASH4;
+	case 3:
+			HASH4;
+	case 2:
+			HASH4;
+	case 1:
+			HASH4;
+		} while (--loop);
+	}
+	return (h);
+}
 
 #define MIN(A, B) (A < B) ? A : B
 #define MAX_BUF_SIZE 4 * 1024 * 1024
@@ -329,7 +367,6 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
     uint8_t *pagebuf = f->pagebuf;
     size_t bufsize = f->bufsize;
-    size_t total_bytes_read = 0;
 
     while (bytes_left > 0) {
         unsigned long long nbytes = bytes_left > bufsize ? bufsize : bytes_left;
@@ -408,7 +445,6 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
             goto done;
         }
 
-        total_bytes_read += bytes_read;
         bytes_left -= bytes_read;
     }
 

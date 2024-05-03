@@ -181,7 +181,6 @@ int main(int argc, char *argv[]) {
     }
     int numshards = 0, numrecords = 0;
     clock_t start, end;
-    double time_used;
     static struct option long_options[] =
     {
         {"numshards", required_argument, NULL, 's'},

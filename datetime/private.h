@@ -229,16 +229,6 @@ extern int errno;
 #endif /* !defined errno */
 
 /*
-** Some time.h implementations don't declare asctime_r.
-** Others might define it as a macro.
-** Fix the former without affecting the latter.
-*/
-
-#ifndef asctime_r
-extern char *	asctime_r();
-#endif
-
-/*
 ** Private function declarations.
 */
 

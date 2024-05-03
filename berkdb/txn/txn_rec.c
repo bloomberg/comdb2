@@ -85,8 +85,6 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s - opcode is %d", __func__, op);
 #endif
-	DB_REP *db_rep;
-	REP *rep;
 	DB_TXNHEAD *headp;
 	__txn_dist_abort_args *argp;
 	int ret;
@@ -94,9 +92,6 @@ __txn_dist_abort_recover(dbenv, dbtp, lsnp, op, info)
 #ifdef DEBUG_RECOVER
 	(void)__txn_dist_abort_print(dbenv, dbtp, lsnp, op, info);
 #endif
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
 
 	if ((ret = __txn_dist_abort_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
@@ -306,8 +301,6 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	db_recops op;
 	void *info;
 {
-	DB_REP *db_rep;
-	REP *rep;
 	DB_TXNHEAD *headp;
 	__txn_dist_prepare_args *argp;
 	int ret;
@@ -316,8 +309,6 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 	(void)__txn_dist_prepare_print(dbenv, dbtp, lsnp, op, info);
 #endif
 
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
 
 	if ((ret = __txn_dist_prepare_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
