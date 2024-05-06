@@ -238,7 +238,7 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
             cdb2api_policy_flag |= CDB2_DIRECT_CPU;
             class = gbl_myhostname;
         }
-        rc = -1;
+        rc = 0;
         const char *foreign_db[2];
         foreign_db[0] = push->remotedb;
         foreign_db[1] = class;
