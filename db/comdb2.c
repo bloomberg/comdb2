@@ -1744,7 +1744,7 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     clear_sqlhist();
-    if(!all_string_references_cleared())
+    if(!all_string_references_cleared() && gbl_abort_on_dangling_stringrefs)
         abort();
 
     logmsg(LOGMSG_USER, "goodbye\n");
