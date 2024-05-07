@@ -1581,6 +1581,8 @@ static void finish_clean()
     free_tzdir();
     tz_hash_free();
     clear_sqlhist();
+    clear_fingerprints(NULL);
+    clear_sample_queries();
     thd_cleanup();
     if(!all_string_references_cleared() && gbl_abort_on_dangling_stringrefs)
         abort();
@@ -1751,6 +1753,8 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     clear_sqlhist();
+    clear_fingerprints(NULL);
+    clear_sample_queries();
     if (!all_string_references_cleared() && gbl_abort_on_dangling_stringrefs)
         abort();
 
