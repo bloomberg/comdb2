@@ -910,6 +910,7 @@ out:
 static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
+    char *partition_first_shard = NULL;
 
     struct schema_change_type* sc = new_schemachange_type();
     if (sc == NULL) {
@@ -918,7 +919,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, &partition_first_shard))
         goto out;
 
     fillTableOption(sc, opt);
@@ -962,12 +963,14 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     }
     sc->same_schema = 1;
     tran_type *tran = curtran_gettran();
-    int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+    int rc = get_csc2_file_tran(partition_first_shard ? partition_first_shard :
+                                sc->tablename, -1 , &sc->newcsc2, NULL, tran);
     curtran_puttran(tran);
     if (rc)
     {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->tablename);
+        logmsg(LOGMSG_ERROR, "%s: %s schema not found: %s\n", __func__,
+               partition_first_shard ? "shard" : "table",
+               partition_first_shard ? partition_first_shard : sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -978,10 +981,12 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
         comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
     }
+    free(partition_first_shard);
     return;
 
 out:
     free_schema_change_type(sc);
+    free(partition_first_shard);
 }
 
 
@@ -1102,6 +1107,8 @@ out:
 
 void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int opt)
 {
+    char *partition_first_shard = NULL;
+
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -1126,16 +1133,18 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     }
 
     if (chkAndCopyTableTokens(pParse, sc->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, &partition_first_shard))
         goto out;
 
     sc->same_schema = 1;
     tran_type *tran = curtran_gettran();
-    int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+    int rc = get_csc2_file_tran(partition_first_shard ? partition_first_shard :
+                                sc->tablename, -1 , &sc->newcsc2, NULL, tran);
     curtran_puttran(tran);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->tablename);
+        logmsg(LOGMSG_ERROR, "%s: %s schema not found: %s\n", __func__,
+               partition_first_shard ? "shard" : "table",
+               partition_first_shard ? partition_first_shard : sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
@@ -1143,9 +1152,14 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (create_string_from_token(v, pParse, &indexname, index))
         goto out;
 
-    rc = getidxnumbyname(get_dbtable_by_name(sc->tablename), indexname, &index_num);
+    struct dbtable *table = get_dbtable_by_name(
+            partition_first_shard ? partition_first_shard : sc->tablename);
+    rc = getidxnumbyname(table, indexname, &index_num);
     if( rc ){
-        logmsg(LOGMSG_ERROR, "!table:index '%s:%s' not found\n", sc->tablename, indexname);
+        logmsg(LOGMSG_ERROR, "!%s:index '%s:%s' not found\n",
+               partition_first_shard ? "shard" : "table",
+               partition_first_shard ? partition_first_shard : sc->tablename,
+               indexname);
         setError(pParse, SQLITE_ERROR, "Index not found");
         goto out;
     }
@@ -1187,10 +1201,12 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                         (vdbeFuncArgFree)&free_schema_change_type);
     }
+    free(partition_first_shard);
     return;
 
 out:
     free_schema_change_type(sc);
+    free(partition_first_shard);
 }
 
 /********************** STORED PROCEDURES ****************************************/
