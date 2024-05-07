@@ -534,6 +534,21 @@ $cmd "alter table teststatsize partitioned by time period 'daily' retention 3 st
 echo $cmd "exec procedure sys.cmd.send('stat size')"
 $cmd "exec procedure sys.cmd.send('stat size')" | egrep -v "GRAND|FILESYSTEM|log files" >> $OUT 2>&1
 
+header 17 "Test REBUILD partition"
+echo $cmd "create table t18(a int) partitioned by time period 'daily' retention 2 start '20240101T'"
+$cmd "create table t18(a int) partitioned by time period 'daily' retention 2 start '20240101T'"
+if (( $? != 0 )) ; then
+    echo "FAILURE to create partition t18"
+    exit 1
+fi
+
+echo $cmd "rebuild t18"
+$cmd "rebuild t18"
+if (( $? != 0 )) ; then
+    echo "FAILURE to rebuild partition t18"
+    exit 1
+fi
+
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
 
