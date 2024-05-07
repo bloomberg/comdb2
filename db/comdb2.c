@@ -1575,7 +1575,7 @@ static void finish_clean()
     tz_hash_free();
     clear_sqlhist();
     thd_cleanup();
-    if(!all_string_references_cleared())
+    if(!all_string_references_cleared() && gbl_abort_on_dangling_stringrefs)
         abort();
 }
 
