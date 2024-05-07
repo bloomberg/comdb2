@@ -21,7 +21,7 @@ for ((i=1;i<9600;++i)); do
 done | cdb2sql $SP_OPTIONS - >/dev/null
 
 ./qdb_cons.sh nop0 1 9600
-./qdb_cons.sh log1 1 9600
+./qdb_cons.sh log1 1 9600 $SP_HOST
 
 for ((i=1;i<96;++i)); do
     cdb2sql ${SP_OPTIONS} "exec procedure dml2($i)" 2> /dev/null
