@@ -4057,6 +4057,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 			sh_locker->ntrackedlocks = 0;
 			sh_locker->maxtrackedlocks = 0;
 			sh_locker->tracked_locklist = NULL;
+			sh_locker->wstatus = 0;
 			for (i = 0; i < num; ++i, ++sh_locker)
 				SH_TAILQ_INSERT_HEAD(&region->
 				    free_lockers[partition], sh_locker, links,
@@ -4089,6 +4090,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 #endif
 		sh_locker->lk_timeout = 0;
 		sh_locker->partition = partition;
+		sh_locker->wstatus = 0;
 		LOCK_SET_TIME_INVALID(&sh_locker->tx_expire);
 		LOCK_SET_TIME_INVALID(&sh_locker->lk_expire);
 
