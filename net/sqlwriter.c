@@ -77,12 +77,10 @@ static void sql_timeout_cb(int fd, short what, void *arg)
 {
     struct sqlwriter *writer = arg;
     check_thd(writer->timer_thd);
-    int rc = pthread_mutex_trylock(&writer->wr_lock);
-    if (rc == EBUSY) {
+    if (pthread_mutex_trylock(&writer->wr_lock)) {
         struct timeval retry = {.tv_usec = 100 * 1000};
         event_add(writer->timeout_ev, &retry);
-    } else if (rc) {
-        abort();
+        return;
     }
     if (!writer->bad && !writer->done) {
         writer->do_timeout = 1;
