@@ -2146,7 +2146,6 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     int tran_flags = 0;
     sqlite3 *db;
     const char *sql;
-
     if (clnt->thd != NULL && (db = clnt->thd->sqldb) != NULL && db->pVdbe != NULL && db->pVdbe->fdb_warn_this_op != 0) {
         /* we only need one trace */
         sql = clnt->sql ? clnt->sql : "unavailable";
