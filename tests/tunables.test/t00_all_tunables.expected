@@ -20,6 +20,7 @@
 (name='additional_deferms', description='Wait-fudge to ensure that a replicant has gone incoherent.', type='INTEGER', value='0', read_only='N')
 (name='admin_mode', description='Fail non-admin client requests (Default: False)', type='BOOLEAN', value='OFF', read_only='N')
 (name='all_incoherent', description='Master pretends nodes are incoherent.', type='BOOLEAN', value='OFF', read_only='N')
+(name='allow_anon_id_for_spmux', description='Allow anonymous identities over connections routed from the secure pmux port', type='INTEGER', value='0', read_only='N')
 (name='allow_broken_datetimes', description='Allow broken datetimes', type='BOOLEAN', value='ON', read_only='N')
 (name='allow_key_typechange', description='allow_key_typechange', type='BOOLEAN', value='OFF', read_only='N')
 (name='allow_lua_dynamic_libs', description='Enable to allow use of dynamic libraries (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')

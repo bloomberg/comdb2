@@ -32,6 +32,9 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "DB's stdout. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_anon_id_for_spmux",
+                 "Allow anonymous identities over connections routed from the secure pmux port", TUNABLE_INTEGER,
+                 &gbl_allow_anon_id_for_spmux, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_dynamic_libs",
                  "Enable to allow use of dynamic "
                  "libraries (Default: off)",
