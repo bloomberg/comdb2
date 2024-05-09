@@ -27,6 +27,15 @@ cdb2sql --cdb2cfg $DBDIR/5106.cfg $dbnm --host localhost "exec procedure sys.cmd
 # externalauth is enabled. connections routed from 5104 should be accepted
 cdb2sql --cdb2cfg $DBDIR/5104.cfg $dbnm --host localhost "select 2" >>output 2>&1
 
+# turn on this debug tunable since we do not have an authentication plugin in the open source build
+cdb2sql --cdb2cfg $DBDIR/5106.cfg $dbnm --host localhost "exec procedure sys.cmd.send('ignore_null_auth_func 1')"
+# turn on anonymous id. verify that we're accepted
+cdb2sql --cdb2cfg $DBDIR/5106.cfg $dbnm --host localhost "exec procedure sys.cmd.send('allow_anon_id_for_spmux 1')"
+cdb2sql --cdb2cfg $DBDIR/5104.cfg $dbnm --host localhost "SELECT name FROM sqlite_master ORDER BY name" >>output 2>&1
+# now turn off anonymous id. verify that we're rejected
+cdb2sql --cdb2cfg $DBDIR/5106.cfg $dbnm --host localhost "exec procedure sys.cmd.send('allow_anon_id_for_spmux 0')"
+cdb2sql --cdb2cfg $DBDIR/5104.cfg $dbnm --host localhost "SELECT name FROM sqlite_master ORDER BY name" >>output 2>&1
+
 kill -9 $dbpid
 kill -9 $pmuxpid
 diff expected output

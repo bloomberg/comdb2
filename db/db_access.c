@@ -21,8 +21,10 @@
 #include "bdb_access.h"
 #include "sql_stmt_cache.h"
 #include "views.h"
+#include "debug_switches.h"
 
 int gbl_check_access_controls;
+int gbl_allow_anon_id_for_spmux = 0;
 extern ssl_mode gbl_client_ssl_mode;
 
 static void check_auth_enabled(struct dbenv *dbenv)
@@ -50,6 +52,15 @@ void check_access_controls(struct dbenv *dbenv)
     check_auth_enabled(dbenv);
 }
 
+int reject_anon_id(struct sqlclntstate *clnt)
+{
+    ATOMIC_ADD64(gbl_num_auth_denied, 1);
+    logmsg(LOGMSG_ERROR, "Client %s pid:%d mach:%d use of Anonymous ID is disallowed\n",
+           clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+    write_response(clnt, RESPONSE_ERROR, "authentication data not found", CDB2ERR_ACCESS);
+    return SQLITE_AUTH;
+}
+
 int (*externalComdb2AuthenticateUserMakeRequest)(void *, const char *) = NULL;
 
 /* If user password does not match this function
@@ -60,13 +71,22 @@ static int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) && externalComdb2AuthenticateUserMakeRequest &&
+    if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) &&
+            (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
             !clnt->admin && !clnt->current_user.bypass_auth) {
         clnt->authdata = get_authdata(clnt);
-        if (gbl_externalauth_warn && !clnt->authdata) {
-            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-            return 0;
+        if (!clnt->authdata) {
+            if (clnt->secure && !gbl_allow_anon_id_for_spmux) {
+                return reject_anon_id(clnt);
+            }
+            if (gbl_externalauth_warn) {
+                logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                        clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+                return 0;
+            }
+            if (debug_switch_ignore_null_auth_func()) {
+                return 0;
+            }
         }
         char client_info[1024];
         snprintf(client_info, sizeof(client_info),
@@ -182,8 +202,7 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 }
 
 int (*externalComdb2AuthenticateUserRead)(void *, const char *tablename, const char *) = NULL;
-int (*externalComdb2AuthenticateUserWrite)(void *,
-                                           const char *tablename, const char *) = NULL;
+int (*externalComdb2AuthenticateUserWrite)(void *, const char *tablename, const char *) = NULL;
 
 int access_control_check_sql_write(struct BtCursor *pCur,
                                    struct sql_thread *thd)
@@ -211,10 +230,15 @@ int access_control_check_sql_write(struct BtCursor *pCur,
                  clnt->argv0 ? clnt->argv0 : "?",
                  clnt->origin ? clnt->origin: "?",
                  clnt->conninfo.pid);
-        if (gbl_externalauth_warn && !clnt->authdata)
-            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-        else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name, client_info)) {
+        if (!clnt->authdata) {
+            if (clnt->secure && !gbl_allow_anon_id_for_spmux) {
+                return reject_anon_id(clnt);
+            }
+            if (gbl_externalauth_warn) {
+                logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                       clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+            }
+        } else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name, client_info)) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
             snprintf(msg, sizeof(msg), "Write access denied to table %s for user %s",
@@ -281,10 +305,15 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
                  clnt->argv0 ? clnt->argv0 : "?",
                  clnt->origin ? clnt->origin: "?",
                  clnt->conninfo.pid);
-        if (gbl_externalauth_warn && !clnt->authdata)
-            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-        else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name, client_info)) {
+        if (!clnt->authdata) {
+            if (clnt->secure && !gbl_allow_anon_id_for_spmux) {
+                return reject_anon_id(clnt);
+            }
+            if (gbl_externalauth_warn) {
+                logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                       clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+            }
+        } else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name, client_info)) {
             ATOMIC_ADD64(gbl_num_auth_denied, 1);
             char msg[1024];
             snprintf(msg, sizeof(msg), "Read access denied to table %s for user %s",
@@ -392,10 +421,15 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                      clnt->argv0 ? clnt->argv0 : "?",
                      clnt->origin ? clnt->origin: "?",
                      clnt->conninfo.pid);
-            if (gbl_externalauth_warn && !clnt->authdata)
-                logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                       clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-            else if (externalComdb2AuthenticateUserRead(clnt->authdata, mod->zName, client_info)) {
+            if (!clnt->authdata) {
+                if (clnt->secure && !gbl_allow_anon_id_for_spmux) {
+                    return reject_anon_id(clnt);
+                }
+                if (gbl_externalauth_warn) {
+                    logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                           clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+                }
+            } else if (externalComdb2AuthenticateUserRead(clnt->authdata, mod->zName, client_info)) {
                 ATOMIC_ADD64(gbl_num_auth_denied, 1);
                 char msg[1024];
                 snprintf(msg, sizeof(msg), "Read access denied to table %s for user %s",
