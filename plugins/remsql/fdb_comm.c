@@ -36,6 +36,12 @@ extern int gbl_expressions_indexes;
 extern int gbl_fdb_track_times;
 extern int gbl_test_io_errors;
 extern char *gbl_myuri;
+extern int gbl_fdb_auth_enabled;
+
+static int fdb_auth_enabled()
+{
+    return (gbl_fdb_auth_enabled && gbl_uses_externalauth);
+}
 
 /* matches fdb_svc_callback_t callbacks */
 enum {
@@ -103,6 +109,8 @@ typedef struct {
     uuid_t tiduuid;
     int seq; /* sequencing tran begin/commit/rollback, writes, cursor open/close
               */
+    int authdtalen;
+    void *authdta;
 } fdb_msg_tran_t;
 
 typedef struct {
@@ -227,6 +235,8 @@ typedef struct {
     int srcnamelen; /* hostname of the source */
     char *srcname;
     int ssl;
+    int authdtalen;
+    void *authdta;
 } fdb_msg_cursor_open_t;
 
 union fdb_msg {
@@ -359,8 +369,10 @@ char *fdb_msg_type(int type)
     }
 }
 
-int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
-                  int flags, int version, SBUF2 *sb)
+int (*externalComdb2SerializeIdentity)(void *ID, int *length, void **dta) = NULL;
+
+int fdb_send_open(struct sqlclntstate *clnt, fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp, int flags,
+                  int version, SBUF2 *sb)
 {
     int rc;
 
@@ -387,6 +399,14 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.srcnamelen = strlen(gbl_myuri) + 1;
     msg->co.srcname = gbl_myuri;
     msg->co.ssl = 0; /*TODO: do I need this? */
+
+    if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
+        rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->co.authdtalen, &msg->co.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to serialize identity\n", __func__);
+            return rc;
+        }
+    }
 
     sbuf2printf(sb, "remsql\n");
 
@@ -616,6 +636,11 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
 {
     switch (msg->hd.type & FD_MSG_TYPE) {
     case FDB_MSG_TRAN_BEGIN:
+        if (msg->tr.authdtalen && msg->tr.authdta) {
+            free(msg->tr.authdta);
+            msg->tr.authdtalen = 0;
+            msg->tr.authdta = NULL;
+        }
     case FDB_MSG_TRAN_PREPARE:
     case FDB_MSG_TRAN_COMMIT:
     case FDB_MSG_TRAN_ROLLBACK:
@@ -634,6 +659,11 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
             free(msg->co.srcname);
             msg->co.srcname = NULL;
             msg->co.srcnamelen = 0;
+        }
+        if (msg->co.authdta && msg->co.authdtalen) {
+            free(msg->co.authdta);
+            msg->co.authdtalen = 0;
+            msg->co.authdta = NULL;
         }
         break;
 
@@ -873,6 +903,17 @@ int fdb_msg_read_message_int(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags,
             return -1;
         msg->tr.seq = ntohl(msg->tr.seq);
 
+        if (msg->tr.flags & FDB_MSG_TRANS_AUTH) {
+            rc = sbuf2fread((char *)&msg->tr.authdtalen, 1, sizeof(msg->tr.authdtalen), sb);
+            if (rc != sizeof(msg->tr.authdtalen))
+                return -1;
+            msg->tr.authdtalen = ntohl(msg->tr.authdtalen);
+            msg->tr.authdta = malloc(msg->tr.authdtalen);
+            rc = sbuf2fread(msg->tr.authdta, 1, msg->tr.authdtalen, sb);
+            if (rc != msg->tr.authdtalen)
+                return -1;
+        }
+
         break;
 
     case FDB_MSG_TRAN_RC:
@@ -981,6 +1022,17 @@ int fdb_msg_read_message_int(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags,
             rc = sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL,
                               gbl_nid_dbname, 1);
             if (rc != 1)
+                return -1;
+        }
+
+        if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_AUTH) {
+            rc = sbuf2fread((char *)&msg->co.authdtalen, 1, sizeof(msg->co.authdtalen), sb);
+            if (rc != sizeof(msg->co.authdtalen))
+                return -1;
+            msg->co.authdtalen = ntohl(msg->co.authdtalen);
+            msg->co.authdta = malloc(msg->co.authdtalen);
+            rc = sbuf2fread(msg->co.authdta, 1, msg->co.authdtalen, sb);
+            if (rc != msg->co.authdtalen)
                 return -1;
         }
 
@@ -1730,6 +1782,16 @@ static int fdb_msg_write_message_lk(SBUF2 *sb, fdb_msg_t *msg, int flush)
         if (rc != sizeof(tmp))
             return FDB_ERR_WRITE_IO;
 
+        if (msg->tr.flags & FDB_MSG_TRANS_AUTH) {
+            tmp = htonl(msg->tr.authdtalen);
+            rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            rc = sbuf2fwrite(msg->tr.authdta, 1, msg->tr.authdtalen, sb);
+            if (rc != msg->tr.authdtalen)
+                return FDB_ERR_WRITE_IO;
+        }
+
         break;
 
     case FDB_MSG_TRAN_RC:
@@ -1807,6 +1869,15 @@ static int fdb_msg_write_message_lk(SBUF2 *sb, fdb_msg_t *msg, int flush)
             tmp = htonl(msg->co.ssl);
             rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
             if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+        }
+        if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_AUTH) {
+            tmp = htonl(msg->co.authdtalen);
+            rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            rc = sbuf2fwrite(msg->co.authdta, 1, msg->co.authdtalen, sb);
+            if (rc != msg->co.authdtalen)
                 return FDB_ERR_WRITE_IO;
         }
 
@@ -2281,6 +2352,8 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
     return rc;
 }
 
+int (*externalComdb2DeSerializeIdentity)(void **ID, int length, unsigned char *dta) = NULL;
+
 static void _fdb_extract_source_id(struct sqlclntstate *clnt, SBUF2 *sb, fdb_msg_t *msg)
 {
     clnt->conninfo.node = -1; /*get_origin_mach_by_fd(sbuf2fileno(sb));*/
@@ -2299,6 +2372,12 @@ static void _fdb_extract_source_id(struct sqlclntstate *clnt, SBUF2 *sb, fdb_msg
     clnt->origin = get_origin_mach_by_buf(sb);
     if (clnt->origin == NULL)
         clnt->origin = intern("???");
+
+    if (msg->co.authdta && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
+        int rc = externalComdb2DeSerializeIdentity(&clnt->authdata, msg->co.authdtalen, msg->co.authdta);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
+    }
 
     if (clnt->rawnodestats == NULL)
         clnt->rawnodestats = get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin, sbuf2fileno(sb), msg->co.ssl);
@@ -2353,6 +2432,14 @@ int fdb_bend_cursor_close(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     /* NOTE
        current implementation ignores seq number, since we don't sync on it
      */
+    if (clnt && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
+        rc = externalComdb2DeSerializeIdentity(&clnt->authdata, 0, NULL);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
+            return rc;
+        }
+    }
+
     rc = fdb_svc_cursor_close(cid, (clnt) ? &clnt : NULL);
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__, rc);
@@ -2800,8 +2887,8 @@ int fdb_bend_index(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     return 0;
 }
 
-int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
-                   enum transaction_level lvl, int flags, SBUF2 *sb)
+int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, int flags,
+                   SBUF2 *sb)
 {
     int rc;
 
@@ -2816,6 +2903,13 @@ int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
     msg->tr.flags = flags;
     msg->tr.seq = 0; /* the beginnings: there was a zero */
 
+    if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
+        rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->tr.authdtalen, &msg->tr.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to serialize identity\n", __func__);
+            return rc;
+        }
+    }
     assert(trans->seq == 0);
 
     sbuf2printf(sb, "%s\n", "remtran");
@@ -2983,6 +3077,14 @@ int fdb_bend_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
                        __LINE__);
                 return -1;
             }
+        }
+    }
+
+    if (msg->tr.authdta && fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
+        rc = externalComdb2DeSerializeIdentity(&clnt->authdata, msg->tr.authdtalen, msg->tr.authdta);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
+            return rc;
         }
     }
 
@@ -3357,7 +3459,13 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
         free(svc_cb_arg.clnt->idxDelete);
         svc_cb_arg.clnt->idxInsert = svc_cb_arg.clnt->idxDelete = NULL;
     }
-
+    if (fdb_auth_enabled() && externalComdb2DeSerializeIdentity) {
+        rc = externalComdb2DeSerializeIdentity(&(svc_cb_arg.clnt->authdata), 0, NULL);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to deserialize identity\n", __func__);
+            return rc;
+        }
+    }
     cleanup_clnt(svc_cb_arg.clnt);
     free(svc_cb_arg.clnt);
     svc_cb_arg.clnt = NULL;

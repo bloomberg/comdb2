@@ -70,6 +70,7 @@ int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
 int gbl_fdb_io_error_retries_phase_1 = 6;
 int gbl_fdb_io_error_retries_phase_2_poll = 100;
+int gbl_fdb_auth_enabled = 0;
 
 struct fdb_tbl;
 struct fdb;
@@ -2211,10 +2212,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         if ((rc = _fdb_remote_reconnect(fdb, psb, host, (fdbc)?1:0)) == FDB_NOERR) {
             if (fdbc) {
                 fdbc->streaming = FDB_CUR_IDLE;
-
-                rc =
-                    fdb_send_open(msg, fdbc->cid, trans, source_rootpage, flags,
-                                  version, fdbc->fcon.sock.sb);
+                rc = fdb_send_open(clnt, msg, fdbc->cid, trans, source_rootpage, flags, version, fdbc->fcon.sock.sb);
 
                 /* cache the node info */
                 fdbc->node = host;
@@ -2225,8 +2223,11 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 else
                     tran_flags = 0;
 
-                rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, tran_flags,
-                                    trans->sb);
+                if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata && gbl_fdb_auth_enabled) {
+                    tran_flags = tran_flags | FDB_MSG_TRANS_AUTH;
+                }
+
+                rc = fdb_send_begin(clnt, msg, trans, clnt->dbtran.mode, tran_flags, trans->sb);
                 if (rc == FDB_NOERR) {
                     trans->host = host;
                 }
@@ -2404,6 +2405,10 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdbc->need_ssl = use_ssl;
 
     fdbc->intf = fdbc_if;
+
+    if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata && gbl_fdb_auth_enabled) {
+        flags = flags | FDB_MSG_CURSOR_OPEN_FLG_AUTH;
+    }
 
     /* NOTE: expect x_retries to fill in clnt error fields, if any */
     rc = _fdb_send_open_retries(clnt, fdb, fdbc, source_rootpage, trans, flags,
