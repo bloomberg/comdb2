@@ -190,6 +190,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
 {
     int rc = 0;
     int bdberr = 0;
+    void *authdata;
 
     struct sqlclntstate *clnt = thd->clnt;
 
@@ -204,7 +205,8 @@ int access_control_check_sql_write(struct BtCursor *pCur,
 
     if (gbl_uses_externalauth && !clnt->admin && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite && !clnt->current_user.bypass_auth) {
-        clnt->authdata = get_authdata(clnt);
+        if ((authdata = get_authdata(clnt)) != NULL)
+            clnt->authdata = authdata;
         char client_info[1024];
         snprintf(client_info, sizeof(client_info),
                  "%s:origin:%s:pid:%d",
@@ -254,6 +256,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 {
     int rc = 0;
     int bdberr = 0;
+    void *authdata = NULL;
 
     struct sqlclntstate *clnt = thd->clnt;
 
@@ -274,7 +277,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserRead && !clnt->admin /* not admin connection */
         && !clnt->current_user.bypass_auth /* not analyze */) {
-        clnt->authdata = get_authdata(clnt);
+        if ((authdata = get_authdata(clnt)) != NULL)
+            clnt->authdata = authdata;
         char client_info[1024];
         snprintf(client_info, sizeof(client_info),
                  "%s:origin:%s:pid:%d",

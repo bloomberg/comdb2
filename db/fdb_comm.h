@@ -28,12 +28,15 @@ enum {
     FDB_MSG_CURSOR_OPEN_SQL_SSL = 6 /* SSL supported */
     /* optional fields, powers of 2 */
     ,
-    FDB_MSG_CURSOR_OPEN_FLG_SSL = 1 << 16 /* SSL required */
+    FDB_MSG_CURSOR_OPEN_FLG_AUTH = 1 << 15, /* Send/Receive auth data */
+    FDB_MSG_CURSOR_OPEN_FLG_SSL = 1 << 16   /* SSL required */
 };
 
 /* keep these flags a bitmask so we can OR them */
 enum recv_flags {
-    FDB_MSG_TRAN_TBLNAME = 1 /* tblname part of write msg */
+    FDB_MSG_TRAN_TBLNAME = 1,    /* tblname part of write msg */
+    FDB_MSG_TRANS_AUTH = 1 << 2, /* Send/Receive auth data */
+
 };
 
 enum run_sql_flags {
@@ -48,8 +51,8 @@ enum run_sql_flags {
 union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
 
-int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
-                  int flags, int version, SBUF2 *sb);
+int fdb_send_open(struct sqlclntstate *clnt, fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp, int flags,
+                  int version, SBUF2 *sb);
 int fdb_send_close(fdb_msg_t *msg, char *cid, char *tid, int seq, SBUF2 *sb);
 
 int fdb_send_run_sql(fdb_msg_t *msg, char *cid, int sqllen, char *sql,
@@ -72,8 +75,8 @@ int fdb_bend_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
                       unsigned long long genid, char *data, int datalen,
                       char *datacopy, int datacopylen, int ret);
 
-int fdb_send_begin(fdb_msg_t *msg, fdb_tran_t *trans,
-                   enum transaction_level lvl, int flags, SBUF2 *sb);
+int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans, enum transaction_level lvl, int flags,
+                   SBUF2 *sb);
 int fdb_send_commit(fdb_msg_t *msg, fdb_tran_t *trans,
                     enum transaction_level lvl, SBUF2 *sb);
 int fdb_send_rollback(fdb_msg_t *msg, fdb_tran_t *trans,
