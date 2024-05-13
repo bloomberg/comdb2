@@ -167,7 +167,7 @@ On every machine in the cluster:
    All nodes will say 'I AM READY.' when ready.
    
    Note: the log dir comdb2 uses by default is */opt/bb/var/log/cdb2/* 
-   If this directory does not have permissions allowing the user to create file, there will be diagnostics output such as:  
+   If this directory does not have permissions allowing the user to create files, there will be diagnostics output such as:  
    > [ERROR] error opening '/opt/bb/var/log/cdb2/testdb.longreqs' for logging: 13 Permission denied  
    
    This condition will not impact operation of the database for the purposes of this quick start.  
