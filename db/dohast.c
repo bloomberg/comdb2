@@ -955,7 +955,8 @@ int comdb2_check_push_remote(Parse *pParse)
     ast_t *ast = pParse->ast;
     dohsql_node_t *node;
 
-    if (!gbl_fdb_push_remote)
+    GET_CLNT;
+    if (!gbl_fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
         return 0;
 
     if (ast && ast->unsupported)

@@ -5487,6 +5487,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->flat_col_vals = 0;
     clnt->request_fp = 0;
     clnt->can_redirect_fdb = 0;
+    clnt->force_fdb_push_redirect = 0;
+    clnt->force_fdb_push_remote = 0;
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
 

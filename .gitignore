@@ -92,3 +92,4 @@ plugins/bb-plugins
 /cmake-build*
 /.vscode/*
 .clang-format
+/.devcontainer/*

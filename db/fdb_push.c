@@ -66,8 +66,12 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
     fdb_push_connector_t *push = NULL;
     struct Db *pDb = &pParse->db->aDb[node->remotedb];
 
-    logmsg(LOGMSG_DEBUG, "CALLING FDB PUSH RUN on query %s (gbl_fdb_push_remote=%d)\n", clnt->sql, gbl_fdb_push_remote);
-    if (!gbl_fdb_push_remote)
+    logmsg(LOGMSG_DEBUG,
+           "CALLING FDB PUSH RUN on query %s (gbl_fdb_push_remote=%d) (clnt force remote? %d) (clnt force redirect? "
+           "%d) (clnt can redirect? %d)\n",
+           clnt->sql, gbl_fdb_push_remote, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
+           clnt->can_redirect_fdb);
+    if (!gbl_fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
         return -1;
 
     if (clnt->disable_fdb_push)
@@ -232,8 +236,12 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
         assert(class);
     }
 
-    if (gbl_fdb_push_redirect_foreign && clnt->can_redirect_fdb) {
-        logmsg(LOGMSG_DEBUG, "CALLING FDB PUSH REDIRECT on query %s\n", clnt->sql);
+    if ((gbl_fdb_push_redirect_foreign || clnt->force_fdb_push_redirect) && clnt->can_redirect_fdb &&
+        !clnt->force_fdb_push_remote) {
+        logmsg(LOGMSG_DEBUG,
+               "CALLING FDB PUSH REDIRECT on query %s (redirect tunable on %d) (clnt force remote? %d) (clnt force "
+               "redirect? %d)\n",
+               clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect);
         // tell cdb2api to run query directly on foreign db
         // send back db, tier, flag
         // NOTE: Cost will not work for this
@@ -248,7 +256,11 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
         write_response(clnt, RESPONSE_REDIRECT_FOREIGN, foreign_db, cdb2api_policy_flag);
         goto reset;
     }
-    logmsg(LOGMSG_DEBUG, "CALLING FDB PUSH on query %s (redirect tunable on? %d) (clnt can redirect? %d)\n", clnt->sql, gbl_fdb_push_redirect_foreign, clnt->can_redirect_fdb);
+    logmsg(LOGMSG_DEBUG,
+           "CALLING FDB PUSH on query %s (redirect tunable on? %d) (clnt force remote? %d) (clnt force redirect? %d) "
+           "(clnt can redirect? %d)\n",
+           clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
+           clnt->can_redirect_fdb);
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
