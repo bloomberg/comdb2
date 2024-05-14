@@ -45,3 +45,18 @@ Make sure disabled for client transactions
 (id=3, b1='Hello3')
 (id=4, b1='Hello4')
 (1=1)
+Test set force_fdb_push redirect
+(id=1, b1='Hello1')
+(id=2, b1='Hello2')
+(id=3, b1='Hello3')
+(id=4, b1='Hello4')
+Test set force_fdb_push remote
+(id=1, b1='Hello1')
+(id=2, b1='Hello2')
+(id=3, b1='Hello3')
+(id=4, b1='Hello4')
+Test set force_fdb_push off
+(id=1, b1='Hello1')
+(id=2, b1='Hello2')
+(id=3, b1='Hello3')
+(id=4, b1='Hello4')

@@ -115,6 +115,25 @@ select 1
 commit
 EOF
 
+# test set options
+echo "Test set force_fdb_push redirect" >> $output
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+set force_fdb_push redirect
+select * from LOCAL_${a_remdbname}.t order by id
+EOF
+
+echo "Test set force_fdb_push remote" >> $output
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+set force_fdb_push remote
+select * from LOCAL_${a_remdbname}.t order by id
+EOF
+
+echo "Test set force_fdb_push off" >> $output
+cdb2sql -s ${SRC_CDB2_OPTIONS} $a_dbname default - >> $output 2>&1 << EOF
+set force_fdb_push off
+select * from LOCAL_${a_remdbname}.t order by id
+EOF
+
 if [[ $a_dbname == "srcdbfdbpushredirectgenerated"* ]]; then
     active_output=output.log.fdbpushredirect
 else
