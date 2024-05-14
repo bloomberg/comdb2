@@ -1936,6 +1936,26 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             } else if (strncasecmp(sqlstr, "sockbplog", 10) == 0) {
                 init_bplog_socket(clnt);
                 rc = 0;
+            } else if (strncasecmp(sqlstr, "force_fdb_push", 14) == 0) {
+                sqlstr += 14;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->force_fdb_push_redirect = 0;
+                    clnt->force_fdb_push_remote = 0;
+                } else if (strncasecmp(sqlstr, "redirect", 8) == 0) {
+                    if (!clnt->can_redirect_fdb) {
+                        snprintf(err, sizeof(err), "client does not support fdb push redirect");
+                        rc = ii + 1;
+                    } else {
+                        clnt->force_fdb_push_redirect = 1;
+                        clnt->force_fdb_push_remote = 0;
+                    }
+                } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
+                    clnt->force_fdb_push_remote = 1;
+                    clnt->force_fdb_push_redirect = 0;
+                } else {
+                    rc = ii + 1;
+                }
             } else {
                 rc = ii + 1;
             }
