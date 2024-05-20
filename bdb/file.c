@@ -2190,8 +2190,9 @@ static void bdb_appsock(netinfo_type *netinfo, SBUF2 *sb)
 extern int gbl_pstack_self;
 void pstack_self(void)
 {
-    if (!gbl_pstack_self)
-        return;
+    if (!gbl_pstack_self) return;
+
+    gettimeofday(&last_timer_pstack, NULL);
 
     char cmd[256];
     char output[20] = "/tmp/pstack.XXXXXX";
@@ -2231,7 +2232,6 @@ void pstack_self(void)
     gbl_logmsg_ctrace = old;
     fclose(out);
     unlink(output);
-    gettimeofday(&last_timer_pstack, NULL);
 }
 
 static void panic_func(DB_ENV *dbenv, int errval)
