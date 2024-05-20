@@ -504,7 +504,7 @@ static void check_timers(int dummyfd, short what, void *arg)
     if (!need_pstack) return;
     timersub(&now, &last_timer_pstack, &diff);
     if (diff.tv_sec < gbl_timer_pstack_interval) return;
-    logmsg(LOGMSG_WARN, "%s: Generating pstack\n", __func__);
+    logmsg(LOGMSG_WARN, "%s: Last pstack:%lds. Generating pstack\n", __func__, diff.tv_sec);
     pthread_t t;
     Pthread_create(&t, NULL, do_pstack, NULL);
     Pthread_detach(t);
