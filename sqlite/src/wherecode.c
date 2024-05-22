@@ -714,6 +714,9 @@ static int codeAllEqualityTerms(
     j = sqlite3VdbeAddOp0(v, OP_Goto);
     pLevel->addrSkip = sqlite3VdbeAddOp4Int(v, (bRev?OP_SeekLT:OP_SeekGT),
                             iIdxCur, 0, regBase, nSkip);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    sqlite3VdbeChangeP5(v, OPFLAG_SKIPSCAN);
+#endif
     VdbeCoverageIf(v, bRev==0);
     VdbeCoverageIf(v, bRev!=0);
     sqlite3VdbeJumpHere(v, j);

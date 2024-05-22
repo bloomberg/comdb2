@@ -4797,7 +4797,6 @@ case OP_SeekGT: {       /* jump, in3, group */
     assert( nField>0 );
     r.pKeyInfo = pC->pKeyInfo;
     r.nField = (u16)nField;
-
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     /* Reset cooked state that open cursor
      * optimization for 'or' clause would have left us with */
@@ -4830,13 +4829,18 @@ case OP_SeekGT: {       /* jump, in3, group */
       goto abort_due_to_error;
     }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    setCookCol(pC, r.nField);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+    /* If we're walking an index backwards as part of skip scan
+       don't use the cookFields optimization
+     */
+    if(!(oc==OP_SeekLT && (pOp->p5 & OPFLAG_SKIPSCAN)!=0)) {
+        setCookCol(pC, r.nField);
+    }
+#else //!defined(SQLITE_BUILDING_FOR_COMDB2)
     if( eqOnly && r.eqSeen==0 ){
       assert( res!=0 );
       goto seek_not_found;
     }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   pC->deferredMoveto = 0;
   pC->cacheStatus = CACHE_STALE;
