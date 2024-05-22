@@ -719,6 +719,10 @@ static void form_queuedb_name_int(bdb_state_type *bdb_state, char *name,
                                   size_t len, unsigned long long file_version)
 {
     if (file_version != 0) {
+        /* Flip to form name on big-endian */
+#if defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+        file_version = flibc_llflip(file_version);
+#endif
         snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name,
                   file_version);
     } else {
@@ -732,7 +736,8 @@ static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
     unsigned long long ver;
     int rc, bdberr;
     if (create && USE_GENID_IN_QUEUEDB_FILE_NAME()) {
-        ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
+        /* Always flip before writing to llmeta */
+        ver = flibc_llflip(bdb_get_cmp_context(bdb_state));
         rc = bdb_new_file_version_qdb(bdb_state, tran, file_num, ver, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             return -1;
