@@ -106,6 +106,7 @@
 (name='check_applied_lsns_debug', description='Lots of verbose trace for debugging applied LSNs.', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_applied_lsns_fatal', description='Abort if check_applied_lsns fails', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_constraint_feature', description='Enables support for CHECK CONSTRAINTs (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
+(name='check_descending_skipscan', description='Flag that toggles a check for descending order skipscan (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='check_for_hung_checkpoint_thread', description='check_for_hung_checkpoint_thread', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_locker_locks', description='Sanity check locks at end of transaction.', type='BOOLEAN', value='OFF', read_only='N')
 (name='check_multiple_lockers', description='check_multiple_lockers', type='BOOLEAN', value='ON', read_only='N')

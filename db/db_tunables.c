@@ -487,6 +487,7 @@ extern int gbl_sc_7format;
 extern int gbl_dohsql_joins;
 extern int gbl_sc_history_max_rows;
 extern int gbl_sc_status_max_rows;
+extern int gbl_chk_desc_skipscan;
 
 /*
   =========================================================

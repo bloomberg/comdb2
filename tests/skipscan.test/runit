@@ -72,3 +72,19 @@ if ! diff out1.txt out3.txt > /dev/null ; then
     failexit "out3 should be same as out1"
 fi
 
+# {175177284}
+cat << EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - >out4.txt 2>&1
+DROP TABLE IF EXISTS t
+CREATE TABLE t(a int, b int, c int)\$\$
+CREATE INDEX foo ON t(B,C)
+SET TRANSACTION CHUNK 100
+BEGIN 
+INSERT INTO t(a,b,c) select value, value/10000, value from generate_series(1,100000)
+COMMIT
+ANALYZE t
+SELECT c,b,a from t where c > 10000000 ORDER BY B DESC
+EOF
+
+if ! diff out4.txt out4.expected > /dev/null ; then
+    failexit "expected empty result set but got rows back!"
+fi
