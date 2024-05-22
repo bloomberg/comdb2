@@ -2515,4 +2515,6 @@ REGISTER_TUNABLE("sc_history_max_rows", "Max number of rows returned in comdb2_s
                  TUNABLE_INTEGER, &gbl_sc_history_max_rows, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc_status (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_sc_status_max_rows, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("check_descending_skipscan", "Flag that toggles a check for descending order skipscan (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_chk_desc_skipscan, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

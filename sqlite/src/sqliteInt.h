@@ -3485,6 +3485,7 @@ struct AuthContext {
 #define OPFLAG_FORCE_VERIFY   0x100
 #define OPFLAG_IGNORE_FAILURE 0x200
 #define OPFLAG_MKREC_COMDB2   0x400
+#define OPFLAG_SKIPSCAN       0x800
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
