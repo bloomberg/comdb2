@@ -2504,6 +2504,10 @@ REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_7format",
+                 "Save schema change object in 7.0 format. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_7format, INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dohsql_joins",
                  "Enable to support joins in parallel sql execution (default: on)",
                  TUNABLE_BOOLEAN, &gbl_dohsql_joins, 0, NULL, NULL, NULL, NULL);

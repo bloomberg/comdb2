@@ -7759,10 +7759,7 @@ int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
 {
 
     schemachange_packed_size(sc);
-    size_t osql_rpl_size =
-        ((rqid == OSQL_RQID_USE_UUID) ? OSQLCOMM_UUID_RPL_TYPE_LEN
-                                      : OSQLCOMM_RPL_TYPE_LEN) +
-        sc->packed_len;
+    size_t osql_rpl_size = OSQLCOMM_UUID_RPL_TYPE_LEN + sc->packed_len;
     uint8_t *buf = alloca(osql_rpl_size);
     uint8_t *p_buf = buf;
     uint8_t *p_buf_end = p_buf + osql_rpl_size;
@@ -7773,32 +7770,17 @@ int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
 
     strcpy(sc->original_master_node, target->host);
 
-    if (rqid == OSQL_RQID_USE_UUID) {
-        osql_uuid_rpl_t hd_uuid = {0};
+    osql_uuid_rpl_t hd_uuid = {0};
 
-        hd_uuid.type = OSQL_SCHEMACHANGE;
-        comdb2uuidcpy(hd_uuid.uuid, uuid);
-        if (!(p_buf = osqlcomm_schemachange_uuid_rpl_type_put(
-                  &hd_uuid, sc, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                   "osqlcomm_schemachange_uuid_rpl_type_put");
-            return -1;
-        }
-
-        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
-    } else {
-        osql_rpl_t hd = {0};
-
-        hd.type = OSQL_SCHEMACHANGE;
-        hd.sid = rqid;
-
-        if (!(p_buf = osqlcomm_schemachange_rpl_type_put(&hd, sc, p_buf,
-                                                         p_buf_end))) {
-            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
-                   "osqlcomm_schemachange_rpl_type_put");
-            return -1;
-        }
+    hd_uuid.type = OSQL_SCHEMACHANGE;
+    comdb2uuidcpy(hd_uuid.uuid, uuid);
+    if (!(p_buf = osqlcomm_schemachange_uuid_rpl_type_put(
+                    &hd_uuid, sc, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                "osqlcomm_schemachange_uuid_rpl_type_put");
+        return -1;
     }
+    type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
 
     if (gbl_enable_osql_logging) {
         logmsg(LOGMSG_DEBUG, "[%llu %s] send OSQL_SCHEMACHANGE %s\n", rqid,

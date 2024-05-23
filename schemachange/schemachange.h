@@ -289,6 +289,8 @@ struct schema_change_type {
 
     int (*publish)(tran_type *, struct schema_change_type *);
     void (*unpublish)(struct schema_change_type *);
+
+    int version;
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
@@ -410,10 +412,6 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end);
 void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end);
-void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
-                              void *p_buf_end);
-void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf,
-                              void *p_buf_end);
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 
