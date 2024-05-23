@@ -1620,20 +1620,32 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
 
 int scdone_abort_cleanup(struct ireq *iq)
 {
-    int bdberr = 0;
+    int bdberr = 0, rc;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     if (s->set_running)
         sc_set_running(iq, s, s->tablename, 0, gbl_myhostname, time(NULL), 0,
                        __func__, __LINE__);
-    if (s->db && s->db->handle) {
-        if (s->kind == SC_ADDTABLE) {
-            delete_temp_table(iq, s->db);
-            cleanup_newdb(s->db);
+    tran_type *lock_trans = NULL;
+    if ((rc = trans_start(iq, NULL, &lock_trans)) == 0) {
+        dbtable *db = NULL;
+        bdb_lock_tablename_read(thedb->bdb_env, s->tablename, lock_trans);
+        if (is_tablename_queue(s->tablename)) {
+            db = getqueuebyname(s->tablename);
         } else {
-            sc_del_unused_files(s->db);
+            db = get_dbtable_by_name(s->tablename);
         }
+        if (db) {
+            if (s->kind == SC_ADDTABLE) {
+                delete_temp_table(iq, db);
+                cleanup_newdb(db);
+            } else {
+                sc_del_unused_files(db);
+            }
+        }
+        trans_abort(iq, lock_trans);
     }
+
     broadcast_sc_end(s->tablename, iq->sc_seed);
     if (bdb_set_schema_change_status(NULL, s->tablename, iq->sc_seed, 0, NULL,
                                      0, BDB_SC_ABORTED,
