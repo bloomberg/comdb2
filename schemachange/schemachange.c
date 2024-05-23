@@ -393,6 +393,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     return rc;
 }
 
+extern int gbl_sc_7format;
 int start_schema_change(struct schema_change_type *s)
 {
     struct ireq *iq = NULL;
@@ -403,6 +404,13 @@ int start_schema_change(struct schema_change_type *s)
     }
     init_fake_ireq(thedb, iq);
     if (s->already_locked) iq->sc_locked = 1;
+
+    /* NOTE: if this comes from comdb2sc, it does not run
+     * init_schemachange! In these cases, version == 0.
+     * Fix it here.
+     */
+    if (!s->version)
+        s->version = gbl_sc_7format ? 7 : 8;
     iq->sc = s;
     s->iq = iq;
     if (s->db == NULL) {

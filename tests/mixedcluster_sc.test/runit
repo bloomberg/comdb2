@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+#
+# NOTE: run this on a 2 node cluster, one 7.0 and the other 8.0
+#
+# args
+# <dbname>
+dbname=$1
+
+# PASS THE NODE DURING MANUAL TEST, OR SET CDB2_OPTIONS
+node=$2
+
+cmd="cdb2sql ${CDB2_OPTIONS} $dbname default"
+if [[ -z $node ]]; then
+    cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbname default"
+else
+    cmdt="cdb2sql -tabs $dbname $node"
+fi
+master=`${cmdt} "select host from comdb2_cluster where is_master='Y'"`
+replicant=`${cmdt} "select host from comdb2_cluster where is_master='N'"`
+OUT="run.log"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+if [[ -z $replicant ]] ; then
+    echo "Need at least 2 nodes for test"
+    exit 1
+fi
+
+echo "Master $master replicant $replicant"
+
+if [[ $node ]]; then
+    cmd="cdb2sql $dbname $replicant"
+fi 
+
+$cmd "drop table if exists t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE initially dropping table $replicant"
+    exit 1
+fi
+
+$cmd "create table t(a int)" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE creating table on $replicant"
+    exit 1
+fi
+
+$cmd "insert into t select * from generate_series(1, 10)" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE insert through $replicant"
+    exit 1
+fi
+
+$cmd "select * from t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE selecting from $replicant"
+    exit 1
+fi
+
+$cmd "truncate t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE truncating through $replicant"
+    exit 1
+fi
+
+$cmd "select * from t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE selecting from empty $replicant"
+    exit 1
+fi
+
+$cmd "truncate t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE truncating through $replicant"
+    exit 1
+fi
+
+$cmd "drop table t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE dropping table $replicant"
+    exit 1
+fi
+
+$cmd "exec procedure sys.cmd.send('downgrade')" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE downgrading $master"
+    exit 1
+fi
+
+sleep 5
+
+$replicant=$master
+if [[ $node ]]; then
+    cmd="cdb2sql $dbname $replicant"
+fi 
+
+$cmd "create table t(a int)" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE creating table on $replicant"
+    exit 1
+fi
+
+$cmd "insert into t select * from generate_series(1, 10)" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE insert through $replicant"
+    exit 1
+fi
+
+$cmd "select * from t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE selecting from $replicant"
+    exit 1
+fi
+
+$cmd "truncate t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE truncating through $replicant"
+    exit 1
+fi
+
+$cmd "select * from t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE selecting from empty $replicant"
+    exit 1
+fi
+
+$cmd "truncate t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE truncating through $replicant"
+    exit 1
+fi
+
+$cmd "drop table t" >> $OUT 2>&1
+if (( $? != 0 )) ; then
+    echo "FAILURE dropping table $replicant"
+    exit 1
+fi
+
+# we need to scrub dbname from alpha
+sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
+
+
+difs=`diff $OUT $OUT.alpha.actual`
+if [[ ! -z "${difs}" ]] ; then
+   echo "diff $OUT $OUT.alpha.actual"
+   echo ${difs}
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"

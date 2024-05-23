@@ -21,6 +21,8 @@
 #include "sc_schema.h"
 #include "macc_glue.h"
 
+int gbl_sc_7format = 0;
+
 /************ SCHEMACHANGE TO BUF UTILITY FUNCTIONS
  * *****************************/
 
@@ -44,6 +46,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->original_master_node[0] = 0;
     sc->timepartition_name = NULL;
     sc->partition.type = PARTITION_NONE;
+    sc->version = gbl_sc_7format ? 7 : 8;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
@@ -146,26 +149,51 @@ size_t schemachange_packed_size(struct schema_change_type *s)
     s->spname_len = strlen(s->spname) + 1;
     s->newcsc2_len = (s->newcsc2) ? strlen(s->newcsc2) + 1 : 0;
 
-    s->packed_len =
-        sizeof(s->kind) + sizeof(s->rqid) + sizeof(s->uuid) +
-        sizeof(s->tablename_len) + s->tablename_len + sizeof(s->fname_len) +
-        s->fname_len + sizeof(s->aname_len) + s->aname_len +
-        sizeof(s->avgitemsz) + sizeof(s->newdtastripe) + sizeof(s->blobstripe) +
-        sizeof(s->live) + sizeof(s->newcsc2_len) + s->newcsc2_len +
-        sizeof(s->scanmode) + sizeof(s->delay_commit) +
-        sizeof(s->force_rebuild) + sizeof(s->force_dta_rebuild) +
-        sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
-        sizeof(s->header_change) + sizeof(s->compress) +
-        sizeof(s->compress_blobs) + sizeof(s->persistent_seq) +
-        sizeof(s->ip_updates) + sizeof(s->instant_sc) + sizeof(s->preempted) +
-        sizeof(s->use_plan) + sizeof(s->commit_sleep) +
-        sizeof(s->convert_sleep) + sizeof(s->same_schema) + sizeof(s->dbnum) +
-        sizeof(s->flg) + sizeof(s->rebuild_index) +
-        sizeof(s->index_to_rebuild) + sizeof(s->original_master_node) +
-        dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
-        sizeof(s->lua_func_flags) + sizeof(s->newtable) +
-        sizeof(s->usedbtablevers) + sizeof(s->qdb_file_ver) +
-        _partition_packed_size(&s->partition);
+    if (s->version == 8) {
+        s->packed_len =
+            sizeof(s->kind) + sizeof(s->rqid) + sizeof(s->uuid) +
+            sizeof(s->tablename_len) + s->tablename_len + sizeof(s->fname_len) +
+            s->fname_len + sizeof(s->aname_len) + s->aname_len +
+            sizeof(s->avgitemsz) + sizeof(s->newdtastripe) + sizeof(s->blobstripe) +
+            sizeof(s->live) + sizeof(s->newcsc2_len) + s->newcsc2_len +
+            sizeof(s->scanmode) + sizeof(s->delay_commit) +
+            sizeof(s->force_rebuild) + sizeof(s->force_dta_rebuild) +
+            sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
+            sizeof(s->header_change) + sizeof(s->compress) +
+            sizeof(s->compress_blobs) + sizeof(s->persistent_seq) +
+            sizeof(s->ip_updates) + sizeof(s->instant_sc) + sizeof(s->preempted) +
+            sizeof(s->use_plan) + sizeof(s->commit_sleep) +
+            sizeof(s->convert_sleep) + sizeof(s->same_schema) + sizeof(s->dbnum) +
+            sizeof(s->flg) + sizeof(s->rebuild_index) +
+            sizeof(s->index_to_rebuild) + sizeof(s->original_master_node) +
+            dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
+            sizeof(s->lua_func_flags) + sizeof(s->newtable) +
+            sizeof(s->usedbtablevers) + sizeof(s->qdb_file_ver) +
+            _partition_packed_size(&s->partition);
+    } else {
+        s->packed_len =
+            sizeof(s->rqid) + sizeof(s->uuid) + sizeof(int/*type*/) +
+            sizeof(s->tablename_len) + s->tablename_len + sizeof(s->fname_len) +
+            s->fname_len + sizeof(s->aname_len) + s->aname_len +
+            sizeof(s->avgitemsz) + sizeof(int /*fastinit*/) + sizeof(s->newdtastripe) +
+            sizeof(s->blobstripe) + sizeof(s->live) + sizeof(int /*addonly*/) +
+            sizeof(int /*fulluprecs*/) + sizeof(int /*partialuprecs*/) +
+            sizeof(int /*alteronly*/) + sizeof(int /*is_trigger*/) + sizeof(s->newcsc2_len) +
+            s->newcsc2_len + sizeof(s->scanmode) + sizeof(s->delay_commit) +
+            sizeof(s->force_rebuild) + sizeof(s->force_dta_rebuild) +
+            sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
+            sizeof(s->header_change) + sizeof(s->compress) +
+            sizeof(s->compress_blobs) + sizeof(s->ip_updates) +
+            sizeof(s->instant_sc) + sizeof(s->preempted) + sizeof(s->use_plan) +
+            sizeof(s->commit_sleep) + sizeof(s->convert_sleep) +
+            sizeof(s->same_schema) + sizeof(s->dbnum) + sizeof(s->flg) +
+            sizeof(s->rebuild_index) + sizeof(s->index_to_rebuild) +
+            sizeof(int /*drop_table*/) + sizeof(s->original_master_node) +
+            dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
+            sizeof(int /*addsp*/) + sizeof(int /*delsp*/) + sizeof(int /*defaultsp*/) +
+            sizeof(int /*is_sfunc*/) + sizeof(int /*is_afunc*/) + sizeof(int /*rename*/) +
+            sizeof(s->newtable) + sizeof(s->usedbtablevers);
+    }
 
     return s->packed_len;
 }
@@ -190,7 +218,221 @@ static void *buf_put_dests(struct schema_change_type *s, void *p_buf,
     return p_buf;
 }
 
-void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+
+static int sc_get_7format_type(struct schema_change_type *s)
+{
+    int type = DBTYPE_TAGGED_TABLE;
+
+    if (s->kind == SC_LEGACY_MORESTRIPE)
+        type = UNUSED_2 /*DBTYPE_MORESTRIPE*/;
+    else if (s->kind == SC_LEGACY_QUEUE)
+        type = DBTYPE_QUEUE;
+    else if (s->kind == SC_ADD_QDB_FILE || s->kind == SC_DEL_QDB_FILE)
+        type = DBTYPE_QUEUEDB;
+
+    return type;
+}
+static int sc_7format_is_fastinit(struct schema_change_type *s)
+{
+    return s->kind == SC_DROPTABLE || s->kind == SC_TRUNCATETABLE;
+}
+static int sc_7format_is_addonly(struct schema_change_type *s)
+{
+    return s->kind == SC_ADDTABLE || s->kind == SC_ADD_TRIGGER;
+}
+static int sc_7format_is_fulluprecs(struct schema_change_type *s)
+{
+    return s->kind == SC_FULLUPRECS;
+}
+static int sc_7format_is_partialuprecs(struct schema_change_type *s)
+{
+    return s->kind == SC_PARTIALUPRECS;
+}
+static int sc_7format_is_alteronly(struct schema_change_type *s)
+{
+    if (s->kind == SC_ALTERTABLE)
+        return 1 /*SC_ALTER_ONLY*/;
+    else if (s->kind == SC_ALTERTABLE_PENDING)
+        return 2 /*SC_ALTER_PENDING*/;
+    return 0;
+}
+static int sc_7format_is_trigger(struct schema_change_type *s)
+{
+   return s->kind == SC_ADD_TRIGGER || s->kind == SC_DEL_TRIGGER;
+}
+static int sc_7format_is_droptable(struct schema_change_type *s)
+{
+    return s->kind == SC_DROPTABLE || s->kind == SC_DEL_TRIGGER;
+}
+static int sc_7format_is_addsp(struct schema_change_type *s)
+{
+    return s->kind == SC_ADDSP;
+}
+static int sc_7format_is_delsp(struct schema_change_type *s)
+{
+    return s->kind == SC_DELSP;
+}
+static int sc_7format_is_defaultsp(struct schema_change_type *s)
+{
+    return s->kind == SC_DEFAULTSP;
+}
+static int sc_7format_is_sfunc(struct schema_change_type *s)
+{
+    return s->kind == SC_ADD_SFUNC || s->kind == SC_DEL_SFUNC;
+}
+static int sc_7format_is_afunc(struct schema_change_type *s)
+{
+    return s->kind == SC_ADD_AFUNC || s->kind == SC_DEL_AFUNC;
+}
+static int sc_7format_is_rename(struct schema_change_type *s)
+{
+    return s->kind == SC_RENAMETABLE;
+}
+
+static void *buf_put_schemachange_v1(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+{
+    if (p_buf >= p_buf_end) return NULL;
+
+    p_buf = buf_put(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
+
+    p_buf = buf_no_net_put(&s->uuid, sizeof(s->uuid), p_buf, p_buf_end);
+
+    int type = sc_get_7format_type(s);
+    p_buf = buf_put(&type, sizeof(type), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->tablename_len, sizeof(s->tablename_len), p_buf, p_buf_end);
+
+    p_buf = buf_no_net_put(s->tablename, s->tablename_len, p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->fname_len, sizeof(s->fname_len), p_buf, p_buf_end);
+
+    p_buf = buf_no_net_put(s->fname, s->fname_len, p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->aname_len, sizeof(s->aname_len), p_buf, p_buf_end);
+
+    p_buf = buf_no_net_put(s->aname, s->aname_len, p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->avgitemsz, sizeof(s->avgitemsz), p_buf, p_buf_end);
+
+    int fastinit = sc_7format_is_fastinit(s);
+    p_buf = buf_put(&fastinit, sizeof(fastinit), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->newdtastripe, sizeof(s->newdtastripe), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->blobstripe, sizeof(s->blobstripe), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->live, sizeof(s->live), p_buf, p_buf_end);
+
+    int addonly = sc_7format_is_addonly(s);
+    p_buf = buf_put(&addonly, sizeof(addonly), p_buf, p_buf_end);
+
+    int fulluprecs = sc_7format_is_fulluprecs(s);
+    p_buf = buf_put(&fulluprecs, sizeof(fulluprecs), p_buf, p_buf_end);
+
+    int partialuprecs = sc_7format_is_partialuprecs(s);
+    p_buf =
+        buf_put(&partialuprecs, sizeof(partialuprecs), p_buf, p_buf_end);
+
+    int alteronly = sc_7format_is_alteronly(s);
+    p_buf = buf_put(&alteronly, sizeof(alteronly), p_buf, p_buf_end);
+
+    int is_trigger = sc_7format_is_trigger(s);
+    p_buf = buf_put(&is_trigger, sizeof(is_trigger), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->newcsc2_len, sizeof(s->newcsc2_len), p_buf, p_buf_end);
+
+    if (s->newcsc2_len) {
+        p_buf = buf_no_net_put(s->newcsc2, s->newcsc2_len, p_buf, p_buf_end);
+    }
+
+    p_buf = buf_put(&s->scanmode, sizeof(s->scanmode), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->delay_commit, sizeof(s->delay_commit), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->force_rebuild, sizeof(s->force_rebuild), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->force_dta_rebuild, sizeof(s->force_dta_rebuild), p_buf,
+                    p_buf_end);
+
+    p_buf = buf_put(&s->force_blob_rebuild, sizeof(s->force_blob_rebuild),
+                    p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->force, sizeof(s->force), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->headers, sizeof(s->headers), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->header_change, sizeof(s->header_change), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->compress, sizeof(s->compress), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->compress_blobs, sizeof(s->compress_blobs), p_buf,
+                    p_buf_end);
+
+    p_buf = buf_put(&s->ip_updates, sizeof(s->ip_updates), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->instant_sc, sizeof(s->instant_sc), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->preempted, sizeof(s->preempted), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->use_plan, sizeof(s->use_plan), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->commit_sleep, sizeof(s->commit_sleep), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->convert_sleep, sizeof(s->convert_sleep), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->same_schema, sizeof(s->same_schema), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->dbnum, sizeof(s->dbnum), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->flg, sizeof(s->flg), p_buf, p_buf_end);
+
+    p_buf =
+        buf_put(&s->rebuild_index, sizeof(s->rebuild_index), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->index_to_rebuild, sizeof(s->index_to_rebuild), p_buf,
+                    p_buf_end);
+
+    p_buf = buf_put(&s->original_master_node, sizeof(s->original_master_node),
+                    p_buf, p_buf_end);
+
+    int drop_table = sc_7format_is_droptable(s);
+    p_buf = buf_put(&drop_table, sizeof(drop_table), p_buf, p_buf_end);
+
+    p_buf = buf_put_dests(s, p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->spname_len, sizeof(s->spname_len), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(s->spname, s->spname_len, p_buf, p_buf_end);
+
+    int addsp = sc_7format_is_addsp(s);
+    p_buf = buf_put(&addsp, sizeof(addsp), p_buf, p_buf_end);
+    int delsp = sc_7format_is_delsp(s);
+    p_buf = buf_put(&delsp, sizeof(delsp), p_buf, p_buf_end);
+    int defaultsp = sc_7format_is_defaultsp(s);
+    p_buf = buf_put(&defaultsp, sizeof(defaultsp), p_buf, p_buf_end);
+
+    int is_sfunc = sc_7format_is_sfunc(s);
+    p_buf = buf_put(&is_sfunc, sizeof(is_sfunc), p_buf, p_buf_end);
+    int is_afunc = sc_7format_is_afunc(s);
+    p_buf = buf_put(&is_afunc, sizeof(is_afunc), p_buf, p_buf_end);
+
+    int rename = sc_7format_is_rename(s);
+    p_buf = buf_put(&rename, sizeof(rename), p_buf, p_buf_end);
+
+    p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
+    p_buf = buf_put(&s->usedbtablevers, sizeof(s->usedbtablevers), p_buf,
+                    p_buf_end);
+
+    return p_buf;
+}
+
+static void *buf_put_schemachange_v2(struct schema_change_type *s, void *p_buf, void *p_buf_end)
 {
 
     if (p_buf >= p_buf_end) return NULL;
@@ -324,6 +566,13 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
     return p_buf;
 }
 
+void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+{
+    if (s->version == 7)
+        return buf_put_schemachange_v1(s, p_buf, p_buf_end);
+    return buf_put_schemachange_v2(s, p_buf, p_buf_end);
+}
+
 static const void *buf_get_dests(struct schema_change_type *s,
                                  const void *p_buf, void *p_buf_end)
 {
@@ -368,8 +617,8 @@ static const void *buf_get_dests(struct schema_change_type *s,
     return p_buf;
 }
 
-void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
-                              void *p_buf_end)
+static void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
+                                     void *p_buf_end)
 {
     int type = 0,          fastinit = 0,   addonly = 0,    fulluprecs = 0,
         partialuprecs = 0, alteronly = 0,  is_trigger = 0, drop_table = 0,
@@ -510,11 +759,11 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->index_to_rebuild,
                                sizeof(s->index_to_rebuild), p_buf, p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&drop_table, sizeof(drop_table), p_buf, p_buf_end); /* s->drop_table */
-
     p_buf =
         (uint8_t *)buf_get(&s->original_master_node,
                            sizeof(s->original_master_node), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&drop_table, sizeof(drop_table), p_buf, p_buf_end); /* s->drop_table */
 
     p_buf = (uint8_t *)buf_get_dests(s, p_buf, p_buf_end);
 
@@ -561,12 +810,23 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
         s->kind = SC_DELSP;
     else if (defaultsp)
         s->kind = SC_DEFAULTSP;
+    else if (is_sfunc) {
+        if (addonly)
+            s->kind = SC_ADD_SFUNC;
+        else
+            s->kind = SC_DEL_SFUNC;
+    } else if (is_afunc) {
+        if (addonly)
+            s->kind = SC_ADD_AFUNC;
+        else
+            s->kind = SC_DEL_AFUNC;
+    }
 
     return p_buf;
 }
 
-void *buf_get_schemachange_v2(struct schema_change_type *s,
-                              void *p_buf, void *p_buf_end)
+static void *buf_get_schemachange_v2(struct schema_change_type *s,
+                                     void *p_buf, void *p_buf_end)
 {
 
     if (p_buf >= p_buf_end) return NULL;
@@ -749,6 +1009,15 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
     return p_buf;
 }
 
+void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
+                           void *p_buf_end)
+{
+    if (s->version == 7)
+        return buf_get_schemachange_v1(s, p_buf, p_buf_end);
+    return buf_get_schemachange_v2(s, p_buf, p_buf_end);
+}
+
+
 /*********************************************************************************/
 
 /* Packs a schema_change_type struct into an opaque binary buffer so that it can
@@ -758,7 +1027,7 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
  * packed is set to a pointer to the packed data and is owned by callee if this
  * function succeeds */
 int pack_schema_change_type(struct schema_change_type *s, void **packed,
-                            size_t *packed_len)
+        size_t *packed_len)
 {
 
     /* compute the length of our buffer */
@@ -1229,6 +1498,8 @@ clone_schemachange_type(struct schema_change_type *sc)
         free(buf);
         return NULL;
     }
+
+    newsc->version = sc->version; /* preserve format */
 
     p_buf = buf;
     p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
