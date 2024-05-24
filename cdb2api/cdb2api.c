@@ -1670,6 +1670,16 @@ static int read_available_comdb2db_configs(cdb2_hndl_tp *hndl, char comdb2db_hos
     return 0;
 }
 
+int cdb2_get_comdb2db(char **comdb2dbname, char **default_type)
+{
+    if (!strlen(cdb2_comdb2dbname)) {
+        read_available_comdb2db_configs(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0);
+    }
+    (*comdb2dbname) = strdup(cdb2_comdb2dbname);
+    (*default_type) = strdup(cdb2_default_cluster);
+    return 0;
+}
+
 /* populate comdb2db_hosts based on hostname info of comdb2db_name
  * returns -1 if error or no osts wa found
  * returns 0 if hosts were found
@@ -2375,7 +2385,7 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
 
     char *endptr;
     int fd = strtol(hndl->type, &endptr, 10);
-    if (endptr != 0 || fd < 3) { /* shouldn't be stdin, stdout, stderr */
+    if (*endptr != 0 || fd < 3) { /* shouldn't be stdin, stdout, stderr */
         debugprint("ERROR: %s:%d invalid fd:%s", __func__, __LINE__, hndl->type);
     } else {
         if ((sb = sbuf2open(fd, 0)) == 0) {
