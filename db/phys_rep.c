@@ -204,18 +204,12 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     const char *query = "select m.name from machines as m, clusters as c, databases as d"
                         "  where c.name=@dbname and c.cluster_name=@class and "
                         "        m.cluster=c.cluster_machs and d.name=@dbname";
-    const char *comdb2dbclass = get_my_mach_class_str();
-    const char *comdb2dbname;
 
-    // Point to the right 'comdb2db' that we need to query
-    if ((strncasecmp(comdb2dbclass, "test", 4) == 0) ||
-        (strncasecmp(comdb2dbclass, "dev", 3) == 0) ||
-        (strncasecmp(comdb2dbclass, "fuzz", 4) == 0)) {
-        comdb2dbname = "comdb3db";
-        comdb2dbclass = "dev";
-    } else {
-        comdb2dbname = "comdb2db";
-        comdb2dbclass = "prod";
+    static char *comdb2dbclass = NULL;
+    static char *comdb2dbname = NULL;
+
+    if (!comdb2dbname) {
+        cdb2_get_comdb2db(&comdb2dbname, &comdb2dbclass);
     }
 
     // Also fix the 'source tier' in case it is one of the following
