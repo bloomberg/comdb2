@@ -10108,6 +10108,7 @@ static int bdb_process_each_entry_resumable(bdb_state_type *bdb_state, tran_type
         searchkey = key;
         searchkeylen = klen;
         *resume = calloc(1, LLMETA_IXLEN);
+        memcpy((*resume), key, klen);
     } else {
         searchkey = *resume;
         searchkeylen = LLMETA_IXLEN;
