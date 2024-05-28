@@ -258,6 +258,8 @@ void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id);
 
 int cdb2_clear_ack(cdb2_hndl_tp *hndl);
 
+char *cdb2_string_quote(cdb2_hndl_tp *hndl, const char *str);
+
 typedef enum cdb2_event_ctrl {
     CDB2_OVERWRITE_RETURN_VALUE = 1,
     CDB2_AS_HANDLE_SPECIFIC_ARG = 1 << 1

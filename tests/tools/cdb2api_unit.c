@@ -296,6 +296,26 @@ void test_get_config_file()
     assert(strcmp(filename, "myroot/etc/cdb2/config.d/mydb.cfg") == 0);
 }
 
+
+void test_cdb2_string_quote()
+{
+    const char *emptyStr = "";
+    char *testEmptyStr = cdb2_string_quote(NULL, emptyStr);
+    assert(strcmp(testEmptyStr, "\'\'") == 0);
+    free(testEmptyStr);
+    
+    const char *noQuoteStr = "Hello world!";
+    char *testNoQuoteStr = cdb2_string_quote(NULL, noQuoteStr);
+    assert(strcmp(testNoQuoteStr, "\'Hello world!\'") == 0);
+    free(testNoQuoteStr);
+    
+    const char* quoteStr = "Where's Waldo?";
+    char *testQuoteStr = cdb2_string_quote(NULL, quoteStr);
+    assert(strcmp(testQuoteStr, "\'Where\'\'s Waldo?\'") == 0);
+    free(testQuoteStr);
+}
+
+
 int main(int argc, char *argv[])
 {
     int rc = 0;
@@ -315,6 +335,8 @@ int main(int argc, char *argv[])
 
     test_read_comdb2db_cfg();
     test_get_config_file();
+
+    test_cdb2_string_quote();
 
     printf("finished succesfully\n");
     return rc;

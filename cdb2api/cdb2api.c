@@ -31,16 +31,14 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
-#include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <inttypes.h>
+#include <fcntl.h>
 
 #include "cdb2api.h"
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
-#include <fcntl.h>
 
 /*
 *******************************************************************************
@@ -7103,4 +7101,32 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
 
     pthread_mutex_unlock(&cdb2_event_mutex);
     return 0;
+}
+
+char *cdb2_string_quote(cdb2_hndl_tp *hndl, const char *src){
+    const char quote = '\'';
+    size_t count = 2; // initialized to include opening and closing quotes
+    
+    char *next = strchr(src, quote);
+    while (next != NULL) {
+        ++count;
+        next = strchr(next + 1, quote);
+    }
+
+    size_t len = count + strlen(src) + 1;
+    char *out = malloc(len);
+    out[0] = '\0';
+    strcat(out, &quote);
+
+    while (*src) {
+        next = strchr(src, quote);
+        if (next == NULL) {
+            next = strchr(src, '\0') - 1;
+        }
+        strncat(out, src, next - src + 1);
+        strcat(out, &quote);
+        src = next + 1;
+    }
+    
+    return out;
 }
