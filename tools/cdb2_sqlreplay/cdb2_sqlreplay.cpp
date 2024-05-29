@@ -581,11 +581,11 @@ void dump_param(cson_value *param) {
     }
     else if (strcmp(type, "datetime") == 0) {
         typecheck(string);
-        printf("@bind CDB2_DATETIME %s %s\n", name, (char*) cson_value_get_string(val));
+        printf("@bind CDB2_CSTRING %s %s\n", name, (char*) cson_value_get_string(val));
     }
     else if (strcmp(type, "datetimeus") == 0) {
         typecheck(string);
-        printf("@bind CDB2_DATETIMEUS %s %s\n", name, (char*) cson_value_get_string(val));
+        printf("@bind CDB2_CSTRING %s %s\n", name, (char*) cson_value_get_string(val));
     }
     else {
         fprintf(stderr, ">Unknown bound_parameters type %s\n", type);
