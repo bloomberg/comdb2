@@ -248,6 +248,8 @@ int comdb2SystblInit(
     rc = systblApiHistoryInit(db);
   if (rc == SQLITE_OK)
     rc = systblDbInfoInit(db);
+  if (rc == SQLITE_OK) 
+    rc = systblHashPartitionsInit(db);
 #endif
   return rc;
 }

@@ -15,6 +15,11 @@ enum ch_err {
     CH_ERR_DUP = 4
 };
 
+enum ch_hash_func_type {
+    CH_HASH_SHA = 1,
+    CH_HASH_MD5 = 2,
+    CH_HASH_CRC = 3
+};
 struct consistent_hash_node {
     uint8_t *data;
     size_t data_len;

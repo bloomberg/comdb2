@@ -492,7 +492,7 @@ double gbl_sql_cost_error_threshold = -1;
 
 int gbl_parallel_recovery_threads = 0;
 
-int gbl_fdb_resolve_local = 0;
+int gbl_fdb_resolve_local = 1;
 int gbl_fdb_allow_cross_classes = 0;
 uint64_t gbl_sc_headroom = 10;
 /*---COUNTS---*/
@@ -816,6 +816,7 @@ int gbl_hostname_refresh_time = 60;
 int gbl_pstack_self = 1;
 
 char *gbl_cdb2api_policy_override = NULL;
+int gbl_create_remote_tables = 0;
 
 int close_all_dbs_tran(tran_type *tran);
 
@@ -2408,6 +2409,15 @@ int llmeta_load_timepart(struct dbenv *dbenv)
     dbenv->timepart_views = timepart_views_init(dbenv);
 
     return thedb->timepart_views ? 0 : -1;
+}
+
+int llmeta_load_hash_partitions(struct dbenv *dbenv)
+{
+    logmsg(LOGMSG_INFO, "Loading hash-based partitions\n");
+    Pthread_rwlock_init(&hash_partition_lk, NULL);
+    dbenv->hash_partition_views = hash_create_all_views();
+
+    return dbenv->hash_partition_views ? 0 : -1;
 }
 
 /* replace the table names and dbnums saved in the low level meta table with the
@@ -4140,6 +4150,12 @@ static int init(int argc, char **argv)
 
         if (llmeta_load_timepart(thedb)) {
             logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+            unlock_schema_lk();
+            return -1;
+        }
+        
+        if (llmeta_load_hash_partitions(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load hash partitions\n");
             unlock_schema_lk();
             return -1;
         }
@@ -6342,7 +6358,10 @@ retry_tran:
         logmsg(LOGMSG_ERROR, "could not load time partitions\n");
         abort();
     }
-
+    if (llmeta_load_hash_partitions(thedb)) {
+        logmsg(LOGMSG_FATAL, "could not load mod based shards\n");
+        abort();
+    }
     if ((rc = bdb_get_rowlocks_state(&rlstate, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "Get rowlocks llmeta failed, rc=%d bdberr=%d\n",
                rc, bdberr);

@@ -30,7 +30,7 @@
 #include "comdb2Int.h"
 #include "pragma.h"
 #include "logmsg.h"
-
+#include "hash_partition.h"
 int has_comdb2_index_for_sqlite(Table *pTab);
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
@@ -693,6 +693,13 @@ Table *sqlite3LocateTable(
   }
 
   p = sqlite3FindTable(db, zName, zDbase);
+  /* I have to do a second lookup here for generic sharding : 
+   * zDbase is being set to "main" for inserts/deletes/updates from triggers"
+   * which results in the alias for the remote table not being found 
+   * AAR: TODO -> figure out the actual cause of the problem*/
+  if ( p==0 ) {
+      p = sqlite3FindTable(db, zName, NULL);
+  }
   if( p==0 ){
 #ifndef SQLITE_OMIT_VIRTUALTABLE
     /* If zName is the not the name of a table in the schema created using
@@ -2792,7 +2799,9 @@ void sqlite3CreateView(
   sqlite3TwoPartName(pParse, pName1, pName2, &pName);
   iDb = sqlite3SchemaToIndex(db, p->pSchema);
   sqlite3FixInit(&sFix, pParse, iDb, "view", pName);
+#ifndef SQLITE_BUILDING_FOR_COMDB2
   if( sqlite3FixSelect(&sFix, pSelect) ) goto create_view_fail;
+#endif
 
   /* Make a copy of the entire SELECT statement that defines the view.
   ** This will force all the Expr.token.z values to be dynamically
@@ -3313,7 +3322,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
   }
   if( !isView && pTab->pSelect ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if (timepart_allow_drop(pTab->zName)) {
+    if (timepart_allow_drop(pTab->zName) && !is_hash_partition(pTab->zName)) {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ErrorMsg(pParse, "use DROP VIEW to delete view %s", pTab->zName);
     goto exit_drop_table;
