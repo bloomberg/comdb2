@@ -806,6 +806,8 @@ void comdb2_nanosleep(struct timespec *req)
 
 void net_delay(const char *host)
 {
+    if (!host)
+        return;
     int delay = debug_switch_net_delay();
     if (delay) {
         if (delay > net_delay_max)
