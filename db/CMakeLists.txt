@@ -109,6 +109,7 @@ set(src
   machclass.c
   osqluprec.c
   macc_glue.c
+  hash_partition.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c

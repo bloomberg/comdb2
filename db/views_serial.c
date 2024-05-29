@@ -56,6 +56,7 @@
 #include "views.h"
 #include "comdb2uuid.h"
 #include "bdb_access.h"
+#include "hash_partition.h"
 
 static char *_concat(char *str, int *len, const char *fmt, ...);
 
@@ -64,7 +65,7 @@ static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
 static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
                                                          struct errstat *err);
 static timepart_views_t *_create_all_views(const char *views_str);
-
+extern int gbl_sharding_ddl_verbose;
 /* this is used in the "ADDDROP" time partitions */
 char *build_createcmd_json(char **out, int *len, const char *name,
                            const char *tablename, uint32_t period,
@@ -1349,7 +1350,63 @@ static int _cson_extract_start_string(cson_object *cson_obj, const char *param,
 
     return ret_int;
 }
+static int _cson_set_int(cson_object *obj, const char *keyname, uint64_t value, struct errstat *err)
+{
+    int rc;
+    cson_value *v = cson_value_new_integer(value);
+    if (!v) {
+        err->errval = VIEW_ERR_VALUE;
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't create cson value for integer %ld\n", value);
+        return -1;
+    }
 
+    rc = cson_object_set(obj, keyname, v);
+    if (rc) {
+        err->errval = VIEW_ERR_VALUE;
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't set integer field %s with value %ld\n", keyname, value);
+        return -1;
+    }
+
+    return rc;
+}
+
+static int _cson_set_or_create_array(cson_object *obj, const char *keyname, cson_value *arr_val, struct errstat *err)
+{
+    int rc;
+    if (!arr_val) {
+        arr_val = cson_value_new_array();
+        if (!arr_val) {
+            err->errval = VIEW_ERR_VALUE;
+            snprintf(err->errstr, sizeof(err->errstr), "couldn't create empty cson array\n");
+            return -1;
+        }
+    }
+    rc = cson_object_set(obj, keyname, arr_val);
+    if (rc) {
+        err->errval = VIEW_ERR_VALUE;
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't set array field %s\n", keyname);
+    }
+    return rc;
+}
+
+static int _cson_set_string(cson_object *obj, const char *keyname, const char *value, struct errstat *err)
+{
+    int rc;
+    cson_value *v = cson_value_new_string(value, strlen(value));
+    if (!v) {
+        err->errval = VIEW_ERR_VALUE;
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't create cson value for string %s\n", value);
+        return -1;
+    }
+
+    rc = cson_object_set(obj, keyname, v);
+    if (rc) {
+        err->errval = VIEW_ERR_VALUE;
+        snprintf(err->errstr, sizeof(err->errstr), "couldn't set string field %s with value %s\n", keyname, value);
+        return -1;
+    }
+    return rc;
+}
 /* this will extract all the fields and populate a provided view */
 static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
                                                          struct errstat *err)
@@ -1822,7 +1879,211 @@ done:
 
     return rc;
 }
+/*
+ * Serialize a partition into a cson object
+ */
+int hash_serialize_partition(char **partitions, int num_partitions, cson_array *arr)
+{
+    int rc = 0;
+    for (int i=0;i<num_partitions;i++) {
+        cson_value *rootVal = cson_value_new_object();
+        cson_object *rootObj = cson_value_get_object(rootVal);
+        rc = cson_object_set(rootObj, "DBNAME", cson_value_new_string(partitions[i], strlen(partitions[i])));
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "cson_object_set failed while serializing partition %s. rc: %d\n", partitions[i], rc);
+            break;
+        }
+        rc = cson_array_append(arr, rootVal);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "cson_array_append failed while serializing partition %s. rc: %d\n", partitions[i], rc);
+            break;
+        }
+    }
+    return rc;
+}
+/*
+ * Serialize an in-memory hash view into a CSON string
+ */
+int hash_serialize_view(hash_view_t *view, int *outLen, char **out)
+{
+    cson_value *rootVal = NULL, *arrVal = NULL;
+    cson_object *rootObj = NULL;
+    int rc;
 
+    rootVal = cson_value_new_object();
+    rootObj = cson_value_get_object(rootVal);
+    const char *tmp_str = hash_view_get_viewname(view);
+    rc = cson_object_set(rootObj, "VIEWNAME", cson_value_new_string(tmp_str, strlen(tmp_str)));
+    if (rc) {
+        goto err;
+    }
+
+    tmp_str = hash_view_get_tablename(view);
+    rc = cson_object_set(rootObj, "TABLENAME", cson_value_new_string(tmp_str, strlen(tmp_str)));
+    if (rc) {
+        goto err;
+    }
+    int num_keys = hash_view_get_num_keys(view);
+    char **keys = hash_view_get_keynames(view);
+    rc = cson_object_set(rootObj, "NUMKEYS", cson_value_new_integer(num_keys));
+    if (rc) {
+        goto err;
+    }
+    arrVal = cson_value_new_array();
+    for (int i = 0; i < num_keys; i++) {
+        rc = cson_array_append(cson_value_get_array(arrVal), cson_value_new_string(keys[i], strlen(keys[i])));
+        if (rc) {
+            goto err;
+        }
+    }
+    rc = cson_object_set(rootObj, "KEYNAMES", arrVal);
+    if (rc) {
+        goto err;
+    }
+
+    rc = cson_object_set(rootObj, "NUMPARTITIONS", cson_value_new_integer(hash_view_get_num_partitions(view)));
+    if (rc) {
+        goto err;
+    }
+
+    int num_partitions = hash_view_get_num_partitions(view);
+    char **partitions = hash_view_get_partitions(view);
+    arrVal = cson_value_new_array();
+    for (int i = 0; i < num_partitions; i++) {
+        rc = cson_array_append(cson_value_get_array(arrVal), cson_value_new_string(partitions[i], strlen(partitions[i])));
+        if (rc) {
+            goto err;
+        }
+    }
+    rc = cson_object_set(rootObj, "PARTITIONS", arrVal);
+    if (rc) {
+        goto err;
+    }
+
+    cson_buffer buf;
+    rc = cson_output_buffer(rootVal, &buf);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s cson_output_buffer error. rc: %d\n", __func__, rc);
+        goto err;
+    } else {
+        *out = strndup((char *)buf.mem, buf.used);
+        *outLen = strlen(*out);
+        if (gbl_sharding_ddl_verbose) {
+            logmsg(LOGMSG_USER, "The serialized CSON string is %s\n", *out);
+        }
+    }
+    cson_value_free(rootVal);
+    return VIEW_NOERR;
+
+err:
+    return -1;
+}
+
+hash_view_t *hash_deserialize_view(const char *view_str, struct errstat *err)
+{
+    hash_view_t *view = NULL;
+    cson_object *rootObj = NULL;
+    cson_value *rootVal = NULL, *arrVal = NULL;
+    cson_array *partitions = NULL, *keys_arr = NULL;
+    const char *viewname = NULL, *tablename = NULL;
+    const char *err_str;
+    int num_partitions = 0, num_keys = 0;
+    int rc;
+
+    /* parse string */
+    rc = cson_parse_string(&rootVal, view_str, strlen(view_str));
+    if (rc) {
+        snprintf(err->errstr, sizeof(err->errstr), "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
+        err->errval = VIEW_ERR_PARAM;
+        goto done;
+    }
+
+    rc = cson_value_is_object(rootVal);
+    rootObj = cson_value_get_object(rootVal);
+
+    /* VIEWNAME */
+    viewname = _cson_extract_str(rootObj, "VIEWNAME", err);
+    if (!viewname) {
+        err_str = "INVALID CSON. Couldn't find 'VIEWNAME' key";
+        goto error;
+    }
+    /* TABLENAME */
+    tablename = _cson_extract_str(rootObj, "TABLENAME", err);
+    if (!tablename) {
+        err_str = "INVALID CSON. Couldn't find 'TABLENAME' key";
+        goto error;
+    }
+
+    /* NUMKEYS */
+    num_keys = _cson_extract_int(rootObj, "NUMKEYS", err);
+    if (num_keys < 0) {
+        err_str = "INVALID CSON. couldn't find 'NUMKEYS' key";
+        goto error;
+    }
+
+    /* KEYNAMES */
+    keys_arr = _cson_extract_array(rootObj, "KEYNAMES", err);
+    if (!keys_arr) {
+        err_str = "INVALID CSON. couldn't find 'KEYNAMES' key";
+        goto error;
+    }
+
+    char keynames[MAXCOLUMNS][MAXCOLNAME];
+    for (int i = 0; i < num_keys; i++) {
+        arrVal = cson_array_get(keys_arr, i);
+        if (!cson_value_is_string(arrVal)) {
+            err_str = "INVALID CSON. Array element is not a string";
+            goto error;
+        }
+        strcpy(keynames[i], cson_value_get_cstr(arrVal));
+    }
+
+    /* NUMPARTITIONS */
+    num_partitions = _cson_extract_int(rootObj, "NUMPARTITIONS", err);
+    if (num_partitions < 0) {
+        err_str = "INVALID CSON. couldn't find 'NUMPARTITIONS' key";
+        goto error;
+    }
+
+    /* SHARDS */
+    partitions = _cson_extract_array(rootObj, "PARTITIONS", err);
+    if (!partitions) {
+        err_str = "INVALID CSON. couldn't find 'PARTITIONS' key";
+        goto error;
+    }
+
+    char dbnames[MAXPARTITIONS][MAXPARTITIONLEN];
+
+    for (int i = 0; i < num_partitions; i++) {
+        arrVal = cson_array_get(partitions, i);
+        if (!cson_value_is_string(arrVal)) {
+            err_str = "INVALID CSON. Array element is not a string";
+            goto error;
+        }
+        strcpy(dbnames[i], cson_value_get_cstr(arrVal));
+    }
+
+    view = create_hash_view(viewname, tablename, num_keys, keynames, num_partitions, dbnames, err);
+    if (rootVal) {
+        cson_value_free(rootVal);
+    }
+
+    return view;
+error:
+    if (err_str) {
+        errstat_set_rcstrf(err, VIEW_ERR_PARAM, err_str);
+    }
+    if (rootVal) {
+        cson_value_free(rootVal);
+    }
+    return NULL;
+
+done:
+    if (rootVal) {
+        cson_value_free(rootVal);
+    }
+    return view;
+}
 #ifdef VIEWS_PERSIST_TEST
 
 const char *tests[2] = {"[\n"

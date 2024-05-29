@@ -1109,6 +1109,27 @@ static int scdone_views(const char tablename[], void *arg, scdone_t type)
     return rc;
 }
 
+static int scdone_hash_views(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran = NULL;
+    uint32_t lid = 0;
+    int rc = 0;
+    int bdberr = 0;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    logmsg(LOGMSG_USER, "++++++ %s : calling hash_views_update_replicant\n", __func__);
+    rc = hash_views_update_replicant(tran, tablename);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "failed to update mod views from llmeta!\n");
+    }
+
+    _untran(tran, lid);
+    return rc;
+}
+
 static int scdone_llmeta_queue(const char table[], void *arg, scdone_t type)
 {
     tran_type *tran;
@@ -1264,8 +1285,8 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_llmeta_queue,  &scdone_genid48,        &scdone_genid48,
     &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
     &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
-    &scdone_queue_file,    &scdone_rename_table,   &scdone_alias};
-
+    &scdone_queue_file,    &scdone_rename_table,   &scdone_alias,
+    &scdone_hash_views};
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
  * we take ownership of table string

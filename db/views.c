@@ -3371,17 +3371,38 @@ int partition_publish(tran_type *tran, struct schema_change_type *sc)
                 abort(); /* restart will fix this*/
             break;
         }
+        case PARTITION_ADD_COL_HASH: {
+            partition_name = strdup((char *)hash_view_get_viewname(sc->newhashpartition));
+            rc = hash_create_inmem_view(sc->newhashpartition);
+            break;
+        }
+        case PARTITION_REMOVE_COL_HASH: {
+            partition_name = strdup((char *)hash_view_get_viewname(sc->newhashpartition));
+            rc = hash_destroy_inmem_view(sc->newhashpartition);
+
+            break;
+        }
         } /*switch */
         int bdberr = 0;
-        rc = bdb_llog_partition(thedb->bdb_env, tran,
-                                partition_name ? partition_name
-                                               : (char *)sc->timepartition_name,
-                                &bdberr);
-        if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
-                   __func__, partition_name);
+        if (sc->partition.type == PARTITION_ADD_COL_HASH || sc->partition.type == PARTITION_REMOVE_COL_HASH) {
+            rc = bdb_llog_hash_partition(thedb->bdb_env, tran, partition_name, &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for hash partition %s\n", __func__,
+                       sc->newhashpartition ? hash_view_get_viewname(sc->newhashpartition) : sc->tablename);
+            }
+        } else {
+            rc = bdb_llog_partition(thedb->bdb_env, tran,
+                                    partition_name ? partition_name
+                                                   : (char *)sc->timepartition_name,
+                                    &bdberr);
+            if (rc || bdberr != BDBERR_NOERROR) {
+                logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
+                       __func__, partition_name);
+            }
         }
-        free(partition_name);
+        if (partition_name) {
+            free(partition_name);
+        }
     }
     return rc;
 }
@@ -3402,6 +3423,18 @@ void partition_unpublish(struct schema_change_type *sc)
             int rc = timepart_create_inmem_view(sc->newpartition);
             if (rc)
                 abort(); /* restart will fix this*/
+            break;
+        }
+        case PARTITION_ADD_COL_HASH: {
+            hash_destroy_inmem_view(sc->newhashpartition);
+            break;
+        }
+        case PARTITION_REMOVE_COL_HASH: {
+            int rc = hash_create_inmem_view(sc->newhashpartition);
+            if (rc) {
+                /* Really no way forward except restart */
+                abort();
+            }
             break;
         }
         }

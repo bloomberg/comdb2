@@ -25,6 +25,7 @@ add_library(sqlite
   ext/comdb2/files_util.c
   ext/comdb2/fingerprints.c
   ext/comdb2/functions.c
+  ext/comdb2/hashpartitions.c
   ext/comdb2/indexuse.c
   ext/comdb2/keycomponents.c
   ext/comdb2/keys.c

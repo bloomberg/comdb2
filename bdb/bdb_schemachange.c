@@ -353,6 +353,12 @@ int bdb_llog_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
     return bdb_llog_scdone_tran(bdb_state, views, tran, name, strlen(name) + 1,
                                 bdberr);
 }
+
+int bdb_llog_hash_partition(bdb_state_type *bdb_state, tran_type *tran, char *name, int *bdberr)
+{
+    return bdb_llog_scdone_tran(bdb_state, hash_views, tran, name, strlen(name) + 1, bdberr);
+}
+
 int bdb_llog_luareload(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
     return bdb_llog_scdone(bdb_state, luareload, NULL, 0, wait, bdberr);

@@ -4453,6 +4453,12 @@ check_version:
 
             /* save the views generation number */
             thd->views_gen = gbl_views_gen;
+            if (thedb->hash_partition_views) {
+                rc = hash_views_sqlite_update(thedb->hash_partition_views, thd->sqldb, &xerr);
+                if (rc != VIEW_NOERR) {
+                    logmsg(LOGMSG_FATAL, "failed to create views rc=%d errstr=\"%s\"\n", xerr.errval, xerr.errstr);
+                }
+            }
         }
     }
  done: /* reached via goto for error handling case. */

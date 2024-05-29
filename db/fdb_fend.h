@@ -485,5 +485,7 @@ void fdb_init_disttxn(sqlclntstate *clnt);
  */
 int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
 
+enum mach_class get_fdb_class(const char **p_dbname, int *local,
+                                     int *lvl_override);
 #endif
 

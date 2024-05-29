@@ -185,7 +185,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
 
     if (view->nshards == 0) {
         err->errval = VIEW_ERR_BUG;
-        snprintf(err->errstr, sizeof(err->errstr), "View %s has no shards???\n",
+        snprintf(err->errstr, sizeof(err->errstr), "View %s has no partitions???\n",
                  view->name);
         return NULL;
     }
@@ -204,8 +204,8 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
         goto malloc;
     }
 
-    /* generate the select union for shards */
-    /* TODO: put conditions for shards */
+    /* generate the select union for partitions */
+    /* TODO: put conditions for partitions */
     select_str = sqlite3_mprintf("");
     for (i = 0; i < view->nshards; i++) {
         tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%w\"", select_str,
@@ -323,6 +323,164 @@ static int _view_delete_if_missing(const char *name, sqlite3 *db, void *arg)
     }
 
     return 0;
+}
+char *hash_views_create_view_query(hash_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    char *select_str = NULL;
+    char *cols_str = NULL;
+    char *tmp_str = NULL;
+    char *ret_str = NULL;
+    int num_partitions = hash_view_get_num_partitions(view);
+    const char *view_name = hash_view_get_viewname(view);
+    const char *table_name = hash_view_get_tablename(view);
+    char **partitions = hash_view_get_partitions(view);
+    int i;
+    if (num_partitions == 0) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "View %s has no partitions???\n", view_name);
+        return NULL;
+    }
+
+    cols_str = sqlite3_mprintf("rowid as __hidden__rowid, ");
+    if (!cols_str) {
+        goto malloc;
+    }
+
+    cols_str = _describe_row(table_name, cols_str, VIEWS_TRIGGER_QUERY, err);
+    if (!cols_str) {
+        /* preserve error, if any */
+        if (err->errval != VIEW_NOERR)
+            return NULL;
+        goto malloc;
+    } else {
+        logmsg(LOGMSG_USER, "GOT cols_str as %s\n", cols_str);
+    }
+
+    select_str = sqlite3_mprintf("");
+    i = 0;
+    logmsg(LOGMSG_USER, "num partitions is : %d\n", num_partitions);
+    for(;i<num_partitions;i++){
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM %s", select_str, (i > 0) ? " UNION ALL " : "", cols_str,
+                                  partitions[i]);
+        sqlite3_free(select_str);
+        if (!tmp_str) {
+            sqlite3_free(cols_str);
+            goto malloc;
+        }
+        select_str = tmp_str;
+    }
+
+    ret_str = sqlite3_mprintf("CREATE VIEW %w AS %s", view_name, select_str);
+    if (!ret_str) {
+        sqlite3_free(select_str);
+        sqlite3_free(cols_str);
+        goto malloc;
+    }
+
+    sqlite3_free(select_str);
+    sqlite3_free(cols_str);
+
+    dbg_verbose_sqlite("Generated:\n\"%s\"\n", ret_str);
+
+    return ret_str;
+
+malloc:
+    err->errval = VIEW_ERR_MALLOC;
+    snprintf(err->errstr, sizeof(err->errstr), "View %s out of memory\n", view_name);
+    return NULL;
+}
+
+int hash_views_run_sql(sqlite3 *db, char *stmt, struct errstat *err)
+{
+    char *errstr = NULL;
+    int rc;
+
+    /* create the view */
+    db->isTimepartView = 1;
+    rc = sqlite3_exec(db, stmt, NULL, NULL, &errstr);
+    db->isTimepartView = 0;
+    if (rc != SQLITE_OK) {
+        err->errval = VIEW_ERR_BUG;
+        snprintf(err->errstr, sizeof(err->errstr), "Sqlite error \"%s\"", errstr);
+        /* can't control sqlite errors */
+        err->errstr[sizeof(err->errstr) - 1] = '\0';
+
+        logmsg(LOGMSG_USER, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__, errstr, stmt);
+
+        if (errstr)
+            sqlite3_free(errstr);
+        return err->errval;
+    }
+
+    /* use sqlite to add the view */
+    return VIEW_NOERR;
+}
+
+int hash_views_sqlite_add_view(hash_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    char *stmt_str;
+    int rc;
+
+    /* create the statement */
+    stmt_str = hash_views_create_view_query(view, db, err);
+    if (!stmt_str) {
+        return err->errval;
+    }
+
+    rc = hash_views_run_sql(db, stmt_str, err);
+
+    logmsg(LOGMSG_USER, "+++++++++++sql: %s, rc: %d\n", stmt_str, rc);
+    /* free the statement */
+    sqlite3_free(stmt_str);
+
+    if (rc != VIEW_NOERR) {
+        return err->errval;
+    }
+
+    return rc;
+}
+
+int hash_views_sqlite_delete_view(hash_view_t *view, sqlite3 *db, struct errstat *err)
+{
+    return _views_sqlite_del_view(hash_view_get_viewname(view), db, err);
+}
+
+int hash_views_sqlite_update(hash_t *views, sqlite3 *db, struct errstat *err)
+{
+    Table *tab;
+    int rc;
+    void *ent;
+    unsigned int bkt;
+    hash_view_t *view = NULL;
+
+    Pthread_rwlock_rdlock(&hash_partition_lk);
+    for (view = (hash_view_t *)hash_first(views, &ent, &bkt); view != NULL;
+         view = (hash_view_t *)hash_next(views, &ent, &bkt)) {
+        /* check if this exists?*/
+        tab = sqlite3FindTableCheckOnly(db, hash_view_get_viewname(view), NULL);
+        if (tab) {
+            /* found view, is it the same version ? */
+            if (hash_view_get_sqlite_view_version(view) != tab->version) {
+                /* older version, destroy current view */
+                rc = hash_views_sqlite_delete_view(view, db, err);
+                if (rc != VIEW_NOERR) {
+                    logmsg(LOGMSG_ERROR, "%s: failed to remove old view\n", __func__);
+                    goto done;
+                }
+            } else {
+                /* up to date, nothing to do */
+                continue;
+            }
+        }
+        rc = hash_views_sqlite_add_view(view, db, err);
+        if (rc != VIEW_NOERR) {
+            goto done;
+        }
+    }
+    rc = VIEW_NOERR;
+done:
+    Pthread_rwlock_unlock(&hash_partition_lk);
+    return rc;
 }
 
 #ifdef COMDB2_UPDATEABLE_VIEWS

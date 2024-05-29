@@ -36,6 +36,7 @@ unknown @ls sub-command foo
 (name='comdb2_files')
 (name='comdb2_fingerprints')
 (name='comdb2_functions')
+(name='comdb2_hashpartitions')
 (name='comdb2_index_usage')
 (name='comdb2_keycomponents')
 (name='comdb2_keys')

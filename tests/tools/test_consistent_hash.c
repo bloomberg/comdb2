@@ -4,11 +4,6 @@
 #include <stdint.h>
 #include "consistent_hash.h"
 #include <string.h>
-enum ch_hash_func_type {
-    CH_HASH_SHA = 1,
-    CH_HASH_MD5 = 2,
-    CH_HASH_CRC = 3
-};
 
 void test_add_and_find_one_node(hash_func func, int func_type) {
     ch_hash_t *ch = ch_hash_create(1, func);

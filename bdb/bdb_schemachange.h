@@ -51,7 +51,8 @@ typedef enum scdone {
     add_queue_file,          // 22
     del_queue_file,          // 23
     alias_table,             // 24
-    alias                    // 25
+    alias,                   // 25
+    hash_views               // 25
 } scdone_t;
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
@@ -73,6 +74,7 @@ int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait,
                    int *bdberr);
 int bdb_llog_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
                        int *bdberr);
+int bdb_llog_hash_partition(bdb_state_type *bdb_state, tran_type *tran, char *name, int *bdberr);
 int bdb_llog_rowlocks(bdb_state_type *, scdone_t, int *bdberr);
 int bdb_llog_genid_format(bdb_state_type *, scdone_t, int *bdberr);
 int bdb_reload_rowlocks(bdb_state_type *, scdone_t, int *bdberr);

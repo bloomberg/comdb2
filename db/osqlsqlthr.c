@@ -1821,7 +1821,6 @@ int osql_schemachange_logic(struct schema_change_type *sc,
             return SQLITE_DDL_MISUSE;
         }
     }
-
     if (clnt->dml_tables &&
         hash_find_readonly(clnt->dml_tables, sc->tablename)) {
         return SQLITE_DDL_MISUSE;
@@ -1838,11 +1837,16 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         if (usedb && !get_dbtable_by_name(sc->tablename)) {
             unsigned long long version;
+            hash_view_t *view = NULL;
+            hash_get_inmem_view(sc->tablename, &view);
             char *first_shardname =
                 timepart_shard_name(sc->tablename, 0, 1, &version);
             if (first_shardname) {
                 sc->usedbtablevers = version;
                 free(first_shardname);
+            } else if (view) {
+                /* use underlying placeholder table to get version */
+                sc->usedbtablevers = comdb2_table_version(hash_view_get_tablename(view));
             } else /* user view */
                 usedb = 0;
         }
