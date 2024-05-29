@@ -362,6 +362,37 @@ if ! diff 1.out 2.out ; then
     failexit "fingerprint and sql content is not same (1.out vs 2.out)"
 fi
 
+echo "Testing datetime binding replay"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "CREATE TABLE t_datetime (c datetime)"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - <<'EOF'
+@bind CDB2_DATETIME a 2024-01-01T00:00:00
+SELECT * FROM t_datetime where c>@a
+EOF
+
+logflunziped=datetime_events.unzipped
+if [[ -z "$CLUSTER" ]]; then
+    logfl=`cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("flush")'
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("reql events roll")'
+
+    zcat $logfl | grep --text -i 'from t_datetime where' >>$logflunziped
+else
+
+    for node in $CLUSTER ; do
+        logfl=`cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
+        cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("flush")'
+        cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("reql events roll")'
+        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep --text -i 'from t_datetime where' >> $logflunziped
+    done
+fi
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO t_datetime VALUES(now())"
+
+${CDB2_SQLREPLAY_EXE} --diff --threshold 0 ${DBNAME} $logflunziped 2>/dev/null | sed 's/tranid 0//' | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default -
+if [ $? != 0 ]; then
+    failexit "failed to execute replay diff"
+fi
+
 if [ "$CLEANUPDBDIR" != "0" ] ; then
     #delete files now that test is successful
     rm 1.out 2.out orig.txt replayed.txt sqlreplay.out $logflunziped $slogflunziped
