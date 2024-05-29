@@ -975,7 +975,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      fromtask ? fromtask : "null", frompid);
         else
             snprintf(iq->corigin, sizeof(iq->corigin), "SRMT# %s PID %6.6d",
-                     iq->frommach, frompid);
+                     iq->frommach ? iq->frommach : "null", frompid);
     } else if (sorese) {
         iq->sorese = sorese;
         snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
