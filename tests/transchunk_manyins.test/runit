@@ -30,8 +30,10 @@ coproc kiddo (${r} 2>&1)
 
 echo "set transaction chunk ${txnsize}" >&${kiddo[1]}
 echo "begin" >&${kiddo[1]}
-for i in {1..100000} ; do 
-    echo "insert into t values ($i)" >&${kiddo[1]}
+a=1
+for ((i = 1; i <= 25000; ++i)) ; do
+    echo "insert into t values ( $a ), ( $(($a+1)) ), ( $(($a+2)) ), ( $(($a+3)) )" >&${kiddo[1]}
+    a=$(($a+4))
 done
 echo "commit" >&${kiddo[1]}
 exec {kiddo[1]}>&-
