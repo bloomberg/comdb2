@@ -80,6 +80,7 @@ contrib/docker/volumes
 
 # editor files
 *.swp
+.cache
 .clangd
 .DS_Store
 tags

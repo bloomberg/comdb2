@@ -93,6 +93,7 @@ static void sql_heartbeat_cb(int fd, short what, void *arg);
 
 void sql_enable_heartbeat(struct sqlwriter *writer)
 {
+    writer->pack_hb(writer, writer->clnt); /* newsql_pack_hb */
     struct timeval heartbeat_time = {.tv_usec = 100000 }; // 100ms
     event_add(writer->heartbeat_ev, &heartbeat_time);
 }
