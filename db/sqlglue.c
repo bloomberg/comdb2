@@ -11654,9 +11654,14 @@ void stat4dump(int more, char *table, int istrace)
         goto put;
     }
     clnt.in_sqlite_init = 1;
+
+    rdlock_schema_lk();
     if ((rc = sqlite3_exec(db, clnt.sql, NULL, NULL, NULL)) != SQLITE_OK) {
+        unlock_schema_lk();
         goto close;
     }
+    unlock_schema_lk();
+
     int (*outFunc)(const char *fmt, ...) = printf_logmsg_wrap;
     if (istrace) {
         ctrace("\n");
@@ -11755,6 +11760,29 @@ out:
     Pthread_setspecific(query_info_key, old_thd);
     sql_mem_shutdown_and_restore(NULL, &sql_oldm);
     thread_memdestroy_and_restore(&thread_oldm);
+}
+
+int gbl_debug_stat4dump_loop = 0;
+static pthread_t stat4dump_tid = {0};
+
+void *stat4dump_thread(void *arg)
+{
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDONLY);
+    logmsg(LOGMSG_USER, "stat4dump_thread started\n");
+    while (gbl_debug_stat4dump_loop) {
+        stat4dump(1, NULL, 0);
+    }
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+    logmsg(LOGMSG_USER, "stat4dump_thread stopped\n");
+    stat4dump_tid = 0;
+    return NULL;
+}
+
+void start_stat4dump_thread(void)
+{
+    if (stat4dump_tid || !gbl_debug_stat4dump_loop)
+        return;
+    pthread_create(&stat4dump_tid, NULL, stat4dump_thread, NULL);
 }
 
 void curtran_assert_nolocks(void)
