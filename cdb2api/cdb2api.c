@@ -31,16 +31,14 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
-#include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <inttypes.h>
+#include <fcntl.h>
 
 #include "cdb2api.h"
 
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
-#include <fcntl.h>
 
 /*
 *******************************************************************************
@@ -7103,4 +7101,41 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
 
     pthread_mutex_unlock(&cdb2_event_mutex);
     return 0;
+}
+
+char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src){
+    const char escapechar = '\'';
+    size_t count = 2; // set initial value for wrapping characters
+    
+    char *curr = strchr(src, escapechar);
+    while (curr != NULL) {
+        ++count;
+        curr = strchr(curr + 1, escapechar);
+    }
+
+    size_t len = count + strlen(src) + 1;
+    char *out = malloc(len);
+    char *dest = out;
+    *dest = escapechar;
+    ++dest;
+
+    while (*src) {
+        curr = strchr(src, escapechar);
+        if (curr == NULL) {
+            strcpy(dest, src);
+            dest += strlen(src);
+            break;
+        }
+    
+        size_t toklen = curr - src + 1;
+        strncpy(dest, src, toklen);
+   
+        src = curr + 1;
+        dest += toklen;
+        *dest = escapechar;
+        ++dest;
+    }
+    
+    strcpy(dest, "\'\0");
+    return out;
 }

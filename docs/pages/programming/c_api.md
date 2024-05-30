@@ -670,6 +670,26 @@ Return Value:
 
 The function returns 0 on success, and returns EINVAL if the event could not be found.
 
+### cdb2_string_escape
+```
+char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src);
+```
+
+Description:
+
+This function converts text with special characters into text with escaped special characters.
+
+Parameters:
+
+|Name|Type|Description|Notes|
+|---|---|---|---|
+|*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
+|*src*| input | source text | The input value that should be escaped |
+
+Return Value:
+
+A text with escaped special characters and surrounding quotes.
+
 ## Errors
 
 ### Comdb2 Return Codes

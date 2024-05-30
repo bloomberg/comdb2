@@ -197,8 +197,8 @@ void test_read_comdb2db_cfg()
 
     const char *buf = 
 "\
-   \
-   \
+    \
+    \
 ";
 
 
@@ -215,11 +215,11 @@ void test_read_comdb2db_cfg()
 
     const char *buf2 = 
 "\n\
-  comdb2dbnm:a,b,c:d:e   \n\
-  mydb:n1,n2,n3:n4:n5,n6 \n\
-  comdb2_config:default_type:testsuite   \n\
-  comdb2_config:portmuxport=12345         \n\
-  comdb2_config:allow_pmux_route:true       \
+  comdb2dbnm:a,b,c:d:e  \n\
+  mydb:n1,n2,n3:n4:n5,n6    \n\
+  comdb2_config:default_type:testsuite  \n\
+  comdb2_config:portmuxport=12345   \n\
+  comdb2_config:allow_pmux_route:true   \
 ";
 
     read_comdb2db_cfg(&hndl, s, "comdb2dbnm",
@@ -251,12 +251,12 @@ void test_read_comdb2db_cfg()
     num_hosts = 0;
     num_db_hosts = 0;
     const char *buf3 = "\
-  comdb2dbnm:1estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,2estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,3estsuite_longname_to_testbuffer_overflow_when_assigning_hostname   \n\
-  mydb:4estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,5estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,6estsuite_longname_to_testbuffer_overflow_when_assigning_hostname   \n\
-  comdb2_config:default_type:aestsuite_longname_to_testbuffer_overflow_when_assigning_the_default_type_testsuite_longname_to_testbuffer_overflow_when_assigning_the_default_type   \n\
-  comdb2_config:room:bestsuite_longname_to_testbuffer_overflow_when_assigning_the_room_testsuite_longname_to_testbuffer_overflow_when_assigning_the_room \n\
-  comdb2_config:comdb2dbname:cestsuite_longname_to_testbuffer_overflow_when_assigning_the_comdb2dbname \n\
-  comdb2_config:dnssuffix:destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix \n\
+  comdb2dbnm:test_short_hostname,test_long_hostname_xf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00f,test_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncated   \n\
+  mydb:test_short_hostname,test_long_hostname_xf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00f,test_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncated   \n\
+  comdb2_config:default_type:test_overflow_when_assigning_the_default_type_extra_text_is_truncated   \n\
+  comdb2_config:room:test_overflow_when_assigning_the_room_extra_text_is_truncated   \n\
+  comdb2_config:comdb2dbname:test_overflow_when_assigning_the_dbname_extra_text_is_truncated   \n\
+  comdb2_config:dnssuffix:test_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncated  \n\
 ";
     read_comdb2db_cfg(NULL, s, "comdb2dbnm",
                       buf3, comdb2db_hosts,
@@ -266,16 +266,16 @@ void test_read_comdb2db_cfg()
 
     assert(num_db_hosts == 3);
     assert(num_hosts == 3);
-    assert(strcmp(comdb2db_hosts[0], "1estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(comdb2db_hosts[1], "2estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(comdb2db_hosts[2], "3estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(db_hosts[0], "4estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(db_hosts[1], "5estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(db_hosts[2], "6estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(cdb2_default_cluster, "aestsuite_longname_to_testbuffer_overflow_when_assigning_the_de") == 0);
-    assert(strcmp(cdb2_machine_room, "bestsuite_longn") == 0);
-    assert(strcmp(cdb2_comdb2dbname, "cestsuite_longname_to_testbuffe") == 0);
-    assert(strcmp(cdb2_dnssuffix, "destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow") == 0);
+    assert(strcmp(comdb2db_hosts[0], "test_short_hostname") == 0);
+    assert(strcmp(comdb2db_hosts[1], "test_long_hostname_xf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00f") == 0);
+    assert(strcmp(comdb2db_hosts[2], "test_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_i") == 0);
+    assert(strcmp(db_hosts[0], "test_short_hostname") == 0);
+    assert(strcmp(db_hosts[1], "test_long_hostname_xf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00fxf00f") == 0);
+    assert(strcmp(db_hosts[2], "test_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_is_truncatedtest_overflow_hostname_extra_text_i") == 0);
+    assert(strcmp(cdb2_default_cluster, "test_overflow_when_assigning_the_default_type_extra_text_is_tru") == 0);
+    assert(strcmp(cdb2_machine_room, "test_overflow_w") == 0);
+    assert(strcmp(cdb2_comdb2dbname, "test_overflow_when_assigning_th") == 0);
+    assert(strcmp(cdb2_dnssuffix, "test_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is_truncatedtest_overflow_when_assigning_the_dnssuffix_extra_text_is") == 0);
 }
 
 
@@ -296,6 +296,26 @@ void test_get_config_file()
     assert(strcmp(filename, "myroot/etc/cdb2/config.d/mydb.cfg") == 0);
 }
 
+
+void test_cdb2_string_escape()
+{
+    const char *emptyStr = "";
+    char *testEmptyStr = cdb2_string_escape(NULL, emptyStr);
+    assert(strcmp(testEmptyStr, "\'\'") == 0);
+    free(testEmptyStr);
+    
+    const char *simpleStr = "Hello world!";
+    char *testSimpleStr = cdb2_string_escape(NULL, simpleStr);
+    assert(strcmp(testSimpleStr, "\'Hello world!\'") == 0);
+    free(testSimpleStr);
+    
+    const char* complexStr = "\'As quirky joke, chefs won\'t pay devil magic zebra tax.\'\'";
+    char *testComplexStr = cdb2_string_escape(NULL, complexStr);
+    assert(strcmp(testComplexStr, "\'\'\'As quirky joke, chefs won\'\'t pay devil magic zebra tax.\'\'\'\'\'") == 0);
+    free(testComplexStr);
+}
+
+
 int main(int argc, char *argv[])
 {
     int rc = 0;
@@ -315,6 +335,8 @@ int main(int argc, char *argv[])
 
     test_read_comdb2db_cfg();
     test_get_config_file();
+
+    test_cdb2_string_escape();
 
     printf("finished succesfully\n");
     return rc;
