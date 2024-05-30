@@ -42,4 +42,6 @@ int lua_sfunc_used(const char *func, char**tbl);
 int resolve_sfuncs_for_table(struct sqlite3 *db, struct dbtable *tbl);
 int resolve_sfuncs_for_db(struct dbenv* thedb);
 
+void start_stat4dump_thread(void);
+
 #endif

@@ -67,6 +67,7 @@ int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
 int gbl_dump_sql_on_repwait_sec = 10;
 int gbl_debug_drop_nth_rep_message = 0;
+extern int gbl_debug_stat4dump_loop;
 
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
@@ -5528,6 +5529,10 @@ void *watcher_thread(void *arg)
                     averager_purge_old(h->time_minute, now);
                 }
                 Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+            }
+
+            if (gbl_debug_stat4dump_loop) {
+                start_stat4dump_thread();
             }
         }
 

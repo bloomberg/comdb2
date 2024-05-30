@@ -671,6 +671,8 @@ REGISTER_TUNABLE("master_retry_poll_ms",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("debug_blkseq_race", "Pause after adding blkseq to reproduce blkseq race.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_blkseq_race, INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_stat4dump_loop", "Start a thread which calls stat4dump in a loop.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_stat4dump_loop, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("master_swing_osql_verbose",
                  "Produce verbose trace for SQL handlers detecting a master "
                  "change. (Default: off)",

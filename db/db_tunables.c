@@ -86,6 +86,7 @@ extern int gbl_loghist;
 extern int gbl_loghist_verbose;
 extern int gbl_master_retry_poll_ms;
 extern int gbl_debug_blkseq_race;
+extern int gbl_debug_stat4dump_loop;
 extern int gbl_master_swing_osql_verbose;
 extern int gbl_master_swing_sock_restart_sleep;
 extern int gbl_max_lua_instructions;
