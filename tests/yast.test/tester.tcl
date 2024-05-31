@@ -907,98 +907,19 @@ proc do_execsql_params_test {testname sql {params {}} {result {}}} {
   foreach x $result {lappend r $x}
   uplevel do_test $testname [list "execsql {$sql} '' {$params}"] [list $r]
 }
-
 proc do_catchsql_test {testname sql result} {
   uplevel do_test $testname [list "catchsql {$sql}"] [list $result]
 }
-
-# Run an EXPLAIN QUERY PLAN $sql in database "db".  Then rewrite the output
-# as an ASCII-art graph and return a string that is that graph.
-#
-# Hexadecimal literals in the output text are converted into "xxxxxx" since those
-# literals are pointer values that might very from one run of the test to the
-# next, yet we want the output to be consistent.
-#
-proc query_plan_graph {sql} {
-  array set cx {}
-  array set dx {}
-  set r [execsql "EXPLAIN QUERY PLAN $sql" list_results]
-  foreach {id parent dummy detail} $r {
-    #truncate estimated number of row(s) from detail
-    if {[regexp {row\)$} $detail] || [regexp {rows\)$} $detail]} {
-      set detail [string range $detail 0 [expr {[string last "(" $detail] - 2}]]
-    }
-    set dx($id) $detail
-    lappend cx($parent) $id
-  }
-  set a "\n  QUERY PLAN\n"
-  append a [append_graph "  " dx cx 0]
-  regsub -all { 0x[A-F0-9]+\y} $a { xxxxxx} a
-  regsub -all {(MATERIALIZE|CO-ROUTINE|SUBQUERY) \d+\y} $a {\1 xxxxxx} a
-  return $a
+proc do_eqp_test {name sql res} {
+  set r {}
+  foreach x $res {lappend r $x}
+  uplevel do_execsql_test $name [list "EXPLAIN QUERY PLAN $sql"] [list $r]
 }
 proc do_eqp_params_test {name sql params res} {
   set r {}
   foreach x $res {lappend r $x}
   uplevel do_execsql_params_test $name [list "EXPLAIN QUERY PLAN $sql"] [list $params] [list $r]
 }
-
-# Helper routine for [query_plan_graph SQL]:
-#
-# Output rows of the graph that are children of $level.
-#
-#   prefix:  Prepend to every output line
-#
-#   dxname:  Name of an array variable that stores text describe
-#            The description for $id is $dx($id)
-#
-#   cxname:  Name of an array variable holding children of item.
-#            Children of $id are $cx($id)
-#
-#   level:   Render all lines that are children of $level
-#
-proc append_graph {prefix dxname cxname level} {
-  upvar $dxname dx $cxname cx
-  set a ""
-  set x $cx($level)
-  set n [llength $x]
-  for {set i 0} {$i<$n} {incr i} {
-    set id [lindex $x $i]
-    if {$i==$n-1} {
-      set p1 "`--"
-      set p2 "   "
-    } else {
-      set p1 "|--"
-      set p2 "|  "
-    }
-    append a $prefix$p1$dx($id)\n
-    if {[info exists cx($id)]} {
-      append a [append_graph "$prefix$p2" dx cx $id]
-    }
-  }
-  return $a
-}
-
-# Do an EXPLAIN QUERY PLAN test on input $sql with expected results $res
-#
-# If $res begins with a "\s+QUERY PLAN\n" then it is assumed to be the 
-# complete graph which must match the output of [query_plan_graph $sql]
-# exactly.
-#
-# If $res does not begin with "\s+QUERY PLAN\n" then take it is a string
-# that must be found somewhere in the query plan output.
-#
-proc do_eqp_test {name sql res} {
-  if {[regexp {^\s+QUERY PLAN\n} $res]} {
-    uplevel do_test $name [list [list query_plan_graph $sql]] [list $res]
-  } else {
-    if {[string index $res 0]!="/"} {
-      set res "/*$res*/"
-    }
-    uplevel do_execsql_test $name [list "EXPLAIN QUERY PLAN $sql"] [list $res]
-  }
-}
->>>>>>> fc2ba47df ({174271358} sqlite: Query planner interstage heuristic)
 
 # Run an SQL script.  
 # Return the number of microseconds per statement.
