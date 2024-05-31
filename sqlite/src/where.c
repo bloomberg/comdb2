@@ -4736,6 +4736,10 @@ static SQLITE_NOINLINE void whereAddIndexedExpr(
   }
 }
 
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+int gbl_sqlite_interstage_optimization = 0;
+#endif
+
 /*
 ** Generate the beginning of the loop used for WHERE clause processing.
 ** The return value is a pointer to an opaque structure that contains
@@ -5051,6 +5055,9 @@ WhereInfo *sqlite3WhereBegin(
     wherePathSolver(pWInfo, 0);
     if( db->mallocFailed ) goto whereBeginError;
     if( pWInfo->pOrderBy ){
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+       if (gbl_sqlite_interstage_optimization)
+#endif
        whereInterstageHeuristic(pWInfo);
        wherePathSolver(pWInfo, pWInfo->nRowOut+1);
        if( db->mallocFailed ) goto whereBeginError;

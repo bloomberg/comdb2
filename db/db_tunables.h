@@ -2555,4 +2555,7 @@ REGISTER_TUNABLE("sqlite_limit_var_optimization", "Toggles SQLite's where-use-li
                  TUNABLE_BOOLEAN, &gbl_sqlite_limit_var_optimization, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_process_pstack_time", "pstack the server if rep_process runs longer than time specified in secs (Default: 30s)",
                  TUNABLE_INTEGER, &gbl_rep_process_pstack_time, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sqlite_interstage_optimization", "Use sqlite interstage optimization (Default: Off)",
+                 TUNABLE_BOOLEAN, &gbl_sqlite_interstage_optimization, INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
