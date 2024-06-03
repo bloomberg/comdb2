@@ -198,7 +198,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 sc->keep_locked = 1;
                 sc->db = tbl;
                 rc = start_qdb_schemachange(sc);
-                if ((rc != SC_OK) && (rc != SC_ASYNC)) {
+                if (rc != SC_OK) {
                     logmsg(LOGMSG_ERROR,
                            "%s: failed to start schema change to delete "
                            "old file for queuedb '%s'\n",
@@ -228,7 +228,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             sc->keep_locked = 1;
             sc->db = tbl;
             rc = start_qdb_schemachange(sc);
-            if ((rc != SC_OK) && (rc != SC_ASYNC)) {
+            if (rc != SC_OK) {
                 logmsg(LOGMSG_ERROR,
                        "%s: failed to start schema change to add "
                        "new file for queuedb '%s'\n",

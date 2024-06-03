@@ -241,28 +241,25 @@ void signal_replicant_error(osql_target_t *target, unsigned long long rqid,
  *
  */
 int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
-                      int hasuuid, struct errstat **xerr,
-                      struct query_effects *effects);
+                      struct errstat **xerr, struct query_effects *effects);
 
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
  *
  */
-int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
-                        void *trans, char **pmsg, int msglen, int *flags,
-                        int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
+int osql_process_packet(struct ireq *iq, uuid_t uuid, void *trans, char **pmsg,
+                        int msglen, int *flags, int **updCols,
+                        blob_buffer_t blobs[MAXBLOBS], int step,
                         struct block_err *err, int *receivedrows);
 
 /**
- * Handles each packet and start schema change
+ * Start schema change each schema change; does not wait for it to finish, 
+ * caller does that
  *
  */
-int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
-                              uuid_t uuid, void *trans, char **pmsg, int msglen,
-                              int *flags, int **updCols,
-                              blob_buffer_t blobs[MAXBLOBS], int step,
-                              struct block_err *err, int *receivedrows);
+int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid);
+
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *
@@ -437,5 +434,27 @@ int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess);
 
 /* check if we need to get tpt lock */
 int need_views_lock(char *msg, int msglen, int use_uuid);
+
+/**
+ * Deserialize a schema change object (malloced) from bplog
+ *
+ */
+struct sc_list;
+struct schema_change_type *osqlcomm_get_schemachange(char *msg, int msglen);
+
+const uint8_t *osqlcomm_scl_get_key(struct sc_list *scl,
+                                    const uint8_t *p_buf, const uint8_t *p_buf_end);
+uint8_t *osqlcomm_scl_put_key(struct sc_list *scl,
+                              uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
+                                const uint8_t *p_buf, const uint8_t *p_buf_end);
+uint8_t *osqlcomm_scl_put(struct sc_list *scl,
+                          uint8_t *p_buf, const uint8_t *p_buf_end);
+
+/**
+ * Handle the finalize part of a chain of schema changes
+ *
+ */
+int osql_finalize_scs(struct ireq *iq, tran_type *trans);
 
 #endif

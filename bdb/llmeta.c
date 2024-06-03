@@ -176,6 +176,7 @@ typedef enum {
     LLMETA_LUA_SFUNC_FLAG = 54,
     LLMETA_NEWSC_REDO_GENID = 55, /* 55 + TABLENAME + GENID -> MAX-LSN */
     LLMETA_SCHEMACHANGE_STATUS_V2 = 56,
+    LLMETA_SCHEMACHANGE_LIST = 57, /* list of all sc-s in a uuid txh */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -197,7 +198,7 @@ static int kv_get(tran_type *t, void *k, size_t klen, void ***ret, int *num, int
 static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr);
 static int kv_del(tran_type *tran, void *k, int *bdberr);
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
-                     void ***values, int *num, int *bdberr);
+                     void ***values, int **valuelens, int *num, int *bdberr);
 static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v, size_t vlen, int *bdberr);
 typedef int kv_for_each_cb(void *k, void *v, void *data);
 static int kv_for_each_pair(tran_type *t, void *sk, size_t sklen, kv_for_each_cb *cb, void *data);
@@ -720,6 +721,71 @@ static const uint8_t *llmeta_rowlocks_state_data_type_get(
     p_buf = buf_get(&(p_rowlocks_state->rowlocks_state),
                     sizeof(p_rowlocks_state->rowlocks_state), p_buf, p_buf_end);
     return p_buf;
+}
+
+static int _set_schema_change_list(tran_type *trans, char *key, int keylen,
+                                   char *dta, int dtalen, int *bdberr)
+{
+    int key_type = LLMETA_SCHEMACHANGE_LIST;
+    uint8_t lkey[LLMETA_IXLEN] = {0}; /* caller passes a short key */
+
+    memcpy(lkey, key, keylen);
+
+    /* fill in the bdb llmeta key type */
+    buf_put(&key_type, sizeof(key_type), (uint8_t*)lkey, (const uint8_t*)lkey + keylen);
+
+    /* delete existing, if any */
+    int rc = bdb_lite_exact_del(llmeta_bdb_state, trans, lkey, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR && *bdberr != BDBERR_DEL_DTA)
+        return rc;
+    else {
+        rc = 0;
+        *bdberr = 0;
+    }
+
+    if (dta) {
+        /* this is an add */
+        rc = bdb_lite_add(llmeta_bdb_state, trans, dta, dtalen, lkey, bdberr);
+    }
+
+    return rc;
+}
+
+int bdb_llmeta_set_schema_change_list(tran_type *input_trans, char *key,
+                                      int keylen, char *dta, int dtalen,
+                                      int *bdberr)
+{
+    tran_type *trans = input_trans;
+    int rc = 0;
+
+    if(!input_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!trans) /* TODO: consider adding a retry */
+            return -1;
+    }
+
+    rc = _set_schema_change_list(trans, key, keylen, dta, dtalen, bdberr);
+    if (rc)
+        goto err;
+
+    if (!input_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
+        if (rc)
+            return -1;
+    }
+
+    return 0;
+
+err:
+    if (!input_trans) {
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to abort txn rc %d bdberr %d\n",
+                   __func__, rc, *bdberr);
+        }
+    }
+
+    return -1;
 }
 
 struct llmeta_schema_change_type {
@@ -4046,7 +4112,7 @@ int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmet
     strncpy0(u.key.tablename, tablename, sizeof(u.key.tablename));
     int sz = offsetof(llmeta_newsc_redo_genid_key, padding);
 
-    rc = kv_get_kv(t, &u, sz, &keys, &data, &nkey, bdberr);
+    rc = kv_get_kv(t, &u, sz, &keys, &data, NULL, &nkey, bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed kv_get rc %d\n", __func__, rc);
         return -1;
@@ -4079,6 +4145,29 @@ int bdb_llmeta_get_all_sc_redo_genids(tran_type *t, const char *tablename, llmet
     free(keys);
     *num = nkey;
     *redo_out = sc_redo;
+
+    return 0;
+}
+
+/* return all schema change pending transactons */
+int bdb_llmeta_get_all_sc_lists(tran_type *t, void ***dtas, int **dtalens, void ***keys,
+                                int *keylen, int *num, int *bdberr)
+{
+    int rc = 0;
+    union {
+        int type;
+        uint8_t buf[LLMETA_IXLEN];
+    } key = {0};
+    key.type = htonl(LLMETA_SCHEMACHANGE_LIST);
+    *keylen = LLMETA_IXLEN;
+
+    rc = kv_get_kv(t, &key, sizeof(key.type), keys, dtas, dtalens, num, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to retrieve all sc lists rc %d bdberr %d\n",
+               __func__, rc, *bdberr);
+        return -1;
+    }
 
     return 0;
 }
@@ -7216,34 +7305,55 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                "LLMETA_TABLE_VERSION table=\"%s\" version=\"%" PRIu64 "\"\n",
                tblname, flibc_ntohll(version));
         } break;
-        case LLMETA_TABLE_NUM_SC_DONE: {
-            unsigned long long version = *(unsigned long long *)data;
-            logmsg(LOGMSG_USER,
-                   "LLMETA_TABLE_NUM_SC_DONE version=\"%" PRIu64 "\"\n",
-                   flibc_ntohll(version));
+    case LLMETA_TABLE_NUM_SC_DONE: {
+        unsigned long long version = *(unsigned long long *)data;
+        logmsg(LOGMSG_USER,
+               "LLMETA_TABLE_NUM_SC_DONE version=\"%" PRIu64 "\"\n",
+               flibc_ntohll(version));
         } break;
-        case LLMETA_GENID_FORMAT: {
-            uint64_t genid_format;
-            genid_format = flibc_htonll(*(unsigned long long *)data);
-            logmsg(LOGMSG_USER, "LLMETA_GENID_FORMAT %s\n",
-                   (genid_format == LLMETA_GENID_ORIGINAL)
-                       ? "LLMETA_GENID_ORIGINAL"
-                       : (genid_format == LLMETA_GENID_48BIT)
-                             ? "LLMETA_GENID_48BIT"
-                             : "UNKNOWN GENID FORMAT");
+    case LLMETA_GENID_FORMAT: {
+        uint64_t genid_format;
+        genid_format = flibc_htonll(*(unsigned long long *)data);
+        logmsg(LOGMSG_USER, "LLMETA_GENID_FORMAT %s\n",
+               (genid_format == LLMETA_GENID_ORIGINAL)
+               ? "LLMETA_GENID_ORIGINAL"
+               : (genid_format == LLMETA_GENID_48BIT)
+               ? "LLMETA_GENID_48BIT"
+               : "UNKNOWN GENID FORMAT");
         } break;
-        case LLMETA_TABLE_PARAMETERS: {
-            char tblname[LLMETA_TBLLEN + 1];
-            buf_no_net_get(&(tblname), sizeof(tblname), p_buf_key + sizeof(int),
-                           p_buf_end_key);
+    case LLMETA_TABLE_PARAMETERS: {
+        char tblname[LLMETA_TBLLEN + 1];
+        buf_no_net_get(&(tblname), sizeof(tblname), p_buf_key + sizeof(int),
+                       p_buf_end_key);
 
-            logmsg(LOGMSG_USER,
-                   "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%s\"\n",
-                   tblname, (char *)data);
+        logmsg(LOGMSG_USER,
+               "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%s\"\n",
+               tblname, (char *)data);
         } break;
-        default:
-            logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
-            break;
+    case LLMETA_TABLE_USER_OP: {
+        logmsg(LOGMSG_USER, "LLMETA_TABLE_USER_OP\n");
+        } break;
+    case LLMETA_TRIGGER: {
+        logmsg(LOGMSG_USER, "LLMETA_TRIGGER\n");
+        } break;
+    case LLMETA_USER_PASSWORD_HASH: {
+        logmsg(LOGMSG_USER, "LLMETA_USER_PASSWORD_HASH\n");
+        } break;
+    case LLMETA_GLOBAL_STRIPE_INFO: {
+        logmsg(LOGMSG_USER, "LLMETA_GLOBAL_STRIPE_INFO\n");
+        } break;
+    case LLMETA_SCHEMACHANGE_STATUS_V2: {
+        logmsg(LOGMSG_USER, "LLMETA_SCHEMACHANGE_STATUS_V2\n");
+        } break;
+    case LLMETA_SCHEMACHANGE_LIST: {
+        extern int osql_scl_print(uint8_t *, const uint8_t *, uint8_t *, const uint8_t *);
+        logmsg(LOGMSG_USER, "LLMETA_SCHEMACHANGE_LIST:\n");
+        if (osql_scl_print((uint8_t*)p_buf_key, p_buf_end_key, (uint8_t*)p_buf_data, p_buf_end_data))
+            logmsg(LOGMSG_USER, "    failed to deserialize object\n");
+        } break;
+    default:
+         logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
+         break;
     }
     return 0;
 }
@@ -9671,7 +9781,7 @@ static int kv_get_keys(tran_type *t, void *k, size_t klen, void ***ret,
 
 // get keys and values for all matching keys
 static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
-                     void ***values, int *num, int *bdberr)
+                     void ***values, int **valuelens, int *num, int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -9679,6 +9789,7 @@ static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
     int alloc = 0;
     uint8_t out[LLMETA_IXLEN];
     void **vals = NULL;
+    int *valens = NULL;
     void **names = NULL;
     int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, t, k, klen, out,
                                          &fnd, bdberr);
@@ -9690,6 +9801,8 @@ static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
             alloc += inc;
             names = realloc(names, sizeof(char *) * alloc);
             vals = realloc(vals, sizeof(void *) * alloc);
+            if (valuelens)
+                valens = realloc(valens, sizeof(int) * alloc);
         }
         names[n] = malloc(LLMETA_IXLEN);
         memcpy(names[n], out, LLMETA_IXLEN);
@@ -9702,6 +9815,9 @@ static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
             break;
         }
         vals[n] = dta;
+        if (valuelens)
+            valens[n] = dsz;
+
         ++n;
         uint8_t nxt[LLMETA_IXLEN];
         rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, t, out, nxt, 1,
@@ -9711,6 +9827,8 @@ static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
     *num = n;
     *keys = names;
     *values = vals;
+    if (valuelens)
+        *valuelens = valens;
     return rc;
 }
 

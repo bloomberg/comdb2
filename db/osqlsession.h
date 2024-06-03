@@ -80,14 +80,13 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
 char *osql_sess_info(osql_sess_t *sess);
 
 /**
- * Handles a new op received for session "rqid"
+ * Handles a new op received for session "uuid"
  * It saves the packet in the local bplog
  * Return 0 if success
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
-                    int datalen, int *found);
+int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found);
 
 /**
  * Same as osql_sess_rcvop, for socket protocol
@@ -108,6 +107,24 @@ int osql_sess_queryid(osql_sess_t *sess);
  * NOTE: this should be called under osql repository lock
  */
 int osql_sess_try_terminate(osql_sess_t *psess, const char *node);
+
+/**
+ * Save a schema change object inside session
+ *
+ */
+int osql_sess_save_sc(osql_sess_t *sess, char *rpl, int rplen);
+
+/**
+ * Save the list of schema changes serialized into llmeta
+ *
+ */
+int osql_sess_save_sc_list(osql_sess_t *sess);
+
+/**
+ * Remove sc list from llmeta
+ *
+ */
+int osql_delete_sc_list(uuid_t uuid, tran_type *trans);
 
 /**
  * Coordinator has asked this participant to prepare it's osql schedule

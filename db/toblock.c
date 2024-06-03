@@ -4765,7 +4765,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             }
             /* Don't get the bdb-lock here: you'll end up holding it for the
              * duration of schema-change */
-            iirc = bplog_schemachange(iq, iq->sorese->tran, &err);
+            iirc = bplog_schemachange(iq);
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;

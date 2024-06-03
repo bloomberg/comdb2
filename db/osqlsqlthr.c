@@ -1844,12 +1844,8 @@ int osql_schemachange_logic(struct schema_change_type *sc,
 
         START_SOCKSQL;
 
-        /* we do not have an uuid before the socksql bplog is started */
-        if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
-                in_client_trans(clnt)) {
-            sc->rqid = osql->rqid;
-            comdb2uuidcpy(sc->uuid, osql->uuid);
-        }
+        sc->rqid = OSQL_RQID_USE_UUID;
+        comdb2uuidcpy(sc->uuid, osql->uuid);
 
         do {
             rc = osql_send_schemachange(&osql->target, osql->rqid,

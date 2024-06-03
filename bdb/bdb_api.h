@@ -1600,6 +1600,13 @@ int bdb_del_list_add_all(bdb_state_type *bdb_state, tran_type *tran, void *list,
 int bdb_del_list(bdb_state_type *bdb_state, void *list, int *bdberr);
 int bdb_del_list_free(void *list, int *bdberr);
 
+int bdb_llmeta_set_schema_change_list(tran_type *input_trans, char *key,
+                                      int keylen, char *dta, int dtalen,
+                                      int *bdberr);
+
+int bdb_llmeta_get_all_sc_lists(tran_type *t, void ***dtas, int **dtalens,
+                                void ***keys, int *keylen, int *num, int *bdberr);
+
 int bdb_set_in_schema_change(tran_type *input_trans, const char *db_name,
                              void *schema_change_data,
                              size_t schema_change_data_len, int *bdberr);
