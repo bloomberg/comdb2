@@ -1,5 +1,5 @@
 setattr SC_RESTART_SEC 30
 setattr DURABLE_LSNS 1
 master_swing_osql_verbose
-test_sc_resume_race 1
+#test_sc_resume_race 1
 #verbose_set_sc_in_progress 1

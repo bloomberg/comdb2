@@ -90,17 +90,9 @@ static char hex(unsigned char a)
 }
 
 /* this function should be called with theosql->hshlck lock held */
-static osql_sess_t *_get_sess(unsigned long long rqid, uuid_t uuid)
+static osql_sess_t *_get_sess(uuid_t uuid)
 {
-    osql_sess_t *sess = NULL;
-
-    if (rqid == OSQL_RQID_USE_UUID)
-        sess = hash_find_readonly(theosql->rqsuuid, uuid);
-    else {
-        sess = hash_find_readonly(theosql->rqs, &rqid);
-    }
-
-    return sess;
+    return hash_find_readonly(theosql->rqsuuid, uuid);
 }
 
 /**
@@ -122,7 +114,7 @@ int osql_repository_add(osql_sess_t *sess)
     Pthread_mutex_lock(&theosql->hshlck);
 
     /* check if this session is added again due to an early replay */
-    sess_chk = _get_sess(sess->rqid, sess->uuid);
+    sess_chk = _get_sess(sess->uuid);
     if (sess_chk) {
         uuidstr_t us;
 
@@ -192,7 +184,7 @@ int osql_repository_rem(osql_sess_t *sess)
  *
  * NOTE: if the session is dispatched, addclient * return NULL
  */
-osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
+osql_sess_t *osql_repository_get(uuid_t uuid)
 {
     osql_sess_t *sess = NULL;
 
@@ -200,7 +192,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
         return NULL;
 
     Pthread_mutex_lock(&theosql->hshlck);
-    sess = _get_sess(rqid, uuid);
+    sess = _get_sess(uuid);
     if (sess) {
         if (osql_sess_addclient(sess)) {
             /* session dispatched, ignore */
@@ -355,7 +347,7 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
 
     Pthread_mutex_lock(&theosql->hshlck);
 
-    sess = _get_sess(rqid, uuid);
+    sess = _get_sess(uuid);
     if (sess) {
         exists = 1;
         if (rows_affected) {

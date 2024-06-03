@@ -2383,6 +2383,7 @@ static void init_clientstats(nodestats_t *entry, int task_len, char *host, int f
         }
     }
 }
+static int eviction_spew = 0;
 
 static void update_freeable_cache(nodestats_t *entry) {
     assert(entry->ref >= 0);
@@ -2390,7 +2391,8 @@ static void update_freeable_cache(nodestats_t *entry) {
     listc_maybe_rfl(&freeablecache, entry);
     if (!entry->ref) {
         listc_abl(&freeablecache, entry);
-        logmsg(LOGMSG_DEBUG, "%s: prepared candidate for eviction.\n", __func__);
+        if(eviction_spew)
+            logmsg(LOGMSG_DEBUG, "%s: prepared candidate for eviction.\n", __func__);
     }
     Pthread_mutex_unlock(&freeablecache_mtx);
 }
