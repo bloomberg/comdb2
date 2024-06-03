@@ -59,6 +59,8 @@ enum view_partition_errors {
     VIEW_ERR_SC = -10 /* error with schema change */
     ,
     VIEW_ERR_CREATE = -11 /* error with pthread create */
+    ,
+    VIEW_ERR_ALL_SHARDS = -12 /* last shard was processed */
 };
 
 typedef struct timepart_view timepart_view_t;
@@ -72,14 +74,21 @@ enum views_trigger_op {
     VIEWS_TRIGGER_UPDATE = 3
 };
 
+enum shard_pos {
+    FIRST_SHARD = 1,
+    LAST_SHARD = 2
+};
 typedef struct timepart_sc_arg {
+    /* input */
     struct schema_change_type *s;
-    const char *view_name;
-    int indx;
-    int nshards;
-    int rc;
-    void *tran; /*remove?*/
-    int last;
+    char *part_name; /* need to know partition name from callback */
+    int check_extra_shard; /* do we need to test the new shard(legacy) */
+    int start; /* start shard */
+    int cur_last; /* we want to process current shard last */
+    int lockless; /* free views lock during sc; all but new partitions */
+    /* output */
+    int pos; /* is this the first and/or the last shard */
+    int indx;  /* currently selected shard index */
 } timepart_sc_arg_t;
 
 extern int gbl_partitioned_table_enabled;
@@ -281,15 +290,12 @@ void comdb2_partition_info_all(const char *option);
 int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int *indx);
 
 /**
- * Run "func" for each shard, starting with "first_shard".
- * Callback receives the name of the shard and argument struct
- * NOTE: first_shard == -1 means include the next shard if
- * already created
+ * Run "func" for each shard, starting with "arg->start" indexed shard.
+ * Callback receives the name of the shard and argument struct "arg"
  *
  */
-int timepart_foreach_shard(const char *view_name,
-                           int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg, int first_shard, int reorder);
+int timepart_foreach_shard(int func(const char*, timepart_view_t**, timepart_sc_arg_t*),
+                           timepart_sc_arg_t *arg);
 
 /**
  * Run "func" for each shard of a partition
@@ -298,8 +304,8 @@ int timepart_foreach_shard(const char *view_name,
  *
  */
 int timepart_foreach_shard_lockless(timepart_view_t *view,
-                                    int func(const char *, timepart_sc_arg_t *),
-                                    timepart_sc_arg_t *arg, int reorder);
+                                    int func(const char*, timepart_view_t**, timepart_sc_arg_t*),
+                                    timepart_sc_arg_t *arg);
 
 /**
  * Queue up the necessary events to rollout time partitions 
@@ -495,5 +501,11 @@ int partition_truncate_callback(tran_type *tran, struct schema_change_type *s);
 
 /* return the default value for a manual partition */
 int logical_partition_next_rollout(const char *name);
+
+/**
+ *  Used in a lockless shard walk; reacquire the views lock and
+ *  return the view matching the name, if any;
+ */
+timepart_view_t *timepart_reaquire_view(const char *partname);
 
 #endif

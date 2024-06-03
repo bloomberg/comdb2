@@ -897,6 +897,7 @@ static int process_tpt_sc_hash(void *obj, void *arg)
 }
 
 static int verify_sc_resumed_for_shard(const char *shardname,
+                                       timepart_view_t **pview,
                                        timepart_sc_arg_t *arg)
 {
     struct schema_change_type *sc = NULL;
@@ -929,7 +930,7 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     arg->s = new_sc;
 
     logmsg(LOGMSG_USER, "Restarting schema change for view '%s' shard '%s'\n",
-           arg->view_name, new_sc->tablename);
+           arg->part_name, new_sc->tablename);
     rc = start_schema_change(new_sc);
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
@@ -949,12 +950,13 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
         return 0;
 
     timepart_sc_arg_t sc_arg = {0};
-    sc_arg.view_name = tpt_sc->viewname;
     sc_arg.s = tpt_sc->s;
+    sc_arg.part_name = tpt_sc->viewname;
     /* start new sc for shards that were not resumed */
-    timepart_foreach_shard(tpt_sc->viewname, verify_sc_resumed_for_shard,
-                           &sc_arg, -1, 0);
-    assert(sc_arg.s != tpt_sc->s);
+    sc_arg.check_extra_shard = 1;
+    sc_arg.lockless = 1;
+    timepart_foreach_shard(verify_sc_resumed_for_shard, &sc_arg);
+    assert(sc_arg.s != tpt_sc->s); /* remove? */
     tpt_sc->s = sc_arg.s;
     return 0;
 }

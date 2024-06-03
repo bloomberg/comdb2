@@ -2392,60 +2392,74 @@ static void _view_unregister_shards_lkless(timepart_views_t *views,
  *
  */
 int timepart_foreach_shard_lockless(timepart_view_t *view,
-                                    int func(const char *, timepart_sc_arg_t *),
-                                    timepart_sc_arg_t *arg, int reorder)
+                                    int func(const char*, timepart_view_t**, timepart_sc_arg_t*),
+                                    timepart_sc_arg_t *arg)
 {
     int rc = 0;
     int i;
     int skip = -1;
-    arg->nshards = view->nshards;
-    if (reorder)
+    if (arg->cur_last)
         skip = (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) ? view->current_shard : 0;
 
-    for (i = arg->indx; i < view->nshards; i++) {
+    if (arg->start == 0) /* if we do not have a shard already, first to sc is marked as such */
+        arg->pos = FIRST_SHARD;
+
+    for (i = arg->start; i < view->nshards; i++) {
         if (skip >= 0 && i == skip) {
             logmsg(LOGMSG_INFO, "%s Skipping %p for %s\n", __func__,
                   func, view->shards[i].tblname);
             continue;
         }
-        if (arg) {
-            arg->indx = i;
-            if (skip < 0)
-                arg->last = arg->nshards == arg->indx + 1;
+        arg->indx = i;
+        if (skip < 0) {
+            if (i == view->nshards - 1) arg->pos |= LAST_SHARD;
         }
+
         logmsg(LOGMSG_INFO, "%s Applying %p to %s (existing shard)\n", __func__,
                func, view->shards[i].tblname);
-        rc = func(view->shards[i].tblname, arg);
+        rc = func(view->shards[i].tblname, &view, arg);
         if (rc) {
             break;
         }
+        arg->pos = 0;
     }
     if (!rc && skip >= 0) {
         /* process the current shard last to reduce the number of double writes
          * during schema change
          */
-        if (arg) {
-            arg->indx = skip;
-            arg->last = 1;
-        }
+        arg->indx = skip;
+        arg->pos |= LAST_SHARD;
+
         logmsg(LOGMSG_INFO, "%s Applying %p to current shard %s\n", __func__,
                func, view->shards[skip].tblname);
-        rc = func(view->shards[skip].tblname, arg);
+        rc = func(view->shards[skip].tblname, &view, arg);
     }
     return rc;
 }
 
 /**
- * Run "func" for each shard, starting with "first_shard".
- * Callback receives the name of the shard and argument struct
- * NOTE: first_shard == -1 means include the next shard if
- * already created
+ *  Used in a lockless shard walk; reacquire the views lock and
+ *  return the view matching the name, if any;
+ */
+timepart_view_t *timepart_reaquire_view(const char *partname)
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    
+    views_lock();
+    views = thedb->timepart_views;
+    view = _get_view(views, partname);
+
+    return view;
+}
+
+/**
+ * Run "func" for each shard, starting with "arg->start" indexed shard.
+ * Callback receives the name of the shard and argument struct "arg"
  *
  */
-int timepart_foreach_shard(const char *view_name,
-                           int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg, int first_shard,
-                           int reorder)
+int timepart_foreach_shard(int func(const char*, timepart_view_t**, timepart_sc_arg_t*),
+                           timepart_sc_arg_t *arg)
 {
     timepart_views_t *views;
     timepart_view_t *view;
@@ -2456,30 +2470,24 @@ int timepart_foreach_shard(const char *view_name,
 
     views = thedb->timepart_views;
 
-    view = _get_view(views, view_name);
+    view = _get_view(views, arg->part_name);
     if (!view) {
         rc = VIEW_ERR_EXIST;
         goto done;
     }
-    if (arg) {
-        arg->view_name = view_name;
-        arg->nshards = view->nshards;
-        if (arg->s) {
-            /* we use pointer to view->name instead of strdup */
-            arg->s->timepartition_name = view->name;
-        }
-    }
 
-    if (first_shard == -1) {
+    arg->s->timepartition_name = view->name;
+
+    if (arg->check_extra_shard) {
         rc = _next_shard_exists(view, next_shard, sizeof(next_shard));
         if (rc == VIEW_ERR_EXIST) {
             logmsg(LOGMSG_INFO, "%s Applying %p to %s (next shard)\n", __func__,
                    func, next_shard);
-            rc = func(next_shard, arg);
+            rc = func(next_shard, &view, arg);
         }
     }
 
-    rc = timepart_foreach_shard_lockless(view, func, arg, reorder);
+    rc = timepart_foreach_shard_lockless(view, func, arg);
 
 done:
     Pthread_rwlock_unlock(&views_lk);
@@ -2851,7 +2859,7 @@ timepart_view_t *timepart_new_partition(const char *name, int period,
     }
 
     if (partition_name)
-        *partition_name = view->name;
+       *partition_name = view->name;
 
     assert(period != VIEW_PARTITION_INVALID);
     view->period = period;

@@ -5743,6 +5743,7 @@ void free_cached_idx(uint8_t **cached_idx);
 
 int gbl_disable_tpsc_tblvers = 0;
 static int start_schema_change_tran_wrapper(const char *tblname,
+                                            timepart_view_t **pview,
                                             timepart_sc_arg_t *arg)
 {
     struct schema_change_type *sc = arg->s;
@@ -5763,12 +5764,20 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     }
 
     if (((sc->partition.type == PARTITION_ADD_TIMED ||
-          sc->partition.type == PARTITION_ADD_MANUAL) && arg->indx == 0) ||
-        (sc->partition.type == PARTITION_REMOVE &&
-         arg->nshards == arg->indx + 1)) {
+          sc->partition.type == PARTITION_ADD_MANUAL) && (arg->pos & FIRST_SHARD)) ||
+        (sc->partition.type == PARTITION_REMOVE && (arg->pos & LAST_SHARD))) {
         sc->publish = partition_publish;
         sc->unpublish = partition_unpublish;
     }
+
+    /**
+     * if view is provided, this is part of a shard walk;
+     * release views lock here since sc can take awhile
+     * NOTE: creating a new partition will have arg->part_name == NULL;
+     *
+     */
+    if (arg->lockless)
+        views_unlock();
 
     rc = start_schema_change_tran(iq, sc->tran);
     if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
@@ -5788,7 +5797,7 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
-        if (arg->last) {
+        if (arg->pos & LAST_SHARD) {
             /* last shard was done */
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         } else {
@@ -5801,6 +5810,15 @@ static int start_schema_change_tran_wrapper(const char *tblname,
             /* update the new sc */
             arg->s = new_sc;
             iq->sc = new_sc;
+        }
+    }
+
+    if (arg->lockless) {
+        *pview = timepart_reaquire_view(arg->part_name);
+        if (!pview) {
+            logmsg(LOGMSG_ERROR, "%s view %s dropped while processing\n",
+                   __func__, arg->part_name);
+            return VIEW_ERR_SC;
         }
     }
 
@@ -5827,6 +5845,7 @@ static int _process_single_table_sc(struct ireq *iq)
 }
 
 static int start_schema_change_tran_wrapper_merge(const char *tblname,
+                                                  timepart_view_t **pview,
                                                   timepart_sc_arg_t *arg)
 {
     struct schema_change_type *sc = arg->s;
@@ -5834,7 +5853,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     int rc;
 
     /* first shard drops partition also */
-    if (arg->indx == 0) {
+    if (arg->pos & LAST_SHARD) {
         sc->publish = partition_publish;
         sc->unpublish = partition_unpublish;
     }
@@ -5853,17 +5872,35 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     /* link the sc */
     iq->sc = alter_sc;
 
+    /**
+     * if view is provided, this is part of a shard walk;
+     * release views lock here since sc can take awhile
+     *
+     */
+    if (arg->lockless)
+        views_unlock();
+
     rc = start_schema_change_tran(iq, NULL);
     /* link the alter */
     iq->sc->sc_next = iq->sc_pending;
     iq->sc_pending = iq->sc;
     iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
 
+    if (arg->lockless) {
+        *pview = timepart_reaquire_view(arg->part_name);
+        if (!pview) {
+            logmsg(LOGMSG_ERROR, "%s view %s dropped while processing\n",
+                   __func__, arg->part_name);
+            return VIEW_ERR_SC;
+        }
+    }
+
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         if (rc != SC_MASTER_DOWNGRADE)
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         return rc;
     }
+
     return 0;
 }
 
@@ -5897,14 +5934,14 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
-    arg.indx = 1; /* no publishing */
+    arg.start = 1; /* no publishing */
 
     /* need table version */
     sc->usedbtablevers = sc->partition.u.mergetable.version;
     enum comdb2_partition_type old_part_type = sc->partition.type;
     sc->partition.type = PARTITION_MERGE;
     rc = start_schema_change_tran_wrapper_merge(
-            sc->partition.u.mergetable.tablename, &arg);
+            sc->partition.u.mergetable.tablename, NULL, &arg);
     sc->partition.type = old_part_type;
 
     return rc;
@@ -5914,7 +5951,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    int start_shard = 0;
+    timepart_sc_arg_t arg = {0};
 
     assert(sc->kind == SC_ALTERTABLE);
 
@@ -5967,20 +6004,24 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
-        start_shard = 1;
+        arg.check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
+        arg.start = 1;
+        /* since this is a partition drop, we do not need to set/reset arg.pos here */
     }
 
     /* at this point we have created the future btree, launch an alter
      * for each of the shards of the partition
      */
-    timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
-    arg.indx = start_shard;
+    arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    if (!arg.part_name)
+        return VIEW_ERR_MALLOC;
+    arg.lockless = 1;   
     /* note: we have already set nothrevent depending on the number of shards */
-    rc = timepart_foreach_shard(
-        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, start_shard, 0);
+    rc = timepart_foreach_shard(start_schema_change_tran_wrapper_merge, &arg);
+    free(arg.part_name);
 
     if (first_shard->sqlaliasname) {
         sc->partition.type = PARTITION_REMOVE; /* first shard is the collapsed table */
@@ -6043,6 +6084,10 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
+    arg.part_name = strdup(sc->tablename);
+    if (!arg.part_name)
+        return ERR_SC;
+    arg.lockless = 0; /* the partition does not exist */
 
     /* is this an alter? preserve existing table as first shard */
     if (sc->kind != SC_ADDTABLE) {
@@ -6053,8 +6098,9 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
         arg.s->timepartition_version =
             arg.s->db->tableversion + 1; /* next version */
 
+        arg.pos = FIRST_SHARD;
         /* launch alter for original shard */
-        rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
+        rc = start_schema_change_tran_wrapper(sc->tablename, NULL, &arg);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "Failed to process alter for existing table %s while "
@@ -6064,18 +6110,20 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
                     "Failed to process alter for existing table %s while "
                     "partitioning rc %d",
                     sc->tablename, rc);
+            free(arg.part_name);
             return ERR_SC;
         }
         /* we need to  generate retention-1 table adds, with schema provided
          * by previous alter; we need to convert an alter to a add sc
          */
         arg.s->kind = SC_ADDTABLE;
-        arg.indx = 1; /* first shard is already there */
+        arg.start = 1; /* first shard is already there */
+        arg.pos = 0; /* reset this so we do not set publish on additional shards */
     }
     /* should we serialize ? */
     arg.s->nothrevent = sc->partition.u.tpt.retention > gbl_dohsql_sc_max_threads;
     rc = timepart_foreach_shard_lockless(
-            sc->newpartition, start_schema_change_tran_wrapper, &arg, 0);
+            sc->newpartition, start_schema_change_tran_wrapper, &arg);
 
     if (!rc&& sc->partition.type == PARTITION_ADD_MANUAL) {
         if (!get_dbtable_by_name(LOGICAL_CRON_SYSTABLE)){
@@ -6091,6 +6139,7 @@ static int _process_single_table_sc_partitioning(struct ireq *iq)
             iq->sc_pending = iq->sc;
         }
     }
+    free(arg.part_name);
 out:
     return rc;
 }
@@ -6159,9 +6208,15 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
-    rc = timepart_foreach_shard(sc->tablename,
-                                start_schema_change_tran_wrapper, &arg, -1,
-                                gbl_partition_sc_reorder ? sc->nothrevent : 0);
+    arg.check_extra_shard = 1;
+    arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    if (!arg.part_name)
+        return VIEW_ERR_MALLOC;
+    arg.cur_last = gbl_partition_sc_reorder ?  sc->nothrevent : 0;
+    arg.lockless = 1;
+    rc = timepart_foreach_shard(start_schema_change_tran_wrapper, &arg);
+    free(arg.part_name);
+
 out:
     return rc;
 }

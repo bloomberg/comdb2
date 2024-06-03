@@ -6112,8 +6112,7 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
-    } else
-        free(db);
+    }
 }
 
 void free_db_and_replace(dbtable *db, dbtable *newdb)
