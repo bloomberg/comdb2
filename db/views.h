@@ -59,6 +59,8 @@ enum view_partition_errors {
     VIEW_ERR_SC = -10 /* error with schema change */
     ,
     VIEW_ERR_CREATE = -11 /* error with pthread create */
+    ,
+    VIEW_ERR_ALL_SHARDS = -12 /* last shard was processed */
 };
 
 typedef struct timepart_view timepart_view_t;
@@ -79,6 +81,7 @@ typedef struct timepart_sc_arg {
     int nshards;
     int rc;
     void *tran; /*remove?*/
+    int check_extra_shard;
 } timepart_sc_arg_t;
 
 extern int gbl_partitioned_table_enabled;
@@ -288,7 +291,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
  */
 int timepart_foreach_shard(const char *view_name,
                            int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg, int first_shard);
+                           timepart_sc_arg_t *arg);
 
 /**
  * Run "func" for each shard of a partition
@@ -494,5 +497,20 @@ int partition_truncate_callback(tran_type *tran, struct schema_change_type *s);
 
 /* return the default value for a manual partition */
 int logical_partition_next_rollout(const char *name);
+
+/**
+ * Retrieve arg->indx shard name;
+ * Also checks the newly added shard for legacy tpt
+ * if check_extra_shard is set.
+ *
+ * Returns VIEW_NOERR and shard name if arg->indx points to a valid
+ * shard.
+ * Returns VIEW_ERR_ALL_SHARDS if indx is passed all valid shards.
+ * Returns whatever VIEW_ERR_ otherwise.
+ *
+ */
+int timepart_foreach_shardname(const char *view_name,
+                               char *next_shard, int next_shard_len,
+                               timepart_sc_arg_t *arg);
 
 #endif

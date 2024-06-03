@@ -2410,6 +2410,73 @@ int timepart_foreach_shard_lockless(timepart_view_t *view,
     }
     return rc;
 }
+static void _setup_arg(timepart_view_t *view, timepart_sc_arg_t *arg)
+{
+    arg->nshards = view->nshards;
+    arg->view_name = view->name;
+    if (arg->s)
+        /* we use pointer to view->name instead of strdup */
+        arg->s->timepartition_name = view->name;
+}
+
+/**
+ * Retrieve arg->indx shard name;
+ * Also checks the newly added shard for legacy tpt
+ * if check_extra_shard is set.
+ *
+ * Returns VIEW_NOERR and shard name if arg->indx points to a valid
+ * shard.
+ * Returns VIEW_ERR_ALL_SHARDS if indx is passed all valid shards.
+ * Returns whatever VIEW_ERR_ otherwise.
+ *
+ * NOTE: arg->indx starts at -1
+ */
+int timepart_foreach_shardname(const char *view_name,
+                               char *next_shard, int next_shard_len,
+                               timepart_sc_arg_t *arg)
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int rc = VIEW_NOERR;
+
+    /* code relies on this to point to the current shard,
+     * so we have to start the shard walk by setting 
+     * indx to -1
+     */
+    arg->indx++;
+
+    Pthread_rwlock_rdlock(&views_lk);
+
+    views = thedb->timepart_views;
+    view = _get_view(views, view_name);
+    if (!view) {
+        rc = VIEW_ERR_EXIST;
+        goto done;
+    }
+
+    _setup_arg(view, arg);
+
+    assert(arg->indx>=0);
+
+    if (arg->indx < view->nshards) {
+        strncpy(next_shard, view->shards[arg->indx].tblname, next_shard_len);
+    } else if (arg->indx > view->nshards) {
+        rc = VIEW_ERR_ALL_SHARDS;
+    } else {
+        if (arg->check_extra_shard) {
+            rc = _next_shard_exists(view, next_shard, next_shard_len);
+            if (rc == VIEW_ERR_EXIST) {
+                rc = VIEW_NOERR;
+                goto done;
+            }
+        }
+        rc = VIEW_ERR_ALL_SHARDS;
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    return rc;
+}
+
 
 /**
  * Run "func" for each shard, starting with "first_shard".
@@ -2420,7 +2487,7 @@ int timepart_foreach_shard_lockless(timepart_view_t *view,
  */
 int timepart_foreach_shard(const char *view_name,
                            int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg, int first_shard)
+                           timepart_sc_arg_t *arg)
 {
     timepart_views_t *views;
     timepart_view_t *view;
@@ -2437,15 +2504,10 @@ int timepart_foreach_shard(const char *view_name,
         goto done;
     }
     if (arg) {
-        arg->view_name = view_name;
-        arg->nshards = view->nshards;
-        if (arg->s) {
-            /* we use pointer to view->name instead of strdup */
-            arg->s->timepartition_name = view->name;
-        }
+        _setup_arg(view, arg);
     }
 
-    if (first_shard == -1) {
+    if (arg && arg->check_extra_shard) {
         rc = _next_shard_exists(view, next_shard, sizeof(next_shard));
         if (rc == VIEW_ERR_EXIST) {
             logmsg(LOGMSG_INFO, "%s Applying %p to %s (next shard)\n", __func__,
