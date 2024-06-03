@@ -5915,11 +5915,45 @@ static int _process_single_table_sc_merge(struct ireq *iq)
     return rc;
 }
 
+/**
+ * This runs "func" without a views lock;
+ * We have a shardname, and if this is still valid, it will execute;
+ * otherwise, it will return an error.
+ *
+ */
+static int _process_shards_serially(const char *partname,
+                                    int func(const char *, timepart_sc_arg_t *),
+                                    timepart_sc_arg_t *arg)
+{
+    char shardname[MAXTABLELEN+1];
+    int rc = VIEW_NOERR;
+    int irc = 0;
+
+    while (rc == VIEW_NOERR) {
+        rc = timepart_foreach_shardname(partname, shardname, sizeof(shardname),
+                                        arg);
+        if (rc == VIEW_NOERR) {
+            logmsg(LOGMSG_USER, "%s Applying %p to %s [%d]\n",
+                   __func__, arg->s, shardname, arg->indx);
+            irc = func(shardname, arg);
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s failed shard %s [%d] rc %d\n",
+                       partname, shardname, arg->indx, irc);
+                return -1;
+            }
+        }
+    }
+    if (rc == VIEW_ERR_ALL_SHARDS)
+        return VIEW_NOERR;
+
+    return VIEW_ERR_SC;
+}
+
 static int _process_partitioned_table_merge(struct ireq *iq)
 {
     struct schema_change_type *sc = iq->sc;
     int rc;
-    int start_shard = 0;
+    timepart_sc_arg_t arg = {0};
 
     assert(sc->kind == SC_ALTERTABLE);
 
@@ -5952,6 +5986,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
+        arg.indx = -1; /* see timepart_foreach_shardname NOTE */
     } else {
         /*
          * use the fast shard as the destination, after first altering it
@@ -5972,20 +6007,30 @@ static int _process_partitioned_table_merge(struct ireq *iq)
                 iq->osql_flags |= OSQL_FLAGS_SCDONE;
             return ERR_SC;
         }
-        start_shard = 1;
+        arg.check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
+        arg.indx = 0; /* see timepart_foreach_shardname NOTE */
     }
 
     /* at this point we have created the future btree, launch an alter
      * for each of the shards of the partition
      */
-    timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
-    arg.indx = start_shard;
+    char *partname = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    if (!partname)
+        return VIEW_ERR_MALLOC;
     /* note: we have already set nothrevent depending on the number of shards */
-    rc = timepart_foreach_shard(
-        sc->tablename, start_schema_change_tran_wrapper_merge, &arg, start_shard);
+    if (arg.s->nothrevent) {
+        rc = _process_shards_serially(partname,
+                                      start_schema_change_tran_wrapper_merge,
+                                      &arg);
+    } else {
+        rc = timepart_foreach_shard(partname,
+                                    start_schema_change_tran_wrapper_merge,
+                                    &arg);
+    }
+    free(partname);
 
     if (first_shard->sqlaliasname) {
         sc->partition.type = PARTITION_REMOVE; /* first shard is the collapsed table */
@@ -6164,8 +6209,22 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     timepart_sc_arg_t arg = {0};
     arg.s = sc;
     arg.s->iq = iq;
-    rc = timepart_foreach_shard(sc->tablename,
-                                start_schema_change_tran_wrapper, &arg, -1);
+    arg.check_extra_shard = 1;
+    char *partname = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    if (!partname)
+        return VIEW_ERR_MALLOC;
+    if (sc->nothrevent) {
+        arg.indx = -1; /* see timepart_foreach_shardname NOTE */
+        rc = _process_shards_serially(partname,
+                                      start_schema_change_tran_wrapper,
+                                      &arg);
+    } else {
+        rc = timepart_foreach_shard(partname,
+                                    start_schema_change_tran_wrapper,
+                                    &arg);
+    }
+    free(partname);
+
 out:
     return rc;
 }
