@@ -286,7 +286,7 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
                    "%p XXX: conn %p %s %p freed older row size %lld limit %d\n",
                    (void *)pthread_self(), conn,
                    que == conn->que ? "que" : "que_free", que, row_size, limit);
-        sqlite3_free(row->packed);
+        free(row->packed);
         free(row);
 
         if (gbl_dohsql_max_queued_kb_highwm) {
