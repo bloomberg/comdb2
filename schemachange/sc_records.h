@@ -94,8 +94,6 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                         struct schema_change_type *s);
 
-void *convert_records_thd(struct convert_record_data *data);
-
 void convert_record_data_cleanup(struct convert_record_data *data);
 
 int init_sc_genids(struct dbtable *db, struct schema_change_type *s);

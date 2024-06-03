@@ -297,7 +297,6 @@ static void backout(struct dbtable *db)
 
 static inline int wait_to_resume(struct schema_change_type *s)
 {
-    int rc = 0;
     if (s->resume) {
         int stm = BDB_ATTR_GET(thedb->bdb_attr, SC_RESTART_SEC);
         if (stm <= 0)
@@ -316,7 +315,7 @@ static inline int wait_to_resume(struct schema_change_type *s)
         }
         logmsg(LOGMSG_WARN, "%s: Schema change resuming.\n", __func__);
     }
-    return rc;
+    return 0;
 }
 
 int gbl_test_scindex_deadlock = 0;

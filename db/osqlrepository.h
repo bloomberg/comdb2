@@ -41,7 +41,7 @@ int osql_repository_rem(osql_sess_t *sess);
  * Increments the users to prevent premature deletion
  *
  */
-osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid);
+osql_sess_t *osql_repository_get(uuid_t uuid);
 
 /**
  * Decrements the number of users

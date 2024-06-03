@@ -717,8 +717,10 @@ static void osql_scdone_commit_callback(struct ireq *iq)
 static void osql_scdone_abort_callback(struct ireq *iq)
 {
     gbl_readonly_sc = 0;
-    if (iq->osql_flags & OSQL_FLAGS_SCDONE) {
+    uuid_t uuid;
+    if ((iq->osql_flags & OSQL_FLAGS_SCDONE) && iq->sc_pending) {
         iq->sc = iq->sc_pending;
+        comdb2uuidcpy(uuid, iq->sc->uuid);
         while (iq->sc != NULL) {
             struct schema_change_type *sc_next;
             scdone_abort_cleanup(iq);
@@ -729,8 +731,15 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
+
+        int rc = osql_delete_sc_list(uuid, NULL);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to remove sc list rc %d\n",
+                    __func__, rc);
+        }
     }
     iq->tranddl = 0;
+
 }
 
 void osql_postcommit_handle(struct ireq *iq)

@@ -108,8 +108,8 @@ int gbl_selectv_writelock_on_update = 1;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err,
-                         int (*func)(struct ireq *, unsigned long long, uuid_t,
-                                     void *, char **, int, int *, int **,
+                         int (*func)(struct ireq *, uuid_t, void *, char **,
+                                     int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *));
 static int req2blockop(int reqtype);
@@ -539,11 +539,13 @@ static void sess_save_participant(osql_sess_t *sess, int is_uuid, char *rpl, int
     listc_atl(&sess->participants, p);
 }
 
-static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type)
+static int _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
+                                char *rpl, int rplen, int type)
 {
+    int rc = 0;
     switch (type) {
     case OSQL_SCHEMACHANGE:
-        sess->is_tranddl++;
+        rc = osql_sess_save_sc(sess, rpl, rplen);
         break;
     case OSQL_USEDB:
         if (tran->is_selectv_wl_upd || tran->is_reorder_on) {
@@ -581,6 +583,7 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *
 
     if (tran->is_selectv_wl_upd)
         osql_cache_selectv(tran, rpl, type);
+    return rc;
 }
 
 #if DEBUG_REORDER
@@ -622,7 +625,12 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", us, type, osql_reqtype_str(type), tran->seq);
 #endif
 
-    _pre_process_saveop(sess, tran, rpl, rplen, type);
+    rc = _pre_process_saveop(sess, tran, rpl, rplen, type);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: fail to preprocess oplog seq=%u rc=%d\n",
+               __func__, tran->seq, rc);
+        return rc;
+    }
 
     key.seq = tran->seq;
 
@@ -932,9 +940,8 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
 static int process_this_session(
     struct ireq *iq, void *iq_tran, osql_sess_t *sess, int *bdberr, int *nops,
     struct block_err *err, struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
-    int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char **, int,
-                int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
-                struct block_err *, int *))
+    int (*func)(struct ireq *, uuid_t, void *, char **, int, int *, int **,
+                blob_buffer_t blobs[MAXBLOBS], int, struct block_err *, int *))
 {
     int countops = 0;
     int lastrcv = 0;
@@ -1022,9 +1029,8 @@ static int process_this_session(
 
         lastrcv = receivedrows;
 
-        /* This call locks pages:
-         * func is osql_process_packet or osql_process_schemachange */
-        rc_out = func(iq, sess->rqid, sess->uuid, iq_tran, &data, datalen,
+        /* This call locks pages:func is osql_process_packet */
+        rc_out = func(iq, sess->uuid, iq_tran, &data, datalen,
                       &flags, &updCols, blobs, step, err, &receivedrows);
         free(data);
 
@@ -1082,8 +1088,8 @@ static int process_this_session(
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err,
-                         int (*func)(struct ireq *, unsigned long long, uuid_t,
-                                     void *, char **, int, int *, int **,
+                         int (*func)(struct ireq *, uuid_t, void *, char **,
+                                     int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *))
 {
@@ -1266,33 +1272,43 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
 /**
  * Apply all schema changes and wait for them to finish
  */
-int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
+int bplog_schemachange_run(struct ireq *iq, uuid_t uuid, void *pscs)
 {
+    LISTC_T(struct schema_change_type) *scs = pscs;
+    struct schema_change_type *sc, *tmp;
     int rc = 0;
-    int nops = 0;
-    struct schema_change_type *sc;
 
-    iq->sc_pending = NULL;
-    iq->sc_seed = 0;
-    iq->sc_host = 0;
-    iq->sc_locked = 0;
-    iq->sc_should_abort = 0;
-
-    rc = apply_changes(iq, tran, NULL, &nops, err, osql_process_schemachange);
+    /* run the asynchronous (do_XX) part of the schema changes */
+    LISTC_FOR_EACH_SAFE(scs, sc, tmp, scs_lnk) {
+        iq->sc = sc;
+        iq->sc->iq = iq;
+        rc = osql_process_schemachange(sc, uuid);
+        /* remove this from session, cleanup will be done by bp writer */
+        listc_rfl(scs, sc);
+        if (rc)
+            break;
+    }
 
     if (rc)
-        logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
+        logmsg(LOGMSG_DEBUG, "schema change %s returns rc %d\n",
+               sc->tablename, rc);
 
-    /* wait for all schema changes to finish */
+    return rc;
+}
+
+/* wait for all schema changes to finish */
+int bplog_schemachange_wait(struct ireq *iq, int rc)
+{
+    struct schema_change_type *sc;
+
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
 
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
-        Pthread_mutex_unlock(&sc->mtx);
         iq->sc = sc->sc_next;
-        if (sc->sc_rc == SC_COMMIT_PENDING) {
+        if (sc->sc_rc == SC_OK) {
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
@@ -1300,13 +1316,9 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
             iq->sc_pending = sc;
             rc = ERR_NOMASTER;
         } else if (sc->sc_rc == SC_PAUSED) {
-            Pthread_mutex_lock(&sc->mtx);
             sc->sc_rc = SC_DETACHED;
-            Pthread_mutex_unlock(&sc->mtx);
         } else if (sc->sc_rc == SC_PREEMPTED) {
-            Pthread_mutex_lock(&sc->mtx);
             sc->sc_rc = SC_DETACHED;
-            Pthread_mutex_unlock(&sc->mtx);
             rc = ERR_SC;
         } else if (sc->sc_rc != SC_DETACHED) {
             sc->sc_next = iq->sc_pending;
@@ -1315,11 +1327,9 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
                 rc = ERR_SC;
             }
         }
+        Pthread_mutex_unlock(&sc->mtx);
         sc = iq->sc;
     }
-    if (rc)
-        csc2_free_all();
-
 
     if (rc) {
         /* IFF the schema changes are NOT aborted, clean in-mem structures but
@@ -1333,10 +1343,14 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
          * backout_schema_change and sc_abort callback, which they will 
          * clear any persistent and in-mem structures 
          */
+        csc2_free_all();
         struct schema_change_type *next;
         sc = iq->sc_pending;
         while (sc != NULL) {
             next = sc->sc_next;
+            /* this can happen for multiddl, if one table finished do_ddl
+             * while the second table was caught by downgrade 
+             */
             if (sc->newdb && sc->newdb->handle) {
                 int bdberr = 0;
                 live_sc_off(sc->db);
@@ -1347,18 +1361,23 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
                     bdb_clear_logical_live_sc(sc->db->handle, 1);
                     sc->db->sc_live_logical = 0;
                 }
-                sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__,
-                               __LINE__);
                 if (rc == ERR_NOMASTER) {
                         sc_set_downgrading(sc);
                         bdb_close_only(sc->newdb->handle, &bdberr);
                         freedb(sc->newdb);
                         sc->newdb = NULL;
+                        sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
+                                       time(NULL), __func__, __LINE__);
                         free_schema_change_type(sc);
                 }
-            } else {
-                sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__,
-                               __LINE__);
+            } else if (rc == ERR_NOMASTER) {
+                /* this can happen if a table was caught by downgrade during
+                 * do_ddl; code will clean sc->newdb, but does not mess with
+                 * sc_set_running
+                 */
+                sc_set_running(iq, sc, sc->tablename, 0, gbl_myhostname,
+                               time(NULL), __func__, __LINE__);
+                free_schema_change_type(sc);
             }
             sc = next;
         }
@@ -1374,16 +1393,38 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     return rc;
 }
 
-int get_schema_change_txns(struct ireq *iq, tran_type **logi,
-                           tran_type **ptran, tran_type **tran,
-                           int force)
+/**
+ * Wrapper on bplog_schemachange_run, extracting the sc list from
+ * osql_session (this is run in a block processor thread)
+ *
+ */
+int bplog_schemachange(struct ireq *iq)
 {
-    if (force) {
-        if (trans_start_logical_sc_with_force(iq, logi))
-            return -__LINE__;
-    } else
-        if (trans_start_logical_sc(iq, logi))
-            return -__LINE__;
+    int rc = 0;
+
+    iq->sc_pending = NULL;
+    iq->sc_seed = 0;
+    iq->sc_host = 0;
+    iq->sc_locked = 0;
+    iq->sc_should_abort = 0;
+
+    /* save the SCHEMA_CHANGES object in LLMETA to be able to resume */
+    rc = osql_sess_save_sc_list(iq->sorese);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to save sc list rc %d\n", __func__, rc);
+        return -1;
+    }
+
+    rc = bplog_schemachange_run(iq, iq->sorese->uuid, &iq->sorese->scs);
+
+    return bplog_schemachange_wait(iq, rc);
+}
+
+int get_schema_change_txns(struct ireq *iq, tran_type **logi,
+                           tran_type **ptran, tran_type **tran)
+{
+    if (trans_start_logical_sc_with_force(iq, logi))
+        return -__LINE__;
 
     if (gbl_rowlocks) {
         if ((*ptran = bdb_get_sc_parent_tran(*logi)) == NULL)
@@ -1403,51 +1444,44 @@ int get_schema_change_txns(struct ireq *iq, tran_type **logi,
     return 0;
 }
 
-void *bplog_commit_timepart_resuming_sc(void *p)
+void *resume_sc_multiddl_txn_finalize(void *p)
 {
     comdb2_name_thread(__func__);
-    struct ireq iq;
-    struct schema_change_type *sc_pending = (struct schema_change_type *)p;
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+
+    struct ireq *iq = (struct ireq*)p;
     struct schema_change_type *sc;
     tran_type *parent_trans = NULL;
     int error = 0;
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-    init_fake_ireq(thedb, &iq);
-    iq.tranddl = 1;
+    uuid_t uuid;
 
-    /* iq sc_running count */
-    sc = sc_pending;
-    while (sc != NULL) {
-        if (sc->set_running)
-            iq.sc_running++;
-        sc = sc->sc_next;
-    }
-    iq.sc = sc = sc_pending;
-    sc_pending = NULL;
+    comdb2uuidcpy(uuid, iq->sc_pending->uuid);
+
+    iq->sc = sc = iq->sc_pending;
+    iq->sc_pending = NULL;
     while (sc != NULL) {
         /* this will block until the asynchronous part finishes */
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
         Pthread_mutex_unlock(&sc->mtx);
-        iq.sc = sc->sc_next;
-        if (sc->sc_rc == SC_COMMIT_PENDING) {
-            sc->sc_next = sc_pending;
-            sc_pending = sc;
+        iq->sc = sc->sc_next;
+        if (sc->sc_rc == SC_OK) {
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
-            sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, __func__,
+            sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, __func__,
                            __LINE__);
             free_schema_change_type(sc);
             error = 1;
         }
-        sc = iq.sc;
+        sc = iq->sc;
     }
-    iq.sc_pending = sc_pending;
-    iq.sc_locked = 0;
-    iq.osql_flags |= OSQL_FLAGS_SCDONE;
-    iq.sc_tran = NULL;
-    iq.sc_logical_tran = NULL;
+    iq->sc_locked = 0;
+    iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    iq->sc_tran = NULL;
+    iq->sc_logical_tran = NULL;
 
     if (error) {
         logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
@@ -1456,8 +1490,8 @@ void *bplog_commit_timepart_resuming_sc(void *p)
     }
 
     int rc;
-    if ((rc = get_schema_change_txns(&iq, &iq.sc_logical_tran, &parent_trans,
-                                     &iq.sc_tran, 0))) {
+    if ((rc = get_schema_change_txns(iq, &iq->sc_logical_tran, &parent_trans,
+                                     &iq->sc_tran))) {
         logmsg(LOGMSG_ERROR,
                "%s:%d failed to start schema change transaction\n", __func__,
                -rc);
@@ -1465,71 +1499,123 @@ void *bplog_commit_timepart_resuming_sc(void *p)
         goto abort_sc;
     }
 
-    iq.sc = iq.sc_pending;
-    while (iq.sc != NULL) {
-        if (!iq.sc_locked) {
-            /* Lock schema from now on before we finalize any schema changes
-             * and hold on to the lock until the transaction commits/aborts.
-             */
-            wrlock_schema_lk();
-            iq.sc_locked = 1;
-        }
-        if (iq.sc->db)
-            iq.usedb = iq.sc->db;
-        if (finalize_schema_change(&iq, iq.sc_tran)) {
-            logmsg(LOGMSG_ERROR, "%s: failed to finalize '%s'\n", __func__,
-                   iq.sc->tablename);
-            goto abort_sc;
-        }
-        iq.usedb = NULL;
-        iq.sc = iq.sc->sc_next;
-    }
+    rc = osql_finalize_scs(iq, iq->sc_tran);
+    if (rc)
+        goto abort_sc;
 
-    if (iq.sc_pending) {
-        create_sqlmaster_records(iq.sc_tran);
-        create_sqlite_master();
-    }
-
-    if (trans_commit(&iq, iq.sc_tran, gbl_myhostname)) {
+    if (trans_commit(iq, iq->sc_tran, gbl_myhostname)) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
     }
 
     unlock_schema_lk();
+    iq->sc_locked = 0;
 
-    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_myhostname, 0, 1,
+    if (trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
                              NULL, 0, NULL, 0)) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
     }
-    iq.sc_logical_tran = NULL;
+    iq->sc_logical_tran = NULL;
 
-    osql_postcommit_handle(&iq);
-
+    osql_postcommit_handle(iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
     return NULL;
 
 abort_sc:
     logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
-    if (iq.sc_tran) {
-        trans_abort(&iq, iq.sc_tran);
-        iq.sc_tran = NULL;
+    if (iq->sc_tran) {
+        trans_abort(iq, iq->sc_tran);
+        iq->sc_tran = NULL;
     }
-    backout_schema_changes(&iq, parent_trans);
-    if (iq.sc_locked) {
+    backout_schema_changes(iq, parent_trans);
+    if (iq->sc_locked) {
         unlock_schema_lk();
-        iq.sc_locked = 0;
+        iq->sc_locked = 0;
     }
     if (parent_trans)
-        trans_abort(&iq, parent_trans);
-    if (iq.sc_logical_tran) {
-        trans_abort_logical(&iq, iq.sc_logical_tran, NULL, 0, NULL, 0);
-        iq.sc_logical_tran = NULL;
+        trans_abort(iq, parent_trans);
+    if (iq->sc_logical_tran) {
+        trans_abort_logical(iq, iq->sc_logical_tran, NULL, 0, NULL, 0);
+        iq->sc_logical_tran = NULL;
     }
-    osql_postabort_handle(&iq);
+
+    /* postabort has not osqlsession, so we need to delete scl here */
+    rc = osql_delete_sc_list(uuid, NULL);
+
+    osql_postabort_handle(iq);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+
     return NULL;
+}
+
+/**
+ * Resume schema change
+ *
+ */
+int resume_sc_multiddl_txn(sc_list_t *scl)
+{
+    LISTC_T(struct schema_change_type) scs;
+    struct schema_change_type *sc;
+    int i, size;
+    uuidstr_t us;
+    int rc;
+    int resume = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ?
+        SC_RESUME : SC_NEW_MASTER_RESUME;
+
+    comdb2uuidstr(scl->uuid, us);
+    listc_init(&scs, offsetof(struct schema_change_type, scs_lnk));
+
+    for (i = 0; i < scl->count; i++) {
+        size =  (i < scl->count - 1) ? scl->offsets[i+1] - scl->offsets[i] :
+            scl->ser_scs_len - (scl->offsets[i] - scl->offsets[0]);
+        uint8_t *p_buf = (uint8_t*)&scl->ser_scs[scl->offsets[i] - scl->offsets[0]];
+        uint8_t *p_buf_end = p_buf + size;
+
+        sc = new_schemachange_type();
+        if (!sc) {
+            logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
+            return -1;
+        }
+        if (!buf_get_schemachange(sc, p_buf, p_buf_end)) {
+            logmsg(LOGMSG_ERROR, "%s uuid %s failed to retrieve sc\n",
+                   __func__, us);
+            return -1;
+        }
+        sc->resume = resume;
+
+        listc_abl(&scs, sc);
+    }
+
+    /* this is freed in the wait thread */
+    struct ireq *iq = calloc(1, sizeof(struct ireq));
+    init_fake_ireq(thedb, iq);
+
+    /* this starts schema changeas;
+     * the alters have to register themselves inline,
+     * but the rest of the execution is done in parallel
+     * waiting is done by a separate thread that will finalize 
+     * the schema change
+     * NOTE: schema changes will be queued in iq->sc_pending
+     *
+     */
+    rc = bplog_schemachange_run(iq, scl->uuid, &scs);
+    if (rc) {
+        free(iq);
+        return -1;
+    }
+
+    pthread_t tid;
+    rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                        resume_sc_multiddl_txn_finalize, iq);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to launch thread rc %d\n",
+               __func__, rc);
+        free(iq);
+        return -1;
+    }
+    return 0;
 }

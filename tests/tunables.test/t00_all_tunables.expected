@@ -574,6 +574,7 @@
 (name='morecolumns', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='move_deadlock_max_attempt', description='', type='INTEGER', value='500', read_only='N')
 (name='msgwaittime', description='Network timeout for pushnext & queue changes.  (Default: 10000)', type='INTEGER', value='10000', read_only='N')
+(name='multitable_ddl', description='Enables single schema change object ddl implementation (default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='natural_types', description='Same as 'nosurprise'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='net_inorder_logputs', description='Attempt to order messages to ensure they go out in LSN order.', type='BOOLEAN', value='OFF', read_only='N')
 (name='net_send_gblcontext', description='Enable net_send for USER_TYPE_GBLCONTEXT.', type='BOOLEAN', value='OFF', read_only='N')

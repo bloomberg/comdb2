@@ -379,9 +379,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 free_schema_change_type(s);
             }
             rc = SC_ASYNC_FAILED;
-        } else {
-            rc = SC_ASYNC;
         }
+    }
+    /* SC_COMMIT_PENDING is SC_OK for the upper layers */
+    if (rc == SC_COMMIT_PENDING) {
+        rc = s->sc_rc = SC_OK;
     }
 
     return rc;
@@ -511,7 +513,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
     s->ip_updates = -1;
     s->instant_sc = -1;
 
-    if (start_schema_change(s) != 0)
+    if (start_schema_change(s) != SC_OK)
         return -1;
     return local_replicant_write_clear(NULL, NULL, get_dbtable_by_name(table));
 }
@@ -1544,4 +1546,55 @@ const char *schema_change_kind(struct schema_change_type *s)
     case SC_REBUILDTABLE_INDEX: return "SC_REBUILDTABLE_INDEX";
     }
     return "UNKNOWN";
+}
+
+/* all scs part of the same txn -> in a sc_list object;
+ * pointer fields are malloced
+ */
+int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid)
+{
+    LISTC_T(struct schema_change_type) *scs = vscs;
+
+    scl->version = SESS_SC_LIST_VER;
+    comdb2uuidcpy(scl->uuid, uuid);
+    scl->count = scs->count;
+
+    int sizes[scl->count];
+    struct schema_change_type *sc;
+    int i = 0;
+
+    LISTC_FOR_EACH(scs, sc, scs_lnk) {
+        sizes[i] = schemachange_packed_size(sc);
+        scl->ser_scs_len += sizes[i];
+        i++;
+    }
+
+    scl->offsets = calloc(scl->count, sizeof(int));
+    if (!scl->offsets) {
+        return -1;
+    }
+    scl->ser_scs = malloc(scl->ser_scs_len);
+    if (!scl->ser_scs) {
+        return -1;
+    }
+
+    /* offset first schema is past <version, count, scs total len, count X offsets> */
+    int offset = sizeof(int) + sizeof(int) + sizeof(int) + scl->count * sizeof(int);
+    uint8_t *p_buf = (uint8_t*)scl->ser_scs;
+    uint8_t *p_buf_end = p_buf + sizes[0];
+    i = 0;
+    LISTC_FOR_EACH(scs, sc, scs_lnk) {
+        /* save offset */
+        scl->offsets[i] = offset;
+        /* save schema change */
+        p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+        if (!p_buf) {
+            return -1;
+        }
+        offset += sizes[i];
+        i++;
+        p_buf_end = p_buf + sizes[i]; /* after increment */
+    }
+
+    return 0;
 }

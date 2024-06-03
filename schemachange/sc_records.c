@@ -1177,7 +1177,7 @@ extern pthread_key_t no_pgcompact;
  *              success or failure returned in data->outrc: 0 for success,
  *                  -1 for failure
  */
-void *convert_records_thd(struct convert_record_data *data)
+static void *convert_records_thd(struct convert_record_data *data)
 {
     comdb2_name_thread(__func__);
     ENABLE_PER_THREAD_MALLOC(__func__);

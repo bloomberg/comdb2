@@ -46,6 +46,8 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 extern int gbl_is_physical_replicant;
 
+int gbl_multitable_ddl = 0;
+
 /**** Utility functions */
 
 static enum thrtype prepare_sc_thread(struct schema_change_type *s)
@@ -233,8 +235,9 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
         }
     }
 
-    sc_set_running(iq, s, s->tablename, 0, NULL, 0, __func__, __LINE__);
     if (do_free) {
+        /* this is for non-bplog schema changes; if we free, mark this done too */
+        sc_set_running(iq, s, s->tablename, 0, NULL, 0, __func__, __LINE__);
         free_sc(s);
     }
 }
@@ -332,7 +335,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     tran_type *ltran, *ptran;
 
     if (input_tran == NULL) {
-        rc = get_schema_change_txns(iq, &ltran, &ptran, &tran, 1);
+        rc = get_schema_change_txns(iq, &ltran, &ptran, &tran);
         if (rc) {
             sc_errf(s, "Failed to start finalize transaction %d\n", -rc);
             return -1;
@@ -711,8 +714,11 @@ downgraded:
     }
     if (detached || rc == SC_PREEMPTED)
         s->sc_rc = SC_DETACHED;
+    else if (rc == SC_COMMIT_PENDING)
+        s->sc_rc = SC_OK;
     else
         s->sc_rc = rc;
+
     if (!s->nothrevent) {
         Pthread_mutex_lock(&sc_async_mtx);
         sc_async_threads--;
@@ -774,6 +780,9 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     bdb_thread_event(bdb_state, 1);
     rc = do_schema_change_tran_int(arg);
     bdb_thread_event(bdb_state, 0);
+    if (rc == SC_COMMIT_PENDING) {
+       rc = SC_OK; 
+    }
     return rc;
 }
 
@@ -883,17 +892,36 @@ struct timepart_sc_resuming {
     int nshards;
 };
 
-void *bplog_commit_timepart_resuming_sc(void *p);
+void *resume_sc_multiddl_txn_finalize(void *p);
 static int process_tpt_sc_hash(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
+    int rc;
     pthread_t tid;
     logmsg(LOGMSG_INFO, "%s: processing view '%s'\n", __func__,
            tpt_sc->viewname);
-    pthread_create(&tid, &gbl_pthread_attr_detached,
-                   bplog_commit_timepart_resuming_sc, tpt_sc->s);
+    struct ireq *iq = calloc(1, sizeof(struct ireq));
+    init_fake_ireq(thedb, iq);
+    iq->sc_pending = tpt_sc->s;
     free(tpt_sc);
-    return 0;
+    iq->tranddl = 1;
+
+    struct schema_change_type *s = iq->sc_pending;
+    while (s) {
+        if (s->set_running)
+            iq->sc_running++;
+        s = s->sc_next;
+    }
+
+    rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                        resume_sc_multiddl_txn_finalize, iq);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to launch finalizing thread rc %d\n",
+               __func__, rc);
+        free(iq);
+        rc = -1;
+    }
+    return rc;
 }
 
 static int verify_sc_resumed_for_shard(const char *shardname,
@@ -932,10 +960,10 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     logmsg(LOGMSG_USER, "Restarting schema change for view '%s' shard '%s'\n",
            arg->part_name, new_sc->tablename);
     rc = start_schema_change(new_sc);
-    if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
+    if (rc != SC_OK) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
                __func__, shardname, rc);
-        /* bplog_commit_timepart_resuming_sc will check rc */
+        /* resume_sc_multiddl_txn_finalize will check rc */
         new_sc->sc_rc = rc;
     }
     return 0;
@@ -956,10 +984,117 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
     sc_arg.check_extra_shard = 1;
     sc_arg.lockless = 1;
     timepart_foreach_shard(verify_sc_resumed_for_shard, &sc_arg);
-    assert(sc_arg.s != tpt_sc->s); /* remove? */
     tpt_sc->s = sc_arg.s;
     return 0;
 }
+
+extern const uint8_t *osqlcomm_scl_get_key(struct sc_list *scl,
+        const uint8_t *p_buf, const uint8_t *p_buf_end);
+extern const uint8_t *osqlcomm_scl_get(struct sc_list *scl,
+        const uint8_t *p_buf, const uint8_t *p_buf_end);
+extern int osql_delete_sc_list(uuid_t uuid, tran_type *trans);
+
+/**
+ * Receive an array of serialized sclists and removes them
+ *
+ */
+int resume_sc_multiddl_scabort(void **keys, int keylen, int num)
+{
+    sc_list_t scl = {0};
+    uint8_t *p_buf_key, *p_buf_key_end;
+    int i;
+
+    for (i = 0; i < num; i++) {
+        p_buf_key = keys[i];
+        p_buf_key_end = p_buf_key + keylen;
+        if (!osqlcomm_scl_get_key(&scl, p_buf_key, p_buf_key_end)) {
+            logmsg(LOGMSG_ERROR, "%s: failed to read key\n", __func__);
+            continue;
+        }
+
+        if (scl.version != SESS_SC_LIST_VER) {
+            logmsg(LOGMSG_ERROR,
+                   "%s found incompatible sc list version %d expected %d\n",
+                   __func__, scl.version, SESS_SC_LIST_VER);
+        }
+        uuidstr_t us;
+        comdb2uuidstr(scl.uuid, us);
+        int rc = osql_delete_sc_list(scl.uuid, NULL);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to delete sc list uuid %s\n", us);
+        } else {
+            logmsg(LOGMSG_ERROR, "Aborted sc list uuid %s\n", us);
+        }
+    }
+    return 0;
+}
+
+extern int resume_sc_multiddl_txn(sc_list_t *scl);
+
+/**
+ * The resume searches for existing sc_list llmeta objects, instead
+ * of checking each existing table.  This allows us to naturally 
+ * cluster together sc-s that are part of the same txn
+ *
+ */
+int resume_sc_multiddl(int scabort)
+{
+    sc_list_t scl = {0};
+    int rc;
+    void **dtas = NULL, **keys = NULL;
+    int *dtalens = NULL;
+    int keylen = 0;
+    int i, num = 0;
+    int bdberr = 0;
+    uint8_t *p_buf, *p_buf_end, *p_buf_key, *p_buf_key_end;
+
+    rc = bdb_llmeta_get_all_sc_lists(NULL, &dtas, &dtalens, &keys, &keylen,
+                                     &num, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "Failed to retrieve pending schema changes rc %d bdberr %d\n",
+               rc, bdberr);
+        return -1;
+    }
+
+    if (scabort) {
+        rc = resume_sc_multiddl_scabort(keys, keylen, num);
+        goto freetime;
+    }
+
+    for (i = 0; i < num; i++) {
+        p_buf_key = keys[i];
+        p_buf_key_end = p_buf_key + keylen;
+        if (!osqlcomm_scl_get_key(&scl, p_buf_key, p_buf_key_end)) {
+            rc = -1;
+            goto freetime;
+        }
+
+        p_buf = dtas[i];
+        p_buf_end = p_buf + dtalens[i];
+        if (!osqlcomm_scl_get(&scl, p_buf, p_buf_end)) {
+            rc = -1;
+            goto freetime;
+        }
+
+        rc = resume_sc_multiddl_txn(&scl);
+
+        free(scl.offsets);
+        free(scl.ser_scs);
+
+        if (rc)
+            goto freetime;
+    }
+
+freetime:
+    for (i = 0; i < num; i++) {
+        free(dtas[i]);
+        free(keys[i]);
+    }
+    free(dtalens);
+    return rc;
+}
+
 
 int resume_schema_change(void)
 {
@@ -983,17 +1118,21 @@ int resume_schema_change(void)
     /* if a schema change is currently running don't try to resume one */
     clear_ongoing_alter();
 
-    hash_t *tpt_sc_hash = hash_init_strcaseptr(offsetof(struct timepart_sc_resuming, viewname));
-    if (!tpt_sc_hash) {
-        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
-        abort();
-    }
-
     /* Give operators a chance to prevent a schema change from resuming. */
     abort_filename = comdb2_location("marker", "%s.scabort", thedb->envname);
     if (access(abort_filename, F_OK) == 0) {
         scabort = 1;
         logmsg(LOGMSG_INFO, "%s: found '%s'\n", __func__, abort_filename);
+    }
+
+    /* this path is able to handle multi table ddl in a single transaction */
+    if (gbl_multitable_ddl)
+        return resume_sc_multiddl(scabort);
+
+    hash_t *tpt_sc_hash = hash_init_strcaseptr(offsetof(struct timepart_sc_resuming, viewname));
+    if (!tpt_sc_hash) {
+        logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
+        abort();
     }
 
     Pthread_mutex_lock(&sc_resuming_mtx);
@@ -1092,8 +1231,7 @@ int resume_schema_change(void)
                    s->timepartition_name ? " timepartition " : "",
                    s->timepartition_name ? s->timepartition_name : "");
 
-            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-                s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT)) {
                 s->resume = SC_RESUME;
                 if (s->timepartition_name) {
                     logmsg(LOGMSG_INFO,
@@ -1112,7 +1250,7 @@ int resume_schema_change(void)
 
             /* start the schema change back up */
             rc = start_schema_change(s);
-            if (rc != SC_OK && rc != SC_ASYNC) {
+            if (rc != SC_OK) {
                 logmsg(
                     LOGMSG_ERROR,
                     "%s: failed to resume schema change for table '%s' rc %d\n",

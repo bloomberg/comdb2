@@ -30,6 +30,7 @@
 #include "debug_switches.h"
 #include "comdb2_atomic.h"
 #include "intern_strings.h"
+#include "schemachange.h"
 
 #include <uuid/uuid.h>
 #include "str0.h"
@@ -162,6 +163,7 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
     return 0;
 }
 
+
 static void _free_participants(osql_sess_t *sess)
 {
     struct participant *p = NULL;
@@ -172,13 +174,15 @@ static void _free_participants(osql_sess_t *sess)
     }
 }
 
+static void _destroy_schema_changes(osql_sess_t *sess);
+
 static void _destroy_session(osql_sess_t **psess)
 {
     osql_sess_t *sess = *psess;
 
-    if (sess->snap_info) {
-        free(sess->snap_info);
-    }
+    _destroy_schema_changes(sess);
+
+    free(sess->snap_info);
 
     Pthread_mutex_destroy(&sess->impl->mtx);
     Pthread_mutex_destroy(&sess->participant_lk);
@@ -318,7 +322,7 @@ int osql_prepare(const char *dist_txnid, const char *coordinator_dbname, const c
         return 0;
     }
 
-    osql_sess_t *sess = osql_repository_get(rqid, uuid);
+    osql_sess_t *sess = osql_repository_get(uuid);
     if (!sess) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
@@ -370,7 +374,7 @@ int osql_discard(const char *dist_txnid)
         return 0;
     }
 
-    osql_sess_t *sess = osql_repository_get(rqid, uuid);
+    osql_sess_t *sess = osql_repository_get(uuid);
 
     if (!sess) {
         uuidstr_t us;
@@ -395,21 +399,21 @@ int osql_discard(const char *dist_txnid)
 // int osql_abort_prepared(unsigned long long rqid, uuid_t uuid)
 
 /**
- * Handles a new op received for session "rqid"
+ * Handles a new op received for session "uuid"
  * It saves the packet in the local bplog
  * Return 0 if success
  * Set found if the session is found or not
  *
  */
-int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
-                    int datalen, int *found)
+int osql_sess_rcvop(uuid_t uuid, int type, void *data, int datalen, int *found)
 {
     int rc = 0;
     int is_msg_done = 0;
     struct errstat *perr = NULL;
 
+
     /* get the session; dispatched sessions are ignored */
-    osql_sess_t *sess = osql_repository_get(rqid, uuid);
+    osql_sess_t *sess = osql_repository_get(uuid);
     if (!sess) {
         /* in the current implementation we tolerate redundant ops from session
          * that have been already terminated--discard the packet in that case */
@@ -418,8 +422,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, rqid == OSQL_RQID_USE_UUID,
-                          &perr, NULL) != 0;
+        osql_comm_is_done(sess, type, data, datalen, &perr, NULL) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
@@ -475,8 +478,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         extern int gbl_debug_disttxn_trace;
         if (gbl_debug_disttxn_trace) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "DISTTXN %s %s collect_participants rqid=%llu uuid=%s\n", __func__, sess->dist_txnid,
-                   rqid, comdb2uuidstr(sess->uuid, us));
+            logmsg(LOGMSG_USER, "DISTTXN %s %s collect_participants uuid=%s\n", __func__, sess->dist_txnid,
+                   comdb2uuidstr(sess->uuid, us));
         }
         rc = collect_participants(sess->dist_txnid, &sess->participants);
         if (rc) {
@@ -491,7 +494,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
 failed_stream:
     if (is_msg_done && perr)
-        osql_comm_signal_sqlthr_rc(&sess->target, rqid, uuid, 0, &sess->xerr, NULL, 0);
+        osql_comm_signal_sqlthr_rc(&sess->target, OSQL_RQID_USE_UUID, uuid, 0, &sess->xerr, NULL, 0);
 
     /* release the session */
     osql_repository_put(sess);
@@ -516,7 +519,7 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
     struct errstat *perr = NULL;
 
     *is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, 1, &perr, NULL) != 0;
+        osql_comm_is_done(sess, type, data, datalen, &perr, NULL) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
@@ -708,4 +711,126 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
     }
 
     return sess;
+}
+
+#include "schemachange.h"
+int osql_sess_save_sc(osql_sess_t *sess, char *rpl, int rplen)
+{
+    struct schema_change_type *sc;
+
+    if (!sess->scs.count)
+        listc_init(&sess->scs, offsetof(struct schema_change_type, scs_lnk));
+
+    sc = osqlcomm_get_schemachange(rpl, rplen);
+    if (!sc) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to read schema change object\n",
+                __func__, __LINE__);
+        return -1;
+    }
+
+    logmsg(LOGMSG_DEBUG, "saving schema change for '%s' kind %s tableversion %d\n",
+           sc->tablename, schema_change_kind(sc), sc->usedbtablevers);
+
+    listc_abl(&sess->scs, sc);
+
+    return 0;
+}
+
+static void _destroy_schema_changes(osql_sess_t *sess)
+{
+    struct schema_change_type *sc = NULL, *tmp = NULL;
+
+    LISTC_FOR_EACH_SAFE(&sess->scs, sc, tmp, scs_lnk) {
+        listc_rfl(&sess->scs, sc);
+        free_schema_change_type(sc);
+    }
+}
+
+static int _write_sc_list(sc_list_t *scl)
+{
+    int rc = 0;
+    int payload_len = scl->offsets[0] + scl->ser_scs_len;
+    char *payload = malloc(payload_len);
+    if (!payload) {
+        logmsg(LOGMSG_ERROR, "%s oom\n", __func__);
+        rc = -1;
+        goto done;
+    }
+
+    uint8_t *p_buf = (uint8_t*)payload;
+    uint8_t *p_buf_end = p_buf + payload_len;
+
+    p_buf = osqlcomm_scl_put(scl, p_buf, p_buf_end);
+    if (!p_buf) {
+        logmsg(LOGMSG_ERROR, "%s failed to serialize sc list\n", __func__);
+        rc = -1;
+        goto done;
+    }
+
+    uint8_t key[sizeof(int) + sizeof(scl->uuid)];
+
+    osqlcomm_scl_put_key(scl, key, key + sizeof(key));
+
+    int bdberr = 0;
+    rc = bdb_llmeta_set_schema_change_list(NULL, (char*)key, sizeof(key),
+                                           payload, payload_len, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to write sc list rc %d bdberr %d\n",
+               __func__, rc, bdberr);
+        rc = -1;
+    }
+done:
+    free(payload);
+    return rc;
+}
+
+int osql_delete_sc_list(uuid_t uuid, tran_type *trans)
+{
+    sc_list_t scl = {0};
+
+    comdb2uuidcpy(scl.uuid, uuid);
+
+    int rc = 0;
+    uint8_t key[sizeof(int) + sizeof(uuid_t)];
+    uuidstr_t us;
+
+    comdb2uuidstr(uuid, us);
+
+    osqlcomm_scl_put_key(&scl, key, key + sizeof(key));
+
+    int bdberr = 0;
+    rc = bdb_llmeta_set_schema_change_list(trans, (char*)key, sizeof(key),
+                                           NULL, 0, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s uuid %s failed to delete sc list rc %d bdberr %d\n",
+               __func__, us, rc, bdberr);
+        rc = -1;
+    }
+    return rc;
+}
+
+int osql_sess_save_sc_list(osql_sess_t *sess)
+{
+    sc_list_t scl = {0};
+    int rc = 0;
+
+    if (sess->scs.count == 0)
+        return 0;
+
+    if (!gbl_multitable_ddl)
+        return 0;
+
+    rc = sc_list_create(&scl, &sess->scs, sess->uuid);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create sc_list\n",
+               __func__);
+        goto done;
+    }
+
+    rc = _write_sc_list(&scl);
+
+done:
+    free(scl.offsets);
+    free(scl.ser_scs);
+    return rc;
 }
