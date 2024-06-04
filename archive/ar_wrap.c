@@ -329,10 +329,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
     }
 
     const off_t current_file_offset = lseek(fd, f->offset, SEEK_SET);
-    off_t bytes_left =
-        (f->chunk_size > 0)
-            ? MIN(st.st_size - current_file_offset, f->chunk_size)
-            : st.st_size - current_file_offset;
+    assert (f->chunk_size > 0);
+    off_t bytes_left = MIN(st.st_size - current_file_offset, f->chunk_size);
 
     if (bytes_left <= 0) {
         // The file has been fully read
@@ -366,87 +364,85 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
     }
 
     uint8_t *pagebuf = f->pagebuf;
-    size_t bufsize = f->bufsize;
 
-    while (bytes_left > 0) {
-        unsigned long long nbytes = bytes_left > bufsize ? bufsize : bytes_left;
+    assert (bytes_left <= f->bufsize);
+    unsigned long long nbytes = bytes_left;
 
-        ssize_t bytes_read = read(fd, &pagebuf[0], nbytes);
-        if (bytes_read <= 0) {
-            rc = 1;
-            goto done;
-        }
-
-        if (dbfile_is_checksummed(f)) {
-            // Save current offset
-            const off_t offset = lseek(fd, 0, SEEK_CUR);
-            if (offset == (off_t)-1) {
-                rc = 1;
-                goto done;
-            }
-
-            int retry = 5;
-            ssize_t n = 0;
-
-            while (n < bytes_read && retry) {
-                uint32_t verify_cksum;
-
-                if ((verify_checksum(
-                        pagebuf + n, pagesize, dbfile_is_encrypted(f),
-                        dbfile_is_swapped(f), &verify_cksum)) == 1) {
-                    // checksum verified
-                    n += pagesize;
-                    retry = 5;
-
-                    continue;
-                }
-
-                // Partial page read. Read the page again to see if it passes
-                // checksum verification.
-                if (--retry == 0) {
-                    // giving up on this page
-                    rc = 1;
-                    goto done;
-                }
-
-                // wait 500ms before reading page again
-                poll(0, 0, 500);
-
-                // rewind and read the page again
-                off_t rewind = offset - (bytes_read - n);
-                rewind = lseek(fd, rewind, SEEK_SET);
-                if (rewind == (off_t)-1) {
-                    rc = 1;
-                    goto done;
-                }
-
-                ssize_t nread, totalread = 0;
-                while (totalread < pagesize) {
-                    nread = read(fd, &pagebuf[0] + n + totalread,
-                                 pagesize - totalread);
-                    if (nread <= 0) {
-                        rc = 1;
-                        goto done;
-                    }
-                    totalread += nread;
-                }
-            }
-
-            // Restore to original offset
-            if (offset != lseek(fd, offset, SEEK_SET)) {
-                rc = 1;
-                goto done;
-            }
-        }
-
-        rc = writer(writer_ctx, pagebuf, bytes_read, current_file_offset);
-        if (rc < 0) {
-            rc = 1;
-            goto done;
-        }
-
-        bytes_left -= bytes_read;
+    size_t bytes_read = read(fd, &pagebuf[0], nbytes);
+    if (bytes_read <= 0) {
+        rc = 1;
+        goto done;
     }
+
+    if (dbfile_is_checksummed(f)) {
+        // Save current offset
+        const off_t offset = lseek(fd, 0, SEEK_CUR);
+        if (offset == (off_t)-1) {
+            rc = 1;
+            goto done;
+        }
+
+        int retry = 5;
+        ssize_t n = 0;
+
+        while (n < bytes_read && retry) {
+            uint32_t verify_cksum;
+
+            if ((verify_checksum(
+                    pagebuf + n, pagesize, dbfile_is_encrypted(f),
+                    dbfile_is_swapped(f), &verify_cksum)) == 1) {
+                // checksum verified
+                n += pagesize;
+                retry = 5;
+
+                continue;
+            }
+
+            // Partial page read. Read the page again to see if it passes
+            // checksum verification.
+            if (--retry == 0) {
+                // giving up on this page
+                rc = 1;
+                goto done;
+            }
+
+            // wait 500ms before reading page again
+            poll(0, 0, 500);
+
+            // rewind and read the page again
+            off_t rewind = offset - (bytes_read - n);
+            rewind = lseek(fd, rewind, SEEK_SET);
+            if (rewind == (off_t)-1) {
+                rc = 1;
+                goto done;
+            }
+
+            ssize_t nread, totalread = 0;
+            while (totalread < pagesize) {
+                nread = read(fd, &pagebuf[0] + n + totalread,
+                             pagesize - totalread);
+                if (nread <= 0) {
+                    rc = 1;
+                    goto done;
+                }
+                totalread += nread;
+            }
+        }
+
+        // Restore to original offset
+        if (offset != lseek(fd, offset, SEEK_SET)) {
+            rc = 1;
+            goto done;
+        }
+    }
+
+    rc = writer(writer_ctx, pagebuf, bytes_read, current_file_offset);
+    if (rc < 0) {
+        rc = 1;
+        goto done;
+    }
+
+    bytes_left -= bytes_read;
 
     f->offset = lseek(fd, 0, SEEK_CUR);
 
