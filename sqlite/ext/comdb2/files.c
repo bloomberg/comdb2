@@ -182,6 +182,8 @@ static void set_chunk_size(db_file_t *f, size_t chunk_size)
             chunk_size /= page_size;
             chunk_size *= page_size;
         }
+    } else if (chunk_size == 0) {
+        chunk_size = MAX_BUFFER_SIZE;
     }
 
     dbfile_set_chunk_size(f->info, chunk_size);
