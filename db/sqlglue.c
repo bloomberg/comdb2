@@ -11280,13 +11280,12 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
         logmsg(LOGMSG_ERROR, "%p: Donating socket for %s\n", (void *)pthread_self(), socket_type);
 
     /* this is used by fdb sql for now */
-    socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0,
-                           0, NULL, NULL);
+    if (sbuf2free(sb) == 0)
+        socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0, 0, NULL, NULL);
 
     /*fprintf(stderr, "%s: donated socket %d to sockpool %s\n", __func__, fd,
      * socket_type);*/
 
-    sbuf2free(sb);
     *psb = NULL;
 }
 
