@@ -1183,6 +1183,9 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
     for(i=0; i < nschs_indx; i++) {
         add_tag_schema(tbl->tablename, schs_indx[i]);
     }
+
+    free(schs);
+    free(schs_indx);
     return 0;
 
 err:
