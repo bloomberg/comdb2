@@ -2502,8 +2502,7 @@ void handle_postabort_bpfunc(struct ireq *iq)
     }
 }
 
-static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
-                                      int rowlocks)
+static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent, int rowlocks, const char *func, int line)
 {
     int rc = 0;
     if (rowlocks) {
@@ -2540,7 +2539,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
             comdb2_die(1);
         }
         iq->sc_tran = NULL;
-        backout_schema_changes(iq, parent);
+        backout_schema_changes(iq, parent, func, line);
     }
     if (iq->sc_locked) {
         unlock_schema_lk();
@@ -5172,7 +5171,7 @@ backout:
 
                 /* Backout Schema Change */
                 if (!parent_trans)
-                    backout_schema_changes(iq, trans);
+                    backout_schema_changes(iq, trans, __func__, __LINE__);
                 else {
                     irc = trans_abort_priority(iq, trans, &priority);
                     if (irc != 0) {
@@ -5181,7 +5180,7 @@ backout:
                         comdb2_die(1);
                     }
                     trans = NULL;
-                    backout_schema_changes(iq, parent_trans);
+                    backout_schema_changes(iq, parent_trans, __func__, __LINE__);
                 }
             }
             if (trans) {
@@ -5223,7 +5222,7 @@ backout:
             if (iq->tranddl) {
                 BDB_READLOCK("sc_downgrade");
                 if (thedb->master != gbl_myhostname) {
-                    backout_schema_changes(iq, NULL);
+                    backout_schema_changes(iq, NULL, __func__, __LINE__);
                 }
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
             }
@@ -5241,7 +5240,7 @@ backout:
             /* abandon our parent if we have one, we're gonna redo it all */
             if (osql_needtransaction != OSQL_BPLOG_NOTRANS && parent_trans) {
                 if (iq->tranddl)
-                    backout_and_abort_tranddl(iq, parent_trans, 0);
+                    backout_and_abort_tranddl(iq, parent_trans, 0, __func__, __LINE__);
                 else
                     trans_abort(iq, parent_trans);
                 parent_trans = NULL;
@@ -5319,7 +5318,7 @@ backout:
            we'll skip the rest of statistics */
         if (rowlocks) {
             if (iq->tranddl)
-                backout_and_abort_tranddl(iq, trans, 1);
+                backout_and_abort_tranddl(iq, trans, 1, __func__, __LINE__);
             irc = trans ? trans_abort_logical(iq, trans, NULL, 0, NULL, 0) : 0;
         } else {
             if (iq->tranddl) {
@@ -5327,7 +5326,7 @@ backout:
                     trans_abort(iq, trans);
                     trans = NULL;
                 }
-                backout_and_abort_tranddl(iq, parent_trans, 0);
+                backout_and_abort_tranddl(iq, parent_trans, 0, __func__, __LINE__);
             } else
                 trans_abort(iq, parent_trans);
             parent_trans = NULL;
@@ -5639,7 +5638,7 @@ add_blkseq:
                         trans_abort(iq, trans);
                         trans = NULL;
                     }
-                    backout_and_abort_tranddl(iq, parent_trans, 0);
+                    backout_and_abort_tranddl(iq, parent_trans, 0, __func__, __LINE__);
                 } else {
                     trans_abort(iq, parent_trans);
                 }
@@ -5736,10 +5735,9 @@ add_blkseq:
                     hascommitlock = 0;
                 }
                 if (iq->tranddl)
-                    backout_and_abort_tranddl(iq, trans, 1);
-                rc = trans_abort_logical(
-                    iq, trans, buf_fstblk,
-                    p_buf_fstblk - buf_fstblk + sizeof(int), bskey, bskeylen);
+                    backout_and_abort_tranddl(iq, trans, 1, __func__, __LINE__);
+                rc = trans_abort_logical(iq, trans, buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int), bskey,
+                                         bskeylen);
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;

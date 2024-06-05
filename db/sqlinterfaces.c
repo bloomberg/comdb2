@@ -1895,19 +1895,6 @@ static int free_clnt_ddl_context(void *obj, void *arg)
     free(ctx);
     return 0;
 }
-int free_it(void *obj, void *arg)
-{
-    free(obj);
-    return 0;
-}
-void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
-{
-    if (!h)
-        return;
-    hash_for(h, free_func, NULL);
-    hash_clear(h);
-    hash_free(h);
-}
 
 extern int gbl_early_verify;
 extern int gbl_osql_send_startgen;
@@ -2326,8 +2313,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         clnt->selectv_arr = NULL;
     }
 
-    destroy_hash(clnt->ddl_tables, free_it);
-    destroy_hash(clnt->dml_tables, free_it);
+    destroy_hash(clnt->ddl_tables, NULL);
+    destroy_hash(clnt->dml_tables, NULL);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);
@@ -5333,8 +5320,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     free(clnt->authdata);
     clnt->authdata = NULL;
 
-    destroy_hash(clnt->ddl_tables, free_it);
-    destroy_hash(clnt->dml_tables, free_it);
+    destroy_hash(clnt->ddl_tables, NULL);
+    destroy_hash(clnt->dml_tables, NULL);
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
     destroy_hash(clnt->ddl_contexts, free_clnt_ddl_context);

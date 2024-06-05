@@ -1828,6 +1828,13 @@ void cleanup_newdb(dbtable *tbl)
     if (!tbl)
         return;
 
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        if (thedb->dbs[i] == tbl) {
+            logmsg(LOGMSG_FATAL, "cleanup_newdb: table %s still in thedb->dbs\n", tbl->tablename);
+            abort();
+        }
+    }
+
     free(tbl->sqlaliasname);
 
     if (tbl->tablename) {
@@ -5811,16 +5818,19 @@ int main(int argc, char **argv)
 
 int add_dbtable_to_thedb_dbs(dbtable *table)
 {
+    dbtable *fnd;
     Pthread_rwlock_wrlock(&thedb_lock);
 
-    if (_db_hash_find(table->tablename) != 0) {
+    if ((fnd = _db_hash_find(table->tablename)) != 0) {
         Pthread_rwlock_unlock(&thedb_lock);
+        logmsg(LOGMSG_ERROR, "Table %s already exists, found=%p mytable=%p\n", table->tablename, fnd, table);
         return -1;
     }
 
     thedb->dbs = realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(dbtable *));
     table->dbs_idx = thedb->num_dbs;
     thedb->dbs[thedb->num_dbs++] = table;
+    logmsg(LOGMSG_INFO, "Added table %s %p to thedb->dbs\n", table->tablename, table);
 
     /* Add table to the hash. */
     _db_hash_add(table);
@@ -5832,10 +5842,18 @@ int add_dbtable_to_thedb_dbs(dbtable *table)
 void rem_dbtable_from_thedb_dbs(dbtable *table)
 {
     Pthread_rwlock_wrlock(&thedb_lock);
+    dbtable *fnd = _db_hash_find(table->tablename);
+    if (!fnd) {
+        Pthread_rwlock_unlock(&thedb_lock);
+        logmsg(LOGMSG_ERROR, "Table %s %p not found in thedb->dbs\n", table->tablename, table);
+        return;
+    }
     /* Remove the table from hash. */
     _db_hash_del(table);
 
     for (int i = table->dbs_idx; i < (thedb->num_dbs - 1); i++) {
+        logmsg(LOGMSG_INFO, "Moving table %s %p from index %d to %d\n", thedb->dbs[i + 1]->tablename, thedb->dbs[i + 1],
+               i + 1, i);
         thedb->dbs[i] = thedb->dbs[i + 1];
         thedb->dbs[i]->dbs_idx = i;
     }
@@ -5923,6 +5941,7 @@ void re_add_dbtable_to_thedb_dbs(dbtable *table)
 
     if (idx < 0 || idx >= thedb->num_dbs ||
         strcasecmp(thedb->dbs[idx]->tablename, table->tablename) != 0) {
+        logmsg(LOGMSG_INFO, "Table %s %p not found in thedb->dbs, adding at index %d\n", table->tablename, table, idx);
         thedb->dbs =
             realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(dbtable *));
         if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
@@ -5937,10 +5956,16 @@ void re_add_dbtable_to_thedb_dbs(dbtable *table)
 
     if (!move) table->dbnum = thedb->dbs[idx]->dbnum;
 
+    logmsg(LOGMSG_INFO, "Adding table %s %p to thedb->dbs at index %d\n", table->tablename, table, idx);
     thedb->dbs[idx] = table;
 
     /* Add table to the hash. */
     if (move == 1) {
+        struct dbtable *fnd = _db_hash_find(table->tablename);
+        if (fnd) {
+            logmsg(LOGMSG_ERROR, "Table %s already exists, found=%p mytable=%p\n", table->tablename, fnd, table);
+            abort();
+        }
         _db_hash_add(table);
     }
 

@@ -96,40 +96,6 @@ function verify_up
     [[ $r != 0 ]] && failexit "node $node did not recover in time"
 }
 
-function run_test_drop_table
-{
-    typeset maxtime=600
-    typeset now=$(date +%s)
-    typeset endtime=$(( now + maxtime ))
-
-    rm $stopfile
-    j=0
-
-    while [[ "$j" -lt 3 ]]; do 
-        #stat4dump_loop &
-        create_loop &
-        truncate_loop &
-        drop_loop &
-        let j=j+1
-    done
-
-    while [[ ! -f $stopfile && "$(date +%s)" -lt $endtime ]]; do
-        if [[ -z "$CLUSTER" ]]; then
-            node=$(hostname)
-            verify_up $node
-        else
-            for node in $CLUSTER; do
-                verify_up $node
-            done
-        fi
-        sleep 1
-    done
-
-    [[ -f "$stopfile" ]] && failexit "testcase failed"
-    touch "$stopfile"
-    wait
-}
-
 function create_tables
 {
     typeset j=0
@@ -235,10 +201,6 @@ function run_test_analyze_fastinit
 function run_test
 {
     run_test_analyze_fastinit
-
-    # The drop-table test causes additional crashes: i will work on after 
-    # reproducing & fixing the initial issue
-    #run_test_drop_table
 }
 
 

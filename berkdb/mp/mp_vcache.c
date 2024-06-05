@@ -22,7 +22,6 @@
 #include <pool.h>
 #include "locks_wrap.h"
 
-extern int free_it(void *obj, void *arg);
 extern void destroy_hash(hash_t *h, hashforfunc_t *const free_func);
 
 void __mempv_cache_dump(MEMPV_CACHE *cache);
@@ -31,7 +30,7 @@ static int __mempv_cache_page_destroy(cache_page, arg)
 	MEMPV_CACHE_PAGE_VERSIONS *cache_page;
 	void *arg;
 {
-	destroy_hash(cache_page->versions, free_it);
+	destroy_hash(cache_page->versions, NULL);
 	return 0;
 }
 
@@ -83,7 +82,7 @@ void __mempv_cache_destroy(cache)
 	MEMPV_CACHE *cache;
 {
 	hash_for(cache->pages, (hashforfunc_t *const) __mempv_cache_page_destroy, NULL);
-	destroy_hash(cache->pages, free_it);
+	destroy_hash(cache->pages, NULL);
 
 	pthread_mutex_destroy(&(cache->lock));
 }

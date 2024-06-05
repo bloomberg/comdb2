@@ -413,6 +413,10 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
                               void *p_buf_end);
 void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf,
                               void *p_buf_end);
+char *buf_get_schemachange_tablename(void *p_buf, void *p_buf_end, int *type, char **newtable);
+char *buf_extract_tablename_v1(void *p_buf, void *p_buf_end, int *type, char **newtable);
+char *buf_extract_tablename_v2(void *p_buf, void *p_buf_end, int *type, char **newtable);
+
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 

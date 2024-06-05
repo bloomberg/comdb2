@@ -1216,6 +1216,113 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
     }
 }
 
+static pthread_mutex_t sc_tables_lk = PTHREAD_MUTEX_INITIALIZER;
+typedef struct sc_table {
+    char *tablename;
+    struct ireq *iq;
+} sc_table;
+static hash_t *sc_tables_hash = NULL;
+
+int dump_sc_table(void *obj, void *arg)
+{
+    sc_table *sc = (sc_table *)obj;
+    logmsg(LOGMSG_USER, "Table %s, iq=%p\n", sc->tablename, sc->iq);
+    return 0;
+}
+
+void dump_sc_tables_hash(void)
+{
+    logmsg(LOGMSG_USER, "Dumping schema change tables\n");
+    Pthread_mutex_lock(&sc_tables_lk);
+    if (!sc_tables_hash) {
+        logmsg(LOGMSG_USER, "sc_tables not inited\n");
+        Pthread_mutex_unlock(&sc_tables_lk);
+        return;
+    }
+    hash_for(sc_tables_hash, dump_sc_table, NULL);
+    Pthread_mutex_unlock(&sc_tables_lk);
+}
+
+static int mark_table_in_schema_change(void *obj, void *arg)
+{
+    struct ireq *iq = (struct ireq *)arg;
+    sc_table *sc;
+    char *tablename = (char *)obj;
+    if ((sc = hash_find(sc_tables_hash, &tablename))) {
+        logmsg(LOGMSG_ERROR, "Table %s is already in a schema change, myiq=%p, sciq=%p\n", tablename, iq, sc->iq);
+        return -1;
+    }
+    sc = (sc_table *)calloc(sizeof(sc_table), 1);
+    sc->tablename = strdup(tablename);
+    sc->iq = iq;
+    hash_add(sc_tables_hash, sc);
+    logmsg(LOGMSG_INFO, "Marking table %s in schema change for iq=%p thd=%lu\n", tablename, iq, pthread_self());
+    return 0;
+}
+
+static int mark_table_not_in_schema_change(void *obj, void *arg)
+{
+    struct ireq *iq = (struct ireq *)arg;
+    char *tablename = (char *)obj;
+    sc_table *sc = (sc_table *)hash_find(sc_tables_hash, &tablename);
+    assert(sc && sc->iq == iq);
+    logmsg(LOGMSG_INFO, "Removing table %s from schema change, iq=%p thd=%lu\n", tablename, iq, pthread_self());
+    hash_del(sc_tables_hash, sc);
+    free(sc->tablename);
+    free(sc);
+    return 0;
+}
+
+static int mark_table_not_in_schema_change_abort(void *obj, void *arg)
+{
+    struct ireq *iq = (struct ireq *)arg;
+    char *tablename = (char *)obj;
+    sc_table *sc = (sc_table *)hash_find(sc_tables_hash, &tablename);
+    if (sc) {
+        if (sc->iq == iq) {
+            logmsg(LOGMSG_INFO, "Aborting schema change for table %s, iq=%p thd=%lu\n", tablename, iq, pthread_self());
+            hash_del(sc_tables_hash, sc);
+            free(sc->tablename);
+            free(sc);
+        } else {
+            logmsg(LOGMSG_ERROR, "Table %s is in a schema change, but not for this iq, myiq=%p, sciq=%p thd=%lu\n",
+                   tablename, iq, sc->iq, pthread_self());
+        }
+    }
+    return 0;
+}
+
+static int mark_tables_in_schema_change(struct ireq *iq)
+{
+    Pthread_mutex_lock(&sc_tables_lk);
+    if (!sc_tables_hash) {
+        sc_tables_hash = hash_init_strptr(offsetof(sc_table, tablename));
+    }
+    int rc = hash_for(iq->sc_tables, mark_table_in_schema_change, iq);
+    if (rc) {
+        hash_for(iq->sc_tables, mark_table_not_in_schema_change_abort, iq);
+    }
+    Pthread_mutex_unlock(&sc_tables_lk);
+    if (rc) {
+        destroy_hash(iq->sc_tables, NULL);
+        iq->sc_tables = NULL;
+    }
+    return rc;
+}
+
+int mark_tables_not_in_schema_change(struct ireq *iq)
+{
+    Pthread_mutex_lock(&sc_tables_lk);
+    if (!sc_tables_hash) {
+        sc_tables_hash = hash_init_strptr(offsetof(sc_table, tablename));
+    }
+    int rc = hash_for(iq->sc_tables, mark_table_not_in_schema_change, iq);
+    Pthread_mutex_unlock(&sc_tables_lk);
+    destroy_hash(iq->sc_tables, NULL);
+    iq->sc_tables = NULL;
+    return rc;
+}
+
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -1230,6 +1337,44 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     iq->sc_host = 0;
     iq->sc_locked = 0;
     iq->sc_should_abort = 0;
+
+    /* sc_set_running doesn't cleanly prevent concurrent sc's against the same table. A
+     * table can be removed from sc_set_running a long time before the code restores its
+     * in-memory data structures.  This permits a new sc against that table before the
+     * original failing sc has been completely backed out.
+     *
+     * sc_tables_hash addresses this by collecting the names of all of the tables being
+     * schema-changed up front, before any work on the schema-change begins.  This is an
+     * atomic operation, protected by the sc_tables_lk.  If we detect that any of the
+     * tables is already in a schema-change, then we fail this transaction immediately,
+     * before dispatching any threads or making any modifications to global data
+     * structures.
+
+     * After the block-processor has completed, after the backout or commit code has run,
+     * and after the in-memory data structures have been restored, the code removes the
+     * tablename from the sc_tables hash.
+
+     * TODO
+     * Schema-changes which do not go through the block-processor should follow the same
+     * convention: if the table is being schema-changed already, fail it up front.
+     * Otherwise, add the tablename to the global sc_tables hash before starting any work.
+     * After the schema-change is complete, and after all in-memory data-structures have
+     * been restored, remove the tablename from sc_table. */
+
+    rc = apply_changes(iq, tran, NULL, &nops, err, osql_collect_schemachange_tables);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Error collecting schema-change tables thd=%lu\n", pthread_self());
+        return ERR_SC;
+    }
+
+    /* Atomically mark each of these as being in a schema-change.  If we find that
+     * one of these tables is already in a schema-change, then fail immediately */
+    if (iq->sc_tables) {
+        rc = mark_tables_in_schema_change(iq);
+        if (rc != 0) {
+            return ERR_SC;
+        }
+    }
 
     rc = apply_changes(iq, tran, NULL, &nops, err, osql_process_schemachange);
 
@@ -1451,10 +1596,8 @@ void *bplog_commit_timepart_resuming_sc(void *p)
 
     unlock_schema_lk();
 
-    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_myhostname, 0, 1,
-                             NULL, 0, NULL, 0)) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
-               __LINE__);
+    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_myhostname, 0, 1, NULL, 0, NULL, 0)) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__, __LINE__);
         abort();
     }
     iq.sc_logical_tran = NULL;
@@ -1471,7 +1614,7 @@ abort_sc:
         trans_abort(&iq, iq.sc_tran);
         iq.sc_tran = NULL;
     }
-    backout_schema_changes(&iq, parent_trans);
+    backout_schema_changes(&iq, parent_trans, __func__, __LINE__);
     if (iq.sc_locked) {
         unlock_schema_lk();
         iq.sc_locked = 0;

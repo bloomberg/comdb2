@@ -711,6 +711,9 @@ static void osql_scdone_commit_callback(struct ireq *iq)
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
     }
+    if (iq->sc_tables) {
+        mark_tables_not_in_schema_change(iq);
+    }
     iq->tranddl = 0;
 }
 
@@ -729,6 +732,9 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
+    }
+    if (iq->sc_tables) {
+        mark_tables_not_in_schema_change(iq);
     }
     iq->tranddl = 0;
 }
