@@ -978,6 +978,8 @@ struct dbenv {
     LISTC_T(struct message_handler) message_handlers;
 
     comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
+
+    pthread_mutex_t import_lock;
 };
 
 extern struct dbenv *thedb;

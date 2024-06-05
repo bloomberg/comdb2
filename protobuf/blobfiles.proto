@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+message BlobFiles {
+    repeated string files=1;
+}

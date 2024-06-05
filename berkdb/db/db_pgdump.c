@@ -24,54 +24,10 @@
 #include <crc32c.h>
 #include <logmsg.h>
 
+extern void swap_meta(DBMETA *m);
+extern const char *type2str(int type);
+
 void inspect_page(DB *, PAGE *);
-
-static const char *type2str(int type)
-{
-	switch (type) {
-	case P_INVALID: 	return "P_INVALID";
-	case __P_DUPLICATE: 	return "__P_DUPLICATE";
-	case P_HASH: 		return "P_HASH";
-	case P_IBTREE: 		return "P_IBTREE";
-	case P_IRECNO: 		return "P_IRECNO";
-	case P_LBTREE: 		return "P_LBTREE";
-	case P_LRECNO: 		return "P_LRECNO";
-	case P_OVERFLOW:	return "P_OVERFLOW";
-	case P_HASHMETA: 	return "P_HASHMETA";
-	case P_BTREEMETA: 	return "P_BTREEMETA";
-	case P_QAMMETA: 	return "P_QAMMETA";
-	case P_QAMDATA: 	return "P_QAMDATA";
-	case P_LDUP: 		return "P_LDUP";
-	case P_PAGETYPE_MAX: 	return "P_PAGETYPE_MAX";
-	default:		return "???";
-	}
-}
-
-static void swap_meta(DBMETA *m)
-{
-	uint8_t *p = (uint8_t *)m;
-	SWAP32(p);      /* lsn.file */
-	SWAP32(p);      /* lsn.offset */
-	SWAP32(p);      /* pgno */
-	SWAP32(p);      /* magic */
-	SWAP32(p);      /* version */
-	SWAP32(p);      /* pagesize */
-	p += 4;         /* unused, page type, unused, unused */
-	SWAP32(p);      /* free */
-	SWAP32(p);      /* alloc_lsn part 1 */
-	SWAP32(p);      /* alloc_lsn part 2 */
-	SWAP32(p);      /* cached key count */
-	SWAP32(p);      /* cached record count */
-	SWAP32(p);      /* flags */
-	p = (u_int8_t *)m + sizeof(DBMETA);
-	SWAP32(p);              /* maxkey */
-	SWAP32(p);              /* minkey */
-	SWAP32(p);              /* re_len */
-	SWAP32(p);              /* re_pad */
-	SWAP32(p);              /* root */
-	p += 92 * sizeof(u_int32_t); /* unused */
-	SWAP32(p);              /* crypto_magic */
-}
 
 void prefix_tocpu(DB *dbp, PAGE *page);
 
@@ -124,79 +80,6 @@ static void pg2cpu(DB *dbp, PAGE *p)
 			bi->nrecs = flibc_intflip(bi->nrecs);
 		}
 	}
-}
-
-static uint32_t *
-getchksump(DB *dbp, PAGE *p)
-{
-	switch (TYPE(p)) {
-	case P_HASH:
-	case P_IBTREE:
-	case P_IRECNO:
-	case P_LBTREE:
-	case P_LRECNO:
-	case P_OVERFLOW:
-		return (uint32_t*)P_CHKSUM(dbp, p);
-
-	case P_HASHMETA:
-		return (uint32_t*) &((HMETA *)p)->chksum;
-
-	case P_BTREEMETA:
-		return (uint32_t*) &((BTMETA *)p)->chksum;
-
-	case P_QAMMETA:
-		return (uint32_t*) &((QMETA *)p)->chksum;
-
-	case P_QAMDATA:
-		return (uint32_t*) &((QPAGE *)p)->chksum;
-
-	case P_LDUP:
-	case P_INVALID:
-	case __P_DUPLICATE:
-	case P_PAGETYPE_MAX:
-	default:
-		return NULL;
-	}
-}
-
-static int
-getchksumsz(DB *dbp, PAGE *p)
-{
-	switch (TYPE(p)) {
-	case P_HASHMETA:
-	case P_BTREEMETA:
-	case P_QAMMETA:
-		return 512;
-	default:
-		return dbp->pgsize;
-	}
-}
-
-static void
-check_chksum(DB *dbp, PAGE *p)
-{
-	if (!F_ISSET(dbp, DB_AM_CHKSUM))
-		return;
-	uint32_t calc, chksum, *chksump = getchksump(dbp, p);
-
-	if (chksump == NULL) {
-		logmsg(LOGMSG_USER, "PGTYPE: %s - skipping chksum\n", type2str(TYPE(p)));
-#include <logmsg.h>
-		return;
-	}
-	int size = getchksumsz(dbp, p);
-
-	if (F_ISSET(dbp, DB_AM_SWAP))
-		chksum = flibc_intflip(*chksump);
-	else
-		chksum = *chksump;
-	*chksump = 0;
-	calc = IS_CRC32C(p) ? crc32c((uint8_t *) p, size)
-	    : __ham_func4(dbp, p, size);
-	if (chksum != calc)
-		printf("pg:%u failed chksum expected:%u got:%u\n",
-		    PGNO(p), chksum, calc);
-	*chksump = chksum;
 }
 
 static void
@@ -441,3 +324,4 @@ __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 		return;
 	}
 }
+
