@@ -39,6 +39,9 @@
 #include "phys_rep_lsn.h"
 #include "macc_glue.h"
 
+extern int gbl_import_mode;
+extern char *gbl_import_src;
+extern char *gbl_import_table;
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
 extern int gbl_exit;
@@ -83,6 +86,9 @@ static struct option long_options[] = {
     {"version", no_argument, NULL, 'v'},
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
+    {"import", no_argument, &gbl_import_mode, 1},
+    {"tables", required_argument, NULL, 0},
+    {"src", required_argument, NULL, 0},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text =
@@ -241,6 +247,8 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
         case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
+        case 16: /* tables */ gbl_import_table = optarg; break;
+        case 17: /* src */ gbl_import_src = optarg; break;
         }
     }
     return 0;
@@ -658,18 +666,10 @@ static int lrltokignore(char *tok, int ltok)
     return 1;
 }
 
-static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
-                                 char *fname, int dbnum, char *tok)
+int new_table_from_schema_buf(struct dbenv *dbenv, char *tblname,
+                              char *csc2, int dbnum, char *tok)
 {
     struct dbtable *db;
-    char *csc2;
-
-    csc2 = load_text_file(fname);
-    if (!csc2) {
-        logmsg(LOGMSG_ERROR, "Error loading text from file %s\n", fname);
-        return -1;
-    }
-
     struct errstat err = {0};
     db = create_new_dbtable(dbenv, tblname, csc2, dbnum, 0, 0, 0, &err);
     if (!db) {

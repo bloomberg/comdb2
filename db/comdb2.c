@@ -141,9 +141,11 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "reverse_conn.h"
+#include "importdata.pb-c.h"
 
 #define tokdup strndup
 
+char * gbl_file_copier = "scp";
 int gbl_thedb_stopped = 0;
 int gbl_sc_timeoutms = 1000 * 60;
 char gbl_dbname[MAX_DBNAME_LENGTH];
@@ -180,6 +182,11 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 extern int bdb_gbl_asof_modsnap_init(bdb_state_type *);
+extern void clear_bulk_import_data(ImportData *p_data);
+extern int bulk_import_tmpdb_pack_data_to_file(ImportData *p_data);
+extern int bulk_import_tmpdb_pull_foreign_data();
+extern int bulk_import_data_load(ImportData *p_data);
+extern void set_dbdir(char *dir);
 extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
@@ -321,6 +328,9 @@ char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
 int gbl_exit = 0;        /* exit requested.*/
 int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
+int gbl_import_mode = 0; /* turn on import mode */
+char *gbl_import_table; /* Import table */
+char *gbl_import_src; /* Import source */
 const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
                                         * external lrl file to create with
                                         * this db's settings and table defs */
@@ -2767,6 +2777,8 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->concurrent_queries = time_metric_new("concurrent_queries");
     dbenv->connections = time_metric_new("connections");
 
+    pthread_mutex_init(&dbenv->import_lock, NULL);
+
     return dbenv;
 }
 
@@ -3633,6 +3645,7 @@ static int init(int argc, char **argv)
 
     handle_cmdline_options(argc, argv, &lrlname);
 
+
     if (gbl_create_mode) {        /*  10  */
         logmsg(LOGMSG_INFO, "create mode.\n");
         gbl_exit = 1;
@@ -3647,11 +3660,23 @@ static int init(int argc, char **argv)
         gbl_local_mode = 1; /*local mode, so no connect to network*/
     }
 
-    if (optind >= argc) {
+    if (!gbl_import_mode && optind >= argc) {
         fprintf(stderr, "Must provide DBNAME as first argument\n");
         exit(1);
     }
-    dbname = argv[optind++];
+
+    if (gbl_import_mode) {
+        gbl_exit = 1;
+        gbl_fullrecovery = 1;
+
+        rc = bulk_import_tmpdb_pull_foreign_data();
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
+            return rc;
+        }
+    }
+
+    dbname = gbl_import_mode ? "import" : argv[optind++];
     int namelen = strlen(dbname);
     if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
         logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
@@ -4315,6 +4340,30 @@ static int init(int argc, char **argv)
         bdb_process_user_command(thedb->bdb_env, "repdbgy", 7, 0);
 
     clear_csc2_files();
+
+    if (gbl_import_mode)
+    {
+        ImportData import_data = IMPORT_DATA__INIT;
+
+        import_data.table_name = strdup(gbl_import_table);
+        if (import_data.table_name == NULL) {
+            return ENOMEM;
+        }
+
+        rc = bulk_import_data_load(&import_data);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to load import data\n", __func__);
+            return rc;
+        }
+
+        rc = bulk_import_tmpdb_pack_data_to_file(&import_data);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to pack import data to file\n", __func__);
+            return rc;
+        }
+
+        clear_bulk_import_data(&import_data);
+    }   
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");

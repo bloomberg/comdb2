@@ -27,6 +27,7 @@
 #include "cdb2_constants.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
+#include "importdata.pb-c.h"
 
 #define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
 
@@ -1618,6 +1619,39 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
     logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
            nm->z, nm2->n +lnm2->n, nm2->z);
+}
+
+/********************* IMPORT ****************************************************/
+
+void comdb2Import(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
+{
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
+
+    BpfuncBulkImport *aimport = (BpfuncBulkImport*) malloc(sizeof(BpfuncBulkImport));
+    if (!aimport) goto err;
+    bpfunc_bulk_import__init(aimport);
+
+    aimport->srcdb = strdup(nm2->z);
+    aimport->src_tablename = strdup(nm->z);
+    aimport->dst_tablename = strdup(nm3->z);
+
+    arg->bimp = aimport;
+    arg->type = BPFUNC_BULK_IMPORT;
+
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
+
+    return;
+err:
+    if (arg) {
+        free_bpfunc_arg(arg);
+    }
+
+    logmsg(LOGMSG_ERROR, "%s: Bulk import failed\n", __func__);
+    return;
 }
 
 /********************* ANALYZE ***************************************************/
