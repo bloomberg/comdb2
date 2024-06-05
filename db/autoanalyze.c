@@ -93,7 +93,7 @@ void reset_aa_counter(char *tblname)
 #define loc_print_date(t, outresult)                                                               \
     ({                                                                                             \
         struct tm tmresult;                                                                        \
-        localtime_r(t, &tmresult);                                                                 \
+        localtime_r((time_t *)t, &tmresult);                                                                 \
         strftime(outresult, sizeof(outresult), "%F %T (%s)", &tmresult);                           \
         outresult;                                                                                 \
     })
