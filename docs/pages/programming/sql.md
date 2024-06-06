@@ -459,7 +459,8 @@ table. Multiple ADD/DROP operations can be used in the same command. In case of
 ```DROP``` operation, the references to the column being dropped will be
 silently removed from the referring keys and constraints definitions. ```RENAME TO```
 option renames a table.  This option cannot be combined with other ```ALTER TABLE```
-options.
+options. The rename option also cannot be used on the parent table in
+a foreign key constraint.
 
 An existing table can be partitioned live by using the ```PARTITIONED BY``` option.
 An existing partition can be collapsed live to a standalone table by using
