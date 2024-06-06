@@ -81,6 +81,8 @@ enum {
     REVERSE_CONN_WORKER_EXITED,
 };
 
+int gbl_revsql_force_rte = 1;
+
 int send_reversesql_request(const char *dbname, const char *host,
                             const char *command) {
     SBUF2 *sb;
@@ -93,7 +95,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     char paddr[64];
 
     // Connect to the remote database
-    sb = connect_remote_db(NULL, dbname, NULL, (char *) host, 0);
+    sb = connect_remote_db(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte);
     if (!sb) {
         revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s:%s\n", __func__, __LINE__, dbname, host);
         return 1;

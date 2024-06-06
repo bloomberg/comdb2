@@ -1,15 +1,15 @@
 schema
 {
     // Database name
-    cstring     name[32]
+    cstring     name[64]
 
     // A name for this tier.  Common choices are "test", "alpha", "beta",
     // "prod".
-    cstring     cluster_name[32]
+    cstring     cluster_name[64]
 
     // The cluster machines that this database lives on e.g. "beta" or "E"
     // (this refers to the actual machines and must exist in table machines)
-    cstring     cluster_machs[32]
+    cstring     cluster_machs[64]
 }
 
 keys
