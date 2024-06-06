@@ -3435,7 +3435,8 @@ extern int gbl_max_sql_hint_cache;
 
 /* Remote cursor support */
 /* use portmux to open an SBUF2 to local db or proxied db */
-SBUF2* connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache);
+SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+                         int force_rte);
 int get_rootpage_numbers(int nums);
 
 void sql_dump_hints(void);

@@ -159,6 +159,8 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * revsql_connect_freq_sec: This node will attempt to `reverse connect` to the remote host at this frequency. (Default: 5secs)
 * revsql_debug: Print extended reversql-sql trace. (Default: off)
 * revsql_host_refresh_freq_sec: The frequency at which the reverse connection host list will be refreshed. (Default: 5secs)
+* revsql_force_rte: Force rte-mode for all reverse connections. (Default: on)
+* connect_remote_rte: Force rte-mode for both fdb and revsql connections. (Default: off)
 
 ## lrl configurations
 

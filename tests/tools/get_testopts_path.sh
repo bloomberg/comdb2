@@ -8,5 +8,5 @@ TST=$1
 
 for i in *.test/*.testopts ; do 
     echo $i | sed 's#\.testopts#_generated#g; s#/#_#g; s#\.test##g; s#$#.test#' | xargs echo $i ; 
-done | grep $TST | cut -f1 -d' '
+done | egrep "\<${TST}\>" | cut -f1 -d' '
 
