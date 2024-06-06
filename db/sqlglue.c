@@ -11241,16 +11241,20 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
     *psb = NULL;
 }
 
+int gbl_connect_remote_rte = 0;
+
 /* use portmux to open an SBUF2 to local db or proxied db
    it is trying to use sockpool
  */
-SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache)
+SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *service, char *host, int use_cache,
+                         int force_rte)
 {
     SBUF2 *sb;
     int port;
     int retry;
     int sockfd;
     int nodelay = 1;
+    int use_rte = 0;
 
     if (use_cache) {
         /* lets try to use sockpool, if available */
@@ -11265,26 +11269,35 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
     /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s.%s\n",
       __func__, dbname, protocol, service, host);*/
 
+    use_rte = (gbl_connect_remote_rte || force_rte);
     retry = 0;
 retry:
 
-    /* this could fail due to load */
-    port = portmux_get(host, "comdb2", "replication", dbname);
-    if (port == -1) {
-        if (retry++ < 10) {
-            goto retry;
+    if (use_rte) {
+        sockfd = tcpconnecth_to(host, get_portmux_port(), 0, 0);
+        if (sockfd == -1) {
+            if (retry++ < 10) {
+                goto retry;
+            }
+            logmsg(LOGMSG_ERROR, "%s: cannot connect to pmux on machine %s port 5105\n", __func__, host);
+            return NULL;
         }
+    } else {
+        /* this could fail due to load */
+        port = portmux_get(host, "comdb2", "replication", dbname);
+        if (port == -1) {
+            if (retry++ < 10) {
+                goto retry;
+            }
 
-        logmsg(LOGMSG_ERROR, "%s: cannot get port number from portmux on node %s\n",
-                __func__, host);
-        return NULL;
-    }
-
-    sockfd = tcpconnecth_to(host, port, 0, 0);
-    if (sockfd == -1) {
-        logmsg(LOGMSG_ERROR, "%s: cannot connect to %s on machine %s port %d\n",
-                __func__, dbname, host, port);
-        return NULL;
+            logmsg(LOGMSG_ERROR, "%s: cannot get port number from portmux on node %s\n", __func__, host);
+            return NULL;
+        }
+        sockfd = tcpconnecth_to(host, port, 0, 0);
+        if (sockfd == -1) {
+            logmsg(LOGMSG_ERROR, "%s: cannot connect to %s on machine %s port %d\n", __func__, dbname, host, port);
+            return NULL;
+        }
     }
 
     (void)setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
@@ -11298,6 +11311,21 @@ sbuf:
     }
 
     sbuf2settimeout(sb, IOTIMEOUTMS, IOTIMEOUTMS);
+
+    /* Tell portmux to pass connection to database */
+    if (use_rte) {
+        char name[128];
+        char res[32] = {0};
+        snprintf(name, sizeof(name), "comdb2/replication/%s", dbname);
+        sbuf2printf(sb, "rte %s\n", name);
+        sbuf2flush(sb);
+        sbuf2gets(res, sizeof(res), sb);
+
+        if (res[0] != '0') {
+            sbuf2close(sb);
+            return NULL;
+        }
+    }
 
     return sb;
 }
