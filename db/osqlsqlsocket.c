@@ -99,9 +99,8 @@ static int osql_begin_socket(struct sqlclntstate *clnt, int type, int keep_rqid)
         return 0; /* loop in caller */
 
     /* get a socket to target */
-    clnt->osql.target.sb = sb = connect_remote_db(
-        BPLOG_PROTO, thedb->envname, BPLOG_APPSOCK,
-        (char *)clnt->osql.target.host, gbl_sockbplog_sockpool);
+    clnt->osql.target.sb = sb = connect_remote_db(BPLOG_PROTO, thedb->envname, BPLOG_APPSOCK,
+                                                  (char *)clnt->osql.target.host, gbl_sockbplog_sockpool, 0);
     if (!sb) {
         logmsg(LOGMSG_ERROR, "%s Failed to open socket to %s\n", __func__,
                clnt->osql.target.host);

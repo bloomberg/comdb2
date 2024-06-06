@@ -2089,7 +2089,7 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_ca
         now = gettimeofday_ms();
     }
 
-    *psb = sb = connect_remote_db("icdb2", fdb->dbname, "remsql", host, use_cache);
+    *psb = sb = connect_remote_db("icdb2", fdb->dbname, "remsql", host, use_cache, 0);
 
     if (gbl_fdb_track_times) {
         then = gettimeofday_ms();

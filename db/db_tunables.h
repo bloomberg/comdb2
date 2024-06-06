@@ -1947,6 +1947,10 @@ REGISTER_TUNABLE("revsql_connect_freq_sec", "This node will attempt to (reverse)
                  "connect to the remote host at this frequency. (Default: 5secs)",
                  TUNABLE_INTEGER, &gbl_revsql_connect_freq_sec, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_force_rte", "Force reverse sql connections to use rte. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_revsql_force_rte, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("connect_remote_rte", "Connect to remote nodes using rte. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_connect_remote_rte, 0, 0, 0, 0, 0);
 REGISTER_TUNABLE("revsql_debug",
                  "Print extended reversql-sql trace. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_revsql_debug, EXPERIMENTAL | INTERNAL,

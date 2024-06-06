@@ -457,6 +457,8 @@ extern int gbl_revsql_debug;
 extern int gbl_revsql_cdb2_debug;
 extern int gbl_revsql_host_refresh_freq_sec;
 extern int gbl_revsql_connect_freq_sec;
+extern int gbl_revsql_force_rte;
+extern int gbl_connect_remote_rte;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
