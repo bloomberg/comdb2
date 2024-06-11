@@ -1276,9 +1276,6 @@ void bdb_clear_skip(bdb_state_type *bdb_state, int node);
 /* remove all nodes from skip list */
 void bdb_clear_skip_list(bdb_state_type *bdb_state);
 
-/* tran.c */
-int bdb_tran_rep_handle_dead(bdb_state_type *bdb_state);
-
 /* useful debug stuff we've exposed in berkdb */
 extern void __bb_dbreg_print_dblist(DB_ENV *dbenv,
                                     void (*prncallback)(void *userptr,

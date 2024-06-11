@@ -1264,9 +1264,6 @@ static int is_handled_rc(int rc)
     if (rc == DB_LOCK_DEADLOCK)
         return 1;
 
-    if (rc == DB_REP_HANDLE_DEAD)
-        return 1;
-
     return 0;
 }
 

@@ -775,6 +775,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     int nodelay;
     int useheap = 0;
     int is_logput = 0;
+    unsigned long long *p_ltranid;
     tran_type *tran = NULL;
 
     /* get a pointer back to our bdb_state */
@@ -897,7 +898,14 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
     nodelay = 0;
 
-    tran = pthread_getspecific(bdb_state->seqnum_info->key);
+    p_ltranid = pthread_getspecific(bdb_state->seqnum_info->key);
+
+    if (p_ltranid != NULL) {
+        Pthread_mutex_lock(&bdb_state->translist_lk);
+        tran = hash_find(bdb_state->logical_transactions_hash, p_ltranid);
+        Pthread_mutex_unlock(&bdb_state->translist_lk);
+    }
+
     if (tran && tran->is_rowlocks_trans) {
         /* if about to commit, remember the lsn to wait for as the first
            lsn of the logical transaction. if not about to commit the
@@ -906,6 +914,10 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             nodelay = 1;
         }
     } else {
+        if (tran == NULL) {
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+            free(p_ltranid);
+        }
         if ((flags & DB_REP_PERMANENT) || (flags & DB_REP_NOBUFFER))
             nodelay = 1;
     }
@@ -5849,11 +5861,6 @@ int bdb_wait_for_seqnum_from_n(bdb_state_type *bdb_state, seqnum_type *seqnum,
         Pthread_mutex_unlock(&bdb_state->seqnum_info->lock);
     }
     return 0;
-}
-
-void bdb_set_rep_handle_dead(bdb_state_type *bdb_state)
-{
-    bdb_state->rep_handle_dead = 1;
 }
 
 int bdb_master_should_reject(bdb_state_type *bdb_state)

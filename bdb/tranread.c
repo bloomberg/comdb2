@@ -86,10 +86,6 @@ static int bdb_fetch_last_key_tran_int(bdb_state_type *bdb_state,
                 __LINE__, rc, db_strerror(rc));
 
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
-            *bdberr = BDBERR_DEADLOCK;
-            break;
-
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;

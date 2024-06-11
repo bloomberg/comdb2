@@ -612,7 +612,6 @@ static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran, void *dt
 
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -691,7 +690,6 @@ static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran, vo
 
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;

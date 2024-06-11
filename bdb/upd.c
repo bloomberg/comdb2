@@ -94,7 +94,6 @@ static int bdb_change_dta_genid_dtastripe(bdb_state_type *bdb_state,
         case BDBERR_DTA_MISMATCH:
             *bdberr = BDBERR_DTA_MISMATCH;
             break;
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -164,7 +163,6 @@ static int bdb_prim_add_upd_int(bdb_state_type *bdb_state, tran_type *tran,
         case BDBERR_DTA_MISMATCH:
             *bdberr = BDBERR_DTA_MISMATCH;
             break;
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -252,7 +250,6 @@ static int bdb_prim_updvrfy_int(bdb_state_type *bdb_state, tran_type *tran,
         case BDBERR_DTA_MISMATCH:
             *bdberr = BDBERR_DTA_MISMATCH;
             break;
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -301,7 +298,6 @@ static int bdb_prim_updkey_genid_int(bdb_state_type *bdb_state, tran_type *tran,
     if (rc) {
         *bdberr = rc;
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;

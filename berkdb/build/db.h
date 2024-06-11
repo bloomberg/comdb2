@@ -1397,7 +1397,7 @@ typedef enum {
 #define	DB_OLD_VERSION		(-30989)/* Out-of-date version. */
 #define	DB_PAGE_NOTFOUND	(-30988)/* Requested page not found. */
 #define	DB_REP_DUPMASTER	(-30987)/* There are two masters. */
-#define	DB_REP_HANDLE_DEAD	(-30986)/* Rolled back a commit. */
+// #define	DB_REP_HANDLE_DEAD	(-30986)/* Rolled back a commit. */
 #define	DB_REP_HOLDELECTION	(-30985)/* Time to hold an election. */
 #define	DB_REP_ISPERM		(-30984)/* Cached not written perm written.*/
 #define	DB_REP_NEWMASTER	(-30983)/* We have learned of a new master. */

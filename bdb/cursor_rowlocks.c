@@ -281,9 +281,6 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
     if (dbtdta.data)
         free(dbtdta.data);
 
-    if (rc == DB_REP_HANDLE_DEAD)
-        rc = DB_LOCK_DEADLOCK;
-
     if (debug_trace(berkdb)) {
         logmsg(LOGMSG_USER, "Cur %p return-cursor cursor rc=%d\n", cur, rc);
     }
@@ -394,7 +391,7 @@ int bdb_berkdb_rowlocks_unlock(bdb_berkdb_t *pberkdb, int *bdberr)
     if (r->pagelock_cursor) {
         rc = close_pagelock_cursor(pberkdb);
         if (rc) {
-            if (DB_LOCK_DEADLOCK == rc || DB_REP_HANDLE_DEAD == rc)
+            if (DB_LOCK_DEADLOCK == rc)
                 *bdberr = BDBERR_DEADLOCK;
             else
                 *bdberr = rc;
@@ -628,7 +625,7 @@ again:
 
 err_rc:
     if (DB_LOCK_DEADLOCK == rc || BDBERR_DEADLOCK_ROWLOCK == rc ||
-        BDBERR_DEADLOCK == rc || DB_REP_HANDLE_DEAD == rc) {
+        BDBERR_DEADLOCK == rc) {
         *bdberr = BDBERR_DEADLOCK;
         rc = DB_LOCK_DEADLOCK;
     } else {
@@ -1244,7 +1241,7 @@ again:
 err_rc:
     /* All flavors of deadlock set bdberr to BDBERR_DEADLOCK */
     if (DB_LOCK_DEADLOCK == rc || BDBERR_DEADLOCK_ROWLOCK == rc ||
-        BDBERR_DEADLOCK == rc || DB_REP_HANDLE_DEAD == rc) {
+        BDBERR_DEADLOCK == rc) {
         memcpy(repokeyptr, repokey, r->keylen);
         *bdberr = BDBERR_DEADLOCK;
         rc = DB_LOCK_DEADLOCK;
@@ -1605,7 +1602,7 @@ again:
 err_rc:
     /* All flavors of deadlock set bdberr to BDBERR_DEADLOCK */
     if (DB_LOCK_DEADLOCK == rc || BDBERR_DEADLOCK_ROWLOCK == rc ||
-        BDBERR_DEADLOCK == rc || DB_REP_HANDLE_DEAD == rc) {
+        BDBERR_DEADLOCK == rc) {
         *bdberr = BDBERR_DEADLOCK;
         frc = DB_LOCK_DEADLOCK;
     } else {
@@ -1859,7 +1856,7 @@ again:
 err_rc:
     /* All flavors of deadlock set bdberr to BDBERR_DEADLOCK */
     if (DB_LOCK_DEADLOCK == rc || BDBERR_DEADLOCK_ROWLOCK == rc ||
-        BDBERR_DEADLOCK == rc || DB_REP_HANDLE_DEAD == rc) {
+        BDBERR_DEADLOCK == rc) {
         *bdberr = BDBERR_DEADLOCK;
         frc = DB_LOCK_DEADLOCK;
     } else {
@@ -2705,7 +2702,7 @@ int bdb_berkdb_rowlocks_close(bdb_berkdb_t *berkdb, int *bdberr)
     if (r->pagelock_cursor) {
         rc = close_pagelock_cursor(berkdb);
         if (rc) {
-            if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD)
+            if (rc == DB_LOCK_DEADLOCK)
                 *bdberr = BDBERR_DEADLOCK;
             else
                 *bdberr = rc;

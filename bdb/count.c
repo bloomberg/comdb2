@@ -72,10 +72,6 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
                                                   &dbcp, 0);
                 if (0 != rc) {
                     switch (rc) {
-                    case DB_REP_HANDLE_DEAD:
-                        *bdberr = BDBERR_DEADLOCK;
-                        break;
-
                     case DB_LOCK_DEADLOCK:
                         /* This DOES happen even though docs claim otherwise */
                         *bdberr = BDBERR_DEADLOCK;
@@ -105,7 +101,7 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
                     return 0;
                 } else {
                     dbcp->c_close(dbcp);
-                    if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD)
+                    if (rc == DB_LOCK_DEADLOCK)
                         *bdberr = BDBERR_DEADLOCK;
                     else {
                         fprintf(stderr,
@@ -125,7 +121,6 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
                     dbcp->c_close(dbcp);
                     switch (rc) {
                     case DB_LOCK_DEADLOCK:
-                    case DB_REP_HANDLE_DEAD:
                         *bdberr = BDBERR_DEADLOCK;
                         break;
                     default:
@@ -153,7 +148,7 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
                     return 0;
                 } else {
                     dbcp->c_close(dbcp);
-                    if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD)
+                    if (rc == DB_LOCK_DEADLOCK)
                         *bdberr = BDBERR_DEADLOCK;
                     else {
                         fprintf(stderr,
@@ -173,7 +168,6 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
                     dbcp->c_close(dbcp);
                     switch (rc) {
                     case DB_LOCK_DEADLOCK:
-                    case DB_REP_HANDLE_DEAD:
                         *bdberr = BDBERR_DEADLOCK;
                         break;
                     default:
@@ -214,10 +208,6 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
         fprintf(stderr, "bdb_count: ix0->cursor open failed %d %s\n", rc,
                 db_strerror(rc));
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
-            *bdberr = BDBERR_DEADLOCK;
-            break;
-
         case DB_LOCK_DEADLOCK:
             /* This DOES happen even though docs claim otherwise */
             *bdberr = BDBERR_DEADLOCK;
@@ -249,7 +239,6 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
             break;
         } else if (rc != 0) {
             switch (rc) {
-            case DB_REP_HANDLE_DEAD:
             case DB_LOCK_DEADLOCK:
                 *bdberr = BDBERR_DEADLOCK;
                 break;

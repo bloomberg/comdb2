@@ -2122,6 +2122,7 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
                                        unsigned long long ltranid,
                                        int repcommit)
 {
+    unsigned long long *p_ltranid;
     tran_type *ltrans;
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -2165,7 +2166,12 @@ static int logical_release_transaction(bdb_state_type *bdb_state,
         abort();
     }
 
-    Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+    
+    p_ltranid = pthread_getspecific(bdb_state->seqnum_info->key);
+    if (p_ltranid != NULL) {
+        free(p_ltranid);
+        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+    }
     free(ltrans);
 
     return 0;
