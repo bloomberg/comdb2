@@ -17,13 +17,23 @@
 #ifndef INCLUDED_SSLWRITER_H
 #define INCLUDED_SSLWRITER_H
 
-struct ssl_st;
+struct event;
 struct evbuffer;
 struct event_base;
+struct ssl_data;
+enum ssl_mode;
+
 typedef void (ssl_evbuffer_cb)(void *);
-void accept_evbuffer_ssl(struct ssl_st **, int, struct event_base *, ssl_evbuffer_cb *on_error, ssl_evbuffer_cb *on_success, void *);
-void connect_evbuffer_ssl(struct ssl_st **, int fd, struct event_base *base, ssl_evbuffer_cb *error_cb, ssl_evbuffer_cb *success_cb, void *data);
-int rd_evbuffer_ssl(struct evbuffer *, struct ssl_st *, int *eof);
-int wr_evbuffer_ssl(struct ssl_st *, struct evbuffer *);
+void accept_ssl_evbuffer(struct ssl_data *, struct event_base *, ssl_evbuffer_cb *err, ssl_evbuffer_cb *accepted, void *);
+void connect_ssl_evbuffer(struct ssl_data *, struct event_base *, ssl_evbuffer_cb *err, ssl_evbuffer_cb *connected, void *);
+int rd_ssl_evbuffer(struct evbuffer *, struct ssl_data *, int *eof);
+int wr_ssl_evbuffer(struct ssl_data *, struct evbuffer *);
+int verify_ssl_evbuffer(struct ssl_data *, enum ssl_mode);
+int ssl_data_has_ssl(struct ssl_data *);
+int ssl_data_has_cert(struct ssl_data *);
+int ssl_data_cert(struct ssl_data *, int nid, void *out, int outsz);
+void ssl_data_free(struct ssl_data *);
+struct ssl_data *ssl_data_new(int fd, char *origin);
+int ssl_data_pending(struct ssl_data *);
 
 #endif /* INCLUDED_SSLWRITER_H */
