@@ -363,11 +363,11 @@ proc do_cdb2_normalize { dbName sql {tier default} } {
   return [lindex [lindex $result 0] 0]
 }
 
-proc do_cdb2_defquery { sql {format csv} {costVarName ""} } {
-    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $format $costVarName]]
+proc do_cdb2_defquery { sql {format csv} {costVarName ""} {params {}} } {
+    return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $format $costVarName $params]]
 }
 
-proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
+proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} {params {}} } {
     if {[string index $sql 0] eq "#"} {return}
     maybe_append_query_to_log_file $sql $dbName $tier
     set doCost [expr {[string length $costVarName] > 0}]
@@ -383,6 +383,12 @@ proc do_cdb2_query { dbName sql {tier default} {format csv} {costVarName ""} } {
     if {$doCost} {cdb2 run $db "SET GETCOST ON"}
 
     set sql [string map [list \r\n \n] [string trim $sql]]
+
+    set ii [expr 1]
+    foreach param $params {
+      cdb2 bind $db $ii integer $param
+      set ii [expr $ii+1]
+    }
 
     set result ""; cdb2 run $db $sql; grab_cdb2_results $db result $format
     set effects [cdb2 effects $db]
@@ -903,6 +909,12 @@ proc do_execsql_test {testname sql {result {}}} {
   uplevel do_test $testname [list "execsql {$sql}"] [list $r]
 }
 
+proc do_execsql_params_test {testname sql {params {}} {result {}}} {
+  set r {}
+  foreach x $result {lappend r $x}
+  uplevel do_test $testname [list "execsql {$sql} '' {$params}"] [list $r]
+}
+
 proc do_lastcost_test {testname sql {result {}}} {
   set r {}
   foreach x $result {lappend r $x}
@@ -920,10 +932,10 @@ proc do_catchsql_test {testname sql result} {
 # literals are pointer values that might very from one run of the test to the
 # next, yet we want the output to be consistent.
 #
-proc query_plan_graph {sql} {
+proc query_plan_graph {sql {params {}}} {
   array set cx {}
   array set dx {}
-  set r [execsql "EXPLAIN QUERY PLAN $sql" list_results]
+  set r [execsql "EXPLAIN QUERY PLAN $sql" list_results $params]
   foreach {id parent dummy detail} $r {
     #truncate estimated number of row(s) from detail
     if {[regexp {row\)$} $detail] || [regexp {rows\)$} $detail]} {
@@ -992,6 +1004,17 @@ proc do_eqp_test {name sql res} {
       set res "/*$res*/"
     }
     uplevel do_execsql_test $name [list "EXPLAIN QUERY PLAN $sql"] [list $res]
+  }
+}
+
+proc do_eqp_params_test {name sql {params {}} res} {
+  if {[regexp {^\s+QUERY PLAN\n} $res]} {
+    uplevel do_test $name [list [list query_plan_graph $sql $params]] [list $res]
+  } else {
+    if {[string index $res 0]!="/"} {
+      set res "/*$res*/"
+    }
+    uplevel do_execsql_params_test $name [list "EXPLAIN QUERY PLAN $sql"] [list $params] [list $res]
   }
 }
 
@@ -1563,7 +1586,7 @@ proc is_sqlite_stat {table} {
 
 # A procedure to execute SQL
 #
-proc execsql {sql {options ""}} {
+proc execsql {sql {options ""} {params {}}} {
   global cluster
   global gbl_schemachange_delay
 
@@ -1605,7 +1628,7 @@ proc execsql {sql {options ""}} {
     }
 
     if {[regexp -nocase {^DROP TABLE(?: IF EXISTS)?? ([[:alnum:]]+)$} $query _ table]} {
-      set rc [catch {do_cdb2_defquery "DROP TABLE $table"} err]
+      set rc [catch {do_cdb2_defquery "DROP TABLE $table" "csv" "" $params} err]
       delay_for_schema_change
       continue
     }
@@ -1618,7 +1641,7 @@ proc execsql {sql {options ""}} {
 
     if {[lsearch -exact $options want_results] == -1} {
       if {[regexp -nocase "^(?:DELETE|UPDATE|INSERT|BEGIN|COMMIT|ROLLBACK).*" $query]} {
-        set rc [catch {do_cdb2_defquery $query} outputs]
+        set rc [catch {do_cdb2_defquery $query "csv" "" $params} outputs]
         if {$rc != 0} {lappend r $rc $outputs}
         continue
       }
@@ -1645,15 +1668,15 @@ proc execsql {sql {options ""}} {
      || [lsearch -exact $options cksort] != -1
      || [lsearch -exact $options count_steps] != -1} {
       set cost ""
-      catch {do_cdb2_defquery $query $format cost} outputs
+      catch {do_cdb2_defquery $query $format cost $params} outputs
     } elseif {[string equal $options lastcost]} {
-      set rc [catch {do_cdb2_defquery $query $format lastcost} outputs]
+      set rc [catch {do_cdb2_defquery $query $format lastcost $params} outputs]
       if {$rc == 0} {
         append outputs "\n" $lastcost
         set lastcost ""
       }
     } else {
-      set rc [catch {do_cdb2_defquery $query $format} outputs]
+      set rc [catch {do_cdb2_defquery $query $format "" $params} outputs]
       if {$rc == 0} {set cost ""}
     }
 
