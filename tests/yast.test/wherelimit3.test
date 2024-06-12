@@ -23,41 +23,31 @@ do_execsql_test 1.0 {
   CREATE INDEX t1a ON t1(a);
   CREATE INDEX t1b ON t1(b);
   ANALYZE;
-}
+} {1000}
 
 do_eqp_test 1.1 {
   SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT 5;
 } {
-  QUERY PLAN
-  |--SEARCH t1 USING INDEX t1a (a>? AND a<?)
-  `--USE TEMP B-TREE FOR ORDER BY
+  7 0 0 {SEARCH TABLE t1 USING INDEX $T1A_433F50E9 (a>? AND a<?) (~256 rows)}
+  25 0 0 {USE TEMP B-TREE FOR ORDER BY}
 }
-ifcapable stat4 {
-  do_eqp_test 1.2 {
-    SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT -1;
-  } {
-    QUERY PLAN
-    `--SCAN t1 USING INDEX t1b
-  }
-}
-
-set N [expr 5]
-do_eqp_test 1.3 {
-  SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT $::N;
+do_eqp_test 1.2 {
+  SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT -1;
 } {
-  QUERY PLAN
-  |--SEARCH t1 USING INDEX t1a (a>? AND a<?)
-  `--USE TEMP B-TREE FOR ORDER BY
+  7 0 0 {SCAN TABLE t1 USING INDEX $T1B_DA360153 (~832 rows)}
 }
 
-ifcapable stat4 {
-  set N [expr -1]
-  do_eqp_test 1.4 {
-    SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT $::N;
-  } {
-    QUERY PLAN
-    `--SCAN t1 USING INDEX t1b
-  }
+do_eqp_params_test 1.3 {
+  SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT ?;
+} {5} {
+  7 0 0 {SEARCH TABLE t1 USING INDEX $T1A_433F50E9 (a>? AND a<?) (~256 rows)}
+  25 0 0 {USE TEMP B-TREE FOR ORDER BY}
+}
+
+do_eqp_params_test 1.4 {
+SELECT * FROM t1 WHERE a>=100 AND a<300 ORDER BY b LIMIT ?;
+} {-1} {
+  9 0 0 {SCAN TABLE t1 USING INDEX $T1B_DA360153 (~832 rows)}
 }
 
 
