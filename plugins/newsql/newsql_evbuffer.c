@@ -21,9 +21,6 @@
 #include <event2/buffer.h>
 #include <event2/event.h>
 
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-
 #include <bdb_api.h>
 #include <comdb2_atomic.h>
 #include <hostname_support.h>
@@ -41,7 +38,6 @@
 
 #include <newsql.h>
 
-extern int gbl_nid_dbname;
 extern int gbl_incoherent_clnt_wait;
 extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
@@ -67,11 +63,6 @@ struct dispatch_sql_arg {
 static TAILQ_HEAD(, dispatch_sql_arg) dispatch_list = TAILQ_HEAD_INITIALIZER(dispatch_list);
 static pthread_mutex_t dispatch_lk = PTHREAD_MUTEX_INITIALIZER;
 static struct event_base *dispatch_base;
-
-struct ssl_data {
-    SSL *ssl;
-    X509 *cert;
-};
 
 struct newsql_appdata_evbuffer {
     NEWSQL_APPDATA_COMMON /* Must be first */
@@ -194,22 +185,19 @@ static int newsql_get_fileno_evbuffer(struct sqlclntstate *clnt)
 static int newsql_get_x509_attr_evbuffer(struct sqlclntstate *clnt, int nid, void *out, int outsz)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    if (!appdata->ssl_data || !appdata->ssl_data->cert) return EINVAL;
-    return ssl_x509_get_attr(appdata->ssl_data->cert, nid, out, outsz);
+    return ssl_data_cert(appdata->ssl_data, nid, out, outsz);
 }
 
 static int newsql_has_ssl_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    if (appdata->ssl_data && appdata->ssl_data->ssl) return 1;
-    return 0;
+    return ssl_data_has_ssl(appdata->ssl_data);
 }
 
 static int newsql_has_x509_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    if (appdata->ssl_data && appdata->ssl_data->cert) return 1;
-    return 0;
+    return ssl_data_has_cert(appdata->ssl_data);
 }
 
 static int newsql_local_check_evbuffer(struct sqlclntstate *clnt)
@@ -314,13 +302,7 @@ static void wr_dbinfo_int(struct newsql_appdata_evbuffer *appdata, int write_res
 
 static void wr_dbinfo_ssl(struct newsql_appdata_evbuffer *appdata)
 {
-    ERR_clear_error();
-    struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
-    int len = evbuffer_get_length(wr_buf);
-    if (len > KB(16)) len = KB(16);
-    const void *buf = evbuffer_pullup(wr_buf, len);
-    int rc = SSL_write(appdata->ssl_data->ssl, buf, len);
-    if (rc > 0) evbuffer_drain(wr_buf, rc);
+    int rc = wr_ssl_evbuffer(appdata->ssl_data, sql_wrbuf(appdata->writer));
     wr_dbinfo_int(appdata, rc);
 }
 
@@ -416,7 +398,7 @@ static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
 
 static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl, int secure)
 {
-    if (appdata->ssl_data && appdata->ssl_data->ssl) return 0;
+    if (ssl_data_has_ssl(appdata->ssl_data)) return 0;
     if (have_ssl) {
         newsql_write_hdr_evbuffer(&appdata->clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
         return 1;
@@ -650,7 +632,7 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
 
 static void add_rd_event_ssl(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *t)
 {
-    if (SSL_pending(appdata->ssl_data->ssl)) {
+    if (ssl_data_pending(appdata->ssl_data)) {
         evtimer_once(event_get_base(ev), event_get_callback(ev), event_get_callback_arg(ev));
     } else {
         event_add(ev, t);
@@ -668,43 +650,14 @@ static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *
     appdata->add_rd_event_fn(appdata, ev, timeout); /* add_rd_event_plaintext */
 }
 
-static int verify_dbname(X509 *cert)
-{
-    return cert ? ssl_verify_dbname(cert, gbl_dbname, gbl_nid_dbname) : -1;
-}
-
-static int verify_hostname(struct newsql_appdata_evbuffer *appdata, X509 *cert)
-{
-    return cert ? ssl_verify_hostname(cert, appdata->fd) : -1;
-}
-
-static int verify_ssl(struct newsql_appdata_evbuffer *appdata)
-{
-    X509 *cert = appdata->ssl_data->cert = SSL_get_peer_certificate(appdata->ssl_data->ssl);
-    if (ssl_whitelisted(appdata->clnt.origin)) {
-        /* skip certificate check for local connections */
-        return 0;
-    }
-
-    switch (gbl_client_ssl_mode) {
-    case SSL_PREFER_VERIFY_DBNAME:
-    case SSL_VERIFY_DBNAME: if (verify_dbname(cert) != 0) return -1; // fallthrough
-    case SSL_PREFER_VERIFY_HOSTNAME:
-    case SSL_VERIFY_HOSTNAME: if (verify_hostname(appdata, cert) != 0) return -1; // fallthrough
-    case SSL_PREFER_VERIFY_CA:
-    case SSL_VERIFY_CA: if (!cert) return -1; // fallthrough
-    default: return 0;
-    }
-}
-
 static int enable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
-    int rc = verify_ssl(appdata);
+    int rc = verify_ssl_evbuffer(appdata->ssl_data, gbl_client_ssl_mode);
     /* Enable SSL even if verification failed so we can return error */
     appdata->wr_dbinfo_fn = wr_dbinfo_ssl;
     appdata->rd_evbuffer_fn = rd_evbuffer_ciphertext;
     appdata->add_rd_event_fn = add_rd_event_ssl;
-    sql_enable_ssl(appdata->writer, appdata->ssl_data->ssl);
+    sql_enable_ssl(appdata->writer, appdata->ssl_data);
     ssl_set_clnt_user(&appdata->clnt);
     return rc;
 }
@@ -715,20 +668,16 @@ static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
     appdata->rd_evbuffer_fn = rd_evbuffer_plaintext;
     appdata->add_rd_event_fn = add_rd_event_plaintext;
     sql_disable_ssl(appdata->writer);
-    SSL *ssl = appdata->ssl_data ? appdata->ssl_data->ssl : NULL;
-    if (!ssl) return;
-    appdata->ssl_data->ssl = NULL;
-    X509 *cert = appdata->ssl_data->cert;
-    appdata->ssl_data->cert = NULL;
-    SSL_shutdown(ssl);
-    SSL_free(ssl);
-    X509_free(cert);
+    if (appdata->ssl_data) {
+        ssl_data_free(appdata->ssl_data);
+        appdata->ssl_data = NULL;
+    }
 }
 
 static int rd_evbuffer_ciphertext(struct newsql_appdata_evbuffer *appdata)
 {
     int eof;
-    int rc = rd_evbuffer_ssl(appdata->rd_buf, appdata->ssl_data->ssl, &eof);
+    int rc = rd_ssl_evbuffer(appdata->rd_buf, appdata->ssl_data, &eof);
     if (eof) {
         disable_ssl_evbuffer(appdata);
     }
@@ -740,27 +689,27 @@ static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *appdata)
     return evbuffer_read(appdata->rd_buf, appdata->fd, -1);
 }
 
-static void ssl_error_cb(void *data)
+static void newsql_accept_ssl_error(void *data)
 {
     struct newsql_appdata_evbuffer *appdata = data;
     write_response(&appdata->clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
     newsql_cleanup(appdata);
 }
 
-static void ssl_success_cb(void *data)
+static void newsql_accept_ssl_success(void *data)
 {
     struct newsql_appdata_evbuffer *appdata = data;
     if (enable_ssl_evbuffer(appdata) == 0) {
         evtimer_once(appdata->base, rd_hdr, appdata);
     } else {
-        ssl_error_cb(appdata);
+        newsql_accept_ssl_error(appdata);
     }
 }
 
 static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
 {
-    if (appdata->ssl_data && appdata->ssl_data->ssl) {
-        struct sqlclntstate *clnt = &appdata->clnt;
+    struct sqlclntstate *clnt = &appdata->clnt;
+    if (ssl_data_has_ssl(appdata->ssl_data)) {
         logmsg(LOGMSG_ERROR,
                "%s fd:%d already have ssl clnt:%s pid:%d host:%d\n", __func__,
                appdata->fd, clnt->argv0, clnt->conninfo.pid,
@@ -778,10 +727,8 @@ static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
         evtimer_once(appdata->base, rd_hdr, appdata);
         return;
     }
-    if (!appdata->ssl_data) {
-        appdata->ssl_data = calloc(1, sizeof(struct ssl_data));
-    }
-    accept_evbuffer_ssl(&appdata->ssl_data->ssl, appdata->fd, appdata->base, ssl_error_cb, ssl_success_cb, appdata);
+    appdata->ssl_data = ssl_data_new(appdata->fd, clnt->origin);
+    accept_ssl_evbuffer(appdata->ssl_data, appdata->base, newsql_accept_ssl_error, newsql_accept_ssl_success, appdata);
     return;
 
 cleanup:
