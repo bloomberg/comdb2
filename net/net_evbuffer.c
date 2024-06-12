@@ -58,9 +58,17 @@
 #include <net_int.h>
 #include <plhash.h>
 #include <portmuxapi.h>
+#include <ssl_bend.h>
+#include <ssl_evbuffer.h>
+#include <ssl_glue.h>
 #include <timer_util.h>
 
 #include <connectmsg.pb-c.h>
+#include <hostname_support.h>
+
+#ifndef FIONREAD
+#  error FIONREAD not available
+#endif
 
 #define NEED_LSN_DEF
 #include <rep_qstat.h>
@@ -79,7 +87,7 @@
 #define MAX_DISTRESS_COUNT 3
 
 #define hprintf_lvl LOGMSG_USER
-#define hprintf_format(a) "[%.3s %-8s fd:%-3d %20s] " a, e->service, e->host, e->fd, __func__
+#define hprintf_format(a) "[%.3s %-8s fd:%-4d %3s %24s] " a, e->service, e->host, e->fd, e->ssl_data ? "TLS" : "", __func__
 #define distress_logmsg(...)                                                   \
     do {                                                                       \
         if (e->distressed) {                                                   \
@@ -101,7 +109,6 @@
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
-extern int count_newsqls;
 int gbl_pb_connectmsg = 1;
 int gbl_libevent = 1;
 int gbl_libevent_appsock = 1;
@@ -109,13 +116,15 @@ int gbl_libevent_rte_only = 0;
 
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char *gbl_myhostname;
+extern int gbl_accept_on_child_nets;
 extern int gbl_create_mode;
+extern int gbl_debug_pb_connectmsg_dbname_check;
+extern int gbl_debug_pb_connectmsg_gibberish;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern int gbl_pmux_route_enabled;
-extern int gbl_debug_pb_connectmsg_dbname_check;
-extern int gbl_debug_pb_connectmsg_gibberish;
-extern int gbl_accept_on_child_nets;
+extern int gbl_ssl_allow_localhost;
+
 extern void pstack_self(void);
 
 static struct timeval one_sec = {1, 0};
@@ -213,7 +222,7 @@ static void *rd_worker(void *);
 static void do_add_host(int, short, void *);
 static void do_open(int, short, void *);
 static void pmux_connect(int, short, void *);
-static void pmux_reconnect(struct connect_info *c);
+static void pmux_reconnect(struct connect_info *);
 static void resume_read(int, short, void *);
 static void unix_connect(int, short, void *);
 static int write_connect_message_proto(netinfo_type *, host_node_type *);
@@ -351,8 +360,10 @@ struct event_info {
     int decomissioned;
     int got_hello;
     int got_hello_reply;
+    struct ssl_data *ssl_data;
 
     /* read */
+    ssize_t (*readv)(struct event_info *);
     int readv_gen;
     time_t rd_full;
     pthread_t rd_worker_thd;
@@ -369,6 +380,7 @@ struct event_info {
     net_ack_message_payload_type ack;
 
     /* write */
+    ssize_t (*writev)(struct event_info *);
     pthread_mutex_t wr_lk;
     struct evbuffer *flush_buf;
     struct evbuffer *wr_buf;
@@ -749,20 +761,25 @@ struct host_connected_info {
     int fd;
     struct event_info *e;
     int connect_msg;
+    struct ssl_data *ssl_data;
 };
 
 static struct host_connected_info *
-host_connected_info_new(struct event_info *e, int fd, int connect_msg)
+host_connected_info_new(struct event_info *e, int fd, int connect_msg, struct ssl_data *ssl_data)
 {
     struct host_connected_info *info = calloc(1, sizeof(struct host_connected_info));
     info->e = e;
     info->fd = fd;
     info->connect_msg = connect_msg;
+    info->ssl_data = ssl_data;
     return info;
 }
 
 static void host_connected_info_free(struct host_connected_info *info)
 {
+    if (info->ssl_data) {
+        ssl_data_free(info->ssl_data);
+    }
     free(info);
 }
 
@@ -783,6 +800,8 @@ struct accept_info {
     struct event *ev;
     int uses_proto;
     char *dbname;
+    struct ssl_data *ssl_data;
+    char *origin;
     TAILQ_ENTRY(accept_info) entry;
 };
 
@@ -834,6 +853,9 @@ static void accept_info_free(struct accept_info *a)
     }
     if (a->buf) {
         evbuffer_free(a->buf);
+    }
+    if (a->ssl_data) {
+        ssl_data_free(a->ssl_data);
     }
     free(a->from_host);
     free(a->to_host);
@@ -930,6 +952,19 @@ static void do_disable_write(struct event_info *e)
     e->got_hello_reply = 0;
 }
 
+static void disable_ssl(int dummyfd, short what, void *data)
+{
+    check_base_thd();
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
+    if (e->ssl_data) {
+        ssl_data_free(e->ssl_data);
+        e->ssl_data = NULL;
+    }
+    d->func(-1, 0, e); /* -> do_reconnect, do_open */
+    free(d);
+}
+
 static void disable_write(int dummyfd, short what, void *data)
 {
     struct disable_info *d = data;
@@ -942,8 +977,7 @@ static void disable_write(int dummyfd, short what, void *data)
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
-    evtimer_once(base, d->func, e);
-    free(d);
+    evtimer_once(base, disable_ssl, d);
 }
 
 static void do_disable_read(struct event_info *e)
@@ -1005,7 +1039,7 @@ static void do_host_close(int dummyfd, short what, void *data)
 
 static void do_close(struct event_info *e, event_callback_fn func)
 {
-    hputs("CLOSE CONNECTION\n");
+    if (e->fd != -1) hputs("CLOSE CONNECTION\n");
     struct disable_info *i = malloc(sizeof(struct disable_info));
     i->e = e;
     i->func = func;
@@ -1068,6 +1102,16 @@ static void check_wr_full(struct event_info *e)
     hprintf("SUSPENDING WR outstanding:%zumb\n", max_bytes / MB(1));
 }
 
+static ssize_t writev_ciphertext(struct event_info *e)
+{
+    return wr_ssl_evbuffer(e->ssl_data, e->wr_buf);
+}
+
+static ssize_t writev_plaintext(struct event_info *e)
+{
+    return evbuffer_write(e->wr_buf, e->fd);
+}
+
 static void writecb(int fd, short what, void *data)
 {
     struct event_info *e = data;
@@ -1081,7 +1125,7 @@ static void writecb(int fd, short what, void *data)
     Pthread_mutex_unlock(&e->wr_lk);
     size_t len = evbuffer_get_length(e->wr_buf);
     while (len) {
-        int rc = evbuffer_write(e->wr_buf, fd);
+        int rc = e->writev(e); // -> writev_plaintext
         if (rc <= 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
@@ -1790,7 +1834,7 @@ static void get_stat_evbuffer(struct event_info *e, struct evbuffer *buf, net_qu
     }
 }
 
-static ssize_t readv_evbuffer(struct event_info *e)
+static ssize_t readv_plaintext(struct event_info *e)
 {
 #   define NVEC 8
     struct iovec v[NVEC];
@@ -1821,6 +1865,13 @@ static ssize_t readv_evbuffer(struct event_info *e)
     return sz;
 }
 
+static ssize_t readv_ciphertext(struct event_info *e)
+{
+    int eof;
+    int rc = rd_ssl_evbuffer(e->readv_buf, e->ssl_data, &eof);
+    return eof ? -1 : rc;
+}
+
 static void readcb(int fd, short what, void *data)
 {
     struct event_info *e = data;
@@ -1832,12 +1883,7 @@ static void readcb(int fd, short what, void *data)
     ** Writing my own readv wrapper; Observed max read of 4K with:
     ** ssize_t n = evbuffer_read(e->readv_buf, e->fd, -1);
     */
-#   ifdef FIONREAD
-    ssize_t n = readv_evbuffer(e);
-#   else
-#   pragma message("FIONREAD not available")
-    ssize_t n = evbuffer_read(e->readv_buf, e->fd, -1);
-#   endif
+    ssize_t n = e->readv(e); // -> readv_plaintext()
     if (n > 0) {
         check_rd_full(e);
         e->recv_at = time(NULL);
@@ -1857,6 +1903,29 @@ static void resume_read(int dummyfd, short what, void *data)
     event_add(e->rd_ev, NULL);
 }
 
+static void write_hello_evbuffer(struct event_info *e)
+{
+    hputs("WRITING HELLO\n");
+    write_hello(e->net_info->netinfo_ptr, e->host_node_ptr);
+    event_add(e->rd_ev, NULL);
+    event_add(e->hb_send_ev, &one_sec);
+}
+
+static void net_connect_ssl_error(void *data)
+{
+    struct event_info *e = data;
+    reconnect(e);
+}
+
+static void net_connect_ssl_success(void *data)
+{
+    struct event_info *e = data;
+    hputs("SSL CONNECTED\n");
+    e->readv = readv_ciphertext;
+    e->writev = writev_ciphertext;
+    write_hello_evbuffer(e);
+}
+
 static void finish_host_setup(int dummyfd, short what, void *data)
 {
     check_base_thd();
@@ -1871,14 +1940,22 @@ static void finish_host_setup(int dummyfd, short what, void *data)
         hprintf("WORKING ON PENDING CONNECTION fd:%d\n", e->host_connected->fd);
         do_close(e, do_open);
     } else if (connect_msg) {
-        hputs("WRITING HELLO\n");
+        hputs("WRITING CONNECT MSG\n");
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
         if (gbl_pb_connectmsg && gbl_libevent) {
             write_connect_message_proto(netinfo_ptr, e->host_node_ptr);
         } else {
             write_connect_message(netinfo_ptr, e->host_node_ptr, NULL);
         }
-        write_hello(netinfo_ptr, e->host_node_ptr);
+        if (e->ssl_data) abort();
+        if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
+            net_flush_evbuffer(e->host_node_ptr);
+            e->ssl_data = ssl_data_new(e->fd, e->host);
+            hputs("SSL CONNECT\n");
+            connect_ssl_evbuffer(e->ssl_data, base, net_connect_ssl_error, net_connect_ssl_success, e);
+        } else {
+            write_hello_evbuffer(e);
+        }
     } else {
         hputs("CONNECTED\n");
     }
@@ -1895,8 +1972,88 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
     e->hb_check_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_check, e);
     e->hb_send_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_send, e);
     event_add(e->hb_check_ev, &one_sec);
-    event_add(e->hb_send_ev, &one_sec);
+
+    struct host_connected_info *i = e->host_connected;
+    if (!i->connect_msg) event_add(e->hb_send_ev, &one_sec); /* enable after sending connect-msg */
     evtimer_once(base, finish_host_setup, e);
+}
+
+static void enable_read(int dummyfd, short what, void *data)
+{
+    struct event_info *e = data;
+    check_rd_thd();
+    e->rd_full = 0;
+    e->need = e->wirehdr_len;
+    if (e->readv_buf || e->rd_ev) {
+        abort();
+    }
+    e->readv_buf = evbuffer_new();
+    e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
+    struct host_connected_info *i = e->host_connected;
+    if (!i->connect_msg) event_add(e->rd_ev, NULL); /* enable after sending connect-msg */
+    evtimer_once(timer_base, enable_heartbeats, e);
+}
+
+static void enable_write(int dummyfd, short what, void *data)
+{
+    struct event_info *e = data;
+    struct host_connected_info *i = e->host_connected;
+    check_wr_thd();
+    Pthread_mutex_lock(&e->wr_lk);
+    update_event_fd(e, i->fd);
+    if (e->flush_buf || e->wr_ev || e->ssl_data) {
+        abort();
+    }
+    e->wr_ev = event_new(wr_base, e->fd, EV_WRITE | EV_PERSIST, writecb, e);
+    e->flush_buf = evbuffer_new();
+    e->wr_buf = evbuffer_new();
+    e->wr_full = 0;
+    e->decomissioned = 0;
+    if (i->ssl_data) {
+        e->readv = readv_ciphertext;
+        e->writev = writev_ciphertext;
+        e->ssl_data = i->ssl_data;
+        i->ssl_data = NULL;
+        hputs("SSL ACCEPTED\n");
+    } else {
+        e->readv = readv_plaintext;
+        e->writev = writev_plaintext;
+    }
+    Pthread_mutex_unlock(&e->wr_lk);
+    evtimer_once(rd_base, enable_read, e);
+}
+
+static void do_open(int dummyfd, short what, void *data)
+{
+    check_base_thd();
+    struct event_info *e = data;
+    struct host_connected_info *i = e->host_connected;
+    hprintf("ENABLE CONNECTION fd:%d\n", i->fd);
+    host_node_open(e->host_node_ptr, i->fd);
+    evtimer_once(wr_base, enable_write, e);
+}
+
+static void host_connected(struct event_info *e, int fd, int connect_msg, struct ssl_data *ssl_data)
+{
+    check_base_thd();
+    struct host_connected_info *i = host_connected_info_new(e, fd, connect_msg, ssl_data);
+    struct host_connected_info *pending = e->host_connected_pending;
+    if (pending) {
+        if (e->host_connected == NULL) {
+            abort();
+        }
+        hprintf("ONGOING fd:%d  PENDING fd:%d  REPLACE WITH fd:%d\n", e->host_connected->fd, pending->fd, fd);
+        shutdown_close(pending->fd);
+        host_connected_info_free(pending);
+        e->host_connected_pending = i;
+    } else if (e->host_connected) {
+        hprintf("ONGOING fd:%d  ENQUEUE fd:%d\n", e->host_connected->fd, fd);
+        e->host_connected_pending = i;
+    } else {
+        hprintf("PROCESS CONNECTION fd:%d\n", fd);
+        e->host_connected = i;
+        do_close(e, do_open);
+    }
 }
 
 extern int fdb_heartbeats(fdb_hbeats_type *hb);
@@ -1904,7 +2061,7 @@ static void fdb_heartbeat(int dummyfd, short what, void *data)
 {
     check_fdb_thd();
 
-    fdb_hbeats_type *hb = data; 
+    fdb_hbeats_type *hb = data;
     logmsg(LOGMSG_INFO, "Sending fdb heartbeat for tran %p\n", hb);
     fdb_heartbeats(hb);
 }
@@ -1928,12 +2085,6 @@ static void do_enable_fdb_heartbeats(int dummyfd, short what, void *data)
     event_add(hb->ev_hbeats, &hb->tv);
 }
 
-int enable_fdb_heartbeats(fdb_hbeats_type  *hb)
-{
-    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_enable_fdb_heartbeats,
-                           hb, NULL);
-}
-
 extern void fdb_heartbeat_free_tran(fdb_hbeats_type *hb);
 static void do_disable_fdb_heartbeats_and_free(int dummyfd, short what, void *data)
 {
@@ -1946,78 +2097,6 @@ static void do_disable_fdb_heartbeats_and_free(int dummyfd, short what, void *da
         hb->ev_hbeats = NULL;
     }
     fdb_heartbeat_free_tran(hb);
-}
-
-int disable_fdb_heartbeats_and_free(fdb_hbeats_type *hb)
-{
-    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats_and_free, hb, NULL);
-}
-
-static void enable_read(int dummyfd, short what, void *data)
-{
-    struct event_info *e = data;
-    check_rd_thd();
-    e->rd_full = 0;
-    e->need = e->wirehdr_len;
-    if (e->readv_buf || e->rd_ev) {
-        abort();
-    }
-    e->readv_buf = evbuffer_new();
-    e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
-    event_add(e->rd_ev, NULL);
-    evtimer_once(timer_base, enable_heartbeats, e);
-}
-
-static void enable_write(int dummyfd, short what, void *data)
-{
-    struct event_info *e = data;
-    struct host_connected_info *i = e->host_connected;
-    check_wr_thd();
-    Pthread_mutex_lock(&e->wr_lk);
-    update_event_fd(e, i->fd);
-    if (e->flush_buf || e->wr_ev) {
-        abort();
-    }
-    e->wr_ev = event_new(wr_base, e->fd, EV_WRITE | EV_PERSIST, writecb, e);
-    e->flush_buf = evbuffer_new();
-    e->wr_buf = evbuffer_new();
-    e->wr_full = 0;
-    e->decomissioned = 0;
-    Pthread_mutex_unlock(&e->wr_lk);
-    evtimer_once(rd_base, enable_read, e);
-}
-
-static void do_open(int dummyfd, short what, void *data)
-{
-    check_base_thd();
-    struct event_info *e = data;
-    struct host_connected_info *i = e->host_connected;
-    hprintf("PROCESSING fd:%d\n", i->fd);
-    host_node_open(e->host_node_ptr, i->fd);
-    evtimer_once(wr_base, enable_write, e);
-}
-
-static void host_connected(struct event_info *e, int fd, int connect_msg)
-{
-    check_base_thd();
-    struct host_connected_info *i = host_connected_info_new(e, fd, connect_msg);
-    struct host_connected_info *pending = e->host_connected_pending;
-    if (pending) {
-        if (e->host_connected == NULL) {
-            abort();
-        }
-        hprintf("ONGOING fd:%d  PENDING fd:%d  REPLACE WITH fd:%d\n", e->host_connected->fd, pending->fd, fd);
-        shutdown_close(pending->fd);
-        host_connected_info_free(pending);
-        e->host_connected_pending = i;
-    } else if (e->host_connected) {
-        hprintf("ONGOING fd:%d  ENQUEUE fd:%d\n", e->host_connected->fd, fd);
-        e->host_connected_pending = i;
-    } else {
-        hprintf("CONNECT TO fd:%d\n", fd);
-        e->host_connected = i;
-        do_close(e, do_open);
-    }
 }
 
 static netinfo_type *pmux_netinfo(struct event_info *e)
@@ -2046,7 +2125,7 @@ static void comdb2_connected(int fd, short what, void *data)
         hprintf("HAVE PENDING CONNECTION fd:%d\n", info->fd);
     } else if (!skip_connect(e)) {
         hprintf("MADE NEW CONNECTION fd:%d\n", fd);
-        host_connected(e, fd, 1);
+        host_connected(e, fd, 1, NULL);
         c->fd = -1;
     }
     connect_info_free(c);
@@ -2324,18 +2403,41 @@ static int accept_host(struct accept_info *a)
     if (netinfo_ptr->new_node_rtn) { /* net_newnode_rtn */
         netinfo_ptr->new_node_rtn(netinfo_ptr, h->host_interned, port);
     }
-    hprintf("ACCEPTED NEW CONNECTION fd:%d\n", a->fd);
-    host_connected(e, a->fd, 0);
+    if (a->ssl_data) {
+        hprintf("ACCEPTED NEW SSL CONNECTION fd:%d\n", a->fd);
+    } else {
+        hprintf("ACCEPTED NEW CONNECTION fd:%d\n", a->fd);
+    }
+    host_connected(e, a->fd, 0, a->ssl_data);
+    a->ssl_data = NULL;
     a->fd = -1;
     accept_info_free(a);
     return 0;
 }
 
+static void net_accept_ssl_success(void *data)
+{
+    struct accept_info *a = data;
+    if (verify_ssl_evbuffer(a->ssl_data, gbl_rep_ssl_mode) == 0) {
+        if (accept_host(a) == 0) return;
+        logmsg(LOGMSG_ERROR, "%s: accept_host failed host:%s fd:%d\n", __func__, a->origin, a->fd);
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: verify_ssl_evbuffer failed host:%s fd:%d\n", __func__, a->origin, a->fd);
+    }
+    accept_info_free(a);
+}
+
+static void net_accept_ssl_error(void *data)
+{
+    struct accept_info *a = data;
+    logmsg(LOGMSG_ERROR, "%s: accept_ssl_evbuffer failed host:%s fd:%d\n", __func__, a->origin, a->fd);
+    accept_info_free(a);
+}
+
 static int validate_host(struct accept_info *a)
 {
     if (strcmp(a->from_host, gbl_myhostname) == 0) {
-        logmsg(LOGMSG_WARN, "%s fd:%d invalid from:%s\n", __func__, a->fd,
-               a->from_host);
+        logmsg(LOGMSG_WARN, "%s fd:%d invalid from:%s\n", __func__, a->fd, a->from_host);
         return -1;
     }
 
@@ -2348,25 +2450,6 @@ static int validate_host(struct accept_info *a)
         logmsg(LOGMSG_WARN, "%s fd:%d invalid dbname:%s (exp:%s)\n", __func__, a->fd, a->dbname, dbname);
         return -1;
     }
-#   if 0
-    socklen_t slen = sizeof(a->ss);
-    char from[HOST_NAME_MAX];
-    socklen_t hlen = sizeof(from);
-    int rc = getnameinfo((struct sockaddr *)&a->ss, slen, from, hlen, NULL, 0, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s getnameinfo failed rc:%d\n", __func__, rc);
-        return -1;
-    }
-    char *f = strchr(from, '.');
-    if (f) {
-        *f = '\0';
-    }
-    if (strcmp(a->from_host, from) != 0 || strcmp(a->to_host, gbl_myhostname) != 0) {
-        logmsg(LOGMSG_WARN, "%s fd:%d invalid names from:%s (exp:%s) to:%s (exp:%s)\n",
-               __func__, a->fd, a->from_host, from, a->to_host, gbl_myhostname);
-        return -1;
-    }
-#   endif
     int check_port = 1;
     int port = a->c.from_portnum;
     int netnum = port >> 16;
@@ -2395,11 +2478,19 @@ static int validate_host(struct accept_info *a)
         return -1;
     }
     if (a->c.flags & CONNECT_MSG_SSL) {
-        abort();
+        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
+            logmsg(LOGMSG_ERROR, "Peer requested SSL, but I don't have an SSL key pair.\n");
+            return -1;
+        }
+        a->origin = get_hostname_by_fileno(a->fd);
+        a->ssl_data = ssl_data_new(a->fd, a->origin);
+        accept_ssl_evbuffer(a->ssl_data, base, net_accept_ssl_error, net_accept_ssl_success, a);
+        return 0;
+    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
+        logmsg(LOGMSG_ERROR, "Replicant SSL connections are required.\n");
         return -1;
-    } else {
-        return accept_host(a);
     }
+    return accept_host(a);
 }
 
 static int process_long_hostname(struct accept_info *a)
@@ -2482,7 +2573,6 @@ static int process_connect_message_proto(struct accept_info *a)
     if (buf == NULL) {
         return -1;
     }
-
     NetConnectmsg *c = net_connectmsg__unpack(NULL, a->need, buf);
     evbuffer_drain(input, a->need);
     int bad = 0;
@@ -2517,7 +2607,9 @@ static int process_connect_message_proto(struct accept_info *a)
         logmsg(LOGMSG_ERROR, "%s dbname\n", missing);
         bad = 1;
     }
-
+    if (c->has_ssl && c->ssl) {
+        a->c.flags |= CONNECT_MSG_SSL;
+    }
     net_connectmsg__free_unpacked(c, NULL);
     return bad ? -1 : validate_host(a);
 }
@@ -2566,6 +2658,10 @@ static int write_connect_message_proto(netinfo_type *netinfo_ptr, host_node_type
     connect_message.dbname = gbl_dbname;
     if (gbl_debug_pb_connectmsg_dbname_check) {
         connect_message.dbname = "icthxdb";
+    }
+    if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
+        connect_message.has_ssl = 1;
+        connect_message.ssl = 1;
     }
 
     // send message
@@ -2724,9 +2820,7 @@ static void do_read(int fd, short what, void *data)
         return;
     }
 
-    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure)) == 0)
-        return;
-
+    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure)) == 0) return;
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
@@ -3013,7 +3107,7 @@ static void unix_connect(int dummyfd, short what, void *data)
     }
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     evutil_make_socket_nonblocking(fd);
-    logmsg(LOGMSG_USER, "%s unix fd:%d\n", __func__, fd);
+    logmsg(LOGMSG_USER, "%s fd:%d\n", __func__, fd);
 
     struct sockaddr_un addr = {0};
     socklen_t len = sizeof(addr);
@@ -3413,8 +3507,7 @@ int write_connect_message_evbuffer(host_node_type *host_node_ptr,
     return 0;
 }
 
-int write_list_evbuffer(host_node_type *host_node_ptr, int type,
-                           const struct iovec *iov, int n, int flags)
+int write_list_evbuffer(host_node_type *host_node_ptr, int type, const struct iovec *iov, int n, int flags)
 {
     if (net_stop) {
         return 0;
@@ -3651,4 +3744,14 @@ void net_queue_stat_iterate_evbuffer(netinfo_type *netinfo_ptr, QSTATITERFP func
 void increase_net_buf(void)
 {
     run_on_base(base, do_increase_net_buf, NULL);
+}
+
+int enable_fdb_heartbeats(fdb_hbeats_type  *hb)
+{
+    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_enable_fdb_heartbeats, hb, NULL);
+}
+
+int disable_fdb_heartbeats_and_free(fdb_hbeats_type *hb)
+{
+    return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats_and_free, hb, NULL);
 }

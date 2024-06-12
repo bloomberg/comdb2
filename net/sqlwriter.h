@@ -29,6 +29,7 @@ struct event_base;
 struct iovec;
 struct sqlclntstate;
 struct sqlwriter;
+struct ssl_data;
 
 int  sql_flush(struct sqlwriter *);
 
@@ -64,7 +65,7 @@ struct evbuffer *sql_wrbuf(struct sqlwriter *);
 int done_cb_evbuffer(struct sqlclntstate *);
 int recover_deadlock_evbuffer(struct sqlclntstate *);
 
-void sql_enable_ssl(struct sqlwriter *, SSL *);
+void sql_enable_ssl(struct sqlwriter *, struct ssl_data *);
 void sql_disable_ssl(struct sqlwriter *);
 
 typedef void(sql_dispatch_timeout_fn)(struct sqlclntstate *);
