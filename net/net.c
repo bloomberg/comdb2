@@ -1129,6 +1129,7 @@ static int write_message_int(netinfo_type *netinfo_ptr,
 {
     wire_header_type wire_header;
     int rc;
+    int retry_once = 1;
 
     if ((flags & WRITE_MSG_NOHELLOCHECK) == 0) {
         if (!host_node_ptr->got_hello) {
@@ -1151,6 +1152,7 @@ static int write_message_int(netinfo_type *netinfo_ptr,
 
     wire_header.type = type;
 
+retry:
     /* Add this message to our linked list to send. */
     rc = write_list(netinfo_ptr, host_node_ptr, &wire_header, iov, iovcount, flags);
     if (rc < 0) {
@@ -1162,6 +1164,10 @@ static int write_message_int(netinfo_type *netinfo_ptr,
                 /* write list is full, can't do anymore writes to list
                    wake up the writer thread, to write to net. */
                 Pthread_cond_signal(&(host_node_ptr->write_wakeup));
+                if (retry_once) {
+                    retry_once = 0;
+                    goto retry;
+                }
             }
             return rc;
         }
