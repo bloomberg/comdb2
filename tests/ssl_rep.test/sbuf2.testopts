@@ -1,2 +1,3 @@
+libevent off
 ssl_client_mode VERIFY_CA
 ssl_replicant_mode VERIFY_CA
