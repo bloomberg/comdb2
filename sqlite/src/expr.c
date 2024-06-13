@@ -2115,6 +2115,9 @@ int sqlite3ExprContainsSubquery(Expr *p){
 ** a parameter (TK_VARIABLE) that is bound to an integer.
 ** But if pParse is NULL, then p must be a pure integer literal.
 */
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+int gbl_sqlite_limit_var_optimization = 1;
+#endif
 int sqlite3ExprIsInteger(Expr *p, int *pValue, Parse *pParse){
   int rc = 0;
   if( p==0 ) return 0;  /* Can only happen following on OOM */
@@ -2142,7 +2145,11 @@ int sqlite3ExprIsInteger(Expr *p, int *pValue, Parse *pParse){
       }
       break;
     }
-	case TK_VARIABLE: {
+    case TK_VARIABLE: {
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+      if (!gbl_sqlite_limit_var_optimization)
+        return 0;
+#endif
       sqlite3_value *pVal;
       if( pParse==0 ) break;
       if( NEVER(pParse->pVdbe==0) ) break;
