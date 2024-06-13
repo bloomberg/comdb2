@@ -73,7 +73,7 @@ struct convert_record_data {
     int *tagmap; // mapping of fields from -> to
     /* all the data objects point to the same single cmembers object */
     struct common_members *cmembers;
-    unsigned int write_count; // saved write counter to this tbl
+    int64_t write_count; // saved write counter to this tbl
     DB_LSN start_lsn;
     hash_t *blob_hash;
     struct odh odh;

@@ -1497,7 +1497,6 @@ void reqlog_new_sql_request(struct reqlogger *logger, struct string_ref *sr)
     logger->startprcsus = logger->startus;
     reqlog_start_request(logger);
 
-    logger->nsqlreqs = ATOMIC_LOAD32(gbl_nnewsql);
     if (sr) {
         reqlog_set_sql(logger, sr);
     }

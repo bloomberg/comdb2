@@ -102,7 +102,6 @@ struct reqlogger {
 
     uint32_t nwrites;   /* number of writes for this txn */
     uint32_t cascaded_nwrites; /* number of cascaded writes for this txn */
-    uint32_t nsqlreqs;  /* Atomically counted number of sqlreqs so far */
     int      sqlrows;
     double   sqlcost;
 

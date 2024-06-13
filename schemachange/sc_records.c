@@ -85,7 +85,7 @@ static inline void release_rebuild_thr(uint32_t *thrcount)
  */
 static inline int tbl_had_writes(struct convert_record_data *data)
 {
-    unsigned oldcount = data->write_count;
+    int64_t oldcount = data->write_count;
     data->write_count = data->from->write_count[RECORD_WRITE_INS] +
                         data->from->write_count[RECORD_WRITE_UPD] +
                         data->from->write_count[RECORD_WRITE_DEL];

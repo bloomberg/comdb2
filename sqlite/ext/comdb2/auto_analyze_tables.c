@@ -61,8 +61,8 @@ int auto_analyze_tables_systable_collect(void **data, int *nrecords)
 
     systable_auto_analyze_tables_t *arr = calloc(thedb->num_dbs, sizeof(systable_auto_analyze_tables_t));
     int delta;
-    int saved_counter;
-    unsigned int newautoanalyze_counter;
+    int64_t saved_counter;
+    int64_t newautoanalyze_counter;
     double new_aa_percnt;
     int idx;
     for (int i = 0; i < thedb->num_dbs; i++) {

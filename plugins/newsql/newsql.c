@@ -2192,8 +2192,8 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
     }
 
-    ATOMIC_ADD32(gbl_nnewsql, 1);
-    if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD32(gbl_nnewsql_ssl, 1);
+    ATOMIC_ADD64(gbl_nnewsql, 1);
+    if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD64(gbl_nnewsql_ssl, 1);
 
     /* coherent  _or_ in middle of transaction */
     if (!incoh_reject(clnt->admin, thedb->bdb_env) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {

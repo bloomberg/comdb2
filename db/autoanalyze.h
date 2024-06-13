@@ -25,6 +25,6 @@ void stat_auto_analyze(void);
 void *auto_analyze_main(void *);
 void *auto_analyze_table(void *);
 void autoanalyze_after_fastinit(char *);
-void get_auto_analyze_tbl_stats(struct dbtable *, int, int *, int *, unsigned int *, double *);
+void get_auto_analyze_tbl_stats(struct dbtable *, int, int *, int64_t *, int64_t *, double *);
 
 #endif // INCLUDE_AUTOANALYZE_H
