@@ -677,7 +677,9 @@ char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src);
 
 Description:
 
-This function converts text with special characters into text with escaped special characters.
+This function converts text with special characters into text with escaped special characters.  The input string
+is not modified. The returned string is allocated with `malloc()`, and must be freed with `free()` when no longer needed by 
+the caller.
 
 Parameters:
 

@@ -301,17 +301,17 @@ void test_cdb2_string_escape()
 {
     const char *emptyStr = "";
     char *testEmptyStr = cdb2_string_escape(NULL, emptyStr);
-    assert(strcmp(testEmptyStr, "\'\'") == 0);
+    assert(strcmp(testEmptyStr, "''") == 0);
     free(testEmptyStr);
     
     const char *simpleStr = "Hello world!";
     char *testSimpleStr = cdb2_string_escape(NULL, simpleStr);
-    assert(strcmp(testSimpleStr, "\'Hello world!\'") == 0);
+    assert(strcmp(testSimpleStr, "'Hello world!'") == 0);
     free(testSimpleStr);
     
-    const char* complexStr = "\'As quirky joke, chefs won\'t pay devil magic zebra tax.\'\'";
+    const char* complexStr = "'As quirky joke, chefs won't pay devil magic zebra tax.''";
     char *testComplexStr = cdb2_string_escape(NULL, complexStr);
-    assert(strcmp(testComplexStr, "\'\'\'As quirky joke, chefs won\'\'t pay devil magic zebra tax.\'\'\'\'\'") == 0);
+    assert(strcmp(testComplexStr, "'''As quirky joke, chefs won''t pay devil magic zebra tax.'''''") == 0);
     free(testComplexStr);
 }
 

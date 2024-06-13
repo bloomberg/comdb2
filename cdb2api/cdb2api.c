@@ -7113,39 +7113,40 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src){
-    const char escapechar = '\'';
+char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src)
+{
+    const char *escapestr = "'";
     size_t count = 2; // set initial value for wrapping characters
-    
-    char *curr = strchr(src, escapechar);
+
+    char *curr = strchr(src, *escapestr);
     while (curr != NULL) {
         ++count;
-        curr = strchr(curr + 1, escapechar);
+        curr = strchr(curr + 1, *escapestr);
     }
 
     size_t len = count + strlen(src) + 1;
     char *out = malloc(len);
     char *dest = out;
-    *dest = escapechar;
+    strcpy(dest, escapestr);
     ++dest;
 
     while (*src) {
-        curr = strchr(src, escapechar);
+        curr = strchr(src, *escapestr);
         if (curr == NULL) {
             strcpy(dest, src);
             dest += strlen(src);
             break;
         }
-    
+
         size_t toklen = curr - src + 1;
         strncpy(dest, src, toklen);
-   
+
         src = curr + 1;
         dest += toklen;
-        *dest = escapechar;
+        strcpy(dest, escapestr);
         ++dest;
     }
-    
-    strcpy(dest, "\'\0");
+
+    strcpy(dest, escapestr);
     return out;
 }
