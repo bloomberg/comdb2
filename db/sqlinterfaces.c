@@ -5639,6 +5639,7 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
         stats[i].nfind = c->nfind;
         stats[i].nnext = c->nnext;
         stats[i].nwrite = c->nwrite;
+        stats[i].nblob = c->nblobs;
         stats[i].ix = c->ix;
         stats[i].table[0] = 0;
         if (c->rmt_db[0]) {
@@ -5744,6 +5745,8 @@ static char *get_query_cost_as_string(struct sql_thread *thd,
                 strbuf_appendf(out, "next/prev %d ", st->path_stats[ii].nnext);
             if (st->path_stats[ii].nwrite)
                 strbuf_appendf(out, "nwrite %d ", st->path_stats[ii].nwrite);
+            if (st->path_stats[ii].nblob)
+                strbuf_appendf(out, " nblobs %d", st->path_stats[ii].nblob);
         } else {
             if (st->path_stats[ii].ix >= 0)
                 strbuf_appendf(out, "index %d on ", st->path_stats[ii].ix);
@@ -5754,6 +5757,8 @@ static char *get_query_cost_as_string(struct sql_thread *thd,
                 if (st->path_stats[ii].ix < 0)
                     strbuf_appendf(out, "[TABLE SCAN]");
             }
+            if (st->path_stats[ii].nblob)
+                strbuf_appendf(out, " nblobs %d", st->path_stats[ii].nblob);
         }
         strbuf_append(out, "\n");
     }
