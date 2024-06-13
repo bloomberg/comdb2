@@ -520,7 +520,7 @@ void sqlite3Update(
       flags |= WHERE_ONEPASS_MULTIROW;
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-    pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, 0, 0, flags, iIdxCur);
+    pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, 0,0,0,flags, iIdxCur);
     if( pWInfo==0 ) goto update_cleanup;
   
     /* A one-pass strategy that might update more than one row may not
@@ -955,7 +955,7 @@ static void updateVirtualTable(
   regRowid = ++pParse->nMem;
 
   /* Start scanning the virtual table */
-  pWInfo = sqlite3WhereBegin(pParse, pSrc, pWhere, 0,0,WHERE_ONEPASS_DESIRED,0);
+  pWInfo = sqlite3WhereBegin(pParse, pSrc,pWhere,0,0,0,WHERE_ONEPASS_DESIRED,0);
   if( pWInfo==0 ) return;
 
   /* Populate the argument registers. */

@@ -6295,7 +6295,7 @@ int sqlite3Select(
     /* Begin the database scan. */
     SELECTTRACE(1,pParse,p,("WhereBegin\n"));
     pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, sSort.pOrderBy,
-                               p->pEList, wctrlFlags, p->nSelectRow);
+                               p->pEList, p, wctrlFlags, p->nSelectRow);
     if( pWInfo==0 ) goto select_end;
     if( sqlite3WhereOutputRowCount(pWInfo) < p->nSelectRow ){
       p->nSelectRow = sqlite3WhereOutputRowCount(pWInfo);
@@ -6506,7 +6506,7 @@ int sqlite3Select(
       */
       sqlite3VdbeAddOp2(v, OP_Gosub, regReset, addrReset);
       SELECTTRACE(1,pParse,p,("WhereBegin\n"));
-      pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, pGroupBy, 0,
+      pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, pGroupBy, 0, p,
           WHERE_GROUPBY | (orderByGrp ? WHERE_SORTBYGROUP : 0), 0
       );
       if( pWInfo==0 ) goto select_end;
@@ -6801,7 +6801,7 @@ int sqlite3Select(
 
         SELECTTRACE(1,pParse,p,("WhereBegin\n"));
         pWInfo = sqlite3WhereBegin(pParse, pTabList, pWhere, pMinMaxOrderBy,
-                                   0, minMaxFlag, 0);
+                                   0, p, minMaxFlag, 0);
         if( pWInfo==0 ){
           goto select_end;
         }
