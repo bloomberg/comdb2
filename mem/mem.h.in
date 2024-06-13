@@ -29,6 +29,11 @@ static inline void *comdb2_resize_@module@(void *ptr, size_t n)
     return comdb2_resize_static(COMDB2MA_STATIC_@MODULE@, ptr, n);
 }
 
+static inline int comdb2_posix_memalign_@module@(void **memptr, size_t alignment, size_t size)
+{
+    return comdb2_posix_memalign_static(COMDB2MA_STATIC_@MODULE@, memptr, alignment, size);
+}
+
 static inline char *comdb2_strdup_@module@(const char *s)
 {
     return comdb2_strdup_static(COMDB2MA_STATIC_@MODULE@, s);

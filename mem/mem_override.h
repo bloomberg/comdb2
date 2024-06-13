@@ -33,6 +33,7 @@
 #define malloc_trim MAKE_FUNC_NAME(malloc_trim)
 #define malloc_usable_size comdb2_malloc_usable_size
 #define malloc_resize MAKE_FUNC_NAME(resize)
+#define posix_memalign MAKE_FUNC_NAME(posix_memalign)
 #else
 #define malloc_resize realloc
 #endif
