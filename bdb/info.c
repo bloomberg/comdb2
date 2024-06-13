@@ -92,6 +92,8 @@ extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz,
                                       int maxins);
 extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
+static pthread_mutex_t hostname_lookup_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_verbose_hostname_lookup = 0;
 static void printf_wrapper(void *userptr, const char *fmt, ...)
 {
     va_list args;
@@ -1277,7 +1279,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         "backend engine commands",
         "*bbstat         - dump hacked up bloomberg stats",
         "*bdbstat        - general backend status",
-        "*cluster        - cluster status", "*cachestat      - cache stats",
+        "*cluster        - cluster status", 
+        "*cachestat      - cache stats",
         " cachestatall   - cache stats and dump of memory pool",
         " cacheinfo      - list files, pages, & priorities of mpool buffers",
         " tempcachestat  - cache stats for temp region",
@@ -1286,7 +1289,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         "buffers",
         "*repstat        - replication stats",
         "*bdbstate       - dump bdb state information",
-        "*logstat        - log stats", "*txnstat        - transaction stats",
+        "*logstat        - log stats", 
+        "*txnstat        - transaction stats",
         "*ltranstat      - logical transaction stats",
         "*lockstat       - lock subsystem stats",
         " fulldiag       - dump loads of stuff - please use with f prefix",
@@ -1297,6 +1301,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         " add #          - add node # to sanc list",
         " del #          - remove node # from sanc list",
         " rem #          - force removal node # from cluster",
+        " hostname #     - print hostname associated with node #", 
         " dummy          - add a dummy record",
         " reptrcy        - turn on replication trace",
         " reptrcn        - turn off replication trace",
@@ -1321,7 +1326,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         " llmeta         - dump llmeta information",
         " freepages      - dump free page counts",
         " lccache        - lsn collection cache commands",
-        " temptable      - temptable status", "*help           - this",
+        " temptable      - temptable status", 
+        "*help           - this",
         "NB '*' means you can run the command via stat e.g.",
         "'send mydb stat bdb cluster'"};
     static char *safecmds[] = {
@@ -1665,9 +1671,22 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         }
         host = tokdup_hostname(host, ltok);
         process_add(bdb_state, host);
-    }
-
-    else if (tokcmp(tok, ltok, "del") == 0) {
+    } else if (tokcmp(tok, ltok, "hostname") == 0) {
+        char *iHost, *oHost;
+        Pthread_mutex_lock(&hostname_lookup_lk);
+        gbl_verbose_hostname_lookup = 1;
+        iHost = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_USER, "expected nodenum\n");
+            gbl_verbose_hostname_lookup = 0;
+            Pthread_mutex_unlock(&hostname_lookup_lk);
+            return;
+        }
+        oHost = tokdup_hostname(iHost, ltok);
+        logmsg(LOGMSG_USER, "%s:%d got hostname: %s for node: %s\n",__func__, __LINE__, oHost, iHost); 
+        gbl_verbose_hostname_lookup = 0;
+        Pthread_mutex_unlock(&hostname_lookup_lk);
+    } else if (tokcmp(tok, ltok, "del") == 0) {
         char *host;
         host = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
