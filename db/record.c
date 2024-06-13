@@ -621,7 +621,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (!is_event_from_sc(flags)) {
-        ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_INS], 1);
+        ATOMIC_ADD64(iq->usedb->write_count[RECORD_WRITE_INS], 1);
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         if (is_event_from_cascade(flags))
@@ -1587,7 +1587,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
+    ATOMIC_ADD64(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
     if (is_event_from_cascade(flags))
         iq->usedb->casc_write_count++;
     gbl_sc_last_writer_time = comdb2_time_epoch();
@@ -1917,7 +1917,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
+    ATOMIC_ADD64(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
     if (is_event_from_cascade(flags))
         iq->usedb->casc_write_count++;
     gbl_sc_last_writer_time = comdb2_time_epoch();

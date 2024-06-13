@@ -16,6 +16,8 @@
 
 /* comdb index front end */
 
+#include <inttypes.h>
+
 #include <unistd.h> /* For usleep() */
 #include <ctype.h>
 #include <epochlib.h>
@@ -78,7 +80,7 @@ void req_stats(struct dbtable *db)
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "%-20s %u\n", req2a(ii), db->typcnt[ii]);
+            logmsg(LOGMSG_USER, "%-20s %"PRId64"\n", req2a(ii), db->typcnt[ii]);
         }
     }
     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
@@ -87,7 +89,7 @@ void req_stats(struct dbtable *db)
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj), db->blocktypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %"PRId64"\n", breq2a(jj), db->blocktypcnt[jj]);
         }
     }
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
@@ -96,7 +98,7 @@ void req_stats(struct dbtable *db)
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-20s %u\n", osql_reqtype_str(jj), db->blockosqltypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %"PRId64"\n", osql_reqtype_str(jj), db->blockosqltypcnt[jj]);
         }
     }
 }
