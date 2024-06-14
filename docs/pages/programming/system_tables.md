@@ -510,7 +510,8 @@ Sizes on disk of tables in the database
 
 Lists real-time metrics for tables in the database
 
-    comdb2_table_metrics(tablename)
+    comdb2_table_metrics(table_name, num_queries, num_index_used, num_records_read, 
+                        num_records_inserted, num_records_updated, num_records_deleted)
 
 * `table_name` - Name of the table
 * `num_queries` - Number of queries ran on the table
