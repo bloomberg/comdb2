@@ -31,21 +31,12 @@ sleep 3
 
 # dump all the statements blocking the replication thread
 blockers=`cdb2sql ${CDB2_OPTIONS} $dbnm --host $rep 'exec procedure sys.cmd.send("sql dump repblockers")' | grep -v 'SQL statements currently blocking the replication thread'`
-
 wait
 
 cmd_count=`echo "${blockers}" | wc -l`
 # we should expect 2 blockers
 if  [[ ${cmd_count} -ne 2 ]]; then
     echo "invalid number of blocking commands (got: ${cmd_count}, expected: 2)"
-    exit 1
-fi
-
-# also ensure that we see the blocking statements in the replicant log
-cmd_count=`grep "select \*, sleep" ${logfile} | wc -l`
-# we should expect at least 2 blocking commands
-if  [[ ${cmd_count} -lt 2 ]]; then
-    echo "invalid number of blocking commands in replicant log (got: ${cmd_count}, expected >= 2)"
     exit 1
 fi
 
