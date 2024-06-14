@@ -65,7 +65,6 @@ int gbl_ignore_lost_master_time = 0;
 int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
-int gbl_dump_sql_on_repwait_sec = 10;
 int gbl_debug_drop_nth_rep_message = 0;
 extern int gbl_debug_stat4dump_loop;
 
@@ -84,6 +83,7 @@ void create_coherency_lease_thread(bdb_state_type *bdb_state);
 void create_master_lease_thread(bdb_state_type *bdb_state);
 
 int gbl_net_lmt_upd_incoherent_nodes = 70;
+int gbl_rep_process_pstack_time = 30;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 void comdb2_dump_blockers(DB_ENV *);
@@ -5332,6 +5332,7 @@ void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
         logmsg(LOGMSG_FATAL, "Getting ready to die, printing useful debug info.\n");
     }
     if (bdb_state->callback->threaddump_rtn) (bdb_state->callback->threaddump_rtn)();
+    comdb2_dump_blockers(bdb_state->dbenv);
     lock_info_lockers(stderr, bdb_state);
     thd_dump();
     pstack_self();
@@ -5538,17 +5539,14 @@ void *watcher_thread(void *arg)
 
         net_timeout_watchlist(bdb_state->repinfo->netinfo);
 
-        if ((bdb_state->passed_dbenv_open) &&
-            (bdb_state->repinfo->rep_process_message_start_time)) {
-            if (comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time > 10) {
-                logmsg(LOGMSG_WARN, "rep_process_message running for 10 seconds, dumping thread pool to trc.c\n");
+        if (bdb_state->passed_dbenv_open && bdb_state->repinfo->rep_process_message_start_time) {
+            time_t diff = comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time;
+            if (diff >= gbl_rep_process_pstack_time) {
+                logmsg(LOGMSG_WARN, "rep_process_message running for %ld seconds, dumping thread pool to trc.c\n", diff);
                 gbl_logmsg_ctrace = 1;
                 bdb_dump_threads_and_maybe_abort(bdb_state, 0, 0);
                 gbl_logmsg_ctrace = 0;
                 bdb_state->repinfo->rep_process_message_start_time = 0;
-            }
-            if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) > gbl_dump_sql_on_repwait_sec) {
-                comdb2_dump_blockers(bdb_state->dbenv);
             }
         }
 
