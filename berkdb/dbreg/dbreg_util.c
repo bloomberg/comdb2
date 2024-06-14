@@ -1007,6 +1007,8 @@ __dbreg_get_name(dbenv, fid, namep)
 	return (-1);
 }
 
+int gbl_abort_on_ufid_mismatch = 1;
+
 /*
  * __dbreg_do_open --
  *	Open files referenced in the log.  This is the part of the open that
@@ -1069,11 +1071,24 @@ __dbreg_do_open(dbenv,
 		 * referring to when we wrote this log record.
 		 */
 		if ((meta_pgno != PGNO_BASE_MD &&
-		    __dbreg_check_master(dbenv, uid, name) != 0) ||
-		    memcmp(uid, dbp->fileid, DB_FILE_ID_LEN) != 0)
+			__dbreg_check_master(dbenv, uid, name) != 0) ||
+			memcmp(uid, dbp->fileid, DB_FILE_ID_LEN) != 0) {
+
+			char log_uid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+			char dbp_uid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+
+			fileid_str(uid, log_uid_str);
+			fileid_str(dbp->fileid, dbp_uid_str);
+
+			logmsg(LOGMSG_INFO, "Mismatched fileid for %s, log fileid %s, dbp fileid %s\n", name, log_uid_str, dbp_uid_str);
+			if (gbl_abort_on_ufid_mismatch) {
+				__log_flush(dbenv, NULL);
+				abort();
+			}
 			cstat = TXN_IGNORE;
-		else
+		} else {
 			cstat = TXN_EXPECTED;
+		}
 
 		/* Assign the specific dbreg id to this dbp. */
 		ret = __dbreg_assign_id(dbp, ndx);

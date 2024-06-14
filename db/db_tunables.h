@@ -1420,10 +1420,10 @@ REGISTER_TUNABLE("abort_on_unset_ha_flag",
                  "Abort in snap_uid_retry if ha is unset. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_abort_on_unset_ha_flag, INTERNAL, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("write_dummy_trace",
-                 "Print trace when doing a dummy write. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_write_dummy_trace, INTERNAL, NULL, NULL,
-                 NULL, NULL);
+REGISTER_TUNABLE("abort_on_ufid_mismatch", "Abort in dbreg-open on ufid mismatch. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_abort_on_ufid_mismatch, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("write_dummy_trace", "Print trace when doing a dummy write. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_write_dummy_trace, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("seed_genid", "Set genid-seed in hex for genid48 test.",
                  TUNABLE_STRING, NULL, EXPERIMENTAL | INTERNAL,
                  next_genid_value, NULL, genid_seed_update, NULL);

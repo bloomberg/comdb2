@@ -1073,11 +1073,17 @@ int get_analyze_abort_requested()
     return analyze_abort_requested;
 }
 
+extern int gbl_is_physical_replicant;
 
 /* analyze 'table' */
 int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
                   int bypass_auth)
 {
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s: Analyze invalid on physical replicant\n", __func__);
+        return -1;
+    }
+
     if (check_stat1(sb))
         return -1;
 
