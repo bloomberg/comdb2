@@ -2270,11 +2270,6 @@ REGISTER_TUNABLE("lua_prepare_retry_sleep",
                  TUNABLE_INTEGER, &gbl_lua_prepare_retry_sleep,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("dump_sql_on_repwait_sec",
-                 "Dump sql queries that are blocking the replication thread "
-                 "for more than this duration (Default: 10secs)",
-                 TUNABLE_INTEGER, &gbl_dump_sql_on_repwait_sec, EXPERIMENTAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("client_queued_slow_seconds",
                  "If a client connection remains \"queued\" longer than this "
                  "period of time (in seconds), it is considered to be \"slow\", "
@@ -2525,4 +2520,6 @@ REGISTER_TUNABLE("check_descending_skipscan", "Flag that toggles a check for des
                  TUNABLE_BOOLEAN, &gbl_chk_desc_skipscan, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlite_limit_var_optimization", "Toggles SQLite's where-use-limit optimization for bound parameters",
                  TUNABLE_BOOLEAN, &gbl_sqlite_limit_var_optimization, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_process_pstack_time", "pstack the server if rep_process runs longer than time specified in secs (Default: 30s)",
+                 TUNABLE_INTEGER, &gbl_rep_process_pstack_time, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
