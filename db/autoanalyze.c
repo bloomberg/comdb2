@@ -38,6 +38,7 @@ const char *aa_lastepoch_str = "autoanalyze_lastepoch";
 const char *aa_needs_analyze_time_str = "autoanalyze_needs_analyze_time";
 static volatile int auto_analyze_running = 0;
 int gbl_debug_aa;
+extern int gbl_is_physical_replicant;
 
 /* ctime_r no-new-line */
 static char *ctime_r_nnl(time_t *t, char *out)
@@ -502,7 +503,7 @@ void *auto_analyze_main(void *unused)
 
 void autoanalyze_after_fastinit(char *table)
 {
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AUTOANALYZE) == 0)
+    if (gbl_is_physical_replicant || bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AUTOANALYZE) == 0)
         return;
     pthread_t analyze;
     char *tblname = strdup(table); // will be freed in auto_analyze_table()
