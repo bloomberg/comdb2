@@ -1103,7 +1103,7 @@ static int resolveOrderByTermToExprList(
   int rc;            /* Return code from subprocedures */
   u8 savedSuppErr;   /* Saved value of db->suppressErr */
 
-  assert( sqlite3ExprIsInteger(pE, &i)==0 );
+  assert( sqlite3ExprIsInteger(pE, &i, 0)==0 );
   pEList = pSelect->pEList;
 
   /* Resolve all names in the ORDER BY term expression
