@@ -209,8 +209,9 @@ static int handle_reversesql_request(comdb2_appsock_arg_t *arg) {
         if (gbl_revsql_allow_command_exec == 0) {
             logmsg(LOGMSG_USER, "%s:%d Command execution over reverse connection is prohibited!\n",
                    __func__, __LINE__);
+        } else {
+            execute_rev_command(remote_dbname, fd_str, command);
         }
-        execute_rev_command(remote_dbname, fd_str, command);
         goto done;
     }
 

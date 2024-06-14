@@ -317,6 +317,7 @@ rowlocks_deadlock_trace|off |Prints deadlock trace in phys.c
 mask_internal_tunables|on|When enabled, comdb2_tunables system table would not list INTERNAL tunables
 lightweight_rename|off|When enabled, rename will add an alias instead of completely changing the table name
 utxnid_log|on|When enabled, 8-byte transaction IDs will be written to log records.
+abort_on_ufid_mismatch|on|Abort on open if the on-disk ufid doesn't match the ufid in the transaction log.
 
 #### `sqllogger` commands
 
