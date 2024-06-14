@@ -1,2 +1,2 @@
 # dump sql statements blocking replication for more than a second
-dump_sql_on_repwait_sec 1
+rep_process_pstack_time 1
