@@ -35,13 +35,14 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-#include <cdb2api.h>
 #include <pthread.h>
 
 #include <assert.h>
 
 #include <mem.h>
 #include <cdb2_constants.h>
+#include <sbuf2.c>
+#include <cdb2api.c>
 
 /*#warning dbg started*/
 #define dbg(...) /*fprintf(stderr, __VA_ARGS__)*/
@@ -129,7 +130,7 @@ void usage(int exit_val)
     exit(exit_val);
 }
 
-static char *read_line()
+static char *read_input_line()
 {
     static char *line = NULL;
     if (istty) {
@@ -428,30 +429,11 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
 }
 
 #include <sys/socket.h>
-#define MAX_NODES 128
-
-struct dummy_cdb2buf {
-    int fd;
-     /* Don't care about the rest. */
-};
-
-/* Should match with cdb2api.c. */
-struct dummy_cdb2_hndl {
-     char dbname[64];
-     char cluster[64];
-     char type[64];
-     char hosts[MAX_NODES][64];
-     int  ports[MAX_NODES];
-     int  hosts_connected[MAX_NODES];
-     struct dummy_cdb2buf   *sb;
-     /* Don't care about the rest. */
-};
 
 void disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
-    struct dummy_cdb2_hndl *dummy_hndl;
-    dummy_hndl = (struct dummy_cdb2_hndl *)cdb2h;
-    if (dummy_hndl->sb)
-        shutdown(dummy_hndl->sb->fd, 2);
+    if (cdb2h->sb) {
+        shutdown(cdb2h->sb->fd, 2);
+    }
 }
 
 static int run_statement(const char *sql, int ntypes, int *types,
@@ -764,7 +746,7 @@ static char *get_multi_line_statement(char *line)
         }
         nl = "\n";
         n = 1;
-    } while ((line = read_line()) != NULL);
+    } while ((line = read_input_line()) != NULL);
     prompt = "cdb2sql> ";
     return stmt;
 }
@@ -904,7 +886,7 @@ int main(int argc, char *argv[])
         load_readline_history();
     char *line;
     int multi;
-    while ((line = read_line()) != NULL) {
+    while ((line = read_input_line()) != NULL) {
         if (strncmp(line, "quit", 4) == 0)
             break;
         if ((multi = is_multi_line(line)) != 0)

@@ -9,6 +9,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_SOURCE_DIR}/util
   ${PROTOBUF-C_INCLUDE_DIR}
   ${SQLite3_INCLUDE_DIRS}
   ${OPENSSL_INCLUDE_DIR}

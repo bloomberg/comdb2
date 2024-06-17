@@ -6366,6 +6366,10 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     return 0;
 }
 
+#ifdef my_ssl_eprintln
+#undef my_ssl_eprintln
+#endif
+
 #define my_ssl_eprintln(fmt, ...)                                              \
     ssl_eprintln("cdb2api", "%s: " fmt, __func__, ##__VA_ARGS__)
 
