@@ -4016,14 +4016,6 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                          fold->in_default_type != fnew->in_default_type) {
                     snprintf(buf, sizeof(buf), "dbstore");
                     change = SC_DBSTORE_CHANGE;
-                    if (fnew->in_default_type == SERVER_SEQUENCE && fold->in_default_type != SERVER_SEQUENCE &&
-                        (fnew->flags & NO_NULL)) {
-                        if (out) {
-                            logmsg(LOGMSG_INFO, "tag %s field %s new sequence requires null\n", old->tag, fold->name);
-                        }
-                        return SC_BAD_NEW_FIELD;
-                    }
-
                     if (fnew->in_default_type == SERVER_FUNCTION && fold->in_default_type != SERVER_FUNCTION &&
                         (fnew->flags & NO_NULL)) {
                         if (out)
