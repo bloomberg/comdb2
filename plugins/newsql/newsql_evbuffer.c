@@ -413,14 +413,14 @@ static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
     event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
 }
 
-static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl)
+static int ssl_check(struct newsql_appdata_evbuffer *appdata, int have_ssl, int secure)
 {
     if (appdata->ssl_data && appdata->ssl_data->ssl) return 0;
     if (have_ssl) {
         newsql_write_hdr_evbuffer(&appdata->clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
         return 1;
     }
-    if (ssl_whitelisted(appdata->clnt.origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode))) {
+    if (!secure && (ssl_whitelisted(appdata->clnt.origin) || (SSL_IS_OPTIONAL(gbl_client_ssl_mode)))) {
         /* allow plaintext local connections, or server is configured to prefer (but not disallow) SSL clients. */
         newsql_write_hdr_evbuffer(&appdata->clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
         return 0;
@@ -568,7 +568,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata)
     }
 
     if (clnt->secure || SSL_IS_PREFERRED(gbl_client_ssl_mode)) {
-        switch(ssl_check(appdata, have_ssl)) {
+        switch(ssl_check(appdata, have_ssl, clnt->secure)) {
         case 1: goto read;
         case 2: goto err;
         }
