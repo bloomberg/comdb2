@@ -2193,10 +2193,35 @@ static void bdb_appsock(netinfo_type *netinfo, SBUF2 *sb)
 }
 
 extern int gbl_pstack_self;
+static int running_pstack = 0;
+static pthread_mutex_t pstack_lk = PTHREAD_MUTEX_INITIALIZER;
+
+static inline int check_and_set_running_pstack(void)
+{
+    Pthread_mutex_lock(&pstack_lk);
+    if (running_pstack) {
+        Pthread_mutex_unlock(&pstack_lk);
+        return 1;
+    }
+    running_pstack = 1;
+    Pthread_mutex_unlock(&pstack_lk);
+    return 0;
+}
+
+static inline void unset_running_pstack(void)
+{
+    Pthread_mutex_lock(&pstack_lk);
+    assert(running_pstack);
+    running_pstack = 0;
+    Pthread_mutex_unlock(&pstack_lk);
+}
+
 void pstack_self(void)
 {
-    if (!gbl_pstack_self) return;
+    if (!gbl_pstack_self || check_and_set_running_pstack())
+        return;
 
+    assert(running_pstack);
     gettimeofday(&last_timer_pstack, NULL);
 
     char cmd[256];
@@ -2204,6 +2229,7 @@ void pstack_self(void)
     int fd = mkstemp(output);
     if (fd == -1) {
         logmsg(LOGMSG_ERROR, "%s: open(%s) err:%s\n", __func__, output, strerror(errno));
+        unset_running_pstack();
         return;
     }
     pid_t pid = getpid();
@@ -2218,6 +2244,7 @@ void pstack_self(void)
         logmsg(LOGMSG_ERROR, "%s:%d system(\"%s\") failed (rc = %d)\n", __func__, __LINE__, cmd, rc);
         close(fd);
         unlink(output);
+        unset_running_pstack();
         return;
     }
 
@@ -2226,6 +2253,7 @@ void pstack_self(void)
         logmsg(LOGMSG_ERROR, "%s: open(%s) err:%s\n", __func__, cmd, strerror(errno));
         close(fd);
         unlink(output);
+        unset_running_pstack();
         return;
     }
     int old = gbl_logmsg_ctrace;
@@ -2237,6 +2265,7 @@ void pstack_self(void)
     gbl_logmsg_ctrace = old;
     fclose(out);
     unlink(output);
+    unset_running_pstack();
 }
 
 static void panic_func(DB_ENV *dbenv, int errval)
