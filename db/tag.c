@@ -28,6 +28,7 @@
 #include <poll.h>
 #include <flibc.h>
 #include <inttypes.h>
+#include <unistd.h>
 #include "osqluprec.h"
 
 #include <str0.h>
@@ -67,6 +68,7 @@ char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
 const int gbl_ondisk_ver_len = sizeof ".ONDISK.VER.255xx";
 
 int _dbg_tags = 0;
+int gbl_debug_alter_sequences_sleep = 0;
 
 #define TAGLOCK_RW_LOCK
 #ifdef TAGLOCK_RW_LOCK
@@ -5694,6 +5696,38 @@ int delete_table_sequences(tran_type *tran, struct dbtable *db)
     return 0;
 }
 
+static int try_fetch_highest_sequence_key(dbtable *db, int idx_in_table, tran_type *tran, char *tablename,
+                                          char *columnname, struct schema **valid_idx, void *key, int keylen, int *len)
+{
+    // need to find existing highest non-null value of column to find where to start sequence from
+    // find an index that is ascending on this column and is not partial
+    *valid_idx = NULL;
+    *len = 0;
+    int ix_sequence = -1;
+    int rc, bdberr;
+    for (int ix = 0; ix < db->nix; ix++) {
+        *valid_idx = db->ixschema[ix];
+        struct field *first = &(*valid_idx)->member[0];
+        if (!(*valid_idx)->where && first->idx == idx_in_table && !(first->flags & INDEX_DESCEND)) {
+            ix_sequence = ix;
+            break;
+        }
+        *valid_idx = NULL;
+    }
+    if (!*valid_idx) {
+        return 0;
+    }
+
+    if ((rc = bdb_fetch_last_key_tran(db->handle, tran, 0, ix_sequence, keylen, key, len, &bdberr))) {
+        logmsg(LOGMSG_ERROR,
+               "%s error fetching last key on table %s for creating sequence on existing column %s rc=%d "
+               "bdberr=%d\n",
+               __func__, tablename, columnname, rc, bdberr);
+        return rc;
+    }
+    return 0;
+}
+
 int gbl_permit_small_sequences = 0;
 
 int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbtable *newdb)
@@ -5722,20 +5756,10 @@ int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbta
     for (int i = 0; i < newdb->schema->nmembers; i++) {
         struct field *f = &newdb->schema->member[i];
         if (f->in_default_type == SERVER_SEQUENCE) {
-            int fn = find_field_idx_in_tag(olddb->schema, f->name);
-            if (fn == -1) {
-                if ((rc = bdb_set_sequence(tran, olddb->tablename, f->name, 0, &bdberr))) {
-                    logmsg(LOGMSG_ERROR, "%s error creating sequence %s %s rc=%d bdberr=%d\n", __func__,
-                           olddb->tablename, f->name, rc, bdberr);
-                    return rc;
-                }
-            }
-
-            // TODO: Scan for highest value?
-            else if (olddb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
-                logmsg(LOGMSG_ERROR, "%s cannot set nextsequence for existing column %s\n", __func__, f->name);
+            if (f->type != SERVER_BINT) {
+                logmsg(LOGMSG_ERROR, "%s sequences only supported for int types\n", __func__);
                 if (iq) {
-                    sc_client_error(iq->sc, "cannot set sequence for existing column");
+                    sc_client_error(iq->sc, "datatype invalid for sequences");
                 }
                 return -1;
             }
@@ -5745,6 +5769,89 @@ int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbta
                     sc_client_error(iq->sc, "datatype invalid for sequences");
                 }
                 return -1;
+            }
+
+            int fn = find_field_idx_in_tag(olddb->schema, f->name);
+            if (fn == -1) {
+                if ((rc = bdb_set_sequence(tran, olddb->tablename, f->name, 0, &bdberr))) {
+                    logmsg(LOGMSG_ERROR, "%s error creating sequence %s %s rc=%d bdberr=%d\n", __func__,
+                           olddb->tablename, f->name, rc, bdberr);
+                    return rc;
+                }
+            } else if (olddb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
+                if (null_bit != null_bit_low) {
+                    logmsg(LOGMSG_ERROR, "%s need nulls to be sorted low to use sequences on existing column\n",
+                           __func__);
+                    if (iq) {
+                        sc_client_error(iq->sc, "need nulls to be sorted low to use sequences on existing column");
+                    }
+                    return -1;
+                }
+                // NOTE: with gbl_permit_small_sequences on, it is ok if olddb->schema->member[fn].len is less than 9
+                // here since we will be converting it to len 9 in the new field
+                if (olddb->schema->member[fn].type != SERVER_BINT) {
+                    logmsg(LOGMSG_ERROR, "%s sequences only supported for existing int types\n", __func__);
+                    if (iq) {
+                        sc_client_error(iq->sc, "datatype invalid for sequences, convert column to int type first");
+                    }
+                    return -1;
+                }
+
+                struct schema *valid_idx = NULL;
+                struct schema *valid_idx_new = NULL;
+                unsigned char key[MAXKEYLEN];
+                int len = 0;
+                if ((rc = try_fetch_highest_sequence_key(olddb, fn, tran, olddb->tablename, f->name, &valid_idx, key,
+                                                         sizeof(key), &len)))
+                    return rc;
+                if (len == 0 && (rc = try_fetch_highest_sequence_key(newdb, i, tran, olddb->tablename, f->name,
+                                                                     &valid_idx_new, key, sizeof(key), &len)))
+                    return rc;
+                if (valid_idx_new) // else may have case with valid idx old schema and len == 0 (empty index)
+                    valid_idx = valid_idx_new;
+
+                if (!valid_idx) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s need index that is ascending and not partial on same column for sequences\n", __func__);
+                    if (iq) {
+                        sc_client_error(iq->sc,
+                                        "need index that is ascending and not partial on same column for sequences");
+                    }
+                    return -1;
+                }
+
+                int64_t highest = 0;
+                if (len > 0) { // index is not empty
+                    Mem data;
+                    if (len < valid_idx->member[0].offset) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s error key len %d smaller than col size %u on table %s for creating sequence on "
+                               "existing column %s\n",
+                               __func__, len, valid_idx->member[0].offset, olddb->tablename, f->name);
+                        return -1;
+                    }
+                    if ((rc = get_data(NULL, valid_idx, key, 0, &data, 0, NULL))) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s error fetching data on table %s for creating sequence on existing column %s rc=%d\n",
+                               __func__, olddb->tablename, f->name, rc);
+                        return rc;
+                    }
+                    if (data.flags == MEM_Int)
+                        highest = data.u.i;
+                    else if (data.flags != MEM_Null) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s error got wrong data type on table %s for creating sequence on existing column %s\n",
+                               __func__, olddb->tablename, f->name);
+                        return -1;
+                    }
+                }
+                if (gbl_debug_alter_sequences_sleep)
+                    sleep(10);
+                if ((rc = bdb_set_sequence(tran, olddb->tablename, f->name, highest, &bdberr))) {
+                    logmsg(LOGMSG_ERROR, "%s error creating sequence %s for existing column %s rc=%d bdberr=%d\n",
+                           __func__, olddb->tablename, f->name, rc, bdberr);
+                    return rc;
+                }
             }
         }
     }

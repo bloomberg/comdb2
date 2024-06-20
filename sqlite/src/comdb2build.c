@@ -5195,9 +5195,9 @@ static void comdb2ColumnSetNull(Parse *pParse, struct comdb2_column *column)
 }
 
 /*
- * Set autoincrement flag 
+ * Add autoincrement flag for the last added column.
  */
-void comdb2SetAutoIncrement(Parse *pParse)
+void comdb2AddAutoIncrement(Parse *pParse)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -7075,6 +7075,37 @@ void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
 
     assert(ctx->alter_column);
     ctx->alter_column->def = 0;
+    return;
+}
+
+/*
+ * Implementation of ALTER TABLE .. ALTER COLUMN .. SET AUTOINCR ..
+ */
+void comdb2AlterColumnSetAutoIncrement(Parse *pParse)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    assert(ctx->alter_column);
+    if (( validAutoIncrementColumnCheck(ctx->alter_column) )) {
+        setError(pParse, SQLITE_MISUSE, COMDB2_INVALID_AUTOINCREMENT);
+        return;
+    }
+
+    char *nextsequence="nextsequence";
+    comdb2ColumnSetDefault(pParse, ctx->alter_column, NULL, nextsequence, nextsequence + 12);
     return;
 }
 
