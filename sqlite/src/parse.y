@@ -492,7 +492,7 @@ ccons ::= DEFAULT scanpt id(X).       {
 // UNIQUE constraints.
 //
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-ccons ::= AUTOINCR.              {comdb2SetAutoIncrement(pParse);}
+ccons ::= AUTOINCR.              {comdb2AddAutoIncrement(pParse);}
 ccons ::= NULL onconf.           {comdb2AddNull(pParse);}
 ccons ::= NOT NULL onconf(R).    {comdb2AddNotNull(pParse, R);}
 %endif SQLITE_BUILDING_FOR_COMDB2
@@ -1990,6 +1990,9 @@ alter_table_alter_column_cmd ::= SET DEFAULT scanpt(A) term(X) scanpt(Z). {
 }
 alter_table_alter_column_cmd ::= DROP DEFAULT. {
   comdb2AlterColumnDropDefault(pParse);
+}
+alter_table_alter_column_cmd ::= SET AUTOINCR. {
+  comdb2AlterColumnSetAutoIncrement(pParse);
 }
 alter_table_alter_column_cmd ::= DROP AUTOINCR. {
   comdb2AlterColumnDropAutoIncrement(pParse);

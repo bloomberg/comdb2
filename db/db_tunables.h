@@ -1306,6 +1306,10 @@ REGISTER_TUNABLE("no_ack_trace", "Disables 'ack_trace'", TUNABLE_BOOLEAN,
                  NULL, NULL);
 REGISTER_TUNABLE("bdblock_debug", NULL, TUNABLE_BOOLEAN, &gbl_bdblock_debug,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug.alter_sequences_sleep",
+                 "Sleep for 10 seconds before setting sequence to highest value found in existing column during alter "
+                 "table 10 seconds prior (Default: 0)",
+                 TUNABLE_BOOLEAN, &gbl_debug_alter_sequences_sleep, INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.autoanalyze", "debug autoanalyze operations",
                  TUNABLE_BOOLEAN, &gbl_debug_aa, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("debug.thdpool_queue_only",
