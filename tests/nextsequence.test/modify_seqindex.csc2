@@ -1,0 +1,10 @@
+schema
+{
+   int a null=yes
+   int b dbstore=nextsequence null=yes
+}
+keys
+{
+   "ID"  = a
+   dup "b" = b + a
+}

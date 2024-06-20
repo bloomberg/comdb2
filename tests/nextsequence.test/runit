@@ -221,8 +221,8 @@ EOF
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
 }
 
-# You can drop nextsequence from a column, but not add it (add a new column instead)
-function prevent_modify_ddl
+# You can drop nextsequence from a column, but can only add it if you have a full ascending index on col with null sorted low
+function prevent_modify_ddl_no_index
 {
     disable_strict_mode
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
@@ -231,7 +231,7 @@ function prevent_modify_ddl
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
 }
 
-function prevent_modify_csc2
+function prevent_modify_csc2_no_index
 {
     disable_strict_mode
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
@@ -242,6 +242,219 @@ alter table t1 {$(cat seq.csc2)}\$\$
 EOF
     [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_modify_csc2_partial_index
+{
+    old=$1
+    new=$2
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat $new)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2 with only partial index"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_modify_csc2_descending_index
+{
+    old=$1
+    new=$2
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat $new)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2 with descending index"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_modify_csc2_nullsort_high
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqnoseq.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat modify_seqindex.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2 with nullsort high"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_modify_csc2_col_not_first
+{
+    old=$1
+    new=$2
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat $new)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2 with col not first in index"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_modify_csc2_switch_col_order
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 { schema { int a int b } keys { "a" = a}}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(10, 20)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 { schema { int b dbstore=nextsequence int a } keys { "a" = a}}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2 while changing order of cols in tbl schema with invalid idx"
+
+    # if changing key to b this should work
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 { schema { int b dbstore=nextsequence int a } keys { "b" = b}}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 while changing order of cols in tbl schema with valid idx"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(11)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 11")
+    [[ "$x" != "21" ]] && failexit "Failed to add sequence on existing column (didn't get 21)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_empty_index
+{
+    old=$1
+    new=$2
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat $new)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 with empty index"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1")
+    [[ "$x" != "1" ]] && failexit "Failed to add sequence on existing column with empty index"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_all_nulls
+{
+    old=$1
+    new=$2
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, NULL)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat $new)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 with index only containing NULLs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(2)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 2")
+    [[ "$x" != "1" ]] && failexit "Failed to add sequence on existing column with index only containing NULLs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_mixed_nulls
+{
+    old=$1
+    new=$2
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, NULL)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2, 100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat $new)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 with index containing mix of NULLs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(3)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 3")
+    [[ "$x" != "101" ]] && failexit "Failed to add sequence on existing column with index containing mix of NULLs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_no_nulls
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat modify_seqnoseqindexnonulls.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, 100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat modify_seqindexnonulls.csc2)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 with column/index containing no NULLs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(2)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 2")
+    [[ "$x" != "101" ]] && failexit "Failed to add sequence on existing column with column/index containing no NULLs"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_bad_to_good_index
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 { schema { int a int b } keys { "b" = <DESCEND> b}}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(10, 20)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 { schema { int a int b dbstore=nextsequence } keys { dup "b" = b}}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 while going from bad to good idx"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(11)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 11")
+    [[ "$x" != "21" ]] && failexit "Failed to add sequence on existing column (didn't get 21)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_good_to_bad_index
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 { schema { int a int b } keys { dup "b" = b}}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(10, 20)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 { schema { int a int b dbstore=nextsequence } keys { "b" = <DESCEND> b}}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow column dbstore to be updated to nextsequence from csc2 while going from good to bad idx"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(11)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 11")
+    [[ "$x" != "21" ]] && failexit "Failed to add sequence on existing column (didn't get 21)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function modify_csc2_race
+{
+    old=$1
+    new=$2
+    echo "Testing race"
+    disable_strict_mode
+    leader=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select host from comdb2_cluster where is_master='Y'")
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $leader "put tunable debug.alter_sequences_sleep 1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat $old)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(1, 2)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF &
+alter table t1 {$(cat $new)}\$\$
+EOF
+    sleep 1
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2, 100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(3)"
+    x=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select b from t1 where a = 3")
+    [[ "$x" != "101" ]] && failexit "Failed modify csc2 sequence race check"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $leader "put tunable debug.alter_sequences_sleep 0"
 }
 
 function prevent_non_null_new_column_ddl
@@ -371,13 +584,100 @@ create table t1 {$(cat seq.csc2)}\$\$
 EOF
     [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against int in strict mode"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
-create table t1 {$(cat seq.csc2)}\$\$
-EOF
-    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against int in strict mode"
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
 create table t1 {$(cat seqshort.csc2)}\$\$
 EOF
     [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against short in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+# old and new type for sequence col must be int type
+function validate_type_csc2_modify
+{
+    disable_strict_mode
+
+    # test from int type to non int type (conversion to invalid types)
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {schema {int a null=yes int b null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes datetime b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against datetime"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes cstring b[100] dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against cstring"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes double b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against double"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes u_int b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against unsigned int"
+    enable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes int b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against int in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes short b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against short in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+
+    # test from non int type to int type (conversion from invalid types)
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {schema {int a null=yes datetime b null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes int b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against datetime"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {schema {int a null=yes cstring b[100] null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes int b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against cstring"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {schema {int a null=yes double b null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes int b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against double"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+create table t1 {schema {int a null=yes u_int b null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes int b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against unsigned int"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+
+    # NOTE: In strict mode it is ok to convert from int/short into a longlong
+    enable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {schema {int a null=yes int b null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes longlong b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow csc2 nextsequence from int to longlong in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {schema {int a null=yes short b null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {schema {int a null=yes longlong b dbstore=nextsequence null=yes } keys { "ID"  = a "b" = b }}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Didn't allow csc2 nextsequence from short to longlong in strict mode"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
 }
 
@@ -464,6 +764,10 @@ function verify_and_fix_corruption
 
 function run_test
 {
+    if [[ "$DBNAME" == *"nextsequencenullsorthighgenerated"* ]]; then
+        prevent_modify_csc2_nullsort_high
+        return
+    fi
     set_output_files
     insert_nextsequence
     ddl_basic
@@ -474,8 +778,33 @@ function run_test
     update_nextsequence
     max_sequence_ddl
     max_sequence_csc2
-    prevent_modify_ddl
-    prevent_modify_csc2
+    prevent_modify_ddl_no_index
+    prevent_modify_csc2_no_index
+    prevent_modify_csc2_partial_index modify_seqnoseqpartial.csc2 modify_seqpartial.csc2
+    prevent_modify_csc2_partial_index seqnoseq.csc2 modify_seqpartial.csc2
+    prevent_modify_csc2_partial_index modify_seqnoseqpartial.csc2 seq.csc2
+    prevent_modify_csc2_descending_index modify_seqnoseqdescend.csc2 modify_seqdescend.csc2
+    prevent_modify_csc2_descending_index seqnoseq.csc2 modify_seqdescend.csc2
+    prevent_modify_csc2_descending_index modify_seqnoseqdescend.csc2 seq.csc2
+    prevent_modify_csc2_col_not_first modify_seqnoseqindexnotfirst.csc2 modify_seqindexnotfirst.csc2
+    prevent_modify_csc2_col_not_first seqnoseq.csc2 modify_seqindexnotfirst.csc2
+    prevent_modify_csc2_col_not_first modify_seqnoseqindexnotfirst.csc2 seq.csc2
+    prevent_modify_csc2_switch_col_order
+    modify_csc2_empty_index modify_seqnoseqindex.csc2 modify_seqindex.csc2
+    modify_csc2_empty_index seqnoseq.csc2 modify_seqindex.csc2
+    modify_csc2_empty_index modify_seqnoseqindex.csc2 seq.csc2
+    modify_csc2_all_nulls modify_seqnoseqindex.csc2 modify_seqindex.csc2
+    modify_csc2_all_nulls seqnoseq.csc2 modify_seqindex.csc2
+    modify_csc2_all_nulls modify_seqnoseqindex.csc2 seq.csc2
+    modify_csc2_mixed_nulls modify_seqnoseqindex.csc2 modify_seqindex.csc2
+    modify_csc2_mixed_nulls seqnoseq.csc2 modify_seqindex.csc2
+    modify_csc2_mixed_nulls modify_seqnoseqindex.csc2 seq.csc2
+    modify_csc2_no_nulls
+    modify_csc2_bad_to_good_index
+    modify_csc2_good_to_bad_index
+    modify_csc2_race modify_seqnoseqindex.csc2 modify_seqindex.csc2
+    modify_csc2_race seqnoseq.csc2 modify_seqindex.csc2
+    modify_csc2_race modify_seqnoseqindex.csc2 seq.csc2
     prevent_non_null_new_column_ddl
     prevent_non_null_new_column_csc2
     persist_against_fastinit
@@ -485,6 +814,7 @@ function run_test
     strict_csc2
     validate_type_ddl
     validate_type_csc2
+    validate_type_csc2_modify
     reset_sequence
     if [[ "$DBNAME" == *"nextsequencereprocorruptiongenerated"* ]]; then
         verify_and_fix_corruption
