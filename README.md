@@ -1,5 +1,7 @@
 ## Overview
 
+![Comdb2 Logo](imgs/comdb2logo.png)
+
 Comdb2 is a clustered RDBMS built on Optimistic Concurrency Control techniques. 
 It provides multiple isolation levels, including Snapshot and Serializable Isolation. 
 Read/Write transactions run on any node, with the client library transparently negotiating connections to lowest cost (latency) node which is available.
