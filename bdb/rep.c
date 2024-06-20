@@ -2889,7 +2889,6 @@ again:
 
     if (h->seqnum.lsn.file == INT_MAX || bdb_lock_desired(bdb_state)) {
         /* add 1 ms of latency if we have someone catching up */
-        poll(NULL, 0, 1);
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
