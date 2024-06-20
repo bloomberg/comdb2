@@ -165,4 +165,5 @@ const char *sqlite3_expert_report(sqlite3expert*, int iStmt, int eReport);
 */
 void sqlite3_expert_destroy(sqlite3expert*);
 
-
+sqlite3* sqlite3_expert_get_dbm(sqlite3expert*);
+sqlite3* sqlite3_expert_get_dbv(sqlite3expert*);

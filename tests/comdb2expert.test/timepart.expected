@@ -1,0 +1,7 @@
+(rows inserted=100)
+---------- Recommended Indexes --------------
+
+CREATE INDEX tp_idx_00000061 ON tp(a)
+
+---------------------------------------------
+
