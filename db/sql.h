@@ -705,11 +705,9 @@ struct sqlclntstate {
     int n_cmp_idx;
     sampled_idx_t *sampled_idx_tbl;
 
-    pthread_t debug_sqlclntstate;
     int last_check_time;
     int query_timeout;
     int statement_timedout;
-    struct conninfo conn;
 
     uint8_t heartbeat;
     uint8_t ready_for_heartbeats;
