@@ -1965,13 +1965,12 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
-			dbmfp = TAILQ_NEXT(dbmfp, q)) {
-		if (memcmp(dbmfp->fileid, pagelist->fileid, DB_FILE_ID_LEN) == 0)
-			break;
+	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
+	struct fileid_adj_fileid *fidadj = hash_find(dbenv->fidhash, pagelist->fileid);
+	if (fidadj) {
+		dbmfp = (LISTC_TOP(&dbenv->dbs[fidadj->adj_fileid]))->mpf;
 	}
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
 	if (dbmfp) {
 		for(int pages = 0 ; pages < pagelist->cnt; pages++) {
