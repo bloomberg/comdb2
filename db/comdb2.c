@@ -4021,6 +4021,8 @@ static int init(int argc, char **argv)
 
     gbl_llmeta_open = 1;
 
+    run_init_plugins(COMDB2_PLUGIN_INITIALIZER_POST_LLMETA);
+
     if (gbl_create_mode &&
         bdb_set_global_stripe_info(NULL, gbl_dtastripe, gbl_blobstripe,
                                    &bdberr) != 0) {

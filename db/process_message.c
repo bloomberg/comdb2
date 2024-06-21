@@ -2785,6 +2785,13 @@ clipper_usage:
                         "%s:%d: failed to list all options rc=%d bdberr=%d\n",
                         __FILE__, __LINE__, rc, bdberr);
             }
+        } else if (tokcmp(tok, ltok, "dump") == 0) {
+            rc = bdb_llmeta_dump_records(thedb->bdb_env, &bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                        "%s:%d: failed to list all options rc=%d bdberr=%d\n",
+                        __FILE__, __LINE__, rc, bdberr);
+            }
         } else {
             logmsg(LOGMSG_ERROR, "unknown option \"%.*s\"\n", ltok, tok);
         }

@@ -5507,7 +5507,7 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
-int gbl_forbid_remote_admin = 1;
+int gbl_forbid_remote_admin = 0;
 
 void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
                 SBUF2 *sb, uint8_t firstbyte)

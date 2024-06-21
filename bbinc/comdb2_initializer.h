@@ -20,6 +20,7 @@
 struct comdb2_initializer {
     int (*pre_recovery)();
     int (*post_recovery)();
+    int (*pre_llmeta)();
 };
 typedef struct comdb2_initializer comdb2_initializer_t;
 
