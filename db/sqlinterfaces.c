@@ -5249,6 +5249,26 @@ int tdef_to_tranlevel(int tdef)
     }
 }
 
+void free_client_info(struct sqlclntstate *clnt)
+{
+    if (clnt->argv0) {
+        free(clnt->argv0);
+        clnt->argv0 = NULL;
+    }
+    if (clnt->stack) {
+        free(clnt->stack);
+        clnt->stack = NULL;
+    }
+    if (clnt->api_driver_name){
+        free(clnt->api_driver_name);
+        clnt->api_driver_name = NULL;
+    }
+    if (clnt->api_driver_version){
+        free(clnt->api_driver_version);
+        clnt->api_driver_version = NULL;
+    }
+}
+
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
@@ -5263,14 +5283,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->dbglog) {
         sbuf2close(clnt->dbglog);
         clnt->dbglog = NULL;
-    }
-    if (clnt->argv0) {
-        free(clnt->argv0);
-        clnt->argv0 = NULL;
-    }
-    if (clnt->stack) {
-        free(clnt->stack);
-        clnt->stack = NULL;
     }
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
@@ -5311,6 +5323,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
             free(clnt->idxDelete);
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
+    free_client_info(clnt);
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
@@ -5373,10 +5386,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
         clnt->rawnodestats = NULL;
-    }
-    if (clnt->argv0) {
-        free(clnt->argv0);
-        clnt->argv0 = NULL;
     }
     clnt->recno = 1;
     clnt->done = 1;
@@ -5455,6 +5464,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->osql_max_trans = g_osql_max_trans;
     clnt->group_concat_mem_limit = gbl_group_concat_mem_limit;
 
+    free_client_info(clnt);
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));

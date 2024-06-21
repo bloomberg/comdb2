@@ -73,6 +73,14 @@ static char cdb2_comdb2dbname[32] = "";
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
+#define API_DRIVER_NAME open_cdb2api
+static char api_driver_name[] = QUOTE(API_DRIVER_NAME);
+
+#ifndef API_DRIVER_VERSION
+#define API_DRIVER_VERSION latest
+#endif
+static char api_driver_version[] = QUOTE(API_DRIVER_VERSION);
+
 #ifndef CDB2_DNS_SUFFIX
 #define CDB2_DNS_SUFFIX
 #endif
@@ -3069,6 +3077,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
         cinfo.th_id = (uint64_t)pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
+        cinfo.api_driver_name = api_driver_name;
+        cinfo.api_driver_version = api_driver_version;
         if (hndl && hndl->send_stack)
             cinfo.stack = hndl->stack;
         sqlquery.client_info = &cinfo;
