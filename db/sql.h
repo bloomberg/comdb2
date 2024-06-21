@@ -883,6 +883,10 @@ struct sqlclntstate {
     char *argv0;
     char *stack;
 
+    /* api driver information */
+    char *api_driver_name;
+    char *api_driver_version;
+
     int translevel_changed;
     int admin;
 
@@ -1275,6 +1279,7 @@ int sqlite3_close_serial(sqlite3 **);
 
 void reset_clnt(struct sqlclntstate *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
+void free_client_info(struct sqlclntstate *);
 void reset_query_effects(struct sqlclntstate *);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,

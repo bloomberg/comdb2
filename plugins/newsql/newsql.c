@@ -2074,11 +2074,11 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
         }
     }
     if (sql_query->client_info) {
-        clnt->conninfo.pid = sql_query->client_info->pid;
-        clnt->last_pid = sql_query->client_info->pid;
+        newsql_set_client_info(clnt, sql_query, 1);
     } else {
         clnt->conninfo.pid = 0;
         clnt->last_pid = 0;
+        free_client_info(clnt);
     }
     clnt->tzname[0] = 0;
     clnt->osql.count_changes = 1;
@@ -2149,22 +2149,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
                    clnt->conninfo.pid, sql_query->client_info->pid,
                    sql_query->client_info->host_id);
         }
-        clnt->conninfo.pid = sql_query->client_info->pid;
-        clnt->conninfo.node = sql_query->client_info->host_id;
-        if (clnt->argv0) {
-            free(clnt->argv0);
-            clnt->argv0 = NULL;
-        }
-        if (clnt->stack) {
-            free(clnt->stack);
-            clnt->stack = NULL;
-        }
-        if (sql_query->client_info->argv0) {
-            clnt->argv0 = strdup(sql_query->client_info->argv0);
-        }
-        if (sql_query->client_info->stack) {
-            clnt->stack = strdup(sql_query->client_info->stack);
-        }
+        newsql_set_client_info(clnt, sql_query, 0);
         if (sql_query->identity) {
             clnt->externalAuthUser = sql_query->identity->principal;
         }
@@ -2293,3 +2278,30 @@ void newsql_effects(CDB2SQLRESPONSE *r, CDB2EFFECTS *e, struct sqlclntstate *cln
     e->num_inserted = effects->num_inserted;
     r->effects = e;
 }
+
+void newsql_set_client_info(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query, int initial)
+{
+    clnt->conninfo.pid = sql_query->client_info->pid;
+    
+    if (initial) {
+        clnt->last_pid = sql_query->client_info->pid;
+    } else {
+        clnt->conninfo.node = sql_query->client_info->host_id;
+    }
+    
+    free_client_info(clnt);
+
+    if (sql_query->client_info->argv0) {
+        clnt->argv0 = strdup(sql_query->client_info->argv0);
+    }
+    if (sql_query->client_info->stack) {
+        clnt->stack = strdup(sql_query->client_info->stack);
+    }
+    if (sql_query->client_info->api_driver_name) {
+        clnt->api_driver_name = strdup(sql_query->client_info->api_driver_name);
+    }
+    if (sql_query->client_info->api_driver_version) {
+        clnt->api_driver_version = strdup(sql_query->client_info->api_driver_version);
+    }
+}
+

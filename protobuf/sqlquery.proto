@@ -86,6 +86,8 @@ message CDB2_SQLQUERY {
     required int32  host_id  = 3;
     optional string argv0    = 4;
     optional string stack    = 5;
+    optional string api_driver_name = 6;
+    optional string api_driver_version = 7;
   }
   optional cinfo client_info = 15;
   repeated string context    = 16; // Client context messages.

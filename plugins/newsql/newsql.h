@@ -75,6 +75,7 @@ int newsql_should_dispatch(struct sqlclntstate *, int *is_commit_rollback);
 void newsql_reset(struct sqlclntstate *);
 void free_newsql_appdata(struct sqlclntstate *);
 void newsql_effects(CDB2SQLRESPONSE *, CDB2EFFECTS *, struct sqlclntstate *);
+void newsql_set_client_info(struct sqlclntstate *, CDB2SQLQUERY *, int initial);
 
 #define plugin_set_callbacks_newsql(name)                                      \
     clnt->plugin.close = newsql_close##_##name;                                \
