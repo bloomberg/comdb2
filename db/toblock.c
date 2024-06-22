@@ -5639,7 +5639,12 @@ add_blkseq:
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
             if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
                 (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
-                /* do nothing */
+
+                /* Make sure this didn't already commit */
+                rc = bdb_blkseq_find(thedb->bdb_env, parent_trans, bskey,
+                                     bskeylen, &replay_data, &replay_len);
+                /* Coerce into a blkseq-dup if we find it */
+                rc = (rc == IX_FND ? IX_DUP : 0);
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
                                        bskeylen, buf_fstblk,
