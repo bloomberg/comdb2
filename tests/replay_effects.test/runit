@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+debug=0
+verbose=0
+stopfile=${DBNAME}.failexit
+
+[[ "$debug" != "0" ]] && set -x
+
+function update_thread
+{
+    typeset thd=$1
+    typeset cnt=0
+    typeset unk=0
+    typeset updated=0
+
+    echo "Update thread $thd starting"
+    while [[ ! -f $stopfile ]]; do
+        if [[ "$cnt" -gt "0" && "$(( cnt % 1000 ))" == "0" ]]; then
+            echo "Update thread $thd updated $cnt records"
+        fi
+
+        let updated=0
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "update t1 set a=$thd where a=0 limit 1" 2>&1)
+        if [[ "$x" == "(rows updated=1)" ]]; then
+            let updated=1
+        elif [[ "$x" != "(rows updated=0"* ]]; then
+            let unk=unk+1
+            if [[ "$verbose" != "0" ]]; then
+                echo "Thd $thd response was $x, total-unknowns $unk"
+            fi
+        fi
+        let cnt=$(( cnt + updated ))
+        ck=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1 where a=$thd")
+        if [[ "$ck" != "$cnt" ]]; then
+            echo "Thd $thd update count mismatch, expected $cnt got $ck"
+            failexit "Update thread $thd reports $ck unknown $unk"
+        fi
+    done
+    echo "Update thread $thd complete, updated $cnt, failures $unk"
+}
+
+function insert_thread
+{
+    typeset thd=$1
+    typeset cnt=0
+    echo "Insert thread $thd starting"
+    while [[ ! -f $stopfile ]]; do
+        let cnt=cnt+1
+        if [[ "$(( cnt % 1000 ))" == "0" ]]; then
+            echo "Insert thread $thd inserted $cnt records"
+        fi
+        x=$($CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(0)" 2>&1)
+        if [[ "$x" != "(rows inserted=1)" ]]; then
+            echo "Insert reports $x"
+            failexit "Insert reports $x"
+        fi
+    done
+    echo "Insert thread $thd complete, inserted $cnt"
+}
+
+function verify_up
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="verify_up"
+    typeset node=$1
+    typeset count=0
+    typeset r=1
+    while [[ "$r" -ne "0" && "$count" -lt 2000 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null 2>&1
+        r=$?
+        [[ $r != 0 ]] && sleep 1
+        let count=count+1
+    done
+    [[ $r != 0 ]] && failexit "node $node did not recover in time"
+}
+
+
+# The test tunables ensure that we will get blkseq-replays
+# Just make sure that cdb2sql returns the effects in all cases
+function run_test
+{
+    typeset maxtime=300
+    typeset now=$(date +%s)
+    typeset endtime=$(( now + maxtime ))
+    typeset i=0
+
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists t1( a int )"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index t1a on t1(a)"
+    i=0
+    while [[ $i -lt 10 ]]; do
+        let i=i+1
+        insert_thread $i &
+    done
+
+    i=0
+    while [[ $i -lt 10 ]]; do
+        let i=i+1
+        update_thread $i &
+    done
+
+    while [[ ! -f $stopfile && $(date +%s) -lt $endtime ]]; do
+        if [[ -n $CLUSTER ]]; then
+            for node in $CLUSTER ; do
+                verify_up $node
+            done
+        else
+            node=$(hostname)
+            verify_up $node
+        fi
+        sleep 1
+    done
+
+    if [[ -f $stopfile ]]; then
+        echo "Testcase failed"
+        exit 1
+    fi
+    touch $stopfile
+    wait
+    rm $stopfile
+}
+
+rm -f $stopfile 2>/dev/null
+run_test
+
+echo "Success"
