@@ -877,6 +877,8 @@ struct sqlclntstate {
     int shard_slice;
     fdb_push_connector_t *fdb_push;
 
+    const char *next_fn;
+    char *prev_argv0;
     char *argv0;
     char *stack;
 
@@ -943,6 +945,7 @@ struct sqlclntstate {
 
     int lastresptype;
     char *externalAuthUser;
+
 };
 
 /* Query stats. */

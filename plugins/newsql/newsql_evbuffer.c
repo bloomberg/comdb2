@@ -100,7 +100,7 @@ struct newsql_appdata_evbuffer {
     struct sqlclntstate clnt;
 };
 
-static void add_rd_event(struct newsql_appdata_evbuffer *, struct event *, struct timeval *);
+static void add_rd_event(struct newsql_appdata_evbuffer *, struct event *, struct timeval *, const char *);
 static void rd_hdr(int, short, void *);
 static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *);
 static int rd_evbuffer_ciphertext(struct newsql_appdata_evbuffer *);
@@ -238,6 +238,7 @@ static void ping_pong_cb(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     struct ping_pong *ping = appdata->ping;
     struct event_base *wrbase = sql_wrbase(appdata->writer);
+    appdata->clnt.next_fn = NULL;
     int n = rd_evbuffer(appdata);
     if (n <= 0 && (what & EV_READ)) {
         ping->status = -2;
@@ -253,7 +254,7 @@ static void ping_pong_cb(int dummyfd, short what, void *arg)
         if (timeout.tv_sec) {
             event_base_loopbreak(wrbase);
         } else {
-            add_rd_event(appdata, ping->ev, &timeout);
+            add_rd_event(appdata, ping->ev, &timeout, __func__);
         }
         return;
     }
@@ -277,6 +278,7 @@ static int newsql_ping_pong_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
     struct event_base *wrbase = sql_wrbase(appdata->writer);
+    appdata->clnt.next_fn = NULL;
     if (!appdata->ping) {
         appdata->ping = malloc(sizeof(struct ping_pong));
         int flags = EV_READ | EV_TIMEOUT;
@@ -286,7 +288,7 @@ static int newsql_ping_pong_evbuffer(struct sqlclntstate *clnt)
     ping->status = -1;
     gettimeofday(&ping->start, NULL);
     struct timeval onesec = {.tv_sec = 1};
-    add_rd_event(appdata, ping->ev, &onesec);
+    add_rd_event(appdata, ping->ev, &onesec, "ping_pong_cb");
     event_base_dispatch(wrbase);
     return ping->status;
 }
@@ -630,8 +632,9 @@ static void add_rd_event_plaintext(struct newsql_appdata_evbuffer *appdata, stru
     event_add(ev, t);
 }
 
-static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *timeout)
+static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *timeout, const char *fn)
 {
+    appdata->clnt.next_fn = fn;
     add_lru_evbuffer(&appdata->clnt); /* going to wait for read; eligible for shutdown */
     appdata->add_rd_event_fn(appdata, ev, timeout); /* add_rd_event_plaintext */
 }
@@ -781,6 +784,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
 {
     CDB2QUERY *query = NULL;
     struct newsql_appdata_evbuffer *appdata = arg;
+    appdata->clnt.next_fn = NULL;
     if (evbuffer_get_length(appdata->rd_buf) >= appdata->hdr.length) {
         goto payload;
     }
@@ -789,7 +793,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
         return;
     }
     if (evbuffer_get_length(appdata->rd_buf) < appdata->hdr.length) {
-        add_rd_event(appdata, appdata->rd_payload_ev, NULL);
+        add_rd_event(appdata, appdata->rd_payload_ev, NULL, __func__);
         return;
     }
 payload:
@@ -809,6 +813,7 @@ static void rd_hdr(int dummyfd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
+    appdata->clnt.next_fn = NULL;
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
     }
@@ -817,7 +822,7 @@ static void rd_hdr(int dummyfd, short what, void *arg)
         return;
     }
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
-        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
+        add_rd_event(appdata, appdata->rd_hdr_ev, NULL, __func__);
         return;
     }
 hdr:
@@ -857,11 +862,12 @@ static void debug_cmd_cb(int dummyfd, short what, void *arg)
 {
     struct debug_cmd *cmd = arg;
     struct newsql_appdata_evbuffer *appdata = cmd->appdata;
+    appdata->clnt.next_fn = NULL;
     int rc = rd_evbuffer(appdata);
     if (rc <= 0 || evbuffer_get_length(appdata->rd_buf) >= cmd->need) {
         event_base_loopbreak(event_get_base(cmd->ev));
     } else {
-        add_rd_event(appdata, cmd->ev, NULL);
+        add_rd_event(appdata, cmd->ev, NULL, __func__);
     }
 }
 
@@ -877,7 +883,7 @@ static int newsql_read_evbuffer(struct sqlclntstate *clnt, void *b, int l, int n
     cmd.appdata = appdata;
     cmd.need = need;
     cmd.ev = event_new(wrbase, appdata->fd, EV_READ, debug_cmd_cb, &cmd);
-    add_rd_event(appdata, cmd.ev, NULL);
+    add_rd_event(appdata, cmd.ev, NULL, "debug_cmd_cb");
     event_base_dispatch(wrbase);
     event_free(cmd.ev);
     have = evbuffer_get_length(appdata->rd_buf);

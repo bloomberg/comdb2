@@ -5205,6 +5205,10 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         sbuf2close(clnt->dbglog);
         clnt->dbglog = NULL;
     }
+    if (clnt->prev_argv0) {
+        free(clnt->prev_argv0);
+        clnt->prev_argv0 = NULL;
+    }
     if (clnt->argv0) {
         free(clnt->argv0);
         clnt->argv0 = NULL;
@@ -7075,4 +7079,14 @@ void wait_for_transactions(void) {
     }
     if (ntrans && nwaits)
         logmsg(LOGMSG_INFO, "giving up and exiting with pending transactions\n");
+}
+
+void libevent_appsock_stat(void)
+{
+    struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
+        logmsg(LOGMSG_USER, "curr:%s prev:%s next-fn:%s\n", clnt->argv0, clnt->prev_argv0, clnt->next_fn);
+    }
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }

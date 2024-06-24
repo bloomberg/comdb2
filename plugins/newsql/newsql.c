@@ -2130,7 +2130,8 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         clnt->conninfo.pid = sql_query->client_info->pid;
         clnt->conninfo.node = sql_query->client_info->host_id;
         if (clnt->argv0) {
-            free(clnt->argv0);
+            free(clnt->prev_argv0);
+            clnt->prev_argv0 = clnt->argv0;
             clnt->argv0 = NULL;
         }
         if (clnt->stack) {

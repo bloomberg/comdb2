@@ -1945,6 +1945,7 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
 void req_stats(struct dbtable *db);
 void appsock_quick_stat(void);
 void appsock_stat(void);
+void libevent_appsock_stat(void);
 void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql);
 void ixstats(struct dbenv *dbenv);
 void curstats(struct dbenv *dbenv);

@@ -1766,6 +1766,8 @@ clipper_usage:
             request_stats(dbenv);
         } else if (tokcmp(tok, ltok, "appsock") == 0) {
             appsock_stat();
+        } else if (tokcmp(tok, ltok, "libevent_appsock") == 0) {
+            libevent_appsock_stat();
         } else if (tokcmp(tok, ltok, "blob") == 0) {
             blob_print_stats();
         } else if (tokcmp(tok, ltok, "compr") == 0) {
