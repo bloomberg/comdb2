@@ -111,6 +111,7 @@ public class Driver implements java.sql.Driver {
             options.put("comdb2db_max_age", new IntegerOption("comdb2db_max_age", "Comdb2dbMaxAge"));
             options.put("debug", new BooleanOption("debug", "Debug"));
             options.put("max_retries", new IntegerOption("max_retries", "MaxRetries"));
+            options.put("min_retries", new IntegerOption("min_retries", "MinRetries"));
             options.put("ssl_mode", new StringOption("ssl_mode", "SSLMode"));
             options.put("key_store", new StringOption("key_store", "SSLCrt"));
             options.put("key_store_password", new StringOption("key_store_password", "SSLCrtPass"));

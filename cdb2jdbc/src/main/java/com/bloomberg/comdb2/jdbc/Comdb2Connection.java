@@ -229,6 +229,10 @@ public class Comdb2Connection implements Connection {
         hndl.setMaxRetries(n);
     }
 
+    public void setMinRetries(int n) {
+        hndl.setMinRetries(n);
+    }
+
     public void setDebug(boolean dbg) {
         hndl.setDebug(dbg);
     }
