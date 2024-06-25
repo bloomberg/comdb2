@@ -467,6 +467,7 @@ log_applied_lsns| 0 |Log applied LSNs to log
 check_applied_lsns| 0 |Check transaction that its LSNs have been applied
 check_applied_lsns_fatal| 0 |Abort if check_applied_lsns fails
 check_applied_lsns_debug| 0 |Lots of verbose trace for debugging applied LSNs
+commit_map_debug| 0 |Produce debug output in commit lsn map
 sgio_enabled| 0 |Do scatter gather I/O
 sgio_max| 10 * MEGABYTE |Max scatter gather I/O to do at one time
 btpf_enabled| 0 |Enables index pages read ahead

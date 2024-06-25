@@ -630,25 +630,32 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	LOGFILE_TXN_LIST *to_delete;
 	UTXNID_TRACK *txn;
 	UTXNID* elt;
-	int ret, alloc_txn, alloc_delete_list;
+	int ret, alloc_txn, alloc_delete_list, commit_map_debug;
 
 	txmap = dbenv->txmap;
+	commit_map_debug = dbenv->attr.commit_map_debug;
 	alloc_txn = 0;
 	alloc_delete_list = 0;
 	ret = 0;
 
-	logmsg(LOGMSG_DEBUG, "Trying to add utxnid %"PRIu64" commit lsn %"PRIu32":%"PRIu32" to the map\n", utxnid, commit_lsn.file, commit_lsn.offset);
+	if (commit_map_debug) {
+		logmsg(LOGMSG_DEBUG, "Trying to add utxnid %"PRIu64" commit lsn %"PRIu32":%"PRIu32" to the map\n", utxnid, commit_lsn.file, commit_lsn.offset);
+	}
 
 	/* Don't add transactions that commit at the zero LSN */
 	if (IS_ZERO_LSN(commit_lsn)) {
-		logmsg(LOGMSG_DEBUG, "Transaction %"PRIu64" has a zero commit lsn. Not adding it to the map.\n", utxnid);
+		if (commit_map_debug) {
+			logmsg(LOGMSG_DEBUG, "Transaction %"PRIu64" has a zero commit lsn. Not adding it to the map.\n", utxnid);
+		}
 		return ret;
 	}
 
 	txn = hash_find(txmap->transactions, &utxnid);
 
 	if (txn != NULL) { 
-		logmsg(LOGMSG_DEBUG, "Transaction %"PRIu64" already exists in the map. Not adding it again\n", utxnid);
+		if (commit_map_debug) {
+			logmsg(LOGMSG_DEBUG, "Transaction %"PRIu64" already exists in the map. Not adding it again\n", utxnid);
+		}
 		/* Don't add transactions that already exist in the map */
 		return ret;
 	}
