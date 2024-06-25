@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 dbnm=pmuxsecure
+export CDB2_DISABLE_SOCKPOOL=1
 
 # Use our own pmux in this test
 ${COMDB2_EXE} ${dbnm} --create --dir $TESTDIR/${dbnm} --tunable 'portmux_bind_path /tmp/pmux.secure.socket' --tunable 'portmux_port 5106' --tunable "ssl_cert_path $TESTDIR"
