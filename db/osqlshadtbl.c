@@ -1057,9 +1057,9 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 #ifdef TEST_OSQL
     uuidstr_t us;
     fprintf(stdout,
-            "[%llu %s] Updated genid=%llu (%u) rc=%d pCur->genid=%llu\n",
+            "[%llu %s] Updated genid=%llu (%p) rc=%d pCur->genid=%llu\n",
             osql->rqid, comdb2uuidstr(osql->uuid, us), pCur->genid,
-            pthread_self(), rc, pCur->genid);
+            (void *) pthread_self(), rc, pCur->genid);
 #endif
 
     tbl->seq = increment_seq(tbl->seq);
@@ -1098,10 +1098,10 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
 #ifdef TEST_OSQL
     uuidstr_t us;
-    fprintf(stdout, "[%llu %s] Inserted seq=%llu (%u) rc=%d pCur->genid=%llu\n",
+    fprintf(stdout, "[%llu %s] Inserted seq=%llu (%p) rc=%d pCur->genid=%llu\n",
             thd->clnt->osql.rqid,
             comdb2uuidstr(thd->clnt->osql.uuid, us), tmp,
-            pthread_self(), rc, pCur->genid);
+            (void *) pthread_self(), rc, pCur->genid);
 #endif
 
     if (rc) {
@@ -1348,10 +1348,10 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 
 #ifdef TEST_OSQL
     uuidstr_t us;
-    fprintf(stdout, "[%llu %s] Inserted updcol seq=%llu id=%d len=%d (%u) "
+    fprintf(stdout, "[%llu %s] Inserted updcol seq=%llu id=%llu len=%d (%p) "
                     "rc=%d pCur->genid=%llu\n",
             osql->rqid, comdb2uuidstr(osql->uuid, us), key.seq, key.id, len,
-            pthread_self(), rc, pCur->genid);
+            (void *) pthread_self(), rc, pCur->genid);
 #endif
 
     if (rc) {
@@ -1421,10 +1421,10 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                                     blobs[i].length, NULL, &bdberr);
 
 #ifdef TEST_OSQL
-            fprintf(stdout, "[%llu] Inserted blob seq=%llu id=%d len=%d (%u) "
+            fprintf(stdout, "[%llu] Inserted blob seq=%llu id=%llu len=%zu (%p) "
                             "rc=%d pCur->genid=%llu\n",
                     osql->rqid, key.seq, key.id, blobs[i].length,
-                    pthread_self(), rc, pCur->genid);
+                    (void *) pthread_self(), rc, pCur->genid);
 #endif
 
             if (rc) {
