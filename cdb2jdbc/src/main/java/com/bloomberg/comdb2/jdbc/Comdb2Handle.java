@@ -104,8 +104,8 @@ public class Comdb2Handle extends AbstractConnection {
     private String uuid;
     private String stringCnonce;
     private byte[] cnonce;
-    private int maxretries = 20;
-    private int minretries = 3; /* how many times a non-hasql statement can retry */
+    private int maxretries = 21;
+    private int minretries = 16; /* how many times a non-hasql statement can retry */
     private boolean retryAll = false;
     private int snapshotFile;
     private int snapshotOffset;
@@ -431,6 +431,10 @@ public class Comdb2Handle extends AbstractConnection {
     public void setDebug(boolean on) {
         debug = on;
         DatabaseDiscovery.debug = on;
+    }
+
+    public void setMinRetries(int retries) {
+        minretries = retries;
     }
 
     public void setMaxRetries(int retries) {
