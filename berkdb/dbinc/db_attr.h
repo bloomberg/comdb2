@@ -43,6 +43,7 @@ BERK_DEF_ATTR(cache_lc_trace_misses, "Print a message on cache miss", BERK_ATTR_
 BERK_DEF_ATTR(cache_lc_check, "Check LC cache system on every transaction", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(cache_lc_memlimit, "Limit total memory used by LC cache (0 = unlimited).", BERK_ATTR_TYPE_INTEGER, 2097152)
 BERK_DEF_ATTR(cache_lc_memlimit_tran, "Limit per transaction memory used by LC cache", BERK_ATTR_TYPE_INTEGER, 1048576)
+BERK_DEF_ATTR(commit_map_debug, "Produce debug output in commit lsn map", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(consolidate_dbreg_ranges, "Combine adjacent dbreg ranges for same file", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(max_latch, "Size of latch array", BERK_ATTR_TYPE_INTEGER, 200000)
 BERK_DEF_ATTR(max_latch_lockerid, "Size of latch lockerid array", BERK_ATTR_TYPE_INTEGER, 10000)

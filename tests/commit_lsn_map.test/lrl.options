@@ -1,1 +1,2 @@
 utxnid_log on
+berkattr commit_map_debug 1
