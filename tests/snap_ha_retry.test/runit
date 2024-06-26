@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source $TESTSROOTDIR/tools/runstepper.sh
+
 # This test case is a collection of queries reported in various 
 # tickets. As such each one will have different schemas.
 # The driver will just add/alter tables as required.
@@ -31,13 +33,21 @@ for testreq in `ls t*.req` ; do
         echo $cmd | tee -a create.out
         eval $cmd &>> create.out
     done
-    if [ "$(uname)" == "Linux" ]; then
-      cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
+
+    if [[ -f $testname.runstepper ]] ; then
+      runstepper $dbname $testreq $testname.output 1
     else
-      cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
-    fi  
-    echo $cmd "> $testname.output"
-    $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/" > $testname.output
+    
+        if [ "$(uname)" == "Linux" ]; then
+          cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
+        else 
+          cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
+        fi  
+        echo $cmd "> $testname.output"
+        $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/" > $testname.output
+
+    fi
+
     cmd="diff $testname.$expected $testname.output"
     $cmd > /dev/null
     if [[  $? -eq 0 ]]; then

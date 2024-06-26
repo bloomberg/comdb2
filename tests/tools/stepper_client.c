@@ -8,17 +8,6 @@
 #include <cdb2api.h>
 #include "stepper_client.h"
 
-/* storing clients (i.e. comm pipes) */
-struct client
-{
-   int   id;
-   cdb2_hndl_tp *db;
-
-   LINKC_T(struct client) lnk;
-};
-
-LISTC_T(client_t) clients;
-
 /**
  * Opens a client 
  * Returns a client to be used with the next calls
@@ -102,7 +91,7 @@ static void printcol(cdb2_hndl_tp * db, void *val, int col, FILE *out) {
 
 /**
  * Send query using the "clnt" client
- * Returns 0 on success
+ * Returns 0 on success and CDB2ERR_IO_ERROR on I/O error
  *
  */
 int clnt_run_query( client_t *clnt, char *query, FILE *out)
@@ -111,6 +100,9 @@ int clnt_run_query( client_t *clnt, char *query, FILE *out)
     if (rc) {
         const char *err = cdb2_errstr(clnt->db);
         fprintf(out, "[%s] failed with rc %d %s\n", query, rc, err ? err : "");
+    }
+    if (rc == CDB2ERR_IO_ERROR) {
+        return rc;
     }
     int ncols;
     rc = cdb2_next_record(clnt->db);
