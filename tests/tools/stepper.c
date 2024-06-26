@@ -7,8 +7,17 @@
 #include <unistd.h>
 #include <signal.h>
 #include <mem.h>
+#include <list.h>
+#include <sys/socket.h>
 
+#include <cdb2api.c>
+#include <sbuf2.c>
 #include "stepper_client.h"
+
+void disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
+    if (cdb2h->sb)
+        shutdown(cdb2h->sb->fd, 2);
+}
 
 #define MAX_LINE 65536
 
@@ -113,6 +122,17 @@ int main( int argc, char **argv)
 
       if(line[0] == '\n' || line[0] == '#')
          continue;
+
+      if(strcmp(line, "bounce_connection\n") == 0) {
+         client_t *client;
+
+         LISTC_FOR_EACH(&clients, client, lnk) {
+            disconnect_cdb2h(client->db);
+         }
+
+         continue;
+      }
+
       id = parse_line( line, &query);
       if (id<0)
       {
@@ -142,7 +162,16 @@ int main( int argc, char **argv)
 
       if (debug)
          fprintf( out, "%d [%s]\n", id, query);
-      rc = clnt_run_query(clnt, query, out);
+
+      int retries = 0;
+      while (retries < 10) {
+         rc = clnt_run_query(clnt, query, out);
+         if (rc != CDB2ERR_IO_ERROR) {
+            break;
+         }
+         retries++;
+      }
+
       if (rc)
       {
          fprintf( stderr, "Error with query to clnt id=%d, %s",
