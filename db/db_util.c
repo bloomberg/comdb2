@@ -292,11 +292,9 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 
 /* Create a new lrl file with the table defs added back in (the reverse of
  * llmeta'ing an lrl file */
-int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
-                          const char *p_lrl_fname_out, char *p_table_names[],
-                          char *p_csc2_paths[], int table_nums[],
-                          size_t num_tables, char *out_lrl_dir, int has_sp,
-                          int has_timepartitions)
+int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in, const char *p_lrl_fname_out, char *p_table_names[],
+                          char *p_csc2_paths[], int table_nums[], size_t num_tables, char *out_lrl_dir, int has_sp,
+                          int has_user_vers_sp, int has_timepartitions)
 {
     unsigned i;
     int fd_out;
@@ -362,9 +360,13 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
         sbuf2printf(sb_out, "\n");
     }
 
+    if (has_user_vers_sp) {
+        sbuf2printf(sb_out, "version_spfile %s/%s_%s", out_lrl_dir, thedb->envname, SP_VERS_FILE_NAME);
+        sbuf2printf(sb_out, "\n");
+    }
+
     if (has_timepartitions) {
-        sbuf2printf(sb_out, "timepartitions %s/%s_%s", out_lrl_dir,
-                    thedb->envname, TIMEPART_FILE_NAME);
+        sbuf2printf(sb_out, "timepartitions %s/%s_%s", out_lrl_dir, thedb->envname, TIMEPART_FILE_NAME);
         sbuf2printf(sb_out, "\n");
     }
 
