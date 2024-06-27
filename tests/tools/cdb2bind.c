@@ -588,7 +588,7 @@ static void test_pass_array_to_sp()
         i32s[i] = i;
         i64s[i] = i * 10;
         ds[i] = i * 100;
-        char s[64]; sprintf(s, "%zd", i64s[i] * 100);
+        char s[64]; sprintf(s, "%" PRId64 "", i64s[i] * 100);
         ss[i] = strdup(s);
         bs[i].len = i;
         bs[i].data = blob;
@@ -607,12 +607,12 @@ static void test_pass_array_to_sp()
                 int64_t val = *(int64_t *)cdb2_column_value(hndl, i);
                 if (i == 0) {
                     if (val != i32s[n]) {
-                        fprintf(stderr, "row:%d i32 col:%d val:%zd vs exp:%d\n", n, i, val, i32s[n]);
+                        fprintf(stderr, "row:%d i32 col:%d val:%" PRId64 " vs exp:%d\n", n, i, val, i32s[n]);
                         abort();
                     }
                 } else if (i == 1) {
                     if (val != i64s[n]) {
-                        fprintf(stderr, "row:%d i64 col:%d %zd vs exp:%zd\n", n, i, val, i64s[n]);
+                        fprintf(stderr, "row:%d i64 col:%d %" PRId64 " vs exp:%" PRId64 "\n", n, i, val, i64s[n]);
                         abort();
                     }
                 } else {

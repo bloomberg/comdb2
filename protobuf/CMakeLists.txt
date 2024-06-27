@@ -1,6 +1,10 @@
-find_program(protoc-c NAMES protoc-c)
-if(NOT protoc-c)
-  message(FATAL_ERROR "protoc-c not found!")
+if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+    find_program(protobuf-generator NAMES protoc)
+else()
+    find_program(protobuf-generator NAMES protoc-c)
+endif()
+if(NOT protobuf-generator)
+    message(FATAL_ERROR "protobuf generator not found!")
 endif()
 list(APPEND proto bpfunc.proto  connectmsg.proto  sqlquery.proto  sqlresponse.proto) 
 foreach(p ${proto})
@@ -11,7 +15,7 @@ foreach(p ${proto})
   add_custom_command(
     OUTPUT ${h} ${c}
     DEPENDS ${p}
-    COMMAND ${protoc-c} -I${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/${p} --c_out=${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND ${protobuf-generator} -I${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/${p} --c_out=${CMAKE_CURRENT_BINARY_DIR}
   )
 endforeach()
 add_custom_target(proto DEPENDS ${dot_c} ${dot_h})

@@ -35,7 +35,7 @@ void usage(FILE *f)
 /* Run and discard results */
 static inline int run_statement(cdb2_hndl_tp *sqlh, const char *sql, int iter)
 {
-    int rc, cnt=0;
+    int rc;
 
     rc = cdb2_run_statement(sqlh, sql);
     if(verbose && CDB2ERR_VERIFY_ERROR == rc) {
@@ -54,7 +54,6 @@ static inline int run_statement(cdb2_hndl_tp *sqlh, const char *sql, int iter)
     do
     {
         rc = cdb2_next_record(sqlh);
-        cnt++;
     } 
     while(CDB2_OK == rc);
 
