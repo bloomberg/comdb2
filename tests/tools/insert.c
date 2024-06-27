@@ -474,13 +474,11 @@ int prepare_select_bug(void)
         return rc;
     }
 
-    int iteration = 0;
     cdb2_effects_tp effects;
     char sql[64];
 
     // First erase everything larger
     do {
-        iteration++;
         rc = cdb2_run_statement(db, "begin");
         if (rc) {
             tdprintf(stderr, db, __func__, __LINE__, "XXX %s: begin rc %d %s\n",
@@ -648,13 +646,11 @@ int prepare_select_test(void)
         return rc;
     }
 
-    int iteration = 0;
     cdb2_effects_tp effects;
     char sql[64];
 
     // First erase everything larger
     do {
-        iteration++;
         rc = cdb2_run_statement(db, "begin");
         if (rc) {
             tdprintf(stderr, db, __func__, __LINE__, "XXX %s: begin rc %d %s\n",

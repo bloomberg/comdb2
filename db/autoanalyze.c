@@ -356,7 +356,7 @@ void stat_auto_analyze(void)
         logmsg(LOGMSG_USER,
                "Table %s, aa counter=%"PRId64" (saved %"PRId64", new %d, percent of tbl %.2f), last run time=%s, needs analyze time=%s\n",
                tbl->tablename, newautoanalyze_counter, saved_counter, delta, new_aa_percnt,
-               loc_print_date(&lastepoch, lastepoch_str), loc_print_date(&needs_analyze_time, needs_analyze_time_str));
+               loc_print_date((time_t *) &lastepoch, lastepoch_str), loc_print_date((time_t *) &needs_analyze_time, needs_analyze_time_str));
     }
 }
 
