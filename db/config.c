@@ -684,17 +684,17 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     return 0;
 }
 
-#define parse_lua_funcs(pfx)                                                   \
-    do {                                                                       \
-        tok = segtok(line, sizeof(line), &st, &ltok);                          \
-        int num = toknum(tok, ltok);                                           \
-        pfx##funcs = malloc(sizeof(char *) * (num + 1));                       \
-        int i;                                                                 \
-        for (i = 0; i < num; ++i) {                                            \
-            tok = segtok(line, sizeof(line), &st, &ltok);                      \
-            pfx##funcs[i] = tokdup(tok, ltok);                                 \
-        }                                                                      \
-        pfx##funcs[i] = NULL;                                                  \
+#define parse_lua_funcs(pfx)                                                                                           \
+    do {                                                                                                               \
+        tok = segtok(line, strlen(line), &st, &ltok);                                                                  \
+        int num = toknum(tok, ltok);                                                                                   \
+        pfx##funcs = malloc(sizeof(char *) * (num + 1));                                                               \
+        int i;                                                                                                         \
+        for (i = 0; i < num; ++i) {                                                                                    \
+            tok = segtok(line, strlen(line), &st, &ltok);                                                              \
+            pfx##funcs[i] = tokdup(tok, ltok);                                                                         \
+        }                                                                                                              \
+        pfx##funcs[i] = NULL;                                                                                          \
     } while (0)
 
 static int read_lrl_option(struct dbenv *dbenv, char *line,

@@ -401,6 +401,7 @@ int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
 char *gbl_spfile_name = NULL;
+char *gbl_user_vers_spfile_name = NULL;
 char *gbl_timepart_file_name = NULL;
 int gbl_max_lua_instructions = 10000;
 int gbl_check_wrong_cmd = 1;
@@ -1970,23 +1971,23 @@ size_t gbl_lkr_hash = 16;
 char **sfuncs = NULL;
 char **afuncs = NULL;
 
-#define llmeta_set_lua_funcs(pfx)                                              \
-    do {                                                                       \
-        if (pfx##funcs == NULL)                                                \
-            break;                                                             \
-        char **func = &pfx##funcs[0];                                          \
-        while (*func) {                                                        \
-            int bdberr;                                                        \
-            int rc = bdb_llmeta_add_lua_##pfx##func(*func, NULL, &bdberr);     \
-            if (rc) {                                                          \
-               logmsg(LOGMSG_ERROR, "could not add sql lua " #pfx "func:%s to llmeta\n",\
-                       *func);                                                 \
-                return -1;                                                     \
-            } else {                                                           \
-               logmsg(LOGMSG_INFO, "Added Lua SQL " #pfx "func:%s\n", *func);  \
-            }                                                                  \
-            ++func;                                                            \
-        }                                                                      \
+#define llmeta_set_lua_funcs(pfx)                                                                                      \
+    do {                                                                                                               \
+        if (pfx##funcs == NULL)                                                                                        \
+            break;                                                                                                     \
+        char **func = &pfx##funcs[0];                                                                                  \
+        while (*func) {                                                                                                \
+            int bdberr;                                                                                                \
+            int flags = 0;                                                                                             \
+            int rc = bdb_llmeta_add_lua_##pfx##func(*func, &flags, &bdberr);                                           \
+            if (rc) {                                                                                                  \
+                logmsg(LOGMSG_ERROR, "could not add sql lua " #pfx "func:%s to llmeta\n", *func);                      \
+                return -1;                                                                                             \
+            } else {                                                                                                   \
+                logmsg(LOGMSG_INFO, "Added Lua SQL " #pfx "func:%s\n", *func);                                         \
+            }                                                                                                          \
+            ++func;                                                                                                    \
+        }                                                                                                              \
     } while (0)
 
 #define llmeta_load_lua_funcs(pfx)                                             \
@@ -2966,8 +2967,11 @@ int repopulate_lrl(const char *p_lrl_fname_out)
         p_data->table_nums[i] = thedb->dbs[i]->dbnum;
     }
 
-    int has_sp =
-        dump_spfile(p_data->lrl_fname_out_dir, thedb->envname, SP_FILE_NAME);
+    char file[1024];
+    snprintf(file, sizeof(file), "%s/%s_%s", p_data->lrl_fname_out_dir, thedb->envname, SP_FILE_NAME);
+    int has_sp = dump_spfile(file);
+    snprintf(file, sizeof(file), "%s/%s_%s", p_data->lrl_fname_out_dir, thedb->envname, SP_VERS_FILE_NAME);
+    int has_user_vers_sp = dump_user_version_spfile(file);
 
     if (dump_queuedbs(p_data->lrl_fname_out_dir) != 0) {
         free(p_data);
@@ -2982,10 +2986,9 @@ int repopulate_lrl(const char *p_lrl_fname_out)
     }
 
     /* write out the lrl */
-    if (rewrite_lrl_un_llmeta(getresourcepath("lrl"), p_lrl_fname_out,
-                              p_data->p_table_names, p_data->p_csc2_paths,
-                              p_data->table_nums, thedb->num_dbs,
-                              p_data->lrl_fname_out_dir, has_sp, has_tp)) {
+    if (rewrite_lrl_un_llmeta(getresourcepath("lrl"), p_lrl_fname_out, p_data->p_table_names, p_data->p_csc2_paths,
+                              p_data->table_nums, thedb->num_dbs, p_data->lrl_fname_out_dir, has_sp, has_user_vers_sp,
+                              has_tp)) {
         logmsg(LOGMSG_ERROR, "%s: rewrite_lrl_un_llmeta failed\n", __func__);
 
         free(p_data);
@@ -4256,6 +4259,10 @@ static int init(int argc, char **argv)
 
         if (gbl_spfile_name) {
             read_spfile(gbl_spfile_name);
+        }
+
+        if (gbl_user_vers_spfile_name) {
+            read_user_version_spfile(gbl_user_vers_spfile_name);
         }
 
         if (gbl_timepart_file_name) {
