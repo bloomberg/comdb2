@@ -112,6 +112,8 @@
 #include <net_appsock.h>
 #include <typessql.h>
 
+#include <timer_util.h>
+
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
 **          indexes into the array of meta-command names contained in
@@ -4453,6 +4455,12 @@ int done_cb_evbuffer(struct sqlclntstate *clnt)
 
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
+    if (clnt->sql) {
+        strncpy(clnt->second_last_sql, clnt->last_sql, sizeof(clnt->second_last_sql) - 1);
+        strncpy(clnt->last_sql, clnt->sql, sizeof(clnt->last_sql) - 1);
+    }
+    if (clnt->argv0) strncpy(clnt->prev_argv0, clnt->argv0, sizeof(clnt->prev_argv0) - 1);
+
     struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
 
     /* Clear the client from the sql thread, so that sql-dump won't see it. */
@@ -7075,4 +7083,13 @@ void wait_for_transactions(void) {
     }
     if (ntrans && nwaits)
         logmsg(LOGMSG_INFO, "giving up and exiting with pending transactions\n");
+}
+
+void print_idle_clnt(struct sqlclntstate *clnt)
+{
+    struct timeval now, elapsed;
+    gettimeofday(&now, NULL);
+    timersub(&now, &clnt->wait_for_rd_since, &elapsed);
+    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  prev-process:%s  prev-opcode:%s  second-last-sql:%s  last-sql:%s\n",
+            get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->prev_argv0, clnt->prev_opcode, clnt->second_last_sql, clnt->last_sql);
 }

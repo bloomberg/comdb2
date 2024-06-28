@@ -47,6 +47,8 @@ extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
 
+struct timeval idle_evbuffer_time = {.tv_sec = 20 * 60};
+
 struct ping_pong {
     int status;
     struct event *ev;
@@ -392,12 +394,14 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
 
 static void process_dbinfo(struct newsql_appdata_evbuffer *appdata)
 {
+    appdata->clnt.prev_opcode = __func__;
     process_dbinfo_int(appdata, sql_wrbuf(appdata->writer));
     event_base_once(appdata->base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
 }
 
 static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
 {
+    appdata->clnt.prev_opcode = __func__;
     CDB2EFFECTS effects = CDB2__EFFECTS__INIT;
     CDB2SQLRESPONSE response = CDB2__SQLRESPONSE__INIT;
     newsql_effects(&response, &effects, &appdata->clnt);
@@ -541,6 +545,7 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
 
 static void process_query(struct newsql_appdata_evbuffer *appdata)
 {
+    appdata->clnt.prev_opcode = __func__;
     struct sqlclntstate *clnt = &appdata->clnt;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery = appdata->query->sqlquery;
     if (!sqlquery) goto err;
@@ -598,6 +603,7 @@ err:    newsql_cleanup(appdata);
 
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
+    appdata->clnt.prev_opcode = __func__;
     if (!query) {
         newsql_cleanup(appdata);
         return;
@@ -809,18 +815,25 @@ static void rd_hdr(int dummyfd, short what, void *arg)
 {
     struct newsqlheader hdr;
     struct newsql_appdata_evbuffer *appdata = arg;
+    struct sqlclntstate *clnt = &appdata->clnt;
     if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
         goto hdr;
+    }
+    if ((what & EV_TIMEOUT) && clnt->wait_for_rd_since.tv_sec) {
+        print_idle_clnt(clnt);
     }
     if (rd_evbuffer(appdata) <= 0 && (what & EV_READ)) {
         newsql_cleanup(appdata);
         return;
     }
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
-        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
+        if (clnt->wait_for_rd_since.tv_sec == 0) gettimeofday(&clnt->wait_for_rd_since, NULL);
+        add_rd_event(appdata, appdata->rd_hdr_ev, &idle_evbuffer_time);
         return;
     }
 hdr:
+    memset(&clnt->wait_for_rd_since, 0, sizeof(clnt->wait_for_rd_since));
+    appdata->clnt.prev_opcode = __func__;
     evbuffer_remove(appdata->rd_buf, &hdr, sizeof(struct newsqlheader));
     appdata->hdr.type = ntohl(hdr.type);
     appdata->hdr.compression = ntohl(hdr.compression);

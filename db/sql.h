@@ -877,6 +877,13 @@ struct sqlclntstate {
     int shard_slice;
     fdb_push_connector_t *fdb_push;
 
+    /* temp stats */
+    char last_sql[64];
+    char second_last_sql[64];
+    char prev_argv0[64];
+    const char *prev_opcode;
+    struct timeval wait_for_rd_since;
+
     char *argv0;
     char *stack;
 

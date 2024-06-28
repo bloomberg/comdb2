@@ -53,4 +53,7 @@ extern int gbl_libevent_appsock;
 #define container_of(ptr, type) (type *)((uint8_t *)ptr - offsetof(type, ptr))
 #endif
 
+extern struct timeval idle_evbuffer_time;
+void print_idle_clnt(struct sqlclntstate *);
+
 #endif
