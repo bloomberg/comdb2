@@ -10,11 +10,16 @@
 #include <logmsg.h>
 #include "logical_cron.h"
 #include "db_access.h" /* gbl_check_access_controls */
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* Automatically create 'default' user when authentication is enabled. */
 int gbl_create_default_user;
 
 /*                           FUNCTION DECLARATIONS */
+
+extern int bulk_import_do_import(const char *srcdb, const char *src_tablename,
+                                 const char *dst_tablename);
 
 static int prepare_create_timepart(bpfunc_t *tp);
 static int prepare_drop_timepart(bpfunc_t *tp);
@@ -32,6 +37,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func,
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errstat *err);
+static int exec_bulk_import(void *tran, bpfunc_t *func, struct errstat *err);
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, struct errstat *err)
@@ -116,6 +122,9 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 
     case BPFUNC_DELETE_FROM_SC_HISTORY:
         func->exec = exec_delete_from_sc_history;
+        break;
+    case BPFUNC_BULK_IMPORT:
+        func->exec = exec_bulk_import;
         break;
 
 
@@ -615,5 +624,18 @@ static int exec_delete_from_sc_history(void *tran, bpfunc_t *func,
     int rc = bdb_del_schema_change_history(tran, tblseed->tablename, tblseed->seed);
     if (rc)
         errstat_set_rcstrf(err, rc, "%s failed delete", __func__);
+    return rc;
+}
+
+static int exec_bulk_import(void *tran, bpfunc_t *func, struct errstat *err)
+{
+    int rc;
+
+    rc = bulk_import_do_import(func->arg->bimp->srcdb, 
+        func->arg->bimp->src_tablename, func->arg->bimp->dst_tablename);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: Failed bulk import\n", __func__);
+    }
+
     return rc;
 }
