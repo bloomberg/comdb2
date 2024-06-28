@@ -18,6 +18,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/dfp/decNumber
   ${PROJECT_SOURCE_DIR}/dfp/dfpal
   ${PROJECT_SOURCE_DIR}/dlmalloc
+  ${PROJECT_SOURCE_DIR}/eventlog
   ${PROJECT_SOURCE_DIR}/lua
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net

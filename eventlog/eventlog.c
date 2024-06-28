@@ -15,6 +15,7 @@
 */
 
 #include "reqlog.h"
+#include "sqlresponse.pb-c.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -26,7 +27,6 @@
 #include <dirent.h>
 #include <bb_oscompat.h>
 
-#include <comdb2.h>
 #if defined(_IBM_SOURCE)
 #include <openssl/objects.h>
 #include <openssl/ec.h>
@@ -34,7 +34,10 @@
 
 #include <zlib.h>
 
+#include <carray.h>
+#include "comdb2.h"
 #include "reqlog_int.h"
+#include "sql.h"
 #include "eventlog.h"
 #include "util.h"
 #include "tohex.h"
@@ -47,7 +50,6 @@
 #include "comdb2_atomic.h"
 #include "string_ref.h"
 
-#include <carray.h>
 
 extern int64_t comdb2_time_epochus(void);
 
@@ -58,6 +60,7 @@ int eventlog_nkeep = 2; // keep only last 2 event log files
 static uint64_t eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
+static int eventlog_net = 0;
 static int64_t bytes_written = 0;
 static int eventlog_verbose = 0;
 
@@ -708,6 +711,7 @@ static void eventlog_help(void)
                         "events roll              - roll the event log file\n"
                         "events keep N            - keep N files\n"
                         "events detailed <on|off> - turn on/off detailed mode (ex. sql bound param)\n"
+                        "events net <on|off>      - turn net packet logging on/off (careful-lots of data)\n"
                         "events rollat N          - roll when log file size larger than N MB\n"
                         "events every N           - log only every Nth event, 0 logs all\n"
                         "events verbose on/off    - turn on/off verbose mode\n"
@@ -766,6 +770,12 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff, in
             eventlog_detailed = 1;
         else if (tokcmp(tok, ltok, "off") == 0)
             eventlog_detailed = 0;
+    } else if (tokcmp(tok, ltok, "net") == 0) {
+        tok = segtok(line, lline, toff, &ltok);
+        if (tokcmp(tok, ltok, "on") == 0)
+            eventlog_net = 1;
+        else if (tokcmp(tok, ltok, "off") == 0)
+            eventlog_net = 0;
     } else if (tokcmp(tok, ltok, "rollat") == 0) {
         int rollat;
         char *s;
@@ -937,3 +947,41 @@ void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     Pthread_mutex_unlock(&eventlog_lk);
     cson_value_free(dval);
 }
+
+void eventlog_net_event(const char *context, const char *api, const char *msgtype, eventlog_net_direction direction, const void *buffer, size_t bufsize) {
+    if (!eventlog_enabled || !eventlog_net || eventlog == NULL)
+        return;
+
+    cson_object *obj;
+    cson_value *v;
+    obj = cson_new_object();
+    v = cson_object_value(obj);
+
+    char *type = direction == EVENTLOG_NET_IN ? "in" : "out";
+
+    uint64_t startus = comdb2_time_epochus();
+    cson_object_set(obj, "time", cson_new_int(startus));
+    cson_object_set(obj, "type", cson_value_new_string("net", 3));
+    cson_object_set(obj, "api", cson_value_new_string(api, strlen(api)));
+    cson_object_set(obj, "dir", cson_value_new_string(type, strlen(type)));
+    cson_object_set(obj, "msg", cson_value_new_string(msgtype, strlen(msgtype)));
+    cson_object_set(obj, "data", cson_value_new_blob((char*) buffer, bufsize));
+
+    Pthread_mutex_lock(&eventlog_lk);
+    if (eventlog_enabled && eventlog != NULL)
+        cson_output(v, write_json, eventlog);
+    Pthread_mutex_unlock(&eventlog_lk);
+    cson_free_value(v);
+}
+
+void eventlog_net_event_sql_response(const char *context, const void *pb) {
+    if (!eventlog_enabled || !eventlog_net || eventlog == NULL)
+        return;
+    size_t sz = cdb2__sqlresponse__get_packed_size((CDB2SQLRESPONSE*) pb) ;
+    void *out = malloc(sz);
+    if (out == NULL)
+        return;
+    eventlog_net_event(context, "cdb2api", "rsp", EVENTLOG_NET_OUT, out, sz);
+    free(out);
+}
+
