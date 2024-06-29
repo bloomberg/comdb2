@@ -1115,6 +1115,8 @@ REGISTER_TUNABLE("sort_nulls_with_header",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("spfile", NULL, TUNABLE_STRING, &gbl_spfile_name, READONLY,
                  NULL, NULL, file_update, NULL);
+REGISTER_TUNABLE("version_spfile", NULL, TUNABLE_STRING, &gbl_user_vers_spfile_name, READONLY, NULL, NULL, file_update,
+                 NULL);
 REGISTER_TUNABLE("timepartitions", NULL, TUNABLE_STRING,
                  &gbl_timepart_file_name, READONLY, NULL, NULL, file_update,
                  NULL);

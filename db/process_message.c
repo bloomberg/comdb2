@@ -2158,6 +2158,24 @@ clipper_usage:
             return -1;
     } else if (tokcmp(tok, ltok, "bdbrem") == 0) {
         backend_cmd(dbenv, line, llinesav, stsav);
+    } else if (tokcmp(tok, ltok, "dumpversp") == 0) {
+        char filename[PATH_MAX];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "dumpversp requires path\n");
+            return -1;
+        }
+        tokcpy(tok, ltok, filename);
+        dump_user_version_spfile(filename);
+    } else if (tokcmp(tok, ltok, "loadversp") == 0) {
+        char filename[PATH_MAX];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "dumpversp requires path\n");
+            return -1;
+        }
+        tokcpy(tok, ltok, filename);
+        read_user_version_spfile(filename);
     } else if (tokcmp(tok, ltok, "electtime") == 0) {
         int num;
 

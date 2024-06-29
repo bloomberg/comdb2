@@ -5921,24 +5921,20 @@ static int _process_single_table_sc_merge(struct ireq *iq)
  * otherwise, it will return an error.
  *
  */
-static int _process_shards_serially(const char *partname,
-                                    int func(const char *, timepart_sc_arg_t *),
+static int _process_shards_serially(const char *partname, int func(const char *, timepart_sc_arg_t *),
                                     timepart_sc_arg_t *arg)
 {
-    char shardname[MAXTABLELEN+1];
+    char shardname[MAXTABLELEN + 1];
     int rc = VIEW_NOERR;
     int irc = 0;
 
     while (rc == VIEW_NOERR) {
-        rc = timepart_foreach_shardname(partname, shardname, sizeof(shardname),
-                                        arg);
+        rc = timepart_foreach_shardname(partname, shardname, sizeof(shardname), arg);
         if (rc == VIEW_NOERR) {
-            logmsg(LOGMSG_USER, "%s Applying %p to %s [%d]\n",
-                   __func__, arg->s, shardname, arg->indx);
+            logmsg(LOGMSG_USER, "%s Applying %p to %s [%d]\n", __func__, arg->s, shardname, arg->indx);
             irc = func(shardname, arg);
             if (irc) {
-                logmsg(LOGMSG_ERROR, "%s failed shard %s [%d] rc %d\n",
-                       partname, shardname, arg->indx, irc);
+                logmsg(LOGMSG_ERROR, "%s failed shard %s [%d] rc %d\n", partname, shardname, arg->indx, irc);
                 return -1;
             }
         }
@@ -5960,7 +5956,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     /* if this was a CREATE & ALTER, first shart is an aliased
      * table with the same name as the partition
      * use that as the destination for merging
-     * OTHERWISE, create a new table with the same name as 
+     * OTHERWISE, create a new table with the same name as
      * the partition
      */
     char *first_shard_name = timepart_shard_name(sc->tablename, 0, 0, NULL);
@@ -6009,7 +6005,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         }
         arg.check_extra_shard = 1;
         strncpy(sc->newtable, sc->tablename, sizeof(sc->newtable)); /* piggyback a rename with alter */
-        arg.indx = 0; /* see timepart_foreach_shardname NOTE */
+        arg.indx = 0;                                               /* see timepart_foreach_shardname NOTE */
     }
 
     /* at this point we have created the future btree, launch an alter
@@ -6017,18 +6013,14 @@ static int _process_partitioned_table_merge(struct ireq *iq)
      */
     arg.s = sc;
     arg.s->iq = iq;
-    char *partname = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    char *partname = strdup(sc->tablename); /*sc->tablename gets rewritten*/
     if (!partname)
         return VIEW_ERR_MALLOC;
     /* note: we have already set nothrevent depending on the number of shards */
     if (arg.s->nothrevent) {
-        rc = _process_shards_serially(partname,
-                                      start_schema_change_tran_wrapper_merge,
-                                      &arg);
+        rc = _process_shards_serially(partname, start_schema_change_tran_wrapper_merge, &arg);
     } else {
-        rc = timepart_foreach_shard(partname,
-                                    start_schema_change_tran_wrapper_merge,
-                                    &arg);
+        rc = timepart_foreach_shard(partname, start_schema_change_tran_wrapper_merge, &arg);
     }
     free(partname);
 
@@ -6210,18 +6202,14 @@ static int _process_partition_alter_and_drop(struct ireq *iq)
     arg.s = sc;
     arg.s->iq = iq;
     arg.check_extra_shard = 1;
-    char *partname = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
+    char *partname = strdup(sc->tablename); /*sc->tablename gets rewritten*/
     if (!partname)
         return VIEW_ERR_MALLOC;
     if (sc->nothrevent) {
         arg.indx = -1; /* see timepart_foreach_shardname NOTE */
-        rc = _process_shards_serially(partname,
-                                      start_schema_change_tran_wrapper,
-                                      &arg);
+        rc = _process_shards_serially(partname, start_schema_change_tran_wrapper, &arg);
     } else {
-        rc = timepart_foreach_shard(partname,
-                                    start_schema_change_tran_wrapper,
-                                    &arg);
+        rc = timepart_foreach_shard(partname, start_schema_change_tran_wrapper, &arg);
     }
     free(partname);
 
@@ -6229,9 +6217,7 @@ out:
     return rc;
 }
 
-
-static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
-                                    uuid_t uuid,  int *type)
+static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid, uuid_t uuid, int *type)
 {
     const uint8_t *p_buf;
     const uint8_t *p_buf_end;
@@ -6262,7 +6248,6 @@ static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
 
     return p_buf;
 }
-
 
 /**
  * Handles each packet and start schema change

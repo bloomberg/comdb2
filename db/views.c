@@ -2431,16 +2431,14 @@ static void _setup_arg(timepart_view_t *view, timepart_sc_arg_t *arg)
  *
  * NOTE: arg->indx starts at -1
  */
-int timepart_foreach_shardname(const char *view_name,
-                               char *next_shard, int next_shard_len,
-                               timepart_sc_arg_t *arg)
+int timepart_foreach_shardname(const char *view_name, char *next_shard, int next_shard_len, timepart_sc_arg_t *arg)
 {
     timepart_views_t *views;
     timepart_view_t *view;
     int rc = VIEW_NOERR;
 
     /* code relies on this to point to the current shard,
-     * so we have to start the shard walk by setting 
+     * so we have to start the shard walk by setting
      * indx to -1
      */
     arg->indx++;
@@ -2456,7 +2454,7 @@ int timepart_foreach_shardname(const char *view_name,
 
     _setup_arg(view, arg);
 
-    assert(arg->indx>=0);
+    assert(arg->indx >= 0);
 
     if (arg->indx < view->nshards) {
         strncpy(next_shard, view->shards[arg->indx].tblname, next_shard_len);
@@ -2477,7 +2475,6 @@ done:
     return rc;
 }
 
-
 /**
  * Run "func" for each shard, starting with "first_shard".
  * Callback receives the name of the shard and argument struct
@@ -2485,9 +2482,7 @@ done:
  * already created
  *
  */
-int timepart_foreach_shard(const char *view_name,
-                           int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg)
+int timepart_foreach_shard(const char *view_name, int func(const char *, timepart_sc_arg_t *), timepart_sc_arg_t *arg)
 {
     timepart_views_t *views;
     timepart_view_t *view;

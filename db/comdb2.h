@@ -25,6 +25,7 @@
 #define MAXVER 255
 
 #define SP_FILE_NAME "stored_procedures.sp"
+#define SP_VERS_FILE_NAME "vers_stored_procedures.sp"
 #define TIMEPART_FILE_NAME "time_partitions.tp"
 #define REPOP_QDB_FMT "%s/%s.%d.queuedb" /* /dir/dbname.num.ext */
 
@@ -3381,8 +3382,10 @@ int get_max_reclen(struct dbenv *);
 
 void testrep(int niter, int recsz);
 int sc_request_disallowed(SBUF2 *sb);
-int dump_spfile(char *path, const char *dblrl, char *file_name);
-int read_spfile(char *file);
+int dump_spfile(const char *file);
+int dump_user_version_spfile(const char *file);
+int read_spfile(const char *file);
+int read_user_version_spfile(const char *file);
 
 struct bdb_cursor_ifn;
 
