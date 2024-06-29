@@ -1052,6 +1052,7 @@
 (name='verify_thread_stacksz', description='Size of the verify thread stack.', type='INTEGER', value='2097152', read_only='N')
 (name='verifycheckpoints', description='Highly paranoid checkpoint validity checks', type='BOOLEAN', value='OFF', read_only='N')
 (name='verifylsn', description='Verify if LSN written before writing page', type='BOOLEAN', value='OFF', read_only='N')
+(name='version_spfile', description='', type='STRING', value=NULL, read_only='Y')
 (name='view_feature', description='Enables support for VIEWs (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='views_dft_preempt_roll_secs', description='Amount of seconds to run phase 1 of time partition rollout before phase 2', type='INTEGER', value='1800', read_only='N')
 (name='views_dft_roll_delete_lag_secs', description='Amount of seconds to run phase 3 of time partition rollout after phase 2', type='INTEGER', value='5', read_only='N')

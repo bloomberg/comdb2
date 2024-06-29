@@ -18,15 +18,125 @@ struct sp_file_t {
     int size;
 };
 
-int dump_spfile(char *path, const char *dbname, char *file_name)
+struct sp_versioned_file_t {
+    char name[128];
+    char version[80]; // MAX_SPVERSION_LEN
+    int is_default;
+    int size;
+};
+
+int dump_user_version_spfile(const char *file)
+{
+    char **cname = NULL;
+    int ccnt = 0;
+    int has_sp = 0;
+
+    int fd_out = -1;
+    SBUF2 *sb_out = NULL;
+
+    bdb_get_versioned_sps_tran(NULL, &cname, &ccnt);
+    if (ccnt <= 0) {
+        return 0;
+    }
+
+    logmsg(LOGMSG_USER, "FILE : %s\n", file);
+    fd_out = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd_out == -1) {
+        logmsg(LOGMSG_USER, "%s: cannot open '%s' for writing %d %s\n", __func__, file, errno, strerror(errno));
+        goto cleanup;
+    }
+    sb_out = sbuf2open(fd_out, 0);
+    if (!sb_out) {
+        close(fd_out);
+        goto cleanup;
+    }
+
+    for (int i = 0; i < ccnt; i++) {
+        char **cvers = NULL;
+        char *def = NULL;
+        int vcnt = 0;
+        bdb_get_all_for_versioned_sp(cname[i], &cvers, &vcnt);
+        bdb_get_default_versioned_sp(cname[i], &def);
+        for (int j = 0; j < vcnt; j++) {
+            has_sp = 1;
+            char *src = NULL;
+            int size;
+            bdb_get_versioned_sp(cname[i], cvers[j], &src);
+            size = src ? strlen(src) + 1 : 0;
+
+            struct sp_versioned_file_t sp_ver_f = {0};
+            strcpy(sp_ver_f.name, cname[i]);
+            strcpy(sp_ver_f.version, cvers[j]);
+            if (def && !strcmp(def, cvers[j])) {
+                sp_ver_f.is_default = 1;
+            }
+            sp_ver_f.size = size;
+            sbuf2write((char *)&sp_ver_f, sizeof(sp_ver_f), sb_out);
+            sbuf2write(src, size, sb_out);
+            free(src);
+            free(cvers[j]);
+        }
+        free(cvers);
+        free(def);
+    }
+
+cleanup:
+    for (int x = 0; x < ccnt; x++) {
+        free(cname[x]);
+    }
+    free(cname);
+
+    if (sb_out) {
+        sbuf2close(sb_out);
+    }
+
+    return has_sp;
+}
+
+int read_user_version_spfile(const char *file)
+{
+    int fd_in = open(file, O_RDONLY);
+    if (fd_in == -1) {
+        return -1;
+    }
+
+    SBUF2 *sb_in = sbuf2open(fd_in, 0);
+    if (!sb_in) {
+        close(fd_in);
+        return -1;
+    }
+
+    while (1) {
+        struct sp_versioned_file_t sp_ver_f = {0};
+        if (sizeof(sp_ver_f) != sbuf2fread((char *)&sp_ver_f, 1, sizeof(sp_ver_f), sb_in)) {
+            sbuf2close(sb_in);
+            return 0;
+        }
+        if (sp_ver_f.size) {
+            char *src = malloc(sp_ver_f.size);
+            if (sp_ver_f.size != sbuf2fread(src, 1, sp_ver_f.size, sb_in)) {
+                free(src);
+                sbuf2close(sb_in);
+                return -1;
+            }
+            bdb_add_versioned_sp(NULL, sp_ver_f.name, sp_ver_f.version, src);
+            if (sp_ver_f.is_default) {
+                bdb_set_default_versioned_sp(NULL, sp_ver_f.name, sp_ver_f.version);
+            }
+            free(src);
+        }
+    }
+    sbuf2close(sb_in);
+    return 0;
+}
+
+int dump_spfile(const char *file)
 {
     char old_sp[32];
     char new_sp[32];
-    char file[1024];
     old_sp[0] = 127;
     int bdberr, rc = 0;
     int has_sp = 0;
-    snprintf(file, sizeof(file), "%s/%s_%s", path, dbname, file_name);
     int fd_out = -1;
     SBUF2 *sb_out = NULL;
 
@@ -92,7 +202,7 @@ int dump_spfile(char *path, const char *dbname, char *file_name)
     return 1;
 }
 
-int read_spfile(char *file)
+int read_spfile(const char *file)
 {
     int bdberr;
     int fd_in = open(file, O_RDONLY);

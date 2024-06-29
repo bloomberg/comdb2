@@ -289,9 +289,7 @@ int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int 
  * already created
  *
  */
-int timepart_foreach_shard(const char *view_name,
-                           int func(const char *, timepart_sc_arg_t *),
-                           timepart_sc_arg_t *arg);
+int timepart_foreach_shard(const char *view_name, int func(const char *, timepart_sc_arg_t *), timepart_sc_arg_t *arg);
 
 /**
  * Run "func" for each shard of a partition
@@ -509,8 +507,6 @@ int logical_partition_next_rollout(const char *name);
  * Returns whatever VIEW_ERR_ otherwise.
  *
  */
-int timepart_foreach_shardname(const char *view_name,
-                               char *next_shard, int next_shard_len,
-                               timepart_sc_arg_t *arg);
+int timepart_foreach_shardname(const char *view_name, char *next_shard, int next_shard_len, timepart_sc_arg_t *arg);
 
 #endif

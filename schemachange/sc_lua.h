@@ -17,8 +17,8 @@
 #ifndef INCLUDE_SC_LUA_H
 #define INCLUDE_SC_LUA_H
 
-int dump_spfile(char *path, const char *dblrl, char *file_name);
-int read_spfile(char *file);
+int dump_spfile(const char *file);
+int read_spfile(const char *file);
 struct ireq;
 int do_add_sp(struct schema_change_type *, struct ireq *);
 int do_del_sp(struct schema_change_type *sc, struct ireq *);
