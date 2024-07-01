@@ -922,6 +922,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     osqlstate_t *osql = &thd->clnt->osql;
     int rc = 0;
     int bdberr = 0;
+    int upsert_flags_for_add = 0;
     shad_tbl_t *tbl = NULL;
     bdb_state_type *bdbenv = NULL;
     unsigned long long tmp = 0;
@@ -992,6 +993,25 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                         __func__, tmp, genid, rc, bdberr);
                 return -1;
             }
+        } else {
+            // We are here because the running transaction did an insert followed by an update 
+            // on the same row.
+
+            // We will replace the seqnum used to represent the changes that this transaction
+            // made to the row. We need to latch the upsert flags for the old
+            // seqnum so that we can apply them to the new seqnum.
+
+            // Applying the old flags to the new seqnum is essential for a transaction like
+            // the one below to be sent to master as an upsert:
+            // 
+            // -- recom
+            // begin
+            // upsert on row X
+            // update on row X
+            // commit
+            //
+
+            upsert_flags_for_add = get_rec_flags(thd->clnt, tbl, pCur->genid, 1);
         }
 
         /* delete the original index from add and its indexes */
@@ -1027,6 +1047,12 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     /* update add table */
     rc = bdb_temp_table_put(bdbenv, tbl->add_tbl->table, &tmp, sizeof(tmp),
                             (char *)pData, nData, NULL, &bdberr);
+
+    if (upsert_flags_for_add) {
+        // Apply latched upsert flags to the new seqnum.
+        save_rec_flags(thd->clnt, tbl, tmp, upsert_flags_for_add, 1);
+    }
+
     if (rc) {
         logmsg(LOGMSG_ERROR, 
                 "%s: fail to update genid %llx (%lld) rc=%d bdberr=%d (7)\n",
