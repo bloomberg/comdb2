@@ -1030,6 +1030,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->origin = clnt->origin;
     conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);
+    memcpy(conn->clnt->tzname, clnt->tzname, sizeof(clnt->tzname));
     make_dohsql_plugin(conn->clnt);
     conn->clnt->plugin.state = conn;
     where = thrman_get_where(thrman_self());
