@@ -5644,21 +5644,16 @@ static void comdb2AddIndexInt(
     }
 
     if (pPIWhere && zStart && zEnd) {
-        char *where_clause;
         size_t where_sz;
 
-        where_sz = zEnd - zStart;
-        assert(where_sz > 0);
-        where_clause = comdb2_strndup(ctx->mem, zStart, where_sz + 1);
-        if (where_clause == 0)
-            goto oom;
+        where_sz = zEnd - zStart + 1;
+        assert(where_sz > 1);
 
-        where_sz += (sizeof("where") + 1);
         key->where = comdb2_malloc(ctx->mem, where_sz);
         if (key->where == 0)
             goto oom;
 
-        snprintf(key->where, where_sz, "%s", where_clause);
+        snprintf(key->where, where_sz, "%s", zStart);
     }
 
     /*

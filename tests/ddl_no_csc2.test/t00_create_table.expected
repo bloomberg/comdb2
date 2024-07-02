@@ -192,6 +192,7 @@ keys
 (tablename='t7')
 (tablename='t8')
 (tablename='t9')
+(tablename='t10')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
@@ -209,6 +210,7 @@ keys
 (tablename='t9', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t9', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t9', columnname='l', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
+(tablename='t10', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t2', keyname='$KEY_9C18F596', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
 (tablename='t2', keyname='$KEY_2E3CF7EF', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
 (tablename='t4', keyname='$KEY_167DCD0B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
@@ -219,6 +221,7 @@ keys
 (tablename='t8', keyname='$KEY_762F1DF7', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
 (tablename='t8', keyname='$KEY_9915B3B9', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
 (tablename='t9', keyname='$KEY_287068DE', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='Y')
+(tablename='t10', keyname='I', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition='WHERE i > 5 ', uniqnulls='N', ispartialdatacopy='N')
 (tablename='t9', keyname='$KEY_287068DE', columnname='j')
 (tablename='t9', keyname='$KEY_287068DE', columnname='k')
 (type='table', name='t2', tbl_name='t2', rootpage=4, sql='create table "t2"("i" int, "j" int);', csc2='schema
@@ -311,6 +314,16 @@ keys
 	}
 ')
 (type='index', name='$$KEY_287068DE_287068DE', tbl_name='t9', rootpage=21, sql='create index "$$KEY_287068DE_287068DE" on "t9" ("i", "j" collate DATACOPY, "k");', csc2=NULL)
+(type='table', name='t10', tbl_name='t10', rootpage=22, sql='create table "t10"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "i" = i { WHERE i > 5 } 
+	}
+')
+(type='index', name='$I_1B98E051', tbl_name='t10', rootpage=23, sql='create index "$I_1B98E051" on "t10" ("i") where (i > 5 );', csc2=NULL)
 (part='---------------------------------- PART #09 ----------------------------------')
 [DROP TABLE t1] failed with rc -3 no such table: t1
 (part='---------------------------------- PART #10 ----------------------------------')

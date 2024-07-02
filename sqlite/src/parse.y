@@ -2020,14 +2020,14 @@ alter_table_drop_cons ::= DROP CONSTRAINT nm(Y). {
 }
 
 alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
-                          with_opt(O) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, W, 0, 0, SQLITE_SO_ASC, (U == OE_Abort) ?
+                          with_opt(O) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, (U == OE_Abort) ?
                  SQLITE_IDXTYPE_UNIQUE : SQLITE_IDXTYPE_DUPKEY, O, 0);
 }
 // datacopy with include syntax
 alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
-                          INCLUDE with_opt2(O) with_inc(P) where_opt(W). {
-  comdb2AddIndex(pParse, &I, X, 0, W, 0, 0, SQLITE_SO_ASC, (U == OE_Abort) ?
+                          INCLUDE with_opt2(O) with_inc(P) scanpt(BW) where_opt(W) scanpt(AW). {
+  comdb2AddIndex(pParse, &I, X, 0, W, BW, AW, SQLITE_SO_ASC, (U == OE_Abort) ?
                  SQLITE_IDXTYPE_UNIQUE : SQLITE_IDXTYPE_DUPKEY, O, P);
 }
 alter_table_drop_index ::= DROP INDEX nm(I). {
