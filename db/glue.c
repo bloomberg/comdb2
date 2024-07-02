@@ -95,6 +95,7 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
 #include <comdb2_atomic.h>
+#include <bbhrtime.h>
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -291,6 +292,32 @@ static int trans_start_int(struct ireq *iq, tran_type *parent_trans,
         }
     }
 
+    if (*out_trans != NULL) {
+        if (iq->sorese && iq->sorese->dist_txnid) {
+            extern int gbl_debug_disttxn_trace;
+            assert(iq->sorese->dist_timestamp > 0);
+            if (gbl_debug_disttxn_trace) {
+                bbhrtime_t ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                int64_t mytime = bbhrtimens(&ts);
+
+                logmsg(LOGMSG_USER,
+                       "%s DISTTXN %s set-timestamp %" PRId64 " my-timestamp %" PRId64 " diff=%" PRId64 "\n", __func__,
+                       iq->sorese->dist_txnid, iq->sorese->dist_timestamp, mytime, mytime - iq->sorese->dist_timestamp);
+            }
+            iq->timestamp = iq->sorese->dist_timestamp;
+        }
+
+        /* I don't know what to do about logical trans yet */
+        if (!logical) {
+            if (!iq->timestamp) {
+                trans_get_timestamp(bdb_handle, *out_trans, &iq->timestamp);
+            } else if (iq->timestamp > 0) {
+                trans_set_timestamp(bdb_handle, *out_trans, iq->timestamp);
+            }
+        }
+    }
+
     iq->gluewhere = "bdb_tran_begin done";
     if (*out_trans == 0) {
         /* dbenv->master can change between calling
@@ -365,6 +392,16 @@ int trans_start_sc_fop(struct ireq *iq, tran_type **out_trans)
 {
     struct txn_properties p = {.flags = DB_TXN_FOP_NOBLOCK};
     return trans_start_int(iq, NULL, out_trans, 0, 0, gbl_txn_fop_noblock ? &p : NULL, 0);
+}
+
+int trans_set_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t timestamp)
+{
+    return bdb_tran_set_timestamp(bdb_state, trans, timestamp);
+}
+
+int trans_get_timestamp(bdb_state_type *bdb_state, tran_type *trans, int64_t *timestamp)
+{
+    return bdb_tran_get_timestamp(bdb_state, trans, timestamp);
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
@@ -746,11 +783,10 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
 int gbl_javasp_early_release = 1;
 int gbl_debug_add_replication_latency = 0;
 uint32_t gbl_written_rows_warn = 0;
+extern int gbl_debug_disttxn_trace;
 
-static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
-                            int timeoutms, int adaptive, int logical,
-                            void *blkseq, int blklen, void *blkkey,
-                            int blkkeylen, int release_schema_lk)
+static int trans_commit_int(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, int logical,
+                            void *blkseq, int blklen, void *blkkey, int blkkeylen, int release_schema_lk, int nowait)
 {
     int rc;
     db_seqnum_type ss;
@@ -766,8 +802,17 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                comdb2uuidstr(iq->sorese->uuid, us), iq->written_row_count);
     }
 
-    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
-                                 blkseq, blklen, blkkey, blkkeylen);
+    int startms = comdb2_time_epochms();
+    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical, blkseq, blklen, blkkey, blkkeylen);
+    int endms = comdb2_time_epochms();
+
+    DB_LSN *s = (DB_LSN *)&ss;
+    iq->commit_file = s->file;
+    iq->commit_offset = s->offset;
+
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "%s commit took %d ms commit-lsn %d:%d\n", __func__, endms - startms, s->file, s->offset);
+    }
 
     if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO_KEY(iq)) {
         cn_len = IQ_SNAPINFO(iq)->keylen;
@@ -792,8 +837,14 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         return rc;
     }
 
-    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
-                                   timeoutms, adaptive, &ss);
+    if (nowait == 0) {
+        startms = comdb2_time_epochms();
+        rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, timeoutms, adaptive, &ss);
+        endms = comdb2_time_epochms();
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "%s wait-for-seqnum took %d ms rc %d\n", __func__, endms - startms, rc);
+        }
+    }
 
     if (release_schema_lk && gbl_debug_add_replication_latency) {
         logmsg(LOGMSG_USER, "Adding 5 seconds of 'replication' latency\n");
@@ -810,36 +861,34 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     return rc;
 }
 
-int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
-                         int timeoutms, int adaptive, void *blkseq, int blklen,
-                         void *blkkey, int blkkeylen)
+int trans_commit_logical(struct ireq *iq, void *trans, char *source_host, int timeoutms, int adaptive, void *blkseq,
+                         int blklen, void *blkkey, int blkkeylen)
 {
-    return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1,
-                            blkseq, blklen, blkkey, blkkeylen, 0);
+    return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1, blkseq, blklen, blkkey, blkkeylen, 0, 0);
 }
 
 /* XXX i made this be the same as trans_commit_adaptive */
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
-                            0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 0, 0);
 }
 
-int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host,
-                         int timeoutms)
+int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host, int timeoutms)
 {
-    return trans_commit_int(iq, trans, source_host, timeoutms, 0, 0, NULL, 0,
-                            NULL, 0, 0);
+    return trans_commit_int(iq, trans, source_host, timeoutms, 0, 0, NULL, 0, NULL, 0, 0, 0);
 }
 
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
-                            1);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 1, 0);
 }
 
-int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
-                        void *seqkey, int seqkeylen)
+int trans_commit_nowait(struct ireq *iq, void *trans, char *source_host)
+{
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 0, 1);
+}
+
+int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen, void *seqkey, int seqkeylen)
 {
     int bdberr, rc = 0;
     bdb_state_type *bdb_handle = thedb->bdb_env;
@@ -868,14 +917,14 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     return rc;
 }
 
-int trans_abort_int(struct ireq *iq, void *trans, int *priority)
+int trans_abort_int(struct ireq *iq, void *trans, int *priority, int discard)
 {
     int bdberr;
     bdb_state_type *bdb_handle = thedb->bdb_env;
     iq->gluewhere = "bdb_tran_abort";
     iq->txnsize = bdb_tran_logbytes(trans);
     iq->total_txnsize += iq->txnsize;
-    bdb_tran_abort_priority(bdb_handle, trans, &bdberr, priority);
+    bdb_tran_abort_priority(bdb_handle, trans, &bdberr, priority, discard);
     iq->gluewhere = "bdb_tran_abort done";
     if (bdberr != 0) {
         logmsg(LOGMSG_ERROR, "*ERROR* trans_abort:failed err %d\n", bdberr);
@@ -886,12 +935,17 @@ int trans_abort_int(struct ireq *iq, void *trans, int *priority)
 
 int trans_abort_priority(struct ireq *iq, void *trans, int *priority)
 {
-    return trans_abort_int(iq, trans, priority);
+    return trans_abort_int(iq, trans, priority, 0);
 }
 
 int trans_abort(struct ireq *iq, void *trans)
 {
-    return trans_abort_int(iq, trans, NULL);
+    return trans_abort_int(iq, trans, NULL, 0);
+}
+
+int trans_discard_prepared(struct ireq *iq, void *trans)
+{
+    return trans_abort_int(iq, trans, NULL, 1);
 }
 
 int get_context(struct ireq *iq, unsigned long long *context)

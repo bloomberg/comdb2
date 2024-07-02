@@ -298,6 +298,7 @@ typedef struct __db_locker {
 	u_int32_t flags;
 	u_int8_t has_pglk_lsn;
 	u_int8_t wstatus;  /* master locker waiting, for deadlock detection */
+	int64_t timestamp;  /* wait-die timestamp */
 } DB_LOCKER;
 
 /*
