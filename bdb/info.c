@@ -92,7 +92,6 @@ extern int bdb_temp_table_insert_test(bdb_state_type *bdb_state, int recsz,
                                       int maxins);
 extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
-static pthread_mutex_t hostname_lookup_lk = PTHREAD_MUTEX_INITIALIZER;
 int gbl_verbose_hostname_lookup = 0;
 static void printf_wrapper(void *userptr, const char *fmt, ...)
 {
@@ -1302,6 +1301,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         " del #          - remove node # from sanc list",
         " rem #          - force removal node # from cluster",
         " hostname #     - print hostname associated with node #", 
+        " nodenum <hostname> - print nodenum associated with node name", 
         " dummy          - add a dummy record",
         " reptrcy        - turn on replication trace",
         " reptrcn        - turn off replication trace",
@@ -1673,19 +1673,23 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         process_add(bdb_state, host);
     } else if (tokcmp(tok, ltok, "hostname") == 0) {
         char *iHost, *oHost;
-        Pthread_mutex_lock(&hostname_lookup_lk);
-        gbl_verbose_hostname_lookup = 1;
         iHost = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
             logmsg(LOGMSG_USER, "expected nodenum\n");
-            gbl_verbose_hostname_lookup = 0;
-            Pthread_mutex_unlock(&hostname_lookup_lk);
             return;
         }
         oHost = tokdup_hostname(iHost, ltok);
-        logmsg(LOGMSG_USER, "%s:%d got hostname: %s for node: %s\n",__func__, __LINE__, oHost, iHost); 
-        gbl_verbose_hostname_lookup = 0;
-        Pthread_mutex_unlock(&hostname_lookup_lk);
+        logmsgf(LOGMSG_USER, out, "%s\n", oHost);
+    }  else if (tokcmp(tok, ltok, "nodenum") == 0) {
+        char *iHost, *oHost;
+        iHost = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_USER, "expected hostname\n");
+            return;
+        }
+        oHost = tokdup(iHost, ltok);
+        logmsgf(LOGMSG_USER, out, "%d\n", nodenum(oHost));
+        free(oHost);
     } else if (tokcmp(tok, ltok, "del") == 0) {
         char *host;
         host = segtok(line, lline, &st, &ltok);
