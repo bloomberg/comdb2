@@ -865,7 +865,7 @@ void bdb_tran_assert_nolocks(bdb_state_type *bdb_state, tran_type *tran)
 
 void bdb_thread_assert_nolocks(bdb_state_type *bdb_state)
 {
-    int nlocks;
+    int nlocks = 0;
     bdb_nlocks_for_thread(bdb_state, &nlocks, NULL);
     if (nlocks > 0) {
         logmsg(LOGMSG_ERROR, "%s this thread holds %d locks\n", __func__, nlocks);
