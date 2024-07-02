@@ -6,4 +6,3 @@ off sql_release_locks_on_slow_reader
 off sql_release_locks_in_update_shadows
 off release_locks_trace
 enable_snapshot_isolation
-use_modsnap_for_snapshot

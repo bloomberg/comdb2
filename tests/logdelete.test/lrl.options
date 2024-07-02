@@ -6,4 +6,3 @@ setattr PRIVATE_BLKSEQ_MAXAGE 60
 setattr CHECKPOINTTIME 10
 setattr CHECKPOINTRAND 5
 setattr CHECKPOINTRAND 5
-use_modsnap_for_snapshot

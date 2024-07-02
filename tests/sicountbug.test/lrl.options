@@ -2,4 +2,3 @@ table t1 t1.csc2
 round_robin_stripes
 enable_snapshot_isolation
 notimeout
-use_modsnap_for_snapshot
