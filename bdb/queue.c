@@ -691,7 +691,6 @@ static int bdb_queue_check_goose_int(bdb_state_type *bdb_state, tran_type *tran,
                                            &dbcp, 0);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -915,7 +914,6 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
                                            &dbcp, 0);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -953,7 +951,6 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
 
         if (rc != DB_NOTFOUND && rc != DB_KEYEMPTY) {
             switch (rc) {
-            case DB_REP_HANDLE_DEAD:
             case DB_LOCK_DEADLOCK:
                 *bdberr = BDBERR_DEADLOCK;
                 break;
@@ -1063,7 +1060,6 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
 
     if (rc != DB_NOTFOUND) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -1140,7 +1136,6 @@ static int bdb_queue_dump_int(bdb_state_type *bdb_state, FILE *out, int *bdberr)
                                            &dbcp, 0);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -1201,7 +1196,6 @@ static int bdb_queue_dump_int(bdb_state_type *bdb_state, FILE *out, int *bdberr)
 
     if (rc != DB_NOTFOUND) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -1325,7 +1319,6 @@ static int bdb_queue_get_int(bdb_state_type *bdb_state, int consumer,
                                            &dbcp, 0);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             bdb_state->qpriv->stats.n_get_deadlocks++;
             *bdberr = BDBERR_DEADLOCK;
@@ -1389,7 +1382,6 @@ lookagain:
     bdb_state->qpriv->stats.n_physical_gets++;
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             bdb_state->qpriv->stats.n_get_deadlocks++;
             *bdberr = BDBERR_DEADLOCK;
@@ -1472,7 +1464,6 @@ lookagain:
         bdb_state->qpriv->stats.n_physical_gets++;
         if (rc != 0) {
             switch (rc) {
-            case DB_REP_HANDLE_DEAD:
             case DB_LOCK_DEADLOCK:
                 bdb_state->qpriv->stats.n_get_deadlocks++;
                 *bdberr = BDBERR_DEADLOCK;
@@ -1574,7 +1565,6 @@ lookagain:
         bdb_state->qpriv->stats.n_physical_gets++;
         if (rc != 0) {
             switch (rc) {
-            case DB_REP_HANDLE_DEAD:
             case DB_LOCK_DEADLOCK:
                 bdb_state->qpriv->stats.n_get_deadlocks++;
             /* fall through */
@@ -1646,7 +1636,6 @@ lookagain:
                         }
                        logmsg(LOGMSG_ERROR, ")\n");
 
-                    case DB_REP_HANDLE_DEAD:
                     case DB_LOCK_DEADLOCK:
                         bdb_state->qpriv->stats.n_get_deadlocks++;
                         *bdberr = BDBERR_DEADLOCK;
@@ -1805,7 +1794,6 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
                                         &dbt_key, &dbt_data, DB_RMW);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             bdb_state->qpriv->stats.n_consume_deadlocks++;
@@ -2017,7 +2005,6 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
                                                 &dbt_key, 0);
             if (rc != 0) {
                 switch (rc) {
-                case DB_REP_HANDLE_DEAD:
                 case DB_LOCK_DEADLOCK:
                     bdb_state->qpriv->stats.n_consume_deadlocks++;
                     *bdberr = BDBERR_DEADLOCK;
@@ -2068,7 +2055,6 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
                                             tran->tid, &dbt_key, &dbt_data, 0);
         if (rc != 0) {
             switch (rc) {
-            case DB_REP_HANDLE_DEAD:
             case DB_LOCK_DEADLOCK:
                 bdb_state->qpriv->stats.n_consume_deadlocks++;
                 *bdberr = BDBERR_DEADLOCK;

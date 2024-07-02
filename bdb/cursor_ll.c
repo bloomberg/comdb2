@@ -641,7 +641,7 @@ static int bdb_berkdb_close_real(bdb_berkdb_t *pberkdb, int *bdberr)
         bt->got_fileid = 0;
         berkdb->cur->queue_cursor = NULL;
         if (rc) {
-            *bdberr = (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD)
+            *bdberr = (rc == DB_LOCK_DEADLOCK)
                           ? BDBERR_DEADLOCK
                           : rc;
             if (berkdb->cur->state->attr->dbgberkdbcursor)
@@ -1413,7 +1413,7 @@ static int bdb_berkdb_cget(bdb_berkdb_impl_t *berkdb, int use_bulk, int how,
     if (gbl_new_snapisol && (how == DB_SET_RANGE || how == DB_SET))
         bt->pagenum = bt->dbc->lastpage;
 
-    if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD) {
+    if (rc == DB_LOCK_DEADLOCK) {
         *bdberr = BDBERR_DEADLOCK;
         return -1;
     }
@@ -1480,7 +1480,7 @@ static int bdb_berkdb_insert(bdb_berkdb_t *pberkdb, char *key, int keylen,
    ddta.flags = DB_DBT_USERMEM;
 
    rc = berkdb->u.sd.cur->c_put( berkdb->u.sd.cur, dkey, ddta, DB_KEYLAST);
-   if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD) 
+   if (rc == DB_LOCK_DEADLOCK) 
    {
       *bdberr = BDBERR_DEADLOCK;
       return -1;
@@ -1529,7 +1529,7 @@ static int bdb_berkdb_delete(bdb_berkdb_t *pberkdb, int *bdberr)
         return -1;
 #if 0
       rc = berkdb->u.rl.dbc->c_del( berkdb->u.rl.dbc, 0);
-   if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD) 
+   if (rc == DB_LOCK_DEADLOCK) 
    {
       *bdberr = BDBERR_DEADLOCK;
       return -1;
@@ -1571,7 +1571,7 @@ static int bdb_berkdb_unlock(bdb_berkdb_t *pberkdb, int *bdberr)
         /* close the cursor */
         rc = bt->dbc->c_close(bt->dbc);
         if (rc) {
-            if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD)
+            if (rc == DB_LOCK_DEADLOCK)
                 *bdberr = BDBERR_DEADLOCK;
             else
                 *bdberr = rc;
@@ -1662,7 +1662,7 @@ DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
 
     rc = db->paired_cursor_from_lid(db, lid, &dbc, flags);
     if (rc) {
-        if (rc == DB_LOCK_DEADLOCK || rc == DB_REP_HANDLE_DEAD)
+        if (rc == DB_LOCK_DEADLOCK)
             *bdberr = BDBERR_DEADLOCK;
         else
             *bdberr = rc;
