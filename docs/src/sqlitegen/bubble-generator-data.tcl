@@ -724,6 +724,12 @@ stack
           }
       }
       {line OPTION DBPAD = signed-number }
+      {line ENCODING
+          {or
+              {line /string-literal}
+              {line NONE}
+          }
+      }
   }
 
   table-constraint {
@@ -821,6 +827,12 @@ stack
                                               {line DROP }
                                           }
                                           NOT NULL
+                                      }
+                                      {line ENCODING
+                                          {or
+                                              {line /string-literal}
+                                              {line NONE}
+                                          }
                                       }
                                   }
                               }
