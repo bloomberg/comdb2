@@ -82,6 +82,7 @@ CREATE TABLE t6(i INT, j INT, UNIQUE(i ASC, j DESC)) $$
 CREATE TABLE t7(i INT, j INT, UNIQUE(i DESC, j DESC)) $$
 CREATE TABLE t8(i INT, j INT, UNIQUE(i DESC, j), UNIQUE(i, j), UNIQUE(i, j DESC)) $$
 CREATE TABLE t9(i INT, j INT, k INT, l INT, UNIQUE(i) INCLUDE (j, k)) $$
+CREATE TABLE t10(i INT, INDEX i(i) WHERE i > 5)$$
 
 SELECT '---------------------------------- PART #08 ----------------------------------' AS part;
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -101,6 +102,7 @@ DROP TABLE t6;
 DROP TABLE t7;
 DROP TABLE t8;
 DROP TABLE t9;
+DROP TABLE t10;
 
 SELECT '---------------------------------- PART #10 ----------------------------------' AS part;
 CREATE TABLE t1(i INT PRIMARY KEY) $$
