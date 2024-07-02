@@ -225,7 +225,7 @@ static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *);
 static void resume_read(int, short, void *);
 static void unix_connect(int, short, void *);
-static int write_connect_message_proto(netinfo_type *, host_node_type *);
+static int wr_connect_msg_proto(struct event_info *);
 
 static struct timeval reconnect_time(int retry)
 {
@@ -1940,11 +1940,11 @@ static void finish_host_setup(int dummyfd, short what, void *data)
         hprintf("WORKING ON PENDING CONNECTION fd:%d\n", e->host_connected->fd);
         do_close(e, do_open);
     } else if (connect_msg) {
-        hputs("WRITING CONNECT MSG\n");
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-        if (gbl_pb_connectmsg && gbl_libevent) {
-            write_connect_message_proto(netinfo_ptr, e->host_node_ptr);
+        if (gbl_pb_connectmsg) {
+            wr_connect_msg_proto(e);
         } else {
+            hputs("WRITING CONNECT MSG\n");
             write_connect_message(netinfo_ptr, e->host_node_ptr, NULL);
         }
         if (e->ssl_data) abort();
@@ -2614,7 +2614,7 @@ static int process_connect_message_proto(struct accept_info *a)
     return bad ? -1 : validate_host(a);
 }
 
-static void read_connect(int fd, short what, void *data)
+static void rd_connect_msg(int fd, short what, void *data)
 {
     struct accept_info *a = data;
     int need = a->need - evbuffer_get_length(a->buf);
@@ -2631,15 +2631,18 @@ static void read_connect(int fd, short what, void *data)
             rc = process_connect_message(a);
         }
     } else {
-        rc = event_base_once(base, fd, EV_READ, read_connect, a, NULL);
+        rc = event_base_once(base, fd, EV_READ, rd_connect_msg, a, NULL);
     }
     if (rc) {
         accept_info_free(a);
     }
 }
 
-static int write_connect_message_proto(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
+static int wr_connect_msg_proto(struct event_info *e)
 {
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    host_node_type *host_node_ptr = e->host_node_ptr;
+    hputs("WRITING CONNECT MSG\n");
     char type = 0;
     char star = '*';
     NetConnectmsg connect_message = NET_CONNECTMSG__INIT;
@@ -2713,7 +2716,7 @@ static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, in
 }
 
 /* retrive next 5 bytes to search for '*' and len */
-static void read_len(int fd, short what, void *data)
+static void rd_connect_msg_len(int fd, short what, void *data)
 {
     char first;
     int len, n;
@@ -2742,8 +2745,8 @@ static void read_len(int fd, short what, void *data)
             a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
             a->uses_proto = 0;
         }
-        read_connect(fd, 0, a);
-    } else if (event_base_once(base, fd, EV_READ, read_len, a, NULL)) {
+        rd_connect_msg(fd, 0, a);
+    } else if (event_base_once(base, fd, EV_READ, rd_connect_msg_len, a, NULL)) {
         accept_info_free(a);
     }
 }
@@ -2801,7 +2804,7 @@ static void do_read(int fd, short what, void *data)
     if (first_byte == 0) {
         evbuffer_drain(buf, 1);
         a->buf = buf;
-        read_len(fd, 0, a);
+        rd_connect_msg_len(fd, 0, a);
         return;
     }
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
