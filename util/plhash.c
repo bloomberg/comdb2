@@ -1726,4 +1726,21 @@ void hash_info(hash_t *h, int *nhits, int *nmisses, int *nsteps, int *ntbl,
 
 int hash_get_num_entries(hash_t *h) { return h->nents; }
 
+static int free_it(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
+void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
+{
+    if (!h)
+        return;
+    if (!free_func)
+        free_func = free_it;
+    hash_for(h, free_func, NULL);
+    hash_clear(h);
+    hash_free(h);
+}
+
 #endif /*COMDB2_BBCMAKE*/

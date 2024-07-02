@@ -234,6 +234,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         struct block_err *err, int *receivedrows);
 
 /**
+ * Collect all of the tablenames for this schemachange
+ *
+ */
+int osql_collect_schemachange_tables(struct ireq *iq, unsigned long long rqid, uuid_t uuid, void *trans, char **pmsg,
+                                     int msglen, int *flags, int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
+                                     struct block_err *err, int *receivedrows);
+
+/**
  * Handles each packet and start schema change
  *
  */

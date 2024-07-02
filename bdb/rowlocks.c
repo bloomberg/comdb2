@@ -1861,19 +1861,6 @@ done:
     return rc;
 }
 
-static int free_it(void *obj, void *arg)
-{
-    free(obj);
-    return 0;
-}
-
-static void free_hash(hash_t *h)
-{
-    hash_for(h, free_it, NULL);
-    hash_clear(h);
-    hash_free(h);
-}
-
 #ifdef NEWSI_STAT
 extern struct timeval comprec_time;
 extern unsigned long long num_comprec;
@@ -2057,7 +2044,7 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
     }
 done:
     if (tran->compensated_records) {
-        free_hash(tran->compensated_records);
+        destroy_hash(tran->compensated_records, NULL);
         tran->compensated_records = NULL;
     }
 

@@ -516,19 +516,6 @@ done:
     return 0;
 }
 
-static int free_it(void *obj, void *arg)
-{
-    free(obj);
-    return 0;
-}
-
-static void free_hash(hash_t *h)
-{
-    hash_for(h, free_it, NULL);
-    hash_clear(h);
-    hash_free(h);
-}
-
 void bdb_return_pglogs_hashtbl(hash_t *hashtbl);
 void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl);
 

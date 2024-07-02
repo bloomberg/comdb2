@@ -1581,10 +1581,11 @@ out:
     return 0;
 }
 
-int backout_schema_changes(struct ireq *iq, tran_type *tran)
+int backout_schema_changes(struct ireq *iq, tran_type *tran, const char *func, int line)
 {
     struct schema_change_type *s = NULL;
     comdb2_cheapstack_sym(stderr, "%s iq %p", __func__, iq);
+    logmsg(LOGMSG_ERROR, "%s called from %s line %d thd=%lu\n", __func__, func, line, pthread_self());
 
     if (iq->sc_pending && !iq->sc_locked) {
         wrlock_schema_lk();
@@ -1597,7 +1598,7 @@ int backout_schema_changes(struct ireq *iq, tran_type *tran)
             poll(NULL, 0, 100);
         }
         if (s->kind == SC_ADDTABLE) {
-            if (s->already_finalized) {
+            if (s->db) {
                 rem_dbtable_from_thedb_dbs(s->db);
             }
             if (s->newdb) {

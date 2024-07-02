@@ -262,7 +262,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    sc_printf(s, "Start add table transaction ok\n");
+    sc_printf(s, "Start add table transaction ok, iq=%p\n", iq);
     rc = load_new_table_schema_tran(thedb, tran, s->tablename, s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "error recording new table schema\n");
@@ -289,10 +289,13 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Failed to add db to thedb->dbs, rc %d\n", rc);
         return rc;
     }
+    sc_printf(s, "Added table to thedb->dbs, iq=%p\n", iq);
     s->already_finalized = 1; /* done adding to thedb->dbs */
 
-    if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
+    if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash))) {
+        sc_errf(s, "Failed to set header and properties, iq=%p\n", iq);
         return rc;
+    }
 
     if ((rc = llmeta_set_tables(tran, thedb))) {
         sc_errf(s, "Failed to set table names in low level meta\n");
@@ -320,7 +323,10 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     /* Save .ONDISK as schema version 1 if instant_sc is enabled. */
     if (db->odh && db->instant_schema_change) {
         struct schema *ver_one;
-        if ((rc = prepare_table_version_one(tran, db, &ver_one))) return rc;
+        if ((rc = prepare_table_version_one(tran, db, &ver_one))) {
+            sc_errf(s, "Failed preparing table version one %d\n", rc);
+            return rc;
+        }
         add_tag_schema(db->tablename, ver_one);
     }
 
@@ -369,6 +375,6 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         }
     }
 
-    sc_printf(s, "Schema change ok\n");
+    sc_printf(s, "Schema change ok, iq=%p\n", iq);
     return 0;
 }
