@@ -151,3 +151,27 @@
 1 insert into t1 values(7, 1) on conflict (i) do update set i=4
 1 commit
 1 select * from t1 order by i
+
+1 SELECT '---------------------------------- PART #10 ----------------------------------' AS part;
+1 drop table if exists t
+1 create table t(i int primary key, j int)
+1 set transaction read committed isolation
+1 begin
+1 insert into t(i, j) values(1, 1) on conflict(i) do update set j=j+1
+1 update t set j=j+1 where i=1
+2 insert into t(i, j) values(1, 1)
+1 commit -- will retry because of 2's insert and then should succeed as update
+1 select * from t
+
+1 SELECT '---------------------------------- PART #11 ----------------------------------' AS part;
+1 drop table if exists t
+1 drop table if exists q
+1 create table t(i int primary key, j int)
+1 create table q(j int)
+1 set transaction read committed isolation
+1 insert into q(j) values(1), (1)
+1 begin
+1 insert into t(i, j) select 1, j from q where j=1 on conflict(i) do update set j=j+1
+2 insert into t(i, j) values(1, 1)
+1 commit -- will retry because of 2's insert and then should succeed as update
+1 select * from t
