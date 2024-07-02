@@ -47,8 +47,6 @@
 #include "timepart_systable.h"
 #include "ezsystables.h"
 
-extern pthread_rwlock_t views_lk;
-
 struct systable_keycomponent {
     char *table;
     char *key;
@@ -69,7 +67,7 @@ static int collect_keycomponents(void **pd, int *pn)
     struct systable_keycomponent *data = NULL, *p = NULL;
     int ncols = 0;
 
-    Pthread_rwlock_rdlock(&views_lk);
+    assert_rdlock_views_lk();
 
     ntables = timepart_systable_num_tables_and_views();
     for (; comdb2_next_allowed_table(&tableid) == SQLITE_OK && tableid < ntables; ++tableid) {
@@ -92,8 +90,6 @@ static int collect_keycomponents(void **pd, int *pn)
         }
     }
 
-    Pthread_rwlock_unlock(&views_lk);
-
     *pn = ncols;
     *pd = data;
 
@@ -115,7 +111,7 @@ static void free_keycomponents(void *data, int n)
 }
 
 sqlite3_module systblKeyComponentsModule = {
-  .access_flag = CDB2_ALLOW_ALL,
+  .access_flag = CDB2_ALLOW_ALL | CDB2_VIEWS_LK,
   .systable_lock = "comdb2_tables",
 };
 

@@ -25,9 +25,14 @@ function create_tables
     typeset j=0
     while [[ $j -lt $count ]]; do
         t="t${j}"
-        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "create table $t(a int)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table $t(a int)"
         let j=j+1
     done
+}
+
+function create_consumer_table
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table cons(a int)"
 }
 
 function create_partitions
@@ -36,9 +41,81 @@ function create_partitions
     typeset j=0
     while [[ $j -lt $count ]]; do
         t="t${j}"
-        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME "create time partition on $t as ${t}part period 'weekly' retention 2 start '2024-01-01T000000.000'"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create time partition on $t as ${t}part period 'weekly' retention 2 start '2024-01-01T000000.000'"
         let j=j+1
     done
+}
+
+function query_tables
+{
+    while [[ ! -f $stopfile ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from comdb2_tables where tablename not in (select name from comdb2_timepartitions)" >/dev/null 2>&1
+    done
+}
+
+function create_systable_consumer
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create procedure syscons version 'test' {
+local function main()
+    local consumer = db:consumer()
+    local t, row
+
+    while true do
+
+        local event = consumer:get()
+
+        db:begin()
+        t = db:exec('select count(*) from comdb2_views')
+        row = t:fetch()
+        while row do
+            db:emit(row)
+            row = t:fetch()
+        end
+
+        t = db:exec('select count(*) from comdb2_tables')
+        row = t:fetch()
+        while row do
+            db:emit(row)
+            row = t:fetch()
+        end
+
+        t = db:exec('select count(*) from comdb2_keys')
+        row = t:fetch()
+        while row do
+            db:emit(row)
+            row = t:fetch()
+        end
+
+        t = db:exec('select count(*) from comdb2_keycomponents')
+        row = t:fetch()
+        while row do
+            db:emit(row)
+            row = t:fetch()
+        end
+        consumer:consume()
+        db:commit()
+
+    end
+end}\$\$
+
+create lua consumer syscons on (table cons for insert)
+EOF
+}
+
+function consumer_loop
+{
+    while [[ ! -f $stopfile ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into cons(a) values(1)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure syscons()"
+    done
+}
+
+function start_consumer_loop
+{
+    consumer_loop &
+    #consume_inserter &
+    #consume_consumer &
 }
 
 function create_procedures
@@ -47,7 +124,7 @@ function create_procedures
     typeset j=0
     while [[ $j -lt $count ]]; do
         p="p${j}"
-        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME - <<EOF
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
 create procedure $p version 'test' {
 local function main()
     db:column_type("string", 1);
@@ -62,9 +139,16 @@ EOF
 
 function run_test
 {
+    create_consumer_table
+    create_systable_consumer
+    start_consumer_loop
+    query_tables &
     create_tables $maxtable
     create_partitions $maxtable
     create_procedures $maxtable
+    sleep 5
+    touch $stopfile
+    wait
 }
 
 run_test

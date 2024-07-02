@@ -38,7 +38,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
     int i;
 
     if (lock)
-        Pthread_rwlock_rdlock(&views_lk);
+        rdlock_views_lk();
 
     /* look at the in-memory views and check sqlite views */
     for (i = 0; i < views->nviews; i++) {
@@ -87,7 +87,7 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
 
 done:
     if (lock)
-        Pthread_rwlock_unlock(&views_lk);
+        unlock_views_lk();
 
     return rc;
 }
