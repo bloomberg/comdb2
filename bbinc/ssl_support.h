@@ -130,7 +130,7 @@ do {                                            \
     } while (0)
 
 /* XXX Don't change the order of the enum types */
-typedef enum {
+typedef enum ssl_mode {
     SSL_DISABLE, /* invisible to users */
     SSL_UNKNOWN, /* invisible to users */
     SSL_ALLOW,

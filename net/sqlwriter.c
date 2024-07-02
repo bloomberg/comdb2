@@ -21,8 +21,6 @@
 #include <event2/buffer.h>
 #include <event2/event.h>
 
-#include <openssl/ssl.h>
-
 #include <compile_time_assert.h>
 #include <locks_wrap.h>
 #include <logmsg.h>
@@ -54,7 +52,7 @@ struct sqlwriter {
     unsigned timed_out : 1;
     unsigned wr_continue : 1;
     unsigned packing : 1; /* 1 if writer is in sql_pack_response and wr_lock is held. */
-    SSL *ssl;
+    struct ssl_data *ssl_data;
     int (*wr_evbuffer_fn)(struct sqlwriter *, int);
 };
 
@@ -132,7 +130,7 @@ void sql_disable_timeout(struct sqlwriter *writer)
 
 static int wr_evbuffer_ciphertext(struct sqlwriter *writer, int fd)
 {
-    return wr_evbuffer_ssl(writer->ssl, writer->wr_buf);
+    return wr_ssl_evbuffer(writer->ssl_data, writer->wr_buf);
 }
 
 static int wr_evbuffer_plaintext(struct sqlwriter *writer, int fd)
@@ -501,15 +499,15 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
     return writer;
 }
 
-void sql_enable_ssl(struct sqlwriter *writer, SSL *ssl)
+void sql_enable_ssl(struct sqlwriter *writer, struct ssl_data *ssl_data)
 {
-    writer->ssl = ssl;
+    writer->ssl_data = ssl_data;
     writer->wr_evbuffer_fn = wr_evbuffer_ciphertext;
 }
 
 void sql_disable_ssl(struct sqlwriter *writer)
 {
-    writer->ssl = NULL;
+    writer->ssl_data = NULL;
     writer->wr_evbuffer_fn = wr_evbuffer_plaintext;
 }
 
