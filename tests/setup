@@ -34,6 +34,8 @@ done
 # set paths
 source $TESTSROOTDIR/setup.common
 
+mkdir -p $DBDIR
+
 # get full path
 DBDIR=$(readlink -f $DBDIR 2> /dev/null || realpath $DBDIR )
 
