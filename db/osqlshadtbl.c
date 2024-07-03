@@ -1048,11 +1048,6 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     rc = bdb_temp_table_put(bdbenv, tbl->add_tbl->table, &tmp, sizeof(tmp),
                             (char *)pData, nData, NULL, &bdberr);
 
-    if (upsert_flags_for_add) {
-        // Apply latched upsert flags to the new seqnum.
-        save_rec_flags(thd->clnt, tbl, tmp, upsert_flags_for_add, 1);
-    }
-
     if (rc) {
         logmsg(LOGMSG_ERROR, 
                 "%s: fail to update genid %llx (%lld) rc=%d bdberr=%d (7)\n",
@@ -1076,7 +1071,14 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
-    if (save_rec_flags(thd->clnt, tbl, tmp, flags, 0 /* updrec */)) {
+    if (upsert_flags_for_add) {
+        // Apply latched upsert flags to the new seqnum.
+        rc = save_rec_flags(thd->clnt, tbl, tmp, upsert_flags_for_add, 1);
+    } else {
+        rc = save_rec_flags(thd->clnt, tbl, tmp, flags, 0 /* updrec */);
+    }
+
+    if (rc) {
         return -1;
     }
 
