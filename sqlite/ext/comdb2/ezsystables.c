@@ -234,20 +234,20 @@ static int systbl_column(
                 sqlite3_result_datetime(ctx, &dtz, tz);
             break;
         }
-		case CDB2_INTERVALYM: {
-			intv_t interval;
-			cdb2_client_intv_ym_t *intv = (cdb2_client_intv_ym_t*) field;
+        case CDB2_INTERVALYM: {
+            intv_t interval;
+            cdb2_client_intv_ym_t *intv = (cdb2_client_intv_ym_t*) field;
             interval.type = INTV_YM_TYPE;
             interval.sign = intv->sign;
             interval.u.ym.years = intv->years;
             interval.u.ym.months = intv->months;
             sqlite3_result_interval(ctx, &interval);
             break;
-		}
+        }
 
-		case CDB2_INTERVALDS: {
-			intv_t interval;
-			cdb2_client_intv_ds_t *intv = (cdb2_client_intv_ds_t*) field;
+        case CDB2_INTERVALDS: {
+            intv_t interval;
+            cdb2_client_intv_ds_t *intv = (cdb2_client_intv_ds_t*) field;
             interval.type = INTV_DS_TYPE;
             interval.sign = intv->sign;
             interval.u.ds.days = intv->days;
@@ -258,11 +258,11 @@ static int systbl_column(
             interval.u.ds.prec = DTTZ_PREC_MSEC;
             sqlite3_result_interval(ctx, &interval);
             break;
-		}
+        }
 
-		case CDB2_INTERVALDSUS: {
-			intv_t interval;
-			cdb2_client_intv_dsus_t *intv = (cdb2_client_intv_dsus_t*) field;
+        case CDB2_INTERVALDSUS: {
+            intv_t interval;
+            cdb2_client_intv_dsus_t *intv = (cdb2_client_intv_dsus_t*) field;
             interval.type = INTV_DS_TYPE;
             interval.sign = intv->sign;
             interval.u.ds.days = intv->days;
@@ -273,7 +273,7 @@ static int systbl_column(
             interval.u.ds.prec = DTTZ_PREC_USEC;
             sqlite3_result_interval(ctx, &interval);
             break;
-		}
+        }
 
 
     }

@@ -543,11 +543,11 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
             rc = apply_log(thedb->bdb_env->dbenv, prev_info.file,
                            get_next_offset(thedb->bdb_env->dbenv, prev_info),
                            REP_NEWFILE, NULL, 0);
-	    if (rc != 0) {
-		physrep_logmsg(LOGMSG_FATAL, "%s:%d: Something went wrong with applying the logs (rc: %d)\n",
+            if (rc != 0) {
+                physrep_logmsg(LOGMSG_FATAL, "%s:%d: Something went wrong with applying the logs (rc: %d)\n",
                                __func__, __LINE__, rc);
-		exit(1);
-	    }
+                exit(1);
+            }
         }
 
         rc = apply_log(thedb->bdb_env->dbenv, file, offset, REP_LOG, blob,
@@ -1396,7 +1396,7 @@ static void am_i_hung(time_t cur_time) {
 
     cdb2_hndl_tp *repl_metadb;
     if ((rc = get_metadb_hndl(&repl_metadb)) != 0) {
-	return;
+        return;
     }
 
     rc = cdb2_run_statement(repl_metadb, query);
@@ -1420,7 +1420,7 @@ static void am_i_hung(time_t cur_time) {
             }
         }
     } else {
-	physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
     }
 
     cdb2_close(repl_metadb);
@@ -1557,7 +1557,7 @@ int start_physrep_threads() {
         if ((rc = start_reverse_connections_manager()) != 0) {
             physrep_logmsg(LOGMSG_ERROR, "Couldn't start 'reverse connections' manager (rc: %d)\n" ,rc);
             return -1;
-	}
+        }
         physrep_logmsg(LOGMSG_USER, "'reverse connections' manager thread has started!\n");
     } else {
         physrep_logmsg(LOGMSG_USER, "This is not a replication source; not starting 'reverse connections' manager\n");

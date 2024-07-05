@@ -5189,7 +5189,7 @@ clipper_usage:
             if (del_log < 1) {
                 logmsg(LOGMSG_ERROR, "Usage: log number must be greater than 0\n");
             } else {
-		delete_logfile_txns_commit_lsn_map(thedb->bdb_env, del_log);
+                delete_logfile_txns_commit_lsn_map(thedb->bdb_env, del_log);
             }
         } else {
             logmsg(LOGMSG_USER, "Commit LSN map is not active\n");

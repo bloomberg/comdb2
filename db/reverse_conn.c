@@ -327,7 +327,7 @@ static void *reverse_connection_worker(void *args) {
         }
         last_conn_attempt = now;
 
-	pthread_mutex_lock(&reverse_conn_hosts_mu);
+        pthread_mutex_lock(&reverse_conn_hosts_mu);
         {
             pthread_mutex_lock(&host->mu);
             {
@@ -341,7 +341,7 @@ static void *reverse_connection_worker(void *args) {
             }
             pthread_mutex_unlock(&host->mu);
         }
-	pthread_mutex_unlock(&reverse_conn_hosts_mu);
+        pthread_mutex_unlock(&reverse_conn_hosts_mu);
 
         int rc = send_reversesql_request(host->dbname, host->host, "");
         if (rc != 0) {
@@ -383,16 +383,16 @@ static int refresh_reverse_conn_hosts() {
     pthread_mutex_unlock(&reverse_conn_hosts_mu);
 
     if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
-	revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for 'replication metadb' (rc: %d)\n",
+        revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to get a connection handle for 'replication metadb' (rc: %d)\n",
                        __func__, __LINE__, rc);
         return 1;
     }
 
     rc = snprintf(cmd, sizeof(cmd),
-		  "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')",
-		  gbl_dbname, gbl_myhostname);
+                  "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')",
+                  gbl_dbname, gbl_myhostname);
     if (rc < 0 || rc >= sizeof(cmd)) {
-	revconn_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
+        revconn_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
         rc = 1;
         goto err;
     }
@@ -409,35 +409,35 @@ static int refresh_reverse_conn_hosts() {
     listc_init(&new_reverse_conn_hosts, offsetof(reverse_conn_host_tp, lnk));
 
     if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
-	while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
-	    char *dbname = (char *)cdb2_column_value(repl_metadb, 0);
-	    char *host = (char *)cdb2_column_value(repl_metadb, 1);
+        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
+            char *dbname = (char *)cdb2_column_value(repl_metadb, 0);
+            char *host = (char *)cdb2_column_value(repl_metadb, 1);
 
-	    new_host = malloc(sizeof(reverse_conn_host_tp));
-	    if (!new_host) {
-		revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to allocate memory\n", __func__, __LINE__);
+            new_host = malloc(sizeof(reverse_conn_host_tp));
+            if (!new_host) {
+                revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to allocate memory\n", __func__, __LINE__);
 
-		// Free the items added to the list
-		LISTC_FOR_EACH_SAFE(&new_reverse_conn_hosts, new_host, tmp, lnk) {
-		    free(new_host->dbname);
-		    free(new_host->host);
-		    free(listc_rfl(&new_reverse_conn_hosts, new_host));
-		}
+                // Free the items added to the list
+                LISTC_FOR_EACH_SAFE(&new_reverse_conn_hosts, new_host, tmp, lnk) {
+                    free(new_host->dbname);
+                    free(new_host->host);
+                    free(listc_rfl(&new_reverse_conn_hosts, new_host));
+                }
 
                 rc = 1;
                 goto err;
-	    }
-	    new_host->dbname = strdup(dbname);
-	    new_host->host = strdup(host);
+            }
+            new_host->dbname = strdup(dbname);
+            new_host->host = strdup(host);
             new_host->worker_state = REVERSE_CONN_WORKER_NEW;
             pthread_mutex_init(&new_host->mu, NULL);
 
-	    // Add to the list
-	    listc_abl(&new_reverse_conn_hosts, new_host);
-	}
+            // Add to the list
+            listc_abl(&new_reverse_conn_hosts, new_host);
+        }
 
-	// Close the connection
-	cdb2_close(repl_metadb);
+        // Close the connection
+        cdb2_close(repl_metadb);
     }
 
     replace_tier_by_hostname(&new_reverse_conn_hosts);
@@ -448,41 +448,41 @@ static int refresh_reverse_conn_hosts() {
     // Mark all existing 'reverse-connection hosts' as 'EXITING' that are not
     // in the new list.
     LISTC_FOR_EACH(&reverse_conn_hosts, old_host, lnk) {
-	int found = 0;
-	LISTC_FOR_EACH(&new_reverse_conn_hosts, new_host, lnk) {
-	    if (strcmp(old_host->dbname, new_host->dbname) == 0 &&
-		strcmp(old_host->host, new_host->host) == 0) {
-		found = 1;
-		break;
-	    }
-	}
+        int found = 0;
+        LISTC_FOR_EACH(&new_reverse_conn_hosts, new_host, lnk) {
+            if (strcmp(old_host->dbname, new_host->dbname) == 0 &&
+                strcmp(old_host->host, new_host->host) == 0) {
+                found = 1;
+                break;
+            }
+        }
 
-	// If the 'old' host is not found in the new list, notify the worker.
-	if (found == 0) {
-	    old_host->worker_state = REVERSE_CONN_WORKER_EXITING;
-	}
+        // If the 'old' host is not found in the new list, notify the worker.
+        if (found == 0) {
+            old_host->worker_state = REVERSE_CONN_WORKER_EXITING;
+        }
     }
 
     // Add all new 'reverse-connection hosts' to the main list.
     LISTC_FOR_EACH_SAFE(&new_reverse_conn_hosts, new_host, tmp, lnk) {
-	int found = 0;
-	LISTC_FOR_EACH(&reverse_conn_hosts, old_host, lnk) {
-	    if (strcmp(old_host->dbname, new_host->dbname) == 0 &&
-		strcmp(old_host->host, new_host->host) == 0) {
-		found = 1;
-		break;
-	    }
-	}
+        int found = 0;
+        LISTC_FOR_EACH(&reverse_conn_hosts, old_host, lnk) {
+            if (strcmp(old_host->dbname, new_host->dbname) == 0 &&
+                strcmp(old_host->host, new_host->host) == 0) {
+                found = 1;
+                break;
+            }
+        }
 
-	// *Move* from new list to the main list
+        // *Move* from new list to the main list
         if (found == 0) {
             if (gbl_revsql_debug == 1) {
                 revconn_logmsg(LOGMSG_USER, "%s:%d %s@%s added to the main 'reverse-connection' hosts list\n",
                                __func__, __LINE__, new_host->dbname, new_host->host);
             }
-	    listc_abl(&reverse_conn_hosts,
+            listc_abl(&reverse_conn_hosts,
                       listc_rfl(&new_reverse_conn_hosts, new_host));
-	} else {
+        } else {
             listc_rfl(&new_reverse_conn_hosts, new_host);
         }
     }
@@ -522,9 +522,9 @@ static void *reverse_connection_manager(void *args) {
         }
 
         // Create new worker threads
-	reverse_conn_host_tp *host;
+        reverse_conn_host_tp *host;
 
-	pthread_mutex_lock(&reverse_conn_hosts_mu);
+        pthread_mutex_lock(&reverse_conn_hosts_mu);
         {
             LISTC_FOR_EACH(&reverse_conn_hosts, host, lnk) {
                 rc = 0;
@@ -543,7 +543,7 @@ static void *reverse_connection_manager(void *args) {
                 }
             }
         }
-	pthread_mutex_unlock(&reverse_conn_hosts_mu);
+        pthread_mutex_unlock(&reverse_conn_hosts_mu);
     }
 
     return 0;

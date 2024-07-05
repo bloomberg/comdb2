@@ -3,13 +3,13 @@
 
 usage()
 {
-	echo >&2 "usage: comdb2dumpcsc [-f filename] [-s] <dbname> [table]"
-	echo >&2 "    if no table specified, dumps name of all tables"
-	echo >&2 "    -s list system tables, if no table specified"
-	echo >&2 "    -a list table aliases, if no table specified"
-	echo >&2 "    -f specify an output filename, for op1 users out there"
-	echo >&2 "    -h this help"
-	exit 1
+    echo >&2 "usage: comdb2dumpcsc [-f filename] [-s] <dbname> [table]"
+    echo >&2 "    if no table specified, dumps name of all tables"
+    echo >&2 "    -s list system tables, if no table specified"
+    echo >&2 "    -a list table aliases, if no table specified"
+    echo >&2 "    -f specify an output filename, for op1 users out there"
+    echo >&2 "    -h this help"
+    exit 1
 }
 
 show_sys_tables=0
@@ -17,41 +17,41 @@ show_alias=0
 filename=
 
 while [[ $1 = -* ]];do
-	opt="$1"
-	shift
-	case "$opt" in
-	-s) 
+    opt="$1"
+    shift
+    case "$opt" in
+    -s) 
       show_sys_tables=1 
       ;;
-	-a) 
+    -a) 
       show_alias=1 
       ;;
-   -f) 
+    -f) 
       filename=$1
       shift 1
       ;;
-	-h) 
+    -h) 
       usage
       ;;
-	esac
+    esac
 done
 
 dbname="$1"
 if [[ -z $dbname ]]; then
-	echo >&2 "specify dbname, or -h for help"
-	exit 1
+    echo >&2 "specify dbname, or -h for help"
+    exit 1
 fi
 
 table="$2"
 
 if [[ -z $table ]]; then
-	if [[ $show_sys_tables -eq 1 ]]; then
+    if [[ $show_sys_tables -eq 1 ]]; then
       if [[ -z ${filename} ]]; then
          cdb2sql -tabs "$dbname" local "select name from sqlite_master where type='table'" 
       else
          cdb2sql -tabs "$dbname" local "select name from sqlite_master where type='table'" > ${filename} 2>&1
       fi
-	else
+    else
       if [[ -z ${filename} ]]; then
          cdb2sql -tabs "$dbname" local "select name from sqlite_master where type='table' and name not like 'sqlite\_%' ESCAPE '\' and name not like 'comdb2\_%' ESCAPE '\'"
       else

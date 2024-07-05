@@ -284,7 +284,7 @@ char *eos(char *line) /* RETURNS END OF STRING */
     return line + strlen(line);
 }
 
-static void strupper(char *c)				/* STRING TO UPPER CASE */
+static void strupper(char *c)                /* STRING TO UPPER CASE */
 {
     while (*c) {
         *c=toupper(*c);
@@ -292,7 +292,7 @@ static void strupper(char *c)				/* STRING TO UPPER CASE */
     }
 }
 
-static void strlower(char *c)				/* STRING TO LOWER CASE */
+static void strlower(char *c)                /* STRING TO LOWER CASE */
 {
     while (*c) {
         *c=tolower(*c);
@@ -457,7 +457,7 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
                 any_errors++;
                 break;
             }
-            /*	  if (tables[jj].sym[ii].type==T_PSTR)
+            /*      if (tables[jj].sym[ii].type==T_PSTR)
                   {
                   fprintf(stderr, "Record \"%s\" has PSTRING fields. SQL does
                not support this currently.\n",tables[jj].table_tag);
@@ -2304,7 +2304,7 @@ void start_case(char *txt)
         any_errors++;
         return;
     }
-    /*	printf("CASE %s %d\n", txt, i);*/
+    /*    printf("CASE %s %d\n", txt, i);*/
 
     macc_globals->case_table[macc_globals->cn_p] =
         i; /* add to case name table */

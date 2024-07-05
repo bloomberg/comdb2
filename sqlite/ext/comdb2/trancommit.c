@@ -30,74 +30,74 @@ extern int gbl_commit_lsn_map;
 
 sqlite3_module systblTransactionCommitModule =
 {
-	.access_flag = CDB2_ALLOW_USER,
+    .access_flag = CDB2_ALLOW_USER,
 };
 
 typedef struct txn_commit_info {
-	u_int64_t utxnid;
-	u_int64_t commit_lsn_file;
-	u_int64_t commit_lsn_offset;
+    u_int64_t utxnid;
+    u_int64_t commit_lsn_file;
+    u_int64_t commit_lsn_offset;
 } txn_commit_info;
 
 typedef struct add_tran_commit_args {
-	txn_commit_info **data;
-	int *npoints;
+    txn_commit_info **data;
+    int *npoints;
 } add_tran_commit_args;
 
 int add_tran_commit(void *obj, void *arg) {
-	UTXNID_TRACK* ritem = (UTXNID_TRACK*) obj;
-	add_tran_commit_args* info = (add_tran_commit_args *) arg;
-	txn_commit_info** data = info->data;
-	txn_commit_info* litem = (txn_commit_info *) (((txn_commit_info *) *data)+(*info->npoints));
+    UTXNID_TRACK* ritem = (UTXNID_TRACK*) obj;
+    add_tran_commit_args* info = (add_tran_commit_args *) arg;
+    txn_commit_info** data = info->data;
+    txn_commit_info* litem = (txn_commit_info *) (((txn_commit_info *) *data)+(*info->npoints));
 
-	litem->utxnid = ritem->utxnid;
-	litem->commit_lsn_file = ritem->commit_lsn.file;
-	litem->commit_lsn_offset = ritem->commit_lsn.offset;
-	(*(info->npoints))++;
+    litem->utxnid = ritem->utxnid;
+    litem->commit_lsn_file = ritem->commit_lsn.file;
+    litem->commit_lsn_offset = ritem->commit_lsn.offset;
+    (*(info->npoints))++;
 
-	return 0;
+    return 0;
 }
 
 int get_tran_commits(void **data, int *npoints) {
-	int ret = 0;
+    int ret = 0;
 
-	if (!gbl_commit_lsn_map) {
+    if (!gbl_commit_lsn_map) {
             *data = NULL;
             *npoints = 0;
             return ret;
         }
 
-	bdb_state_type *bdb_state = thedb->bdb_env;
+    bdb_state_type *bdb_state = thedb->bdb_env;
 
-	Pthread_mutex_lock(&bdb_state->dbenv->txmap->txmap_mutexp);
-	*npoints = hash_get_num_entries(bdb_state->dbenv->txmap->transactions);
-	*data = malloc((*npoints)*sizeof(txn_commit_info));
-	add_tran_commit_args* args = malloc(sizeof(add_tran_commit_args));
-	args->data = (txn_commit_info**) data;
-	*npoints = 0;
-	args->npoints = npoints;
+    Pthread_mutex_lock(&bdb_state->dbenv->txmap->txmap_mutexp);
+    *npoints = hash_get_num_entries(bdb_state->dbenv->txmap->transactions);
+    *data = malloc((*npoints)*sizeof(txn_commit_info));
+    add_tran_commit_args* args = malloc(sizeof(add_tran_commit_args));
+    args->data = (txn_commit_info**) data;
+    *npoints = 0;
+    args->npoints = npoints;
 
-	ret = hash_for(bdb_state->dbenv->txmap->transactions, add_tran_commit, args);
-	Pthread_mutex_unlock(&bdb_state->dbenv->txmap->txmap_mutexp);
+    ret = hash_for(bdb_state->dbenv->txmap->transactions, add_tran_commit, args);
+    Pthread_mutex_unlock(&bdb_state->dbenv->txmap->txmap_mutexp);
 
-	free(args);
-	return ret;
+    free(args);
+    return ret;
 }
 
 void free_tran_commits(void *data, int npoints) {
-	txn_commit_info * info = (txn_commit_info *) data;
-	if (info != NULL) {
+    txn_commit_info * info = (txn_commit_info *) data;
+    if (info != NULL) {
             free(info);
         }
 }
 
 int systblTranCommitInit(sqlite3 *db) {
-	return create_system_table(
-		db, "comdb2_transaction_commit", &systblTransactionCommitModule,
-		get_tran_commits, free_tran_commits, sizeof(txn_commit_info),
-		CDB2_INTEGER, "utxnid", -1, offsetof(txn_commit_info, utxnid),
-		CDB2_INTEGER, "commitlsnfile", -1, offsetof(txn_commit_info, commit_lsn_file),
-		CDB2_INTEGER, "commitlsnoffset", -1, offsetof(txn_commit_info, commit_lsn_offset),
-		SYSTABLE_END_OF_FIELDS
-	);
+    return create_system_table(
+        db, "comdb2_transaction_commit", &systblTransactionCommitModule,
+        get_tran_commits, free_tran_commits, sizeof(txn_commit_info),
+        CDB2_INTEGER, "utxnid", -1, offsetof(txn_commit_info, utxnid),
+        CDB2_INTEGER, "commitlsnfile", -1, offsetof(txn_commit_info, commit_lsn_file),
+        CDB2_INTEGER, "commitlsnoffset", -1, offsetof(txn_commit_info, commit_lsn_offset),
+        SYSTABLE_END_OF_FIELDS
+    );
 }

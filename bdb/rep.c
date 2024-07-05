@@ -1478,7 +1478,7 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
                bdb_state->repinfo->myhost);
         goto done;
     } else if (gbl_is_physical_replicant == 1) {
-	logmsg(LOGMSG_USER, "physrep: %s:%d: Not inserting a dummy record\n", __func__, __LINE__);
+        logmsg(LOGMSG_USER, "physrep: %s:%d: Not inserting a dummy record\n", __func__, __LINE__);
         goto done;
     }
 
@@ -1580,13 +1580,13 @@ recbuf (after the crc).  We want rectype = REP_LOG: it should be 7.
 
 If all of this is good, then retrieve the LSN from the rep_control:
 typedef struct __rep_control {
-        u_int32_t	rep_version;
-        u_int32_t	log_version;
+        u_int32_t    rep_version;
+        u_int32_t    log_version;
 
-        DB_LSN		lsn;
-        u_int32_t	rectype;
-        u_int32_t	gen;
-        u_int32_t	flags;
+        DB_LSN        lsn;
+        u_int32_t    rectype;
+        u_int32_t    gen;
+        u_int32_t    flags;
 } REP_CONTROL;
 */
 

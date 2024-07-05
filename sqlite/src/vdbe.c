@@ -809,24 +809,24 @@ void dump_sqlite_mem(Mem *m){
   }else if( m->flags & MEM_Interval ){
     switch( m->du.tv.type ){
       case INTV_YM_TYPE: {
-	logmsg(LOGMSG_USER, "intervalym ");
-	break;
+        logmsg(LOGMSG_USER, "intervalym ");
+        break;
       }
       case INTV_DS_TYPE: {
-	logmsg(LOGMSG_USER, "intervalds ");
-	break;
+        logmsg(LOGMSG_USER, "intervalds ");
+        break;
       }
       case INTV_DSUS_TYPE: {
-	logmsg(LOGMSG_USER, "intervaldsus ");
-	break;
+        logmsg(LOGMSG_USER, "intervaldsus ");
+        break;
       }
       case INTV_DECIMAL_TYPE: {
-	logmsg(LOGMSG_USER, "decimal ");
-	break;
+        logmsg(LOGMSG_USER, "decimal ");
+        break;
       }
       default: {
-	logmsg(LOGMSG_USER, "???interval??? ");
-	break;
+        logmsg(LOGMSG_USER, "???interval??? ");
+        break;
       }
     }
   }else if( m->flags & MEM_Blob ){
@@ -854,10 +854,10 @@ void dump_vdbe_mem(FILE *f, Mem *m){
     ctime_r(&ts, ctimebuf);
     if( m->du.dt.dttz_prec == DTTZ_PREC_MSEC ){
       logmsgf(LOGMSG_USER, f, "datetime: epoch %lld msec %u \"%s\"",
-	    m->du.dt.dttz_sec, m->du.dt.dttz_frac, ctimebuf);
+            m->du.dt.dttz_sec, m->du.dt.dttz_frac, ctimebuf);
     }else{
       logmsgf(LOGMSG_USER, f, "datetime: epoch %lld usec %u \"%s\"",
-	    m->du.dt.dttz_sec, m->du.dt.dttz_frac, ctimebuf);
+            m->du.dt.dttz_sec, m->du.dt.dttz_frac, ctimebuf);
     }
   }else if( m->flags & MEM_Interval ){
     logmsgf(LOGMSG_USER, f, "interval: type %u", m->du.tv.type);

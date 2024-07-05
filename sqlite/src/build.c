@@ -5635,8 +5635,8 @@ char *sqlite3DescribeIndexOrder(
 
     if( !done_key ){
       pDesc = (isMovingLeft)?
-	((pIdx->aSortOrder[i])?"":" DESC"):
-	((pIdx->aSortOrder[i])?" DESC":"");
+        ((pIdx->aSortOrder[i])?"":" DESC"):
+        ((pIdx->aSortOrder[i])?" DESC":"");
 
       if( isExpr ){
         ret2 = sqlite3_mprintf("%s, (%s) %s", ret, pExprDesc, pDesc);

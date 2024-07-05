@@ -375,7 +375,7 @@ int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
     struct txn_properties props = { .retries = retries, .priority = priority };
 
     rc = trans_start_int(iq, (gbl_rowlocks ? NULL : parent_trans),
-							 out_trans, gbl_rowlocks, 0, &props, 0);
+                             out_trans, gbl_rowlocks, 0, &props, 0);
 
     if (verbose_deadlocks && retries != 0)
         logmsg(LOGMSG_USER, "%s ptran %p tran %p with retries %d\n", __func__,
