@@ -298,26 +298,26 @@ static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
       cdb2_client_datetime_t   cdt;
 
       if( convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK ){
-	sqlite3_result_null(context);
-	return;
+        sqlite3_result_null(context);
+        return;
       }
       /*
       if( !strncmp(z, "week", 4) ){
         sqlite3_result_int(context, cdt.tm.tm_wday);
       }else if( !strncmp(z, "month", 5) ){
-	sqlite3_result_int(context, cdt.tm.tm_mday);
+        sqlite3_result_int(context, cdt.tm.tm_mday);
       }else if( !strncmp(z, "year", 4) ){
       */
       if( z[0] == 'w' ){
-	sqlite3_result_int(context, cdt.tm.tm_wday);
+        sqlite3_result_int(context, cdt.tm.tm_wday);
       }else if( z[0] == 'm' ){
-	/* days since start of month, not day of month */
-	sqlite3_result_int(context, cdt.tm.tm_mday-1);
+        /* days since start of month, not day of month */
+        sqlite3_result_int(context, cdt.tm.tm_mday-1);
       }else if( z[0] == 'y' ){
-	sqlite3_result_int(context, cdt.tm.tm_yday);
+        sqlite3_result_int(context, cdt.tm.tm_yday);
       }else{
-	/* default to dayFunc*/
-	sqlite3_result_int(context, cdt.tm.tm_mday-1);
+        /* default to dayFunc*/
+        sqlite3_result_int(context, cdt.tm.tm_mday-1);
       }
     }
   }else{

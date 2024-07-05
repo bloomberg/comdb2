@@ -303,9 +303,9 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                 curflags |= DB_DISCARD_PAGES;
         }
 
-	if (cur->use_snapcur) {
-		curflags |= DB_CUR_SNAPSHOT;
-	}
+        if (cur->use_snapcur) {
+            curflags |= DB_CUR_SNAPSHOT;
+        }
         dbc =
             get_cursor_for_cursortran_flags(cur->curtran, db, curflags, bdberr);
 

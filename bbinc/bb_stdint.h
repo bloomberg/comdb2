@@ -102,8 +102,8 @@ typedef long bbf77charstr_sz;
 /***********************************************************************/
 /* The following macros create constants of the types.
  * The intent is that:
- *	Constants defined using these macros have a specific size and
- *	signedness.
+ *  Constants defined using these macros have a specific size and
+ *  signedness.
  */
 #define BB__CONCAT__(A, B) A /**/ B
 
@@ -138,8 +138,8 @@ typedef long bbf77charstr_sz;
  *
  * An example using one of these macros:
  *
- *	uint64_t u;
- *	printf("u = %016" BBPRIx64 "\n", u);
+ *  uint64_t u;
+ *  printf("u = %016" BBPRIx64 "\n", u);
  *
  */
 

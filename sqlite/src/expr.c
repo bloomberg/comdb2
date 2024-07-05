@@ -5680,8 +5680,8 @@ char *print_mem(Mem *m){
       int  i;
 
       for(i=0;i<m->n;i++){
-	key[2*i] = hex[((unsigned char)m->z[i])/16];
-	key[2*i+1] = hex[((unsigned char)m->z[i])%16];
+        key[2*i] = hex[((unsigned char)m->z[i])/16];
+        key[2*i+1] = hex[((unsigned char)m->z[i])%16];
       }
       key[2*m->n] = '\0';
 
@@ -5691,7 +5691,7 @@ char *print_mem(Mem *m){
       char tmp[256];
       int ltmp;
       if( dttz_to_str(&m->du.dt, tmp, sizeof(tmp), &ltmp, "UTC") ){
-	return sqlite3_mprintf("???");
+        return sqlite3_mprintf("???");
       }
 
       return sqlite3_mprintf("'%q'", tmp);

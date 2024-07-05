@@ -2550,15 +2550,15 @@ sfuncattr(A) ::= DETERMINISTIC.          {A = SQLITE_FUNC_CONSTANT;}
 sfuncattr(A) ::= .                       {A = 0;}
 
 cmd ::= dryrun CREATE LUA SCALAR FUNCTION nm(Q) sfuncattr(A). {
-	comdb2CreateScalarFunc(pParse, &Q, A);
+    comdb2CreateScalarFunc(pParse, &Q, A);
 }
 
 cmd ::= dryrun CREATE LUA AGGREGATE FUNCTION nm(Q). {
-	comdb2CreateAggFunc(pParse, &Q);
+    comdb2CreateAggFunc(pParse, &Q);
 }
 
 cmd ::= dryrun CREATE trigger(T) nm(Q) withsequence(S) ON table_trigger_event(E). {
-  comdb2CreateTrigger(pParse,T,S,&Q,E);
+    comdb2CreateTrigger(pParse,T,S,&Q,E);
 }
 
 %type trigger {int}

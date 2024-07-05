@@ -18,7 +18,7 @@
 /* 01/97 - pl - added record types */
 
 %union {
-  int	number;
+  int    number;
   double fltpoint;
   char *varname;
   char *opttext;
@@ -58,7 +58,7 @@
 %token T_RECNUMS T_PRIMARY T_DATAKEY T_UNIQNULLS
 %token T_YES T_NO
 
-%token T_ASCEND T_DESCEND T_DUP					/*MODIFIERS*/
+%token T_ASCEND T_DESCEND T_DUP                    /*MODIFIERS*/
 
 %token T_LT T_GT 
 %token T_EQ
@@ -105,22 +105,22 @@ void csc2_syntax_error(const char *fmt, ...);
 
 
 %%
-comdbg_csc:	structdef
-				{ 
-				  resolve_case_names();		/* when i'm all done, do this */
-				}
+comdbg_csc:    structdef
+                { 
+                  resolve_case_names();        /* when i'm all done, do this */
+                }
 
 
 
-structdef:	validstruct structdef
-		|	validstruct
-		;
+structdef:    validstruct structdef
+        |    validstruct
+        ;
 
-validstruct:	recstruct
-            |	keystruct
+validstruct:    recstruct
+            |    keystruct
             |   constantstruct
             |   constraintstruct
-			;
+            ;
 
 
 /* constraintstruct: defines cross-table constraints */
@@ -177,8 +177,8 @@ cnstrtparent:   T_LT string ':' string T_GT  {  add_constraint($2,$4); }
 **                          SIZE3=879
 **                        }
 */
-constantstruct:	T_CONSTANTS comment '{' cnstdef '}' 
-		;
+constantstruct:    T_CONSTANTS comment '{' cnstdef '}' 
+        ;
 
 cnstdef: varname '=' number ',' comment cnstdef { add_constant($1, $3.number, 0);}
          | varname '=' number           comment { add_constant($1, $3.number, 0);}
@@ -190,8 +190,8 @@ cnstdef: varname '=' number ',' comment cnstdef { add_constant($1, $3.number, 0)
          ;
 
 fieldopts: fieldterm fieldopts
-	| /* empty */
-	;
+    | /* empty */
+    ;
 
 fieldterm: T_FLD_STRDEFAULT '=' number { add_fldopt(FLDOPT_DBSTORE,CLIENT_INT, $3.numstr); }
            | T_FLD_LDDEFAULT '=' number { add_fldopt(FLDOPT_DBLOAD,CLIENT_INT, $3.numstr); }
@@ -208,35 +208,35 @@ fieldterm: T_FLD_STRDEFAULT '=' number { add_fldopt(FLDOPT_DBSTORE,CLIENT_INT, $
            ;
 
 defaultfunction: '{' verbatim_string '}' {
-		int origlen=strlen($2);
-		char *str=(char*)csc2_malloc(origlen+2+1); //2 paren + \n
-		if (str==0) {
-		    csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.opttext);
-		    exit(-1);
-		}
-		sprintf(str,"(%.*s)", origlen, $2);
-		$$=str;
-	}
-	;
+        int origlen=strlen($2);
+        char *str=(char*)csc2_malloc(origlen+2+1); //2 paren + \n
+        if (str==0) {
+            csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.opttext);
+            exit(-1);
+        }
+        sprintf(str,"(%.*s)", origlen, $2);
+        $$=str;
+    }
+    ;
 
 verbatim_string: T_STRING { $$=csc2_strdup(yylval.varname); }
-	;
+    ;
 
 /* recstruct: defines a record
-**		ie.
-**		record {
-**			integer*4 firm
-**			integer*4 cust
+**        ie.
+**        record {
+**            integer*4 firm
+**            integer*4 cust
 **
-**			rectype {
-**			case ( IN_BLP ) :
-**				integer*4 floor
-**			case ( NOT_BLP) :
-**				character*48 address
-**			}
+**            rectype {
+**            case ( IN_BLP ) :
+**                integer*4 floor
+**            case ( NOT_BLP) :
+**                character*48 address
+**            }
 **
-**			integer*4 term
-**		}
+**            integer*4 term
+**        }
 */
 
 recstart:       T_TABLE_TAG  string   { reset_array(); start_table($2,0);  }
@@ -245,11 +245,11 @@ recstart:       T_TABLE_TAG  string   { reset_array(); start_table($2,0);  }
                 | T_SCHEMA { reset_array(); start_table(".ONDISK",1);  }
                 ;
 
-recstruct:	recstart '{' recdef '}' { end_table();}
-		;
+recstruct:    recstart '{' recdef '}' { end_table();}
+        ;
 
 recdef:
-	typedec recdef
+    typedec recdef
         | /* %empty */
         ;
 
@@ -272,7 +272,7 @@ validctype:     T_INTEGER2    { $$=T_INTEGER2;}
                 | T_DECIMAL128  { $$=T_DECIMAL128;}
                 ;
 
-validstrtype:  	T_CSTR        { $$=T_CSTR;}
+validstrtype:      T_CSTR        { $$=T_CSTR;}
                 | T_PSTR        { $$=T_PSTR;}
                 | T_UCHAR        { $$=T_UCHAR;}
                 | T_VUTF8        { $$=T_VUTF8;}
@@ -284,70 +284,70 @@ valididxstrtype:    T_CSTR      { $$=T_CSTR;}
                     | T_UCHAR   { $$=T_UCHAR;}
                     ;
 
-typedec:	validctype varname fieldopts comment
+typedec:    validctype varname fieldopts comment
                                                 { 
-						  declaration=1;
-						  rec_c_add($1, -1, $2, $4 /*$5*/); 
-						  reset_array();
-						  reset_fldopt();
-						}
+                          declaration=1;
+                          rec_c_add($1, -1, $2, $4 /*$5*/); 
+                          reset_array();
+                          reset_fldopt();
+                        }
                 | validstrtype varname carray fieldopts comment 
                                                 {
-						  declaration=1; 
+                          declaration=1; 
                                                   rec_c_add($1, -1, $2, $5);
                                                   reset_array();
-						  reset_fldopt();
+                          reset_fldopt();
                                                 } 
                 ;
 
 
 carray:         cstart                       { range_or_array=CLANG;}
-		;
+        ;
 
 cstart:         '[' number ']' cstart
-						{
-							lastidx++;
-							if ((gbl_allow_neg_column_size == 0) &&
+                        {
+                            lastidx++;
+                            if ((gbl_allow_neg_column_size == 0) &&
                                 ($2.number < 0)) {
-								csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
-									current_line);
-								csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
-									current_line);
-								any_errors++;
-							} else {
+                                csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+                                    current_line);
+                                csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
+                                    current_line);
+                                any_errors++;
+                            } else {
                                 if ($2.number < 0) {
                                     logmsg(LOGMSG_WARN, "CSC2: ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
                                            current_line);
                                 }
-								add_array($2.number, NULL);
-							}
-						}
+                                add_array($2.number, NULL);
+                            }
+                        }
                 | '[' varname ']' cstart
-						{
-							int i=constant($2);
-							if (i != -1) {
-								if ((gbl_allow_neg_column_size == 0) &&
+                        {
+                            int i=constant($2);
+                            if (i != -1) {
+                                if ((gbl_allow_neg_column_size == 0) &&
                                     (constants[i].value < 0)) {
-									csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
-										current_line);
-									csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
-										current_line);
-									any_errors++;
-								} else {
+                                    csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+                                        current_line);
+                                    csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
+                                        current_line);
+                                    any_errors++;
+                                } else {
                                     if (constants[i].value < 0) {
                                         logmsg(LOGMSG_WARN, "CSC2: ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
                                                current_line);
                                     }
-									lastidx++;
-									add_array(constants[i].value,
-										constants[i].nm);
-								}
-							} else {
-								csc2_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT\n", current_line);
-								csc2_syntax_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT", current_line);
-								any_errors++;
-							}
-						}
+                                    lastidx++;
+                                    add_array(constants[i].value,
+                                        constants[i].nm);
+                                }
+                            } else {
+                                csc2_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT\n", current_line);
+                                csc2_syntax_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT", current_line);
+                                any_errors++;
+                            }
+                        }
                 | /* %empty */
                 ;
 
@@ -355,12 +355,12 @@ cstart:         '[' number ']' cstart
 fltnumber:      T_FLOAT         { $$=yylval.fltpoint; }
                 ;
 
-number:		T_NUM		{ $$=yylval.numstr; }
-		;
+number:        T_NUM        { $$=yylval.numstr; }
+        ;
 
 sqlhexstr:      T_SQLHEXSTR     { $$=yylval.bytestr; }
                 ;
-varname:	T_VARNAME
+varname:    T_VARNAME
        {
             yylval.varname=csc2_strdup(yylval.varname);
             if (yylval.varname==0) {
@@ -369,66 +369,66 @@ varname:	T_VARNAME
             }
             $$=yylval.varname;
             } 
-		;
+        ;
 
-string:		T_STRING
-			{
-			char *str;
-			str=(char*)csc2_malloc(strlen(yylval.opttext)+1);
-			if (str==0) {
-			  csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.opttext);
-			  exit(-1);
-			}
-			strcpy(str, yylval.opttext+1);
-			str[strlen(str)-1]=0;
-			$$=str;
-			}
+string:        T_STRING
+            {
+            char *str;
+            str=(char*)csc2_malloc(strlen(yylval.opttext)+1);
+            if (str==0) {
+              csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.opttext);
+              exit(-1);
+            }
+            strcpy(str, yylval.opttext+1);
+            str[strlen(str)-1]=0;
+            $$=str;
+            }
                 ;
 
-comment:	T_COMMENT	
-			{
-			remem_com=(char*)csc2_malloc(yyleng+1);
-			if (remem_com==0) {
-			  csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.comment);
-			  exit(-1);
-			}
-			memcpy(remem_com,yylval.comment,yyleng);
-			remem_com[yyleng]=0;
-			$$=remem_com;
-			}
+comment:    T_COMMENT    
+            {
+            remem_com=(char*)csc2_malloc(yyleng+1);
+            if (remem_com==0) {
+              csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.comment);
+              exit(-1);
+            }
+            memcpy(remem_com,yylval.comment,yyleng);
+            remem_com[yyleng]=0;
+            $$=remem_com;
+            }
 
-	| /* %empty */ {$$=blankchar;}
-		;
+    | /* %empty */ {$$=blankchar;}
+        ;
 
 /* keystruct: defines a key
-**	ie.
-**	keys {
-**		0 = firm
-**		1 = cust + term
-**	}
+**    ie.
+**    keys {
+**        0 = firm
+**        1 = cust + term
+**    }
 */
 
-keystruct:	T_KEYS '{' multikeydef '}' 
-		;
+keystruct:    T_KEYS '{' multikeydef '}' 
+        ;
 
-multikeydef:	keydef multikeydef
-		|		keydef
-		;
+multikeydef:    keydef multikeydef
+        |        keydef
+        ;
 
-keydef:		multikeyflags string '=' compoundkey where comment
-							{ 
-							key_add_tag($2,0,$5);
-							key_piece_clear(); 
-							}
-		|	multikeyflags string '(' typename ')' '=' compoundkey where comment
-							{	/* conditional key */
-							key_add_tag($2,$4,$8); 
-							key_piece_clear(); 
-							}
-		;
+keydef:        multikeyflags string '=' compoundkey where comment
+                            { 
+                            key_add_tag($2,0,$5);
+                            key_piece_clear(); 
+                            }
+        |    multikeyflags string '(' typename ')' '=' compoundkey where comment
+                            {    /* conditional key */
+                            key_add_tag($2,$4,$8); 
+                            key_piece_clear(); 
+                            }
+        ;
 
 
-where:	T_WHERE
+where:    T_WHERE
             {
             yylval.where=(char*)csc2_strdup(yylval.where);
             if (yylval.where==0) {
@@ -437,8 +437,8 @@ where:	T_WHERE
             }
             $$=yylval.where;
             }
-	| /* %empty */ {$$=blankchar;}
-		;
+    | /* %empty */ {$$=blankchar;}
+        ;
 
 exprtype: '(' validctype ')'
           {
@@ -450,18 +450,18 @@ exprtype: '(' validctype ')'
           }
         ;
 
-multikeyflags:	keyflags multikeyflags
-		| /* %empty */
-		;
+multikeyflags:    keyflags multikeyflags
+        | /* %empty */
+        ;
 
 
-keyflags:	T_DUP		{ key_setdup(); }
+keyflags:    T_DUP        { key_setdup(); }
                 | T_RECNUMS     { key_setrecnums(); }
                 | T_PRIMARY     { key_setprimary(); }
                 | T_DATAKEY '(' compounddatakey ')'     { key_setpartialdatakey(); }
                 | T_DATAKEY     { key_setdatakey(); }
                 | T_UNIQNULLS   { key_setuniqnulls(); }
-		;
+        ;
 
 compounddatakey: datakeypiece
     |   datakeypiece ',' compounddatakey
@@ -471,62 +471,62 @@ datakeypiece: varname {
                                                           datakey_piece_add($1);
                                                         };
 
-compoundkey:	keypiece
-		|		keypiece '+' compoundkey
-		;
+compoundkey:    keypiece
+        |        keypiece '+' compoundkey
+        ;
 
-keypiece:	varname	{ 
+keypiece:    varname    { 
                                                           key_piece_add($1, 0); 
                                                           reset_array(); 
                                                           reset_range();
                                                         }
-		|	T_ASCEND varname { 
+        |    T_ASCEND varname { 
                                                           key_piece_add($2, 0); 
                                                           reset_array(); 
                                                           reset_range();
-		                                        }
-		|	T_DESCEND varname { 
-		                                          key_piece_setdescend(); 
-							  key_piece_add($2, 0); 
-							  reset_array();
-							  reset_range();
-							 }
-		|	exprtype string {
+                                                }
+        |    T_DESCEND varname { 
+                                                  key_piece_setdescend(); 
+                              key_piece_add($2, 0); 
+                              reset_array();
+                              reset_range();
+                             }
+        |    exprtype string {
                 key_piece_add($2, 1);
                 reset_key_exprtype();
                 reset_array(); 
                 reset_range();
             }
-		|	T_ASCEND exprtype string {
+        |    T_ASCEND exprtype string {
                 key_piece_add($3, 1);
                 reset_key_exprtype();
                 reset_array(); 
                 reset_range();
             }
-		|	T_DESCEND exprtype string {
+        |    T_DESCEND exprtype string {
                 key_piece_setdescend();
                 key_piece_add($3, 1);
                 reset_key_exprtype();
                 reset_array(); 
                 reset_range();
             }
-		;
+        ;
 
 
-yesno:	T_YES		{ $$=1; }
-	|	T_NO		{ $$=0; }
-	;
+yesno:    T_YES        { $$=1; }
+    |    T_NO        { $$=0; }
+    ;
  
-typename:		T_VARNAME	{ 
-							char *name = (char*)csc2_malloc(yyleng+1);
-							if (!name) {
-								logmsgperror("typename");
-								exit(-1);
-							}
-							memcpy(name,yylval.varname,yyleng);
-							name[yyleng]=0;
-							$$=name;
-							}
+typename:        T_VARNAME    { 
+                            char *name = (char*)csc2_malloc(yyleng+1);
+                            if (!name) {
+                                logmsgperror("typename");
+                                exit(-1);
+                            }
+                            memcpy(name,yylval.varname,yyleng);
+                            name[yyleng]=0;
+                            $$=name;
+                            }
 
 %%
 

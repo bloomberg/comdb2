@@ -2010,24 +2010,24 @@ static inline void set_del_lsn(const char *func, unsigned int line,
 
 int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file)
 {
-	return __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, file);
+    return __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, file);
 }
 
 int truncate_commit_lsn_map(bdb_state_type *bdb_state, int file)
 {
-	int del_log;
+    int del_log;
 
-	del_log = file + 1;
+    del_log = file + 1;
 
-	if (bdb_state == NULL) {
-		return 0;
-	}
+    if (bdb_state == NULL) {
+        return 0;
+    }
 
-	while (__txn_commit_map_delete_logfile_txns(bdb_state->dbenv, del_log) == 0) {
-		++del_log;
-	}
+    while (__txn_commit_map_delete_logfile_txns(bdb_state->dbenv, del_log) == 0) {
+        ++del_log;
+    }
 
-	return 0;
+    return 0;
 }
 
 /* Remove pglogs & clear queues for anything larger than LSN.

@@ -73,8 +73,8 @@ extern int macc_ferror(FILE *fh);
 /* Adding \r here would also deal with Windows-style line endings,
  * essentially converting \r\n into \n.
  */
-space	[\t \r]+
-number	-?[0-9]+
+space   [\t \r]+
+number  -?[0-9]+
 dqstring \"(\\.|[^\n\\\"])*\"
 sqstring \'(\\.|[^\n\\\'])*\'
 where [{][\t ]*[Ww][Hh][Ee][Rr][Ee][\t ]({sqstring}|{dqstring}|[^}\"\'])*[\t ]*[}]
@@ -101,29 +101,29 @@ nonclosingbrkt [^}]*
                  rectplvl = 0;
                }
 
-<INITIAL,RECTYPE>^[\t ]*{comment}$	/* ignore full line comment */ ;
-<INITIAL,CONSTRAINTS,RECTYPE,DBSTORE>{space}		/* ignore whitespace */ ;
-<INITIAL,CONSTRAINTS,RECTYPE>{comment}		; /*{ yylval.comment = yytext; return T_COMMENT; } ignore more comments */
+<INITIAL,RECTYPE>^[\t ]*{comment}$      /* ignore full line comment */ ;
+<INITIAL,CONSTRAINTS,RECTYPE,DBSTORE>{space}            /* ignore whitespace */ ;
+<INITIAL,CONSTRAINTS,RECTYPE>{comment}          ; /*{ yylval.comment = yytext; return T_COMMENT; } ignore more comments */
 <INITIAL,RECTYPE>"/*"                   {
                                    register int c;
 
                                    for ( ; ; )
                                    {
                                      while ( (c = input()) != '*' &&  c != EOF );    /* eat up text of comment */
-				     if ( c == '*' )
-				     {
-				       while ( (c = input()) == '*' ) ; /* eat up '*' character */
-				       
-				       if ( c == '/' )
-				         break;    /* found the end */
+                                     if ( c == '*' )
+                                     {
+                                       while ( (c = input()) == '*' ) ; /* eat up '*' character */
+                                       
+                                       if ( c == '/' )
+                                         break;    /* found the end */
                                      }
 
-				     if ( c == EOF )
+                                     if ( c == EOF )
                                      {
-				       logmsgperror( "EOF in comment" );
-				       break;
-				     }
-				   }
+                                       logmsgperror( "EOF in comment" );
+                                       break;
+                                     }
+                                   }
                                 }
 
 <RECTYPE>{sqlhexstr}            { 
@@ -144,10 +144,10 @@ nonclosingbrkt [^}]*
                                   /* clear out the last (') */
 
                                   for (i=slen-1;data[i]=='\''||isspace(data[i]);i--) 
-				       {  data[i]=0; }
+                                       {  data[i]=0; }
 
                                   /* get new length again */
-				  slen=strlen(data);
+                                  slen=strlen(data);
                                   if (slen < 0)
                                   {
                                      /* hex data has bad length..must be divisible by 2 (each byte) */
@@ -163,58 +163,58 @@ nonclosingbrkt [^}]*
                                   bdata[2]=0;
                                   for (i=0,j=sizeof(int);i<slen;i+=2,j++)
                                   {
-				    if ((i+2)>slen)
-				      {
-					/*if (slen==1)
-					  {
-					    bdata[0]='0';
-					    bdata[1]=data[i];
-					  }
-					else*/
-					  {
-					    bdata[0]=data[i];
-					    bdata[1]='0';
-					  }
-					  yylval.bytestr[j]=(unsigned char)strtol(bdata,NULL,16);
-					  j++;
-					  /*fsnapf(stderr, yylval.bytestr,j); */
-					  j-=sizeof(int);
-					  memcpy(&yylval.bytestr[0], &j, sizeof(int));
-					  return T_SQLHEXSTR;
-				      }
-				    else
-				      {
-				         bdata[0]=data[i];
-					 bdata[1]=data[i+1];
-				      }
-				    yylval.bytestr[j]=(unsigned char)strtol(bdata,NULL,16);
+                                    if ((i+2)>slen)
+                                      {
+                                        /*if (slen==1)
+                                          {
+                                            bdata[0]='0';
+                                            bdata[1]=data[i];
+                                          }
+                                        else*/
+                                          {
+                                            bdata[0]=data[i];
+                                            bdata[1]='0';
+                                          }
+                                          yylval.bytestr[j]=(unsigned char)strtol(bdata,NULL,16);
+                                          j++;
+                                          /*fsnapf(stderr, yylval.bytestr,j); */
+                                          j-=sizeof(int);
+                                          memcpy(&yylval.bytestr[0], &j, sizeof(int));
+                                          return T_SQLHEXSTR;
+                                      }
+                                    else
+                                      {
+                                         bdata[0]=data[i];
+                                         bdata[1]=data[i+1];
+                                      }
+                                    yylval.bytestr[j]=(unsigned char)strtol(bdata,NULL,16);
                                   }
-				  j-=sizeof(int);
-				  /*fprintf(stderr, "malloc bytestr %x %d\n", yylval.bytestr,j);
+                                  j-=sizeof(int);
+                                  /*fprintf(stderr, "malloc bytestr %x %d\n", yylval.bytestr,j);
                                   fsnapf(stderr, yylval.bytestr+sizeof(int), j); */
-				  memcpy(&yylval.bytestr[0], &j, sizeof(int));
+                                  memcpy(&yylval.bytestr[0], &j, sizeof(int));
                                   return T_SQLHEXSTR; 
                                 }        
 
-<INITIAL,CONSTRAINTS,RECTYPE>\n			{ current_line++; }
+<INITIAL,CONSTRAINTS,RECTYPE>\n                 { current_line++; }
 
-<INITIAL,RECTYPE>{number}	{ yylval.numstr.number=atoi(yytext); yylval.numstr.numstr = csc2_strdup(yytext); return T_NUM; }
+<INITIAL,RECTYPE>{number}       { yylval.numstr.number=atoi(yytext); yylval.numstr.numstr = csc2_strdup(yytext); return T_NUM; }
 <INITIAL,RECTYPE>{fltnumber}            { yylval.fltpoint=(double)strtod(yytext,NULL); return T_FLOAT;}
-<INITIAL,RECTYPE>short		        { return T_INTEGER2; }
+<INITIAL,RECTYPE>short                  { return T_INTEGER2; }
 <INITIAL,RECTYPE>u_short                { return T_UINTEGER2; }
-<INITIAL,RECTYPE>int		        { return T_INTEGER4; }
+<INITIAL,RECTYPE>int                    { return T_INTEGER4; }
 <INITIAL,RECTYPE>u_int                  { return T_UINTEGER4;}
 <INITIAL,RECTYPE>byte                   { return T_UCHAR; }
 <INITIAL,RECTYPE>longlong               { return T_LONGLONG; }
 <INITIAL,RECTYPE>u_longlong             { return T_ULONGLONG; }
 <INITIAL,RECTYPE>u_long                 { return T_ULONG; }
-<INITIAL,RECTYPE>float			{ return T_REAL4; }
-<INITIAL,RECTYPE>double			{ return T_REAL8; }
-<INITIAL,RECTYPE>bool			{ return T_LOGICAL; }
-<INITIAL,RECTYPE>cstring		{ return T_CSTR; }
-<INITIAL,RECTYPE>pstring		{ return T_PSTR; }
-<INITIAL,RECTYPE>blob			{ return T_BLOB; }
-<INITIAL,RECTYPE>vutf8			{ return T_VUTF8; }
+<INITIAL,RECTYPE>float                  { return T_REAL4; }
+<INITIAL,RECTYPE>double                 { return T_REAL8; }
+<INITIAL,RECTYPE>bool                   { return T_LOGICAL; }
+<INITIAL,RECTYPE>cstring                { return T_CSTR; }
+<INITIAL,RECTYPE>pstring                { return T_PSTR; }
+<INITIAL,RECTYPE>blob                   { return T_BLOB; }
+<INITIAL,RECTYPE>vutf8                  { return T_VUTF8; }
 <INITIAL,RECTYPE>datetime       { return T_DATETIME; }
 <INITIAL,RECTYPE>datetimeus     { return T_DATETIMEUS; }
 <INITIAL,RECTYPE>intervalym     { return T_INTERVALYM; }
@@ -224,7 +224,7 @@ nonclosingbrkt [^}]*
 <INITIAL,RECTYPE>decimal64      { return T_DECIMAL64; }
 <INITIAL,RECTYPE>decimal128     { return T_DECIMAL128; }
 
-<INITIAL>dup			{ return T_DUP; }
+<INITIAL>dup                    { return T_DUP; }
 <INITIAL>recnums                { return T_RECNUMS; }
 <INITIAL>datacopy               { return T_DATAKEY; }
 <INITIAL>primary                { return T_PRIMARY; }
@@ -237,16 +237,16 @@ nonclosingbrkt [^}]*
 <DBSTORE>"{"                    { BEGIN DBSTORE_FUNC; return yytext[0]; }
 <DBSTORE>.                      { BEGIN RECTYPE; unput( yytext[0] );}
 <DBSTORE_FUNC>"}"               { BEGIN RECTYPE; return yytext[0]; }
-<DBSTORE_FUNC>{nonclosingbrkt}	{ yylval.opttext=yytext; return T_STRING; }
+<DBSTORE_FUNC>{nonclosingbrkt}  { yylval.opttext=yytext; return T_STRING; }
 <RECTYPE>nextsequence           { return T_FLD_NEXTSEQUENCE;}
 <RECTYPE>dbload                 { return T_FLD_LDDEFAULT;}
 <RECTYPE>null                   { return T_FLD_NULL;}
 
-<INITIAL,RECTYPE>[Yy][Ee][Ss]	        { return T_YES; }
-<INITIAL,RECTYPE>[Nn][Oo]		{ return T_NO; }
+<INITIAL,RECTYPE>[Yy][Ee][Ss]           { return T_YES; }
+<INITIAL,RECTYPE>[Nn][Oo]               { return T_NO; }
 
-<INITIAL>constants		{ return T_CONSTANTS; }
-<INITIAL>keys			{ return T_KEYS; }
+<INITIAL>constants              { return T_CONSTANTS; }
+<INITIAL>keys                   { return T_KEYS; }
 <INITIAL>tag                    { BEGIN RECTYPE;  rectplvl=0;  return T_TABLE_TAG; }
 <INITIAL,RECTYPE>schema         {
                                   if (rectplvl > 0) {
@@ -288,14 +288,14 @@ nonclosingbrkt [^}]*
                                 end[0] = '\0';
                                 return T_WHERE;
                               }
-<INITIAL,RECTYPE>{varname}		{ yylval.varname=yytext; return T_VARNAME; }
+<INITIAL,RECTYPE>{varname}              { yylval.varname=yytext; return T_VARNAME; }
 
-<INITIAL,CONSTRAINTS,RECTYPE>{dqstring}		{ yylval.opttext=yytext; return T_STRING; }
-<INITIAL,CONSTRAINTS>"<"			{ return T_LT; }
-<INITIAL,CONSTRAINTS>">"			{ return T_GT; }
+<INITIAL,CONSTRAINTS,RECTYPE>{dqstring}         { yylval.opttext=yytext; return T_STRING; }
+<INITIAL,CONSTRAINTS>"<"                        { return T_LT; }
+<INITIAL,CONSTRAINTS>">"                        { return T_GT; }
 
-<INITIAL>"<ASCEND>"		{ return T_ASCEND; }
-<INITIAL>"<DESCEND>"	        { return T_DESCEND; }
+<INITIAL>"<ASCEND>"             { return T_ASCEND; }
+<INITIAL>"<DESCEND>"            { return T_DESCEND; }
 
 <CONSTRAINTS>cascade            { return T_CASCADE; }
 <CONSTRAINTS>restrict           { return T_RESTRICT; }
@@ -312,16 +312,16 @@ nonclosingbrkt [^}]*
 <INITIAL,RECTYPE,CONSTRAINTS>[\}]                   { 
                                   rectplvl--; 
                                   if (rectplvl<=0)
-				   {
-				      BEGIN 0;
-				      return yytext[0];
+                                   {
+                                      BEGIN 0;
+                                      return yytext[0];
                                    }
-				  else
-				   return yytext[0]; 
+                                  else
+                                   return yytext[0]; 
                                 }
 <RECTYPE>[\[\]_=]              { return yytext[0]; }
 <RECTYPE>.                      { BEGIN 0; unput( yytext[0] ); }
-<INITIAL>.			{ return yytext[0]; }
+<INITIAL>.                      { return yytext[0]; }
 <CONSTRAINTS>.                  { BEGIN 0; unput( yytext[0] ); }
 
 %%
