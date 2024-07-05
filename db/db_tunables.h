@@ -2158,6 +2158,11 @@ REGISTER_TUNABLE("snapshot_serial_verify_retry",
                  TUNABLE_BOOLEAN, &gbl_snapshot_serial_verify_retry, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("snapshot_lite",
+                 "Use snapshot lite mode (snapshot + retries in new snapshot) (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_snapshot_lite, 0, NULL,
+                 NULL, NULL, NULL);
+
 REGISTER_TUNABLE("strict_double_quotes",
                  "In SQL queries, forbid the use of double-quotes to denote "
                  "a string literal.  Any attempts to do so will result in a "

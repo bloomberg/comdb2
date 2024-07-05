@@ -1,0 +1,9 @@
+1 SELECT '---------------------------------- PART #01 ----------------------------------' AS part;
+1 CREATE TABLE t1(i INT PRIMARY KEY, j INT)
+1 SET TRANSACTION SNAPSHOT
+1 BEGIN
+1 INSERT INTO t1 VALUES(1, 1) ON CONFLICT(i) DO UPDATE set j=j+1;
+2 INSERT INTO t1 VALUES(1, 1)
+1 COMMIT
+1 SELECT * FROM t1
+1 DROP TABLE t1;
