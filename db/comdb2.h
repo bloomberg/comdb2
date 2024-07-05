@@ -351,7 +351,7 @@ enum RCODES {
     ERR_VERIFY_PI = 319,
     ERR_CHECK_CONSTRAINT = 320,
     ERR_INDEX_CONFLICT = 330,
-    ERR_UNCOMMITABLE_TXN = 404, /* txn is uncommitable, returns ERR_VERIFY
+    ERR_UNCOMMITTABLE_TXN = 404, /* txn is uncommittable, returns ERR_VERIFY
                                    rather than retry */
     ERR_DIST_ABORT = 430,       /* Prepared txn has been aborted */
     ERR_QUERY_REJECTED = 451,
@@ -1355,12 +1355,12 @@ struct ireq {
     SBUF2 *dbglog_file;
     int *nwrites;
 
-    /* List of indices that we've written to detect uncommitable upsert txns */
+    /* List of indices that we've written to detect uncommittable upsert txns */
     hash_t *vfy_idx_hash; 
 
     int dup_key_insert;
 
-    /* List of genids that we've written to detect uncommitable txn's */
+    /* List of genids that we've written to detect uncommittable txn's */
     hash_t *vfy_genid_hash;
     pool_t *vfy_genid_pool;
 

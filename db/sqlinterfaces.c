@@ -2199,7 +2199,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     /* convert this to user code */
                     rc = blockproc2sql_error(clnt->osql.xerr.errval, __func__,
                                              __LINE__);
-                    if (clnt->osql.xerr.errval == ERR_UNCOMMITABLE_TXN) {
+                    if (clnt->osql.xerr.errval == ERR_UNCOMMITTABLE_TXN) {
                         osql_set_replay(__FILE__, __LINE__, clnt,
                                         OSQL_RETRY_LAST);
                     }
@@ -3685,8 +3685,8 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
         irc = errstat_get_rc(&clnt->osql.xerr);
         if (irc) {
             *perrstr = (char *)errstat_get_str(&clnt->osql.xerr);
-            /* Do not retry on ERR_UNCOMMITABLE_TXN. */
-            if (irc == ERR_UNCOMMITABLE_TXN) {
+            /* Do not retry on ERR_UNCOMMITTABLE_TXN. */
+            if (irc == ERR_UNCOMMITTABLE_TXN) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
             } else if ((irc == ERR_SC) && (*perrstr == NULL || (*perrstr)[0] == '\0')) {
                 *perrstr = "a schema change error occurred";
@@ -6484,7 +6484,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case 1229: /* ERR_BLOCK_FAILED + OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT */
         return CDB2ERR_FKEY_VIOLATION;
 
-    case ERR_UNCOMMITABLE_TXN:
+    case ERR_UNCOMMITTABLE_TXN:
         return CDB2ERR_VERIFY_ERROR;
 
     case ERR_REJECTED:

@@ -344,7 +344,7 @@ static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struc
                __func__);
     }
     if (rc && clnt->verify_retries < gbl_osql_verify_retries_max) {
-        logmsg(LOGMSG_ERROR, "Uncommitable transaction %d retried %d times,  "
+        logmsg(LOGMSG_ERROR, "Uncommittable transaction %d retried %d times,  "
                "rc=%d [global retr=%lld] nq=%d tnq=%d\n", clnt->queryid,
                clnt->verify_retries, rc, gbl_verify_tran_replays, nq, tnq);
     }

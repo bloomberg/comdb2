@@ -64,7 +64,7 @@ done
 (a='three', b=1)
 (a='two', b=1)
 done
-[COMMIT] failed with rc 2 uncommitable txn on upd genid=xxxx rc=404
+[COMMIT] failed with rc 2 uncommittable txn on upd genid=xxxx rc=404
 done
 (a='one', b=1)
 (a='three', b=1)
@@ -102,7 +102,7 @@ done
 (a=1, b=2, c=0, 'x'='x')
 (a=3, b=4, c=0, 'x'='x')
 done
-[COMMIT] failed with rc 2 uncommitable txn on upd genid=xxxx rc=404
+[COMMIT] failed with rc 2 uncommittable txn on upd genid=xxxx rc=404
 done
 (a=1, b=2, c=0, 'x'='x')
 (a=3, b=4, c=0, 'x'='x')
@@ -170,7 +170,7 @@ done
 done
 done
 done
-[commit] failed with rc 2 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
+[commit] failed with rc 2 Transaction is uncommittable: Duplicate insert on key 'COMDB2_PK' in table 't1' index 0
 done
 done
 done
@@ -195,7 +195,7 @@ done
 done
 done
 done
-[commit] failed with rc 2 add key constraint duplicate key '$KEY_877B2989' on table 't1' index 0
+[commit] failed with rc 2 Transaction is uncommittable: Duplicate insert on key '$KEY_877B2989' in table 't1' index 0
 done
 (i=1, j=1)
 (i=2, j=1)

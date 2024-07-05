@@ -5224,7 +5224,7 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_que
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
     if (bdberr == BDBERR_DELNOTFOUND)
-        return  bdb_get_type(bdb_handle) == BDBTYPE_QUEUEDB ? ERR_UNCOMMITABLE_TXN: IX_NOTFND;
+        return  bdb_get_type(bdb_handle) == BDBTYPE_QUEUEDB ? ERR_UNCOMMITTABLE_TXN: IX_NOTFND;
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume", bdberr);
 }
 

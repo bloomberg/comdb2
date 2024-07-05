@@ -2007,7 +2007,7 @@ int blkseq_get_rcode(void *data, int datalen)
                 case ERR_NULL_CONSTRAINT:
                 case ERR_SQL_PREP:
                 case ERR_CONSTR:
-                case ERR_UNCOMMITABLE_TXN:
+                case ERR_UNCOMMITTABLE_TXN:
                 case ERR_DIST_ABORT:
                 case ERR_NOMASTER:
                 case ERR_NOTSERIAL:
@@ -2027,7 +2027,7 @@ int blkseq_get_rcode(void *data, int datalen)
                 case ERR_NULL_CONSTRAINT:
                 case ERR_SQL_PREP:
                 case ERR_CONSTR:
-                case ERR_UNCOMMITABLE_TXN:
+                case ERR_UNCOMMITTABLE_TXN:
                 case ERR_DIST_ABORT:
                 case ERR_NOMASTER:
                 case ERR_NOTSERIAL:
