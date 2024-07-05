@@ -4553,6 +4553,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		LISTC_FOR_EACH(rp->lc.child_utxnids, elt, lnk) {
 			if ((ret = __txn_commit_map_add_nolock(dbenv, elt->utxnid, rp->commit_lsn)) != 0) {
 				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+				logmsg(LOGMSG_ERROR, "%s failed at line %d\n", __func__, __LINE__);
 				goto err;
 			}
 		}
@@ -5104,8 +5105,8 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		if (commit_lsn_map) {
 			if ((ret = __txn_commit_map_add(dbenv, 
 					utxnid, rctl->lsn)), ret != 0) {
-				logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-				return ret;
+				line = __LINE__;
+				goto err;
 			}
 		}
 
@@ -5286,6 +5287,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		LISTC_FOR_EACH(lc.child_utxnids, elt, lnk) {
 			if ((ret = __txn_commit_map_add_nolock(dbenv, elt->utxnid, rctl->lsn)) != 0) {
 				Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+				line = __LINE__;
 				goto err;
 			}
 		}
@@ -6002,8 +6004,8 @@ bad_resize:	;
 	if (commit_lsn_map) {
 		if ((ret = __txn_commit_map_add(dbenv, 
 				utxnid, ctrllsn)), ret != 0) {
-			logmsg(LOGMSG_DEBUG, "%s failed at line %d\n", __func__, __LINE__);
-			return ret;
+			logmsg(LOGMSG_ERROR, "%s failed at line %d\n", __func__, __LINE__);
+			goto err;
 		}
 	}
 
