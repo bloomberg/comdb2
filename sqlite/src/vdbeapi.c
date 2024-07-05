@@ -18,8 +18,6 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "logmsg.h"
-
-int gbl_alternate_normalize = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_DEPRECATED
@@ -2156,11 +2154,7 @@ const char *sqlite3_normalized_sql(sqlite3_stmt *pStmt){
   if( p->zNormSql==0 && ALWAYS(p->zSql!=0) ){
     sqlite3_mutex_enter(p->db->mutex);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( gbl_alternate_normalize ){
-      p->zNormSql = sqlite3Normalize_alternate(p, p->zSql, 0);
-    }else{
-      p->zNormSql = sqlite3Normalize(p, p->zSql, 0);
-    }
+    p->zNormSql = sqlite3Normalize(p, p->zSql, 0);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     p->zNormSql = sqlite3Normalize(p, p->zSql);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

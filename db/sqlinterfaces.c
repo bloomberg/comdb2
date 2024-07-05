@@ -144,7 +144,6 @@ extern int gbl_expressions_indexes;
 extern int gbl_old_column_names;
 extern hash_t *gbl_fingerprint_hash;
 extern pthread_mutex_t gbl_fingerprint_hash_mu;
-extern int gbl_alternate_normalize;
 extern int gbl_typessql;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
@@ -3049,12 +3048,7 @@ static void normalize_stmt_and_store(
       }
     } else {
       assert(clnt->sql);
-      char *zOrigNormSql;
-      if (gbl_alternate_normalize) {
-        zOrigNormSql = sqlite3Normalize_alternate(0, clnt->sql, iDefDqId);
-      } else {
-        zOrigNormSql = sqlite3Normalize(0, clnt->sql, iDefDqId);
-      }
+      char *zOrigNormSql = sqlite3Normalize(0, clnt->sql, iDefDqId);
       if (zOrigNormSql) {
         assert(clnt->work.zOrigNormSql==0);
         clnt->work.zOrigNormSql = strdup(zOrigNormSql);
