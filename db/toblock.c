@@ -1111,7 +1111,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     case ERR_NULL_CONSTRAINT:
                     case ERR_SQL_PREP:
                     case ERR_CONSTR:
-                    case ERR_UNCOMMITABLE_TXN:
+                    case ERR_UNCOMMITTABLE_TXN:
                     case ERR_NOMASTER:
                     case ERR_DIST_ABORT:
                     case ERR_NOTSERIAL:
@@ -1132,7 +1132,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         case ERR_NULL_CONSTRAINT:
                         case ERR_SQL_PREP:
                         case ERR_CONSTR:
-                        case ERR_UNCOMMITABLE_TXN:
+                        case ERR_UNCOMMITTABLE_TXN:
                         case ERR_NOMASTER:
                         case ERR_NOTSERIAL:
                         case ERR_DIST_ABORT:
@@ -4791,10 +4791,11 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (rc != 0) {
             if (iq->vfy_idx_track == 1 && iq->dup_key_insert == 1) {
-                rc = ERR_UNCOMMITABLE_TXN;
-                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
-                                               "duplicate key '%s' on "
-                                               "table '%s' index %d",
+                rc = ERR_UNCOMMITTABLE_TXN;
+                errout = ERR_UNCOMMITTABLE_TXN;
+                reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "Transaction is uncommittable: "
+                                                   "Duplicate insert on key '%s' "
+                                                   "in table '%s' index %d",
                       get_keynm_from_db_idx(iq->usedb, ixout),
                       iq->usedb->tablename, ixout);
             } else {
@@ -5229,12 +5230,12 @@ backout:
             }
         }
 
-        if (rc == ERR_UNCOMMITABLE_TXN) {
+        if (rc == ERR_UNCOMMITTABLE_TXN) {
             logmsg(
                 LOGMSG_ERROR,
-                "Forced VERIFY-FAIL for uncommitable blocksql transaction\n");
-            err.errcode = ERR_UNCOMMITABLE_TXN;
-            rc = ERR_UNCOMMITABLE_TXN;
+                "Forced VERIFY-FAIL for uncommittable blocksql transaction\n");
+            err.errcode = ERR_UNCOMMITTABLE_TXN;
+            rc = ERR_UNCOMMITTABLE_TXN;
         }
 
         if (rc == RC_INTERNAL_RETRY) {
@@ -5280,7 +5281,7 @@ backout:
     case ERR_NULL_CONSTRAINT:
     case ERR_SQL_PREP:
     case ERR_CONSTR:
-    case ERR_UNCOMMITABLE_TXN:
+    case ERR_UNCOMMITTABLE_TXN:
     case ERR_NOMASTER:
     case ERR_NOTSERIAL:
     case ERR_DIST_ABORT:

@@ -111,10 +111,10 @@ do_deletes()
         done
         echo "commit" >> $sqlfl
 
-        # the following may fail with "[commit] failed with rc 2 uncommitable txn on del genid=5270003 rc=404"
+        # the following may fail with "[commit] failed with rc 2 uncommittable txn on del genid=5270003 rc=404"
         cdb2sql ${CDB2_OPTIONS} $dbnm default -f $sqlfl  &> $updfl
         res=`grep '\[commit\]' $updfl`
-        if [[ $res != "[commit] rc 0" && $res != "[commit] failed with rc 2 uncommitable"* ]] ; then
+        if [[ $res != "[commit] rc 0" && $res != "[commit] failed with rc 2 uncommittable"* ]] ; then
             failexit "update failed with unexpected error"
         fi
 

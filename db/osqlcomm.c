@@ -6619,15 +6619,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (iq->vfy_genid_track) {
             unsigned long long *g = hash_find(iq->vfy_genid_hash, &dt.genid);
 
-            /* punt immediately with uncommitable txn */
+            /* punt immediately with uncommittable txn */
             if (g) {
-                rc = ERR_UNCOMMITABLE_TXN;
+                rc = ERR_UNCOMMITTABLE_TXN;
                 reqerrstr(iq, COMDB2_DEL_RC_INVL_KEY,
-                          "uncommitable txn on del genid=%llx rc=%d",
+                          "uncommittable txn on del genid=%llx rc=%d",
                           bdb_genid_to_host_order(dt.genid), rc);
                 err->blockop_num = step;
                 err->ixnum = 0;
-                err->errcode = ERR_UNCOMMITABLE_TXN;
+                err->errcode = ERR_UNCOMMITTABLE_TXN;
                 return rc;
             }
 
@@ -6736,13 +6736,13 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (rc != 0) {
             if (err->errcode == OP_FAILED_UNIQ) {
                 if (iq->vfy_idx_track == 1 && iq->dup_key_insert == 1) {
-                    rc = ERR_UNCOMMITABLE_TXN;
-                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
-                                                   "duplicate key '%s' on "
-                                                   "table '%s' index %d",
+                    rc = ERR_UNCOMMITTABLE_TXN;
+                    reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "Transaction is uncommittable: "
+                                                       "Duplicate insert on key '%s' "
+                                                       "in table '%s' index %d",
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
                           iq->usedb->tablename, err->ixnum);
-                    err->errcode = ERR_UNCOMMITABLE_TXN;
+                    err->errcode = ERR_UNCOMMITTABLE_TXN;
                     return rc;
                 }
 
@@ -6865,15 +6865,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (iq->vfy_genid_track) {
             unsigned long long *g = hash_find(iq->vfy_genid_hash, &genid);
 
-            /* punt immediately with uncommitable txn */
+            /* punt immediately with uncommittable txn */
             if (g) {
-                rc = ERR_UNCOMMITABLE_TXN;
+                rc = ERR_UNCOMMITTABLE_TXN;
                 reqerrstr(iq, COMDB2_UPD_RC_INVL_KEY,
-                          "uncommitable txn on upd genid=%llx rc=%d",
+                          "uncommittable txn on upd genid=%llx rc=%d",
                           bdb_genid_to_host_order(genid), rc);
                 err->blockop_num = step;
                 err->ixnum = 0;
-                err->errcode = ERR_UNCOMMITABLE_TXN;
+                err->errcode = ERR_UNCOMMITTABLE_TXN;
                 return rc;
             }
 
