@@ -116,6 +116,7 @@ static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
 
 struct temp_cursor;
 struct temp_table;
+extern int gbl_snapshot_lite;
 extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
@@ -548,6 +549,10 @@ void throttle(void)
 int get_calls_per_sec(void) { return calls_per_second; }
 
 void reset_calls_per_sec(void) { calls_per_second = 0; }
+
+int get_default_tranlevel() {
+    return gbl_snapshot_lite ? TRANLEVEL_MODSNAP : TRANLEVEL_SOSQL;
+}
 
 static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
@@ -12599,7 +12604,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
 
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.dbtran.mode = get_default_tranlevel();
     clnt.sql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;

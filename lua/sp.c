@@ -90,6 +90,8 @@ extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
 
+extern int get_default_tranlevel();
+
 pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
 char *gbl_break_spname;
@@ -7334,7 +7336,7 @@ void *exec_trigger(char *spname)
 
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.dbtran.mode = get_default_tranlevel();
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
     clnt.current_user.bypass_auth = 1;

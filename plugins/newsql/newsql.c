@@ -30,7 +30,9 @@
 #include <newsql.h>
 
 void free_original_normalized_sql(struct sqlclntstate *);
+extern int get_default_tranlevel();
 
+extern int gbl_snapshot_lite;
 extern int gbl_allow_incoherent_sql;
 extern int gbl_disable_skip_rows;
 extern int gbl_return_long_column_names;
@@ -2112,9 +2114,8 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         clnt->had_errors = 0;
         clnt->ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
     }
-    if (clnt->dbtran.mode < TRANLEVEL_SOSQL) {
-        clnt->dbtran.mode = TRANLEVEL_SOSQL;
-    }
+    clnt->dbtran.mode = get_default_tranlevel();
+
     clnt->osql.sent_column_data = 0;
 
     if (clnt->tzname[0] == 0 && sql_query->tzname) {

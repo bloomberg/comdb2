@@ -148,6 +148,8 @@ extern int gbl_alternate_normalize;
 extern int gbl_typessql;
 extern int gbl_modsnap_asof;
 
+extern int get_default_tranlevel();
+
 /* Once and for all:
 
    struct sqlthdstate:
@@ -7140,7 +7142,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, 1);
     plugin_set_callbacks(clnt, internal);
-    clnt->dbtran.mode = TRANLEVEL_SOSQL;
+    clnt->dbtran.mode = get_default_tranlevel();
     clr_high_availability(clnt);
 }
 
