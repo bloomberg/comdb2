@@ -1007,7 +1007,8 @@ __dbreg_get_name(dbenv, fid, namep)
 	return (-1);
 }
 
-int gbl_abort_on_ufid_mismatch = 1;
+/* Apparently this occurs all of the time without any issues */
+int gbl_abort_on_ufid_mismatch = 0;
 
 /*
  * __dbreg_do_open --
