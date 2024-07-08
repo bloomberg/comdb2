@@ -7090,6 +7090,6 @@ void print_idle_clnt(struct sqlclntstate *clnt)
     struct timeval now, elapsed;
     gettimeofday(&now, NULL);
     timersub(&now, &clnt->wait_for_rd_since, &elapsed);
-    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  prev-process:%s  prev-opcode:%s  second-last-sql:%s  last-sql:%s\n",
-            get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->prev_argv0, clnt->prev_opcode, clnt->second_last_sql, clnt->last_sql);
+    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  process:%s  prev-process:%s  prev-opcode:%s  second-last-sql:%s  last-sql:%s\n",
+           get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->argv0, clnt->prev_argv0, clnt->prev_opcode, clnt->second_last_sql, clnt->last_sql);
 }
