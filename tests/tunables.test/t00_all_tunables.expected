@@ -8,7 +8,7 @@
 (name='abort_on_in_use_rqid', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='abort_on_invalid_context', description='abort_on_invalid_context', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_on_replicant_log_write', description='Abort if replicant is writing to logs', type='BOOLEAN', value='OFF', read_only='N')
-(name='abort_on_ufid_mismatch', description='Abort in dbreg-open on ufid mismatch. (Default: on)', type='BOOLEAN', value='OFF', read_only='N')
+(name='abort_on_ufid_mismatch', description='Abort in dbreg-open on ufid mismatch. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_on_unfound_txn', description='Abort if we cannot find a txn for a thread.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='abort_ufid_open', description='Abort ufid_open when applying a transaction', type='BOOLEAN', value='OFF', read_only='N')
 (name='abort_zero_lsn_memp_put', description='Abort on memp_fput pages with zero headers', type='BOOLEAN', value='OFF', read_only='N')
