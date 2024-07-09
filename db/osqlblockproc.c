@@ -37,6 +37,7 @@
 #include <plhash.h>
 #include <assert.h>
 #include <unistd.h>
+#include <uuid/uuid.h>
 
 #include "comdb2.h"
 #include "osqlblockproc.h"
@@ -44,9 +45,7 @@
 #include "osqlsession.h"
 #include "osqlcomm.h"
 #include "sqloffload.h"
-#include "osqlrepository.h"
 #include "comdb2uuid.h"
-#include "bpfunc.h"
 #include "logmsg.h"
 #include "reqlog.h"
 #include "time_accounting.h"
@@ -55,6 +54,7 @@
 #include "sc_global.h"
 #include "sc_logic.h"
 #include "gettimeofday_ms.h"
+#include "eventlog.h"
 
 extern int gbl_reorder_idx_writes;
 extern uint32_t gbl_max_time_per_txn_ms;
@@ -988,6 +988,14 @@ static int process_this_session(
                       &flags, &updCols, blobs, step, err, &receivedrows);
         free(data);
 
+        EVENTLOG_DEBUG(
+            if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
+                uuidstr_t uuid;
+                comdb2uuidstr(sess->uuid, uuid);
+                eventlog_debug("osql_process_packet: rc_out %d", rc_out);
+            }
+        );
+
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
             /* error processing, can be a verify error or deadlock */
@@ -1039,7 +1047,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *))
 {
-
     int rc = 0;
     int out_rc = 0;
     int bdberr = 0;

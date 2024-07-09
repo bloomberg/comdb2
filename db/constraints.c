@@ -21,9 +21,11 @@
 #include <alloca.h>
 #include <memory_sync.h>
 
+#include "cdb2_constants.h"
 #include "comdb2.h"
 #include <schemachange.h>
 #include "tag.h"
+#include "tohex.h"
 #include "types.h"
 #include "block_internal.h"
 #include <assert.h>
@@ -32,6 +34,7 @@
 #include "indices.h"
 #include "osqlsqlthr.h"
 #include "sqloffload.h"
+#include "eventlog.h"
 
 
 static char *get_temp_ct_dbname(long long *);
@@ -1129,6 +1132,28 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                    __func__, __LINE__, lrc, genid);                            \
     } while (0);
 
+
+#define REC_ERROR_LOG(fmt, ...) do {            \
+    EVENTLOG_DEBUG (            \
+        uuidstr_t us;   \
+        if (iq->sorese) { \
+            comdb2uuidstr(iq->sorese->uuid, us); \
+        } \
+        else {  \
+            uuid_t u; \
+            comdb2uuid_clear(u); \
+            comdb2uuidstr(u, us); \
+        } \
+        eventlog_debug("%s:%d uuid %s tbl %s " fmt, __func__, __LINE__, us, iq->usedb ? iq->usedb->tablename : "???",  __VA_ARGS__);            \
+    );            \
+} while(0)
+
+
+#define ERR(_ret, fmt, ...) do { \
+    REC_ERROR_LOG(fmt, __VA_ARGS__); \
+    return _ret; \
+} while(0)
+
 int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                      int *errout)
 {
@@ -1140,6 +1165,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     int od_tail_len = 0;
     char mangled_key[MAXKEYLEN + 1];
     char partial_datacopy_tail[MAXRECSZ];
+
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
@@ -1153,7 +1179,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                   "add key constraint failed malloc");
         *errout = OP_FAILED_INTERNAL;
         *blkpos = 0;
-        return ERR_INTERNAL;
+        ERR(ERR_INTERNAL, "", 0);
     }
 
     struct thread_info *thdinfo = pthread_getspecific(thd_info_key);
@@ -1163,7 +1189,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_CURSOR,
                   "verify key constraint: cannot get add list cursor");
         *errout = OP_FAILED_INTERNAL;
-        return ERR_INTERNAL;
+        ERR(ERR_INTERNAL, "", 0);
     }
 
     void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
@@ -1173,7 +1199,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_CURSOR,
                   "verify key constraint cannot get add list cursor");
         *errout = OP_FAILED_INTERNAL;
-        return ERR_INTERNAL;
+        ERR(ERR_INTERNAL, "", 0);
     }
 
     *ixout = -1;
@@ -1197,7 +1223,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
                   "verify key constraint: cannot get add list record");
         *errout = OP_FAILED_INTERNAL;
-        return ERR_INTERNAL;
+        ERR(ERR_INTERNAL, "", 0);
     }
 
     assert(iq->idxDelete == NULL);
@@ -1213,7 +1239,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
             *errout = OP_FAILED_INTERNAL;
-            return ERR_INTERNAL;
+            ERR(ERR_INTERNAL, "", 0);
         }
         struct forward_ct *curop = &ctrq->ctop.fwdct;
         int flags = curop->flags;
@@ -1243,7 +1269,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
-            return ERR_BADREQ;
+            ERR(ERR_BADREQ, "", 0);
         }
 
         ondisk_size = getdatsize(iq->usedb);
@@ -1256,7 +1282,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
-            return ERR_BADREQ;
+            ERR(ERR_BADREQ, "", 0);
         }
         rc = ix_find_by_rrn_and_genid_tran(iq, addrrn, genid, od_dta, &fndlen,
                                            ondisk_size, trans);
@@ -1265,7 +1291,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             *errout = OP_FAILED_INTERNAL;
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
-            return rc;
+            ERR(rc, "", 0);
         }
 
         if (fndlen != ondisk_size) {
@@ -1279,7 +1305,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
-            return ERR_INTERNAL;
+            ERR(ERR_INTERNAL, "", 0);
         }
 
         if (cached_index_genid != genid) {
@@ -1289,7 +1315,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
-                return ERR_INTERNAL;
+                ERR(ERR_INTERNAL, "", 0);
             }
             cached_index_genid = genid;
         }
@@ -1337,7 +1363,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 *errout = OP_FAILED_BAD_REQUEST;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
-                return ERR_BADREQ;
+                ERR(ERR_BADREQ, "ix %d", 0);
             }
             if (iq->idxInsert)
                 rc = create_key_from_ireq(iq, doidx, 0, &od_dta_tail,
@@ -1356,8 +1382,14 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
-                return ERR_CONVERT_IX;
+                ERR(ERR_CONVERT_IX, "ix %d", idx);
             }
+
+            EVENTLOG_DEBUG(
+                char keyhex[(MAXKEYLEN+1) * 2 + 1];
+                util_tohex(keyhex, key, bdb_keylen(iq->usedb->handle, idx));
+                REC_ERROR_LOG("ix %d key %s", idx, keyhex);
+            );
 
             /* light the prefault kill bit for this subop - newkeys */
             prefault_kill_bits(iq, doidx, PFRQ_NEWKEY);
@@ -1398,7 +1430,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 *ixout = doidx;
                 close_constraint_table_cursor(cur);
                 free_cached_delayed_indexes(iq);
-                return rc;
+                ERR(rc, "dup", 0);
             } else if (rc != 0) {
                 reqerrstr(iq, COMDB2_CSTRT_RC_INTL_ERR,
                           "add key berkley error for key '%s' on index %d",
@@ -1418,7 +1450,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
 
                     rc = ERR_NOMASTER;
                 }
-                return rc;
+                ERR(rc, "error", 0);
             }
         } /* for each index */
 
@@ -1450,7 +1482,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
               "add key constraint error reading add table");
     *errout = OP_FAILED_INTERNAL;
     free_cached_delayed_indexes(iq);
-    return ERR_INTERNAL;
+    ERR(ERR_INTERNAL, "huh", 0);
 }
 
 /* go through all entries in ct_add_table and verify that

@@ -21,6 +21,8 @@
 #include "logmsg.h"
 #include "indices.h"
 #include "sqloffload.h"
+#include "eventlog.h"
+#include "tohex.h"
 
 
 extern int gbl_partial_indexes;
@@ -324,6 +326,30 @@ static inline void append_genid_to_key(dtikey_t *ditk, int ixkeylen)
     memcpy(&ditk->ixkey[ixkeylen], &ditk->genid, sizeof(ditk->genid));
 }
 
+
+#define REC_ERROR_LOG(fmt, ...) do {            \
+    EVENTLOG_DEBUG (            \
+        uuidstr_t us;   \
+        if (iq->sorese) { \
+            comdb2uuidstr(iq->sorese->uuid, us); \
+        } \
+        else {  \
+            uuid_t u; \
+            comdb2uuid_clear(u); \
+            comdb2uuidstr(u, us); \
+        } \
+        eventlog_debug("%s:%d uuid %s tbl %s ix %d " fmt, __func__, __LINE__, us, iq->usedb ? iq->usedb->tablename : "???", ixnum, __VA_ARGS__);            \
+    );            \
+} while(0)
+
+
+#define ERR(_ret, fmt, ...)                                                               \
+    do {                                                                       \
+        REC_ERROR_LOG("err rc %d retrc %d errval %d errstr %s %s " fmt, rc, _ret, iq->errstat.errval, iq->errstat.errstr, fmt, __VA_ARGS__);    \
+        goto done; \
+    } while (0);
+
+
 int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        size_t maxblobs, int *opfailcode, int *ixfailnum,
                        int *rrn, unsigned long long *genid,
@@ -335,6 +361,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     int dup_txn_insert = 0;
     char *od_dta_tail = NULL;
     int od_tail_len;
+    int ixnum = -1;
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
@@ -345,6 +372,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         cur = get_defered_index_tbl_cursor(1);
         if (cur == NULL) {
             logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
+            REC_ERROR_LOG("no cursor???", 0);
             return -1;
         }
         ditk.type = DIT_ADD;
@@ -352,7 +380,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
         ditk.usedb = iq->usedb;
     }
 
-    for (int ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
+    for (ixnum = 0; ixnum < iq->usedb->nix; ixnum++) {
         char *key = ditk.ixkey; // key points to chararray regardless reordering
         char mangled_key[MAXKEYLEN + 1];
         char partial_datacopy_tail[MAXRECSZ];
@@ -376,7 +404,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_BAD_REQUEST;
             rc = ERR_BADREQ;
-            goto done;
+            ERR(rc, "", 0);
         }
 
         if (iq->idxInsert)
@@ -394,8 +422,17 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                       ixnum);
             *ixfailnum = ixnum;
             *opfailcode = OP_FAILED_INTERNAL + ERR_FORM_KEY;
-            goto done;
+            ERR(rc, "", 0);
         }
+
+        EVENTLOG_DEBUG (
+            char kbuf[(MAXKEYLEN+1)*2+1];
+            int klen = bdb_keylen(iq->usedb->handle, ixnum);
+            if (klen >= sizeof(kbuf))
+                abort();
+            util_tohex(kbuf, key, klen);
+            REC_ERROR_LOG("key %s", kbuf);
+        );
 
         /* light the prefault kill bit for this subop - newkeys */
         prefault_kill_bits(iq, ixnum, PFRQ_NEWKEY);
@@ -421,7 +458,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n",
                        __func__, rc);
-                goto done;
+                ERR(rc, "bdb_temp_table_insert", 0);
             }
             memset(ditk.ixkey, 0, ditk.ixlen);
         } else {
@@ -435,16 +472,16 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                                         &fndgenid, NULL, NULL, 0, trans);
                 if (rc == IX_FND && fndgenid == vgenid) {
                     rc = ERR_VERIFY;
-                    goto done;
+                    ERR(rc, "verify error", 0);
                 } else if (rc == RC_INTERNAL_RETRY) {
                     rc = RC_INTERNAL_RETRY;
-                    goto done;
+                    ERR(rc, "deadlock", 0);
                 } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&
                            rc != IX_PASTEOF && rc != IX_EMPTY) {
                     logmsg(LOGMSG_ERROR, "%s:%d got unexpected error rc = %d\n",
                            __func__, __LINE__, rc);
                     rc = ERR_INTERNAL;
-                    goto done;
+                    ERR(rc, "other error", 0);
                 }
 
                 /* The row is not in new btree, proceed with the add */
@@ -462,7 +499,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             if (vgenid && rc == IX_DUP) {
                 if (iq->usedb->ix_dupes[ixnum] || isnullk) {
                     rc = ERR_VERIFY;
-                    goto done;
+                    ERR(rc, "verify error", 0);
                 }
             }
 
@@ -473,6 +510,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             }
 
             if (rc == RC_INTERNAL_RETRY) {
+                ERR(rc, "deadlock", 0);
                 goto done;
             } else if (rc != 0) {
                 *ixfailnum = ixnum;
@@ -485,7 +523,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                     iq->dup_key_insert = 1;
                 }
 
-                goto done;
+                ERR(rc, "add error", 0);
             }
         }
     }

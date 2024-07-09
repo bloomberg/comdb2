@@ -14,6 +14,7 @@
   limitations under the License.
 */
 
+#include "reqlog.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -64,6 +65,7 @@ static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
 static int eventlog_every_n = 1;
 static int64_t eventlog_count = 0;
+static int eventlog_debug_events = 0;
 
 static void eventlog_roll(void);
 #define min(x, y) ((x) < (y) ? (x) : (y))
@@ -590,6 +592,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     if (logger->cascaded_nwrites > 0) {
         cson_object_set(obj, "casc_nwrites", cson_new_int(logger->cascaded_nwrites));
     }
+   
     eventlog_context(obj, logger);
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);
@@ -711,6 +714,7 @@ static void eventlog_help(void)
                         "events dir <dir>         - set custom directory for event log files\n"
                         "events file <file>       - set log file to custom location\n"
                         "events flush             - flush log\n"
+                        "events debug <on|off>    - turn on logging of debug events\n"
                         "events help              - this help message\n");
 }
 
@@ -838,6 +842,15 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff, in
             closedir(pd);
             update_file_location("eventlog", tok);
         }
+    } else if (tokcmp(tok, ltok, "debug") == 0) {
+        tok = segtok(line, lline, toff, &ltok);
+        if (tokcmp(tok, ltok, "on") == 0) {
+            eventlog_debug_events = 1;
+        } else if (tokcmp(tok, ltok, "off") == 0) {
+            eventlog_debug_events = 0;
+        } else {
+            logmsg(LOGMSG_ERROR, "Expected on/off for 'debug'\n");
+        }
     } else {
         if (tokcmp(tok, ltok, "help") != 0) {
             logmsg(LOGMSG_ERROR, "Unknown eventlog command '%s'\n", line);
@@ -856,6 +869,35 @@ void eventlog_process_message(char *line, int lline, int *toff)
     if (call_roll_cleanup) {
         eventlog_roll_cleanup();
     }
+}
+
+void eventlog_debug(char *fmt, ...) {
+    va_list args;
+    char *s = NULL;
+    if (!(eventlog_enabled && eventlog != NULL && eventlog_debug_events))
+        return;
+
+    cson_value *vobj = cson_value_new_object();
+    cson_object *obj = cson_value_get_object(vobj);
+
+
+    va_start(args, fmt);
+    if (vasprintf(&s, fmt, args) < 0 || s == NULL)
+        return;
+    va_end(args);
+
+    cson_object_set(obj, "type", cson_value_new_string("debug", 5));
+    cson_object_set(obj, "time", cson_new_int(comdb2_time_epochus()));
+    cson_object_set(obj, "debug", cson_value_new_string(s, strlen(s)));
+    os_free(s);
+
+    Pthread_mutex_lock(&eventlog_lk);
+    cson_output(vobj, write_json, eventlog);
+    Pthread_mutex_unlock(&eventlog_lk);
+}
+
+int eventlog_debug_enabled(void) {
+    return eventlog_debug_events;
 }
 
 void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
