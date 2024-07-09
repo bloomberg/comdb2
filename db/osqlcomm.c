@@ -20,6 +20,7 @@
 #include <util.h>
 #include "osqlcomm.h"
 #include "osqlsession.h"
+#include "osqlsqlthr.h"
 #include "sqloffload.h"
 #include "osqlcheckboard.h"
 #include "osqlrepository.h"
@@ -55,6 +56,7 @@
 #include "sc_global.h"
 #include "logical_cron.h"
 #include "sc_logic.h"
+#include "eventlog.h"
 
 
 #define MAX_CLUSTER REPMAX
@@ -6461,6 +6463,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {
+                EVENTLOG_DEBUG(
+                    uuidstr_t ustr;
+                    comdb2uuidstr(uuid, ustr);
+                    eventlog_debug("%s:%d uuid %s finalize_schema_change rc %d", __func__, __LINE__, ustr, rc);
+                );
                 return ERR_SC;
             }
             if (IS_FASTINIT(iq->sc) && gbl_replicate_local)
@@ -6474,8 +6481,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         while (iq->sc != NULL) {
             if (iq->sc->publish) {
                 error = iq->sc->publish(trans, iq->sc);
-                if (error)
+                if (error) {
+                    EVENTLOG_DEBUG(
+                        uuidstr_t ustr;
+                        comdb2uuidstr(uuid, ustr);
+                        eventlog_debug("%s:%d uuid %s publish schema change rc %d", __func__, __LINE__, ustr, rc);
+                    );
                     break;
+                }
             }
             iq->sc = iq->sc->sc_next;
         }
@@ -6544,6 +6557,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         osql_usedb_t dt = {0};
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
 
+
         /* IDEA: don't store the usedb in the defered_table, rather right before
          * loading a new usedb, process the curret one,
          * this way tmptbl key is 8 bytes smaller
@@ -6552,7 +6566,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             process_defered_table(iq, ...);
         }
         */
-
         const char *tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
         if (iq->usedb && strcmp(iq->usedb->tablename, tablename) == 0) {
             assert(bdb_has_trans_tablename_locked(thedb->bdb_env, tablename, trans, TABLENAME_LOCKED_READ));
@@ -6579,13 +6592,26 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         rc = osql_set_usedb(iq, tablename, dt.tableversion, step, err);
+        EVENTLOG_DEBUG(
+            uuidstr_t ustr;
+            comdb2uuidstr(uuid, ustr);
+            eventlog_debug("%s:%d uuid %s usedb %s rc %d", __func__, __LINE__, ustr, tablename, rc);
+        );
         if (rc) {
             return rc;
         }
     } break;
     case OSQL_DBQ_CONSUME: {
         genid_t *genid = (genid_t *)p_buf;
-        if ((rc = dbq_consume_genid(iq, trans, 0, *genid)) != 0) {
+
+        rc = dbq_consume_genid(iq, trans, 0, *genid);
+        EVENTLOG_DEBUG(
+            uuidstr_t ustr;
+            comdb2uuidstr(uuid, ustr);
+            eventlog_debug("%s:%d uuid %s dbq_consume %"PRIx64" rc %d", __func__, __LINE__, ustr, *genid, rc);
+        );
+
+        if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: dbq_consume rc:%d\n", __func__, rc);
             return rc;
         }
@@ -6627,6 +6653,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 err->blockop_num = step;
                 err->ixnum = 0;
                 err->errcode = ERR_UNCOMMITABLE_TXN;
+                EVENTLOG_DEBUG(
+                    uuidstr_t ustr;
+                    comdb2uuidstr(uuid, ustr);
+                    eventlog_debug("%s:%d uuid %s uncommittable genid %"PRIx64" rc %d", __func__, __LINE__, ustr, dt.genid, rc);
+                );
                 return rc;
             }
 
@@ -6637,10 +6668,18 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         int locflags = RECFLAGS_DONT_LOCK_TBL;
+        int isqueue;
 
-        rc = is_tablename_queue(iq->usedb->tablename)
+        isqueue = is_tablename_queue(iq->usedb->tablename);
+        rc = isqueue
             ? dbq_consume_genid(iq, trans, 0, dt.genid)
             : del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode, &err->ixnum, BLOCK2_DELKL, locflags);
+
+        EVENTLOG_DEBUG(
+            uuidstr_t ustr;
+            comdb2uuidstr(uuid, ustr);
+            eventlog_debug("%s:%d uuid %s %s genid %"PRIx64" rc %d", __func__, __LINE__, ustr, isqueue ? "dbq_consume_genid" : "del_record", dt.genid, rc);
+        );
 
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -6718,6 +6757,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         &err->errcode, &err->ixnum, &rrn, &newgenid, /*new id*/
                         dt.dk, BLOCK2_ADDKL, step, addflags,
                         dt.upsert_flags); /* do I need this?*/
+
+        EVENTLOG_DEBUG(
+            uuidstr_t ustr;
+            comdb2uuidstr(uuid, ustr);
+            eventlog_debug("%s:%d uuid %s add_record genid %"PRIx64" rc %d errcode %d flags %x upsert_flags %x vfy_idx_track %d dup_key_insert %d upsert_idx %d force_verify %d", __func__, __LINE__, ustr, newgenid, rc,
+                           err->errcode, dt.flags, dt.upsert_flags, iq->vfy_genid_track, iq->dup_key_insert, dt.upsert_flags >> 8, dt.upsert_flags & OSQL_FORCE_VERIFY);
+        );
+
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -6742,7 +6789,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
                           iq->usedb->tablename, err->ixnum);
                     err->errcode = ERR_UNCOMMITABLE_TXN;
-                    return rc;
+                    goto done_delete;
                 }
 
                 int upsert_idx = dt.upsert_flags >> 8;
@@ -6757,14 +6804,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     if (upsert_idx == MAXINDEX + 1) {
                         /* We're asked to ignore DUPs for all unique indices, no insert took place.*/
                         err->errcode = 0;
-                        return 0;
+                        rc = 0;
+                        goto done_delete;
                     } else if ((dt.upsert_flags & OSQL_FORCE_VERIFY) == 1) {
                         err->errcode = 0;
-                        return 0;
+                        rc = 0;
+                        goto done_delete;
                     } else if (upsert_idx == err->ixnum) {
                         /* We're asked to ignore DUPs for this particular * index, no insert took place.*/
                         err->errcode = 0;
-                        return 0;
+                        rc = 0;
+                        goto done_delete;
                     }
                 }
 
@@ -6785,6 +6835,16 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 logmsg(LOGMSG_DEBUG,
                        "Added new record failed, rrn = %d, newgenid=%llx\n",
                        rrn, bdb_genid_to_host_order(newgenid));
+
+            if (0) {
+done_delete:
+                EVENTLOG_DEBUG(
+                    uuidstr_t ustr;
+                    comdb2uuidstr(uuid, ustr);
+                    eventlog_debug("%s:%d uuid %s add_record genid %"PRIx64" rc adjusted to %d", __func__, __LINE__, ustr, newgenid, rc);
+                );
+                return rc;
+            }
 
             return rc; /*this is blkproc rc */
         } else {
@@ -6873,6 +6933,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 err->blockop_num = step;
                 err->ixnum = 0;
                 err->errcode = ERR_UNCOMMITABLE_TXN;
+                EVENTLOG_DEBUG(
+                    uuidstr_t ustr;
+                    comdb2uuidstr(uuid, ustr);
+                    eventlog_debug("%s:%d uuid %s uncommittable genid %"PRIx64" rc %d", __func__, __LINE__, ustr, genid, rc);
+                );
                 return rc;
             }
 
@@ -6909,6 +6974,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                         function's default behaviour and
                                         have it erase any blobs that havent been
                                         collected. */
+        uint64_t oldgenid = genid;
 
         rc = upd_record(iq, trans, NULL, rrn, genid, tag_name_ondisk,
                         tag_name_ondisk + tag_name_ondisk_len, /*tag*/
@@ -6919,6 +6985,13 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         *updCols, blobs, MAXBLOBS, &genid, dt.ins_keys,
                         dt.del_keys, &err->errcode, &err->ixnum, BLOCK2_UPDKL,
                         step, locflags);
+
+        EVENTLOG_DEBUG(
+             uuidstr_t ustr;
+             comdb2uuidstr(uuid, ustr);
+             eventlog_debug("%s:%d uuid %s upd_record genid %"PRIx64"->%"PRIx64" rc %d", __func__, __LINE__, ustr, oldgenid, genid, rc);
+        );
+
 
         free_blob_buffers(blobs, MAXBLOBS);
         if (iq->idxInsert || iq->idxDelete) {
@@ -7001,6 +7074,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                            p_buf, p_buf_end);
             }
         }
+        EVENTLOG_DEBUG(
+             uuidstr_t ustr;
+             comdb2uuidstr(uuid, ustr);
+             eventlog_debug("%s:%d uuid %s updcols", __func__, __LINE__, ustr);
+        );
     } break;
     case OSQL_SERIAL:
     case OSQL_SELECTV: {
@@ -7040,6 +7118,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                    (type == OSQL_SERIAL) ? "OSQL_SERIAL" : "OSQL_SELECTV",
                    dt.buf_size, dt.arr_size, dt.file, dt.offset);
         }
+        EVENTLOG_DEBUG(
+             uuidstr_t ustr;
+             comdb2uuidstr(uuid, ustr);
+             eventlog_debug("%s:%d uuid %s serial/selectv", __func__, __LINE__, ustr);
+        );
     } break;
     case OSQL_DELIDX:
     case OSQL_INSIDX: {
@@ -7080,6 +7163,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     __func__, dt.nData);
             return ERR_INTERNAL;
         }
+        EVENTLOG_DEBUG(
+             uuidstr_t ustr;
+             comdb2uuidstr(uuid, ustr);
+             eventlog_debug("%s:%d uuid %s %s ix %d seq %"PRIx64"", __func__, __LINE__, ustr, isDelete ? "osql_delidx" : "osql_insidx", dt.ixnum, dt.seq);
+        );
         memcpy(pIdx, pData, dt.nData);
     } break;
     case OSQL_QBLOB: {
@@ -7141,6 +7229,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 blobs[dt.id].javasp_bytearray = NULL;
             }
         }
+        EVENTLOG_DEBUG(
+             uuidstr_t ustr;
+             comdb2uuidstr(uuid, ustr);
+             eventlog_debug("%s:%d uuid %s blob id %d len %d", __func__, __LINE__, ustr, dt.id, dt.bloblen);
+        );
     } break;
     case OSQL_DBGLOG: {
         osql_dbglog_t dbglog = {0};
@@ -7191,7 +7284,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                        lclgenid);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
                           "constraints error, no genid");
-                return ERR_CONSTR;
+
+                rc = ERR_CONSTR;
+                goto done_recgenid;
             }
 
             if (bdberr != RC_INTERNAL_RETRY) {
@@ -7199,8 +7294,25 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                           "unable to find genid =%llx rc=%d", lclgenid, bdberr);
             }
 
-            return bdberr; /*this is blkproc rc */
+            rc = bdberr; /*this is blkproc rc */
+            goto done_recgenid;
         }
+
+        if (0) {
+        done_recgenid:
+            EVENTLOG_DEBUG(
+                uuidstr_t ustr;
+                comdb2uuidstr(uuid, ustr);
+                eventlog_debug("%s:%d uuid %s recgenid %"PRIx64" rc %d", __func__, __LINE__, ustr, dt.genid, rc);
+            );
+            return rc;
+        }
+
+        EVENTLOG_DEBUG(
+            uuidstr_t ustr;
+            comdb2uuidstr(uuid, ustr);
+            eventlog_debug("%s:%d uuid %s recgenid %"PRIx64" rc %d", __func__, __LINE__, ustr, dt.genid, rc);
+        );
     } break;
     case OSQL_SCHEMACHANGE: {
         /* handled in osql_process_schemachange */

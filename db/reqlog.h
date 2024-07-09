@@ -16,6 +16,7 @@
 
 #ifndef INCLUDED_REQLOG_H
 #define INCLUDED_REQLOG_H
+#include <stdlib.h>
 #include <stdarg.h>
 #include <stdint.h>
 

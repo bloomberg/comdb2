@@ -43,6 +43,7 @@
 
 #include "comdb2.h"
 #include "block_internal.h"
+#include "comdb2uuid.h"
 #include "prefault.h"
 #include "localrep.h"
 #include "osqlcomm.h"
@@ -52,6 +53,8 @@
 #include "comdb2_atomic.h"
 #include "schemachange.h"
 #include "gettimeofday_ms.h"
+#include "eventlog.h"
+#include "tohex.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -73,7 +76,23 @@ void free_cached_idx(uint8_t * *cached_idx);
  *  - trigger stored procedures
  */
 
-#define ERR                                                                    \
+#define REC_ERROR_LOG(fmt, ...) do {            \
+    EVENTLOG_DEBUG (            \
+        uuidstr_t us;   \
+        if (iq->sorese) { \
+            comdb2uuidstr(iq->sorese->uuid, us); \
+        } \
+        else {  \
+            uuid_t u; \
+            comdb2uuid_clear(u); \
+            comdb2uuidstr(u, us); \
+        } \
+        eventlog_debug("%s:%d uuid %s tbl %s ix %d " fmt, __func__, __LINE__, us, iq->usedb ? iq->usedb->tablename : "???", *ixfailnum, __VA_ARGS__);            \
+    );            \
+} while(0)
+
+
+#define ERR(fmt, ...)                                                               \
     do {                                                                       \
         if (gbl_verbose_toblock_backouts)                                      \
             logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc,  \
@@ -81,6 +100,7 @@ void free_cached_idx(uint8_t * *cached_idx);
         if (iq->debug)                                                         \
             reqprintf(iq, "err line %d rc %d retrc %d\n", __LINE__, rc,        \
                       retrc);                                                  \
+        REC_ERROR_LOG("err rc %d retrc %d errval %d errstr %s %s " fmt, rc, retrc, iq->errstat.errval, iq->errstat.errstr, fmt, __VA_ARGS__);    \
         goto err;                                                              \
     } while (0);
 
@@ -158,7 +178,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->debug)
             reqprintf(iq, "NO USEDB SET");
         retrc = ERR_BADREQ;
-        ERR;
+        ERR("no usedb set", 0);
     }
 
     if (iq->debug) {
@@ -186,13 +206,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows limit");
             retrc = ERR_TRAN_TOO_BIG;
-            ERR;
+            ERR("exceeds max rows limit %d", iq->written_row_count);
         }
         if (iq->txn_ttl_ms && (gettimeofday_ms() > iq->txn_ttl_ms)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TIMEOUT,
                       "Transaction exceeds max time limit");
             retrc = ERR_TXN_EXCEEDED_TIME_LIMIT;
-            ERR;
+            ERR("exceeds max time limit", gettimeofday_ms() - iq->txn_ttl_ms);
         }
     }
     if (is_event_from_cascade(flags)) {
@@ -201,7 +221,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max cascaded rows limit");
             retrc = ERR_TRAN_TOO_BIG;
-            ERR;
+            ERR("exceeds max cascaded rows limit %d", iq->cascaded_row_count);
         }
     }
 
@@ -242,13 +262,13 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             if (iq->debug)
                 reqprintf(iq, "LOCK TABLE READ DEADLOCK");
             retrc = RC_INTERNAL_RETRY;
-            ERR;
+            ERR("lock table deadlock %d", rc);
         } else if (rc) {
             if (iq->debug)
                 reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            ERR;
+            ERR("lock table error %d", rc);
         }
     }
 
@@ -259,7 +279,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                   "invalid tag description '%.*s'", (int) taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        ERR;
+        ERR("invalid tag description: '%.*s' ", taglen, tagdescr);
     }
 
     if ((!dynschema && (flags & RECFLAGS_DYNSCHEMA_NULLS_ONLY)) ||
@@ -285,7 +305,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                       iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        ERR;
+        ERR("unknown tag %s", tag);
     }
 
     /* Tweak blob-descriptors for static tags. */
@@ -317,7 +337,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
-            ERR;
+            ERR("unexpected len %zu expected %zu", reclen, expected_dat_len);
         }
     }
 
@@ -330,14 +350,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        ERR;
+        ERR("blob check failed rc %d", rc);
     }
 
     /* Also check blob sizes */
     if (!(flags & RECFLAGS_NO_BLOBS)) {
         if (check_blob_sizes(iq, blobs, maxblobs)) {
             retrc = ERR_BLOB_TOO_LARGE;
-            ERR;
+            ERR("blob too large", 0);
         }
     }
 
@@ -360,7 +380,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA, "bad ondisk size");
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
-            ERR;
+            ERR("bad ondisk size %d", od_len_int);
         }
 
         od_len = (size_t)od_len_int;
@@ -371,7 +391,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                    (unsigned)od_len, iq->usedb->tablename, tag);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            ERR;
+            ERR("malloc(%d) failed", od_len);
         }
         od_dta = allocced_memory;
 
@@ -396,7 +416,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                       "error convert data %s->.ONDISK '%s'", tag, str);
             *opfailcode = OP_FAILED_CONVERSION;
             retrc = ERR_CONVERT_DTA;
-            ERR;
+            // reqerrstr already reported, no additional info needed
+            ERR("convert to ondisk failed", 0);
         }
 
         ondisktagsc = get_schema(iq->usedb, -1);
@@ -407,18 +428,18 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->debug)
             reqprintf(iq, "SET MASTER COLUMNS DEADLOCK");
         retrc = RC_INTERNAL_RETRY;
-        ERR;
+        ERR("set master columns dedalock", 0);
     } else if (rc == BDBERR_MAX_SEQUENCE) {
         reqerrstr(iq, ERR_INTERNAL, "Exhausted column sequence");
         *opfailcode = ERR_INTERNAL;
         retrc = ERR_INTERNAL;
-        ERR;
+        ERR("set master columns: exhausted column sequence", 0);
     } else if (rc) {
         if (iq->debug)
             reqprintf(iq, "SET MASTER COLUMNS ERROR %d", rc);
         *opfailcode = ERR_INTERNAL;
         retrc = ERR_INTERNAL;
-        ERR;
+        ERR("set master columns error %d", rc);
     }
 
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
@@ -426,28 +447,28 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
         *opfailcode = ERR_INTERNAL;
         rc = retrc = ERR_INTERNAL;
-        ERR;
+        ERR("unknown error from verify_check_constraints", 0);
     } else if (rc > 0) {
         reqerrstrhdr(iq, "CHECK constraint violation ");
         reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
                   iq->usedb->check_constraints[rc - 1].consname);
         *opfailcode = ERR_CHECK_CONSTRAINT;
         rc = retrc = ERR_CHECK_CONSTRAINT;
-        ERR;
+        ERR("check constraint violation", 0);
     }
 
     rc = validate_server_record(iq, od_dta, od_len, tag, ondisktagsc);
     if (rc == -1) {
         *opfailcode = ERR_NULL_CONSTRAINT;
         rc = retrc = ERR_NULL_CONSTRAINT;
-        ERR;
+        ERR("validate server record rc %d", rc);
     }
 
     if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
         rc = check_for_upsert(iq, trans, blobs, maxblobs, opfailcode, ixfailnum, &retrc, od_dta, od_len, ins_keys,
                               rec_flags);
         if (rc)
-            ERR;
+            ERR("check_for_upsert rc %d", rc);
     }
 
     if (is_event_from_sc(flags) && (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) &&
@@ -463,11 +484,11 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             rc = ix_check_genid(iq, trans, vgenid, &bdberr);
             if (rc && bdberr == IX_FND) {
                 retrc = ERR_VERIFY;
-                ERR;
+                ERR("ix_check_genid rc %d", rc);
             }
             if (bdberr == RC_INTERNAL_RETRY) {
                 rc = retrc = RC_INTERNAL_RETRY;
-                ERR;
+                ERR("ix_check_genid deadlock", 0);
             }
             /* The row is not in new btree, proceed with the add */
             vgenid = 0; // no need to verify again
@@ -486,7 +507,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
         if (retrc) {
             *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_RRN;
-            ERR;
+            ERR("add genid %"PRIx64" rc %d", *genid, rc);
         }
     }
 
@@ -507,7 +528,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             }
             if (retrc) {
                 *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_BLOB;
-                ERR;
+                ERR("blob_add blob %d rc %d", blobno, rc);
             }
         }
     }
@@ -518,7 +539,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            ERR;
+            ERR("failed to verify indices rc %d", rc);
         }
     }
 
@@ -552,7 +573,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                         reqprintf(iq, "FAILED TO PUSH KEYOP");
                     *opfailcode = OP_FAILED_INTERNAL;
                     retrc = ERR_INTERNAL;
-                    ERR;
+                    ERR("insert add genid %"PRIx64"", genid);
                 }
             } else {
                 /* if rec adding to NEW SCHEMA and this has constraints,
@@ -566,7 +587,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             retrc = add_record_indices(iq, trans, blobs, maxblobs, opfailcode, ixfailnum, rrn, genid, vgenid, ins_keys,
                                        opcode, blkpos, od_dta, od_len, flags, reorder);
             if (retrc)
-                ERR;
+                ERR("add_record_indices rc %d", rc);
         }
     }
 
@@ -580,7 +601,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (!jrec) {
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            ERR;
+            ERR("can't allocate trigger object", 0);
         }
         javasp_rec_set_trans(jrec, iq->jsph, *rrn, *genid);
         /* If we have blobs then make the blob information available
@@ -592,7 +613,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                 if (unodhfy_blob_buffer(iq->usedb, blob, blobno) != 0) {
                     *opfailcode = OP_FAILED_INTERNAL;
                     retrc = ERR_INTERNAL;
-                    ERR;
+                    ERR("unodh blob hdr blob %d", blobno);
                 }
                 javasp_rec_have_blob(jrec, blobno, blob->data, 0, blob->length);
             }
@@ -605,7 +626,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqprintf(iq, "JAVASP_TRANS_LISTEN_AFTER_ADD RC %d", retrc);
         if (retrc) {
             *opfailcode = ERR_JAVASP_ABORT_OP;
-            ERR;
+            ERR("trigger rc %d", rc);
         }
     }
 
@@ -617,7 +638,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         !is_event_from_sc(flags)) {
         retrc = local_replicant_log_add(iq, trans, od_dta, blobs, opfailcode);
         if (retrc)
-            ERR;
+            ERR("local replicant add rc %d", rc);
     }
 
     if (!is_event_from_sc(flags)) {
@@ -631,7 +652,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                                  maxblobs, flags, rrn);
 
         if (retrc) {
-            ERR;
+            ERR("live_sc_post rc %d", rc);
         }
     }
 
@@ -647,7 +668,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             flipon = 1;
             *opfailcode = OP_FAILED_VERIFY;
             retrc = ERR_VERIFY;
-            ERR;
+            ERR("debug error", 0);
         }
     }
 
@@ -717,6 +738,14 @@ static int unodhfy_and_clone(const dbtable *db, blob_buffer_t *src, blob_buffer_
     return 0;
 }
 
+#undef ERR
+#define ERR(fmt, ...)                                                               \
+    do {                                                                       \
+        REC_ERROR_LOG("err rc %d retrc %d errval %d errstr %s %s " #fmt, rc, retrc, iq->errstat.errval, iq->errstat.errstr, fmt, __VA_ARGS__);    \
+        goto err;                                                              \
+    } while (0);
+
+
 /*
  * Update an existing record.
  *
@@ -739,7 +768,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                int *opfailcode, int *ixfailnum, int opcode, int blkpos,
                int flags)
 {
-    int rc;
+    int rc=0;
     int retrc = 0;
     int prefixes = 0;
     int conv_flags = 0;
@@ -775,15 +804,24 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     blob_buffer_t *del_idx_blobs = NULL;
     const char *ondisktag = (is_event_from_sc(flags)) ? ".NEW..ONDISK" : ".ONDISK";
 
+    *ixfailnum = -1;
+
+    EVENTLOG_DEBUG (
+        if (!(vrecord || primkey)) {
+            char *rec = malloc(reclen*2+1); 
+            util_tohex(rec, (const char*) p_buf_rec, reclen);
+            REC_ERROR_LOG("vgenid %"PRIx64" buf %s", vgenid, rec);
+            free(rec);
+        }
+    );
+
     if (p_buf_vrec && (p_buf_vrec_end - p_buf_vrec) != reclen) {
         if (iq->debug)
             reqprintf(iq, "REC LEN %zu DOES NOT EQUAL VREC LEN %td", reclen,
                       (p_buf_vrec_end - p_buf_vrec));
         retrc = ERR_BADREQ;
-        goto err;
+        ERR("rec len mismatch got %d expected %d", (int) (p_buf_vrec_end - p_buf_vrec), (int) reclen); 
     }
-
-    *ixfailnum = -1;
 
     if (!is_event_from_sc(flags)) {
         iq->written_row_count++;
@@ -791,14 +829,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows limit");
             retrc = ERR_TRAN_TOO_BIG;
-            goto err;
+            ERR("exceeds row limit %d", (int) iq->written_row_count);
         }
     }
     if (iq->txn_ttl_ms && (gettimeofday_ms() > iq->txn_ttl_ms)) {
         reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TIMEOUT,
                   "Transaction exceeds max time limit");
         retrc = ERR_TXN_EXCEEDED_TIME_LIMIT;
-        goto err;
+        ERR("exceeds max time limit", gettimeofday_ms() - iq->txn_ttl_ms);
     }
 
     if (is_event_from_cascade(flags)) {
@@ -807,7 +845,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max cascaded rows limit");
             retrc = ERR_TRAN_TOO_BIG;
-            goto err;
+            ERR("exceeds cascaded rows limit", gettimeofday_ms() - iq->txn_ttl_ms);
         }
     }
 
@@ -828,7 +866,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (iq->debug)
             reqprintf(iq, "NO USEDB SET");
         retrc = ERR_BADREQ;
-        goto err;
+        ERR("usedb not set", 0);
     }
 
     if (iq->debug) {
@@ -852,13 +890,13 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             if (iq->debug)
                 reqprintf(iq, "LOCK TABLE READ DEADLOCK");
             retrc = RC_INTERNAL_RETRY;
-            goto err;
+            ERR("table %s deadlock", iq->usedb->tablename);
         } else if (rc) {
             if (iq->debug)
                 reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            goto err;
+            ERR("table %s lock error", iq->usedb->tablename);
         }
     }
 
@@ -866,7 +904,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (rc != 0) {
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        goto err;
+        ERR("invalid tag description: '%.*s' ", taglen, tagdescr);
     }
 
     if ((!dynschema && (flags & RECFLAGS_DYNSCHEMA_NULLS_ONLY)) ||
@@ -888,7 +926,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                       iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        ERR;
+        ERR("unknown tag %s table %s", tag, iq->usedb->tablename);
     }
 
     /* Tweak blob-descriptors for static tags. */
@@ -917,7 +955,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
-            goto err;
+            ERR("bad data length %zu tag '%s' expects data length %u",
+                      reclen, tag, expected_dat_len);
         }
     }
 
@@ -927,14 +966,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         check_blob_buffers(iq, blobs, maxblobs, dbname_schema, record, fldnullmap) != 0) {
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        goto err;
+        ERR("check_blob_buffers failed", 0);
     }
 
     /* Also check blob sizes */
     if (!(flags & RECFLAGS_NO_BLOBS)) {
         if (check_blob_sizes(iq, blobs, maxblobs)) {
             retrc = ERR_BLOB_TOO_LARGE;
-            ERR;
+            ERR("check_blob_sizes failed", 0);
         }
     }
 
@@ -948,7 +987,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             reqprintf(iq, "BAD ONDISK SIZE");
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        goto err;
+        ERR("bad ondisk size %d", (int) od_len_int);
     }
     od_len = od_len_int;
 
@@ -962,7 +1001,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                (unsigned)mallocced_bytes, iq->usedb->tablename, tag);
         *opfailcode = OP_FAILED_INTERNAL;
         retrc = ERR_INTERNAL;
-        goto err;
+        ERR("malloc(%u) failed", mallocced_bytes);
     }
     od_dta = allocced_memory;
     /* This is the current image as it exists in the db */
@@ -990,7 +1029,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             reqerrstr(iq, COMDB2_UPD_RC_INVL_PK, "error forming primary key");
             *opfailcode = OP_FAILED_CONVERSION;
             retrc = ERR_CONVERT_IX;
-            goto err;
+            ERR("convert to ondisk key0 failed", 0);
         }
         primkey = lclprimkey;
     }
@@ -1021,7 +1060,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (rc == 0 && rrn != fndrrn) {
             *opfailcode = OP_FAILED_VERIFY;
             retrc = ERR_VERIFY;
-            goto err;
+            ERR("verify error by primary key", 0);
         }
     } else if (flags == RECFLAGS_UPGRADE_RECORD) {
         if (record != NULL) {
@@ -1044,7 +1083,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             if (rc == 0 && ver == iq->usedb->schema_version) {
                 // record is at ondisk version, return
                 retrc = rc;
-                goto err;
+                ERR("find for upgrade failed genid %"PRIx64" rc %d", vgenid, rc);
             }
         }
 
@@ -1074,7 +1113,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             retrc = rc;
         } else
             retrc = ERR_VERIFY;
-        goto err;
+        ERR("find failed", 0);
     }
 
     /*
@@ -1103,7 +1142,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                       "VRECORD CONVERSION FAILED RC %d", rc);
             *opfailcode = OP_FAILED_CONVERSION;
             retrc = ERR_CONVERT_DTA;
-            goto err;
+            ERR("vrecord convert failed", 0);
         }
     }
 
@@ -1122,7 +1161,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 retrc = rc;
             else
                 retrc = ERR_INTERNAL;
-            goto err;
+            ERR("save_old_blobs rc %d", rc);
         }
         got_oldblobs = 1;
     }
@@ -1178,7 +1217,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             }
             reqerrstr(iq, COMDB2_UPD_RC_CNVT_DTA,
                       "error convert data %s->.ONDISK '%s'", tag, str);
-            goto err;
+            ERR("convert failed", 0);
         }
     }
 
@@ -1192,7 +1231,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                     retrc = rc;
                 else
                     retrc = ERR_INTERNAL;
-                goto err;
+                ERR("save old blobs", 0);
             }
         }
         blob_status_to_blob_buffer(&oldblobs, del_blobs_buf);
@@ -1221,7 +1260,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 logmsg(LOGMSG_ERROR, "%s: failed to remove ODH and clone blobs\n", __func__);
                 *opfailcode = OP_FAILED_INTERNAL;
                 retrc = ERR_INTERNAL;
-                goto err;
+                ERR("blob unodh blob %d rc %d", blobno, rc);
             }
         }
         del_idx_blobs = del_blobs_buf;
@@ -1239,7 +1278,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            goto err;
+            ERR("verify indices", 0);
         }
     }
 
@@ -1248,13 +1287,13 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (iq->debug)
             reqprintf(iq, "UPD MASTER COLUMNS DEADLOCK");
         retrc = RC_INTERNAL_RETRY;
-        ERR;
+        ERR("upd master columns deadlock", 0);
     } else if (rc) {
         if (iq->debug)
             reqprintf(iq, "SET MASTER COLUMNS ERROR %d", rc);
         *opfailcode = ERR_INTERNAL;
         retrc = ERR_INTERNAL;
-        ERR;
+        ERR("upd master columns error %d", rc);
     }
 
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);
@@ -1262,14 +1301,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
         *opfailcode = ERR_INTERNAL;
         rc = retrc = ERR_INTERNAL;
-        ERR;
+        ERR("verify check constraints", 0);
     } else if (rc > 0) {
         reqerrstrhdr(iq, "CHECK constraint violation ");
         reqerrstr(iq, ERR_CHECK_CONSTRAINT, "CHECK constraint failed for '%s'",
                   iq->usedb->check_constraints[rc - 1].consname);
         *opfailcode = ERR_CHECK_CONSTRAINT;
         rc = retrc = ERR_CHECK_CONSTRAINT;
-        ERR;
+        ERR("check constraint violation", 0);
     }
 
     if (has_constraint(flags)) {
@@ -1279,7 +1318,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             if (iq->debug)
                 reqprintf(iq, "FAILED TO VERIFY CONSTRAINTS");
             retrc = *opfailcode;
-            goto err;
+            ERR("check_update_constraints", 0);
         }
     }
 
@@ -1292,7 +1331,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         retrc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
                                                       opfailcode);
         if (retrc)
-            ERR;
+            ERR("localrep", 0);
     }
 
     /*
@@ -1338,8 +1377,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     if (rc != 0) {
         *opfailcode = OP_FAILED_VERIFY;
-        retrc = rc;
-        goto err;
+        ERR("verify error", 0);
     }
 
     // if even one ix is done deferred, we want to do the post_update deferred
@@ -1353,8 +1391,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         od_dta, od_len, old_dta, del_keys, flags, add_idx_blobs, del_idx_blobs,
         same_genid_with_upd, vgenid, &deferredAdd);
 
-    if (retrc)
-        ERR;
+    if (retrc) {
+        ERR("upd_record_indices", 0);
+    }
 
     int force_inplace_blob_off = live_sc_disable_inplace_blobs(iq);
     /*
@@ -1422,7 +1461,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_UPD_GENIDS;
                     retrc = rc;
-                    goto err;
+                    ERR("blob_upd_genid BLOBNO %d RC %d", blobno, rc);
                 }
                 gbl_update_genid_blob_cnt++;
             }
@@ -1440,7 +1479,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 if (rc != IX_NOTFND && rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_BLOB;
                     retrc = rc;
-                    goto err;
+                    ERR("blob_del BLOBNO %d RC %d", blobno, rc);
                 }
                 if (rc != IX_NOTFND) {
                     gbl_delupd_blob_cnt++;
@@ -1454,7 +1493,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_UPD_BLOB;
                     retrc = rc;
-                    goto err;
+                    ERR("blob_upv BLOBNO %d RC %d", blobno, rc);
                 }
                 gbl_inplace_blob_cnt++;
             }
@@ -1466,7 +1505,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             if (rc != IX_NOTFND && rc != 0) {
                 *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_BLOB;
                 retrc = rc;
-                goto err;
+                ERR("blob_del BLOBNO %d RC %d", blobno, rc);
             }
             if (rc != IX_NOTFND) {
                 gbl_delupd_blob_cnt++;
@@ -1480,7 +1519,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_ADD_BLOB;
                     retrc = rc;
-                    goto err;
+                    ERR("blob_add BLOBNO %d RC %d", blobno, rc);
                 }
                 gbl_addupd_blob_cnt++;
             }
@@ -1505,7 +1544,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (rc != 0) {
             *opfailcode = OP_FAILED_INTERNAL + ERR_UPD_GENIDS;
             retrc = rc;
-            goto err;
+            ERR("blob_upd_genid BLOBNO %d RC %d", blobno, rc);
         }
         gbl_update_genid_blob_cnt++;
     }
@@ -1520,7 +1559,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         retrc = local_replicant_log_add_for_update(iq, trans, rrn, *genid,
                                                    opfailcode);
         if (retrc)
-            ERR;
+            ERR("localrep", 0);
     }
 
     /*
@@ -1558,7 +1597,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (rc != 0) {
             *opfailcode = OP_FAILED_INTERNAL + ERR_JAVASP_ABORT_OP;
             retrc = rc;
-            goto err;
+            ERR("trigger", 0);
         }
     }
 
@@ -1573,7 +1612,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                     rc);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
-            goto err;
+            ERR("update_constraint_genid", 0);
         }
     }
 
@@ -1584,7 +1623,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                              add_idx_blobs);
     if (rc != 0) {
         retrc = rc;
-        goto err;
+        ERR("live_sc_post_update", 0);
     }
 
     ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
@@ -1606,7 +1645,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             flipon = 1;
             *opfailcode = OP_FAILED_VERIFY;
             retrc = ERR_VERIFY;
-            ERR;
+            ERR("debug", 0);
         }
     }
 
@@ -1837,7 +1876,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         !is_event_from_sc(flags)) {
         retrc = local_replicant_log_delete(iq, trans, od_dta, opfailcode);
         if (retrc)
-            ERR;
+            goto err;
     }
 
     /*
@@ -1872,7 +1911,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     /* Form and delete all keys. */
     retrc = del_record_indices(iq, trans, opfailcode, ixfailnum, rrn, genid, od_dta, del_keys, flags, del_idx_blobs);
     if (retrc)
-        ERR;
+        goto err;
 
     /*
      * Trigger JAVASP_TRANS_LISTEN_AFTER_DEL
@@ -2627,6 +2666,9 @@ int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *re
     return 0;
 }
 
+#undef ERR
+#define ERR do  { goto err; } while(0)
+
 int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                     const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
                     const uint8_t *p_buf_rec_end, const char *keyname,
@@ -2680,7 +2722,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->debug)
             reqprintf(iq, "NO USEDB SET");
         retrc = ERR_BADREQ;
-        ERR;
+        goto err;
     }
 
     rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -2709,7 +2751,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                   "invalid tag description '%.*s'", (int) taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        ERR;
+        goto err;
     }
 
     if ((!dynschema && (flags & RECFLAGS_DYNSCHEMA_NULLS_ONLY)) ||
@@ -2736,7 +2778,7 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                           iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
-        ERR;
+        goto err;
     }
 
     /* Tweak blob-descriptors for static tags. */

@@ -47,6 +47,11 @@ int bdb_keycontainsgenid(bdb_state_type *bdb_state, int ixnum)
     return (bdb_state->ixdups[ixnum] || bdb_state->ixnulls[ixnum]);
 }
 
+// This is probably not complete - we use it to dump keys in the db layer, so it's sufficient.
+int bdb_keylen(bdb_state_type *bdb_state, int ixnum) {
+    return bdb_state->ixlen[ixnum];
+}
+
 int bdb_maybe_use_genid_for_key(
                                bdb_state_type *bdb_state, DBT *p_dbt_key,
                                void *ixdta, int ixnum,
