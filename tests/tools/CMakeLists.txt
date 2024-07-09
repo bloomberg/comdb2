@@ -79,6 +79,7 @@ add_exe(test_consistent_hash_bench test_consistent_hash_bench.c)
 add_exe(updater updater.c testutil.c)
 add_exe(utf8 utf8.c)
 add_exe(verify_atomics_work verify_atomics_work.c)
+add_exe(upsert_replay upsert_replay.c)
 
 target_link_libraries(cson_test cson)
 target_link_libraries(stepper util mem dlmalloc util)

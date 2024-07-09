@@ -21,5 +21,16 @@ void eventlog_status(void);
 void eventlog_add(const struct reqlogger *logger);
 void eventlog_stop(void);
 void eventlog_process_message(char *line, int llen, int *toff);
+void eventlog_debug(char *fmt, ...);
+
+int eventlog_debug_enabled(void);
+
+#define EVENTLOG_DEBUG(_code) do { \
+    if (eventlog_debug_enabled()) {  \
+        do {                       \
+            _code                  \
+        } while(0);                \
+    }                              \
+} while(0)
 
 #endif
