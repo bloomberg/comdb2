@@ -4529,7 +4529,7 @@ retry_queries:
         }
 
         if (retries_done > hndl->num_hosts) {
-            if (!hndl->is_hasql && (retries_done > hndl->min_retries)) {
+            if (!hndl->is_hasql && (retries_done > hndl->max_retries)) {
                 debugprint("returning cannot-connect, "
                            "retries_done=%d, num_hosts=%d\n",
                            retries_done, hndl->num_hosts);
