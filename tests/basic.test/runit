@@ -2,7 +2,6 @@
 bash -n "$0" | exit 1
 
 set -e
-set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
@@ -163,7 +162,7 @@ for node in $cluster ; do
     echo "connect with wrong db name"
     set +e
     cdb2sql --tabs badname @$node:port=$port "select comdb2_dbname()" &> out.txt
-    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch query:badname actual:$dbnm" > out.exp
+    echo "[select comdb2_dbname()] failed with rc -105 DB name mismatch query:badname actual:$dbnm" > out.exp
     rc=$?
     set -e
 #    TODO: this returns rc=0 even though error and can't run query!!

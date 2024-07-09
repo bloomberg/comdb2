@@ -7,4 +7,5 @@ comdb2_config:enable_static_libs
 comdb2_config:allow_pmux_route:false
 comdb2_config:request_fingerprint:true
 ' >>$DBDIR/comdb2db.cfg
-${TESTSBUILDDIR}/api_events $dbnm 2>&1 | diff expected -
+${TESTSBUILDDIR}/api_events $dbnm > output 2>&1
+diff expected output
