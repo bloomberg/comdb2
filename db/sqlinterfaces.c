@@ -147,6 +147,7 @@ extern pthread_mutex_t gbl_fingerprint_hash_mu;
 extern int gbl_alternate_normalize;
 extern int gbl_typessql;
 extern int gbl_modsnap_asof;
+extern int gbl_use_modsnap_for_snapshot;
 
 /* Once and for all:
 
@@ -5240,7 +5241,8 @@ int tdef_to_tranlevel(int tdef)
         return TRANLEVEL_SERIAL;
 
     case SQL_TDEF_SNAPISOL:
-        return TRANLEVEL_SNAPISOL;
+        return gbl_use_modsnap_for_snapshot ?
+               TRANLEVEL_MODSNAP : TRANLEVEL_SNAPISOL;
 
     default:
         logmsg(LOGMSG_FATAL, "%s: line %d Unknown modedef: %d", __func__, __LINE__,
