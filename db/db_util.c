@@ -245,6 +245,11 @@ int rewrite_lrl_remove_tables(const char *lrlname)
             continue;
         }
 
+        /* if this line is a version_spfile def, skip it */
+        if (ltok && tokcmp(tok, ltok, "version_spfile") == 0) {
+            continue;
+        }
+
         if (ltok && tokcmp(tok, ltok, "sfuncs") == 0)
             continue;
         if (ltok && tokcmp(tok, ltok, "afuncs") == 0)
