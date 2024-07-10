@@ -344,7 +344,9 @@ local function main(t)
   th1:join()
   th2:join()
   th3:join()
+  db:begin()
   db:exec("select * from t order by i"):emit()
+  db:commit()
 end}$$
 put default procedure test11 'sptest11'
 exec procedure test11()
