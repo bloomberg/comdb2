@@ -52,7 +52,6 @@ extern tran_type *curtran_gettran(void);
 extern void curtran_puttran(tran_type *tran);
 extern int gbl_import_mode;
 extern char *gbl_file_copier;
-extern char *gbl_import_src;
 extern char *gbl_dbname;
 extern char *gbl_dbdir;
 
@@ -125,81 +124,6 @@ err:
     if (command != NULL) {
         free(command);
     }
-    return rc;
-}
-
-/*
- * Packs bulk import data to a file. This data can be used by the target
- * database process to complete the import.
- *
- * ImportData: The import data to be packed.
- *
- * returns
- *      0 on success
- *      non-0 on failure
- */
-int bulk_import_tmpdb_pack_data_to_file(ImportData *p_data) {
-    int rc;
-    int written_bytes;
-    unsigned len;
-    void *buf;
-    FILE *f_bulk_import;
-
-    rc = 0;
-    len = written_bytes = 0;
-    buf = NULL;
-    f_bulk_import = NULL;
-    char import_file_path[PATH_MAX];
-
-    rc = bulk_import_get_import_data_fname(import_file_path, sizeof(import_file_path));
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to get import data fname\n",
-               __func__);
-        goto err;
-    }
-    f_bulk_import = fopen(import_file_path, "w");
-    if (f_bulk_import == NULL) {
-        logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to open file %s. err %s\n",
-               __func__, import_file_path, strerror(errno));
-        rc = 1;
-        goto err;
-    }
-
-    len = import_data__get_packed_size(p_data);
-    buf = malloc(len);
-    if (buf == NULL) {
-        rc = ENOMEM;
-        goto err;
-    }
-
-    written_bytes = import_data__pack(p_data, buf);
-    if (written_bytes != len) {
-        logmsg(LOGMSG_ERROR,
-               "[IMPORT] %s: Did not pack full protobuf buffer.\n", __func__);
-        rc = 1;
-        goto err;
-    }
-
-    written_bytes = fwrite(buf, 1, len, f_bulk_import);
-    if (written_bytes != len) {
-        logmsg(
-            LOGMSG_ERROR,
-            "[IMPORT] %s: Did not write full protobuf buffer to file. Wrote %d "
-            "and expected %d\n",
-            __func__, written_bytes, len);
-        rc = 1;
-        goto err;
-    }
-
-err:
-    if (f_bulk_import != NULL) {
-        fclose(f_bulk_import);
-    }
-
-    if (buf != NULL) {
-        free(buf);
-    }
-
     return rc;
 }
 
@@ -547,7 +471,7 @@ void clear_bulk_import_data(ImportData *p_data) {
  *                  member should be set as input
  * @return 0 on success !0 otherwise
  */
-int bulk_import_data_load(ImportData *p_data) {
+static int bulk_import_data_load(ImportData *p_data) {
     unsigned i, j;
     int bdberr;
     struct dbtable *db;
@@ -1359,13 +1283,13 @@ err:
 }
 
 /*
- * Gets foreign data and writes it into the tmpdb env.
+ * Gets foreign db's files and writes them into the local environment.
  *
  * returns
  *  0 on success
  *  non-0 on failure
  */
-int bulk_import_tmpdb_pull_foreign_data() {
+int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
     int rc, f;
     char *fname, *nextFname;
     char txndir[PATH_MAX];
@@ -1376,7 +1300,7 @@ int bulk_import_tmpdb_pull_foreign_data() {
     fname = nextFname = NULL;
 
     cdb2_hndl_tp *hndl;
-    rc = cdb2_open(&hndl, gbl_import_src, "local", 0);
+    rc = cdb2_open(&hndl, fdb_name, "local", 0);
     if (rc) {
         logmsg(
             LOGMSG_ERROR,
@@ -1600,5 +1524,95 @@ err:
     
     pthread_mutex_unlock(&(thedb->import_lock));
    
+    return rc;
+}
+
+/*
+ * Packs bulk import data about a table to a file.
+ *
+ * import_table: The name of the table
+ *
+ * returns
+ *      0 on success
+ *      non-0 on failure
+ */
+int bulk_import_tmpdb_write_import_data(const char *import_table) {
+    int rc;
+    int written_bytes;
+    unsigned len;
+    void *buf;
+    FILE *f_bulk_import;
+    char import_file_path[PATH_MAX];
+    ImportData import_data = IMPORT_DATA__INIT;
+
+    rc = 0;
+    len = written_bytes = 0;
+    buf = NULL;
+    f_bulk_import = NULL;
+
+    import_data.table_name = strdup(import_table);
+    if (import_data.table_name == NULL) {
+        rc = ENOMEM;
+        goto err;
+    }
+
+    rc = bulk_import_data_load(&import_data);
+    if (rc != 0) {
+        logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to load import data\n", __func__);
+        goto err;
+    }
+
+    rc = bulk_import_get_import_data_fname(import_file_path, sizeof(import_file_path));
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to get import data fname\n",
+               __func__);
+        goto err;
+    }
+
+    f_bulk_import = fopen(import_file_path, "w");
+    if (f_bulk_import == NULL) {
+        logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to open file %s. err %s\n",
+               __func__, import_file_path, strerror(errno));
+        rc = 1;
+        goto err;
+    }
+
+    len = import_data__get_packed_size(&import_data);
+    buf = malloc(len);
+    if (buf == NULL) {
+        rc = ENOMEM;
+        goto err;
+    }
+
+    written_bytes = import_data__pack(&import_data, buf);
+    if (written_bytes != len) {
+        logmsg(LOGMSG_ERROR,
+               "[IMPORT] %s: Did not pack full protobuf buffer.\n", __func__);
+        rc = 1;
+        goto err;
+    }
+
+    written_bytes = fwrite(buf, 1, len, f_bulk_import);
+    if (written_bytes != len) {
+        logmsg(
+            LOGMSG_ERROR,
+            "[IMPORT] %s: Did not write full protobuf buffer to file. Wrote %d "
+            "and expected %d\n",
+            __func__, written_bytes, len);
+        rc = 1;
+        goto err;
+    }
+
+err:
+    clear_bulk_import_data(&import_data);
+
+    if (f_bulk_import != NULL) {
+        fclose(f_bulk_import);
+    }
+
+    if (buf != NULL) {
+        free(buf);
+    }
+
     return rc;
 }

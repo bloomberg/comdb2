@@ -182,10 +182,8 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 extern int bdb_gbl_asof_modsnap_init(bdb_state_type *);
-extern void clear_bulk_import_data(ImportData *p_data);
-extern int bulk_import_tmpdb_pack_data_to_file(ImportData *p_data);
-extern int bulk_import_tmpdb_pull_foreign_data();
-extern int bulk_import_data_load(ImportData *p_data);
+extern int bulk_import_tmpdb_write_import_data(char *import_table);
+extern int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name);
 extern void set_dbdir(char *dir);
 extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
@@ -3669,7 +3667,7 @@ static int init(int argc, char **argv)
         gbl_exit = 1;
         gbl_fullrecovery = 1;
 
-        rc = bulk_import_tmpdb_pull_foreign_data();
+        rc = bulk_import_tmpdb_pull_foreign_dbfiles(gbl_import_src);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
             return rc;
@@ -4343,26 +4341,7 @@ static int init(int argc, char **argv)
 
     if (gbl_import_mode)
     {
-        ImportData import_data = IMPORT_DATA__INIT;
-
-        import_data.table_name = strdup(gbl_import_table);
-        if (import_data.table_name == NULL) {
-            return ENOMEM;
-        }
-
-        rc = bulk_import_data_load(&import_data);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to load import data\n", __func__);
-            return rc;
-        }
-
-        rc = bulk_import_tmpdb_pack_data_to_file(&import_data);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to pack import data to file\n", __func__);
-            return rc;
-        }
-
-        clear_bulk_import_data(&import_data);
+        bulk_import_tmpdb_write_import_data(gbl_import_table);
     }   
 
     if (gbl_exit) {
