@@ -4459,7 +4459,10 @@ void signal_clnt_as_done(struct sqlclntstate *clnt)
         strncpy(clnt->second_last_sql, clnt->last_sql, sizeof(clnt->second_last_sql) - 1);
         strncpy(clnt->last_sql, clnt->sql, sizeof(clnt->last_sql) - 1);
     }
-    if (clnt->argv0) strncpy(clnt->prev_argv0, clnt->argv0, sizeof(clnt->prev_argv0) - 1);
+    if (clnt->argv0) {
+        strncpy(clnt->prev_argv0, clnt->argv0, sizeof(clnt->prev_argv0) - 1);
+        clnt->prev_pid = clnt->conninfo.pid;
+    }
 
     struct sql_thread *thd = (clnt->thd && clnt->thd->sqlthd) ? clnt->thd->sqlthd : NULL;
 
@@ -7090,6 +7093,6 @@ void print_idle_clnt(struct sqlclntstate *clnt)
     struct timeval now, elapsed;
     gettimeofday(&now, NULL);
     timersub(&now, &clnt->wait_for_rd_since, &elapsed);
-    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  process:%s  prev-process:%s  prev-opcode:%s  second-last-sql:%s  last-sql:%s\n",
-           get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->argv0, clnt->prev_argv0, clnt->prev_opcode, clnt->second_last_sql, clnt->last_sql);
+    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  [prev=> process:%s pid:%d sql:%s]  [process:%s pid:%d sql:%s] opcode:%s\n",
+           get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->prev_argv0, clnt->prev_pid, clnt->second_last_sql, clnt->argv0, clnt->conninfo.pid, clnt->last_sql, clnt->prev_opcode);
 }

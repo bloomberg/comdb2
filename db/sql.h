@@ -881,6 +881,7 @@ struct sqlclntstate {
     char last_sql[64];
     char second_last_sql[64];
     char prev_argv0[64];
+    int prev_pid;
     const char *prev_opcode;
     struct timeval wait_for_rd_since;
 
