@@ -1,144 +1,84 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
-for required in $vars; do
-    q=${!required}
-    echo "$required=$q" 
-    if [[ -z "$q" ]]; then
-        echo "$required not set" >&2
-        exit 1
-    fi
-done
+source constants.sh
+source util.sh
 
-function verify_node () {
-	src_table=$1
-	dst_table=$2
-	exp_records=$3
-	exp_schemas=$4
-	tier=$5
-	rc=0
-
-	res_records=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $SECONDARY_DBNAME $tier "select * from $dst_table")
-	if [[ "$res_records" != "$exp_records" ]];
-	then
-		echo "record mismatch between src and dst tables"
-		echo "src records ------------"
-		echo "$exp_records"
-		echo "dst records ------------"
-		echo "$res_records"
-		rc=1
-	fi
-
-	res_schemas=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $SECONDARY_DBNAME $tier "select version, csc2 from comdb2_schemaversions where tablename='$dst_table'")
-	if [[ "$res_schemas" != "$exp_schemas" ]];
-	then
-		echo "schema mismatch between src and dst tables"
-		echo "src schemas ------------"
-		echo "$exp_schemas"
-		echo "dst schemas ------------"
-		echo "$res_schemas"
-		rc=1
-	fi
-
-	return $rc
+function fixture_src_tbl_and_dst_tbl_are_the_same() {
+	local -n _src_tbl="$1" _dst_tbl="$2"
+	_src_tbl=foo _dst_tbl=foo
+	query_src_db "create table $_src_tbl(i int)"
+	query_src_db "insert into $_src_tbl values(1)"
+	query_dst_db "create table $_dst_tbl(i int)"
 }
 
-function verify_import () {
-	src_table=$1
-	dst_table=$2
-	rc=0
-
-	exp_records=$(cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME default "select * from $src_table")
-	exp_schemas=$(cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME default "select version, csc2 from comdb2_schemaversions where tablename='$src_table'")
-
-	if [[ -z "$CLUSTER" ]];
-	then
-		verify_node "$src_table" "$dst_table" "$exp_records" "$exp_schemas" default
-		rc=$?
-	else
-		for node in $CLUSTER;
-		do
-			verify_node "$src_table" "$dst_table" "$exp_records" "$exp_schemas" "--host $node"
-			rc=$?
-			if (( rc != 0 ));
-			then
-				break
-			fi
-		done
-	fi
-
-	return $rc
+function fixture_src_tbl_and_dst_tbl_have_different_schemas() {
+	local -n _src_tbl="$1" _dst_tbl="$2"
+	_src_tbl=foo _dst_tbl=foo
+	query_src_db "create table $_src_tbl(i int)"
+	query_src_db "insert into $_src_tbl values(1)"
+	query_dst_db "create table $_dst_tbl(i int, j int)"
 }
 
-function failexit () {
-	rc=$1
-	msg=$2
-
-	if (( rc != 0 ));
-	then
-		echo $msg
-		exit $rc
-	fi
+function fixture_src_tbl_and_dst_tbl_have_different_names() {
+	local -n _src_tbl="$1" _dst_tbl="$2"
+	_src_tbl=foo _dst_tbl=bar
+	query_src_db "create table $_src_tbl(i int)"
+	query_src_db "insert into $_src_tbl values(1)"
+	query_dst_db "create table $_dst_tbl(b blob)"
 }
 
-# Setup source table
+function fixture_src_tbl_has_noblob_dst_tbl_has_blob() {
+	local -n _src_tbl="$1" _dst_tbl="$2"
+	_src_tbl=foo _dst_tbl=foo
+	query_src_db "create table $_src_tbl(i int)"
+	query_src_db "insert into $_src_tbl values(1)"
+	query_dst_db "create table $_dst_tbl(b blob)"
+}
 
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t(i int)"
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t values(1)"
+function fixture_src_tbl_has_blob_dst_tbl_has_no_blob() {
+	local -n _src_tbl="$1" _dst_tbl="$2"
+	_src_tbl=foo _dst_tbl=foo
+	query_src_db "create table $_src_tbl(b blob)"
+	query_src_db "insert into $_src_tbl values(x'f00f')"
+	query_dst_db "create table $_dst_tbl(i int)"
+}
 
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table q(b blob)"
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into q values(x'f00f')"
+function fixture_src_tbl_was_schema_changed() {
+	local -n _src_tbl="$1" _dst_tbl="$2"
+	_src_tbl=foo _dst_tbl=foo
+	query_src_db "create table $_src_tbl(i int)"
+	query_src_db "insert into $_src_tbl values(1)"
+	query_src_db "alter table $_src_tbl add column j int"
+	query_src_db "insert into $_src_tbl values(2, 3)"
+	query_src_db "alter table $_src_tbl add column b blob"
+	query_src_db "insert into $_src_tbl values(4, 5, x'f00f')"
+	query_dst_db "create table $_dst_tbl(i int)"
+}
 
-# Import table with the same schema
+function run_test() {
+	(
+		# Given
+		local src_tbl dst_tbl
+		$1 src_tbl dst_tbl
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "create table t(i int)"
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "import t from $DBNAME to t" && verify_import t t
-failexit $? "Failed to import a table with the same schema."
+		# When
+		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl" 
 
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "drop table t"
+		# Then
+		rc=$? && verify_import $src_tbl $dst_tbl
+	)
+}
 
-# Import table with a different schema
+FIXTURES=$(compgen -A function | grep -oh "fixture_\w*")
 
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "create table t(i int, j int)"
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "import t from $DBNAME to t" && verify_import t t
-failexit $? "Failed to import a table with a different schema"
+function main() {
+	for fixture in $FIXTURES;
+	do
+		run_test $fixture
+		failexit $? "Failed to run test with $fixture"
+	done
+}
 
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "drop table t"
-
-# Import noblob table over blob table
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "create table t(b blob)"
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "import t from $DBNAME to t" && verify_import t t
-failexit $? "Failed to import a table over a table with different blob options"
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "drop table t"
-
-# Import table over a table with a different name
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "create table q(b blob)"
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "import t from $DBNAME to q" && verify_import t q
-failexit $? "Failed to import a table with a different name"
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "drop table q"
-
-# Import blob table over noblob table
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "create table t(i int)"
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "import q from $DBNAME to t" && verify_import q t
-failexit $? "Failed to import a table over a table with different blob options"
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "drop table t"
-
-# Import table that has been schema changed
-
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "alter table t add column j int"
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t values(2, 3)"
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "alter table t add column b blob"
-cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t values(4, 5, x'f00f')"
-
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "create table t(i int)"
-cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "import t from $DBNAME to t" && verify_import t t
-failexit $? "Failed to import a table that has been schema changed"
-
-exit 0
+main
