@@ -666,8 +666,8 @@ static int lrltokignore(char *tok, int ltok)
     return 1;
 }
 
-static int new_table_from_schema_buf(struct dbenv *dbenv, char *tblname,
-                              char *csc2, int dbnum, char *tok)
+static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
+                                 char *fname, int dbnum, char *tok)
 {
     struct dbtable *db;
     char *csc2;
