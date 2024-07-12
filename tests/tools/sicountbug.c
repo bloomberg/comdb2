@@ -635,7 +635,7 @@ int main(int argc,char *argv[])
     }
     if ((ret = cdb2_run_statement(sqlh, "truncate t1")) != 0)
     {
-        fprintf(stderr, "error inserting record ret=%d.\n", ret);
+        fprintf(stderr, "error truncating table ret=%d.\n", ret);
         exit(1);
     }
     // start test here
