@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 
-# will be called by tests makefile to create all the generated tests:
-# for every .testopts file in a test directory, will generate a new test
-# with those features (in the .testopts file) appended to the lrl.options
-# of the test in question into destination directory passed in $2.
+# This script is called by the test suite's Makefile to create generated tests.
+# This is what it does:
+#
+# For each <fileprefix> with the .testopts extension in a test directory, 
+# it generates a new test in the directory passed in $2 with
+#
+# - the options in the <fileprefix>.testopts file appended to lrl.options
+# - the options in the <fileprefix>.testopts${rank} file appended to lrl_${rank}.options
+#
+# If <fileprefix>.testopts${rank} doesn't exist for some rank, 
+# then lrl_${rank}.options is untouched.
 
 DEST=$PWD
-
+DB_RANKS=(1 2 3)
 
 # generate a single test by running $0 basic.test/snapshot.testopts
 generate_test()
@@ -21,7 +28,13 @@ generate_test()
     NDIR=${TST}_${OPTFL}_generated.test
     mkdir -p $DEST/$NDIR/
     cp ${TST}.test/* $DEST/$NDIR/
+
     cat $gtst >> $DEST/$NDIR/lrl.options
+
+    for rank in "${DB_RANKS[@]}"; do
+        test -f "${gtst}${rank}" && \
+        cat "${gtst}${rank}" >> $DEST/$NDIR/lrl_${rank}.options
+    done
 }
 
 
