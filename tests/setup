@@ -79,6 +79,20 @@ check_db_port_running_node() {
 
 
 setup_db() {
+    if [[ $# -ne 1 ]]; then
+        failexit "$FUNCNAME: Expected 1 argument. Got $#"
+    fi
+
+    dbrank=$1 # 1 for primary db, 2 for secondary, and 3 for tertiary.
+
+    case $dbrank in
+        1|2|3)
+            ;;
+        *)
+            failexit "$FUNCNAME: Expected db rank to be 1, 2, or 3. \
+                     Got $dbrank"
+    esac
+
     # TESTDIR looks like this: tests/test_12758
     # DBDIR looks like this: tests/test_12758/analyzenew12758
     mkdir -p $DBDIR $TMPDIR
@@ -144,9 +158,16 @@ setup_db() {
     if [[ -f lrl ]]; then
         cat lrl >> ${LRL}
     fi
+
+    # Substitute test specific variables into lrl
     if [[ -f lrl.options ]]; then
-        # use sed to substitute in test specific variables into lrl
+        # lrl.options provides common options to all db ranks
+
         cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
+    fi
+
+    if [[ -f lrl_${dbrank}.options ]]; then
+        cat lrl_${dbrank}.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
     fi
 
     SSH_OPT="-o StrictHostKeyChecking=no "
@@ -323,7 +344,7 @@ setup_db() {
 }
 
 # setup primary db for the test
-setup_db
+setup_db 1
 
 if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     cd -
@@ -339,7 +360,7 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
 
 
     # setup secondary db for the test, if specified
-    DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_CONFIG="$SECONDARY_CDB2_CONFIG" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" setup_db
+    DBNAME="${SECONDARY_DBNAME}" DBDIR="${SECONDARY_DBDIR}" CDB2_CONFIG="$SECONDARY_CDB2_CONFIG" CDB2_OPTIONS="${SECONDARY_CDB2_OPTIONS}" setup_db 2
     cd -
 fi
 
@@ -356,7 +377,7 @@ if [ -n "${TERTIARY_DB_PREFIX}" ] ; then
 
 
     # setup tertiary db for the test, if specified
-    DBNAME="${TERTIARY_DBNAME}" DBDIR="${TERTIARY_DBDIR}" CDB2_CONFIG="$TERTIARY_CDB2_CONFIG" CDB2_OPTIONS="${TERTIARY_CDB2_OPTIONS}" setup_db
+    DBNAME="${TERTIARY_DBNAME}" DBDIR="${TERTIARY_DBDIR}" CDB2_CONFIG="$TERTIARY_CDB2_CONFIG" CDB2_OPTIONS="${TERTIARY_CDB2_OPTIONS}" setup_db 3
     cd -
 fi
 
