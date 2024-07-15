@@ -1214,8 +1214,6 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                                struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                                int stmt_rc)
 {
-    struct rawnodestats *rawnodestats;
-
     if (thd == NULL || clnt == NULL) {
         return;
     }
@@ -1344,12 +1342,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         }
     }
 
-    if ((rawnodestats = clnt->rawnodestats) != NULL) {
-        rawnodestats->sql_steps += get_sql_steps(thd);
-        time_metric_add(rawnodestats->svc_time, h->cost.time);
+    if (clnt->rawnodestats) {
+        clnt->rawnodestats->sql_steps += get_sql_steps(thd);
+        time_metric_add(clnt->rawnodestats->svc_time, h->cost.time);
         if (have_fingerprint)
             add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost,
                                         rows, time);
+        update_api_history(clnt->rawnodestats->api_history, clnt->api_driver_name, clnt->api_driver_version);
     }
 
     reset_sql_steps(thd);

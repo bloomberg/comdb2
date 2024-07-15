@@ -248,6 +248,8 @@ int comdb2SystblInit(
     rc = systblSchemaVersionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTableMetricsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblApiHistoryInit(db);
 #endif
   return rc;
 }

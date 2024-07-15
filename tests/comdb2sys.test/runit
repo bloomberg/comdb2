@@ -126,6 +126,7 @@ rc=$?
 echo "Running additional test scripts"
 
 tests=(
+"./testapihistory"
 "./testindexusage"
 "./testtransactionstate"
 "./testtablemetrics"

@@ -361,6 +361,7 @@
 (type='temptables')
 [SELECT type FROM comdb2_temporary_file_sizes ORDER BY type] rc 0
 (name='comdb2_active_osqls')
+(name='comdb2_api_history')
 (name='comdb2_appsock_handlers')
 (name='comdb2_auto_analyze_tables')
 (name='comdb2_blkseq')

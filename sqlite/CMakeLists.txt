@@ -8,6 +8,7 @@ add_library(sqlite
   vdbecompare.c
   ext/comdb2/activelocks.c
   ext/comdb2/activeosqls.c
+  ext/comdb2/api_history.c
   ext/comdb2/appsock_handlers.c
   ext/comdb2/auto_analyze_tables.c
   ext/comdb2/blkseq.c
@@ -216,6 +217,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/csc2
+  ${PROJECT_SOURCE_DIR}/cson
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/db
   ${PROJECT_BINARY_DIR}/db

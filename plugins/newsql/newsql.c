@@ -16,18 +16,18 @@
 
 #include <pthread.h>
 #include <stdlib.h>
-
 #include <comdb2_atomic.h>
-#include <osqlsqlsocket.h>
-#include <reqlog.h>
 #include <sbuf2.h>
-#include <sp.h>
-#include <sql.h>
-#include <sqloffload.h>
 #include <str0.h>
 #include <timer_util.h>
 
-#include <newsql.h>
+#include "osqlsqlsocket.h"
+#include "reqlog.h"
+#include "sp.h"
+#include "sql.h"
+#include "sqloffload.h"
+
+#include "newsql.h"
 
 void free_original_normalized_sql(struct sqlclntstate *);
 
@@ -2304,4 +2304,3 @@ void newsql_set_client_info(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query, 
         clnt->api_driver_version = strdup(sql_query->client_info->api_driver_version);
     }
 }
-

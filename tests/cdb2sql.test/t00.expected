@@ -18,6 +18,7 @@
 (tablename='t2')
 unknown @ls sub-command foo
 (name='comdb2_active_osqls')
+(name='comdb2_api_history')
 (name='comdb2_appsock_handlers')
 (name='comdb2_auto_analyze_tables')
 (name='comdb2_blkseq')

@@ -1,4 +1,5 @@
 set(src
+  api_history.c
   appsock_handler.c
   autoanalyze.c
   block_internal.c

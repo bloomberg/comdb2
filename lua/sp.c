@@ -2319,8 +2319,10 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
             add_fingerprint(clnt, pStmt, sql_ref, zNormSql, cost,
                             timeMs, prepMs, pVdbe->luaRows, NULL, fingerprint, 1); // TODO: Make work for query plans
             put_ref(&sql_ref);
-            if (clnt->rawnodestats)
+            if (clnt->rawnodestats) {
                 add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, pVdbe->luaRows, timeMs);
+                update_api_history(clnt->rawnodestats->api_history, clnt->api_driver_name, clnt->api_driver_version);
+            }
 
             clnt->spcost.cost += cost;
             clnt->spcost.time += timeMs;

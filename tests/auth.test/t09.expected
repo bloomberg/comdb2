@@ -223,6 +223,7 @@
 (candidate='ZLIB')
 (candidate='main')
 (candidate='comdb2_active_osqls')
+(candidate='comdb2_api_history')
 (candidate='comdb2_appsock_handlers')
 (candidate='comdb2_auto_analyze_tables')
 (candidate='comdb2_blkseq')
