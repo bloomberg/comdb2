@@ -1525,6 +1525,7 @@ static void free_view_hash(hash_t *view_hash)
          view = (struct dbview *)hash_next(view_hash, &ent, &bkt)) {
         free(view->view_name);
         free(view->view_def);
+        free(view);
     }
     hash_clear(view_hash);
     hash_free(view_hash);
