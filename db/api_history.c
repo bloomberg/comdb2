@@ -65,11 +65,11 @@ static api_driver_t *create_entry(char *api_driver_name, char *api_driver_versio
     return entry;
 }
 
-static int free_entry(api_driver_t *entry, int free_ptr)
+static int free_entry(api_driver_t *entry, void *arg)
 {
     free(entry->name);
     free(entry->version);
-    if (free_ptr) free(entry);
+    free(entry);
     return 0;
 }
 
@@ -107,7 +107,7 @@ int free_api_history(api_history_t *api_history)
     assert(api_history);
     acquire_api_history_lock(api_history, 1);
     
-    int rc = hash_for(api_history->entries, (hashforfunc_t *)free_entry, 0);
+    int rc = hash_for(api_history->entries, (hashforfunc_t *)free_entry, NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "Unable to free api history entries.\n");
         release_api_history_lock(api_history);
@@ -157,7 +157,7 @@ int update_api_history(api_history_t *api_history, char *api_driver_name, char *
     
     if (found_entry) {
         time(&found_entry->last_seen);
-        free_entry(search_entry, 1);
+        free_entry(search_entry, NULL);
     } else {
         time(&search_entry->last_seen);
         int rc = hash_add(api_history->entries, search_entry);
