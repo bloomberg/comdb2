@@ -2380,6 +2380,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
             entry->host = host;
             Pthread_mutex_init(&entry->mtx, 0);
             entry->ref = 1;
+            entry->rawtotals.api_history = init_api_history(); 
             entry->rawtotals.svc_time = time_metric_new("svc_time");
             entry->prevtotals.svc_time = entry->rawtotals.svc_time;
 
@@ -2411,6 +2412,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
                         hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
                         hash_free(old_entry->rawtotals.fingerprints);
                     }
+                    free_api_history(old_entry->rawtotals.api_history);
                     time_metric_free(old_entry->rawtotals.svc_time);
                     free(old_entry);
                 } else {
@@ -3168,7 +3170,6 @@ void dump_client_sql_data(struct reqlogger *logger, int do_snapshot) {
 void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems) {
     Pthread_mutex_lock(&stats->lk);
     if (stats->fingerprints == NULL) {
-        // TODO: where does this get destroyed?
         stats->fingerprints = hash_init_o(offsetof(struct query_count, fingerprint), FINGERPRINTSZ);
         if (stats->fingerprints == NULL)
             abort();
@@ -3259,4 +3260,34 @@ void free_client_sql_data(void *data, int npoints) {
         free(stats[i].task);
     }
     free(stats);
+}
+
+void acquire_client_stats_lock(int write)
+{
+    if (write) {
+        Pthread_rwlock_wrlock(&clientstats_lk);
+    } else {
+        Pthread_rwlock_rdlock(&clientstats_lk);
+    }
+}
+
+void release_client_stats_lock()
+{
+    Pthread_rwlock_unlock(&clientstats_lk);
+}
+
+nodestats_t *get_next_client_stats_entry(void **curr, unsigned int *iter)
+{
+    assert(clientstats);
+    acquire_client_stats_lock(0);
+    nodestats_t *entry;
+    
+    if (!*curr && !*iter) {
+        entry = (nodestats_t *)hash_first(clientstats, curr, iter);
+    } else {
+        entry = (nodestats_t *)hash_next(clientstats, curr, iter);
+    }
+    
+    release_client_stats_lock();
+    return entry;
 }

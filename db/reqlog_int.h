@@ -209,7 +209,7 @@ struct logrule {
 /* we normalise our request rate report to this period - we have a bucket for
  * each second. */
 enum { NUM_BUCKETS = 10 };
-struct nodestats {
+typedef struct nodestats {
     unsigned checksum;
     int node;
     char *host;
@@ -236,8 +236,11 @@ struct nodestats {
     int bucket_spanms[NUM_BUCKETS];
 
     char mem[1];
-};
-typedef struct nodestats nodestats_t;
+} nodestats_t;
+
+void acquire_client_stats_lock(int);
+void release_client_stats_lock();
+nodestats_t *get_next_client_stats_entry(void**, unsigned int*);
 
 extern int gbl_time_fdb;
 

@@ -23,6 +23,19 @@ Information about OSQL requests in the database.
 * `commit_time` - Commit time of this request
 * `nretries` - Number of retries
 
+## comdb2_api_history
+
+Lists information about current and past api connections to the database
+
+    comdb2_api_history(host, task, api_driver_name, api_driver_version, 
+                        last_seen)
+
+* `host` - Client host name
+* `task` - Name of the client program
+* `api_driver_name` - Name of the api driver used to establish a connection
+* `api_driver_version` - Version of the api driver used to establish a connection
+* `last_seen` - Last time a connection was established using the api driver 
+
 ## comdb2_appsock_handlers
 
 Lists all available APPSOCK handlers.

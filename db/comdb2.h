@@ -100,6 +100,7 @@ typedef long long tranid_t;
 #include "constraints.h"
 #include "osqlrpltypes.h"
 #include "macc_glue.h"
+#include "api_history.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -478,11 +479,10 @@ enum RECOVER_DEADLOCK_FLAGS {
 
 enum CURTRAN_FLAGS { CURTRAN_RECOVERY = 0x00000001 };
 
-/* Raw stats, kept on a per origin machine basis.  This whole struct is
- * essentially an array of unsigneds.  Please don't add any other data
+/* Raw stats, kept on a per origin machine basis.  Please don't add any other data
  * type above `svc_time' as this allows us to easily sum it and diff it in a
  * loop in reqlog.c.
- * All of these stats are counters. */
+ */
 struct rawnodestats {
     unsigned opcode_counts[MAXTYPCNT];
     unsigned blockop_counts[NUM_BLOCKOP_OPCODES];
@@ -494,6 +494,7 @@ struct rawnodestats {
 
     pthread_mutex_t lk;
     hash_t *fingerprints;
+    api_history_t *api_history;
 };
 #define NUM_RAW_NODESTATS                                                      \
     (offsetof(struct rawnodestats, svc_time) / sizeof(unsigned))
