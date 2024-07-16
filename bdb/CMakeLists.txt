@@ -72,7 +72,7 @@ add_custom_command(
   COMMAND dist/genrec.sh ${CMAKE_CURRENT_SOURCE_DIR}/llog.src llog_auto.c llog_auto.h rec_llog
   COMMAND dist/geninc.sh llog llog_ext.h llog_auto.c
 )
-if (${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+if (${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set_source_files_properties(llog_auto.c PROPERTIES COMPILE_FLAGS "-Wno-deprecated-non-prototype")
 endif()
 

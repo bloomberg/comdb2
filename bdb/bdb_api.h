@@ -42,6 +42,7 @@
 #include <assert.h>
 
 #include <compile_time_assert.h>
+#include <sqlresponse.pb-c.h>
 
 #define DEFAULT_DBA_USER "dba"
 #define DEFAULT_DBA_PASSWORD ""
@@ -2447,15 +2448,8 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 int32_t bdb_get_dbopen_gen(void);
 int is_incoherent(bdb_state_type *, struct interned_string *);
 
-#ifdef __APPLE__
-struct CDB2DBINFORESPONSE;
-void fill_dbinfo(struct CDB2DBINFORESPONSE *, bdb_state_type *);
-void fill_ssl_info(struct CDB2DBINFORESPONSE *);
-#else
-struct _CDB2DBINFORESPONSE;
-void fill_dbinfo(struct _CDB2DBINFORESPONSE *, bdb_state_type *);
-void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
-#endif
+void fill_dbinfo(CDB2DBINFORESPONSE *, bdb_state_type *);
+void fill_ssl_info(CDB2DBINFORESPONSE *);
 
 void thedb_set_master(char *);
 int bdb_queuedb_has_seq(bdb_state_type *);

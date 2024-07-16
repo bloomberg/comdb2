@@ -171,7 +171,7 @@ int main(int argc, char **argv)
         "i",
     };
     int rc, num_columns = sizeof(cols) / sizeof(cols[0]);
-    int64_t comdb2_id, comdb2_tid;
+    int64_t comdb2_id = -1, comdb2_tid = -1;
     for (int j = 0; j < 200; ++j) {
         rc = cdb2_next_record(hndl_1);
         if (rc != CDB2_OK) {

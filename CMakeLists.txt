@@ -197,14 +197,11 @@ message("CMAKE_C_COMPILER_ID ${CMAKE_C_COMPILER_ID}")
 # _LINUX_SOURCE is mostly misused as little-endian
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL arm64)
   add_definitions(-D_LINUX_SOURCE)
-  add_definitions(-D_LINUX_SOURCE)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
   add_definitions(-D_GNU_SOURCE)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lrt")
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
-  add_definitions(-D_IBM_SOURCE)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   add_definitions(
     -D_SUN_SOURCE
@@ -230,13 +227,6 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
   endif()
   set(COMMON_FLAGS "${COMMON_FLAGS} -pthread")
   set(COMMON_FLAGS "${COMMON_FLAGS} -fno-strict-aliasing")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL XL)
-  set(COMMON_FLAGS "${COMMON_FLAGS} -qdfp")
-  set(COMMON_FLAGS "${COMMON_FLAGS} -qtls")
-  set(COMMON_FLAGS "${COMMON_FLAGS} -qcpluscmt")
-  set(COMMON_FLAGS "${COMMON_FLAGS} -qthreaded")
-  set(COMMON_FLAGS "${COMMON_FLAGS} -qchars=signed")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lthread")
 elseif(${CMAKE_C_COMPILER_ID} STREQUAL SunPro)
   set(COMMON_FLAGS "${COMMON_FLAGS} -mt=yes")
   set(COMMON_FLAGS "${COMMON_FLAGS} -fma=fused")
