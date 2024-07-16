@@ -3669,7 +3669,7 @@ static int init(int argc, char **argv)
         rc = bulk_import_tmpdb_pull_foreign_dbfiles(gbl_import_src);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
-            return rc;
+            return -1;
         }
     }
 
@@ -4340,7 +4340,11 @@ static int init(int argc, char **argv)
 
     if (gbl_import_mode)
     {
-        bulk_import_tmpdb_write_import_data(gbl_import_table);
+        rc = bulk_import_tmpdb_write_import_data(gbl_import_table);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to write import data\n", __func__);
+            return -1;
+        }
     }   
 
     if (gbl_exit) {
