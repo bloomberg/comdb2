@@ -6,5 +6,6 @@ add_library(cdb2archive ${src})
 include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/crc32c
+  ${PROJECT_SOURCE_DIR}/util
 )
 add_dependencies(cdb2archive mem crc32c)
