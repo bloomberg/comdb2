@@ -23,6 +23,7 @@
 
 #include <cdb2_constants.h>
 #include <crc32c.h>
+#include <logmsg.h>
 
 #include "ar_wrap.h"
 
@@ -312,12 +313,16 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
     fd = open(f->filename, O_RDONLY);
     if (fd == -1) {
+        logmsg(LOGMSG_ERROR, "%s:%d open() failed with errno(%s)\n",
+                             __func__, __LINE__, strerror(errno));
         rc = 1;
         goto done;
     }
 
     struct stat st;
     if (fstat(fd, &st) == -1) {
+        logmsg(LOGMSG_ERROR, "%s:%d fstat() failed with errno(%s)\n",
+                             __func__, __LINE__, strerror(errno));
         rc = 1;
         goto done;
     }
@@ -355,6 +360,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
 #if !defined(_SUN_SOURCE) && !defined(_HP_SOURCE)
         if (posix_memalign((void **)&(f->pagebuf), 512, f->bufsize)) {
+            logmsg(LOGMSG_ERROR, "%s:%d posix_memalign() failed with errno(%s)\n",
+                                 __func__, __LINE__, strerror(errno));
             rc = 1;
             goto done;
         }
@@ -370,6 +377,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
     size_t bytes_read = read(fd, &pagebuf[0], nbytes);
     if (bytes_read <= 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d read() failed with errno(%s)\n",
+                             __func__, __LINE__, strerror(errno));
         rc = 1;
         goto done;
     }
@@ -378,6 +387,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
         // Save current offset
         const off_t offset = lseek(fd, 0, SEEK_CUR);
         if (offset == (off_t)-1) {
+            logmsg(LOGMSG_ERROR, "%s:%d lseek() failed with errno(%s)\n",
+                                 __func__, __LINE__, strerror(errno));
             rc = 1;
             goto done;
         }
@@ -402,6 +413,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
             // checksum verification.
             if (--retry == 0) {
                 // giving up on this page
+                logmsg(LOGMSG_ERROR, "%s:%d failed to read page\n",
+                                     __func__, __LINE__);
                 rc = 1;
                 goto done;
             }
@@ -413,6 +426,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
             off_t rewind = offset - (bytes_read - n);
             rewind = lseek(fd, rewind, SEEK_SET);
             if (rewind == (off_t)-1) {
+                logmsg(LOGMSG_ERROR, "%s:%d lseek() failed with errno(%s)\n",
+                                     __func__, __LINE__, strerror(errno));
                 rc = 1;
                 goto done;
             }
@@ -422,6 +437,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
                 nread = read(fd, &pagebuf[0] + n + totalread,
                              pagesize - totalread);
                 if (nread <= 0) {
+                    logmsg(LOGMSG_ERROR, "%s:%d read() failed with errno(%s)\n",
+                                         __func__, __LINE__, strerror(errno));
                     rc = 1;
                     goto done;
                 }
@@ -431,6 +448,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
         // Restore to original offset
         if (offset != lseek(fd, offset, SEEK_SET)) {
+            logmsg(LOGMSG_ERROR, "%s:%d lseek() failed with errno(%s)\n",
+                                 __func__, __LINE__, strerror(errno));
             rc = 1;
             goto done;
         }
@@ -438,6 +457,8 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
     rc = writer(writer_ctx, pagebuf, bytes_read, current_file_offset);
     if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d writer() failed with rc(%d)\n",
+                             __func__, __LINE__, rc);
         rc = 1;
         goto done;
     }
