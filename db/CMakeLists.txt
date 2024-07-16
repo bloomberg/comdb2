@@ -161,16 +161,16 @@ set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
   COMDB2_SEMVER=${COMDB2_SEMVER}
   COMDB2_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 )
-if(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
-set_source_files_properties(
-  ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
-  ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
-  ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
-  ${PROJECT_SOURCE_DIR}/tools/cdb2_pgdump/cdb2_pgdump.c
-  ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
-  ${PROJECT_SOURCE_DIR}/tools/cdb2_verify/cdb2_verify.c
-  PROPERTIES COMPILE_FLAGS "-Wno-deprecated-non-prototype"
-)
+if(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+  set_source_files_properties(
+    ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
+    ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
+    ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
+    ${PROJECT_SOURCE_DIR}/tools/cdb2_pgdump/cdb2_pgdump.c
+    ${PROJECT_SOURCE_DIR}/tools/cdb2_printlog/cdb2_printlog.c
+    ${PROJECT_SOURCE_DIR}/tools/cdb2_verify/cdb2_verify.c
+    PROPERTIES COMPILE_FLAGS "-Wno-deprecated-non-prototype"
+  )
 endif()
 set_source_files_properties(${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c PROPERTIES GENERATED TRUE)
 

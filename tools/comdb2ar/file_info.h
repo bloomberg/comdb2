@@ -20,7 +20,8 @@
 #include <string>
 #include <ostream>
 #include <iostream>
-#include <stdio.h>
+#include <cstdio>
+#include <cstdint>
 #include <vector>
 
 class FileInfo {

@@ -283,10 +283,7 @@ include_directories(
 
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-const-variable")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-knr-promoted-parameter")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-const-variable")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-deprecated-non-prototype")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-knr-promoted-parameter")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-const-variable")
