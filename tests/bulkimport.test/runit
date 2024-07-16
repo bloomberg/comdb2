@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+exec 1>/dev/null
+
 source fixtures.sh
 source constants.sh
 source util.sh
 
 function test_flip_flop_import() {
 	(
+		# Given
 		local src_tbl dst_tbl
 		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
@@ -19,7 +22,99 @@ function test_flip_flop_import() {
 		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl"
 
 		# Then
-		rc=$? && verify_import $src_tbl $dst_tbl
+		verify $? $src_tbl $dst_tbl
+	)
+}
+
+function test_import_many_tables_over_table() {
+	(
+		# Given
+		local src_tbl_1 src_tbl_2 src_tbl_3 dst_tbl
+		src_tbl_1=foo src_tbl_2=bar src_tbl_3=baz dst_tbl=foo
+		query_src_db "create table $src_tbl_1(i int)" > /dev/null
+		query_src_db "create table $src_tbl_2(i int)"
+		query_src_db "create table $src_tbl_3(i int)"
+		query_dst_db "create table $dst_tbl(i int)"
+		query_src_db "insert into $src_tbl_1 values(1)"
+		query_src_db "insert into $src_tbl_2 values(2)"
+		query_src_db "insert into $src_tbl_3 values(3)"
+		trap "query_src_db 'drop table $src_tbl_1';\
+			query_src_db 'drop table $src_tbl_2';\
+			query_src_db 'drop table $src_tbl_3';\
+			query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		query_dst_db "import $src_tbl_1 from $SRC_DBNAME to $dst_tbl" && \
+		query_dst_db "import $src_tbl_2 from $SRC_DBNAME to $dst_tbl" && \
+		query_dst_db "import $src_tbl_3 from $SRC_DBNAME to $dst_tbl"
+
+		# Then
+		verify $? $src_tbl_3 $dst_tbl
+	)
+}
+
+function test_multiple_imports_at_once() {
+	(
+		# Given
+		local src_tbl dst_tbl n_simultaneous_imports pids rc
+		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl
+		n_simultaneous_imports=7 pids=() rc=0
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		for i in $(seq $n_simultaneous_imports); do
+			query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl" &
+			pids[${i}]=$!
+		done
+
+		for pid in ${pids[@]}; do
+			wait $pid || rc=1
+		done
+
+		# Then
+		verify $rc $src_tbl $dst_tbl
+	)
+}
+
+function test_heavy_traffic_import() {
+	(
+		# Given
+		local src_tbl dst_tbl n_insert_threads src_pids dst_pids rc
+		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl
+		src_pids=() dst_pids=() n_insert_threads=7 rc=0
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		for i in $(seq $n_insert_threads); do
+			query_in_loop query_src_db "insert into $src_tbl values(abs(random())%10000)" .1 &
+			src_pids[${i}]=$!
+
+			query_in_loop query_dst_db "insert into $dst_tbl values(abs(random())%10000)" .1 &
+			dst_pids[${i}]=$!
+		done
+
+		sleep 1
+
+		src_values=$(query_src_db_opts "select * from $src_tbl" "-tabs")
+
+		# When
+		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl"
+
+		# Then
+		rc=$?
+
+		for pid in ${src_pids[@]} ${dst_pids[@]};
+		do
+			if ! ps -p $pid > /dev/null;
+			then
+				# PID failed
+				rc=1
+				break
+			fi
+			# Might get a false positive here if pid was reused
+			kill -9 $pid &> /dev/null
+		done
+
+		verify $rc $src_tbl $dst_tbl "$src_values"
 	)
 }
 
@@ -34,7 +129,7 @@ function run_basic_test() {
 		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl" 
 
 		# Then
-		rc=$? && verify_import $src_tbl $dst_tbl
+		verify $? $src_tbl $dst_tbl
 	)
 }
 
@@ -46,7 +141,7 @@ function test_basic() {
 
 		if (( rc != 0 ));
 		then
-			echo "Failed $FUNCNAME with $fixture"
+			echo_err "Failed $FUNCNAME with $fixture"
 			return $rc
 		fi
 	done
@@ -59,6 +154,7 @@ function main() {
 	do
 		$testcase
 		failexit $? "Failed $testcase"
+		echo_err "Passed $testcase"
 	done
 }
 
