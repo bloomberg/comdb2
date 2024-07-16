@@ -30,8 +30,6 @@
 #define MAXDYNTAGCOLUMNS 2048
 #define MAXKEYLEN 512
 #define MAXLRL 65536
-#define MAXBBNODENUM 32768 /* Legacy: maximum number assigned to a machine in BBENV */
-#define MAXNODES MAXBBNODENUM
 #define MAXPLUGINS 100
 #define MAXPSTRLEN 256
 #define MAX_QUEUE_HITS_PER_TRANS 8
