@@ -5539,8 +5539,11 @@ void *watcher_thread(void *arg)
 
         net_timeout_watchlist(bdb_state->repinfo->netinfo);
 
-        if (bdb_state->passed_dbenv_open && bdb_state->repinfo->rep_process_message_start_time) {
-            time_t diff = comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time;
+        /* rep_process_message_start_time may change to 0 after we first look at it,
+         * and before we look at it again. remember its value. */
+        int stime = bdb_state->repinfo->rep_process_message_start_time;
+        if (bdb_state->passed_dbenv_open && stime) {
+            time_t diff = comdb2_time_epoch() - stime;
             if (diff >= gbl_rep_process_pstack_time) {
                 logmsg(LOGMSG_WARN, "rep_process_message running for %ld seconds, dumping thread pool to trc.c\n", diff);
                 gbl_logmsg_ctrace = 1;
