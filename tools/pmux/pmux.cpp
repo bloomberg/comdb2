@@ -782,29 +782,17 @@ int main(int argc, char **argv)
         syslog(LOG_WARNING, "setting open_max to:%ld\n", open_max);
     }
 
-    std::string host;
+    char myhost[512] = {0};
     char *hostptr = getenv("HOSTNAME");
     if (hostptr == nullptr) {
-        long hostname_max = sysconf(_SC_HOST_NAME_MAX);
-        if (hostname_max == -1) {
-            syslog(LOG_WARNING, "sysconf(_SC_HOST_NAME_MAX): %d %s ", errno,
-                   strerror(errno));
-            hostname_max = 255;
-            syslog(LOG_WARNING, "setting hostname_max to:%ld\n", hostname_max);
-        }
-        char myhost[hostname_max + 1];
-        int rc = gethostname(myhost, hostname_max);
-        if (rc == 0) {
-            myhost[hostname_max] = '\0';
-            host = hostptr = myhost;
-        } else {
-            syslog(LOG_CRIT,
-                   "Can't figure out hostname: please export HOSTNAME.\n");
+        int rc = gethostname(myhost, sizeof(myhost) - 1);
+        if (rc) {
+            syslog(LOG_CRIT, "Can't figure out hostname: please export HOSTNAME.\n");
             return EXIT_FAILURE;
         }
-    } else {
-        host = hostptr;
+        hostptr = myhost;
     }
+    std::string host(hostptr);
 
     bool foreground_mode = false;
     std::string cluster("prod");
