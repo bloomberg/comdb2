@@ -5653,7 +5653,7 @@ static void comdb2AddIndexInt(
         if (key->where == 0)
             goto oom;
 
-        snprintf(key->where, where_sz, "%s", zStart);
+        strncpy0(key->where, zStart, where_sz);
     }
 
     /*
