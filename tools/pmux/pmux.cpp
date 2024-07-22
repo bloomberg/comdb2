@@ -956,6 +956,7 @@ int main(int argc, char **argv)
 
     if (!foreground_mode) {
         bb_daemon();
+        event_reinit(base);
     }
 
     set_max_active_connections();
