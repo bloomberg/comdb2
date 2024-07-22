@@ -684,6 +684,53 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     return 0;
 }
 
+static void toggle_modsnap(int val) {
+    gbl_use_modsnap_for_snapshot = val;
+    gbl_modsnap_asof = val;
+}
+
+static void toggle_new_snapisol(int val) {
+    gbl_new_snapisol = val;
+    gbl_new_snapisol_asof = val;
+    gbl_new_snapisol_logging = val;
+}
+
+typedef enum {
+    SNAP_IMPL_ORIG,
+    SNAP_IMPL_NEW,
+    SNAP_IMPL_MODSNAP,
+} snap_impl_enum;
+
+static const char *snap_impl_str(snap_impl_enum impl) {
+    switch (impl) {
+    case SNAP_IMPL_ORIG:
+        return "ORIGINAL";
+        break;
+    case SNAP_IMPL_NEW:
+        return "NEW";
+        break;
+    case SNAP_IMPL_MODSNAP:
+        return "MODSNAP";
+        break;
+    default:
+        return "UNKNOWN";
+        break;
+    }
+}
+
+static snap_impl_enum default_snap_impl() {
+    return SNAP_IMPL_ORIG;
+}
+
+static void enable_snapshot(struct dbenv *dbenv, snap_impl_enum impl) {
+    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
+    gbl_snapisol = 1;
+    impl == SNAP_IMPL_MODSNAP ? toggle_modsnap(1) : toggle_modsnap(0);
+    impl == SNAP_IMPL_NEW ? toggle_new_snapisol(1) : toggle_new_snapisol(0);
+    logmsg(LOGMSG_INFO, "Enabled snapshot isolation. Using %s implementation\n",
+        snap_impl_str(impl));
+}
+
 #define parse_lua_funcs(pfx)                                                                                           \
     do {                                                                                                               \
         tok = segtok(line, strlen(line), &st, &ltok);                                                                  \
@@ -1207,34 +1254,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        // If use_modsnap_for_snapshot is set then we don't want 
-        // to enable the new snapisol tunables.
-        if (!gbl_use_modsnap_for_snapshot) {
-        /* Disable- will circle back to fix */
-/*
-        gbl_new_snapisol = 1;
-        gbl_new_snapisol_asof = 1;
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled snapshot isolation (default newsi)\n");
-*/
-        }
-        logmsg(LOGMSG_INFO, "Enabled snapshot isolation\n");
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        gbl_new_snapisol = 1;
-        gbl_new_snapisol_asof = 1;
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
-    } else if (tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
-        gbl_snapisol = 1;
-        gbl_new_snapisol = 1;
-        gbl_new_snapisol_asof = 1;
-        gbl_new_snapisol_logging = 1;
-        logmsg(LOGMSG_INFO, "Enabled new snapshot\n");
+        snap_impl_enum default_impl = default_snap_impl();
+
+        enable_snapshot(dbenv, default_impl);
+    } else if (tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
+        enable_snapshot(dbenv, SNAP_IMPL_MODSNAP);
+    } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0 ||
+               tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
+        enable_snapshot(dbenv, SNAP_IMPL_NEW);
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
@@ -1246,16 +1273,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
-    } else if (tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
-        gbl_snapisol = 1;
-        gbl_modsnap_asof = 1;
-        gbl_use_modsnap_for_snapshot = 1;
-
-        // Turn off new snapisol tunables. modsnap asof and newsi asof don't work together.
-        // If use_modsnap_for_snapshot is defaulted remember to turn these off by default as well.
-        gbl_new_snapisol = 0;
-        gbl_new_snapisol_asof = 0;
-        gbl_new_snapisol_logging = 0;
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {
