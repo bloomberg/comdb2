@@ -4,8 +4,6 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
-set -e
-
 cp $CDB2SQL_EXE cdb2sql-clone
 
 host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT comdb2_host()'`

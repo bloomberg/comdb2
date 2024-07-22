@@ -74,22 +74,22 @@ int init_api_history_data(void **data, int *nrecords)
 {
     *nrecords = 0;
     systable_api_history_t *systable = calloc(*nrecords, sizeof(systable_api_history_t));
-    acquire_client_stats_lock(0);
+    acquire_clientstats_lock(0);
    
     void *curr = NULL;
     unsigned int iter = 0;
-    nodestats_t *entry = get_next_client_stats_entry(&curr, &iter);
+    nodestats_t *entry = get_next_clientstats_entry(&curr, &iter);
     
     while (entry) {
         assert(entry->rawtotals.api_history);
         Pthread_mutex_lock(&entry->rawtotals.lk);
         append_entries(&systable, nrecords, entry->rawtotals.api_history, entry->host, entry->task);
         Pthread_mutex_unlock(&entry->rawtotals.lk);
-        entry = get_next_client_stats_entry(&curr, &iter);
+        entry = get_next_clientstats_entry(&curr, &iter);
     }
 
     *data = systable;
-    release_client_stats_lock();
+    release_clientstats_lock();
     return 0;
 }
 
