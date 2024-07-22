@@ -238,9 +238,9 @@ typedef struct nodestats {
     char mem[1];
 } nodestats_t;
 
-void acquire_client_stats_lock(int);
-void release_client_stats_lock();
-nodestats_t *get_next_client_stats_entry(void**, unsigned int*);
+void acquire_clientstats_lock(int);
+void release_clientstats_lock();
+nodestats_t *get_next_clientstats_entry(void**, unsigned int*);
 
 extern int gbl_time_fdb;
 

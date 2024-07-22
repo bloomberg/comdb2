@@ -2308,12 +2308,12 @@ inline void reqlog_set_truncate(int val)
     logmsg(LOGMSG_USER, "truncate %s\n", reqltruncate ? "enabled" : "disabled");
 }
 
-/* Client Stats LRU Hash */
+/* Client Stats Cache */
 hash_t *clientstats = NULL;
-static LISTC_T(struct nodestats) clntlru;
+static LISTC_T(struct nodestats) freeablecache; //  LRU cache of freeable nodes
 
 pthread_rwlock_t clientstats_lk = PTHREAD_RWLOCK_INITIALIZER;
-pthread_mutex_t clntlru_mtx = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t freeablecache_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int gbl_max_clientstats_cache = 10000;
 
@@ -2321,7 +2321,7 @@ void init_clientstats_table()
 {
     clientstats = hash_init_o(offsetof(nodestats_t, checksum),
                               sizeof(unsigned) + sizeof(int));
-    listc_init(&clntlru, offsetof(struct nodestats, linkv));
+    listc_init(&freeablecache, offsetof(struct nodestats, linkv));
     assert(clientstats);
 }
 
@@ -2339,16 +2339,67 @@ static int hash_free_element(void *elem, void *unused) {
     return 0;
 }
 
+void acquire_clientstats_lock(int write)
+{
+    if (write) {
+        Pthread_rwlock_wrlock(&clientstats_lk);
+    } else {
+        Pthread_rwlock_rdlock(&clientstats_lk);
+    }
+}
+
+void release_clientstats_lock()
+{
+    Pthread_rwlock_unlock(&clientstats_lk);
+}
+
+static void init_clientstats(nodestats_t *entry, int task_len, char *host, int fd)
+{
+    entry->task = entry->mem;
+    entry->stack = entry->mem + task_len;
+    entry->host = host;
+    entry->ref = 1;
+    entry->rawtotals.api_history = init_api_history(); 
+    entry->rawtotals.svc_time = time_metric_new("svc_time");
+    entry->prevtotals.svc_time = entry->rawtotals.svc_time;
+    
+    Pthread_mutex_init(&entry->mtx, 0);
+    Pthread_mutex_init(&entry->rawtotals.lk, NULL);
+
+    if (fd < 0) {
+        bzero(&(entry->addr), sizeof(struct in_addr));
+    } else {
+        struct sockaddr_in peeraddr;
+        socklen_t len = sizeof(peeraddr);
+        bzero(&peeraddr, sizeof(peeraddr));
+        if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
+            if (errno != ENOTCONN)
+                logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
+                        strerror(errno));
+            bzero(&(entry->addr), sizeof(struct in_addr));
+        } else {
+            memcpy(&(entry->addr), &peeraddr.sin_addr,
+                    sizeof(struct in_addr));
+        }
+    }
+}
+
+static void update_freeable_cache(nodestats_t *entry) {
+    assert(entry->ref >= 0);
+    Pthread_mutex_lock(&freeablecache_mtx);
+    listc_maybe_rfl(&freeablecache, entry);
+    if (!entry->ref) {
+        listc_abl(&freeablecache, entry);
+        logmsg(LOGMSG_DEBUG, "%s: prepared candidate for eviction.\n", __func__);
+    }
+    Pthread_mutex_unlock(&freeablecache_mtx);
+}
+
 static nodestats_t *add_clientstats(unsigned checksum,
                                     const char *task_and_stack, int task_len,
                                     int stack_len, char *host, int node, int fd)
 {
-    int nclntstats;
-    nodestats_t *old_entry = NULL;
-    nodestats_t *entry = NULL;
-    nodestats_t *entry_chk = NULL;
-
-    entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
+    nodestats_t *entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
     if (entry == NULL) {
         logmsg(LOGMSG_ERROR, "%s: out of memory!\n", __func__);
         return NULL;
@@ -2358,154 +2409,138 @@ static nodestats_t *add_clientstats(unsigned checksum,
     memcpy(entry->mem, task_and_stack, task_len + stack_len);
     entry->checksum = checksum;
     entry->node = node;
-    Pthread_mutex_init(&entry->rawtotals.lk, NULL);
 
-    Pthread_rwlock_wrlock(&clientstats_lk);
-    {
-        entry_chk = hash_find(clientstats, entry);
-        if (entry_chk) {
-            free(entry);
-            entry = entry_chk;
-            Pthread_mutex_lock(&entry->mtx);
-            entry->ref++;
-            if (entry->ref == 1) {
-                Pthread_mutex_lock(&clntlru_mtx);
-                listc_rfl(&clntlru, entry);
-                Pthread_mutex_unlock(&clntlru_mtx);
+    acquire_clientstats_lock(1);
+    nodestats_t *entry_chk = hash_find(clientstats, entry);
+    if (entry_chk) {
+        free(entry);
+        entry = entry_chk; 
+        Pthread_mutex_lock(&entry->mtx);
+        entry->ref++;
+        update_freeable_cache(entry);
+        Pthread_mutex_unlock(&entry->mtx);
+        goto done;
+    }
+
+    Pthread_mutex_lock(&freeablecache_mtx);
+    int nclientstats;
+    while ((nclientstats = hash_get_num_entries(clientstats)) >= gbl_max_clientstats_cache) {
+        nodestats_t *old_entry = listc_rtl(&freeablecache);
+        if (old_entry) {
+            hash_del(clientstats, old_entry);
+            if (old_entry->rawtotals.fingerprints) {
+                hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
+                hash_free(old_entry->rawtotals.fingerprints);
             }
-            Pthread_mutex_unlock(&entry->mtx);
+            free_api_history(old_entry->rawtotals.api_history);
+            time_metric_free(old_entry->rawtotals.svc_time);
+            Pthread_mutex_destroy(&old_entry->mtx);
+            Pthread_mutex_destroy(&old_entry->rawtotals.lk);
+            free(old_entry);
         } else {
-            entry->task = entry->mem;
-            entry->stack = entry->mem + task_len;
-            entry->host = host;
-            Pthread_mutex_init(&entry->mtx, 0);
-            entry->ref = 1;
-            entry->rawtotals.api_history = init_api_history(); 
-            entry->rawtotals.svc_time = time_metric_new("svc_time");
-            entry->prevtotals.svc_time = entry->rawtotals.svc_time;
-
-            if (fd < 0) {
-                bzero(&(entry->addr), sizeof(struct in_addr));
-            } else {
-                struct sockaddr_in peeraddr;
-                socklen_t len = sizeof(peeraddr);
-                bzero(&peeraddr, sizeof(peeraddr));
-                if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-                    if (errno != ENOTCONN)
-                        logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
-                               strerror(errno));
-                    bzero(&(entry->addr), sizeof(struct in_addr));
-                } else {
-                    memcpy(&(entry->addr), &peeraddr.sin_addr,
-                           sizeof(struct in_addr));
-                }
-            }
-            Pthread_mutex_lock(&clntlru_mtx);
-            while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
-                   gbl_max_clientstats_cache) {
-                old_entry = listc_rtl(&clntlru); // get+remove oldest from list
-                if (old_entry) {
-                    hash_del(clientstats, old_entry);
-                    Pthread_mutex_destroy(&old_entry->mtx);
-                    Pthread_mutex_destroy(&old_entry->rawtotals.lk);
-                    if (old_entry->rawtotals.fingerprints) {
-                        hash_for(old_entry->rawtotals.fingerprints, hash_free_element, NULL);
-                        hash_free(old_entry->rawtotals.fingerprints);
-                    }
-                    free_api_history(old_entry->rawtotals.api_history);
-                    time_metric_free(old_entry->rawtotals.svc_time);
-                    free(old_entry);
-                } else {
-                    if (gbl_max_clientstats_cache &&
-                        (nclntstats % gbl_max_clientstats_cache == 1))
-                        logmsg(LOGMSG_ERROR,
-                               "%s: too many clientstats %d, max %d\n",
-                               __func__, nclntstats, gbl_max_clientstats_cache);
-                    break;
-                }
-            }
-            Pthread_mutex_unlock(&clntlru_mtx);
-            hash_add(clientstats, entry);
+            break;
         }
     }
-    Pthread_rwlock_unlock(&clientstats_lk);
+    Pthread_mutex_unlock(&freeablecache_mtx);
+    
+    if (nclientstats >= gbl_max_clientstats_cache) {
+        logmsg(LOGMSG_ERROR,
+                "%s: too many running clientstats (max %d), skipping.\n",
+                __func__, gbl_max_clientstats_cache);
+        free(entry);
+        entry = NULL;
+        goto done;
+    }
 
+    init_clientstats(entry, task_len, host, fd);
+    hash_add(clientstats, entry);
+
+done:
+    release_clientstats_lock();
     return entry;
 }
 
 static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
 {
     nodestats_t key;
-    nodestats_t *entry = NULL;
     key.checksum = checksum;
     key.node = node;
-    Pthread_rwlock_rdlock(&clientstats_lk);
-    {
-        entry = hash_find_readonly(clientstats, &key);
-        if (entry) {
-            Pthread_mutex_lock(&entry->mtx);
-            entry->ref++;
-            if (entry->ref == 1) {
-                Pthread_mutex_lock(&clntlru_mtx);
-                listc_rfl(&clntlru, entry);
-                Pthread_mutex_unlock(&clntlru_mtx);
-            }
-            Pthread_rwlock_unlock(&clientstats_lk);
-            if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
-                struct sockaddr_in peeraddr;
-                socklen_t len = sizeof(peeraddr);
-                bzero(&peeraddr, sizeof(peeraddr));
-                if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-                    if (errno != ENOTCONN)
-                        logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
-                               strerror(errno));
-                    bzero(&(entry->addr), sizeof(struct in_addr));
-                } else {
-                    memcpy(&(entry->addr), &peeraddr.sin_addr,
-                           sizeof(struct in_addr));
-                }
-            }
-            Pthread_mutex_unlock(&entry->mtx);
-            return entry;
+
+    acquire_clientstats_lock(0);
+    nodestats_t *entry = hash_find_readonly(clientstats, &key);
+    if (!entry) {
+        goto done;
+    }
+
+    Pthread_mutex_lock(&entry->mtx);
+    entry->ref++;
+    update_freeable_cache(entry);
+
+    if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
+        struct sockaddr_in peeraddr;
+        socklen_t len = sizeof(peeraddr);
+        bzero(&peeraddr, sizeof(peeraddr));
+        if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
+            if (errno != ENOTCONN)
+                logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
+                        strerror(errno));
+            bzero(&(entry->addr), sizeof(struct in_addr));
+        } else {
+            memcpy(&(entry->addr), &peeraddr.sin_addr,
+                    sizeof(struct in_addr));
         }
     }
-    Pthread_rwlock_unlock(&clientstats_lk);
-    return NULL;
+    Pthread_mutex_unlock(&entry->mtx);
+
+done: 
+    release_clientstats_lock();
+    return entry;
 }
 
 static int release_clientstats(unsigned checksum, int node)
 {
     int rc = 0;
     nodestats_t key;
-    nodestats_t *entry = NULL;
     key.checksum = checksum;
     key.node = node;
-    Pthread_rwlock_rdlock(&clientstats_lk);
-    {
-        if ((entry = hash_find_readonly(clientstats, &key)) != NULL) {
-            Pthread_mutex_lock(&entry->mtx);
-            if (entry->ref > 0) {
-                entry->ref--;
-                if (entry->ref == 0) {
-                    Pthread_mutex_lock(&clntlru_mtx);
-                    listc_abl(&clntlru, entry);
-                    Pthread_mutex_unlock(&clntlru_mtx);
-                }
-            } else
-                logmsg(LOGMSG_ERROR, "attempting to release key more often than found, ref 0\n");
-            Pthread_mutex_unlock(&entry->mtx);
-        } else {
-            rc = -1;
-        }
+    
+    acquire_clientstats_lock(0);
+    nodestats_t *entry = hash_find_readonly(clientstats, &key);
+    if (!entry) {
+        rc = -1;
+        goto done;
     }
-    Pthread_rwlock_unlock(&clientstats_lk);
+
+    Pthread_mutex_lock(&entry->mtx);
+    entry->ref--;
+    update_freeable_cache(entry);
+    Pthread_mutex_unlock(&entry->mtx);
+    rc = 0;
+
+done: 
+    release_clientstats_lock();
     return rc;
+}
+
+nodestats_t *get_next_clientstats_entry(void **curr, unsigned int *iter)
+{
+    assert(clientstats);
+    acquire_clientstats_lock(0);
+    nodestats_t *entry;
+    
+    if (!*curr && !*iter) {
+        entry = (nodestats_t *)hash_first(clientstats, curr, iter);
+    } else {
+        entry = (nodestats_t *)hash_next(clientstats, curr, iter);
+    }
+    
+    release_clientstats_lock();
+    return entry;
 }
 
 struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
                                         char *host, int fd, int is_ssl)
 {
-    struct nodestats *nodestats = NULL;
     unsigned checksum;
     int namelen, node;
     int task_len, stack_len = 0;
@@ -2529,24 +2564,24 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     memcpy(tmp, task, task_len);
     memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
-    if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
-        nodestats =
-            add_clientstats(checksum, tmp, task_len, stack_len, host, node, fd);
-        if (nodestats == NULL) {
-            logmsg(
-                LOGMSG_ERROR,
-                "%s: failed to add client stats, task %s, stack %s, node %d\n",
-                __func__, task, stack, node);
-        }
+    
+    nodestats_t *nodestats = find_clientstats(checksum, node, fd);
+    if (!nodestats) {
+        nodestats = add_clientstats(checksum, tmp, task_len, stack_len, host, node, fd);
     }
 
-    /* The same task name from the same node may switch from plaintext to SSL
-     * on a config change; it may also fall back from SSL to plaintext, on an SSL
-     * error. Always get its latest SSL status from clnt. */
-    nodestats->is_ssl = is_ssl;
+    if (nodestats) {
+        /* Always use the latest SSL status from client. */
+        nodestats->is_ssl = is_ssl;
+    } else {
+        logmsg(
+            LOGMSG_ERROR,
+            "%s: failed to add client stats, task %s, stack %s, node %d\n",
+            __func__, task, stack, node);
+    }
 
-    if (tmp && namelen >= 1024)
-        free(tmp);
+    if (tmp && namelen >= 1024) free(tmp);
+
     return nodestats ? &(nodestats->rawtotals) : NULL;
 }
 
@@ -2619,7 +2654,7 @@ void process_nodestats(void)
     span_ms = comdb2_time_epochms() - last_time_ms;
     last_time_ms = comdb2_time_epochms();
 
-    Pthread_rwlock_rdlock(&clientstats_lk);
+    acquire_clientstats_lock(0);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2662,8 +2697,9 @@ void process_nodestats(void)
             next_bucket = 0;
         nodestats->cur_bucket = next_bucket;
     }
+
 done:
-    Pthread_rwlock_unlock(&clientstats_lk);
+    release_clientstats_lock();
     if (list)
         free(list);
 }
@@ -2714,7 +2750,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
     int i;
     int nclnts = 0;
 
-    Pthread_rwlock_rdlock(&clientstats_lk);
+    acquire_clientstats_lock(0);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2856,7 +2892,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
     max_clients = ii;
 
 done:
-    Pthread_rwlock_unlock(&clientstats_lk);
+    release_clientstats_lock();
     if (list)
         free(list);
     *nodes_cnt = max_clients;
@@ -2878,7 +2914,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     int i;
     int nclnts = 0;
 
-    Pthread_rwlock_rdlock(&clientstats_lk);
+    acquire_clientstats_lock(0);
 
     nclnts = hash_get_num_entries(clientstats);
     if (nclnts == 0)
@@ -2936,7 +2972,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     }
 
 done:
-    Pthread_rwlock_unlock(&clientstats_lk);
+    release_clientstats_lock();
     if (list)
         free(list);
 }
@@ -3161,10 +3197,10 @@ static int dump_client_sql_data_single(void *ent, void *arg) {
 
 void dump_client_sql_data(struct reqlogger *logger, int do_snapshot) {
     struct dump_client_sql_options options = { .do_snap = do_snapshot, .logger = logger };
-    Pthread_rwlock_wrlock(&clientstats_lk);
+    acquire_clientstats_lock(0);
     if (clientstats)
         hash_for(clientstats, dump_client_sql_data_single, &options);
-    Pthread_rwlock_unlock(&clientstats_lk);
+    release_clientstats_lock();
 }
 
 void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems) {
@@ -3237,11 +3273,11 @@ int gather_client_sql_data(void **data_out, int *npoints) {
 
     *npoints = 0;
 
-    Pthread_rwlock_wrlock(&clientstats_lk);
+    acquire_clientstats_lock(0);
     int rc = 0;
     if (clientstats)
         rc = hash_for(clientstats, gather_client_sql_data_single, &opt);
-    Pthread_rwlock_unlock(&clientstats_lk);
+    release_clientstats_lock();
     if (rc)
         free_client_sql_data(opt.stats, opt.nstats);
     else {
@@ -3260,34 +3296,4 @@ void free_client_sql_data(void *data, int npoints) {
         free(stats[i].task);
     }
     free(stats);
-}
-
-void acquire_client_stats_lock(int write)
-{
-    if (write) {
-        Pthread_rwlock_wrlock(&clientstats_lk);
-    } else {
-        Pthread_rwlock_rdlock(&clientstats_lk);
-    }
-}
-
-void release_client_stats_lock()
-{
-    Pthread_rwlock_unlock(&clientstats_lk);
-}
-
-nodestats_t *get_next_client_stats_entry(void **curr, unsigned int *iter)
-{
-    assert(clientstats);
-    acquire_client_stats_lock(0);
-    nodestats_t *entry;
-    
-    if (!*curr && !*iter) {
-        entry = (nodestats_t *)hash_first(clientstats, curr, iter);
-    } else {
-        entry = (nodestats_t *)hash_next(clientstats, curr, iter);
-    }
-    
-    release_client_stats_lock();
-    return entry;
 }
