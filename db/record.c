@@ -1377,6 +1377,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     if (rc != 0) {
         *opfailcode = OP_FAILED_VERIFY;
+        retrc = rc;
         ERR("verify error", 0);
     }
 
