@@ -1265,8 +1265,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0 ||
                tokcmp(tok, ltok, "enable_new_snapshot") == 0 ||
-               tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0 ||
-               tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
+               tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
         snap_impl_enum impl = snap_impl();
 
         enable_snapshot(dbenv, impl);
