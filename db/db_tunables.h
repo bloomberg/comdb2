@@ -371,11 +371,11 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 
-/*
 REGISTER_TUNABLE("enable_new_snapshot",
                  "Enable new SNAPSHOT implementation. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READONLY | NOARG, NULL,
+                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READEARLY | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+/*
 REGISTER_TUNABLE(
     "enable_new_snapshot_asof",
     "Enable new BEGIN TRANSACTION AS OF implementation. (Default: off)",
@@ -418,13 +418,11 @@ REGISTER_TUNABLE("disable_selectv_range_check",
                  "Disables 'enable_selectv_range_check'", TUNABLE_BOOLEAN,
                  &gbl_selectv_rangechk, INVERSE_VALUE | NOARG, NULL, NULL, NULL,
                  NULL);
-/*
 REGISTER_TUNABLE("enable_snapshot_isolation",
                  "Enable to allow SNAPSHOT level transactions to run against "
                  "the database. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_snapisol, READONLY, NULL, NULL, NULL,
                  NULL);
-*/
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
@@ -1264,7 +1262,7 @@ REGISTER_TUNABLE("use_planned_schema_change",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("use_modsnap_for_snapshot",
                  "Use modsnap implementation for snapshot transactions. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_use_modsnap_for_snapshot, READONLY,
+                 TUNABLE_BOOLEAN, &gbl_use_modsnap_for_snapshot, READEARLY | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("watchthreshold",
                  "Panic if node has been unhealty (unresponsive, out of resources, etc.) for more "

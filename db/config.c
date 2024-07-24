@@ -718,8 +718,18 @@ static const char *snap_impl_str(snap_impl_enum impl) {
     }
 }
 
-static snap_impl_enum default_snap_impl() {
-    return SNAP_IMPL_ORIG;
+static snap_impl_enum snap_impl() {
+	snap_impl_enum impl;
+	
+	if (gbl_use_modsnap_for_snapshot) {
+		impl = SNAP_IMPL_MODSNAP;
+	} else if (gbl_new_snapisol) {
+		impl = SNAP_IMPL_NEW;
+	} else {
+    	impl = SNAP_IMPL_ORIG;
+	}
+
+	return impl;
 }
 
 static void enable_snapshot(struct dbenv *dbenv, snap_impl_enum impl) {
@@ -1254,14 +1264,14 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         logmsg(LOGMSG_INFO, "Enabled logical logging\n");
     } else if (tokcmp(tok, ltok, "enable_snapshot_isolation") == 0) {
-        snap_impl_enum default_impl = default_snap_impl();
+        snap_impl_enum impl = snap_impl();
 
-        enable_snapshot(dbenv, default_impl);
-    } else if (tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
-        enable_snapshot(dbenv, SNAP_IMPL_MODSNAP);
+        enable_snapshot(dbenv, impl);
     } else if (tokcmp(tok, ltok, "enable_new_snapshot") == 0 ||
                tokcmp(tok, ltok, "enable_new_snapshot_asof") == 0) {
         enable_snapshot(dbenv, SNAP_IMPL_NEW);
+    } else if (tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
+        enable_snapshot(dbenv, SNAP_IMPL_MODSNAP);
     } else if (tokcmp(tok, ltok, "enable_new_snapshot_logging") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_new_snapisol_logging = 1;
