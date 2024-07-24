@@ -719,17 +719,17 @@ static const char *snap_impl_str(snap_impl_enum impl) {
 }
 
 static snap_impl_enum snap_impl() {
-	snap_impl_enum impl;
-	
-	if (gbl_use_modsnap_for_snapshot) {
-		impl = SNAP_IMPL_MODSNAP;
-	} else if (gbl_new_snapisol) {
-		impl = SNAP_IMPL_NEW;
-	} else {
-    	impl = SNAP_IMPL_ORIG;
-	}
+    snap_impl_enum impl;
+    
+    if (gbl_use_modsnap_for_snapshot) {
+        impl = SNAP_IMPL_MODSNAP;
+    } else if (gbl_new_snapisol) {
+        impl = SNAP_IMPL_NEW;
+    } else {
+        impl = SNAP_IMPL_ORIG;
+    }
 
-	return impl;
+    return impl;
 }
 
 static void enable_snapshot(struct dbenv *dbenv, snap_impl_enum impl) {
