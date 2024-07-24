@@ -370,22 +370,15 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  "state. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
-
-/*
 REGISTER_TUNABLE("enable_new_snapshot",
                  "Enable new SNAPSHOT implementation. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READONLY | NOARG, NULL,
+                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READEARLY | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "enable_new_snapshot_asof",
     "Enable new BEGIN TRANSACTION AS OF implementation. (Default: off)",
-    TUNABLE_BOOLEAN, &gbl_new_snapisol_asof, READONLY | NOARG, NULL, NULL, NULL,
+    TUNABLE_BOOLEAN, &gbl_new_snapisol_asof, READEARLY | READONLY | NOARG, NULL, NULL, NULL,
     NULL);
-REGISTER_TUNABLE("enable_new_snapshot_logging",
-                 "Enable alternate logging scheme. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol_logging, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
-*/
 REGISTER_TUNABLE("enable_osql_blob_optimization",
                  "Replicant tracks which columns are modified in a transaction "
                  "to allow blob updates to be ommitted if possible. (Default: "
@@ -425,6 +418,12 @@ REGISTER_TUNABLE("enable_snapshot_isolation",
                  TUNABLE_BOOLEAN, &gbl_snapisol, READONLY, NULL, NULL, NULL,
                  NULL);
 */
+
+REGISTER_TUNABLE("set_snapshot_impl",
+                 "Changes the default snapshot implementation "
+                 "*without enabling snapshot* (default 'original')",
+                 TUNABLE_STRING, &gbl_snap_impl, READEARLY | READONLY, NULL, NULL,
+                 snapshot_impl_update, NULL);
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
@@ -1264,7 +1263,7 @@ REGISTER_TUNABLE("use_planned_schema_change",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("use_modsnap_for_snapshot",
                  "Use modsnap implementation for snapshot transactions. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_use_modsnap_for_snapshot, READONLY,
+                 TUNABLE_BOOLEAN, &gbl_use_modsnap_for_snapshot, READEARLY | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("watchthreshold",
                  "Panic if node has been unhealty (unresponsive, out of resources, etc.) for more "
