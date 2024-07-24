@@ -7,15 +7,29 @@ function test_comdb2_files_restricted_file() {
 	(
 		# Given
 		local dbname=$1 dbdir=$2
-		echo "restricted blahblah" > $dbdir/restrictedFile
-		chmod 000 $dbdir/restrictedFile
-		trap "chmod 777 $dbdir/restrictedFile; rm $dbdir/restrictedFile" EXIT
+		echo "restricted blahblah" | tee \
+			$dbdir/no_access >> \
+			$dbdir/no_access_world >> \
+			$dbdir/no_access_group >> \
+			$dbdir/no_access_group_world
+
+		chmod u-r,g-r,o-r $dbdir/no_access
+		chmod g-r $dbdir/no_access_world $dbdir/no_access_group_world
+		chmod o-r $dbdir/no_access_group $dbdir/no_access_group_world
+
+		trap "chmod 777 $dbdir/no_access*; rm $dbdir/no_access*" EXIT
 
 		# When
-		cdb2sql $dbname local 'select count(*) from comdb2_files' > /dev/null
+		fname=$(cdb2sql -tabs $dbname local \
+			"select filename from comdb2_files where filename like 'no_access%'")
 
 		# Then
-		return $?
+		query_rc=$?
+		if [[ ( $query_rc -eq 0 ) && ("$fname" -eq "no_access_world") ]]; then
+			return 0
+		else
+			return 1
+		fi
 	)
 }
 
@@ -23,16 +37,28 @@ function test_comdb2_files_restricted_directory() {
 	(
 		# Given
 		local dbname=$1 dbdir=$2
-		mkdir $dbdir/restrictedDir
-		touch $dbdir/restrictedDir/f
-		chmod 000 $dbdir/restrictedDir
-		trap "chmod 777 $dbdir/restrictedDir; rm -rf $dbdir/restrictedDir" EXIT
+		mkdir $dbdir/no_access $dbdir/no_access_world $dbdir/no_access_group \
+			$dbdir/no_access_group_world
+
+		touch $dbdir/{no_access,no_access_world,no_access_group,no_access_group_world}/restricted
+
+		chmod u-r,g-r,o-r $dbdir/no_access
+		chmod g-r $dbdir/no_access_world $dbdir/no_access_group_world
+		chmod o-r $dbdir/no_access_group $dbdir/no_access_group_world
+
+		trap "chmod 777 $dbdir/no_access*; rm -rf $dbdir/no_access*" EXIT
 
 		# When
-		cdb2sql $dbname local 'select count(*) from comdb2_files' > /dev/null
+		fname=$(cdb2sql -tabs $dbname local \
+			"select filename from comdb2_files where dir like 'no_access%'")
 
 		# Then
-		return $?
+		query_rc=$?
+		if [[ ( $query_rc -eq 0 ) && ("$fname" -eq "no_access_world") ]]; then
+			return 0
+		else
+			return 1
+		fi
 	)
 }
 
