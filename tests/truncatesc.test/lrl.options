@@ -1,6 +1,5 @@
 nowatch
 logmsg level info
-enable_new_snapshot
 enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1
 init_with_genid48
@@ -10,4 +9,4 @@ physrep_register_interval 30
 verbose_physrep on
 online_recovery on
 ack_trace
-use_modsnap_for_snapshot
+set_snapshot_impl modsnap

@@ -370,15 +370,22 @@ REGISTER_TUNABLE("enable_lowpri_snapisol",
                  "state. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lowpri_snapisol_sessions,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+
+/*
 REGISTER_TUNABLE("enable_new_snapshot",
                  "Enable new SNAPSHOT implementation. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READEARLY | READONLY | NOARG, NULL,
+                 TUNABLE_BOOLEAN, &gbl_new_snapisol, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "enable_new_snapshot_asof",
     "Enable new BEGIN TRANSACTION AS OF implementation. (Default: off)",
-    TUNABLE_BOOLEAN, &gbl_new_snapisol_asof, READEARLY | READONLY | NOARG, NULL, NULL, NULL,
+    TUNABLE_BOOLEAN, &gbl_new_snapisol_asof, READONLY | NOARG, NULL, NULL, NULL,
     NULL);
+REGISTER_TUNABLE("enable_new_snapshot_logging",
+                 "Enable alternate logging scheme. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_new_snapisol_logging, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
+*/
 REGISTER_TUNABLE("enable_osql_blob_optimization",
                  "Replicant tracks which columns are modified in a transaction "
                  "to allow blob updates to be ommitted if possible. (Default: "
@@ -1260,10 +1267,6 @@ REGISTER_TUNABLE("use_planned_schema_change",
                  "Disable to always rebuild all data files and indices for the "
                  "changing table. (Default: 1)",
                  TUNABLE_INTEGER, &gbl_default_plannedsc, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("use_modsnap_for_snapshot",
-                 "Use modsnap implementation for snapshot transactions. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_use_modsnap_for_snapshot, READEARLY | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("watchthreshold",
                  "Panic if node has been unhealty (unresponsive, out of resources, etc.) for more "

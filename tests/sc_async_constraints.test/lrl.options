@@ -1,6 +1,5 @@
 nowatch
 logmsg level info
-enable_new_snapshot
 enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1
 init_with_genid48
@@ -9,4 +8,4 @@ verbose_set_sc_in_progress on
 cache 512 mb
 #online_recovery on
 ack_trace
-use_modsnap_for_snapshot
+set_snapshot_impl modsnap

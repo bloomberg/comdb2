@@ -5,4 +5,4 @@ setattr REP_PROCESSORS 0
 setattr MIN_KEEP_LOGS 100
 on durable_set_trace
 enable_snapshot_isolation
-enable_new_snapshot_asof
+set_snapshot_impl new
