@@ -343,6 +343,12 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
             break;
         }
 
+        if (!(st.st_mode & S_IRGRP)) {
+            logmsg(LOGMSG_WARN, "%s:%d: ignoring %s because it is read-restricted\n",
+                    __func__, __LINE__, de->d_name);
+            continue;
+        }
+
         t_rc = access(path, R_OK);
         if (t_rc == -1) {
             if (errno == EACCES) {
