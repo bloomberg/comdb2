@@ -51,7 +51,6 @@ extern int gbl_disable_new_snapshot;
 extern int gbl_server_admin_mode;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
-extern int gbl_do_not_use_modsnap_for_snapshot;
 
 int gbl_disable_access_controls;
 
