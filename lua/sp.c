@@ -7140,6 +7140,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 {
     const char *end_ptr = NULL;
     char spname[MAX_SPNAME];
+    char spfunc[MAX_SPNAME+2];
     long long sprc = 0;
     int rc, new_vm;
     *err = NULL;
@@ -7151,9 +7152,19 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
 
+    struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
+
     if (strcmp(spname, "debug") == 0) {
         debug_sp(clnt);
         return 0;
+    }
+
+    // Use () to differentiate between tablename and spname
+    snprintf(spfunc, sizeof(spfunc), "%s()", spname);
+
+    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
+        (*err) = strdup("Read access denied for the stored procedure");
+        return SQLITE_ACCESS;
     }
 
     if ((rc = setup_sp_int(spname, thd, clnt, trigger, &new_vm, err)) != 0) return rc;

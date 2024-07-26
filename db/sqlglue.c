@@ -2627,7 +2627,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
     int outrc = SQLITE_OK;
     uint8_t ver;
 
-    if (access_control_check_sql_read(pCur, thd)) {
+    if (access_control_check_sql_read(pCur, thd, NULL)) {
         return SQLITE_ACCESS;
     }
 
@@ -2756,7 +2756,7 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     int outrc = SQLITE_OK;
     struct sqlclntstate *clnt = thd->clnt;
 
-    if (access_control_check_sql_read(pCur, thd)) {
+    if (access_control_check_sql_read(pCur, thd, NULL)) {
         return SQLITE_ACCESS;
     }
 
@@ -5717,7 +5717,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
      * cursor we may have */
     bdb_cursor_ser_invalidate(&pCur->cur_ser);
 
-    if (access_control_check_sql_read(pCur, thd)) {
+    if (access_control_check_sql_read(pCur, thd, NULL)) {
         rc = SQLITE_ACCESS;
         goto done;
     }
@@ -10822,7 +10822,7 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
                               ? gbl_move_deadlk_max_attempt
                               : 500;
         do {
-            if (access_control_check_sql_read(pCur, thd)) {
+            if (access_control_check_sql_read(pCur, thd, NULL)) {
                 rc = SQLITE_ACCESS;
                 break;
             }
