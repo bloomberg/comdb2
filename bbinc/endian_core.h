@@ -45,8 +45,6 @@
 
 #if defined(_LINUX_SOURCE)
 #include <endian_core.amd64.h>
-#elif defined(_IBM_SOURCE)
-#include <endian_core.powerpc.h>
 #elif defined(_SUN_SOURCE)
 #include <endian_core.sparc.h>
 #else

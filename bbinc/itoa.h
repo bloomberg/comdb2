@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#if defined(__sun) || defined(_AIX) || defined(__hpux) || defined(__linux__)
+#if defined(__sun) || defined(__linux__)
 
 char *itoa(int num, char *string);
 

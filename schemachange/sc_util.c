@@ -207,7 +207,7 @@ int trim_sc_history_entries(tran_type *tran, const char *tablename)
     if (nkeys < attr)
         goto cleanup; // nothing to trim
 
-#if defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+#if defined(_SUN_SOURCE)
     qsort(hist, nkeys, sizeof(sc_hist_row), seed_qsort_cmpfunc);
 #endif
 

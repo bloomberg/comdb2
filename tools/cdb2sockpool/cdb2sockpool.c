@@ -14,10 +14,6 @@
    limitations under the License.
  */
 
-#ifdef __hpux
-#define _XOPEN_SOURCE_EXTENDED
-#endif
-
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/resource.h>

@@ -27,12 +27,7 @@
 extern "C" {
 #endif
 
-#ifdef _AIX
-#include <sys/systemcfg.h>
-typedef timebasestruct_t bbhrtime_t;
-#endif
-
-#if defined(__sun) || defined(_HP_SOURCE)
+#if defined(__sun) 
 typedef hrtime_t bbhrtime_t;
 #endif
 

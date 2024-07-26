@@ -45,14 +45,6 @@ enum {
 
     DEFAULT_THD_STACKSZ = 1048576
 
-#elif defined(_IBM_SOURCE)
-
-    DEFAULT_THD_STACKSZ = 163840
-
-#elif defined(_HP_SOURCE)
-
-    DEFAULT_THD_STACKSZ = 524288
-
 #endif
 };
 

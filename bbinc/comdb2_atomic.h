@@ -22,16 +22,6 @@
   #define ATOMIC_ADD32(mem, val) __atomic_add_fetch(&mem, val, __ATOMIC_SEQ_CST)
   #define ATOMIC_ADD64(mem, val) __atomic_add_fetch(&mem, val, __ATOMIC_SEQ_CST)
   #define ATOMIC_ADD32_PTR(mem, val) __atomic_add_fetch(mem, val, __ATOMIC_SEQ_CST)
-#elif defined(_IBM_SOURCE)
-  #define CAS32(mem, oldv, newv) __compare_and_swap(&mem, &oldv, newv)
-  #define CAS64(mem, oldv, newv) __compare_and_swaplp(&mem, &oldv, newv)
-  #define XCHANGE32(mem, newv) __fetch_and_swap(&mem, newv)
-  #define XCHANGE64(mem, newv) __fetch_and_swaplp(&mem, newv)
-  #define ATOMIC_LOAD32(mem) __sync_fetch_and_add(&mem, 0)
-  #define ATOMIC_LOAD64(mem) __sync_fetch_and_add(&mem, 0)
-  #define ATOMIC_ADD32(mem, val) __sync_add_and_fetch(&mem, val)
-  #define ATOMIC_ADD64(mem, val) __sync_add_and_fetch(&mem, val)
-  #define ATOMIC_ADD32_PTR(mem, val) __sync_add_and_fetch(mem, val)
 #else
   #error "Missing atomic primitives"
 #endif

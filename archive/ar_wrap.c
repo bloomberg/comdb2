@@ -359,7 +359,7 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
             f->bufsize <<= 1;
         }
 
-#if !defined(_SUN_SOURCE) && !defined(_HP_SOURCE)
+#if !defined(_SUN_SOURCE)
         if (posix_memalign((void **)&(f->pagebuf), 512, f->bufsize)) {
             logmsg(LOGMSG_ERROR, "%s:%d posix_memalign() failed with errno(%s)\n",
                                  __func__, __LINE__, strerror(errno));

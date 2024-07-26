@@ -97,8 +97,6 @@ int flibc_snprintf_dbl(char *p_str, const size_t str_buf_len, double d);
 
 #if defined(_LINUX_SOURCE)
 #include "flibc.amd64.h"
-#elif defined(_IBM_SOURCE)
-#include "flibc.powerpc.h"
 #elif defined(_SUN_SOURCE)
 #include "flibc.sparc.h"
 #else

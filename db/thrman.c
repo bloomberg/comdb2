@@ -20,9 +20,6 @@
  */
 
 #include <sys/socket.h>
-#ifdef _IBM_SOURCE
-#include <sys/thread.h>
-#endif
 #include <sys/types.h>
 #include <sys/time.h>
 

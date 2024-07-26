@@ -200,7 +200,7 @@ void init_file_locations(char *lrlname)
 
 #   if defined(LEGACY_DEFAULTS)
     tzdata = "/bb/data/datetime";
-#   elif defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+#   elif defined(_SUN_SOURCE)
     tzdata = "/usr/share/lib";
 #   else
     tzdata = "/usr/share/";

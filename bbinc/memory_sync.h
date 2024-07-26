@@ -22,17 +22,7 @@
 
 #if !defined(__GNUC__)
 
-#if defined(_AIX)
-
-/* This is our classic, time-honoured AIX implementation of MEMORY_SYNC.
- * According to http://www.ibm.com/developerworks/systems/articles/powerpc.html,
- * Appendix A, this is a full sync (or just "sync"). */
-void machine_memory_sync_aix();
-#pragma mc_func machine_memory_sync_aix{"7c0004ac"}
-#pragma reg_killed_by machine_memory_sync_aix
-#define MEMORY_SYNC machine_memory_sync_aix()
-
-#elif defined(__linux__)
+#if defined(__linux__)
 
 /* Linux/Power, but no GCC - assume xlc */
 #define MEMORY_SYNC __sync
@@ -48,9 +38,6 @@ void machine_memory_sync_aix();
 
 #endif
 
-#elif defined(__hpux)
-#include <machine/sys/kern_inline.h>
-#define MEMORY_SYNC _MF()
 #else
 
 #define MEMORY_SYNC

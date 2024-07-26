@@ -35,8 +35,6 @@ void thread_util_donework(void);
 typedef pthread_t arch_tid;
 #elif defined(_LINUX_SOURCE)
 typedef pid_t arch_tid;
-#elif defined(_IBM_SOURCE)
-typedef tid_t arch_tid;
 #else
 typedef pthread_t arch_tid;
 #endif

@@ -20,9 +20,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
-#ifdef _AIX
-#include <sys/systemcfg.h>
-#endif
 
 #include <bb_stdint.h>
 #include <logmsg.h>
@@ -34,11 +31,9 @@
 
 int getbbhrtime(bbhrtime_t *t)
 {
-#if defined(__sun) || defined(_HP_SOURCE)
+#if defined(__sun)
     *t = gethrtime();
     return 0;
-#elif defined(_AIX)
-    return read_wall_time(t, TIMEBASE_SZ);
 #elif defined(_LINUX_SOURCE)
     return clock_gettime(CLOCK_MONOTONIC, t);
 #else
@@ -52,7 +47,7 @@ int getbbhrvtime(bbhrtime_t *t)
 #if defined(__sun)
     *t = gethrvtime();
     return 0;
-#elif defined(_AIX) || defined(_HP_SOURCE) || defined(_LINUX_SOURCE)
+#elif defined(_LINUX_SOURCE)
     return getbbhrtime(t);
 #else
     #error "getbbhrvtime: not defined for platform"
@@ -70,21 +65,8 @@ bbint64_t diff_bbhrtime(bbhrtime_t *end, bbhrtime_t *start)
 
 int64_t bbhrtimens(const bbhrtime_t *t_)
 {
-#if defined(__sun) || defined(_HP_SOURCE)
+#if defined(__sun)
     return *t_;
-#elif defined(_AIX)
-    int64_t secs, nsecs;
-    bbhrtime_t t;
-    memcpy(&t, t_, TIMEBASE_SZ);
-    time_base_to_time(&t, TIMEBASE_SZ);
-
-    secs = t.tb_high;
-    nsecs = t.tb_low;
-    if (nsecs < 0) {
-        --secs;
-        nsecs += ONEBILLION;
-    }
-    return ONEBILLION * secs + nsecs;
 #elif defined(_LINUX_SOURCE)
     return ONEBILLION * t_->tv_sec + t_->tv_nsec;
 #else

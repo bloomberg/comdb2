@@ -106,7 +106,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 	if (b == NULL) {
 		b = malloc(sizeof(struct iobuf));
 		b->sz = bufsz;
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+#if ! defined  ( _SUN_SOURCE )
 		if (posix_memalign(&b->buf, 512, bufsz))
 			return NULL;
 #else
@@ -120,7 +120,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 		b->buf = NULL;
 
 		b->sz = 0;
-#if ! defined ( _SUN_SOURCE ) &&  ! defined ( _HP_SOURCE )
+#if ! defined ( _SUN_SOURCE )
 		if (posix_memalign(&b->buf, 512, bufsz))
 			return NULL;
 #else
@@ -1157,28 +1157,12 @@ err:	if (need_free)
 #include <poll.h>
 
 
-#if _IBM_SOURCE
-#include <sys/systemcfg.h>
-#endif
 
 
 uint64_t
 bb_berkdb_fasttime(void)
 {
-#if defined(_AIX)
-
-	timebasestruct_t hr_time;
-	long long absolute_time = 0, hr_ustime = 0;
-
-	read_real_time(&hr_time, TIMEBASE_SZ);
-	time_base_to_time(&hr_time, TIMEBASE_SZ);
-	absolute_time = (long long)hr_time.tb_high * 1000000000LL
-	    + (long long)hr_time.tb_low;
-	hr_ustime = absolute_time / 1000LL;
-
-	return hr_ustime;
-
-#elif defined(__sun)
+#if defined(__sun)
 
 	hrtime_t hr_time = 0;
 	hrtime_t hr_ustime = 0;
@@ -1196,16 +1180,6 @@ bb_berkdb_fasttime(void)
 	absolute_time = (tp.tv_sec * 1000000LL) + tp.tv_usec;
 
 	return absolute_time;
-
-#elif defined(__hpux)
-
-	hrtime_t hr_time = 0;
-	hrtime_t hr_ustime = 0;
-
-	hr_time = gethrtime();
-	hr_ustime = hr_time / 1000LL;
-
-	return hr_ustime;
 
 #else
 	#error "need a way to get fast time!"

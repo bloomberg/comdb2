@@ -25,9 +25,6 @@
 
 #ifndef __NO_SYSTEM_INCLUDES
 
-#ifdef _AIX
-#include <unistd.h>
-#endif
 
 #include <sys/types.h>
 

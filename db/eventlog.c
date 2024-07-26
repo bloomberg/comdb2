@@ -27,10 +27,6 @@
 #include <bb_oscompat.h>
 
 #include <comdb2.h>
-#if defined(_IBM_SOURCE)
-#include <openssl/objects.h>
-#include <openssl/ec.h>
-#endif
 
 #include <zlib.h>
 

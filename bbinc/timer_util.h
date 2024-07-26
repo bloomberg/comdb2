@@ -17,12 +17,6 @@
 #ifndef INCLUDED_TIMER_UTIL_H
 #define INCLUDED_TIMER_UTIL_H
 
-#if defined(_IBM_SOURCE)
-#   include <event2/util.h>
-#   define timeradd evutil_timeradd
-#   define timersub evutil_timersub
-#else
 #   include <sys/time.h>
-#endif
 
 #endif /* INCLUDED_TIMER_UTIL_H */

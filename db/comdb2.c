@@ -4435,7 +4435,7 @@ void create_old_blkseq_thread(struct dbenv *dbenv)
 /* bump up ulimit for no. fds up to hard limit */
 static void adjust_ulimits(void)
 {
-#   if !defined(__hpux) && !defined(__APPLE__)
+#   if !defined(__APPLE__)
     struct rlimit64 rlim;
 
     if (-1 == getrlimit64(RLIMIT_DATA, &rlim)) {
@@ -4479,7 +4479,7 @@ static void adjust_ulimits(void)
     } else {
         logmsg(LOGMSG_INFO, "ulimit for no. fds already set\n");
     }
-#   endif //__hpux
+#   endif //__APPLE__
 }
 
 extern void set_throttle(int);
@@ -6016,7 +6016,7 @@ void epoch2a(int epoch, char *buf, size_t buflen)
     struct tm tmres;
     int pos;
     localtime_r((const time_t *)&epoch, &tmres);
-#if defined(_SUN_SOURCE) || defined(_IBM_SOURCE)
+#if defined(_SUN_SOURCE)
     asctime_r(&tmres, buf);
 #else
     strncpy0(buf, "epoch2a:ARCH?", buflen);

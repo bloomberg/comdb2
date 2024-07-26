@@ -720,7 +720,7 @@ static void form_queuedb_name_int(bdb_state_type *bdb_state, char *name,
 {
     if (file_version != 0) {
         /* Flip to form name on big-endian */
-#if defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+#if defined(_SUN_SOURCE)
         file_version = flibc_llflip(file_version);
 #endif
         snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name,
