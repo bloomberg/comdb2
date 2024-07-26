@@ -29,12 +29,13 @@ generate_test()
     mkdir -p $DEST/$NDIR/
     cp ${TST}.test/* $DEST/$NDIR/
 
-    cat $gtst >> $DEST/$NDIR/lrl.options
-
     for rank in "${DB_RANKS[@]}"; do
         test -f "${gtst}${rank}" && \
         cat "${gtst}${rank}" >> $DEST/$NDIR/lrl_${rank}.options
     done
+
+    cat $gtst >> $DEST/$NDIR/lrl.options
+    return $?
 }
 
 
@@ -49,7 +50,7 @@ fi
 
 if [ "x$one_test" != "x" ] ; then
     generate_test $one_test
-    exit
+    exit $?
 fi
 
 for i in `ls *.test/*.testopts | grep -v '_generated.test'`; do 
