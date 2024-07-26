@@ -149,6 +149,10 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     return rc;
 }
 
+#if SBUF2_SERVER
+int gbl_abort_on_invalid_close = 0;
+#endif
+
 /* flush output, close fd, and free SBUF2.*/
 int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 {
@@ -164,8 +168,16 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
        before closing the underlying fd. */
     sslio_close(sb, (sb->flags & SBUF2_NO_CLOSE_FD));
 
-    if (!(sb->flags & SBUF2_NO_CLOSE_FD))
+    if (!(sb->flags & SBUF2_NO_CLOSE_FD)) {
+#if SBUF2_SERVER
+        int rc = close(sb->fd);
+        if (gbl_abort_on_invalid_close && rc != 0 && errno == EBADF) {
+            abort();
+        }
+#else
         close(sb->fd);
+#endif
+    }
 
     return sbuf2free(sb);
 }

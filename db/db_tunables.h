@@ -1951,6 +1951,10 @@ REGISTER_TUNABLE("revsql_connect_freq_sec", "This node will attempt to (reverse)
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("revsql_force_rte", "Force reverse sql connections to use rte. (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_revsql_force_rte, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("revsql_fake_connect_failure", "Fake a connect-failure on a new revsql connection.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_revsql_fake_connect_failure, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("abort_on_invalid_close", "Abort in sbufclose if the fd is invalid.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_abort_on_invalid_close, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("connect_remote_rte", "Connect to remote nodes using rte. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_connect_remote_rte, 0, 0, 0, 0, 0);
 REGISTER_TUNABLE("revsql_debug",

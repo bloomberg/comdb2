@@ -114,6 +114,8 @@ void free_reverse_conn_handle(reverse_conn_handle_tp *hndl) {
     pthread_cond_signal(&hndl->cond);
 }
 
+int gbl_revsql_fake_connect_failure = 0;
+
 static int execute_rev_command(const char *dbname, const char *fd, const char *command) {
     cdb2_hndl_tp *hndl;
     int rc = 0;
@@ -138,7 +140,13 @@ static int execute_rev_command(const char *dbname, const char *fd, const char *c
 
     logmsg(LOGMSG_USER, "%s:%d reverse-executing: %s\n", __func__, __LINE__, command);
 
-    if ((rc = cdb2_run_statement(hndl, command)) != CDB2_OK) {
+    int fake_connect_failure = 0;
+    if (gbl_revsql_fake_connect_failure && (rand() % 2 == 0)) {
+        logmsg(LOGMSG_USER, "%s:%d Faking connect failure\n", __func__, __LINE__);
+        fake_connect_failure = 1;
+    }
+
+    if ((rc = cdb2_run_statement(hndl, command)) != CDB2_OK || fake_connect_failure) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to execute command: %s (error: %s)\n",
                __func__, __LINE__, command, cdb2_errstr(hndl));
         cdb2_close(hndl);
@@ -269,7 +277,13 @@ retry:
                __func__, __LINE__, cmd);
     }
 
-    if ((rc = cdb2_run_statement(hndl, cmd)) != CDB2_OK) {
+    int fake_connect_failure = 0;
+    if (gbl_revsql_fake_connect_failure && (rand() % 2 == 0)) {
+        logmsg(LOGMSG_USER, "%s:%d Faking connect failure\n", __func__, __LINE__);
+        fake_connect_failure = 1;
+    }
+
+    if ((rc = cdb2_run_statement(hndl, cmd)) != CDB2_OK || fake_connect_failure) {
         logmsg(LOGMSG_ERROR, "%s:%d Failed to execute command: %s (error: %s)\n",
                __func__, __LINE__, cmd, cdb2_errstr(hndl));
         rc = -1;
