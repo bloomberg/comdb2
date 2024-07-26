@@ -2384,8 +2384,7 @@ static int newsql_connect_via_fd(cdb2_hndl_tp *hndl)
         || (errno != 0 && fd == 0)) {
         debugprint("ERROR: %s:%d invalid fd", __func__, __LINE__);
     } else {
-        if ((sb = sbuf2open(fd, 0)) == 0) {
-            close(fd);
+        if ((sb = sbuf2open(fd, SBUF2_NO_CLOSE_FD)) == 0) {
             rc = -1;
             goto after_callback;
         }
