@@ -271,7 +271,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
     return 0;
 }
 
-int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
+int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd, char *rscName)
 {
     int rc = 0;
     int bdberr = 0;
@@ -279,17 +279,19 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     struct sqlclntstate *clnt = thd->clnt;
 
-    if (pCur->cursor_class == CURSORCLASS_TEMPTABLE)
+    if (pCur && pCur->cursor_class == CURSORCLASS_TEMPTABLE)
         return 0;
-    if (pCur->permissions & ACCESS_READ) {
+    if (pCur && pCur->permissions & ACCESS_READ) {
         return 0;
     }
 
     const char *table_name = NULL;
 
-    if (pCur->db)
+    if (pCur && pCur->db)
         table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
                                                   : pCur->db->tablename;
+    else if (rscName)
+        table_name = rscName;
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
@@ -320,7 +322,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             return SQLITE_ABORT;
         }
     } else {
-        if (gbl_uses_password && thd->clnt->in_sqlite_init == 0) {
+        if (gbl_uses_password && pCur && thd->clnt->in_sqlite_init == 0) {
             rc = bdb_check_user_tbl_access(
                 pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
                 pCur->db->tablename, ACCESS_READ, &bdberr);
@@ -338,8 +340,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             }
         }
     }
-
-    pCur->permissions |= ACCESS_READ;
+    if (pCur)
+        pCur->permissions |= ACCESS_READ;
     ATOMIC_ADD64(gbl_num_auth_allowed, 1);
     return 0;
 }

@@ -40,8 +40,7 @@ int check_sql_access(struct sqlthdstate *, struct sqlclntstate *);
 /* Validate write access to database pointed by cursor pCur */
 int access_control_check_sql_write(struct BtCursor *, struct sql_thread *);
 /* Validate read access to database pointed by cursor pCur */
-int access_control_check_sql_read(struct BtCursor *pCur,
-                                  struct sql_thread *thd);
+int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd, char *rscName);
 
 int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr);
 int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr);
