@@ -1,7 +1,3 @@
-#ifdef __hpux
-#define HAVE_USR_INCLUDE_MALLOC_H
-#endif
-
 /*
   Default header file for malloc-2.8.x, written by Doug Lea
   and released to the public domain, as explained at
@@ -164,20 +160,6 @@ int dlmallopt(int, int);
     #ifdef M_MMAP_THRESHOLD
         #undef M_MMAP_THRESHOLD
     #endif
-
-#ifdef _HP_SOURCE
-    #ifdef M_TRIM_THRESHOLD
-        #undef M_TRIM_THRESHOLD
-    #endif
-
-    #ifdef M_GRANULARITY
-        #undef M_GRANULARITY
-    #endif
-
-    #ifdef M_MMAP_THRESHOLD
-        #undef M_MMAP_THRESHOLD
-    #endif
-#endif
 
 #define M_TRIM_THRESHOLD     (-1)
 #define M_GRANULARITY        (-2)

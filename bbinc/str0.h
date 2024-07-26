@@ -19,7 +19,7 @@
 #ifndef INCLUDED_STR0_H
 #define INCLUDED_STR0_H
 
-#if defined(__sun) || defined(__hpux)
+#if defined(__sun)
 #define NEED_STRNLEN_DECL 1
 #define NEED_STRNLEN_DEFN 1
 #endif

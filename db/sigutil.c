@@ -47,17 +47,12 @@ const struct signal_name unix_signals[] = {
 #if !defined(__APPLE__)
     defsig(PWR),
 #endif
-#if defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+#if defined(_SUN_SOURCE)
     defsig(EMT),    defsig(WAITING),
-#endif /* _IBM_SOURCE || _SUN_SOURCE */
-#if defined(_IBM_SOURCE) || defined(_LINUX_SOURCE)
+#endif /* _SUN_SOURCE */
+#if defined(_LINUX_SOURCE)
     defsig(PROF),
-#endif /* _IBM_SOURCE || _LINUX_SOURCE */
-#ifdef _IBM_SOURCE
-    defsig(MSG),    defsig(DANGER),  defsig(MIGRATE),  defsig(PRE),
-    defsig(VIRT),   defsig(ALRM1),   defsig(RECONFIG), defsig(CPUFAIL),
-    defsig(GRANT),  defsig(RETRACT), defsig(SOUND),    defsig(SAK),
-#endif /*_IBM_SOURCE*/
+#endif /* _LINUX_SOURCE */
 #if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
 #   if !defined(__APPLE__)
     defsig(CLD),

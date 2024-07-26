@@ -135,17 +135,7 @@ __os_fsync(dbenv, fhp)
 	if (ckalmn)
 		x1 = bb_berkdb_fasttime();
 
-#if defined(_AIX)
-#define	FDATASYNC	0x00400000
-
-	/* fdatasync on aix */
-	do {
-		ret = fsync_range(fhp->fd, FDATASYNC, 0, 0);
-	} while (ret != 0 &&
-	    ((ret = __os_get_errno()) == EINTR || ret == EBUSY) &&
-	    ++retries < DB_RETRY);
-
-#elif defined (__sun) || defined(__linux__)
+#if defined (__sun) || defined(__linux__)
 
 	/* use fdatasync on solaris and linux */
 

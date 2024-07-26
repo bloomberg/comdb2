@@ -42,15 +42,6 @@
 
 #ifndef __NO_SYSTEM_INCLUDES
 
-#ifdef _AIX
-#include <unistd.h>
-#endif
-
-#ifdef _HP_SOURCE
-#define _STRUCT_MALLINFO
-#include <strings.h>
-#endif
-
 #include <sys/types.h>
 /* <sys/types.h> does not include <inttypes.h> on some systems. */
 #include <inttypes.h>
@@ -92,7 +83,7 @@ extern "C" {
 
 
 #ifndef        __BIT_TYPES_DEFINED__
-#if defined _SUN_SOURCE || defined _HP_SOURCE
+#if defined _SUN_SOURCE
 typedef unsigned char u_int8_t;
 typedef unsigned short u_int16_t;
 typedef unsigned int u_int32_t;
@@ -191,7 +182,7 @@ struct txn_properties;
 #include "db_dbt.h"
 
 /* Compiler hints for branch prediction */
-#if defined(__GNUC__) || defined(__IBMC__)
+#if defined(__GNUC__)
 #  define likely(x) __builtin_expect(!!(x), 1)
 #  define unlikely(x) __builtin_expect(!!(x), 0)
 #else

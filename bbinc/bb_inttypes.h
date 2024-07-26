@@ -41,12 +41,9 @@ typedef unsigned char uint8_t;
  * creating yet another file.
  **/
 
-#if defined(_HP_SOURCE) || defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE)
 typedef long long longlong_t;
 typedef unsigned long long u_longlong_t;
-#endif
-
-#if defined(_LINUX_SOURCE)
 typedef unsigned char uchar_t;
 typedef unsigned short ushort_t;
 typedef unsigned int uint_t;

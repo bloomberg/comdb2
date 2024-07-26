@@ -178,9 +178,7 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 		 * will not work.  I've symlink'd os_open.c from the
 		 * tools directory to force a recompile
 		 */
-#if defined(_AIX) && !defined (TESTSUITE)
-		oflags |= O_CIO;
-#elif defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE)
 		oflags |= (O_DIRECT | O_SYNC);
 #else
 		oflags |= O_DIRECT;
@@ -191,9 +189,7 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	 * environment wants direct logs, request sync io, but not directio */
 	if (F_ISSET(dbenv, DB_ENV_DIRECT_LOG) && LF_ISSET(DB_OSO_LOG) && gbl_wal_osync) {
 		/* don't do O_DIRECT for logs */
-#if defined(_AIX) && !defined (TESTSUITE)
-		oflags |= O_DSYNC;
-#elif defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE)
 		oflags |= O_SYNC;
 #endif
 	}

@@ -46,7 +46,7 @@ std::string read_serialised_sha_file() {
 
     size_t bufsize = 4096;
     uint8_t *buf;
-#if defined _HP_SOURCE || defined _SUN_SOURCE
+#if defined _SUN_SOURCE
     buf = (uint8_t*) memalign(512, bufsize);
 #else
     if (posix_memalign((void**) &buf, 512, bufsize))
@@ -165,7 +165,7 @@ bool compare_checksum(
         uint8_t old_pagebuf[12];
         bool file_expanded = false;
 
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+#if ! defined  ( _SUN_SOURCE )
         if(posix_memalign((void**) &new_pagebuf, 512, pagesize))
             throw Error("Failed to allocate output buffer");
 #else
@@ -269,7 +269,7 @@ ssize_t serialise_incr_file(
     char *char_pagebuf = NULL;
     uint8_t *pagebuf = NULL;
 
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+#if ! defined  ( _SUN_SOURCE )
     if(posix_memalign((void**) &pagebuf, 512, pagesize))
         throw Error("Failed to allocate output buffer");
 #else

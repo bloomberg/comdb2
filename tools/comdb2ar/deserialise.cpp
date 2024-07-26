@@ -670,7 +670,7 @@ void deserialise_database(
 
 
         uint8_t *buf;
-#if defined _HP_SOURCE || defined _SUN_SOURCE
+#if defined _SUN_SOURCE
         buf = (uint8_t*) memalign(512, bufsize);
 #else
         if (posix_memalign((void**) &buf, 512, bufsize))

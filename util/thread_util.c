@@ -249,10 +249,6 @@ void thread_util_donework(void)
 
 arch_tid getarchtid(void) { return syscall(__NR_gettid); }
 
-#elif defined(_IBM_SOURCE)
-
-arch_tid getarchtid(void) { return thread_self(); }
-
 #elif defined(__APPLE__)
 
 arch_tid getarchtid(void)

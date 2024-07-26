@@ -43,9 +43,7 @@ extern "C" {
 
 #include <stdlib.h>
 
-#if defined(_AIX)
-#define DO_DIRECT O_DIRECT
-#elif defined (__linux__)
+#if defined (__linux__)
 #define DO_DIRECT O_DIRECT
 #else
 #define DO_DIRECT 0
@@ -229,7 +227,7 @@ reopen:
     uint8_t *pagebuf = NULL;
     off_t bytesleft = st.st_size;
 
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+#if ! defined  ( _SUN_SOURCE )
         if(posix_memalign((void**) &pagebuf, 512, bufsize))
             throw Error("Failed to allocate output buffer");
 #else
@@ -1588,7 +1586,7 @@ void write_incremental_file (
     off_t bytesleft = uptosize;
     off_t offset = 0;
 
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+#if ! defined  ( _SUN_SOURCE )
     if(posix_memalign((void**) &pagebuf, 512, bufsize))
         throw Error("Failed to allocate output buffer");
 #else

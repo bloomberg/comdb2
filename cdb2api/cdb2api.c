@@ -387,31 +387,6 @@ static char *proc_cmdline_getargv0(void)
 }
 #endif
 
-#if defined(_IBM_SOURCE)
-
-#include <sys/procfs.h>
-#include <procinfo.h>
-
-static char *ibm_getargv0(void)
-{
-    struct procsinfo p;
-    static char argv0[PATH_MAX];
-    pid_t idx = _PID;
-    int rc;
-
-    if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
-        _PID == p.pi_pid) {
-        strncpy(argv0, p.pi_comm, PATH_MAX);
-        argv0[PATH_MAX - 1] = '\0';
-    } else {
-        fprintf(stderr, "%s getprocs returns %d for pid %d\n", __func__, _PID);
-        return NULL;
-    }
-
-    return argv0;
-}
-#endif
-
 #define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
 #define SQLCACHEHINTLENGTH 17
 
@@ -441,8 +416,6 @@ char *cdb2_getargv0(void)
     return apple_getargv0();
 #elif defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
     return proc_cmdline_getargv0();
-#elif defined(_IBM_SOURCE)
-    return ibm_getargv0();
 #else
     fprintf(stderr, "%s unsupported architecture\n", __func__);
     return NULL;
@@ -537,7 +510,7 @@ static int is_sql_read(const char *sqlstr)
 }
 
 /* PASSFD CODE */
-#if defined(_IBM_SOURCE) || defined(_LINUX_SOURCE)
+#if defined(_LINUX_SOURCE)
 #define HAVE_MSGHDR_MSG_CONTROL
 #endif
 

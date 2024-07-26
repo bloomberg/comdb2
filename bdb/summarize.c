@@ -343,9 +343,6 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     int oflags = 0;
     if (bdb_state->attr->directio) {
         // Don't want to call into __os_open_extend here, so use the same flags.
-#if defined(_AIX)
-        oflags |= O_CIO;
-#endif
     }
 
     fd = open(tran_tmpname, O_RDONLY | oflags);

@@ -80,12 +80,6 @@ void set_hostbyname(hostbyname *impl)
     hostbyname_impl = impl;
 }
 
-#ifdef _IBM_SOURCE
-#include <pthread.h>
-#include <sys_wrap.h>
-static pthread_mutex_t servbyname_lk = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
 void comdb2_getservbyname(const char *name, const char *proto, short *port)
 {
 #   ifndef __APPLE__
@@ -100,14 +94,6 @@ void comdb2_getservbyname(const char *name, const char *proto, short *port)
     getservbyname_r(name, proto, &result_buf, buf, sizeof(buf), &result);
 #   elif defined(_SUN_SOURCE)
     result = getservbyname_r(name, proto, &result_buf, buf, sizeof(buf));
-#   elif defined(_IBM_SOURCE)
-    Pthread_mutex_lock(&servbyname_lk);
-    result = getservbyname(name, proto);
-    if (result) {
-        result_buf = *result;
-        result = &result_buf;
-    }
-    Pthread_mutex_unlock(&servbyname_lk);
 #   endif
     if (result) {
         *port = result->s_port;

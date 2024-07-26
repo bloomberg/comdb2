@@ -45,10 +45,6 @@
 
 #include <logmsg.h>
 
-#ifdef _IBM_SOURCE
-extern char *sys_errlist[];
-extern int sys_nerr;
-#endif
 
 /* like perror(), but takes the error number as an argument (useful for
  * pthreads) */

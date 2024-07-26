@@ -59,7 +59,7 @@ void update_tree(const std::string& filename,
 
     uint8_t *pagebuf = NULL;
 
-#if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
+#if ! defined  ( _SUN_SOURCE )
     int rc = posix_memalign((void**) &pagebuf, 512, pagesize);
     if (rc)
         std::cerr << "posix_memalign returns rc " << rc << std::endl;
@@ -244,7 +244,7 @@ void unpack_full_file(
 
 
     uint8_t *buf;
-#if defined _HP_SOURCE || defined _SUN_SOURCE
+#if defined _SUN_SOURCE
     buf = (uint8_t*) memalign(512, bufsize);
 #else
     if (posix_memalign((void**) &buf, 512, bufsize))

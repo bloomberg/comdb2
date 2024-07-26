@@ -44,8 +44,6 @@ extern "C" {
 
 #if defined(_LINUX_SOURCE)
 	#include <dbinc/db_swap.amd64.h>
-#elif defined(_IBM_SOURCE)
-	#include <dbinc/db_swap.big.h>
 #elif defined(_SUN_SOURCE)
 	#include <dbinc/db_swap.big.h>
 #else

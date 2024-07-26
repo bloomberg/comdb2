@@ -157,11 +157,7 @@ int tcpaccept(int listen_fd, struct sockaddr_in *client_addr)
 {
     int newfd;
     struct sockaddr_in laddr;
-#if defined __hpux
-    int client_addr_len;
-#else
     socklen_t client_addr_len;
-#endif
     client_addr_len = sizeof(struct sockaddr_in);
     if (client_addr == 0)
         client_addr = &laddr;
@@ -233,11 +229,7 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
     struct pollfd pfd;
     int flags, rc;
     int err;
-#if defined(_AIX) || defined(_LINUX_SOURCE)
     socklen_t len;
-#else
-    socklen_t len;
-#endif
     if (timeoutms <= 0)
         return connect(s, name, namelen); /*no timeout specified*/
     flags = fcntl(s, F_GETFL, 0);

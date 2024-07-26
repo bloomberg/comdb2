@@ -543,13 +543,13 @@
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #if !defined(likely) /* thread_util.h (?) */
-#if defined(__GNUC__) || defined(__IBMC__)
+#if defined(__GNUC__)
 #define likely(x)    __builtin_expect(!!(x), 1)
 #define unlikely(x)  __builtin_expect(!!(x), 0)
-#else /* defined(__GNUC__) || defined(__IBMC__) */
+#else /* defined(__GNUC__) */
 #define likely(X)    (X)
 #define unlikely(X)  (X)
-#endif /* defined(__GNUC__) || defined(__IBMC__) */
+#endif /* defined(__GNUC__) */
 #endif /* !defined(likely) */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define likely(X)    (X)

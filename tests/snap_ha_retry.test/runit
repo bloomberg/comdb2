@@ -33,9 +33,7 @@ for testreq in `ls t*.req` ; do
     done
     if [ "$(uname)" == "Linux" ]; then
       cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
-    elif [ "$(uname)" == "AIX" ]; then
-      cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
-    else t  
+    else
       cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
     fi  
     echo $cmd "> $testname.output"
