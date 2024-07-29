@@ -28,7 +28,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "printformats.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include <fsnapf.h>
 #if defined (UFID_HASH_DEBUG)
 #include <limits.h>

@@ -17,7 +17,7 @@
 #ifndef INCLUDED_SCHEMA_LK_H
 #define INCLUDED_SCHEMA_LK_H
 
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 int have_schema_lock(void);
 

@@ -40,7 +40,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include "dbinc/txn.h"
 #include "logmsg.h"
 #include "util.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "thread_stats.h"
 #include "tohex.h"
 #include "txn_properties.h"

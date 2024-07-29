@@ -33,7 +33,7 @@
 #include "epochlib.h"
 #include "machclass.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 static int machine_is_up_default(const char *host);
 static int machine_status_init(void);

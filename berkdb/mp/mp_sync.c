@@ -36,7 +36,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include "ctrace.h"
 #include <pool.h>
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 extern int gbl_file_permissions;
 
@@ -2387,7 +2387,7 @@ __memp_load_default(dbenv)
 				__LINE__, rpath, errno);
 #endif
 		if (fd >= 0)
-			close(fd);
+			Close(fd);
 		ret = -1;
 		goto done;
 	}
@@ -2463,7 +2463,7 @@ __memp_dump_default(dbenv, force)
 				__LINE__, rtmppath, errno);
 #endif
 		if (fd >= 0)
-			close(fd);
+			Close(fd);
 		ret = -1;
 		goto done;
 	}

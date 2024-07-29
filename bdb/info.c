@@ -26,7 +26,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
@@ -1152,7 +1152,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 
                     npages = __berkdb_count_freepages(fd);
                     total_npages += npages;
-                    close(fd);
+                    Close(fd);
                     if (count_freepages_abort)
                         return 0;
                     if (blobno == 0)
@@ -1178,7 +1178,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 
             npages = __berkdb_count_freepages(fd);
             total_npages += npages;
-            close(fd);
+            Close(fd);
             if (count_freepages_abort)
                 return 0;
             logmsg(LOGMSG_USER, "  %s ix %d   => %u\n", bdb_state->name, ix, npages);

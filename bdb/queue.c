@@ -55,7 +55,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 #include "bdb_queue.h"
 #include "bdb_queuedb.h"

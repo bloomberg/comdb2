@@ -23,7 +23,7 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "dbinc/db_am.h"
 #include "cheapstack.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 #if defined (DEBUG_STACK_AT_DBREG_LOG)
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);

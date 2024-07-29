@@ -552,7 +552,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
            recs_looked_at);
 done:
     if (fd != -1)
-        close(fd);
+        Close(fd);
     if (page)
         free(page);
     if (rc || *bdberr != BDBERR_NOERROR) {

@@ -17,7 +17,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include "string_ref.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "comdb2_atomic.h"
 #include "mem_util.h"
 #include "mem_override.h"

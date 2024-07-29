@@ -10,7 +10,7 @@
 #include <syslog.h>
 
 #include "logmsg.h"
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include "util.h"
 #include "segstr.h"
 

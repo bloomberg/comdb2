@@ -36,7 +36,7 @@
 
 #include <logmsg.h>
 #include "util.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "tohex.h"
 #include "locks.h"
 
@@ -71,7 +71,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     }
     rc = fchmod(fd, 0666);
     if (rc) {
-        close(fd);
+        Close(fd);
         logmsg(LOGMSG_ERROR, "fchmod rc %d %s\n", errno, strerror(errno));
         return NULL;
     }
@@ -79,7 +79,7 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
     rc = db->open(db, NULL, fname, NULL, DB_BTREE, DB_CREATE | DB_TRUNCATE,
                   0666);
     /* we don't need the descriptor mkstemp creates, just need a unique name */
-    close(fd);
+    Close(fd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "blkseq->open rc %d\n", rc);
         return NULL;

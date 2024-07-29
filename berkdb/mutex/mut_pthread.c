@@ -20,7 +20,7 @@ static const char revid[] = "$Id: mut_pthread.c,v 11.57 2003/05/05 19:55:03 bost
 #endif
 
 #include "db_int.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 #include <btree/bt_prefix.h>
 

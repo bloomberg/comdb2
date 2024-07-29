@@ -60,7 +60,7 @@
 #include <pthread.h>
 #include <stdio.h>
 
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 /*
  * LOCK() {  ...  } UNLOCK()

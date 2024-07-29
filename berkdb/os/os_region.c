@@ -143,7 +143,7 @@ __os_r_attach(dbenv, infop, rp)
 			     infop->fd, 0);
 		if (infop->addr == MAP_FAILED) {
 			logmsgperror("mmap");
-			close(infop->fd);
+			Close(infop->fd);
 			unlink(name);
 			exit(1);
 		}
@@ -185,7 +185,8 @@ __os_r_detach(dbenv, infop, destroy)
 		    gbl_dbname, infop->id);
         if (rp->size)
             munmap(infop->addr, rp->size);
-		close(infop->fd);
+        if (infop->fd >= 0)
+		    Close(infop->fd);
 		unlink(name);
 	}
 

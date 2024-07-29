@@ -43,7 +43,7 @@ typedef unsigned int u_int;
 #include <gettimeofday_ms.h>
 #include <errno.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 extern void berkdb_dump_lockers_summary(DB_ENV *);
 

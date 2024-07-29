@@ -30,7 +30,7 @@
 #include "mem_datetime.h"
 #include "mem_override.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include <str0.h>
 
 #ifndef TZ_ABBR_MAX_LEN
@@ -374,7 +374,7 @@ register const int doextend;
         if ((fid = open(name, OPEN_MODE)) == -1) return -1;
     }
     nread = read(fid, u.buf, sizeof u.buf);
-    if (close(fid) < 0 || nread <= 0) return -1;
+    if (Close(fid) < 0 || nread <= 0) return -1;
     for (stored = 4; stored <= 8; stored *= 2) {
         int ttisstdcnt;
         int ttisgmtcnt;
@@ -1953,7 +1953,7 @@ register const int doextend;
         if ((fid = open(name, OPEN_MODE)) == -1) return -1;
     }
     nread = read(fid, u.buf, sizeof u.buf);
-    if (close(fid) < 0 || nread <= 0) return -1;
+    if (Close(fid) < 0 || nread <= 0) return -1;
     for (stored = 4; stored <= 8; stored *= 2) {
         int ttisstdcnt;
         int ttisgmtcnt;

@@ -41,7 +41,7 @@
 #include "thdpool.h"
 #include "thread_util.h"
 #include "thread_malloc.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"

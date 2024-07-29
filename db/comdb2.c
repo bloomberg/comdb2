@@ -967,7 +967,7 @@ int get_max_reclen(struct dbenv *dbenv)
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "get_max_reclen: failed to open sbuf2\n");
-        close(file);
+        Close(file);
         return -1;
     }
 
@@ -2466,7 +2466,7 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open sbuf2\n");
-        close(file);
+        Close(file);
         return -1;
     }
 
@@ -5483,13 +5483,15 @@ void create_marker_file()
                 comdb2_location("marker", "%s.trap", thedb->dbs[ii]->tablename);
             tmpfd = creat(marker_file, 0666);
             free(marker_file);
-            if (tmpfd != -1) close(tmpfd);
+            if (tmpfd != -1)
+                Close(tmpfd);
         }
     }
     marker_file = comdb2_location("marker", "%s.trap", thedb->envname);
     tmpfd = creat(marker_file, 0666);
     free(marker_file);
-    if (tmpfd != -1) close(tmpfd);
+    if (tmpfd != -1)
+        Close(tmpfd);
 }
 
 static void handle_resume_sc()

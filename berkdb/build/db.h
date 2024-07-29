@@ -32,7 +32,7 @@
 #include <mem_berkdb.h>
 #include <sys/time.h>
 #include <sbuf2.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>

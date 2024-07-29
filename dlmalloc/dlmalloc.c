@@ -2515,7 +2515,7 @@ static int init_mparams(void) {
       if ((fd = open("/dev/urandom", O_RDONLY)) >= 0 &&
           read(fd, buf, sizeof(buf)) == sizeof(buf)) {
         s = *((size_t *) buf);
-        close(fd);
+        Close(fd);
       }
       else
 #endif /* USE_DEV_RANDOM */

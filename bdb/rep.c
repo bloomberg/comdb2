@@ -29,7 +29,7 @@
 
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include <endian_core.h>
 #include "memory_sync.h"
 #include "ctrace.h"

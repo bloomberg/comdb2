@@ -23,7 +23,7 @@ static const char revid[] = "$Id: mp_fopen.c,v 11.120 2003/11/07 18:45:15 ubell 
 #include "dbinc/db_shash.h"
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "assert.h"
 
 #ifdef HAVE_RPC

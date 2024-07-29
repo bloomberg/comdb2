@@ -45,7 +45,7 @@
 #include <assert.h>
 #include <crc32c.h>
 
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "net.h"
 #include "net_int.h"
 
@@ -460,7 +460,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
             if (gbl_verbose_net)
                 host_node_printf(LOGMSG_DEBUG, host_node_ptr, "close fd %d\n",
                                  host_node_ptr->fd);
-            if (close(host_node_ptr->fd) != 0)
+            if (Close(host_node_ptr->fd) != 0)
                 host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s close fd %d errno %d %s\n",
                                __func__, host_node_ptr->fd, errno,
                                strerror(errno));
@@ -4886,7 +4886,7 @@ static void *connect_thread(void *arg)
                    "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                    __func__, fd, errno, strerror(errno));
 
-            close(fd);
+            Close(fd);
             goto again;
         }
 
@@ -4898,12 +4898,12 @@ static void *connect_thread(void *arg)
             logmsg(LOGMSG_ERROR,
                    "%s: couldnt turn off nagel on new fd %d: %d %s\n", __func__,
                    fd, errno, strerror(errno));
-            close(fd);
+            Close(fd);
             goto again;
         }
 #endif
         if (gbl_exit) {
-            close(fd);
+            Close(fd);
             break;
         }
         rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
@@ -4920,7 +4920,7 @@ static void *connect_thread(void *arg)
                 /*timeout*/
                 host_node_printf(LOGMSG_WARN, host_node_ptr, "%s: connect timed out\n",
                                  __func__);
-                close(fd);
+                Close(fd);
                 goto again;
             }
             if (rc != 1) {
@@ -4928,7 +4928,7 @@ static void *connect_thread(void *arg)
                 host_node_printf(LOGMSG_ERROR, host_node_ptr,
                                  "%s: poll on connect failed %d %s\n", __func__,
                                  errno, strerror(errno));
-                close(fd);
+                Close(fd);
                 goto again;
             }
             if ((pfd.revents & POLLOUT) == 0) {
@@ -4942,7 +4942,7 @@ static void *connect_thread(void *arg)
                 host_node_printf(LOGMSG_ERROR, host_node_ptr,
                                  "%s: poll returned wrong event\n", __func__);
 #endif
-                close(fd);
+                Close(fd);
                 goto again;
             }
 
@@ -4954,7 +4954,7 @@ static void *connect_thread(void *arg)
             if (gbl_verbose_net)
                 host_node_printf(LOGMSG_USER, host_node_ptr, "%s: connect error %d %s\n",
                                  __func__, errno, strerror(errno));
-            close(fd);
+            Close(fd);
             goto again;
         } else {
             if (gbl_verbose_net)
@@ -4982,7 +4982,7 @@ static void *connect_thread(void *arg)
         host_node_ptr->sb = sbuf2open(fd, SBUF2_NO_CLOSE_FD | SBUF2_NO_FLUSH);
         if (host_node_ptr->sb == NULL) {
             host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: sbuf2open failed\n", __func__);
-            close(fd);
+            Close(fd);
             goto again;
         }
 
@@ -5216,7 +5216,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         /* failed to add .. sbuf has NO_CLOSE_FD set */
         if (host_node_ptr == NULL) {
             sbuf2close(sb);
-            close(new_fd);
+            Close(new_fd);
             return;
         }
 
@@ -5229,7 +5229,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
         /* removed from under us .. */
         if (host_node_ptr == NULL) {
             sbuf2close(sb);
-            close(new_fd);
+            Close(new_fd);
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return;
         }
@@ -5252,7 +5252,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     while (1) {
         if (netinfo_ptr->exiting || host_node_ptr->decom_flag) {
             sbuf2close(sb);
-            close(new_fd);
+            Close(new_fd);
             Pthread_mutex_unlock(&(host_node_ptr->lock));
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return;
@@ -5668,13 +5668,13 @@ static void *accept_thread(void *arg)
                 logmsg(LOGMSG_ERROR,
                        "Failed to get peer address, error: %d %s\n", errno,
                        strerror(errno));
-                close(new_fd);
+                Close(new_fd);
                 continue;
             }
         }
 #endif
         if (netinfo_ptr->exiting) {
-            close(new_fd);
+            Close(new_fd);
             break;
         }
 
@@ -5687,7 +5687,7 @@ static void *accept_thread(void *arg)
                     "%s: couldnt turn off nagel on new_fd %d, flag=%d: %d "
                     "%s\n",
                     __func__, new_fd, flag, errno, strerror(errno));
-            close(new_fd);
+            Close(new_fd);
             continue;
         }
 #endif
@@ -5699,7 +5699,7 @@ static void *accept_thread(void *arg)
             logmsg(LOGMSG_ERROR,
                    "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
                    __func__, new_fd, errno, strerror(errno));
-            close(new_fd);
+            Close(new_fd);
             continue;
         }
 
@@ -5711,7 +5711,7 @@ static void *accept_thread(void *arg)
             logmsg(LOGMSG_ERROR,
                    "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
                    __func__, new_fd, errno, strerror(errno));
-            close(new_fd);
+            Close(new_fd);
             continue;
         }
 
@@ -5722,7 +5722,7 @@ static void *accept_thread(void *arg)
             logmsg(LOGMSG_ERROR,
                    "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
                    __func__, new_fd, errno, strerror(errno));
-            close(new_fd);
+            Close(new_fd);
             continue;
         }
 #endif
@@ -5735,7 +5735,7 @@ static void *accept_thread(void *arg)
                        len) != 0) {
             logmsg(LOGMSG_ERROR, "%s: couldnt turn off linger on new_fd %d: %d %s\n",
                     __func__, new_fd, errno, strerror(errno));
-            close(new_fd);
+            Close(new_fd);
             continue;
         }
 #endif
@@ -5858,7 +5858,7 @@ static void *accept_thread(void *arg)
         }
     }
 
-    close(listenfd);
+    Close(listenfd);
 
 #ifdef NOTREACHED
     Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
@@ -6421,7 +6421,7 @@ static int net_portmux_hello(void *p)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)p;
     if (netinfo_ptr->hellofd != -1) {
-        close(netinfo_ptr->hellofd);
+        Close(netinfo_ptr->hellofd);
         netinfo_ptr->hellofd = -1;
     }
     char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];

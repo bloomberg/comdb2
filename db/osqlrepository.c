@@ -28,7 +28,7 @@
 #include "comdb2uuid.h"
 #include <alloca.h>
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "tohex.h"
 #include "comdb2_atomic.h"
 

@@ -25,7 +25,7 @@ static const char revid[] =
 
 #include "build/db_int.h"
 #include <crc32c.h>
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 int main __P((int, char *[]));
 static int cdb2_verify_usage __P((void));

@@ -20,7 +20,7 @@
 #include <timers.h>
 #include "epochlib.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "thrman.h"
 #include "thread_util.h"
 

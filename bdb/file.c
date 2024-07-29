@@ -74,7 +74,7 @@
 #include <cheapstack.h>
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include <time.h>
 #include <ctrace.h>
 #include <list.h>
@@ -1519,7 +1519,7 @@ int bdb_dump_cache_to_file(bdb_state_type *bdb_state, const char *file,
     if ((fd = open(file, O_WRONLY | O_TRUNC | O_CREAT, 0666)) < 0 ||
         (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
-            close(fd);
+            Close(fd);
         logmsg(LOGMSG_ERROR, "%s error opening %s: %d\n", __func__, file,
                errno);
         return -1;
@@ -1535,7 +1535,7 @@ int bdb_load_cache(bdb_state_type *bdb_state, const char *file)
     SBUF2 *s;
     if ((fd = open(file, O_RDONLY, 0)) < 0 || (s = sbuf2open(fd, 0)) == NULL) {
         if (fd >= 0)
-            close(fd);
+            Close(fd);
         return -1;
     }
     rc = bdb_state->dbenv->memp_load(bdb_state->dbenv, s);
@@ -2245,7 +2245,7 @@ void pstack_self(void)
     int rc = system(cmd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d system(\"%s\") failed (rc = %d)\n", __func__, __LINE__, cmd, rc);
-        close(fd);
+        Close(fd);
         unlink(output);
         unset_running_pstack();
         return;
@@ -2254,7 +2254,7 @@ void pstack_self(void)
     FILE *out = fdopen(fd, "r");
     if (!out) {
         logmsg(LOGMSG_ERROR, "%s: open(%s) err:%s\n", __func__, cmd, strerror(errno));
-        close(fd);
+        Close(fd);
         unlink(output);
         unset_running_pstack();
         return;
@@ -8935,7 +8935,7 @@ done:
         free(path);
     }
     if (fd != -1)
-        close(fd);
+        Close(fd);
     os_free(buf);
 
     return rc;
