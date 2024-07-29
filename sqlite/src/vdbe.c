@@ -8047,6 +8047,20 @@ case OP_VOpen: {
   if( rc ) goto abort_due_to_error;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = pModule->xOpen(pVtab, &pVCur);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  extern int views_needs_comdb2_tables_lock(const char *);
+  if( p->crtPartitionLocks>0 && pModule->systable_lock &&
+      !strncasecmp(pModule->systable_lock, "comdb2_tables", strlen("comdb2_tables")+1 )){
+    p->crtPartitionLocks--;
+    if( p->crtPartitionLocks==0 ){
+        /* done collecting all schema, release the views lock for the rest
+         * of execution
+         */
+        extern void views_unlock(void);
+        views_unlock();
+    }
+  }
+#endif
   sqlite3VtabImportErrmsg(p, pVtab);
   if( rc ) goto abort_due_to_error;
 

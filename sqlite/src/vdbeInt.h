@@ -588,6 +588,8 @@ struct Vdbe {
   u16 numTables;
   u16 vTableFlags;        /* Pre-acquire rwlocks / mutexes for certain vtables */
   u16 numVTableLocks;
+  int numPartitionLocks;  /* how many system tables require views lock */
+  int crtPartitionLocks;  /* same as above, but decremented upon "collect" call */
   char **vTableLocks;
   u16 hasVTables;
   u8 hasScalarFunc;

@@ -48,8 +48,6 @@
 #include "timepart_systable.h"
 #include "ezsystables.h"
 
-extern pthread_rwlock_t views_lk;
-
 struct systable_key {
     char *table;
     char *key;
@@ -72,8 +70,6 @@ static int collect_keys(void **pd, int *pn)
     struct systable_key *data = NULL, *p = NULL;
     int ncols = 0;
 
-    Pthread_rwlock_rdlock(&views_lk);
-
     ntables = timepart_systable_num_tables_and_views();
     for (; comdb2_next_allowed_table(&tableid) == SQLITE_OK && tableid < ntables; ++tableid) {
         pDb = comdb2_get_dbtable_or_shard0(tableid);
@@ -95,8 +91,6 @@ static int collect_keys(void **pd, int *pn)
             ++ncols;
         }
     }
-
-    Pthread_rwlock_unlock(&views_lk);
 
     *pn = ncols;
     *pd = data;
