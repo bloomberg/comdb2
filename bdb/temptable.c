@@ -48,7 +48,7 @@
 
 #include <schema_lk.h>
 #include "locks.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "bdb_int.h"
 #include "strbuf.h"
 

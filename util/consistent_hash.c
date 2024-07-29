@@ -7,7 +7,7 @@
 #include <openssl/md5.h>
 #include <openssl/evp.h>
 #include <pthread.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include <crc32c.h>
 #include <assert.h>
 #define MAX_COPIES 8

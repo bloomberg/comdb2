@@ -1120,6 +1120,5 @@ cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, 
 (out='table teststatsize sz      64.00KB   1% (dta 64.00KB) partition teststatsize sqlname $0_EC08F6C8')
 (out='table  $1_45259338 sz      64.00KB   1% (dta 64.00KB) partition teststatsize')
 (out='table  $2_91201505 sz      64.00KB   1% (dta 64.00KB) partition teststatsize')
-(out='temp files         sz     128.00KB   2% (tmptbls 0B, sqlsorters 0B, blkseqs 128.00KB, others 0B)')
 TEST 17
 Test REBUILD partition

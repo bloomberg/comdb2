@@ -30,7 +30,7 @@
 
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "logmsg.h"
 
 extern int gbl_rowlocks;

@@ -1354,9 +1354,11 @@ failure:
   if( rc==0 ) rc = EINVAL;
 
 done:
-  if( sb!=NULL ) sbuf2close(sb);
-  if( fd!=-1 ) close(fd);
-  return rc;
+    if (sb != NULL)
+        sbuf2close(sb);
+    else if (fd != -1)
+        Close(fd);
+    return rc;
 }
 
 int comdb2_save_ruleset(
@@ -1459,7 +1461,9 @@ failure:
   rc = 1;
 
 done:
-  if( sb!=NULL ) sbuf2close(sb);
-  if( fd!=-1 ) close(fd);
-  return rc;
+    if (sb != NULL)
+        sbuf2close(sb);
+    else if (fd != -1)
+        Close(fd);
+    return rc;
 }

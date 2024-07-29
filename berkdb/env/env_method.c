@@ -46,7 +46,7 @@ static const char revid[] =
 #endif
 
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 #include "trigger_sub_status.h"
 #include "debug_switches.h"
 

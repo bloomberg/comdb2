@@ -28,8 +28,7 @@
 #include "autoanalyze.h"
 #include "logmsg.h"
 #include "thrman.h"
-#include <locks_wrap.h>
-
+#include <sys_wrap.h>
 
 int db_is_exiting(void);
 int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);

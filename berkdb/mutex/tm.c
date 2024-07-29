@@ -193,7 +193,7 @@ main(argc, argv)
 		fprintf(stderr, "tm: %s\n", strerror(errno));
 		status = EXIT_FAILURE;
 	}
-	(void)close(fd);
+	(void)Close(fd);
 
 	/* Wait for wakeup thread. */
 	if ((pid = wait(&status)) != (pid_t)-1) {
@@ -562,7 +562,7 @@ tm_file_init()
 		    "%s: seek/write: %s\n", MT_FILE, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-	(void)close(fd);
+	(void)Close(fd);
 }
 
 /*
@@ -759,7 +759,7 @@ unmap_file(addr, fd)
 		fprintf(stderr, "munmap: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}
-	if (close(fd) != 0) {
+	if (Close(fd) != 0) {
 		fprintf(stderr, "close: %s\n", strerror(errno));
 		exit(EXIT_FAILURE);
 	}

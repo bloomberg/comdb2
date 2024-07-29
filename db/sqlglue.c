@@ -11354,7 +11354,7 @@ sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {
         logmsg(LOGMSG_ERROR, "%s: failed to open sbuf\n", __func__);
-        close(sockfd);
+        Close(sockfd);
         return NULL;
     }
 

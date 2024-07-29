@@ -378,7 +378,7 @@ static struct output *get_output_ll(const char *filename)
     out = calloc(offsetof(struct output, filename) + len + 1, 1);
     if (!out) {
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
-        close(fd);
+        Close(fd);
         default_out->refcount++;
         return default_out;
     }
@@ -397,7 +397,7 @@ static void deref_output_ll(struct output *out)
 {
     out->refcount--;
     if (out->refcount <= 0 && out->fd > 2) {
-        close(out->fd);
+        Close(out->fd);
         logmsg(LOGMSG_INFO, "closed request log file %s\n", out->filename);
         listc_rfl(&outputs, out);
         free(out);

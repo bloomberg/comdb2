@@ -10,7 +10,7 @@
 
 #include <limits.h>
 #include <stddef.h>
-
+#include <sys_wrap.h>
 
 /*
 ** ==================================================================
@@ -649,7 +649,7 @@ union luai_Cast { double l_d; long l_l; };
 #define lua_tmpnam(b,e)	{ \
 	strcpy(b, "/tmp/lua_XXXXXX"); \
 	e = mkstemp(b); \
-	if (e != -1) close(e); \
+	if (e != -1) Close(e); \
 	e = (e == -1); }
 
 #else

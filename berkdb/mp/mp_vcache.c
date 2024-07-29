@@ -20,7 +20,7 @@
 #include "thread_util.h"
 #include "thread_stats.h"
 #include <pool.h>
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 extern int free_it(void *obj, void *arg);
 extern void destroy_hash(hash_t *h, hashforfunc_t *const free_func);

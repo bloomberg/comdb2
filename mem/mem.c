@@ -42,7 +42,7 @@
 #include <ctrace.h>
 #include "mem.h"
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 //^macros
 #define COMDB2MA_SUCCESS 0

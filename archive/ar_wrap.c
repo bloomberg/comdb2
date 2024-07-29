@@ -24,6 +24,7 @@
 #include <cdb2_constants.h>
 #include <crc32c.h>
 #include <logmsg.h>
+#include <sys_wrap.h>
 
 #include "ar_wrap.h"
 
@@ -106,7 +107,7 @@ dbfile_info *dbfile_init(dbfile_info *f, const char *filename)
         goto err;
     }
 
-    close(fd);
+    Close(fd);
 
     DBMETA *meta = (DBMETA *)meta_buf;
 
@@ -147,7 +148,7 @@ again:
     return f;
 
 err:
-    close(fd);
+    Close(fd);
     free(f);
     return NULL;
 }
@@ -469,7 +470,7 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
 
 done:
     if (fd != -1) {
-        close(fd);
+        Close(fd);
     }
 
     return rc;

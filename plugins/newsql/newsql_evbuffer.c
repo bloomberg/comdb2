@@ -136,7 +136,7 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     sqlwriter_free(appdata->writer);
     free(appdata);
     shutdown(fd, SHUT_RDWR);
-    close(fd);
+    Close(fd);
 }
 
 static void newsql_cleanup(struct newsql_appdata_evbuffer *appdata)
@@ -1031,7 +1031,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
-        close(arg->fd);
+        Close(arg->fd);
         return;
     }
 

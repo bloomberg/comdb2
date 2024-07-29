@@ -224,13 +224,13 @@ int write_csc2_file_fname(const char *fname, const char *csc2text)
             logmsg(LOGMSG_ERROR,
                    "write_csc2_file_fname: error writing to %s: %d %s\n", fname,
                    errno, strerror(errno));
-            close(fd);
+            Close(fd);
             return -1;
         }
         len -= nbytes;
         csc2text += nbytes;
     }
-    if (close(fd) == -1) {
+    if (Close(fd) == -1) {
         logmsg(LOGMSG_ERROR, "write_csc2_file_fname: error closing %s: %d %s\n",
                fname, errno, strerror(errno));
     }

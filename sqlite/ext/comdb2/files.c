@@ -161,7 +161,7 @@ static int read_file(const char *path, uint8_t **buffer, size_t sz)
 
 err:
     free(*buffer);
-    close(fd);
+    Close(fd);
     return -1;
 }
 

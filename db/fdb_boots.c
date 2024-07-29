@@ -26,7 +26,7 @@
 #include "sql.h"
 #include "fdb_fend.h"
 #include "logmsg.h"
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 #define MY_CLUSTER_MAX 32
 

@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <stddef.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include "dbinc/maxstackframes.h"
 #include "strbuf.h"
 

@@ -37,7 +37,7 @@
 #include <list.h>
 #include <stddef.h>
 #include <cdb2_constants.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 #include "dynschemaload.h"
 

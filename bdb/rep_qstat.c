@@ -5,7 +5,7 @@
 #include <dbinc/rep_types.h>
 #include "bdb_int.h"
 #include <rep_qstat.h>
-#include "locks_wrap.h"
+#include "sys_wrap.h"
 
 static __thread void *reader_qstat;
 

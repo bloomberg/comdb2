@@ -260,7 +260,7 @@ __os_closehandle(dbenv, fhp)
 		retries = 0;
 		do {
 			ret = DB_GLOBAL(j_close) != NULL ?
-			    DB_GLOBAL(j_close)(fhp->fd) : close(fhp->fd);
+			    DB_GLOBAL(j_close)(fhp->fd) : Close(fhp->fd);
 		} while (ret != 0 &&
 		    ((ret = __os_get_errno()) == EINTR || ret == EBUSY) &&
 		    ++retries < DB_RETRY);

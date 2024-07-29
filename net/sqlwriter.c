@@ -22,7 +22,7 @@
 #include <event2/event.h>
 
 #include <compile_time_assert.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include <logmsg.h>
 #include <net_appsock.h>
 #include <sqlwriter.h>

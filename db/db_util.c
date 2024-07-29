@@ -162,7 +162,7 @@ char *load_text_file(const char *filename)
                        "load_text_file: '%s' out of memory, need %zu\n",
                        filename, buflen);
                 free(buf);
-                close(fd);
+                Close(fd);
                 return NULL;
             }
             buf = newbuf;
@@ -172,7 +172,7 @@ char *load_text_file(const char *filename)
         pos += bytesread;
     }
 
-    close(fd);
+    Close(fd);
     buf[pos] = '\0';
 
     return buf;
@@ -210,21 +210,21 @@ int rewrite_lrl_remove_tables(const char *lrlname)
                 "rewrite_lrl_remove_tables: cannot open '%s' for writing "
                 "%d %s\n",
                 lrlname, errno, strerror(errno));
-        close(fdold);
+        Close(fdold);
         return -1;
     }
 
     sbnew = sbuf2open(fdnew, 0);
     if (!sbnew) {
         logmsg(LOGMSG_ERROR, "rewrite_lrl_remove_tables: sbuf2open fdnew failed\n");
-        close(fdnew);
-        close(fdold);
+        Close(fdnew);
+        Close(fdold);
     }
     sbold = sbuf2open(fdold, 0);
     if (!sbold) {
         logmsg(LOGMSG_ERROR, "rewrite_lrl_remove_tables: sbuf2open fdold failed\n");
         sbuf2close(sbnew);
-        close(fdold);
+        Close(fdold);
     }
 
     /* phew!  ready to go */
@@ -319,21 +319,21 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in, const char *p_lrl_fname_ou
     if (fd_out == -1) {
         logmsg(LOGMSG_ERROR, "%s: cannot open '%s' for writing %d %s\n", __func__,
                 p_lrl_fname_out, errno, strerror(errno));
-        close(fd_in);
+        Close(fd_in);
         return -1;
     }
 
     sb_out = sbuf2open(fd_out, 0);
     if (!sb_out) {
         logmsg(LOGMSG_ERROR, "%s: sbuf2open fd_out failed\n", __func__);
-        close(fd_out);
-        close(fd_in);
+        Close(fd_out);
+        Close(fd_in);
     }
     sb_in = sbuf2open(fd_in, 0);
     if (!sb_in) {
         logmsg(LOGMSG_ERROR, "%s: sbuf2open fd_in failed\n", __func__);
         sbuf2close(sb_out);
-        close(fd_in);
+        Close(fd_in);
     }
 
     /* phew!  ready to go, copy the contents of the in lrl file */
@@ -417,21 +417,21 @@ int rewrite_lrl_table(const char *lrlname, const char *tablename,
         logmsg(LOGMSG_ERROR, 
                 "rewrite_lrl_table: cannot open '%s' for writing %d %s\n",
                 lrlname, errno, strerror(errno));
-        close(fdold);
+        Close(fdold);
         return -1;
     }
 
     sbnew = sbuf2open(fdnew, 0);
     if (!sbnew) {
         logmsg(LOGMSG_ERROR, "rewrite_lrl_table: sbuf2open fdnew failed\n");
-        close(fdnew);
-        close(fdold);
+        Close(fdnew);
+        Close(fdold);
     }
     sbold = sbuf2open(fdold, 0);
     if (!sbold) {
         logmsg(LOGMSG_ERROR, "rewrite_lrl_table: sbuf2open fdold failed\n");
         sbuf2close(sbnew);
-        close(fdold);
+        Close(fdold);
     }
 
     /* phew!  ready to go */

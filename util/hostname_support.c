@@ -38,7 +38,7 @@ static int get_hostname_by_addr(struct sockaddr_in *addr, char *host, socklen_t 
 #ifndef DISABLE_HOSTADDR_CACHE
 #include <pthread.h>
 #include <intern_strings.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include <plhash.h>
 
 static hash_t *hs;

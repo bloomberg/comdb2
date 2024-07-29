@@ -47,7 +47,7 @@
 #include <dbinc/queue.h>
 #include <dbinc/rep_types.h>
 #include <intern_strings.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include <logmsg.h>
 #ifdef PER_THREAD_MALLOC
   #include <mem_net.h>
@@ -452,7 +452,7 @@ static void shutdown_close(int fd)
         abort();
     }
     shutdown(fd, SHUT_RDWR);
-    close(fd);
+    Close(fd);
 }
 
 static void event_tick(int dummyfd, short what, void *arg)

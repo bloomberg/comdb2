@@ -47,7 +47,7 @@ int dump_user_version_spfile(const char *file)
     }
     sb_out = sbuf2open(fd_out, 0);
     if (!sb_out) {
-        close(fd_out);
+        Close(fd_out);
         goto cleanup;
     }
 
@@ -102,7 +102,7 @@ int read_user_version_spfile(const char *file)
 
     SBUF2 *sb_in = sbuf2open(fd_in, 0);
     if (!sb_in) {
-        close(fd_in);
+        Close(fd_in);
         return -1;
     }
 
@@ -162,7 +162,7 @@ int dump_spfile(const char *file)
 
             sb_out = sbuf2open(fd_out, 0);
             if (!sb_out) {
-                close(fd_out);
+                Close(fd_out);
                 return 0;
             }
         }
@@ -212,7 +212,7 @@ int read_spfile(const char *file)
 
     SBUF2 *sb_in = sbuf2open(fd_in, 0);
     if (!sb_in) {
-        close(fd_in);
+        Close(fd_in);
         return -1;
     }
 

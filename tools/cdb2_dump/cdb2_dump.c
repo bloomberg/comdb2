@@ -30,7 +30,7 @@ static const char revid[] =
 #include <crc32c.h>
 #include <syslog.h>
 #include <logmsg.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 static int db_init(DB_ENV *, char *, int, u_int32_t, int *);
 static int dump __P((DB *, int, int));

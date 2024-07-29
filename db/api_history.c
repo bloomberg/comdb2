@@ -16,7 +16,7 @@
 
 #include <assert.h>
 #include <ctype.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 #include <plhash.h>
 #include <pthread.h>
 #include <string.h>

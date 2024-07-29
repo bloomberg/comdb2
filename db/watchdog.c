@@ -161,7 +161,7 @@ static void *watchdog_thread(void *arg)
                 its_bad = 1;
             }
 
-            rc = close(fd);
+            rc = Close(fd);
             if (rc) {
                 logmsg(LOGMSG_WARN, "watchdog: Can't close file\n");
                 its_bad = 1;

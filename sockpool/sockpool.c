@@ -49,7 +49,7 @@
 #include <pool.h>
 #include <passfd.h>
 #include <syslog.h>
-#include <locks_wrap.h>
+#include <sys_wrap.h>
 
 //#define SOCKET_POOL_DEBUG
 
@@ -147,7 +147,7 @@ static int sockpool_fd = -1;
 void socket_pool_reset_connection_(void)
 {
     if (sockpool_fd != -1)
-        close(sockpool_fd);
+        Close(sockpool_fd);
 
     sockpool_fd = -1;
 }
@@ -252,7 +252,7 @@ static int open_sockpool_ll(void)
     if (connect(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
         fprintf(stderr, "%s:connect(%s): %d %s\n", __func__,
                 SOCKPOOL_SOCKET_NAME, errno, strerror(errno));
-        close(fd);
+        Close(fd);
         return -1;
     }
 
@@ -269,11 +269,11 @@ static int open_sockpool_ll(void)
         if (nbytes == -1) {
             fprintf(stderr, "%s:error writing hello: %d %s\n", __func__, errno,
                     strerror(errno));
-            close(fd);
+            Close(fd);
             return -1;
         } else if (nbytes == 0) {
             fprintf(stderr, "%s:unexpected eof writing hello\n", __func__);
-            close(fd);
+            Close(fd);
             return -1;
         }
         bytesleft -= nbytes;
@@ -317,7 +317,7 @@ static void default_destructor(enum socket_pool_event event,
                     fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__,
                             rc, errno, strerror(errno));
                     /*fdtrack_end_ignore_fd(__func__, sockpool_fd);*/
-                    close(sockpool_fd);
+                    Close(sockpool_fd);
                     sockpool_fd = -1;
                 }
                 DBG(("%s: donate fd %d for %s to sockpool with ttl %d dbnum %d "
@@ -330,7 +330,7 @@ static void default_destructor(enum socket_pool_event event,
         /* Close the local file descriptor regardless of whether or not it
          * was donated. */
         DBG(("%s: close fd %d for %s\n", __func__, fd, typestr));
-        if (close(fd) == -1) {
+        if (Close(fd) == -1) {
             fprintf(stderr, "%s: close error for '%s' fd %d: %d %s\n", __func__,
                     typestr, fd, errno, strerror(errno));
         }
@@ -621,7 +621,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
                 fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
                         errno, strerror(errno));
                 /*fdtrack_end_ignore_fd(__func__, sockpool_fd);*/
-                close(sockpool_fd);
+                Close(sockpool_fd);
                 sockpool_fd = -1;
                 fd = -1;
             } else {
@@ -633,7 +633,7 @@ socket_pool_get_ext_ll(const char *typestr, int dbnum, int flags,
                     fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__,
                             rc, errno, strerror(errno));
                     /*fdtrack_end_ignore_fd(__func__, sockpool_fd);*/
-                    close(sockpool_fd);
+                    Close(sockpool_fd);
                     sockpool_fd = -1;
                     fd = -1;
                 } else {
