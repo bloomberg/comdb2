@@ -140,6 +140,7 @@ void bdb_dumptrans(bdb_state_type *bdb_state);
 void bdb_locker_summary(void *_bdb_state);
 int printlog(bdb_state_type *bdb_state, int startfile, int startoff, int endfile, int endoff);
 void dump_remote_policy();
+extern void print_snap_config(loglvl lvl);
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -213,6 +214,7 @@ static const char *HELP_STAT[] = {
     "stat mtrap                 - show mtrap system stats",
     "stat dohsql                - show distributed sql stats",
     "stat oldfile               - dump oldfile hash",
+    "stat snapconfig            - print snapshot configuration information",
     "dmpl                       - dump threads",
     "dmptrn                     - show long transaction stats",
     "dmpcts                     - show table constraints",
@@ -2001,6 +2003,8 @@ clipper_usage:
             oldfile_dump();
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
+        } else if (tokcmp(tok, ltok, "snapconfig") == 0) {
+            print_snap_config(LOGMSG_USER);
         } else {
             int rc = 1;
             struct message_handler *h;
