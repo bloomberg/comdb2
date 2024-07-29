@@ -7702,6 +7702,13 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         return 0;
     }
 
+    /* do we need views lock? get it here before getting "comdb2_table" lock */
+    if (p->numPartitionLocks) {
+        p->crtPartitionLocks = p->numPartitionLocks;
+        extern void views_lock(void);
+        views_lock();
+    }
+
     for (int i = 0; i < p->numVTableLocks; i++) {
         if ((rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, p->vTableLocks[i],
                                                   bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
