@@ -3044,12 +3044,17 @@ int llmeta_open(void)
     return 0;
 }
 
-static void get_txndir(char *txndir, size_t sz_txndir)
+void get_txndir_args(char *txndir, size_t sz_txndir, const char *dbdir)
 {
     if (gbl_nonames)
-        snprintf(txndir, sz_txndir, "%s/logs", thedb->basedir);
+        snprintf(txndir, sz_txndir, "%s/logs", dbdir);
     else
-        snprintf(txndir, sz_txndir, "%s/%s.txn", thedb->basedir, gbl_dbname);
+        snprintf(txndir, sz_txndir, "%s/%s.txn", dbdir, gbl_dbname);
+}
+
+static void get_txndir(char *txndir, size_t sz_txndir)
+{
+    get_txndir_args(txndir, sz_txndir, thedb->basedir);
 }
 
 static void get_savdir(char *savdir, size_t sz_savdir)

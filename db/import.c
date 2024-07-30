@@ -47,6 +47,7 @@
 #include "sc_global.h"
 #include "str0.h"
 
+extern void get_txndir_args(char *txndir, size_t sz_txndir, const char *dbdir);
 extern char *comdb2_get_tmp_dir();
 extern tran_type *curtran_gettran(void);
 extern void curtran_puttran(tran_type *tran);
@@ -111,8 +112,6 @@ int bulk_import_copy_file_to_replicant(const char *dst_path,
     offset = sprintf(command, "%s -r %s %s:%s", gbl_file_copier, dst_path,
                      hostname, dst_path);
 
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Copying %s to replicant %s\n", __func__,
-           dst_path, hostname);
     rc = system(command);
     if (rc) {
         logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to copy %s to replicant %s\n",
@@ -364,53 +363,6 @@ err:
     }
 
     return rc;
-}
-
-/**
- * Prints all the bulk import data to specified file.
- * @param p_file    pointer to file to print to
- * @param p_data    pointer to data to print
- */
-void bulk_import_data_print(FILE *p_file, const ImportData *p_data) {
-    unsigned i;
-    unsigned j;
-
-    fprintf(p_file,
-            "table_name: %s data_dir: %s csc2_crc32:%x\n"
-            "checksums: %d\n"
-            "odh: %d compress: %d compress_blobs: %d\n"
-            "dtastripe: %d blobstripe: %d\n"
-            "data_genid: %" PRIx64 " ",
-            p_data->table_name, p_data->data_dir, p_data->csc2_crc32,
-            p_data->checksums, p_data->odh, p_data->compress,
-            p_data->compress_blobs, p_data->dtastripe, p_data->blobstripe,
-            flibc_htonll(p_data->data_genid));
-    if (p_data->filenames_provided) {
-        for (j = 0; j < p_data->dtastripe; j++)
-            fprintf(p_file, "%s ", p_data->data_files[j]);
-    }
-    fprintf(p_file,
-            "\nnum_index_genids: %zu index_genids:", p_data->num_index_genids);
-    for (i = 0; i < p_data->num_index_genids; ++i) {
-        fprintf(p_file, " %" PRIx64 " ", flibc_htonll(p_data->index_genids[i]));
-        if (p_data->filenames_provided) {
-            fprintf(p_file, "%s ", p_data->index_files[i]);
-        }
-    }
-    fprintf(p_file,
-            "\nnum_blob_genids: %zu blob_genids:", p_data->num_blob_genids);
-    for (i = 0; i < p_data->num_blob_genids; ++i) {
-        fprintf(p_file, " %llx ",
-                (long long unsigned int)p_data->blob_genids[i]);
-        if (p_data->filenames_provided) {
-            if (p_data->blobstripe) {
-                for (j = 0; j < p_data->dtastripe; j++)
-                    fprintf(p_file, "%s ", p_data->blob_files[i]->files[j]);
-            } else
-                fprintf(p_file, "%s ", p_data->blob_files[i]->files[0]);
-        }
-    }
-    fprintf(p_file, "\n");
 }
 
 /**
@@ -1168,96 +1120,89 @@ backout:
 static int bulk_import_complete(ImportData *p_foreign_data,
                            const char *dst_tablename) {
     unsigned i;
-    int offset, num_files, nsiblings, bdberr, rc;
-    char *src_file, *dst_file;
+    int offset, num_files, nsiblings, bdberr, loaded_import_data, rc;
     unsigned long long dst_data_genid;
     unsigned long long dst_index_genids[MAXINDEX];
     unsigned long long dst_blob_genids[MAXBLOBS];
     ImportData local_data = IMPORT_DATA__INIT;
     const char *hosts[REPMAX];
-    struct dbtable *db = NULL;
+    struct dbtable *db;
     char src_path[PATH_MAX];
     char dst_path[PATH_MAX];
-    char **src_files = NULL;
-    char **dst_files = NULL;
+    char **src_files, **dst_files;
 
-    src_file = dst_file = NULL;
-
-    rc = num_files = nsiblings = bdberr = offset = 0;
-
-    // get local data
+    rc = num_files = nsiblings = loaded_import_data = bdberr = offset = 0;
     local_data.table_name = strdup(dst_tablename);
-    if (bulk_import_data_load(&local_data)) {
+    src_files = dst_files = NULL;
+    db = NULL;
+
+    rc = bulk_import_data_load(&local_data);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "[IMPORT] %s: failed getting local data\n",
                __func__);
-        rc = -1;
-        return rc;
+        goto err;
     }
+    loaded_import_data = 1;
 
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Loaded local import data\n", __func__);
-
-    // find the table we're importing
-    if (!(db = get_dbtable_by_name(local_data.table_name))) {
+    db = get_dbtable_by_name(local_data.table_name);
+    if (!db) {
         logmsg(LOGMSG_ERROR, "[IMPORT] %s: no such table: %s\n", __func__,
                p_foreign_data->table_name);
         rc = -1;
         goto err;
     }
 
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Got dbtable\n", __func__);
-
-    // generate final destination genids
     dst_data_genid = bdb_get_cmp_context(db->handle);
     for (i = 0; i < p_foreign_data->num_index_genids; ++i)
         dst_index_genids[i] = bdb_get_cmp_context(db->handle);
     for (i = 0; i < p_foreign_data->num_blob_genids; ++i)
         dst_blob_genids[i] = bdb_get_cmp_context(db->handle);
 
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Got genids\n", __func__);
-
     // make sure all the data checks out and we can do the import
-    if (bulk_import_data_validate(&local_data, p_foreign_data, dst_data_genid,
-                                  dst_index_genids, dst_blob_genids)) {
-        logmsg(LOGMSG_ERROR, "[IMPORT] %s: failed validation\n", __func__);
-        rc = -1;
+    rc = bulk_import_data_validate(&local_data, p_foreign_data, dst_data_genid,
+                                  dst_index_genids, dst_blob_genids);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to validate import with rc %d\n",
+                              __func__, rc);
         goto err;
     }
 
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Validated data\n", __func__);
-
-    bulk_import_generate_filenames(&local_data, p_foreign_data, dst_data_genid,
+    rc = bulk_import_generate_filenames(&local_data, p_foreign_data, dst_data_genid,
                                    dst_index_genids, dst_blob_genids,
                                    &src_files, &dst_files, &num_files, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "[IMPORT] %s: Failed to generate filenames with rc %d\n",
+                              __func__, rc);
+        goto err;
+    }
 
     for (int fileix = 0; fileix < num_files; ++fileix) {
-        src_file = src_files[fileix];
-        dst_file = dst_files[fileix];
-
         snprintf(src_path, sizeof(src_path), "%s/%s", p_foreign_data->data_dir,
-                 src_file);
-        snprintf(dst_path, sizeof(dst_path), "%s/%s", thedb->basedir, dst_file);
-
-        logmsg(LOGMSG_DEBUG,
-               "[IMPORT] %s: Blessing src %s then copying to %s\n", __func__,
-               src_path, dst_path);
+                 src_files[fileix]);
+        snprintf(dst_path, sizeof(dst_path), "%s/%s", thedb->basedir,
+                 dst_files[fileix]);
 
         rc = bdb_bless_btree(src_path, dst_path);
-        if (rc != 0) {
+        if (rc) {
             logmsg(LOGMSG_ERROR,
-                   "[IMPORT] %s: Blessing files failed with rc %d\n", __func__,
-                   rc);
+                   "[IMPORT] %s: Blessing files failed with rc %d\n",
+                   __func__, rc);
             goto err;
         }
 
         nsiblings = net_get_all_nodes(thedb->handle_sibling, hosts);
         for (int nodeix = 0; nodeix < nsiblings; ++nodeix) {
-            if (gbl_myhostname != hosts[nodeix]) {
-                bulk_import_copy_file_to_replicant(dst_path, hosts[nodeix]);
+            if (gbl_myhostname == hosts[nodeix]) { continue; }
+
+            rc = bulk_import_copy_file_to_replicant(dst_path, hosts[nodeix]);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "[IMPORT] %s: Failed to copy file to replicant with rc %d\n",
+                       __func__, rc);
+                goto err;
             }
         }
     }
-
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Blessed files\n", __func__);
 
     wrlock_schema_lk();
     rc =
@@ -1265,10 +1210,10 @@ static int bulk_import_complete(ImportData *p_foreign_data,
                                 dst_index_genids, dst_blob_genids, &local_data);
     unlock_schema_lk();
 
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Switched files\n", __func__);
-
 err:
-    clear_bulk_import_data(&local_data);
+    if (loaded_import_data) {
+        clear_bulk_import_data(&local_data);
+    }
 
     if (num_files != 0) {
         for (int fileix = 0; fileix < num_files; ++fileix) {
@@ -1282,6 +1227,81 @@ err:
     return rc;
 }
 
+static void comdb2_files_tmpdb_get_file_destination(char *copy_dst, ssize_t sz, const char *dir, const char *fname) {
+    if (strcmp(dir, "") != 0) {
+        snprintf(copy_dst, sz, "%s%s%s%s%s", gbl_dbdir,
+             "/", dir, "/", fname);
+    } else {
+        snprintf(copy_dst, sz, "%s%s%s", gbl_dbdir,
+             "/", fname);
+        
+    }
+}
+
+static int comdb2_files_tmpdb_process_incoming_files(cdb2_hndl_tp *hndl) {
+    char * fname;
+    int rc, fd;
+
+    fname = NULL;
+    rc = 0;
+    fd = -1;
+
+    while (cdb2_next_record(hndl) == CDB2_OK) {
+        const char *next_fname = (char *)cdb2_column_value(hndl, 0);
+        const char *chunk_content = (char *)cdb2_column_value(hndl, 1);
+        const char *dir = (char *)cdb2_column_value(hndl, 2);
+        const int chunk_size = cdb2_column_size(hndl, 1);
+        char copy_dst[PATH_MAX];
+
+        if (strcmp(next_fname, "checkpoint") == 0) {
+            continue;
+        }
+        if (fname == NULL || strcmp(fname, next_fname) != 0) {
+            // We haven't processed this file yet
+
+            if (fname != NULL) {
+                free(fname);
+            }
+            if (fd != -1) {
+                close(fd);
+            }
+
+            fname = strdup(next_fname);
+
+            comdb2_files_tmpdb_get_file_destination(copy_dst, sizeof(copy_dst), dir, fname);
+
+            fd = open(copy_dst, O_WRONLY | O_CREAT | O_APPEND, 0755);
+            if (fd == -1) {
+                logmsg(LOGMSG_ERROR,
+                       "[IMPORT] %s: Failed to open file %s (errno: %s)\n",
+                       __func__, copy_dst, strerror(errno));
+                rc = 1;
+                goto err;
+            }
+        }
+
+        const ssize_t bytes_written = write(fd, chunk_content, chunk_size);
+        if (bytes_written != chunk_size) {
+            logmsg(LOGMSG_ERROR,
+                   "[IMPORT] %s: failed to write to the file (expected: %d "
+                   "got: %ld)\n",
+                   __func__, chunk_size, bytes_written);
+            rc = 1;
+            goto err;
+        }
+    }
+
+err:
+    if (fd != -1) {
+        close(fd);
+    }
+
+    if (fname != NULL) {
+        free(fname);
+    }
+
+    return rc;
+}
 /*
  * Gets foreign db's files and writes them into the local environment.
  *
@@ -1290,28 +1310,23 @@ err:
  *  non-0 on failure
  */
 int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
-    int rc, f;
-    char *fname, *nextFname;
+    cdb2_hndl_tp *hndl;
+    int rc, t_rc;
     char txndir[PATH_MAX];
     char query[2000];
 
-    rc = 0;
-    f = -1;
-    fname = nextFname = NULL;
+    rc = t_rc = 0;
+    hndl = NULL;
+    get_txndir_args(txndir, sizeof(txndir), gbl_dbdir);
 
-    cdb2_hndl_tp *hndl;
-    rc = cdb2_open(&hndl, fdb_name, "local", 0);
+    rc = cdb2_open(&hndl, fdb_name, "default", 0);
     if (rc) {
         logmsg(
             LOGMSG_ERROR,
             "[IMPORT] %s: Could not open a handle to src db in import mode\n",
             __func__);
-        rc = 1;
         goto err;
     }
-
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Got cdb2api handle to source db\n",
-           __func__);
 
     snprintf(query, sizeof(query), "exec procedure sys.cmd.send('flush')");
     rc = cdb2_run_statement(hndl, query);
@@ -1319,93 +1334,41 @@ int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
         logmsg(LOGMSG_ERROR,
                "[IMPORT] %s: Got an error flushing src db. errstr: %s\n",
                __func__, cdb2_errstr(hndl));
-        rc = 1;
         goto err;
     }
-    while (cdb2_next_record(hndl) == CDB2_OK) {
-    }
-
-    logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Flushed source db\n", __func__);
+    while (cdb2_next_record(hndl) == CDB2_OK) {}
 
     snprintf(query, sizeof(query),
              "SELECT filename, content, dir FROM comdb2_files WHERE dir!='tmp' "
              "AND dir!='savs' ORDER BY filename, offset");
     rc = cdb2_run_statement(hndl, query);
-
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "[IMPORT] %s: Got an error grabbing files from src db. errstr: "
                "%s\n",
                __func__, cdb2_errstr(hndl));
-        rc = 1;
         goto err;
     }
 
-    if (gbl_nonames)
-        snprintf(txndir, sizeof(txndir), "%s/logs", gbl_dbdir);
-    else
-        snprintf(txndir, sizeof(txndir), "%s/%s.txn", gbl_dbdir, gbl_dbname);
-
-    while (cdb2_next_record(hndl) == CDB2_OK) {
-        nextFname = (char *)cdb2_column_value(hndl, 0);
-        if (strcmp(nextFname, "checkpoint") == 0) {
-            continue;
-        }
-        int newFile = fname == NULL || strcmp(fname, nextFname) != 0;
-        if (newFile) {
-            if (fname != NULL) {
-                free(fname);
-            }
-            if (f != -1) {
-                close(f);
-            }
-
-            fname = strdup(nextFname);
-
-            char copy_dst[PATH_MAX];
-            const char * dir = (char *)cdb2_column_value(hndl, 2);
-
-            if (strcmp(dir, "") != 0) {
-                snprintf(copy_dst, sizeof(copy_dst), "%s%s%s%s%s", gbl_dbdir,
-                     "/", dir, "/", fname);
-            } else {
-                snprintf(copy_dst, sizeof(copy_dst), "%s%s%s", gbl_dbdir,
-                     "/", fname);
-                
-            }
-
-            f = open(copy_dst, O_WRONLY | O_CREAT | O_APPEND, 0755);
-            if (f == -1) {
-                logmsg(LOGMSG_ERROR,
-                       "[IMPORT] %s: Failed to open file %s (errno: %s)\n",
-                       __func__, copy_dst, strerror(errno));
-                rc = 1;
-                goto err;
-            }
-        }
-        logmsg(LOGMSG_DEBUG, "[IMPORT] %s: Writing chunk to file %s\n",
-               __func__, fname);
-        ssize_t bytes_written = write(f, (char *)cdb2_column_value(hndl, 1),
-                                      cdb2_column_size(hndl, 1));
-        if (bytes_written != cdb2_column_size(hndl, 1)) {
-            logmsg(LOGMSG_ERROR,
-                   "[IMPORT] %s: failed to write to the file (expected: %d "
-                   "got: %ld)\n",
-                   __func__, cdb2_column_size(hndl, 1), bytes_written);
-            rc = 1;
-            goto err;
-        }
+    rc = comdb2_files_tmpdb_process_incoming_files(hndl);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "[IMPORT] %s: Failed to process files from src db. rc: %d",
+               __func__, rc);
+        goto err;
     }
 
 err:
-    if (f != -1) {
-        close(f);
+    if (hndl) {
+        t_rc = cdb2_close(hndl);
+        if (t_rc) {
+            logmsg(LOGMSG_ERROR,
+                   "[IMPORT] %s: Failed to close hndl. rc: %d",
+                   __func__, t_rc);
+        }
     }
 
-    if (fname != NULL) {
-        free(fname);
-    }
-
+    rc = rc != 0 ? rc : t_rc;
     return rc;
 }
 
@@ -1425,14 +1388,6 @@ static int get_my_comdb2_executable(char **p_exe)
         goto err;
     }
     sprintf(*p_exe, "/proc/%ld/exe", (long) pid);
-#elif defined(_AIX)
-    size = snprintf(NULL, 0, "/proc/%ld/object/a.out", (long) pid);
-    *p_exe = malloc(++size);
-    if (*p_exe == NULL) {
-        rc = ENOMEM;
-        goto err;
-    }
-    sprintf(*p_exe, "/proc/%ld/object/a.out", (long) pid);
 #elif defined(_SUN_SOURCE)
     size = snprintf(NULL, 0, "/proc/%ld/execname", (long) pid);
     *p_exe = malloc(++size);
@@ -1441,6 +1396,8 @@ static int get_my_comdb2_executable(char **p_exe)
         goto err;
     }
     sprintf(*p_exe, "/proc/%ld/execname", (long) pid);
+#else
+    #error "Unsupported platform"
 #endif
 
 err:
@@ -1473,30 +1430,35 @@ int bulk_import_do_import(const char *srcdb, const char *src_tablename, const ch
         goto err;
     }
 
-    size = snprintf(NULL, 0, "%s --import --dir %s --tables %s --src %s", exe, tmpDbDir, src_tablename, srcdb);
-    command = malloc(++size);
+    size = 1 + snprintf(NULL, 0, "%s --import --dir %s --tables %s --src %s",
+                    exe, tmpDbDir, src_tablename, srcdb);
+    command = malloc(size);
     if (command == NULL) {
         rc = ENOMEM;
         goto err;
     }
 
-    sprintf(command, "%s --import --dir %s --tables %s --src %s", exe, tmpDbDir, src_tablename, srcdb);
+    sprintf(command, "%s --import --dir %s --tables %s --src %s",
+            exe, tmpDbDir, src_tablename, srcdb);
 
     rc = system(command);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Import process failed with rc %d.\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: Import process failed with rc %d.\n",
+               __func__, rc);
         goto err;
     }
     
     rc = bulk_import_data_unpack_from_file(&import_data);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to unpack import data from %s\n", __func__, fpath);
+        logmsg(LOGMSG_ERROR, "%s: Failed to unpack import data from %s\n",
+               __func__, fpath);
         goto err;
     }
 
     rc = bulk_import_complete(import_data, dst_tablename);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Failed to complete import.\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: Failed to complete import.\n",
+               __func__);
         goto err;
     }
 
@@ -1587,7 +1549,8 @@ int bulk_import_tmpdb_write_import_data(const char *import_table) {
     written_bytes = import_data__pack(&import_data, buf);
     if (written_bytes != len) {
         logmsg(LOGMSG_ERROR,
-               "[IMPORT] %s: Did not pack full protobuf buffer.\n", __func__);
+               "[IMPORT] %s: Did not pack full protobuf buffer.\n",
+               __func__);
         rc = 1;
         goto err;
     }
@@ -1596,9 +1559,8 @@ int bulk_import_tmpdb_write_import_data(const char *import_table) {
     if (written_bytes != len) {
         logmsg(
             LOGMSG_ERROR,
-            "[IMPORT] %s: Did not write full protobuf buffer to file. Wrote %d "
-            "and expected %d\n",
-            __func__, written_bytes, len);
+            "[IMPORT] %s: Did not write full protobuf buffer to file",
+            __func__);
         rc = 1;
         goto err;
     }
