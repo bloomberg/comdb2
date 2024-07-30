@@ -52,6 +52,8 @@ public class Cdb2Query implements Serializable {
         int host_id; /* Unsupported */
         String argv0;
         String stack;
+        String api_driver_name;
+        String api_driver_version;
     }
 
     static class Cdb2IdentityBlob {
