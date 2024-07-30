@@ -182,10 +182,11 @@ __os_r_detach(dbenv, infop, destroy)
 		char name[MAXPATHLEN];
 
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
-		    gbl_dbname, infop->id);
-        if (rp->size)
-            munmap(infop->addr, rp->size);
-		close(infop->fd);
+			gbl_dbname, infop->id);
+		if (rp->size)
+			munmap(infop->addr, rp->size);
+		if (infop->fd >= 0)
+			close(infop->fd);
 		unlink(name);
 	}
 
