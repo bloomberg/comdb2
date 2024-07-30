@@ -1276,6 +1276,30 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
     return SQLITE_ERROR; /* speak sqlite */
 }
 
+int create_fdb(const char *fdb_name, fdb_t **fdb) {
+    int rc, local, lvl_override, created;
+    enum mach_class lvl;
+    
+    rc = local = lvl_override = created = lvl = 0;
+    *fdb = NULL;
+
+    lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
+    if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
+        rc = 1;
+        goto err;
+    }
+
+    *fdb = new_fdb(fdb_name, &created, lvl, local, lvl_override);
+    if (!fdb) {
+        /* we cannot really alloc a new memory string for sqlite here */
+        rc = 1;
+        goto err;
+    }
+
+err:
+    return rc;
+}
+
 /**
  * Sqlite wrapper for adding a new database table
  *

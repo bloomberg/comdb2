@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "fdb_fend.h"
 #include "bdb_api.h"
 #include "bdb_schemachange.h"
 #include "comdb2.h"
@@ -53,7 +54,7 @@ extern tran_type *curtran_gettran(void);
 extern void curtran_puttran(tran_type *tran);
 extern int gbl_import_mode;
 extern char *gbl_file_copier;
-extern char *gbl_dbname;
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char *gbl_dbdir;
 
 /* Constants */
@@ -1302,6 +1303,7 @@ err:
 
     return rc;
 }
+
 /*
  * Gets foreign db's files and writes them into the local environment.
  *
@@ -1311,6 +1313,7 @@ err:
  */
 int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
     cdb2_hndl_tp *hndl;
+    fdb_t *fdb;
     int rc, t_rc;
     char txndir[PATH_MAX];
     char query[2000];
@@ -1319,12 +1322,24 @@ int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
     hndl = NULL;
     get_txndir_args(txndir, sizeof(txndir), gbl_dbdir);
 
-    rc = cdb2_open(&hndl, fdb_name, "default", 0);
+    rc = create_fdb(fdb_name, &fdb);
     if (rc) {
         logmsg(
             LOGMSG_ERROR,
-            "[IMPORT] %s: Could not open a handle to src db in import mode\n",
-            __func__);
+            "[IMPORT] %s: Failed to create fdb with rc %d\n",
+            __func__, rc);
+        goto err;
+    }
+
+    printf("About to open handle with dbname %s tier %s\n", fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb));
+
+    rc = cdb2_open(&hndl, fdb_dbname_name(fdb),
+                   fdb_dbname_class_routing(fdb), 0);
+    if (rc) {
+        logmsg(
+            LOGMSG_ERROR,
+            "[IMPORT] %s: Failed to open a handle to src db with rc %d\n",
+            __func__, rc);
         goto err;
     }
 
