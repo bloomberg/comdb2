@@ -319,12 +319,12 @@ public class Driver implements java.sql.Driver {
 
     @Override
     public int getMajorVersion() {
-        return 1;
+        return Comdb2ClientInfo.getDriverMajorVersion();
     }
 
     @Override
     public int getMinorVersion() {
-        return 0;
+        return Comdb2ClientInfo.getDriverMinorVersion();
     }
 
     @Override

@@ -95,19 +95,19 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     public String getDriverName() throws SQLException {
-        return "cdb2jdbc";
+        return Comdb2ClientInfo.getDriverName();
     }
 
     public String getDriverVersion() throws SQLException {
-        return "1.0";
+        return Comdb2ClientInfo.getDriverVersion();
     }
 
     public int getDriverMajorVersion() {
-        return 1;
+        return Comdb2ClientInfo.getDriverMajorVersion();
     }
 
     public int getDriverMinorVersion() {
-        return 0;
+        return Comdb2ClientInfo.getDriverMinorVersion();
     }
 
     public boolean usesLocalFiles() throws SQLException {
