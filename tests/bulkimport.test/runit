@@ -15,11 +15,11 @@ function test_flip_flop_import() {
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl" && \
+		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" && \
 		query_dst_db "insert into $dst_tbl select * from $dst_tbl" && \
-		query_src_db "import $dst_tbl from $DST_DBNAME to $src_tbl" && \
+		query_src_db "import $dst_tbl from LOCAL_$DST_DBNAME to $src_tbl" && \
 		query_src_db "insert into $src_tbl select * from $src_tbl" && \
-		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl"
+		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl"
 
 		# Then
 		verify $? $src_tbl $dst_tbl
@@ -44,9 +44,9 @@ function test_import_many_tables_over_table() {
 			query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		query_dst_db "import $src_tbl_1 from $SRC_DBNAME to $dst_tbl" && \
-		query_dst_db "import $src_tbl_2 from $SRC_DBNAME to $dst_tbl" && \
-		query_dst_db "import $src_tbl_3 from $SRC_DBNAME to $dst_tbl"
+		query_dst_db "import $src_tbl_1 from LOCAL_$SRC_DBNAME to $dst_tbl" && \
+		query_dst_db "import $src_tbl_2 from LOCAL_$SRC_DBNAME to $dst_tbl" && \
+		query_dst_db "import $src_tbl_3 from LOCAL_$SRC_DBNAME to $dst_tbl"
 
 		# Then
 		verify $? $src_tbl_3 $dst_tbl
@@ -63,7 +63,7 @@ function test_multiple_imports_at_once() {
 
 		# When
 		for i in $(seq $n_simultaneous_imports); do
-			query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl" &
+			query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" &
 			pids[${i}]=$!
 		done
 
@@ -97,7 +97,7 @@ function test_heavy_traffic_import() {
 		src_values=$(query_src_db_opts "select * from $src_tbl" "-tabs")
 
 		# When
-		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl"
+		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl"
 
 		# Then
 		rc=$?
@@ -126,7 +126,7 @@ function run_basic_test() {
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		query_dst_db "import $src_tbl from $SRC_DBNAME to $dst_tbl" 
+		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" 
 
 		# Then
 		verify $? $src_tbl $dst_tbl

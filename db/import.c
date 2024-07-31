@@ -1333,8 +1333,7 @@ int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
 
     printf("About to open handle with dbname %s tier %s\n", fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb));
 
-    rc = cdb2_open(&hndl, fdb_dbname_name(fdb),
-                   fdb_dbname_class_routing(fdb), 0);
+    rc = cdb2_open(&hndl, fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb), 0);
     if (rc) {
         logmsg(
             LOGMSG_ERROR,
@@ -1426,6 +1425,7 @@ int bulk_import_do_import(const char *srcdb, const char *src_tablename, const ch
     char *tmpDbDir, *command, *exe;
     char fpath[PATH_MAX];
     ImportData *import_data;
+    const char *my_tier = get_my_mach_class_str();
 
     rc = t_rc = size = 0;
     tmpDbDir = command = exe = NULL;
@@ -1445,16 +1445,16 @@ int bulk_import_do_import(const char *srcdb, const char *src_tablename, const ch
         goto err;
     }
 
-    size = 1 + snprintf(NULL, 0, "%s --import --dir %s --tables %s --src %s",
-                    exe, tmpDbDir, src_tablename, srcdb);
+    size = 1 + snprintf(NULL, 0, "%s --import --dir %s --tables %s --src %s --my-tier %s",
+                    exe, tmpDbDir, src_tablename, srcdb, my_tier);
     command = malloc(size);
     if (command == NULL) {
         rc = ENOMEM;
         goto err;
     }
 
-    sprintf(command, "%s --import --dir %s --tables %s --src %s",
-            exe, tmpDbDir, src_tablename, srcdb);
+    sprintf(command, "%s --import --dir %s --tables %s --src %s --my-tier %s",
+            exe, tmpDbDir, src_tablename, srcdb, my_tier);
 
     rc = system(command);
     if (rc != 0) {

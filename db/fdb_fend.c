@@ -1285,13 +1285,14 @@ int create_fdb(const char *fdb_name, fdb_t **fdb) {
 
     lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
+        logmsg(LOGMSG_ERROR, "%s: Could not find usable fdb class\n", __func__);
         rc = 1;
         goto err;
     }
 
     *fdb = new_fdb(fdb_name, &created, lvl, local, lvl_override);
     if (!fdb) {
-        /* we cannot really alloc a new memory string for sqlite here */
+        logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
         rc = 1;
         goto err;
     }
