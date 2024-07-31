@@ -2552,4 +2552,8 @@ REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc
                  TUNABLE_INTEGER, &gbl_sc_status_max_rows, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_process_pstack_time", "pstack the server if rep_process runs longer than time specified in secs (Default: 30s)",
                  TUNABLE_INTEGER, &gbl_rep_process_pstack_time, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_hostname_lookup",
+                 "Print trace while looking up hostname given nodenum.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_verbose_hostname_lookup, 0,
+                 NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
