@@ -65,7 +65,7 @@ static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
 static int pre_read_option(char *, int);
 static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int, int *);
-static void set_snapshot_impl(snap_impl_enum impl);
+void set_snapshot_impl(snap_impl_enum impl);
 
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
@@ -1308,9 +1308,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
         gbl_snapisol = 1;
         gbl_selectv_rangechk = 1;
-    } else if (tokcmp(tok, ltok, "use_modsnap_for_snapshot") == 0) {
-        set_snapshot_impl(SNAP_IMPL_MODSNAP);
-        enable_snapshot(dbenv);
     } else if (tokcmp(tok, ltok, "mallocregions") == 0) {
         if ((strcmp(COMDB2_VERSION, "2") == 0) ||
             (strcmp(COMDB2_VERSION, "old") == 0)) {

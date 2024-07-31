@@ -136,6 +136,7 @@ extern int gbl_udp;
 extern int gbl_update_delete_limit;
 extern int gbl_updategenids;
 extern int gbl_use_modsnap_for_snapshot;
+extern snap_impl_enum gbl_snap_impl;
 extern int gbl_use_appsock_as_sqlthread;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
@@ -506,6 +507,8 @@ extern int gbl_sc_history_max_rows;
 extern int gbl_sc_status_max_rows;
 extern int gbl_rep_process_pstack_time;
 
+extern void set_snapshot_impl(snap_impl_enum impl);
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
@@ -564,6 +567,42 @@ int percent_verify(void *unused, void *percent)
         return 1;
     }
     return 0;
+}
+
+struct snapshot_impl_config_st {
+    const char *name;
+    int code;
+} snapshot_impl_config_vals[] = {{"original", SNAP_IMPL_ORIG},
+                                {"new", SNAP_IMPL_NEW},
+                                {"modsnap", SNAP_IMPL_MODSNAP}};
+
+static int snapshot_impl_update(void *context, void *value) {
+    comdb2_tunable *tunable;
+    char *tok;
+    int st = 0;
+    int ltok;
+    int len;
+    int rc;
+
+    tunable = (comdb2_tunable *)context;
+    len = strlen(value);
+    tok = segtok(value, len, &st, &ltok);
+    rc = 0;
+
+    for (int i = 0; i < (sizeof(snapshot_impl_config_vals) /
+                         sizeof(struct snapshot_impl_config_st));
+         i++) {
+        if (tokcmp(tok, ltok, snapshot_impl_config_vals[i].name) == 0) {
+            set_snapshot_impl(snapshot_impl_config_vals[i].code);
+            goto found;
+        }
+    }
+
+    logmsg(LOGMSG_ERROR, "Invalid value '%s' for tunable '%s'\n", tok, tunable->name);
+    rc = 1;
+
+found:
+    return rc;
 }
 
 struct enable_sql_stmt_caching_st {
