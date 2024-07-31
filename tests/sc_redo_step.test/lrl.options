@@ -1,7 +1,6 @@
 init_with_instant_schema_change
 init_with_ondisk_header
 init_with_inplace_updates 
-enable_new_snapshot
 round_robin_stripes
 nowatch
 logmsg level info
@@ -15,4 +14,5 @@ dtastripe 1
 blobstripe
 verbose_toblock_backouts on
 on logical_live_sc
-use_modsnap_for_snapshot
+set_snapshot_impl modsnap
+enable_snapshot_isolation

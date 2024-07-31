@@ -1,7 +1,6 @@
 nowatch
 logmsg level info
 maxosqltransfer 1000000
-enable_new_snapshot
 enable_snapshot_isolation
 berkattr abort_on_replicant_log_write 1
 init_with_genid48
@@ -15,4 +14,4 @@ reorder_socksql_no_deadlock on
 #selectv_writelock on
 #reorder_socksql_no_deadlock off
 #reorder_idx_writes off
-use_modsnap_for_snapshot
+set_snapshot_impl modsnap

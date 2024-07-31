@@ -425,6 +425,12 @@ REGISTER_TUNABLE("enable_snapshot_isolation",
                  TUNABLE_BOOLEAN, &gbl_snapisol, READONLY, NULL, NULL, NULL,
                  NULL);
 */
+
+REGISTER_TUNABLE("set_snapshot_impl",
+                 "Changes the default snapshot implementation "
+                 "*without enabling snapshot* (default 'original')",
+                 TUNABLE_STRING, &gbl_snap_impl, READEARLY | READONLY, NULL, NULL,
+                 snapshot_impl_update, NULL);
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
                  "If set, allocates a sparse map of lockers for deadlock "
                  "resolution. (Default: on)",
@@ -1261,10 +1267,6 @@ REGISTER_TUNABLE("use_planned_schema_change",
                  "Disable to always rebuild all data files and indices for the "
                  "changing table. (Default: 1)",
                  TUNABLE_INTEGER, &gbl_default_plannedsc, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("use_modsnap_for_snapshot",
-                 "Use modsnap implementation for snapshot transactions. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_use_modsnap_for_snapshot, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("watchthreshold",
                  "Panic if node has been unhealty (unresponsive, out of resources, etc.) for more "
