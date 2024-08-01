@@ -1457,6 +1457,15 @@ char *comdb2_get_tmp_dir(void)
     return path;
 }
 
+char *comdb2_get_tmp_dir_name(void) {
+    char *full_path = comdb2_get_tmp_dir();
+
+    char *last_slash_pos = strrchr(full_path, '/');
+    assert(last_slash_pos != NULL);
+
+    return ++last_slash_pos;
+}
+
 /* check space similar to bdb/summarize.c: check_free_space()
  * dir is fetched from comdb2_get_tmp_dir()
  */
