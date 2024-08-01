@@ -131,7 +131,8 @@ function run_basic_test() {
 		# Then
 		rc=$?
 
-		if [ "$TESTCASE" == "bulkimport_mismatched_config_generated" ]; then
+		if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
+	 		 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
 			rc=$(( ! $rc ))
 		else
 			verify $rc $src_tbl $dst_tbl
@@ -156,7 +157,8 @@ function test_basic() {
 	done
 }
 
-if [ "$TESTCASE" == "bulkimport_mismatched_config_generated" ]; then
+if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
+	 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
 	TESTS="test_basic"
 else
 	TESTS=$(compgen -A function | grep -oh "test_\w*")
