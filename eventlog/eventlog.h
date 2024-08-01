@@ -1,6 +1,8 @@
 #ifndef INCLUDED_EVENTLOG_H
 #define INCLUDED_EVENTLOG_H
 
+#include <comdb2.h>
+
 struct reqlogger;
 struct cson_array;
 
@@ -15,6 +17,11 @@ void eventlog_bind_varchar(struct cson_array *, const char *, const void *, int)
 void eventlog_bind_datetime(struct cson_array *, const char *, dttz_t *, const char *);
 void eventlog_bind_interval(struct cson_array *, const char *, intv_t *);
 void eventlog_bind_array(struct cson_array *, const char *, void *array_ptr, int array_count, int type);
+
+typedef enum eventlog_net_direction {
+    EVENTLOG_NET_IN,
+    EVENTLOG_NET_OUT
+} eventlog_net_direction;
 
 void eventlog_init();
 void eventlog_status(void);
@@ -32,5 +39,8 @@ int eventlog_debug_enabled(void);
         } while(0);                \
     }                              \
 } while(0)
+
+void eventlog_net_event(const char *context, const char *api, const char *msgtype, eventlog_net_direction direction, const void *buffer, size_t bufsize);
+void eventlog_net_event_sql_response(const char *context, const void *pb);
 
 #endif
