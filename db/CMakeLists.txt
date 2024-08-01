@@ -1,4 +1,5 @@
 set(src
+  alias.c
   api_history.c
   appsock_handler.c
   autoanalyze.c
