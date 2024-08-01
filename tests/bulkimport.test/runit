@@ -129,7 +129,16 @@ function run_basic_test() {
 		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" 
 
 		# Then
-		verify $? $src_tbl $dst_tbl
+		rc=$?
+
+		if [ "$TESTCASE" == "bulkimport_mismatched_config_generated" ]; then
+			rc=$(( ! $rc ))
+		else
+			verify $rc $src_tbl $dst_tbl
+			rc=$?
+		fi
+
+		return $rc
 	)
 }
 
@@ -147,7 +156,12 @@ function test_basic() {
 	done
 }
 
-TESTS=$(compgen -A function | grep -oh "test_\w*")
+if [ "$TESTCASE" == "bulkimport_mismatched_config_generated" ]; then
+	TESTS="test_basic"
+else
+	TESTS=$(compgen -A function | grep -oh "test_\w*")
+fi
+
 
 function main() {
 	for testcase in $TESTS;
