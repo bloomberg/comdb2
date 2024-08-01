@@ -353,7 +353,6 @@ int bdb_llog_partition(bdb_state_type *bdb_state, tran_type *tran, char *name,
     return bdb_llog_scdone_tran(bdb_state, views, tran, name, strlen(name) + 1,
                                 bdberr);
 }
-
 int bdb_llog_luareload(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
     return bdb_llog_scdone(bdb_state, luareload, NULL, 0, wait, bdberr);
@@ -524,4 +523,9 @@ int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock)
     }
 
     return 0;
+}
+
+int bdb_llog_alias(bdb_state_type *bdb_state, int wait, int *bdberr) 
+{
+    return bdb_llog_scdone(bdb_state, alias, NULL, 0, wait, bdberr);
 }

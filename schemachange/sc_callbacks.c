@@ -30,6 +30,7 @@
 #include "comdb2_atomic.h"
 #include "sc_struct.h"
 #include "sc_rename_table.h"
+#include "alias.h"
 
 extern void free_cached_idx(uint8_t **cached_idx);
 
@@ -1240,6 +1241,19 @@ static int scdone_queue_file(const char tablename[], void *arg, scdone_t type)
     return rc;
 }
 
+static int scdone_alias(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    reload_aliases();
+    _untran(tran, lid);
+    return 0;
+}
 /* keep this in sync with enum scdone */
 int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_alter,         &scdone_addandfastinit, /* fastinit AND add (doh) */
@@ -1250,7 +1264,7 @@ int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
     &scdone_llmeta_queue,  &scdone_genid48,        &scdone_genid48,
     &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
     &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
-    &scdone_queue_file,    &scdone_rename_table};
+    &scdone_queue_file,    &scdone_rename_table,   &scdone_alias};
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,

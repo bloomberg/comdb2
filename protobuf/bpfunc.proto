@@ -1,6 +1,11 @@
 //package com.bloomberg.comdb2.bpfunc;
 syntax = "proto2";
 
+enum alias_op {
+    CREATE = 0;
+    DROP   = 1;
+}
+
 message bpfunc_create_timepart {
   required string tablename = 1;
   required string partition_name = 2;
@@ -35,6 +40,7 @@ message bpfunc_authentication {
 message bpfunc_alias {
     required string remote = 1;
     required string name = 2;
+    required alias_op op = 3;
 }
 
 message bpfunc_analyze_threshold
