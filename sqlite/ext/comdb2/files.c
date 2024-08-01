@@ -36,7 +36,7 @@
 
 typedef unsigned char u_int8_t;
 
-char *comdb2_get_tmp_dir(void);
+char *comdb2_get_tmp_dir_name(void);
 int endianness_mismatch(struct sqlclntstate *clnt);
 void berk_fix_checkpoint_endianness(u_int8_t *buffer);
 
@@ -315,6 +315,30 @@ static int read_next_chunk(systbl_files_cursor *pCur)
     return SQLITE_OK;
 }
 
+/*
+ * Returns 1 if dirent should be skipped on the basis of its name; otherwise, returns 0.
+ *
+ * d_name: The name of the dirent to be checked
+ */
+static int should_skip_dirent(const char *d_name) {
+    const char *excluded_dirents[] = {".", "..", "watchdog", comdb2_get_tmp_dir_name(), "" /* sentinel */};
+    const char *excluded;
+    int rc;
+
+    rc = 0;
+
+    for (int i=0; (excluded = excluded_dirents[i]), excluded[0] != '\0'; ++i) {
+        rc = (strcmp(d_name, excluded) == 0);
+
+        if (rc) {
+            goto err;
+        }
+    }
+
+err:
+    return rc;
+}
+
 static int read_dir(const char *dirname, db_file_t **files, int *count, char *file_pattern, size_t chunk_size)
 {
     struct dirent buf;
@@ -330,7 +354,7 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
     }
 
     while (bb_readdir(d, &buf, &de) == 0 && de) {
-        if ((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0)) {
+        if (should_skip_dirent(de->d_name)) {
             continue;
         }
 
