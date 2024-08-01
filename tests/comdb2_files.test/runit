@@ -103,6 +103,47 @@ function test_comdb2_files_broken_symlink() {
 	)
 }
 
+function test_comdb2_files_skips_file_on_excluded_list() {
+	(
+		# Given
+		local dbname=$1 dbdir=$2 excluded_file="watchdog"
+		echo "borkbork" > $dbdir/$excluded_file
+		trap "rm $dbdir/$excluded_file" EXIT
+
+		# When
+		num_files=$(cdb2sql -tabs $dbname local "select count(*) from comdb2_files where filename like '%$excluded_file%'")
+
+		# Then
+		query_rc=$?
+		if (( query_rc == 0 && num_files == 0 ));
+		then
+			return 0
+		else
+			return 1
+		fi
+	)
+}
+
+function test_comdb2_files_skips_dir_on_excluded_list() {
+	(
+		# Given
+		local dbname=$1 dbdir=$2 excluded_dir="tmp" file="foo"
+		echo "restrictedBlahBlah" > $dbdir/$excluded_dir/$file
+
+		# When
+		num_files=$(cdb2sql -tabs $dbname local "select count(*) from comdb2_files where filename like '%$file%'")
+
+		# Then
+		query_rc=$?
+		if (( query_rc == 0 && num_files == 0 ));
+		then
+			return 0
+		else
+			return 1
+		fi
+	)
+}
+
 function runtest {
 	local dbname=$1 dbdir=$2
 	local tests=$(compgen -A function | grep -oh "test_\w*")
