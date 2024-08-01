@@ -58,7 +58,7 @@ function test_multiple_imports_at_once() {
 		# Given
 		local src_tbl dst_tbl n_simultaneous_imports pids rc
 		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl
-		n_simultaneous_imports=7 pids=() rc=0
+		n_simultaneous_imports=8 pids=() rc=0
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
@@ -73,6 +73,33 @@ function test_multiple_imports_at_once() {
 
 		# Then
 		verify $rc $src_tbl $dst_tbl
+	)
+}
+
+function test_mutual_simultaneous_import() {
+	(
+		# Given
+		local src_tbl dst_tbl n_simultaneous_imports pids rc
+		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl
+		n_mutual_imports=8 pids=() rc=0
+		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+
+		# When
+		for i in $(seq 1 2 $n_mutual_imports); do
+			query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" &
+			pids[${i}]=$!
+
+			query_src_db "import $dst_tbl from LOCAL_$DST_DBNAME to $src_tbl" &
+			pids[$((i+1))]=$!
+		done
+
+		for pid in ${pids[@]}; do
+			wait $pid || rc=1
+		done
+
+		# Then
+			# We should have one or the other of the original tables
+		verify $rc $src_tbl $dst_tbl || verify $rc $dst_tbl $src_tbl
 	)
 }
 
@@ -110,7 +137,6 @@ function test_heavy_traffic_import() {
 				rc=1
 				break
 			fi
-			# Might get a false positive here if pid was reused
 			kill -9 $pid &> /dev/null
 		done
 
@@ -133,7 +159,7 @@ function run_basic_test() {
 
 		if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
 	 		 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
-			rc=$(( ! $rc ))
+			rc=$(( ! $rc )) # Databases with mismatched configs should fail every import.
 		else
 			verify $rc $src_tbl $dst_tbl
 			rc=$?
@@ -163,7 +189,6 @@ if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
 else
 	TESTS=$(compgen -A function | grep -oh "test_\w*")
 fi
-
 
 function main() {
 	for testcase in $TESTS;
