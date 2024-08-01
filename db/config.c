@@ -715,7 +715,7 @@ static void toggle_new_snapisol(int switch_val) {
  *
  * impl: The value to output as a string.
  */
-static const char *snap_impl_str(snap_impl_enum impl) {
+const char *snap_impl_str(snap_impl_enum impl) {
     switch (impl) {
     case SNAP_IMPL_ORIG:
         return "ORIGINAL";

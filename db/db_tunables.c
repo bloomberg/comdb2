@@ -508,6 +508,7 @@ extern int gbl_sc_status_max_rows;
 extern int gbl_rep_process_pstack_time;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
+extern const char *snap_impl_str(snap_impl_enum impl);
 
 /*
   =========================================================
@@ -603,6 +604,13 @@ static int snapshot_impl_update(void *context, void *value) {
 
 found:
     return rc;
+}
+
+static void *snapshot_impl_value(void *context)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+
+    return (void *) snap_impl_str(*(int *)tunable->var);
 }
 
 struct enable_sql_stmt_caching_st {
