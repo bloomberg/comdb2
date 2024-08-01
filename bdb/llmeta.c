@@ -35,7 +35,7 @@
 #include "lockmacros.h"
 #include <sys/poll.h>
 #include "debug_switches.h"
-
+#include "alias.h"
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
 extern int get_csc2_version_tran(const char *table, tran_type *tran);
@@ -8438,11 +8438,10 @@ retry:
     return 0;
 }
 
-int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
-                           void *data, int datalen, int *bdberr)
-{
-    struct llmeta_tablename_alias_key akey;
-    struct llmeta_tablename_alias_data adata;
+int bdb_llmeta_alias_get_kv(bdb_state_type *bdb_state, void *key, int keylen,
+                           void *data, int datalen, int *bdberr, 
+                           struct llmeta_tablename_alias_key *akey,
+                           struct llmeta_tablename_alias_data *adata) {
     int type = 0;
 
     *bdberr = BDBERR_NOERROR;
@@ -8452,23 +8451,51 @@ int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
     if (type != LLMETA_FDB_TABLENAME_ALIAS)
         return 0;
 
-    bzero(&akey, sizeof(akey));
-    bzero(&adata, sizeof(adata));
+    bzero(akey, sizeof(struct llmeta_tablename_alias_key));
+    bzero(adata, sizeof(struct llmeta_tablename_alias_data));
 
-    if (llmeta_tablename_alias_key_get(&akey, key, ((const uint8_t *)key) +
+    if (llmeta_tablename_alias_key_get(akey, key, ((const uint8_t *)key) +
                                                        keylen) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: wrong format tablename alias key\n", __func__);
         return -1;
     }
-    if (llmeta_tablename_alias_data_get(&adata, data, ((const uint8_t *)data) +
+    if (llmeta_tablename_alias_data_get(adata, data, ((const uint8_t *)data) +
                                                           datalen) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: wrong format tablename alias key\n", __func__);
         return -1;
     }
+    return 1;
+}
+int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
+                           void *data, int datalen, int *bdberr)
+{
+    struct llmeta_tablename_alias_key akey;
+    struct llmeta_tablename_alias_data adata;
+    int rc = 0;
 
-   logmsg(LOGMSG_USER, "\"%s\" -> \"%s\"\n", akey.tablename_alias, adata.url);
+    rc = bdb_llmeta_alias_get_kv(bdb_state, key, keylen, data, datalen, bdberr, &akey, &adata);
 
-    return 0;
+    if (rc==1) {
+        rc = 0;
+        logmsg(LOGMSG_USER, "\"%s\" -> \"%s\"\n", akey.tablename_alias, adata.url);
+    }
+    return rc;
+}
+
+int bdb_llmeta_collect_alias(bdb_state_type *bdb_state, void *key, int keylen,
+                           void *data, int datalen, int *bdberr)
+{
+    struct llmeta_tablename_alias_key akey;
+    struct llmeta_tablename_alias_data adata;
+    int rc = 0;
+
+    rc = bdb_llmeta_alias_get_kv(bdb_state, key, keylen, data, datalen, bdberr, &akey, &adata);
+
+    if (rc==1) {
+        rc = 0;
+        add_alias(akey.tablename_alias, adata.url);
+    }
+    return rc;
 }
 
 void llmeta_list_tablename_alias(void)
@@ -8483,6 +8510,20 @@ void llmeta_list_tablename_alias(void)
     }
 
     bdb_lite_list_records(llmeta_bdb_state, bdb_llmeta_print_alias, &bdberr);
+}
+
+void llmeta_collect_tablename_alias(void)
+{
+    int bdberr = 0;
+
+    if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table db not "
+                        "lite\n",
+                __func__);
+        return;
+    }
+    logmsg(LOGMSG_USER, "Collecting table aliases\n");
+    bdb_lite_list_records(llmeta_bdb_state, bdb_llmeta_collect_alias, &bdberr);
 }
 
 bdb_state_type *bdb_llmeta_bdb_state(void) { return llmeta_bdb_state; }

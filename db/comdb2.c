@@ -142,7 +142,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "reverse_conn.h"
-
+#include "alias.h"
 #define tokdup strndup
 
 int gbl_thedb_stopped = 0;
@@ -4122,6 +4122,7 @@ static int init(int argc, char **argv)
             return -1;
         }
 
+        load_aliases_from_llmeta();
         /* if we are repopulating the .lrl with the table definitions */
         if (gbl_repoplrl_fname) {
             /* print all the schemas to disk ie /data/dir/tablename.csc2 */

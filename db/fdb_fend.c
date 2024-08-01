@@ -56,6 +56,7 @@
 #include "ssl_io.h"
 #include "ssl_bend.h"
 #include "comdb2_query_preparer.h"
+#include "alias.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
@@ -4110,11 +4111,7 @@ char *fdb_get_alias(const char **p_tablename)
     char *errstr = NULL;
     char *alias = NULL;
     const char *tablename = *p_tablename;
-    tran_type *trans;
-
-    trans = curtran_gettran();
-    alias = llmeta_get_tablename_alias_tran(trans, tablename, &errstr);
-    curtran_puttran(trans);
+    alias = get_tablename(tablename);
     if (!alias) {
         if (errstr) {
             logmsg(LOGMSG_ERROR, "%s: error retrieving fdb alias for %s\n", __func__,
@@ -4135,7 +4132,7 @@ char *fdb_get_alias(const char **p_tablename)
     return alias;
 }
 
-void fdb_stat_alias(void) { llmeta_list_tablename_alias(); }
+void fdb_stat_alias(void) { dump_alias_info(); }
 
 /**
 * This function will check some critical regions

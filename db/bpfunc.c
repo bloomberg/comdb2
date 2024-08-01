@@ -10,13 +10,15 @@
 #include <logmsg.h>
 #include "logical_cron.h"
 #include "db_access.h" /* gbl_check_access_controls */
+#include "alias.h"
 
 /* Automatically create 'default' user when authentication is enabled. */
 int gbl_create_default_user;
 
 /*                           FUNCTION DECLARATIONS */
 
-static int prepare_create_timepart(bpfunc_t *tp);
+static int prepare_methods(bpfunc_t *func, bpfunc_info *info);
+/*static int prepare_create_timepart(bpfunc_t *tp);
 static int prepare_drop_timepart(bpfunc_t *tp);
 static int prepare_timepart_retention(bpfunc_t *tp);
 static int exec_grant(void *tran, bpfunc_t *func, struct errstat *err);
@@ -32,6 +34,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func,
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errstat *err);
+*/
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, struct errstat *err)
@@ -58,75 +61,6 @@ static int init_bpfunc(bpfunc_t *bpf)
     return 0;
 }
 
-static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
-{
-    func->exec = empty;
-    func->success = empty;
-    func->fail = empty;
-    func->info = info;
-
-    switch (func->arg->type) {
-    case BPFUNC_CREATE_TIMEPART:
-        prepare_create_timepart(func);
-        break;
-
-    case BPFUNC_DROP_TIMEPART:
-        prepare_drop_timepart(func);
-        break;
-
-    case BPFUNC_GRANT:
-        func->exec = exec_grant;
-        break;
-
-    case BPFUNC_PASSWORD:
-        func->exec = exec_password;
-        break;
-
-    case BPFUNC_AUTHENTICATION:
-        func->exec = exec_authentication;
-        break;
-
-    case BPFUNC_ALIAS:
-        func->exec = exec_alias;
-        break;
-
-    case BPFUNC_ANALYZE_THRESHOLD:
-        func->exec = exec_analyze_threshold;
-        break;
-
-    case BPFUNC_ANALYZE_COVERAGE:
-        func->exec = exec_analyze_coverage;
-        break;
-
-    case BPFUNC_TIMEPART_RETENTION:
-        prepare_timepart_retention(func);
-        break;
-
-    case BPFUNC_ROWLOCKS_ENABLE:
-        func->exec = exec_rowlocks_enable;
-        break;
-
-    case BPFUNC_GENID48_ENABLE:
-        func->exec = exec_genid48_enable;
-        break;
-
-    case BPFUNC_SET_SKIPSCAN:
-        func->exec = exec_set_skipscan;
-        break;
-
-    case BPFUNC_DELETE_FROM_SC_HISTORY:
-        func->exec = exec_delete_from_sc_history;
-        break;
-
-
-    default:
-        logmsg(LOGMSG_ERROR, "Unknown function_id in bplog function\n");
-        return -1;
-        break;
-    }
-
-    return 0;
-}
 
 static int _get_bpfunc(bpfunc_t *func, int32_t data_len, const uint8_t *data)
 {
@@ -458,14 +392,61 @@ static int exec_alias(void *tran, bpfunc_t *func, struct errstat *err)
     int rc = 0;
     char *error;
     BpfuncAlias *alias = func->arg->alias;
-
-    rc = llmeta_set_tablename_alias(NULL, alias->name, alias->remote, &error);
-
-    if (error) {
-        errstat_set_rcstrf(err, rc, "%s", error);
-        free(error);
+    if (alias->op == ALIAS_OP__CREATE) {
+        rc = llmeta_set_tablename_alias(NULL, alias->name, alias->remote, &error);
+    } else {
+        rc = llmeta_rem_tablename_alias(alias->name, &error);
+    }
+    if (rc) {
+        if (err) {
+            errstat_set_rcstrf(err, rc, "%s", error);
+            free(error);
+        }
+        return rc;
     }
 
+    /* update in-mem structure */
+
+    if (alias->op == ALIAS_OP__CREATE) 
+        add_alias(alias->name, alias->remote);
+    else 
+        remove_alias(alias->name);
+    return 0;
+}
+
+
+int success_alias(void *tran, bpfunc_t *func, struct errstat *err) {
+     int rc = 0;
+     int bdberr = 0;
+
+     /* tell replicants to do so as well */
+     rc = bdb_llog_alias(thedb->bdb_env, 1 /* wait */, &bdberr);
+     if(rc)
+         errstat_set_rcstrf(err, rc, "%s -- bdb_llog_views rc:%d bdberr:%d",
+                            __func__, rc, bdberr);
+     return rc;
+}
+
+int fail_alias(void *tran, bpfunc_t *func, struct errstat *err) {
+    int rc = 0;
+    char *error;
+    BpfuncAlias *alias = func->arg->alias;
+
+    if (alias->op == ALIAS_OP__CREATE) {
+        rc = llmeta_rem_tablename_alias(alias->name, &error);
+    } else {
+        rc = llmeta_set_tablename_alias(NULL, alias->name, alias->remote, &error);
+    }
+    if (rc) {
+        /* we should never reach here */
+        abort();
+    }
+
+    /* update in-mem structure */
+    if (alias->op == ALIAS_OP__CREATE) 
+        remove_alias(alias->name);
+    else 
+        add_alias(alias->name, alias->remote);
     return rc;
 }
 
@@ -616,4 +597,75 @@ static int exec_delete_from_sc_history(void *tran, bpfunc_t *func,
     if (rc)
         errstat_set_rcstrf(err, rc, "%s failed delete", __func__);
     return rc;
+}
+static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
+{
+    func->exec = empty;
+    func->success = empty;
+    func->fail = empty;
+    func->info = info;
+
+    switch (func->arg->type) {
+    case BPFUNC_CREATE_TIMEPART:
+        prepare_create_timepart(func);
+        break;
+
+    case BPFUNC_DROP_TIMEPART:
+        prepare_drop_timepart(func);
+        break;
+
+    case BPFUNC_GRANT:
+        func->exec = exec_grant;
+        break;
+
+    case BPFUNC_PASSWORD:
+        func->exec = exec_password;
+        break;
+
+    case BPFUNC_AUTHENTICATION:
+        func->exec = exec_authentication;
+        break;
+
+    case BPFUNC_ALIAS:
+        func->exec = exec_alias;
+        func->success = success_alias;
+        func->fail = fail_alias;
+        break;
+
+    case BPFUNC_ANALYZE_THRESHOLD:
+        func->exec = exec_analyze_threshold;
+        break;
+
+    case BPFUNC_ANALYZE_COVERAGE:
+        func->exec = exec_analyze_coverage;
+        break;
+
+    case BPFUNC_TIMEPART_RETENTION:
+        prepare_timepart_retention(func);
+        break;
+
+    case BPFUNC_ROWLOCKS_ENABLE:
+        func->exec = exec_rowlocks_enable;
+        break;
+
+    case BPFUNC_GENID48_ENABLE:
+        func->exec = exec_genid48_enable;
+        break;
+
+    case BPFUNC_SET_SKIPSCAN:
+        func->exec = exec_set_skipscan;
+        break;
+
+    case BPFUNC_DELETE_FROM_SC_HISTORY:
+        func->exec = exec_delete_from_sc_history;
+        break;
+
+
+    default:
+        logmsg(LOGMSG_ERROR, "Unknown function_id in bplog function\n");
+        return -1;
+        break;
+    }
+
+    return 0;
 }
