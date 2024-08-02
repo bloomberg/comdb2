@@ -2339,7 +2339,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_USER, "%p (U) commits transaction %d %d intran=%d\n", clnt, (void *)pthread_self(),
+        logmsg(LOGMSG_USER, "%p (U) commits transaction %p %d intran=%d\n", clnt, (void *)pthread_self(),
                clnt->dbtran.mode, clnt->intrans);
     }
 #endif
