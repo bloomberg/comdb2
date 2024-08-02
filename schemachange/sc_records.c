@@ -545,12 +545,12 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
     if (rc < 0) {
         logmsg(LOGMSG_DEBUG, "%s:%d internal error during CHECK constraint\n",
                __func__, __LINE__);
-        return ERR_CONSTR;
+        return ERR_CHECK_CONSTRAINT;
     } else if (rc > 0) {
         logmsg(LOGMSG_DEBUG, "%s:%d CHECK constraint failed for '%s'\n",
                __func__, __LINE__,
                data->iq.usedb->check_constraints[rc - 1].consname);
-        return ERR_CONSTR;
+        return ERR_CHECK_CONSTRAINT;
     }
 
     rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
@@ -1122,6 +1122,9 @@ err:
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
         sc_client_error(data->s, "Error verifying partial indexes! rrn %d genid 0x%llx", rrn, genid);
+        return -2;
+    } else if (rc == ERR_CHECK_CONSTRAINT) {
+        sc_client_error(data->s, "Record violates check constraints rrn %d genid 0x%llx", rrn, genid);
         return -2;
     } else if (rc != 0) {
         sc_client_error(data->s,
