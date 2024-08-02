@@ -8,4 +8,3 @@ verbose_set_sc_in_progress on
 cache 512 mb
 #online_recovery on
 ack_trace
-set_snapshot_impl modsnap
