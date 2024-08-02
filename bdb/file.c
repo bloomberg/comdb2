@@ -7775,8 +7775,8 @@ static int oldfile_list_contains(const char *filename)
 
 #ifdef DEBUG
     if (ptr)
-        logmsg(LOGMSG_INFO, "tid: 0x%x found in oldfilelist file %s\n",
-                pthread_self(), filename);
+        logmsg(LOGMSG_INFO, "tid: %p found in oldfilelist file %s\n",
+                (void *) pthread_self(), filename);
 #endif
     return ptr != NULL;
 }

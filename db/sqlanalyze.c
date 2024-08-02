@@ -626,10 +626,10 @@ static void get_sampling_threshold(char *table, long long *sampling_thresh)
     if (threshold > 0) {
         *sampling_thresh = threshold;
 #ifdef DEBUG
-        printf("Using llmetasaved threshold %d\n", *sampling_thresh);
+        printf("Using llmetasaved threshold %lld\n", *sampling_thresh);
     }
     else {
-        printf("Using default threshold %d\n", *sampling_thresh);
+        printf("Using default threshold %lld\n", *sampling_thresh);
 #endif
     }
 }

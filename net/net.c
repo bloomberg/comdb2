@@ -3778,7 +3778,7 @@ static int net_send_decom(netinfo_type *netinfo_ptr, const char *decom_host,
 {
     host_node_type *host_node_ptr;
 #ifdef DEBUG
-    fprintf(stderr, "net_send_decom [%s] to_node=%d decom_node=%d\n",
+    fprintf(stderr, "net_send_decom [%s] to_node=%s decom_node=%s\n",
             netinfo_ptr->service, to_host, decom_host);
 #endif
 
