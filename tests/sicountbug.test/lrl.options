@@ -3,3 +3,5 @@ round_robin_stripes
 enable_snapshot_isolation
 notimeout
 set_snapshot_impl modsnap
+berkattr mempv_debug 1
+berkattr commit_map_debug 1

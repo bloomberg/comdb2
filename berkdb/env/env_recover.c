@@ -81,6 +81,7 @@ int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
 int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
+int gbl_asof_modsnap_recovery = 0;
 int gbl_ufid_dbreg_test = 0;
 int gbl_ufid_log = 1;
 
@@ -2113,6 +2114,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 
 	logc = NULL;
 	memset(&data, 0, sizeof(data));
+	gbl_asof_modsnap_recovery = 1;
 
 	/* Allocate a cursor for the log. */
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
@@ -2218,6 +2220,8 @@ err:
 	if (logc) {
 		logc->close(logc, 0);
 	}
+
+	gbl_asof_modsnap_recovery = 0;
 
 	return ret;
 }

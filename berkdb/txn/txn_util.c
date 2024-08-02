@@ -37,6 +37,7 @@ int osql_blkseq_register_cnonce(void *cnonce, int len);
 int osql_blkseq_unregister_cnonce(void *cnonce, int len);
 int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 
+extern int gbl_asof_modsnap_recovery;
 extern int set_commit_context_prepared(unsigned long long context);
 
 typedef struct __txn_event TXN_EVENT;
@@ -694,6 +695,10 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 
 	if (log_compare(&txmap->highest_commit_lsn, &commit_lsn) <= 0) {
 		txmap->highest_commit_lsn = commit_lsn;
+	} else if (!gbl_asof_modsnap_recovery) {
+		logmsg(LOGMSG_ERROR, "%s: Commit LSN is out-of-order\n", __func__);
+		ret = 1;
+		goto err;
 	}
 
 	txn->utxnid = utxnid;
