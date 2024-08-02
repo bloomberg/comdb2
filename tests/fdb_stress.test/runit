@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG "\
+"SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS"
+for required in $vars; do
+	q=${!required}
+	echo "$required=$q"
+	if [[ -z "$q" ]]; then
+		echo "$required not set" >&2
+		exit 1
+	fi
+done
+
+function test_mutual_simultaneous_fdb_query() {
+	(
+		# Given
+		local pids n_mutual_imports=15
+
+		# When
+		for i in $(seq 1 2 $n_mutual_imports); do
+			cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME local "select * from LOCAL_$DBNAME.comdb2_tunables" >/dev/null &
+			pids[${i}]=$!
+
+			cdb2sql ${CDB2_OPTIONS} $DBNAME local "select * from LOCAL_$SECONDARY_DBNAME.comdb2_tunables" >/dev/null &
+			pids[$((i+1))]=$!
+		done
+
+		for pid in ${pids[@]}; do
+			wait $pid || rc=1
+		done
+
+		# Then
+		return $rc
+	)
+}
+
+test_mutual_simultaneous_fdb_query
