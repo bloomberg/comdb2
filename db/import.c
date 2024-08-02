@@ -586,10 +586,26 @@ static int bulk_import_data_load(ImportData *p_data) {
     p_data->n_index_genids = p_data->num_index_genids;
     p_data->index_genids =
         malloc(sizeof(unsigned long int) * p_data->n_index_genids);
+    if (!p_data->index_genids) {
+        rc = ENOMEM;
+        goto err;
+    }
+
+    p_data->n_index_files = p_data->n_index_genids;
+    p_data->index_files = malloc(sizeof(char *) * p_data->n_index_files);
+    if (!p_data->index_files) {
+        rc = ENOMEM;
+        goto err;
+    }
+
     p_data->num_blob_genids = db->numblobs;
     p_data->n_blob_genids = p_data->num_blob_genids;
     p_data->blob_genids =
         malloc(sizeof(unsigned long int) * p_data->n_blob_genids);
+    if (!p_data->blob_genids) {
+        rc = ENOMEM;
+        goto err;
+    }
 
     /* for each index, lookup version */
     for (i = 0; i < p_data->num_index_genids; ++i) {
