@@ -696,9 +696,8 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	if (log_compare(&txmap->highest_commit_lsn, &commit_lsn) <= 0) {
 		txmap->highest_commit_lsn = commit_lsn;
 	} else if (!gbl_asof_modsnap_recovery) {
-		logmsg(LOGMSG_ERROR, "%s: Commit LSN is out-of-order\n", __func__);
-		ret = 1;
-		goto err;
+		// Okay if this is a child transaction or if we're running recovery.
+		logmsg(LOGMSG_WARN, "%s: Commit LSN is out-of-order\n", __func__);
 	}
 
 	txn->utxnid = utxnid;

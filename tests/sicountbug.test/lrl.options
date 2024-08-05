@@ -5,3 +5,4 @@ notimeout
 set_snapshot_impl modsnap
 berkattr mempv_debug 1
 berkattr commit_map_debug 1
+abort_on_dta_lookup_error on
