@@ -550,7 +550,7 @@ int main(int argc,char *argv[])
     c = default_config();
 
     /* char *optarg=argument, int optind = argv index  */
-    while ((opt = getopt(argc,argv,"d:hr:i:tsoD"))!=EOF)
+    while ((opt = getopt(argc,argv,"d:hr:i:g:tsoD"))!=EOF)
     {
         switch(opt)
         {
