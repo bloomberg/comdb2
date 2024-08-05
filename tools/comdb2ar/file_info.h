@@ -22,6 +22,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <vector>
+#include <stdint.h>
 
 class FileInfo {
 // This stores info about a file that is going to be serialised

@@ -121,7 +121,7 @@ int sc_type_requires_dbopen_gen_bump(scdone_t type) {
     return 1;
 }
 
-void bdb_bump_dbopen_gen(int type, const char *message,
+void bdb_bump_dbopen_gen(scdone_t type, const char *message,
                         const char *funcName, const char *fileName, int lineNo)
 {
     if (!sc_type_requires_dbopen_gen_bump(type)) return;
