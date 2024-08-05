@@ -17,7 +17,7 @@
 (out='comdb2_dump_ruleset_item: ruleset 0x00000000 rule #6 <null> action {REJECT_ALL} (0x2), pool {<null>}, flags {PRINT STOP} (0x6), mode {GLOB NOCASE} (0xA), originHost {<null>}, originTask {<null>}, user {<null>}, sql {CREATE *}, fingerprint {<null>}, evalCount 1, matchCount 0')
 (z='phase 3')
 (2=2)
-[SELECT * FROM t1 ORDER BY x] failed with rc -1 Rejected due to rule #1
+[SELECT * FROM t1 ORDER BY x] failed with rc -105 Rejected due to rule #1
 (x=1)
 (x=2)
 (x=3)

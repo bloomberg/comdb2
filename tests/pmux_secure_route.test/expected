@@ -1,4 +1,4 @@
-[select 1] failed with rc -1 cdb2_run_statement_typed_int: Cannot connect to db
+[select 1] failed with rc -105 cdb2_run_statement_typed_int: Maximum number of retries done.
 (2=2)
 (name='sqlite_stat1')
 (name='sqlite_stat4')
