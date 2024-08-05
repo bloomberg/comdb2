@@ -60,6 +60,9 @@ static int reload_rename_table(tran_type *tran, const char *name,
     set_odh_options_tran(db, tran);
     update_dbstore(db);
 
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, newtable, 1);
+
     return 0;
 }
 
@@ -1175,10 +1178,13 @@ static int scdone_rename_table(const char tablename[], void *arg, scdone_t type)
     if (!tran)
         return bdberr;
 
-    if (type == rename_table)
+    if (type == rename_table) {
+        logmsg(LOGMSG_INFO, "Replicant renaming table %s to %s\n", tablename, (char *)arg);
         rc = reload_rename_table(tran, tablename, arg);
-    else
+    } else {
+        logmsg(LOGMSG_INFO, "Replicant aliasing table %s to %s\n", tablename, (char *)arg);
         rc = reload_rename_table_alias(tran, tablename, arg);
+    }
 
     _master_recs(tran, tablename, type);
     _untran(tran, lid);

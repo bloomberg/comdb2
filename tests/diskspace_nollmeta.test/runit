@@ -71,6 +71,6 @@ cdb2sql -m ${CDB2_OPTIONS} $dbnm default "SELECT name, shardname, size/1000000 a
 cdb2sql -m ${CDB2_OPTIONS} $dbnm default "ALTER TABLE tbl1 PARTITIONED BY NONE"
 cdb2sql -m ${CDB2_OPTIONS} $dbnm default "ALTER TABLE tbl1 RENAME TO tbl2"
 sleep 5
-cdb2sql -m ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('stat size')" | grep 'tbl1\|tbl2' >>actual
+cdb2sql ${CDB2_OPTIONS} $dbnm default "EXEC PROCEDURE sys.cmd.send('stat size')" | grep 'tbl1\|tbl2' >>actual
 
 diff actual expected
