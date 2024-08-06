@@ -431,7 +431,7 @@ EOF
 alter table t1 {$(cat $new)}\$\$
 EOF
     else
-        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$new"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "$new" &
     fi
     sleep 1
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 values(2, 100)"
