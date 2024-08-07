@@ -250,7 +250,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
         case 16: /* tables */ gbl_import_table = optarg; break;
         case 17: /* src */ gbl_import_src = optarg; break;
-        case 18: /* tier */ gbl_machine_class = optarg; printf("class %s\n", gbl_machine_class); break;
+        case 18: /* tier */ gbl_machine_class = optarg; break;
         }
     }
     return 0;
