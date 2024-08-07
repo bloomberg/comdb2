@@ -5,6 +5,8 @@ source fixtures.sh
 source constants.sh
 source util.sh
 
+MISMATCHED_CONFIG_TEST=0
+
 function test_flip_flop_import() {
 	(
 		# Given
@@ -99,7 +101,6 @@ function test_mutual_simultaneous_import() {
 		done
 
 		# Then
-			# We should have one or the other of the original tables
 		verify $rc $src_tbl $dst_tbl
 	)
 }
@@ -162,8 +163,7 @@ function run_basic_test() {
 		# Then
 		rc=$?
 
-		if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
-	 		 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
+		if (( MISMATCHED_CONFIG_TEST == 1 )); then
 			rc=$(( ! $rc )) # Databases with mismatched configs should fail every import.
 		else
 			verify $rc $src_tbl $dst_tbl
@@ -189,7 +189,9 @@ function test_basic() {
 }
 
 if [ "$TESTCASE" == "bulkimport_mismatched_blobstripe_generated" -o \
-	 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" ]; then
+	 "$TESTCASE" == "bulkimport_mismatched_dtastripe_generated" -o \
+	 "$TESTCASE" == "bulkimport_mismatched_checksum_generated" ]; then
+	MISMATCHED_CONFIG_TEST=1
 	TESTS="test_basic"
 else
 	TESTS=$(compgen -A function | grep -oh "test_\w*")

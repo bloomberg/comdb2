@@ -65,7 +65,8 @@ function check_node_schema() {
 	dst_table=$2
 	hostname=$3
 
-	incorrect_schemas=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname "select version, csc2 from comdb2_schemaversions except select version,csc2 from LOCAL_$SRC_DBNAME.comdb2_schemaversions union select version, csc2 from LOCAL_$SRC_DBNAME.comdb2_schemaversions except select version,csc2 from comdb2_schemaversions")
+	incorrect_schemas=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+	"select version, csc2 from comdb2_schemaversions except select version,csc2 from LOCAL_$SRC_DBNAME.comdb2_schemaversions union select version, csc2 from LOCAL_$SRC_DBNAME.comdb2_schemaversions except select version,csc2 from comdb2_schemaversions")
 
 	if [[ ! "$?" -eq "0" || ! -z $incorrect_schemas ]];
 	then
@@ -84,9 +85,11 @@ function check_node_table() {
 
 	if (( dst_table_should_be_superset_of_src_table == 0 ));
 	then
-		incorrect_records="$incorrect_records$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname "select * from LOCAL_$SRC_DBNAME.$src_table except select * from $dst_table union select * from $dst_table except select * from LOCAL_$SRC_DBNAME.$src_table")"
+		incorrect_records=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+		"select * from LOCAL_$SRC_DBNAME.$src_table except select * from $dst_table union select * from $dst_table except select * from LOCAL_$SRC_DBNAME.$src_table")
 	else
-		incorrect_records=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname "select * from LOCAL_$SRC_DBNAME.$src_table except select * from $dst_table")
+		incorrect_records=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+		"select * from LOCAL_$SRC_DBNAME.$src_table except select * from $dst_table")
 	fi
 
 	if [[ ! "$?" -eq "0" || ! -z $incorrect_records ]];
@@ -105,8 +108,10 @@ function verify_node() {
 	dst_table_should_be_superset_of_src_table=$4
 
 	# Workaround fdb bug, for now
-	query_dst_db "select * from LOCAL_$SRC_DBNAME.$src_table limit 1" > /dev/null
-	query_dst_db "select * from LOCAL_$SRC_DBNAME.comdb2_schemaversions limit 1" > /dev/null
+	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+		"select * from LOCAL_$SRC_DBNAME.$src_table limit 1" > /dev/null
+	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+		"select * from LOCAL_$SRC_DBNAME.comdb2_schemaversions limit 1" > /dev/null
 
 	check_node_schema $src_table $dst_table $hostname && \
 	check_node_table $src_table $dst_table $hostname \
