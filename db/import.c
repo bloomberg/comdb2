@@ -1347,8 +1347,6 @@ int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name) {
         goto err;
     }
 
-    printf("About to open handle with dbname %s tier %s\n", fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb));
-
     rc = cdb2_open(&hndl, fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb), 0);
     if (rc) {
         logmsg(
