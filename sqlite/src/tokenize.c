@@ -809,138 +809,6 @@ static int isLeftOperand(int tokenType){
     default:          return 0;
   }
 }
-
-char *sqlite3Normalize_alternate(
-  Vdbe *pVdbe,       /* VM being reprepared */
-  const char *zSql,  /* The original SQL string */
-  int iDefDqId       /* Zero if double quoted strings should always be
-                      * treated as identifiers when there is no Vdbe
-                      * available */
-){
-  sqlite3 *db;       /* The database connection */
-  int i;             /* Next unread byte of zSql[] */
-  int n;             /* length of current token */
-  int tokenType;     /* type of current token */
-  int prevType = 0;  /* Previous non-whitespace token */
-  int nParen;        /* Number of nested levels of parentheses */
-  int iStartIN;      /* Start of RHS of IN operator in z[] */
-  int nParenAtIN;    /* Value of nParent at start of RHS of IN operator */
-  int j;             /* Bytes of normalized SQL generated so far */
-  sqlite3_str *pStr; /* The normalized SQL string under construction */
-
-  db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
-  tokenType = -1;
-  nParen = iStartIN = nParenAtIN = 0;
-  pStr = sqlite3_str_new(db);
-  assert( pStr!=0 );  /* sqlite3_str_new() never returns NULL */
-  for(i=0; zSql[i] && pStr->accError==0; i+=n){
-    if( tokenType!=TK_SPACE ){
-      prevType = tokenType;
-    }
-    n = sqlite3GetToken((unsigned char*)zSql+i, &tokenType);
-    if( NEVER(n<=0) ) break;
-    switch( tokenType ){
-      case TK_SPACE: {
-        break;
-      }
-      case TK_NULL: {
-        if( prevType==TK_IS || prevType==TK_NOT ){
-          sqlite3_str_append(pStr, " NULL", 5);
-          break;
-        }
-        /* Fall through */
-      }
-      case TK_STRING:
-      case TK_INTEGER:
-      case TK_FLOAT:
-      case TK_VARIABLE:
-      case TK_BLOB: {
-        sqlite3_str_append(pStr, "?", 1);
-        break;
-      }
-      case TK_LP: {
-        nParen++;
-        if( prevType==TK_IN ){
-          iStartIN = pStr->nChar;
-          nParenAtIN = nParen;
-        }
-        sqlite3_str_append(pStr, "(", 1);
-        break;
-      }
-      case TK_RP: {
-        if( iStartIN>0 && nParen==nParenAtIN ){
-          assert( pStr->nChar>=iStartIN );
-          pStr->nChar = iStartIN+1;
-          sqlite3_str_append(pStr, "?,?,?", 5);
-          iStartIN = 0;
-        }
-        nParen--;
-        sqlite3_str_append(pStr, ")", 1);
-        break;
-      }
-      case TK_ID: {
-        iStartIN = 0;
-        j = pStr->nChar;
-        if( sqlite3Isquote(zSql[i]) ){
-          char *zId = sqlite3_mprintf("%.*s", n, zSql+i);
-          int nId;
-          int eType = 0;
-          if( zId==0 ) break;
-          sqlite3Dequote(zId);
-          if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) ){
-            sqlite3_str_append(pStr, "?", 1);
-            sqlite3DbFree(db, zId);
-            break;
-          }
-          nId = sqlite3Strlen30(zId);
-          if( sqlite3GetToken((u8*)zId, &eType)==nId && eType==TK_ID ){
-            addSpaceSeparator(pStr);
-            sqlite3_str_append(pStr, zId, nId);
-          }else{
-            sqlite3_str_appendf(pStr, "\"%w\"", zId);
-          }
-          sqlite3DbFree(db, zId);
-        }else{
-          addSpaceSeparator(pStr);
-          sqlite3_str_append(pStr, zSql+i, n);
-        }
-        while( j<pStr->nChar ){
-          pStr->zText[j] = sqlite3Tolower(pStr->zText[j]);
-          j++;
-        }
-        break;
-      }
-      case TK_NOSQL: {
-        addSpaceSeparator(pStr);
-        sqlite3_str_append(pStr, zSql+i, n);
-        break;
-      }
-      case TK_PLUS:
-      case TK_MINUS: {
-        if( isLeftOperand(prevType) ){
-          sqlite3_str_append(pStr, zSql+i, n);
-        }
-        break;
-      }
-      case TK_SELECT: {
-        iStartIN = 0;
-        /* fall through */
-      }
-      default: {
-        if( sqlite3IsIdChar(zSql[i]) ) addSpaceSeparator(pStr);
-        j = pStr->nChar;
-        sqlite3_str_append(pStr, zSql+i, n);
-        while( j<pStr->nChar ){
-          pStr->zText[j] = sqlite3Toupper(pStr->zText[j]);
-          j++;
-        }
-        break;
-      }
-    }
-  }
-  if( tokenType!=TK_SEMI ) sqlite3_str_append(pStr, ";", 1);
-  return sqlite3_str_finish(pStr);
-}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -1066,6 +934,13 @@ char *sqlite3Normalize(
       case TK_NOSQL: {
         addSpaceSeparator(pStr);
         sqlite3_str_append(pStr, zSql+i, n);
+        break;
+      }
+      case TK_PLUS:
+      case TK_MINUS: {
+        if( isLeftOperand(prevType) ){
+          sqlite3_str_append(pStr, zSql+i, n);
+        }
         break;
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

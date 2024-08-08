@@ -226,7 +226,7 @@ cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1  { `cat alltypes.csc2
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table carray1 (a int, b double, c cstring(32), d longlong, e blob)"
 
 # following is an error because t2 does not exist, resulting in a 
-# fingerprint of 00000 so will not ba replayed
+# fingerprint of 00000 so will not be replayed
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t2"
 
 assert_vers t1 0
@@ -249,10 +249,6 @@ assertcnt t1 $NEWNUMREC
 update_records_with_bind $NEWSTRT $((NEWSTRT+9))
 assertcnt t1 $NEWNUMREC
 
-#insert_records_with_bind $NEWSTRT $NEWNUMREC
-#cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > a1.txt
-#assertcnt t1 $NEWNUMREC
-
 update_records_with_bind_index $((NEWSTRT+10)) $((NEWSTRT+19))
 assertcnt t1 $NEWNUMREC
 
@@ -265,8 +261,8 @@ assertcnt t1 $((NEWNUMREC+10))
 ${TESTSBUILDDIR}/cdb2api_caller ${DBNAME} t1 > /dev/null
 ${TESTSBUILDDIR}/carray_insert ${DBNAME}
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > orig.txt
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from carray1 order by 1" >> orig.txt
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > original.txt
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from carray1 order by 1" >> original.txt
 
 logflunziped=events.unzipped
 if [[ -z "$CLUSTER" ]]; then
@@ -289,10 +285,9 @@ fi
 
 echo "Make sure that the data we expect is in the event log file"
 echo $logflunziped
-jq -r 'if (.type == "sql") and has("fingerprint") then "\(.fingerprint) \(.sql[0:24])" else empty end' < $logflunziped | sort | uniq -c > fingerprints_only.out
-if ! diff fingerprints_only.out fingerprints_freq.exp ; then
-    echo "Failed diff $PWD/fingerprints_only.out $PWD/fingerprints_freq.exp"
-    failexit "fingerprints_only.out contains different fingerprint data expected"
+jq -r 'if (.type == "sql") and has("fingerprint") then "\(.fingerprint) \(.sql[0:24])" else empty end' < $logflunziped | sort | uniq -c > fingerprints.out
+if ! diff fingerprints.out fingerprints.exp ; then
+    failexit "fingerprints.out contains different fingerprint data than expected"
 fi
 
 echo "working with secondary db"
@@ -323,15 +318,8 @@ fi
 
 cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from t1 order by alltypes_u_short" > replayed.txt
 cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from carray1 order by 1" >> replayed.txt
-
-success=1
-
-if ! diff orig.txt replayed.txt ; then
-    success=0
-fi
-
-if [ $success != 1 ] ; then
-    failexit "replayed.txt content is not the same as orig.txt"
+if ! diff original.txt replayed.txt ; then
+    failexit "replayed.txt content is not the same as original.txt"
 fi
 
 jq 'if (.type == "sql") and (.fingerprint != "00000000000000000000000000000000") then [.fingerprint, .sql] | @csv else empty end' < $logflunziped > 1.out
@@ -372,7 +360,7 @@ fi
 
 if [ "$CLEANUPDBDIR" != "0" ] ; then
     #delete files now that test is successful
-    rm 1.out 2.out orig.txt replayed.txt sqlreplay.out $logflunziped $slogflunziped
+    rm 1.out 2.out original.txt replayed.txt sqlreplay.out $logflunziped $slogflunziped
 fi
 
 echo "Success"
