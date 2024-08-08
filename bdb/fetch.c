@@ -952,7 +952,7 @@ before_first_lookup:
                 /*fprintf(stderr, "one past set is end of data\n");*/
                 rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                 DB_LAST);
-                if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+                if ((rc == DB_LOCK_DEADLOCK)) {
                     *bdberr = BDBERR_DEADLOCK;
                     goto err;
                 }
@@ -1207,7 +1207,7 @@ before_first_lookup:
                 rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                 DB_NEXT);
 
-                if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+                if ((rc == DB_LOCK_DEADLOCK)) {
                     *bdberr = BDBERR_DEADLOCK;
                     goto err;
                 }
@@ -1282,8 +1282,7 @@ before_first_lookup:
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                     DB_LAST);
 
-                    if ((rc == DB_REP_HANDLE_DEAD) ||
-                        (rc == DB_LOCK_DEADLOCK)) {
+                    if ((rc == DB_LOCK_DEADLOCK)) {
                         *bdberr = BDBERR_DEADLOCK;
                         goto err;
                     }
@@ -1387,8 +1386,7 @@ before_first_lookup:
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                     DB_PREV);
 
-                    if ((rc == DB_REP_HANDLE_DEAD) ||
-                        (rc == DB_LOCK_DEADLOCK)) {
+                    if ((rc == DB_LOCK_DEADLOCK)) {
                         *bdberr = BDBERR_DEADLOCK;
                         goto err;
                     }
@@ -1432,8 +1430,7 @@ before_first_lookup:
                         rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key,
                                         &dbt_data, DB_FIRST);
 
-                        if ((rc == DB_REP_HANDLE_DEAD) ||
-                            (rc == DB_LOCK_DEADLOCK)) {
+                        if ((rc == DB_LOCK_DEADLOCK)) {
                             *bdberr = BDBERR_DEADLOCK;
                             goto err;
                         }
@@ -1488,7 +1485,7 @@ before_first_lookup:
                 rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                 DB_PREV);
 
-                if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+                if ((rc == DB_LOCK_DEADLOCK)) {
                     *bdberr = BDBERR_DEADLOCK;
                     goto err;
                 }
@@ -1524,8 +1521,7 @@ before_first_lookup:
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                     DB_FIRST);
 
-                    if ((rc == DB_REP_HANDLE_DEAD) ||
-                        (rc == DB_LOCK_DEADLOCK)) {
+                    if ((rc == DB_LOCK_DEADLOCK)) {
                         *bdberr = BDBERR_DEADLOCK;
                         goto err;
                     }
@@ -1612,8 +1608,7 @@ before_first_lookup:
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                     DB_NEXT);
 
-                    if ((rc == DB_REP_HANDLE_DEAD) ||
-                        (rc == DB_LOCK_DEADLOCK)) {
+                    if ((rc == DB_LOCK_DEADLOCK)) {
                         *bdberr = BDBERR_DEADLOCK;
                         goto err;
                     }
@@ -1649,8 +1644,7 @@ before_first_lookup:
                     rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                                     DB_PREV);
 
-                    if ((rc == DB_REP_HANDLE_DEAD) ||
-                        (rc == DB_LOCK_DEADLOCK)) {
+                    if ((rc == DB_LOCK_DEADLOCK)) {
                         *bdberr = BDBERR_DEADLOCK;
                         goto err;
                     }
@@ -1747,7 +1741,7 @@ before_first_lookup:
             rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                             DB_LAST);
 
-            if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+            if ((rc == DB_LOCK_DEADLOCK)) {
                 *bdberr = BDBERR_DEADLOCK;
                 goto err;
             }
@@ -1831,7 +1825,7 @@ before_first_lookup:
             rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                             DB_LAST);
 
-            if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+            if ((rc == DB_LOCK_DEADLOCK)) {
                 *bdberr = BDBERR_DEADLOCK;
                 goto err;
             }
@@ -1898,8 +1892,7 @@ before_first_lookup:
            even get DB_NOTFOUND on the initial fetch. */
         *bdberr = BDBERR_FETCH_IX;
 
-        if ((initial_rc == DB_REP_HANDLE_DEAD) ||
-            (initial_rc == DB_LOCK_DEADLOCK))
+        if ((initial_rc == DB_LOCK_DEADLOCK))
             *bdberr = BDBERR_DEADLOCK;
         else {
             int ii;
@@ -2008,7 +2001,7 @@ err:
             rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data,
                             DB_GET_RECNO);
 
-            if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK)) {
+            if ((rc == DB_LOCK_DEADLOCK)) {
                 *bdberr = BDBERR_DEADLOCK;
             }
 
@@ -2110,7 +2103,7 @@ err:
                 *reqdtalen = dbt_data.size;
             } else {
                 /* fprintf(stderr, "fetch_dta: %d\n", rc);*/
-                if ((rc == DB_REP_HANDLE_DEAD) || (rc == DB_LOCK_DEADLOCK) ||
+                if ((rc == DB_LOCK_DEADLOCK) ||
                     (rc == DB_NOTFOUND))
                     *bdberr = BDBERR_DEADLOCK;
                 else
