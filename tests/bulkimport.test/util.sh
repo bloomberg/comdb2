@@ -60,95 +60,93 @@ function query_in_loop() {
 	return $rc
 }
 
-function check_node_schema() {
-	src_table=$1
-	dst_table=$2
-	hostname=$3
+function get_cmp_command() {
+	local op=$1 cmp_command
 
-	incorrect_schemas=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
-	"select version, csc2 from comdb2_schemaversions except select version,csc2 from LOCAL_$SRC_DBNAME.comdb2_schemaversions union select version, csc2 from LOCAL_$SRC_DBNAME.comdb2_schemaversions except select version,csc2 from comdb2_schemaversions")
-
-	if [[ ! "$?" -eq "0" || ! -z $incorrect_schemas ]];
-	then
-		echo_err "Schema validation failed"
-		return 1
+	if (( op == 0 )); then 
+		cmp_command="comm -3"
+	elif (( op == -1 )); then 
+		cmp_command="comm -23"
+	else 
+		cmp_command="comm -13"
 	fi
 
-	return 0
+	echo "$cmp_command"
 }
 
-function check_node_table() {
-	src_table=$1
-	dst_table=$2
-	hostname=$3
-	dst_table_should_be_superset_of_src_table=$4
+function check_dst_node_has_all_src_schemas() {
+	local src_table=$1 dst_table=$2 hostname=$3 rc=0 cmp_command
+	cmp_command=$(get_cmp_command 0)
 
-	if (( dst_table_should_be_superset_of_src_table == 0 ));
+	cdb2sql ${CDB2_OPTIONS} -tabs $SRC_DBNAME default \
+		"select version, csc2 from comdb2_schemaversions where tablename='$src_table'" > src_schemas
+	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+		"select version, csc2 from comdb2_schemaversions where tablename='$dst_table'" > dst_schemas
+
+	missing_schemas=$($cmp_command <(sort src_schemas) <(sort dst_schemas))
+
+	if [[ ! "$?" -eq "0" || ! -z $missing_schemas ]];
 	then
-		incorrect_records=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
-		"select * from LOCAL_$SRC_DBNAME.$src_table except select * from $dst_table union select * from $dst_table except select * from LOCAL_$SRC_DBNAME.$src_table")
-	else
-		incorrect_records=$(cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
-		"select * from LOCAL_$SRC_DBNAME.$src_table except select * from $dst_table")
+		echo_err "Schema validation failed."
+		echo_err "src schemas:"
+		cat src_schemas
+		echo_err "dst schemas:"
+		cat dst_schemas
+
+		rc=1
 	fi
 
-	if [[ ! "$?" -eq "0" || ! -z $incorrect_records ]];
+	return $rc
+}
+
+function check_dst_node_has_all_src_records() {
+	local src_table=$1 dst_table=$2 hostname=$3 op=$4 rc=0 cmp_command
+	cmp_command=$(get_cmp_command $op)
+
+	cdb2sql ${CDB2_OPTIONS} -tabs $SRC_DBNAME default \
+		"select * from $src_table" > src_records
+	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
+		"select * from $dst_table" > dst_records
+	
+	missing_records=$($cmp_command <(sort src_records) <(sort dst_records))
+
+	if [[ ! "$?" -eq "0" || ! -z $missing_records ]];
 	then
-		echo_err "Record validation failed"
-		return 1
+		echo_err "Record validation failed. Op $op"
+		echo_err "src records"
+		cat src_records
+		echo_err "dst records:"
+		cat dst_records
+
+		rc=1
 	fi
 
-	return 0
+	return $rc
 }
 
 function verify_node() {
-	src_table=$1
-	dst_table=$2
-	hostname=$3
-	dst_table_should_be_superset_of_src_table=$4
+	local src_table=$1 dst_table=$2 hostname=$3 op=$4
 
-	# Workaround fdb bug, for now
-	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
-		"select * from LOCAL_$SRC_DBNAME.$src_table limit 1" > /dev/null
-	cdb2sql ${SECONDARY_CDB2_OPTIONS} -tabs $DST_DBNAME --host $hostname \
-		"select * from LOCAL_$SRC_DBNAME.comdb2_schemaversions limit 1" > /dev/null
-
-	check_node_schema $src_table $dst_table $hostname && \
-	check_node_table $src_table $dst_table $hostname \
-	$dst_table_should_be_superset_of_src_table
+	check_dst_node_has_all_src_schemas $src_table $dst_table $hostname && \
+	check_dst_node_has_all_src_records $src_table $dst_table $hostname $op
 }
 
 function verify_import() {
-	local nodes
-	rc=0
-	src_table=$1
-	dst_table=$2
-	dst_table_should_be_superset_of_src_table=$3
-
+	local nodes rc=0 src_table=$1 dst_table=$2 op=$3
 	if [[ -z "$CLUSTER" ]]; then nodes=$HOSTNAME; else nodes=$CLUSTER; fi
 
 	for node in $nodes; do
-		verify_node "$src_table" "$dst_table" "$node" \
-		$dst_table_should_be_superset_of_src_table
-
-		rc=$?
-		if ! [ $rc -eq 0 ]; then break; fi
+		verify_node $src_table $dst_table $node $op || rc=1
+		if [[ ! $rc -eq 0 ]]; then break; fi
 	done
 
 	return $rc
 }
 
-function verify() {
-	rc=$1
-	src_tbl=$2
-	dst_tbl=$3
-	if [[ -z "$4" ]]; then superset=0; else superset="$4"; fi
+function verify_lt() {
+	verify_import $1 $2 "-1"
+}
 
-	if (( rc == 0 ));
-	then
-		verify_import $src_tbl $dst_tbl $superset
-		rc=$?
-	fi
-
-	return $rc
+function verify_eq() {
+	verify_import $1 $2 "0"
 }

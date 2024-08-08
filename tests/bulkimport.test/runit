@@ -10,28 +10,29 @@ MISMATCHED_CONFIG_TEST=0
 function test_flip_flop_import() {
 	(
 		# Given
-		local src_tbl dst_tbl
-		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl > /dev/null
+		local src_tbl=foo dst_tbl=foo
+		query_src_db "create table $src_tbl(i longlong default nextsequence)" && \
+		query_src_db "insert into $src_tbl default values" && \
+		query_dst_db "create table $dst_tbl(i longlong default nextsequence)" > /dev/null
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
 		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" && \
-		query_dst_db "insert into $dst_tbl values(abs(random())%10000) on conflict(i) do nothing" && \
+		query_dst_db "insert into $dst_tbl default values" && \
 		query_src_db "import $dst_tbl from LOCAL_$DST_DBNAME to $src_tbl" && \
-		query_src_db "insert into $src_tbl values(abs(random())%10000) on conflict(i) do nothing" && \
+		query_src_db "insert into $src_tbl default values" && \
 		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" \
 		> /dev/null
 
 		# Then
-		verify $? $src_tbl $dst_tbl
+		(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
 	)
 }
 
 function test_import_many_tables_over_table() {
 	(
 		# Given
-		local src_tbl_1 src_tbl_2 src_tbl_3 dst_tbl
-		src_tbl_1=foo src_tbl_2=bar src_tbl_3=baz dst_tbl=foo
+		local src_tbl_1=foo src_tbl_2=bar src_tbl_3=baz dst_tbl=foo
 		query_src_db "create table $src_tbl_1(i int unique)" && \
 		query_src_db "create table $src_tbl_2(i int unique)" && \
 		query_src_db "create table $src_tbl_3(i int unique)" && \
@@ -52,16 +53,15 @@ function test_import_many_tables_over_table() {
 		> /dev/null
 
 		# Then
-		verify $? $src_tbl_3 $dst_tbl
+		(( rc == 0 )) && verify_eq $src_tbl_3 $dst_tbl
 	)
 }
 
 function test_multiple_imports_at_once() {
 	(
 		# Given
-		local src_tbl dst_tbl n_simultaneous_imports pids rc
-		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl > /dev/null
-		n_simultaneous_imports=8 pids=() rc=0
+		local src_tbl dst_tbl n_simultaneous_imports=8 pids=() rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema src_tbl dst_tbl > /dev/null
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
@@ -75,16 +75,15 @@ function test_multiple_imports_at_once() {
 		done
 
 		# Then
-		verify $rc $src_tbl $dst_tbl
+		(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
 	)
 }
 
 function test_mutual_simultaneous_import() {
 	(
 		# Given
-		local src_tbl dst_tbl n_simultaneous_imports pids rc
-		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl > /dev/null
-		n_mutual_imports=8 pids=() rc=0
+		local src_tbl dst_tbl n_mutual_imports=8 pids=() rc=0
+		fixture_src_tbl_and_dst_tbl_have_same_schema src_tbl dst_tbl > /dev/null
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
@@ -101,32 +100,31 @@ function test_mutual_simultaneous_import() {
 		done
 
 		# Then
-		verify $rc $src_tbl $dst_tbl
+		(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
 	)
 }
 
 function test_heavy_traffic_import() {
 	(
 		# Given
-		local src_tbl dst_tbl n_insert_threads src_pids dst_pids rc
-		fixture_src_tbl_and_dst_tbl_are_the_same src_tbl dst_tbl > /dev/null
-		src_pids=() dst_pids=() n_insert_threads=7 rc=0
-		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
+		local src_tbl=foo dst_tbl=foo n_insert_threads=7 src_pids=() dst_pids=() rc=0
+		query_src_db "create table $src_tbl(i longlong default nextsequence)" && \
+		query_src_db "create table save_$src_tbl(i longlong default nextsequence)" && \
+		query_src_db "insert into $src_tbl default values" && \
+		query_dst_db "create table $dst_tbl(i longlong default nextsequence)" > /dev/null
+		trap "query_src_db 'drop table $src_tbl'; query_src_db 'drop table save_$src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		for i in $(seq $n_insert_threads); do
-			query_in_loop query_src_db "insert into $src_tbl values(abs(random())%10000) on conflict(i) do nothing" .1 > /dev/null &
+			query_in_loop query_src_db "insert into $src_tbl default values" .1 > /dev/null &
 			src_pids[${i}]=$!
 
-			query_in_loop query_dst_db "insert into $dst_tbl values(abs(random())%10000) on conflict(i) do nothing" .1 > /dev/null &
+			query_in_loop query_dst_db "insert into $dst_tbl default values" .1 > /dev/null &
 			dst_pids[${i}]=$!
 		done
 
 		sleep 1
 
-		csc2=$(query_src_db_opts "select csc2 from comdb2_schemaversions where tablename='$src_tbl'" "-tabs")
-		query_src_db "create table save_$src_tbl { $csc2 }" && \
-		query_src_db "insert into save_$src_tbl select * from $src_tbl" && \
-		query_src_db "select * from save_$src_tbl" > /dev/null
+		query_src_db "insert into save_$src_tbl select * from $src_tbl"
 
 		# When
 		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" > /dev/null
@@ -145,8 +143,7 @@ function test_heavy_traffic_import() {
 			kill -9 $pid &> /dev/null
 		done
 
-		return 0
-		verify $rc save_$src_tbl $dst_tbl 1
+		(( rc == 0 )) && verify_lt save_$src_tbl $dst_tbl
 	)
 }
 
@@ -166,7 +163,7 @@ function run_basic_test() {
 		if (( MISMATCHED_CONFIG_TEST == 1 )); then
 			rc=$(( ! $rc )) # Databases with mismatched configs should fail every import.
 		else
-			verify $rc $src_tbl $dst_tbl
+			(( rc == 0 )) && verify_eq $src_tbl $dst_tbl
 			rc=$?
 		fi
 
