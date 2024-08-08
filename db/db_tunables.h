@@ -428,7 +428,7 @@ REGISTER_TUNABLE("enable_snapshot_isolation",
 
 REGISTER_TUNABLE("set_snapshot_impl",
                  "Changes the default snapshot implementation "
-                 "*without enabling snapshot* (default 'original')",
+                 "*without enabling snapshot* (default 'modsnap')",
                  TUNABLE_ENUM, &gbl_snap_impl, READEARLY | READONLY,
                  snapshot_impl_value, NULL, snapshot_impl_update, NULL);
 REGISTER_TUNABLE("enable_sparse_lockerid_map",
