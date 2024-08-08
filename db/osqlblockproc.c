@@ -55,6 +55,7 @@
 #include "sc_logic.h"
 #include "gettimeofday_ms.h"
 #include "eventlog.h"
+#include <disttxn.h>
 
 extern int gbl_reorder_idx_writes;
 extern uint32_t gbl_max_time_per_txn_ms;
@@ -114,7 +115,13 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(int is_uuid, const char *rpl,
                                           int *tableversion);
-extern void live_sc_off(struct dbtable * db);
+
+void get_dist_txnid_from_dist_txn_rpl(int is_uuid, char *rpl, int rplen, char **dist_txnid, int64_t *timestamp);
+void get_dist_txnid_from_prepare_rpl(int is_uuid, char *rpl, int rplen, char **dist_txnid, int64_t *timestamp);
+
+void get_participant_from_rpl(int is_uuid, char *rpl, int rplen, char **participant_name, char **participant_tier);
+
+extern void live_sc_off(struct dbtable *db);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -515,8 +522,24 @@ static void setup_reorder_key(blocksql_tran_t *tran, int type,
 
 static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type);
 
-static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
-                                char *rpl, int rplen, int type)
+static void sess_save_participant(osql_sess_t *sess, int is_uuid, char *rpl, int rplen)
+{
+    struct participant *p = calloc(sizeof(*p), 1), *chk;
+    get_participant_from_rpl(is_uuid, rpl, rplen, &p->participant_name, &p->participant_tier);
+
+    LISTC_FOR_EACH(&sess->participants, chk, linkv)
+    {
+        if (!strcmp(chk->participant_name, p->participant_name) &&
+            !strcmp(chk->participant_tier, p->participant_tier)) {
+            logmsg(LOGMSG_FATAL, "%s/%s participant %s already on list??\n", __func__, p->participant_name,
+                   p->participant_tier);
+            abort();
+        }
+    }
+    listc_atl(&sess->participants, p);
+}
+
+static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type)
 {
     switch (type) {
     case OSQL_SCHEMACHANGE:
@@ -536,6 +559,23 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
         if (need_views_lock(rpl, rplen, tran->is_uuid) == 1) {
             sess->is_tptlock = 1;
         }
+        break;
+    case OSQL_PREPARE:
+        get_dist_txnid_from_prepare_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid, &sess->dist_timestamp);
+        assert(sess->dist_timestamp > 0);
+        Pthread_mutex_lock(&sess->participant_lk);
+        sess->is_participant = 1;
+        sess->is_sanctioned = osql_register_disttxn(sess->dist_txnid, sess->rqid, sess->uuid, &sess->coordinator_dbname,
+                                                    &sess->coordinator_tier, &sess->coordinator_master);
+        Pthread_mutex_unlock(&sess->participant_lk);
+        break;
+    case OSQL_DIST_TXNID:
+        get_dist_txnid_from_dist_txn_rpl(tran->is_uuid, rpl, rplen, &sess->dist_txnid, &sess->dist_timestamp);
+        assert(sess->dist_timestamp > 0);
+        sess->is_coordinator = 1;
+        break;
+    case OSQL_PARTICIPANT:
+        sess_save_participant(sess, tran->is_uuid, rpl, rplen);
         break;
     }
 

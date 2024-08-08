@@ -64,6 +64,7 @@
 #include <gettimeofday_ms.h>
 #include <endian_core.h>
 #include "bdb_access.h"
+#include "bdb_int.h"
 #include "osqlblkseq.h"
 #include "localrep.h"
 #include "util.h"
@@ -78,6 +79,7 @@
 #include "str0.h"
 #include "schemachange.h"
 #include "views.h"
+#include <disttxn.h>
 
 #if 0
 #define TEST_OSQL
@@ -88,7 +90,14 @@ void (*comdb2_ipc_setrmtdbmc)(int dbnum, char *host, int len, void *inptr) = 0;
 
 extern int is_buffer_from_remote(const void *buf);
 extern pthread_t gbl_invalid_tid;
+int gbl_coordinator_wait_propagate = 1;
+extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
+extern int gbl_debug_disttxn_trace;
+
+/* For testing 2pc: disable verify but we still want to wait as if verify were enabled.
+ * This is because Verify errors are retried by definition, so it will be masked */
+int gbl_debug_wait_on_verify_off;
 extern int gbl_osql_verify_retries_max;
 extern int verbose_deadlocks;
 extern int gbl_goslow;
@@ -99,6 +108,7 @@ extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
 extern int gbl_print_blockp_stats;
 extern int gbl_dump_blkseq;
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern __thread int send_prefault_udp;
 extern unsigned int gbl_delayed_skip;
 int gbl_debug_blkseq_race = 0;
@@ -830,6 +840,9 @@ int prepare_dist_abort_blkseq(uint8_t *buf_fstblk, int *outlen)
 
     errstat_t errstat = {0};
     errstat.errval = ERR_DIST_ABORT;
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "DISTTXN %s line %d aborting\n", __func__, __LINE__);
+    }
     snprintf(errstat.errstr, sizeof(errstat.errstr), "Transaction aborted by coordinator");
 
     if (!(p_buf_fstblk = osqlcomm_errstat_type_put(&errstat, p_buf_fstblk, p_buf_fstblk_end))) {
@@ -1193,10 +1206,9 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
            __func__, line, outrc, printkey, cnonce);
     free(printkey);
 
-    /* If the latest commit is durable, then the blkseq commit must be durable.  
-     * This can incorrectly report NOT_DURABLE but that's sane given that half 
+    /* If the latest commit is durable, then the blkseq commit must be durable.
+     * This can incorrectly report NOT_DURABLE but that's sane given that half
      * the cluster is incoherent */
-    extern int gbl_replicant_retry_on_not_durable;
     if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable) &&
         !bdb_latest_commit_is_durable(thedb->bdb_env)) {
         if (IQ_HAS_SNAPINFO_KEY(iq)) {
@@ -2244,8 +2256,7 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
     int prefaulton;
     struct ireq newiq;
 
-    prefaulton = (gbl_prefault_toblock_local || gbl_prefault_toblock_bcast) &&
-                 prefault_check_enabled();
+    prefaulton = (gbl_prefault_toblock_local || gbl_prefault_toblock_bcast) && prefault_check_enabled();
 
     if (!gbl_prefaulthelper_blockops)
         prefaulton = 0;
@@ -2744,6 +2755,11 @@ int gbl_all_prepare_commit = 0;
 int gbl_all_prepare_abort = 0;
 int gbl_all_prepare_leak = 0;
 
+static inline int debug_prepare_testcase()
+{
+    return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak || gbl_random_prepare_commit;
+}
+
 static inline int debug_should_prepare()
 {
     return gbl_all_prepare_commit || gbl_all_prepare_abort || gbl_all_prepare_leak ||
@@ -2760,8 +2776,87 @@ static inline int debug_prepared_should_abort()
     return gbl_all_prepare_abort;
 }
 
-static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
-                            struct ireq *iq, block_state_t *p_blkstate)
+static inline void debug_prepare_tests(struct ireq *iq, tran_type *parent_trans, char *source_host, void *bskey,
+                                       int bskeylen)
+{
+    int prepared = 0, bdberr;
+    char dist_txnid[64] = {0};
+
+    if (debug_should_prepare()) {
+        uint64_t g = get_genid(thedb->bdb_env, 0);
+        snprintf(dist_txnid, sizeof(dist_txnid), "test-%" PRIu64, g);
+        /* TODO: only allow prepares blkseq-key is a cnonce.  We can check
+         * early & error out. */
+        int prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, "test-coordinator", "test-tier",
+                                          rand() % 10000, bskey, bskeylen, &bdberr);
+        /* We test that prepare fails if the logs don't have utxnids */
+        if (prepare_rc) {
+            logmsg(LOGMSG_FATAL, "%s got weird error from prepare, %d??\n", __func__, prepare_rc);
+            exit(1);
+        }
+        prepared = 1;
+    }
+
+    if (!prepared || debug_prepared_should_commit()) {
+        trans_commit_adaptive(iq, parent_trans, source_host);
+    } else if (prepared && debug_prepared_should_abort()) {
+        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+        trans_abort(iq, parent_trans);
+    } else {
+        assert(gbl_all_prepare_leak);
+        logmsg(LOGMSG_USER, "%s leaking a prepared txn %s\n", __func__, dist_txnid);
+        bdb_flush(thedb->bdb_env, &bdberr);
+        sleep(2);
+        exit(1);
+    }
+}
+
+static int should_rewrite_rcode(int rcode)
+{
+    switch (rcode) {
+    case ERR_NO_RECORDS_FOUND:
+    case ERR_CONVERT_DTA:
+    case ERR_NULL_CONSTRAINT:
+    case ERR_SQL_PREP:
+    case ERR_CONSTR:
+    case ERR_UNCOMMITTABLE_TXN:
+    case ERR_NOMASTER:
+    case ERR_NOTSERIAL:
+    case ERR_DIST_ABORT:
+    case ERR_SC:
+    case ERR_TRAN_TOO_BIG:
+        return 0;
+        break;
+    }
+    return 1;
+}
+
+static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t blkcd = PTHREAD_COND_INITIALIZER;
+static int prepared_count = 0;
+static int blkcnt = 0;
+__thread int waitdie_deadlock;
+
+void abort_disttxn(struct ireq *iq, int rc, int outrc)
+{
+    if (iq->sorese->is_coordinator) {
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn rc=%d outrc=%d\n", __func__,
+                   iq->sorese->dist_txnid, rc, outrc);
+        }
+        coordinator_failed(iq->sorese->dist_txnid);
+    } else {
+        assert(iq->sorese->is_participant);
+        participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname, iq->sorese->coordinator_master,
+                               rc, outrc, iq->errstat.errstr);
+        if (gbl_debug_disttxn_trace) {
+            logmsg(LOGMSG_USER, "%s DISTTXN %s participant failing disttxn rc=%d outrc=%d\n", __func__,
+                   iq->sorese->dist_txnid, rc, outrc);
+        }
+    }
+}
+
+static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
     int rowlocks = gbl_rowlocks;
     int fromline = -1;
@@ -4845,6 +4940,21 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             GOTOBACKOUT;
         }
 
+        /* Fake a verify error */
+        extern int gbl_toblock_random_verify_error;
+        if (!rc && gbl_toblock_random_verify_error && (rand() % 100) == 0) {
+            logmsg(LOGMSG_USER, "%s throwing random verify error\n", __func__);
+            outrc = ERR_BLOCK_FAILED;
+            rc = ERR_VERIFY;
+            check_serializability = 1;
+            opnum = blkpos; /* so we report the failed blockop accurately */
+            err.blockop_num = blkpos;
+            err.errcode = ERR_VERIFY;
+            err.ixnum = ixout;
+            numerrs = 1;
+            reqlog_set_error(iq->reqlogger, "Debug random verify error", rc);
+            GOTOBACKOUT;
+        }
     } /* end delayed */
     else {
         ++gbl_delayed_skip;
@@ -5077,9 +5187,25 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 /*------ERROR CONDITION------*/
 
 backout:
-    if (gbl_verbose_toblock_backouts)
-        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d from line %d\n", rc,
-               outrc, fromline);
+    /* wait-die deadlock on distributed txn -> verify-error */
+    if (rc == RC_INTERNAL_RETRY && iq->sorese && iq->sorese->dist_txnid && waitdie_deadlock) {
+        extern long long gbl_distributed_deadlock_count;
+        gbl_distributed_deadlock_count++;
+        rc = ERR_VERIFY;
+        outrc = ERR_BLOCK_FAILED;
+        err.errcode = ERR_VERIFY;
+        reqlog_set_error(iq->reqlogger, "Distributed deadlock", rc);
+    }
+
+    if (gbl_verbose_toblock_backouts) {
+        unsigned long long rqid = iq->sorese ? iq->sorese->rqid : -1;
+        uuidstr_t us = "(none)";
+        if (iq->sorese) {
+            comdb2uuidstr(iq->sorese->uuid, us);
+        }
+        logmsg(LOGMSG_ERROR, "Backing out, rc=%d outrc=%d rqid=%lld uuid=%s from line %d\n", rc, outrc, rqid, us,
+               fromline);
+    }
 
     if (!reqlog_get_error_code(iq->reqlogger))
         reqlog_set_error(iq->reqlogger, "Error Processing", rc);
@@ -5316,6 +5442,11 @@ backout:
                                 "bplog termination\n",
                    (intptr_t)pthread_self(), __FILE__, __LINE__);
 
+        /* Abort disttxn on master swing */
+        if (iq->sorese && iq->sorese->dist_txnid) {
+            abort_disttxn(iq, rc, outrc);
+        }
+
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
         if (rowlocks) {
@@ -5499,15 +5630,12 @@ add_blkseq:
             bskeylen = iq->seqlen;
         }
         int t = comdb2_time_epoch();
+        int can_retry = (IQ_HAS_SNAPINFO(iq) && IQ_SNAPINFO(iq)->replicant_is_able_to_retry);
         memcpy(p_buf_fstblk, &t, sizeof(int));
 
         if (!rowlocks) {
             // if VERIFY-ERROR && replicant_is_able_to_retry don't add to blkseq
-            if ((outrc == ERR_NOTSERIAL ||
-                 (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
-                (IQ_HAS_SNAPINFO(iq) &&
-                 IQ_SNAPINFO(iq)->replicant_is_able_to_retry)) {
-                /* do nothing */
+            if ((outrc == ERR_NOTSERIAL || (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) && can_retry) {
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int), &replay_data, &replay_len, 0);
@@ -5569,46 +5697,191 @@ add_blkseq:
                     assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
-                    int prepared = 0, bdberr = 0;
-                    char dist_txnid[64] = {0};
-
                     /* TODO: Prevent 2pc txns from running in serializable isolation, as that
                      * would require holding the commit-lock in write mode long-term.  */
+                    if (iq->sorese && iq->sorese->dist_txnid) {
+                        int bdberr, prepare_rc;
+                        char *cname = iq->sorese->is_coordinator ? gbl_dbname : iq->sorese->coordinator_dbname;
+                        char *ctier = iq->sorese->is_coordinator ? "_coordinator_local" : iq->sorese->coordinator_tier;
+                        if (outrc == 0) {
+                            /* Write prepare record & wait for it to replicate */
+                            prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, iq->sorese->dist_txnid, cname,
+                                                          ctier, 0, bskey, bskeylen, &bdberr);
+                            /* Failed to propagate prepare record to quorum */
+                            if (prepare_rc != 0) {
+                                logmsg(LOGMSG_ERROR, "Failed to prepare %s from %s:%s: %d\n", iq->sorese->dist_txnid,
+                                       iq->sorese->coordinator_dbname, iq->sorese->coordinator_tier, prepare_rc);
+                                if (iq->sorese->is_participant) {
+                                    participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                           iq->sorese->coordinator_master, ERR_NOT_DURABLE,
+                                                           ERR_BLOCK_FAILED, "Prepare was not durable");
+                                } else {
+                                    coordinator_failed(iq->sorese->dist_txnid);
+                                    rc = BDBERR_NOT_DURABLE;
+                                    outrc = ERR_BLOCK_FAILED;
+                                }
 
-                    /* Prepare tests */
-                    if (debug_should_prepare()) {
-                        uint64_t g = get_genid(thedb->bdb_env, 0);
-                        snprintf(dist_txnid, sizeof(dist_txnid), "test-%" PRIu64, g);
-                        /* TODO: only allow prepares blkseq-key is a cnonce.  We can check
-                         * early & error out. */
-                        int prepare_rc = bdb_tran_prepare(thedb->bdb_env, parent_trans, dist_txnid, "test-coordinator",
-                                                          "test-tier", rand() % 10000, bskey, bskeylen, &bdberr);
-                        /* We test that prepare fails if the logs don't have utxnids */
-                        if (prepare_rc) {
-                            logmsg(LOGMSG_FATAL, "%s got weird error from prepare, %d??\n", __func__, prepare_rc);
-                            exit(1);
+                                /* Prepare failed to reach a majority of the cluster: fail the txn */
+                                dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                                trans_abort(iq, parent_trans);
+
+                                /* Wrote & replicated prepare record */
+                            } else {
+
+                                Pthread_mutex_lock(&blklk);
+                                prepared_count++;
+                                Pthread_mutex_unlock(&blklk);
+
+                                /* Block on coordinator/participants */
+                                int waitrc = -1, should_wait = (can_retry || gbl_debug_wait_on_verify_off);
+                                if (iq->sorese->is_coordinator) {
+                                    waitrc = coordinator_wait(iq->sorese->dist_txnid, should_wait, &err.errcode, &outrc,
+                                                              iq->errstat.errstr, ERRSTAT_STR_SZ, 0);
+                                } else {
+                                    assert(iq->sorese->is_participant);
+                                    waitrc =
+                                        participant_wait(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                         iq->sorese->coordinator_tier, iq->sorese->coordinator_master);
+                                }
+
+                                /* We have committed dist-txn durably: commit & replicate */
+                                if (waitrc == HAS_COMMITTED) {
+                                    Pthread_mutex_lock(&blklk);
+                                    prepared_count--;
+                                    Pthread_mutex_unlock(&blklk);
+                                    irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                                    if (iq->sorese->is_coordinator) {
+                                        if (gbl_coordinator_wait_propagate) {
+                                            coordinator_wait_propagate(iq->sorese->dist_txnid);
+                                        } else {
+                                            coordinator_resolve(iq->sorese->dist_txnid);
+                                        }
+                                    }
+                                    if (iq->sorese->is_participant) {
+                                        participant_has_propagated(iq->sorese->dist_txnid,
+                                                                   iq->sorese->coordinator_dbname,
+                                                                   iq->sorese->coordinator_master);
+                                    }
+                                    /* Disttxn has failed- abort & update rcode */
+                                } else if (waitrc == HAS_ABORTED) {
+                                    Pthread_mutex_lock(&blklk);
+                                    prepared_count--;
+                                    Pthread_mutex_unlock(&blklk);
+                                    if (iq->sorese->is_coordinator) {
+                                        assert(outrc != 0);
+                                        assert(err.errcode != 0);
+                                        if (!should_rewrite_rcode(outrc)) {
+                                            iq->sorese->rcout = outrc;
+                                        } else {
+                                            outrc = ERR_BLOCK_FAILED;
+                                            iq->sorese->rcout = outrc + err.errcode;
+                                        }
+                                    }
+                                    if (gbl_debug_disttxn_trace) {
+                                        logmsg(LOGMSG_USER,
+                                               "DISTTXN %s line %d aborting %s coord=%d part=%d rc=%d outrc=%d "
+                                               "errmsg=%s\n",
+                                               __func__, __LINE__, iq->sorese->dist_txnid, iq->sorese->is_coordinator,
+                                               iq->sorese->is_participant, err.errcode, outrc, iq->errstat.errstr);
+                                    }
+                                    if ((outrc == ERR_NOTSERIAL ||
+                                         (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
+                                        can_retry) {
+                                    } else {
+                                        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
+                                    }
+                                    trans_abort(iq, parent_trans);
+
+                                    /* Downgrade, but disttxn commit record hasn't replicated */
+                                } else {
+
+                                    /* Have been told to release locks because 'lock-is-desired'
+                                     * but releasing locks means something else could overwrite our
+                                     * changes.  This is not allowed because this is prepared!
+                                     *
+                                     * Upgrade-downgrade-reopen-wrap invokes 'abort_prepared_waiters',
+                                     * which aborts all transactions which are blocked on prepared
+                                     * transactions.  So block here, waiting for all non-prepared
+                                     * transactions to resolve. */
+
+                                    assert(waitrc == LOCK_DESIRED);
+                                    logmsg(LOGMSG_INFO, "%s disttxn %s failed to commit durably\n", __func__,
+                                           iq->sorese->dist_txnid);
+                                    Pthread_mutex_lock(&blklk);
+                                    while (prepared_count < blkcnt) {
+                                        struct timespec waittime;
+                                        bdb_abort_waiters(thedb->bdb_env, parent_trans);
+                                        setup_waittime(&waittime, 1000);
+                                        pthread_cond_timedwait(&blkcd, &blklk, &waittime);
+                                        logmsg(LOGMSG_INFO,
+                                               "Blocking non-prepared threads to resolve, prepared=%d total=%d\n",
+                                               prepared_count, blkcnt);
+                                    }
+                                    prepared_count--;
+                                    Pthread_mutex_unlock(&blklk);
+                                    logmsg(LOGMSG_INFO, "%s disttxn discarding prepared txn %s\n", __func__,
+                                           iq->sorese->dist_txnid);
+
+                                    /* Assert that nothing wants my locks in write-mode */
+                                    int wrwaiters = bdb_tran_count_write_waiters(thedb->bdb_env, parent_trans);
+                                    if (wrwaiters > 0) {
+                                        logmsg(LOGMSG_FATAL, "Dist-txn %s has %u write-waiters\n",
+                                               iq->sorese->dist_txnid, wrwaiters);
+                                        abort();
+                                    }
+                                    trans_discard_prepared(iq, parent_trans);
+                                }
+                            }
+                        } else {
+                            if (iq->sorese->is_coordinator) {
+                                if ((outrc == ERR_NOTSERIAL ||
+                                     (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
+                                    (can_retry || gbl_debug_wait_on_verify_off)) {
+                                    char errstr[ERRSTAT_STR_SZ] = {0};
+                                    int prc = 0, poutrc = 0, waitrc,
+                                        should_wait = (can_retry || gbl_debug_wait_on_verify_off);
+                                    waitrc = coordinator_wait(iq->sorese->dist_txnid, should_wait, &prc, &poutrc,
+                                                              errstr, ERRSTAT_STR_SZ, 1);
+                                    /* Coordinator-wait wants us to change the errorcode */
+                                    if (waitrc != KEEP_RCODE) {
+                                        if (!should_rewrite_rcode(poutrc)) {
+                                            iq->sorese->rcout = poutrc;
+                                        } else {
+                                            iq->sorese->rcout = poutrc + prc;
+                                        }
+                                    }
+                                } else if (gbl_debug_disttxn_trace) {
+                                    logmsg(LOGMSG_USER,
+                                           "%s DISTTXN %s not waiting, outrc=%d rc=%d err.errcode=%d canretry=%d\n",
+                                           __func__, iq->sorese->dist_txnid, outrc, rc, err.errcode, can_retry);
+                                }
+
+                                if (gbl_debug_disttxn_trace) {
+                                    logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn outrc=%d\n", __func__,
+                                           iq->sorese->dist_txnid, outrc);
+                                }
+                                coordinator_failed(iq->sorese->dist_txnid);
+                            }
+                            if (iq->sorese->is_participant) {
+                                participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                       iq->sorese->coordinator_master, err.errcode, outrc,
+                                                       iq->errstat.errstr);
+                            }
+                            irc = trans_commit_adaptive(iq, parent_trans, source_host);
                         }
-                        prepared = 1;
-                    }
-                    if (!prepared || debug_prepared_should_commit()) {
+                    } else if (!debug_prepare_testcase()) {
                         irc = trans_commit_adaptive(iq, parent_trans, source_host);
-                        parent_trans = NULL;
-                    } else if (prepared && debug_prepared_should_abort()) {
-                        dist_txn_abort_write_blkseq(thedb->bdb_env, bskey, bskeylen);
-                        irc = trans_abort(iq, parent_trans);
-                        parent_trans = NULL;
+                        /* 2pc testcases */
                     } else {
-                        assert(gbl_all_prepare_leak);
-                        logmsg(LOGMSG_USER, "%s leaking a prepared txn %s\n", __func__, dist_txnid);
-                        bdb_flush(thedb->bdb_env, &bdberr);
-                        sleep(2);
-                        exit(1);
+                        debug_prepare_tests(iq, parent_trans, source_host, bskey, bskeylen);
                     }
+                    parent_trans = NULL;
                 }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:
                      * ask the the client to retry */
-                    if (irc == BDBERR_NOT_DURABLE) {
+                    if (irc == BDBERR_NOT_DURABLE &&
+                        (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable)) {
                         rc = ERR_NOT_DURABLE;
                     }
                     logmsg(LOGMSG_DEBUG, "trans_commit_adaptive irc=%d, "
@@ -5630,6 +5903,7 @@ add_blkseq:
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                            iq->sorese ? iq->sorese->rcout : 0, irc);
                 }
+                /* else case for (rc == 0 && have_blkseq) */
             } else {
                 if (hascommitlock) {
                     Pthread_rwlock_unlock(&commit_lock);
@@ -5642,6 +5916,36 @@ add_blkseq:
                     }
                     backout_and_abort_tranddl(iq, parent_trans, 0);
                 } else {
+                    if (iq->sorese && iq->sorese->dist_txnid && rc != RC_INTERNAL_RETRY) {
+                        if (iq->sorese->is_coordinator) {
+                            if ((outrc == ERR_NOTSERIAL || (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
+                                can_retry) {
+                                char errstr[ERRSTAT_STR_SZ] = {0};
+                                int prc = 0, poutrc = 0, waitrc;
+                                waitrc = coordinator_wait(iq->sorese->dist_txnid, can_retry, &prc, &poutrc, errstr,
+                                                          ERRSTAT_STR_SZ, 1);
+                                if (waitrc) {
+                                    if (!should_rewrite_rcode(poutrc)) {
+                                        iq->sorese->rcout = poutrc;
+                                    } else {
+                                        iq->sorese->rcout = poutrc + prc;
+                                    }
+                                }
+                            }
+
+                            if (gbl_debug_disttxn_trace) {
+                                logmsg(LOGMSG_USER, "%s DISTTXN %s coord failing disttxn outrc=%d\n", __func__,
+                                       iq->sorese->dist_txnid, outrc);
+                            }
+                            coordinator_failed(iq->sorese->dist_txnid);
+                        }
+                        if (iq->sorese->is_participant) {
+                            participant_has_failed(iq->sorese->dist_txnid, iq->sorese->coordinator_dbname,
+                                                   iq->sorese->coordinator_master, err.errcode, outrc,
+                                                   iq->errstat.errstr);
+                        }
+                    }
+
                     trans_abort(iq, parent_trans);
                 }
                 parent_trans = NULL;
@@ -5925,14 +6229,16 @@ cleanup:
     if (outrc != RC_INTERNAL_RETRY)
         osql_blkseq_unregister(iq);
 
-    /*
+    /* XXX
+       This can't happen .. we wait-for-seqnum on the commit for failed transactions
+
       wait for last committed seqnum on abort, in case we are racing.
          thread 1:  select -> not found ; insert
          thread 2:  insert -> got dupe? -> select -> NOT FOUND?!
       thread 2 can race with thread 1, this lets the abort wait
-    */
     if (backed_out)
         trans_wait_for_last_seqnum(iq, source_host);
+    */
 
     return outrc;
 }
@@ -5949,18 +6255,20 @@ int get_blkmax(void) { return blkmax; }
 
 static uint64_t block_processor_ms = 0;
 
-static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
-                        struct ireq *iq, block_state_t *p_blkstate)
+static int toblock_main(struct javasp_trans_state *javasp_trans_handle, struct ireq *iq, block_state_t *p_blkstate)
 {
     int rc, prcnt = 0, prmax = 0;
-    static pthread_mutex_t blklk = PTHREAD_MUTEX_INITIALIZER;
-    static int blkcnt = 0;
     static uint64_t lastpr = 0;
 
     uint64_t start = gettimeofday_ms();
     uint64_t end;
 
     Pthread_mutex_lock(&blklk);
+    if (bdb_lock_desired(thedb->bdb_env)) {
+        Pthread_mutex_unlock(&blklk);
+        return ERR_REJECTED;
+    }
+
     blkcnt++;
     if (start - lastpr > 1000) {
         prcnt = blkcnt;
@@ -6021,6 +6329,7 @@ done:
 
     Pthread_mutex_lock(&blklk);
     blkcnt--;
+    Pthread_cond_broadcast(&blkcd);
     block_processor_ms += (end - start);
     Pthread_mutex_unlock(&blklk);
 

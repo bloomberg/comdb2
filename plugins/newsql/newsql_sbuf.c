@@ -20,6 +20,9 @@
 #include <comdb2_appsock.h>
 #include <comdb2_atomic.h>
 #include <comdb2_plugin.h>
+#include <comdb2uuid.h>
+#include <osqlsession.h>
+#include <disttxn.h>
 #include <intern_strings.h>
 #include <net_appsock.h>
 #include <pb_alloc.h>
@@ -456,7 +459,85 @@ retry_read:
     }
 
     // one of dbinfo or sqlquery must be non-NULL
-    if (unlikely(!query->dbinfo && !query->sqlquery)) {
+    if (unlikely(!query->disttxn && !query->dbinfo && !query->sqlquery)) {
+        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
+        query = NULL;
+        goto retry_read;
+    }
+
+    if (query->disttxn) {
+        CDB2DISTTXNRESPONSE response = CDB2__DISTTXNRESPONSE__INIT;
+        int rcode = -1;
+
+        /* Coordinator master is asking participant to prepare */
+        CDB2DISTTXN *disttxn = query->disttxn;
+
+        if (!bdb_amimaster(thedb->bdb_env) || bdb_lock_desired(thedb->bdb_env)) {
+            rcode = -1;
+            goto sendresponse;
+        }
+
+        if (disttxn->disttxn) {
+            switch (disttxn->disttxn->operation) {
+
+            /* Coordinator master tells me (participant master) to prepare */
+            case (CDB2_DIST__PREPARE):
+                rcode = osql_prepare(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier,
+                                     disttxn->disttxn->master);
+                break;
+
+            /* Coordinator master tells me (participant master) to discard */
+            case (CDB2_DIST__DISCARD):
+                rcode = osql_discard(disttxn->disttxn->txnid);
+                break;
+
+            /* Participant master send me (coordinator master) a heartbeat message */
+            case (CDB2_DIST__HEARTBEAT):
+                rcode = participant_heartbeat(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier);
+                break;
+
+            /* Participant master tells me (coordinator master) it has prepared */
+            case (CDB2_DIST__PREPARED):
+                rcode = participant_prepared(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier,
+                                             disttxn->disttxn->master);
+                break;
+
+            /* Participant master tells me (coordinator master) it has failed */
+            case (CDB2_DIST__FAILED_PREPARE):
+                rcode = participant_failed(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier,
+                                           disttxn->disttxn->rcode, disttxn->disttxn->outrc, disttxn->disttxn->errmsg);
+                break;
+
+            /* Coordinator master tells me (participant master) to commit */
+            case (CDB2_DIST__COMMIT):
+                rcode = coordinator_committed(disttxn->disttxn->txnid);
+                break;
+
+            /* Coordinator master tells me (participant master) to abort */
+            case (CDB2_DIST__ABORT):
+                rcode = coordinator_aborted(disttxn->disttxn->txnid);
+                break;
+
+            /* Participant master tells me (coordinator master) it has propagated */
+            case (CDB2_DIST__PROPAGATED):
+                rcode = participant_propagated(disttxn->disttxn->txnid, disttxn->disttxn->name, disttxn->disttxn->tier);
+                break;
+            }
+        sendresponse:
+            if (!disttxn->disttxn->async) {
+                response.rcode = rcode;
+                int len = cdb2__disttxnresponse__get_packed_size(&response);
+                struct newsqlheader hdr = {0};
+                hdr.type = htonl(RESPONSE_HEADER__DISTTXN_RESPONSE);
+                hdr.length = htonl(len);
+                uint8_t out[len];
+                cdb2__disttxnresponse__pack(&response, out);
+                sbuf2write((char *)&hdr, sizeof(hdr), sb);
+                sbuf2write((char *)out, len, sb);
+                sbuf2flush(sb);
+            }
+        }
+
         cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         query = NULL;
         goto retry_read;

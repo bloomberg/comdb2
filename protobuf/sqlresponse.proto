@@ -84,6 +84,7 @@ enum ResponseHeader {
    SQL_RESPONSE_TRACE       = 1009;
    SQL_RESPONSE_SSL         = 1010; // SSL header + empty payload to trigger
                                     // client SSL
+   DISTTXN_RESPONSE         = 1011;
 }
 
 enum ResponseType {
@@ -121,6 +122,10 @@ message CDB2_DBINFORESPONSE {
     repeated nodeinfo nodes  = 2;     // These are replicants, we need to parse through these only.
     optional bool require_ssl = 3;
     optional CDB2SyncMode sync_mode = 4;
+}
+
+message CDB2_DISTTXNRESPONSE {
+    required int32 rcode = 1;
 }
 
 message CDB2_EFFECTS {
@@ -171,4 +176,6 @@ message CDB2_SQLRESPONSE {
     optional string foreign_db = 16;
     optional string foreign_class = 17;
     optional int32 foreign_policy_flag = 18;
+
+    optional CDB2_DISTTXNRESPONSE disttxnresponse = 19;
 }

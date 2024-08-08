@@ -159,3 +159,91 @@ function kill_restart_node
 
     waitmach $node
 }
+
+function kill_restart_secondary_node
+{
+    node=$1
+    if [ -z "$node" ] ; then # if not set
+        failexit "kill_restart_node: needs node to be passed in as parameter"
+    fi
+    delay=$2
+    if [ -z "$delay" ] ; then # if not set
+        delay=0
+    fi
+
+    pushd $SECONDARY_DBDIR
+    # cdb2sql ${CDB2_OPTIONS} --tabs --host $node $SECONDARY_DBNAME  'exec procedure sys.cmd.send("flush")'
+    export LOGDIR=$TESTDIR/logs
+
+    if [ -n "$CLUSTER" ] ; then
+        kill_by_pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid
+        mv --backup=numbered $LOGDIR/${SECONDARY_DBNAME}.${node}.db $LOGDIR/${SECONDARY_DBNAME}.${node}.db.1
+        sleep $delay
+        if [ $node == `hostname` ] ; then
+            PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid"
+            $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.${node}.db &
+        else
+            PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid"
+            CMD="cd ${SECONDARY_DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${SECONDARY_DBNAME}.db"
+            ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${SECONDARY_DBNAME}.${node}.db &
+            echo $! > ${TMPDIR}/${SECONDARY_DBNAME}.${node}.pid
+        fi
+    else
+        kill_by_pidfile ${TMPDIR}/${SECONDARY_DBNAME}.pid
+        mv --backup=numbered $LOGDIR/${SECONDARY_DBNAME}.db $LOGDIR/${SECONDARY_DBNAME}.db.1
+        sleep $delay
+        echo "$SECONDARY_DBNAME: starting single node"
+        PARAMS="--no-global-lrl --lrl $SECONDARY_DBDIR/${SECONDARY_DBNAME}.lrl --pidfile ${TMPDIR}/${SECONDARY_DBNAME}.pid"
+        echo "$COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.db"
+        $COMDB2_EXE ${SECONDARY_DBNAME} ${PARAMS} &> $LOGDIR/${SECONDARY_DBNAME}.db &
+    fi
+
+    popd
+
+    waitmach $node $SECONDARY_DBNAME
+}
+
+function kill_restart_tertiary_node
+{
+    node=$1
+    if [ -z "$node" ] ; then # if not set
+        failexit "kill_restart_node: needs node to be passed in as parameter"
+    fi
+    delay=$2
+    if [ -z "$delay" ] ; then # if not set
+        delay=0
+    fi
+
+    pushd $TERTIARY_DBDIR
+    # cdb2sql ${CDB2_OPTIONS} --tabs --host $node $TERTIARY_DBNAME  'exec procedure sys.cmd.send("flush")'
+    export LOGDIR=$TESTDIR/logs
+
+    if [ -n "$CLUSTER" ] ; then
+        kill_by_pidfile ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid
+        mv --backup=numbered $LOGDIR/${TERTIARY_DBNAME}.${node}.db $LOGDIR/${TERTIARY_DBNAME}.${node}.db.1
+        sleep $delay
+        if [ $node == `hostname` ] ; then
+            PARAMS="--no-global-lrl --lrl $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl --pidfile ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid"
+            $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.${node}.db &
+        else
+            PARAMS="--no-global-lrl --lrl $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl --pidfile ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid"
+            CMD="cd ${TERTIARY_DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${TERTIARY_DBNAME}.db"
+            ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${TERTIARY_DBNAME}.${node}.db &
+            echo $! > ${TMPDIR}/${TERTIARY_DBNAME}.${node}.pid
+        fi
+    else
+        kill_by_pidfile ${TMPDIR}/${TERTIARY_DBNAME}.pid
+        mv --backup=numbered $LOGDIR/${TERTIARY_DBNAME}.db $LOGDIR/${TERTIARY_DBNAME}.db.1
+        sleep $delay
+        echo "$TERTIARY_DBNAME: starting single node"
+        PARAMS="--no-global-lrl --lrl $TERTIARY_DBDIR/${TERTIARY_DBNAME}.lrl --pidfile ${TMPDIR}/${TERTIARY_DBNAME}.pid"
+        echo "$COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.db"
+        $COMDB2_EXE ${TERTIARY_DBNAME} ${PARAMS} &> $LOGDIR/${TERTIARY_DBNAME}.db &
+    fi
+
+    popd
+
+    waitmach $node $TERTIARY_DBNAME
+}
+
+

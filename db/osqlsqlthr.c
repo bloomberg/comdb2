@@ -148,6 +148,10 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
                                       int keep_rqid)
 {
     // Modsnap is excluded because snapshot modes do not verifyretry.
+    if (clnt->dist_txnid) {
+        return 0;
+    }
+
     if (rc == OSQL_SEND_ERROR_WRONGMASTER &&
         (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
          clnt->dbtran.mode == TRANLEVEL_RECOM
@@ -221,6 +225,7 @@ enum {
     OSQL_START_KEEP_RQID = 1,
     OSQL_START_NO_REORDER = 2,
 };
+extern int gbl_debug_disttxn_trace;
 static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
                                int start_flags)
 {
@@ -237,6 +242,10 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type,
     if (!keep_rqid) {
         osql->rqid = OSQL_RQID_USE_UUID;
         comdb2uuid(osql->uuid);
+        if (gbl_debug_disttxn_trace) {
+            uuidstr_t us;
+            logmsg(LOGMSG_USER, "%s starting uuid %s\n", __func__, comdb2uuidstr(osql->uuid, us));
+        }
     }
 
     osql->is_reorder_on = start_flags & OSQL_START_NO_REORDER
@@ -325,6 +334,8 @@ retry:
     if (rc == 0) {
         if (clnt->client_understands_query_stats)
             osql_query_dbglog(thd, clnt->queryid);
+        if (clnt->is_participant)
+            osql_begin_participant(thd);
         osql->sock_started = 1;
     } else if (!keep_rqid) {
         int irc = osql_end(clnt);
@@ -406,7 +417,16 @@ static int osql_wait(struct sqlclntstate *clnt)
         if (!clnt->wait(clnt, timeout, err))
             return 0;
 
-    return osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, err);
+    // return osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, err);
+    int startms = comdb2_time_epochms();
+    int rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, err);
+    int endms = comdb2_time_epochms();
+    if (gbl_debug_disttxn_trace) {
+        uuidstr_t us;
+        logmsg(LOGMSG_USER, "%s took %d ms to commit rqid=%llu uuid=%s\n", __func__, (endms - startms), osql->rqid,
+               comdb2uuidstr(osql->uuid, us));
+    }
+    return rc;
 }
 
 /**
@@ -855,6 +875,11 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
     int bdberr = 0;
     int sentops = 0;
 
+    if (gbl_debug_disttxn_trace) {
+        logmsg(LOGMSG_USER, "%s restarting rqid=%llx uuid=%s keep-session=%d\n", __func__, clnt->osql.rqid,
+               comdb2uuidstr(clnt->osql.uuid, us), keep_session);
+    }
+
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
         cheap_stack_trace();
@@ -1110,7 +1135,7 @@ retry:
                         rc = osql_sock_restart(
                             clnt, 1,
                             1 /*no new rqid*/); /* retry at higher level */
-                        if (sock_restart_retryable_rcode(rc)) {
+                        if (sock_restart_retryable_rcode(rc) && !clnt->is_coordinator) {
                             if (gbl_master_swing_sock_restart_sleep) {
                                 sleep(gbl_master_swing_sock_restart_sleep);
                             }
@@ -1188,8 +1213,8 @@ done:
     /* mark socksql as non-retriable if seletv are present
        also don't retry distributed transactions
      */
-    if (clnt->osql.xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
-            clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->dbtran.dtran) {
+    if (clnt->osql.xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) && clnt->dbtran.mode == TRANLEVEL_SOSQL &&
+        (!clnt->dbtran.dtran || clnt->use_2pc)) {
         int bdberr = 0;
         int iirc = 0;
         iirc = osql_shadtbl_has_selectv(clnt, &bdberr);
@@ -1535,7 +1560,25 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     do {
         rc = 0;
 
-        if (gbl_osql_send_startgen && clnt->start_gen > 0) {
+        if (clnt->use_2pc && clnt->dist_txnid) {
+            assert((clnt->is_coordinator + clnt->is_participant) == 1);
+            if (clnt->is_coordinator) {
+                struct participant *p;
+                assert(listc_size(&clnt->participants) > 0);
+                osql->replicant_numops++;
+
+                assert(clnt->dist_timestamp > 0);
+                rc = osql_send_dist_txnid(&osql->target, osql->rqid, osql->uuid, clnt->dist_txnid, clnt->dist_timestamp,
+                                          nettype);
+
+                for (p = clnt->participants.top; rc == 0 && p != NULL; p = p->linkv.next) {
+                    rc = osql_send_participant(&osql->target, osql->rqid, osql->uuid, p->participant_name,
+                                               p->participant_tier, nettype);
+                }
+            }
+        }
+
+        if (rc == 0 && gbl_osql_send_startgen && clnt->start_gen > 0) {
             osql->replicant_numops++;
             rc = osql_send_startgen(&osql->target, osql->rqid, osql->uuid,
                                     clnt->start_gen, nettype);
@@ -1631,6 +1674,22 @@ static int check_osql_capacity_int(struct sqlclntstate *clnt)
 static int check_osql_capacity(struct sql_thread *thd)
 {
     return check_osql_capacity_int(thd->clnt);
+}
+
+int osql_begin_participant(struct sql_thread *thd)
+{
+    struct sqlclntstate *clnt = thd->clnt;
+    osqlstate_t *osql = &clnt->osql;
+    int rc;
+    int restarted;
+
+    do {
+        rc = osql_send_prepare(&osql->target, osql->rqid, osql->uuid, clnt->dist_txnid, clnt->coordinator_dbname,
+                               clnt->coordinator_tier, clnt->dist_timestamp, NET_OSQL_SOCK_RPL);
+        RESTART_SOCKSQL;
+    } while (restarted);
+    osql->replicant_numops++;
+    return rc;
 }
 
 int osql_query_dbglog(struct sql_thread *thd, int queryid)

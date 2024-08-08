@@ -1055,6 +1055,7 @@ struct bdb_state_tag {
     comdb2bma bma;
 
     pthread_mutex_t durable_lsn_lk;
+    pthread_cond_t durable_lsn_cd;
     uint16_t *fld_hints;
     uint16_t *fld_hints_pd[MAXINDEX]; /* field hints for partial datacopies */
 
@@ -1872,6 +1873,8 @@ int osql_process_message_decom(char *);
 void osql_net_exiting(void);
 void osql_cleanup_netinfo(void);
 int osql_repository_cancelall(void);
+int bdb_block_durable(bdb_state_type *bdb_state, DB_LSN *lsn);
+int bdb_committed_durable(bdb_state_type *bdb_state);
 
 int bdb_list_all_fileids_for_newsi(bdb_state_type *, hash_t *);
 
