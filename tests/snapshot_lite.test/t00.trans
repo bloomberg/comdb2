@@ -1,0 +1,18 @@
+1 select '---------------------------------- part #01 ----------------------------------' as part;
+1 create table t(i int);
+1 begin;
+1 insert into t(i) values(1);
+2 insert into t(i) values(2);
+1 select * from t;
+1 commit;
+1 select * from t;
+1 drop table t;
+
+1 select '---------------------------------- part #02 ----------------------------------' as part;
+1 create table t(i int primary key, j int);
+1 begin;
+1 insert into t(i, j) values(1, 1) on conflict(i) do update set j=j+1;
+2 insert into t values(1, 1);
+1 commit;
+1 select * from t;
+1 drop table t;
