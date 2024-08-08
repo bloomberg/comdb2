@@ -39,6 +39,9 @@
 #include "phys_rep_lsn.h"
 #include "macc_glue.h"
 
+extern int gbl_import_mode;
+extern char *gbl_import_src;
+extern char *gbl_import_table;
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
 extern int gbl_exit;
@@ -83,6 +86,10 @@ static struct option long_options[] = {
     {"version", no_argument, NULL, 'v'},
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
+    {"import", no_argument, &gbl_import_mode, 1},
+    {"tables", required_argument, NULL, 0},
+    {"src", required_argument, NULL, 0},
+    {"my-tier", required_argument, NULL, 0},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text =
@@ -241,6 +248,9 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
         case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
+        case 16: /* tables */ gbl_import_table = optarg; break;
+        case 17: /* src */ gbl_import_src = optarg; break;
+        case 18: /* tier */ gbl_machine_class = optarg; break;
         }
     }
     return 0;

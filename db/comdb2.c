@@ -141,9 +141,11 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "reverse_conn.h"
+#include "importdata.pb-c.h"
 
 #define tokdup strndup
 
+char * gbl_file_copier = "scp";
 int gbl_thedb_stopped = 0;
 int gbl_sc_timeoutms = 1000 * 60;
 char gbl_dbname[MAX_DBNAME_LENGTH];
@@ -180,6 +182,9 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 extern int bdb_gbl_asof_modsnap_init(bdb_state_type *);
+extern int bulk_import_tmpdb_write_import_data(char *import_table);
+extern int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name);
+extern void set_dbdir(char *dir);
 extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
@@ -321,6 +326,9 @@ char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
 int gbl_exit = 0;        /* exit requested.*/
 int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
+int gbl_import_mode = 0; /* turn on import mode */
+char *gbl_import_table; /* Import table */
+char *gbl_import_src; /* Import source */
 const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
                                         * external lrl file to create with
                                         * this db's settings and table defs */
@@ -2767,6 +2775,8 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->concurrent_queries = time_metric_new("concurrent_queries");
     dbenv->connections = time_metric_new("connections");
 
+    pthread_mutex_init(&dbenv->import_lock, NULL);
+
     return dbenv;
 }
 
@@ -3034,12 +3044,17 @@ int llmeta_open(void)
     return 0;
 }
 
-static void get_txndir(char *txndir, size_t sz_txndir)
+void get_txndir_args(char *txndir, size_t sz_txndir, const char *dbdir)
 {
     if (gbl_nonames)
-        snprintf(txndir, sz_txndir, "%s/logs", thedb->basedir);
+        snprintf(txndir, sz_txndir, "%s/logs", dbdir);
     else
-        snprintf(txndir, sz_txndir, "%s/%s.txn", thedb->basedir, gbl_dbname);
+        snprintf(txndir, sz_txndir, "%s/%s.txn", dbdir, gbl_dbname);
+}
+
+static void get_txndir(char *txndir, size_t sz_txndir)
+{
+    get_txndir_args(txndir, sz_txndir, thedb->basedir);
 }
 
 static void get_savdir(char *savdir, size_t sz_savdir)
@@ -3647,11 +3662,23 @@ static int init(int argc, char **argv)
         gbl_local_mode = 1; /*local mode, so no connect to network*/
     }
 
-    if (optind >= argc) {
+    if (!gbl_import_mode && optind >= argc) {
         fprintf(stderr, "Must provide DBNAME as first argument\n");
         exit(1);
     }
-    dbname = argv[optind++];
+
+    if (gbl_import_mode) {
+        gbl_exit = 1;
+        gbl_fullrecovery = 1;
+
+        rc = bulk_import_tmpdb_pull_foreign_dbfiles(gbl_import_src);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
+            return -1;
+        }
+    }
+
+    dbname = gbl_import_mode ? "import" : argv[optind++];
     int namelen = strlen(dbname);
     if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
         logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
@@ -4315,6 +4342,15 @@ static int init(int argc, char **argv)
         bdb_process_user_command(thedb->bdb_env, "repdbgy", 7, 0);
 
     clear_csc2_files();
+
+    if (gbl_import_mode)
+    {
+        rc = bulk_import_tmpdb_write_import_data(gbl_import_table);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to write import data\n", __func__);
+            return -1;
+        }
+    }   
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");

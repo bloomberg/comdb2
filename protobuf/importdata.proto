@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+import "blobfiles.proto";
+
+message ImportData {
+    uint64 data_genid=1;
+    repeated uint64 index_genids=2;
+    repeated uint64 blob_genids=3;
+    string table_name=4;
+    string data_dir=5;
+    uint32 csc2_crc32=6;
+    int32 checksums=7;
+    int32 odh=8;
+    int32 compress=9;
+    int32 compress_blobs=10;
+    int32 dtastripe=11;
+    int32 blobstripe=12;
+    uint64 num_index_genids=13;
+    uint64 num_blob_genids=14;
+    int32 filenames_provided=15;
+    repeated string data_files=16;
+    repeated string index_files=17;
+    repeated BlobFiles blob_files=18;
+    repeated string csc2=19;
+    int32 data_pgsz=20;
+    int32 index_pgsz=21;
+    int32 blob_pgsz=22;
+    int32 ipu=23;
+    int32 isc=24;
+    int32 dc_odh=25;
+}

@@ -346,7 +346,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DETERMINISTIC DISABLE 
   DISTRIBUTION DRYRUN ENABLE EXCLUSIVE_ANALYZE EXEC EXECUTE FORCE FUNCTION GENID48 GET 
-  GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MANUAL MERGE NONE
+  GRANT IMPORT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MANUAL MERGE NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
@@ -2331,6 +2331,13 @@ scaction(A) ::= ABORT. { A = SC_ACTION_ABORT; }
 
 scctrl ::= SCHEMACHANGE scaction(A) nm(T) dbnm(X). {
     comdb2SchemachangeControl(pParse,A,&T,&X);
+}
+
+//////////////////////////////////// IMPORT //////////////////////////////////// 
+
+cmd ::= IMPORT nm(A) FROM nm(B) TO nm(C). { 
+    comdb2WriteTransaction(pParse);
+    comdb2Import(pParse, &A, &B, &C);
 }
 
 /////////////////////////////////// GRANT /////////////////////////////////////
