@@ -710,6 +710,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
         iq->sc_pending = NULL;
         iq->sc_seed = 0;
         iq->sc_should_abort = 0;
+
+        int rc = osql_sess_del_sc_list(iq->sorese);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to remove sc list rc %d\n",
+                   __func__, rc);
+        }
     }
     iq->tranddl = 0;
 }
@@ -731,6 +737,12 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         iq->sc_should_abort = 0;
     }
     iq->tranddl = 0;
+
+    int rc = osql_sess_del_sc_list(iq->sorese);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to remove sc list rc %d\n",
+               __func__, rc);
+    }
 }
 
 void osql_postcommit_handle(struct ireq *iq)

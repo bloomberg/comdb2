@@ -233,6 +233,7 @@ struct schema_change_type {
     void *tran; /* transactional schemachange */
 
     struct schema_change_type *sc_next;
+    LINKC_T(struct schema_change_type) scs_lnk; /* all the schema changess in a txn  */
 
     int usedbtablevers;
     int fix_tp_badvers;
@@ -368,6 +369,23 @@ typedef struct llog_scdone {
     scdone_t type;
 } llog_scdone_t;
 
+#define SESS_SC_LIST_VER 1
+
+struct sc_list {
+    uuid_t uuid; /* part of the key */
+    int version; /* rest fields payload */
+    int count;
+    int ser_scs_len;
+    int *offsets;
+    char *ser_scs;
+};
+typedef struct sc_list sc_list_t;
+
+/* all scs part of the same txn -> in a sc_list object;
+ * pointer fields are malloced
+ */
+int sc_list_create(sc_list_t *scl, void *vscs, uuid_t uuid);
+
 size_t schemachange_packed_size(struct schema_change_type *s);
 int start_schema_change_tran(struct ireq *, tran_type *tran);
 int start_schema_change(struct schema_change_type *);
@@ -480,8 +498,7 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
                                int *bdberr);
 
 int get_schema_change_txns(struct ireq *iq, tran_type **logi,
-                           tran_type **ptran, tran_type **tran,
-                           int force_phys);
+                           tran_type **ptran, tran_type **tran);
 
 const char *schema_change_kind(struct schema_change_type *s);
 
