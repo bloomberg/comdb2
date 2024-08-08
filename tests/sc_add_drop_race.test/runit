@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+export tablecount=10
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+export stopfile=./stopfile.txt
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    touch $stopfile
+    echo "Failed: $1"
+    exit -1
+}
+
+function randtable
+{
+    typeset num=$(( RANDOM % tablecount ))
+    echo "t$num"
+}
+
+function create_loop
+{
+    typeset table=""
+    while [[ ! -f $stopfile ]]; do
+        table=$(randtable)
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table if not exists $table(a int)" >/dev/null 2>&1
+    done
+}
+
+function truncate_loop
+{
+    typeset table=""
+    while [[ ! -f $stopfile ]]; do
+        table=$(randtable)
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate $table" >/dev/null 2>&1
+    done
+}
+
+function drop_loop
+{
+    typeset table=""
+    while [[ ! -f $stopfile ]]; do
+        table=$(randtable)
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table $table" >/dev/null 2>&1
+    done
+}
+
+function rename_loop
+{
+    typeset table1=""
+    typeset table2=""
+    while [[ ! -f $stopfile ]]; do
+        table1=$(randtable)
+        table2=$(randtable)
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table $table1 rename to $table2" >/dev/null 2>&1
+    done
+}
+
+function verify_up
+{
+    typeset func="verify_up"
+    typeset node=$1
+    typeset count=0
+    typeset r=1
+    write_prompt $func "Running $func"
+    while [[ "$r" -ne "0" && "$count" -lt 2000 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "select 1" >/dev/null 2>&1
+        r=$?
+        [[ $r != 0 ]] && sleep 1
+        let count=count+1
+    done
+    [[ $r != 0 ]] && failexit "node $node did not recover in time"
+}
+
+function run_test
+{
+    typeset maxtime=600
+    typeset now=$(date +%s)
+    typeset endtime=$(( now + maxtime ))
+
+    rm $stopfile
+    j=0
+
+    while [[ "$j" -lt 3 ]]; do 
+        create_loop &
+        truncate_loop &
+        drop_loop &
+        rename_loop &
+        let j=j+1
+    done
+
+    while [[ ! -f $stopfile && "$(date +%s)" -lt $endtime ]]; do
+        if [[ -z "$CLUSTER" ]]; then
+            node=$(hostname)
+            verify_up $node
+        else
+            for node in $CLUSTER; do
+                verify_up $node
+            done
+        fi
+        echo "Table-list"
+        $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select * from comdb2_tables"
+        echo "-"
+        sleep 1
+    done
+
+    [[ -f "$stopfile" ]] && failexit "testcase failed"
+    touch "$stopfile"
+    wait
+}
+
+run_test
+echo "Success"

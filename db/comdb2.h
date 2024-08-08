@@ -1437,6 +1437,8 @@ struct ireq {
 
     int sc_running;
     int comdbg_flags;
+
+    hash_t *sc_tables;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -3641,8 +3643,9 @@ extern int gbl_sqlite_makerecord_for_comdb2;
 
 void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 
-int backout_schema_changes(struct ireq *iq, tran_type *tran);
+int backout_schema_changes(struct ireq *iq, tran_type *tran, const char *func, int line);
 int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
+int mark_tables_not_in_schema_change(struct ireq *iq);
 
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;

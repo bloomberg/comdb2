@@ -623,9 +623,8 @@ int bdb_form_file_name(bdb_state_type *bdb_state, int is_data_file, int filenum,
 }
 
 /*figures out what the version number is (if any) and calls form_file_name_ex*/
-static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
-                          int is_data_file, int file_num, int isstriped,
-                          int stripenum, char *outbuf, size_t buflen)
+static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid, int is_data_file, int file_num, int isstriped,
+                          int stripenum, char *outbuf, size_t buflen, int *out_bdberr)
 {
     unsigned long long version_num;
     int rc, bdberr;
@@ -650,13 +649,18 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
              * "*/
             /*"%s, and num: %d, defaulting to old name scheme\n",*/
             /*bdb_state->name, (is_data_file)?"data":"idx", file_num );*/
-        } else
-            logmsg(LOGMSG_ERROR, 
-                    "Version number lookup failed with bdberr: %d for "
-                    "table: %s with type: %s, and num: %d, defaulting to old "
-                    "name scheme\n",
-                    bdberr, bdb_state->name, (is_data_file) ? "data" : "idx",
-                    file_num);
+        } else {
+            logmsg(LOGMSG_ERROR,
+                   "Version number lookup failed with bdberr: %d for "
+                   "table: %s with type: %s, and num: %d\n",
+                   bdberr, bdb_state->name, (is_data_file) ? "data" : "idx", file_num);
+
+            /* return deadlock rather than fallback to old-style names */
+            if (bdberr == BDBERR_DEADLOCK) {
+                *out_bdberr = BDBERR_DEADLOCK;
+                return -1;
+            }
+        }
     }
 
     return form_file_name_ex(bdb_state, is_data_file, file_num,
@@ -665,9 +669,8 @@ static int form_file_name(bdb_state_type *bdb_state, DB_TXN *tid,
 }
 
 /* calls form_file_name for a datafile */
-static int form_datafile_name(bdb_state_type *bdb_state, DB_TXN *tid,
-                              int dtanum, int stripenum, char *outbuf,
-                              size_t buflen)
+static int form_datafile_name(bdb_state_type *bdb_state, DB_TXN *tid, int dtanum, int stripenum, char *outbuf,
+                              size_t buflen, int *bdberr)
 {
     /*find out whether this db is striped*/
     int isstriped = 0;
@@ -678,21 +681,19 @@ static int form_datafile_name(bdb_state_type *bdb_state, DB_TXN *tid,
                bdb_state->attr->dtastripe > 0)
         isstriped = 1;
 
-    return form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum, isstriped,
-                          stripenum, outbuf, buflen);
+    return form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum, isstriped, stripenum, outbuf, buflen, bdberr);
 }
 
 /* calls form_file_name for an indexfile */
-static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
-                               int ixnum, char *outbuf, size_t buflen)
+static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid, int ixnum, char *outbuf, size_t buflen,
+                               int *bdberr)
 {
-    return form_file_name(bdb_state, tid, 0 /*is_data_file*/, ixnum,
-                          0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen);
+    return form_file_name(bdb_state, tid, 0 /*is_data_file*/, ixnum, 0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen,
+                          bdberr);
 }
 
-static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
-                                                 tran_type *tran, int file_num,
-                                              unsigned long long *file_version)
+static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state, tran_type *tran, int file_num,
+                                                 unsigned long long *file_version)
 {
     unsigned long long local_file_version = 0;
     int bdberr = 0;
@@ -4232,8 +4233,10 @@ int calc_pagesize(int initsize, int recsize)
     return (initsize >= pagesize) ? initsize : pagesize;
 }
 
-int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid, uint32_t flags,
-             int *bdberr)
+static __thread int fail_line_number;
+
+static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid,
+                        uint32_t flags, int *bdberr)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4327,6 +4330,7 @@ deadlock_again:
                     goto deadlock_again;
                 }
 
+                fail_line_number = __LINE__;
                 return -1;
             }
         }
@@ -4336,8 +4340,20 @@ deadlock_again:
                  strnum >= 0; strnum--) {
                 DB *dbp;
 
-                form_datafile_name(bdb_state, tid, dtanum, strnum, tmpname,
-                                   sizeof(tmpname));
+                rc = form_datafile_name(bdb_state, tid, dtanum, strnum, tmpname, sizeof(tmpname), pbdberr);
+
+                if (rc < 0) {
+                    if (tmp_tid && *pbdberr == BDBERR_DEADLOCK) {
+                        tid->abort(tid);
+                        logmsg(LOGMSG_DEBUG, "Retrying open_dbs after deadlock in form_datafile_name\n");
+                        if (ptid != NULL)
+                            *ptid = NULL;
+                        tid = NULL;
+                        goto deadlock_again;
+                    }
+                    logmsg(LOGMSG_ERROR, "open_dbs: form_datafile_name failed rc=%d bdberr=%d\n", rc, *pbdberr);
+                    return rc;
+                }
 
                 if (create) {
                     char new[PATH_MAX];
@@ -4432,23 +4448,23 @@ deadlock_again:
                         exit(1);
                     }
 
+                    logmsg(LOGMSG_ERROR, "open_dbs: cannot open %s: %d %s\n", tmpname, rc, db_strerror(rc));
                     print(bdb_state, "open_dbs: cannot open %s: %d %s\n",
                           tmpname, rc, db_strerror(rc));
                     rc = dbp->close(dbp, 0);
                     if (0 != rc)
-                        logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n",
-                                tmpname, rc, db_strerror(rc));
+                        logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n", tmpname, rc, db_strerror(rc));
                     if (tid) {
                         tid->abort(tid);
                         *ptid = NULL;
                     }
+                    fail_line_number = __LINE__;
                     return -1;
                 }
 
                 rc = dbp->get_pagesize(dbp, &x);
                 if (rc != 0) {
-                    logmsg(LOGMSG_FATAL, "unable to get pagesize for %s: %d %s\n",
-                            tmpname, rc, db_strerror(rc));
+                    logmsg(LOGMSG_FATAL, "unable to get pagesize for %s: %d %s\n", tmpname, rc, db_strerror(rc));
                     exit(1);
                 }
 
@@ -4480,6 +4496,7 @@ deadlock_again:
                         tid->abort(tid);
                         *ptid = NULL;
                     }
+                    fail_line_number = __LINE__;
                     return rc;
                 }
                 char new[PATH_MAX];
@@ -4487,9 +4504,7 @@ deadlock_again:
                 unlink(bdb_trans(tmpname, new));
             } else {
                 unsigned long long old_qdb_file_ver;
-                if (should_stop_looking_for_queuedb_files(bdb_state, &tran,
-                                                          dtanum,
-                                                          &old_qdb_file_ver)) {
+                if (should_stop_looking_for_queuedb_files(bdb_state, &tran, dtanum, &old_qdb_file_ver)) {
                     break;
                 }
                 form_queuedb_name_int(
@@ -4548,6 +4563,7 @@ deadlock_again:
                     tid->abort(tid);
                     *ptid = NULL;
                 }
+                fail_line_number = __LINE__;
                 return -1;
             }
             rc = dbp->get_pagesize(dbp, &x);
@@ -4645,6 +4661,7 @@ deadlock_again:
                 tid->abort(tid);
                 *ptid = NULL;
             }
+            fail_line_number = __LINE__;
             return -1;
         }
 
@@ -4674,7 +4691,19 @@ deadlock_again:
     if (bdbtype == BDBTYPE_TABLE) {
         /* set up the .ixN files */
         for (i = 0; i < bdb_state->numix; i++) {
-            form_indexfile_name(bdb_state, tid, i, tmpname, sizeof(tmpname));
+
+            rc = form_indexfile_name(bdb_state, tid, i, tmpname, sizeof(tmpname), pbdberr);
+
+            if (rc < 0) {
+                if (tmp_tid && *pbdberr == BDBERR_DEADLOCK) {
+                    tid->abort(tid);
+                    *ptid = NULL;
+                    fail_line_number = __LINE__;
+                    return rc;
+                }
+                logmsg(LOGMSG_ERROR, "open_dbs: form_indexfile_name failed rc=%d bdberr=%d\n", rc, *pbdberr);
+                return rc;
+            }
 
             if (create) {
                 char new[PATH_MAX];
@@ -4707,6 +4736,7 @@ deadlock_again:
                         tid->abort(tid);
                         *ptid = NULL;
                     }
+                    fail_line_number = __LINE__;
                     return -1;
                 }
             }
@@ -4781,6 +4811,7 @@ deadlock_again:
                     tid->abort(tid);
                     *ptid = NULL;
                 }
+                fail_line_number = __LINE__;
                 return -1;
             }
 
@@ -4796,6 +4827,7 @@ deadlock_again:
         rc = tid->commit(tid, 0);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "open_dbs: commit %d\n", rc);
+            fail_line_number = __LINE__;
             return -1;
         }
     }
@@ -4868,8 +4900,17 @@ deadlock_again:
     return 0;
 }
 
-static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
-                                  int newdtastripe, int newblobstripe,
+int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, DB_TXN **ptid, uint32_t flags,
+             int *bdberr)
+{
+    int rc = open_dbs_int(bdb_state, iammaster, upgrade, create, ptid, flags, bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "open_dbs failed %d at line %d\n", rc, fail_line_number);
+    }
+    return rc;
+}
+
+static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran, int newdtastripe, int newblobstripe,
                                   int *bdberr)
 {
     int dtanum, strnum;
@@ -4918,15 +4959,18 @@ static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
                 continue;
 
             /* Form file name */
-            form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum,
-                           1 /*isstriped*/, strnum, tmpname, sizeof(tmpname));
+            rc = form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum, 1 /*isstriped*/, strnum, tmpname,
+                                sizeof(tmpname), bdberr);
+            if (rc < 0) {
+                logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: form_file_name failed\n");
+                return -1;
+            }
 
             unlink(bdb_trans(tmpname, new));
 
             rc = db_create(&dbp, bdb_state->dbenv, 0);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: db_create %s: %s\n",
-                        tmpname, db_strerror(rc));
+                logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: db_create %s: %s\n", tmpname, db_strerror(rc));
                 return -1;
             }
 
@@ -6703,29 +6747,37 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 static int bdb_del_data_int(bdb_state_type *bdb_state, DB_TXN *tid, int dtanum,
                             int *bdberr)
 {
-    int strnum;
+    int strnum, rc;
     char newname[80];
     *bdberr = BDBERR_NOERROR;
     for (strnum = bdb_get_datafile_num_files(bdb_state, dtanum) - 1;
          strnum >= 0; strnum--) {
-        form_datafile_name(bdb_state, tid, dtanum, strnum, newname,
-                           sizeof(newname));
+        rc = form_datafile_name(bdb_state, tid, dtanum, strnum, newname, sizeof(newname), bdberr);
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "bdb_del_data_int: form_datafile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
+            return -1;
+        }
         if (bdb_del_file(bdb_state, tid, newname, bdberr) != 0)
             return -1;
     }
     return 0;
 }
 
-static int bdb_del_ix_int(bdb_state_type *bdb_state, DB_TXN *tid, int ixnum,
-                          int *bdberr)
+static int bdb_del_ix_int(bdb_state_type *bdb_state, DB_TXN *tid, int ixnum, int *bdberr)
 {
     char newname[80];
     *bdberr = BDBERR_NOERROR;
 
-    form_indexfile_name(bdb_state, tid, ixnum, newname, sizeof(newname));
-
-    if (bdb_del_file(bdb_state, tid, newname, bdberr) != 0)
+    int rc = form_indexfile_name(bdb_state, tid, ixnum, newname, sizeof(newname), bdberr);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "bdb_del_ix_int: form_indexfile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
         return -1;
+    }
+
+    if (bdb_del_file(bdb_state, tid, newname, bdberr) != 0) {
+        logmsg(LOGMSG_ERROR, "bdb_del_ix_int: bdb_del_file failed rc=%d bdberr=%d\n", rc, *bdberr);
+        return -1;
+    }
     return 0;
 }
 
@@ -6740,8 +6792,7 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 
     logmsg(LOGMSG_DEBUG, "bdb_del %s\n", bdb_state->name);
 
-    if (bdb_state->bdbtype == BDBTYPE_TABLE ||
-        bdb_state->bdbtype == BDBTYPE_LITE) {
+    if (bdb_state->bdbtype == BDBTYPE_TABLE || bdb_state->bdbtype == BDBTYPE_LITE) {
         /* remove data files */
         for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++)
             if (0 != bdb_del_data_int(bdb_state, tid, dtanum, bdberr))
@@ -6846,21 +6897,29 @@ int bdb_rename_data_int(bdb_state_type *bdb_state, tran_type *tran,
 
     for (strnum = bdb_get_datafile_num_files(bdb_state, fromdtanum) - 1;
          strnum >= 0; strnum--) {
-        form_datafile_name(bdb_state, tran->tid, fromdtanum, strnum, oldname,
-                           sizeof(oldname));
-        bdb_state->name = newtablename; /* temporarily change tbl name */
-        form_datafile_name(bdb_state, tran->tid, todtanum, strnum, newname,
-                           sizeof(newname));
-        bdb_state->name = orig_name; /* revert name to original */
-        if (0 !=
-            bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr))
+        int rc = form_datafile_name(bdb_state, tran->tid, fromdtanum, strnum, oldname, sizeof(oldname), bdberr);
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "bdb_rename_data_int: form_datafile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
             return -1;
+        }
+
+        bdb_state->name = newtablename; /* temporarily change tbl name */
+        rc = form_datafile_name(bdb_state, tran->tid, todtanum, strnum, newname, sizeof(newname), bdberr);
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "bdb_rename_data_int: form_datafile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
+            return -1;
+        }
+        bdb_state->name = orig_name; /* revert name to original */
+        rc = bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "bdb_rename_data_int: bdb_rename_file failed rc=%d bdberr=%d\n", rc, *bdberr);
+            return -1;
+        }
     }
     return 0;
 }
 
-int bdb_rename_ix_int(bdb_state_type *bdb_state, tran_type *tran,
-                      char newtablename[], int fromixnum, int toixnum,
+int bdb_rename_ix_int(bdb_state_type *bdb_state, tran_type *tran, char newtablename[], int fromixnum, int toixnum,
                       int *bdberr)
 {
     char newname[80];
@@ -6869,11 +6928,18 @@ int bdb_rename_ix_int(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    form_indexfile_name(bdb_state, tran->tid, fromixnum, oldname,
-                        sizeof(oldname));
+    int rc = form_indexfile_name(bdb_state, tran->tid, fromixnum, oldname, sizeof(oldname), bdberr);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "bdb_rename_ix_int: form_indexfile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
+        return -1;
+    }
     bdb_state->name = newtablename; /* temporarily change tbl name */
-    form_indexfile_name(bdb_state, tran->tid, toixnum, newname,
-                        sizeof(newname));
+    rc = form_indexfile_name(bdb_state, tran->tid, toixnum, newname, sizeof(newname), bdberr);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "bdb_rename_ix_int: form_indexfile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
+        return -1;
+    }
+
     bdb_state->name = orig_name; /* revert name to original */
 
     if (0 != bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr))
@@ -6888,8 +6954,7 @@ int bdb_rename_ix_int(bdb_state_type *bdb_state, tran_type *tran,
   XXX.<bdb_state:tablename>.ix0                -> XXX.<newtablename>.ix0
   XXX.<bdb_state:tablename>.ix1                -> XXX.<newtablename>.ix1
 */
-int bdb_rename_int(bdb_state_type *bdb_state, tran_type *tran,
-                   char newtablename[], int *bdberr)
+int bdb_rename_int(bdb_state_type *bdb_state, tran_type *tran, char newtablename[], int *bdberr)
 {
     int i;
     int dtanum;
@@ -6967,8 +7032,12 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
         char newname[sizeof(oldname) + sizeof(sfx)];
 
         /* form old (current) name */
-        form_datafile_name(bdb_state, tran->tid, dtanum, 0 /*stripenum*/,
-                           oldname, sizeof(oldname));
+        int rc = form_datafile_name(bdb_state, tran->tid, dtanum, 0 /*stripenum*/, oldname, sizeof(oldname), bdberr);
+
+        if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "bdb_rename_blob1_int: form_datafile_name failed rc=%d, bdberr=%d\n", rc, *bdberr);
+            return -1;
+        }
 
 /* form new name */
 #if 0
@@ -6988,9 +7057,11 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
         snprintf(newname, sizeof newname, "%s%s", oldname, sfx);
 #endif
 
-        if (0 !=
-            bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr))
+        rc = bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR, "bdb_rename_blob1_int: bdb_rename_file failed rc=%d bdberr=%d\n", rc, *bdberr);
             return -1;
+        }
     }
 
     /* record the time of this conversion */
@@ -7000,8 +7071,7 @@ static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
     return 0;
 }
 
-int bdb_rename_blob1(bdb_state_type *bdb_state, tran_type *tran,
-                     unsigned long long *genid, int *bdberr)
+int bdb_rename_blob1(bdb_state_type *bdb_state, tran_type *tran, unsigned long long *genid, int *bdberr)
 {
     int rc = 0;
     BDB_READLOCK("bdb_rename_blob1");
@@ -7010,8 +7080,7 @@ int bdb_rename_blob1(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-void bdb_set_blobstripe_genid(bdb_state_type *bdb_state,
-                              unsigned long long genid)
+void bdb_set_blobstripe_genid(bdb_state_type *bdb_state, unsigned long long genid)
 {
     bdb_state->blobstripe_convert_genid = genid;
 }
@@ -7629,7 +7698,7 @@ int bdb_get_data_filename(bdb_state_type *bdb_state, int stripe, int blob,
 {
     int rc;
     *bdberr = BDBERR_NOERROR;
-    rc = form_datafile_name(bdb_state, NULL, blob, stripe, nameout, namelen);
+    rc = form_datafile_name(bdb_state, NULL, blob, stripe, nameout, namelen, bdberr);
     if (rc >= 0)
         rc = 0;
     else
@@ -7648,7 +7717,7 @@ int bdb_get_index_filename(bdb_state_type *bdb_state, int ixnum, char *nameout,
         *bdberr = BDBERR_BADARGS;
         rc = -1;
     } else {
-        rc = form_indexfile_name(bdb_state, NULL, ixnum, nameout, namelen);
+        rc = form_indexfile_name(bdb_state, NULL, ixnum, nameout, namelen, bdberr);
         if (rc > 0)
             rc = 0;
     }
@@ -7660,7 +7729,7 @@ int __dbreg_exists(DB_ENV *dbenv, const char *find_name);
 void bdb_verify_dbreg(bdb_state_type *bdb_state)
 {
     bdb_state_type *s;
-    int tbl, blob, stripe, ix;
+    int tbl, blob, stripe, ix, bdberr, rc;
     char fname[255];
     int exists;
 
@@ -7680,19 +7749,28 @@ void bdb_verify_dbreg(bdb_state_type *bdb_state)
                                        : 1;
 
                     for (stripe = 0; stripe < nstripes; stripe++) {
-                        form_datafile_name(s, NULL, blob, stripe, fname,
-                                           sizeof(fname));
-                        exists = __dbreg_exists(bdb_state->dbenv, fname);
-                        if (!exists)
-                            logmsg(LOGMSG_WARN, "no dbreg entries for %s dta %d stripe %d\n",
-                                   s->name, blob, stripe);
+                        rc = form_datafile_name(s, NULL, blob, stripe, fname, sizeof(fname), &bdberr);
+                        if (rc < 0) {
+                            logmsg(LOGMSG_ERROR, "bdb_verify_dbreg: form_datafile_name failed rc=%d, bdberr=%d\n", rc,
+                                   bdberr);
+                        } else {
+                            exists = __dbreg_exists(bdb_state->dbenv, fname);
+                            if (!exists)
+                                logmsg(LOGMSG_WARN, "no dbreg entries for %s dta %d stripe %d\n", s->name, blob,
+                                       stripe);
+                        }
                     }
                 }
                 for (ix = 0; ix < s->numix; ix++) {
-                    form_indexfile_name(s, NULL, ix, fname, sizeof(fname));
-                    exists = __dbreg_exists(bdb_state->dbenv, fname);
-                    if (!exists)
-                        logmsg(LOGMSG_WARN, "no dbreg entries for %s ix %d\n", s->name, ix);
+                    rc = form_indexfile_name(s, NULL, ix, fname, sizeof(fname), &bdberr);
+                    if (rc < 0) {
+                        logmsg(LOGMSG_ERROR, "bdb_verify_dbreg: form_indexfile_name failed rc=%d, bdberr=%d\n", rc,
+                               bdberr);
+                    } else {
+                        exists = __dbreg_exists(bdb_state->dbenv, fname);
+                        if (!exists)
+                            logmsg(LOGMSG_WARN, "no dbreg entries for %s ix %d\n", s->name, ix);
+                    }
                 }
             }
         }
@@ -7710,8 +7788,7 @@ void bdb_set_origname(bdb_state_type *bdb_state, const char *name)
     bdb_state->origname = strdup(name);
 }
 
-void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,
-                            int stripe)
+void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid, int stripe)
 {
     time_t time;
     struct tm tm;

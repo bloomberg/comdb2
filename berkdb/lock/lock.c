@@ -3033,7 +3033,6 @@ __lock_query_internal(lt, locker, obj, lock_mode)
 	lock_obj_partition(region, partition);
 	if ((ret = __lock_getobj(lt, obj, object_ndx, partition, 0, &sh_obj)) != 0
 			|| sh_obj == NULL) {
-		logmsg(LOGMSG_DEBUG, "Lockobj does not exist\n");
 		goto out;
 	}
 

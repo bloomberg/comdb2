@@ -361,8 +361,7 @@ static const void *buf_get_dests(struct schema_change_type *s,
     return p_buf;
 }
 
-void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
-                              void *p_buf_end)
+static inline void *buf_get_schemachange_v1_int(struct schema_change_type *s, void *p_buf, void *p_buf_end, int noalloc)
 {
     int type = 0,          fastinit = 0,   addonly = 0,    fulluprecs = 0,
         partialuprecs = 0, alteronly = 0,  is_trigger = 0, drop_table = 0,
@@ -435,11 +434,16 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
             return NULL;
         }
 
-        s->newcsc2 = (char *)malloc(s->newcsc2_len);
-        if (!s->newcsc2) return NULL;
+        if (!noalloc) {
+            s->newcsc2 = (char *)malloc(s->newcsc2_len);
+            if (!s->newcsc2)
+                return NULL;
 
-        p_buf = (uint8_t *)buf_no_net_get(s->newcsc2, s->newcsc2_len, p_buf,
-                                          p_buf_end);
+            p_buf = (uint8_t *)buf_no_net_get(s->newcsc2, s->newcsc2_len, p_buf, p_buf_end);
+        } else {
+            s->newcsc2 = NULL;
+            p_buf = (uint8_t *)buf_skip(s->newcsc2_len, p_buf, p_buf_end);
+        }
     } else
         s->newcsc2 = NULL;
 
@@ -557,11 +561,16 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
     return p_buf;
 }
 
-void *buf_get_schemachange_v2(struct schema_change_type *s,
-                              void *p_buf, void *p_buf_end)
+void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+{
+    return buf_get_schemachange_v1_int(s, p_buf, p_buf_end, 0);
+}
+
+static inline void *buf_get_schemachange_v2_int(struct schema_change_type *s, void *p_buf, void *p_buf_end, int noalloc)
 {
 
-    if (p_buf >= p_buf_end) return NULL;
+    if (p_buf >= p_buf_end)
+        return NULL;
 
     p_buf = (uint8_t *)buf_get(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
 
@@ -619,11 +628,16 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
             return NULL;
         }
 
-        s->newcsc2 = (char *)malloc(s->newcsc2_len);
-        if (!s->newcsc2) return NULL;
+        if (!noalloc) {
+            s->newcsc2 = (char *)malloc(s->newcsc2_len);
+            if (!s->newcsc2)
+                return NULL;
 
-        p_buf = (uint8_t *)buf_no_net_get(s->newcsc2, s->newcsc2_len, p_buf,
-                                          p_buf_end);
+            p_buf = (uint8_t *)buf_no_net_get(s->newcsc2, s->newcsc2_len, p_buf, p_buf_end);
+        } else {
+            s->newcsc2 = NULL;
+            p_buf = buf_skip(s->newcsc2_len, p_buf, p_buf_end);
+        }
     } else
         s->newcsc2 = NULL;
 
@@ -728,16 +742,51 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
     }
     case PARTITION_MERGE: {
         p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mergetable.tablename,
-                                          sizeof(s->partition.u.mergetable.tablename),
-                                          p_buf, p_buf_end);
-        p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version,
-                                   sizeof(s->partition.u.mergetable.version), p_buf,
+                                          sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version, sizeof(s->partition.u.mergetable.version), p_buf,
                                    p_buf_end);
         break;
     }
     }
 
     return p_buf;
+}
+
+void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+{
+    return buf_get_schemachange_v2_int(s, p_buf, p_buf_end, 0);
+}
+
+char *buf_extract_tablename_v1(void *p_buf, void *p_buf_end, int *type, char **newtable)
+{
+    struct schema_change_type s = {0};
+
+    if (p_buf >= p_buf_end)
+        return NULL;
+
+    p_buf = buf_get_schemachange_v1_int(&s, p_buf, p_buf_end, 1);
+    *type = s.kind;
+    char *tablename = strdup(s.tablename);
+    if (s.kind == SC_RENAMETABLE) {
+        *newtable = strdup(s.newtable);
+    }
+
+    return tablename;
+}
+
+char *buf_extract_tablename_v2(void *p_buf, void *p_buf_end, int *type, char **newtable)
+{
+    struct schema_change_type s = {0};
+    if (p_buf >= p_buf_end)
+        return NULL;
+
+    p_buf = buf_get_schemachange_v2_int(&s, p_buf, p_buf_end, 1);
+    *type = s.kind;
+    char *tablename = strdup(s.tablename);
+    if (s.kind == SC_RENAMETABLE) {
+        *newtable = strdup(s.newtable);
+    }
+    return tablename;
 }
 
 /*********************************************************************************/

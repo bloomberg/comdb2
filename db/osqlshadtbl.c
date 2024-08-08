@@ -138,18 +138,6 @@ static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
 #define DEBUG_PRINT_NUMOPS()
 #endif
 
-static int free_it(void *obj, void *arg)
-{
-    free(obj);
-    return 0;
-}
-static void destroy_idx_hash(hash_t *h)
-{
-    hash_for(h, free_it, NULL);
-    hash_clear(h);
-    hash_free(h);
-}
-
 static int destroy_shadtbl(shad_tbl_t *tbl)
 {
 
@@ -165,14 +153,16 @@ static int destroy_shadtbl(shad_tbl_t *tbl)
         destroy_tablecursor(tbl->env->bdb_env, tbl->upd_cur, tbl->upd_tbl,
                             &bdberr);
     if (tbl->addidx_hash)
-        destroy_idx_hash(tbl->addidx_hash);
+        destroy_hash(tbl->addidx_hash, NULL);
+
     if (tbl->delidx_hash)
-        destroy_idx_hash(tbl->delidx_hash);
+        destroy_hash(tbl->delidx_hash, NULL);
 
     if (tbl->ins_rec_hash)
-        destroy_idx_hash(tbl->ins_rec_hash);
+        destroy_hash(tbl->ins_rec_hash, NULL);
+
     if (tbl->upd_rec_hash)
-        destroy_idx_hash(tbl->upd_rec_hash);
+        destroy_hash(tbl->upd_rec_hash, NULL);
 
     if (tbl->delidx_tbl)
         destroy_tablecursor(tbl->env->bdb_env, tbl->delidx_cur, tbl->delidx_tbl,

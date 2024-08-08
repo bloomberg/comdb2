@@ -1091,7 +1091,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
             rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {
             sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
-            goto failed;
+            BACKOUT;
         }
     } else {
         if (gbl_disable_tpsc_tblvers && s->fix_tp_badvers) {
@@ -1099,6 +1099,10 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
             db->tableversion = s->usedbtablevers;
         } else
             db->tableversion = table_version_select(db, transac);
+        if (rc || db->tableversion == -1) {
+            sc_errf(s, "Failed updating table version rc=%d tableversion=%lld\n", rc, db->tableversion);
+            BACKOUT;
+        }
         sc_printf(s, "Reusing version %llu for same schema\n", db->tableversion);
     }
 
