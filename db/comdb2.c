@@ -193,6 +193,7 @@ extern void comdb2_signal_timer();
 void init_lua_dbtypes(void);
 static int put_all_csc2();
 
+static void get_savdir(char *savdir, size_t sz_savdir);
 static void *purge_old_blkseq_thread(void *arg);
 static void *purge_old_files_thread(void *arg);
 static int lrllinecmp(char *lrlline, char *cmpto);
@@ -1422,6 +1423,22 @@ static int clear_csc2_files(void)
 
 /* gets called single threaded from init() during startup to initialize.
    subsequent calls are thread-safe. */
+char *comdb2_get_sav_dir(void)
+{
+    static char path[PATH_MAX];
+    static int once = 0;
+
+    if (!once) {
+        bzero(path, sizeof(path));
+        get_savdir(path, sizeof(path));
+        once = 1;
+    }
+
+    return path;
+}
+
+/* gets called single threaded from init() during startup to initialize.
+   subsequent calls are thread-safe. */
 char *comdb2_get_tmp_dir(void)
 {
     static char path[PATH_MAX];
@@ -1464,6 +1481,15 @@ char *comdb2_get_tmp_dir(void)
 
 char *comdb2_get_tmp_dir_name(void) {
     char *full_path = comdb2_get_tmp_dir();
+
+    char *last_slash_pos = strrchr(full_path, '/');
+    assert(last_slash_pos != NULL);
+
+    return ++last_slash_pos;
+}
+
+char *comdb2_get_sav_dir_name(void) {
+    char *full_path = comdb2_get_sav_dir();
 
     char *last_slash_pos = strrchr(full_path, '/');
     assert(last_slash_pos != NULL);
@@ -3939,6 +3965,8 @@ static int init(int argc, char **argv)
     } else {
         clear_queue_extents();
     }
+
+    comdb2_get_sav_dir();
 
     rc = clear_temp_tables();
     if (rc)
