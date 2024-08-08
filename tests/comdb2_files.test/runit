@@ -127,8 +127,11 @@ function test_comdb2_files_skips_file_on_excluded_list() {
 function test_comdb2_files_skips_dir_on_excluded_list() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2 excluded_dir="tmp" file="foo"
-		echo "restrictedBlahBlah" > $dbdir/$excluded_dir/$file
+		local dbname=$1 dbdir=$2 file="foo"
+		for dir in tmp savs;
+		do
+			echo "restrictedBlahBlah" > $dbdir/$dir/$file
+		done
 
 		# When
 		num_files=$(cdb2sql -tabs $dbname local "select count(*) from comdb2_files where filename like '%$file%'")
