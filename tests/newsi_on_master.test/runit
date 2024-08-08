@@ -20,7 +20,7 @@ select sleep(2)
 delete from t1 where 1
 EOF
 
-sleep 5
+wait
 
 diff $results $expected
 if [[ $? != 0 ]]; then
