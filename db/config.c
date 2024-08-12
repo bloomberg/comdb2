@@ -1048,6 +1048,23 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             tok = segtok(line, len, &st, &ltok);
             classval++;
         }
+    } else if (tokcmp(tok, ltok, "machine_cluster") == 0) {
+        /* machine_cluster <machine-name> <cluster-name> */
+        tok = segtok(line, len, &st, &ltok);
+        if (!ltok) {
+            logmsg(LOGMSG_WARN, "machine_cluster requires host & cluster name\n");
+            return -1;
+        }
+        char *host = alloca(ltok + 1);
+        tokcpy(tok, ltok, host);
+        tok = segtok(line, len, &st, &ltok);
+        if (!ltok) {
+            logmsg(LOGMSG_WARN, "machine_cluster requires host & cluster name\n");
+            return -1;
+        }
+        char *cluster = alloca(ltok + 1);
+        tokcpy(tok, ltok, cluster);
+        mach_addcluster(host, cluster);
     } else if (tokcmp(tok, ltok, "pagesize") == 0) {
         tok = segtok(line, len, &st, &ltok);
         if (ltok == 0) {

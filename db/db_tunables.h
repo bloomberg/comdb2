@@ -1874,12 +1874,14 @@ REGISTER_TUNABLE("revsql_host_refresh_freq_sec", "The frequency at which the "
                  "reverse connection host list will be refreshed (Default: 5secs)",
                  TUNABLE_INTEGER, &gbl_revsql_host_refresh_freq_sec, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
-
+REGISTER_TUNABLE("reverse_hosts_v2", "Use reverse_hosts_v2, which includes class and cluster.  (Default: Off)",
+                 TUNABLE_BOOLEAN, &gbl_reverse_hosts_v2, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("gbl_class_machs_refresh", "Requery-time for class-machine lookup.  (Default: 300s)", TUNABLE_INTEGER,
+                 &gbl_class_machs_refresh, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logdelete_lock_trace",
                  "Print trace getting and releasing the logdelete lock.  "
                  "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_logdelete_lock_trace, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("flush_log_at_checkpoint",
                  "Replicants flush the log at checkpoint records.  "

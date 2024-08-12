@@ -492,6 +492,9 @@ extern char *gbl_physrep_metadb_host;
 extern char *gbl_physrep_repl_name;
 extern char *gbl_physrep_repl_host;
 
+/* class-mach cache */
+extern int gbl_class_machs_refresh;
+
 /* Reversql connection/sql */
 extern int gbl_revsql_allow_command_exec;
 extern int gbl_revsql_debug;
@@ -501,6 +504,7 @@ extern int gbl_revsql_connect_freq_sec;
 extern int gbl_revsql_force_rte;
 extern int gbl_revsql_fake_connect_failure;
 extern int gbl_connect_remote_rte;
+extern int gbl_reverse_hosts_v2;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,

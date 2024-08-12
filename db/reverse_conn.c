@@ -32,6 +32,7 @@
 #include "phys_rep.h"
 #include "machclass.h"
 #include "net_appsock.h"
+#include "machcache.h"
 
 #define revconn_logmsg(lvl, ...)                                               \
     do {                                                                       \
@@ -219,6 +220,40 @@ static void *reverse_connection_worker(void *args) {
     return 0;
 }
 
+static int add_reverse_host(const char *dbname, const char *host, reverse_conn_host_list_tp *reverse_conn_hosts)
+{
+    /* De-dup */
+    reverse_conn_host_tp *new_host;
+    reverse_conn_host_tp *tmp;
+    LISTC_FOR_EACH_SAFE(reverse_conn_hosts, new_host, tmp, lnk)
+    {
+        if (!strcmp(new_host->dbname, dbname) && !strcmp(new_host->host, host)) {
+            return 0;
+        }
+    }
+
+    new_host = malloc(sizeof(reverse_conn_host_tp));
+    if (!new_host) {
+        // Free the items added to the list
+        LISTC_FOR_EACH_SAFE(reverse_conn_hosts, new_host, tmp, lnk)
+        {
+            free(new_host->dbname);
+            free(new_host->host);
+            free(listc_rfl(reverse_conn_hosts, new_host));
+        }
+        return -1;
+    }
+
+    new_host->dbname = strdup(dbname);
+    new_host->host = strdup(host);
+    new_host->worker_state = REVERSE_CONN_WORKER_NEW;
+    pthread_mutex_init(&new_host->mu, NULL);
+    listc_abl(reverse_conn_hosts, new_host);
+    return 0;
+}
+
+int gbl_reverse_hosts_v2 = 0;
+
 // Refresh the 'reverse connection host' list
 static int refresh_reverse_conn_hosts() {
     reverse_conn_host_tp *old_host;
@@ -251,9 +286,16 @@ static int refresh_reverse_conn_hosts() {
         return 1;
     }
 
-    rc = snprintf(cmd, sizeof(cmd),
-                  "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')",
-                  gbl_dbname, gbl_myhostname);
+    /* This machine will attempt to start a reverse connection for any target
+     * which lists it's dbname/host, dbname/tier, or dbname/cluster */
+    if (gbl_reverse_hosts_v2) {
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.get_revhosts_v2('%s', '%s', '%s', '%s')",
+                      gbl_dbname, gbl_myhostname, get_my_mach_class_str(), get_my_mach_cluster());
+    } else {
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.get_reverse_hosts('%s', '%s')", gbl_dbname,
+                      gbl_myhostname);
+    }
+
     if (rc < 0 || rc >= sizeof(cmd)) {
         revconn_logmsg(LOGMSG_ERROR, "Insufficient buffer size!\n");
         rc = 1;
@@ -275,32 +317,41 @@ static int refresh_reverse_conn_hosts() {
         while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
             char *dbname = (char *)cdb2_column_value(repl_metadb, 0);
             char *host = (char *)cdb2_column_value(repl_metadb, 1);
+            char **class_mach_list = NULL;
+            const char **cluster_mach_list = NULL;
+            int count = 0;
 
-            new_host = malloc(sizeof(reverse_conn_host_tp));
-            if (!new_host) {
-                revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to allocate memory\n", __func__, __LINE__);
-
-                // Free the items added to the list
-                LISTC_FOR_EACH_SAFE(&new_reverse_conn_hosts, new_host, tmp, lnk) {
-                    free(new_host->dbname);
-                    free(new_host->host);
-                    free(listc_rfl(&new_reverse_conn_hosts, new_host));
+            if (is_valid_mach_class(host)) {
+                if (class_machs(dbname, host, &count, &class_mach_list) == 0) {
+                    /* Search for hosts */
+                    int add_error = 0;
+                    for (int i = 0; i < count; i++) {
+                        if (!add_error) {
+                            add_error += add_reverse_host(dbname, class_mach_list[i], &new_reverse_conn_hosts);
+                        }
+                        free(class_mach_list[i]);
+                    }
+                    free(class_mach_list);
+                    if (add_error) {
+                        rc = 1;
+                        goto err;
+                    }
                 }
-
+            } else if (get_cluster_machs(host, &count, &cluster_mach_list) == 0) {
+                for (int i = 0; i < count; i++) {
+                    if (add_reverse_host(dbname, cluster_mach_list[i], &new_reverse_conn_hosts) != 0) {
+                        rc = 1;
+                        goto err;
+                    }
+                }
+            } else if (add_reverse_host(dbname, host, &new_reverse_conn_hosts) != 0) {
                 rc = 1;
                 goto err;
             }
-            new_host->dbname = strdup(dbname);
-            new_host->host = strdup(host);
-            new_host->worker_state = REVERSE_CONN_WORKER_NEW;
-            pthread_mutex_init(&new_host->mu, NULL);
 
             if (gbl_revsql_debug == 1) {
                 revconn_logmsg(LOGMSG_USER, "%s:%d Adding %s/%s to revconn list\n", __func__, __LINE__, dbname, host);
             }
-
-            // Add to the list
-            listc_abl(&new_reverse_conn_hosts, new_host);
         }
 
         // Close the connection

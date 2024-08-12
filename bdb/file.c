@@ -3835,7 +3835,7 @@ low_headroom:
 
             /* If we have private blkseqs, make sure we don't delete logs that
              * contain blkseqs newer than our threshold.  */
-            if (bdb_state->attr->private_blkseq_enabled &&
+            if (!gbl_is_physical_replicant && bdb_state->attr->private_blkseq_enabled &&
                 !bdb_blkseq_can_delete_log(bdb_state, filenum)) {
                 if (bdb_state->attr->debug_log_deletion) {
                     logmsg(LOGMSG_USER, "skipping log %s filenm %d because it has recent blkseqs\n",

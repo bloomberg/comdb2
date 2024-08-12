@@ -29,8 +29,23 @@ typedef struct machine_class {
 } machine_class_t;
 
 static pthread_mutex_t mach_mtx = PTHREAD_MUTEX_INITIALIZER;
-static hash_t *classes;
-static hash_t *class_names;
+static hash_t *classes = NULL;
+static hash_t *class_names = NULL;
+
+typedef struct machine_cluster {
+    char *name;
+    char *cluster;
+} machine_cluster_t;
+
+typedef struct cluster_machs {
+    const char *cluster;
+    int count;
+    const char **machs;
+} cluster_machs_t;
+
+static pthread_mutex_t cluster_mtx = PTHREAD_MUTEX_INITIALIZER;
+static hash_t *clusters;
+static hash_t *cluster_machs;
 
 #define MAX_MACH_CLASS_NAME_LEN 10
 static machine_class_t default_classes[] = {
@@ -51,7 +66,7 @@ int is_default = 0;
 
 static int _mach_class_add(machine_class_t *class, int *added);
 
-int mach_class_init(void)
+int mach_class_cluster_init(void)
 {
     int i;
     int rc = 0;
@@ -60,6 +75,7 @@ int mach_class_init(void)
     classes = hash_init_strcaseptr(offsetof(struct machine_class, name));
     class_names = hash_init_i4(offsetof(struct machine_class, value));
     if (!classes || !class_names) {
+        Pthread_mutex_unlock(&mach_mtx);
         return -1;
     }
 
@@ -70,6 +86,15 @@ int mach_class_init(void)
     }
     is_default = 1;
     Pthread_mutex_unlock(&mach_mtx);
+
+    Pthread_mutex_lock(&cluster_mtx);
+    clusters = hash_init_strcaseptr(offsetof(struct machine_cluster, name));
+    cluster_machs = hash_init_strcaseptr(offsetof(struct cluster_machs, cluster));
+    Pthread_mutex_unlock(&cluster_mtx);
+
+    if (!clusters || !cluster_machs) {
+        return -1;
+    }
     return rc;
 }
 
@@ -84,6 +109,62 @@ static int _mach_class_add(machine_class_t *class, int *added)
             *added = 1;
     }
     return 0;
+}
+
+static void add_cluster_mach(const char *cluster, const char *host)
+{
+    cluster_machs_t *c = hash_find(cluster_machs, &cluster);
+    if (!c) {
+        c = calloc(1, sizeof(cluster_machs_t));
+        c->cluster = strdup(cluster);
+        hash_add(cluster_machs, c);
+    }
+    for (int i = 0; i < c->count; i++) {
+        if (!strcmp(host, c->machs[i])) {
+            return;
+        }
+    }
+    c->count++;
+    c->machs = realloc(c->machs, c->count * sizeof(char *));
+    c->machs[c->count - 1] = host;
+}
+
+int mach_addcluster(const char *host, const char *cluster)
+{
+    Pthread_mutex_lock(&cluster_mtx);
+    machine_cluster_t *m = hash_find(clusters, &host);
+    if (!m) {
+        m = calloc(1, sizeof(machine_cluster_t));
+        m->name = strdup(host);
+        hash_add(clusters, m);
+    }
+    m->cluster = strdup(cluster);
+    add_cluster_mach(m->cluster, m->name);
+    Pthread_mutex_unlock(&cluster_mtx);
+    return 0;
+}
+
+int mach_cluster(const char *host, const char **cluster)
+{
+    Pthread_mutex_lock(&cluster_mtx);
+    machine_cluster_t *m = hash_find(clusters, &host);
+    if (m) {
+        *cluster = m->cluster;
+    }
+    Pthread_mutex_unlock(&cluster_mtx);
+    return m ? 0 : -1;
+}
+
+int mach_cluster_machs(const char *cluster, int *count, const char ***machs)
+{
+    Pthread_mutex_lock(&cluster_mtx);
+    cluster_machs_t *c = hash_find(cluster_machs, &cluster);
+    if (c) {
+        *count = c->count;
+        *machs = c->machs;
+    }
+    Pthread_mutex_unlock(&cluster_mtx);
+    return c ? 0 : -1;
 }
 
 int mach_class_addclass(const char *name, int value)
@@ -197,6 +278,8 @@ const char *mach_class_class2tier(int value)
 
 int is_valid_mach_class(const char *name)
 {
-  if (hash_find(classes, &name) == NULL) return 0;
-  return 1;
+    Pthread_mutex_lock(&mach_mtx);
+    machine_class_t *class = hash_find(classes, &name);
+    Pthread_mutex_unlock(&mach_mtx);
+    return (class == NULL) ? 0 : 1;
 }

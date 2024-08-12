@@ -24,6 +24,10 @@ struct comdb2_machine_info {
     int (*machine_my_class)(void);
     int (*machine_dc)(const char *host);
     int (*machine_num)(const char *host);
+    int (*machine_cluster)(const char *host, const char **cluster);
+    int (*machine_my_cluster)(const char **cluster);
+    int (*machine_cluster_machs)(const char *cluster, int *count, const char ***machs);
+    int (*machine_add_cluster)(const char *host, const char *cluster);
 };
 typedef struct comdb2_machine_info comdb2_machine_info_t;
 #endif /* !__INCLUDED_MACHINE_INFO_H */
