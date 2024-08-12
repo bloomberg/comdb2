@@ -120,10 +120,11 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
     case COMDB2_PLUGIN_MACHINE_INFO: {
         comdb2_machine_info_t *machine_info;
         machine_info = (comdb2_machine_info_t *)new_plugin->data;
-        register_rtcpu_callbacks(
-            machine_info->machine_is_up, machine_info->machine_status_init,
-            machine_info->machine_class, machine_info->machine_my_class,
-            machine_info->machine_dc, machine_info->machine_num);
+        register_rtcpu_callbacks(machine_info->machine_is_up, machine_info->machine_status_init,
+                                 machine_info->machine_class, machine_info->machine_my_class, machine_info->machine_dc,
+                                 machine_info->machine_num, machine_info->machine_cluster,
+                                 machine_info->machine_my_cluster, machine_info->machine_cluster_machs,
+                                 machine_info->machine_add_cluster);
         break;
     }
     case COMDB2_PLUGIN_QUEUE_CONSUMER: {

@@ -66,6 +66,8 @@ extern int __berkdb_read_alarm_ms;
 #include "reverse_conn.h"
 #include "phys_rep.h"
 #include "disttxn.h"
+#include "rtcpu.h"
+#include "machcache.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -1826,8 +1828,8 @@ clipper_usage:
             }
             free(dbname);
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
-            logmsg(LOGMSG_USER, "I am running on a %s machine\n",
-                   get_my_mach_class_str());
+            logmsg(LOGMSG_USER, "I am running on a %s machine, cluster %s\n", get_my_mach_class_str(),
+                   get_my_mach_cluster());
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
@@ -2843,6 +2845,168 @@ clipper_usage:
         gbl_readonly = 1;
     } else if (tokcmp(tok, ltok, "readwrite") == 0) {
         gbl_readonly = 0;
+    } else if (tokcmp(tok, ltok, "machine_cache") == 0) {
+
+        /* machine_cache find <dbname> <class>
+         * machine_cache dump */
+        tok = segtok(line, lline, &st, &ltok);
+
+        /* Find */
+        if (tokcmp(tok, ltok, "find") == 0) {
+
+            /* Dbname */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cache find requires dbname & class\n");
+                return -1;
+            }
+            char *dbname = alloca(ltok + 1);
+            tokcpy(tok, ltok, dbname);
+
+            /* Class */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cache find requires dbname & class\n");
+                return -1;
+            }
+            char *class = alloca(ltok + 1);
+            tokcpy(tok, ltok, class);
+
+            char **machs = NULL;
+            int count = 0;
+            if (class_machs(dbname, class, &count, &machs) != 0) {
+                logmsg(LOGMSG_ERROR, "dbname %s class %s not found\n", dbname, class);
+                return -1;
+            }
+
+            for (int j = 0; j < count; j++) {
+                logmsg(LOGMSG_USER, "%s\n", machs[j]);
+                free(machs[j]);
+            }
+            free(machs);
+            return 0;
+        }
+
+        if (tokcmp(tok, ltok, "add") == 0) {
+
+            /* Dbname */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cache add requires dbname, class & mach\n");
+                return -1;
+            }
+            char *dbname = alloca(ltok + 1);
+            tokcpy(tok, ltok, dbname);
+
+            /* Class */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cache add requires dbname, class & mach\n");
+                return -1;
+            }
+            char *class = alloca(ltok + 1);
+            tokcpy(tok, ltok, class);
+
+            /* Mach */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cache add requires dbname, class & mach\n");
+                return -1;
+            }
+            char *mach = alloca(ltok + 1);
+            tokcpy(tok, ltok, mach);
+
+            if (class_mach_add(dbname, class, mach) != 0) {
+                logmsg(LOGMSG_ERROR, "failed to add machine %.*s\n", ltok, tok);
+                return -1;
+            }
+
+            logmsg(LOGMSG_USER, "added machine %s to %s %s\n", mach, dbname, class);
+            return 0;
+        }
+
+        /* Dump */
+        if (tokcmp(tok, ltok, "dump") == 0) {
+            class_machs_dump();
+            return 0;
+        }
+        logmsg(LOGMSG_WARN, "machine_cache requires find, add or dump\n");
+        return -1;
+    } else if (tokcmp(tok, ltok, "machine_cluster") == 0) {
+
+        /* machine_cluster add <machine-name> <cluster-name>
+         * machine_cluster dump <cluster>
+         * machine_cluster find <machine-name> */
+
+        tok = segtok(line, lline, &st, &ltok);
+
+        /* Add */
+        if (tokcmp(tok, ltok, "add") == 0) {
+
+            /* Host */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cluster add requires host & cluster\n");
+                return -1;
+            }
+            char *host = alloca(ltok + 1);
+            tokcpy(tok, ltok, host);
+
+            /* Cluster */
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cluster add requires host & cluster\n");
+                return -1;
+            }
+            char *cluster = alloca(ltok + 1);
+            tokcpy(tok, ltok, cluster);
+
+            machine_add_cluster(host, cluster);
+            return 0;
+        }
+
+        /* Dump */
+        if (tokcmp(tok, ltok, "dump") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cluster dump requires cluster\n");
+                return -1;
+            }
+            char *cluster = alloca(ltok + 1);
+            tokcpy(tok, ltok, cluster);
+
+            const char **machs;
+            int count = 0;
+            if (machine_cluster_machs(cluster, &count, &machs) != 0) {
+                logmsg(LOGMSG_ERROR, "cluster %s not found\n", cluster);
+                return -1;
+            }
+            for (int j = 0; j < count; j++) {
+                logmsg(LOGMSG_USER, "%s\n", machs[j]);
+            }
+            return 0;
+        }
+
+        /* Find */
+        if (tokcmp(tok, ltok, "find") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (!ltok) {
+                logmsg(LOGMSG_WARN, "machine_cluster find requires host name\n");
+                return -1;
+            }
+            char *host = alloca(ltok + 1);
+            tokcpy(tok, ltok, host);
+
+            const char *cluster;
+            if (machine_cluster(host, &cluster) != 0) {
+                logmsg(LOGMSG_ERROR, "host %s not found\n", host);
+                return -1;
+            }
+            logmsg(LOGMSG_USER, "%s\n", cluster);
+            return 0;
+        }
+        logmsg(LOGMSG_WARN, "machine_cluster requires add, dump or find\n");
+        return -1;
     } else if (tokcmp(tok, ltok, "allow") == 0 || tokcmp(tok, ltok, "disallow") == 0 ||
                tokcmp(tok, ltok, "clrpol") == 0 || tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);

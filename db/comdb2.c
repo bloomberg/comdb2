@@ -144,6 +144,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "reverse_conn.h"
 #include "alias.h"
 #include "str_util.h" /* QUOTE */
+#include "machcache.h"
 #define tokdup strndup
 
 int gbl_thedb_stopped = 0;
@@ -3636,7 +3637,9 @@ static int init(int argc, char **argv)
 
     toblock_init();
 
-    if (mach_class_init()) {
+    class_machs_init();
+
+    if (mach_class_cluster_init()) {
         logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
         exit(1);
     }
