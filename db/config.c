@@ -433,6 +433,7 @@ static char *legacy_options[] = {
     "setattr max_sql_idle_time 864000",
     "utxnid_log off",
     "commit_lsn_map off",
+    "set_snapshot_impl original",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
@@ -740,17 +741,12 @@ void print_snap_config(loglvl lvl) {
     logmsg(lvl, "Snapshot is %s. Implementation set to '%s'", snap_switch, snap_impl);
 }
 
-
 /*
  * Sets the snapshot implementation.
  *
  * impl: The implementation to be set.
  */
 void set_snapshot_impl(snap_impl_enum impl) {
-    if (gbl_snap_impl == impl) {
-        return;
-    }
-
     gbl_snap_impl = impl;
     gbl_snap_impl == SNAP_IMPL_MODSNAP ? toggle_modsnap(1) : toggle_modsnap(0);
     gbl_snap_impl == SNAP_IMPL_NEW ? toggle_new_snapisol(1) : toggle_new_snapisol(0);
@@ -766,6 +762,7 @@ static void enable_snapshot(struct dbenv *dbenv) {
         return;
     }
 
+    set_snapshot_impl(gbl_snap_impl); 
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SNAPISOL, 1);
     gbl_snapisol = 1;
 }

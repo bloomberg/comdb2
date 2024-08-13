@@ -5,4 +5,3 @@ blobstripe
 round_robin_stripes
 enable_snapshot_isolation
 ssl_client_mode OPTIONAL
-set_snapshot_impl modsnap

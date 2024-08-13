@@ -13,4 +13,3 @@ reorder_idx_writes on
 
 #reorder_socksql_no_deadlock off
 #reorder_idx_writes off
-set_snapshot_impl modsnap

@@ -14,5 +14,4 @@ dtastripe 1
 blobstripe
 verbose_toblock_backouts on
 on logical_live_sc
-set_snapshot_impl modsnap
 enable_snapshot_isolation
