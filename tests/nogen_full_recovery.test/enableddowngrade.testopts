@@ -1,0 +1,3 @@
+# Just a marker file to run 'downgrade' on original test
+# elect_highest_committed_gen should be enabled with lrl.options
+
