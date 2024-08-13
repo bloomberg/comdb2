@@ -923,7 +923,7 @@ These options are toggle-able at runtime.
 |sc_del_unused_files_threshold |                             |
 |setattr | | Change bdb tunables - see [bdb tunables](#bdbattr-tunables)
 |setclass | | See [permissioning commands](#allowdisallow-commands)
-|set_snapshot_impl | "original" | Set the implementation to be used for snapshot isolation. Can be one of "original", "new", or "modsnap".
+|set_snapshot_impl | "modsnap" | Set the implementation to be used for snapshot isolation. Can be one of "original", "new", or "modsnap".
 |setsqlattr | | See (SQL tunables)[#sql-tunables]
 |sockbplog_sockpool | off | Osql bplog sent over sockets is using local sockpool
 |sockbplog| off | Osql bplog is sent from replicants to master on their own socket
