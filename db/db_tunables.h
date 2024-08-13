@@ -1992,6 +1992,10 @@ REGISTER_TUNABLE("forbid_incoherent_writes",
                  TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_downgrade_cluster_at_open",
+                 "Sleep on open to allow testsuite to downgrade master.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_downgrade_cluster_at_open, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("skip_catchup_logic",
                  "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
