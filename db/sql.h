@@ -625,6 +625,15 @@ struct user {
     uint8_t bypass_auth;
 };
 
+struct remsql_set {
+    int is_remsql;
+    int server_version;
+    int table_version;
+    int is_schema;
+    char tablename[MAXTABLELEN];
+    uuid_t uuid;
+    struct errstat xerr;
+};
 
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
 struct string_ref;
@@ -965,6 +974,8 @@ struct sqlclntstate {
 
     int lastresptype;
     char *externalAuthUser;
+
+    struct remsql_set remsql_set;
 
     // fdb 2pc
     int use_2pc;

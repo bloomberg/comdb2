@@ -3686,9 +3686,21 @@ extern int gbl_server_admin_mode;
 
 void csc2_free_all(void);
 
+int fdb_default_ver_set(int val);
+
 /* hack to temporary allow bools on production stage */
 void csc2_allow_bools(void);
 void csc2_disallow_bools(void);
 int csc2_used_bools(void);
+
+/* Skip spaces and tabs, requires at least one space */
+static inline char *skipws(char *str)
+{
+    if (str) {
+        while (*str && isspace(*str))
+            str++;
+    }
+    return str;
+}
 
 #endif /* !INCLUDED_COMDB2_H */

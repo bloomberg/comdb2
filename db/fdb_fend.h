@@ -71,8 +71,11 @@
 #define FDB_VER_SSL 4
 #define FDB_VER_PROXY 5
 #define FDB_VER_AUTH 6
+#define FDB_VER_CDB2API 7
 
-#define FDB_VER FDB_VER_AUTH
+#define FDB_VER FDB_VER_CDB2API
+
+extern int gbl_fdb_default_ver;
 
 #define FDB_2PC_VER 1
 
@@ -440,6 +443,9 @@ int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);
 
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
+
+int process_fdb_set_cdb2api(struct sqlclntstate *clnt, char *sqlstr,
+                            char *err, int errlen);
 
 #endif
 

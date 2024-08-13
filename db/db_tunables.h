@@ -531,6 +531,15 @@ REGISTER_TUNABLE("exclusive_blockop_qconsume", "Enables serialization of blockop
 REGISTER_TUNABLE("exitalarmsec", NULL, TUNABLE_INTEGER, &gbl_exit_alarm_sec, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("exit_on_internal_failure", NULL, TUNABLE_BOOLEAN, &gbl_exit_on_internal_error, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_version_emulate_precdbapi",
+                 "Testing setting: cdb2api will refuse to parse remsql SET, emulating"
+                 " a pre-cdb2api remsql implementation",
+                 TUNABLE_INTEGER, &gbl_fdb_emulate_old, 0, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_default_version",
+                 "Override the default fdb version",
+                 TUNABLE_INTEGER, &gbl_fdb_default_ver, 0, NULL, NULL,
+                 fdb_default_ver_update, NULL);
 REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)", TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
@@ -545,6 +554,9 @@ REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN, &gbl_fdb_push_
 REGISTER_TUNABLE("foreign_db_push_redirect",
                  "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_fdb_push_redirect_foreign, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN,
+                 &gbl_fdb_resolve_local, READONLY | NOARG | READEARLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_auth_enabled", "Redirect extern auth data to remote server. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_fdb_auth_enabled, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fullrecovery",
@@ -2369,6 +2381,9 @@ REGISTER_TUNABLE("fdb_io_error_retries_phase_1", "Number of immediate retries; c
 REGISTER_TUNABLE("fdb_io_error_retries_phase_2_poll",
                  "Poll initial value for slow retries in phase 2; doubled for each retry", TUNABLE_INTEGER,
                  &gbl_fdb_io_error_retries_phase_2_poll, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fdb_remsql_cdb2api",
+                 "Switch the standalone remote sql queries to cdb2api",
+                 TUNABLE_BOOLEAN, &gbl_fdb_remsql_cdb2api, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("unexpected_last_type_warn",
                  "print a line of trace if the last response server sent before sockpool reset isn't LAST_ROW",
                  TUNABLE_INTEGER, &gbl_unexpected_last_type_warn, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);

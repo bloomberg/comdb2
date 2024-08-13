@@ -1417,16 +1417,6 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
     clnt->ctrl_sqlengine = newstate;
 }
 
-/* skip spaces and tabs, requires at least one space */
-static inline char *skipws(char *str)
-{
-    if (str) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
-
 static int retrieve_snapshot_info(char *sql, char *tzname)
 {
     char *str = sql;
@@ -2895,7 +2885,9 @@ static void _prepare_error(struct sqlthdstate *thd,
 
     if(rc == ERR_SQL_PREPARE && !rec->stmt)
         errstr = "no statement";
-    else if (clnt->fdb_state.xerr.errval) {
+    if(rc == SQLITE_SCHEMA && rec->stmt && clnt->remsql_set.is_remsql) {
+        errstr = clnt->remsql_set.xerr.errstr;
+    } else if (clnt->fdb_state.xerr.errval) {
         errstr = clnt->fdb_state.xerr.errstr;
     } else {
         errstr = (char *)sqlite3_errmsg(thd->sqldb);

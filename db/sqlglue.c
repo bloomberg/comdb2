@@ -7696,6 +7696,42 @@ int gbl_assert_systable_locks = 0;
 #endif
 extern pthread_rwlock_t views_lk;
 
+int _check_table_version(struct dbtable *table, int expected_version,
+                         unsigned long long *pversion)
+{
+    unsigned long long version;
+    int short_version;
+    int rc;
+    int bdberr = 0;
+
+    rc = bdb_table_version_select_verbose(table->tablename, NULL, &version,
+                                          &bdberr, 0);
+    if (rc || bdberr) {
+        logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n",
+                __func__, version, rc, bdberr);
+        version = -1ULL;
+    }
+    short_version = fdb_table_version(version);
+
+    if (gbl_fdb_track) {
+        logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
+               "checking against %u\n",
+               __func__, table->tablename, version, short_version,
+               expected_version);
+    }
+
+    if (pversion)
+        *pversion = version;
+
+    if (short_version != expected_version) {
+        /* local table was schema changed in the middle, we need to pass
+         * back an error */
+        return -1;
+    }
+
+    return 0;
+}
+
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
     if (pStmt == NULL)
@@ -7703,7 +7739,6 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
     Vdbe *p = (Vdbe *)pStmt;
     int rc = 0;
-    int bdberr = 0;
     int prev = -1;
     Table **tbls = p->tbls;
     int nTables = p->numTables;
@@ -7714,6 +7749,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     struct dbtable *db;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
+    unsigned long long table_version;
 
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
@@ -7801,38 +7837,36 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
          */
         if (clnt->fdb_state.remote_sql_sb &&
             clnt->fdb_state.code_release >= FDB_VER_CODE_VERSION) {
-            /*assert(nTables == 1);   WRONG: currently our sql includes one
-             * table and only one table */
-
-            unsigned long long version;
-            int short_version;
-
-            rc = bdb_table_version_select_verbose(db->tablename, NULL, &version,
-                                                  &bdberr, 0);
-            if (rc || bdberr) {
-                logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n",
-                       __func__, version, rc, bdberr);
-                version = -1ULL;
-            }
-            short_version = fdb_table_version(version);
-            if (gbl_fdb_track) {
-                logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
-                                     "checking against %u\n",
-                       __func__, db->tablename, version, short_version,
-                       clnt->fdb_state.version);
-            }
-
-            if (short_version != clnt->fdb_state.version) {
+            /* sqlite register same table multiple times depending on query
+             * so this assertion is wrong; only true if we dedup
+            assert(nTables == 1);
+             */
+            rc = _check_table_version(db, clnt->fdb_state.version,
+                                      &table_version);
+            if (rc < 0) {
                 clnt->fdb_state.xerr.errval = SQLITE_SCHEMA;
                 /* NOTE: first word of the error string is the actual version,
                    expected on the other side; please do not change */
                 errstat_set_strf(&clnt->fdb_state.xerr,
                                  "%llu Stale version local %u != received %u",
-                                 version, short_version,
+                                 table_version, fdb_table_version(table_version),
                                  clnt->fdb_state.version);
 
-                /* local table was schema changed in the middle, we need to pass
-                 * back an error */
+                return SQLITE_SCHEMA;
+            }
+        /* remsql over cdb2api */
+        } else if (clnt->remsql_set.is_remsql) {
+            /* sqlite register same table multiple times depending on query
+             * so this assertion is wrong; only true if we dedup
+            assert(nTables == 1);
+             */
+            rc = _check_table_version(db, clnt->remsql_set.table_version,
+                                      &table_version);
+            if (rc) {
+                extern const char *err_tableschemaold;
+                errstat_set_rcstrf(&clnt->remsql_set.xerr, SQLITE_SCHEMA, "%s %llu",
+                                   err_tableschemaold, table_version);
+
                 return SQLITE_SCHEMA;
             }
         }
@@ -7886,6 +7920,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
              clnt->dbtran.mode == TRANLEVEL_MODSNAP)) {
             /* make sure btrees have not changed since the transaction started
              */
+            int bdberr = 0;
             rc = bdb_osql_check_table_version(
                 db->handle, clnt->dbtran.shadow_tran, 0, &bdberr);
             if (rc != 0) {

@@ -1,7 +1,7 @@
 select 'disabled' as authentication_status;
 
 select * from comdb2_users order by username;
-select * from comdb2_tunables where name like '%dba%' order by name;
+select * from comdb2_tunables where name like '%_dba_user' order by name;
 
 create table t1(i int)$$
 insert into t1 values(1);
