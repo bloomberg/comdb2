@@ -26,6 +26,7 @@
 #include "sp.h"
 #include "sql.h"
 #include "sqloffload.h"
+#include "fdb_fend.h"
 
 #include "newsql.h"
 
@@ -238,16 +239,6 @@ static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
             sql_response.snapshot_info = &snapshotinfo;                        \
         }                                                                      \
     }
-
-/* Skip spaces and tabs, requires at least one space */
-static inline char *skipws(char *str)
-{
-    if (str) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
 
 int gbl_abort_on_unset_ha_flag = 0;
 static int is_snap_uid_retry(struct sqlclntstate *clnt)
@@ -1547,6 +1538,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
     char *sqlstr = NULL;
     char *endp;
     int rc = 0;
+    int tmp;
     num_commands = sql_query->n_set_flags;
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
@@ -1563,7 +1555,6 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr = skipws(sqlstr);
 
                 if (strncasecmp(sqlstr, "chunk", 5) == 0) {
-                    int tmp;
                     sqlstr += 5;
                     sqlstr = skipws(sqlstr);
 
@@ -1952,6 +1943,13 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 } else {
                     rc = ii + 1;
                 }
+            } else if (strncasecmp(sqlstr, "remsql_", 7) == 0) {
+                sqlstr += 7;
+
+                clnt->remsql_set.is_remsql = 1;
+                if (process_fdb_set_cdb2api(clnt, sqlstr, err, sizeof(err))) {
+                    rc = ii + 1;
+                }
             } else if (strncasecmp(sqlstr, "typessql", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
@@ -1971,7 +1969,6 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             } else {
                 rc = ii + 1;
             }
-
             if (rc) {
                 if (err[0] == '\0')
                     snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",

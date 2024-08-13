@@ -3676,10 +3676,10 @@ static int _check_code_release(SBUF2 *sb, char *cid, int code_release)
     code_release = fdb_ver_decoded(code_release);
 
     /* lets make sure we ask for sender to downgrade if its code is too new */
-    if (unlikely(code_release > FDB_VER)) {
+    if (unlikely(code_release > gbl_fdb_default_ver)) {
 
-        snprintf(errstr, sizeof(errstr), "%d protocol %d too high", FDB_VER,
-                 code_release);
+        snprintf(errstr, sizeof(errstr), "%d protocol %d too high",
+                 gbl_fdb_default_ver, code_release);
         errval = FDB_ERR_FDB_VERSION;
 
         /* we need to send back a rc code */
@@ -3744,7 +3744,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
     /* check and protect against newer versions */
     if (_check_code_release(sb, open_msg.cid, open_msg.rootpage)) {
         logmsg(LOGMSG_ERROR, "PROTOCOL TOO NEW %d, asking to downgrade to %d\n",
-               fdb_ver_decoded(open_msg.rootpage), FDB_VER);
+               fdb_ver_decoded(open_msg.rootpage), gbl_fdb_default_ver);
         return 0;
     }
 

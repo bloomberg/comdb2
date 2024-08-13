@@ -93,6 +93,7 @@ extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
 extern int gbl_exit_alarm_sec;
+extern int gbl_fdb_default_ver;
 extern int gbl_fdb_track;
 extern int gbl_fdb_track_hints;
 extern int gbl_forbid_ulonglong;
@@ -101,6 +102,7 @@ extern int gbl_fdb_allow_cross_classes;
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_push_redirect_foreign;
 extern int gbl_fdb_push_remote;
+extern int gbl_fdb_remsql_cdb2api;
 extern int gbl_goslow;
 extern int gbl_heartbeat_send;
 extern int gbl_keycompr;
@@ -317,6 +319,7 @@ extern int gbl_ufid_dbreg_test;
 extern int gbl_debug_add_replication_latency;
 extern int gbl_javasp_early_release;
 extern int gbl_debug_drop_nth_rep_message;
+extern int gbl_fdb_emulate_old;
 
 extern long long sampling_threshold;
 
@@ -1071,6 +1074,17 @@ static int hostname_update(void *context, void *value)
     *(char **)tunable->var = intern((char *)value);
     return 0;
 }
+
+static int fdb_default_ver_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int*)value;
+    if (fdb_default_ver_set(val))
+        return -1;
+    *(int*)tunable->var = val;
+    return 0;
+}
+
 
 /* Forward declaration */
 int ctrace_set_rollat(void *unused, void *value);

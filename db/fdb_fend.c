@@ -26,6 +26,7 @@
 #include <alloca.h>
 #include <poll.h>
 #include <time.h>
+#include <uuid/uuid.h>
 
 #include <rtcpu.h>
 #include <list.h>
@@ -63,6 +64,7 @@ extern int gbl_fdb_allow_cross_classes;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
+int gbl_fdb_default_ver = FDB_VER;
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
@@ -73,6 +75,8 @@ int gbl_fdb_io_error_retries = 16;
 int gbl_fdb_io_error_retries_phase_1 = 6;
 int gbl_fdb_io_error_retries_phase_2_poll = 100;
 int gbl_fdb_auth_enabled = 1;
+int gbl_fdb_remsql_cdb2api = 0;
+int gbl_fdb_emulate_old = 0;
 
 struct fdb_tbl;
 struct fdb;
@@ -173,9 +177,14 @@ typedef struct fcon_sock {
     SBUF2 *sb;
 } fcon_sock_t;
 
-typedef struct fcon_tag {
-    int blah;
-} fcon_tag_t;
+typedef struct fcon_cdb2api {
+    cdb2_hndl_tp *hndl;
+} fcon_cdb2api_t;
+
+enum fdb_fcon_type {
+    FCON_TYPE_LEGACY = 0,
+    FCON_TYPE_CDB2API = 1
+};
 
 enum fdb_cur_stream_state {
     FDB_CUR_IDLE = 0,
@@ -192,10 +201,10 @@ struct fdb_cursor {
 
     fdb_tran_t *trans; /* which subtransaction this is part of */
 
-    int type; /* to allow future multiple connectors */
+    enum fdb_fcon_type type;  /* to allow future multiple connectors */
     union {
         fcon_sock_t sock;
-        fcon_tag_t tag;
+        fcon_cdb2api_t api;
     } fcon; /* remote connection */
 
     fdb_msg_t *msg; /* msg memory */
@@ -232,13 +241,8 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
 static int fdb_num_entries(fdb_t *fdb);
 
 /* REMCUR frontend implementation */
-static char *fdb_cursor_id(BtCursor *pCur);
-static char *fdb_cursor_get_data(BtCursor *pCur);
-static int fdb_cursor_get_datalen(BtCursor *pCur);
-static unsigned long long fdb_cursor_get_genid(BtCursor *pCur);
-static void fdb_cursor_get_found_data(BtCursor *pCur, unsigned long long *genid,
-                                      int *datalen, char **data);
 static int fdb_cursor_close(BtCursor *pCur);
+static char *fdb_cursor_id(BtCursor *pCur);
 static void fdb_cursor_close_on_open(BtCursor *pCur, int cache);
 static int fdb_cursor_set_hint(BtCursor *pCur, void *hint);
 static void *fdb_cursor_get_hint(BtCursor *pCur);
@@ -252,10 +256,25 @@ static fdb_tbl_ent_t *fdb_cursor_table_entry(BtCursor *pCur);
 static int fdb_cursor_access(BtCursor *pCur, int how);
 
 /* REMSQL frontend implementation overrides */
+/* LEGACY */
+static char *fdb_cursor_get_data(BtCursor *pCur);
+static int fdb_cursor_get_datalen(BtCursor *pCur);
+static unsigned long long fdb_cursor_get_genid(BtCursor *pCur);
+static void fdb_cursor_get_found_data(BtCursor *pCur, unsigned long long *genid,
+                                      int *datalen, char **data);
 static int fdb_cursor_move_sql(BtCursor *pCur, int how);
 static int fdb_cursor_find_sql(BtCursor *pCur, Mem *key, int nfields, int bias);
-static int fdb_cursor_find_last_sql(BtCursor *pCur, Mem *key, int nfields,
-                                    int bias);
+
+/* CDB2API */
+static char *fdb_cursor_get_data_cdb2api(BtCursor *pCur);
+static int fdb_cursor_get_datalen_cdb2api(BtCursor *pCur);
+static unsigned long long fdb_cursor_get_genid_cdb2api(BtCursor *pCur);
+static void fdb_cursor_get_found_data_cdb2api(BtCursor *pCur,
+                                              unsigned long long *genid,
+                                              int *datalen, char **data);
+static int fdb_cursor_move_sql_cdb2api(BtCursor *pCur, int how);
+static int fdb_cursor_find_sql_cdb2api(BtCursor *pCur, Mem *key, int nfields,
+                                       int bias);
 
 /* REMSQL WRITE frontend */
 static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
@@ -504,7 +523,7 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
 
        code will backout on initial connection
      */
-    fdb->server_version = FDB_VER;
+    fdb->server_version = gbl_fdb_default_ver;
     fdb->dbname_len = strlen(dbname);
     fdb->users = 1;
     fdb->local = local;
@@ -1006,6 +1025,9 @@ run:
     }
     fdbc->sql_hint = sql;
 
+    /* NOTE: NORETRY is used in pre-cdb2api so that we
+     * call close_on_open instead of close
+     */
     rc = fdbc_if->move(cur, CFIRST | NORETRY);
     fdbc_if = cur->fdbc; /* retry might get another cursor */
     if (rc != IX_FND && rc != IX_FNDMORE) {
@@ -1093,7 +1115,9 @@ run:
     } while (rc == IX_FNDMORE ||
              rc == IX_FND); /* break if move(next) reports rc=error*/
 
-    if (rc == IX_FND)
+    if (rc == IX_FND ||
+        /* cdb2api does not know which row is the last */
+        (rc == IX_EMPTY && *found_ent))
         rc = FDB_NOERR;
 
 close:
@@ -2368,10 +2392,123 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     return rc;
 }
 
-static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
-                                                fdb_t *fdb, int source_rootpage,
-                                                fdb_tran_t *trans, int flags,
-                                                int version, int use_ssl)
+static void _cursor_set_common(fdb_cursor_if_t *fdbc_if, char *tid, int flags,
+                               int use_ssl)
+{
+    fdb_cursor_t *fdbc = fdbc_if->impl;
+
+    fdbc_if->close = fdb_cursor_close;
+    fdbc_if->id = fdb_cursor_id;
+    fdbc_if->set_hint = fdb_cursor_set_hint;
+    fdbc_if->get_hint = fdb_cursor_get_hint;
+    fdbc_if->set_sql = fdb_cursor_set_sql;
+    fdbc_if->name = fdb_cursor_name;
+    fdbc_if->tblname = fdb_cursor_tblname;
+    fdbc_if->tbl_has_partidx = fdb_cursor_table_has_partidx;
+    fdbc_if->tbl_has_expridx = fdb_cursor_table_has_expridx;
+    fdbc_if->dbname = fdb_cursor_dbname;
+    fdbc_if->table_entry = fdb_cursor_table_entry;
+    fdbc_if->access = fdb_cursor_access;
+
+    comdb2uuid(fdbc->ciduuid);
+
+    fdbc->tid = (char *)fdbc->tiduuid;
+    fdbc->cid = (char *)fdbc->ciduuid;
+
+    if (tid)
+        memcpy(fdbc->tid, tid, sizeof(uuid_t));
+
+    fdbc->flags = flags;
+    fdbc->need_ssl = use_ssl;
+
+    fdbc->intf = fdbc_if;
+}
+
+static fdb_cursor_if_t *_cursor_open_remote_cdb2api(struct sqlclntstate *clnt,
+                                                    fdb_t *fdb, int server_version,
+                                                    int flags, int version,
+                                                    int rootpage, int use_ssl)
+{
+    fdb_cursor_if_t *fdbc_if;
+    fdb_cursor_t *fdbc;
+    const char *class;
+    int rc;
+
+    fdbc_if = (fdb_cursor_if_t *)calloc(
+        1, sizeof(fdb_cursor_if_t) + sizeof(fdb_cursor_t));
+    if (!fdbc_if) {
+        clnt->fdb_state.preserve_err = 1;
+        clnt->fdb_state.xerr.errval = FDB_ERR_MALLOC;
+        snprintf(clnt->fdb_state.xerr.errstr,
+                 sizeof(clnt->fdb_state.xerr.errstr), "%s out of memory",
+                 __func__);
+
+        goto error;
+    }
+
+    fdbc_if->impl = fdbc =
+        (fdb_cursor_t *)(((char *)fdbc_if) + sizeof(fdb_cursor_if_t));
+
+    fdbc->type = FCON_TYPE_CDB2API;
+    fdbc_if->data = fdb_cursor_get_data_cdb2api;
+    fdbc_if->datalen = fdb_cursor_get_datalen_cdb2api;
+    fdbc_if->genid = fdb_cursor_get_genid_cdb2api;
+    fdbc_if->get_found_data = fdb_cursor_get_found_data_cdb2api;
+    fdbc_if->move = fdb_cursor_move_sql_cdb2api;
+    fdbc_if->find = fdb_cursor_find_sql_cdb2api;
+    fdbc_if->find_last = fdb_cursor_find_sql_cdb2api;
+
+    _cursor_set_common(fdbc_if, NULL, flags, use_ssl);
+
+    if (fdb->local)
+        class = "local";
+    else
+        class = mach_class_class2name(fdb->class);
+
+    rc = cdb2_open(&fdbc->fcon.api.hndl, fdb->dbname, class, CDB2_SQL_ROWS);
+    if (rc || !fdbc->fcon.api.hndl) {
+        logmsg(LOGMSG_ERROR, "%s: failed to open remote db %s:%s rc %d\n",
+               __func__, fdb->dbname, class, rc);
+        goto error;
+    }
+
+    /* SET parameters for remsql */
+    /* NOTE: a remote server that does not support yet cdb2api protocol
+     * will fail to parse the SET options and return an syntax error
+     * This will allow us to rollback to a protocol pre-cdb2api
+     */
+    char str[256];
+    snprintf(str, sizeof(str), "SET REMSQL_VERSION %d", fdb->server_version);
+    rc = cdb2_run_statement(fdbc->fcon.api.hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: %s:%s failed to set remsql_version rc %d\n",
+               __func__, fdb->dbname, class, rc);
+        goto error;
+    }
+
+    if (rootpage) {
+        rc = cdb2_run_statement(fdbc->fcon.api.hndl, "SET REMSQL_SCHEMA 1");
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: %s:%s failed to set remsql_scheam rc %d\n",
+                   __func__, fdb->dbname, class, rc);
+            goto error;
+        }
+    }
+
+done:
+    return fdbc_if;
+
+error:
+    free(fdbc_if);
+    fdbc_if = NULL;
+    goto done;
+}
+
+static fdb_cursor_if_t *_cursor_open_remote(struct sqlclntstate *clnt,
+                                            fdb_t *fdb, int server_version,
+                                            fdb_tran_t *trans, int flags,
+                                            int version, int rootpage,
+                                            int use_ssl)
 {
     fdb_cursor_if_t *fdbc_if;
     fdb_cursor_t *fdbc;
@@ -2404,46 +2541,29 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdbc_if->impl->msg =
         (fdb_msg_t *)(((char *)fdbc_if) + sizeof(fdb_cursor_if_t) +
                       sizeof(fdb_cursor_t));
-    fdbc_if->close = fdb_cursor_close;
-    fdbc_if->id = fdb_cursor_id;
+    fdbc->type = FCON_TYPE_LEGACY;
     fdbc_if->data = fdb_cursor_get_data;
     fdbc_if->datalen = fdb_cursor_get_datalen;
     fdbc_if->genid = fdb_cursor_get_genid;
     fdbc_if->get_found_data = fdb_cursor_get_found_data;
-    fdbc_if->set_hint = fdb_cursor_set_hint;
-    fdbc_if->get_hint = fdb_cursor_get_hint;
-    fdbc_if->set_sql = fdb_cursor_set_sql;
-    fdbc_if->name = fdb_cursor_name;
-    fdbc_if->tblname = fdb_cursor_tblname;
-    fdbc_if->tbl_has_partidx = fdb_cursor_table_has_partidx;
-    fdbc_if->tbl_has_expridx = fdb_cursor_table_has_expridx;
-    fdbc_if->dbname = fdb_cursor_dbname;
-    fdbc_if->table_entry = fdb_cursor_table_entry;
-    fdbc_if->access = fdb_cursor_access;
     fdbc_if->move = fdb_cursor_move_sql;
     fdbc_if->find = fdb_cursor_find_sql;
-    fdbc_if->find_last = fdb_cursor_find_last_sql;
+    fdbc_if->find_last = fdb_cursor_find_sql;
+    fdbc_if->access = fdb_cursor_access;
     fdbc_if->insert = fdb_cursor_insert;
     fdbc_if->delete = fdb_cursor_delete;
     fdbc_if->update = fdb_cursor_update;
 
-    fdbc->tid = (char *)fdbc->tiduuid;
-    fdbc->cid = (char *)fdbc->ciduuid;
+    _cursor_set_common(fdbc_if, tid, flags, use_ssl);
 
-    comdb2uuid(fdbc->ciduuid);
-    memcpy(fdbc->tid, tid, sizeof(uuid_t));
-    fdbc->flags = flags;
-    fdbc->need_ssl = use_ssl;
-
-    fdbc->intf = fdbc_if;
-
-    if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata && gbl_fdb_auth_enabled) {
+    if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata &&
+            gbl_fdb_auth_enabled) {
         flags = flags | FDB_MSG_CURSOR_OPEN_FLG_AUTH;
     }
 
     /* NOTE: expect x_retries to fill in clnt error fields, if any */
-    rc = _fdb_send_open_retries(clnt, fdb, fdbc, source_rootpage, trans, flags,
-                                version, fdbc->msg, use_ssl);
+    rc = _fdb_send_open_retries(clnt, fdb, fdbc, server_version, trans,
+                                flags, version, fdbc->msg, use_ssl);
     if (rc) {
         free(fdbc_if);
         fdbc_if = NULL;
@@ -2452,15 +2572,41 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
 
     if (trans != NULL) {
         trans->seq++; /*increment the transaction sequence to track this
-                         important update */
+                        important update */
     }
 
-    Pthread_rwlock_wrlock(&fdbs.h_curs_lock);
-    hash_add(fdbs.h_curs, fdbc);
-    Pthread_rwlock_unlock(&fdbs.h_curs_lock);
+    if (rootpage == 1) { /* we need to alter schema to cover indexes */
+        fdbc->is_schema = 1;
+    }
 
 done:
     return fdbc_if;
+}
+
+static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
+                                                fdb_t *fdb, fdb_tran_t *trans,
+                                                int flags, int version,
+                                                int rootpage, int use_ssl)
+{
+    fdb_cursor_if_t *cursor;
+    int server_version = fdb_ver_encoded(fdb->server_version);
+
+    /* for now we only support cdb2api for standalone queries, if remote support it */
+    if (!trans && gbl_fdb_remsql_cdb2api &&
+            fdb->server_version >= FDB_VER_CDB2API)
+        cursor = _cursor_open_remote_cdb2api(clnt, fdb, server_version, flags,
+                                             version, rootpage, use_ssl);
+    else
+        cursor = _cursor_open_remote(clnt, fdb, server_version, trans, flags,
+                                     version, rootpage, use_ssl);
+
+    if (cursor) {
+        Pthread_rwlock_wrlock(&fdbs.h_curs_lock);
+        hash_add(fdbs.h_curs, cursor->impl);
+        Pthread_rwlock_unlock(&fdbs.h_curs_lock);
+    }
+
+    return cursor;
 }
 
 /**
@@ -2478,7 +2624,6 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
     fdb_t *fdb;
     fdb_tbl_ent_t *ent;
     int rc;
-    int source_rootpage;
     int flags;
 
     assert(pCur->bt->is_remote);
@@ -2526,12 +2671,7 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
     if (flags & FDB_MSG_CURSOR_OPEN_FLG_SSL)
         use_ssl = 1;
 
-    /* NOTE: R5 used to send source_rootpage for open cursor case;
-     *  we will change that in R5 to a magic value that we detect to
-     * differentiate
-     *  R5 from newer code versions
-     */
-    source_rootpage = fdb_ver_encoded(fdb->server_version);
+    /* the way we encode server version is due to R5 lacking version support */
 
     if (ent && is_sqlite_stat(ent->name)) {
         pCur->fdbc = fdbc_if =
@@ -2550,17 +2690,12 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
     } else {
         /* NOTE: we expect x_remote to fill in the error, if any */
         pCur->fdbc = fdbc_if = _fdb_cursor_open_remote(
-            clnt, fdb, source_rootpage, trans, flags,
-            (ent) ? fdb_table_version(ent->tbl->version) : 0, use_ssl);
+            clnt, fdb, trans, flags,
+            (ent) ? fdb_table_version(ent->tbl->version) : 0, rootpage, use_ssl);
 
         if (!fdbc_if) {
             logmsg(LOGMSG_ERROR, "%s: failed to open fdb cursor\n", __func__);
             goto done;
-        }
-
-        if (rootpage == 1) /* sqlite_master */
-        {
-            pCur->fdbc->impl->is_schema = 1;
         }
 
         fdbc = fdbc_if->impl;
@@ -2591,16 +2726,21 @@ static void fdb_cursor_close_on_open(BtCursor *pCur, int cache)
         hash_del(fdbs.h_curs, fdbc);
         Pthread_rwlock_unlock(&fdbs.h_curs_lock);
 
-        if (cache && fdbc->ent && fdbc->ent->tbl &&
-            fdbc->streaming == FDB_CUR_IDLE) {
-            disconnect_remote_db("icdb2", fdbc->ent->tbl->fdb->dbname, "remsql",
-                                 fdbc->node, &fdbc->fcon.sock.sb);
+        if (fdbc->type == FCON_TYPE_LEGACY) {
+            if (cache && fdbc->ent && fdbc->ent->tbl &&
+                fdbc->streaming == FDB_CUR_IDLE) {
+                disconnect_remote_db("icdb2", fdbc->ent->tbl->fdb->dbname,
+                                     "remsql", fdbc->node,
+                                     &fdbc->fcon.sock.sb);
+            } else {
+                sbuf2close(fdbc->fcon.sock.sb);
+                fdbc->fcon.sock.sb = NULL;
+            }
+            fdb_msg_clean_message(fdbc->msg);
         } else {
-            sbuf2close(fdbc->fcon.sock.sb);
-            fdbc->fcon.sock.sb = NULL;
+            cdb2_close(fdbc->fcon.api.hndl);
         }
 
-        fdb_msg_clean_message(fdbc->msg);
         free(pCur->fdbc);
         pCur->fdbc = NULL;
     }
@@ -2614,14 +2754,14 @@ static int fdb_cursor_close(BtCursor *pCur)
 {
     if (pCur->fdbc) {
         /*TODO: check sqlite_stat cursors and their caching */
-
         fdb_cursor_t *fdbc = pCur->fdbc->impl;
+        if (fdbc->type == FCON_TYPE_LEGACY) { 
 
-        fdb_send_close(fdbc->msg, fdbc->cid,
-              (fdbc->trans) ? fdbc->trans->tid : 0,
-              (fdbc->trans) ? fdbc->trans->seq : 0,
-              fdbc->fcon.sock.sb);
-
+            fdb_send_close(fdbc->msg, fdbc->cid,
+                    (fdbc->trans) ? fdbc->trans->tid : 0,
+                    (fdbc->trans) ? fdbc->trans->seq : 0,
+                    fdbc->fcon.sock.sb);
+        }
         /* closing the cursor locally */
         fdb_cursor_close_on_open(pCur, 1);
     } else {
@@ -2952,7 +3092,7 @@ done:
     return rc;
 }
 
-static void _update_fdb_version(BtCursor *pCur, char *errstr)
+static void _update_fdb_version(BtCursor *pCur, const char *errstr)
 {
     /* extract protocol number */
     unsigned int protocol_version;
@@ -3001,6 +3141,83 @@ static int _fdb_io_retry(int *pretry, int *pollms)
     return 1;
 }
 
+/* return the sql needed to retrieve the stream of records for pCur cursor */
+static int _fdb_build_move_str(BtCursor *pCur, int how, char **psql, int *psqllen)
+{
+    fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    char *sql;
+    int sqllen;
+    int error = 0;
+
+    if (fdbc->sql_hint) {
+        /* prepackaged hints */
+        sql = fdbc->sql_hint;
+        sqllen = strlen(sql) + 1;
+    } else {
+        sql = _build_run_sql_from_hint(
+                pCur, NULL, 0, (how == CLAST) ? OP_Prev : OP_Next, &sqllen, &error,
+                /* is this a Rewind on a data cursor ? */
+                how == CFIRST && fdbc->ent && fdbc->ent->ixnum < 0);
+    }
+
+    if (!sql) {
+        if (error)
+            return FDB_ERR_INDEX_DESCRIBE;
+        return FDB_ERR_MALLOC;
+    }
+
+    *psql = sql;
+    if (psqllen)
+        *psqllen = sqllen;
+
+    return FDB_NOERR;
+}
+
+static void _fdb_handle_sqlite_schema_err(fdb_cursor_t *fdbc, char *errstr)
+{
+    unsigned long long remote_version;
+
+    if (unlikely(!errstr))
+        abort();
+
+    remote_version = atoll(errstr);
+
+    logmsg(LOGMSG_ERROR, 
+           "%s: local version %llu is stale, need %llu \"%s\"\n",
+           __func__, fdbc->ent->tbl->version, remote_version,
+           errstr);
+
+    /* this is just a hint; updated in parallel by possible
+       multiple sql engines, maybe with different
+       values if the remote table is schema changed repeatedly
+       */
+    fdbc->ent->tbl->need_version = remote_version + 1;
+}
+
+static int _fdb_handle_io_read_error(BtCursor *pCur, int *retry, int *pollms,
+                                     const char *f, int l)
+{
+    fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    /* I/O error. Let's retry the query on some other node by
+     * temporarily blacklisting this node (only when we haven't
+     * read any rows and not in a transaction). */
+    fdbc->streaming = FDB_CUR_ERROR;
+    _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb, fdbc->node,
+                           FDB_ERR_TRANSIENT_IO);
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER,
+                "%s:%d blacklisting %s, retrying..\n", __func__,
+                __LINE__, fdbc->node);
+    if (_fdb_io_retry(retry, pollms))
+        return 1;
+
+    logmsg(LOGMSG_ERROR,
+            "%s:%d failed to reconnect after %d retries\n", f, l, *retry);
+    return 0;
+}
+
+#define MOVE_IS_ABSOLUTE(c) ((c) == CFIRST || (c) == CLAST)
+
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
@@ -3015,14 +3232,19 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     int no_version_retry = how & NORETRY;
     how &= 0x0F;
 
-    if (fdbc) {
-retry:
-        start_rpc = osql_log_time();
+    if (!fdbc) {
+        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
+        return FDB_ERR_MALLOC;
+    }
 
+retry:
+    start_rpc = osql_log_time();
+
+    /* if absolute move, send new query */
+    if (MOVE_IS_ABSOLUTE(how)) {
         /* this is a rewind, lets make sure the pipe is clean */
-        if ((how == CFIRST || how == CLAST) &&
-            (fdbc->streaming != FDB_CUR_IDLE)) {
-        version_retry:
+        if (fdbc->streaming != FDB_CUR_IDLE) {
+version_retry:
             rc = fdb_cursor_reopen(pCur);
             if (rc || !pCur->fdbc /*did we fail to pass error back */) {
                 logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
@@ -3032,146 +3254,139 @@ retry:
             fdbc = pCur->fdbc->impl;
         }
 
-        /* if absolute move, send new query */
-        if (how == CFIRST || how == CLAST) {
-            int sqllen;
-            char *sql;
-            int error = 0;
+        int sqllen;
+        char *sql;
 
-            if (fdbc->sql_hint) {
-                /* prepackaged hints */
-                sql = fdbc->sql_hint;
-                sqllen = strlen(sql) + 1;
-                /* for now, this is used only by remote schema retrieval
-                in check_table_fdb */
-                if (fdbc->is_schema) {
-                    flags = FDB_RUN_SQL_SCHEMA;
-                }
-            } else {
-                sql = _build_run_sql_from_hint(
-                    pCur, NULL, 0, (how == CLAST) ? OP_Prev : OP_Next, &sqllen, &error,
-                    /* is this a Rewind on a data cursor ? */
-                    how == CFIRST && fdbc->ent && fdbc->ent->ixnum < 0);
+        rc = _fdb_build_move_str(pCur, how, &sql, &sqllen);
+        if (rc)
+            return rc;
+
+        if (fdbc->sql_hint) {
+            /* for now, this is used only by remote schema retrieval
+               in check_table_fdb */
+            if (fdbc->is_schema) {
+                flags = FDB_RUN_SQL_SCHEMA;
             }
+        }
 
-            if (!sql) {
-                if (error)
-                    return FDB_ERR_INDEX_DESCRIBE;
-                return FDB_ERR_MALLOC;
-            }
-
-            rc = fdb_send_run_sql(
+        rc = fdb_send_run_sql(
                 fdbc->msg, fdbc->cid, sqllen, sql,
                 (fdbc->ent) ? fdb_table_version(fdbc->ent->tbl->version) : 0, 0,
                 NULL, flags, fdbc->fcon.sock.sb);
 
-            if (fdbc->sql_hint != sql) {
-                sqlite3_free(sql);
-            }
+        if (fdbc->sql_hint != sql) {
+            sqlite3_free(sql);
         }
-
-        if (!rc) {
-            /* otherwise.read row */
-            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
-
-            if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
-                rc != IX_PASTEOF && rc != IX_EMPTY) {
-                char *errstr = fdbc->intf->data(pCur);
-
-                /* sqlite will call reprepare; we need to mark which remote
-                 * table cache is stale */
-                if (rc == SQLITE_SCHEMA) {
-                    unsigned long long remote_version;
-
-                    if (unlikely(!errstr))
-                        abort();
-
-                    remote_version = atoll(errstr);
-
-                    logmsg(LOGMSG_ERROR, 
-                            "%s: local version %llu is stale, need %llu \"%s\"\n",
-                            __func__, fdbc->ent->tbl->version, remote_version,
-                        errstr);
-
-                    /* this is just a hint; updated in parallel by possible
-                       multiple sql engines, maybe with different
-                       values if the remote table is schema changed repeatedly
-                       */
-                    fdbc->ent->tbl->need_version = remote_version + 1;
-
-                    rc = SQLITE_SCHEMA_REMOTE;
-                } else if (rc == FDB_ERR_FDB_VERSION) {
-                    _update_fdb_version(pCur, errstr);
-
-                    if (!no_version_retry && (how == CFIRST || how == CLAST)) {
-                        no_version_retry = 1;
-                        goto version_retry;
-                    }
-                } else if (rc == FDB_ERR_SSL) {
-                    /* extract ssl config */
-                    unsigned int ssl_cfg;
-
-                    ssl_cfg = atoll(errstr);
-
-                    logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
-                           __func__, pCur->bt->fdb->dbname, ssl_cfg);
-                    pCur->bt->fdb->ssl = ssl_cfg;
-                } else if (rc == FDB_ERR_READ_IO &&
-                           (how == CFIRST || how == CLAST) &&
-                           !pCur->clnt->intrans) {
-                    /* I/O error. Let's retry the query on some other node by
-                     * temporarily blacklisting this node (only when we haven't
-                     * read any rows and not in a transaction). */
-                    fdbc->streaming = FDB_CUR_ERROR;
-                    _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb,
-                                           fdbc->node, FDB_ERR_TRANSIENT_IO);
-                    if (gbl_fdb_track)
-                        logmsg(LOGMSG_USER,
-                               "%s:%d blacklisting %s, retrying..\n", __func__,
-                               __LINE__, fdbc->node);
-                    if (_fdb_io_retry(&retry, &pollms))
-                        goto retry;
-                    logmsg(LOGMSG_ERROR,
-                           "%s:%d failed to reconnect after %d retries\n",
-                           __func__, __LINE__, retry);
-                } else {
-                    if (rc != FDB_ERR_SSL) {
-                        if (state) {
-                            state->preserve_err = 1;
-                            errstat_set_rc(&state->xerr, FDB_ERR_READ_IO);
-                            errstat_set_str(&state->xerr,
-                                            errstr ? errstr
-                                                   : "error string not set");
-                        }
-                        logmsg(LOGMSG_ERROR,
-                               "%s: failed to retrieve streaming "
-                               "row rc=%d \"%s\"\n",
-                               __func__, rc,
-                               errstr ? errstr : "error string not set");
-                        fdbc->streaming = FDB_CUR_ERROR;
-                    }
-                }
-
-                return rc;
-            } else {
-                fdbc->streaming =
-                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
-            }
-        }
-
-        end_rpc = osql_log_time();
-
-        fdb_add_remote_time(pCur, start_rpc, end_rpc);
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
-        rc = FDB_ERR_MALLOC;
     }
+
+    if (!rc) {
+        /* otherwise.read row */
+        rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
+
+        if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
+            rc != IX_PASTEOF && rc != IX_EMPTY) {
+            char *errstr = fdbc->intf->data(pCur);
+
+            /* sqlite will call reprepare; we need to mark which remote
+             * table cache is stale */
+            if (rc == SQLITE_SCHEMA) {
+                _fdb_handle_sqlite_schema_err(fdbc, errstr);
+                rc = SQLITE_SCHEMA_REMOTE;
+            } else if (rc == FDB_ERR_FDB_VERSION) {
+                _update_fdb_version(pCur, errstr);
+
+                if (!no_version_retry && MOVE_IS_ABSOLUTE(how)) {
+                    no_version_retry = 1;
+                    goto version_retry;
+                }
+            } else if (rc == FDB_ERR_SSL) {
+                /* extract ssl config */
+                unsigned int ssl_cfg;
+
+                ssl_cfg = atoll(errstr);
+
+                logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
+                       __func__, pCur->bt->fdb->dbname, ssl_cfg);
+                pCur->bt->fdb->ssl = ssl_cfg;
+            } else if (rc == FDB_ERR_READ_IO && MOVE_IS_ABSOLUTE(how) &&
+                       !pCur->clnt->intrans) {
+                if (_fdb_handle_io_read_error(pCur, &retry, &pollms,
+                                              __func__, __LINE__))
+                    goto retry;
+            } else {
+                if (state) {
+                    state->preserve_err = 1;
+                    errstat_set_rc(&state->xerr, FDB_ERR_READ_IO);
+                    errstat_set_str(&state->xerr,
+                                    errstr ? errstr : "error string not set");
+                }
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to retrieve streaming "
+                       "row rc=%d \"%s\"\n",
+                       __func__, rc,
+                          errstr ? errstr : "error string not set");
+                fdbc->streaming = FDB_CUR_ERROR;
+            }
+
+            return rc;
+        } else {
+            fdbc->streaming =
+                (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
+        }
+    }
+
+    end_rpc = osql_log_time();
+
+    fdb_add_remote_time(pCur, start_rpc, end_rpc);
 
     return rc;
 }
 
-static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
-                                      int bias, int last)
+/* return the sql needed to retrieve the stream of records for pCur cursor */
+static int _fdb_build_find_str(BtCursor *pCur, Mem *key, int nfields, int bias,
+                               char **psql, int *psqllen)
+{
+    fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    char *sql;
+    int sqllen;
+    int error = 0;
+
+    if (pCur->ixnum == -1) {
+        if (bias != OP_NotExists && bias != OP_SeekRowid && bias != OP_DeferredSeek) {
+            logmsg(LOGMSG_FATAL, "%s: not supported op %d\n", __func__, bias);
+            abort();
+        }
+
+        sql = sqlite3_mprintf("select *, rowid from \"%w\" "
+                              "where rowid = %lld",
+                              fdbc->ent->tbl->name, key->u.i);
+        sqllen = strlen(sql) + 1;
+    } else {
+        if (fdbc->sql_hint) {
+            /* prepackaged hints */
+            sql = fdbc->sql_hint;
+            sqllen = strlen(sql) + 1;
+        } else {
+            sql = _build_run_sql_from_hint(pCur, key, nfields, bias,
+                                           &sqllen, &error, 0);
+        }
+    }
+
+    if (!sql) {
+        if (error)
+            return FDB_ERR_INDEX_DESCRIBE;
+        return FDB_ERR_MALLOC;
+    }
+
+    *psql = sql;
+    if (psqllen)
+        *psqllen = sqllen;
+
+    return FDB_NOERR;
+}
+
+static int fdb_cursor_find_sql(BtCursor *pCur, Mem *key, int nfields,
+                               int bias)
 {
     /* NOTE: assumption we make here is that the hint should contain all the
        fields that
@@ -3193,177 +3408,110 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
     int retry = 0;
     int pollms = gbl_fdb_io_error_retries_phase_2_poll;
 
-    if (fdbc) {
-        int sqllen;
-        char *sql;
-        int error = 0;
+    if (!fdbc) {
+        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
+        return FDB_ERR_BUG;
+    }
+
+    int sqllen;
+    char *sql;
 
 retry:
-        /* this is a rewind, lets make sure the pipe is clean */
-        if (fdbc->streaming != FDB_CUR_IDLE) {
+    /* this is a rewind, lets make sure the pipe is clean */
+    if (fdbc->streaming != FDB_CUR_IDLE) {
 version_retry:
-            rc = fdb_cursor_reopen(pCur);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
-                        rc);
-                return rc;
-            }
-            fdbc = pCur->fdbc->impl;
+        rc = fdb_cursor_reopen(pCur);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
+                   rc);
+            return rc;
         }
+        fdbc = pCur->fdbc->impl;
+    }
+    
+    rc = _fdb_build_find_str(pCur, key, nfields, bias, &sql, &sqllen);
+    if (rc)
+        return rc;
 
-        if (pCur->ixnum == -1) {
-            if (bias != OP_NotExists && bias != OP_SeekRowid && bias != OP_DeferredSeek) {
-                logmsg(LOGMSG_FATAL, "%s: not supported op %d\n", __func__, bias);
-                abort();
-            }
+    start_rpc = osql_log_time();
 
-            sql = sqlite3_mprintf("select *, rowid from \"%w\" "
-                                  "where rowid = %lld",
-                                  fdbc->ent->tbl->name, key->u.i);
-            sqllen = strlen(sql) + 1;
-        } else {
-            if (fdbc->sql_hint) {
-                /* prepackaged hints */
-                sql = fdbc->sql_hint;
-                sqllen = strlen(sql) + 1;
-            } else {
-                sql = _build_run_sql_from_hint(pCur, key, nfields, bias,
-                                               &sqllen, &error, 0);
-            }
-        }
-
-        if (!sql) {
-            if (error)
-                return FDB_ERR_INDEX_DESCRIBE;
-            return FDB_ERR_MALLOC;
-        }
-
-        start_rpc = osql_log_time();
-
-        rc = fdb_send_run_sql(
+    rc = fdb_send_run_sql(
             fdbc->msg, fdbc->cid, sqllen, sql,
             (fdbc->ent) ? fdb_table_version(fdbc->ent->tbl->version) : 0,
             packed_keylen, packed_key, FDB_RUN_SQL_TRIM,
             fdbc->fcon.sock.sb);
 
-        if (fdbc->sql_hint != sql) {
-            sqlite3_free(sql);
-        }
-
-        if (!rc) {
-            /* otherwise.read row */
-            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
-
-            if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
-                rc != IX_PASTEOF && rc != IX_EMPTY) {
-                char *errstr = fdbc->intf->data(pCur);
-
-                /* sqlite will call reprepare; we need to mark which remote
-                 * table cache is stale */
-                if (rc == SQLITE_SCHEMA) {
-                    unsigned long long remote_version;
-
-                    if (unlikely(!errstr))
-                        abort();
-
-                    remote_version = atoll(errstr);
-
-                    logmsg(LOGMSG_ERROR, 
-                        "%s: local version %llu is stale, need %llu \"%s\"\n",
-                        __func__, fdbc->ent->tbl->version, remote_version,
-                        errstr);
-
-                    /* this is just a hint; updated in parallel by possible
-                       multiple sql engines, maybe with different
-                       values if the remote table is schema changed repeatedly
-                       */
-                    fdbc->ent->tbl->need_version = remote_version + 1;
-
-                    rc = SQLITE_SCHEMA_REMOTE;
-                    rc = SQLITE_SCHEMA_REMOTE;
-                } else if (rc == FDB_ERR_FDB_VERSION) {
-                    _update_fdb_version(pCur, errstr);
-
-                    if (!no_version_retry) {
-                        no_version_retry = 1;
-                        goto version_retry;
-                    }
-                } else if (rc == FDB_ERR_READ_IO &&
-                           !pCur->clnt->intrans) {
-                    /* I/O error. Let's retry the query on some other node by
-                     * temporarily blacklisting this node (only when we haven't
-                     * read any rows and not in a transaction). */
-                    fdbc->streaming = FDB_CUR_ERROR;
-                    _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb,
-                                           fdbc->node, FDB_ERR_TRANSIENT_IO);
-                    if (gbl_fdb_track)
-                        logmsg(LOGMSG_USER,
-                               "%s:%d blacklisting %s, retrying..\n", __func__,
-                               __LINE__, fdbc->node);
-                    if (_fdb_io_retry(&retry, &pollms))
-                        goto retry;
-                    logmsg(LOGMSG_ERROR,
-                           "%s:%d failed to reconnect after %d retries\n",
-                           __func__, __LINE__, retry);
-                } else {
-                    if (rc != FDB_ERR_SSL) {
-                        if (state) {
-                            state->preserve_err = 1;
-                            errstat_set_rc(&state->xerr, FDB_ERR_READ_IO);
-                            errstat_set_str(&state->xerr,
-                                            errstr ? errstr
-                                                   : "error string not set");
-                        }
-                        logmsg(LOGMSG_ERROR,
-                               "%s: failed to retrieve streaming"
-                               " row rc=%d \"%s\"\n",
-                               __func__, rc,
-                               errstr ? errstr : "error string not set");
-                        fdbc->streaming = FDB_CUR_ERROR;
-                    }
-                }
-
-                return rc;
-            } else {
-                fdbc->streaming =
-                    (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
-            }
-
-            /* if we don't get a row here, it means the concocted sql did not
-               match any rows;
-               sqlite expect some row nevertheless unless empty;  So we give it
-               empty, gorge yourself on thus rows
-             */
-            if (rc == IX_NOTFND) {
-                rc = IX_EMPTY;
-            }
-            if (rc == IX_FNDMORE) {
-                fdbc->streaming = FDB_CUR_STREAMING;
-            }
-        }
-
-        end_rpc = osql_log_time();
-
-        /*fprintf(stderr, "start=%llu end=%llu RC=%d\n", start_rpc, end_rpc,
-         * rc);*/
-        fdb_add_remote_time(pCur, start_rpc, end_rpc);
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
-        rc = FDB_ERR_BUG;
+    if (fdbc->sql_hint != sql) {
+        sqlite3_free(sql);
     }
 
+    if (!rc) {
+        /* otherwise.read row */
+        rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
+
+        if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
+            rc != IX_PASTEOF && rc != IX_EMPTY) {
+            char *errstr = fdbc->intf->data(pCur);
+
+            /* sqlite will call reprepare; we need to mark which remote
+             * table cache is stale */
+            if (rc == SQLITE_SCHEMA) {
+                _fdb_handle_sqlite_schema_err(fdbc, errstr);
+                rc = SQLITE_SCHEMA_REMOTE;
+            } else if (rc == FDB_ERR_FDB_VERSION) {
+                _update_fdb_version(pCur, errstr);
+
+                if (!no_version_retry) {
+                    no_version_retry = 1;
+                    goto version_retry;
+                }
+            } else if (rc == FDB_ERR_READ_IO && !pCur->clnt->intrans) {
+                if (_fdb_handle_io_read_error(pCur, &retry, &pollms,
+                                              __func__, __LINE__))
+                    goto retry;
+            } else {
+                if (rc != FDB_ERR_SSL) {
+                    if (state) {
+                        state->preserve_err = 1;
+                        errstat_set_rc(&state->xerr, FDB_ERR_READ_IO);
+                        errstat_set_str(&state->xerr, errstr ? errstr
+                                        : "error string not set");
+                    }
+                    logmsg(LOGMSG_ERROR,
+                           "%s: failed to retrieve streaming"
+                           " row rc=%d \"%s\"\n",
+                           __func__, rc,
+                           errstr ? errstr : "error string not set");
+                    fdbc->streaming = FDB_CUR_ERROR;
+                }
+            }
+
+            return rc;
+        } else {
+            fdbc->streaming =
+                (rc == IX_FNDMORE) ? FDB_CUR_STREAMING : FDB_CUR_IDLE;
+        }
+
+        /* if we don't get a row here, it means the concocted sql did not
+           match any rows;
+           sqlite expect some row nevertheless unless empty;  So we give it
+           empty, gorge yourself on thus rows
+           */
+        if (rc == IX_NOTFND) {
+            rc = IX_EMPTY;
+        }
+        if (rc == IX_FNDMORE) {
+            fdbc->streaming = FDB_CUR_STREAMING;
+        }
+    }
+
+    end_rpc = osql_log_time();
+
+    /*fprintf(stderr, "start=%llu end=%llu RC=%d\n", start_rpc, end_rpc,
+     * rc);*/
+    fdb_add_remote_time(pCur, start_rpc, end_rpc);
+
     return rc;
-}
-
-static int fdb_cursor_find_sql(BtCursor *pCur, Mem *key, int nfields, int bias)
-{
-    return fdb_cursor_find_sql_common(pCur, key, nfields, bias, 0);
-}
-
-static int fdb_cursor_find_last_sql(BtCursor *pCur, Mem *key, int nfields,
-                                    int bias)
-{
-    return fdb_cursor_find_sql_common(pCur, key, nfields, bias, 1);
 }
 
 /*
@@ -4641,7 +4789,7 @@ void fdb_clear_sqlclntstate(struct sqlclntstate *clnt)
     }
 
     bzero(&clnt->fdb_state, sizeof(clnt->fdb_state));
-    clnt->fdb_state.code_release = FDB_VER; /* default */
+    clnt->fdb_state.code_release = gbl_fdb_default_ver; /* default */
 }
 
 /**
@@ -5139,4 +5287,496 @@ void fdb_systable_info_free(void *data, int npoints)
         free(ient[i].indexname);
     }
     free(ient);
+}
+
+#define CHECK_ROW_LEN(ret) \
+    do { \
+    cdb2_hndl_tp *hndl = pCur->fdbc->impl->fcon.api.hndl; \
+    int len = cdb2_column_size(hndl, 0); \
+    if (len <= sizeof(unsigned long long)) { \
+        logmsg(LOGMSG_ERROR, "%s: BUG, row length is too small %d\n", \
+               __func__, len); \
+        return (ret); \
+    } \
+    } while (0); 
+
+static char *fdb_cursor_get_data_cdb2api(BtCursor *pCur)
+{
+    char * value = NULL;
+
+    CHECK_ROW_LEN(NULL);
+
+    fdb_cursor_get_found_data_cdb2api(pCur, NULL, NULL, &value);
+
+    return value;
+}
+static int fdb_cursor_get_datalen_cdb2api(BtCursor *pCur)
+{
+    int retlen = 0;
+
+    CHECK_ROW_LEN(0);
+
+    fdb_cursor_get_found_data_cdb2api(pCur, NULL, &retlen, NULL);
+
+    return retlen;
+}
+
+static unsigned long long fdb_cursor_get_genid_cdb2api(BtCursor *pCur)
+{
+    unsigned long long genid = 0;
+
+    CHECK_ROW_LEN(0ULL);
+
+    fdb_cursor_get_found_data_cdb2api(pCur, &genid, NULL, NULL);
+
+    return genid;
+}
+
+static void fdb_cursor_get_found_data_cdb2api(BtCursor *pCur,
+                                              unsigned long long *genid,
+                                              int *datalen, char **data)
+{
+    cdb2_hndl_tp *hndl = pCur->fdbc->impl->fcon.api.hndl;
+    char *value = cdb2_column_value(hndl, 0);
+    int len = cdb2_column_size(hndl, 0);
+    if (len <= sizeof(unsigned long long)) {
+        logmsg(LOGMSG_ERROR, "%s: BUG, row length is too small %d\n",
+               __func__, len);
+        return;
+    }
+
+    unsigned long long l =
+        *(unsigned long long*)(value + len - sizeof(unsigned long long));
+
+    if (genid) {
+        *genid = flibc_ntohll(l);
+    }
+    if (data)
+        *data = value;
+    if (datalen)
+        *datalen = len;
+
+    if (gbl_fdb_track) {
+        unsigned long long t = osql_log_time();
+        logmsg(LOGMSG_USER, "XXXX: %llu get found data genid=%llx len=%d [", t,
+               l, len);
+        fsnapf(stderr, value, len);
+        logmsg(LOGMSG_USER, "]\n");
+    }
+}
+
+static int _fdb_cdb2api_send_set(fdb_cursor_t *fdbc)
+{
+    cdb2_hndl_tp *hndl = fdbc->fcon.api.hndl;
+    int rc = FDB_NOERR;
+
+    /* table version check */
+    char str[256];
+    snprintf(str, sizeof(str), "SET REMSQL_TABLE %s %d",
+             fdbc->ent ? fdbc->ent->tbl->name : "sqlite_master",
+             fdbc->ent ? fdb_table_version(fdbc->ent->tbl->version) : 0);
+
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to set remote table rc %d\n",
+               __func__, rc);
+        return FDB_ERR_GENERIC;
+    }
+
+    uuidstr_t us;
+    comdb2uuidstr(fdbc->ciduuid, us);
+    snprintf(str, sizeof(str), "SET REMSQL_CURSOR %s", us);
+
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to set cursor id rc %d\n",
+               __func__, rc);
+        return FDB_ERR_GENERIC;
+    }
+
+    return FDB_NOERR;
+}
+
+#define SET_INT(name, value) \
+    do { \
+        snprintf(str, sizeof(str), "SET %s %d", \
+                 name, value); \
+        rc = cdb2_run_statement(hndl, str); \
+        if (rc) { \
+            logmsg(LOGMSG_ERROR, "%s failed to write %s \"%s\"\n", \
+                   __func__, name, str); \
+            return -1; \
+        } \
+    } while (0);
+
+#define SET_STR(name, value) \
+    do { \
+        snprintf(str, sizeof(str), "SET %s %s", \
+                 name, value); \
+        rc = cdb2_run_statement(hndl, str); \
+        if (rc) { \
+            logmsg(LOGMSG_ERROR, "%s failed to write %s \"%s\"\n", \
+                   __func__, name, str); \
+            return -1; \
+        } \
+    } while (0);
+
+static int _fdb_client_set_options(struct sqlclntstate *clnt,
+                                   cdb2_hndl_tp *hndl)
+{
+    char str[256];
+    int rc = 0;
+
+    /* we only pass a subset of SET options */
+    if (clnt->query_timeout) {
+        SET_INT("MAXQUERYTIME", clnt->query_timeout);
+    }
+    if (clnt->tzname[0]) {
+        SET_STR("TIMEZONE", clnt->tzname);
+    }
+    char *dtprec = clnt->dtprec == DTTZ_PREC_MSEC ? "M" : "U";
+    SET_STR("DATETIME PRECISION", dtprec);
+    if (clnt->prepare_only) {
+        SET_STR("PREPARE_ONLY", "ON");
+    }
+
+    extern void *(*externalComdb2getAuthIdBlob)(void *ID);
+    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob) {
+        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
+    }
+
+    return 0;
+}
+
+const char *err_precdb2api = "Invalid set command 'REMSQL";
+const char *err_cdb2apiold = "need protocol ";
+const char *err_tableschemaold = "need table schema ";
+
+static int _fdb_run_sql(BtCursor *pCur, char *sql)
+{
+    fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    cdb2_hndl_tp *hndl = fdbc->fcon.api.hndl;
+    sqlclntstate_fdb_t *state = pCur->clnt ? &pCur->clnt->fdb_state : NULL;
+    int rc;
+    const char *errstr;
+    unsigned long long start_rpc;
+    unsigned long long end_rpc;
+    const char *tmp;
+
+    start_rpc = osql_log_time();
+
+    /* remsql set otions */
+    rc = _fdb_cdb2api_send_set(fdbc);
+    if (rc)
+        return rc;
+
+    /* client set options */
+    rc = _fdb_client_set_options(pCur->clnt, hndl);
+
+    /* NOTE: we can extract column type here and use typed call */
+    rc = cdb2_run_statement(hndl, sql);
+    if (rc) {
+        errstr = cdb2_errstr(hndl);
+        if (rc == CDB2ERR_PREPARE_ERROR) {
+            /* NOTE: we need to check here for pre-cdb2api
+             * remote servers, which will fail to parse new SET options
+             */
+            if (errstr) {
+                /* remote does not parse new SET options <= FDB_VER_AUTH */
+                if (!strncasecmp(errstr, err_precdb2api,
+                                 strlen(err_precdb2api))) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: remote db %s does not support cdb2api,"
+                           " downgrading to 6 from %d\n",
+                           __func__, pCur->bt->fdb->dbname,
+                           pCur->bt->fdb->server_version);
+                    pCur->bt->fdb->server_version = FDB_VER_AUTH;
+
+                    rc = FDB_ERR_FDB_VERSION;
+                    goto done;
+                /* remote speaks cdb2api, but wants older protocol */
+                } else if (!strncasecmp(errstr, err_cdb2apiold,
+                                        strlen(err_cdb2apiold))) {
+                    tmp = errstr + strlen(err_cdb2apiold);
+                    tmp = skipws((char*)tmp);
+                    if (!tmp) {
+                        logmsg(LOGMSG_ERROR,
+                               "Failed to retrieve server version \"%s\"\n",
+                                errstr);
+                        rc = FDB_ERR_GENERIC;
+                    } else {
+                        _update_fdb_version(pCur, tmp);
+                        rc = FDB_ERR_FDB_VERSION;
+                    }
+                    goto done;
+                } else if (!strncasecmp(errstr, err_tableschemaold,
+                                        strlen(err_tableschemaold))) {
+                    tmp = errstr + strlen(err_tableschemaold);
+                    tmp = skipws((char*)tmp);
+                    if (!tmp) {
+                        logmsg(LOGMSG_ERROR,
+                               "Failed to retrieve table version \"%s\"\n",
+                                errstr);
+                        rc = FDB_ERR_GENERIC;
+                    } else {
+                        _fdb_handle_sqlite_schema_err(fdbc, (char*)tmp);
+                        rc = SQLITE_SCHEMA_REMOTE;
+                    }
+                    goto done;
+                }
+            }
+            /* capture all parsing errors */
+            if (state) {
+                state->preserve_err = 1;
+                errstat_set_rcstrf(&state->xerr, FDB_ERR_BUG,
+                        "%s", errstr ? errstr : "missing api error string");
+            }
+            fdbc->streaming = FDB_CUR_ERROR;
+            logmsg(LOGMSG_ERROR,
+                   "%s: received parsing error, bug maybe "
+                   "rc=%d \"%s\"\n",
+                   __func__, rc,
+                   errstr ? errstr : "error string not set");
+        } else {
+            /* capture all on-parsing errors */
+            if (state) {
+                state->preserve_err = 1;
+                errstat_set_rcstrf(&state->xerr, FDB_ERR_READ_IO,
+                        "%s", errstr);
+            }
+            logmsg(LOGMSG_ERROR,
+                   "%s: received cdb2api error "
+                   "rc=%d \"%s\"\n",
+                   __func__, rc,
+                   errstr ? errstr : "error string not set");
+            fdbc->streaming = FDB_CUR_ERROR;
+        }
+    }
+done:
+    if (fdbc->sql_hint != sql) {
+        sqlite3_free(sql);
+    }
+
+    /* log call */
+    end_rpc = osql_log_time();
+    fdb_add_remote_time(pCur, start_rpc, end_rpc);
+
+    return rc;
+}
+
+static int fdb_cursor_move_sql_cdb2api(BtCursor *pCur, int how)
+{
+    fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    cdb2_hndl_tp *hndl = fdbc->fcon.api.hndl;
+    char *sql; /* freed by _fdb_run_sql */
+    int rc = 0;
+
+    how &= 0x0F;
+
+    if (!fdbc) {
+        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
+        return FDB_ERR_BUG;
+    }
+
+    /* if absolute move, send new query */
+    if (how == CFIRST || how == CLAST) {
+version_retry:
+        rc = _fdb_build_move_str(pCur, how, &sql, NULL);
+        if (rc)
+            return rc;
+
+        rc = _fdb_run_sql(pCur, sql);
+        if (rc  == FDB_ERR_FDB_VERSION) {
+            /* might move cursor to different backend */
+            rc = fdb_cursor_reopen(pCur);
+            if (rc)
+                return rc;
+
+            /* do we need to pre-cdb2api version */
+            if (pCur->bt->fdb->server_version <= FDB_VER_AUTH) {
+                return fdb_cursor_move_sql(pCur, how);
+            }
+            /* just an older cdb2api version, gonna run same backend */
+            goto version_retry;
+        }
+    }
+
+    if (!rc) {
+        /* read genid */
+        rc = cdb2_next_record(hndl);
+        if (rc == CDB2_OK) {
+            rc = IX_FNDMORE;
+        } else if (rc == CDB2_OK_DONE) {
+            rc = IX_EMPTY;
+        }
+    }
+
+    return rc;
+}
+
+static int fdb_cursor_find_sql_cdb2api(BtCursor *pCur, Mem *key, int nfields,
+                                       int bias)
+{
+    /* NOTE: assumption we make here is that the hint should contain all the
+       fields that determine a certain find operation; recreating that string
+       and passing it to the remote engine should generate the same plan
+       (avoiding the need to reverse engineer a where clause from a
+       find/find_last + a followup move)
+     */
+    fdb_cursor_t *fdbc = pCur->fdbc->impl;
+    cdb2_hndl_tp *hndl = fdbc->fcon.api.hndl;
+    char *sql; /* freed by _fdb_run_sql */
+    int rc = 0;
+
+    if (!fdbc) {
+        logmsg(LOGMSG_ERROR, "%s: no fdbc cursor?\n", __func__);
+        return FDB_ERR_BUG;
+    }
+
+version_retry:
+    rc = _fdb_build_find_str(pCur, key, nfields, bias, &sql, NULL);
+    if (rc)
+        return rc;
+
+    rc = _fdb_run_sql(pCur, sql);
+    if (rc == FDB_ERR_FDB_VERSION) {
+        /* might move cursor to different backend */
+        rc = fdb_cursor_reopen(pCur);
+        if (rc)
+            return rc;
+
+        /* do we need to pre-cdb2api version */
+        if (pCur->bt->fdb->server_version <= FDB_VER_AUTH) {
+            return fdb_cursor_find_sql(pCur, key, nfields, bias);
+        }
+
+        /* just an older cdb2api version, gonna run same backend */
+        goto version_retry;
+    }
+
+    if (!rc) {
+        /* read genid */
+        rc = cdb2_next_record(hndl);
+        if (rc == CDB2_OK) {
+            rc = IX_FNDMORE;
+        } else if (rc == CDB2_OK_DONE) {
+            rc = IX_EMPTY;
+        }
+    }
+
+    return rc;
+}
+
+#define GET_INT(val) \
+    do { \
+        sqlstr = skipws(sqlstr); \
+        if (!sqlstr) { \
+            snprintf(err, errlen, \
+                     "missing setting value"); \
+            return -1; \
+        } \
+        if (((val) = atoi(sqlstr)) < 0) { \
+            snprintf(err, errlen, \
+                     "invalid setting value %s", sqlstr); \
+        } \
+    } while (0);
+
+int process_fdb_set_cdb2api(struct sqlclntstate *clnt, char *sqlstr,
+                            char *err, int errlen)
+{
+    int tmp;
+
+    if (sqlstr)
+        sqlstr = skipws(sqlstr);
+
+    if (!sqlstr) {
+        snprintf(err, errlen, "missing remsql setting");
+        return -1;
+    }
+
+    if (gbl_fdb_emulate_old) {
+        /* we want to emulate a pre-cdb2api failure to parse remsql SET
+         * options; just return error here, do not set err
+         */
+        return -1;
+    }
+
+    if (strncasecmp(sqlstr, "version ", 8) == 0) {
+        sqlstr += 7;
+        GET_INT(tmp);
+        clnt->remsql_set.server_version = tmp;
+
+        /* min version: cdb2api protocol first release */
+        if (clnt->remsql_set.server_version < FDB_VER_CDB2API) {
+            snprintf(err, errlen, "bad protocol %d",
+                     clnt->remsql_set.server_version);
+            return -1;
+        }
+        /* max version: gbl_fdb_default_ver */
+        if (clnt->remsql_set.server_version > gbl_fdb_default_ver) {
+            snprintf(err, errlen, "%s %d %d too high", err_cdb2apiold,
+                     gbl_fdb_default_ver, clnt->remsql_set.server_version);
+            return -1;
+        }
+    } else if (strncasecmp(sqlstr, "table ", 6) == 0) {
+        sqlstr += 5;
+        sqlstr = skipws(sqlstr);
+        if (!sqlstr) {
+            snprintf(err, errlen, "missing table name");
+            return -1;
+        }
+        char *ptr = sqlstr;
+        while (*ptr && ptr[0] != ' ')
+            ptr++;
+        int tbllen = ptr - sqlstr + 1;
+        if (tbllen > sizeof(clnt->remsql_set.tablename)) {
+            snprintf(err, errlen, "table name too long \"%s\"",
+                     sqlstr);
+            return -1;
+        }
+
+        memcpy(clnt->remsql_set.tablename, sqlstr, tbllen-1);
+        clnt->remsql_set.tablename[sizeof(clnt->remsql_set.tablename) - 1] = '\0';
+
+        sqlstr =  ptr;
+        if (sqlstr[0] != ' ') {
+            snprintf(err, errlen, "missing table version");
+            return -1;
+        }
+
+        GET_INT(tmp);
+        clnt->remsql_set.table_version = tmp;
+    } else if (strncasecmp(sqlstr, "schema ", 7) == 0) {
+        sqlstr += 6;
+        GET_INT(tmp);
+        if (tmp) {
+            clnt->remsql_set.is_schema = 1;
+        }
+    } else if (strncasecmp(sqlstr, "cursor ", 7) == 0) {
+        sqlstr += 6;
+        sqlstr = skipws(sqlstr);
+        if (!sqlstr) {
+            snprintf(err, errlen, "missing cursor uuid");
+            return -1;
+        }
+        if (uuid_parse(sqlstr, clnt->remsql_set.uuid)) {
+            snprintf(err, errlen, "failed to parse uuid");
+            return -1;
+        }
+    } else {
+        snprintf(err, errlen, "unknown setting \"%s\"", sqlstr);
+        return -1;
+    }
+    return 0;
+}
+
+int fdb_default_ver_set(int val)
+{
+    if (val != gbl_fdb_default_ver) {
+        if (val < FDB_VER_CDB2API) {
+            /* do not speak cdb2api if we set this too low */
+            gbl_fdb_remsql_cdb2api = 0;
+        }
+    }
+    return 0;
 }

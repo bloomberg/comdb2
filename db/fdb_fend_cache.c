@@ -151,7 +151,7 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
                 /* TODO: downgrade protocol */
                 abort();
             }
-            if (rc != IX_EMPTY) {
+            if (rc != IX_EMPTY/* && rc != IX_PASTEOF*/) {
                 logmsg(
                     LOGMSG_ERROR,
                     "%s: failed to read first row from %s.%s rc=%d retry %d\n",
@@ -190,7 +190,7 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
             }
         } while (rc == IX_FNDMORE || rc == IX_FND);
 
-        if (rc == IX_FND) {
+        if (rc == IX_FND/* || rc == IX_PASTEOF*/) {
             rc = 0;
             /* success, get out of here */
             break;
