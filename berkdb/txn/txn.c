@@ -1033,6 +1033,8 @@ extern pthread_rwlock_t gbl_dbreg_log_lock;
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
 
+extern int gbl_fullrecovery;
+
 /*
  * __txn_commit --
  *	Commit a transaction.
@@ -1137,7 +1139,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			return __db_panic(dbenv, c_ret);
 	}
 
-	elect_highest_committed_gen = dbenv->attr.elect_highest_committed_gen;
+    /* don't let full recovery write a (higher) generation: it will force this newly-recovered node to be master on the next election */
+	elect_highest_committed_gen = (dbenv->attr.elect_highest_committed_gen && !gbl_fullrecovery);
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
