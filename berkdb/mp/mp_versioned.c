@@ -12,7 +12,7 @@
 #include "dbinc/hmac.h"
 #include "dbinc_auto/hmac_ext.h"
 
-#define PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, pglsn) (log_compare(&highest_checkpoint_lsn, &pglsn) >= 0 || IS_NOT_LOGGED_LSN(pglsn) || (pglsn.file < smallest_logfile))
+#define PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, pglsn) (log_compare(&highest_checkpoint_lsn, &pglsn) > 0 || IS_NOT_LOGGED_LSN(pglsn) || (pglsn.file < smallest_logfile))
 
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
 
