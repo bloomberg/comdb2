@@ -3735,6 +3735,13 @@ gap_check:		max_lsn_dbtp = NULL;
 				__func__, ret);
 			goto err;
 		}
+
+		if (dbenv->txmap != NULL) {
+			Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+			dbenv->txmap->highest_checkpoint_lsn = ckp_args->ckp_lsn; 
+			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+		}
+
 		__os_free(dbenv, ckp_args);
 		if (gbl_flush_log_at_checkpoint)
 			__log_flush(dbenv, NULL);
