@@ -2080,7 +2080,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
     if (commit_lsn_map) {
 
         if ((ret = __txn_commit_map_add_nolock(dbenv, p->utxnid, lsn_out)) != 0) {
-            logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %lx\n", p->utxnid);
+            logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %"PRIu64"\n", p->utxnid);
             abort();
         }
 
@@ -2088,7 +2088,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
             UTXNID *elt;
             LISTC_FOR_EACH(lc.child_utxnids, elt, lnk) {
                 if ((ret = __txn_commit_map_add_nolock(dbenv, elt->utxnid, lsn_out)) != 0) {
-                    logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %lx\n", p->utxnid);
+                    logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %"PRIu64"\n", p->utxnid);
                     abort();
                 }
             }
