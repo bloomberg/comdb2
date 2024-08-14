@@ -461,6 +461,7 @@ int gbl_enable_cache_internal_nodes = 1;
 int gbl_use_modsnap_for_snapshot = 0;
 int gbl_modsnap_asof = 0;
 const snap_impl_enum gbl_snap_fallback_impl = SNAP_IMPL_MODSNAP;
+const snap_impl_enum gbl_snap_backup_fallback_impl = SNAP_IMPL_MODSNAP;
 snap_impl_enum gbl_snap_impl = SNAP_IMPL_MODSNAP;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
