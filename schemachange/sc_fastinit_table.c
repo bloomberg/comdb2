@@ -64,8 +64,8 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        sc_errf(s, "Table doesn't exists\n");
-        reqerrstr(iq, ERR_SC, "Table doesn't exists");
+        sc_errf(s, "Table doesn't exist\n");
+        reqerrstr(iq, ERR_SC, "Table doesn't exist");
         return SC_TABLE_DOESNOT_EXIST;
     }
 

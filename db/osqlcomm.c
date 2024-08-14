@@ -806,6 +806,11 @@ static uint8_t *osqlcomm_schemachange_type_get(struct schema_change_type *sc,
     return tmp_buf;
 }
 
+static char *osqlcomm_schemachange_tablename(uint8_t *p_buf, uint8_t *p_buf_end, int *type, char **newtable)
+{
+    return buf_get_schemachange_tablename(p_buf, p_buf_end, type, newtable);
+}
+
 static uint8_t *
 osqlcomm_schemachange_rpl_type_put(osql_rpl_t *hd,
                                    struct schema_change_type *sc,
@@ -6257,6 +6262,54 @@ static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
     return p_buf;
 }
 
+/**
+ * Collect all schema-change tables
+ *
+ */
+int osql_collect_schemachange_tables(struct ireq *iq, unsigned long long rqid, uuid_t uuid, void *trans, char **pmsg,
+                                     int msglen, int *flags, int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
+                                     struct block_err *err, int *receivedrows)
+{
+    uint8_t *p_buf, *p_buf_end;
+
+    int type, sctype;
+    char *msg = *pmsg;
+
+    p_buf = (uint8_t *)_get_txn_info(msg, rqid, uuid, &type);
+
+    if (type != OSQL_SCHEMACHANGE)
+        return 0;
+
+    p_buf_end = p_buf + msglen;
+
+    char *newtable = NULL, *tablename = osqlcomm_schemachange_tablename(p_buf, p_buf_end, &sctype, &newtable);
+    if (!tablename || !strlen(tablename)) {
+        assert(newtable == NULL);
+        return 0;
+    }
+
+    if (!iq->sc_tables) {
+        iq->sc_tables = hash_init_str(0);
+    }
+
+    if (hash_find(iq->sc_tables, tablename) == NULL) {
+        hash_add(iq->sc_tables, tablename);
+    } else {
+        free(tablename);
+    }
+
+    assert(!newtable || sctype == SC_RENAMETABLE);
+
+    if (sctype == SC_RENAMETABLE) {
+        if (hash_find(iq->sc_tables, newtable) == NULL) {
+            hash_add(iq->sc_tables, newtable);
+        } else {
+            free(newtable);
+        }
+    }
+
+    return 0;
+}
 
 /**
  * Handles each packet and start schema change
@@ -6296,8 +6349,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     if (gbl_enable_osql_logging) {
         uuidstr_t us;
-        logmsg(LOGMSG_DEBUG, "[%llu %s] OSQL_SCHEMACHANGE %s\n", rqid,
-               comdb2uuidstr(uuid, us), sc->tablename);
+        logmsg(LOGMSG_DEBUG, "[%llu %s] OSQL_SCHEMACHANGE %s\n", rqid, comdb2uuidstr(uuid, us), sc->tablename);
     }
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_ASYNC))
@@ -6305,6 +6357,9 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     else
         sc->nothrevent = 1;
     sc->finalize = 0;
+
+    if (iq->sc_tables && sc->tablename && strlen(sc->tablename) > 0)
+        assert((hash_find(iq->sc_tables, sc->tablename)) != NULL);
 
     iq->sc = sc;
     sc->iq = iq;

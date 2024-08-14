@@ -11190,6 +11190,18 @@ static int buf_get_schemachange_key_type(void *p_buf, void *p_buf_end)
     return LLMETA_SCHEMACHANGE_STATUS;
 }
 
+char *buf_get_schemachange_tablename(void *p_buf, void *p_buf_end, int *type, char **newtable)
+{
+    int sc_key_type = buf_get_schemachange_key_type((void *)p_buf, (void *)p_buf_end);
+    switch (sc_key_type) {
+    case LLMETA_SCHEMACHANGE_STATUS:
+        return buf_extract_tablename_v1((void *)p_buf, (void *)p_buf_end, type, newtable);
+    case LLMETA_SCHEMACHANGE_STATUS_V2:
+        return buf_extract_tablename_v2((void *)p_buf, (void *)p_buf_end, type, newtable);
+    }
+    return NULL;
+}
+
 void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end)
 {

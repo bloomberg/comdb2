@@ -186,6 +186,9 @@ void *hash_next(hash_t *h, void **ent, unsigned int *bkt);
 /* The default hash function.  The default compare function is memcmp(). */
 unsigned int hash_default_fixedwidth(const unsigned char *key, int len);
 
+/* Call free function on all members, clear & free the hash */
+void destroy_hash(hash_t *h, int (*free_func)(void *, void *));
+
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif
