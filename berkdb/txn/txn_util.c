@@ -560,8 +560,7 @@ int __txn_commit_map_add(dbenv, utxnid, commit_lsn)
 	alloc_delete_list = 0;
 	ret = 0;
 
-	/* Don't add transactions that commit at the zero LSN */
-	if (IS_ZERO_LSN(commit_lsn)) {
+	if ((utxnid == 0) || IS_ZERO_LSN(commit_lsn)) {
 		return ret;
 	}
 
@@ -570,7 +569,6 @@ int __txn_commit_map_add(dbenv, utxnid, commit_lsn)
 	txn = hash_find(txmap->transactions, &utxnid);
 
 	if (txn != NULL) { 
-		/* Don't add transactions that already exist in the map */
 		Pthread_mutex_unlock(&txmap->txmap_mutexp);
 		return ret;
 	}

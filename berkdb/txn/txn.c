@@ -93,10 +93,7 @@ int bdb_is_open(void *bdb_state);
 int comdb2_time_epoch(void);
 void ctrace(char *format, ...);
 
-int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
-
 extern int gbl_is_physical_replicant;
-extern int gbl_commit_lsn_map;
 
 #define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()		   bdb_rellock(bdb_state, __func__, __LINE__)
@@ -111,6 +108,10 @@ extern int gbl_commit_lsn_map;
 #if defined (UFID_HASH_DEBUG)
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
+
+int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+extern int gbl_commit_lsn_map;
+extern int gbl_utxnid_log;
 
 static int __txn_begin_int_with_prop(DB_TXN *txn, struct txn_properties *prop,
 	DB_LSN *we_start_at_this_lsn, u_int32_t flags);
@@ -1069,10 +1070,11 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	int32_t timestamp;
 	uint32_t gen;
 	u_int64_t context = 0;
-	int ret, t_ret, elect_highest_committed_gen, commit_lsn_map;
+	int ret, t_ret, elect_highest_committed_gen, commit_lsn_map, utxnid_log;
 
 	dbenv = txnp->mgrp->dbenv;
 	commit_lsn_map = gbl_commit_lsn_map;
+	utxnid_log = gbl_utxnid_log;
 
 	PANIC_CHECK(dbenv);
 
@@ -1525,7 +1527,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 			}
 
 			F_SET(txnp->parent, TXN_CHILDCOMMIT);
-			if (commit_lsn_map) {
+			if (utxnid_log && commit_lsn_map) {
 				if ((ret = __os_malloc(dbenv, sizeof(UTXNID), &utxnid_track)) != 0) {
 					goto err;
 				}
@@ -1565,7 +1567,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		return 0;
 	}
 
-	if (commit_lsn_map && !txnp->parent) {
+	if (utxnid_log && commit_lsn_map && !txnp->parent) {
 		ret = __txn_commit_map_add(dbenv, txnp->utxnid, txnp->last_lsn);
 		if (ret != 0) {
 			goto err;
