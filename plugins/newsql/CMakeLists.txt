@@ -31,7 +31,7 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
-set(NEWSQL_SRCS newsql.c newsql_sbuf.c newsql_evbuffer.c)
+set(NEWSQL_SRCS newsql.c newsql_evbuffer.c)
 add_plugin(newsql STATIC "${NEWSQL_SRCS}")
 add_dependencies(newsql sqlite) # Wait for parse.h
 if (COMDB2_BBCMAKE)

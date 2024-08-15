@@ -61,7 +61,6 @@ int srs_tran_empty(struct sqlclntstate *clnt);
  * Replay transaction using the current history
  *
  */
-int srs_tran_replay(struct sqlclntstate *);
 int srs_tran_replay_inline(struct sqlclntstate *);
 
 void srs_tran_print_history(struct sqlclntstate *clnt, int indent);

@@ -137,24 +137,8 @@ void appsock_stat(void)
 
 void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
 {
-    comdb2_appsock_t *rec;
-    unsigned int bkt;
-    void *ent;
-    uint32_t exec_count = 0;
-
     *n_appsock = total_appsock_conns;
-
-    /*
-      Iterate through the list of registered appsock handlers
-      and find the number of executions of SQL appsock handlers.
-    */
-    for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
-         rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
-        if (rec->flags & APPSOCK_FLAG_IS_SQL) {
-            exec_count += ATOMIC_LOAD32(rec->exec_count);
-        }
-    }
-    *n_sql = exec_count;
+    *n_sql = 0; /* TODO Gather all newsql + fastsql executions */
 }
 
 static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,

@@ -376,8 +376,3 @@ int srs_tran_replay_inline(struct sqlclntstate *clnt)
 {
     return srs_tran_replay_int(clnt, run_sql_query);
 }
-
-int srs_tran_replay(struct sqlclntstate *clnt)
-{
-    return srs_tran_replay_int(clnt, dispatch_sql_query);
-}

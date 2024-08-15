@@ -97,16 +97,9 @@ int subnet_blackout_timems = 5000;
 int gbl_net_maxconn = 0;
 int gbl_heartbeat_check = 5;
 
-#ifdef PER_THREAD_MALLOC
-#define HOST_MALLOC(h, sz) ((gbl_libevent) ? malloc((sz)) : comdb2_malloc((h)->msp, (sz)))
-#else
-#define HOST_MALLOC(h, sz) malloc(sz)
-#endif /* PER_THREAD_MALLOC */
-
 static int net_flush(host_node_type *host_node_ptr)
 {
-    return gbl_libevent ? net_flush_evbuffer(host_node_ptr)
-                        : sbuf2flush(host_node_ptr->sb);
+    return net_flush_evbuffer(host_node_ptr);
 }
 
 void net_set_subnet_blackout(int ms)
@@ -154,24 +147,6 @@ static void myfree(void *ptr)
 static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
                                                 const char hostname[],
                                                 int portnum);
-static int process_hello_common(netinfo_type *netinfo_ptr,
-                                host_node_type *host_node_ptr,
-                                int look_for_magic);
-static int process_hello(netinfo_type *netinfo_ptr,
-                         host_node_type *host_node_ptr);
-static int process_hello_reply(netinfo_type *netinfo_ptr,
-                               host_node_type *host_node_ptr);
-static int connect_to_host(netinfo_type *netinfo_ptr,
-                           host_node_type *host_node_ptr,
-                           host_node_type *sponsor_host);
-static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
-                                int *portnum, netinfo_type *netinfo_ptr);
-static void *accept_thread(void *arg);
-static void *heartbeat_send_thread(void *arg);
-static void *heartbeat_check_thread(void *arg);
-static void *writer_thread(void *args);
-static void *reader_thread(void *arg);
-static void *connect_thread(void *arg);
 
 static int net_writes(SBUF2 *sb, const char *buf, int nbytes);
 static int net_reads(SBUF2 *sb, char *buf, int nbytes);
@@ -179,8 +154,6 @@ static int net_reads(SBUF2 *sb, char *buf, int nbytes);
 static watchlist_node_type *get_watchlist_node(SBUF2 *, const char *funcname);
 
 int sbuf2ungetc(char c, SBUF2 *sb);
-
-static int net_portmux_hello(void *);
 
 /* Endian manipulation routines */
 static uint8_t *net_connect_message_put(const connect_message_type *msg_ptr,
@@ -379,31 +352,6 @@ net_ack_message_type_get(net_ack_message_type *p_net_ack_message_type,
     return p_buf;
 }
 
-typedef struct connect_and_accept {
-    netinfo_type *netinfo_ptr;
-    SBUF2 *sb;
-    struct in_addr addr;
-} connect_and_accept_t;
-
-/* Close socket related to hostnode.  */
-static void shutdown_hostnode_socket(host_node_type *host_node_ptr)
-{
-    if (gbl_libevent) {
-        return;
-    }
-    if (gbl_verbose_net) {
-        host_node_printf(LOGMSG_USER, host_node_ptr, "shutting down fd %d\n",
-                         host_node_ptr->fd);
-    }
-    if (shutdown(host_node_ptr->fd, 2) != 0) {
-        if (errno != ENOTCONN) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "%s: shutdown fd %d errno %d %s\n", __func__,
-                           host_node_ptr->fd, errno, strerror(errno));
-        }
-    }
-}
-
 /* This must be called while holding the host_node_ptr->lock.
  *
  * This will call shutdown() on the fd, which will cause the reader & writer
@@ -424,11 +372,6 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
            will never be applied */
         host_node_ptr->got_hello = 0;
 
-        shutdown_hostnode_socket(host_node_ptr);
-
-        /* wake up the writer thread if it's asleep */
-        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
-
         /* call the hostdown routine if provided */
         if (host_node_ptr->netinfo_ptr->hostdown_rtn) {
             (host_node_ptr->netinfo_ptr->hostdown_rtn)(
@@ -437,37 +380,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         }
     }
 
-    if (gbl_libevent) {
-        return;
-    }
-
-    /* If we have an fd or sbuf, and no reader or writer thread, then
-     * close the socket properly */
-    if (host_node_ptr->have_reader_thread == 0 &&
-        host_node_ptr->have_writer_thread == 0 &&
-        host_node_ptr->really_closed == 0
-    ){
-        SBUF2 *sb = host_node_ptr->sb;
-        if (sb) {
-            if (sslio_has_ssl(sb))
-                sslio_close(sb, 1);
-            sbuf2close(host_node_ptr->sb);
-            host_node_ptr->sb = NULL;
-            if (gbl_verbose_net)
-                host_node_printf(LOGMSG_DEBUG, host_node_ptr, "closing sbuf\n");
-        }
-        if (host_node_ptr->fd >= 0) {
-            if (gbl_verbose_net)
-                host_node_printf(LOGMSG_DEBUG, host_node_ptr, "close fd %d\n",
-                                 host_node_ptr->fd);
-            if (Close(host_node_ptr->fd) != 0)
-                host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s close fd %d errno %d %s\n",
-                               __func__, host_node_ptr->fd, errno,
-                               strerror(errno));
-            host_node_ptr->fd = -1;
-        }
-        host_node_ptr->really_closed = 1;
-    }
+    return;
 }
 
 static void close_hostnode(host_node_type *host_node_ptr)
@@ -520,213 +433,7 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
                       const wire_header_type *headptr, const struct iovec *iov,
                       int iovcount, int flags)
 {
-    if (gbl_libevent) {
-        return write_list_evbuffer(host_node_ptr, headptr->type, iov, iovcount, flags);
-    }
-    write_data *insert;
-    int ii;
-    size_t datasz;
-    char *ptr;
-    int rc;
-
-    Pthread_mutex_lock(&(host_node_ptr->enquelk));
-
-
-    /* let 1 message always slip in */
-    if (host_node_ptr->enque_count) {
-        if ((flags & WRITE_MSG_NOLIMIT) == 0 &&
-            ((host_node_ptr->enque_count > netinfo_ptr->max_queue) ||
-             (host_node_ptr->enque_bytes > netinfo_ptr->max_bytes))) {
-            host_node_ptr->num_queue_full++;
-
-            rc = -2;
-            goto out;
-        }
-    }
-
-    /* Although generic, this logic was really added to ensure that we
-     * don't double enque heartbeat messages.  Not sure how much this really
-     * happens in practice. */
-    if ((flags & WRITE_MSG_NODUPE) != 0 && host_node_ptr->write_head) {
-        const wire_header_type *newitem = headptr;
-        wire_header_type *headitem = &host_node_ptr->write_head->payload.header;
-        if (newitem->type == headitem->type) {
-            /* Dedupe this item */
-            host_node_ptr->dedupe_count++;
-            rc = 0;
-            goto out;
-        }
-    }
-
-    Pthread_mutex_unlock(&(host_node_ptr->enquelk));
-
-    for (datasz = 0, ii = 0; ii < iovcount; ii++) {
-        if (iov[ii].iov_base)
-            datasz += iov[ii].iov_len;
-    }
-    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN)
-        datasz += netinfo_ptr->myhostname_len;
-    if (host_node_ptr->hostname_len > HOSTNAME_LEN)
-        datasz += host_node_ptr->hostname_len;
-
-    time_metric_add(host_node_ptr->metric_queue_size, datasz);
-
-    /* Malloc space for the list item struct (which includes the net message
-     * header) and all the data in our iovec. */
-    insert = HOST_MALLOC(host_node_ptr, sizeof(write_data) + datasz);
-    if (insert == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: %s: %zu\n", __func__, strerror(errno),
-               datasz);
-        return -1;
-    }
-
-    insert->flags = flags;
-    insert->enque_time = comdb2_time_epoch();
-    insert->next = NULL;
-    insert->prev = NULL;
-    insert->len = sizeof(wire_header_type) + datasz;
-
-    memcpy(&insert->payload.header, headptr, sizeof(wire_header_type));
-    ptr = insert->payload.raw + sizeof(wire_header_type);
-    // start = insert->payload.raw;
-
-    /* if we have long hostnames, account for them here */
-    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
-        memcpy(ptr, netinfo_ptr->myhostname, netinfo_ptr->myhostname_len);
-        ptr += netinfo_ptr->myhostname_len;
-    }
-    if (host_node_ptr->hostname_len > HOSTNAME_LEN) {
-        memcpy(ptr, host_node_ptr->host, host_node_ptr->hostname_len);
-        ptr += host_node_ptr->hostname_len;
-    }
-    for (ii = 0; ii < iovcount; ii++) {
-        if (iov[ii].iov_base) {
-            memcpy(ptr, iov[ii].iov_base, iov[ii].iov_len);
-            ptr += iov[ii].iov_len;
-        }
-    }
-
-    Pthread_mutex_lock(&(host_node_ptr->enquelk));
-
-    if (host_node_ptr->write_head == NULL) {
-        host_node_ptr->write_head = host_node_ptr->write_tail = insert;
-        insert->next = insert->prev = NULL;
-    } else if (flags & WRITE_MSG_HEAD) {
-        /* Insert at head of list */
-        insert->next = host_node_ptr->write_head;
-        insert->prev = NULL;
-        host_node_ptr->write_head->prev = insert;
-        host_node_ptr->write_head = insert;
-    } else if (flags & WRITE_MSG_INORDER && netinfo_ptr->netcmp_rtn != NULL) {
-        int cnt = 0, cmp, reordered = 0;
-        write_data *ptr = host_node_ptr->write_tail;
-
-        while (ptr != NULL &&
-               (cmp = (netinfo_ptr->netcmp_rtn)(
-                    netinfo_ptr, insert->payload.raw, insert->len,
-                    ptr->payload.raw, ptr->len)) < 0 &&
-               cnt++ < netinfo_ptr->enque_reorder_lookahead) {
-            reordered = 1;
-            ptr = ptr->prev;
-        }
-
-        /* Update some stats */
-        if (reordered) {
-            netinfo_ptr->stats.reorders++;
-            host_node_ptr->stats.reorders++;
-        }
-
-        /* Insert at head */
-        if (ptr == NULL) {
-            insert->next = host_node_ptr->write_head;
-            insert->prev = NULL;
-            host_node_ptr->write_head->prev = insert;
-            host_node_ptr->write_head = insert;
-        } else {
-            insert->prev = ptr;
-            insert->next = ptr->next;
-
-            /* Normal case: will be at the tail */
-            if (ptr == host_node_ptr->write_tail) {
-                host_node_ptr->write_tail = insert;
-            } else {
-                ptr->next->prev = insert;
-            }
-            ptr->next = insert;
-        }
-    } else
-
-    {
-        /* Insert at tail of list */
-        host_node_ptr->write_tail->next = insert;
-        insert->prev = host_node_ptr->write_tail;
-        insert->next = NULL;
-        host_node_ptr->write_tail = insert;
-    }
-
-    if (netinfo_ptr->qstat_enque_rtn) {
-        (netinfo_ptr->qstat_enque_rtn)(netinfo_ptr, host_node_ptr->qstat,
-                                       insert->payload.raw, insert->len);
-    }
-
-    if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
-        logmsg(LOGMSG_USER, "Queing %zu bytes %llu\n", insert->len, gettmms());
-
-    update_host_net_queue_stats(host_node_ptr, 1, insert->len);
-
-    rc = 0;
-
-out:
-    Pthread_mutex_unlock(&(host_node_ptr->enquelk));
-    return rc;
-}
-
-int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
-                SBUF2 *sb, void *inptr, int maxbytes)
-{
-    uint8_t *ptr = inptr;
-    const int fd = sbuf2fileno(sb);
-    int nread = 0;
-    while (nread < maxbytes) {
-        if (host_node_ptr) /* not set by all callers */
-            host_node_ptr->timestamp = time(NULL);
-        int n = sbuf2unbufferedread(sb, (char *)ptr + nread, maxbytes - nread);
-        if (n > 0) {
-            nread += n;
-        } else if (n < 0) {
-            if (errno == EAGAIN) { /* wait for some data */
-                struct pollfd pol;
-                pol.fd = fd;
-                pol.events = POLLIN;
-                if (poll(&pol, 1, -1) < 0) {
-                    break;
-                }
-                if ((pol.revents & POLLIN) == 0) {
-                    break;
-                }
-            } else if (errno == EINTR) { /* just read again */
-                continue;
-            } else {
-                if (host_node_ptr)
-                    host_node_printf(LOGMSG_USER, host_node_ptr, "%s:%s\n",
-                                     __func__, strerror(errno));
-                else
-                    logmsgperror(__func__);
-                break;
-            }
-        } else { /* n == 0; EOF */
-            break;
-        }
-    }
-
-    if (nread > 0) {
-        if (netinfo_ptr) /* not set by all callers */
-            netinfo_ptr->stats.bytes_read += nread;
-        if (host_node_ptr)
-            host_node_ptr->stats.bytes_read += nread;
-    }
-
-    return nread;
+    return write_list_evbuffer(host_node_ptr, headptr->type, iov, iovcount, flags);
 }
 
 /*
@@ -837,179 +544,17 @@ void net_delay(const char *host)
     }
 }
 
-static ssize_t write_stream(netinfo_type *netinfo_ptr,
-                            host_node_type *hostinfo_ptr, SBUF2 *sb,
-                            void *inptr, size_t maxbytes)
-{
-    if (gbl_libevent) {
-        abort();
-    }
-    int nwrite = sbuf2write(inptr, maxbytes, sb);
-
-    /* Note for future - this locking seems OTT.  We must already be under lock
-     * here or we couldn't safely use the sbuf. */
-    if (nwrite > 0) {
-        /* update these stats without lock */
-        netinfo_ptr->stats.bytes_written += nwrite;
-        if (hostinfo_ptr)
-            hostinfo_ptr->stats.bytes_written += nwrite;
-    }
-
-    return nwrite;
-}
-
 extern ssl_mode gbl_rep_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
-static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
-                                int *portnum, netinfo_type *netinfo_ptr)
-{
-    connect_message_type connect_message;
-    uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
-    int rc;
-    int hosteq = 0;
-    char from_hostname[256];
-    char to_hostname[256];
-    int namelen;
-
-    rc = read_stream(netinfo_ptr, NULL, sb, &conndata,
-                     NET_CONNECT_MESSAGE_TYPE_LEN);
-    if (rc != NET_CONNECT_MESSAGE_TYPE_LEN)
-        return -1;
-
-    p_buf = conndata;
-    p_buf_end = (conndata + sizeof(conndata));
-
-    if (!(net_connect_message_get(&connect_message, p_buf, p_buf_end))) {
-        return -1;
-    }
-
-    /* If the hostname doesn't fit in HOSTNAME_LEN (16) characters,
-     * the first byte of host will be '.' followed by the name length,
-     * and the real hostname follows. */
-    if (connect_message.from_hostname[0] == '.') {
-        connect_message.from_hostname[HOSTNAME_LEN - 1] = 0;
-        namelen = atoi(&connect_message.from_hostname[1]);
-        if (namelen < 0 || namelen > sizeof(from_hostname)) {
-            logmsg(LOGMSG_WARN, "Invalid hostname length %d\n", namelen);
-            return 1;
-        }
-        rc = read_stream(netinfo_ptr, NULL, sb, from_hostname, namelen);
-        if (rc != namelen)
-            return -1;
-    } else {
-        strncpy0(from_hostname, connect_message.from_hostname, HOSTNAME_LEN);
-    }
-
-    if (connect_message.to_hostname[0] == '.') {
-        connect_message.to_hostname[HOSTNAME_LEN - 1] = 0;
-        namelen = atoi(&connect_message.to_hostname[1]);
-        if (namelen < 0 || namelen > sizeof(to_hostname)) {
-            logmsg(LOGMSG_WARN, "Invalid hostname length %d\n", namelen);
-            return 1;
-        }
-        rc = read_stream(netinfo_ptr, NULL, sb, to_hostname, namelen);
-        if (rc != namelen)
-            return -1;
-    } else {
-        strncpy0(to_hostname, connect_message.to_hostname, HOSTNAME_LEN);
-    }
-
-    if (strcmp(netinfo_ptr->myhostname, to_hostname) == 0)
-        hosteq = 1;
-
-    if ((!hosteq) || ((netinfo_ptr->myport != connect_message.to_portnum))) {
-        logmsg(LOGMSG_ERROR,
-               "netinfo_ptr->hostname = %s, "
-               "connect_message.to_hostname = %s\n",
-               netinfo_ptr->myhostname, to_hostname);
-        logmsg(LOGMSG_ERROR, 
-                "netinfo_ptr->myport != connect_message.to_portnum %d %d\n",
-                netinfo_ptr->myport, connect_message.to_portnum);
-        logmsg(LOGMSG_ERROR, "origin: from=hostname=%s node=%d port=%d\n",
-               from_hostname, connect_message.from_nodenum,
-               connect_message.from_portnum);
-        logmsg(LOGMSG_ERROR, "service: %s\n", netinfo_ptr->service);
-
-        return -1;
-    }
-
-    if (netinfo_ptr->allow_rtn &&
-        !netinfo_ptr->allow_rtn(netinfo_ptr, intern(from_hostname))) {
-        logmsg(LOGMSG_ERROR,
-               "received connection from node %d, hostname %s which is not "
-               "allowed\n",
-               connect_message.from_nodenum, from_hostname);
-        return -2;
-    }
-
-    strncpy(hostname, from_hostname, hostnamel);
-    *portnum = connect_message.from_portnum;
-
-    if (connect_message.flags & CONNECT_MSG_SSL) {
-        if (!SSL_IS_ABLE(gbl_rep_ssl_mode)) {
-            /* Reject if mis-configured. */
-            logmsg(LOGMSG_ERROR,
-                   "Misconfiguration: Peer requested SSL, "
-                   "but I don't have an SSL key pair.\n");
-            return -1;
-        }
-
-        rc = sslio_accept(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
-                          gbl_nid_dbname, 1);
-        if (rc != 1) {
-            char err[256];
-            sbuf2lasterror(sb, err, sizeof(err));
-            logmsg(LOGMSG_ERROR, "%s\n", err);
-            return -1;
-        }
-    } else if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
-        /* Reject if I require SSL. */
-        logmsg(LOGMSG_WARN,
-               "Replicant SSL connections are required.\n");
-        return -1;
-    }
-
-    return 0;
-}
-
-static int empty_write_list(host_node_type *host_node_ptr)
-{
-    write_data *ptr, *nxt;
-
-    Pthread_mutex_lock(&(host_node_ptr->enquelk));
-
-    nxt = ptr = host_node_ptr->write_head;
-    while (nxt != NULL) {
-        ptr = ptr->next;
-        free(nxt);
-        nxt = ptr;
-    }
-    host_node_ptr->write_head = host_node_ptr->write_tail = NULL;
-
-    host_node_ptr->enque_count = 0;
-    host_node_ptr->enque_bytes = 0;
-
-    Pthread_mutex_unlock(&(host_node_ptr->enquelk));
-
-    return 0;
-}
 
 int write_connect_message(netinfo_type *netinfo_ptr,
                           host_node_type *host_node_ptr, SBUF2 *sb)
 {
     connect_message_type connect_message;
     uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN] = {0}, *p_buf, *p_buf_end;
-    int rc;
     char type = 0;
     int append_to = 0, append_from = 0;
 
-    if (!gbl_libevent) {
-        rc = write_stream(netinfo_ptr, host_node_ptr, sb, &type, sizeof(char));
-        if (rc != sizeof(char)) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr, "write connect message error\n");
-            return 1;
-        }
-    }
 
     memset(&connect_message, 0, sizeof(connect_message_type));
 
@@ -1052,73 +597,31 @@ int write_connect_message(netinfo_type *netinfo_ptr,
 
     net_connect_message_put(&connect_message, p_buf, p_buf_end);
 
-    if (gbl_libevent) {
-        int i = 0;
-        int n = 2 + append_from + append_to;
-        struct iovec iov[n];
+    int i = 0;
+    int n = 2 + append_from + append_to;
+    struct iovec iov[n];
 
-        iov[i].iov_base = &type;
-        iov[i].iov_len = sizeof(type);
-        ++i;
+    iov[i].iov_base = &type;
+    iov[i].iov_len = sizeof(type);
+    ++i;
 
-        iov[i].iov_base = &conndata;
-        iov[i].iov_len = NET_CONNECT_MESSAGE_TYPE_LEN;
-        ++i;
+    iov[i].iov_base = &conndata;
+    iov[i].iov_len = NET_CONNECT_MESSAGE_TYPE_LEN;
+    ++i;
 
-        if (append_from) {
-            iov[i].iov_base = netinfo_ptr->myhostname;
-            iov[i].iov_len = netinfo_ptr->myhostname_len;
-            ++i;
-        }
-
-        if (append_to) {
-            iov[i].iov_base = host_node_ptr->host;
-            iov[i].iov_len = host_node_ptr->hostname_len;
-            ++i;
-        }
-
-        return write_connect_message_evbuffer(host_node_ptr, iov, n);
-    }
-
-    /* always do a write_stream for the connect message */
-    rc = write_stream(netinfo_ptr, host_node_ptr, sb, &conndata,
-                      NET_CONNECT_MESSAGE_TYPE_LEN);
-    if (rc != sizeof(connect_message_type)) {
-        host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                       "write connect message error\n");
-        return 1;
-    }
     if (append_from) {
-        rc = write_stream(netinfo_ptr, host_node_ptr, sb,
-                          netinfo_ptr->myhostname, netinfo_ptr->myhostname_len);
-        if (rc != netinfo_ptr->myhostname_len) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "write connect message error (from)\n");
-            return 1;
-        }
+        iov[i].iov_base = netinfo_ptr->myhostname;
+        iov[i].iov_len = netinfo_ptr->myhostname_len;
+        ++i;
     }
+
     if (append_to) {
-        rc = write_stream(netinfo_ptr, host_node_ptr, sb, host_node_ptr->host,
-                          host_node_ptr->hostname_len);
-        if (rc != host_node_ptr->hostname_len) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "write connect message error (to)\n");
-            return 1;
-        }
+        iov[i].iov_base = host_node_ptr->host;
+        iov[i].iov_len = host_node_ptr->hostname_len;
+        ++i;
     }
 
-    if (SSL_IS_REQUIRED(gbl_rep_ssl_mode)) {
-        net_flush(host_node_ptr);
-        if (sslio_connect(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
-                          gbl_nid_dbname, 1) != 1) {
-            char err[256];
-            sbuf2lasterror(sb, err, sizeof(err));
-            logmsg(LOGMSG_ERROR, "%s\n", err);
-            return 1;
-        }
-    }
-
-    return 0;
+    return write_connect_message_evbuffer(host_node_ptr, iov, n);
 }
 
 /* To reduce double buffering and other daftness this has evolved a sort of
@@ -1158,23 +661,9 @@ static int write_message_int(netinfo_type *netinfo_ptr,
             logmsg(LOGMSG_ERROR, "%s: got reallybad failure?\n", __func__);
             return 2;
         } else {
-            if (rc == -2) {
-                /* write list is full, can't do anymore writes to list
-                   wake up the writer thread, to write to net. */
-                Pthread_cond_signal(&(host_node_ptr->write_wakeup));
-            }
             return rc;
         }
     }
-
-    if (gbl_libevent) {
-        return 0;
-    }
-
-    /* wake up the writer thread */
-    if (flags & WRITE_MSG_NODELAY)
-        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
-
     return 0;
 }
 
@@ -1205,54 +694,6 @@ static int write_message(netinfo_type *netinfo_ptr,
     struct iovec iov = {(void *)data, datalen};
     return write_message_int(netinfo_ptr, host_node_ptr, type, &iov, 1,
                              WRITE_MSG_NODELAY);
-}
-
-static int read_message_header(netinfo_type *netinfo_ptr,
-                               host_node_type *host_node_ptr,
-                               wire_header_type *wire_header,
-                               char fromhost[256], char tohost[256])
-{
-    int rc;
-    wire_header_type tmpheader;
-    uint8_t *p_buf, *p_buf_end;
-    int namelen;
-
-    rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, &tmpheader,
-                     sizeof(wire_header_type));
-
-    if (rc != sizeof(wire_header_type))
-        return 1;
-
-    p_buf = (uint8_t *)&tmpheader;
-    p_buf_end = ((uint8_t *)&tmpheader + sizeof(wire_header_type));
-
-    net_wire_header_get(wire_header, p_buf, p_buf_end);
-    if (wire_header->fromhost[0] == '.') {
-        wire_header->fromhost[HOSTNAME_LEN - 1] = 0;
-        namelen = atoi(&wire_header->fromhost[1]);
-        if (namelen < 1 || namelen > 256)
-            return 1;
-        rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb,
-                         fromhost, namelen);
-        if (rc != namelen)
-            return 1;
-    } else {
-        strncpy0(fromhost, wire_header->fromhost, HOSTNAME_LEN);
-    }
-    if (wire_header->tohost[0] == '.') {
-        wire_header->tohost[HOSTNAME_LEN - 1] = 0;
-        namelen = atoi(&wire_header->tohost[1]);
-        if (namelen < 1 || namelen > 256)
-            return 1;
-        rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, tohost,
-                         namelen);
-        if (rc != namelen)
-            return 1;
-    } else {
-        strncpy0(tohost, wire_header->tohost, HOSTNAME_LEN);
-    }
-
-    return 0;
 }
 
 int write_heartbeat(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
@@ -1297,7 +738,7 @@ static int write_hello_int(netinfo_type *netinfo_ptr, host_node_type *host_node_
         if (tmp_host_ptr->hostname_len > HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
-    data = HOST_MALLOC(host_node_ptr, datasz);
+    data = malloc(datasz);
     memset(data, 0, datasz);
 
     p_buf = (uint8_t *)data;
@@ -1387,7 +828,7 @@ static seq_data *add_seqnum_to_waitlist(host_node_type *host_node_ptr,
                                         int seqnum)
 {
     seq_data *new_seq_node, *seq_list_ptr;
-    new_seq_node = HOST_MALLOC(host_node_ptr, sizeof(seq_data));
+    new_seq_node = malloc(sizeof(seq_data));
     memset(new_seq_node, 0, sizeof(seq_data));
     new_seq_node->seqnum = seqnum;
     new_seq_node->timestamp = time(NULL);
@@ -1700,15 +1141,10 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
             goto end;
         }
 
-        if (gbl_libevent)  {
-            Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-            rc = pthread_cond_timedwait(&(host_node_ptr->ack_wakeup), &(host_node_ptr->wait_mutex), &waittime);
-            if (rc == EINVAL) return rc;
-            Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-        } else {
-            rc = pthread_cond_timedwait(&(host_node_ptr->ack_wakeup), &(host_node_ptr->wait_mutex), &waittime);
-            if (rc == EINVAL) goto end;
-        }
+        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+        rc = pthread_cond_timedwait(&(host_node_ptr->ack_wakeup), &(host_node_ptr->wait_mutex), &waittime);
+        if (rc == EINVAL) return rc;
+        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
     }
 
 end:
@@ -1776,223 +1212,15 @@ int net_get_stack_flush_threshold(void) { return stack_flush_min; }
 
 void net_set_stack_flush_threshold(int thresh) { stack_flush_min = thresh; }
 
-int gbl_dump_full_net_queue = 0;
-
-static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
-{
-    int now, logput_cnt = 0, non_logput_cnt = 0;
-
-    if (netinfo_ptr->getlsn_rtn == NULL)
-        return;
-
-    if ((now = time(NULL)) - host_node_ptr->last_queue_dump) {
-        write_data *ptr;
-        int file, offset, rc, wl = 0;
-        logmsg(LOGMSG_USER, "Dumping net-queue for %s\n", host_node_ptr->host);
-        Pthread_mutex_lock(&(host_node_ptr->enquelk));
-        ptr = host_node_ptr->write_head;
-        while (ptr != NULL) {
-            if ((rc = (netinfo_ptr->getlsn_rtn)(netinfo_ptr, ptr->payload.raw,
-                                                ptr->len, &file, &offset)) ==
-                0) {
-                logput_cnt++;
-                if (wl == 0) {
-                    logmsg(LOGMSG_USER, "%s: ", host_node_ptr->host);
-                }
-                logmsg(LOGMSG_USER, "%d:%d ", file, offset);
-                wl = 1;
-                if ((logput_cnt % 20) == 0) {
-                    logmsg(LOGMSG_USER, "\n");
-                    wl = 0;
-                }
-            } else {
-                non_logput_cnt++;
-            }
-            ptr = ptr->next;
-        }
-        Pthread_mutex_unlock(&(host_node_ptr->enquelk));
-
-        if (wl) {
-            logmsg(LOGMSG_USER, "\n");
-        }
-        logmsg(LOGMSG_USER, "%s: %d logputs, %d other\n", host_node_ptr->host,
-               logput_cnt, non_logput_cnt);
-        host_node_ptr->last_queue_dump = now;
-    }
-}
-
 static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int usertype, void *data, int datalen, int nodelay,
                         int numtails, void **tails, int *taillens, int nodrop,
                         int inorder, int trace)
 {
-    if (gbl_libevent) {
         int f = 0;
         if (nodelay) f |= NET_SEND_NODELAY;
         if (nodrop) f |= NET_SEND_NODROP;
         return net_send_evbuffer(netinfo_ptr, host, usertype, data, datalen, numtails, tails, taillens, f);
-    }
-    host_node_type *host_node_ptr;
-    net_send_message_header tmphd, msghd;
-    uint8_t *p_buf, *p_buf_end;
-    int rc;
-    struct iovec iov[35];
-    int iovcount;
-    int total_tails_len = 0;
-    int i;
-    int tailen;
-#if 0
-   if (strcmp(netinfo_ptr->service, "offloadsql") == 0) {
-       printf("net %s usertype %d to %s\n", netinfo_ptr->service, usertype, host);
-   }
-#endif
-#ifdef UDP_DEBUG
-    if (usertype == 2) {
-        int last = __atomic_exchange_n(&curr_udp_cnt, 0, __ATOMIC_SEQ_CST);
-        if (last > 0)
-            logmsg(LOGMSG_USER, "udp_packets sent %d\n", last);
-    }
-#endif
-
-    rc = 0;
-    if (numtails > 32) {
-        logmsg(LOGMSG_ERROR, "too many tails %d passed to net_send_tails, max 32\n",
-               numtails);
-        return -1;
-    }
-
-    /* testpoint- throw 'queue-full' errors */
-    if ((0 == rc) && (NET_TEST_QUEUE_FULL == netinfo_ptr->net_test) &&
-        (rand() % 100) == 0) {
-        logmsg(LOGMSG_INFO, "%s line %d debug/random QUEUE-FULL\n", __func__,
-               __LINE__);
-        return NET_SEND_FAIL_QUEUE_FULL;
-    }
-
-    /* do nothing if we have a fake netinfo */
-    if (netinfo_ptr->fake) {
-        return 0;
-    }
-
-    for (i = 0; i < numtails; i++)
-        total_tails_len += taillens[i];
-
-    tailen =
-        (numtails > 0 && tails && total_tails_len > 0) ? total_tails_len : 0;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, host);
-    if (host_node_ptr == NULL) {
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning INVALIDNODE\n", __func__,
-                   __LINE__);
-        }
-        return NET_SEND_FAIL_INVALIDNODE;
-    }
-
-    if (host_node_ptr->host == netinfo_ptr->myhostname) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning FAIL_SENDTOME\n",
-                   __func__, __LINE__);
-        }
-        rc = NET_SEND_FAIL_SENDTOME;
-        goto end;
-    }
-
-    /* fail if we don't have a socket */
-    if (host_node_ptr->fd == -1 || host_node_ptr->closed) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning NOSOCK\n", __func__,
-                   __LINE__);
-        }
-        rc = NET_SEND_FAIL_NOSOCK;
-        goto end;
-    }
-
-    host_node_ptr->num_sends++;
-    if (nodelay) {
-        explicit_flushes++;
-        net_trace_explicit_flush();
-    } else if (host_node_ptr->num_sends > netinfo_ptr->enque_flush_interval) {
-        send_interval_flushes++;
-        nodelay = 1;
-    }
-
-    if (nodelay)
-        host_node_ptr->num_sends = 0;
-
-    /*ctrace("net_send_message: to node %s, ut=%d\n", host_node_ptr->host, usertype);*/
-
-    msghd.usertype = usertype;
-    msghd.seqnum = ATOMIC_ADD32(netinfo_ptr->seqnum, 1);
-    msghd.waitforack = 0;
-    msghd.datalen = datalen + tailen;
-
-    p_buf = (uint8_t *)&tmphd;
-    p_buf_end = ((uint8_t *)&tmphd + sizeof(net_send_message_header));
-
-    net_send_message_header_put(&msghd, p_buf, p_buf_end);
-
-    iov[0].iov_base = (int8_t *)&tmphd;
-    iov[0].iov_len = sizeof(tmphd);
-    iovcount = 1;
-    if (data && datalen) {
-        iov[iovcount].iov_base = data;
-        iov[iovcount].iov_len = datalen;
-        iovcount++;
-    }
-    if (numtails > 0) {
-        for (i = 0; i < numtails; i++) {
-            iov[iovcount].iov_base = tails[i];
-            iov[iovcount].iov_len = taillens[i];
-            iovcount++;
-        }
-    }
-
-    if (nodelay) {
-        host_node_ptr->num_flushes++;
-        num_flushes++;
-    }
-
-    rc = write_message_checkhello(netinfo_ptr, host_node_ptr,
-                                  WIRE_HEADER_USER_MSG, iov, iovcount, nodelay,
-                                  nodrop, inorder);
-
-    /* queue is full */
-    if (-2 == rc) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning QUEUE-FULL\n", __func__,
-                   __LINE__);
-        }
-        rc = NET_SEND_FAIL_QUEUE_FULL;
-    }
-
-    /* write_list failed to malloc */
-    else if (2 == rc) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning MALLOC-FAIL\n", __func__,
-                   __LINE__);
-        }
-        rc = NET_SEND_FAIL_MALLOC_FAIL;
-    }
-
-    /* all other failures */
-    else if (0 != rc) {
-        if (trace) {
-            logmsg(LOGMSG_USER, "%s line %d returning WRITEFAIL\n", __func__,
-                   __LINE__);
-        }
-        rc = NET_SEND_FAIL_WRITEFAIL;
-    }
-
-end:
-
-    if (rc == NET_SEND_FAIL_QUEUE_FULL && gbl_dump_full_net_queue)
-        dump_queue(netinfo_ptr, host_node_ptr);
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-    return rc;
 }
 
 int net_send_authcheck_all(netinfo_type *netinfo_ptr)
@@ -2287,18 +1515,7 @@ void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter,
 
 void net_queue_stat_iterate(netinfo_type *netinfo_ptr, QSTATITERFP qs_iter, struct net_get_records *arg)
 {
-    if (gbl_libevent) {
-        net_queue_stat_iterate_evbuffer(netinfo_ptr, qs_iter, arg);
-        return;
-    }
-    host_node_type *tmp_host_ptr;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    for (tmp_host_ptr = netinfo_ptr->head; tmp_host_ptr != NULL;
-         tmp_host_ptr = tmp_host_ptr->next) {
-        qs_iter(arg, tmp_host_ptr->qstat);
-    }
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+    net_queue_stat_iterate_evbuffer(netinfo_ptr, qs_iter, arg);
 }
 
 int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func)
@@ -2323,13 +1540,6 @@ int net_register_hostdown(netinfo_type *netinfo_ptr, HOSTDOWNFP *func)
 int net_register_name(netinfo_type *netinfo_ptr, char name[])
 {
     netinfo_ptr->name = strdup(name);
-
-    return 0;
-}
-
-int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func)
-{
-    netinfo_ptr->hello_rtn = func;
 
     return 0;
 }
@@ -2541,32 +1751,6 @@ host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr, const char hostname
         abort();
     }
 
-#ifdef PER_THREAD_MALLOC
-    if (!gbl_libevent) {
-        if (gbl_verbose_net)
-            logmsg(LOGMSG_INFO, "creating %d byte buffer pool for node %s\n", netinfo_ptr->pool_size, hostname);
-
-        size_t scopelen = strlen(hostname) + sizeof(netinfo_ptr->service) + 2;
-        char *scope = malloc(scopelen);
-        if (scope == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__, hostname);
-            free(ptr);
-            return NULL;
-        }
-
-        snprintf(scope, scopelen, "%s@%s", netinfo_ptr->service, hostname);
-        ptr->msp = comdb2ma_create_with_scope(netinfo_ptr->pool_size, 0, "NET", scope, 1);
-        if (ptr->msp == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__, hostname);
-            free(scope);
-            free(ptr);
-            return NULL;
-        }
-    }
-#endif /* PER_THREAD_MALLOC */
-
-    Pthread_mutex_init(&(ptr->write_lock), NULL);
-
     ptr->netinfo_ptr = netinfo_ptr;
     ptr->closed = 1;
     ptr->really_closed = 1;
@@ -2583,16 +1767,10 @@ host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr, const char hostname
     Pthread_mutex_init(&(ptr->lock), NULL);
     Pthread_mutex_init(&(ptr->timestamp_lock), NULL);
 
-    if (!gbl_libevent) {
-        ptr->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
-    }
-
     Pthread_mutex_init(&(ptr->enquelk), NULL);
     Pthread_mutex_init(&(ptr->wait_mutex), NULL);
     Pthread_mutex_init(&(ptr->waiter_lock), NULL);
     Pthread_cond_init(&(ptr->ack_wakeup), NULL);
-    Pthread_cond_init(&(ptr->write_wakeup), NULL);
-    Pthread_cond_init(&(ptr->waiter_wakeup), NULL);
 
     if (netinfo_ptr->qstat_init_rtn) {
         ptr->qstat = (netinfo_ptr->qstat_init_rtn)(
@@ -2678,52 +1856,19 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
         netinfo_ptr->last_used_node_ptr = NULL;
     }
 
-    if (host_node_ptr->write_head != NULL) {
-        /* purge anything pending to be sent */
-        Pthread_mutex_lock(&(host_node_ptr->write_lock));
-        empty_write_list(host_node_ptr);
-        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-    }
 
     Pthread_mutex_lock(&(host_node_ptr->lock));
     close_hostnode_ll(host_node_ptr);
-    while (host_node_ptr->have_connect_thread ||
-           host_node_ptr->have_reader_thread ||
-           host_node_ptr->have_writer_thread) {
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        sleep(1);
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-        Pthread_mutex_lock(&(host_node_ptr->lock));
-        printf("%s:%s connect_thd:%d reader_thd:%d writer_thd:%d\n",
-               netinfo_ptr->service, host_node_ptr->host,
-               host_node_ptr->have_connect_thread,
-               host_node_ptr->have_reader_thread,
-               host_node_ptr->have_writer_thread);
-    }
     Pthread_mutex_unlock(&(host_node_ptr->lock));
     Pthread_mutex_destroy(&(host_node_ptr->lock));
     Pthread_mutex_destroy(&(host_node_ptr->timestamp_lock));
-    Pthread_mutex_destroy(&(host_node_ptr->write_lock));
     Pthread_mutex_destroy(&(host_node_ptr->enquelk));
     Pthread_mutex_destroy(&(host_node_ptr->wait_mutex));
     Pthread_mutex_destroy(&(host_node_ptr->waiter_lock));
 
     Pthread_cond_destroy(&(host_node_ptr->ack_wakeup));
-    Pthread_cond_destroy(&(host_node_ptr->write_wakeup));
     Pthread_cond_destroy(&(host_node_ptr->waiter_wakeup));
 
-#ifdef PER_THREAD_MALLOC
-    if (!gbl_libevent)
-        comdb2ma_destroy(host_node_ptr->msp);
-#endif /* PER_THREAD_MALLOC */
-
-    free(host_node_ptr->user_data_buf);
-    sbuf2free(host_node_ptr->sb);
-
-#ifndef NDEBUG
-    memset(host_node_ptr, 0, sizeof(host_node_type));
-#endif
     free(host_node_ptr);
 }
 
@@ -3076,7 +2221,6 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     /* Only look 20 buffers ahead for reordering */
     netinfo_ptr->enque_reorder_lookahead = 20;
 
-    netinfo_ptr->heartbeat_send_time = 1;
     netinfo_ptr->heartbeat_check_time = gbl_heartbeat_check;
 
     netinfo_ptr->bufsz = 1 * 1024 * 1024;
@@ -3119,20 +2263,10 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
 
     Pthread_mutex_init(&(netinfo_ptr->connlk), NULL);
 
-    netinfo_ptr->connpool =
-        pool_setalloc_init(sizeof(connect_and_accept_t), 0, malloc, free);
-    if (netinfo_ptr->connpool == NULL) {
-        logmsg(LOGMSG_ERROR, "create_netinfo: couldn't init connect_and_accept pool\n");
-        goto fail;
-    }
-
     Pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
     Pthread_mutex_init(&(netinfo_ptr->stop_thread_callback_lock), NULL);
     Pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
     Pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
-
-    netinfo_ptr->pool_size = 512 * 1024;
-    netinfo_ptr->user_data_buf_size = 256 * 1024;
 
     netinfo_ptr->throttle_percent = 50;
     netinfo_ptr->seqnum = ((unsigned int)getpid()) * 65537;
@@ -3236,173 +2370,6 @@ void print_netinfo(netinfo_type *netinfo_ptr)
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 }
 
-/*
-   caller is expected to pass in array of pointers and array of ints,
-   specifying size of the array in numhosts.
-   upon return, ports array will be filled with ints
-   hosts array will be filled with pointers.  caller must free each
-   pointer when done.  numhosts will be set upon return to indicate
-   number of entries actually returned
- */
-static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
-                         int ports[], int *numhosts)
-{
-    int datasz;
-    int i;
-    int num = 0;
-    char *data;
-    int rc;
-    int tmp;
-    uint8_t *p_buf, *p_buf_end;
-
-    rc = read_stream(netinfo_ptr, NULL, sb, &tmp, sizeof(int));
-    if (rc < 0)
-        return -1;
-    if (rc != sizeof(int)) {
-        return 1;
-    }
-
-    p_buf = (uint8_t *)&tmp;
-    p_buf_end = ((uint8_t *)&tmp + sizeof(int));
-    buf_get(&datasz, sizeof(int), p_buf, p_buf_end);
-
-    /* some reasonable sanity check on datasz */
-    if ((datasz < 10) || (datasz > 1024 * 1024)) {
-        return 1;
-    }
-
-    data = malloc(datasz);
-    p_buf = (uint8_t *)data;
-    p_buf_end = ((uint8_t *)data + datasz);
-
-    /* read one integer less than datasz because we already read
-       datasz */
-    rc = read_stream(netinfo_ptr, NULL, sb, data, datasz - sizeof(int));
-    if (rc < 0)
-        return -1;
-    if (rc != (datasz - sizeof(int))) {
-        free(data);
-        return 1;
-    }
-
-    /* copy out the numhosts */
-    p_buf = (uint8_t *)buf_get(&num, sizeof(num), p_buf, p_buf_end);
-
-    /* make sure we only return what fits in the user's buffer */
-    if (num < *numhosts)
-        *numhosts = num;
-
-    /* copy out the hosts, make sure the strings are \0 terminated */
-    for (i = 0; i < *numhosts; i++) {
-        hosts[i] = malloc(HOSTNAME_LEN + 1);
-        p_buf =
-            (uint8_t *)buf_no_net_get(hosts[i], HOSTNAME_LEN, p_buf, p_buf_end);
-        hosts[i][HOSTNAME_LEN] = '\0';
-    }
-
-    /* copy out the ports */
-    for (i = 0; i < *numhosts; i++) {
-        int *p_port = (ports + i);
-        p_buf = (uint8_t *)buf_get(p_port, sizeof(int), p_buf, p_buf_end);
-        /* older comdb2 will not handle mangled ports and might hello us back
-         * unmasked values */
-        p_port[0] &= 0x0ffff;
-    }
-
-    /* read and discard node numbers */
-    for (i = 0; i < *numhosts; i++) {
-        int node;
-        p_buf = (uint8_t *)buf_get(&node, sizeof(int), p_buf, p_buf_end);
-    }
-
-    for (i = 0; i < *numhosts; i++) {
-        if (hosts[i][0] == '.') {
-            int len = atoi(&hosts[i][1]);
-            if (len > 4096) {
-                for (int j = 0; j < *numhosts; j++) {
-                    free(hosts[j]);
-                }
-                free(data);
-                return 1;
-            }
-            hosts[i] = realloc(hosts[i], len);
-            p_buf = (uint8_t *)buf_no_net_get(hosts[i], len, p_buf, p_buf_end);
-        }
-    }
-
-    free(data);
-
-    return 0;
-}
-
-static int read_user_data(host_node_type *host_node_ptr, int *type, int *seqnum,
-                          int *needack, int *datalen, void **data,
-                          int *malloced)
-{
-    int rc;
-    net_send_message_header msghdr;
-    uint8_t databf[NET_SEND_MESSAGE_HEADER_LEN], *p_buf, *p_buf_end;
-    netinfo_type *netinfo_ptr = host_node_ptr->netinfo_ptr;
-    SBUF2 *sb = host_node_ptr->sb;
-
-    *malloced = 0;
-
-    rc = read_stream(netinfo_ptr, host_node_ptr, sb, &databf, sizeof(databf));
-    if (rc != sizeof(msghdr)) {
-        host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                       "read_user_data:error reading user data header\n");
-        goto fail;
-    }
-
-    p_buf = databf;
-    p_buf_end = (databf + NET_SEND_MESSAGE_HEADER_LEN);
-
-    net_send_message_header_get(&msghdr, p_buf, p_buf_end);
-
-    *type = msghdr.usertype;
-    *seqnum = msghdr.seqnum;
-    *needack = msghdr.waitforack;
-    *datalen = msghdr.datalen;
-
-    if (*datalen > 0) {
-        if (netinfo_ptr->trace && debug_switch_net_verbose())
-            logmsg(LOGMSG_ERROR, "Reading %d bytes %llu\n", *datalen, gettmms());
-
-        if (*datalen < (netinfo_ptr->user_data_buf_size)) {
-            *data = host_node_ptr->user_data_buf;
-            *malloced = 0;
-        } else {
-            *data = HOST_MALLOC(host_node_ptr, *datalen);
-            *malloced = 1;
-        }
-
-        if (*data == NULL) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: malloc %d failed\n", __func__,
-                           *datalen);
-            goto fail;
-        }
-        rc = read_stream(netinfo_ptr, host_node_ptr, sb, *data, *datalen);
-        if (rc != *datalen) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "read_user_data:error reading user_data, "
-                           "wanted %d bytes, got %d\n",
-                           *datalen, rc);
-
-            if (*malloced)
-                free(*data);
-
-            goto fail;
-        }
-    } else {
-        *data = NULL;
-    }
-
-    return 0;
-
-fail:
-    return -1;
-}
-
 int net_ack_message_payload(void *handle, int outrc, void *payload,
                             int payloadlen)
 {
@@ -3448,105 +2415,6 @@ int net_ack_message_payload(void *handle, int outrc, void *payload,
     return rc;
 }
 
-static int process_payload_ack(netinfo_type *netinfo_ptr,
-                               host_node_type *host_node_ptr)
-{
-    int rc;
-    int seqnum, outrc;
-    net_ack_message_payload_type p_net_ack_message_payload = {0};
-    void *payload = NULL;
-    uint8_t *buf, *p_buf, *p_buf_end;
-    seq_data *ptr;
-
-    buf = alloca(NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN);
-
-    rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, buf,
-                     NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN);
-    if (rc != NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN)
-        return -1;
-
-    p_buf = buf;
-    p_buf_end = buf + NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN;
-
-    net_ack_message_payload_type_get(&p_net_ack_message_payload, p_buf,
-                                     p_buf_end);
-
-    seqnum = p_net_ack_message_payload.seqnum;
-    outrc = p_net_ack_message_payload.outrc;
-
-    if (p_net_ack_message_payload.paylen > 1024 ||
-        p_net_ack_message_payload.paylen <= 0)
-        return -1;
-
-    payload = HOST_MALLOC(host_node_ptr, p_net_ack_message_payload.paylen);
-    rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, payload,
-                     p_net_ack_message_payload.paylen);
-    if (rc != p_net_ack_message_payload.paylen)
-        return -1;
-
-    Pthread_mutex_lock(&(host_node_ptr->wait_mutex));
-
-    ptr = host_node_ptr->wait_list;
-
-    while (ptr != NULL && (ptr->seqnum != seqnum)) {
-        ptr = ptr->next;
-    }
-
-    if (ptr == NULL) {
-        free(payload);
-    } else {
-        ptr->outrc = outrc;
-        ptr->payload = payload;
-        ptr->payloadlen = p_net_ack_message_payload.paylen;
-        ptr->ack = 1;
-        Pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
-    }
-
-    Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
-
-    return 0;
-}
-
-static int process_ack(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
-{
-    int rc;
-    int seqnum, outrc;
-    net_ack_message_type p_net_ack_message;
-    uint8_t buf[NET_ACK_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
-    seq_data *ptr;
-
-    rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, buf,
-                     NET_ACK_MESSAGE_TYPE_LEN);
-    if (rc != NET_ACK_MESSAGE_TYPE_LEN)
-        return -1;
-
-    p_buf = buf;
-    p_buf_end = buf + NET_ACK_MESSAGE_TYPE_LEN;
-
-    net_ack_message_type_get(&p_net_ack_message, p_buf, p_buf_end);
-
-    seqnum = p_net_ack_message.seqnum;
-    outrc = p_net_ack_message.outrc;
-
-    Pthread_mutex_lock(&(host_node_ptr->wait_mutex));
-
-    ptr = host_node_ptr->wait_list;
-
-    while (ptr != NULL && (ptr->seqnum != seqnum)) {
-        ptr = ptr->next;
-    }
-
-    if (ptr != NULL) {
-        ptr->outrc = outrc;
-        ptr->ack = 1;
-        Pthread_cond_broadcast(&(host_node_ptr->ack_wakeup));
-    }
-
-    Pthread_mutex_unlock(&(host_node_ptr->wait_mutex));
-
-    return 0;
-}
-
 int net_ack_message(void *handle, int outrc)
 {
     uint8_t ack_buf[NET_ACK_MESSAGE_TYPE_LEN], *p_buf, *p_buf_end;
@@ -3583,82 +2451,6 @@ int net_ack_message(void *handle, int outrc)
         Pthread_rwlock_unlock(&(ack_state->netinfo->lock));
     }
     return rc;
-}
-
-static int process_user_message(netinfo_type *netinfo_ptr,
-                                host_node_type *host_node_ptr)
-{
-    int usertype, seqnum, datalen, needack;
-    ack_state_type *ack_state = NULL;
-    void *data;
-
-    /* deliver nothing for fake netinfo */
-    if (netinfo_ptr->fake || netinfo_ptr->exiting)
-        return 0;
-
-
-    int malloced = 0;
-
-    int rc = read_user_data(host_node_ptr, &usertype, &seqnum, &needack,
-                            &datalen, &data, &malloced);
-
-#if 0
-    logmsg(LOGMSG_DEBUG, "process_user_message from %s, ut=%d\n",
-           host_node_ptr->host, usertype);
-#endif
-
-    if (rc != 0)
-        return -1; /* not sure ... exit the reader thread??? */
-
-    if (usertype > USER_TYPE_MIN && usertype < USER_TYPE_MAX &&
-         netinfo_ptr->userfuncs[usertype].func != NULL) {
-        if (needack) {
-            ack_state = HOST_MALLOC(host_node_ptr, sizeof(ack_state_type));
-            ack_state->seqnum = seqnum;
-            ack_state->needack = needack;
-            ack_state->fromhost = host_node_ptr->host;
-            ack_state->netinfo = netinfo_ptr;
-        } else {
-            ack_state = NULL;
-        }
-
-        Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
-        host_node_ptr->running_user_func = 1;
-        Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
-
-        int64_t start_us = comdb2_time_epochus();
-        /* run the user's function */
-        netinfo_ptr->userfuncs[usertype].func(
-            ack_state, netinfo_ptr->usrptr, host_node_ptr->host, host_node_ptr->host_interned,
-            usertype, data, datalen, 1);
-        netinfo_ptr->userfuncs[usertype].count++;
-        netinfo_ptr->userfuncs[usertype].totus +=
-            (comdb2_time_epochus() - start_us);
-
-        /* update timestamp before checking it */
-        Pthread_mutex_lock(&(host_node_ptr->timestamp_lock));
-        host_node_ptr->timestamp = time(NULL);
-        host_node_ptr->running_user_func = 0;
-        Pthread_mutex_unlock(&(host_node_ptr->timestamp_lock));
-    } else {
-        static int lastpr = 0, count = 0;
-        int now;
-        count++;
-        if ((now = comdb2_time_epoch()) - lastpr) {
-            host_node_printf(LOGMSG_INFO, host_node_ptr,
-                             "%s: unexpected usertype:%d, count=%d\n", __func__,
-                             usertype, count);
-            lastpr = now;
-        }
-    }
-
-    if (ack_state)
-        free(ack_state);
-
-    if (malloced)
-        free(data);
-
-    return 0;
 }
 
 /* remove node from the netinfo list */
@@ -3806,17 +2598,6 @@ static int net_send_decom(netinfo_type *netinfo_ptr, const char *decom_host,
     return rc;
 }
 
-static int process_decom_int(netinfo_type *netinfo_ptr, char *host)
-{
-    net_decom_node(netinfo_ptr, host);
-    if (gbl_libevent) {
-        decom(host);
-        return 0;
-    } else {
-        return run_net_decom_node_delayed(netinfo_ptr, host);
-    }
-}
-
 int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host)
 {
     int outrc = 0;
@@ -3832,7 +2613,6 @@ int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host)
                    nodes[i]);
         }
     }
-    process_decom_int(netinfo_ptr, decom_host);
     return outrc;
 }
 
@@ -3874,105 +2654,6 @@ int net_send_hello(netinfo_type *netinfo_ptr, const char *tohost)
     return rc;
 }
 
-static int process_decom(netinfo_type *net, host_node_type *host)
-{
-    int node, rc;
-    rc = read_stream(net, host, host->sb, &node, sizeof(int));
-    if (rc != sizeof(int)) {
-        logmsg(LOGMSG_ERROR,
-               "%s:err from read_stream attempting to read host, rc=%d",
-               __func__, rc);
-        return -1;
-    }
-    node = ntohl(node);
-    return process_decom_int(net, hostname(node));
-}
-
-static int process_decom_name(netinfo_type *netinfo_ptr,
-                              host_node_type *host_node_ptr)
-{
-    int hostlen;
-    char *host, *ihost;
-    int rc;
-    rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, &hostlen,
-                     sizeof(int));
-    if (rc != sizeof(int)) {
-        logmsg(LOGMSG_ERROR,
-               "%s:err from read_stream attempting to read host length, rc=%d",
-               __func__, rc);
-        return -1;
-    }
-    hostlen = ntohl(hostlen);
-    if (hostlen > 256) {
-        logmsg(LOGMSG_ERROR, "%s:absurd length for hostname, %d\n", __func__,
-               hostlen);
-        return -1;
-    }
-    host = HOST_MALLOC(host_node_ptr, hostlen);
-    if (host == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:err can't allocate %d bytes for hostname\n",
-               __func__, hostlen);
-        return -1;
-    }
-    rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, host,
-                     hostlen);
-    if (rc != hostlen) {
-        logmsg(LOGMSG_ERROR,
-               "%s:err from read_stream attempting to read host, rc=%d",
-               __func__, rc);
-        free(host);
-        return -1;
-    }
-    ihost = intern(host);
-    free(host);
-    return process_decom_int(netinfo_ptr, ihost);
-}
-
-
-/* This must be called while holding the host_node_ptr->lock.
- * host_node_ptr->fd and host_node_ptr->sb should have been set up
- * to valid values before calling this.
- */
-static int create_reader_writer_threads(host_node_type *host_node_ptr,
-                                        const char *funcname)
-{
-    int rc;
-    if (host_node_ptr->netinfo_ptr->exiting)
-        return 0;
-
-    /* make sure we have a reader thread */
-    if (!(host_node_ptr->have_reader_thread)) {
-        rc = pthread_create(&(host_node_ptr->reader_thread_id),
-                            &(host_node_ptr->netinfo_ptr->pthread_attr_detach),
-                            reader_thread, host_node_ptr);
-        if (rc != 0) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "%s: pthread_create reader_thread failed: %d %s\n",
-                           funcname, rc, strerror(rc));
-            return -1;
-        } else {
-            host_node_ptr->have_reader_thread = 1;
-        }
-    }
-
-    /* make sure we have a writer thread */
-    if (!(host_node_ptr->have_writer_thread)) {
-        rc = pthread_create(&(host_node_ptr->writer_thread_id),
-                            &(host_node_ptr->netinfo_ptr->pthread_attr_detach),
-                            writer_thread, host_node_ptr);
-        if (rc != 0) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                           "%s: pthread_create writer_thread failed: %d %s\n",
-                           funcname, rc, strerror(rc));
-            return -1;
-        } else {
-            host_node_ptr->have_writer_thread = 1;
-        }
-    }
-
-    return 0;
-}
-
 void kill_subnet(const char *subnet)
 {
     host_node_type *ptr;
@@ -3990,7 +2671,6 @@ void kill_subnet(const char *subnet)
                 if (!ptr->closed) {
                     logmsg(LOGMSG_INFO, "Shutting down socket for %s %s\n",
                            ptr->host, ptr->netinfo_ptr->service);
-                    shutdown_hostnode_socket(ptr);
                 } else {
                     logmsg(LOGMSG_INFO, "Already closed socket for %s %s\n",
                            ptr->host, ptr->netinfo_ptr->service);
@@ -4003,464 +2683,6 @@ void kill_subnet(const char *subnet)
 }
 
 int gbl_net_writer_thread_poll_ms = 1000;
-
-static void *writer_thread(void *args)
-{
-    host_node_type *host_node_ptr;
-    host_node_ptr = args;
-
-    char thdname[32];
-    snprintf(thdname, sizeof(thdname), "writer_thread %s", host_node_ptr->host);
-    comdb2_name_thread(thdname);
-    netinfo_type *netinfo_ptr;
-
-    write_data *write_list_ptr, *write_list_back;
-    int rc, flags, maxage;
-    struct timespec waittime;
-#ifndef HAS_CLOCK_GETTIME
-    struct timeval tv;
-#endif
-    thrman_register(THRTYPE_GENERIC);
-    thread_started("net writer");
-    ENABLE_PER_THREAD_MALLOC(__func__);
-
-    netinfo_ptr = host_node_ptr->netinfo_ptr;
-
-    host_node_ptr->writer_thread_arch_tid = getarchtid();
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_DEBUG, host_node_ptr, "%s: starting tid=%d\n", __func__,
-                         host_node_ptr->writer_thread_arch_tid);
-
-    if (netinfo_ptr->start_thread_callback)
-        netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    rc = write_hello(netinfo_ptr, host_node_ptr);
-
-    Pthread_mutex_lock(&(host_node_ptr->enquelk));
-
-    while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
-           !netinfo_ptr->exiting) {
-        while (host_node_ptr->write_head != NULL) {
-            unsigned count, bytes;
-            int start_time, end_time, diff_time;
-
-            /* grab the entire list and reset enqueue counters */
-            write_list_back = write_list_ptr = host_node_ptr->write_head;
-            host_node_ptr->write_head = host_node_ptr->write_tail = NULL;
-            count = host_node_ptr->enque_count;
-            bytes = host_node_ptr->enque_bytes;
-            host_node_ptr->enque_count = 0;
-            host_node_ptr->enque_bytes = 0;
-
-            if (netinfo_ptr->qstat_clear_rtn) {
-                (netinfo_ptr->qstat_clear_rtn)(netinfo_ptr,
-                                               host_node_ptr->qstat);
-            }
-
-            /* release this before writing to sock*/
-            Pthread_mutex_unlock(&(host_node_ptr->enquelk));
-
-            Pthread_cond_broadcast(&(host_node_ptr->waiter_wakeup));
-
-            rc = 0;
-            flags = 0;
-            maxage = 0;
-
-            Pthread_mutex_lock(&(host_node_ptr->write_lock));
-            start_time = comdb2_time_epoch();
-            while (write_list_ptr != NULL) {
-                /* stop writing if we've hit an error or if we've disconnected
-                 */
-                if (!host_node_ptr->closed && rc >= 0) {
-                    int age;
-                    wire_header_type *wire_header, tmp_wire_hdr;
-                    uint8_t *p_buf, *p_buf_end;
-
-                    if (flags & WRITE_MSG_NODELAY) {
-                        age = comdb2_time_epoch() - write_list_ptr->enque_time;
-                        if (age > maxage)
-                            maxage = age;
-                    }
-
-                    /* File in the wire header with correct details for our
-                     * current connection. */
-
-                    wire_header = &write_list_ptr->payload.header;
-                    if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
-                        snprintf(tmp_wire_hdr.fromhost,
-                                 sizeof(tmp_wire_hdr.fromhost), ".%d",
-                                 netinfo_ptr->myhostname_len);
-                    } else {
-                        strncpy0(tmp_wire_hdr.fromhost, netinfo_ptr->myhostname,
-                                 sizeof(tmp_wire_hdr.fromhost));
-                    }
-                    tmp_wire_hdr.fromport = netinfo_ptr->myport;
-                    tmp_wire_hdr.fromnode = 0;
-                    if (host_node_ptr->hostname_len > HOSTNAME_LEN) {
-                        snprintf(tmp_wire_hdr.tohost,
-                                 sizeof(tmp_wire_hdr.tohost), ".%d",
-                                 host_node_ptr->hostname_len);
-                    } else {
-                        strncpy0(tmp_wire_hdr.tohost, host_node_ptr->host,
-                                 sizeof(tmp_wire_hdr.tohost));
-                    }
-                    tmp_wire_hdr.toport = host_node_ptr->port;
-                    tmp_wire_hdr.tonode = 0;
-                    tmp_wire_hdr.type = wire_header->type;
-
-                    /* This shouldn't happen.. but for a while it was happening
-                     * due to various races. */
-                    if (tmp_wire_hdr.toport == 0)
-                        host_node_errf(LOGMSG_WARN, host_node_ptr, "PORT IS ZERO! type %d\n",
-                                       tmp_wire_hdr.type);
-
-                    p_buf = (uint8_t *)wire_header;
-                    p_buf_end = ((uint8_t *)wire_header + sizeof(*wire_header));
-
-                    /* endianize this */
-                    net_wire_header_put(&tmp_wire_hdr, p_buf, p_buf_end);
-
-                    rc = write_stream(
-                        netinfo_ptr, host_node_ptr, host_node_ptr->sb,
-                        write_list_ptr->payload.raw, write_list_ptr->len);
-                    if ((rc > 0 && rc != write_list_ptr->len) || (gbl_debug_partial_write > 0 &&
-                        ((rand() % gbl_debug_partial_write) == 0))) {
-                        host_node_errf(LOGMSG_ERROR, host_node_ptr,
-                                       "write stream error. Partial msg written size:%d expected:%d\n",
-                                       rc, write_list_ptr->len);
-                       if (gbl_dump_net_queue_on_partial_write &&
-                           netinfo_ptr->qstat_dump_rtn) {
-                           (netinfo_ptr->qstat_dump_rtn)(netinfo_ptr, host_node_ptr->qstat, stderr);
-                       }
-                       rc = -1;
-                    }
-                    flags |= write_list_ptr->flags;
-                } else
-                    rc = -1;
-
-                write_list_back = write_list_ptr;
-                write_list_ptr = write_list_ptr->next;
-                free(write_list_back);
-            }
-            /* we seem to set nodelay on virtually every message.  try to get
-             * slightly better streaming performance by moving the flush out of
-             * the main loop. */
-            if (flags & WRITE_MSG_NODELAY) {
-                net_delay(host_node_ptr->host);
-                if (netinfo_ptr->trace && debug_switch_net_verbose())
-                    logmsg(LOGMSG_USER, "Flushing %llu\n", gettmms());
-                net_flush(host_node_ptr);
-            }
-            end_time = comdb2_time_epoch();
-            Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-
-            diff_time = end_time - start_time;
-            if (diff_time >= 2) {
-                /* this is really informational now so I won't use
-                 * capitals.  this trace dosn't necessarily mean that the
-                 * network
-                 * is being unreasonable. */
-                host_node_errf(LOGMSG_WARN, host_node_ptr,
-                               "%s: long write %d secs %u items %u bytes\n",
-                               __func__, diff_time, count, bytes);
-            }
-
-            Pthread_mutex_lock(&(host_node_ptr->enquelk));
-            if (rc < 0) {
-                goto done;
-            }
-        }
-
-#ifdef HAS_CLOCK_GETTIME
-        rc = clock_gettime(CLOCK_REALTIME, &waittime);
-#else
-        rc = gettimeofday(&tv, NULL);
-        timeval_to_timespec(&tv, &waittime);
-#endif
-        add_millisecs_to_timespec(&waittime, gbl_net_writer_thread_poll_ms);
-
-        pthread_cond_timedwait(&(host_node_ptr->write_wakeup),
-                               &(host_node_ptr->enquelk), &waittime);
-
-        /*
-           Pthread_cond_wait(&(host_node_ptr->write_wakeup),
-           &(host_node_ptr->enquelk));
-         */
-
-        /*fprintf(stderr, "writer_thread: past pthread_cond_timedwait\n");*/
-    }
-
-done:
-    Pthread_mutex_unlock(&(host_node_ptr->enquelk));
-
-    Pthread_mutex_lock(&(host_node_ptr->lock));
-    host_node_ptr->have_writer_thread = 0;
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_DEBUG, host_node_ptr, "%s exiting\n", __func__);
-    close_hostnode_ll(host_node_ptr);
-    Pthread_mutex_unlock(&(host_node_ptr->lock));
-
-    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
-    if (netinfo_ptr->stop_thread_callback)
-        netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
-
-    return NULL;
-}
-
-
-static int process_hello(netinfo_type *netinfo_ptr,
-                         host_node_type *host_node_ptr)
-{
-    int rc = process_hello_common(netinfo_ptr, host_node_ptr, 1);
-    if (rc == 1) {
-        logmsg(LOGMSG_ERROR, "rejected hello from %s\n", host_node_ptr->host);
-    }
-    if (rc == 0) {
-        write_hello_reply(netinfo_ptr, host_node_ptr);
-    } else if (rc != -1) {
-        /* Only propogate IO errors backwards. */
-        rc = 0;
-    }
-    return rc;
-}
-
-
-static int process_hello_reply(netinfo_type *netinfo_ptr,
-                               host_node_type *host_node_ptr)
-{
-    int rc = process_hello_common(netinfo_ptr, host_node_ptr, 0);
-    if (rc == 1) {
-        logmsg(LOGMSG_ERROR, "rejected hello reply from %s\n", host_node_ptr->host);
-    }
-    if (rc != -1) {
-        /* Only propogate IO errors backwards. */
-        rc = 0;
-    }
-    return rc;
-}
-
-/* Common code for processing hello and hello reply.
- *
- * Inputs: look_for_magic==1 if we want to check for the MAGICNODE.
- *
- * Returns:
- *    1     Hello was rejected (contained bad port numbers or error in
- *          read_hostlist).
- *    -1    IO error, reader thread cleans up.
- *    0     Success.
- */
-static int process_hello_common(netinfo_type *netinfo_ptr,
-                                host_node_type *host_node_ptr,
-                                int look_for_magic)
-{
-    char *hosts[REPMAX];
-    int ports[REPMAX];
-    host_node_type *newhost, *fndhost;
-    int rc;
-    int numhosts = REPMAX;
-
-    rc = read_hostlist(netinfo_ptr, host_node_ptr->sb, hosts, ports, &numhosts);
-    if (rc < 0)
-        return -1; /* reader thread cleans up */
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, 
-               "process_hello_common:error from read_hostlist, rc=%d\n", rc);
-        return 0;
-    }
-
-    /* add each host, dont worry, dupes wont be added */
-    for (int i = 0; i < numhosts; i++) {
-        // only truly new hosts will return non-NULL
-        newhost = add_to_netinfo(netinfo_ptr, intern(hosts[i]), ports[i]);
-
-        if (newhost != NULL) {
-            /* get readlock to prevent host from disappearing */
-            Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
-            fndhost = get_host_node_by_name_ll(netinfo_ptr, intern(hosts[i]));
-            if (fndhost)
-                connect_to_host(netinfo_ptr, fndhost, host_node_ptr);
-
-            Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        }
-
-        host_node_ptr->got_hello = 1;
-    }
-
-    for (int i = 0; i < numhosts; i++)
-        free(hosts[i]);
-
-    return 0;
-}
-
-static void *reader_thread(void *arg)
-{
-    // TODO: node!
-    host_node_type *host_node_ptr;
-    host_node_ptr = arg;
-
-    char thdname[32];
-    snprintf(thdname, sizeof(thdname), "writer_thread %s", host_node_ptr->host);
-    comdb2_name_thread(thdname);
-    netinfo_type *netinfo_ptr;
-    wire_header_type wire_header;
-    int rc, set_qstat = 0;
-    char fromhost[256], tohost[256];
-
-    thrman_register(THRTYPE_GENERIC);
-    thread_started("net reader");
-    ENABLE_PER_THREAD_MALLOC(__func__);
-
-    netinfo_ptr = host_node_ptr->netinfo_ptr;
-
-    host_node_ptr->reader_thread_arch_tid = getarchtid();
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_DEBUG, host_node_ptr, "%s: starting tid=%d\n", __func__,
-                         host_node_ptr->reader_thread_arch_tid);
-
-    if (netinfo_ptr->start_thread_callback)
-        netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    while (!host_node_ptr->decom_flag && !host_node_ptr->closed &&
-           !netinfo_ptr->exiting) {
-
-        if (set_qstat == 0 && netinfo_ptr->qstat_reader_rtn) {
-            (netinfo_ptr->qstat_reader_rtn)(netinfo_ptr, host_node_ptr->qstat);
-            set_qstat = 1;
-        }
-
-        host_node_ptr->timestamp = time(NULL);
-
-        if (netinfo_ptr->trace && debug_switch_net_verbose())
-           logmsg(LOGMSG_USER, "RT: reading header %llu\n", gettmms());
-
-        rc = read_message_header(netinfo_ptr, host_node_ptr, &wire_header,
-                                 fromhost, tohost);
-        if (rc != 0) {
-            if (!host_node_ptr->distress) {
-                host_node_printf(LOGMSG_WARN, host_node_ptr, "entering distress mode\n");
-            }
-            /* if we loop it should be ok; TODO: maybe wanna have
-             * a modulo operation to report errors w/ a certain periodicity? */
-            host_node_ptr->distress++;
-            break;
-        } else {
-            if (host_node_ptr->distress) {
-                unsigned cycles = host_node_ptr->distress;
-                host_node_ptr->distress = 0;
-                host_node_printf(LOGMSG_INFO, host_node_ptr,
-                                 "%s: leaving distress mode after %u cycles\n",
-                                 __func__, cycles);
-            }
-        }
-
-        /* We received data - update our timestamp.  We used to do this only
-         * for heartbeat messages; do this for all types of message. */
-        host_node_ptr->timestamp = comdb2_time_epoch();
-
-        if (netinfo_ptr->trace && debug_switch_net_verbose())
-           logmsg(LOGMSG_USER, "RT: got packet type=%d %llu\n", wire_header.type,
-                   gettmms());
-
-        switch (wire_header.type) {
-        case WIRE_HEADER_HEARTBEAT:
-            /* No special processing for heartbeats */
-            break;
-
-        case WIRE_HEADER_HELLO:
-            rc = process_hello(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: hello error from host %s\n",
-                        host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        case WIRE_HEADER_HELLO_REPLY:
-            rc = process_hello_reply(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: hello error from host %s\n",
-                        host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        case WIRE_HEADER_DECOM:
-            rc = process_decom(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: decom error from host %s\n",
-                        host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        case WIRE_HEADER_DECOM_NAME:
-            rc = process_decom_name(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: decom name error from host %s\n",
-                        host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        case WIRE_HEADER_USER_MSG:
-            if (netinfo_ptr->trace && debug_switch_net_verbose())
-                logmsg(LOGMSG_DEBUG, "Here %llu\n", gettmms());
-            rc = process_user_message(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "reader thread: process_user_message error from host %s\n",
-                    host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        case WIRE_HEADER_ACK_PAYLOAD:
-            rc = process_payload_ack(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: payload ack error from host %s\n",
-                        host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        case WIRE_HEADER_ACK:
-            rc = process_ack(netinfo_ptr, host_node_ptr);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "reader thread: ack error from host %s\n",
-                        host_node_ptr->host);
-                goto done;
-            }
-            break;
-
-        default:
-            logmsg(LOGMSG_ERROR, 
-                   "reader thread: unknown wire_header.type: %d from host %s\n",
-                   wire_header.type, host_node_ptr->host);
-            break;
-        }
-
-        if (netinfo_ptr->trace && debug_switch_net_verbose())
-           logmsg(LOGMSG_USER, "RT: done processing %d %llu\n", wire_header.type,
-                   gettmms());
-    }
-
-done:
-    Pthread_mutex_lock(&(host_node_ptr->lock));
-    host_node_ptr->have_reader_thread = 0;
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_INFO, host_node_ptr, "%s exiting\n", __func__);
-    close_hostnode_ll(host_node_ptr);
-    Pthread_mutex_unlock(&(host_node_ptr->lock));
-
-    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
-    if (netinfo_ptr->stop_thread_callback)
-        netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
-    return NULL;
-}
-
 
 #define MAXSUBNETS 15
 // MAXSUBNETS + Slot for the Non-dedicated net
@@ -4749,400 +2971,6 @@ void wait_alive(int fd)
 }
 #endif
 
-static void *connect_thread(void *arg)
-{
-    netinfo_type *netinfo_ptr;
-    host_node_type *host_node_ptr;
-    host_node_ptr = arg;
-
-    char thdname[32];
-    snprintf(thdname, sizeof(thdname), "writer_thread %s", host_node_ptr->host);
-    comdb2_name_thread(thdname);
-
-    socklen_t len;
-    int fd;
-    int rc;
-    int flag = 1;
-    int connport = -1;
-
-    thrman_register(THRTYPE_GENERIC);
-    thread_started("connect thread");
-    ENABLE_PER_THREAD_MALLOC(__func__);
-
-    int flags;
-    struct pollfd pfd;
-    int err;
-
-    netinfo_ptr = host_node_ptr->netinfo_ptr;
-
-    host_node_ptr->connect_thread_arch_tid = getarchtid();
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_USER, host_node_ptr, "%s: starting tid=%d, hostname='%s'\n",
-                         __func__, host_node_ptr->connect_thread_arch_tid,
-                         host_node_ptr->host);
-
-    if (netinfo_ptr->start_thread_callback)
-        netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    struct {
-        arch_tid tid;
-        struct timeval t;
-        pid_t pid;
-    } seed_data = {0};
-    seed_data.tid = getarchtid();
-    seed_data.pid = getpid();
-
-    int check = 1;
-    Pthread_mutex_lock(&(host_node_ptr->lock));
-    while (!host_node_ptr->decom_flag && !gbl_exit) {
-        if (host_node_ptr->fd != -1) { /* already have connection */
-            check = 1;
-            goto again;
-        } else if (check) {
-            gettimeofday(&seed_data.t, NULL);
-            uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
-            int r = rand_r(&seed) % 5000;
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
-            // sleep up to r-ms by 1s (1000ms) increments
-            while (r > 0 && !host_node_ptr->decom_flag &&
-                   !netinfo_ptr->exiting) {
-                int milli = (r > 1000) ? 1000 : r; // usleep for at most 1s
-                usleep(milli * 1000);
-                r -= 1000;
-            }
-            check = 0;
-            Pthread_mutex_lock(&(host_node_ptr->lock));
-            continue;
-        }
-
-        if (!host_node_ptr->really_closed) {
-            goto again;
-        }
-
-        if (get_dedicated_conhost(host_node_ptr, &host_node_ptr->addr) != 0) {
-            if (gbl_verbose_net)
-                host_node_printf(LOGMSG_USER, host_node_ptr,
-                                 "%s: couldnt connect to dedicated host\n",
-                                 __func__);
-            goto again;
-        }
-
-        if (!host_node_ptr->port) {
-            netinfo_type *net = NULL;
-            if (gbl_accept_on_child_nets || !netinfo_ptr->ischild) {
-                net = netinfo_ptr;
-            } else {
-                net = netinfo_ptr->parent;
-            }
-            if (net->use_getservbyname)
-                connport = net_get_port_by_service(net->instance);
-            if (connport <= 0)
-                connport = portmux_geti(host_node_ptr->addr, net->app,
-                                        net->service, net->instance);
-        } else {
-            connport = host_node_ptr->port;
-        }
-
-        if (connport <= 0) {
-            host_node_printf(LOGMSG_ERROR, host_node_ptr, "portmux_geti returned port = %d\n",
-                             connport);
-            goto again;
-        }
-
-        struct sockaddr_in sin = {0};
-        sin.sin_addr = host_node_ptr->addr;
-        sin.sin_family = AF_INET;
-        sin.sin_port = htons(connport);
-
-        fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) {
-            goto again;
-        }
-
-        if (gbl_verbose_net)
-            host_node_printf(LOGMSG_USER, host_node_ptr, "%s: connecting on ip=%s port=%d\n",
-                             __func__, inet_ntoa(sin.sin_addr),
-                             ntohs(sin.sin_port));
-
-        flags = fcntl(fd, F_GETFL, 0);
-        if (flags < 0) {
-            logmsgperror("tcplib:lclconn:fcntl:F_GETFL");
-            exit(1);
-        }
-        if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-            logmsgperror("tcplib:lclconn:fcntl:F_SETFL");
-            exit(1);
-        }
-
-#if defined _SUN_SOURCE
-        wait_alive(fd);
-#endif
-
-        int on = 1;
-        len = sizeof(on);
-        rc = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                   __func__, fd, errno, strerror(errno));
-
-            Close(fd);
-            goto again;
-        }
-
-#ifdef NODELAY
-        flag = 1;
-        len = sizeof(flag);
-        rc = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: couldnt turn off nagel on new fd %d: %d %s\n", __func__,
-                   fd, errno, strerror(errno));
-            Close(fd);
-            goto again;
-        }
-#endif
-        if (gbl_exit) {
-            Close(fd);
-            break;
-        }
-        rc = connect(fd, (struct sockaddr *)&sin, sizeof(sin));
-        if (rc == -1 && errno == EINPROGRESS) {
-            /*wait for connect event */
-            pfd.fd = fd;
-            pfd.events = POLLOUT;
-
-            /*fprintf(stderr, "sleeping for 100ms\n");*/
-
-            rc = poll(&pfd, 1, 100);
-
-            if (rc == 0) {
-                /*timeout*/
-                host_node_printf(LOGMSG_WARN, host_node_ptr, "%s: connect timed out\n",
-                                 __func__);
-                Close(fd);
-                goto again;
-            }
-            if (rc != 1) {
-                /*poll failed?*/
-                host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                                 "%s: poll on connect failed %d %s\n", __func__,
-                                 errno, strerror(errno));
-                Close(fd);
-                goto again;
-            }
-            if ((pfd.revents & POLLOUT) == 0) {
-#ifdef _LINUX_SOURCE
-                /* Linux returns EPOLLHUP|EPOLLERR */
-                host_node_printf(LOGMSG_WARN, host_node_ptr,
-                                 "%s: poll returns events 0x%03x\n", __func__,
-                                 pfd.revents);
-#else
-                /*wrong event*/
-                host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                                 "%s: poll returned wrong event\n", __func__);
-#endif
-                Close(fd);
-                goto again;
-            }
-
-            if (fcntl(fd, F_SETFL, flags) < 0) {
-                logmsgperror("tcplib:lclconn:fcntl2");
-                exit(1);
-            }
-        } else if (rc == -1) {
-            if (gbl_verbose_net)
-                host_node_printf(LOGMSG_USER, host_node_ptr, "%s: connect error %d %s\n",
-                                 __func__, errno, strerror(errno));
-            Close(fd);
-            goto again;
-        } else {
-            if (gbl_verbose_net)
-                host_node_printf(LOGMSG_USER, host_node_ptr, "%s: connect succeeded\n",
-                                 __func__);
-        }
-
-        /* put blocking back */
-        if (fcntl(fd, F_SETFL, flags) < 0) {
-            logmsgperror("tcplib:lclconn:fcntl2");
-            exit(1);
-        }
-
-        len = sizeof(err);
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)) {
-            logmsgperror("tcplib:lclconn:getsockopt");
-#ifndef _HP_SOURCE
-            exit(1);
-#endif
-        }
-
-        /* remember the port */
-        host_node_ptr->port = connport;
-
-        host_node_ptr->sb = sbuf2open(fd, SBUF2_NO_CLOSE_FD | SBUF2_NO_FLUSH);
-        if (host_node_ptr->sb == NULL) {
-            host_node_errf(LOGMSG_ERROR, host_node_ptr, "%s: sbuf2open failed\n", __func__);
-            Close(fd);
-            goto again;
-        }
-
-        sbuf2setbufsize(host_node_ptr->sb, netinfo_ptr->bufsz);
-
-        if (debug_switch_net_verbose()) {
-            logmsg(LOGMSG_USER, "Setting wrapper\n");
-            /* override sbuf2 defaults for testing */
-            sbuf2setr(host_node_ptr->sb, sbuf2read_wrapper);
-            sbuf2setw(host_node_ptr->sb, sbuf2write_wrapper);
-        }
-
-        /* doesn't matter - it's under lock ... */
-        host_node_ptr->timestamp = time(NULL);
-
-        Pthread_mutex_lock(&(host_node_ptr->write_lock));
-
-        if (gbl_verbose_net)
-            host_node_printf(LOGMSG_USER, host_node_ptr, "%s: write connect message\n",
-                             __func__);
-
-        rc = write_connect_message(netinfo_ptr, host_node_ptr,
-                                   host_node_ptr->sb);
-        if (rc != 0) {
-            host_node_printf(LOGMSG_ERROR, host_node_ptr,
-                             "%s: couldn't send connect message\n", __func__);
-            Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-            close_hostnode_ll(host_node_ptr);
-            goto again;
-        }
-        net_flush(host_node_ptr);
-
-        /*
-           dont set this till after we wrote the connect message -
-           this prevents a race where the heartbeat thread gets the
-           heartbeat out before we get the connect message out
-        */
-        host_node_ptr->fd = fd;
-        host_node_ptr->really_closed = 0;
-        host_node_ptr->closed = 0;
-
-        /* Also call the new node routine here - it shouldn't matter which
-         * node initiated the connection. */
-        if (netinfo_ptr->new_node_rtn)
-            netinfo_ptr->new_node_rtn(netinfo_ptr, host_node_ptr->host_interned, host_node_ptr->port);
-
-        /* wake writer, if exists */
-        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
-        Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-
-        if (gbl_verbose_net)
-            host_node_printf(LOGMSG_USER, 
-                    host_node_ptr, "%s: connection established\n",
-                             __func__);
-        host_node_ptr->timestamp = time(NULL);
-
-        rc = create_reader_writer_threads(host_node_ptr, __func__);
-        if (rc != 0) {
-            close_hostnode_ll(host_node_ptr);
-            goto again;
-        }
-
-    again:
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-        sleep(1);
-        Pthread_mutex_lock(&(host_node_ptr->lock));
-    }
-    host_node_ptr->have_connect_thread = 0;
-
-    if (host_node_ptr->decom_flag)
-        logmsg(LOGMSG_INFO, "connect_thread: host_node_ptr->decom_flag set for host %s\n",
-                host_node_ptr->host);
-    else
-        host_node_printf(LOGMSG_INFO, host_node_ptr, "connect_thread: netinfo->exiting\n");
-
-    /* close the file-descriptor, wait for reader / writer threads
-       to exit, free host_node_ptr, then exit */
-    close_hostnode_ll(host_node_ptr);
-    Pthread_mutex_unlock(&(host_node_ptr->lock));
-
-    while (!netinfo_ptr->exiting) {
-        int ref;
-        Pthread_mutex_lock(&(host_node_ptr->lock));
-        ref = host_node_ptr->have_reader_thread +
-              host_node_ptr->have_writer_thread;
-
-        Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
-        ref += host_node_ptr->nwaiters;
-        if (host_node_ptr->nwaiters > 0)
-            Pthread_cond_broadcast(&(host_node_ptr->waiter_wakeup));
-        Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-
-        if (ref == 0)
-            break;
-
-        Pthread_cond_signal(&(host_node_ptr->write_wakeup));
-        poll(NULL, 0, 1000);
-    }
-
-    if (!netinfo_ptr->exiting) {
-        /* lock, unlink, free, damn it */
-        rem_from_netinfo(netinfo_ptr, host_node_ptr);
-    }
-
-    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
-    if (netinfo_ptr->stop_thread_callback)
-        netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
-
-    return NULL;
-}
-
-
-/*  changed to support a 'sponsor-host' trace: if we're starting a connect-
-    thread because of machine we learned about from a recent 'hello' message,
-    make that information explicit here */
-static int connect_to_host(netinfo_type *netinfo_ptr,
-                           host_node_type *host_node_ptr,
-                           host_node_type *sponsor_host)
-{
-    if (host_node_ptr->host == netinfo_ptr->myhostname)
-        return 1;
-
-    Pthread_mutex_lock(&(host_node_ptr->lock));
-    if (host_node_ptr->have_connect_thread == 0) {
-        if (gbl_verbose_net) {
-            if (sponsor_host) {
-                host_node_printf(
-                    LOGMSG_DEBUG,
-                    sponsor_host,
-                    "%s: creating (sponsored) connect_thread for %s:%d\n",
-                    __func__, host_node_ptr->host, host_node_ptr->port);
-            } else {
-                logmsg(LOGMSG_INFO, "%s: creating connect_thread for node %s:%d\n",
-                        __func__, host_node_ptr->host, host_node_ptr->port);
-            }
-        }
-
-        int rc = pthread_create(&(host_node_ptr->connect_thread_id),
-                                &(netinfo_ptr->pthread_attr_detach),
-                                connect_thread, host_node_ptr);
-        if (rc != 0) {
-            if (sponsor_host) {
-                host_node_errf(LOGMSG_ERROR, sponsor_host,
-                               "%s: couldnt create connect thd, errno=%d %s\n",
-                               __func__, errno, strerror(errno));
-            } else {
-                logmsg(LOGMSG_ERROR, "%s: couldnt create connect thd, errno=%d %s\n",
-                        __func__, errno, strerror(errno));
-            }
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
-            return -1;
-        }
-        host_node_ptr->have_connect_thread = 1;
-    }
-    Pthread_mutex_unlock(&(host_node_ptr->lock));
-    return 0;
-}
-
 static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
@@ -5182,214 +3010,6 @@ static int get_subnet_incomming_syn(host_node_type *host_node_ptr)
     return 0;
 }
 
-static void accept_handle_new_host(netinfo_type *netinfo_ptr,
-                                   const char *hostname, int portnum,
-                                   int new_fd, SBUF2 *sb, struct in_addr addr)
-{
-    host_node_type *host_node_ptr = NULL;
-
-#ifdef DEBUG
-    char ip[16];
-    fprintf(stderr, "%s: hostname %s (%s:%d)\n", __func__, hostname,
-            inet_ntoa_r(addr.s_addr, ip), portnum);
-#endif
-
-    /* dont accept when we are exiting (how about decom?) */
-    if (netinfo_ptr->exiting) {
-        logmsg(LOGMSG_INFO, "%s:we are exiting so not continuing conn to %s\n",
-                __func__, hostname);
-        return;
-    }
-
-    /* see if we already have an entry.  if we do, CLOSE the socket.
-       if we dont, create a reader_thread */
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
-    host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, hostname);
-    if (!host_node_ptr) {
-        /* unlock */
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-        /* add to netinfo */
-        host_node_ptr = add_to_netinfo(netinfo_ptr, hostname, portnum);
-
-        /* failed to add .. sbuf has NO_CLOSE_FD set */
-        if (host_node_ptr == NULL) {
-            sbuf2close(sb);
-            Close(new_fd);
-            return;
-        }
-
-        /* relock */
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
-        /* find */
-        host_node_ptr = get_host_node_by_name_ll(netinfo_ptr, hostname);
-
-        /* removed from under us .. */
-        if (host_node_ptr == NULL) {
-            sbuf2close(sb);
-            Close(new_fd);
-            Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-            return;
-        }
-
-        /* success! */
-        if (gbl_verbose_net)
-            host_node_printf(
-                LOGMSG_USER,
-                host_node_ptr,
-                "%s: got initial connection on fd %d - new host_node_ptr\n",
-                __func__, new_fd);
-    }
-
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_USER, host_node_ptr, "%s: got initial connection on fd %d\n",
-                         __func__, new_fd);
-
-    int cnt = 0;
-    Pthread_mutex_lock(&(host_node_ptr->lock));
-    while (1) {
-        if (netinfo_ptr->exiting || host_node_ptr->decom_flag) {
-            sbuf2close(sb);
-            Close(new_fd);
-            Pthread_mutex_unlock(&(host_node_ptr->lock));
-            Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-            return;
-        }
-        if (!host_node_ptr->have_reader_thread &&
-            !host_node_ptr->have_writer_thread) {
-            break;
-        }
-        /* shutdown the fd. rd/wr thds (if any) will stop immediately */
-        close_hostnode_ll(host_node_ptr);
-
-        /* We're about to give up the locks. Increment nwaiters to prevent
-           the node from being removed before we re-acquire the locks. */
-        Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
-        ++host_node_ptr->nwaiters;
-        Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
-
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        poll(NULL, 0, 100);
-        if (++cnt % 10 == 0) {
-            host_node_printf(LOGMSG_USER, host_node_ptr,
-                             "%s waiting for r/w thds to exit\n", __func__);
-        }
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-        Pthread_mutex_lock(&(host_node_ptr->lock));
-
-        /* Decrement nwaiters as the host now can be removed safely after we release the locks. */
-        Pthread_mutex_lock(&(host_node_ptr->waiter_lock));
-        --host_node_ptr->nwaiters;
-        Pthread_mutex_unlock(&(host_node_ptr->waiter_lock));
-    }
-
-    /* Set the port so that we can send out messages that the other end
-     * will understand (i.e. no packet not intended for us silliness) */
-    if (host_node_ptr->port != portnum) {
-        host_node_printf(LOGMSG_DEBUG, host_node_ptr, "%s: changing port from %d to %d\n",
-                         __func__, host_node_ptr->port, portnum);
-        host_node_ptr->port = portnum;
-    }
-
-    /* assigning addr here is needed to do udp_send()
-     * if connect_thread body gets executed (when there is no connection yet)
-     * it will refresh the addr (and that's ok).
-     */
-    host_node_ptr->addr = addr;
-    memset(host_node_ptr->subnet, 0, HOSTNAME_LEN);
-
-    host_node_ptr->timestamp = time(NULL);
-    Pthread_mutex_lock(&(host_node_ptr->write_lock));
-    empty_write_list(host_node_ptr);
-    host_node_ptr->fd = new_fd;
-    host_node_ptr->sb = sb;
-    Pthread_mutex_unlock(&(host_node_ptr->write_lock));
-
-    int rc = get_subnet_incomming_syn(host_node_ptr);
-    if (rc) {
-        host_node_printf(LOGMSG_INFO, host_node_ptr,
-                         "%s: Clipping connect from %s on disabled subnet %s\n",
-                         __func__, host_node_ptr->host,
-                         (host_node_ptr->subnet[0] != '\0')
-                             ? host_node_ptr->subnet
-                             : "UNKNOWN");
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        return;
-    }
-
-    if (gbl_verbose_net)
-        host_node_errf(LOGMSG_USER, host_node_ptr, "%s: accepting connection on new_fd %d\n",
-                       __func__, new_fd);
-
-    host_node_ptr->really_closed = 0;
-    host_node_ptr->closed = 0;
-    host_node_ptr->rej_up_cnt = 0;
-
-    /* create reader & writer threads */
-    rc = create_reader_writer_threads(host_node_ptr, __func__);
-    if (rc != 0) {
-        close_hostnode_ll(host_node_ptr);
-        Pthread_mutex_unlock(&(host_node_ptr->lock));
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        return;
-    }
-
-    int become_connect_thread = 0;
-
-    /* become the connect thread if we don't have one */
-    if (!(host_node_ptr->have_connect_thread)) {
-        /* set a flag */
-        become_connect_thread = 1;
-
-        /* prevent this from being created elsewhere */
-        host_node_ptr->have_connect_thread = 1;
-
-        /* set my id */
-        host_node_ptr->connect_thread_id = pthread_self();
-    }
-
-    if (host_node_ptr->distress) {
-        unsigned cycles = host_node_ptr->distress;
-        host_node_ptr->distress = 0;
-        host_node_printf(LOGMSG_INFO, 
-                         host_node_ptr,
-                         "%s: leaving distress mode after %u cycles\n",
-                         __func__, cycles);
-    }
-
-    Pthread_mutex_unlock(&(host_node_ptr->lock));
-
-    // Why write hello here? writer thread above will say hello, no?
-    /* write_hello(netinfo_ptr, host_node_ptr); */
-
-    if (gbl_verbose_net)
-        host_node_printf(LOGMSG_USER, host_node_ptr, "%s: wrote hello\n", __func__);
-
-    /* call the newhost routine if provided */
-    if (host_node_ptr->netinfo_ptr->new_node_rtn) {
-        (host_node_ptr->netinfo_ptr->new_node_rtn)(host_node_ptr->netinfo_ptr,
-                                                   host_node_ptr->host_interned,
-                                                   host_node_ptr->port);
-        host_node_printf(LOGMSG_DEBUG, host_node_ptr, "back from newnode_rtn\n");
-    }
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-    /* become the connect thread */
-    if (become_connect_thread) {
-        if (gbl_verbose_net)
-            host_node_printf(LOGMSG_USER, host_node_ptr, "becomming connect thread\n");
-        connect_thread(host_node_ptr);
-    }
-
-    ++netinfo_ptr->num_current_non_appsock_accepts;
-}
-
-
 /* find the remote peer.  code stolen from sqlinterfaces.c */
 int findpeer(int fd, char *addr, int len)
 {
@@ -5411,75 +3031,6 @@ int findpeer(int fd, char *addr, int len)
     }
 
     return 0;
-}
-
-
-/* reads the connect message & creates threads to monitor connection state */
-static void *connect_and_accept(void *arg)
-{
-    comdb2_name_thread(__func__);
-    connect_and_accept_t *ca;
-    netinfo_type *netinfo_ptr;
-    SBUF2 *sb;
-    char hostname[256], addr[64];
-    int portnum = 0, fd, rc;
-    char *host;
-    int netnum;
-
-    /* retrieve arguments */
-    ca = (connect_and_accept_t *)arg;
-    netinfo_ptr = ca->netinfo_ptr;
-    sb = ca->sb;
-    fd = sbuf2fileno(sb);
-    struct in_addr inaddr = ca->addr;
-
-    /* free */
-    Pthread_mutex_lock(&(netinfo_ptr->connlk));
-    pool_relablk(netinfo_ptr->connpool, ca);
-    Pthread_mutex_unlock(&(netinfo_ptr->connlk));
-
-    /* read connect message */
-    rc = read_connect_message(sb, hostname, sizeof(hostname), &portnum,
-                              netinfo_ptr);
-    host = intern(hostname);
-
-    /* print the origin of malformed messages */
-    if (rc < 0) {
-        findpeer(fd, addr, sizeof(addr));
-        logmsg(LOGMSG_ERROR, "%s:malformed connect message from %s "
-                        "closing connection\n",
-                __func__, addr);
-        sbuf2close(sb);
-        pthread_exit(NULL);
-    }
-
-    // This is our socket, not an appsock. Set the flags we want.
-    sbuf2setflags(sb, SBUF2_NO_CLOSE_FD | SBUF2_NO_FLUSH);
-    netnum = (portnum & 0x000f0000) >> 16;
-    /* Special port number to indicate we're meant for a different net. */
-    portnum &= 0xffff;
-    /* if connect message specifies a child net, use it */
-    if (netnum && netnum != netinfo_ptr->netnum) {
-        netinfo_type *net;
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-        if (netnum < 0 || netnum >= netinfo_ptr->num_child_nets ||
-            netinfo_ptr->child_nets[netnum] == NULL) {
-            logmsg(LOGMSG_ERROR,
-                   "connect message for netnum %d, num_child_nets %d, net not "
-                   "registered\n",
-                   netnum, netinfo_ptr->num_child_nets);
-            Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-            return NULL;
-        }
-        net = netinfo_ptr->child_nets[netnum];
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-        accept_handle_new_host(net, host, portnum, fd, sb, inaddr);
-    } else {
-        /* i become the connect thread if there isn't one already */
-        accept_handle_new_host(netinfo_ptr, host, portnum, fd, sb, inaddr);
-    }
-
-    return NULL;
 }
 
 
@@ -5571,352 +3122,6 @@ void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
         /* this doesn't read- it just farms this off to a thread */
         (rtn)(netinfo_ptr, sb);
     }
-}
-
-static void *accept_thread(void *arg)
-{
-    comdb2_name_thread(__func__);
-    netinfo_type *netinfo_ptr;
-    struct pollfd pol;
-    int rc;
-    int listenfd = 0;
-    int polltm;
-    struct linger linger_data;
-    struct sockaddr_in cliaddr;
-    connect_and_accept_t *ca;
-    pthread_t tid;
-    char paddr[64];
-    socklen_t clilen;
-    socklen_t len;
-    int new_fd;
-    int flag = 1;
-    SBUF2 *sb;
-    portmux_fd_t *portmux_fds = NULL;
-    unsigned int last_stat_dump_time = comdb2_time_epochms();
-
-    thrman_register(THRTYPE_GENERIC);
-    thread_started("net accept");
-    ENABLE_PER_THREAD_MALLOC(__func__);
-
-    netinfo_ptr = (netinfo_type *)arg;
-
-    netinfo_ptr->accept_thread_arch_tid = getarchtid();
-
-    logmsg(LOGMSG_INFO, "%s: starting, tid=%" PRIxPTR ".\n", __func__,
-           (intptr_t) netinfo_ptr->accept_thread_arch_tid);
-
-    if (netinfo_ptr->start_thread_callback)
-        netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    logmsg(LOGMSG_INFO, "net %s my port is %d fd is %d\n", netinfo_ptr->service,
-            netinfo_ptr->myport, netinfo_ptr->myfd);
-
-    if (gbl_pmux_route_enabled) {
-        portmux_fds =
-            portmux_listen_setup(netinfo_ptr->app, netinfo_ptr->service,
-                                 netinfo_ptr->instance, netinfo_ptr->myfd);
-        if (!portmux_fds) {
-            logmsg(LOGMSG_FATAL, "Could not get portmux_fds\n");
-            exit(1);
-        }
-    } else {
-        /* We used to listen here. We now listen way earlier and get a file
-         * descriptor passed in. This is to prevent 2 instances from coming up
-         * against the same data.  */
-        if (netinfo_ptr->myfd != -1)
-            listenfd = netinfo_ptr->myfd;
-        else
-            listenfd = netinfo_ptr->myfd = net_listen(netinfo_ptr->myport);
-        if (listenfd < 0) {
-            logmsg(LOGMSG_FATAL, "Could not get listenfd\n");
-            exit(1);
-        }
-    }
-
-    netinfo_ptr->accept_thread_created = 1;
-    /*fprintf(stderr, "setting netinfo_ptr->accept_thread_created\n");*/
-
-    while (!netinfo_ptr->exiting && !db_is_exiting()) {
-
-        clilen = sizeof(cliaddr);
-
-        if (portmux_fds) {
-            new_fd = portmux_accept(portmux_fds, -1, &cliaddr);
-        } else {
-            new_fd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
-        }
-
-        if (new_fd == -1) {
-            logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s\n", listenfd, errno,
-                   strerror(errno));
-            continue;
-        }
-
-        if (new_fd <= 2) {
-            logmsg(LOGMSG_ERROR, "Unusual new_fd:%d\n", new_fd);
-            continue;
-        }
-
-#if defined _SUN_SOURCE
-        wait_alive(new_fd);
-#endif
-
-#if 0
-        if(portmux_fds) {
-            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "Failed to get peer address, error: %d %s\n", errno,
-                       strerror(errno));
-                Close(new_fd);
-                continue;
-            }
-        }
-#endif
-        if (netinfo_ptr->exiting) {
-            Close(new_fd);
-            break;
-        }
-
-#ifdef NODELAY
-        flag = 1;
-        len = sizeof(flag);
-        rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: couldnt turn off nagel on new_fd %d, flag=%d: %d "
-                    "%s\n",
-                    __func__, new_fd, flag, errno, strerror(errno));
-            Close(new_fd);
-            continue;
-        }
-#endif
-
-        int on = 1;
-        len = sizeof(on);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: couldnt turn on keep alive on new fd %d: %d %s\n",
-                   __func__, new_fd, errno, strerror(errno));
-            Close(new_fd);
-            continue;
-        }
-
-#ifdef TCPBUFSZ
-        int tcpbfsz = (8 * 1024 * 1024);
-        len = sizeof(tcpbfsz);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
-        if (rc < 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: couldnt set tcp sndbuf size on listenfd %d: %d %s\n",
-                   __func__, new_fd, errno, strerror(errno));
-            Close(new_fd);
-            continue;
-        }
-
-        tcpbfsz = (8 * 1024 * 1024);
-        len = sizeof(tcpbfsz);
-        rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
-        if (rc < 0) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: couldnt set tcp rcvbuf size on listenfd %d: %d %s\n",
-                   __func__, new_fd, errno, strerror(errno));
-            Close(new_fd);
-            continue;
-        }
-#endif
-
-#ifdef NOLINGER
-        linger_data.l_onoff = 0;
-        linger_data.l_linger = 1;
-        len = sizeof(linger_data);
-        if (setsockopt(new_fd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
-                       len) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: couldnt turn off linger on new_fd %d: %d %s\n",
-                    __func__, new_fd, errno, strerror(errno));
-            Close(new_fd);
-            continue;
-        }
-#endif
-
-        /* get a buffered pointer to the socket */
-        sb = sbuf2open(new_fd, 0); /* no flags yet... */
-        if (sb == NULL) {
-            logmsg(LOGMSG_ERROR, "sbuf2open failed\n");
-            continue;
-        }
-
-        if (debug_switch_net_verbose()) {
-            logmsg(LOGMSG_DEBUG, "Setting wrapper\n");
-            sbuf2setr(sb, sbuf2read_wrapper);
-            sbuf2setw(sb, sbuf2write_wrapper);
-        }
-
-        sbuf2setbufsize(sb, netinfo_ptr->bufsz);
-
-        /* reasonable default for poll */
-        polltm = 100;
-
-        /* use tuned value if set */
-        if (netinfo_ptr->netpoll > 0) {
-            polltm = netinfo_ptr->netpoll;
-        }
-
-        /* setup poll */
-        pol.fd = new_fd;
-        pol.events = POLLIN;
-
-        /* poll */
-        unsigned pollstart, pollend;
-        pollstart = comdb2_time_epochms();
-        rc = poll(&pol, 1, polltm);
-        pollend = comdb2_time_epochms();
-
-        quantize(netinfo_ptr->conntime_all, pollend - pollstart);
-        quantize(netinfo_ptr->conntime_periodic, pollend - pollstart);
-        netinfo_ptr->num_accepts++;
-
-        if (netinfo_ptr->conntime_dump_period && ((pollend - last_stat_dump_time) / 1000) > netinfo_ptr->conntime_dump_period ) {
-            quantize_ctrace(netinfo_ptr->conntime_all, "Accept poll times, overall:");
-            quantize_ctrace(netinfo_ptr->conntime_periodic, "Accept poll times, last period:");
-            quantize_clear(netinfo_ptr->conntime_periodic);
-            last_stat_dump_time = pollend;
-        }
-
-        /* drop connection on poll error */
-        if (rc < 0) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: error from poll: %s, peeraddr=%s\n", __func__,
-                    strerror(errno), paddr);
-            sbuf2close(sb);
-            continue;
-        }
-
-        /* drop connection on timeout */
-        else if (0 == rc) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: timeout reading from socket, peeraddr=%s\n",
-                    __func__, paddr);
-            sbuf2close(sb);
-            netinfo_ptr->num_accept_timeouts++;
-            continue;
-        }
-
-        /* drop connection if i would block in read */
-        if ((pol.revents & POLLIN) == 0) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: cannot read without blocking, peeraddr=%s\n",
-                    __func__, paddr);
-            sbuf2close(sb);
-            continue;
-        }
-
-        /* the above poll ensures that this will not block */
-
-        uint8_t firstbyte;
-        rc = read_stream(netinfo_ptr, NULL, sb, &firstbyte, 1);
-        if (rc != 1) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: read_stream failed for = %s\n", __func__,
-                    paddr);
-            sbuf2close(sb);
-            continue;
-        }
-
-        /* appsock reqs have a non-0 first byte */
-        if (firstbyte > 0) {
-            do_appsock(netinfo_ptr, &cliaddr, sb, firstbyte);
-            continue;
-        }
-
-        sbuf2settimeout(sb, 0, 0);
-        sbuf2setbufsize(sb, netinfo_ptr->bufsz);
-
-        /* grab pool memory for connect_and_accept_t */
-        Pthread_mutex_lock(&(netinfo_ptr->connlk));
-        ca = (connect_and_accept_t *)pool_getablk(netinfo_ptr->connpool);
-        Pthread_mutex_unlock(&(netinfo_ptr->connlk));
-
-        /* setup connect_and_accept args */
-        ca->netinfo_ptr = netinfo_ptr;
-        ca->sb = sb;
-        ca->addr = cliaddr.sin_addr;
-
-        /* connect and accept- this might be replaced with a threadpool later */
-        rc = pthread_create(&tid, &(netinfo_ptr->pthread_attr_detach),
-                            connect_and_accept, ca);
-
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
-                    strerror(errno));
-            Pthread_mutex_lock(&(netinfo_ptr->connlk));
-            pool_relablk(netinfo_ptr->connpool, ca);
-            Pthread_mutex_unlock(&(netinfo_ptr->connlk));
-            sbuf2close(sb);
-            continue;
-        }
-    }
-
-    Close(listenfd);
-
-#ifdef NOTREACHED
-    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
-    if (netinfo_ptr->stop_thread_callback)
-        netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
-
-    if (portmux_fds)
-        portmux_close(portmux_fds);
-#endif
-    /* make the compiler shutup */
-    return NULL;
-}
-
-
-static void *heartbeat_send_thread(void *arg)
-{
-    comdb2_name_thread(__func__);
-    host_node_type *ptr;
-    netinfo_type *netinfo_ptr;
-
-    thrman_register(THRTYPE_GENERIC);
-    thread_started("net heartbeat send");
-
-    netinfo_ptr = (netinfo_type *)arg;
-
-    netinfo_ptr->heartbeat_send_thread_arch_tid = getarchtid();
-    logmsg(LOGMSG_INFO, "heartbeat send thread starting.  time=%d.  tid=%" PRIxPTR "\n",
-            netinfo_ptr->heartbeat_send_time,
-           (intptr_t) netinfo_ptr->heartbeat_send_thread_arch_tid);
-
-    if (netinfo_ptr->start_thread_callback)
-        netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    while (!netinfo_ptr->exiting) {
-        /* netinfo lock protects the list AND the write_heartbeat call
-           no need to grab rdlock */
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-        for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
-            if (ptr->host != netinfo_ptr->myhostname) {
-                write_heartbeat(netinfo_ptr, ptr);
-            }
-        }
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-        if (netinfo_ptr->exiting)
-            break;
-
-        int ss = netinfo_ptr->heartbeat_send_time;
-        for (int i = 0; i < ss && !netinfo_ptr->exiting; i++)
-            sleep(1);
-    }
-    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
-    if (netinfo_ptr->stop_thread_callback)
-        netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
-
-    return NULL;
 }
 
 static watchlist_node_type *get_watchlist_node(SBUF2 *sb, const char *funcname)
@@ -6088,104 +3293,6 @@ void net_set_writefn(SBUF2 *sb, sbuf2writefn writefn)
     watchlist_node->writefn = writefn;
 }
 
-static void *heartbeat_check_thread(void *arg)
-{
-    comdb2_name_thread(__func__);
-    host_node_type *ptr;
-    netinfo_type *netinfo_ptr;
-    int timestamp;
-    int fd;
-    int node_timestamp;
-    int running_user_func;
-
-    thrman_register(THRTYPE_GENERIC);
-    thread_started("net heartbeat check");
-
-    netinfo_ptr = (netinfo_type *)arg;
-    netinfo_ptr->heartbeat_check_thread_arch_tid = getarchtid();
-    logmsg(LOGMSG_INFO, "heartbeat check thread starting.  time=%d.  tid=%" PRIxPTR "\n",
-            netinfo_ptr->heartbeat_check_time,
-            (intptr_t)netinfo_ptr->heartbeat_check_thread_arch_tid);
-
-    if (netinfo_ptr->start_thread_callback)
-        netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
-
-    while (!netinfo_ptr->exiting) {
-        int now;
-        /* Re-register under portmux if it's time */
-        if (netinfo_ptr->portmux_register_interval > 0 &&
-            ((now = comdb2_time_epoch()) - netinfo_ptr->portmux_register_time) >
-                netinfo_ptr->portmux_register_interval) {
-            int pport;
-            if (netinfo_ptr->port_from_lrl)
-                pport = portmux_use(netinfo_ptr->app, netinfo_ptr->service,
-                                    netinfo_ptr->instance, netinfo_ptr->myport);
-            else
-                pport = portmux_register(netinfo_ptr->app, netinfo_ptr->service,
-                                         netinfo_ptr->instance);
-
-            if (pport != netinfo_ptr->myport && pport > 0) {
-                /* What on earth should i do?  Abort maybe?  i'm already using
-                 * the old port, and sockpool has it cached everywhere .. */
-                logmsg(LOGMSG_FATAL, "Portmux returned a different port for %s %s %s?  ",
-                        netinfo_ptr->app, netinfo_ptr->service,
-                        netinfo_ptr->instance);
-                logmsg(LOGMSG_FATAL, "Oldport=%d, returned-port=%d\n",
-                       netinfo_ptr->myport, pport);
-                abort();
-            }
-            netinfo_ptr->portmux_register_time = now;
-        }
-
-        Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
-        /*fprintf(stderr, "heartbeat thread running\n");*/
-
-        for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
-            if (ptr->host != netinfo_ptr->myhostname) {
-                /* CLOSE it if we havent recieved a heartbeat from it */
-                timestamp = time(NULL);
-
-                Pthread_mutex_lock(&(ptr->timestamp_lock));
-                fd = ptr->fd;
-                running_user_func = ptr->running_user_func;
-                node_timestamp = ptr->timestamp;
-                Pthread_mutex_unlock(&(ptr->timestamp_lock));
-
-                if ((fd > 0) && (running_user_func == 0)) {
-                    if ((timestamp - node_timestamp) >
-                        netinfo_ptr->heartbeat_check_time) {
-                        host_node_printf(
-                            LOGMSG_WARN,
-                            ptr, "%s: no data in %d seconds, killing session\n",
-                            __func__, timestamp - node_timestamp);
-
-                        /* mark last failing subnet */
-                        net_set_bad_subnet(ptr->subnet);
-
-                        close_hostnode(ptr);
-                    }
-                }
-            }
-        }
-
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
-        if (netinfo_ptr->exiting)
-            break;
-        sleep(1);
-    }
-
-    logmsg(LOGMSG_DEBUG, "heartbeat check thread exiting!\n");
-
-    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
-    if (netinfo_ptr->stop_thread_callback)
-        netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
-    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
-
-    return NULL;
-}
-
 int net_close_connection(netinfo_type *netinfo_ptr, const char *hostname)
 {
     host_node_type *ptr;
@@ -6298,26 +3405,6 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
     return ptr;
 }
 
-void connect_to_all(netinfo_type *netinfo_ptr)
-{
-    if (gbl_libevent) {
-        return;
-    }
-
-    host_node_type *host_node_ptr;
-
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
-    for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
-         host_node_ptr = host_node_ptr->next) {
-        if (host_node_ptr->host != netinfo_ptr->myhostname)
-            connect_to_host(netinfo_ptr, host_node_ptr, NULL);
-        /*sleep(1);*/
-    }
-
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-}
-
 /*
   1) set up a socket bound, and listening on our host/port
   2) create an accept_thread blocked on that socket
@@ -6342,93 +3429,26 @@ int net_init(netinfo_type *netinfo_ptr)
     for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
          host_node_ptr = host_node_ptr->next) {
         add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host, host_node_ptr->port);
-        if (!gbl_libevent) host_node_printf(LOGMSG_USER, host_node_ptr, "adding to sanctioned\n");
         add_host(host_node_ptr);
         ++num;
     }
-    if (gbl_libevent) {
-        if (num > 1 && !netinfo_ptr->ischild) {
-            struct timeval a, b, c;
-            gettimeofday(&a, NULL);
-            /* wait up to 1s to connect to siblings */
-            const char *hostlist[REPMAX];
-            int retry = 100;
-            while (--retry >= 0 && (rc = net_get_all_nodes_connected(netinfo_ptr, hostlist)) < (num - 1)) {
-                usleep(10 * 1000); //10ms
-            }
-            gettimeofday(&b, NULL);
-            timersub(&b, &a, &c);
-            logmsg(LOGMSG_INFO, "%s %s waited:%ldms connected:%d\n", __func__, netinfo_ptr->service, c.tv_sec * 1000 + c.tv_usec / 1000, rc);
+
+    if (num > 1 && !netinfo_ptr->ischild) {
+        struct timeval a, b, c;
+        gettimeofday(&a, NULL);
+        /* wait up to 1s to connect to siblings */
+        const char *hostlist[REPMAX];
+        int retry = 100;
+        while (--retry >= 0 && (rc = net_get_all_nodes_connected(netinfo_ptr, hostlist)) < (num - 1)) {
+            usleep(10 * 1000); //10ms
         }
-        return 0;
+        gettimeofday(&b, NULL);
+        timersub(&b, &a, &c);
+        logmsg(LOGMSG_INFO, "%s %s waited:%ldms connected:%d\n", __func__, netinfo_ptr->service, c.tv_sec * 1000 + c.tv_usec / 1000, rc);
     }
-
-    /* create heartbeat writer thread */
-    rc = pthread_create(&(netinfo_ptr->heartbeat_send_thread_id),
-                        &(netinfo_ptr->pthread_attr_detach),
-                        heartbeat_send_thread, netinfo_ptr);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "init_network:couldnt create heartbeat thread - "
-                        "rc=%d errno=%d %s exiting\n",
-                rc, errno, strerror(errno));
-        exit(1);
-    }
-
-    /* create heartbeat reader thread */
-    rc = pthread_create(&(netinfo_ptr->heartbeat_check_thread_id),
-                        &(netinfo_ptr->pthread_attr_detach),
-                        heartbeat_check_thread, netinfo_ptr);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "init_network:couldnt create heartbeat thread - "
-                        "rc=%d, errno=%d %s exiting\n",
-                rc, errno, strerror(errno));
-        exit(1);
-    }
-
-    if (netinfo_ptr->accept_on_child || !netinfo_ptr->ischild) {
-        portmux_register_reconnect_callback(net_portmux_hello, netinfo_ptr);
-        net_portmux_hello(netinfo_ptr);
-
-        /* create accept thread */
-        rc = pthread_create(&(netinfo_ptr->accept_thread_id),
-                            &(netinfo_ptr->pthread_attr_detach), accept_thread,
-                            netinfo_ptr);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "init_network: couldnt create accept thread - "
-                            "rc=%d, errno=%d %s exiting\n",
-                    rc, errno, strerror(errno));
-            exit(1);
-        }
-
-        /* dont proceed till the accept thread is set up */
-        while (!netinfo_ptr->accept_thread_created) {
-            usleep(10000);
-        }
-    }
-    /*fprintf(stderr, "netinfo_ptr->accept_thread_created = %d\n",
-       netinfo_ptr->accept_thread_created);*/
-
-    /* create threads to connect to each host we know about */
-    connect_to_all(netinfo_ptr);
-
-    /* XXX just give things a chance to settle down before we return */
-    usleep(10000);
-
     return 0;
 }
 
-static int net_portmux_hello(void *p)
-{
-    netinfo_type *netinfo_ptr = (netinfo_type *)p;
-    if (netinfo_ptr->hellofd != -1) {
-        Close(netinfo_ptr->hellofd);
-        netinfo_ptr->hellofd = -1;
-    }
-    char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];
-    snprintf(register_name, sizeof(register_name), "%s/%s/%s", netinfo_ptr->app,
-             netinfo_ptr->service, netinfo_ptr->instance);
-    return portmux_hello("localhost", register_name, &netinfo_ptr->hellofd);
-}
 
 int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
 {
@@ -6457,24 +3477,6 @@ int net_register_allow(netinfo_type *netinfo_ptr, NETALLOWFP func)
 int net_register_newnode(netinfo_type *netinfo_ptr, NEWNODEFP func)
 {
     netinfo_ptr->new_node_rtn = func;
-    return 0;
-}
-
-int net_set_pool_size(netinfo_type *netinfo_ptr, int size)
-{
-    int cnt = 0;
-    Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-    for (host_node_type *ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next)
-        cnt++;
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-    if (cnt > 1) {
-        logmsg(LOGMSG_ERROR, 
-                "%s: cannot set pool size after open - pool_size is %d\n",
-                __func__, netinfo_ptr->pool_size);
-    } else {
-        logmsg(LOGMSG_INFO, "%s: set pool size to %d\n", __func__, size);
-        netinfo_ptr->pool_size = size;
-    }
     return 0;
 }
 
@@ -6861,23 +3863,5 @@ int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_h
 int net_send_all(netinfo_type *netinfo_ptr, int num, void **data, int *sz,
                  int *type, int *flag)
 {
-    if (gbl_libevent) {
-        return net_send_all_evbuffer(netinfo_ptr, num, data, sz, type, flag);
-    }
-    int rc = 0;
-    struct interned_string *hostlist[REPMAX];
-    int count = net_get_all_nodes_connected_interned(netinfo_ptr, hostlist);
-    for (int i = 0; i < count; i++) {
-        struct interned_string *h = hostlist[i];
-        for (int j = 0; j < num; ++j) {
-            if ((flag[j] & NET_SEND_LOGPUT) && netinfo_ptr->throttle_rtn &&
-                (netinfo_ptr->throttle_rtn)(netinfo_ptr, h)) {
-                continue;
-            }
-            if (net_send_flags(netinfo_ptr, h->str, type[j], data[j], sz[j], flag[j])) {
-                rc = 1;
-            }
-        }
-    }
-    return rc;
+    return net_send_all_evbuffer(netinfo_ptr, num, data, sz, type, flag);
 }

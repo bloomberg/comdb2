@@ -180,34 +180,19 @@ struct event_info;
 struct host_node_tag {
     struct event_info *event_info;
     int fd;
-    SBUF2 *sb;
-
     struct interned_string *host_interned;
     char *host;
     int hostname_len;
     char subnet[HOSTNAME_LEN];
     int port;
     struct host_node_tag *next;
-    int have_connect_thread;
-    int have_reader_thread;
-    int have_writer_thread;
     int decom_flag;
-    pthread_t connect_thread_id;
-    pthread_t reader_thread_id;
-    pthread_t writer_thread_id;
-    arch_tid connect_thread_arch_tid;
-    arch_tid reader_thread_arch_tid;
-    arch_tid writer_thread_arch_tid;
-    write_data *write_head;
-    write_data *write_tail;
     seq_data *wait_list;
     pthread_mutex_t lock;
     pthread_mutex_t enquelk;
     pthread_cond_t ack_wakeup;
     pthread_mutex_t wait_mutex;
     int timestamp;
-    pthread_mutex_t write_lock;
-    pthread_cond_t write_wakeup;
     int got_hello;
     int running_user_func; /* This is a count of how many are running */
     int closed;
@@ -240,12 +225,6 @@ struct host_node_tag {
     watchlist_node_type *watchlist_ptr;
     struct netinfo_struct *netinfo_ptr;
     stats_type stats; /* useful per host */
-
-#ifdef PER_THREAD_MALLOC
-    comdb2ma msp;
-#endif
-
-    void *user_data_buf;
 
     HostInfo udp_info;
     int num_sends;
@@ -321,14 +300,6 @@ struct netinfo_struct {
     pthread_rwlock_t lock;
     pthread_mutex_t watchlk;
     pthread_mutex_t sanclk;
-    pthread_t accept_thread_id;
-    pthread_t heartbeat_send_thread_id;
-    pthread_t heartbeat_check_thread_id;
-
-    /* get the archthreads for each */
-    arch_tid accept_thread_arch_tid;
-    arch_tid heartbeat_send_thread_arch_tid;
-    arch_tid heartbeat_check_thread_arch_tid;
 
     int fake;     /* 1 if this is set, then we don't ever send or receieve */
     void *usrptr; /* pointer to user supplied data */
@@ -338,9 +309,6 @@ struct netinfo_struct {
     pthread_attr_t pthread_attr_detach;
     APPSOCKFP *appsock_rtn;
     APPSOCKFP *admin_appsock_rtn;
-    HELLOFP *hello_rtn;
-    int accept_thread_created;
-    int heartbeat_send_time;
     int heartbeat_check_time;
     int decom_time;
     char *name;
@@ -367,9 +335,6 @@ struct netinfo_struct {
     int exiting;
     int trace;
 
-    int pool_size;
-
-    int user_data_buf_size;
     int net_test;
 
     host_node_type *last_used_node_ptr;
@@ -377,7 +342,6 @@ struct netinfo_struct {
     unsigned int last_used_node_miss_cntr;
 
     int netpoll;
-    void *connpool;
     pthread_mutex_t connlk;
 
     int enque_flush_interval;

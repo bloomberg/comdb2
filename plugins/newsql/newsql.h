@@ -60,7 +60,6 @@ void newsql_destroy_clnt(struct sqlclntstate *);
 int process_set_commands(struct sqlclntstate *, CDB2SQLQUERY *);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *);
 int newsql_heartbeat(struct sqlclntstate *);
-void setup_newsql_evbuffer_handlers(void);
 int newsql_first_run(struct sqlclntstate *, CDB2SQLQUERY *);
 typedef enum {
     NEWSQL_SUCCESS = 0,

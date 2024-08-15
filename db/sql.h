@@ -1502,8 +1502,6 @@ void add_query_to_samples_queries(const unsigned char *fingerprint, const unsign
 int gather_connection_info(struct connection_info **info, int *num_connections);
 void free_connection_info(struct connection_info *info, int num_connections);
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
-void clnt_register(struct sqlclntstate *clnt);
-void clnt_unregister(struct sqlclntstate *clnt);
 
 struct sqlclntstate *get_sql_clnt(void);
 
@@ -1579,7 +1577,6 @@ void add_sql_evbuffer(struct sqlclntstate *);
 void rem_sql_evbuffer(struct sqlclntstate *);
 int add_appsock_connection_evbuffer(struct sqlclntstate *);
 void rem_appsock_connection_evbuffer(struct sqlclntstate *);
-int check_active_appsock_connections(struct sqlclntstate *);
 void exhausted_appsock_connections(struct sqlclntstate *);
 void update_col_info(struct sql_col_info *info, int);
 void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);

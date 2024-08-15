@@ -5774,9 +5774,6 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
     int sp_rc = sp->rc;
     sp->rc = 0;
 
-    if (!gbl_libevent_appsock) {
-        Pthread_mutex_lock(parent->emit_mutex); /* old way */
-    } else
     /* If SP has threads, one of them may hold emit_mutex waiting for a slow
      * client to read (in sql_flush_int). We trylock instead and come up for
      * air to check if bdb_lock_desired */

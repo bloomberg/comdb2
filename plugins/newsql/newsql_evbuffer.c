@@ -22,7 +22,9 @@
 #include <event2/event.h>
 
 #include <bdb_api.h>
+#include <comdb2_appsock.h>
 #include <comdb2_atomic.h>
+#include <comdb2_plugin.h>
 #include <hostname_support.h>
 #include <intern_strings.h>
 #include <net_appsock.h>
@@ -1172,8 +1174,19 @@ static void handle_newsql_admin_request_evbuffer(int dummyfd, short what, void *
     free(data);
 }
 
-void setup_newsql_evbuffer_handlers(void)
+static int newsql_init(void *arg)
 {
     add_appsock_handler("newsql\n", handle_newsql_request_evbuffer);
     add_appsock_handler("@newsql\n", handle_newsql_admin_request_evbuffer);
+    return 0;
 }
+
+comdb2_appsock_t newsql_plugin = {
+    "newsql",             /* Name */
+    "",                   /* Usage info */
+    0,                    /* Execution count */
+    0,                    /* Flags */
+    NULL                  /* Handler function */
+};
+
+#include "plugin.h"
