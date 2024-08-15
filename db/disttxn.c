@@ -990,13 +990,11 @@ static int disttxn_check_propagated_lk(transaction_t *dtran)
     } else if (gbl_debug_disttxn_trace) {
         struct participant *part = NULL, *tmp = NULL;
         char hosts[1024] = {0};
-        int count = 0;
         LISTC_FOR_EACH_SAFE(&dtran->participants, part, tmp, linkv)
         {
             if (part->status == PARTICIPANT_PREPARED) {
                 strcat(hosts, part->participant_name);
                 strcat(hosts, " ");
-                count++;
             }
         }
         logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s has not yet propagated, waiting for %s\n", __func__,
@@ -1020,7 +1018,6 @@ static int disttxn_check_commitable_lk(transaction_t *dtran)
         Pthread_cond_signal(&dtran->cd);
     } else if (gbl_debug_disttxn_trace) {
         char hosts[1024] = {0};
-        int count = 0;
         struct participant *part = NULL, *tmp = NULL;
         LISTC_FOR_EACH_SAFE(&dtran->participants, part, tmp, linkv)
         {
@@ -1030,7 +1027,6 @@ static int disttxn_check_commitable_lk(transaction_t *dtran)
                 strcat(hosts, "/");
                 strcat(hosts, pmaster);
                 strcat(hosts, " ");
-                count++;
             }
         }
         logmsg(LOGMSG_USER, "DISTTXN %s dist_txnid %s not-yet commitable waiting for %s\n", __func__, dtran->dist_txnid,
