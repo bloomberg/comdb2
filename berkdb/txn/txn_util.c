@@ -2079,7 +2079,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
     Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
     if (commit_lsn_map) {
 
-        if ((ret = __txn_commit_map_add_nolock(dbenv, p->utxnid, &lsn_out)) != 0) {
+        if ((ret = __txn_commit_map_add_nolock(dbenv, p->utxnid, lsn_out)) != 0) {
             logmsg(LOGMSG_FATAL, "Error adding commit-lsn map for txn %lx\n", p->utxnid);
             abort();
         }

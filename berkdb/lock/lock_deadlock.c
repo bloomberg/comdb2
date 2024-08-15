@@ -1113,7 +1113,7 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, tslst, tscnt, is_re
 	sparse_map_t *sparse_map = NULL;
 	u_int8_t *pptr;
 	size_t allocSz;
-	int timestamp_index_count;
+	int timestamp_index_count = 0;
 	int is_first, ret, ret2;
 
 	static u_int32_t *dd_bitmap = NULL;
