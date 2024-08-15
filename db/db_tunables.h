@@ -1498,10 +1498,6 @@ REGISTER_TUNABLE("logput_window",
                  "Drop log-broadcasts for incoherent nodes "
                  "more than this many bytes behind.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_incoherent_logput_window, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
-                                       "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_dump_full_net_queue,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dump_net_queue_on_partial_write",
                  "Dump net-queue info on partial write. (Default: off):",
                  TUNABLE_BOOLEAN, &gbl_dump_net_queue_on_partial_write,
@@ -1966,12 +1962,6 @@ REGISTER_TUNABLE("verbose_set_sc_in_progress",
                  TUNABLE_BOOLEAN, &gbl_verbose_set_sc_in_progress,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("send_failed_dispatch_message",
-                 "Send explicit failed-dispatch message to the api.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_send_failed_dispatch_message,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("legacy_schema", "Only allow legacy compatible csc2 schema",
                  TUNABLE_BOOLEAN, &gbl_legacy_schema,
                  EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL, NULL, NULL);
@@ -2011,12 +2001,6 @@ REGISTER_TUNABLE("max_query_sample_queries",
 
 REGISTER_TUNABLE("protobuf_connectmsg", "Use protobuf in net library for the connect message. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_pb_connectmsg, 0, NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("libevent", "Use libevent in net library. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
-
-REGISTER_TUNABLE("libevent_appsock", "Use libevent for appsock connections. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_libevent_appsock, READONLY, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("libevent_rte_only", "Prevent listening on TCP socket. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_libevent_rte_only, READONLY, 0, 0, 0, 0);
@@ -2348,9 +2332,6 @@ REGISTER_TUNABLE("reject_mixed_ddl_dml", "Reject write schedules which mix DDL a
 REGISTER_TUNABLE("debug_create_master_entry", "Reproduce startup race in create_master_entry.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_create_master_entry, EXPERIMENTAL | INTERNAL, 
                  NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("protobuf_prealloc_buffer_size", "Size of protobuf preallocated buffer.  (Default: 8192)", TUNABLE_INTEGER,
-                 &gbl_protobuf_prealloc_buffer_size, INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("sockbplog",
                  "Enable sending transactions over socket instead of net",

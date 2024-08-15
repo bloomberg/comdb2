@@ -5411,7 +5411,6 @@ void *watcher_thread(void *arg)
     extern int gbl_truncating_log;
     char *master_host = db_eid_invalid;
     int stopped_count = 0;
-    int i;
     int time_now, time_then;
     int rc;
     int done = 0;
@@ -5437,8 +5436,6 @@ void *watcher_thread(void *arg)
           (intptr_t)pthread_self());
 
     poll(NULL, 0, (rand() % 100) + 1000);
-
-    i = 0;
 
     bdb_state->repinfo->disable_watcher = 0;
 
@@ -5474,8 +5471,6 @@ void *watcher_thread(void *arg)
             continue;
         }
         stopped_count = 0;
-
-        i++;
 
         BDB_READLOCK("watcher_thread");
 
@@ -5562,7 +5557,7 @@ void *watcher_thread(void *arg)
             count = net_get_all_nodes_connected_interned(bdb_state->repinfo->netinfo,
                                                 hostlist);
 
-            for (i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
                 if (is_incoherent(bdb_state, hostlist[i]))
                     num_skipped++;
 
@@ -5586,7 +5581,7 @@ void *watcher_thread(void *arg)
                 int now;
                 now = comdb2_time_epochms();
                 Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-                for (i = 0; i < count; i++) {
+                for (int i = 0; i < count; i++) {
                     struct hostinfo *h = retrieve_hostinfo(hostlist[i]);
                     averager_purge_old(h->time_10seconds, now);
                     averager_purge_old(h->time_minute, now);
@@ -5681,7 +5676,7 @@ void *watcher_thread(void *arg)
                             count = net_get_all_nodes_connected(
                                 bdb_state->repinfo->netinfo, hostlist);
 
-                            for (i = 0; i < count; i++) {
+                            for (int i = 0; i < count; i++) {
                                 if ((bdb_state->callback->nodeup_rtn)(
                                         bdb_state, hostlist[i])) {
                                     logmsg(LOGMSG_WARN, 
@@ -5820,11 +5815,6 @@ void *watcher_thread(void *arg)
                 }
             }
 
-            /* try to re-establish connections to everyone after a few failures */
-            if (i > 10) {
-                connect_to_all(bdb_state->repinfo->netinfo);
-                i = 0;
-            }
             if (!bdb_state->repinfo->in_election) {
                 call_for_election(bdb_state, __func__, __LINE__);
             }

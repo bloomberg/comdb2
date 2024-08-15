@@ -3751,11 +3751,7 @@ int open_bdb_env(struct dbenv *dbenv)
 
         /* get the max rec len, or a sane default */
         gbl_maxreclen = get_max_reclen(dbenv);
-        if (gbl_maxreclen < 0)
-            gbl_maxreclen = 512;
-        net_set_pool_size(dbenv->handle_sibling, (gbl_maxreclen + 300) * 1024);
-        net_set_pool_size(dbenv->handle_sibling_offload,
-                          (gbl_maxreclen + 300) * 1024);
+        if (gbl_maxreclen < 0) gbl_maxreclen = 512;
 
         net_register_child_net(dbenv->handle_sibling,
                                dbenv->handle_sibling_offload, NET_SQL,

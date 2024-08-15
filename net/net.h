@@ -39,8 +39,6 @@
 #   endif
 #endif
 
-extern int gbl_libevent;
-extern int gbl_libevent_appsock;
 extern int gbl_libevent_rte_only;
 extern int gbl_net_maxconn;
 
@@ -314,13 +312,7 @@ void net_decom_node(netinfo_type *netinfo_ptr, const char *host);
    causes him to try to connect to anyone in the table that he is missing */
 int net_send_hello(netinfo_type *netinfo_ptr, const char *tohost);
 
-int net_set_pool_size(netinfo_type *netinfo_ptr, int size);
-
 int net_register_name(netinfo_type *netinfo_ptr, char name[]);
-int net_register_hello(netinfo_type *netinfo_ptr, HELLOFP func);
-
-/* For berkdb_rep.c */
-void connect_to_all(netinfo_type *netinfo_ptr);
 
 /* This appears to be unused -- Sam J 03/24/05 */
 void print_netinfo(netinfo_type *netinfo_ptr);

@@ -1646,17 +1646,8 @@ void bdb_prepare_close(bdb_state_type *bdb_state)
 
     if (is_real_netinfo(netinfo_ptr)) {
         /* get me off the network */
-        if (gbl_libevent) {
-            stop_event_net();
-        } else {
-            net_send_decom_all(netinfo_ptr, gbl_myhostname);
-            osql_process_message_decom(gbl_myhostname);
-            sleep(2);
-            net_exiting(netinfo_ptr);
-            osql_net_exiting();
-        }
+        stop_event_net();
     }
-
     net_cleanup_netinfo(netinfo_ptr);
     osql_cleanup_netinfo();
 }
@@ -2301,20 +2292,6 @@ static void panic_func(DB_ENV *dbenv, int errval)
     abort();
 }
 
-static void net_hello_rtn(struct netinfo_struct *netinfo, char name[])
-{
-    bdb_state_type *bdb_state;
-
-    bdb_state = net_get_usrptr(netinfo);
-
-    logmsg(LOGMSG_DEBUG, "net_hello_rtn got hello from <%s>\n", name);
-
-    if (strcmp(bdb_state->name, name) != 0) {
-        logmsg(LOGMSG_FATAL, "crossed clusters!  hello from <%s>\n", name);
-        exit(1);
-    }
-}
-
 static void set_dbenv_stuff(DB_ENV *dbenv, bdb_state_type *bdb_state)
 {
     int rc;
@@ -2675,12 +2652,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     /* register our environments name for sanity checking purposes. */
     logmsg(LOGMSG_INFO, "registering <%s> with net code\n", bdb_state->name);
     net_register_name(bdb_state->repinfo->netinfo, bdb_state->name);
-
-    /* register our routine that net will call when it gets a hello
-       msg with the name that was registered by the node that generated
-       the hello msg.  if its a different name, we have crossed clusters.
-       panic and exit */
-    net_register_hello(bdb_state->repinfo->netinfo, net_hello_rtn);
 
     /* register the routine that will delivered data from the
        network to berkeley db */

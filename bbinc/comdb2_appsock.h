@@ -20,11 +20,6 @@
 #include <inttypes.h>
 struct sbuf2;
 
-enum {
-    /* Whether it's an SQL handler? */
-    APPSOCK_FLAG_IS_SQL = 1 << 0,
-};
-
 /* Return codes */
 enum {
     APPSOCK_RETURN_OK = 0,

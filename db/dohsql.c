@@ -1051,8 +1051,6 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     return SHARD_NOERR;
 }
 
-extern pthread_mutex_t clnt_lk;
-
 static void _shard_disconnect(dohsql_connector_t *conn)
 {
     struct sqlclntstate *clnt = conn->clnt;
@@ -1070,10 +1068,8 @@ static void _shard_disconnect(dohsql_connector_t *conn)
         free(conn->cols);
 
     free(conn->params);
-    Pthread_mutex_lock(&clnt_lk);
     free(clnt->sql);
     clnt->sql = NULL;
-    Pthread_mutex_unlock(&clnt_lk);
     cleanup_clnt(clnt);
     free(clnt);
 }
