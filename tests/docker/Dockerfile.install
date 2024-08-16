@@ -10,6 +10,7 @@ RUN apt-get update && \
     flex \
     gawk \
     gdb \
+    git \
     iproute2 \
     iputils-ping \
     jq \
