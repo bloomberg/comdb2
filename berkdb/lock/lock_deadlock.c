@@ -1114,7 +1114,7 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, tslst, tscnt, is_re
 	u_int8_t *pptr;
 	size_t allocSz;
 	int timestamp_index_count = 0;
-	int is_first, ret, ret2;
+	int is_first, ret, ret2 = 0;
 
 	static u_int32_t *dd_bitmap = NULL;
 	static size_t dd_bitmap_size = 0;
@@ -1169,8 +1169,10 @@ retry:	count = region->stat.st_nlockers;
 
 	ret = __resize_object(dbenv, (void**) &dd_id_array, 
 		&dd_id_array_size, allocSz);
-	ret2 = __resize_object(dbenv, (void**) &dd_timestamp_indexes,
-		&dd_timestamp_indexes_size, count * sizeof(int));
+	if (tslst) {
+		ret2 = __resize_object(dbenv, (void**) &dd_timestamp_indexes,
+				&dd_timestamp_indexes_size, count * sizeof(int));
+	}
 	if(ret || ret2) {
 		if (sparse_map) 
 			free_sparse_map(dbenv, sparse_map);
@@ -1204,7 +1206,7 @@ retry:	count = region->stat.st_nlockers;
 			ptr_idarr->id = lip->id;
 			ptr_idarr->tid = lip->tid;
 			ptr_idarr->timestamp = lip->timestamp;
-			if (lip->timestamp > 0) {
+			if (tslst && lip->timestamp > 0) {
 				dd_timestamp_indexes[timestamp_index_count++] = lip->dd_id;
 			}
 			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
