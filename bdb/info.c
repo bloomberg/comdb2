@@ -48,6 +48,7 @@ extern void bdb_dump_table_dbregs(bdb_state_type *bdb_state);
 extern void __test_last_checkpoint(DB_ENV *dbenv);
 extern void __pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno);
 extern void __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno);
+extern void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock);
 
 static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
@@ -1283,6 +1284,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         "*cachestat      - cache stats",
         " cachestatall   - cache stats and dump of memory pool",
         " cacheinfo      - list files, pages, & priorities of mpool buffers",
+        " clminfo        - print commit lsn map internal structures",
         " tempcachestat  - cache stats for temp region",
         " tempcachestatall - cache stats and dump of temp region memory pool",
         " tempcacheinfo  - list files, pages, & priorities of temp mpool "
@@ -1434,6 +1436,8 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         cache_info(out, bdb_state);
     else if (tokcmp(tok, ltok, "cachestatall") == 0)
         cache_stats(out, bdb_state, 1);
+    else if (tokcmp(tok, ltok, "clminfo") == 0)
+        __txn_commit_map_print_info(bdb_state->dbenv, LOGMSG_USER, 1);
     else if (tokcmp(tok, ltok, "repstat") == 0)
         rep_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "bdbstate") == 0)

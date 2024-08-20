@@ -214,50 +214,105 @@ function test_add
 	# A mirror of the transaction log systable is needed to use it for joins.
 	cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table tranlog_copy(utxnid int, childutxnid int, lsnfile int, lsnoffset int)'
 
-	test_add_basic
-	test_add_children
-	test_add_recovery
-	test_add_replicant
+	local -r add_tests="test_add_basic test_add_children test_add_recovery test_add_replicant"
+	for t in $add_tests;
+	do
+		$t
+		echo "Passed $t"
+	done
 
 	cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table tranlog_copy'
 }
 
-function test_delete
-{
-	cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('pushlogs 2')"
-	maxfileinmap=0
-	while [[ "$maxfileinmap" -lt "2" ]]
-	do
-		sleep 3
+pushlogs() {
+	local -r target=$1
 
-		maxfileinmap=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select MAX(commitlsnfile) from comdb2_transaction_commit')
-	done
-
-	# Delete logfile txns from map
-
-	for node in $CLUSTER ; do
-		cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('clm_delete_logfile 1')"
-	done
-	sleep 3
-
-	for node in $CLUSTER ; do
-		numrecords=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm 'select COUNT(*) from comdb2_transaction_commit where commitlsnfile=1')
-		echo $numrecords
-
-		if ((numrecords != 0)); then
-		    echo "FAIL test_delete"
-		    exit 1
-		fi
-
-		numrecords=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm 'select COUNT(*) from comdb2_transaction_commit where commitlsnfile=2')
-		echo $numrecords
-
-		if ((numrecords == 0)); then
-		    echo "FAIL test_delete"
-		    exit 1
-		fi
-	done
+	get_num_files() { 
+		cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select max(commitlsnfile) from comdb2_transaction_commit'
+	}
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('pushlogs $target')"
+	while (( $(get_num_files) < target )); do sleep 5; done
 }
 
-test_delete
-test_add
+verify_txmap_deletes_records() {
+	local -r logfile_to_delete=$1 node=$2
+	local initial_num_records_for_file initial_num_records final_num_records
+
+	initial_num_records_for_file=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm \
+		"select COUNT(*) from comdb2_transaction_commit where commitlsnfile=$logfile_to_delete")
+	initial_num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm \
+		"select COUNT(*) from comdb2_transaction_commit")
+	readonly initial_num_records_for_file initial_num_records
+
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('clm_delete_logfile $logfile_to_delete')"
+
+	final_num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select COUNT(*) from comdb2_transaction_commit")
+	readonly final_num_records
+	if (( final_num_records != ( initial_num_records - initial_num_records_for_file ) )); then
+		echo "Did not get expected number of records after deleting logfile $logfile_to_delete"
+	fi
+}
+
+verify_txmap_has_expected_min_max_files() {
+	local -r exp_min_file=$1 exp_max_file=$2 node=$3
+	local final_state records_outside_of_expected_window
+
+	# Check that window stored in internal structure is correct
+	final_state=$(cdb2sql ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('bdb clminfo')")
+	readonly final_state
+	if !(echo "$final_state" | grep "Highest commit lsn file: $exp_max_file" > /dev/null) ||
+		!(echo "$final_state" | grep "Smallest logfile: $exp_min_file" > /dev/null); then
+		echo "Expected max file to be $exp_max_file and min file to be $exp_min_file. Got:"
+		echo "$final_state"
+		exit 1
+	fi
+
+	# Check that we don't have any map records outside of the window
+	records_outside_of_expected_window=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm \
+		"select * from comdb2_transaction_commit where commitlsnfile < $exp_min_file or commitlsnfile > $exp_max_file")
+	readonly records_outside_of_expected_window
+	if [ -n "$records_outside_of_expected_window" ]; then
+		echo "Got records with commit LSN file outside of expected window ($exp_min_file to $exp_max_file):"
+		echo "$records_outside_of_expected_window"
+		exit 1
+	fi
+}
+
+test_delete() {
+	local node
+	node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()")
+	readonly node
+
+	# Verify that txmap handles deleting middle file, smallest file, largest file, and only file
+	pushlogs 4
+	verify_txmap_has_expected_min_max_files 1 4 $node
+
+	verify_txmap_deletes_records 2 $node
+	verify_txmap_has_expected_min_max_files 1 4 $node
+
+	verify_txmap_deletes_records 1 $node
+	verify_txmap_has_expected_min_max_files 3 4 $node
+
+	verify_txmap_deletes_records 4 $node
+	verify_txmap_has_expected_min_max_files 3 3 $node
+
+	verify_txmap_deletes_records 3 $node
+	verify_txmap_has_expected_min_max_files -1 0 $node
+
+	# Verify that txmap handles adding new files after deletes
+	pushlogs 5
+	verify_txmap_has_expected_min_max_files 4 5 $node
+
+	# Verify that txmap handles request to delete non-existing file
+	verify_txmap_deletes_records 1 $node
+}
+
+if [ "$TESTCASE" == "commit_lsn_map_delete_generated" ];
+then
+	set -e
+	test_delete
+else
+	test_add
+fi
+
+echo "Passed test"
