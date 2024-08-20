@@ -908,6 +908,10 @@ Display buffer pool buckets
 
 Display per-file buffer-pool statistics.
 
+### bdb clminfo
+
+Display commit LSN map information.
+
 ### bdb repstat
 
 Display replication statistics.
