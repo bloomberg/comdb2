@@ -259,5 +259,60 @@ function test_delete
 	done
 }
 
+verify_tunable_value() {
+	local -r tunable=$1 exp_on_off=$2 node=$3
+	local res_on_off
+
+	res_on_off=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select value from comdb2_tunables where name='$tunable'")
+	readonly res_on_off
+
+	if ! (echo $res_on_off | grep --ignore-case "$exp_on_off" > /dev/null);
+	then
+		echo "$tunable='$res_on_off' but should be $exp_on_off"
+		return 1
+	fi
+}
+
+test_tunables() {
+	set -e
+	local node
+	node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()")
+	readonly node
+	
+	verify_tunable_value "commit_lsn_map" "on" $node
+	verify_tunable_value "utxnid_log" "on" $node
+
+	# Verify disabling utxnid logging disables the commit LSN map
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('utxnid_log off')"
+	verify_tunable_value "commit_lsn_map" "off" $node
+	verify_tunable_value "utxnid_log" "off" $node
+
+	# Verify that the commit LSN map cannot be enabled when utxnid logging is disabled
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('commit_lsn_map on')"
+	verify_tunable_value "commit_lsn_map" "off" $node
+	verify_tunable_value "utxnid_log" "off" $node
+
+	# Verify that re-enabling utxnid logging re-enables the commit LSN map
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('utxnid_log on')"
+	verify_tunable_value "commit_lsn_map" "on" $node
+	verify_tunable_value "utxnid_log" "on" $node
+
+	# Verify that re-enabling utxnid logging *does not* re-enable the commit LSN map if the map
+	# was turned off explicitly
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('utxnid_log off')"
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('commit_lsn_map off')"
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('utxnid_log on')"
+	verify_tunable_value "commit_lsn_map" "off" $node
+	verify_tunable_value "utxnid_log" "on" $node
+
+	# Verify that the commit LSN map can be enabled when utxnid logging is enabled
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('commit_lsn_map on')"
+	verify_tunable_value "commit_lsn_map" "on" $node
+	verify_tunable_value "utxnid_log" "on" $node
+
+	set +e
+}
+
 test_delete
 test_add
+test_tunables

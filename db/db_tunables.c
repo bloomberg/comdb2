@@ -537,6 +537,8 @@ extern int gbl_rep_process_pstack_time;
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
 
+static int utxnid_log_disabled_commit_lsn_map = 0;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
@@ -826,6 +828,49 @@ static int file_update(void *context, void *value)
     free(*(char **)tunable->var);
     *(char **)tunable->var = getdbrelpath(file_tmp);
     free(file_tmp);
+
+    return 0;
+}
+
+static int utxnid_log_update(void *context, void *value) {
+    const comdb2_tunable *tunable = (comdb2_tunable *)context;
+    const int my_value = *(int *)value;
+
+    if (!my_value && (gbl_commit_lsn_map == 1)) {
+        logmsg(LOGMSG_WARN,
+            "Setting `gbl_commit_lsn_map=0` because I am disabling '%s'\n",
+            tunable->name);
+
+        gbl_commit_lsn_map = 0;
+        utxnid_log_disabled_commit_lsn_map = 1;
+    } else if (my_value && utxnid_log_disabled_commit_lsn_map) {
+        logmsg(LOGMSG_WARN,
+            "Setting `gbl_commit_lsn_map=1` because I am re-enabling '%s'\n",
+            tunable->name);
+
+        gbl_commit_lsn_map = 1;
+        utxnid_log_disabled_commit_lsn_map = 0;
+    }
+
+    *(int *)tunable->var = *(int *)value;
+    return 0;
+}
+
+static int commit_lsn_map_update(void *context, void *value) {
+    const comdb2_tunable *tunable = (comdb2_tunable *)context;
+    const int my_value = *(int *)value;
+
+    if (my_value && (gbl_utxnid_log == 0)) {
+        logmsg(LOGMSG_WARN,
+            "Can't enable '%s' because utxnid logging is disabled\n",
+            tunable->name);
+
+       *(int *)value = gbl_utxnid_log;
+    } else if (!my_value && utxnid_log_disabled_commit_lsn_map) {
+        utxnid_log_disabled_commit_lsn_map = 0;
+    }
+
+    *(int *)tunable->var = *(int *)value;
 
     return 0;
 }

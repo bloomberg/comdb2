@@ -1596,7 +1596,7 @@ REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("commit_lsn_map", "Maintain a map of transaction commit LSNs. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_commit_lsn_map,
-                 NOARG, NULL, NULL, NULL, NULL);
+                 NOARG, NULL, NULL, commit_lsn_map_update, NULL);
 REGISTER_TUNABLE("incoherent_slow_inactive_timeout", "Periodically reset slow-nodes to incoherent.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_incoherent_slow_inactive_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
@@ -2162,7 +2162,7 @@ REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: on)", TUNABLE_BOOLE
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("utxnid_log", "Generate utxnid logs. (Default: on)", TUNABLE_BOOLEAN, &gbl_utxnid_log,
-                 NOARG|READEARLY, NULL, NULL, NULL, NULL);
+                 NOARG|READEARLY, NULL, NULL, utxnid_log_update, NULL);
 
 REGISTER_TUNABLE("ufid_add_on_collect", "Add to ufid-hash on collect.  (Default: off)", TUNABLE_BOOLEAN, 
                  &gbl_ufid_add_on_collect, EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
