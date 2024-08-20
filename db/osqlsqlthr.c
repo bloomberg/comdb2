@@ -128,20 +128,6 @@ inline int get_osql_maxtransfer(void)
     return g_osql_max_trans;
 }
 
-/**
- * Set the maximum time throttling offload-sql requests
- *
- */
-inline void set_osql_maxthrottle_sec(int limit)
-{
-    gbl_osql_max_throttle_sec = limit;
-}
-
-inline int get_osql_maxthrottle_sec(void)
-{
-    return gbl_osql_max_throttle_sec;
-}
-
 int gbl_osql_random_restart = 0;
 
 static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,

@@ -61,14 +61,6 @@ typedef void NETFP(void *ack_handle, void *usr_ptr, char *fromhost,
 
 typedef int HOSTDOWNFP(netinfo_type *netinfo, struct interned_string *host);
 
-/* Return -1 if we should enque before this item, 1 if we should insert after
- * this item */
-typedef int NETCMPFP(struct netinfo_struct *netinfo, void *insert_item,
-                     int insert_item_len, void *current_item,
-                     int current_item_len);
-
-typedef int GETLSNFP(struct netinfo_struct *netinfo, void *record, int len,
-                     int *file, int *offset);
 typedef int NEWNODEFP(struct netinfo_struct *netinfo, struct interned_string *hostname,
                       int portnum);
 
@@ -94,14 +86,11 @@ typedef int NETALLOWFP(struct netinfo_struct *netinfo, const char *hostname);
 
 typedef int NETTHROTTLEFP(struct netinfo_struct *netinfo, struct interned_string *hostname);
 
-void net_setbufsz(netinfo_type *info, int bufsz);
-
 void net_set_callback_data(netinfo_type *info, void *data);
 void net_register_start_thread_callback(netinfo_type *info, void (*)(void *));
 void net_register_stop_thread_callback(netinfo_type *info, void (*)(void *));
 
 int net_is_connected(netinfo_type *netinfo_ptr, const char *hostname);
-int net_close_connection(netinfo_type *net, const char *hostname);
 
 enum {
     NET_SEND_NODELAY = 0x00000001,
@@ -149,14 +138,6 @@ int net_send(netinfo_type *netinfo,
 int net_send_nodrop(netinfo_type *netinfo, const char *to_host, int usertype,
                     void *dta, int dtalen, int nodelay);
 
-int net_send_inorder_nodrop(netinfo_type *netinfo, const char *to_host,
-                            int usertype, void *dta, int dtalen, int nodelay);
-
-int net_send_inorder(netinfo_type *netinfo,
-                     const char *to_host, /* send to this node number */
-                     /*host_node_type *host_node, */
-                     int usertype, void *dta, int dtalen, int nodelay);
-
 /* register your callback routine that will be called when
    user messages of type "usertype" are recieved */
 int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
@@ -166,16 +147,10 @@ int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
    disconnect happens for a node */
 int net_register_hostdown(netinfo_type *netinfo_ptr, HOSTDOWNFP func);
 
-int net_register_getlsn(netinfo_type *netinfo_ptr, GETLSNFP func);
-
 int net_register_queue_stat(netinfo_type *netinfo_ptr, QSTATINITFP *qinit,
                             QSTATREADERFP *reader, QSTATENQUEFP *enque,
                             QSTATDUMPFP *dump, QSTATCLEARFP *qclear,
                             QSTATFREEFP *qfree);
-
-/* register a callback that you can compare the order of things
-   already on the write queue. */
-int net_register_netcmp(netinfo_type *netinfo_ptr, NETCMPFP func);
 
 /* register a callback routine that will be called when a
    new node is dynamically added */
@@ -221,7 +196,6 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
    sending/recieving data.  it will fail the "is_real_netinfo" test */
 netinfo_type *create_netinfo_fake(void);
 int is_real_netinfo(netinfo_type *netinfo);
-int is_offload_netinfo(netinfo_type *netinfo);
 
 void net_inc_recv_cnt_from(netinfo_type *netinfo_ptr, char *host);
 void net_reset_udp_stat(netinfo_type *netinfo_ptr);
@@ -344,8 +318,6 @@ void net_set_usrptr(netinfo_type *netinfo_ptr, void *usrptr);
 void net_sleep_with_lock(netinfo_type *netinfo_ptr, int nseconds);
 
 void net_timeout_watchlist(netinfo_type *netinfo_ptr);
-void net_add_watch(SBUF2 *sb, int read_timeout, int write_timeout);
-void net_set_writefn(SBUF2 *, sbuf2writefn);
 void net_end_appsock(SBUF2 *sb);
 
 /* get information about our network nodes.  fills in up to max_nodes array
@@ -372,9 +344,6 @@ int net_get_stats(netinfo_type *netinfo_ptr, struct net_stats *stat);
 
 void net_cmd(netinfo_type *netinfo_ptr, char *line, int lline, int st, int op1);
 
-int net_set_max_queue(netinfo_type *netinfo_ptr, int x);
-int net_set_max_bytes(netinfo_type *netinfo_ptr, uint64_t x);
-
 int net_get_host_network_usage(netinfo_type *netinfo_ptr, const char *host,
                                unsigned long long *written,
                                unsigned long long *read,
@@ -389,11 +358,6 @@ int net_get_network_usage(netinfo_type *netinfo_ptr,
 int net_get_queue_size(netinfo_type *netinfo_type, const char *host, int *limit,
                        int *usage);
 
-void net_exiting(netinfo_type *netinfo_ptr);
-int net_is_exiting(netinfo_type *netinfo_ptr);
-
-void net_trace(netinfo_type *netinfo_ptr, int on);
-
 enum { NET_TEST_NONE = 0, NET_TEST_QUEUE_FULL = 1, NET_TEST_MAX = 2 };
 
 /* simple way to enable/disable testing of net logic for cdb2tcm */
@@ -404,15 +368,7 @@ void net_disable_test(netinfo_type *netinfo_ptr);
 int net_add_nondedicated_subnet(void *, void *);
 int net_add_to_subnets(const char *suffix, const char *lrlname);
 void net_cleanup();
-void net_cleanup_netinfo(netinfo_type *netinfo_ptr);
 
-/* Maximum time accept will wait for a identifying byte from a socket.
-   This defaults to 100ms */
-void net_set_poll(netinfo_type *netinfo_ptr, int polltm);
-int net_get_poll(netinfo_type *netinfo_ptr);
-
-void net_set_enque_flush_interval(netinfo_type *, int x);
-void net_set_enque_reorder_lookahead(netinfo_type *, int x);
 
 int get_host_port(netinfo_type *);
 
@@ -428,29 +384,14 @@ typedef struct {
 void print_netdelay(void);
 void net_delay(const char *host);
 
-/* print memory usage on netinfo & hostnodes */
-void print_net_memstat(int human_readable);
-
-void net_add_watch_warning(SBUF2 *sb, int read_warning_timeout,
-                           int write_timeout, void *arg,
-                           int (*callback)(void *, int, int));
 int net_appsock_get_addr(SBUF2 *db, struct sockaddr_in *addr);
 int net_listen(int port);
-
-void net_set_throttle_percent(netinfo_type *netinfo_ptr, int x);
-void net_set_portmux_register_interval(netinfo_type *netinfo_ptr, int x);
 
 void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records *);
 void net_queue_stat_iterate_evbuffer(netinfo_type *, QSTATITERFP, struct net_get_records *);
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter, void *arg);
 
 int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure);
-
-/* Blocks until the net-queue is X% full or less */
-int net_throttle_wait(netinfo_type *netinfo_ptr);
-
-void net_enable_explicit_flush_trace(void);
-void net_disable_explicit_flush_trace(void);
 
 void kill_subnet(const char *subnet);
 void net_clipper(const char *subnet, int onoff);

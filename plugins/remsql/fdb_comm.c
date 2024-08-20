@@ -3898,7 +3898,6 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
     /* TODO: review the no-timeout transaction later on */
     if (gbl_notimeouts) {
         sbuf2settimeout(sb, 0, 0);
-        /*   net_add_watch(sb, 0, 0); */
     }
 
     while (1) {
@@ -4003,7 +4002,6 @@ int handle_remtran_request(comdb2_appsock_arg_t *arg)
     /* TODO: review the no-timeout transaction later on */
     if (gbl_notimeouts) {
         sbuf2settimeout(sb, 0, 0);
-        /*   net_add_watch(sb, 0, 0); */
     }
 
     while (1) {

@@ -25,35 +25,14 @@
 
 #include "comdb2.h"
 #include "tag.h"
-#include "net.h"
 #include "logmsg.h"
 #include "time_accounting.h"
 #include "intern_strings.h"
 
-int osql_disable_net_test(void);
-int osql_enable_net_test(int testnum);
-
-/* which netinfo_ptr to use */
-enum { NETINFO_NONE = 0, NETINFO_OSQL = 1, NETINFO_REP = 2 };
-
-/* which event */
-enum { NETTEST_NONE = 0, NETTEST_ENABLE = 1, NETTEST_DISABLE = 2 };
-
 /* print a description of each tcm test */
 static void tcmtest_printlist()
 {
-    logmsg(LOGMSG_USER, "routecpu <node>            - set routecpu test-node to "
-                    "<node> (routes off the node)\n");
-    logmsg(LOGMSG_USER, "nettest <opts>             - enable net debugging - use "
-                    "'help' for opts\n");
-    logmsg(LOGMSG_USER, "\n");
-}
-
-/* nettest usage */
-static void nettest_usage(void)
-{
-    logmsg(LOGMSG_USER, "Usage: nettest [enable|disable] [rep|osql] <testname>\n");
-    logmsg(LOGMSG_USER, "Only testname currently is 'queuefull' test\n");
+    logmsg(LOGMSG_USER, "routecpu <node>            - set routecpu test-node to <node> (routes off the node)\n");
     logmsg(LOGMSG_USER, "\n");
 }
 
@@ -114,72 +93,6 @@ void debug_trap(char *line, int lline)
                    host ? "enable" : "disable",
                    host ? host : tcmtest_routecpu_down_node);
             tcmtest_routecpu_down_node = host;
-        }
-        /* netdebug tests */
-        else if (tokcmp(tok, ltok, "nettest") == 0) {
-            int whichnet = NETINFO_NONE;
-            int whichtest = NET_TEST_NONE;
-            int whichevt = NETTEST_NONE;
-
-            /* 'enable' or 'disable' */
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok <= 0 || tokcmp(tok, ltok, "help") == 0) {
-                nettest_usage();
-                return;
-            } else if (tokcmp(tok, ltok, "enable") == 0) {
-                whichevt = NETTEST_ENABLE;
-            } else if (tokcmp(tok, ltok, "disable") == 0) {
-                whichevt = NETTEST_DISABLE;
-            } else {
-                logmsg(LOGMSG_ERROR, "expected 'enable' or 'disable'\n");
-                nettest_usage();
-                return;
-            }
-
-            /* 'rep' or 'osql' */
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok <= 0) {
-               logmsg(LOGMSG_ERROR, "expected 'rep' or 'osql' network layer\n");
-                nettest_usage();
-                return;
-            } else if (tokcmp(tok, ltok, "rep") == 0) {
-                whichnet = NETINFO_REP;
-            } else if (tokcmp(tok, ltok, "osql") == 0) {
-                whichnet = NETINFO_OSQL;
-            }
-
-            if (NETINFO_NONE == whichnet) {
-               logmsg(LOGMSG_ERROR, "invalid netinfo target for nettest\n");
-                nettest_usage();
-                return;
-            }
-
-            /* 'queuefull' */
-            tok = segtok(line, lline, &st, &ltok);
-            if (ltok > 0 && tokcmp(tok, ltok, "queuefull") == 0) {
-                whichtest = NET_TEST_QUEUE_FULL;
-            } else if (NETTEST_ENABLE == whichevt) {
-               logmsg(LOGMSG_ERROR, "invalid test\n");
-                nettest_usage();
-                return;
-            }
-
-            /* disable test*/
-            if (whichevt == NETTEST_DISABLE) {
-                if (NETINFO_OSQL == whichnet) {
-                    osql_disable_net_test();
-                } else {
-                    net_disable_test(thedb->handle_sibling);
-                }
-            }
-            /* enable test */
-            else {
-                if (NETINFO_OSQL == whichnet) {
-                    osql_enable_net_test(whichtest);
-                } else {
-                    net_enable_test(thedb->handle_sibling, whichtest);
-                }
-            }
         }
     } else if (tokcmp(tok, ltok, "timings") == 0) {
         print_all_time_accounting();

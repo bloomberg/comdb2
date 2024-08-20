@@ -3377,18 +3377,6 @@ int osql_comm_init(struct dbenv *dbenv)
 
     net_register_allow(tmp->handle_sibling, net_allow_node);
 
-    if (gbl_osql_max_queue)
-        net_set_max_queue(tmp->handle_sibling, gbl_osql_max_queue);
-
-    if (gbl_osql_net_poll)
-        net_set_poll(tmp->handle_sibling, gbl_osql_net_poll);
-
-    if (gbl_osql_net_portmux_register_interval)
-        net_set_portmux_register_interval(
-            tmp->handle_sibling, gbl_osql_net_portmux_register_interval);
-    if (!gbl_accept_on_child_nets)
-        net_set_portmux_register_interval(tmp->handle_sibling, 0);
-
     /* add peers */
     for (ii = 1; ii < dbenv->nsiblings; ii++) {
 
@@ -3506,9 +3494,6 @@ int osql_comm_init(struct dbenv *dbenv)
         free(tmp);
         return -1;
     }
-
-    if (debug_switch_net_verbose())
-        net_trace(tmp->handle_sibling, 1);
 
     thecomm_obj = tmp;
 
@@ -4500,26 +4485,6 @@ void osql_decom_node(char *decom_node)
     net_decom_node(comm->handle_sibling, decom_node);
 }
 
-/**
- * Signal net layer that the db is exiting
- *
- */
-void osql_net_exiting(void)
-{
-    osql_comm_t *comm = get_thecomm();
-    if(!comm) return;
-    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-    net_exiting(netinfo_ptr);
-}
-
-void osql_cleanup_netinfo(void)
-{
-    osql_comm_t *comm = get_thecomm();
-    if(!comm) return;
-    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-    net_cleanup_netinfo(netinfo_ptr);
-}
-
 /* Send dbglog op */
 int osql_send_dbglog(osql_target_t *target, unsigned long long rqid,
                      uuid_t uuid, unsigned long long dbglog_cookie, int queryid,
@@ -5404,18 +5369,6 @@ void osql_net_cmd(char *line, int lline, int st, int op1)
         net_cmd(comm->handle_sibling, line, lline, st, op1);
     } else {
         logmsg(LOGMSG_WARN, "osql not ready yet\n");
-    }
-}
-
-/**
- * Sets the osql net-poll value.
- *
- */
-void osql_set_net_poll(int pval)
-{
-    osql_comm_t *comm = get_thecomm();
-    if (comm) {
-        net_set_poll(comm->handle_sibling, pval);
     }
 }
 
@@ -7037,10 +6990,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     else
         db->blockosqltypcnt[0]++; /* invalids */
 
-    /* throttle blocproc on master if replication threads backing up */
-    if (gbl_toblock_net_throttle && is_write_request(type))
-        net_throttle_wait(thedb->handle_sibling);
-
 #if DEBUG_REORDER
     const char *osql_reqtype_str(int type);
     DEBUGMSG("osql_process_packet(): processing %s (%d)\n",
@@ -8452,36 +8401,6 @@ int osql_send_recordgenid(osql_target_t *target, unsigned long long rqid,
     }
 
     return rc;
-}
-
-/**
- * Enable a netinfo test for the osqlcomm network layer
- *
- */
-int osql_enable_net_test(int testnum)
-{
-    netinfo_type *netinfo_ptr;
-    osql_comm_t *comm = get_thecomm();
-    if (!comm || !comm->handle_sibling)
-        return 1;
-    netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-    net_enable_test(netinfo_ptr, testnum);
-    return 0;
-}
-
-/**
- * Disable a netinfo test for the osqlcomm network layer
- *
- */
-int osql_disable_net_test(void)
-{
-    netinfo_type *netinfo_ptr;
-    osql_comm_t *comm = get_thecomm();
-    if (!comm || !comm->handle_sibling)
-        return 1;
-    netinfo_ptr = (netinfo_type *)comm->handle_sibling;
-    net_disable_test(netinfo_ptr);
-    return 0;
 }
 
 enum { OSQL_AUTH_NODE = 1 };

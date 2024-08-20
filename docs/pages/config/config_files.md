@@ -122,31 +122,12 @@ sections describe each network's uses.
 
 |Option              |Default              |Description
 |--------------------|---------------------|------------
-|enque_flush_interval | 1000 | Try to flush network queue after this many writes for the replication net
-|enque_flush_interval_signal | 1000 | Try to flush network queue after this many writes for the signal net
-|enque_reorder_lookahead | 20 | When messages are sent out of order, peek at this many messages on the queue in attempt to reorder
 |heartbeat_check_time | 10 (seconds) | Consider an error if no heartbeat for this many seconds
 |nax_max_mem                      |0 (not set) | Maximum size (in MB) of items keep on replication network queue before dropping (per replicant)
-|net_explicit_flush_trace | not set | Produce a stack dump for long network flushes 
-|net_max_queue                    |25000       | Maximum number of items to keep on replication network queue before dropping (per replicant)
-|net_max_queue_signal             |100         | Maximum number of items to keep on the signal network queue before dropping (per replicant)
-|net_poll                         |100 ms      | Allow a connection to linger for this many ms before identifying itself. Connections that take longer are shut down.
-|net_portmux_register_interval    |600 ms      | Check on this interval if our port is correctly registered with pmux for the replication net
-|net_throttle_percent             |50          | Throttles write requests from replicants if the replication network queue is `net_throttle_percent` full
-|netbufsz | 1048576 (1 MB) | Size of the network buffer (per node) for the replication network
-|netbufsz_signal | 65536 | Size of the network buffer (per node) for the signal network
-|no_net_explicit_flush_trace | | Turns off stack dumps for long network flushes
-|no_toblock_net_throttle | | Disables no_toblock_net_throttle
 |noudp | | Disables `udp`.
 |osql_bkoff_netsend | 100 ms | On a full offload net queue, attempt to wait this long before attempting to resend
 |osql_bkoff_netsend_lmt | 300000 | Wait a total of this many ms attempting to send on the offload net
-|osql_heartbeat_alert_time | 10 (sec) | Like heartbeat_check_time for the offload network
 |osql_heartbeat_send_time | 5 (sec) | Like heartbeat_send_time for the offload network
-|osql_max_queue | 25000 | Like `net_max_queue` for offload net
-|osql_net_poll                    |100 ms      | Like `net_sql`, but for the offload network (used by write transactions on replicants to send work to the master)
-|osql_net_portmux_register_interval | 600 ms   | like `net_portmux_register_interval`
-|signal_net_portmux_register_interval | 600 ms | Like `osql_net_poll` for the signal network
-|toblock_net_throttle | not set | If set, will throttle writes on a full network queue
 |udp | set | Transaction acks are sent back to master via UDP.  Since UDP is potentially lossy, replicants will inject the current LSN ack into their TCP channel to the master every 500 ms.  On a lossy network, if you see lots of 500ms transactions, you may want to disable UDP.  Such cases aren't typical.
 
 #### Replication
@@ -366,7 +347,6 @@ DB layer tunables:
 |incoherent_alarm_time | 120 (seconds) | Warn about incoherent nodes this often.
 |incoherent_msg_freq | 3600 (seconds) | Drop a warning file if a node is incoherent (see [incoherent nodes overview](#incoherent-nodes-overview)) for more information.
 |max_incoherent_nodes | 1 | Number of incoherent nodes before an alarm triggers.
-|net_lmt_upd_incoherent_nodes | 70 (%)| When this percent of a network queue is full, throttle messages to incoherent nodes.
 
 BDB layer tunables (see [bdbattr tunables](#bdbattr-tunables))
 

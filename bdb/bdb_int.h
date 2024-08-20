@@ -1870,8 +1870,6 @@ char *bdb_coherent_state_string(struct interned_string *);
 
 /* ugly, but need to signal shutdown */
 int osql_process_message_decom(char *);
-void osql_net_exiting(void);
-void osql_cleanup_netinfo(void);
 int osql_repository_cancelall(void);
 int bdb_block_durable(bdb_state_type *bdb_state, DB_LSN *lsn);
 int bdb_committed_durable(bdb_state_type *bdb_state);

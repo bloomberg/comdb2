@@ -170,9 +170,6 @@ REGISTER_TUNABLE("deadlock_policy_override", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("decimal_rounding", NULL, TUNABLE_INTEGER,
                  &gbl_decimal_rounding, READONLY, NULL, NULL, NULL, NULL);
                  */
-REGISTER_TUNABLE("decom_time", "Decomission time. (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_decom, READONLY | NOZERO, NULL, NULL,
-                 NULL, NULL);
 /*
 REGISTER_TUNABLE("default_datetime_precision", NULL,
                  TUNABLE_INTEGER, &gbl_datetime_precision, READONLY, NULL, NULL,
@@ -518,11 +515,6 @@ REGISTER_TUNABLE("enable_upgrade_ahead",
                  "(Default: off)",
                  TUNABLE_INTEGER, &gbl_num_record_upgrades, READONLY | NOARG,
                  NULL, NULL, enable_upgrade_ahead_update, NULL);
-REGISTER_TUNABLE("enque_flush_interval", NULL, TUNABLE_INTEGER,
-                 &gbl_enque_flush_interval, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("enque_reorder_lookahead", NULL, TUNABLE_INTEGER,
-                 &gbl_enque_reorder_lookahead, READONLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("epochms_repts", NULL, TUNABLE_BOOLEAN,
                  &gbl_berkdb_epochms_repts, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
@@ -747,8 +739,6 @@ REGISTER_TUNABLE("maxosqltransfer",
                  "transaction. (Default: 50000)",
                  TUNABLE_INTEGER, &g_osql_max_trans, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("maxthrottletime", NULL, TUNABLE_INTEGER,
-                 &gbl_osql_max_throttle_sec, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_incoherent_nodes", NULL, TUNABLE_INTEGER,
                  &gbl_max_incoherent_nodes, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_lua_instructions",
@@ -806,43 +796,6 @@ REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &gbl_name, DEPRECATED_TUNABLE | R
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
                  &gbl_surprise, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
-                             "node) for the replication network. "
-                             "(Default: 1MB)",
-                 TUNABLE_INTEGER, &gbl_netbufsz, READONLY | NOZERO, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE(
-    "net_explicit_flush_trace",
-    "Produce a stack dump for long network flushes. (Default: off)",
-    TUNABLE_BOOLEAN, &explicit_flush_trace, READONLY | NOARG, NULL, NULL, NULL,
-    NULL);
-REGISTER_TUNABLE("net_lmt_upd_incoherent_nodes", NULL, TUNABLE_INTEGER,
-                 &gbl_net_lmt_upd_incoherent_nodes, 0, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("net_max_mem",
-                 "Maximum size (in MB) of items keep on replication network "
-                 "queue before dropping (per replicant). (Default: 0)",
-                 TUNABLE_INTEGER, &gbl_net_max_mem, READONLY, NULL, NULL, NULL,
-                 NULL);
-REGISTER_TUNABLE("net_max_queue",
-                 "Maximum number of items to keep on replication network queue "
-                 "before dropping (per replicant). (Default: 25000)",
-                 TUNABLE_INTEGER, &gbl_net_max_queue, READONLY, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("net_poll",
-                 "Allow a connection to linger for this many milliseconds "
-                 "before identifying itself. Connections that take longer are "
-                 "shut down. (Default: 100ms)",
-                 TUNABLE_INTEGER, &gbl_net_poll, READONLY, NULL, NULL, NULL,
-                 NULL);
-REGISTER_TUNABLE("netpoll", "Alias of net_poll", TUNABLE_INTEGER, &gbl_net_poll, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("net_portmux_register_interval",
-                 "Check on this interval if our port is correctly registered "
-                 "with pmux for the replication net. (Default: 600ms)",
-                 TUNABLE_INTEGER, &gbl_net_portmux_register_interval, READONLY,
-                 NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("net_throttle_percent", NULL, TUNABLE_INTEGER,
-                 &gbl_net_throttle_percent, READONLY, NULL, percent_verify,
-                 NULL, NULL);
 REGISTER_TUNABLE("noblobstripe", "Disables 'blobstripe'", TUNABLE_BOOLEAN,
                  &gbl_blobstripe, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -871,10 +824,6 @@ REGISTER_TUNABLE("no_lock_conflict_trace", "Disables 'lock_conflict_trace'",
                  INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nonames", NULL, TUNABLE_BOOLEAN, &gbl_nonames,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("no_net_explicit_flush_trace",
-                 "Disables 'net_explicit_flush_trace'", TUNABLE_BOOLEAN,
-                 &explicit_flush_trace, INVERSE_VALUE | READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("no_null_blob_fix", "Disables 'null_blob_fix'",
                  TUNABLE_BOOLEAN, &gbl_disallow_null_blobs,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -902,9 +851,6 @@ REGISTER_TUNABLE("nosurprise", NULL, TUNABLE_BOOLEAN, &gbl_surprise,
 REGISTER_TUNABLE("notimeout", "Turns off SQL timeouts. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_notimeouts, NOARG, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("no_toblock_net_throttle", "Disables 'toblock_net_throttle'",
-                 TUNABLE_BOOLEAN, &gbl_toblock_net_throttle,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("noudp", NULL, TUNABLE_BOOLEAN, &gbl_udp,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("no_update_delete_limit", NULL, TUNABLE_BOOLEAN,
@@ -954,25 +900,6 @@ REGISTER_TUNABLE("osql_bkoff_netsend", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_bkoff_netsend_lmt", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend_lmt, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("osql_blockproc_timeout_sec", NULL, TUNABLE_INTEGER,
-                 &gbl_osql_blockproc_timeout_sec, READONLY, NULL, NULL, NULL,
-                 NULL);
-REGISTER_TUNABLE("osql_heartbeat_alert_time", NULL, TUNABLE_INTEGER,
-                 &gbl_osql_heartbeat_alert, READONLY | NOZERO, NULL,
-                 osql_heartbeat_alert_time_verify, NULL, NULL);
-REGISTER_TUNABLE("osql_heartbeat_send_time", NULL, TUNABLE_INTEGER,
-                 &gbl_osql_heartbeat_send, READONLY | NOZERO, NULL, NULL, NULL,
-                 NULL);
-REGISTER_TUNABLE("osql_max_queue", NULL, TUNABLE_INTEGER, &gbl_osql_max_queue,
-                 READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("osql_net_poll",
-                 "Like net_sql, but for the offload network (used by write "
-                 "transactions on replicants to send work to the master) "
-                 "(Default: 100ms)",
-                 TUNABLE_INTEGER, &gbl_osql_net_poll, READONLY, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("osql_net_portmux_register_interval", NULL, TUNABLE_INTEGER, &gbl_osql_net_portmux_register_interval,
-                 READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osqlprefaultthreads", "If set, send prefaulting hints to nodes. (Default: 0)", TUNABLE_INTEGER,
                  &gbl_osqlpfault_threads, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_verify_ext_chk",
@@ -1223,10 +1150,6 @@ REGISTER_TUNABLE("throttlesqloverlog",
                  "On a full queue of SQL requests, dump the current thread "
                  "pool this often (in secs). (Default: 5sec)",
                  TUNABLE_INTEGER, &gbl_throttle_sql_overload_dump_sec, READONLY,
-                 NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("toblock_net_throttle",
-                 "Throttle writes in apply_changes. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_toblock_net_throttle, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("track_berk_locks", NULL, TUNABLE_INTEGER,
                  &gbl_berkdb_track_locks, READONLY | NOARG, NULL, NULL, NULL,
@@ -1564,10 +1487,6 @@ REGISTER_TUNABLE("warn_queue_latency",
                  "(Default: 500ms)",
                  TUNABLE_INTEGER, &gbl_warn_queue_latency_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("print_net_queue_size",
-                 "Trace for net queue size.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_print_net_queue_size, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
 REGISTER_TUNABLE("verbose_repmore_trace",
                  "Verbose trace for rep-more requests.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_trace_repmore_reqs,
@@ -1620,10 +1539,6 @@ REGISTER_TUNABLE("last_locked_seqnum",
 REGISTER_TUNABLE("rep_getlock_latency",
                  "Sleep on replicant before getting locks.  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_getlock_latencyms,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("net_writer_poll_ms",
-                 "Poll time for net writer thread.  (Default: 1000)",
-                 TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb",
                  "Use in memory structure for repdb (Default: off)",

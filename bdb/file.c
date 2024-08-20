@@ -1372,10 +1372,6 @@ char *bdb_trans(const char infile[], char outfile[])
 
 int net_hostdown_rtn(netinfo_type *netinfo_ptr, struct interned_string *host);
 int net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *hostname, int portnum);
-int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
-                   int ylen);
-int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
-                   int *offset);
 
 static void net_startthread_rtn(void *arg)
 {
@@ -1649,8 +1645,6 @@ void bdb_prepare_close(bdb_state_type *bdb_state)
         /* get me off the network */
         stop_event_net();
     }
-    net_cleanup_netinfo(netinfo_ptr);
-    osql_cleanup_netinfo();
 }
 
 /* this routine is only used to CLOSE THE WHOLE DB (env) */
@@ -2784,12 +2778,6 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
        starts that might call into bdb lib */
     net_register_stop_thread_callback(bdb_state->repinfo->netinfo,
                                       net_stopthread_rtn);
-
-    /* register a routine which will re-order the out-queue to
-       be in lsn order */
-    net_register_netcmp(bdb_state->repinfo->netinfo, net_cmplsn_rtn);
-
-    net_register_getlsn(bdb_state->repinfo->netinfo, net_getlsn_rtn);
 
     /* Register logput throttle function */
     net_rep_throttle_init(bdb_state->repinfo->netinfo);
