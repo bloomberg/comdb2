@@ -67,7 +67,6 @@ int rep_qstat_has_allreq(void);
 extern int db_is_exiting(void);
 
 extern int gbl_exit;
-extern int gbl_commit_lsn_map;
 extern int gbl_rep_printlock;
 extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
@@ -141,6 +140,7 @@ extern void wait_for_sc_to_stop(const char *operation, const char *func, int lin
 extern void allow_sc_to_run(void);
 extern int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+extern int get_commit_lsn_map_switch_value();
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
 	0, gbl_rep_trans_deadlocked = 0, gbl_rep_trans_inline =
@@ -4214,7 +4214,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	int i;
 	int inline_worker;
 	int polltm;
-	int commit_lsn_map = gbl_commit_lsn_map;
+	int commit_lsn_map = get_commit_lsn_map_switch_value();
 	DB_LOGC *logc = NULL;
 	DB_ENV *dbenv;
 	int ret, t_ret = 0, last_fileid = -1;
@@ -4753,7 +4753,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	REP *rep;
 	uint32_t lflags = 0;
 	int collect_before_locking = gbl_collect_before_locking;
-	int commit_lsn_map = gbl_commit_lsn_map;
+	int commit_lsn_map = get_commit_lsn_map_switch_value();
 	int td_stats = gbl_bb_berkdb_enable_thread_stats;
 	struct berkdb_thread_stats *t=NULL, *p=NULL;
 	uint64_t x1=0, x2=0, d;
@@ -5617,7 +5617,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	DBT *lock_dbt, lsn_lock_dbt, lock_dbt_mem = {0};
 	int32_t timestamp = 0;
 	char *dist_txnid = NULL;
-	int commit_lsn_map = gbl_commit_lsn_map;
+	int commit_lsn_map = get_commit_lsn_map_switch_value();
 	int collect_before_locking = gbl_collect_before_locking;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;

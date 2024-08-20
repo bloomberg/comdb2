@@ -118,9 +118,10 @@ extern char *gbl_myhostname;
 extern struct interned_string *gbl_myhostname_interned;
 extern size_t gbl_blobmem_cap;
 extern int gbl_backup_logfiles;
-extern int gbl_commit_lsn_map;
 struct timeval last_timer_pstack;
 extern int gbl_modsnap_asof;
+
+extern int get_commit_lsn_map_switch_value();
 
 #define FILENAMELEN 100
 
@@ -3568,7 +3569,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     int filenum;
     int delete_adjacent;
     int ctrace_info = 0;
-    int commit_lsn_map = gbl_commit_lsn_map;
+    int commit_lsn_map = get_commit_lsn_map_switch_value();
 
     filenums_str[0] = 0;
 

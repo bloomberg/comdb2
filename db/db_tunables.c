@@ -1077,6 +1077,11 @@ static int hostname_update(void *context, void *value)
 /* Forward declaration */
 int ctrace_set_rollat(void *unused, void *value);
 
+int get_commit_lsn_map_switch_value()
+{
+    return gbl_utxnid_log && gbl_commit_lsn_map;
+}
+
 /* Return the value for sql_tranlevel_default. */
 static void *sql_tranlevel_default_value(void *context)
 {

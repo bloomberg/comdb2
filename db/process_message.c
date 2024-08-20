@@ -88,9 +88,10 @@ extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_commit_lsn_map;
 extern int gbl_use_modsnap_for_snapshot;
 extern struct thdpool *gbl_verify_thdpool;
+
+extern int get_commit_lsn_map_switch_value();
 
 void debug_bulktraverse_data(char *tbl);
 
@@ -5191,7 +5192,7 @@ clipper_usage:
         else
             logmsg(LOGMSG_USER, "Verify threadpool is not active\n");
     } else if (tokcmp(tok, ltok, "clm_delete_logfile") == 0) {
-        if (gbl_commit_lsn_map) {
+        if (get_commit_lsn_map_switch_value()) {
             int del_log;
 
             tok = segtok(line, lline, &st, &ltok);
