@@ -50,7 +50,6 @@ int debug_switch_simulate_find_deadlock_retry(void);     /* 0 */
 int debug_switch_disable_force_readonly(void);           /* 1 */
 int debug_switch_verbose_sbuf(void);                     /* 1 */
 int debug_switch_disable_connection_refresh(void);       /* 0 */
-int debug_switch_offload_check_hostname(void);           /* 0 */
 int debug_switch_skip_duplicate_seqnums(void);           /* 1 */
 int debug_switch_allow_key_typechange(void);             /* 0 - not debug*/
 int debug_switch_check_for_hung_checkpoint_thread(void); /* 0 */

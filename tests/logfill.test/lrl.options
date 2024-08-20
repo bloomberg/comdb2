@@ -24,8 +24,6 @@ setattr TOOMANYSKIPPED 128
 # Enable cache
 #cache 100 mb
 
-# print_net_queue_size on
-
 # Linearizable is serializable + durable-lsn logic
 enable_serial_isolation
 

@@ -393,8 +393,6 @@ Replication statistics.
 * `bytes_written` - Number of bytes written
 * `bytes_read` - Number of bytes read
 * `throttle_waits` - Number of throttle waits
-* `reorders` - Number of reorders (see `enque_reorder_lookahead` under
-               [Network configurations](config_files.html#networks))
 * `avg_wait_over_10secs` - Average of waits over 10 seconds
 * `max_wait_over_10secs` - Maximum of waits over 10 seconds
 * `avg_wait_over_1min` - Average of waits over a minute

@@ -95,10 +95,6 @@ static void net_enque_write_rtn(netinfo_type *netinfo_ptr, void *netstat,
     DB_LSN lsn;
     int rectype, rc;
 
-    /* If we're exiting, some fields might have been
-       destroyed before we get here. Return now. */
-    if (net_is_exiting(netinfo_ptr)) return;
-
     rc = net_get_lsn_rectype(rec, len, &lsn, &rectype);
     Pthread_mutex_lock(&n->lock);
     if (rc == 0 && rectype < REP_MAX_TYPE) {

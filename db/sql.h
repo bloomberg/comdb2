@@ -1553,9 +1553,7 @@ tran_type *curtran_gettran(void);
 void curtran_assert_nolocks(void);
 
 void curtran_puttran(tran_type *tran);
-int watcher_warning_function(void *, int timeout, int gap);
 int sbuf_is_local(SBUF2 *);
-int sbuf_set_timeout(struct sqlclntstate *, SBUF2 *, int wr_timeout_ms);
 int tdef_to_tranlevel(int tdef);
 int fdb_access_control_create(struct sqlclntstate *, char *str);
 int disable_server_sql_timeouts(void);

@@ -435,8 +435,6 @@ static void host_node_open(host_node_type *host_node_ptr, int fd)
     host_node_ptr->fd = fd;
     host_node_ptr->closed = 0;
     host_node_ptr->decom_flag = 0;
-    host_node_ptr->distress = 0;
-    host_node_ptr->really_closed = 0;
 }
 
 static void host_node_close(host_node_type *host_node_ptr)
@@ -445,8 +443,6 @@ static void host_node_close(host_node_type *host_node_ptr)
     host_node_ptr->fd = -1;
     host_node_ptr->got_hello = 0;
     host_node_ptr->closed = 1;
-    host_node_ptr->distress = 1;
-    host_node_ptr->really_closed = 1;
 }
 
 static void shutdown_close(int fd)
@@ -2789,7 +2785,6 @@ static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, in
     evbuffer_free(buf);
     make_socket_blocking(fd);
     SBUF2 *sb = sbuf2open(fd, 0);
-    sbuf2setbufsize(sb, netinfo_ptr->bufsz);
     for (int i = n - 1; i > 0; --i) {
         sbuf2ungetc(req[i], sb);
     }

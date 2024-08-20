@@ -83,7 +83,6 @@ void reset_aa_counter(char *tblname);
 void create_coherency_lease_thread(bdb_state_type *bdb_state);
 void create_master_lease_thread(bdb_state_type *bdb_state);
 
-int gbl_net_lmt_upd_incoherent_nodes = 70;
 int gbl_rep_process_pstack_time = 30;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
@@ -1666,36 +1665,6 @@ static int net_getlsn_rectype(netinfo_type *netinfo_ptr, void *record, int len,
     if (offset) *offset = lsn.offset;
     if (rectype) *rectype = myrectype;
     return 0;
-}
-
-int net_getlsn_rtn(netinfo_type *netinfo_ptr, void *record, int len, int *file,
-                   int *offset)
-{
-    int rectype;
-    if ((net_getlsn_rectype(netinfo_ptr, record, len, file, offset, &rectype) ==
-         0) &&
-        (rectype == 7)) {
-        return 0;
-    }
-    return -1;
-}
-
-/* Given two outgoing net buffers, which one is lower */
-int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
-                   int ylen)
-{
-    int rc;
-    DB_LSN xlsn, ylsn;
-
-    /* Do not tolerate malformed buffers.  I am inserting x with the inorder
-     * flag.  It has to be correct. */
-    if ((rc = net_get_lsn_rectype(x, xlen, &xlsn, NULL)) != 0)
-        abort();
-
-    if ((rc = net_get_lsn_rectype(y, ylen, &ylsn, NULL)) != 0)
-        return -1;
-
-    return log_compare(&xlsn, &ylsn);
 }
 
 void net_newnode_rtn(netinfo_type *netinfo_ptr, struct interned_string *host, int portnum)

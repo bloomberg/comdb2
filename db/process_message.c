@@ -913,18 +913,6 @@ clipper_usage:
         delete_log_files(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
-    } else if (tokcmp(tok, ltok, "netpoll") == 0) {
-        int pval;
-        tok = segtok(line, lline, &st, &ltok);
-        pval = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "Setting net accept-poll to %d ms.\n", pval);
-        net_set_poll(dbenv->handle_sibling, pval);
-    } else if (tokcmp(tok, ltok, "osqlnetpoll") == 0) {
-        int pval;
-        tok = segtok(line, lline, &st, &ltok);
-        pval = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "Setting osql-net accept-poll to %d ms.\n", pval);
-        osql_set_net_poll(pval);
     } else if (tokcmp(tok, ltok, "exitalarmsec") == 0) {
         int alarmsec;
         tok = segtok(line, lline, &st, &ltok);
@@ -3591,24 +3579,6 @@ clipper_usage:
         }
         gbl_sql_time_threshold = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Set SQL warn threshold to %dms\n", gbl_sql_time_threshold);
-    } else if (tokcmp(tok, ltok, "toblock_net_throttle") == 0) {
-        gbl_toblock_net_throttle = 1;
-        logmsg(LOGMSG_USER, "I will throttle my writes in apply_changes\n");
-    } else if (tokcmp(tok, ltok, "no_toblock_net_throttle") == 0) {
-        gbl_toblock_net_throttle = 0;
-        logmsg(LOGMSG_USER, "I will not throttle my writes in apply_changes\n");
-    } else if (tokcmp(tok, ltok, "enque_flush_interval") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected time value for enque_flush_interval\n");
-            return 0;
-        }
-        gbl_enque_flush_interval = toknum(tok, ltok);
-
-        logmsg(LOGMSG_USER, "net_set_enque_flush_interval %d\n",
-                gbl_enque_flush_interval);
-        net_set_enque_flush_interval(thedb->handle_sibling,
-                                     gbl_enque_flush_interval);
     }
 
     else if (tokcmp(tok, ltok, "slow_rep_process_txn_maxms") == 0) {
@@ -4595,10 +4565,12 @@ clipper_usage:
         Pthread_mutex_unlock(&testguard);
     } else if (tokcmp(tok, ltok, "dump_ltran_list") == 0) {
         bdb_dump_logical_tranlist(thedb->bdb_env, stderr);
+#   if 0
     } else if (tokcmp(tok, ltok, "clear_rowlocks_stats") == 0) {
         rowlocks_clear_stats();
     } else if (tokcmp(tok, ltok, "print_rowlocks_stats") == 0) {
         rowlocks_print_stats(stdout);
+#   endif
     } else if (tokcmp(tok, ltok, "rep_process_txn_trace") == 0) {
         gbl_rep_process_txn_time = 1;
         logmsg(LOGMSG_USER, "Enabled rep-collect transaction trace\n");
@@ -4611,12 +4583,6 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "no_ack_trace") == 0) {
         disable_ack_trace();
         logmsg(LOGMSG_ERROR, "Disabled ack trace\n");
-    } else if (tokcmp(tok, ltok, "net_explicit_flush_trace") == 0) {
-        net_enable_explicit_flush_trace();
-        logmsg(LOGMSG_ERROR, "Enabled cheapstack for explicit net flush\n");
-    } else if (tokcmp(tok, ltok, "no_net_explicit_flush_trace") == 0) {
-        net_disable_explicit_flush_trace();
-        logmsg(LOGMSG_ERROR, "Disabled cheapstack for explicit net flush\n");
     } else if (tokcmp(tok, ltok, "rowlocks_bench_logical_rectype") == 0) {
         gbl_rowlocks_bench_logical_rectype = 1;
         logmsg(LOGMSG_ERROR, "I will consider rowlocks_bench record (10019) a logical "
@@ -4665,6 +4631,7 @@ clipper_usage:
         }
        logmsg(LOGMSG_USER, "disable_rowlocks_sleepns is %d\n",
                gbl_disable_rowlocks_sleepns);
+#   if 0
     } else if (tokcmp(tok, ltok, "commit_bench") == 0) {
         int tcnt = 0;
         int cnt = 0;
@@ -4755,6 +4722,7 @@ clipper_usage:
             rowlocks_lock2_bench(thedb->bdb_env, lcnt, pcnt);
             Pthread_mutex_unlock(&testguard);
         }
+#   endif
     } else if (tokcmp(tok, ltok, "deadlock_policy_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {

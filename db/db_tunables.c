@@ -91,7 +91,6 @@ extern int gbl_debug_disttxn_trace;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
-extern int gbl_enque_reorder_lookahead;
 extern int gbl_exit_alarm_sec;
 extern int gbl_fdb_track;
 extern int gbl_fdb_track_hints;
@@ -116,10 +115,6 @@ extern int gbl_max_lua_instructions;
 extern int gbl_max_sqlcache;
 extern int __gbl_max_mpalloc_sleeptime;
 extern int gbl_mem_nice;
-extern int gbl_netbufsz;
-extern int gbl_net_lmt_upd_incoherent_nodes;
-extern int gbl_net_max_mem;
-extern int gbl_net_throttle_percent;
 extern int gbl_notimeouts;
 extern int gbl_watchdog_disable_at_start;
 extern int gbl_osql_verify_retries_max;
@@ -217,7 +212,6 @@ extern int gbl_apply_queue_memory;
 extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
-extern int gbl_net_writer_thread_poll_ms;
 extern int gbl_max_apply_dequeue;
 extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
@@ -255,7 +249,6 @@ extern int gbl_simulate_dropping_request;
 extern int gbl_max_logput_queue;
 extern int gbl_blocking_enque;
 extern int gbl_master_req_waitms;
-extern int gbl_print_net_queue_size;
 extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
 extern int gbl_abort_on_reconstruct_failure;
@@ -1010,16 +1003,6 @@ static int update_clean_exit_on_sigterm(void *context, void *value) {
 
     gbl_clean_exit_on_sigterm = val;
 
-    return 0;
-}
-
-static int osql_heartbeat_alert_time_verify(void *context, void *value)
-{
-    if ((*(int *)value <= 0) || (*(int *)value > gbl_osql_heartbeat_send)) {
-        logmsg(LOGMSG_ERROR, "Invalid heartbeat alert time, need to define "
-                             "osql_heartbeat_send_time first.\n");
-        return 1;
-    }
     return 0;
 }
 

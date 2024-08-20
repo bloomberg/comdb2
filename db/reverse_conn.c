@@ -101,12 +101,11 @@ int send_reversesql_request(const char *dbname, const char *host,
         return 1;
     }
 
-    netinfo_type *netinfo_ptr = thedb->bdb_env->repinfo->netinfo;
     new_fd = sbuf2fileno(sb);
 
     // NC: Most of the following code has been copied from net/net.c (accept_thread())
 
-    if (netinfo_ptr->exiting || db_is_exiting()) {
+    if (db_is_exiting()) {
         if (gbl_revsql_debug == 1) {
             revconn_logmsg(LOGMSG_USER, "%s:%d Comdb2 is exiting\n", __func__, __LINE__);
         }
@@ -176,8 +175,6 @@ int send_reversesql_request(const char *dbname, const char *host,
     }
 #endif
 
-    sbuf2setbufsize(sb, netinfo_ptr->bufsz);
-
     char msg[120] = {0};
     snprintf(msg, sizeof(msg), "reversesql\n%s\n%s\n%s\n",
              gbl_dbname, gbl_myhostname, command);
@@ -190,11 +187,6 @@ int send_reversesql_request(const char *dbname, const char *host,
 
     /* reasonable default for poll */
     polltm = 100;
-
-    /* use tuned value if set */
-    if (netinfo_ptr->netpoll > 0) {
-        polltm = netinfo_ptr->netpoll;
-    }
 
     /* setup poll */
     pol.fd = new_fd;

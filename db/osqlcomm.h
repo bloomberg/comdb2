@@ -270,12 +270,6 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 void osql_net_cmd(char *line, int lline, int st, int op1);
 
 /**
- * Sets the osql net-poll value.
- *
- */
-void osql_set_net_poll(int pval);
-
-/**
  * Report on the traffic noticed
  *
  */
@@ -327,24 +321,6 @@ uint8_t *client_query_stats_put(const struct client_query_stats *p_stats,
  */
 int osql_comm_echo(char *host, int stream, unsigned long long *sent,
                    unsigned long long *replied, unsigned long long *received);
-
-/**
- * Signal net layer that the db is exiting
- *
- */
-void osql_net_exiting(void);
-
-/**
- * Enable a netinfo-test for the osqlcomm netinfo_ptr
- *
- */
-int osql_enable_net_test(int testnum);
-
-/**
- * Disable the netinfo-test for the osqlcomm netinfo_ptr
- *
- */
-int osql_disable_net_test(void);
 
 /**
  * Check if we need the bdb lock to stop long term sql sessions

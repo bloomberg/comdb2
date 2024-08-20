@@ -5510,21 +5510,6 @@ int sbuf_is_local(SBUF2 *sb)
     return 0;
 }
 
-int sbuf_set_timeout(struct sqlclntstate *clnt, SBUF2 *sb, int wr_timeout_ms)
-{
-    int no_timeout = disable_server_sql_timeouts();
-    int rd_timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME);
-    //sbuf2settimeout(sb, rd_timeout * 1000, no_timeout ? 0 : wr_timeout_ms);
-    sbuf2settimeout(sb, 0, no_timeout ? 0 : wr_timeout_ms);
-    if (wr_timeout_ms == 0) {
-        net_add_watch(sb, 0, 0);
-    } else {
-        int wr_timeout = no_timeout ? 0 : wr_timeout_ms / 1000;
-        net_add_watch_warning(sb, rd_timeout, wr_timeout, clnt, watcher_warning_function);
-    }
-    return 0;
-}
-
 int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
 {
     if (!gbl_sql_release_locks_on_slow_reader) {
@@ -6630,16 +6615,6 @@ static void sql_thread_describe(void *obj, FILE *out)
         return;
     }
     logmsg(LOGMSG_USER, "%s \"%s\"\n", clnt->origin, clnt->sql);
-}
-
-int watcher_warning_function(void *arg, int timeout, int gap)
-{
-    struct sqlclntstate *clnt = arg;
-    logmsg(LOGMSG_WARN,
-            "WARNING: appsock idle for %d seconds (%d), connected from %s\n",
-            gap, timeout, (clnt->origin) ? clnt->origin : "(unknown)");
-
-    return 1; /* cancel recurrent */
 }
 
 /**
