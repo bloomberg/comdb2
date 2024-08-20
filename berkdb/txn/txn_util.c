@@ -642,10 +642,9 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 		logmsg(LOGMSG_DEBUG, "Trying to add utxnid %"PRIu64" commit lsn %"PRIu32":%"PRIu32" to the map\n", utxnid, commit_lsn.file, commit_lsn.offset);
 	}
 
-	/* Don't add transactions that commit at the zero LSN */
-	if (IS_ZERO_LSN(commit_lsn)) {
+	if ((utxnid == 0) || IS_ZERO_LSN(commit_lsn)) {
 		if (commit_map_debug) {
-			logmsg(LOGMSG_DEBUG, "Transaction %"PRIu64" has a zero commit lsn. Not adding it to the map.\n", utxnid);
+			logmsg(LOGMSG_DEBUG, "Transaction is not eligible to be added to the map.\n");
 		}
 		return ret;
 	}
@@ -654,9 +653,8 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 
 	if (txn != NULL) { 
 		if (commit_map_debug) {
-			logmsg(LOGMSG_DEBUG, "Transaction %"PRIu64" already exists in the map. Not adding it again\n", utxnid);
+			logmsg(LOGMSG_DEBUG, "Transaction already exists in the map. Not adding it again\n");
 		}
-		/* Don't add transactions that already exist in the map */
 		return ret;
 	}
 
