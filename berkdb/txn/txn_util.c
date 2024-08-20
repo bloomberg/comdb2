@@ -1937,7 +1937,7 @@ int __txn_abort_prepared_waiters(dbenv)
 }
 
 extern void lc_free(DB_ENV *dbenv, struct __recovery_processor *rp, LSN_COLLECTION * lc);
-extern int gbl_commit_lsn_map;
+extern int get_commit_lsn_map_switch_value();
 
 /* 
  * __txn_commit_recovered --
@@ -1953,7 +1953,7 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 #if defined (DEBUG_PREPARE)
 	comdb2_cheapstack_sym(stderr, "%s", __func__);
 #endif
-    int commit_lsn_map = gbl_commit_lsn_map;
+    int commit_lsn_map = get_commit_lsn_map_switch_value();
 	DB_TXN_PREPARED *p;
 	Pthread_mutex_lock(&dbenv->prepared_txn_lk);
 	if ((p = hash_find(dbenv->prepared_txn_hash, &dist_txnid)) != NULL) {

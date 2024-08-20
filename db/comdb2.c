@@ -597,6 +597,8 @@ extern void set_stop_mempsync_thread();
 extern void bdb_prepare_close(bdb_state_type *bdb_state);
 extern void bdb_stop_recover_threads(bdb_state_type *bdb_state);
 
+extern int get_commit_lsn_map_switch_value();
+
 int gbl_use_plan = 1;
 
 double gbl_querylimits_maxcost = 0;
@@ -6172,7 +6174,7 @@ int thdpool_alarm_on_queing(int len)
 
 int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
 {
-    int commit_lsn_map = gbl_commit_lsn_map;
+    int commit_lsn_map = get_commit_lsn_map_switch_value();
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
     int rc;

@@ -93,7 +93,7 @@ void ctrace(char *format, ...);
 int __txn_commit_map_add_nolock(DB_ENV *, u_int64_t, DB_LSN);
 
 extern int gbl_is_physical_replicant;
-extern int gbl_commit_lsn_map;
+extern int get_commit_lsn_map_switch_value();
 
 #else
 
@@ -1070,7 +1070,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	int ret, t_ret, elect_highest_committed_gen, commit_lsn_map;
 
 	dbenv = txnp->mgrp->dbenv;
-	commit_lsn_map = gbl_commit_lsn_map;
+	commit_lsn_map = get_commit_lsn_map_switch_value();
 
 	PANIC_CHECK(dbenv);
 
