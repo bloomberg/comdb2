@@ -181,7 +181,7 @@ cdb2sql> select 1
 Rules for what's deferred and what's immediate:
 
   * `SELECT`/`SELECTV` and `WITH` statements are always immediate. 
-  * `SET` statements are always deferred.
+  * `SET` statements outside a transaction are always deferred. They cannot be run inside of a transaction, and will error immediately if attempted.
   * `BEGIN`, `COMMIT`, and `ROLLBACK` are always immediate
   * `INSERT`, `UPDATE`, `DELETE` statements inside a transaction are deferred.
   * `INSERT`, `UPDATE`, `DELETE` statements outside a transaction are immediate.
