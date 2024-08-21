@@ -68,6 +68,7 @@ dbfile_info *dbfile_init(dbfile_info *f, const char *filename)
     }
 
     close(fd);
+    fd = -1;
 
     DBMETA *meta = (DBMETA *)meta_buf;
 
@@ -108,7 +109,9 @@ again:
     return f;
 
 err:
-    close(fd);
+    if (fd >= 0) {
+        close(fd);
+    }
     free(f);
     return NULL;
 }
