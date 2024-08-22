@@ -810,6 +810,21 @@ static int isLeftOperand(int tokenType){
   }
 }
 
+/*
+** This function should return non-zero if the specified token type is
+** a keyword that requires the next token to be a table identifier.
+*/
+static int requiresTableId(int tokenType){
+  switch( tokenType ){
+    case TK_FROM:
+    case TK_JOIN:
+    case TK_INTO:
+    case TK_UPDATE:
+    case TK_TABLE:    return 1;
+    default:          return 0;
+  }
+}
+
 char *sqlite3Normalize_alternate(
   Vdbe *pVdbe,       /* VM being reprepared */
   const char *zSql,  /* The original SQL string */
@@ -827,6 +842,7 @@ char *sqlite3Normalize_alternate(
   int nParenAtIN;    /* Value of nParent at start of RHS of IN operator */
   int j;             /* Bytes of normalized SQL generated so far */
   sqlite3_str *pStr; /* The normalized SQL string under construction */
+  int useStrId = 0;  /* Treat string token as identifier */
 
   db = pVdbe ? sqlite3VdbeDb(pVdbe) : 0;
   tokenType = -1;
@@ -848,9 +864,7 @@ char *sqlite3Normalize_alternate(
           sqlite3_str_append(pStr, " NULL", 5);
           break;
         }
-        /* Fall through */
       }
-      case TK_STRING:
       case TK_INTEGER:
       case TK_FLOAT:
       case TK_VARIABLE:
@@ -878,6 +892,7 @@ char *sqlite3Normalize_alternate(
         sqlite3_str_append(pStr, ")", 1);
         break;
       }
+      case TK_STRING:
       case TK_ID: {
         iStartIN = 0;
         j = pStr->nChar;
@@ -887,7 +902,8 @@ char *sqlite3Normalize_alternate(
           int eType = 0;
           if( zId==0 ) break;
           sqlite3Dequote(zId);
-          if( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) ){
+          int maybeStrLiteral = zSql[i] == '\'' || ( zSql[i]=='"' && sqlite3VdbeUsesDoubleQuotedString(pVdbe, zId, iDefDqId) );
+          if ( maybeStrLiteral && !useStrId ){
             sqlite3_str_append(pStr, "?", 1);
             sqlite3DbFree(db, zId);
             break;
@@ -927,6 +943,7 @@ char *sqlite3Normalize_alternate(
         /* fall through */
       }
       default: {
+        useStrId = requiresTableId(tokenType);
         if( sqlite3IsIdChar(zSql[i]) ) addSpaceSeparator(pStr);
         j = pStr->nChar;
         sqlite3_str_append(pStr, zSql+i, n);
