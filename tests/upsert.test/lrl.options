@@ -1,1 +1,2 @@
 osql_verify_retry_max 1000
+fix_dropped_sorese_upsert_flags on

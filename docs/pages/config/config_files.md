@@ -225,6 +225,7 @@ is generally not advised.
 bad_lrl_fatal|  off |Unrecognized lrl options are fatal errors
 t2t|  off |New tag->tag conversion code
 fix_cstr|  on |Fix validation of cstrings
+fix_dropped_sorese_upsert_flags | on | Apply fix for bug causing sorese upsert flags to get dropped
 warn_cstr|  on |Warn on validation of cstrings
 scpushlogs|  on |Push to next log after a schema changes
 pfltverbose|  on |Verbose errors in prefaulting code

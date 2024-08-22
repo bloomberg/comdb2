@@ -345,6 +345,7 @@
 (name='file_permissions', description='Default filesystem permissions for database files. (Default: 0660)', type='STRING', value='0660', read_only='N')
 (name='fingerprint_queries', description='Compute fingerprint for SQL queries', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_cstr', description='Fix validation of cstrings', type='BOOLEAN', value='ON', read_only='N')
+(name='fix_dropped_sorese_upsert_flags', description='Apply fix for bug causing sorese upsert flags to get dropped', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_pinref', description='fix_pinref', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_check_active_peer', description='Check if still have active connection when trying to flush', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_on_prepare', description='Flush replicant log on prepare. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')

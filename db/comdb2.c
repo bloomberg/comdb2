@@ -320,6 +320,7 @@ const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
                                         * external lrl file to create with
                                         * this db's settings and table defs */
 int gbl_local_mode = 0;                /* local mode, no siblings */
+int gbl_fix_dropped_sorese_upsert_flags = 1;
 int gbl_fullrecovery = 0;              /* backend full-recovery mode*/
 int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =

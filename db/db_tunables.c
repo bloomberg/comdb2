@@ -69,6 +69,7 @@ extern int gbl_spstrictassignments;
 extern int gbl_early;
 extern int gbl_enque_reorder_lookahead;
 extern int gbl_exit_alarm_sec;
+extern int gbl_fix_dropped_sorese_upsert_flags;
 extern int gbl_fdb_track;
 extern int gbl_fdb_track_hints;
 extern int gbl_forbid_ulonglong;
