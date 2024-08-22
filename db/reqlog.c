@@ -2308,12 +2308,12 @@ inline void reqlog_set_truncate(int val)
     logmsg(LOGMSG_USER, "truncate %s\n", reqltruncate ? "enabled" : "disabled");
 }
 
-/* Client Stats Cache */
+/* Client Stats LRU Cache */
 hash_t *clientstats = NULL;
-static LISTC_T(struct nodestats) freeablecache; //  LRU cache of freeable nodes
+static LISTC_T(struct nodestats) clientstats_cache; //  LRU cache of non-active clientstats nodes
 
 pthread_rwlock_t clientstats_lk = PTHREAD_RWLOCK_INITIALIZER;
-pthread_mutex_t freeablecache_mtx = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t clientstats_cache_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int gbl_max_clientstats_cache = 10000;
 
@@ -2321,7 +2321,7 @@ void init_clientstats_table()
 {
     clientstats = hash_init_o(offsetof(nodestats_t, checksum),
                               sizeof(unsigned) + sizeof(int));
-    listc_init(&freeablecache, offsetof(struct nodestats, linkv));
+    listc_init(&clientstats_cache, offsetof(struct nodestats, linkv));
     assert(clientstats);
 }
 
@@ -2384,15 +2384,15 @@ static void init_clientstats(nodestats_t *entry, int task_len, char *host, int f
     }
 }
 
-static void update_freeable_cache(nodestats_t *entry) {
+static void update_clientstats_cache(nodestats_t *entry) {
     assert(entry->ref >= 0);
-    Pthread_mutex_lock(&freeablecache_mtx);
-    listc_maybe_rfl(&freeablecache, entry);
+    Pthread_mutex_lock(&clientstats_cache_mtx);
+    listc_maybe_rfl(&clientstats_cache, entry);
     if (!entry->ref) {
-        listc_abl(&freeablecache, entry);
-        logmsg(LOGMSG_DEBUG, "%s: prepared candidate for eviction.\n", __func__);
+        logmsg(LOGMSG_INFO, "%s: no active references to nodestats %u, marking as evictable.\n", __func__, entry->checksum);
+        listc_abl(&clientstats_cache, entry);
     }
-    Pthread_mutex_unlock(&freeablecache_mtx);
+    Pthread_mutex_unlock(&clientstats_cache_mtx);
 }
 
 static nodestats_t *add_clientstats(unsigned checksum,
@@ -2417,15 +2417,15 @@ static nodestats_t *add_clientstats(unsigned checksum,
         entry = entry_chk; 
         Pthread_mutex_lock(&entry->mtx);
         entry->ref++;
-        update_freeable_cache(entry);
+        update_clientstats_cache(entry);
         Pthread_mutex_unlock(&entry->mtx);
         goto done;
     }
 
-    Pthread_mutex_lock(&freeablecache_mtx);
+    Pthread_mutex_lock(&clientstats_cache_mtx);
     int nclientstats;
     while ((nclientstats = hash_get_num_entries(clientstats)) >= gbl_max_clientstats_cache) {
-        nodestats_t *old_entry = listc_rtl(&freeablecache);
+        nodestats_t *old_entry = listc_rtl(&clientstats_cache);
         if (old_entry) {
             hash_del(clientstats, old_entry);
             if (old_entry->rawtotals.fingerprints) {
@@ -2441,7 +2441,7 @@ static nodestats_t *add_clientstats(unsigned checksum,
             break;
         }
     }
-    Pthread_mutex_unlock(&freeablecache_mtx);
+    Pthread_mutex_unlock(&clientstats_cache_mtx);
     
     if (nclientstats >= gbl_max_clientstats_cache) {
         logmsg(LOGMSG_ERROR,
@@ -2474,7 +2474,7 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
 
     Pthread_mutex_lock(&entry->mtx);
     entry->ref++;
-    update_freeable_cache(entry);
+    update_clientstats_cache(entry);
 
     if (*(unsigned *)&(entry->addr) == 0 && fd > 0) {
         struct sockaddr_in peeraddr;
@@ -2513,7 +2513,7 @@ static int release_clientstats(unsigned checksum, int node)
 
     Pthread_mutex_lock(&entry->mtx);
     entry->ref--;
-    update_freeable_cache(entry);
+    update_clientstats_cache(entry);
     Pthread_mutex_unlock(&entry->mtx);
     rc = 0;
 
