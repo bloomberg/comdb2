@@ -417,6 +417,31 @@ foreach {tnum sql flags norm} {
   {SELECT -1-1+abs(+1);}
   0x2
   {0 {SELECT?-?+abs(?);}}
+
+  1210
+  {CREATE TABLE 't1' (a int UNIQUE);}
+  0x2
+  {0 {CREATE TABLE t1(a int UNIQUE);}}
+
+  1220
+  {INSERT INTO 't1' ('a') VALUES (1);}
+  0x2
+  {0 {INSERT INTO t1(a)VALUES(?);}}
+
+  1230
+  {UPDATE 't1' SET 'a'=2 WHERE 'a'=1;}
+  0x2
+  {0 {UPDATE t1 SET?=?WHERE?=?;}}
+
+  1240
+  {SELECT 'a' FROM 't1' JOIN 't2' ON 't1.a'='t2.b';}
+  0x2
+  {0 {SELECT?FROM t1 JOIN t2 ON?=?;}}
+
+  1250
+  {SELECT "t1" FROM "t1";}
+  0x2
+  {0 {SELECT?FROM t1;}}
 } {
   do_test $tnum {
     set code [catch {
