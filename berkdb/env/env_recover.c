@@ -56,8 +56,10 @@ static const char revid[] =
 #include "list.h"
 #include "logmsg.h"
 
-#ifndef TESTSUITE
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN*);
+
+#ifndef TESTSUITE
 
 #include <bdbglue.h>
 extern int gbl_is_physical_replicant;
@@ -2087,7 +2089,7 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
 	hash_t *fileid_tbl);
 int bdb_update_timestamp_lsn(void *bdb_state, int32_t timestamp, DB_LSN lsn,
 	unsigned long long context);
-int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
+int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp, int push_top);
 extern DB_LSN bdb_latest_commit_lsn;
 extern pthread_mutex_t bdb_asof_current_lsn_mutex;
 
@@ -2098,17 +2100,17 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 	DB_ENV *dbenv;
 {
 	DB_LOGC *logc;
-	DB_LSN first_lsn, lsn;
+	DB_LSN first_lsn, last_lsn, lsn;
 	DBT data;
 	int ret;
 	int lineno = 0;
-	int got_recoverable_lsn = 0;
 	u_int32_t rectype;
 
 	__txn_ckp_args *ckp_args = NULL;
 	__txn_regop_args *txn_args = NULL;
 	__txn_regop_rowlocks_args *txn_rl_args = NULL;
 	__txn_regop_gen_args *txn_gen_args = NULL;
+	__txn_child_args *txn_child_args = NULL;
 	void *free_ptr = NULL;
 
 	logc = NULL;
@@ -2118,9 +2120,14 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 	if ((ret = __log_cursor(dbenv, &logc)) != 0)
 		return ret;
 
-	for (ret = __log_c_get(logc, &first_lsn, &data, DB_FIRST), lsn =
-		first_lsn; ret == 0;
-		ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
+	if ((ret = __log_c_get(logc, &first_lsn, &data, DB_FIRST))) {
+		logmsg(LOGMSG_ERROR, "%s: Failed to get first LSN\n", __func__);
+		GOTOERR;
+	}
+
+	for (ret = __log_c_get(logc, &last_lsn, &data, DB_LAST), lsn =
+		last_lsn; ret == 0;
+		ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
 		switch (rectype) {
@@ -2134,7 +2141,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 
 			ret =
 				bdb_checkpoint_list_push(lsn, ckp_args->ckp_lsn,
-				ckp_args->timestamp);
+				ckp_args->timestamp, 1);
 			if (ret) {
 				logmsg(LOGMSG_ERROR, 
 				  "%s: failed to push to checkpoint list, ret %d\n",
@@ -2142,16 +2149,13 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 				GOTOERR;
 			}
 
-			if (!got_recoverable_lsn) {
-				ret =
-					log_compare(&ckp_args->ckp_lsn, &first_lsn);
-				if (ret >= 0) {
-					bdb_set_gbl_recoverable_lsn(&lsn,
-						ckp_args->timestamp);
-					got_recoverable_lsn = 1;
-					logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
-						lsn.file, lsn.offset);
-				}
+			ret =
+				log_compare(&ckp_args->ckp_lsn, &first_lsn);
+			if (ret >= 0) {
+				bdb_set_gbl_recoverable_lsn(&lsn,
+					ckp_args->timestamp);
+				logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
+					lsn.file, lsn.offset);
 			}
 
 			break;
@@ -2190,6 +2194,21 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 			free_ptr = txn_rl_args;
 			if ((txn_rl_args->opcode == TXN_COMMIT) && 
 				(ret = __txn_commit_map_add(dbenv, txn_rl_args->txnid->utxnid, lsn))) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
+				GOTOERR;
+			}
+			break;
+		case DB___txn_child:
+			if ((ret =
+				__txn_child_read(dbenv, data.data,
+					&txn_child_args)) != 0) {
+				GOTOERR;
+			}
+			free_ptr = txn_child_args;
+
+			DB_LSN parent_commit_lsn;
+			if (!__txn_commit_map_get(dbenv, txn_child_args->txnid->utxnid, &parent_commit_lsn)
+				&& (ret = __txn_commit_map_add(dbenv, txn_child_args->child_utxnid, parent_commit_lsn))) {
 				logmsg(LOGMSG_ERROR, "%s: Failed to add to commit LSN map\n", __func__);
 				GOTOERR;
 			}
@@ -2287,7 +2306,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 
 			ret =
 				bdb_checkpoint_list_push(lsn, ckp_args->ckp_lsn,
-				ckp_args->timestamp);
+				ckp_args->timestamp, 0);
 			if (ret) {
 				logmsg(LOGMSG_ERROR, 
 				  "%s: failed to push to checkpoint list, ret %d\n",

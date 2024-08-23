@@ -9,6 +9,9 @@ failexit()
     exit -1
 }
 
+err() {
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
+}
 
 # assert result value in $1 is the same as expected value in $2, optional comment in $3
 # assertres (result, expected, comment)

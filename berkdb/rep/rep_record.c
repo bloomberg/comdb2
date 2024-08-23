@@ -2885,7 +2885,7 @@ err:
 }
 #undef ERR
 
-int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
+int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp, int push_top);
 
 static inline int is_commit(int rectype)
 {
@@ -3728,7 +3728,7 @@ gap_check:		max_lsn_dbtp = NULL;
 
 		ret =
 			bdb_checkpoint_list_push(rp->lsn, ckp_args->ckp_lsn,
-			ckp_args->timestamp);
+			ckp_args->timestamp, 0);
 		if (ret) {
 			logmsg(LOGMSG_ERROR, "%s: failed to push to checkpoint list, ret %d\n",
 				__func__, ret);
