@@ -2804,7 +2804,7 @@ void collect_txnids(DB_ENV *dbenv, u_int32_t *txnarray, int max, int *count)
 	(*count) = idx;
 }
 
-int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
+int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp, int push_top);
 
 /* Configure txn_checkpoint() to sleep this much time before memp_sync() */
 int gbl_ckp_sleep_before_sync = 0;
@@ -3080,7 +3080,7 @@ do_ckp:
 		}
 		Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 
-		ret = bdb_checkpoint_list_push(ckp_lsn, ckp_lsn_sav, timestamp);
+		ret = bdb_checkpoint_list_push(ckp_lsn, ckp_lsn_sav, timestamp, 0);
 		if (ret) {
 			logmsg(LOGMSG_ERROR, 
 				"%s: failed to push to checkpoint list, ret %d\n",

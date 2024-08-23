@@ -192,7 +192,7 @@ void bdb_checkpoint_list_init()
     ckp_lst_ready = 1;
 }
 
-int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp)
+int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp, int push_top)
 {
     struct checkpoint_list *ckp = NULL;
     if (!ckp_lst_ready)
@@ -204,7 +204,11 @@ int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp)
     ckp->ckp_lsn = ckp_lsn;
     ckp->timestamp = timestamp;
     Pthread_mutex_lock(&ckp_lst_mtx);
-    listc_abl(&ckp_lst, ckp);
+    if (push_top) {
+        listc_atl(&ckp_lst, ckp);
+    } else {
+        listc_abl(&ckp_lst, ckp);
+    }
     Pthread_mutex_unlock(&ckp_lst_mtx);
 
     return 0;
