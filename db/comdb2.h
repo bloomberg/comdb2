@@ -1786,7 +1786,6 @@ extern int gbl_replicate_local_concurrent;
 
 extern int gbl_verify_abort;
 
-extern int gbl_sqlwrtimeoutms;
 extern int gbl_sort_nulls_correctly;
 
 extern int gbl_master_changes;

@@ -2336,13 +2336,6 @@ static void set_dbenv_stuff(DB_ENV *dbenv, bdb_state_type *bdb_state)
 void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 {
     if (gbl_exit) return;
-#   if 0
-    if (gbl_libevent) {
-        add_timer_event(udp_backup, bdb_state, 500);
-        add_timer_event(auto_analyze, bdb_state, bdb_state->attr->chk_aa_time * 1000);
-        return;
-    }
-#   endif
     pthread_t thread_id;
     pthread_attr_t thd_attr;
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");

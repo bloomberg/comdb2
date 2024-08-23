@@ -531,7 +531,7 @@ void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
 					"Highest commit lsn offset: %"PRIu32"; "
 					"Highest checkpoint lsn file: %"PRIu32"; "
 					"Highest checkpoint lsn offset: %"PRIu32"; "
-					"Smallest logfile: %ld\n",
+					"Smallest logfile: %"PRId64"\n",
 					txmap->highest_commit_lsn.file,
 					txmap->highest_commit_lsn.offset,
 					txmap->highest_checkpoint_lsn.file,

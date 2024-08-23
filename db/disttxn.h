@@ -64,9 +64,6 @@ int osql_sanction_disttxn(const char *dist_txnid, unsigned long long *rqid, uuid
 /* This participant has been asked to cancel this osql transaction */
 int osql_cancel_disttxn(const char *dist_txnid, unsigned long long *rqid, uuid_t *uuid);
 
-/* Participant teardown from heartbeat */
-void dist_heartbeat_free_tran(dist_hbeats_type *dt);
-
 /* This participant sends the coordinator a 'failed-prepare' message */
 int participant_has_failed(const char *dist_txnid, const char *dbname, const char *master, int rcode, int outrc,
                            const char *errmsg);

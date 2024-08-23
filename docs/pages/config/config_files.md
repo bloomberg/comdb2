@@ -931,7 +931,6 @@ These options are toggle-able at runtime.
 |sqllogger | | See [request logging](op.html#reql)
 |sqlsortermaxmmapsize | 2147418112 | maximum amount of file-backed mmap size in bytes to give the sqlite sorter
 |sqlsortermem | 314572800 | maximum amount of memory to give the sqlite sorter
-|sqlwrtimeout | 10000 (ms) | Set timeout for writing to an SQL connection.
 |stack_at_lock_get| not set | Collect comdb2_stack for every lock
 |stack_at_lock_handle| not set | Collect comdb2_stack for every handle-lock
 |stack_at_write_lock| not set | Collect comdb2_stack for every write-lock

@@ -5324,7 +5324,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         clnt->num_resets++;
         clnt->last_reset_time = comdb2_time_epoch();
         clnt_change_state(clnt, CONNECTION_RESET);
-        clnt->plugin.set_timeout(clnt, gbl_sqlwrtimeoutms);
         if (clnt->lastresptype != RESPONSE_TYPE__LAST_ROW && clnt->lastresptype != 0) {
             if (gbl_unexpected_last_type_warn)
                 logmsg(LOGMSG_ERROR, "Unexpected previous response type %d origin %s task %s\n", clnt->lastresptype,
@@ -6997,10 +6996,6 @@ static int internal_has_x509(struct sqlclntstate *a)
     return 0;
 }
 static int internal_get_x509_attr(struct sqlclntstate *a, int b, void *c, int d)
-{
-    return -1;
-}
-static int internal_set_timeout(struct sqlclntstate *clnt, int timeout_ms)
 {
     return -1;
 }

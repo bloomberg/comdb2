@@ -356,6 +356,12 @@ int get_hosts_evbuffer(int n, host_node_type **);
 
 int should_reject_request(void);
 
+int dist_heartbeats(dist_hbeats_type *);
+
+/* Participant teardown from heartbeat */
+void dist_heartbeat_free_tran(dist_hbeats_type *);
+
+
 #if defined _SUN_SOURCE
 void wait_alive(int fd);
 #endif

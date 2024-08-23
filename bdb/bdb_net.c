@@ -665,12 +665,6 @@ void start_udp_reader(bdb_state_type *bdb_state)
         return;
     }
     udp_bind(repinfo);
-#   if 0
-    if (gbl_libevent) {
-        add_udp_event(repinfo->udp_fd, udp_reader, bdb_state);
-        return;
-    }
-#   endif
     pthread_t *thread = &repinfo->udp_thread;
     extern pthread_attr_t gbl_pthread_attr;
     Pthread_create(thread, &gbl_pthread_attr, udp_reader_thd, bdb_state);

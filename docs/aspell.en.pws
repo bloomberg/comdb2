@@ -179,7 +179,6 @@ snapisol
 endianess
 attr
 createStatement
-sqlwrtimeout
 SQLBULKSZ
 lrl
 mmm
