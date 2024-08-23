@@ -254,9 +254,6 @@ const char *gbl_database_extensions[] = {".dta", ".index", ".datas*", ".blobs*",
 
 int gbl_nullfkey = 1;
 
-/* Default fast sql timeouts */
-int gbl_sqlwrtimeoutms = 10000;
-
 long long gbl_converted_blocksql_requests = 0;
 
 /* TODO: delete */

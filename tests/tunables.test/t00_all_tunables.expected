@@ -937,7 +937,6 @@
 (name='sqlsortermem', description='Maximum amount of memory to be allocated to the sqlite sorter. (Default: 314572800)', type='INTEGER', value='314572800', read_only='Y')
 (name='sqlsortermult', description='', type='INTEGER', value='1', read_only='Y')
 (name='sqlsorterpenalty', description='Sets the sorter penalty for query planner to prefer plans without explicit sort (Default: 5)', type='INTEGER', value='5', read_only='Y')
-(name='sqlwrtimeout', description='Set timeout for writing to an SQL connection. (Default: 10000ms)', type='INTEGER', value='10000', read_only='Y')
 (name='stable_rootpages_test', description='Delay sql processing to allow a schema change to finish', type='BOOLEAN', value='OFF', read_only='N')
 (name='stack_at_lock_gen_increment', description='Stores stack-id when lock's generation increments.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='stack_at_lock_get', description='Stores stack-id for every lock-get.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')

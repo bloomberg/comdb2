@@ -3129,10 +3129,6 @@ clipper_usage:
                 cancel_sql_statement_with_cnonce(cnonce);
                 free(cnonce);
             }
-        } else if (tokcmp(tok, ltok, "wrtimeout") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-            gbl_sqlwrtimeoutms = toknum(tok, ltok);
-           logmsg(LOGMSG_USER, "SQL write timeout now set to %d ms\n", gbl_sqlwrtimeoutms);
         } else if (tokcmp(tok, ltok, "help") == 0) {
             print_help_page(HELP_SQL);
         } else if (tokcmp(tok, ltok, "debug") == 0) {

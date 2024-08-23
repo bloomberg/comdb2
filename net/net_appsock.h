@@ -26,7 +26,6 @@ void run_on_base(struct event_base *, run_on_base_fn, void *);
 
 extern int32_t active_appsock_conns;
 extern int64_t gbl_denied_appsock_connection_count;
-extern int gbl_libevent_appsock;
 
 #undef SKIP_CHECK_THD
 #ifdef SKIP_CHECK_THD

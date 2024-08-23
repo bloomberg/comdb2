@@ -1113,10 +1113,6 @@ REGISTER_TUNABLE("sql_tranlevel_default",
                  TUNABLE_ENUM, &gbl_sql_tranlevel_default, READONLY,
                  sql_tranlevel_default_value, NULL,
                  sql_tranlevel_default_update, NULL);
-REGISTER_TUNABLE(
-    "sqlwrtimeout",
-    "Set timeout for writing to an SQL connection. (Default: 10000ms)",
-    TUNABLE_INTEGER, &gbl_sqlwrtimeoutms, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("static_tag_blob_fix", NULL, TUNABLE_BOOLEAN,
                  &gbl_force_notnull_static_tag_blobs, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);

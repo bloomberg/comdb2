@@ -501,6 +501,7 @@ static void check_timers(int dummyfd, short what, void *arg)
         logmsg(LOGMSG_WARN, "LONG FDB TICK:%dms\n", ms);
         need_pstack = 1;
     }
+
     timersub(&now, &dist_tick, &diff);
     ms = timeval_to_ms(diff);
     if (ms >= gbl_timer_warn_interval) {
@@ -2064,8 +2065,6 @@ static void host_connected(struct event_info *e, int fd, int connect_msg, struct
     }
 }
 
-extern int dist_heartbeats(dist_hbeats_type *dt);
-
 static void dist_heartbeat(int dummyfd, short what, void *data)
 {
     check_dist_thd();
@@ -2099,7 +2098,6 @@ int enable_dist_heartbeats(dist_hbeats_type *dt)
     return event_base_once(dist_base, -1, EV_TIMEOUT, do_enable_dist_heartbeats, dt, NULL);
 }
 
-extern void dist_heartbeat_free_tran(dist_hbeats_type *dt);
 static void do_disable_dist_heartbeats_and_free(int dummyfd, short what, void *data)
 {
     dist_hbeats_type *dt = data;

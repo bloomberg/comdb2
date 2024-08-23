@@ -1637,10 +1637,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     }
                 }
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
-                sqlstr += 7;
-                sqlstr = skipws(sqlstr);
-                int timeout = strtol(sqlstr, &endp, 10);
-                clnt->plugin.set_timeout(clnt, timeout);
+                /* nop */
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
                 sqlstr += 12;
                 sqlstr = skipws(sqlstr);

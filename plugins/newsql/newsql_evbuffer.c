@@ -217,11 +217,6 @@ static int newsql_peer_check_evbuffer(struct sqlclntstate *clnt)
     return sql_peer_check(appdata->writer);
 }
 
-static int newsql_set_timeout_evbuffer(struct sqlclntstate *clnt, int timeout_ms)
-{
-    return 0; /* nop */
-}
-
 static int rd_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
     return appdata->rd_evbuffer_fn(appdata); /* rd_evbuffer_plaintext */

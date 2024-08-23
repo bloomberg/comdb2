@@ -465,13 +465,12 @@ struct plugin_callbacks {
     plugin_func *close; /* newsql_close_evbuffer */
     plugin_func *flush; /* newsql_flush_evbuffer */
     plugin_func *get_fileno; /* newsql_get_fileno_evbuffer */
-    response_func *get_x509_attr; /* newsql_get_x509_attr_sbuf */
-    plugin_func *has_ssl; /* newsql_has_ssl_sbuf */
-    plugin_func *has_x509; /* newsql_has_x509_sbuf */
+    response_func *get_x509_attr; /* newsql_get_x509_attr_evbuffer */
+    plugin_func *has_ssl; /* newsql_has_ssl_evbuffer */
+    plugin_func *has_x509; /* newsql_has_x509_evbuffer */
     plugin_func *local_check; /* newsql_local_check_evbuffer */
     plugin_func *peer_check; /* newsql_peer_check_evbuffer */
     auth_func *get_authdata; /* newsql_get_authdata */
-    override_type_func *set_timeout; /* newsql_set_timeout_sbuf */
     api_type_func *api_type; /* newsql_api_type */
 
     /* Optional */
@@ -538,7 +537,6 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, local_check);                         \
         make_plugin_callback(clnt, name, peer_check);                          \
         make_plugin_callback(clnt, name, get_authdata);                        \
-        make_plugin_callback(clnt, name, set_timeout);                         \
         make_plugin_callback(clnt, name, api_type);                            \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
