@@ -2778,6 +2778,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     dbenv->queue_depth = time_metric_new("queue_depth");
     dbenv->concurrent_queries = time_metric_new("concurrent_queries");
     dbenv->connections = time_metric_new("connections");
+    dbenv->watchdog_time = time_metric_new("watchdog_time");
 
     return dbenv;
 }
@@ -4954,6 +4955,7 @@ void *statthd(void *p)
         time_metric_purge_old(thedb->queue_depth);
         time_metric_purge_old(thedb->concurrent_queries);
         time_metric_purge_old(thedb->connections);
+        time_metric_purge_old(thedb->watchdog_time);
 
         ++count;
         sleep(1);
