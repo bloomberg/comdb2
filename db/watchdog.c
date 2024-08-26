@@ -301,7 +301,9 @@ static void *watchdog_thread(void *arg)
 
             /* if nothing was bad, update the timestamp */
             if (!its_bad && !its_bad_slow) {
-                gbl_watchdog_time = comdb2_time_epoch();
+                int now = comdb2_time_epoch();
+                time_metric_add(thedb->watchdog_time, now - gbl_watchdog_time);
+                gbl_watchdog_time = now;
             }
         }
 
@@ -404,9 +406,9 @@ void watchdog_enable(void)
     gbl_nowatch = 0;
 }
 
-void comdb2_die(int aborat)
+void comdb2_die(int abort)
 {
-    bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 1, aborat);
+    bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 1, abort);
     _exit(1);
 }
 
@@ -433,8 +435,9 @@ static void *watchdog_watcher_thread(void *arg)
               cycle before making a decision to abort.
             */
             if (failed_once > 0) {
-                logmsg(LOGMSG_FATAL, "watchdog thread stuck for more than %d seconds, exiting\n",
-                       gbl_watchdog_watch_threshold);
+                logmsg(LOGMSG_FATAL, "watchdog thread stuck for more than %d seconds - expected time was %d seconds, exiting\n",
+                        gbl_watchdog_watch_threshold,
+                        (int) time_metric_average(thedb->watchdog_time));
                 comdb2_die(1);
             }
             failed_once++;
