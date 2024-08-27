@@ -967,12 +967,13 @@ struct dbenv {
     uint32_t incoh_file, incoh_offset;
     timepart_views_t *timepart_views;
 
-    struct time_metric* service_time;
-    struct time_metric* queue_depth;
-    struct time_metric* concurrent_queries;
-    struct time_metric* connections;
+    struct time_metric *service_time;
+    struct time_metric *queue_depth;
+    struct time_metric *concurrent_queries;
+    struct time_metric *connections;
     struct time_metric *sql_queue_time;
     struct time_metric *handle_buf_queue_time;
+    struct time_metric *watchdog_time;
     LISTC_T(struct lrl_handler) lrl_handlers;
     LISTC_T(struct message_handler) message_handlers;
 
