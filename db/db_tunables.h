@@ -552,7 +552,10 @@ REGISTER_TUNABLE("foreign_db_allow_cross_class", NULL, TUNABLE_BOOLEAN, &gbl_fdb
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN, &gbl_fdb_resolve_local,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN, &gbl_fdb_push_remote, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_db_push_remote", "Fdb proxy more for reads (OFF turns off writes as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote, NOARG, NULL, NULL, 
+                 fdb_push_update, NULL);
+REGISTER_TUNABLE("foreign_db_push_remote_writes", "Fdb proxy mode for writes (ON turns on reads as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL,
+                 fdb_push_write_update, NULL);
 REGISTER_TUNABLE("foreign_db_push_redirect",
                  "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_fdb_push_redirect_foreign, NOARG, NULL, NULL, NULL, NULL);

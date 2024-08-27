@@ -26,6 +26,7 @@
 #include "sql.h"
 #include "plhash.h"
 #include "timepart_systable.h"
+#include "sqliteInt.h"
 
 typedef struct table_entry {
     char *table;

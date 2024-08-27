@@ -24,12 +24,9 @@ checkresult()
    correct_output_file=$1
    run_output_file=$2
 
-   #convert the table to actual dbname
-   sed "s/dorintdb/${a_remdbname}/g" ${correct_output_file} > ${correct_output_file}.actual
-
    # validate results 
    testcase_output=$(cat ${run_output_file})
-   expected_output=$(cat ${correct_output_file}.actual)
+   expected_output=$(cat ${correct_output_file})
    if [[ "$testcase_output" != "$expected_output" ]]; then
 
       # generate filename
@@ -43,9 +40,9 @@ checkresult()
       echo "The above testcase (${testcase}) has failed!!!" 
       echo " "
       echo "Use 'diff <expected-output> <my-output>' to see why:"
-      echo "> diff ${PWD}/${correct_output_file}.actual $tc_out"
+      echo "> diff ${PWD}/${correct_output_file} $tc_out"
       echo " "
-            diff ${PWD}/${correct_output_file}.actual $tc_out
+            diff ${PWD}/${correct_output_file} $tc_out
       echo " "
 
       exit 1
