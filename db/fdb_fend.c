@@ -3699,7 +3699,11 @@ const char *fdb_dbname_name(fdb_t *fdb) { return fdb->dbname; }
 const char *fdb_dbname_class_routing(fdb_t *fdb)
 {
     if (fdb->local)
+        /*
         return "LOCAL";
+        */
+        /* need to match tier setting from disttxn.c */
+        return gbl_machine_class ? gbl_machine_class : gbl_myhostname;
     return mach_class_class2name(fdb->class);
 }
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent)
