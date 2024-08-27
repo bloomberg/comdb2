@@ -2,6 +2,7 @@
 #include <vector>
 #include <limits.h>
 #include <string.h>
+#include <time.h>
 #include <arpa/inet.h>
 #include <cdb2api.h>
 

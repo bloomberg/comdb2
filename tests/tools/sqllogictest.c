@@ -740,7 +740,7 @@ int main(int argc, char **argv){
         fprintf(f, "%s", zScript);
         fclose(f);
 
-        if (sScript.azToken[2] && strcmp(sScript.azToken[2], "init") == 0) {
+        if (strcmp(sScript.azToken[2], "init") == 0) {
             /* init first */
             snprintf(cmd, sizeof(cmd), "comdb2sc.tsk %s fastinit %s", dbname, sScript.azToken[1]);
             rc = system(cmd);
