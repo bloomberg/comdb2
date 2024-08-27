@@ -105,6 +105,7 @@ struct comdb2_metrics_store {
     int64_t weighted_standing_queue_time;
     int64_t auth_allowed;
     int64_t auth_denied;
+    double watchdog_time;
 
     /* Legacy request metrics */
     int64_t fastsql_execute_inline_params;
@@ -315,6 +316,8 @@ comdb2_metric gbl_metrics[] = {
     {"auth_denied", "Number of failed authentication requests",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.auth_denied,
      NULL},
+    {"watchdog_time", "Number of seconds for a successful watchdog test run", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_LATEST, &stats.watchdog_time, NULL},
 
     {"fastsql_execute_inline_params", "Number of fastsql 'execute' requests",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
@@ -652,6 +655,7 @@ int refresh_metrics(void)
     stats.handle_buf_queue_time =
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
+    stats.watchdog_time = time_metric_average(thedb->watchdog_time);
     int master =
         bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_myhostname ? 1
                                                                             : 0;
