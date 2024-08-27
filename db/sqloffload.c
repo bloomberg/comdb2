@@ -56,6 +56,7 @@
 #include <autoanalyze.h>
 #include "sc_callbacks.h"
 #include "views.h"
+#include "fdb_fend.h"
 
 #if 0
 #define TEST_QSQL_REQ

@@ -202,7 +202,18 @@ static void attachFunc(
   
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     iFndDb = i;
-    if( i!=db->nDb ) goto done_with_open;
+    if( i!=db->nDb ) {
+      extern int sqlite3BtreeReopen(const char*,Btree*);
+
+      rc = sqlite3BtreeReopen(dbName, db->aDb[iFndDb].pBt);
+
+      db->aDb[iFndDb].zDbSName = dbName;
+      db->aDb[iFndDb].class = class;
+      db->aDb[iFndDb].class_override = class_override;
+      db->aDb[iFndDb].local = local;
+      db->aDb[iFndDb].version = proto_version;
+      goto done_with_open;
+    }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* Allocate the new entry in the db->aDb[] array and initialize the schema
     ** hash tables.

@@ -242,7 +242,7 @@ void sqlite3Update(
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto update_cleanup;
   ast_t *ast = ast_init(pParse, __func__);
-  if( ast ) ast_push(ast, AST_TYPE_UPDATE, v, NULL);
+  if( ast ) ast_push(ast, AST_TYPE_UPDATE, v, (iDb>1) ? pTab : NULL);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
   if( !isView ){
