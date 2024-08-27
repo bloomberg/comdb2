@@ -25,6 +25,7 @@
 #include "sql.h"
 #include "ezsystables.h"
 #include "cdb2api.h"
+#include "sqliteInt.h"
 
 static int get_functions(void **data, int *npoints)
 {

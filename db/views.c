@@ -1033,7 +1033,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
-            return FDB_ERR_GENERIC;
+            return VIEW_ERR_GENERIC;
         }
     }
 
@@ -1049,10 +1049,10 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
         if (tmp_str) {
             free(tmp_str);
         }
-        return FDB_ERR_GENERIC;
+        return VIEW_ERR_GENERIC;
     }
 
-    return FDB_NOERR;
+    return VIEW_NOERR;
 }
 
 /**
