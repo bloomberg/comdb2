@@ -5,6 +5,8 @@
 
 set -x
 
+exit 0
+
 [[ $COMDB2_UNITTEST == 1 ]] && exit 0
 
 echo "!$TESTCASE: stopping"
