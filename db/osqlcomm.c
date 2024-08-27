@@ -7366,7 +7366,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
                 int upsert_idx = dt.upsert_flags >> 8;
                 if ((dt.upsert_flags & OSQL_FORCE_VERIFY) != 0) {
-                    if (upsert_idx == err->ixnum) {
+                    if (upsert_idx == err->ixnum || upsert_idx == MAXINDEX + 1) {
                         err->errcode = OP_FAILED_VERIFY;
                         rc = ERR_VERIFY;
                     }
