@@ -1,0 +1,8 @@
+schema
+{
+   int  id
+}
+keys
+{
+   "ID"  = id
+}

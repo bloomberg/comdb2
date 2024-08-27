@@ -3582,6 +3582,36 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
 }
 
 /*
+ ** Reopen a database file.
+ ** Only used for remote db files.
+ ** zFilename is the name of the database file.
+ */
+int sqlite3BtreeReopen(
+    const char *zFilename, /* name of the file containing the btree database */
+    Btree *pBtree)       /* pointer to existing btree object written here */
+{
+    int rc = SQLITE_OK;
+
+    assert(zFilename);
+    assert(pBtree);
+
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "XXXXXXXXXXXXX ReOpening \"%s\"\n", zFilename);
+
+    pBtree->fdb = get_fdb(zFilename);
+    if (!pBtree->fdb) {
+        logmsg(LOGMSG_ERROR, "%s: fdb not available for %s ?\n", __func__,
+               zFilename);
+        rc = SQLITE_ERROR;
+    }
+
+    reqlog_logf(pBtree->reqlogger, REQL_TRACE,
+                "ReOpen(file %s, tree %d)     = %s\n",
+                zFilename, pBtree->btreeid, sqlite3ErrStr(rc));
+    return rc;
+}
+
+/*
  ** Open a database file.
  **
  ** zFilename is the name of the database file.  If zFilename is NULL
@@ -3977,9 +4007,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         } else {
             /* make sure we have a distributed transaction and use that to
              * update remote */
-            uuid_t tid;
-            fdb_tran_t *trans = fdb_trans_begin_or_join(
-                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
+            fdb_tran_t *trans = fdb_trans_join(clnt, pCur->bt->fdb);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -8139,9 +8167,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
 {
     extern int gbl_ssl_allow_remsql;
     struct sqlclntstate *clnt = thd->clnt;
-    fdb_tran_t *trans;
+    fdb_tran_t *trans = NULL;
     fdb_t *fdb;
-    uuid_t tid;
 
     assert(pBt != 0);
 
@@ -8175,14 +8202,15 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans =
-                fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0 /* TODO */);
+            trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
+            if (!trans) {
+                logmsg(LOGMSG_ERROR, "%s: failed to create fdb_tran\n",
+                       __func__);
+                return -1;
+            }
         } else {
-            trans = fdb_trans_join(clnt, fdb, (char *)tid);
+            trans = fdb_trans_join(clnt, fdb);
         }
-    } else {
-        *(unsigned long long *)tid = 0ULL;
-        trans = NULL;
     }
 
     if (trans)
@@ -8204,8 +8232,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
                "%s Created cursor cid=%s with tid=%s rootp=%d "
                "db:tbl=\"%s:%s\"\n",
                __func__, (pStr) ? comdb2uuidstr(pStr, cus) : "UNK",
-               comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
-               cur->fdbc->name(cur));
+               trans ? comdb2uuidstr(*(uuid_t*)trans->tid, tus) : "<nontran>" ,
+               iTable, pBt->zFilename, cur->fdbc->name(cur));
     }
 
     if (trans)
@@ -8716,7 +8744,6 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
     int bdberr = 0;
     fdb_t *fdb = NULL;
     fdb_tran_t *trans = NULL;
-    uuid_t tid;
     int need_ssl = 0;
 
     uint8_t **pIdxInsert = NULL, **pIdxDelete = NULL;
@@ -8792,7 +8819,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                                 SQLENG_PRE_STRT_STATE);
         if (pCur->cursor_class == CURSORCLASS_REMOTE) {
             /* restart a remote transaction, and open a new remote cursor */
-            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0);
+            trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
             pCur->fdbc = fdb_cursor_open(clnt, pCur, pCur->rootpage, trans, &pCur->ixnum, need_ssl);
         }
         rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
@@ -9181,9 +9208,7 @@ int sqlite3BtreeInsert(
         } else {
             /* make sure we have a distributed transaction and use that to
              * update remote */
-            uuid_t tid;
-            fdb_tran_t *trans = fdb_trans_begin_or_join(
-                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
+            fdb_tran_t *trans = fdb_trans_join(clnt, pCur->bt->fdb);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 

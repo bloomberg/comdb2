@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
+bash -n "$0" | exit 1
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
+
 
 # args
 # <dbname> <dbdir> <testdir> <autodbname> <autodbnum> <cluster>
@@ -16,21 +18,18 @@ for required in $vars; do
     fi
 done
 
-opt=
-if [[ ! -z $2 ]]; then
-    opt=$2
-fi
 
 #run tests
 echo "Starting tests"
-echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR $opt
-./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR $opt
+echo ./test_fdb.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
+./test_fdb.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
 result=$?
 
+
 if (( $result != 0 )) ; then
-   echo "FAILURE"
+   echo "Failure"
    exit 1
 fi
 
 
-echo "SUCCESS"
+echo "Success"

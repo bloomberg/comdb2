@@ -38,6 +38,7 @@ int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
 int comdb2_check_parallel(Parse*);
 int comdb2_check_push_remote(Parse*);
+int comdb2_check_push_remote_write(Parse*);
 void comdb2_create_view(Parse *pParse, const char *view_name,
                         int view_name_len, const char *zStmt, int temp);
 void comdb2_drop_view(Parse *pParse, SrcList *pName);
@@ -281,6 +282,10 @@ void sqlite3FinishCoding(Parse *pParse){
         pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
         return;
       }
+      if( comdb2_check_push_remote_write(pParse) ){
+        pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE_WRITE;
+        return;
+      }
       if( comdb2_check_parallel(pParse) ){
         pParse->rc = SQLITE_SCHEMA_DOHSQL;
         return;
@@ -508,6 +513,9 @@ retry_after_fdb_creation:
     dbAlias = fdb_get_alias(&zName);
     zDatabase = dbAlias;
     if( zDatabase ){
+      /* NOTE: we cannot use push here, an alias is local! */
+      extern void fdb_disable_push(void);
+      fdb_disable_push();
       goto retry_alias;
     }
   }

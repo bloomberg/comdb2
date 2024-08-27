@@ -8903,6 +8903,7 @@ abort_due_to_error:
    && rc!=SQLITE_SCHEMA_REMOTE
    && rc!=SQLITE_SCHEMA_DOHSQL
    && rc!=SQLITE_SCHEMA_PUSH_REMOTE
+   && rc!=SQLITE_SCHEMA_PUSH_REMOTE_WRITE
   ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = SQLITE_ERROR;

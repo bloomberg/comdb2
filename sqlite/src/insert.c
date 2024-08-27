@@ -746,6 +746,11 @@ void sqlite3Insert(
     }
   }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ast_t *ast = ast_init(pParse, __func__);
+  if( ast ) ast_push(ast, AST_TYPE_INSERT, v, (iDb>1) ? pTab : NULL);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   /* Figure out how many columns of data are supplied.  If the data
   ** is coming from a SELECT statement, then generate a co-routine that
   ** produces a single row of the SELECT on each invocation.  The
@@ -758,10 +763,6 @@ void sqlite3Insert(
     int addrTop;        /* Top of the co-routine */
     int rc;             /* Result code */
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    ast_t *ast = ast_init(pParse, __func__);
-    if( ast ) ast_push(ast, AST_TYPE_INSERT, v, NULL);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     regYield = ++pParse->nMem;
     addrTop = sqlite3VdbeCurrentAddr(v) + 1;
     sqlite3VdbeAddOp3(v, OP_InitCoroutine, regYield, 0, addrTop);

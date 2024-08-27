@@ -2876,13 +2876,14 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
 }
 
 static void _prepare_error(struct sqlthdstate *thd,
-                                struct sqlclntstate *clnt,
-                                struct sql_state *rec, int rc,
-                                struct errstat *err)
+                           struct sqlclntstate *clnt,
+                           struct sql_state *rec, int rc,
+                           struct errstat *err)
 {
     const char *errstr;
 
-    if (rc == SQLITE_SCHEMA_DOHSQL)
+    if (rc == SQLITE_SCHEMA_DOHSQL ||
+        rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE)
         return;
 
     if (in_client_trans(clnt) &&
@@ -3459,6 +3460,14 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
                                    int flags)
 {
     int rc;
+
+    /* the underlying code might check these variables multiple times
+     * and we do not wait a prepared system to race with a change
+     * in the peer global variables
+     */
+    clnt->fdb_push_remote = gbl_fdb_push_remote;
+    clnt->fdb_push_remote_write = gbl_fdb_push_remote_write;
+
     if ((rc = get_prepared_stmt(thd, clnt, rec, err, flags)) != 0) {
         return rc;
     }
@@ -4032,9 +4041,14 @@ retry_legacy_remote:
             rec.sql = (const char *)allocd_str;
             continue;
         }
-        if (rc == SQLITE_SCHEMA_PUSH_REMOTE) {
-            rc = handle_fdb_push(clnt, &err);
+        if (rc == SQLITE_SCHEMA_PUSH_REMOTE ||
+            rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+            if (rc == SQLITE_SCHEMA_PUSH_REMOTE)
+                rc = handle_fdb_push(clnt, &err);
+            else
+                rc = handle_fdb_push_write(clnt, &err);
             if (rc == -2) {
+                logmsg(LOGMSG_ERROR, "QUERY %s disable push\n", clnt->sql);
                 /* remote server does not support proxy, retry without */
                 clnt->disable_fdb_push = 1;
                 goto retry_legacy_remote;
@@ -5514,6 +5528,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
         clnt->modsnap_registration = NULL;
     }
+    clnt->remsql_set.is_remsql = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -5899,6 +5914,7 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
         } else if (c->lcl_tbl_name[0]) {
             strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }
+        fprintf(stderr, "RECORDING id %d %s finds %d\n", i, stats[i].table, stats[i].nfind);
         i++;
     }
     return 0;
