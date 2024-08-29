@@ -396,14 +396,12 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 
      if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
-         if (!clnt->authdata) {
-             if (clnt->secure && !gbl_allow_anon_id_for_spmux) {
-                 return reject_anon_id(clnt);
-             }
-             if (gbl_externalauth_warn) {
-                logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                       clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-             }
+         if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux) {
+             return reject_anon_id(clnt);
+         }
+         if (!clnt->authdata && gbl_externalauth_warn) {
+            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
          } else if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename)) {
              ATOMIC_ADD64(gbl_num_auth_denied, 1);
              return SQLITE_AUTH;
@@ -444,15 +442,13 @@ static int comdb2CheckOpAccess(void) {
     struct sqlclntstate *clnt = get_sql_clnt();
     if (gbl_uses_externalauth && externalComdb2CheckOpAccess && !clnt->admin) {
          clnt->authdata = get_authdata(clnt);
-         if (!clnt->authdata) {
-             if (clnt->secure && !gbl_allow_anon_id_for_spmux) {
-                 return reject_anon_id(clnt);
-             }
-             if (gbl_externalauth_warn) {
-                logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                       clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-                return SQLITE_OK;
-             }
+         if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux) {
+             return reject_anon_id(clnt);
+         }
+         if (!clnt->authdata && gbl_externalauth_warn) {
+            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+            return SQLITE_OK;
          } else if (externalComdb2CheckOpAccess(clnt->authdata)) {
              ATOMIC_ADD64(gbl_num_auth_denied, 1);
              return SQLITE_AUTH;
