@@ -127,11 +127,22 @@ static const char *print_column_name(int col)
 
 static void release_files(void *data, int npoints)
 {
+    if (!data) { return; }
+
     db_file_t *files = data;
     for (int i = 0; i < npoints; ++i) {
-        free(files[i].name);
-        free(files[i].dir);
-        free(files[i].current_chunk.buffer);
+        if (files[i].name) {
+            free(files[i].name);
+        }
+        if (files[i].dir) {
+            free(files[i].dir);
+        }
+        if (files[i].current_chunk.buffer) {
+            free(files[i].current_chunk.buffer);
+        }
+        if (files[i].info) {
+            dbfile_deinit(files[i].info);
+        }
     }
     free(files);
 }
@@ -209,6 +220,8 @@ static int memory_writer(void *ctx, uint8_t *in_buf, size_t size, size_t offset)
       file->chunk_seq = 0;
     } else {
       file->chunk_seq++;
+      assert(file->current_chunk.buffer);
+      free(file->current_chunk.buffer);
     }
 
     if (file->type == FILES_TYPE_CHECKPOINT) {
@@ -280,8 +293,8 @@ static int check_and_append_new_log_files(systbl_files_cursor *pCur)
         newFile->info = NULL;
         newFile->type = FILES_TYPE_LOGFILE;
 
-        newFile->info = calloc(1, sizeof(dbfile_info));
-        newFile->info->filename = strdup(path);
+        newFile->info = os_calloc(1, sizeof(dbfile_info));
+        newFile->info->filename = os_strdup(path);
 
         // Continue to check if there are more newer log files.
         ++nextLogNumber;
@@ -310,6 +323,16 @@ static int read_next_chunk(systbl_files_cursor *pCur)
             break;
         }
         assert(rc == -1);
+
+        // This buffer is allocated when the first chunk in a file
+        // is processed. It is reused for each subsequent chunk in
+        // the file. Now we are about to move to the next file,
+        // so we can free the buffer for the current file.
+        if (pCur->files[pCur->rowid].info->pagebuf) {
+            os_free(pCur->files[pCur->rowid].info->pagebuf);
+            pCur->files[pCur->rowid].info->pagebuf = NULL;
+        }
+
         pCur->rowid++; // Read the next file
     }
 
@@ -440,8 +463,8 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
                 break;
             }
         } else {
-            f->info = calloc(1, sizeof(dbfile_info));
-            f->info->filename = strdup(path);
+            f->info = os_calloc(1, sizeof(dbfile_info));
+            f->info->filename = os_strdup(path);
         }
 
         if (is_data_file == 1) {
