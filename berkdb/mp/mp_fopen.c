@@ -1380,6 +1380,7 @@ done:	/* Discard the DB_MPOOLFILE structure. */
 		__os_free(dbenv, dbmfp->pgcookie->data);
 		__os_free(dbenv, dbmfp->pgcookie);
 	}
+	memset(dbmfp, CLEAR_BYTE, sizeof(DB_MPOOLFILE));
 	__os_free(dbenv, dbmfp);
 
 	return (ret);
