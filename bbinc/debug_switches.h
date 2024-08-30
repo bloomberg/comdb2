@@ -81,6 +81,7 @@ int debug_switch_is_dbq_get_delayed(void);         /* 0 */
 int debug_switch_is_rep_rec_delayed(void);         /* 0 */
 int debug_switch_get_tmp_dir_sleep(void);          /* 0 */
 int debug_switch_ignore_null_auth_func(void);      /* 0 */
+int debug_switch_load_cache_delay(void);           /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */

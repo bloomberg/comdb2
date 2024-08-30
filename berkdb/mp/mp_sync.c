@@ -35,6 +35,8 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <pool.h>
 #include "logmsg.h"
 #include "sys_wrap.h"
+#include "debug_switches.h"
+#include "schema_lk.h"
 
 extern int gbl_file_permissions;
 
@@ -1956,6 +1958,7 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	dbmp = dbenv->mp_handle;
 	dbmfp = NULL;
 
+	rdlock_schema_lk();
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 	for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq); dbmfp != NULL;
 			dbmfp = TAILQ_NEXT(dbmfp, q)) {
@@ -1965,10 +1968,18 @@ load_fileids(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	if (dbmfp) {
+		if (debug_switch_load_cache_delay()) {
+			char *fname = (char *)R_ADDR(dbmp->reginfo, dbmfp->mfp->path_off);
+			if (strncmp(fname, "XXX.t_load_cache_race_", strlen("XXX.t_load_cache_race_")) == 0) {
+				sleep(5);
+			}
+		}
+
 		for(int pages = 0 ; pages < pagelist->cnt; pages++) {
 			touch_page(dbmfp, pagelist->pages[pages]);
 		}
-	} 
+	}
+	unlock_schema_lk();
 
 	Pthread_mutex_lock(fileid_env->lk);
 	(*fileid_env->active_threads)--;
