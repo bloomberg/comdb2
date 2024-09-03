@@ -1017,6 +1017,8 @@ struct sqlclntstate {
 
     unsigned disabled_logdel : 1; /* 1 if this clnt disabled logdel using set stmt and has not tried to re-enable it */
     unsigned verify_dbstore : 1;
+    unsigned multiline : 1;
+    int tail_offset;
 };
 typedef struct sqlclntstate sqlclntstate;
 
