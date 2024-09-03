@@ -376,6 +376,7 @@ enum {
     XRESPONSE(RESPONSE_ERROR_PREPARE)                                          \
     XRESPONSE(RESPONSE_ERROR_PREPARE_RETRY)                                    \
     XRESPONSE(RESPONSE_ERROR_REJECT)                                           \
+    XRESPONSE(RESPONSE_ERROR_INCOMPLETE)                                       \
     XRESPONSE(RESPONSE_REDIRECT_FOREIGN)                                       \
     XRESPONSE(RESPONSE_FLUSH)                                                  \
     XRESPONSE(RESPONSE_HEARTBEAT)                                              \
@@ -1033,6 +1034,8 @@ struct sqlclntstate {
 
     unsigned disabled_logdel : 1; /* 1 if this clnt disabled logdel using set stmt and has not tried to re-enable it */
     unsigned verify_dbstore : 1;
+    unsigned multiline : 1;
+    int tail_offset;
 };
 typedef struct sqlclntstate sqlclntstate;
 

@@ -462,8 +462,14 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
     resp.n_value = ncols;
     resp.value = value;
-    if (clnt->sqlite_row_format)
+    if (clnt->sqlite_row_format) {
         resp.has_sqlite_row = 1;
+    }
+
+    if (clnt->multiline) {
+        resp.has_sql_tail_offset = 1;
+        resp.sql_tail_offset = clnt->tail_offset;
+    }
 
     if (clnt->request_fp) {
         /* client has requested the fingerprint. if the fingerprint is already
@@ -588,6 +594,10 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
     resp.error_string = r;
     resp.response_type = c->osql.sent_column_data ? RESPONSE_TYPE__COLUMN_VALUES
                                                   : RESPONSE_TYPE__COLUMN_NAMES;
+    if (c->multiline) {
+        resp.has_sql_tail_offset = 1;
+        resp.sql_tail_offset = c->tail_offset;
+    }
     return newsql_response(c, &resp, 1);
 }
 
@@ -1125,6 +1135,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return newsql_error(c, a, c->prep_rc == SQLITE_READONLY ? CDB2__ERROR_CODE__READONLY
                                                                 : CDB2__ERROR_CODE__PREPARE_ERROR);
     case RESPONSE_ERROR_REJECT: return newsql_error(c, a, CDB2__ERROR_CODE__REJECTED);
+    case RESPONSE_ERROR_INCOMPLETE: return newsql_error(c, a, CDB2__ERROR_CODE__INCOMPLETE);
     case RESPONSE_REDIRECT_FOREIGN: return newsql_redirect_foreign(c, a, i);
     case RESPONSE_FLUSH: return c->plugin.flush(c);
     case RESPONSE_HEARTBEAT: return newsql_heartbeat(c);
@@ -2192,6 +2203,14 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     clnt->return_long_column_names = 0;
                 } else {
                     clnt->return_long_column_names = 1;
+                }
+            } else if (strncasecmp(sqlstr, "multiline", 9) == 0) {
+                sqlstr += 10;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->multiline = 0;
+                } else {
+                    clnt->multiline = 1;
                 }
             } else {
                 rc = ii + 1;
