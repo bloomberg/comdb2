@@ -8172,6 +8172,11 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
             trans = fdb_trans_begin_or_join(clnt, fdb, 0);
+            if (!trans) {
+                logmsg(LOGMSG_ERROR, "%s: failed to create fdb_tran\n",
+                       __func__);
+                return -1;
+            }
         } else {
             trans = fdb_trans_join(clnt, fdb);
         }

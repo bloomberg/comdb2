@@ -4008,18 +4008,18 @@ retry_legacy_remote:
             rec.sql = (const char *)allocd_str;
             continue;
         }
-        if (rc == SQLITE_SCHEMA_PUSH_REMOTE) {
-            if (clnt->isselect) {
+        if (rc == SQLITE_SCHEMA_PUSH_REMOTE ||
+            rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE) {
+            if (rc == SQLITE_SCHEMA_PUSH_REMOTE)
                 rc = handle_fdb_push(clnt, &err);
-                if (rc == -2) {
-                    /* remote server does not support proxy, retry without */
-                    clnt->disable_fdb_push = 1;
-                    goto retry_legacy_remote;
-                }
-                goto done;
-            } else {
+            else
                 rc = handle_fdb_push_write(clnt, &err);
+            if (rc == -2) {
+                /* remote server does not support proxy, retry without */
+                clnt->disable_fdb_push = 1;
+                goto retry_legacy_remote;
             }
+            goto done;
         }
 
         if (rc) {

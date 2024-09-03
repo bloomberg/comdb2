@@ -283,7 +283,7 @@ void sqlite3FinishCoding(Parse *pParse){
         return;
       }
       if( comdb2_check_push_remote_write(pParse) ){
-        pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
+        pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE_WRITE;
         return;
       }
       if( comdb2_check_parallel(pParse) ){

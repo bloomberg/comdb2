@@ -5801,67 +5801,29 @@ int fdb_default_ver_set(int val)
 }
 
 /**
- * Same as fdb_push_setup, but for remote writes
+ * Check that fdb class matches a specific class
  *
  */
-int fdb_push_write_setup(Parse *pParse, Table *pTab)
+int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
+                          int class_override)
 {
-    GET_CLNT;
-    struct Db *pDb = &pParse->db->aDb[pTab->iDb];
-    fdb_t *fdb;
-
-    assert(pTab->iDb > 1);
-    logmsg(LOGMSG_DEBUG,
-           "%s query %s (gbl_fdb_push_remote_write=%d)\n",
-           __func__, clnt->sql, gbl_fdb_push_remote_write);
-    if (!gbl_fdb_push_remote_write)
-        return -1;
-
-    if (clnt->disable_fdb_push)
-        return -1;
-
-    fdb = get_fdb(pDb->zDbSName);
-    if (!fdb) {
-        logmsg(LOGMSG_ERROR, "%s: missing fdb %s\n", __func__, pDb->zDbSName);
-        return -1;
-    }
-
-    if (fdb->local != pDb->local) {
+    if (fdb->local != local) {
         logmsg(LOGMSG_ERROR, "%s: fdb %s different local %d %d\n", __func__,
-               pDb->zDbSName, fdb->local, pDb->local);
+               fdb->dbname, fdb->local, local);
         return -1;
     }
-
     if (!fdb->local) {
-        if (pDb->class_override && pDb->class_override != fdb->class) {
+        if (class_override && class_override != fdb->class) {
             logmsg(LOGMSG_ERROR, "%s: fdb %s different class override %d %d\n", __func__,
-                    pDb->zDbSName, fdb->class, pDb->class_override);
+                   fdb->dbname, fdb->class, class_override);
             return -1;
         }
 
-        if (!pDb->class_override && pDb->class != fdb->class) {
+        if (!class_override && class != fdb->class) {
             logmsg(LOGMSG_ERROR, "%s: fdb %s different class %d %d\n", __func__,
-                    pDb->zDbSName, fdb->class, pDb->class);
+                   fdb->dbname, fdb->class, class);
             return -1;
         }
     }
-
-    if (pDb->version < FDB_VER_CDB2API)
-        return -1;
-
-#if 0
-    /* fdb is the remote db we want, and it supports remote writes */
-    
-    /* begin/join the transaction */
-    fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, fdb->ssl >= SSL_REQUIRE);
-    if (!tran)
-        return -1;
-
-
-    if (!clnt->in_client_trans) {
-        /* standalone remote write, commit here */
-    }
-#endif
     return 0;
 }
-

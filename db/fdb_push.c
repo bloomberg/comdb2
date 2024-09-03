@@ -34,7 +34,7 @@ struct fdb_push_connector {
     struct param_data *params; /* bound parameters */
 };
 
-static void _master_clnt_set(struct sqlclntstate *clnt);
+static void _master_clnt_set(sqlclntstate *clnt);
 static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
                                 const char *tzname, struct errstat *err,
                                 cdb2_client_datetime_t *dts);
@@ -55,6 +55,32 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
     }
 }
 
+fdb_push_connector_t *_push_setup(Parse *pParse, struct Db *pDb, int minver)
+{
+    fdb_push_connector_t *push = NULL;
+
+    if (pDb->version < minver)
+        return NULL;
+
+    push = calloc(1, sizeof(fdb_push_connector_t));
+    if (!push) {
+        logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
+        return NULL;
+    }
+    push->remotedb = strdup(pDb->zDbSName);
+    if (!push->remotedb) {
+        logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
+        free(push);
+        return NULL;
+    }
+    push->class = pDb->class;
+    push->local = pDb->local;
+    push->class_override = pDb->class_override;
+
+    return push;
+}
+
+
 /**
  * Remote query push support
  * Save in clnt information that this is a standalone select that
@@ -64,7 +90,6 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
 int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
 {
     GET_CLNT;
-    fdb_push_connector_t *push = NULL;
     struct Db *pDb = &pParse->db->aDb[node->remotedb];
 
     logmsg(LOGMSG_DEBUG,
@@ -81,23 +106,9 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     if (clnt->intrans || clnt->in_client_trans)
         return -1;
 
-    if (pDb->version < FDB_VER_PROXY)
+    fdb_push_connector_t *push = _push_setup(pParse, pDb, FDB_VER_PROXY);
+    if (!push)
         return -1;
-
-    push = calloc(1, sizeof(fdb_push_connector_t));
-    if (!push) {
-        logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
-        return -1;
-    }
-    push->remotedb = strdup(pDb->zDbSName);
-    if (!push->remotedb) {
-        logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
-        free(push);
-        return -1;
-    }
-    push->class =  pDb->class;
-    push->local = pDb->local;
-    push->class_override = pDb->class_override;
 
     push->ncols = node->ncols;
 
@@ -113,6 +124,32 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     _master_clnt_set(clnt);
 
     clnt->fdb_push = push;
+
+    return 0;
+}
+
+/**
+ * Same as fdb_push_setup, but for remote writes
+ *
+ */
+int fdb_push_write_setup(Parse *pParse, Table *pTab)
+{
+    GET_CLNT;
+    struct Db *pDb = &pParse->db->aDb[pTab->iDb];
+
+    assert(pTab->iDb > 1);
+    logmsg(LOGMSG_DEBUG,
+           "%s query %s (gbl_fdb_push_remote_write=%d)\n",
+           __func__, clnt->sql, gbl_fdb_push_remote_write);
+    if (!gbl_fdb_push_remote_write)
+        return -1;
+
+    if (clnt->disable_fdb_push)
+        return -1;
+
+    fdb_push_connector_t *push = _push_setup(pParse, pDb, FDB_VER_CDB2API);
+    if (!push)
+        return -1;
 
     return 0;
 }
@@ -137,14 +174,14 @@ void fdb_push_free(fdb_push_connector_t **pp)
 }
 
 /* override sqlite engine */
-static int fdb_push_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
+static int fdb_push_column_count(sqlclntstate *clnt, sqlite3_stmt *_)
 {
     return clnt->fdb_push->ncols;
 }
 
 /* Typecasting may reallocate zMalloc. So do it while holding master_mem_mtx. */
 #define FUNC_COLUMN_TYPE(ret, type, err_ret)                                   \
-    static ret fdb_push_column_##type(struct sqlclntstate *clnt,               \
+    static ret fdb_push_column_##type(sqlclntstate *clnt,                      \
                                       sqlite3_stmt *stmt, int iCol)            \
     {                                                                          \
         fdb_push_connector_t *p = clnt->fdb_push;                              \
@@ -168,7 +205,7 @@ FUNC_COLUMN_TYPE(const unsigned char *, text, NULL)
 FUNC_COLUMN_TYPE(const void *, blob, NULL)
 FUNC_COLUMN_TYPE(const dttz_t *, datetime, NULL)
 
-static const intv_t *fdb_push_column_interval(struct sqlclntstate *clnt,
+static const intv_t *fdb_push_column_interval(sqlclntstate *clnt,
                                               sqlite3_stmt *stmt, int iCol,
                                               int type)
 {
@@ -185,12 +222,12 @@ static const intv_t *fdb_push_column_interval(struct sqlclntstate *clnt,
     return rv;
 }
 
-static char *_get_tzname(struct sqlclntstate *clnt, sqlite3_stmt *_)
+static char *_get_tzname(sqlclntstate *clnt, sqlite3_stmt *_)
 {
     return clnt->tzname;
 }
 
-static void _master_clnt_set(struct sqlclntstate *clnt)
+static void _master_clnt_set(sqlclntstate *clnt)
 {
     clnt->backup = clnt->plugin;
     clnt->adapter_backup = clnt->adapter;
@@ -208,7 +245,7 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     clnt->plugin.tzname = _get_tzname;
 }
 
-static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl);
+static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
 
 void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
 
@@ -220,7 +257,7 @@ void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
  *          -1 if unrecoverable error
  *          -2 if remote is too old (7.0 or older)
  */
-int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
+int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
     cdb2_hndl_tp *hndl = NULL;
@@ -389,12 +426,39 @@ reset:
  * Same as handle_fdb_push, but for writes
  *
  */
-int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err)
+int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 {
+    fdb_push_connector_t *push = clnt->fdb_push;
+    fdb_t *fdb;
+    int rc;
+    
+    if (!push)
+        return -2;
+
+    fdb = get_fdb(push->remotedb);
+    if (!fdb)
+        return -2;
+
+    rc = fdb_check_class_match(fdb, push->local, push->class, push->class_override);
+    if (rc)
+        return -2;
+
+    /* fdb is the remote db we want, and it supports remote writes */
+
+    /* begin/join the transaction */
+    fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/);
+    if (!tran)
+        return -1;
+
+
+    if (!clnt->in_client_trans) {
+        /* standalone remote write, commit here */
+    }
+
     return -2;
 }
 
-static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl)
+static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
 {
     int rc;
 
