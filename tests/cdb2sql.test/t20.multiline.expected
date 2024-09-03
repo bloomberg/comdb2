@@ -1,0 +1,8 @@
+(1=1)
+[select 1 ] failed with rc -3 unrecognized token: "#"
+('
+#'='
+#')
+[/] failed with rc -3 near "/": syntax error
+(1=1)
+[/* . */] failed: Not a complete statement

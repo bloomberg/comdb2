@@ -7,44 +7,48 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-for testreq in `find . -name 't[0-9][0-9].sql' -exec basename {} \;` ; do
-    testname=`echo $testreq | cut -d "." -f 1`
-    cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default "
-    echo $cmd "> $testname.output"
-    $cmd > $testname.output 2>&1
-    cmd="diff $testname.expected $testname.output"
-    $cmd > /dev/null
+run_test() {
+    local test_input_file_name=$1 output_file_extension=$2 extra_cdb2sql_opts=$3
+
+    local test_name
+    test_name=$(echo ${test_input_file_name} | cut -d "." -f 1)
+
+    local exp_output_file_name=${test_name}${output_file_extension}.expected
+    local output_file_name=${test_name}${output_file_extension}.output
+
+    local cmd="cdb2sql -s -f ${test_input_file_name} ${CDB2_OPTIONS} ${extra_cdb2sql_opts} ${dbname} default "
+    echo ${cmd} "> ${output_file_name}"
+    ${cmd} > ${output_file_name} 2>&1
+
+    cmd="diff ${exp_output_file_name} ${output_file_name}"
+    ${cmd} > /dev/null
 
     if [[  $? -eq 0 ]]; then
-        echo "passed $testname"
+        echo "passed ${test_name}"
     else
-        echo "failed $testname"
-        echo "see diffs here: $HOSTNAME"
-        echo "> diff -u ${PWD}/{$testname.expected,$testname.output}"
+        echo "failed ${test_name}"
+        echo "see diffs here: ${HOSTNAME}"
+        echo "> diff -u ${PWD}/{${exp_output_file_name},${output_file_name}}"
         echo
         exit 1
     fi
-done
+}
 
-for testreq in `find . -name 't[0-9][0-9].tab.sql' -exec basename {} \;` ; do
-    testname=`echo $testreq | cut -d "." -f 1`
-    cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} -tabular $dbname default "
-    echo $cmd "> $testname.tab.output"
-    $cmd > $testname.tab.output 2>&1
+main() {
+    local test_input_file_name
 
-    cmd="diff $testname.tab.expected $testname.tab.output"
-    $cmd > /dev/null
+    for test_input_file_name in `find . -name 't[0-9][0-9].sql' -exec basename {} \;` ; do
+        run_test "${test_input_file_name}"
+    done
 
-    if [[  $? -eq 0 ]]; then
-        echo "passed $testname"
-    else
-        echo "failed $testname"
-        echo "see diffs here: $HOSTNAME"
-        echo "> diff -u ${PWD}/{$testname.tab.expected,$testname.tab.output}"
-        echo
-        exit 1
-    fi
-done
+    for test_input_file_name in `find . -name 't[0-9][0-9].tab.sql' -exec basename {} \;` ; do
+        run_test "${test_input_file_name}" ".tab" "-tabular"
+    done
 
-echo
+    for test_input_file_name in `find . -name 't[0-9][0-9].multiline.sql' -exec basename {} \;` ; do
+        run_test "${test_input_file_name}" ".multiline" "-l"
+    done
+}
+
+main
 exit 0
