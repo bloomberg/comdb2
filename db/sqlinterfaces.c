@@ -4009,13 +4009,17 @@ retry_legacy_remote:
             continue;
         }
         if (rc == SQLITE_SCHEMA_PUSH_REMOTE) {
-            rc = handle_fdb_push(clnt, &err);
-            if (rc == -2) {
-                /* remote server does not support proxy, retry without */
-                clnt->disable_fdb_push = 1;
-                goto retry_legacy_remote;
+            if (clnt->isselect) {
+                rc = handle_fdb_push(clnt, &err);
+                if (rc == -2) {
+                    /* remote server does not support proxy, retry without */
+                    clnt->disable_fdb_push = 1;
+                    goto retry_legacy_remote;
+                }
+                goto done;
+            } else {
+                rc = handle_fdb_push_write(clnt, &err);
             }
-            goto done;
         }
 
         if (rc) {

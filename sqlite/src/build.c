@@ -38,6 +38,7 @@ int fdb_validate_existing_table(const char *zDatabase);
 char *fdb_get_alias(const char **p_tablename);
 int comdb2_check_parallel(Parse*);
 int comdb2_check_push_remote(Parse*);
+int comdb2_check_push_remote_write(Parse*);
 void comdb2_create_view(Parse *pParse, const char *view_name,
                         int view_name_len, const char *zStmt, int temp);
 void comdb2_drop_view(Parse *pParse, SrcList *pName);
@@ -278,6 +279,10 @@ void sqlite3FinishCoding(Parse *pParse){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pParse->ast ){
       if( comdb2_check_push_remote(pParse) ){
+        pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
+        return;
+      }
+      if( comdb2_check_push_remote_write(pParse) ){
         pParse->rc = SQLITE_SCHEMA_PUSH_REMOTE;
         return;
       }

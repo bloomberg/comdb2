@@ -16,6 +16,7 @@
 
 #include "sql.h"
 #include "dohsql.h"
+#include "fdb_fend.h"
 
 extern char *gbl_cdb2api_policy_override;
 extern int gbl_fdb_auth_enabled;
@@ -60,7 +61,7 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
  * refers to a remote table
  *
  */
-int fdb_push_run(Parse *pParse, dohsql_node_t *node)
+int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
 {
     GET_CLNT;
     fdb_push_connector_t *push = NULL;
@@ -257,10 +258,10 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
         goto reset;
     }
     logmsg(LOGMSG_DEBUG,
-           "CALLING FDB PUSH on query %s (redirect tunable on? %d) (clnt force remote? %d) (clnt force redirect? %d) "
-           "(clnt can redirect? %d)\n",
-           clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
-           clnt->can_redirect_fdb);
+           "%s query %s (redirect tunable on? %d) (clnt force remote? %d) "
+           "(clnt force redirect? %d) (clnt can redirect? %d)\n",
+           __func__, clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote,
+           clnt->force_fdb_push_redirect, clnt->can_redirect_fdb);
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
@@ -382,6 +383,15 @@ reset:
     clnt_plugin_reset(clnt);
 
     return rc;
+}
+
+/**
+ * Same as handle_fdb_push, but for writes
+ *
+ */
+int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err)
+{
+    return -2;
 }
 
 static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl)
