@@ -318,7 +318,7 @@ can specify ascending key pieces with the ```<ASCEND>``` keyword, but it is not 
 The constraints section is an optional section of the table definition used to specify foreign key constraints.
 It establishes a relationship between keys in the current table and keys in other (foreign) tables.
 
-The syntax is ```"LOCAL_KEYNAME" -> "REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"```.
+The syntax is ```"LOCAL_KEYNAME" -> <"REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME">```.
 
 ```LOCAL_KEYNAME``` is the name of the key in the current table. ```REFERENCED_TABLE_NAME```
 and ```REFERENCED_KEY_NAME``` are the names of referenced (foreign) table which contains the
@@ -326,7 +326,7 @@ key which is being pointed at, and key in the foreign table, respectively. The d
 the columns comprising these keys need not match, though the contents must be convertible.
 The local key can be a prefix of the foreign key, and vice versa.
 
-A key can point at more than one key by specifying multiple ```"REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"``` 
+A key can point at more than one key by specifying multiple ```<"REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME">``` 
 items on the same line delimited by white-space.  A key can point to a key within its own table by specifying 
 its own table name in ```REFERENCED_TABLE_NAME```.
 
