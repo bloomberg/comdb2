@@ -243,7 +243,8 @@ void (*cdb2_uninstall)(void) = CDB2_UNINSTALL_LIBS;
 #ifndef CDB2_IDENTITY_CALLBACKS
     struct cdb2_identity *identity_cb = NULL;
 #else
-    struct cdb2_identity *identity_cb = CDB2_IDENTITY_CALLBACKS;
+    extern struct cdb2_identity CDB2_IDENTITY_CALLBACKS;
+    struct cdb2_identity *identity_cb = &CDB2_IDENTITY_CALLBACKS;
 #endif
 
 #ifndef WITH_DL_LIBS
