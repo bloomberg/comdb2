@@ -27,6 +27,12 @@
 /* of each source file using the threads library. Otherwise, the  */
 /* -D_THREAD_SAFE compilation flag should be used, or the cc_r    */
 /* compiler used. In this case, the flag is automatically set.    */
+
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 #if defined(DFPAL_OS_WINDOWS) /* { */
   #define _MT              /* must be defined before any headers */
   #include <windows.h>
@@ -4370,3 +4376,7 @@ decimal128 decimal128Floor(const decimal128 rhs)
     dec_To_Integer_RM(128, Quad, DFPAL_ROUND_TOWARD_NEGATIVE_INFINITY, rhs);
   }
 }
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
