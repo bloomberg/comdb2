@@ -509,4 +509,9 @@ int logical_partition_next_rollout(const char *name);
  */
 int timepart_foreach_shardname(const char *view_name, char *next_shard, int next_shard_len, timepart_sc_arg_t *arg);
 
+/**
+ * Return 1 if new format
+ */
+int part_newformat(const char *tptname);
+
 #endif

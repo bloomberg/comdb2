@@ -3442,6 +3442,22 @@ done:
     return ret;
 }
 
+/**
+ * Return 1 if new format
+ */
+int part_newformat(const char *tptname)
+{
+    timepart_view_t *view;
+    int ret = -1;
+    Pthread_rwlock_rdlock(&views_lk);
+    view = _get_view(thedb->timepart_views, tptname);
+    if (view)
+        ret = view->rolltype == TIMEPART_ROLLOUT_TRUNCATE;
+    Pthread_rwlock_unlock(&views_lk);
+    return ret;
+}
+
+
 #include "views_systable.c"
 
 #include "views_serial.c"

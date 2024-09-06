@@ -2561,6 +2561,8 @@ int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
 
 void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
 {
+    int rc;
+
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -2609,6 +2611,15 @@ void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention
     if (chkAndCopyTableTokens(pParse, tp_retention->timepartname, nm, lnm,
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto clean_arg;
+
+    rc = part_newformat(tp_retention->timepartname);
+    if (rc == 1) {
+        setError(pParse, SQLITE_ERROR, "PUT retention not supported");
+        goto clean_arg;
+    } else if (rc < 0) {
+        setError(pParse, SQLITE_ERROR, "Cannot find partition");
+        goto clean_arg;
+    }
 
     tp_retention->newvalue = retention;
 
