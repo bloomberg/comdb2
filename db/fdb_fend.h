@@ -468,5 +468,11 @@ int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
 cdb2_hndl_tp *fdb_push_connect(sqlclntstate *clnt, int *client_redir,
                                struct errstat *err);
 
+/**
+ * Free resources for a specific fdb_tran
+ *
+ */
+void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran);
+
 #endif
 

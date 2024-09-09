@@ -4101,16 +4101,46 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
 
     listc_rfl(&dtran->fdb_trans, tran);
 
-    if (tran->errstr)
-        free(tran->errstr);
-    if (tran->dedup_tbl != NULL) {
-        /* tempcursors are automatically closed in bdb_temp_table_close. */
-        if ((rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr)))
-            logmsg(LOGMSG_ERROR,
-                   "%s: error closing temptable, rc %d, bdberr %d\n",
-                   __func__, rc, bdberr);
+    free(tran->errstr);
+
+    if (tran->is_cdb2api) {
+        rc = cdb2_close(tran->fcon.hndl);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n",
+                   rc);
+        }
+        free(tran);
+    } else {
+        if (tran->dedup_tbl != NULL) {
+            /* tempcursors are automatically closed in bdb_temp_table_close. */
+            if ((rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr)))
+                logmsg(LOGMSG_ERROR,
+                       "%s: error closing temptable, rc %d, bdberr %d\n",
+                       __func__, rc, bdberr);
+        }
+        disable_fdb_heartbeats_and_free(&tran->hbeats);
     }
-    disable_fdb_heartbeats_and_free(&tran->hbeats);
+}
+
+/**
+ * Free resources for a specific fdb_tran
+ *
+ */
+void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran)
+{
+    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+
+    if (!dtran) {
+        logmsg(LOGMSG_ERROR, "%s no dtran\n", __func__);
+        return;
+    }
+
+    _free_fdb_tran(dtran, tran);
+
+    if (dtran->fdb_trans.count == 0) {
+        free(dtran);
+        clnt->dbtran.dtran = 0;
+    }
 }
 
 extern char gbl_dbname[];

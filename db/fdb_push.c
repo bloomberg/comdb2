@@ -587,7 +587,7 @@ hndl_err:
     errstat_set_rcstrf(err, rc, "%s", errstr);
 free:
     /* remote the fdb_tran_t */
-
+    fdb_free_tran(clnt, tran);
     return rc;
 }
 
