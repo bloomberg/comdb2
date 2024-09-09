@@ -2125,6 +2125,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 		GOTOERR;
 	}
 
+	DB_LSN recoverable_lsn;
+	ZERO_LSN(recoverable_lsn);
 	for (ret = __log_c_get(logc, &last_lsn, &data, DB_LAST), lsn =
 		last_lsn; ret == 0;
 		ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
@@ -2154,7 +2156,8 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 			if (ret >= 0) {
 				bdb_set_gbl_recoverable_lsn(&lsn,
 					ckp_args->timestamp);
-				logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
+				recoverable_lsn = lsn;
+				logmsg(LOGMSG_DEBUG, "set gbl_recoverable_lsn as [%d][%d]\n",
 					lsn.file, lsn.offset);
 			}
 
@@ -2224,6 +2227,10 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 	}
 
 	ret = 0;
+	if (!IS_ZERO_LSN(recoverable_lsn)) {
+		logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
+			recoverable_lsn.file, recoverable_lsn.offset);
+	}
 
 err:
 	if (lineno)
