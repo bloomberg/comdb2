@@ -1003,7 +1003,9 @@ int comdb2_check_push_remote_write(Parse *pParse)
     if (!anode)
         return 0;
 
-    if (anode->op != AST_TYPE_INSERT)
+    if (anode->op != AST_TYPE_INSERT && 
+        anode->op != AST_TYPE_DELETE &&
+        anode->op != AST_TYPE_UPDATE)
         return 0;
 
     Table *pTab = (Table*)anode->obj;

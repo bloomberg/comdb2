@@ -561,11 +561,22 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         /* write columns info */
         rc = write_response(clnt, RESPONSE_COLUMNS_FDB_PUSH, hndl, ncols);
         if (rc) {
-            errstat_set_rcstrf(err, -1, "failed to retrieve columns");
+            errstat_set_rcstrf(err, -1, "failed to write columns");
             return -1;
         }
 
-        /* standalone remote write, commit here */
+        clnt->effects.num_affected = effects.num_affected;
+        clnt->effects.num_selected = effects.num_selected;
+        clnt->effects.num_updated = effects.num_updated;
+        clnt->effects.num_deleted = effects.num_deleted;
+        clnt->effects.num_inserted = effects.num_inserted;
+
+        /* write answer */
+        rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+        if (rc) {
+            errstat_set_rcstrf(err, -1, "failed to write last row");
+            return -1;
+        }
         goto free;
     }
 
@@ -575,6 +586,8 @@ hndl_err:
     const char *errstr = cdb2_errstr(hndl);
     errstat_set_rcstrf(err, rc, "%s", errstr);
 free:
+    /* remote the fdb_tran_t */
+
     return rc;
 }
 
