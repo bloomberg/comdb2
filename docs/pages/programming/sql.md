@@ -44,7 +44,7 @@ mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```). Note that enabling ```
 requires the ```enable_snapshot_isolation``` lrl tunable. Snapshots requested from before snapshot
 isolation was enabled will not work. A snapshot is only available if enough transaction logs are
 online to find commits before the specified time. The time provided must unquoted date in ISO 8601
-format or Unix time.
+format or Unix time. If the provided timestamp is higher than the highest timestamp in the database's transaction log, then the database will run the snapshot transaction as of the highest timestamp in its log.
 
 **NOTE**: If any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application
 needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests. A
