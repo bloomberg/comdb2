@@ -3939,10 +3939,9 @@ static fdb_distributed_tran_t *fdb_trans_create_dtran(sqlclntstate *clnt)
     return dtran;
 }
 
-static fdb_tran_t *_dtran_get_subtran(sqlclntstate *clnt, fdb_t *fdb, int use_ssl)
+static fdb_tran_t *_dtran_get_subtran_common(sqlclntstate *clnt, fdb_t *fdb)
 {
     fdb_tran_t *tran;
-    int rc;
 
     tran = (fdb_tran_t *)calloc(1, sizeof(*tran));
     if (!tran) {
@@ -3954,6 +3953,18 @@ static fdb_tran_t *_dtran_get_subtran(sqlclntstate *clnt, fdb_t *fdb, int use_ss
     comdb2uuid((unsigned char *)tran->tid);
 
     tran->fdb = fdb;
+
+    return tran;
+}
+
+static fdb_tran_t *_dtran_get_subtran(sqlclntstate *clnt, fdb_t *fdb, int use_ssl)
+{
+    fdb_tran_t *tran;
+    int rc;
+
+    tran = _dtran_get_subtran_common(clnt, fdb);
+    if (!tran)
+        return NULL;
 
     fdb_msg_t *msg = (fdb_msg_t *)calloc(1, fdb_msg_size());
     if (!msg) {
@@ -3989,13 +4000,21 @@ static fdb_tran_t *_dtran_get_subtran(sqlclntstate *clnt, fdb_t *fdb, int use_ss
 static fdb_tran_t *_dtran_get_subtran_cdb2api(sqlclntstate *clnt, fdb_t *fdb,
                                               int use_ssl)
 {
+    fdb_tran_t *tran;
+
+    tran = _dtran_get_subtran_common(clnt, fdb);
+    if (!tran)
+        return NULL;
+
+    tran->is_cdb2api = 1;
     
-    return NULL;
+    return tran;
 }
 
 static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
                                                fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb, int use_ssl)
+                                               fdb_t *fdb, int use_ssl,
+                                               int *created)
 {
     fdb_tran_t *tran;
     uuidstr_t us;
@@ -4017,6 +4036,9 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
                    comdb2uuidstr((unsigned char *)tran->tid, us),
                    fdb->dbname);
         }
+
+        if (created)
+            *created = 1;
     } else {
         if (gbl_fdb_track) {
             uuidstr_t us;
@@ -4024,12 +4046,21 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
                        fdb->dbname);
         }
+        /* this is a bug, probably sharing the wrong fdb_tran after switching to 
+         * a lower version protocol
+         */
+        if (clnt->disable_fdb_push && tran->is_cdb2api)
+            abort();
+
+        if (created)
+            *created = 0;
     }
 
     return tran;
 }
 
-fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int use_ssl)
+fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
+                                    int use_ssl, int *created)
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
@@ -4045,7 +4076,7 @@ fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int use_ssl)
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl);
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, created);
 
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
@@ -5813,15 +5844,10 @@ int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
         return -1;
     }
     if (!fdb->local) {
-        if (class_override && class_override != fdb->class) {
-            logmsg(LOGMSG_ERROR, "%s: fdb %s different class override %d %d\n", __func__,
-                   fdb->dbname, fdb->class, class_override);
-            return -1;
-        }
-
-        if (!class_override && class != fdb->class) {
-            logmsg(LOGMSG_ERROR, "%s: fdb %s different class %d %d\n", __func__,
-                   fdb->dbname, fdb->class, class);
+        if (class != fdb->class) {
+            logmsg(LOGMSG_ERROR, "%s: fdb %s different class %s%d %d\n",
+                   __func__, fdb->dbname, class_override ? "override " : "",
+                   fdb->class, class);
             return -1;
         }
     }

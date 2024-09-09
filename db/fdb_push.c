@@ -55,7 +55,7 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
     }
 }
 
-fdb_push_connector_t *_push_setup(Parse *pParse, struct Db *pDb, int minver)
+fdb_push_connector_t *_new_push(Parse *pParse, struct Db *pDb, int minver)
 {
     fdb_push_connector_t *push = NULL;
 
@@ -106,7 +106,7 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     if (clnt->intrans || clnt->in_client_trans)
         return -1;
 
-    fdb_push_connector_t *push = _push_setup(pParse, pDb, FDB_VER_PROXY);
+    fdb_push_connector_t *push = _new_push(pParse, pDb, FDB_VER_PROXY);
     if (!push)
         return -1;
 
@@ -147,9 +147,11 @@ int fdb_push_write_setup(Parse *pParse, Table *pTab)
     if (clnt->disable_fdb_push)
         return -1;
 
-    fdb_push_connector_t *push = _push_setup(pParse, pDb, FDB_VER_CDB2API);
+    fdb_push_connector_t *push = _new_push(pParse, pDb, FDB_VER_CDB2API);
     if (!push)
         return -1;
+
+    clnt->fdb_push = push;
 
     return 0;
 }
@@ -249,6 +251,125 @@ static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
 
 void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
 
+static int _is_client_redirect(sqlclntstate *clnt, const char *class,
+                               int cdb2api_policy_flag)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+
+    if ((gbl_fdb_push_redirect_foreign || clnt->force_fdb_push_redirect) && clnt->can_redirect_fdb &&
+        !clnt->force_fdb_push_remote) {
+        logmsg(LOGMSG_DEBUG,
+               "%s on query %s (redirect tunable on %d) (clnt force remote? %d)"
+               " (clnt force redirect? %d)\n",
+               __func__, clnt->sql, gbl_fdb_push_redirect_foreign,
+               clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect);
+        // tell cdb2api to run query directly on foreign db
+        // send back db, tier, flag
+        // NOTE: Cost will not work for this
+        if (push->local) { // this is local to server, not client. Return hostname to client
+            cdb2api_policy_flag |= CDB2_DIRECT_CPU;
+            class = gbl_myhostname;
+        }
+        const char *foreign_db[2];
+        foreign_db[0] = push->remotedb;
+        foreign_db[1] = class;
+        write_response(clnt, RESPONSE_REDIRECT_FOREIGN, foreign_db, cdb2api_policy_flag);
+        clnt_plugin_reset(clnt);
+        return 1;
+    }
+    return 0;
+}
+
+static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
+                                    int flags, struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+    cdb2_hndl_tp *hndl = NULL;
+    int rc;
+
+    logmsg(LOGMSG_DEBUG,
+           "%s query %s (redirect tunable on? %d) (clnt force remote? %d) "
+           "(clnt force redirect? %d) (clnt can redirect? %d)\n",
+           __func__, clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote,
+           clnt->force_fdb_push_redirect, clnt->can_redirect_fdb);
+
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
+
+    rc = cdb2_open(&hndl, push->remotedb, class, flags);
+    if (rc) {
+        errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
+        return NULL;
+    }
+
+    rc = forward_set_commands(clnt, hndl, err);
+    if (rc) {
+        return NULL;
+    }
+
+    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
+        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
+
+    return hndl;
+}
+
+/**
+ * Connect to a remote cluster based of push connector information
+ * and additional configuration options
+ *
+ */
+static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
+                                int flags, struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+
+    const char *class = "default";
+    if (push->local)
+        class = "local";
+    else if (push->class_override) {
+        class = mach_class_class2name(push->class);
+        assert(class);
+    }
+
+    int cdb2api_policy_flag = push->local ? 0 :
+        convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
+
+    if (client_redir) {
+        /* bounce through client standalone queries, if so config-ed */
+        if(!clnt->in_client_trans && _is_client_redirect(clnt, class, cdb2api_policy_flag)) {
+            *client_redir = 1;
+            return NULL;
+        } else {
+            *client_redir = 0;
+        }
+    }
+
+    return _hndl_open_int(clnt, class, flags | cdb2api_policy_flag, err);
+}
+
+static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl,
+                          struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+    int rc;
+
+    cdb2_client_datetime_t *dts = calloc(push->nparams, sizeof(*dts));
+    if (!dts)
+        return -1;
+
+    rc = set_bound_parameters(push, hndl, clnt->tzname, err, dts);
+    if (rc) {
+        free(dts);
+        return -1;
+    }
+
+    rc = cdb2_run_statement(hndl, clnt->sql);
+    free(dts);
+
+    return rc;
+}
+
 /**
  * Proxy receiving sqlite rows from remote and forwarding them to
  * client after conversion to comdb2 format
@@ -263,70 +384,16 @@ int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
     cdb2_hndl_tp *hndl = NULL;
     uint64_t row_id = 0;
     int first_row = 1;
-    int rc, irc;
+    int rc = 0, irc;
+    int client_redir;
 
-    const char *class = "default";
-    int cdb2api_policy_flag = push->local ? 0 : convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
-    if (push->local)
-        class = "local";
-    else if (push->class_override) {
-        class = mach_class_class2name(push->class);
-        assert(class);
-    }
-
-    if ((gbl_fdb_push_redirect_foreign || clnt->force_fdb_push_redirect) && clnt->can_redirect_fdb &&
-        !clnt->force_fdb_push_remote) {
-        logmsg(LOGMSG_DEBUG,
-               "CALLING FDB PUSH REDIRECT on query %s (redirect tunable on %d) (clnt force remote? %d) (clnt force "
-               "redirect? %d)\n",
-               clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect);
-        // tell cdb2api to run query directly on foreign db
-        // send back db, tier, flag
-        // NOTE: Cost will not work for this
-        if (push->local) { // this is local to server, not client. Return hostname to client
-            cdb2api_policy_flag |= CDB2_DIRECT_CPU;
-            class = gbl_myhostname;
-        }
-        rc = 0;
-        const char *foreign_db[2];
-        foreign_db[0] = push->remotedb;
-        foreign_db[1] = class;
-        write_response(clnt, RESPONSE_REDIRECT_FOREIGN, foreign_db, cdb2api_policy_flag);
+    hndl = _hndl_open(clnt,  &client_redir, CDB2_SQL_ROWS, err);
+    if (client_redir)
         goto reset;
-    }
-    logmsg(LOGMSG_DEBUG,
-           "%s query %s (redirect tunable on? %d) (clnt force remote? %d) "
-           "(clnt force redirect? %d) (clnt can redirect? %d)\n",
-           __func__, clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote,
-           clnt->force_fdb_push_redirect, clnt->can_redirect_fdb);
+    if (!hndl)
+        return -1; /* TODO: do we need reset here? */
 
-    char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
-
-    rc = cdb2_open(&hndl, push->remotedb, class, CDB2_SQL_ROWS | cdb2api_policy_flag);
-    if (rc) {
-        errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
-        return -1;
-    }
-
-    rc = forward_set_commands(clnt, hndl, err);
-    if (rc) {
-        return -1;
-    }
-
-    cdb2_client_datetime_t *dts = calloc(push->nparams, sizeof(*dts));
-    rc = set_bound_parameters(push, hndl, clnt->tzname, err, dts);
-    if (rc) {
-        free(dts);
-        return -1;
-    }
-
-    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
-        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
-
-    rc = cdb2_run_statement(hndl, clnt->sql);
-    free(dts);
+    rc = _run_statement(clnt, hndl, err);
     if (rc) {
         const char *errstr = cdb2_errstr(hndl);
         if (errstr &&
@@ -429,7 +496,9 @@ reset:
 int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
+    cdb2_hndl_tp *hndl;
     fdb_t *fdb;
+    int created;
     int rc;
     
     if (!push)
@@ -446,16 +515,67 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     /* fdb is the remote db we want, and it supports remote writes */
 
     /* begin/join the transaction */
-    fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/);
+    fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
     if (!tran)
         return -1;
 
+    /* get a connection */
+    tran->is_cdb2api = 1;
+    tran->fcon.hndl = hndl =_hndl_open(clnt, NULL,
+                                       0 /* no sqlite rows for writes */, err);
+    if (!tran->fcon.hndl)
+        return -1;
 
-    if (!clnt->in_client_trans) {
-        /* standalone remote write, commit here */
+    /* if not standalone, and this is the first reachout to this fdb, send begin */
+    if (clnt->in_client_trans && created) {
+        rc = cdb2_run_statement(hndl, "begin");      
+        if (rc != CDB2_OK_DONE) {
+            errstat_set_rcstrf(err, rc = -1, "failed to begin transaction");
+            goto free;
+        }
     }
 
-    return -2;
+    /* run the statement */
+    rc = _run_statement(clnt, hndl, err);
+    if (rc != CDB2_OK) {
+        goto hndl_err;
+    }
+
+    /* drain the socket */
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+
+    if (rc != CDB2_OK_DONE) {
+        goto hndl_err;
+    }
+
+    cdb2_effects_tp effects;
+
+    if ((rc = cdb2_get_effects(hndl, &effects))) {
+        goto hndl_err;
+    }
+
+    int ncols = cdb2_numcolumns(hndl);
+
+    /* if this is standalone, send answers to client */
+    if (!clnt->in_client_trans) {
+        /* write columns info */
+        rc = write_response(clnt, RESPONSE_COLUMNS_FDB_PUSH, hndl, ncols);
+        if (rc) {
+            errstat_set_rcstrf(err, -1, "failed to retrieve columns");
+            return -1;
+        }
+
+        /* standalone remote write, commit here */
+        goto free;
+    }
+
+    return -1;
+
+hndl_err:
+    const char *errstr = cdb2_errstr(hndl);
+    errstat_set_rcstrf(err, rc, "%s", errstr);
+free:
+    return rc;
 }
 
 static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl)

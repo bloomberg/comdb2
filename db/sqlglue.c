@@ -8171,7 +8171,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans = fdb_trans_begin_or_join(clnt, fdb, 0);
+            trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
             if (!trans) {
                 logmsg(LOGMSG_ERROR, "%s: failed to create fdb_tran\n",
                        __func__);
@@ -8788,7 +8788,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                                 SQLENG_PRE_STRT_STATE);
         if (pCur->cursor_class == CURSORCLASS_REMOTE) {
             /* restart a remote transaction, and open a new remote cursor */
-            trans = fdb_trans_begin_or_join(clnt, fdb, 0);
+            trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
             pCur->fdbc = fdb_cursor_open(clnt, pCur, pCur->rootpage, trans, &pCur->ixnum, need_ssl);
         }
         rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);

@@ -335,7 +335,8 @@ fdb_tbl_ent_t *fdb_table_entry_by_name(fdb_t *fdb, const char *name);
 int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
 
 /* transactional api */
-fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb, int use_ssl);
+fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
+                                    int use_ssl, int *created);
 fdb_tran_t *fdb_trans_join(sqlclntstate *clnt, fdb_t *fdb);
 int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects);
 int fdb_trans_rollback(sqlclntstate *clnt);
@@ -458,6 +459,14 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr,
  */
 int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
                           int class_override);
+
+/**
+ * Connect to a remote cluster based of push connector information
+ * and additional configuration options
+ *
+ */
+cdb2_hndl_tp *fdb_push_connect(sqlclntstate *clnt, int *client_redir,
+                               struct errstat *err);
 
 #endif
 
