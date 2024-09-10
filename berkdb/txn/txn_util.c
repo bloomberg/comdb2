@@ -383,19 +383,8 @@ static int free_logfile_list_elt(obj, arg)
         void *obj;
         void *arg;
 {
-        LOGFILE_TXN_LIST *llist;
-        UTXNID *elt, *tmp_elt;
-        DB_ENV *dbenv;
-
-        llist = (LOGFILE_TXN_LIST *) obj;
-        dbenv = (DB_ENV *) arg;
-
-        LISTC_FOR_EACH_SAFE(&llist->commit_utxnids, elt, tmp_elt, lnk)
-        {
-                __os_free(dbenv, elt);
-        }
-	__os_free(dbenv, llist);
-        return 0;
+	__os_free((DB_ENV *) arg, (LOGFILE_TXN_LIST *) obj);
+	return 0;
 }
 
 static int free_transactions(obj, arg)
@@ -438,32 +427,106 @@ int __txn_commit_map_destroy(dbenv)
         return 0;
 }
 
+
+/*
+ * __txn_commit_map_delete_logfile_list --
+ *
+ * PUBLIC: static int __txn_commit_map_delete_logfile_list
+ * PUBLIC:     __P((DB_ENV *, LOGFILE_TXN_LIST * const));
+ */
+static void __txn_commit_map_delete_logfile_list(DB_ENV *dbenv, LOGFILE_TXN_LIST * const to_delete) {
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+	const u_int32_t del_log = to_delete->file_num;
+	const int i_am_highest_logfile = del_log == txmap->highest_commit_lsn.file;
+	const int i_am_smallest_logfile = del_log == txmap->smallest_logfile;
+
+	if (i_am_highest_logfile && i_am_smallest_logfile)
+	{
+		logmsg(LOGMSG_WARN, "%s: Deleting the only logfile (%"PRIu32") in txmap\n", __func__, del_log);
+
+		ZERO_LSN(txmap->highest_commit_lsn);
+		txmap->smallest_logfile = -1;
+	} else if (i_am_highest_logfile)
+	{
+		logmsg(LOGMSG_WARN, "%s: Deleting the highest logfile (%"PRIu32") in txmap\n", __func__, del_log);
+
+		LOGFILE_TXN_LIST *successor = NULL;
+		for (int prev_log=del_log-1; successor == NULL && prev_log >= 0; --prev_log) {
+			successor = hash_find(txmap->logfile_lists, &prev_log);
+		}
+		assert(successor);
+		txmap->highest_commit_lsn = successor->highest_commit_lsn;
+	} else if (i_am_smallest_logfile)
+	{
+		LOGFILE_TXN_LIST *successor = NULL;
+		while ((successor == NULL) && (++txmap->smallest_logfile <= txmap->highest_commit_lsn.file)) {
+			successor = hash_find(txmap->logfile_lists, &txmap->smallest_logfile);
+		}
+		assert(successor);
+	}
+
+	hash_del(txmap->logfile_lists, to_delete);
+	__os_free(dbenv, to_delete);
+}
+
+
 /*
  * __txn_commit_map_remove_nolock --
  *  Remove a transaction from the commit LSN map without locking.
  *
  * PUBLIC: static int __txn_commit_map_remove_nolock
- * PUBLIC:     __P((DB_ENV *, u_int64_t));
+ * PUBLIC:     __P((DB_ENV *, u_int64_t, int));
  */
-static int __txn_commit_map_remove_nolock(dbenv, utxnid)
+static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lists)
+	DB_ENV *dbenv;
+	u_int64_t utxnid;
+	int delete_from_logfile_lists;
+{
+	int ret = 0;
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+
+	UTXNID_TRACK * const txn = hash_find(txmap->transactions, &utxnid);
+	if (!txn) {
+		logmsg(LOGMSG_ERROR, "%s: Could not find transaction %"PRIu64" in the map\n", __func__, utxnid);
+		ret = 1;
+		goto err;
+	}
+
+	LOGFILE_TXN_LIST * const logfile_list = hash_find(txmap->logfile_lists, &(txn->commit_lsn.file));
+	if (!logfile_list) {
+		logmsg(LOGMSG_ERROR, "%s: Could not find logfile list for file %d\n", __func__, txn->commit_lsn.file);
+		ret = 1;
+		goto err;
+	}
+
+	if (delete_from_logfile_lists) {
+		hash_del(logfile_list->commit_utxnids, txn);
+	}
+
+	if (hash_get_num_entries(logfile_list->commit_utxnids) == 0) {
+		__txn_commit_map_delete_logfile_list(dbenv, logfile_list);
+	}
+
+	hash_del(txmap->transactions, txn);
+	__os_free(dbenv, txn); 
+
+err:
+	return ret;
+}
+
+static int __txn_commit_map_remove_nolock_foreach_wrapper(void *obj, void *arg) {
+	return __txn_commit_map_remove_nolock((DB_ENV *) arg, ((UTXNID_TRACK *) obj)->utxnid, 0);
+}
+
+int __txn_commit_map_remove(dbenv, utxnid)
 	DB_ENV *dbenv;
 	u_int64_t utxnid;
 {
-	DB_TXN_COMMIT_MAP *txmap;
-	UTXNID_TRACK *txn;
-	int ret;
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
 
-	txmap = dbenv->txmap;
-	ret = 0;
-
-	txn = hash_find(txmap->transactions, &utxnid);
-
-	if (txn) {
-		hash_del(txmap->transactions, txn);
-		__os_free(dbenv, txn); 
-	} else {
-		ret = 1;
-	}
+	Pthread_mutex_lock(&txmap->txmap_mutexp);
+	int ret = __txn_commit_map_remove_nolock(dbenv, utxnid, 1);
+	Pthread_mutex_unlock(&txmap->txmap_mutexp);
 
 	return ret;
 }
@@ -570,44 +633,12 @@ int __txn_commit_map_delete_logfile_txns(dbenv, del_log)
 		goto err;
 	}
 
-	UTXNID *elt, *tmpp;
-	LISTC_FOR_EACH_SAFE(&to_delete->commit_utxnids, elt, tmpp, lnk)
-	{
-		__txn_commit_map_remove_nolock(dbenv, elt->utxnid);
-		__os_free(dbenv, elt);
+	ret = hash_for(to_delete->commit_utxnids, (hashforfunc_t *const) __txn_commit_map_remove_nolock_foreach_wrapper, (void *) dbenv);
+	if (ret) {
+		goto err;
 	}
 
-	const int i_am_highest_logfile = del_log == txmap->highest_commit_lsn.file;
-	const int i_am_smallest_logfile = del_log == txmap->smallest_logfile;
-
-	if (i_am_highest_logfile && i_am_smallest_logfile)
-	{
-		logmsg(LOGMSG_WARN, "%s: Deleting the only logfile (%"PRIu32") in txmap\n", __func__, del_log);
-
-		ZERO_LSN(txmap->highest_commit_lsn);
-		txmap->smallest_logfile = -1;
-	} else if (i_am_highest_logfile)
-	{
-		logmsg(LOGMSG_WARN, "%s: Deleting the highest logfile (%"PRIu32") in txmap\n", __func__, del_log);
-
-		LOGFILE_TXN_LIST *successor = NULL;
-		for (int prev_log=del_log-1; successor == NULL && prev_log >= 0; --prev_log) {
-			successor = hash_find(txmap->logfile_lists, &prev_log);
-		}
-		assert(successor);
-		txmap->highest_commit_lsn = successor->highest_commit_lsn;
-	} else if (i_am_smallest_logfile)
-	{
-		LOGFILE_TXN_LIST *successor = NULL;
-		while ((successor == NULL) && (++txmap->smallest_logfile <= txmap->highest_commit_lsn.file)) {
-			successor = hash_find(txmap->logfile_lists, &txmap->smallest_logfile);
-		}
-		assert(successor);
-	}
-
-	hash_del(txmap->logfile_lists, to_delete);
-	__os_free(dbenv, to_delete);
-
+	__txn_commit_map_delete_logfile_list(dbenv, to_delete);
 err:
 	Pthread_mutex_unlock(&txmap->txmap_mutexp);
 
@@ -715,7 +746,7 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	if (alloc_delete_list) {
 		ZERO_LSN(to_delete->highest_commit_lsn);
 		to_delete->file_num = commit_lsn.file;
-		listc_init(&to_delete->commit_utxnids, offsetof(UTXNID, lnk));
+		to_delete->commit_utxnids = hash_init_o(offsetof(UTXNID_TRACK, utxnid), sizeof(u_int64_t));
 		hash_add(txmap->logfile_lists, to_delete);
 
 		if (commit_lsn.file < txmap->smallest_logfile || txmap->smallest_logfile == -1) {
@@ -734,9 +765,7 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	txn->utxnid = utxnid;
 	txn->commit_lsn = commit_lsn;
 	hash_add(txmap->transactions, txn);
-
-	elt->utxnid = utxnid;
-	listc_atl(&to_delete->commit_utxnids, elt);
+	hash_add(to_delete->commit_utxnids, txn);
 	
 	return ret;
 err:

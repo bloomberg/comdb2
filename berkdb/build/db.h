@@ -2860,7 +2860,7 @@ struct __utxnid {
 struct __logfile_txn_list {
 	u_int32_t file_num;
 	DB_LSN highest_commit_lsn;
-	LISTC_T(struct __utxnid) commit_utxnids;
+	hash_t *commit_utxnids;
 };
 
 struct __utxnid_track {
