@@ -39,6 +39,9 @@ int dist_txn_abort_write_blkseq(void *bdb_state, void *bskey, int bskeylen);
 
 extern int set_commit_context_prepared(unsigned long long context);
 
+extern int free_it(void *obj, void *arg);
+extern void destroy_hash(hash_t *h, int (*free_func)(void *, void *));
+
 typedef struct __txn_event TXN_EVENT;
 struct __txn_event {
 	TXN_EVENT_T op;
@@ -361,8 +364,11 @@ int __txn_commit_map_init(dbenv)
 
 	txmap->transactions = hash_init_o(offsetof(UTXNID_TRACK, utxnid), sizeof(u_int64_t));
 	txmap->logfile_lists = hash_init_o(offsetof(LOGFILE_TXN_LIST, file_num), sizeof(u_int32_t));
+	txmap->utxnids_in_limbo = hash_init(sizeof(u_int64_t));
 
-	if (txmap->transactions == NULL || txmap->logfile_lists == NULL) {
+	if (txmap->transactions == NULL
+		|| txmap->logfile_lists == NULL
+		|| txmap->utxnids_in_limbo == NULL) {
 		ret = ENOMEM;
 		goto err;
 	}
@@ -383,7 +389,12 @@ static int free_logfile_list_elt(obj, arg)
         void *obj;
         void *arg;
 {
-	__os_free((DB_ENV *) arg, (LOGFILE_TXN_LIST *) obj);
+	LOGFILE_TXN_LIST * const to_delete = (LOGFILE_TXN_LIST * const) obj;
+	DB_ENV * const dbenv = (DB_ENV * const) arg;
+
+	hash_clear(to_delete->commit_utxnids);
+	hash_free(to_delete->commit_utxnids);
+	__os_free(dbenv, to_delete);
 	return 0;
 }
 
@@ -411,17 +422,15 @@ static int free_transactions(obj, arg)
 int __txn_commit_map_destroy(dbenv)
         DB_ENV *dbenv;
 {
-        if (dbenv->txmap) {
-                hash_for(dbenv->txmap->transactions, &free_transactions, (void *) dbenv);
-                hash_clear(dbenv->txmap->transactions);
-                hash_free(dbenv->txmap->transactions);
+        DB_TXN_COMMIT_MAP * txmap = dbenv->txmap;
 
-                hash_for(dbenv->txmap->logfile_lists, &free_logfile_list_elt, (void *) dbenv);
-                hash_clear(dbenv->txmap->logfile_lists);
-                hash_free(dbenv->txmap->logfile_lists);
+        if (txmap) {
+                destroy_hash(txmap->transactions, free_transactions);
+                destroy_hash(txmap->logfile_lists, free_logfile_list_elt);
+                destroy_hash(txmap->utxnids_in_limbo, free_it);
 
-                Pthread_mutex_destroy(&dbenv->txmap->txmap_mutexp);
-                __os_free(dbenv, dbenv->txmap);
+                Pthread_mutex_destroy(&txmap->txmap_mutexp);
+                __os_free(dbenv, txmap);
         }
 
         return 0;
@@ -466,6 +475,8 @@ static void __txn_commit_map_delete_logfile_list(DB_ENV *dbenv, LOGFILE_TXN_LIST
 	}
 
 	hash_del(txmap->logfile_lists, to_delete);
+	hash_clear(to_delete->commit_utxnids);
+	hash_free(to_delete->commit_utxnids);
 	__os_free(dbenv, to_delete);
 }
 
@@ -473,6 +484,10 @@ static void __txn_commit_map_delete_logfile_list(DB_ENV *dbenv, LOGFILE_TXN_LIST
 /*
  * __txn_commit_map_remove_nolock --
  *  Remove a transaction from the commit LSN map without locking.
+ *
+ *  Cached `highest_commit_lsn`s may not be accurate after calling
+ *  this function. The caller is responsible for updating them
+ *  if appropriate.
  *
  * PUBLIC: static int __txn_commit_map_remove_nolock
  * PUBLIC:     __P((DB_ENV *, u_int64_t, int));
@@ -482,6 +497,12 @@ static int __txn_commit_map_remove_nolock(dbenv, utxnid, delete_from_logfile_lis
 	u_int64_t utxnid;
 	int delete_from_logfile_lists;
 {
+	if (dbenv->attr.commit_map_debug) {
+		logmsg(LOGMSG_DEBUG,
+			"%s: Trying to delete utxnid %"PRIu64" from the commit LSN map\n", 
+			__func__, utxnid);
+	}
+
 	int ret = 0;
 	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
 
@@ -633,7 +654,9 @@ int __txn_commit_map_delete_logfile_txns(dbenv, del_log)
 		goto err;
 	}
 
-	ret = hash_for(to_delete->commit_utxnids, (hashforfunc_t *const) __txn_commit_map_remove_nolock_foreach_wrapper, (void *) dbenv);
+	ret = hash_for(to_delete->commit_utxnids,
+		(hashforfunc_t *const) __txn_commit_map_remove_nolock_foreach_wrapper,
+		(void *) dbenv);
 	if (ret) {
 		goto err;
 	}
@@ -692,7 +715,6 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 	DB_TXN_COMMIT_MAP *txmap;
 	LOGFILE_TXN_LIST *to_delete;
 	UTXNID_TRACK *txn;
-	UTXNID* elt;
 	int ret, alloc_txn, alloc_delete_list, commit_map_debug;
 
 	txmap = dbenv->txmap;
@@ -737,11 +759,6 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 		goto err;
 	}
 	alloc_txn = 1;
-
-	if ((ret = __os_malloc(dbenv, sizeof(UTXNID), &elt)) != 0) {
-		ret = ENOMEM;
-		goto err;
-	}
 
 	if (alloc_delete_list) {
 		ZERO_LSN(to_delete->highest_commit_lsn);
@@ -801,6 +818,164 @@ int __txn_commit_map_add(dbenv, utxnid, commit_lsn)
 	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 	return ret;
 }
+
+extern int free_it(void *obj, void *arg);
+extern void destroy_hash_contents(hash_t *h, int (*free_func)(void *, void *));
+
+/*
+ * The following paragraphs provide context for the "__txn_commit_map...in_limbo" functions
+ * that follow.
+ *
+ * Transactions are added to the commit LSN map during the backwards pass of recovery.
+ * The backward pass undoes transactions, and there is no guarantee that 
+ * all of these transactions will be redone in the forward pass.
+ *
+ * Therefore, when transactions are added to the commit LSN map during the backwards pass 
+ * they are also marked as "in limbo." This is a way of saying that we are still
+ * uncertain about what status these transactions will finally end up in 
+ * (whether they will be committed or undone).
+ *
+ * Each transaction committed in the forward pass is taken out of limbo since we 
+ * become certain that all of these transactions will be in a committed state once we finish
+ * recovery.
+ *
+ * After the forward pass, all transactions still in limbo can be taken out of limbo
+ * and removed from the commit LSN map because they were never committed during the forward pass.
+ */
+
+static int __txn_commit_map_nuke_utxnid_in_limbo(utxnid, arg)
+	u_int64_t *utxnid;
+	void *arg;
+{
+	return __txn_commit_map_remove((DB_ENV *) arg, *utxnid);
+}
+
+/*
+ * Removes all transactions in limbo from the commit LSN map
+ * and takes them out of limbo.
+ *
+ * dbenv: parent db environment
+ */
+int __txn_commit_map_nuke_txns_in_limbo(dbenv)
+	DB_ENV *dbenv;
+{
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+
+	if (dbenv->attr.commit_map_debug) {
+		logmsg(LOGMSG_DEBUG,
+			"%s: Trying to nuke utxnids in limbo. Highest recovered commit lsn %"PRIu32" %"PRIu32"\n", 
+			__func__,
+			txmap->highest_commit_lsn_recovered_so_far.file,
+			txmap->highest_commit_lsn_recovered_so_far.offset);
+	}
+
+	int ret = hash_for(txmap->utxnids_in_limbo, (hashforfunc_t *const) __txn_commit_map_nuke_utxnid_in_limbo, (void *) dbenv);
+	if (ret) {
+		logmsg(LOGMSG_ERROR, "%s: Failed to remove utxnids in limbo from commit LSN map\n", __func__);
+		return ret;
+	}
+
+	// All logfiles greater than the highest that we recovered to should have been deleted.
+	const u_int32_t highest_commit_lsn_file = txmap->highest_commit_lsn.file;
+	assert(highest_commit_lsn_file == txmap->highest_commit_lsn_recovered_so_far.file);
+
+	LOGFILE_TXN_LIST * const logfile_list = hash_find(txmap->logfile_lists, &highest_commit_lsn_file);
+	if (!logfile_list) {
+		logmsg(LOGMSG_ERROR, "%s: Failed find logfile list for %"PRIu32"\n", __func__, highest_commit_lsn_file);
+		return 1;
+	}
+
+	// We might have deleted some transactions from the highest logfile during recovery
+	// so we need to update the highest commit LSN
+	logfile_list->highest_commit_lsn = txmap->highest_commit_lsn_recovered_so_far;
+	txmap->highest_commit_lsn = txmap->highest_commit_lsn_recovered_so_far;
+
+	ZERO_LSN(txmap->highest_commit_lsn_recovered_so_far);
+	destroy_hash_contents(txmap->utxnids_in_limbo, free_it);
+
+	return 0;
+}
+
+/*
+ * Takes a transaction out of limbo.
+ *
+ * dbenv: parent db environment
+ * utxnid: txn's utxnid
+ */
+int __txn_commit_map_remove_txn_from_limbo(dbenv, utxnid)
+	DB_ENV *dbenv;
+	u_int64_t utxnid;
+{
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+
+	if (dbenv->attr.commit_map_debug) {
+		logmsg(LOGMSG_DEBUG, "%s: Trying to remove utxnid %"PRIu64" from limbo\n", __func__, utxnid);
+	}
+
+	int ret = 0;
+	if (hash_delk(txmap->utxnids_in_limbo, &utxnid)) {
+		goto done;
+	}
+
+	DB_LSN commit_lsn;
+	ret = __txn_commit_map_get(dbenv, utxnid, &commit_lsn);
+	if (ret) {
+		logmsg(LOGMSG_ERROR, "%s: Failed to find %"PRIu64" in the commit map\n", __func__, utxnid);
+		goto done;
+	}
+
+	assert(log_compare(txmap->highest_commit_lsn_recovered_so_far, commit_lsn) < 0);
+	txmap->highest_commit_lsn_recovered_so_far = commit_lsn;
+
+done:
+	return ret;
+}
+
+/*
+ * Adds a transaction to the commit LSN map and puts it in limbo.
+ *
+ * dbenv: parent db environment
+ * utxnid: txn's utxnid
+ * commit_lsn: txn's commit lsn
+ */
+int __txn_commit_map_add_txn_in_limbo(dbenv, utxnid, commit_lsn)
+	DB_ENV *dbenv;
+	u_int64_t utxnid;
+	DB_LSN commit_lsn;
+{
+	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
+
+	if (dbenv->attr.commit_map_debug) {
+		logmsg(LOGMSG_DEBUG, "%s: Trying add utxnid %"PRIu64" in limbo\n", __func__, utxnid);
+	}
+
+	int ret = __txn_commit_map_add(dbenv, utxnid, commit_lsn);
+	if (ret) {
+		logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__, utxnid);
+		goto done;
+	}
+
+	if (hash_find(txmap->utxnids_in_limbo, &utxnid)) {
+		goto done;
+	}
+
+	u_int64_t * utxnid_store = malloc(sizeof(u_int64_t));
+	if (!utxnid_store) {
+		ret = ENOMEM;
+		goto done;
+	}
+
+	*utxnid_store = utxnid;
+	ret = hash_add(txmap->utxnids_in_limbo, utxnid_store);
+	if (ret) {
+		logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to utxnids in limbo\n", __func__, utxnid);
+		goto done;
+	}
+
+done:
+	return ret;
+}
+
 
 static inline void __free_prepared_children(DB_ENV *dbenv, DB_TXN_PREPARED *p)
 {

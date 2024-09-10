@@ -2875,6 +2875,9 @@ struct __txn_commit_map {
 	DB_LSN highest_checkpoint_lsn;
 	hash_t *transactions;
 	hash_t *logfile_lists;
+
+	hash_t *utxnids_in_limbo;
+	DB_LSN highest_commit_lsn_recovered_so_far;
 };
 
 struct __mempv_cache_page_key

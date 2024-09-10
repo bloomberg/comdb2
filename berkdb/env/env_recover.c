@@ -56,6 +56,7 @@ static const char revid[] =
 #include "list.h"
 #include "logmsg.h"
 
+extern int __txn_commit_map_nuke_txns_in_limbo(DB_ENV *);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN*);
 
@@ -1479,6 +1480,11 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	if (ret != 0 && ret != DB_NOTFOUND)
 		goto err;
 	dbenv->recovery_pass = DB_TXN_NOT_IN_RECOVERY;
+
+	if ((ret = __txn_commit_map_nuke_txns_in_limbo(dbenv)) != 0) {
+		logmsg(LOGMSG_ERROR, "%s: Failed to nuke txns in limbo\n", __func__);
+		goto err;
+	}
 
 	/*
 	 * Process any pages that were on the limbo list and move them to

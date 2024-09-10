@@ -62,8 +62,9 @@ int set_commit_context(unsigned long long context, uint32_t *generation,
 
 extern int get_commit_lsn_map_switch_value();
 
+extern int __txn_commit_map_add_txn_in_limbo(DB_ENV *, u_int64_t, DB_LSN);
+extern int __txn_commit_map_remove_txn_from_limbo(DB_ENV *, u_int64_t);
 int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
-int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 /*
@@ -197,6 +198,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		 * that's OK.  Ignore the return code from remove.
 		 */
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		__txn_commit_map_remove_txn_from_limbo(dbenv, argp->txnid->utxnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
@@ -229,6 +231,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 				info, argp->txnid->txnid, TXN_IGNORE, NULL);
+			if (ret) { goto quiet_err; }
 #if defined (DEBUG_PREPARE)
 			logmsg(LOGMSG_USER, "%s op %d updated %s to ignore\n",
 				__func__, op, dist_txnid);
@@ -236,6 +239,14 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		} else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
+		}
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
@@ -252,6 +263,7 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			ret = __db_txnlist_add(dbenv,
 				info, argp->txnid->txnid,
 				TXN_COMMIT, lsnp);
+			if (ret) { goto quiet_err; }
 		}
 		else if (ret != TXN_OK) {
 			__db_txnlist_update(dbenv,
@@ -260,9 +272,15 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
-		if (commit_lsn_map) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+
+		if (commit_lsn_map
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
 		}
+
 		__txn_recover_dist_commit(dbenv, dist_txnid);
 	}
 
@@ -279,6 +297,7 @@ err:		__db_err(dbenv,
 			(u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -444,6 +463,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		 * that's OK.  Ignore the return code from remove.
 		 */
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		__txn_commit_map_remove_txn_from_limbo(dbenv, argp->txnid->utxnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
@@ -465,12 +485,22 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
+		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
-		else if (ret != TXN_OK)
+			if (ret) { goto quiet_err; }
+		} else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
+		}
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
@@ -479,20 +509,26 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
+		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 			    info, argp->txnid->txnid,
 			    argp->opcode == TXN_ABORT ?
 			    TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK) {
+			if (ret) { goto quiet_err; }
+		} else if (ret != TXN_OK) {
 			__db_txnlist_update(dbenv,
 					info, argp->txnid->txnid, argp->opcode, lsnp);
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 
-		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
 		}
 	}
 
@@ -509,6 +545,7 @@ err:		__db_err(dbenv,
 		    (u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -562,6 +599,7 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 * that's OK.  Ignore the return code from remove.
 		 */
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		__txn_commit_map_remove_txn_from_limbo(dbenv, argp->txnid->utxnid);
 	} else if ((dbenv->tx_timestamp != 0 &&
 		argp->timestamp > (int32_t)dbenv->tx_timestamp) ||
 	    (!IS_ZERO_LSN(headp->trunc_lsn) &&
@@ -575,12 +613,22 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
+		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 			    info, argp->txnid->txnid, TXN_IGNORE, NULL);
-		else if (ret != TXN_OK)
+			if (ret) { goto quiet_err; }
+		} else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
+		}
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
@@ -589,17 +637,23 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
+		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 			    info, argp->txnid->txnid,
 			    argp->opcode == TXN_ABORT ?
 			    TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK)
+			if (ret) { goto quiet_err; }
+		} else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 
-		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
 		}
 	}
 
@@ -615,6 +669,7 @@ err:		__db_err(dbenv,
 		    (u_long)argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -748,6 +803,7 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		}
 
 		(void)__db_txnlist_remove(dbenv, info, argp->txnid->txnid);
+		__txn_commit_map_remove_txn_from_limbo(dbenv, argp->txnid->utxnid);
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
@@ -798,12 +854,22 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
+		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 					       info, argp->txnid->txnid, TXN_IGNORE, NULL);
-		else if (ret != TXN_OK)
+			if (ret) { goto quiet_err; }
+		} else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
+
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
+		}
 	}
 	else
 	{
@@ -841,17 +907,23 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 
 		if (ret == TXN_IGNORE)
 			ret = TXN_OK;
-		else if (ret == TXN_NOTFOUND)
+		else if (ret == TXN_NOTFOUND) {
 			ret = __db_txnlist_add(dbenv,
 					       info, argp->txnid->txnid,
 					       argp->opcode == TXN_ABORT ?
 					       TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK)
+			if (ret) { goto quiet_err; }
+		} else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 
-		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->txnid->utxnid, *lsnp))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto quiet_err;
 		}
 	}
 
@@ -868,6 +940,7 @@ err:		__db_err(dbenv,
 		    (u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -1027,6 +1100,12 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 		__log_flush(dbenv, NULL);
 		__checkpoint_save(dbenv, lsnp, 1);
 		region->last_ckp = *lsnp;
+
+		if (get_commit_lsn_map_switch_value()) {
+			Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
+			dbenv->txmap->highest_checkpoint_lsn = argp->ckp_lsn;
+			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
+		}
 	}
 
 	*lsnp = argp->last_ckp;
@@ -1163,8 +1242,15 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 
 			ret = __db_txnlist_add(dbenv, info, argp->child, c_stat, NULL);
 		}
-		if (commit_lsn_map && (__txn_commit_map_get(dbenv, argp->txnid->utxnid, &commit_lsn) == 0)) {
-			ret = __txn_commit_map_add(dbenv, argp->child_utxnid, commit_lsn);
+		if (ret) { goto err; }
+
+		if (commit_lsn_map
+			&& (__txn_commit_map_get(dbenv, argp->txnid->utxnid, &commit_lsn) == 0)
+			&& (ret = __txn_commit_map_add_txn_in_limbo(dbenv, argp->child_utxnid, commit_lsn))
+		) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add utxnid %"PRIu64" to limbo\n",
+				__func__, argp->txnid->utxnid);
+			goto err;
 		}
 	} else if (op == DB_TXN_OPENFILES) {
 		/*
@@ -1194,11 +1280,14 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 				"Transaction not in list %x", argp->child);
 			ret = DB_NOTFOUND;
 		}
+
+		__txn_commit_map_remove_txn_from_limbo(dbenv, argp->child_utxnid);
 	}
 
 	if (ret == 0)
 		*lsnp = argp->prev_lsn;
 
+err:
 	__os_free(dbenv, argp);
 
 	if (ret) {

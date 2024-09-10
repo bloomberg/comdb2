@@ -1895,12 +1895,21 @@ int free_it(void *obj, void *arg)
     free(obj);
     return 0;
 }
-void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
+void destroy_hash_contents(hash_t *h, int(*free_func)(void *, void *))
 {
-    if (!h)
+    if (!h) {
         return;
+    } 
     hash_for(h, free_func, NULL);
     hash_clear(h);
+
+}
+void destroy_hash(hash_t *h, int (*free_func)(void *, void *))
+{
+    if (!h) {
+        return;
+    }
+    destroy_hash_contents(h, free_func);
     hash_free(h);
 }
 
