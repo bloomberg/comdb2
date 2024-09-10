@@ -233,6 +233,9 @@ REGISTER_TUNABLE("disable_page_latches", "Disables 'page_latches'",
 REGISTER_TUNABLE("disable_partial_indexes", "Disables 'enable_partial_indexes'",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("force_writesql", "Force admin mode to for write sql.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_force_writesql, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("disable_prefault_udp", "Disables 'enable_prefault_udp'",
                  TUNABLE_BOOLEAN, &gbl_prefault_udp, INVERSE_VALUE | NOARG,
                  NULL, NULL, NULL, NULL);
