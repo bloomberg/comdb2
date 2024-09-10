@@ -474,6 +474,7 @@ extern int gbl_physrep_hung_replicant_threshold;
 extern int gbl_physrep_revconn_check_interval;
 extern int gbl_physrep_update_registry_interval;
 extern int gbl_physrep_i_am_metadb;
+extern int gbl_physrep_keepalive_v2;
 extern int gbl_physrep_keepalive_freq_sec;
 extern int gbl_physrep_max_candidates;
 extern int gbl_physrep_max_pending_replicants;
@@ -481,6 +482,7 @@ extern int gbl_physrep_reconnect_penalty;
 extern int gbl_physrep_register_interval;
 extern int gbl_physrep_shuffle_host_list;
 extern int gbl_physrep_ignore_queues;
+extern int gbl_physrep_max_rollback;
 
 /* source-name / host is from lrl */
 extern char *gbl_physrep_source_dbname;
