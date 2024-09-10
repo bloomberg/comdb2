@@ -64,6 +64,7 @@ extern int gbl_disable_sql_dlmalloc;
 extern int gbl_enable_berkdb_retry_deadlock_bias;
 extern int gbl_enable_cache_internal_nodes;
 extern int gbl_partial_indexes;
+extern int gbl_force_writesql;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
