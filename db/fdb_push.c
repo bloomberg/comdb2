@@ -571,6 +571,22 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         clnt->effects.num_deleted = effects.num_deleted;
         clnt->effects.num_inserted = effects.num_inserted;
 
+        int val = 0;
+        if (clnt->effects.num_inserted > 0) {
+            val = clnt->effects.num_inserted;
+        } else if (clnt->effects.num_deleted) {
+            val = clnt->effects.num_deleted;
+        } else if (clnt->effects.num_updated) {
+            val = clnt->effects.num_updated;
+        }
+        if (val > 0) {
+            rc = write_response(clnt, RESPONSE_ROW_REMTRAN, NULL, val);
+            if (rc) {
+                errstat_set_rcstrf(err, -1, "failed to write counter");
+                return -1;
+            }
+        }
+
         /* write answer */
         rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
         if (rc) {

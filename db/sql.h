@@ -387,7 +387,8 @@ enum {
     XRESPONSE(RESPONSE_ROW_LAST_DUMMY)                                         \
     XRESPONSE(RESPONSE_ROW_LUA)                                                \
     XRESPONSE(RESPONSE_ROW_STR)                                                \
-    XRESPONSE(RESPONSE_TRACE)
+    XRESPONSE(RESPONSE_TRACE)                                                  \
+    XRESPONSE(RESPONSE_ROW_REMTRAN)
 
 #define XRESPONSE(x) x,
 enum WriteResponsesEnum { RESPONSE_TYPES };

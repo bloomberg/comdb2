@@ -4129,15 +4129,23 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
 void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+    uuidstr_t us;
 
     if (!dtran) {
         logmsg(LOGMSG_ERROR, "%s no dtran\n", __func__);
         return;
     }
 
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "%s Destroyed tid=%s db=\"%s\"\n", __func__,
+               comdb2uuidstr((unsigned char *)tran->tid, us),
+               tran->fdb->dbname);
+
     _free_fdb_tran(dtran, tran);
 
     if (dtran->fdb_trans.count == 0) {
+        if (gbl_fdb_track)
+            logmsg(LOGMSG_USER, "%s Destroyed D-tran %p\n", __func__, dtran);
         free(dtran);
         clnt->dbtran.dtran = 0;
     }
