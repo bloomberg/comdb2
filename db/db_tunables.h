@@ -235,6 +235,8 @@ REGISTER_TUNABLE("disable_page_latches", "Disables 'page_latches'",
 REGISTER_TUNABLE("disable_partial_indexes", "Disables 'enable_partial_indexes'",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("force_writesql", "Force admin mode to for write sql.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_force_writesql, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logmsg.epochms", "Show epochms in log-messages.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_logmsg_epochms, READONLY | NOARG, NULL, NULL, NULL, NULL);
 

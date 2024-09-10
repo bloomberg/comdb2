@@ -1,0 +1,5 @@
+sqlenginepool maxt 1
+sqlenginepool maxq 1
+sqlenginepool maxqover 1
+check_constraint_feature 1
+enable_partial_indexes
