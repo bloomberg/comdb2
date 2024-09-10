@@ -1805,6 +1805,9 @@ REGISTER_TUNABLE("physrep_revconn_check_interval", "Physrep recheck revconn inte
                  &gbl_physrep_revconn_check_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_keepalive_v2",
+                 "Use version 2 of keepalive which includes first lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_keepalive_v2, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
                  "Periodically send lsn to source node after this interval. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_physrep_keepalive_freq_sec, 0, NULL,
@@ -1814,6 +1817,9 @@ REGISTER_TUNABLE("physrep_max_candidates",
                  "new physical replicant during registration. (Default: 6)",
                  TUNABLE_INTEGER, &gbl_physrep_max_candidates, 0, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_test_fallback",
+                 "Test fallback case for register-replicant. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_test_fallback, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_pending_replicants",
                  "There can be no more than this many physical replicants in "
                  "pending state. (Default: 10)",
