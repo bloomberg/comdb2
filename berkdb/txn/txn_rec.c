@@ -62,8 +62,9 @@ int set_commit_context(unsigned long long context, uint32_t *generation,
 
 extern int get_commit_lsn_map_switch_value();
 
-int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
-int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
+extern int __txn_commit_map_remove(DB_ENV *, u_int64_t);
+extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
+extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 /*
@@ -216,6 +217,13 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
 		 */
+
+		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		ret = __db_txnlist_update(dbenv,
 			info, argp->txnid->txnid, TXN_ABORT, NULL);
 
@@ -239,6 +247,14 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
+
+		if (commit_lsn_map
+			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		ret = __db_txnlist_update(dbenv,
 			info, argp->txnid->txnid, TXN_COMMIT, lsnp);
 
@@ -260,9 +276,6 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
-		if (commit_lsn_map) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
-		}
 		__txn_recover_dist_commit(dbenv, dist_txnid);
 	}
 
@@ -279,6 +292,7 @@ err:		__db_err(dbenv,
 			(u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -456,6 +470,13 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		argp->timestamp > (int32_t) dbenv->tx_timestamp) ||
 		(!IS_ZERO_LSN(headp->trunc_lsn) &&
 		log_compare(&headp->trunc_lsn, lsnp) < 0)) {
+
+		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		/*
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
@@ -474,6 +495,15 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
+
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		ret = __db_txnlist_update(dbenv,
 		    info, argp->txnid->txnid, argp->opcode, lsnp);
 
@@ -485,15 +515,9 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 			    argp->opcode == TXN_ABORT ?
 			    TXN_IGNORE : argp->opcode, lsnp);
 		else if (ret != TXN_OK) {
-			__db_txnlist_update(dbenv,
-					info, argp->txnid->txnid, argp->opcode, lsnp);
 			goto err;
 		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
-
-		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
-		}
 	}
 
 	if (ret == 0) {
@@ -509,6 +533,7 @@ err:		__db_err(dbenv,
 		    (u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -570,6 +595,13 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
 		 */
+
+		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		ret = __db_txnlist_update(dbenv,
 		    info, argp->txnid->txnid, TXN_ABORT, NULL);
 
@@ -584,6 +616,15 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 	} else {
 		/* This is a normal commit; mark it appropriately. */
 		assert(op == DB_TXN_BACKWARD_ROLL);
+
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		ret = __db_txnlist_update(dbenv,
 		    info, argp->txnid->txnid, argp->opcode, lsnp);
 
@@ -597,10 +638,6 @@ __txn_regop_recover(dbenv, dbtp, lsnp, op, info)
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
-
-		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
-		}
 	}
 
 	if (ret == 0) {
@@ -615,6 +652,7 @@ err:		__db_err(dbenv,
 		    (u_long)argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -789,6 +827,12 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			__txn_deallocate_ltrans(dbenv, lt);
 		}
 
+		if (commit_lsn_map && (ret = __txn_commit_map_remove(dbenv, argp->txnid->utxnid))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to remove %"PRIu64" from the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		/*
 		 * We failed either the timestamp check or the trunc_lsn check,
 		 * so we treat this as an abort even if it was a commit record.
@@ -835,6 +879,14 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			}
 		}
 
+		if (commit_lsn_map
+			&& (argp->opcode == TXN_COMMIT)
+			&& (ret = __txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp))) {
+			logmsg(LOGMSG_ERROR, "%s: Failed to add %"PRIu64" to the commit map\n", __func__,
+				argp->txnid->utxnid);
+			goto quiet_err;
+		}
+
 		/* This is a normal commit; mark it appropriately. */
 		ret = __db_txnlist_update(dbenv,
 					  info, argp->txnid->txnid, argp->opcode, lsnp);
@@ -849,10 +901,6 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		else if (ret != TXN_OK)
 			goto err;
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
-
-		if (commit_lsn_map && (argp->opcode == TXN_COMMIT)) {
-			__txn_commit_map_add(dbenv, argp->txnid->utxnid, *lsnp);
-		}
 	}
 
 	if (ret == 0) {
@@ -863,11 +911,13 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 	}
 
 	if (0) {
-err:		__db_err(dbenv,
+err:
+		__db_err(dbenv,
 		    "txnid %lx commit record found, already on commit list",
 		    (u_long) argp->txnid->txnid);
 		ret = EINVAL;
 	}
+quiet_err:
 	__os_free(dbenv, argp);
 
 	return (ret);
@@ -1050,7 +1100,6 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 	void *info;
 {
 	__txn_child_args *argp;
-	DB_LSN commit_lsn;
 	int c_stat, p_stat, ret, commit_lsn_map;
 
 #ifdef DEBUG_RECOVER
@@ -1116,6 +1165,24 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		if (argp->txnid->utxnid != 0) {
 			__txn_add_prepared_child(dbenv, argp->child_utxnid, argp->txnid->utxnid);
 		}
+		if (commit_lsn_map) {
+			DB_LSN p_commit_lsn;
+			const int p_in_commit_map = __txn_commit_map_get(dbenv, argp->txnid->utxnid, &p_commit_lsn) == 0;
+
+			DB_LSN c_commit_lsn;
+			const int c_in_commit_map = __txn_commit_map_get(dbenv, argp->child_utxnid, &c_commit_lsn) == 0;
+			
+			if (p_in_commit_map && !c_in_commit_map) {
+				ret = __txn_commit_map_add(dbenv, argp->child_utxnid, p_commit_lsn);
+			} else if (!p_in_commit_map && c_in_commit_map) {
+				ret = __txn_commit_map_remove(dbenv, argp->child_utxnid);
+			} 
+
+			if (ret) {
+				logmsg(LOGMSG_ERROR, "%s: Failed to update child's commit LSN map state\n", __func__);
+				goto err;
+			}
+		}
 		c_stat = __db_txnlist_find(dbenv, info, argp->child);
 		p_stat = __db_txnlist_find(dbenv, info, argp->txnid->txnid);
 		if (c_stat == TXN_EXPECTED) {
@@ -1163,9 +1230,6 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 
 			ret = __db_txnlist_add(dbenv, info, argp->child, c_stat, NULL);
 		}
-		if (commit_lsn_map && (__txn_commit_map_get(dbenv, argp->txnid->utxnid, &commit_lsn) == 0)) {
-			ret = __txn_commit_map_add(dbenv, argp->child_utxnid, commit_lsn);
-		}
 	} else if (op == DB_TXN_OPENFILES) {
 		/*
 		 * If we have a partial subtransaction, then the whole
@@ -1199,6 +1263,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 	if (ret == 0)
 		*lsnp = argp->prev_lsn;
 
+err:
 	__os_free(dbenv, argp);
 
 	if (ret) {

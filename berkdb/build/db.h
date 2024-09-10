@@ -2859,8 +2859,7 @@ struct __utxnid {
 
 struct __logfile_txn_list {
 	u_int32_t file_num;
-	DB_LSN highest_commit_lsn;
-	LISTC_T(struct __utxnid) commit_utxnids;
+	hash_t *commit_utxnids;
 };
 
 struct __utxnid_track {
@@ -2870,6 +2869,7 @@ struct __utxnid_track {
 
 struct __txn_commit_map {
 	pthread_mutex_t txmap_mutexp;
+	int64_t highest_logfile;
 	int64_t smallest_logfile;
 	DB_LSN highest_commit_lsn;
 	DB_LSN highest_checkpoint_lsn;
