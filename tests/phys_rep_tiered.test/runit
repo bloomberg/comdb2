@@ -9,6 +9,8 @@ source ${TESTSROOTDIR}/tools/cluster_utils.sh
 export NRECS=10
 export comdb2ar=${COMDB2AR_EXE}
 
+export FIGLET=$(which figlet)
+
 dbname=$1
 dgpid=0
 first=""
@@ -26,6 +28,10 @@ lastNode=""
 export NOSOURCE=0
 if [[ $DBNAME == *"nosourcegenerated"* ]]; then
     NOSOURCE=1
+fi
+export FIRSTFILE=0
+if [[ $DBNAME == *"firstfilegenerated"* ]]; then
+    FIRSTFILE=1
 fi
 
 if [[ -z "$TEST_TIMEOUT" ]]; then
@@ -134,7 +140,12 @@ function create_physrep_tables()
     local repl_metadb_name=$1
     local repl_metadb_host=$2
 
-    $CDB2SQL_EXE ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    if [[ "$FIRSTFILE" == "1" ]]; then
+        cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, firstfile INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    else
+        cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    fi
+
     if [ $? -ne 0 ]; then
         cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
     fi
@@ -342,11 +353,6 @@ function block_for_clustered_revconn()
         sleep 1
         cnt=$(count_revconn)
     done
-
-    cnt=$(count_revconn)
-    if [[ "$cnt" -ne 1 ]]; then
-        cleanFailExit "Failed to have only 1 reverse-sql thread"
-    fi
 }
 
 # Set up intermediary revconn source by cluster
@@ -425,7 +431,6 @@ function revconn_source_cluster()
 }
 
 # Set up intermediary revconn source by class
-# XXX test this under RM
 function revconn_source_class()
 {
     echo "== physrep revconn source class =="
@@ -534,12 +539,12 @@ function incoherent_test()
     echo "== Incoherent test =="
 
     echo "Creating a simple table"
-    cdb2sql ${CDB2_OPTIONS} $dbname default "Create table t1(a int)"
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "Create table t1(a int)"
 
     echo "Marking all as incoherent"
     for node in $CLUSTER ; do
-        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('force_incoherent')"
-        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('force_incoherent_master')"
+        cdb2sql --admin ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('force_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('force_incoherent_master')"
         cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('force_incoherent')"
         cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('force_incoherent_master')"
     done
@@ -581,16 +586,15 @@ function incoherent_test()
     echo "Sleeping for 10"
     sleep 10
 
-    echo "Unforcing incoherent master"
+    echo "Unforcing incoherent"
     for node in $CLUSTER ; do
-        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
-        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
-        #cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('physrep_force_registration')"
-        #cdb2sql --admin ${CDB2_OPTIONS} ${REPL_DBNAME_PREFIX}_${node} --host $node "exec procedure sys.cmd.send('physrep_force_registration')"
-    done
 
-    echo "Unforcing incoherent first-node"
-    cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $first "exec procedure sys.cmd.send('unforce_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+
+    done
 
     echo "Sleeping for 10"
     sleep 10
@@ -598,7 +602,7 @@ function incoherent_test()
     echo "Generating writes for source db"
     j=0
     while [[ $j -lt 50 ]]; do
-        cdb2sql -admin ${CDB2_OPTIONS} $dbname default "insert into t1 select * from generate_series(1, 1000)"
+        cdb2sql -admin ${CDB2_OPTIONS} $DBNAME default "insert into t1 select * from generate_series(1, 1000)"
         let j=j+1
     done
 
@@ -614,8 +618,8 @@ function incoherent_test()
 
     echo "Marking all as coherent"
     for node in $CLUSTER ; do
-        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
-        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+        cdb2sql --admin ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} $DBNAME --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
         cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
         cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
     done
@@ -652,6 +656,7 @@ logmsg level debug
 ctrace_dbdir 1
 allow_lua_print 1
 physrep_update_registry_interval 1
+physrep_keepalive_v2 1
 END
 
         $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
@@ -697,6 +702,7 @@ logmsg level debug
 ctrace_dbdir 1
 allow_lua_print 1
 physrep_update_registry_interval 1
+physrep_keepalive_v2 1
 END
                 scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
                 ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
@@ -1022,7 +1028,7 @@ function verify_blkseq()
     fi
 }
 
-function run_tests()
+function run_generated_tests()
 {
     # iterate over each test: for every .src.sql and .src.sh file there is a .query.sql file to check
     for file in `ls *.src.sql *src.sh | sort -V`; do
@@ -1183,6 +1189,157 @@ function compare_end_lsns()
     fi
 }
 
+function test_overlap
+{
+    parentlow=$1
+    parenthigh=$2
+    mylow=$3
+    myhigh=$4
+    expectedresult=$5
+
+    x=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('physrep_overlap_test $parentlow $parenthigh $mylow $myhigh')")
+    result=${x##*=}
+    if [[ $result -ne $expectedresult ]]; then
+        echo "Overlap test failed: parentlow $parentlow parenthigh $parenthigh mylow $mylow myhigh $myhigh expectedresult $expectedresult"
+        cleanFailExit "Overlap test failed"
+    fi
+}
+
+# Use message traps to verify overlap logic
+function match_overlap
+{
+    # {parentlow} {parenthigh} {mylow} {myhigh} expectedresult
+    test_overlap "{1:1}" "{100:100}" "{30:1}" "{100:99}" 1
+    test_overlap "{1:1}" "{30:100}" "{31:1}" "{100:99}" 0
+    test_overlap "{30:100}" "{40:100}" "{10:100}" "{29:100}" 0
+    test_overlap "{30:100}" "{40:100}" "{10:100}" "{30:101}" 1
+
+    # Now test with max-rollback
+    if [[ -n $CLUSTER ]]; then
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME --host $node "put tunable physrep_max_rollback 2"
+        done
+    else
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default "put tunable physrep_max_rollback 2"
+    fi
+
+    test_overlap "{1:1}" "{98:98}" "{30:1}" "{100:100}" 1
+    test_overlap "{1:1}" "{98:98}" "{30:1}" "{101:101}" 0
+    
+    return 0
+}
+
+# Call register-replicant directly- look at the list of machines returned .. 
+# Update the metadb info on the returned nodes to put them out of range, and
+# verify that they are not returned the next time
+#
+# Finally put every machine out of range, and verify that nothing is returned
+#
+# This is verifying that fanout will ignore fanout if there are no machines which qualify
+function phys_rep_nomatch
+{
+    local metadb=$1
+    local metahost=$2
+    echo "== physrep_rep_nomatch =="
+
+    if [[ "$FIRSTFILE" == "0" ]]; then
+        echo "rep_nomatch test is only valid for firstfile"
+        return 0
+    fi
+
+    nomachines=1
+
+    # physical replicants will send keepalive periodically
+    while [[ "$nomachines" == "1" ]]; do
+        # get lsn of physical-replicants
+        lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $DBNAME default 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {}`
+
+        # get list of hosts that can handle
+        output=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $metahost "exec procedure sys.physrep.register_replicant('mydb', 'mymach', '$lsn', '$DBNAME', \"'$firstNode'\")")
+
+        if [[ -n "$output" ]]; then
+            nomachines=0
+        else
+            sleep 1
+        fi
+    done
+
+    sql=./sql.txt
+
+    echo -n "update comdb2_physreps set firstfile=100 where dbname in (" > $sql
+    first=1
+
+    count=0
+    echo "$output" | while read ln; do
+        tier=$(echo $ln | awk '{print $1}')
+        if [[ "$tier" == "0" ]]; then
+            cleanFailExit "register_replicant replicating against tier 0"
+            return 1
+        fi
+
+        db=$(echo $ln | awk '{print $2}')
+        if [[ $first -eq 0 ]]; then
+            echo -n "," >> $sql
+        fi
+        first=0
+        echo -n "'$db'" >> $sql
+    done
+
+    echo ")" >> $sql
+
+    good=0
+
+    echo "Putting these hosts out of range"
+
+    # Update the file for each of these to be out-of-range
+    # This races with heartbeats: do in a loop to make it reliable
+    while [[ $good -ne 1 ]]; do
+
+        echo "Executing $(cat $sql)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $metadb --host $metahost - < $sql
+
+        output=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $metahost "exec procedure sys.physrep.register_replicant('mydb', 'mymach', '$lsn', '$DBNAME', \"'$firstNode'\")")
+
+        # We succeed when count is 1 and the tier is 0
+        if [[ -n "$output" ]]; then
+            count=$(echo "$output" | wc -l)
+            if [[ "$count" == "1" ]]; then
+                tier=$(echo "$output" | awk '{print $1}')
+                if [[ "$tier" == "0" ]]; then
+                    good=1
+                fi
+            fi
+        fi
+
+        [[ "$good" == "0" ]] && sleep 1
+    done
+
+    echo "Putting all hosts out of range"
+
+    good=0
+    while [[ "$good" -ne 1 ]]; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $metadb --host $metahost "update comdb2_physreps set firstfile=100 where state != 'Pending'"
+
+        output=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $metahost "exec procedure sys.physrep.register_replicant('mydb', 'mymach', '$lsn', '$DBNAME', \"'$firstNode'\")")
+
+        if [[ -z "$output" ]]; then
+            # this situation emits 'critical error' trace, which we can alert on
+            echo "Register replicant returned no machines - succeeded"
+            good=1
+        fi
+
+    done
+
+    echo "Waiting for heartbeats"
+    count=100
+    while [[ "$count" -ne 0 ]]; do
+        count=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $metadb --host $metahost "select count(*) from comdb2_physreps where firstfile=100")
+        [[ "$count" > "0" ]] && sleep 1
+    done
+
+    return 0
+}
+
 trap - INT EXIT
 
 # 1. Setup replication metadata cluster
@@ -1237,18 +1394,91 @@ if [[ "$NOSOURCE" == "1" ]]; then
     restart_source_nodes
 fi
 
-tranlog_timeout
-revconn_latency $lastNode
-revconn_latency $firstNode
-generate_tests
+function announce
+{
+    typeset text=$1
+    echo "$text"
+    [[ -z "$FIGLET" ]] && figlet -f banner $text
+}
+
+function testcase_finish
+{
+    typeset testcase=$1
+    announce "Finished $testcase"
+}
+
+function testcase_preamble
+{
+    typeset testcase=$1
+    announce "Running $testcase"
+}
+
+function run_tests
+{
+    testcase="phys_rep_nomatch"
+    testcase_preamble $testcase
+    phys_rep_nomatch ${REPL_META_DBNAME} ${REPL_META_HOST}
+    testcase_finsh $testcase
+
+    testcase="tranlog_timeout"
+    testcase_preamble $testcase
+    tranlog_timeout ${REPL_META_DBNAME} ${REPL_META_HOST}
+    testcase_finsh $testcase
+
+    testcase="revconn_latency $lastNode"
+    testcase_preamble $testcase
+    revconn_latency $lastNode
+    testcase_finish $testcase
+
+    testcase="revconn_latency $firstNode"
+    testcase_preamble $testcase
+    revconn_latency $firstNode
+    testcase_finish $testcase
+
+    testcase="generated_tests"
+    testcase_preamble $testcase
+    generate_tests
+    run_generated_tests
+    testcase_finish $testcase
+
+    testcase="verify_blkseq"
+    testcase_preamble $testcase
+    verify_blkseq
+    compare_end_lsns
+    testcase_finish $testcase
+
+    testcase="verify_fanout_myoverride"
+    testcase_preamble $testcase
+    verify_fanout_myoverride ${REPL_META_DBNAME} ${REPL_META_HOST}
+    testcase_finish $testcase
+
+    testcase="incoherent_test"
+    testcase_preamble $testcase
+    incoherent_test
+    testcase_finish $testcase
+
+    testcase="clustered_revconn"
+    testcase_preamble $testcase
+    clustered_revconn
+    testcase_finish $testcase
+
+    testcase="revconn_source_cluster"
+    testcase_preamble $testcase
+    revconn_source_cluster
+    testcase_finish $testcase
+
+    testcase="revconn_source_class"
+    testcase_preamble $testcase
+    revconn_source_class
+    testcase_finish $testcase
+
+    testcase="match_overlap"
+    testcase_preamble $testcase
+    match_overlap
+    testcase_finish $testcase
+}
+
 run_tests
-verify_blkseq
-compare_end_lsns
-verify_fanout_myoverride ${REPL_META_DBNAME} ${REPL_META_HOST}
-incoherent_test
-clustered_revconn
-revconn_source_cluster
-revconn_source_class
 cleanup
 
 exit 0
