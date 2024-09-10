@@ -1807,20 +1807,22 @@ REGISTER_TUNABLE("physrep_revconn_check_interval", "Physrep recheck revconn inte
                  &gbl_physrep_revconn_check_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_keepalive_v2", "Use version 2 of keepalive which includes first lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_keepalive_v2, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
-                 "Periodically send lsn to source node after this interval. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_keepalive_freq_sec, 0, NULL,
-                 NULL, NULL, NULL);
+                 "Periodically send lsn to source node after this interval. (Default: 10)", TUNABLE_INTEGER,
+                 &gbl_physrep_keepalive_freq_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_candidates",
                  "Maximum number of candidates that should be returned to a "
                  "new physical replicant during registration. (Default: 6)",
                  TUNABLE_INTEGER, &gbl_physrep_max_candidates, 0, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_test_fallback", "Test fallback case for register-replicant. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_physrep_test_fallback, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_pending_replicants",
                  "There can be no more than this many physical replicants in "
                  "pending state. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_max_pending_replicants, 0, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_physrep_max_pending_replicants, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb cluster hosts.",
                  TUNABLE_STRING, &gbl_physrep_metadb_host, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -1847,6 +1849,8 @@ REGISTER_TUNABLE("physrep_source_host", "List of physical replication source clu
                  &gbl_physrep_source_host, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOOLEAN, &gbl_physrep_ignore_queues,
                  READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
 REGISTER_TUNABLE("revsql_allow_command_execution",
