@@ -107,8 +107,9 @@
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
 #include <translistener.h>
+#include <sqlwriter.h>
 
-int gbl_delay_sql_lock_release_sec = 5;
+int gbl_sql_waiter_penalty = 5;
 
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur, int *bdberr);
@@ -590,8 +591,7 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
     if ((rc = clnt->recover_deadlock_rcode)) {
         assert(bdb_lockref() == 0);
         handle_failed_recover_deadlock(clnt, rc);
-        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
-                __func__);
+        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n", __func__);
     }
     return rc < 0 ? SQLITE_BUSY : rc;
 }
@@ -610,8 +610,6 @@ static int is_sqlite_db_init(BtCursor *pCur)
 
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
 {
-    extern int gbl_epoch_time;
-    extern int gbl_watchdog_disable_at_start;
     if (gbl_watchdog_disable_at_start)
         return 0;
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
@@ -624,80 +622,76 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
     }
     return 0;
 }
+
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
  */
 int gbl_debug_sleep_in_sql_tick;
 int gbl_debug_sleep_in_analyze;
-static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
+static int sql_tick_int(struct sqlclntstate *clnt, int no_recover_deadlock)
 {
-    int rc;
-    extern int gbl_epoch_time;
-
-    if (thd == NULL)
-        return 0;
-
-    gbl_sqltick++;
-
-    struct sqlclntstate *clnt = thd->clnt;
-    if (skip_clnt_check(clnt)) {
-        return 0;
-    }
-
-    Pthread_mutex_lock(&clnt->sql_tick_lk);
-
-    /* Increment per-clnt sqltick */
     ++clnt->sqltick;
-
-    if (gbl_debug_sleep_in_sql_tick || (gbl_debug_sleep_in_analyze && clnt->is_analyze))
-        sleep(1);
-
-    /* statement cancelled? done */
-    if (thd->stop_this_statement) {
-        rc = SQLITE_ABORT;
-        goto done;
+    if (clnt->thd->sqlthd->stop_this_statement) {
+        return SQLITE_ABORT;
     }
-
     if (clnt->statement_timedout) {
-        rc = SQLITE_TIMEDOUT;
-        goto done;
+        return SQLITE_TIMEDOUT;
     }
-
-    if ((rc = check_recover_deadlock(clnt)))
-        goto done;
-
-    if (clnt->in_sqlite_init == 0) {
-        if (no_recover_deadlock == 0) {
-            if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
-
-                rc = clnt_check_bdb_lock_desired(clnt);
-
-            } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
-
-                rc = recover_deadlock(thedb->bdb_env, clnt, NULL, 0);
-
-                if ((rc = check_recover_deadlock(clnt)))
-                    goto done;
-
-                logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-
-                clnt->deadlock_recovered++;
+    if (check_sql_client_disconnect(clnt, __FILE__, __LINE__)) {
+        return SQLITE_ABORT;
+    }
+    if (clnt->limits.maxcost && (clnt->thd->sqlthd->cost > clnt->limits.maxcost)) {
+        return SQLITE_COST_TOO_HIGH;
+    }
+    int rc = 0;
+    if ((rc = check_recover_deadlock(clnt))) {
+        return rc;
+    }
+    if (no_recover_deadlock) {
+        return 0;
+    }
+    if (gbl_debug_sleep_in_sql_tick || (gbl_debug_sleep_in_analyze && clnt->is_analyze)) {
+        sleep(1);
+    }
+    /* Check every second if sql has waiters or bdb-lock is desired.
+     * If waiters exist, check waiters on every move for subsequent 5 seconds (gbl_sql_waiter_penalty.)
+     */
+    ++clnt->sql_tick_count;
+    int now = gbl_epoch_time;
+    int time_since_last_tick = now - clnt->last_sql_tick;
+    if (clnt->waiter_penalty < 1 && time_since_last_tick < 1) {
+        if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
+            if (recover_deadlock(thedb->bdb_env, clnt, NULL, 0)) {
+                rc = check_recover_deadlock(clnt);
             }
         }
+        return rc;
     }
-
-    if (check_sql_client_disconnect(clnt, __FILE__, __LINE__)) {
-        rc = SQLITE_ABORT;
-        goto done;
+    if (time_since_last_tick >= 1) {
+        clnt->waiter_penalty -= time_since_last_tick;
+        if (clnt->waiter_penalty < 0) {
+            clnt->waiter_penalty = 0;
+        }
+        clnt->last_sql_tick = now;
     }
-
-    if (clnt->limits.maxcost && (thd->cost > clnt->limits.maxcost)) {
-        rc = SQLITE_COST_TOO_HIGH;
-        goto done;
+    if (recover_deadlock_evbuffer(clnt)) {
+        rc = check_recover_deadlock(clnt);
+        logmsg(LOGMSG_ERROR, "%s: recover_deadlock failed sql:\"%.48s%s\"\n",
+               __func__, clnt->sql, strlen(clnt->sql) > 32 ? "..." : "");
     }
+    return rc;
+}
 
-done:
+static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
+{
+    if (thd == NULL || skip_clnt_check(thd->clnt)) {
+        return 0;
+    }
+    gbl_sqltick++;
+    struct sqlclntstate *clnt = thd->clnt;
+    Pthread_mutex_lock(&clnt->sql_tick_lk);
+    int rc = sql_tick_int(clnt, no_recover_deadlock);
     Pthread_mutex_unlock(&clnt->sql_tick_lk);
     return rc;
 }
@@ -5762,7 +5756,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     assert(0 == pCur->is_sampled_idx);
 
     if (!is_sqlite_db_init(pCur)) {
-        rc = sql_tick(thd, 0);
+        rc = sql_tick(thd, 1);
         if (rc)
             return rc;
     }
@@ -7295,7 +7289,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "get_data_int: unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "%s: unhandled type %d query:%s\n", __func__, f->type, pCur->clnt->sql);
         break;
     }
 
@@ -9685,8 +9679,7 @@ static int should_fail_with_gen_change(const uint32_t curgen, const struct sqlcl
     return gen_is_mismatched;
 }
 
-int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                      uint32_t flags)
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt, uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
     int retries = 0;
@@ -10180,6 +10173,7 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
 {
+    clnt->deadlock_recovered++;
     int rc = clnt->recover_deadlock_rcode = recover_deadlock_flags_int(bdb_state, clnt, bdbcur, sleepms, func, line, flags);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, clnt, CURTRAN_RECOVERY);

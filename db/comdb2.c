@@ -19,8 +19,6 @@ int __berkdb_write_alarm_ms;
 int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
-extern int gbl_delay_sql_lock_release_sec;
-
 void __berkdb_set_num_read_ios(long long *n);
 void __berkdb_set_num_write_ios(long long *n);
 void __berkdb_set_num_fsyncs(long long *n);
@@ -5446,10 +5444,6 @@ static void register_all_int_switches()
     register_int_switch("osql_odh_blob",
                         "Send ODH'd blobs to master. (Default: ON)",
                         &gbl_osql_odh_blob);
-    register_int_switch("delay_sql_lock_release",
-                        "Delay release locks in cursor move if bdb lock "
-                        "desired but client sends rows back",
-                        &gbl_delay_sql_lock_release_sec);
     register_int_switch("sqlite_makerecord_for_comdb2",
                         "Enable MakeRecord optimization which converts Mem to comdb2 row data directly",
                         &gbl_sqlite_makerecord_for_comdb2);
