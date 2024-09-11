@@ -1106,3 +1106,5 @@ cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, 
 (a=3000)
 (a=4000)
 (tablename='t17')
+TEST 17
+Test block alter
