@@ -184,7 +184,6 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
     } else if (rc != 0) {
         switch (rc) {
         case DB_LOCK_DEADLOCK:
-        case DB_REP_HANDLE_DEAD:
             *bdberr = BDBERR_DEADLOCK;
             break;
         default:
@@ -288,7 +287,6 @@ static int bdb_prim_allocdta_int(bdb_state_type *bdb_state, tran_type *tran,
 
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -402,7 +400,6 @@ static int bdb_prim_adddta_n_genid_int(bdb_state_type *bdb_state,
         free(genid_dta);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
