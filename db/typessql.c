@@ -363,7 +363,7 @@ void typessql_end(struct sqlclntstate *clnt)
 
 int typessql_initialize(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    if (!gbl_typessql)
+    if (!(gbl_typessql || clnt->typessql))
         return -1;
 
     typessql_t *typessql_state = calloc(1, sizeof(typessql_t));
