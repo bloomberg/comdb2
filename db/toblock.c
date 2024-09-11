@@ -3125,6 +3125,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                             gbl_blockop_name_xrefs[opnum]);
             }
         }
+        if (!got_osql && gbl_disable_tagged_api_writes) {
+            logmsg(LOGMSG_ERROR, "Rejecting tagged api request\n");
+            outrc = ERR_BADREQ;
+            fromline = __LINE__;
+            goto cleanup;
+        }
     } else {
         have_blkseq = iq->have_blkseq;
     }
