@@ -655,6 +655,7 @@ struct sqlclntstate {
     struct plugin_callbacks adapter;
     struct plugin_callbacks adapter_backup;
     struct typessql *typessql_state;
+    unsigned typessql : 1; // should query use typessql (determined from set stmt)
 
     /* bplog write plugin */
     int (*begin)(struct sqlclntstate *clnt, int retries, int keep_id);
