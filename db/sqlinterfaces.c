@@ -3651,6 +3651,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     } else {
         clnt->has_recording = v->recording;
     }
+    clnt->last_recover_ddlk = gbl_epoch_time;
     clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
