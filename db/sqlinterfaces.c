@@ -3781,7 +3781,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     sqlite3_stmt *stmt = rec->stmt;
 
     run_stmt_setup(clnt, stmt);
-    if (gbl_typessql && clnt->isselect && !dohsql_is_parallel_shard() && !clnt->fdb_push &&
+    if ((gbl_typessql || clnt->typessql) && clnt->isselect && !dohsql_is_parallel_shard() && !clnt->fdb_push &&
         !((Vdbe *)stmt)->hasVTables && !((Vdbe *)stmt)->hasScalarFunc)
         typessql_initialize(clnt, stmt);
 
@@ -5466,6 +5466,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->can_redirect_fdb = 0;
     clnt->force_fdb_push_redirect = 0;
     clnt->force_fdb_push_remote = 0;
+    clnt->typessql = 0;
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
 
