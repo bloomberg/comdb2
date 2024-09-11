@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 source ${TESTSROOTDIR}/tools/cluster_utils.sh
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ./error.sh
 
 # Grab my database name.
 dbnm=$1
@@ -34,13 +36,6 @@ kill_restart_cluster()
         echo "killrestart nodes $node"
         kill_restart_node $node $kill_wait_time
     done
-}
-
-function failif
-{
-	if [[ $1 -ne 0 ]]; then
-		exit 1
-	fi
 }
 
 function bounce {
@@ -244,7 +239,8 @@ verify_txmap_deletes_records() {
 		"select COUNT(*) from comdb2_transaction_commit")
 	readonly initial_num_records_for_file initial_num_records
 
-	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('clm_delete_logfile $logfile_to_delete')"
+	cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm \
+		"exec procedure sys.cmd.send('clm_delete_logfile $logfile_to_delete')" > /dev/null
 
 	final_num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm "select COUNT(*) from comdb2_transaction_commit")
 	readonly final_num_records
@@ -253,17 +249,33 @@ verify_txmap_deletes_records() {
 	fi
 }
 
+get_clminfo() {
+	cdb2sql ${CDB2_OPTIONS} --host $1 $dbnm "exec procedure sys.cmd.send('bdb clminfo')"
+}
+
+extract_highest_commit_lsn_offset_from_clminfo() {
+	grep -oP '(?<=Highest commit lsn offset: )[0-9]+' <<<"$1"
+}
+
+extract_highest_commit_lsn_file_from_clminfo() {
+	grep -oP '(?<=Highest commit lsn file: )[0-9]+' <<<"$1"
+}
+
+extract_smallest_logfile_from_clminfo() {
+	grep -oP '(?<=Smallest logfile: )[-]?[0-9]+' <<<"$1"
+}
+
 verify_txmap_has_expected_min_max_files() {
 	local -r exp_min_file=$1 exp_max_file=$2 node=$3
-	local final_state records_outside_of_expected_window
+	local highest_commit_lsn_file smallest_logfile records_outside_of_expected_window
 
 	# Check that window stored in internal structure is correct
-	final_state=$(cdb2sql ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('bdb clminfo')")
-	readonly final_state
-	if !(echo "$final_state" | grep "Highest commit lsn file: $exp_max_file" > /dev/null) ||
-		!(echo "$final_state" | grep "Smallest logfile: $exp_min_file" > /dev/null); then
+	highest_commit_lsn_file=$(extract_highest_commit_lsn_file_from_clminfo "$(get_clminfo $node)")
+	smallest_logfile=$(extract_smallest_logfile_from_clminfo "$(get_clminfo $node)")
+	readonly highest_commit_lsn_file smallest_logfile
+	if (( highest_commit_lsn_file != exp_max_file || smallest_logfile != exp_min_file )); then
 		echo "Expected max file to be $exp_max_file and min file to be $exp_min_file. Got:"
-		echo "$final_state"
+		echo "highest commit lsn file: $highest_commit_lsn_file; smallest logfile: $smallest_logfile"
 		exit 1
 	fi
 
@@ -279,6 +291,8 @@ verify_txmap_has_expected_min_max_files() {
 }
 
 test_delete() {
+	trap 'error $LINENO' ERR
+
 	local node
 	node=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()")
 	readonly node
@@ -307,9 +321,118 @@ test_delete() {
 	verify_txmap_deletes_records 1 $node
 }
 
+verify_cached_highest_commit_lsn_after_recovery() {
+	local clminfo_after_recovery
+	clminfo_after_recovery=$(get_clminfo $master)
+	readonly clminfo_after_recovery
+
+	local cached_highest_commit_lsn_file_after_recovery
+	cached_highest_commit_lsn_file_after_recovery=$(extract_highest_commit_lsn_file_from_clminfo "$clminfo_after_recovery")
+	readonly cached_highest_commit_lsn_file_after_recovery
+
+	local cached_highest_commit_lsn_offset_after_recovery
+	cached_highest_commit_lsn_offset_after_recovery=$(extract_highest_commit_lsn_offset_from_clminfo "$clminfo_after_recovery")
+	readonly cached_highest_commit_lsn_offset_after_recovery
+
+
+	local highest_commit_lsn_after_recovery
+	highest_commit_lsn_after_recovery=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm \
+		"select commitlsnfile, max(commitlsnoffset) from comdb2_transaction_commit \
+		where commitlsnfile in (select max(commitlsnfile) from comdb2_transaction_commit)")
+	readonly highest_commit_lsn_after_recovery
+
+	local highest_commit_lsn_file_after_recovery
+	highest_commit_lsn_file_after_recovery=$(echo "$highest_commit_lsn_after_recovery" | cut -f 1)
+	readonly highest_commit_lsn_file_after_recovery
+
+	local highest_commit_lsn_offset_after_recovery
+	highest_commit_lsn_offset_after_recovery=$(echo "$highest_commit_lsn_after_recovery" | cut -f 2)
+	readonly highest_commit_lsn_offset_after_recovery
+
+	(( cached_highest_commit_lsn_file_after_recovery <= highest_commit_lsn_file_after_recovery \
+		|| cached_highest_commit_lsn_offset_after_recovery <= highest_commit_lsn_offset_after_recovery ))
+}
+
+verify_correct_utxnids_in_map() {
+	local -r utxnids_to_recover=$1 utxnids_before_recovery=$2
+
+	local recovered_utxnids
+	recovered_utxnids=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+		'select distinct utxnid from comdb2_transaction_commit order by utxnid' \
+		| sed 's/ /\n/g')
+	readonly recovered_utxnids 
+
+	local utxnids_to_be_deleted_during_recovery
+	utxnids_to_be_deleted_during_recovery=$(comm -13 \
+		<(sort <<<$(echo "$utxnids_to_recover")) \
+		<(sort <<<$(echo "$utxnids_before_recovery")))
+	readonly utxnids_to_be_deleted_during_recovery
+
+	local present_unexpected_utxnids
+	present_unexpected_utxnids=$(comm -12 \
+		<(sort <<<$(echo "$recovered_utxnids")) \
+		<(sort <<<$(echo "$utxnids_to_be_deleted_during_recovery")))
+	readonly present_unexpected_utxnids
+	[[ -z $present_unexpected_utxnids ]] # Assert that we have no unexpected utxnids
+
+	local absent_expected_utxnids
+	absent_expected_utxnids=$(comm -23 \
+		<(sort <<<$(echo "$utxnids_to_recover")) \
+		<(sort <<<$(echo "$recovered_utxnids")))
+	readonly absent_expected_utxnids
+	[[ -z $absent_expected_utxnids ]] # Assert that we have all expected utxnids
+}
+
+test_recover_to_lsn() {
+	trap 'error $LINENO' ERR
+
+	# Given
+
+		# Run some initial traffic 
+	cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t(i int)' > /dev/null
+	cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t values(1)' > /dev/null
+
+	local -r flush_itrs=2
+	local itr
+	for (( itr=0; itr<flush_itrs; itr++ )); do
+		cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")' > /dev/null
+	done
+
+	local utxnids_to_recover
+	utxnids_to_recover=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+		'select distinct utxnid from comdb2_transaction_commit order by utxnid' \
+		| sed 's/ /\n/g')
+	readonly utxnids_to_recover
+
+	local recovery_lsn
+	recovery_lsn=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+		'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | sed 's/.*lsn //g ; s/ .*//g')
+	readonly recovery_lsn
+
+		# Run more traffic that will be undone during recovery
+	pushlogs 3
+
+	local utxnids_before_recovery
+	utxnids_before_recovery=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default \
+		'select distinct utxnid from comdb2_transaction_commit order by utxnid' \
+		| sed 's/ /\n/g')
+	readonly utxnids_before_recovery
+
+	# When
+
+	cdb2sql ${CDB2_OPTIONS} --host $master $dbnm \
+		"exec procedure sys.cmd.truncate_log(\"{$recovery_lsn}\")"
+	
+	# Then
+
+	verify_txmap_has_expected_min_max_files 1 1 $master
+	verify_cached_highest_commit_lsn_after_recovery 
+	verify_correct_utxnids_in_map "$utxnids_to_recover" "$utxnids_before_recovery"
+}
+
 if [ "$TESTCASE" == "commit_lsn_map_delete_generated" ];
 then
-	set -e
+	test_recover_to_lsn
 	test_delete
 else
 	test_add
