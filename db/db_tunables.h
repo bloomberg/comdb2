@@ -2440,6 +2440,9 @@ REGISTER_TUNABLE("sqlite_use_temptable_for_rowset",
 REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
                  TUNABLE_INTEGER, &gbl_identity_cache_max, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("iam_usermetric_verbosity", "IAM user metric verbosity [Default: 0 (off)]", TUNABLE_INTEGER,
+                 &gbl_iam_verbosity, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("track_weighted_queue_metrics_separately",
                  "When on, report both average and weighted average queue metrics;"
                  "When off, report only weighted average queue metrics "
