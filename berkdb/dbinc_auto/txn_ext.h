@@ -36,8 +36,9 @@ int __txn_regop_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int64_t *, u_int32_t, u
 int __txn_regop_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_regop_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_regop_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
-int __txn_regop_gen_read __P((DB_ENV *, void *, __txn_regop_gen_args **));
 int __txn_regop_read __P((DB_ENV *, void *, __txn_regop_args **));
+int __txn_regop_gen_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+int __txn_regop_gen_read __P((DB_ENV *, void *, __txn_regop_gen_args **));
 unsigned long long __txn_regop_read_context __P((__txn_regop_args *));
 
 /* For 2pc */
@@ -45,16 +46,19 @@ int __txn_dist_prepare_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32
 int __txn_dist_prepare_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_dist_prepare_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_dist_prepare_read __P((DB_ENV *, void *, __txn_dist_prepare_args **));
+int __txn_dist_prepare_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 
 int __txn_dist_abort_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, u_int32_t, u_int64_t, const DBT *));
 int __txn_dist_abort_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_dist_abort_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_dist_abort_read __P((DB_ENV *, void *, __txn_dist_abort_args **));
+int __txn_dist_abort_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 
 int __txn_dist_commit_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int64_t *, u_int32_t, const DBT *, u_int32_t, u_int64_t, void *));
 int __txn_dist_commit_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_dist_commit_getallpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 int __txn_dist_commit_read __P((DB_ENV *, void *, __txn_dist_commit_args **));
+int __txn_dist_commit_print __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 
 int __txn_regop_rowlocks_log __P((DB_ENV *, DB_TXN *, DB_LSN *, u_int64_t *, u_int32_t, u_int32_t, u_int64_t, DB_LSN *, DB_LSN *,u_int64_t, u_int32_t, u_int32_t, const DBT *, const DBT *, void *));
 int __txn_regop_rowlocks_getpgnos __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
