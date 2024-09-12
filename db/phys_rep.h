@@ -37,5 +37,8 @@ int physrep_exited();
 int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp**);
 void physrep_cleanup(void);
 void physrep_update_low_file_num(int*, int*);
+void physrep_fanout_override(const char *dbname, int fanout);
+int physrep_fanout_get(const char *dbname);
+void physrep_fanout_dump(void);
 
 #endif /* PHYS_REP_H */
