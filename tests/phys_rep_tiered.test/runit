@@ -92,6 +92,36 @@ function wait_for_catchup()
     fi
 }
 
+function verify_fanout_overrides()
+{
+    local repl_metadb_name=$1
+    local repl_metadb_host=$2
+    local parent_db=$3
+
+    # Add a fanout override live
+    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "exec procedure sys.cmd.send('physrep_fanout_override livetst 99')"
+
+    # Grab all of the fanout overrides
+    x=$(cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "exec procedure sys.cmd.send('physrep_fanout_dump')")
+
+    # Verify the 2 fanout lrl configurations
+    if [[ $x != *"fanouttest fanout 100"* ]]; then
+        cleanFailExit "fanouttest not set to 100"
+    fi
+
+    if [[ $x != *"fanouttest2 fanout 50"* ]]; then
+        cleanFailExit "fanouttest2 not set to 50"
+    fi
+
+    if [[ $x != *"$DBNAME fanout 3"* ]]; then
+        cleanFailExit "$DBNAME not set to 3"
+    fi
+
+    if [[ $x != *"livetst fanout 99"* ]]; then
+        cleanFailExit "livetst not set to 99"
+    fi
+}
+
 function create_physrep_tables()
 {
     local repl_metadb_name=$1
@@ -230,6 +260,33 @@ function kill_source_nodes()
     popd
 }
 
+function verify_fanout_myoverride()
+{
+    echo "== Verify fanout myoverride =="
+    local _dbname=$1
+    local _dbdir=$2
+
+    if [[ -z "$CLUSTER" ]]; then # Standalone
+        logFile=$TESTDIR/logs/${_dbname}.${node}.log
+        egrep "db_comdb_physrep_tunables: fanout for $DBNAME is 3" $logFile
+        if [[ $? -ne 0 ]]; then
+            cleanFailExit "fanout for $DBNAME is not 1"
+        fi
+    else
+        found=0
+        for node in $CLUSTER ; do
+            logFile=$TESTDIR/logs/${_dbname}.${node}.log
+            egrep "db_comdb_physrep_tunables: fanout for $DBNAME is 3" $logFile
+            if [[ $? -eq 0 ]]; then
+                found=1
+            fi
+        done
+        if [[ $found -ne 1 ]]; then
+            cleanFailExit "fanout for $DBNAME is not 3"
+        fi
+    fi
+}
+
 function setup_physrep_metadb()
 {
     echo "== Setting up replication metadb cluster =="
@@ -246,6 +303,9 @@ function setup_physrep_metadb()
         cat <<END >> ${_dbdir}/${_dbname}.lrl
 name ${_dbname}
 dir ${_dbdir}
+physrep_fanout_override fanouttest 100
+physrep_fanout_override fanouttest2 50
+physrep_fanout_override $DBNAME 3
 logmsg level debug
 END
 
@@ -264,6 +324,7 @@ END
         PIDs="${PIDs} $(cat ${_dbdir}/${_dbname}.pid)"
 
         create_physrep_tables ${_dbname} ${node}
+        verify_fanout_overrides ${_dbname} ${node}
 
     # Cluster
     else
@@ -279,6 +340,9 @@ END
 name ${_dbname}
 dir ${_dbdir}
 cluster nodes ${CLUSTER}
+physrep_fanout_override fanouttest 100
+physrep_fanout_override fanouttest2 50
+physrep_fanout_override $DBNAME 3
 logmsg level debug
 END
                 scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
@@ -312,6 +376,7 @@ END
         done
 
         create_physrep_tables ${_dbname} ${firstNode}
+        verify_fanout_overrides ${_dbname} ${firstNode}
     fi
     echo "Physrep replication metadb cluster/node started!"
 }
@@ -714,6 +779,7 @@ generate_tests
 run_tests
 verify_blkseq
 compare_end_lsns
+verify_fanout_myoverride ${REPL_META_DBNAME} ${REPL_META_HOST}
 cleanup
 
 exit 0
