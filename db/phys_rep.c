@@ -109,6 +109,62 @@ int sc_ready(void);
 int is_commit(u_int32_t rectype);
 int physrep_bdb_wait_for_seqnum(bdb_state_type *bdb_state, DB_LSN *lsn, void *data);
 
+static hash_t *physrep_fanout = NULL;
+static pthread_mutex_t fanout_lk = PTHREAD_MUTEX_INITIALIZER;
+
+struct fanout_override {
+    char *dbname;
+    int fanout;
+};
+
+void physrep_fanout_override(const char *dbname, int fanout)
+{
+    Pthread_mutex_lock(&fanout_lk);
+    if (!physrep_fanout) {
+        physrep_fanout = hash_init_strptr(offsetof(struct fanout_override, dbname));
+    }
+    struct fanout_override *fo = hash_find(physrep_fanout, &dbname);
+    if (!fo) {
+        fo = malloc(sizeof(struct fanout_override));
+        fo->dbname = strdup(dbname);
+        hash_add(physrep_fanout, fo);
+    }
+    fo->fanout = fanout;
+    Pthread_mutex_unlock(&fanout_lk);
+}
+
+int physrep_fanout_get(const char *dbname)
+{
+    int fanout = gbl_physrep_fanout;
+    Pthread_mutex_lock(&fanout_lk);
+    if (physrep_fanout) {
+        struct fanout_override *fo = hash_find(physrep_fanout, &dbname);
+        if (fo) {
+            fanout = fo->fanout;
+        }
+    }
+    Pthread_mutex_unlock(&fanout_lk);
+    return fanout;
+}
+
+static int physrep_fanout_print(void *obj, void *arg)
+{
+    struct fanout_override *fo = (struct fanout_override *)obj;
+    physrep_logmsg(LOGMSG_USER, "dbname %s fanout %d\n", fo->dbname, fo->fanout);
+    return 0;
+}
+
+void physrep_fanout_dump(void)
+{
+    Pthread_mutex_lock(&fanout_lk);
+    if (physrep_fanout) {
+        hash_for(physrep_fanout, physrep_fanout_print, NULL);
+    } else {
+        physrep_logmsg(LOGMSG_USER, "no fanout overrides\n");
+    }
+    Pthread_mutex_unlock(&fanout_lk);
+}
+
 void cleanup_hosts()
 {
     DB_Connection *cnct;

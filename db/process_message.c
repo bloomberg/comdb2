@@ -2146,6 +2146,24 @@ clipper_usage:
         gbl_who = toknum(tok, ltok);
         gbl_debug = gbl_sdebug = 0;
         logmsg(LOGMSG_USER, "Set who to %d\n", gbl_who);
+    } else if (tokcmp(tok, ltok, "physrep_fanout_override") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "physrep_fanout_override requires dbname & fanout value\n");
+            return -1;
+        }
+        char *dbname = alloca(ltok + 1);
+        tokcpy(tok, ltok, dbname);
+
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "physrep_fanout_override requires dbname & fanout value\n");
+            return -1;
+        }
+        int fanout = toknum(tok, ltok);
+        physrep_fanout_override(dbname, fanout);
+    } else if (tokcmp(tok, ltok, "physrep_fanout_dump") == 0) {
+        physrep_fanout_dump();
     } else if (tokcmp(tok, ltok, "leaktxn") == 0) {
         bdb_trans_leak(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "unleaktxn") == 0) {
