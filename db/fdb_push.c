@@ -18,6 +18,7 @@
 #include "dohsql.h"
 
 extern char *gbl_cdb2api_policy_override;
+extern int gbl_fdb_auth_enabled;
 
 struct fdb_push_connector {
     char *remotedb; /* name of the remote db; class matches stored fdb */
@@ -206,6 +207,7 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
 }
 
 static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl);
+void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
 
 /**
  * Proxy receiving sqlite rows from remote and forwarding them to
@@ -279,6 +281,9 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
         free(dts);
         return -1;
     }
+
+    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
+        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
 
     rc = cdb2_run_statement(hndl, clnt->sql);
     free(dts);

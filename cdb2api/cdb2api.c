@@ -1098,6 +1098,7 @@ struct cdb2_hndl {
     int auto_consume_timeout_ms;
     struct cdb2_hndl *fdb_hndl;
     int is_child_hndl;
+    CDB2SQLQUERY__IdentityBlob *id_blob;
 };
 
 static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
@@ -3081,7 +3082,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
     sqlquery.mach_class = cdb2_default_cluster;
 
-    if (iam_identity && identity_cb) {
+    if (hndl->id_blob) {
+        sqlquery.identity = hndl->id_blob;
+    } else if (iam_identity && identity_cb) {
         id_blob = identity_cb->getIdentity();
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
@@ -6486,6 +6489,11 @@ int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
 {
     return hndl->sb == NULL ? 0 : sslio_has_ssl(hndl->sb);
+}
+
+void cdb2_setIdentityBlob(cdb2_hndl_tp *hndl, void *id)
+{
+    hndl->id_blob = (CDB2SQLQUERY__IdentityBlob *)id;
 }
 
 static cdb2_ssl_sess *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl)
