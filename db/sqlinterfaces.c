@@ -6687,6 +6687,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
         c->fingerprint = NULL;
     }
     c->in_transaction = clnt->in_client_trans;
+    c->in_local_cache = clnt->in_local_cache;
     Pthread_mutex_unlock(&clnt->state_lk);
 }
 

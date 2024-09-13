@@ -940,6 +940,7 @@ struct sqlclntstate {
     unsigned force_fdb_push_redirect : 1; // this should only be set if can_redirect_fdb is true
     unsigned force_fdb_push_remote : 1;
     unsigned return_long_column_names : 1; // if 0 then tunable decides
+    unsigned in_local_cache : 1;
 
     char *sqlengine_state_file;
     int sqlengine_state_line;
@@ -1245,6 +1246,7 @@ struct connection_info {
     int time_in_state_int;
     enum connection_state state_int;
     int64_t in_transaction;
+    int64_t in_local_cache;
 };
 
 /* makes master swing verbose */

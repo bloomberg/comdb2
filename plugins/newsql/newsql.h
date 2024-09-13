@@ -28,6 +28,14 @@ struct newsql_stmt {
     char tzname[CDB2_MAX_TZNAME];
 };
 
+typedef enum {
+    NEWSQL_STATE_NONE,
+    /* Query is making progress. Applicable only when type is HEARTBEAT */
+    NEWSQL_STATE_ADVANCING,
+    /* RESET from in-process cache. Applicable only when type is RESET */
+    NEWSQL_STATE_LOCALCACHE
+} newsql_state;
+
 struct newsqlheader {
     int type;        /*  newsql request/response type */
     int compression; /*  Some sort of compression done? */

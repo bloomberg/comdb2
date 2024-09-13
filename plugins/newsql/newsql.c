@@ -2008,7 +2008,7 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
 
 int newsql_heartbeat(struct sqlclntstate *clnt)
 {
-    int state;
+    int state = NEWSQL_STATE_NONE;
 
     if (!clnt->heartbeat)
         return 0;
@@ -2017,9 +2017,10 @@ int newsql_heartbeat(struct sqlclntstate *clnt)
 
     /* We're still in a good state if we're just waiting for the client to consume an event. */
     if (is_pingpong(clnt))
-        state = 1;
+        state = NEWSQL_STATE_ADVANCING;
     else {
-        state = (clnt->sqltick > clnt->sqltick_last_seen);
+        if (clnt->sqltick > clnt->sqltick_last_seen)
+            state = NEWSQL_STATE_ADVANCING;
         clnt->sqltick_last_seen = clnt->sqltick;
     }
 
