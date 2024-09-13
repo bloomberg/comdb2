@@ -2886,6 +2886,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         const uint8_t *p_buf_in_saved;
         int got_blockseq = 0;
         int got_osql = 0;
+        int is_tagged = 1;
 
         /* this is a pre-loop, we want to jump back to the begining after it's
          * done */
@@ -2949,6 +2950,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 /* fall-through */
             case BLOCK2_SNAPISOL:
             case BLOCK2_SERIAL:
+                is_tagged = 0;
                 if (gbl_use_blkseq) {
                     have_blkseq = 1;
                     osql_bplog_set_blkseq(iq->sorese, iq);
@@ -3032,7 +3034,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             gbl_blockop_name_xrefs[opnum]);
             }
         }
-        if (!got_osql && gbl_disable_tagged_api_writes) {
+        if (is_tagged && gbl_disable_tagged_api_writes) {
             logmsg(LOGMSG_ERROR, "Rejecting tagged api request\n");
             outrc = ERR_BADREQ;
             fromline = __LINE__;
