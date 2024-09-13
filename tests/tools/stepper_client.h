@@ -2,8 +2,6 @@
 #define _COMDB2QL_CLNT_H_
 
 #include <stdio.h>
-#include <cdb2api.h>
-#include <list.h>
 
 /**
  * Implements a multiple client testing configuration
@@ -14,19 +12,8 @@
  *
  */
 
-
-/* storing clients (i.e. comm pipes) */
-struct client
-{
-   int   id;
-   cdb2_hndl_tp *db;
-
-   LINKC_T(struct client) lnk;
-};
-
+struct client;
 typedef struct client client_t;
-
-LISTC_T(client_t) clients;
 
 /**
  * Opens a client using "prgname" comdb2sql
@@ -70,5 +57,11 @@ int clnt_repo_destroy(void);
  *
  */
 client_t* clnt_get( int id);
+
+/**
+ * Disconnect all clients
+ * Returns 0 on success
+ */
+int clnt_disconnect_all(void);
 
 #endif
