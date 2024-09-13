@@ -166,7 +166,7 @@ static int newsql_flush_evbuffer(struct sqlclntstate *clnt)
 static void newsql_reset_evbuffer(struct newsql_appdata_evbuffer *appdata)
 {
     appdata->initial = 1;
-    newsql_reset(&appdata->clnt);
+    newsql_reset(&appdata->clnt, (appdata->hdr.state == NEWSQL_STATE_LOCALCACHE));
 }
 
 static int newsql_done_cb(struct sqlclntstate *clnt)

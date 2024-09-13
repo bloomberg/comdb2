@@ -97,5 +97,6 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_INTEGER, "is_ssl", -1, offsetof(struct connection_info, is_ssl),
             CDB2_INTEGER, "has_cert", -1, offsetof(struct connection_info, has_cert),
             CDB2_CSTRING, "common_name", -1, offsetof(struct connection_info, common_name),
+            CDB2_INTEGER, "in_local_cache", -1, offsetof(struct connection_info, in_local_cache),
             SYSTABLE_END_OF_FIELDS);
 }

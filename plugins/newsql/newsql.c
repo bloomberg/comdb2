@@ -1996,9 +1996,12 @@ int newsql_heartbeat(struct sqlclntstate *clnt)
 
     /* We're still in a good state if we're just waiting for the client to consume an event. */
     if (is_pingpong(clnt))
-        state = 1;
+        state = NEWSQL_STATE_ADVANCING;
     else {
-        state = (clnt->sqltick > clnt->sqltick_last_seen);
+        if (clnt->sqltick > clnt->sqltick_last_seen)
+            state = NEWSQL_STATE_ADVANCING;
+        else
+            state = NEWSQL_STATE_NONE;
         clnt->sqltick_last_seen = clnt->sqltick;
     }
 
@@ -2207,7 +2210,7 @@ int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
     return clnt->had_errors && !(*commit_rollback);
 }
 
-void newsql_reset(struct sqlclntstate *clnt)
+void newsql_reset(struct sqlclntstate *clnt, int in_local_cache)
 {
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
         /* Discard the pending transaction when receiving RESET from the
@@ -2225,6 +2228,7 @@ void newsql_reset(struct sqlclntstate *clnt)
     clnt->osql.count_changes = 1;
     clnt->heartbeat = 1;
     clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    clnt->in_local_cache = in_local_cache;
 }
 
 void free_newsql_appdata(struct sqlclntstate *clnt)
