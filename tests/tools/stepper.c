@@ -7,17 +7,9 @@
 #include <unistd.h>
 #include <signal.h>
 #include <mem.h>
-#include <list.h>
-#include <sys/socket.h>
+#include <cdb2api.h>
 
-#include <cdb2api.c>
-#include <sbuf2.c>
 #include "stepper_client.h"
-
-void disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
-    if (cdb2h->sb)
-        shutdown(cdb2h->sb->fd, 2);
-}
 
 #define MAX_LINE 65536
 
@@ -50,6 +42,8 @@ int main( int argc, char **argv)
    char  line[MAX_LINE];
    int   rc = 0;
    int   lineno = 0;
+
+   signal(SIGPIPE, SIG_IGN);
 
    comdb2ma_init(0, 0);
 
@@ -124,10 +118,10 @@ int main( int argc, char **argv)
          continue;
 
       if(strcmp(line, "bounce_connection\n") == 0) {
-         client_t *client;
-
-         LISTC_FOR_EACH(&clients, client, lnk) {
-            disconnect_cdb2h(client->db);
+         rc = clnt_disconnect_all();
+         if (rc) {
+            fprintf( stderr, "Error disconnecting clients\n");
+            break;
          }
 
          continue;
@@ -246,7 +240,5 @@ static int parse_line( char *line, char **query)
    return id;
 }
 
-// TODO: not sure why this is only undefined on MacOS
-#ifdef _DARWIN_C_SOURCE
+// TODO: not sure why this is undefined
 int gbl_ssl_allow_localhost = 0;
-#endif

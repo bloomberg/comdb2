@@ -6,7 +6,21 @@
 #include <inttypes.h>
 #include <list.h>
 #include <cdb2api.h>
+#include <sys/socket.h>
+#include <cdb2api.c>
+#include <sbuf2.c>
 #include "stepper_client.h"
+
+/* storing clients (i.e. comm pipes) */
+struct client
+{
+   int   id;
+   cdb2_hndl_tp *db;
+
+   LINKC_T(struct client) lnk;
+};
+
+LISTC_T(client_t) clients;
 
 /**
  * Opens a client 
@@ -195,4 +209,31 @@ client_t* clnt_get( int id)
     }
 
     return NULL;
+}
+
+static int disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
+    const int rc = cdb2h->sb ? shutdown(cdb2h->sb->fd, 2) : 0;
+    if (rc) {
+        fprintf( stderr, "%s: Failed with errno(%s)", __func__, strerror(errno));
+    }
+
+    return rc;
+}
+
+/**
+ * Disconnect all clients
+ * Returns 0 on success
+ */
+int clnt_disconnect_all(void)
+{
+    client_t *client;
+
+    LISTC_FOR_EACH(&clients, client, lnk) {
+        const int rc = disconnect_cdb2h(client->db);
+        if (rc) {
+            return rc;
+        }
+    }
+
+    return 0;
 }
