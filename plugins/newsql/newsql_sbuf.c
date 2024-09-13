@@ -367,7 +367,7 @@ retry_read:
     } else if (hdr.type == CDB2_REQUEST_TYPE__RESET) {
         struct newsql_appdata_sbuf *appdata = clnt->appdata;
         newsql_protobuf_reset_offset(&appdata->newsql_protobuf_allocator);
-        newsql_reset(clnt);
+        newsql_reset(clnt, (hdr.state == NEWSQL_STATE_LOCALCACHE));
         goto retry_read;
     }
 

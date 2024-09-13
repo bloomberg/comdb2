@@ -35,6 +35,14 @@ struct newsqlheader {
     int length;      /*  length of response */
 };
 
+typedef enum {
+    NEWSQL_STATE_NONE,
+    /* Query is making progress. Applicable only when type is HEARTBEAT */
+    NEWSQL_STATE_ADVANCING,
+    /* RESET from in-process cache. Applicable only when type is RESET */
+    NEWSQL_STATE_LOCALCACHE
+} newsql_state;
+
 struct newsql_postponed_data {
     size_t len;
     struct newsqlheader hdr;
@@ -72,7 +80,7 @@ typedef enum {
 newsql_loop_result newsql_loop(struct sqlclntstate *, CDB2SQLQUERY *);
 int is_commit_rollback(struct sqlclntstate *);
 int newsql_should_dispatch(struct sqlclntstate *, int *is_commit_rollback);
-void newsql_reset(struct sqlclntstate *);
+void newsql_reset(struct sqlclntstate *, int);
 void free_newsql_appdata(struct sqlclntstate *);
 void newsql_effects(CDB2SQLRESPONSE *, CDB2EFFECTS *, struct sqlclntstate *);
 

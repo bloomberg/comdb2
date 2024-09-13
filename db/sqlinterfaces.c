@@ -6560,6 +6560,7 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
         c->fingerprint = NULL;
     }
     c->in_transaction = clnt->in_client_trans;
+    c->in_local_cache = clnt->in_local_cache;
     Pthread_mutex_unlock(&clnt->state_lk);
 }
 
@@ -7157,6 +7158,7 @@ void print_idle_clnt(struct sqlclntstate *clnt)
     struct timeval now, elapsed;
     gettimeofday(&now, NULL);
     timersub(&now, &clnt->wait_for_rd_since, &elapsed);
-    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  [prev=> process:%s pid:%d sql:%s]  [process:%s pid:%d sql:%s] opcode:%s\n",
-           get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->prev_argv0, clnt->prev_pid, clnt->second_last_sql, clnt->argv0, clnt->conninfo.pid, clnt->last_sql, clnt->prev_opcode);
+    logmsg(LOGMSG_USER, "fd:%d  idle:%ldmins  origin:%s  [prev=> process:%s pid:%d sql:%s]  [process:%s pid:%d sql:%s] opcode:%s local-cache:%c\n",
+           get_fileno(clnt), elapsed.tv_sec / 60, clnt->origin, clnt->prev_argv0, clnt->prev_pid, clnt->second_last_sql, clnt->argv0, clnt->conninfo.pid, clnt->last_sql, clnt->prev_opcode,
+           clnt->in_local_cache ? 'Y' : 'N');
 }
