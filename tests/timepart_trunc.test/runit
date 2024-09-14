@@ -533,7 +533,13 @@ if (( $? != 0 )) ; then
 fi
 
 echo $cmd "put tunable disable_tagged_api_writes 0"
-$cmd "put tunable disable_tagged_api_writes 0"
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        cdb2sql --host $node $dbname --host $node "put tunable disable_tagged_api_writes 0"
+    done
+else
+    $cmd "put tunable disable_tagged_api_writes 0"
+fi
 if (( $? != 0 )) ; then
    echo "FAILURE to put tunable to 0"
    exit 1
@@ -547,7 +553,13 @@ if (( $? == 0 )) ; then
 fi
 
 echo $cmd "put tunable disable_tagged_api_writes 1"
-$cmd "put tunable disable_tagged_api_writes 1"
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        cdb2sql --host $node $dbname --host $node "put tunable disable_tagged_api_writes 1"
+    done
+else
+    $cmd "put tunable disable_tagged_api_writes 1"
+fi
 if (( $? != 0 )) ; then
    echo "FAILURE to put tunable to 1"
    exit 1
