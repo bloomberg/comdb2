@@ -1,1 +1,2 @@
 nokeycompr
+disable_tagged_api_writes 1
