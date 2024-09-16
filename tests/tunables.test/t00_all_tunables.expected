@@ -239,7 +239,7 @@
 (name='disable_sql_dlmalloc', description='If set, will use default system malloc for SQL state machines. By default, each thread running SQL gets a dedicated memory pool. (Default: off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_stable_for_ipu', description='For inplace update tables, disable stable find-next cursors', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_tagged_api', description='Disables 'enable_tagged_api'', type='BOOLEAN', value='ON', read_only='N')
-(name='disable_tagged_api_writes', description='Disables tag api writes', type='BOOLEAN', value='OFF', read_only='N')
+(name='disable_tagged_api_writes', description='Disables tag api writes', type='BOOLEAN', value='ON', read_only='N')
 (name='disable_temptable_pool', description='Sets 'temptable_limit' to 0.', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_tpsc_tblvers', description='Disable table version checks for time partition schema changes', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_update_shadows', description='stub out update shadows code', type='BOOLEAN', value='OFF', read_only='N')
