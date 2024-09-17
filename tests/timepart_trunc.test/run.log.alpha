@@ -1124,3 +1124,5 @@ TEST 17
 Test REBUILD partition
 TEST 18
 Test block alter
+TEST 19
+Test check for partition new over old shards
