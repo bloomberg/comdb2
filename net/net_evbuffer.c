@@ -3328,7 +3328,7 @@ static void get_hosts_evbuffer_impl(void *arg)
     int i = 1;
     struct event_info *e;
     LIST_FOREACH(e, &n->event_list, net_list_entry) {
-        if (e->decomissioned) continue;
+        if (e->decomissioned || !e->host_node_ptr) continue;
         info->hosts[i] = e->host_node_ptr;
         ++i;
         if (i == info->max_hosts) {
