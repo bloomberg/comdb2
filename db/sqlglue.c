@@ -10061,8 +10061,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         } else {
             rc = SQLITE_SCHEMA;
         }
-    } else
+    } else {
+        rdlock_schema_lk();
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+        unlock_schema_lk();
+    }
 
     if (rc) {
         char *err;

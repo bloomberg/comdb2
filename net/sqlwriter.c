@@ -52,11 +52,10 @@ struct sqlwriter {
     unsigned timed_out : 1;
     unsigned wr_continue : 1;
     unsigned packing : 1; /* 1 if writer is in sql_pack_response and wr_lock is held. */
+    unsigned recover_ddlk_failed : 1;
     struct ssl_data *ssl_data;
     int (*wr_evbuffer_fn)(struct sqlwriter *, int);
 };
-
-static void sql_trickle_cb(int fd, short what, void *arg);
 
 static void sql_enable_flush(struct sqlwriter *writer)
 {
@@ -171,8 +170,8 @@ static int wr_evbuffer(struct sqlwriter *writer, int fd)
 static void sql_flush_cb(int fd, short what, void *arg)
 {
     struct sqlwriter *writer = arg;
-    if (what & EV_TIMEOUT) {
-        recover_deadlock_evbuffer(writer->clnt);
+    if ((what & EV_TIMEOUT) && !writer->recover_ddlk_failed) {
+        writer->recover_ddlk_failed = !!recover_deadlock_evbuffer(writer->clnt);
     }
     if (!(what & EV_WRITE)) {
         return;
@@ -405,6 +404,7 @@ void sql_reset(struct sqlwriter *writer)
     writer->sent_at = time(NULL);
     writer->timed_out = 0;
     writer->wr_continue = 1;
+    writer->recover_ddlk_failed = 0;
 }
 
 int sql_peer_check(struct sqlwriter *writer)
@@ -483,7 +483,6 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
     writer->pack_hb = arg->pack_hb;
     writer->timer_base = arg->timer_base;
     writer->timer_thd = pthread_self();
-    writer->wr_continue = 1;
     writer->wr_buf = evbuffer_new();
 
     struct event_config *cfg = event_config_new();
@@ -495,6 +494,8 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
     writer->flush_ev = event_new(writer->wr_base, arg->fd, EV_WRITE | EV_PERSIST, sql_flush_cb, writer);
     writer->heartbeat_ev = event_new(writer->timer_base, arg->fd, EV_PERSIST, sql_heartbeat_cb, writer);
     writer->heartbeat_trickle_ev = event_new(writer->timer_base, arg->fd, EV_WRITE, sql_trickle_cb, writer);
+
+    sql_reset(writer);
 
     return writer;
 }
