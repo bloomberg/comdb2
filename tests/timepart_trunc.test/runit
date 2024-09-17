@@ -557,10 +557,20 @@ if (( $? != 0 )) ; then
 fi
 
 echo $cmd "put tunable disable_tagged_api_writes 0"
-$cmd "put tunable disable_tagged_api_writes 0"
-if (( $? != 0 )) ; then
-   echo "FAILURE to put tunable to 0"
-   exit 1
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        cdb2sql --host $node $dbname --host $node "put tunable disable_tagged_api_writes 0"
+        if (( $? != 0 )) ; then
+            echo "FAILURE node ${node} to put tunable to 0"
+            exit 1
+        fi
+    done
+else
+    $cmd "put tunable disable_tagged_api_writes 0"
+    if (( $? != 0 )) ; then
+        echo "FAILURE to put tunable to 0"
+        exit 1
+    fi
 fi
 
 echo $cmd "ALTER TABLE t19 PARTITIONED BY TIME PERIOD 'daily' RETENTION 3 start '2024-01-01T'"
@@ -571,11 +581,63 @@ if (( $? == 0 )) ; then
 fi
 
 echo $cmd "put tunable disable_tagged_api_writes 1"
-$cmd "put tunable disable_tagged_api_writes 1"
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        cdb2sql --host $node $dbname --host $node "put tunable disable_tagged_api_writes 1"
+        if (( $? != 0 )) ; then
+            echo "FAILURE node ${node} to put tunable to 1"
+            exit 1
+        fi
+    done
+else
+    $cmd "put tunable disable_tagged_api_writes 1"
+    if (( $? != 0 )) ; then
+        echo "FAILURE to put tunable to 1"
+        exit 1
+    fi
+fi
+
+header 19 "Test check for partition new over old shards"
+echo $cmd "create table t20(a int)"
+$cmd "create table t20(a int)"
 if (( $? != 0 )) ; then
-   echo "FAILURE to put tunable to 1"
+   echo "FAILURE to create t20"
    exit 1
 fi
+
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-3*24*3600-60)'`
+echo $cmd "CREATE TIME PARTITION ON t20 as tv20 PERIOD 'daily' RETENTION 2 START '${starttime}'"
+$cmd "CREATE TIME PARTITION ON t20 as tv20 PERIOD 'daily' RETENTION 2 START '${starttime}'"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create time partition tv20"
+   exit 1
+fi
+
+sleep 30
+
+echo $cmd "drop time partition tv20"
+$cmd "drop time partition tv20"
+if (( $? != 0 )) ; then
+   echo "FAILURE to drop time partition tv20"
+   exit 1
+fi
+
+sleep 10
+
+echo $cmd "create table t20(a int)"
+$cmd "create table t20(a int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to recreate t20"
+   exit 1
+fi
+
+echo $cmd "alter table t20 partitioned by time period 'daily' retention 2 start '20240901T'"
+$cmd "alter table t20 partitioned by time period 'daily' retention 2 start '20240901T'"
+if (( $? == 0 )) ; then
+   echo "FAILURE to block creating overlapping shards"
+   exit 1
+fi
+
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
