@@ -1024,6 +1024,7 @@ static int newsql_redirect_foreign(struct sqlclntstate *clnt, char **foreign_db,
 
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
+    fprintf(stderr, "SENDING %d\n", t);
     switch (t) {
     case RESPONSE_COLUMNS: return newsql_columns(c, a);
     case RESPONSE_COLUMNS_LUA: return newsql_columns_lua(c, a);

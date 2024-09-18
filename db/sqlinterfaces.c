@@ -1402,7 +1402,7 @@ void clear_sqlhist()
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate)
 {
-    if (gbl_track_sqlengine_states)
+    /*if (gbl_track_sqlengine_states)*/
         logmsg(LOGMSG_USER, "%p: %p %s:%d %d->%d\n", (void *)pthread_self(), clnt, file, line, clnt->ctrl_sqlengine,
                newstate);
 

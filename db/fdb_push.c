@@ -528,10 +528,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 
     /* if not standalone, and this is the first reachout to this fdb, send begin */
     if (clnt->in_client_trans && created) {
+        clnt->intrans = 1;
         rc = cdb2_run_statement(hndl, "begin");      
         if (rc != CDB2_OK_DONE) {
-            errstat_set_rcstrf(err, rc = -1, "failed to begin transaction");
-            goto free;
+            goto hndl_err;
         }
     }
 
@@ -594,13 +594,20 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
             return -1;
         }
         goto free;
+    } else {
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     }
 
-    return -1;
+    return 0;
 
 hndl_err:
     const char *errstr = cdb2_errstr(hndl);
     errstat_set_rcstrf(err, rc, "%s", errstr);
+    //rc = write_response(clnt, RESPONSE_ERROR_PREPARE, (void*)errstr, rc);
+    rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "Failed to write error to client");
+    }
 free:
     /* remote the fdb_tran_t */
     fdb_free_tran(clnt, tran);

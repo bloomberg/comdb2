@@ -4196,8 +4196,17 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
             continue;
 
-        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
-        if (clnt->use_2pc && !rc) {
+        if (tran->is_cdb2api) {
+            rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+        } else {
+            rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to commit %s rc %d\n",
+                   __func__, tran->fdb->dbname, rc);
+        }
+
+        if (clnt->use_2pc) {
             const char *tier = fdb_dbname_class_routing(tran->fdb);
             if ((rc = add_participant(clnt, tran->fdb->dbname, tier)) != 0) {
                 tran->errstr = strdup("multiple participants with same dbname");
@@ -4213,6 +4222,9 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
         {
             if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
+                continue;
+
+            if (tran->is_cdb2api)
                 continue;
 
             rc = fdb_recv_rc(msg, tran);
@@ -4298,7 +4310,16 @@ int fdb_trans_rollback(sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+        if (tran->is_cdb2api) {
+            rc = cdb2_run_statement(tran->fcon.hndl, "rollback");
+        } else {
+            rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+        }
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to rollback %s rc %d\n",
+                   __func__, tran->fdb->dbname, rc);
+        }
 
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n",
