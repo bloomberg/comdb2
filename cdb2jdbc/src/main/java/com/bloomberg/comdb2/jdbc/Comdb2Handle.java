@@ -1959,7 +1959,8 @@ readloop:
         if (max - min < 2)
             return min;
         for (int i = 0; i < 10; i++) {
-            val = rnd.nextInt() % (max - min) + min;
+            /* nextInt(N) ensures non-negative */
+            val = rnd.nextInt(max - min) + min;
             if (val != exclude)
                 return val;
         }
