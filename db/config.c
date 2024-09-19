@@ -386,6 +386,7 @@ static char *legacy_options[] = {
     "disable_inplace_blob_optimization",
     "disable_inplace_blobs",
     "disable_osql_blob_optimization",
+    "disable_tagged_api_writes 0",
     "disable_tpsc_tblvers",
     "disallow write from beta if prod",
     "dont_forbid_ulonglong",
