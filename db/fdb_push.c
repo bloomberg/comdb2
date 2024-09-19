@@ -504,6 +504,9 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     if (!push)
         return -2;
 
+    /* this was handled back here through an "error"; clear it */
+    clnt->had_errors = 0;
+
     fdb = get_fdb(push->remotedb);
     if (!fdb)
         return -2;
@@ -519,20 +522,26 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     if (!tran)
         return -1;
 
-    /* get a connection */
-    tran->is_cdb2api = 1;
-    tran->fcon.hndl = hndl =_hndl_open(clnt, NULL,
-                                       0 /* no sqlite rows for writes */, err);
-    if (!tran->fcon.hndl)
-        return -1;
-
-    /* if not standalone, and this is the first reachout to this fdb, send begin */
-    if (clnt->in_client_trans && created) {
-        clnt->intrans = 1;
-        rc = cdb2_run_statement(hndl, "begin");      
-        if (rc != CDB2_OK_DONE) {
-            goto hndl_err;
+    if (created) {
+        /* get a connection */
+        tran->is_cdb2api = 1;
+        hndl = tran->fcon.hndl = _hndl_open(clnt, NULL,
+                                           0 /* no sqlite rows for writes */, err);
+        if (!tran->fcon.hndl)
+            return -1;
+        if (clnt->in_client_trans) {
+            /* if not standalone, and this is the first reachout to this fdb, send begin */
+            clnt->intrans = 1;
+            rc = cdb2_run_statement(hndl, "begin");      
+            while (rc == CDB2_OK) {
+                rc = cdb2_next_record(hndl);
+            }
+            if (rc != CDB2_OK_DONE) {
+                goto hndl_err;
+            }
         }
+    } else {
+        hndl = tran->fcon.hndl;
     }
 
     /* run the statement */
@@ -550,8 +559,11 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 
     cdb2_effects_tp effects;
 
-    if ((rc = cdb2_get_effects(hndl, &effects))) {
-        goto hndl_err;
+
+    if (!clnt->in_client_trans) {
+        if ((rc = cdb2_get_effects(hndl, &effects))) {
+            goto hndl_err;
+        }
     }
 
     int ncols = cdb2_numcolumns(hndl);

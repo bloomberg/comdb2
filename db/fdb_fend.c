@@ -4204,6 +4204,13 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to commit %s rc %d\n",
                    __func__, tran->fdb->dbname, rc);
+
+            /* pass the error to clnt */
+            bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
+            errstat_set_rc(&clnt->osql.xerr, rc);
+            if (tran->errstr) // TODO: this can be non-null even when no error
+                errstat_set_str(&clnt->osql.xerr, tran->errstr);
+            clnt->osql.error_is_remote = 1;
         }
 
         if (clnt->use_2pc) {
@@ -4218,7 +4225,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
                    tran->fdb->dbname, rc);
     }
 
-    if (!clnt->dist_txnid) {
+    if (!rc && !clnt->dist_txnid) {
         LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
         {
             if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
@@ -4242,13 +4249,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
     }
 
     /* store distributed rc in clnt */
-    if (rc) {
-        bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
-        errstat_set_rc(&clnt->osql.xerr, rc);
-        if (tran->errstr) // TODO: this can be non-null even when no error
-            errstat_set_str(&clnt->osql.xerr, tran->errstr);
-        clnt->osql.error_is_remote = 1;
-    } else {
+    if (!rc) {
         errstat_set_rc(&clnt->osql.xerr, 0);
         errstat_set_str(&clnt->osql.xerr, NULL);
     }

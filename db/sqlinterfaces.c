@@ -2859,13 +2859,14 @@ static void update_schema_remotes(struct sqlclntstate *clnt,
 }
 
 static void _prepare_error(struct sqlthdstate *thd,
-                                struct sqlclntstate *clnt,
-                                struct sql_state *rec, int rc,
-                                struct errstat *err)
+                           struct sqlclntstate *clnt,
+                           struct sql_state *rec, int rc,
+                           struct errstat *err)
 {
     const char *errstr;
 
-    if (rc == SQLITE_SCHEMA_DOHSQL)
+    if (rc == SQLITE_SCHEMA_DOHSQL ||
+        rc == SQLITE_SCHEMA_PUSH_REMOTE_WRITE)
         return;
 
     if (in_client_trans(clnt) &&
