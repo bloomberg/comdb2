@@ -3809,11 +3809,11 @@ static int net_send_decom(netinfo_type *netinfo_ptr, const char *decom_host,
 
 static int process_decom_int(netinfo_type *netinfo_ptr, char *host)
 {
-    net_decom_node(netinfo_ptr, host);
     if (gbl_libevent) {
         decom(host);
         return 0;
     } else {
+        net_decom_node(netinfo_ptr, host);
         return run_net_decom_node_delayed(netinfo_ptr, host);
     }
 }
