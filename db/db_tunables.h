@@ -2434,4 +2434,6 @@ REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc
                  TUNABLE_INTEGER, &gbl_sc_status_max_rows, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_process_pstack_time", "pstack the server if rep_process runs longer than time specified in secs (Default: 30s)",
                  TUNABLE_INTEGER, &gbl_rep_process_pstack_time, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sql_recover_ddlk_duration", "Run recover_deadlock after specified duration, if an SQL statement has waiters. To disable, set to 0 (Default: 60s)",
+                 TUNABLE_INTEGER, &gbl_sql_recover_ddlk_duration, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

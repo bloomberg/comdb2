@@ -108,7 +108,9 @@
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
 #include <translistener.h>
+#include <sqlwriter.h>
 
+int gbl_sql_recover_ddlk_duration = 60;
 int gbl_delay_sql_lock_release_sec = 5;
 
 unsigned long long get_id(bdb_state_type *);
@@ -611,8 +613,6 @@ static int is_sqlite_db_init(BtCursor *pCur)
 
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
 {
-    extern int gbl_epoch_time;
-    extern int gbl_watchdog_disable_at_start;
     if (gbl_watchdog_disable_at_start)
         return 0;
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
@@ -625,6 +625,7 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
     }
     return 0;
 }
+
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
@@ -634,7 +635,6 @@ int gbl_debug_sleep_in_analyze;
 static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
 {
     int rc;
-    extern int gbl_epoch_time;
 
     if (thd == NULL)
         return 0;
@@ -697,6 +697,21 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
         rc = SQLITE_COST_TOO_HIGH;
         goto done;
     }
+
+    if (no_recover_deadlock ||
+        clnt->last_recover_ddlk == 0 ||
+        gbl_sql_recover_ddlk_duration == 0 ||
+        gbl_epoch_time - clnt->last_recover_ddlk < gbl_sql_recover_ddlk_duration
+    ){
+        goto done;
+    }
+
+    rc = recover_deadlock_evbuffer(clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: recover_deadlock failed sql:\"%.32s%s\"\n",
+               __func__, clnt->sql, strlen(clnt->sql) > 32 ? "..." : "");
+    }
+    clnt->last_recover_ddlk = gbl_epoch_time;
 
 done:
     Pthread_mutex_unlock(&clnt->sql_tick_lk);
@@ -7315,7 +7330,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "get_data_int: unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "%s: unhandled type %d query:%s\n", __func__, f->type, pCur->clnt->sql);
         break;
     }
 
@@ -10032,8 +10047,11 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         } else {
             rc = SQLITE_SCHEMA;
         }
-    } else
+    } else {
+        rdlock_schema_lk();
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+        unlock_schema_lk();
+    }
 
     if (rc) {
         char *err;

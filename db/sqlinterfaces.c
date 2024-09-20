@@ -3651,6 +3651,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     } else {
         clnt->has_recording = v->recording;
     }
+    clnt->last_recover_ddlk = gbl_epoch_time;
     clnt->nsteps = 0;
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
@@ -5522,10 +5523,7 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock)) {
         flags = RECOVER_DEADLOCK_FORCE_FAIL;
     }
-    if (!recover_deadlock_flags(env, clnt, NULL, 0, __func__, __LINE__, flags)) {
-        return -1;
-    }
-    return 0;
+    return recover_deadlock_flags(env, clnt, NULL, 0, __func__, __LINE__, flags);
 }
 
 static int recover_deadlock_sbuf(struct sqlclntstate *clnt)

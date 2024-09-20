@@ -709,6 +709,7 @@ struct sqlclntstate {
 
     pthread_t debug_sqlclntstate;
     int last_check_time;
+    int last_recover_ddlk;
     int query_timeout;
     int statement_timedout;
     struct conninfo conn;
