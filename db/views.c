@@ -966,6 +966,14 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 
 done:
     if (run) {
+        /* view might go away after unlock */
+        cron_sched_t *sched = NULL;
+        uuid_t u;
+        if (rc == VIEW_NOERR) {
+            sched = _get_sched_byname(view->period, view->name);
+            comdb2uuidcpy(u, view->source_id);
+        }
+
         Pthread_rwlock_unlock(&views_lk);
         /* commit_adaptive unlocks the schema-lk */
         if (rc != VIEW_NOERR)
@@ -981,10 +989,9 @@ done:
                               "Adding phase 2 at %d for %s\n",
                               shardChangeTime, pShardName);
 
-            if (cron_add_event(_get_sched_byname(view->period, view->name),
-                               NULL, shardChangeTime, _view_cron_phase2,
+            if (cron_add_event(sched, NULL, shardChangeTime, _view_cron_phase2,
                                tmp_str = strdup(name), pShardName, NULL,
-                               NULL, &view->source_id, err, NULL) == NULL) {
+                               NULL, &u, err, NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
@@ -2930,6 +2937,12 @@ int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
         if (!view->shards[i].tblname) {
             errstat_set_rcstrf(err, rc = VIEW_ERR_GENERIC,
                                "malloc shard %i name", i);
+            goto error;
+        }
+        /* do we have a table with the same name */
+        if (get_dbtable_by_name(view->shards[i].tblname)) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                               "shard %s %d exists", view->shards[i].tblname, i);
             goto error;
         }
         old_name = new_name;

@@ -5770,6 +5770,9 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         Pthread_mutex_unlock(parent->emit_mutex);
         if (rc) return rc;
     }
+    if (nargs != parent->ntypes) {
+        return luaL_error(lua, "bad number of emit columns:%d (need:%d)", nargs, parent->ntypes);
+    }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
     int sp_rc = sp->rc;
     sp->rc = 0;

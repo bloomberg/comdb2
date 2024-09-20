@@ -4472,6 +4472,17 @@ deadlock_again:
             } else {
                 pagesize = bdb_state->attr->pagesizedta;
             }
+
+            extern int gbl_physrep_ignore_queues;
+            if (gbl_is_physical_replicant && gbl_physrep_ignore_queues) {
+                char new[PATH_MAX];
+                print(bdb_state, "truncating ignored queuedb %s\n", bdb_trans(tmpname, new));
+                rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
+                if (rc != 0) {
+                    logmsg(LOGMSG_ERROR, "truncate %s error %d\n", bdb_trans(tmpname, new), errno);
+                }
+            }
+
             rc = dbp->set_pagesize(dbp, pagesize);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "unable to set pagesize on qdb to %d\n",

@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <mem.h>
+#include <cdb2api.h>
 
 #include "stepper_client.h"
 
@@ -41,6 +42,8 @@ int main( int argc, char **argv)
    char  line[MAX_LINE];
    int   rc = 0;
    int   lineno = 0;
+
+   signal(SIGPIPE, SIG_IGN);
 
    comdb2ma_init(0, 0);
 
@@ -113,6 +116,17 @@ int main( int argc, char **argv)
 
       if(line[0] == '\n' || line[0] == '#')
          continue;
+
+      if(strcmp(line, "bounce_connection\n") == 0) {
+         rc = clnt_disconnect_all();
+         if (rc) {
+            fprintf( stderr, "Error disconnecting clients\n");
+            break;
+         }
+
+         continue;
+      }
+
       id = parse_line( line, &query);
       if (id<0)
       {
@@ -142,7 +156,16 @@ int main( int argc, char **argv)
 
       if (debug)
          fprintf( out, "%d [%s]\n", id, query);
-      rc = clnt_run_query(clnt, query, out);
+
+      int retries = 0;
+      while (retries < 10) {
+         rc = clnt_run_query(clnt, query, out);
+         if (rc != CDB2ERR_IO_ERROR) {
+            break;
+         }
+         retries++;
+      }
+
       if (rc)
       {
          fprintf( stderr, "Error with query to clnt id=%d, %s",
@@ -217,7 +240,5 @@ static int parse_line( char *line, char **query)
    return id;
 }
 
-// TODO: not sure why this is only undefined on MacOS
-#ifdef _DARWIN_C_SOURCE
+// TODO: not sure why this is undefined
 int gbl_ssl_allow_localhost = 0;
-#endif

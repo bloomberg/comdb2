@@ -1953,6 +1953,14 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 } else {
                     rc = ii + 1;
                 }
+            } else if (strncasecmp(sqlstr, "typessql", 8) == 0) {
+                sqlstr += 8;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->typessql = 0;
+                } else {
+                    clnt->typessql = 1;
+                }
             } else {
                 rc = ii + 1;
             }

@@ -1103,7 +1103,12 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
     td.sb = sb;
     td.scale = scale;
     td.override_llmeta = override_llmeta;
-    strncpy0(td.table, table, sizeof(td.table));
+    struct dbtable *dbtable = get_dbtable_by_name(table);
+    if (dbtable && dbtable->sqlaliasname)
+        strncpy0(td.table, dbtable->sqlaliasname,
+                sizeof(td.table));
+    else
+        strncpy0(td.table, table, sizeof(td.table));
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = (thd) ? thd->clnt : NULL;
@@ -1182,8 +1187,12 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
-        strncpy0(td[idx].table, thedb->dbs[i]->tablename,
-                 sizeof(td[idx].table));
+        if (thedb->dbs[i]->sqlaliasname)
+            strncpy0(td[idx].table, thedb->dbs[i]->sqlaliasname,
+                     sizeof(td[idx].table));
+        else
+            strncpy0(td[idx].table, thedb->dbs[i]->tablename,
+                     sizeof(td[idx].table));
 
         if (clnt) {
             td[idx].current_user = clnt->current_user;

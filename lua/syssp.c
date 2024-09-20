@@ -532,12 +532,22 @@ extern int gbl_physrep_max_candidates;
 
 static int db_comdb_physrep_tunables(Lua L)
 {
+    int fanout = gbl_physrep_fanout;
+    if (lua_isstring(L, 1)) {
+        char *sourcedb = (char*) lua_tostring(L, -1);
+        fanout = physrep_fanout_get(sourcedb);
+        logmsg(LOGMSG_DEBUG, "%s: fanout for %s is %d\n", __func__, sourcedb, fanout);
+    }
+    else {
+        return luaL_error(L, "Requires sourcedb");
+    }
+
     int tunables_count = 3;
 
     lua_createtable(L, tunables_count, 0);
 
     lua_pushstring(L, "physrep_fanout");
-    lua_pushinteger(L, gbl_physrep_fanout);
+    lua_pushinteger(L, fanout);
     lua_settable(L, -3);
 
     lua_pushstring(L, "physrep_max_candidates");

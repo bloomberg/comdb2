@@ -93,11 +93,13 @@ dbfile_info *dbfile_init(dbfile_info *f, const char *filename)
         return NULL;
     }
 
+    int allocd_new_dbfile = 0;
     if (!f) {
         f = malloc(sizeof(dbfile_info));
         if (f == NULL) {
             goto err;
         }
+        allocd_new_dbfile = 1;
     }
 
     f->filename = strdup(filename);
@@ -152,12 +154,26 @@ err:
     if (fd >= 0) {
         Close(fd);
     }
-    free(f);
+    if (f) {
+        assert(f->filename);
+        free((char *)f->filename);
+        f->filename = NULL;
+    }
+    if (allocd_new_dbfile) {
+        assert(f);
+        free(f);
+    }
     return NULL;
 }
 
 void dbfile_deinit(dbfile_info *f)
 {
+    if (f->filename) {
+        free((char *)f->filename);
+    }
+    if (f->pagebuf) {
+        free(f->pagebuf);
+    }
     free(f);
 }
 
@@ -355,23 +371,19 @@ int read_write_file(dbfile_info *f, void *writer_ctx, writer_cb writer)
         pagesize = DEFAULT_PAGE_SIZE;
     }
 
-    if (f->bufsize == 0) {
+    if (!f->pagebuf) {
         f->bufsize = pagesize;
 
         while ((f->bufsize << 1) <= MAX_BUF_SIZE) {
             f->bufsize <<= 1;
         }
 
-#if !defined(_SUN_SOURCE)
         if (posix_memalign((void **)&(f->pagebuf), 512, f->bufsize)) {
             logmsg(LOGMSG_ERROR, "%s:%d posix_memalign() failed with errno(%s)\n",
                                  __func__, __LINE__, strerror(errno));
             rc = 1;
             goto done;
         }
-#else
-        f->pagebuf = (uint8_t *)memalign(512, f->bufsize);
-#endif
     }
 
     uint8_t *pagebuf = f->pagebuf;

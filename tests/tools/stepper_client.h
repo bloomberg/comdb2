@@ -58,4 +58,10 @@ int clnt_repo_destroy(void);
  */
 client_t* clnt_get( int id);
 
+/**
+ * Disconnect all clients
+ * Returns 0 on success
+ */
+int clnt_disconnect_all(void);
+
 #endif

@@ -1,0 +1,3 @@
+dtastripe 1
+load_cache_threads 1
+logmsg level info

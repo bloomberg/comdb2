@@ -9,3 +9,5 @@
 (version='emit-test')
 (hello()='hello')
 (world='world')
+(version='emit')
+[exec procedure bad()] failed with rc -3 [db:emit(nil)...]:4: bad number of emit columns:1 (need:3)

@@ -1122,3 +1122,7 @@ cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, 
 (out='table  $2_91201505 sz      64.00KB   1% (dta 64.00KB) partition teststatsize')
 TEST 17
 Test REBUILD partition
+TEST 18
+Test block alter
+TEST 19
+Test check for partition new over old shards

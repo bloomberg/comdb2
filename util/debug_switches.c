@@ -88,6 +88,7 @@ static struct debug_switches {
     int rep_rec_is_delayed;
     int get_tmp_dir_sleep;
     int ignore_null_auth_func;
+    int load_cache_delay;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -270,6 +271,7 @@ int init_debug_switches(void)
     register_debug_switch("test_trigger_deadlock", &debug_switches.test_trigger_deadlock);
     register_debug_switch("get_tmp_dir_sleep", &debug_switches.get_tmp_dir_sleep);
     register_debug_switch("ignore_null_auth_func", &debug_switches.ignore_null_auth_func);
+    register_debug_switch("load_cache_delay", &debug_switches.load_cache_delay);
     return 0;
 }
 
@@ -543,4 +545,8 @@ void debug_switch_set_tmp_dir_sleep(int val)
 int debug_switch_ignore_null_auth_func(void)
 {
     return debug_switches.ignore_null_auth_func;
+}
+int debug_switch_load_cache_delay(void)
+{
+    return debug_switches.load_cache_delay;
 }

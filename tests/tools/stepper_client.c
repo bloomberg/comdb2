@@ -6,6 +6,9 @@
 #include <inttypes.h>
 #include <list.h>
 #include <cdb2api.h>
+#include <sys/socket.h>
+#include <cdb2api.c>
+#include <sbuf2.c>
 #include "stepper_client.h"
 
 /* storing clients (i.e. comm pipes) */
@@ -102,7 +105,7 @@ static void printcol(cdb2_hndl_tp * db, void *val, int col, FILE *out) {
 
 /**
  * Send query using the "clnt" client
- * Returns 0 on success
+ * Returns 0 on success and CDB2ERR_IO_ERROR on I/O error
  *
  */
 int clnt_run_query( client_t *clnt, char *query, FILE *out)
@@ -111,6 +114,9 @@ int clnt_run_query( client_t *clnt, char *query, FILE *out)
     if (rc) {
         const char *err = cdb2_errstr(clnt->db);
         fprintf(out, "[%s] failed with rc %d %s\n", query, rc, err ? err : "");
+    }
+    if (rc == CDB2ERR_IO_ERROR) {
+        return rc;
     }
     int ncols;
     rc = cdb2_next_record(clnt->db);
@@ -203,4 +209,31 @@ client_t* clnt_get( int id)
     }
 
     return NULL;
+}
+
+static int disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
+    const int rc = cdb2h->sb ? shutdown(cdb2h->sb->fd, 2) : 0;
+    if (rc) {
+        fprintf( stderr, "%s: Failed with errno(%s)", __func__, strerror(errno));
+    }
+
+    return rc;
+}
+
+/**
+ * Disconnect all clients
+ * Returns 0 on success
+ */
+int clnt_disconnect_all(void)
+{
+    client_t *client;
+
+    LISTC_FOR_EACH(&clients, client, lnk) {
+        const int rc = disconnect_cdb2h(client->db);
+        if (rc) {
+            return rc;
+        }
+    }
+
+    return 0;
 }

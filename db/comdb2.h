@@ -1609,6 +1609,7 @@ extern int gbl_uses_externalauth;
 extern int gbl_uses_externalauth_connect;
 extern int gbl_externalauth_warn;
 extern int gbl_identity_cache_max;
+extern int gbl_iam_verbosity;
 extern char* gbl_foreign_metadb;
 extern char* gbl_foreign_metadb_class;
 extern char* gbl_foreign_metadb_config;
@@ -3264,6 +3265,7 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
 
 extern int gbl_rowlocks;
 extern int gbl_disable_tagged_api;
+extern int gbl_disable_tagged_api_writes;
 extern int gbl_snapisol;
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;

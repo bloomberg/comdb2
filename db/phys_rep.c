@@ -109,6 +109,62 @@ int sc_ready(void);
 int is_commit(u_int32_t rectype);
 int physrep_bdb_wait_for_seqnum(bdb_state_type *bdb_state, DB_LSN *lsn, void *data);
 
+static hash_t *physrep_fanout = NULL;
+static pthread_mutex_t fanout_lk = PTHREAD_MUTEX_INITIALIZER;
+
+struct fanout_override {
+    char *dbname;
+    int fanout;
+};
+
+void physrep_fanout_override(const char *dbname, int fanout)
+{
+    Pthread_mutex_lock(&fanout_lk);
+    if (!physrep_fanout) {
+        physrep_fanout = hash_init_strptr(offsetof(struct fanout_override, dbname));
+    }
+    struct fanout_override *fo = hash_find(physrep_fanout, &dbname);
+    if (!fo) {
+        fo = malloc(sizeof(struct fanout_override));
+        fo->dbname = strdup(dbname);
+        hash_add(physrep_fanout, fo);
+    }
+    fo->fanout = fanout;
+    Pthread_mutex_unlock(&fanout_lk);
+}
+
+int physrep_fanout_get(const char *dbname)
+{
+    int fanout = gbl_physrep_fanout;
+    Pthread_mutex_lock(&fanout_lk);
+    if (physrep_fanout) {
+        struct fanout_override *fo = hash_find(physrep_fanout, &dbname);
+        if (fo) {
+            fanout = fo->fanout;
+        }
+    }
+    Pthread_mutex_unlock(&fanout_lk);
+    return fanout;
+}
+
+static int physrep_fanout_print(void *obj, void *arg)
+{
+    struct fanout_override *fo = (struct fanout_override *)obj;
+    physrep_logmsg(LOGMSG_USER, "dbname %s fanout %d\n", fo->dbname, fo->fanout);
+    return 0;
+}
+
+void physrep_fanout_dump(void)
+{
+    Pthread_mutex_lock(&fanout_lk);
+    if (physrep_fanout) {
+        hash_for(physrep_fanout, physrep_fanout_print, NULL);
+    } else {
+        physrep_logmsg(LOGMSG_USER, "no fanout overrides\n");
+    }
+    Pthread_mutex_unlock(&fanout_lk);
+}
+
 void cleanup_hosts()
 {
     DB_Connection *cnct;
@@ -209,37 +265,27 @@ static int append_quoted_source_hosts(char *buf, int buf_len, int *rc) {
     static char *comdb2dbname = NULL;
 
     if (!comdb2dbname) {
-        cdb2_get_comdb2db(&comdb2dbname, &comdb2dbclass);
-    }
-
-    // Also fix the 'source tier' in case it is one of the following
-    if ((strncasecmp(gbl_physrep_source_host, "test", 4) == 0) ||
-        (strncasecmp(gbl_physrep_source_host,  "dev", 3) == 0) ||
-        (strncasecmp(gbl_physrep_source_host, "fuzz", 4) == 0)) {
-        // test is dev
-        gbl_physrep_source_host = (strncasecmp(gbl_physrep_source_host, "fuzz", 4) == 0) ? "fuzz" : "dev";
+        cdb2_get_comdb2db(&comdb2dbname);
+        comdb2dbclass = (strcmp(comdb2dbname, "comdb3db") == 0) ? "dev" : "prod";
     }
 
     *rc = cdb2_open(&comdb2db, comdb2dbname, comdb2dbclass, 0);
     if (*rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (err: %s rc: %d)\n",
-                       __func__, __LINE__, comdb2dbname, comdb2dbclass,
-                       cdb2_errstr(comdb2db), *rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s@%s (err: %s rc: %d)\n", __func__, __LINE__,
+                       comdb2dbname, comdb2dbclass, cdb2_errstr(comdb2db), *rc);
         goto err;
     }
 
     *rc = cdb2_bind_param(comdb2db, "dbname", CDB2_CSTRING, gbl_physrep_source_dbname, strlen(gbl_physrep_source_dbname));
     if (*rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to bind dbname (rc: %d)\n",
-                       __func__, __LINE__, *rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to bind dbname (rc: %d)\n", __func__, __LINE__, *rc);
         goto err;
     }
 
     *rc = cdb2_bind_param(comdb2db, "class", CDB2_CSTRING, gbl_physrep_source_host,
                           strlen(gbl_physrep_source_host));
     if (*rc) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to bind class (rc: %d)\n",
-                       __func__, __LINE__, *rc);
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to bind class (rc: %d)\n", __func__, __LINE__, *rc);
         goto err;
     }
 

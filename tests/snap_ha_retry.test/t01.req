@@ -1,0 +1,9 @@
+1 set hasql on
+1 set transaction snapshot isolation
+1 insert into t1 values(1)
+1 begin
+2 insert into t1 values(2)
+1 select * from t1
+bounce_connection
+1 select * from t1
+1 commit

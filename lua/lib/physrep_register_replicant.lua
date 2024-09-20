@@ -8,7 +8,7 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
     db:begin()
 
     -- Retrieve physrep tunables
-    local tunables = sys.physrep_tunables()
+    local tunables = sys.physrep_tunables(source_dbname)
 
     -- The physical replicant is attempting a fresh registration; remove it
     -- from the comdb2_physrep_connections table.

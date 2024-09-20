@@ -7554,6 +7554,11 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
         return;
     }
 
+    if (!gbl_disable_tagged_api || !gbl_disable_tagged_api_writes) {
+        setError(pParse, SQLITE_ABORT, "Cannot create partition if tags enabled");
+        return;
+    }
+
     partition = _get_partition(pParse, 0);
     if (!partition)
         return;

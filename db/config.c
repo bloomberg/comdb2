@@ -386,6 +386,7 @@ static char *legacy_options[] = {
     "disable_inplace_blob_optimization",
     "disable_inplace_blobs",
     "disable_osql_blob_optimization",
+    "disable_tagged_api_writes 0",
     "disable_tpsc_tblvers",
     "disallow write from beta if prod",
     "dont_forbid_ulonglong",
@@ -1491,6 +1492,22 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_INFO, "Physrep ignoring table %s\n", table);
             physrep_add_ignore_table(table);
         }
+    } else if (tokcmp(tok, ltok, "physrep_fanout_override") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "physrep_fanout_override requires dbname & fanout value\n");
+            return -1;
+        }
+        char *dbname = alloca(ltok + 1);
+        tokcpy(tok, ltok, dbname);
+
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_FATAL, "physrep_fanout_override requires dbname & fanout value\n");
+            return -1;
+        }
+        int fanout = toknum(tok, ltok);
+        physrep_fanout_override(dbname, fanout);
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
         tok = segtok(line, len, &st, &ltok);
 

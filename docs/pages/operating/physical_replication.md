@@ -167,6 +167,7 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * replicate_from dbname @host/tier: This line sets the source host/cluster. It is required for all physical replicants.
 * replicate_wait <sec>: Tells the physical replicant to wait for this many seconds before applying the log records.
 * physrep_metadb: If set, all the nodes will connect to this database (as against source host/cluster mentioned via `replicate_from`) for replication metadata tables
+* physrep_fanout_override <dbname> <fanout>: This is set on the metadb, and allows per-database overrides of the 'physrep_fanout' tunable.  The 'physrep_fanout_override' message-trap allows this to be set dynamically.  The 'physrep_fanout_dump' message-trap prints the current overrides.
 * physrep_ignore <tables>: All the log records that belong to any of these tables are ignored by physical replicants
 * nonames: This configuration forces system database file names to not carry the database name. This setting is required for physical-log based replication to work properly.
 * elect_highest_committed_gen: Bias election by the highest generation in the logfile. This setting is required for physical-log based replication to work properly.

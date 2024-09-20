@@ -27,6 +27,7 @@
 /* of each source file using the threads library. Otherwise, the  */
 /* -D_THREAD_SAFE compilation flag should be used, or the cc_r    */
 /* compiler used. In this case, the flag is automatically set.    */
+
 #if defined(DFPAL_OS_WINDOWS) /* { */
   #define _MT              /* must be defined before any headers */
   #include <windows.h>

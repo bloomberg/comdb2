@@ -3502,7 +3502,7 @@ static void get_hosts_evbuffer_impl(void *arg)
     int i = 1;
     struct event_info *e;
     LIST_FOREACH(e, &n->event_list, net_list_entry) {
-        if (e->decomissioned) continue;
+        if (e->decomissioned || !e->host_node_ptr) continue;
         info->hosts[i] = e->host_node_ptr;
         ++i;
         if (i == info->max_hosts) {
@@ -3548,10 +3548,10 @@ void decom(char *host)
     if (h == NULL) {
         return;
     }
-    logmsg(LOGMSG_USER, "%s host:%s\n", __func__, host);
     struct event_info *e;
     LIST_FOREACH(e, &h->event_list, host_list_entry) {
         if (e->decomissioned) continue;
+        net_decom_node(e->net_info->netinfo_ptr, e->host);
         set_decom(e);
         do_close(e, send_decom_all);
     }

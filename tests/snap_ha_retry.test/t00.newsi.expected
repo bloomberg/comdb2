@@ -14,10 +14,18 @@ Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 1
 [insert into t1 values(122,1)] rc 0
-Effects not sent by comdb2 server. 
+Number of rows affected 2
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 2
 [insert into t1 values(133,1)] rc 0
 [disconnect] rc 0
-Effects not sent by comdb2 server. 
+Number of rows affected 3
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 3
 [insert into t1 values(144,1)] rc 0
 Number of rows affected 3
 Number of rows selected 0

@@ -33,6 +33,18 @@ function create_tables
 
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t4(a int, b blob)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index t4a on t4(a)"
+
+    # Consumer queues should be truncated in physrep
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create procedure const1 version 'v1' {$(cat consumer.lua)}\$\$
+create procedure const2 version 'v1' {$(cat consumer.lua)}\$\$
+create procedure const3 version 'v1' {$(cat consumer.lua)}\$\$
+create procedure const4 version 'v1' {$(cat consumer.lua)}\$\$
+create lua consumer const1 on (table t1 for insert and update and delete)
+create lua consumer const2 on (table t1 for insert and update and delete)
+create lua consumer const3 on (table t1 for insert and update and delete)
+create lua consumer const4 on (table t1 for insert and update and delete)
+EOF
 }
 
 function fill_tables
@@ -126,6 +138,10 @@ function check_physrep_file_sizes
         [[ "$fl" == *"datas"* ]] && [[ "$sz" != 8192 ]] && failexit "$fl was not truncated"
         [[ "$fl" == *"blobs"* ]] && [[ "$sz" != 131072 ]] && failexit "$fl was not truncated"
         [[ "$fl" == *"index"* ]] && [[ "$sz" != 8192 ]] && failexit "$fl was not truncated"
+    done
+
+    ls -l $DEST_DBDIR/__qconst* | while read perm i1 own grp sz mon day tm fl ; do
+        [[ "$fl" == *"queuedb"* ]] && [[ "$sz" != 131072 ]] && failexit "$fl was not truncated"
     done
 }
 

@@ -235,6 +235,8 @@ REGISTER_TUNABLE("disable_page_latches", "Disables 'page_latches'",
 REGISTER_TUNABLE("disable_partial_indexes", "Disables 'enable_partial_indexes'",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("force_writesql", "Force admin mode to for write sql.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_force_writesql, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("logmsg.epochms", "Show epochms in log-messages.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_logmsg_epochms, READONLY | NOARG, NULL, NULL, NULL, NULL);
 
@@ -330,6 +332,9 @@ REGISTER_TUNABLE("disable_sql_dlmalloc",
                  TUNABLE_BOOLEAN, &gbl_disable_sql_dlmalloc, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_tagged_api", "Disables 'enable_tagged_api'",
                  TUNABLE_BOOLEAN, &gbl_disable_tagged_api, NOARG, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("disable_tagged_api_writes", "Disables tag api writes",
+                 TUNABLE_BOOLEAN, &gbl_disable_tagged_api_writes, NOARG, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("disable_temptable_pool", "Sets 'temptable_limit' to 0.",
                  TUNABLE_BOOLEAN, &gbl_temptable_pool_capacity,
@@ -2319,6 +2324,9 @@ REGISTER_TUNABLE("sqlite_use_temptable_for_rowset",
 
 REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
                  TUNABLE_INTEGER, &gbl_identity_cache_max, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("iam_usermetric_verbosity", "IAM user metric verbosity [Default: 0 (off)]", TUNABLE_INTEGER,
+                 &gbl_iam_verbosity, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("track_weighted_queue_metrics_separately",
                  "When on, report both average and weighted average queue metrics;"

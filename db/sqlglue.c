@@ -117,6 +117,7 @@ static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
 struct temp_cursor;
 struct temp_table;
 extern int gbl_partial_indexes;
+int gbl_force_writesql = 1;
 #define SQLITE3BTREE_KEY_SET_INS(IX) (clnt->ins_keys |= (1ULL << (IX)))
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
@@ -12649,6 +12650,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.verify_indexes = 1;
+    clnt.admin = gbl_force_writesql;
     clnt.schema_mems = &sm;
 
     int rc = dispatch_sql_query(&clnt);
@@ -13087,6 +13089,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         clnt.sql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;
+        clnt.admin = gbl_force_writesql;
 
         rc = dispatch_sql_query(&clnt);
         if (rc) {

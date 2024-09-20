@@ -31,3 +31,10 @@ create lua scalar function hello
 create procedure world version 'emit-test' {local function main() db:column_name("world", 1) db:emit([[world]]) end}$$
 select hello()
 exec procedure world()
+
+create procedure bad version 'emit' {
+local function main()
+    db:num_columns(3)
+    db:emit(nil)
+end}$$
+exec procedure bad()

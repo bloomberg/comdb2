@@ -2156,6 +2156,7 @@ int net_send_decom_all(netinfo_type *netinfo_ptr, char *decom_host)
                    nodes[i]);
         }
     }
+    decom(decom_host);
     return outrc;
 }
 
