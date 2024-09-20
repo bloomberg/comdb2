@@ -2389,7 +2389,6 @@ static void update_clientstats_cache(nodestats_t *entry) {
     Pthread_mutex_lock(&clientstats_cache_mtx);
     listc_maybe_rfl(&clientstats_cache, entry);
     if (!entry->ref) {
-        logmsg(LOGMSG_INFO, "%s: no active references to nodestats %u, marking as evictable.\n", __func__, entry->checksum);
         listc_abl(&clientstats_cache, entry);
     }
     Pthread_mutex_unlock(&clientstats_cache_mtx);
