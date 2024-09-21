@@ -230,6 +230,7 @@ extern int gbl_last_locked_seqnum;
 extern int gbl_set_coherent_state_trace;
 extern int gbl_incoherent_slow_inactive_timeout;
 extern int gbl_force_incoherent;
+extern int gbl_force_incoherent_master;
 extern int gbl_ignore_coherency;
 extern int gbl_skip_catchup_logic;
 extern int gbl_debug_downgrade_cluster_at_open;
@@ -453,6 +454,10 @@ extern int gbl_fdb_io_error_retries_phase_2_poll;
 extern int gbl_fdb_auth_enabled;
 extern int gbl_debug_invalid_genid;
 
+/* Tranlog */
+extern int gbl_tranlog_incoherent_timeout;
+extern int gbl_tranlog_maxpoll;
+
 /* Physical replication */
 extern int gbl_blocking_physrep;
 extern int gbl_physrep_check_minlog_freq_sec;
@@ -470,10 +475,17 @@ extern int gbl_physrep_register_interval;
 extern int gbl_physrep_shuffle_host_list;
 extern int gbl_physrep_ignore_queues;
 
+/* source-name / host is from lrl */
 extern char *gbl_physrep_source_dbname;
 extern char *gbl_physrep_source_host;
+
+/* meta-name / host is from lrl */
 extern char *gbl_physrep_metadb_name;
 extern char *gbl_physrep_metadb_host;
+
+/* repl-name / host is the active connection */
+extern char *gbl_physrep_repl_name;
+extern char *gbl_physrep_repl_host;
 
 /* Reversql connection/sql */
 extern int gbl_revsql_allow_command_exec;

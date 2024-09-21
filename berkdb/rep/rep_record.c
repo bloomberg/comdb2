@@ -2987,6 +2987,7 @@ static inline void repdb_dequeue(DBT *control_dbt, DBT *rec_dbt)
 }
 
 __thread int disable_random_deadlocks = 0;
+__thread int physrep_out_of_order = 0;
 
 /*
  * __rep_apply --
@@ -3125,23 +3126,26 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	 * That said, I really don't want to do db operations holding the
 	 * log mutex, so the synchronization here is tricky.
 	 */
-	/* TODO: return a message telling the physical replicant to go 
-	 * into matching mode */
-	if (gbl_is_physical_replicant && cmp != 0)
+	if (gbl_is_physical_replicant)
 	{
-		static uint32_t count=0;
-		count++;
-                if (gbl_physrep_debug == 1) {
-                    logmsg(LOGMSG_USER, "%s out-of-order lsn [%d][%d] instead of [%d][%d], count %u\n",
-                           __func__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file,
-                           lp->ready_lsn.offset, count);
-                }
-                /* A master node in a physical replication cluster would not
-                 * have the ability to 'ask' for missing log records.
-                 */
-                if (F_ISSET(rep, REP_F_MASTER)) {
-                    goto done;
-                }
+		if(cmp != 0) {
+			static uint32_t count=0;
+			count++;
+			physrep_out_of_order = 1;
+			if (gbl_physrep_debug == 1) {
+				logmsg(LOGMSG_USER, "%s out-of-order lsn [%d][%d] instead of [%d][%d], count %u\n",
+						__func__, rp->lsn.file, rp->lsn.offset, lp->ready_lsn.file,
+						lp->ready_lsn.offset, count);
+			}
+			/* A master node in a physical replication cluster would not
+			 * have the ability to 'ask' for missing log records.
+			 */
+			if (F_ISSET(rep, REP_F_MASTER)) {
+				goto done;
+			}
+		} else {
+			physrep_out_of_order = 0;
+		}
 	}
 
 	if (cmp == 0) {

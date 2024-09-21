@@ -94,6 +94,10 @@ int send_reversesql_request(const char *dbname, const char *host,
     struct pollfd pol;
     char paddr[64];
 
+    if (gbl_revsql_debug == 1) {
+        revconn_logmsg(LOGMSG_USER, "%s:%d Sending reversesql request to %s@%s\n", __func__, __LINE__, dbname, host);
+    }
+
     // Connect to the remote database
     sb = connect_remote_db(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte);
     if (!sb) {
@@ -277,6 +281,7 @@ int replace_tier_by_hostname(reverse_conn_host_list_tp *new_reverse_conn_hosts) 
 static void *reverse_connection_worker(void *args) {
     reverse_conn_host_tp *host = args;
     time_t last_conn_attempt = 0;
+    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
     host->worker_state = REVERSE_CONN_WORKER_RUNNING;
     if (gbl_revsql_debug == 1) {
@@ -291,6 +296,15 @@ static void *reverse_connection_worker(void *args) {
             sleep(1);
             continue;
         }
+
+        if (!bdb_am_i_coherent(thedb->bdb_env)) {
+            if (gbl_revsql_debug == 1) {
+                revconn_logmsg(LOGMSG_USER, "%s:%d not starting connection, not coherent\n", __func__, __LINE__);
+            }
+            sleep(1);
+            continue;
+        }
+
         last_conn_attempt = now;
 
         pthread_mutex_lock(&reverse_conn_hosts_mu);
@@ -319,6 +333,7 @@ static void *reverse_connection_worker(void *args) {
         }
         sleep(1);
     }
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return 0;
 }
 
