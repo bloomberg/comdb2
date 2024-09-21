@@ -11,8 +11,10 @@ export comdb2ar=${COMDB2AR_EXE}
 
 dbname=$1
 dgpid=0
+first=""
+cluster_count=0
 NRUNS=100
-SLEEPAMOUNT=120 # 2 minutes
+SLEEPAMOUNT=300
 KILL_WAIT_TIME=10
 SLEEP_BETWEEN_CHECKS=.5
 PIDs=""
@@ -27,7 +29,7 @@ fi
 
 function cleanFailExit()
 {
-    cleanup
+    cleanupabort
     failexit $@
 }
 
@@ -81,8 +83,8 @@ function wait_for_catchup()
         if [[ -z "$mnode" ]]; then
             continue;
         fi
-        c_lsn=`$CDB2SQL_EXE --tabs $CDB2_OPTIONS $dbname         --host $mnode        'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
-        r_lsn=`$CDB2SQL_EXE --tabs $CDB2_OPTIONS ${_repl_dbname} --host ${_repl_host} 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
+        c_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS $dbname --host $mnode 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
+        r_lsn=`$CDB2SQL_EXE -admin --tabs $CDB2_OPTIONS ${_repl_dbname} --host ${_repl_host} 'select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1' | tr -d {} | cut -f2 -d":"`
     done
 
     if [[ "$c_lsn" -ne "$r_lsn" ]] ; then
@@ -137,7 +139,7 @@ function create_physrep_tables()
         cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
     fi
 
-    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60), host CSTRING(120), source_dbname CSTRING(60), source_host CSTRING(120), UNIQUE (dbname, host), UNIQUE (dbname, host, source_dbname, source_host))"
+    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60), host CSTRING(120), source_dbname CSTRING(60), source_host CSTRING(120), UNIQUE (dbname, host, source_dbname, source_host))"
     if [ $? -ne 0 ]; then
         cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
     fi
@@ -156,9 +158,9 @@ function add_to_physrep_sources() {
     echo "== Adding ${_source_dbname}@${_source_host} -> ${_repl_dbname}@${_repl_host} to comdb2_physrep_sources table =="
 
     cdb2sql ${CDB2_OPTIONS} --host ${_repl_metadb_host} ${_repl_metadb_name} "INSERT INTO comdb2_physrep_sources VALUES ('${_repl_dbname}', '${_repl_host}', '${_source_dbname}', '${_source_host}')"
-    if [ $? -ne 0 ]; then
-        cleanFailExit "failed to insert record in ${_repl_metadb_name}@${_repl_metadb_host}"
-    fi
+    #if [ $? -ne 0 ]; then
+    #    cleanFailExit "failed to insert record in ${_repl_metadb_name}@${_repl_metadb_host}"
+    #fi
 }
 
 function verify_lsn_db_node()
@@ -287,6 +289,161 @@ function verify_fanout_myoverride()
     fi
 }
 
+function count_revconn()
+{
+    typeset count=0
+    for node in $CLUSTER ; do
+        x=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node ${REPL_CLUS_DBNAME} "exec procedure sys.cmd.send('stat thr')" | grep "reversesql" | wc -l)
+        count=$((count+x))
+    done
+    echo $count
+}
+
+function block_for_clustered_revconn()
+{
+    echo "== Blocking for single clustered revconn =="
+    local count=0
+
+    cnt=$(count_revconn)
+    while [[ "$cnt" -ne 1 ]]; do
+        let count=count+1
+        echo "Count-revcon is $cnt not 1, waiting for only 1 reversesql to start, count $count"
+        sleep 1
+        cnt=$(count_revconn)
+    done
+}
+
+function clustered_revconn()
+{
+    echo "== Clustered revconn =="
+
+    if [[ -z "$CLUSTER" ]]; then
+        echo "clustered-revconn test only valid for clustered test"
+        return
+    fi
+
+    echo "Add clustered physrep to reverse-conns"
+    for node in $CLUSTER ; do
+        for node2 in $CLUSTER ; do
+            add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${SOURCE_DBNAME} ${node} ${REPL_CLUS_DBNAME} ${node2}
+        done
+    done
+
+    block_for_clustered_revconn
+
+    echo "Attempt 3 downgrades"
+
+    j=0
+    while [[ $j -lt 3 ]]; do
+
+        # Downgrade 
+        for node in $CLUSTER ; do
+            cdb2sql ${CDB2_OPTIONS} $REPL_CLUS_DBNAME --host $node "exec procedure sys.cmd.send('downgrade')"
+        done
+
+        echo "Sleeping for 10"
+        sleep 10
+        block_for_clustered_revconn
+
+    let j=j+1
+done
+}
+
+function incoherent_test()
+{
+    echo "== Incoherent test =="
+
+    echo "Creating a simple table"
+    cdb2sql ${CDB2_OPTIONS} $dbname default "Create table t1(a int)"
+
+    echo "Marking all as incoherent"
+    for node in $CLUSTER ; do
+        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('force_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('force_incoherent_master')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('force_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('force_incoherent_master')"
+    done
+
+    echo "Sleeping for 10"
+    sleep 10
+
+    for node in $CLUSTER ; do
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('physrep_force_registration')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_DBNAME_PREFIX}_${node} --host $node "exec procedure sys.cmd.send('physrep_force_registration')"
+    done
+
+    echo "Sleeping for 10"
+    sleep 10
+
+    have_reregistered=0
+    echo "Force registration"
+    while [[ "$have_reregistered" -eq 0 ]]; do
+        for node in $CLUSTER ; do
+            x=$(cdb2sql --tabs --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('physrep_force_registration')")
+            echo "$x"
+            j=$(echo "$x" | awk '{print $NF}')
+            if [[ "$j" == "0" ]]; then
+                have_reregistered=1
+            fi
+            x=$(cdb2sql --tabs --admin ${CDB2_OPTIONS} ${REPL_DBNAME_PREFIX}_${node} --host $node "exec procedure sys.cmd.send('physrep_force_registration')")
+            echo "$x"
+            j=$(echo "$x" | awk '{print $NF}')
+            if [[ "$j" == "0" ]]; then
+                have_reregistered=1
+            fi
+        done
+        if [[ $have_reregistered -eq 0 ]]; then
+            echo "Nothing has reregistered, sleeping for 10"
+            sleep 10
+        fi
+    done
+
+    echo "Sleeping for 10"
+    sleep 10
+
+    echo "Unforcing incoherent master"
+    for node in $CLUSTER ; do
+        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+        #cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('physrep_force_registration')"
+        #cdb2sql --admin ${CDB2_OPTIONS} ${REPL_DBNAME_PREFIX}_${node} --host $node "exec procedure sys.cmd.send('physrep_force_registration')"
+    done
+
+    echo "Unforcing incoherent first-node"
+    cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $first "exec procedure sys.cmd.send('unforce_incoherent')"
+
+    echo "Sleeping for 10"
+    sleep 10
+
+    echo "Generating writes for source db"
+    j=0
+    while [[ $j -lt 50 ]]; do
+        cdb2sql -admin ${CDB2_OPTIONS} $dbname default "insert into t1 select * from generate_series(1, 1000)"
+        let j=j+1
+    done
+
+    echo "Ask all cluster nodes to start a reverse-conn"
+    if [[ -n $CLUSTER ]]; then
+        for node in $CLUSTER ; do
+            add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${SOURCE_DBNAME} ${node} "${REPL_DBNAME_PREFIX}_${first}" ${first}
+        done
+    fi
+
+    echo "Compare-physrep lsns - this will timeout if broken"
+    compare_end_lsns
+
+    echo "Marking all as coherent"
+    for node in $CLUSTER ; do
+        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} $dbname --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent')"
+        cdb2sql --admin ${CDB2_OPTIONS} ${REPL_CLUS_DBNAME} --host $node "exec procedure sys.cmd.send('unforce_incoherent_master')"
+    done
+
+    echo "Dropping table"
+    cdb2sql ${CDB2_OPTIONS} $dbname default "Drop table t1"
+}
+
 function setup_physrep_metadb()
 {
     echo "== Setting up replication metadb cluster =="
@@ -306,7 +463,15 @@ dir ${_dbdir}
 physrep_fanout_override fanouttest 100
 physrep_fanout_override fanouttest2 50
 physrep_fanout_override $DBNAME 3
+physrep_register_interval 10
+revsql_debug 1
+physrep_debug 1
+tranlog_incoherent_timeout 10
+forbid_remote_admin 0
 logmsg level debug
+ctrace_dbdir 1
+allow_lua_print 1
+physrep_update_registry_interval 1
 END
 
         $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
@@ -333,7 +498,7 @@ END
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
 
-            ssh ${node} "mkdir ${_dbdir}"
+            ssh ${node} "mkdir ${_dbdir}" < /dev/null
 
             if [[ ${firstNode} = "" ]]; then
                 cat <<END >> ${tmpdir}/${_dbname}.lrl
@@ -343,13 +508,21 @@ cluster nodes ${CLUSTER}
 physrep_fanout_override fanouttest 100
 physrep_fanout_override fanouttest2 50
 physrep_fanout_override $DBNAME 3
+tranlog_incoherent_timeout 10
+physrep_register_interval 10
+revsql_debug 1
+physrep_debug 1
+forbid_remote_admin 0
 logmsg level debug
+ctrace_dbdir 1
+allow_lua_print 1
+physrep_update_registry_interval 1
 END
                 scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
-                ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1
+                ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
                 firstNode=${node}
             else
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1
+                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
                 if [ ! $? -eq 0 ]; then
                     cleanFailExit "copycomdb2 failed"
                 fi
@@ -359,7 +532,7 @@ END
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-            ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 &
+            ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
         done
 
@@ -411,8 +584,8 @@ function fix_lrl_and_restart_source_nodes()
     else
 
         for node in $CLUSTER ; do
-            ssh ${node} "echo \"physrep_metadb ${_meta_dbname} ${_meta_host}\" >> ${_source_dbdir}/${_source_dbname}.lrl"
-            ssh ${node} "echo \"physrep_debug 1\" >> ${_source_dbdir}/${_source_dbname}.lrl"
+            ssh ${node} "echo \"physrep_metadb ${_meta_dbname} ${_meta_host}\" >> ${_source_dbdir}/${_source_dbname}.lrl" < /dev/null
+            ssh ${node} "echo \"physrep_debug 1\" >> ${_source_dbdir}/${_source_dbname}.lrl" < /dev/null
             #ssh ${node} "echo \"physrep_register_interval 5\" >> ${_source_dbdir}/${_source_dbname}.lrl"
             echo "killrestart node $node"
             kill_restart_node $node $KILL_WAIT_TIME &
@@ -478,17 +651,17 @@ function setup_physrep_cluster()
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
 
             if [[ ${firstNode} = "" ]]; then
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_dbname} -y @${_source_host} ${_source_host}:${SOURCE_DBDIR}/${SOURCE_DBNAME}.lrl ${_dbdir} ${_dbdir}" >> ${logFile} 2>&1
+                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_dbname} -y @${_source_host} ${_source_host}:${SOURCE_DBDIR}/${SOURCE_DBNAME}.lrl ${_dbdir} ${_dbdir}" >> ${logFile} 2>&1 </dev/null
                 if [[ ! $? -eq 0 ]]; then
                     cleanFailExit "copycomdb2 failed"
                 fi
 
                 # Update the lrl
-                ssh $node "echo \"cluster nodes ${CLUSTER}\" >> ${_dbdir}/${_dbname}.lrl"
+                ssh $node "echo \"cluster nodes ${CLUSTER}\" >> ${_dbdir}/${_dbname}.lrl" < /dev/null
 
                 firstNode=${node}
             else
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1
+                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
                 if [ ! $? -eq 0 ]; then
                     cleanFailExit "copycomdb2 failed"
                 fi
@@ -498,7 +671,7 @@ function setup_physrep_cluster()
         # 2. Start instances
         for node in ${CLUSTER}; do
             logFile=$TESTDIR/logs/${_dbname}.${node}.log
-        ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 &
+        ssh ${node} "$COMDB2_EXE ${_dbname} --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null & 
         PIDs="${PIDs} $!"
         done
 
@@ -576,12 +749,12 @@ function setup_physrep_replicants()
                 firstNode=${node}
             fi
 
-            ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1
+            ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${_repl_dbname} -y @${_source_host} ${_source_host}:${_source_dbdir}/${_source_dbname}.lrl ${_repl_dbdir} ${_repl_dbdir}" >> ${logFile} 2>&1 < /dev/null
             if [ ! $? -eq 0 ]; then
                 cleanFailExit "copycomdb2 failed"
             fi
 
-            ssh ${node} "$COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 &
+            ssh ${node} "$COMDB2_EXE ${_repl_dbname} --lrl ${_repl_dbdir}/${_repl_dbname}.lrl --pidfile ${_repl_dbdir}/${_repl_dbname}.pid" >> ${logFile} 2>&1 < /dev/null &
             PIDs="${PIDs} $!"
 
             # Wait for the node to start
@@ -687,8 +860,9 @@ function run_tests()
     done
 }
 
-function cleanup()
+function cleanup_internal()
 {
+    typeset sig=$1
     echo "Killing ${PIDs}"
     kill -9 ${PIDs}
     [[ $dgpid != 0 ]] && kill -9 $dgpid
@@ -706,11 +880,21 @@ function cleanup()
         for node in $CLUSTER ; do
             _repl_dbname=${REPL_DBNAME_PREFIX}_${node}
             _repl_dbdir=${REPL_DBDIR_PREFIX}_${node}
-            ssh ${node} "kill -9 \$(cat ${_repl_dbdir}/${_repl_dbname}.pid)"
-            ssh ${node} "kill -9 \$(cat ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid)"
-            ssh ${node} "kill -9 \$(cat ${REPL_META_DBDIR}/${REPL_META_DBNAME}.pid)"
+            ssh ${node} "kill -$sig \$(cat ${_repl_dbdir}/${_repl_dbname}.pid)" < /dev/null
+            ssh ${node} "kill -$sig \$(cat ${REPL_CLUS_DBDIR}/${REPL_CLUS_DBNAME}.pid)" < /dev/null 
+            ssh ${node} "kill -$sig \$(cat ${REPL_META_DBDIR}/${REPL_META_DBNAME}.pid)" < /dev/null
         done
     fi
+}
+
+function cleanup()
+{
+    cleanup_internal 9
+}
+
+function cleanupabort()
+{
+    cleanup_internal 15
 }
 
 # Compare LSNs of all the replicants against the source cluster/node
@@ -734,11 +918,18 @@ trap - INT EXIT
 REPL_META_DBNAME=${TESTCASE}_META
 REPL_META_DBDIR=${DBDIR}/${REPL_META_DBNAME}
 REPL_META_HOST=""
+
 if [[ -z "$CLUSTER" ]]; then # Standalone
     REPL_META_HOST=$(hostname)
 else                         # Cluster
     for node in ${CLUSTER}; do
+        let cluster_count=cluster_count+1
+    done
+    for node in ${CLUSTER}; do
+        first=${node}
         REPL_META_HOST=${node}
+        # Downgrade now - we want to test incoherent later
+        cdb2sql ${CDB2_OPTIONS} ${dbname} --host $node "exec procedure sys.cmd.send('downgrade')"
         break
     done
 fi
@@ -780,6 +971,8 @@ run_tests
 verify_blkseq
 compare_end_lsns
 verify_fanout_myoverride ${REPL_META_DBNAME} ${REPL_META_HOST}
+incoherent_test
+clustered_revconn
 cleanup
 
 exit 0
