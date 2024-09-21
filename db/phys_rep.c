@@ -68,6 +68,8 @@ int gbl_physrep_keepalive_freq_sec = 10;
 int gbl_physrep_check_minlog_freq_sec = 10;
 int gbl_physrep_hung_replicant_check_freq_sec = 10;
 int gbl_physrep_hung_replicant_threshold = 60;
+int gbl_physrep_revconn_check_interval = 60;
+int gbl_physrep_update_registry_interval = 60;
 int gbl_physrep_shuffle_host_list = 0;
 int gbl_physrep_i_am_metadb = 0;
 int gbl_started_physrep_threads = 0;
@@ -79,6 +81,9 @@ char *gbl_physrep_source_dbname;
 char *gbl_physrep_source_host;
 char *gbl_physrep_metadb_name;
 char *gbl_physrep_metadb_host;
+
+char *gbl_physrep_repl_name = NULL;
+char *gbl_physrep_repl_host = NULL;
 
 static int repl_db_connected = 0;
 
@@ -99,6 +104,7 @@ reverse_conn_handle_tp *rev_conn_hndl = NULL;
 static int last_register;
 
 static int add_replicant_host(char *hostname, char *dbname);
+static void dump_replicant_hosts(void);
 static void delete_replicant_host(DB_Connection *cnct);
 
 extern struct dbenv *thedb;
@@ -179,13 +185,27 @@ void cleanup_hosts()
     repl_dbs_sz = 0;
 }
 
+static void set_repl_db_connected(char *dbname, char *host)
+{
+    gbl_physrep_repl_name = dbname;
+    gbl_physrep_repl_host = host;
+    repl_db_connected = 1;
+}
+
+static void set_repl_db_disconnected()
+{
+    repl_db_connected = 0;
+    gbl_physrep_repl_name = NULL;
+    gbl_physrep_repl_host = NULL;
+}
+
 static void close_repl_connection(DB_Connection *cnct, cdb2_hndl_tp *repl_db,
                                   const char *func, int line)
 {
     cnct->last_failed = time(NULL);
     cnct->is_up = 0;
+    set_repl_db_disconnected();
     cdb2_close(repl_db);
-    repl_db_connected = 0;
     repl_db = NULL;
     if (rev_conn_hndl) {
         // Set the 'done' flag to signal 'reversesql' plugin to perform the
@@ -314,53 +334,6 @@ err:
     return -1;
 }
 
-static int update_registry(cdb2_hndl_tp *repl_metadb,
-                           const char * remote_dbname,
-                           const char * remote_host) {
-    const size_t nodes_list_sz = REPMAX * (255+1) + 3;
-    char cmd[120+nodes_list_sz];
-    int bytes_written = 0;
-    int rc;
-
-    char *buf = cmd;
-    size_t buf_len = sizeof(cmd);
-
-    bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written,
-                              "exec procedure sys.physrep.update_registry"
-                              "('%s', '%s', '%s', '%s', \"",
-                              gbl_dbname, gbl_myhostname,
-                              (remote_dbname) ?  remote_dbname : "NULL",
-                              (remote_host) ? remote_host : "NULL");
-    if (bytes_written >= buf_len) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
-
-    bytes_written += append_quoted_local_hosts(buf+bytes_written, buf_len-bytes_written, " ");
-    if (bytes_written >= buf_len) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
-
-    bytes_written += snprintf(buf+bytes_written, buf_len-bytes_written, "\")");
-    if (bytes_written >= buf_len) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
-
-    if (gbl_physrep_debug) {
-        physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
-    }
-
-    if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
-        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK);
-    } else {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
-        return 1;
-    }
-    return 0;
-}
-
 static int get_local_hndl(cdb2_hndl_tp **hndl) {
     int rc = cdb2_open(hndl, gbl_dbname, "local", 0);
     if (rc != 0) {
@@ -468,7 +441,72 @@ int physrep_get_metadb_or_local_hndl(cdb2_hndl_tp **hndl) {
       ?  get_metadb_hndl(hndl) : get_local_hndl(hndl);
 }
 
-static int send_reset_nodes(const char *state) {
+static int update_registry(cdb2_hndl_tp *repl_metadb, const char *remote_dbname, const char *remote_host)
+{
+    const size_t nodes_list_sz = REPMAX * (255 + 1) + 3;
+    char cmd[120 + nodes_list_sz];
+    int bytes_written = 0;
+    int rc;
+
+    char *buf = cmd;
+    size_t buf_len = sizeof(cmd);
+
+    bytes_written += snprintf(buf + bytes_written, buf_len - bytes_written,
+                              "exec procedure sys.physrep.update_registry"
+                              "('%s', '%s', '%s', '%s', \"",
+                              gbl_dbname, gbl_myhostname, (remote_dbname) ? remote_dbname : "NULL",
+                              (remote_host) ? remote_host : "NULL");
+    if (bytes_written >= buf_len) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
+    }
+
+    bytes_written += append_quoted_local_hosts(buf + bytes_written, buf_len - bytes_written, " ");
+    if (bytes_written >= buf_len) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
+    }
+
+    bytes_written += snprintf(buf + bytes_written, buf_len - bytes_written, "\")");
+    if (bytes_written >= buf_len) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
+    }
+
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Executing: %s\n", __func__, __LINE__, cmd);
+    }
+
+    if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
+        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK)
+            ;
+    } else {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute (rc: %d)\n", __func__, __LINE__, rc);
+        return 1;
+    }
+    return 0;
+}
+
+static int update_registry_periodic(const char *remote_dbname, const char *remote_host)
+{
+    cdb2_hndl_tp *repl_metadb = NULL;
+    int rc;
+
+    if (gbl_physrep_debug)
+        logmsg(LOGMSG_USER, "%s: updating-registry %s/%s\n", __func__, remote_dbname, remote_host);
+
+    if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
+        return rc;
+    }
+
+    rc = update_registry(repl_metadb, remote_dbname, remote_host);
+
+    cdb2_close(repl_metadb);
+    return rc;
+}
+
+static int send_reset_nodes(const char *state)
+{
     const size_t nodes_list_sz = REPMAX * (255+1) + 3;
     char cmd[120+nodes_list_sz];
     int bytes_written = 0;
@@ -511,7 +549,8 @@ static int send_reset_nodes(const char *state) {
     }
 
     if ((rc = cdb2_run_statement(repl_metadb, cmd)) == CDB2_OK) {
-        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK);
+        while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK)
+            ;
         if (rc == CDB2_OK_DONE)
             rc = 0;
     } else {
@@ -523,14 +562,23 @@ static int send_reset_nodes(const char *state) {
 }
 
 char *physrep_master_cached = NULL;
+int gbl_physrep_force_registration = 0;
 
-int force_registration() {
-   if (!physrep_master_cached || ((strcmp(gbl_myhostname, physrep_master_cached)) != 0)) {
-       free(physrep_master_cached);
-       physrep_master_cached = strdup(gbl_myhostname);
-       return 1;
-   }
-   return 0;
+int force_registration()
+{
+    int rtn = 0;
+    if (gbl_physrep_force_registration) {
+        logmsg(LOGMSG_USER, "%s: forcing registration on flag\n", __func__);
+        rtn = 1;
+        gbl_physrep_force_registration = 0;
+    }
+
+    if (!physrep_master_cached || ((strcmp(gbl_myhostname, physrep_master_cached)) != 0)) {
+        free(physrep_master_cached);
+        physrep_master_cached = strdup(gbl_myhostname);
+        rtn = 1;
+    }
+    return rtn;
 }
 
 time_t gbl_physrep_last_applied_time;
@@ -626,8 +674,8 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
     }
 
     if (rc != 0) {
-        physrep_logmsg(LOGMSG_FATAL, "%s:%d: Something went wrong with applying the logs (rc: %d)\n",
-                       __func__, __LINE__, rc);
+        physrep_logmsg(LOGMSG_FATAL, "%s:%d: Something went wrong with applying the logs (rc: %d)\n", __func__,
+                       __LINE__, rc);
         exit(1);
     }
 
@@ -646,12 +694,19 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
     int bytes_written = 0;
     int rc;
 
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Registering self\n", __func__, __LINE__);
+    }
+
     // Reset all the nodes from this physical replication cluster; and mark them
     // 'Inactive'.
     //
     // This is required to ensure that the metadb does not return one the nodes
     // of this cluster as a potential source when one of the nodes tries to
     // re-register as a physical replicant.
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Send-reset nodes\n", __func__, __LINE__);
+    }
     rc = send_reset_nodes("Inactive");
     if (rc != 0) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to reset info in replication metadb tables (rc: %d)\n",
@@ -708,6 +763,9 @@ static int register_self(cdb2_hndl_tp *repl_metadb)
             last_register = time(NULL);
 
             if (candidate_leaders_count > 0) {
+                if (gbl_physrep_debug) {
+                    dump_replicant_hosts();
+                }
                 return 0;
             }
             if (gbl_physrep_debug)
@@ -735,7 +793,7 @@ static int seedsort(const void *arg1, const void *arg2)
 }
 
 static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp **repl_db) {
-    int rc;
+    int rc, count = 0;
     DB_Connection *cnct;
 
     assert(repl_db_connected == 0);
@@ -776,52 +834,65 @@ static DB_Connection *find_new_repl_db(cdb2_hndl_tp *repl_metadb, cdb2_hndl_tp *
             rc = cdb2_run_statement(*repl_db, "select 1");
             if (rc != CDB2_OK) {
                 physrep_logmsg(LOGMSG_ERROR, "%s:%d: Couldn't execute 'select 1' against %s@%s (rc: %d error: %s)\n",
-                               __func__, __LINE__, cnct->dbname,
-                               cnct->hostname, rc, cdb2_errstr(*repl_db));
+                               __func__, __LINE__, cnct->dbname, cnct->hostname, rc, cdb2_errstr(*repl_db));
                 cnct->last_failed = time(NULL);
                 continue;
             }
-            while (cdb2_next_record(*repl_db) == CDB2_OK) {}
+            while (cdb2_next_record(*repl_db) == CDB2_OK) {
+            }
 
-            physrep_logmsg(LOGMSG_USER, "Attached to '%s' db '%s' for replication\n",
-                           cnct->hostname, cnct->dbname);
+            physrep_logmsg(LOGMSG_USER, "Attached to '%s' db '%s' for replication\n", cnct->hostname, cnct->dbname);
 
             /* Execute sys.physrep.update_registry() on the replication metadb cluster */
             rc = update_registry(repl_metadb, cnct->dbname, cnct->hostname);
             if (rc != 0) {
-                physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to exec sys.physrep.update_registry() on %s:%s\n",
-                               __func__, __LINE__, cnct->dbname, cnct->hostname);
+                physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to exec sys.physrep.update_registry() on %s:%s\n", __func__,
+                               __LINE__, cnct->dbname, cnct->hostname);
             }
 
             cnct->last_cnct = time(NULL);
             cnct->is_up = 1;
-            repl_db_connected = 1;
+            set_repl_db_connected(cnct->dbname, cnct->hostname);
             return cnct;
         }
 
-        physrep_logmsg(LOGMSG_USER, "%s:%d: Couldn't connect to any of the replication source hosts, retrying in a second\n",
-                       __func__, __LINE__);
+        count++;
+        if (count < 10) {
+            physrep_logmsg(LOGMSG_USER,
+                           "%s:%d: Couldn't connect to any of the replication source hosts, retrying in a second\n",
+                           __func__, __LINE__);
 
-        sleep(1);
+            sleep(1);
+        } else {
+            physrep_logmsg(LOGMSG_USER,
+                           "%s:%d: Couldn't connect to any of the replication source hosts, break to re-register\n",
+                           __func__, __LINE__);
+            return NULL;
+        }
     }
 
     physrep_logmsg(LOGMSG_WARN, "Stopping replication\n");
     return NULL;
 }
 
+static void dump_replicant_hosts()
+{
+    for (int i = 0; i < repl_dbs_sz; i++) {
+        DB_Connection *cnct = repl_dbs[i];
+        physrep_logmsg(LOGMSG_USER, "%s:%d: %s:%s\n", __func__, __LINE__, cnct->hostname, cnct->dbname);
+    }
+}
+
 static int add_replicant_host(char *hostname, char *dbname)
 {
-    if (gbl_physrep_debug)
-        physrep_logmsg(LOGMSG_USER, "%s:%d: Adding %s:%s\n", __func__, __LINE__,
-                       hostname, dbname);
 
     /* Don't add same machine multiple times */
     for (int i = 0; i < repl_dbs_sz; i++) {
         DB_Connection *c = repl_dbs[i];
-        if ((strcmp(c->hostname, hostname) == 0) &&
-            strcmp(c->dbname, dbname) == 0) {
-            physrep_logmsg(LOGMSG_DEBUG, "%s mach %s db %s found\n", __func__, hostname,
-                   dbname);
+        if ((strcmp(c->hostname, hostname) == 0) && strcmp(c->dbname, dbname) == 0) {
+            if (gbl_physrep_debug) {
+                physrep_logmsg(LOGMSG_USER, "%s Found %s:%s not adding\n", __func__, hostname, dbname);
+            }
             return 0;
         }
     }
@@ -836,6 +907,10 @@ static int add_replicant_host(char *hostname, char *dbname)
 
     repl_dbs = realloc(repl_dbs, (repl_dbs_sz + 1) * sizeof(DB_Connection *));
     repl_dbs[repl_dbs_sz ++] = cnct;
+
+    if (gbl_physrep_debug) {
+        physrep_logmsg(LOGMSG_USER, "%s:%d Adding %s:%s\n", __func__, __LINE__, hostname, dbname);
+    }
 
     return 0;
 }
@@ -1117,7 +1192,9 @@ static int do_wait_for_reverse_conn(cdb2_hndl_tp *repl_metadb) {
        This is the database/node that to replicant connects to retrieve and
        apply physical logs.
 */
-static void *physrep_worker(void *args) {
+extern __thread int physrep_out_of_order;
+static void *physrep_worker(void *args)
+{
     comdb2_name_thread(__func__);
 
     volatile int64_t gen, highest_gen = 0;
@@ -1126,6 +1203,9 @@ static void *physrep_worker(void *args) {
     int do_truncate = 0;
     int rc;
     int now;
+    int is_revconn = -1;
+    int last_revconn_check = 0;
+    int last_update_registry = 0;
     LOG_INFO info;
     LOG_INFO prev_info;
     DB_Connection *repl_db_cnct = NULL;
@@ -1155,13 +1235,32 @@ repl_loop:
             goto sleep_and_retry;
         }
 
-        if (repl_db_connected && (force_registration() ||
-                                  (((now = time(NULL)) - last_register) >
-                                   gbl_physrep_register_interval))) {
+        if (repl_db_connected &&
+            (force_registration() || (((now = time(NULL)) - last_register) > gbl_physrep_register_interval))) {
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             if (gbl_physrep_debug) {
-                physrep_logmsg(LOGMSG_USER, "%s:%d: Forcing re-registration\n",
-                               __func__, __LINE__);
+                physrep_logmsg(LOGMSG_USER, "%s:%d: Forcing re-registration\n", __func__, __LINE__);
+            }
+        }
+
+        int revconn_ck = gbl_physrep_revconn_check_interval;
+        if (repl_db_connected && revconn_ck > 0 && comdb2_time_epoch() - last_revconn_check > revconn_ck) {
+            cdb2_hndl_tp *repl_metadb = NULL;
+            last_revconn_check = comdb2_time_epoch();
+            if (gbl_physrep_debug) {
+                physrep_logmsg(LOGMSG_USER, "%s:%d Re-checking for reverse connection\n", __func__, __LINE__);
+            }
+            if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) == 0) {
+                int do_revconn = do_wait_for_reverse_conn(repl_metadb);
+                cdb2_close(repl_metadb);
+                if (gbl_physrep_debug) {
+                    physrep_logmsg(LOGMSG_USER, "%s:%d Reverse connection check: do-revcon=%d, is-revcon=%d\n",
+                                   __func__, __LINE__, do_revconn, is_revconn);
+                }
+                if ((do_revconn && !is_revconn) || (!do_revconn && is_revconn)) {
+                    logmsg(LOGMSG_USER, "Revconn changed, do_revconn=%d, is_revconn=%d\n", do_revconn, is_revconn);
+                    close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+                }
             }
         }
 
@@ -1172,7 +1271,9 @@ repl_loop:
                 goto sleep_and_retry;
             }
 
+            last_revconn_check = comdb2_time_epoch();
             if (do_wait_for_reverse_conn(repl_metadb) == 1) {
+                is_revconn = 1;
                 int wait_timeout_sec = 60;
 
                 if (gbl_physrep_debug)
@@ -1214,8 +1315,9 @@ repl_loop:
                 /* Perform truncation to start fresh */
                 do_truncate = 1;
 
-                repl_db_connected = 1;
+                set_repl_db_connected(rev_conn_hndl->remote_dbname, rev_conn_hndl->remote_host);
             } else {
+                is_revconn = 0;
                 int notfound = 0;
                 while (stop_physrep_worker == 0) {
                     if ((rc = register_self(repl_metadb)) == 0)
@@ -1245,6 +1347,8 @@ repl_loop:
                     cdb2_close(repl_metadb);
                     goto sleep_and_retry;
                 }
+
+                last_update_registry = comdb2_time_epoch();
 
                 /* Perform truncation to start fresh */
                 do_truncate = 1;
@@ -1291,21 +1395,23 @@ repl_loop:
         if (gbl_physrep_debug)
             physrep_logmsg(LOGMSG_USER, "%s:%d: Executing: %s\n", __func__, __LINE__, sql_cmd);
         if ((rc = cdb2_run_statement(repl_db, sql_cmd)) != CDB2_OK) {
-            physrep_logmsg(LOGMSG_ERROR, "Couldn't query the database, retrying\n");
+            physrep_logmsg(LOGMSG_ERROR, "Couldn't query the database, rcode=%d '%s' retrying\n", rc,
+                           cdb2_errstr(repl_db));
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             goto sleep_and_retry;
         }
 
         if ((rc = cdb2_next_record(repl_db)) != CDB2_OK) {
-            if (gbl_physrep_debug)
-                physrep_logmsg(LOGMSG_USER, "%s:%d: Can't find the next record (rc: %d)\n",
-                               __func__, __LINE__, rc);
+            if (gbl_physrep_debug) {
+                physrep_logmsg(LOGMSG_USER, "%s:%d: Can't find the next record (rc: %d '%s')\n", __func__, __LINE__, rc,
+                               cdb2_errstr(repl_db));
+            }
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             goto sleep_and_retry;
         }
 
         /* our log matches, so apply each record log received */
-        while (stop_physrep_worker == 0 && !do_truncate &&
+        while (stop_physrep_worker == 0 && thedb->master == gbl_myhostname && !do_truncate &&
                (rc = cdb2_next_record(repl_db)) == CDB2_OK) {
             /* check the generation id to make sure the master hasn't
              * switched */
@@ -1314,10 +1420,9 @@ repl_loop:
             if (rec_gen && *rec_gen > highest_gen) {
                 int64_t new_gen = *rec_gen;
                 if (gbl_physrep_debug) {
-                    physrep_logmsg(LOGMSG_USER, "%s:%d: My master changed, set truncate flag\n",
-                                   __func__, __LINE__);
-                    physrep_logmsg(LOGMSG_USER, "%s:%d: gen: %" PRId64 ", rec_gen: %" PRId64 "\n",
-                                   __func__, __LINE__, gen, *rec_gen);
+                    physrep_logmsg(LOGMSG_USER, "%s:%d: My master changed, set truncate flag\n", __func__, __LINE__);
+                    physrep_logmsg(LOGMSG_USER, "%s:%d: gen: %" PRId64 ", rec_gen: %" PRId64 "\n", __func__, __LINE__,
+                                   gen, *rec_gen);
                 }
                 close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 do_truncate = 1;
@@ -1326,11 +1431,34 @@ repl_loop:
             }
 
             prev_info = handle_record(repl_db, prev_info);
+            if (physrep_out_of_order) {
+                physrep_out_of_order = 0;
+                do_truncate = 1;
+                goto repl_loop;
+            }
 
             gbl_physrep_last_applied_time = time(NULL);
+            revconn_ck = gbl_physrep_revconn_check_interval;
+            if (revconn_ck > 0 && comdb2_time_epoch() - last_revconn_check > revconn_ck) {
+                if (gbl_physrep_debug) {
+                    logmsg(LOGMSG_USER, "Checking reverse connection status\n");
+                }
+                goto repl_loop;
+            }
+
+            int update_regck = gbl_physrep_update_registry_interval;
+            if (repl_db_connected && update_regck > 0 && (comdb2_time_epoch() - last_update_registry) > update_regck) {
+                update_registry_periodic(repl_db_cnct->dbname, repl_db_cnct->hostname);
+                last_update_registry = comdb2_time_epoch();
+            }
         }
 
-        if (rc != CDB2_OK_DONE || do_truncate) {
+        if (gbl_physrep_debug) {
+            logmsg(LOGMSG_USER, "%s:%d: next-record rc = %d, '%s'\n", __func__, __LINE__, rc, cdb2_errstr(repl_db));
+        }
+
+        if (thedb->master != gbl_myhostname || rc != CDB2_OK_DONE) {
+            close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             do_truncate = 1;
         }
 sleep_and_retry:

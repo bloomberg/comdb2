@@ -1766,13 +1766,14 @@ REGISTER_TUNABLE("blocking_physrep",
                  "Physical replicant blocks on select. (Default: false)",
                  TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("physrep_check_minlog_freq_sec",
-                 "Check the minimum log number to keep this often. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_check_minlog_freq_sec, 0, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_debug",
-                 "Print extended physrep trace. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_physrep_debug, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("tranlog_incoherent_timeout", "Timeout in seconds for incoherent tranlog. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_tranlog_incoherent_timeout, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("tranlog_maxpoll", "Tranlog timeout in seconds for blocking poll. (Default: 60)", TUNABLE_INTEGER,
+                 &gbl_tranlog_maxpoll, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_check_minlog_freq_sec", "Check the minimum log number to keep this often. (Default: 10)",
+                 TUNABLE_INTEGER, &gbl_physrep_check_minlog_freq_sec, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_debug", "Print extended physrep trace. (Default: off)", TUNABLE_BOOLEAN, &gbl_physrep_debug,
+                 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_fanout",
@@ -1786,6 +1787,10 @@ REGISTER_TUNABLE("physrep_hung_replicant_threshold",
                  "Report if the physical replicant has been inactive for this duration. (Default: 60)",
                  TUNABLE_INTEGER, &gbl_physrep_hung_replicant_threshold, 0, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_update_registry_interval", "Physrep update-registry interval. (Default: 60)", TUNABLE_INTEGER,
+                 &gbl_physrep_update_registry_interval, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_revconn_check_interval", "Physrep recheck revconn interval.  (Default: 60)", TUNABLE_INTEGER,
+                 &gbl_physrep_revconn_check_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
@@ -1812,21 +1817,20 @@ REGISTER_TUNABLE("physrep_reconnect_penalty",
                  "Physrep wait seconds before retry to the same node. (Default: 5)",
                  TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("physrep_register_interval",
-                 "Interval for physical replicant re-registration. (Default: 3600)",
-                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL,
-                 NULL, NULL);
+REGISTER_TUNABLE("physrep_register_interval", "Interval for physical replicant re-registration. (Default: 600)",
+                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_shuffle_host_list",
                  "Shuffle the host list returned by register_replicant() "
                  "before connecting to the hosts. (Default: OFF)",
-                 TUNABLE_BOOLEAN, &gbl_physrep_shuffle_host_list, 0, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("physrep_source_dbname", "Physical replication source cluster dbname.",
-                 TUNABLE_STRING, &gbl_physrep_source_dbname, READONLY, NULL, NULL, NULL,
-                 NULL);
-REGISTER_TUNABLE("physrep_source_host", "List of physical replication source cluster hosts.",
-                 TUNABLE_STRING, &gbl_physrep_source_host, READONLY, NULL, NULL, NULL,
-                 NULL);
+                 TUNABLE_BOOLEAN, &gbl_physrep_shuffle_host_list, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_repl_name", "Current physrep parent.", TUNABLE_STRING, &gbl_physrep_repl_name, READONLY, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_repl_host", "Current physrep host.", TUNABLE_STRING, &gbl_physrep_repl_host, READONLY, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_source_dbname", "Physical replication source cluster dbname.", TUNABLE_STRING,
+                 &gbl_physrep_source_dbname, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_source_host", "List of physical replication source cluster hosts.", TUNABLE_STRING,
+                 &gbl_physrep_source_host, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOOLEAN, &gbl_physrep_ignore_queues,
                  READONLY, NULL, NULL, NULL, NULL);
 
@@ -1835,8 +1839,7 @@ REGISTER_TUNABLE("revsql_allow_command_execution",
                  "Allow processing and execution of command over the 'reverse connection' "
                  "that has come in as part of the request. This is mostly intended for "
                  "testing. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_revsql_allow_command_exec, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_revsql_allow_command_exec, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("revsql_cdb2_debug",
                  "Print extended reversql-sql cdb2 related trace. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_revsql_cdb2_debug, EXPERIMENTAL | INTERNAL,
@@ -1887,25 +1890,23 @@ REGISTER_TUNABLE("force_incoherent",
                  TUNABLE_BOOLEAN, &gbl_force_incoherent,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("ignore_coherency",
-                 "Force this node to be coherent.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_ignore_coherency,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("force_incoherent_master", "Force master node to be incoherent.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_force_incoherent_master, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ignore_coherency", "Force this node to be coherent.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_ignore_coherency, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("forbid_incoherent_writes",
                  "Prevent writes against a node which was incoherent at "
                  "transaction start.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_forbid_incoherent_writes, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("debug_downgrade_cluster_at_open",
                  "Sleep on open to allow testsuite to downgrade master.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_downgrade_cluster_at_open, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("skip_catchup_logic",
-                 "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
-                 NULL, NULL);
+REGISTER_TUNABLE("skip_catchup_logic", "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("sample_queries", "Sample queries and query plans to table comdb2_sample_queries. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_sample_queries, 0, NULL, NULL, NULL, NULL);

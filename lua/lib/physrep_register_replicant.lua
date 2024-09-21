@@ -5,6 +5,12 @@
 -- register themselves. The node, in return, sends back a list of "potential"
 -- nodes that the replicant can connect to to pull and apply physical logs.
 local function main(dbname, hostname, lsn, source_dbname, source_hosts)
+
+    print(
+        "physrep_register_replicant: dbname = '" .. dbname .. "', hostname = '" .. hostname ..
+        "', lsn = '" .. lsn .. "', source_dbname = '" .. source_dbname .. "', source_hosts = '" ..
+        source_hosts .. "'")
+
     db:begin()
 
     -- Retrieve physrep tunables
@@ -30,40 +36,47 @@ local function main(dbname, hostname, lsn, source_dbname, source_hosts)
         return
     end
 
-    local rs, rc = db:exec("WITH RECURSIVE " ..
-                           "    tiers (dbname, host, tier) AS " ..
-                           "        (SELECT dbname, host, 0 " ..
-                           "             FROM comdb2_physreps " ..
-                           "             WHERE dbname = '" .. source_dbname .. "' AND " ..
-                           "                   host IN (" .. source_hosts ..") " ..
-                           "         UNION ALL " ..
-                           "         SELECT p.dbname, p.host, t.tier+1  " ..
-                           "             FROM comdb2_physrep_connections p, tiers t " ..
-                           "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host), " ..
-                           "    child_count (dbname, host, tier, cnt) AS " ..
-                           "        (SELECT t.dbname, t.host, t.tier, count (*) " ..
-                           "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
-                           "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
-                           "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. tunables["physrep_fanout"] .. " ) " ..
-                           "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
-                           "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
-                           "    ORDER BY tier, cnt " ..
-                           "    LIMIT " .. tunables["physrep_max_candidates"])
+    local physrep_fanout = tunables["physrep_fanout"]
+    local physrep_max_candidates = tunables["physrep_max_candidates"]
 
-    if rs then
-        local row = rs:fetch()
-        while row do
-            db:emit(row)
-            row = rs:fetch()
+    local cte = ("WITH RECURSIVE " ..
+                 "    tiers (dbname, host, tier) AS " ..
+                 "        (SELECT dbname, host, 0 " ..
+                 "             FROM comdb2_physreps " ..
+                 "             WHERE dbname = '" .. source_dbname .. "' AND " ..
+                 "                   host IN (" .. source_hosts ..") " ..
+                 "         UNION ALL " ..
+                 "         SELECT p.dbname, p.host, t.tier+1  " ..
+                 "             FROM comdb2_physrep_connections p, tiers t " ..
+                 "             WHERE p.source_dbname = t.dbname AND p.source_host = t.host), " ..
+                 "    child_count (dbname, host, tier, cnt) AS " ..
+                 "        (SELECT t.dbname, t.host, t.tier, count (*) " ..
+                 "             FROM tiers t LEFT OUTER JOIN comdb2_physrep_connections p " ..
+                 "                 ON t.dbname = p.source_dbname AND t.host = p.source_host " ..
+                 "             GROUP BY t.dbname, t.host HAVING COUNT(*) < " .. physrep_fanout .. " ) " ..
+                 "SELECT c.tier, c.dbname, c.host FROM child_count c, comdb2_physreps p " ..
+                 "    WHERE c.dbname = p.dbname AND c.host = p.host AND (p.state IS NULL OR p.state NOT IN ('Pending', 'Inactive'))" ..
+                 "    ORDER BY tier, random() " ..
+                 "    LIMIT " .. physrep_max_candidates)
+
+    print("physrep_register_replicant: sql = " .. cte)
+    local rs, rc = db:exec(cte)
+
+    if (rc == 0) then
+        if rs then
+            local row = rs:fetch()
+            while row do
+                db:emit(row)
+                row = rs:fetch()
+            end
         end
+
+        -- Add this physical replicant requester to the comdb2_physreps table with
+        -- its state set to 'Pending'. This information will give an estimate on how
+        -- many replicant registrations are currently in progress.
+        -- We could deny further requests if there are too many pending requests.
+        db:exec("INSERT INTO comdb2_physreps(dbname, host, state) VALUES ('" ..  dbname .. "', '" .. hostname .. "', 'Pending')" ..
+        " ON CONFLICT (dbname, host) DO UPDATE SET state = 'Pending'")
     end
-
-    -- Add this physical replicant requester to the comdb2_physreps table with
-    -- its state set to 'Pending'. This information will give an estimate on how
-    -- many replicant registrations are currently in progress.
-    -- We could deny further requests if there are too many pending requests.
-    db:exec("INSERT INTO comdb2_physreps(dbname, host, state) VALUES ('" ..  dbname .. "', '" .. hostname .. "', 'Pending')" ..
-            " ON CONFLICT (dbname, host) DO UPDATE SET state = 'Pending'")
-
     db:commit()
 end
