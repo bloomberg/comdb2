@@ -1,0 +1,7 @@
+schema
+{
+    int a
+    int b
+    int c
+    blob blb null=yes
+}

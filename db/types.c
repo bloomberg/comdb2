@@ -3733,7 +3733,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
          * this copy takes place.  The calling code expects this behavior. */
 
         /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
-        if (inblob && inblob->exists && inblob->length != -2) {
+        if (inblob && inblob->exists && inblob->length != OSQL_BLOB_FILLER_LENGTH) {
             /* if outblob is NULL, we're trying to fit excess
                characters into a cstring. Return an error here. */
             if (outblob == NULL)
@@ -3824,7 +3824,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
         int valid_len;
 
         /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
-        if (inblob && inblob->length != -2) {
+        if (inblob && inblob->length != OSQL_BLOB_FILLER_LENGTH) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "vutf8_convert: missing inblob\n");
                 return -1;
@@ -6485,7 +6485,7 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len, void 
          * this copy takes place.  The calling code expects this behavior. */
 
         /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
-        if (inblob && outblob && inblob->exists && inblob->length != -2) {
+        if (inblob && outblob && inblob->exists && inblob->length != OSQL_BLOB_FILLER_LENGTH) {
 
             /* validate input blob */
             assert(IS_ODH_READY(inblob) || inblob->length == len);
@@ -6578,7 +6578,7 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len, void 
     else /* len <= out_len */
     {
         /* Do not attempt to convert a blob placeholder (i.e., length == -2) */
-        if (inblob && inblob->length != -2) {
+        if (inblob && inblob->length != OSQL_BLOB_FILLER_LENGTH) {
             if (!inblob->exists || !inblob->data) {
                 logmsg(LOGMSG_ERROR, "blob2_convert: missing inblob\n");
                 return -1;

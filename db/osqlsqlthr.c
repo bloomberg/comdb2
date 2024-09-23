@@ -1476,7 +1476,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 /* Put a token on the network if this isn't going to be used */
                 rc = osql_send_qblob(&osql->target, osql->rqid, osql->uuid, i,
-                                     pCur->genid, nettype, NULL, -2);
+                                     pCur->genid, nettype, NULL, OSQL_BLOB_FILLER_LENGTH);
                 if (rc)
                     break; /* break out from while loop so we can return rc */
                 osql->replicant_numops++;
