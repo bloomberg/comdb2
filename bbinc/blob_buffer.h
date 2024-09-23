@@ -19,6 +19,7 @@
 
 #define OSQL_BLOB_ODH_BIT (1 << 31)
 #define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
+#define OSQL_BLOB_FILLER_LENGTH (-2)
 
 /* Used for collecting blob data before a keyless add/upd/del.
  * An array of these also supplements */

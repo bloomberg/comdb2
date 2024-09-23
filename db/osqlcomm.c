@@ -7195,7 +7195,7 @@ done_delete:
         }
         /* Blob isn't used so we sent a short token rather than the entire blob.
            */
-        else if (dt.bloblen == -2) {
+        else if (dt.bloblen == OSQL_BLOB_FILLER_LENGTH) {
             *flags |= OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION;
             blobs[dt.id].length = dt.bloblen;
             blobs[dt.id].exists = 1;
