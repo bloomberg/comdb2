@@ -14,8 +14,6 @@
    limitations under the License.
  */
 
-#include "sqlglue.h"
-
 #include "sqloffload.h"
 #include "analyze.h"
 
@@ -82,6 +80,7 @@
 #include <sqlite3.h>
 
 #include "dbinc/debug.h"
+#include "sqlglue.h"
 #include "sqlinterfaces.h"
 
 #include "osqlsqlthr.h"
@@ -1040,21 +1039,8 @@ int convert_sql_failure_reason_str(const struct convert_failure *reason,
     return 0;
 }
 
-struct mem_info {
-    struct schema *s;
-    Mem *m;
-    int null;
-    int *nblobs;
-    struct field_conv_opts_tz *convopts;
-    const char *tzname;
-    blob_buffer_t *outblob;
-    int maxblobs;
-    struct convert_failure *fail_reason;
-    int fldidx;
-};
-
-static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
-                         bias_info *bias_info)
+int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
+                  bias_info *bias_info)
 {
     Mem *m = info->m;
     struct schema *s = info->s;
@@ -2209,12 +2195,6 @@ int schema_var_size(struct schema *sc)
                * header byte + sqlite type byte) */
     return sz;
 }
-
-struct schema_mem {
-    struct schema *sc;
-    Mem *min;
-    Mem *mout;
-};
 
 /**
 ** Updates comdb2 dbtable with any scalar funcs that may be
@@ -12632,6 +12612,8 @@ int verify_indexes_column_value(struct sqlclntstate *clnt, sqlite3_stmt *stmt, v
             }
         } else if (pFrom->flags & MEM_Int) {
             pTo->u.i = pFrom->u.i;
+        } else if (pFrom->flags & MEM_Datetime) {
+            pTo->du = pFrom->du;
         }
     }
     return 0;

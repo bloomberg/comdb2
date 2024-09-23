@@ -12311,15 +12311,6 @@ static TYPES_INLINE int SERVER_BCSTR_to_SERVER_VUTF8(S2S_FUNKY_ARGS)
 int (*client_to_client_convert_map[CLIENT_MAXTYPE][CLIENT_MAXTYPE])(
     const void *, int, const struct field_conv_opts *, blob_buffer_t *, void *,
     int, int *, const struct field_conv_opts *, blob_buffer_t *) = {
-    /* FROM */ /* TO */
-               /*                     CLIENT_MINTYPE  CLIENT_UINT
-                  CLIENT_INT                      CLIENT_REAL
-                  CLIENT_CSTR                      CLIENT_PSTR
-                  CLIENT_BYTEARRAY                      CLIENT_PSTR2
-                  CLIENT_BLOB                       CLIENT_DATETIME
-                  INTERVAL_YM                        INTERVAL_DS
-                  CLIENT_VUTF8                                          CLIENT_BLOB2
-                  CLIENT_DATETIMEUS                          INTERVAL_DSUS */
     /* CLIENT_MINTYPE */ {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                           NULL, NULL, NULL, NULL, NULL, NULL, NULL},
     /* CLIENT_UINT */ {NULL, CLIENT_UINT_to_CLIENT_UINT,
@@ -12524,15 +12515,6 @@ int (*server_to_client_convert_map[SERVER_MAXTYPE][CLIENT_MAXTYPE])(
     const void *in, int inlen, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob) = {
-    /* FROM */ /* TO */
-               /* CLIENT_MINTYPE                CLIENT_UINT
-                  CLIENT_INT                      CLIENT_REAL
-                  CLIENT_CSTR                      CLIENT_PSTR
-                  CLIENT_BYTEARRAY                      CLIENT_PSTR2
-                  CLIENT_BLOB                       CLIENT_DATETIME
-                  CLIENT_INTVYM                      CLIENT_INTVDS
-                  SERVER_VUTF8                                         CLIENT_BLOB2
-                  CLIENT_DATETIMEUS                            CLIENT_INTVDSUS */
     /* SERVER_MINTYPE */ {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                           NULL, NULL, NULL, NULL, NULL, NULL, NULL},
     /* SERVER_UINT */ {NULL, SERVER_UINT_to_CLIENT_UINT,
@@ -12747,14 +12729,6 @@ int (*client_to_server_convert_map[CLIENT_MAXTYPE][SERVER_MAXTYPE])(
     const void *in, int inlen, int isnull, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob) = {
-    /* FROM */ /* TO */
-               /*                       SERVER_MINTYPE SERVER_UINT
-                  SERVER_BINT                      SERVER_BREAL
-                  SERVER_BCSTR                      SERVER_BYTEARRAY
-                  SERVER_BLOB                        SERVER_DATETIME
-                  SERVER_INTVYM                      SERVER_INTVDS
-                  SERVER_VUTF8                        SERVER_DECIMAL     SERVER_BLOB2
-                  SERVER_DATETIMEUS                     SERVER_INTVDSUS */
     /* CLIENT_MINTYPE   */ {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                             NULL, NULL, NULL, NULL, NULL, NULL},
     /* CLIENT_UINT      */ {NULL, CLIENT_UINT_to_SERVER_UINT,
@@ -12988,47 +12962,13 @@ CLIENT_to_SERVER(const void *in, int inlen, int intype, int isnull,
     return rc;
 }
 
-const int server_to_server_convert_tbl[SERVER_MAXTYPE][SERVER_MAXTYPE] = {
-    /* this table will be used in constraint checks to see whether
-       a field in a key is convertible to a field in referring table key, or
-       not.  The actual data convertibility is not so important as it will fail
-       to convert in later record conversion anyway, if the data isn't right.
-       USING SAME TYPES AS BELOW HERE.  MUST UPDATE, IF UPDATING TABLE BELOW AS
-       WELL */
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0},
-    {0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0},
-    {0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0},
-    {0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0},
-    {0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0},
-    {0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-};
-
 // clang-format off
 int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
     const void *in, int inlen, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob) = {
-    /* FROM */ /* TO */
-               /*                       SERVER_MINTYPE    SERVER_UINT
-                  SERVER_BINT                     SERVER_BREAL
-                  SERVER_BCSTR                      SERVER_BYTEARRAY
-                  SERVER_BLOB                             SERVER_DATETIME
-                  SERVER_INVYM                       SERVER_INTVDS
-                  SERVER_VUTF8                        SERVER_DECIMAL
-                  SERVER_BLOB2            SERVER_INTVDSUS*/
     /* SERVER_MINTYPE   */ {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                            NULL, NULL, NULL, NULL, NULL, NULL},
+                            NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
     /* SERVER_UINT      */ {NULL, SERVER_UINT_to_SERVER_UINT,
                             SERVER_UINT_to_SERVER_BINT,
                             SERVER_UINT_to_SERVER_BREAL,
@@ -13042,7 +12982,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_UINT_to_SERVER_DECIMAL,
                             SERVER_UINT_to_SERVER_BLOB2,
                             SERVER_UINT_to_SERVER_DATETIMEUS,
-                            SERVER_UINT_to_SERVER_INTVDSUS},
+                            SERVER_UINT_to_SERVER_INTVDSUS,
+                            SERVER_UINT_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_BINT      */ {NULL, SERVER_BINT_to_SERVER_UINT,
                             SERVER_BINT_to_SERVER_BINT,
                             SERVER_BINT_to_SERVER_BREAL,
@@ -13056,7 +12998,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_BINT_to_SERVER_DECIMAL,
                             SERVER_BINT_to_SERVER_BLOB2,
                             SERVER_BINT_to_SERVER_DATETIMEUS,
-                            SERVER_BINT_to_SERVER_INTVDSUS},
+                            SERVER_BINT_to_SERVER_INTVDSUS,
+                            SERVER_BINT_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_BREAL     */ {NULL, SERVER_BREAL_to_SERVER_UINT,
                             SERVER_BREAL_to_SERVER_BINT,
                             SERVER_BREAL_to_SERVER_BREAL,
@@ -13070,7 +13014,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_BREAL_to_SERVER_DECIMAL,
                             SERVER_BREAL_to_SERVER_BLOB2,
                             SERVER_BREAL_to_SERVER_DATETIMEUS,
-                            SERVER_BREAL_to_SERVER_INTVDSUS},
+                            SERVER_BREAL_to_SERVER_INTVDSUS,
+                            SERVER_BREAL_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_BCSTR     */ {NULL, SERVER_BCSTR_to_SERVER_UINT,
                             SERVER_BCSTR_to_SERVER_BINT,
                             SERVER_BCSTR_to_SERVER_BREAL,
@@ -13084,7 +13030,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_BCSTR_to_SERVER_DECIMAL,
                             SERVER_BCSTR_to_SERVER_BLOB2,
                             SERVER_BCSTR_to_SERVER_DATETIMEUS,
-                            SERVER_BCSTR_to_SERVER_INTVDSUS},
+                            SERVER_BCSTR_to_SERVER_INTVDSUS,
+                            SERVER_BCSTR_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_BYTEARRAY */ {NULL, SERVER_BYTEARRAY_to_SERVER_UINT,
                             SERVER_BYTEARRAY_to_SERVER_BINT,
                             SERVER_BYTEARRAY_to_SERVER_BREAL,
@@ -13098,7 +13046,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_BYTEARRAY_to_SERVER_DECIMAL,
                             SERVER_BYTEARRAY_to_SERVER_BLOB2,
                             SERVER_BYTEARRAY_to_SERVER_DATETIMEUS,
-                            SERVER_BYTEARRAY_to_SERVER_INTVDSUS},
+                            SERVER_BYTEARRAY_to_SERVER_INTVDSUS,
+                            SERVER_BYTEARRAY_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_BLOB      */ {NULL, SERVER_BLOB_to_SERVER_UINT,
                             SERVER_BLOB_to_SERVER_BINT,
                             SERVER_BLOB_to_SERVER_BREAL,
@@ -13112,7 +13062,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_BLOB_to_SERVER_DECIMAL,
                             SERVER_BLOB_to_SERVER_BLOB2,
                             SERVER_BLOB_to_SERVER_DATETIMEUS,
-                            SERVER_BLOB_to_SERVER_INTVDSUS},
+                            SERVER_BLOB_to_SERVER_INTVDSUS,
+                            SERVER_BLOB_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_DATETIME  */ {NULL, SERVER_DATETIME_to_SERVER_UINT,
                             SERVER_DATETIME_to_SERVER_BINT,
                             SERVER_DATETIME_to_SERVER_BREAL,
@@ -13126,7 +13078,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_DATETIME_to_SERVER_DECIMAL,
                             SERVER_DATETIME_to_SERVER_BLOB2,
                             SERVER_DATETIME_to_SERVER_DATETIMEUS,
-                            SERVER_DATETIME_to_SERVER_INTVDSUS},
+                            SERVER_DATETIME_to_SERVER_INTVDSUS,
+                            SERVER_DATETIME_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_INTVYM    */ {NULL, SERVER_INTVYM_to_SERVER_UINT,
                             SERVER_INTVYM_to_SERVER_BINT,
                             SERVER_INTVYM_to_SERVER_BREAL,
@@ -13140,7 +13094,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_INTVYM_to_SERVER_DECIMAL,
                             SERVER_INTVYM_to_SERVER_BLOB2,
                             SERVER_INTVYM_to_SERVER_DATETIMEUS,
-                            SERVER_INTVYM_to_SERVER_INTVDSUS},
+                            SERVER_INTVYM_to_SERVER_INTVDSUS,
+                            SERVER_INTVYM_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_INTVDS    */ {NULL, SERVER_INTVDS_to_SERVER_UINT,
                             SERVER_INTVDS_to_SERVER_BINT,
                             SERVER_INTVDS_to_SERVER_BREAL,
@@ -13154,7 +13110,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_INTVDS_to_SERVER_DECIMAL,
                             SERVER_INTVDS_to_SERVER_BLOB2,
                             SERVER_INTVDS_to_SERVER_DATETIMEUS,
-                            SERVER_INTVDS_to_SERVER_INTVDSUS},
+                            SERVER_INTVDS_to_SERVER_INTVDSUS,
+                            SERVER_INTVDS_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_VUTF8     */ {NULL, SERVER_VUTF8_to_SERVER_UINT,
                             SERVER_VUTF8_to_SERVER_BINT,
                             SERVER_VUTF8_to_SERVER_BREAL,
@@ -13168,7 +13126,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_VUTF8_to_SERVER_DECIMAL,
                             SERVER_VUTF8_to_SERVER_BLOB2,
                             SERVER_VUTF8_to_SERVER_DATETIMEUS,
-                            SERVER_VUTF8_to_SERVER_INTVDSUS},
+                            SERVER_VUTF8_to_SERVER_INTVDSUS,
+                            SERVER_VUTF8_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_DECIMAL   */ {NULL, SERVER_DECIMAL_to_SERVER_UINT,
                             SERVER_DECIMAL_to_SERVER_BINT,
                             SERVER_DECIMAL_to_SERVER_BREAL,
@@ -13182,7 +13142,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_DECIMAL_to_SERVER_DECIMAL,
                             SERVER_DECIMAL_to_SERVER_BLOB2,
                             SERVER_DECIMAL_to_SERVER_DATETIMEUS,
-                            SERVER_DECIMAL_to_SERVER_INTVDSUS},
+                            SERVER_DECIMAL_to_SERVER_INTVDSUS,
+                            SERVER_DECIMAL_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_BLOB2     */ {NULL, SERVER_BLOB2_to_SERVER_UINT,
                             SERVER_BLOB2_to_SERVER_BINT,
                             SERVER_BLOB2_to_SERVER_BREAL,
@@ -13196,7 +13158,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_BLOB2_to_SERVER_DECIMAL,
                             SERVER_BLOB2_to_SERVER_BLOB2,
                             SERVER_BLOB2_to_SERVER_DATETIMEUS,
-                            SERVER_BLOB_to_SERVER_INTVDSUS},
+                            SERVER_BLOB2_to_SERVER_INTVDSUS,
+                            SERVER_BLOB2_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_DATETIMEUS*/ {NULL, SERVER_DATETIMEUS_to_SERVER_UINT,
                             SERVER_DATETIMEUS_to_SERVER_BINT,
                             SERVER_DATETIMEUS_to_SERVER_BREAL,
@@ -13210,7 +13174,9 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_DATETIMEUS_to_SERVER_DECIMAL,
                             SERVER_DATETIMEUS_to_SERVER_BLOB2,
                             SERVER_DATETIMEUS_to_SERVER_DATETIMEUS,
-                            SERVER_DATETIMEUS_to_SERVER_INTVDSUS},
+                            SERVER_DATETIMEUS_to_SERVER_INTVDSUS,
+                            SERVER_DATETIMEUS_to_SERVER_SEQ,
+                            NULL},
     /* SERVER_INTVDSUS  */ {NULL, SERVER_INTVDSUS_to_SERVER_UINT,
                             SERVER_INTVDSUS_to_SERVER_BINT,
                             SERVER_INTVDSUS_to_SERVER_BREAL,
@@ -13224,8 +13190,10 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_INTVDSUS_to_SERVER_DECIMAL,
                             SERVER_INTVDSUS_to_SERVER_BLOB2,
                             SERVER_INTVDSUS_to_SERVER_DATETIMEUS,
-                            SERVER_INTVDSUS_to_SERVER_INTVDSUS},
-    /* SERVER_SEQUENCE */  {NULL, SERVER_SEQ_to_SERVER_UINT,
+                            SERVER_INTVDSUS_to_SERVER_INTVDSUS,
+                            SERVER_INTVDSUS_to_SERVER_SEQ,
+                            NULL},
+    /* SERVER_SEQUENCE  */ {NULL, SERVER_SEQ_to_SERVER_UINT,
                             SERVER_SEQ_to_SERVER_BINT,
                             SERVER_SEQ_to_SERVER_BREAL,
                             SERVER_SEQ_to_SERVER_BCSTR,
@@ -13239,7 +13207,10 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_SEQ_to_SERVER_BLOB2,
                             SERVER_SEQ_to_SERVER_DATETIMEUS,
                             SERVER_SEQ_to_SERVER_INTVDSUS,
-                            SERVER_SEQ_to_SERVER_SEQ},
+                            SERVER_SEQ_to_SERVER_SEQ,
+                            NULL},
+    /* SERVER_FUNCTION  */ {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                            NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
 };
 // clang-format on
 TYPES_INLINE int SERVER_to_SERVER(const void *in, int inlen, int intype,
@@ -13257,6 +13228,9 @@ TYPES_INLINE int SERVER_to_SERVER(const void *in, int inlen, int intype,
     if (outtype < SERVER_MINTYPE || outtype > SERVER_MAXTYPE)
         return -1;
 
+    if (server_to_server_convert_map[intype - SERVER_MINTYPE][outtype - SERVER_MINTYPE] == NULL)
+        return -1;
+
     rc = server_to_server_convert_map[intype - SERVER_MINTYPE]
                                      [outtype - SERVER_MINTYPE](
                                          in, inlen, inopts, inblob, out, outlen,
@@ -13268,18 +13242,6 @@ TYPES_INLINE int NULL_to_SERVER(void *out, int outlen, int outtype)
 {
     set_null(out, outlen);
     return 0;
-}
-
-TYPES_INLINE int convertible_types(int intype, int outtype)
-{
-    if (intype < SERVER_MINTYPE || intype > SERVER_MAXTYPE)
-        return -1;
-
-    if (outtype < SERVER_MINTYPE || outtype > SERVER_MAXTYPE)
-        return -1;
-
-    return server_to_server_convert_tbl[intype - SERVER_MINTYPE]
-                                       [outtype - SERVER_MINTYPE];
 }
 
 int dec_ctx_init(void *pctx, int type, int rounding)
