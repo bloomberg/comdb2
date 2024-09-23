@@ -609,7 +609,7 @@ static int exec_bulk_import(void *tran, bpfunc_t *func, struct errstat *err)
     const int rc = bulk_import_do_import(func->arg->bimp->srcdb, 
         func->arg->bimp->src_tablename, func->arg->bimp->dst_tablename);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Failed bulk import\n", __func__);
+        errstat_set_rcstrf(err, rc, "%s Failed bulk import", __func__);
     }
     return rc;
 }

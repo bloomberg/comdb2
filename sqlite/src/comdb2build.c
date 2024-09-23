@@ -1622,7 +1622,12 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
 
 void comdb2Import(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 {
+    char * srcdb = NULL;
+    char * src_tablename = NULL;
+    char * const dst_tablename = (char *)malloc(MAXTABLELEN);
+
     Vdbe *v  = sqlite3GetVdbe(pParse);
+
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     if (!arg) goto err;
     bpfunc_arg__init(arg);
@@ -1631,9 +1636,22 @@ void comdb2Import(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
     if (!aimport) goto err;
     bpfunc_bulk_import__init(aimport);
 
-    aimport->srcdb = strdup(nm2->z);
-    aimport->src_tablename = strdup(nm->z);
-    aimport->dst_tablename = strdup(nm3->z);
+    if (create_string_from_token(v, pParse, &srcdb, nm2)) {
+        goto err;
+    }
+
+    if (create_string_from_token(v, pParse, &src_tablename, nm)) {
+        goto err;
+    }
+
+    if (chkAndCopyTableTokens(pParse, dst_tablename, nm3, 0,
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)) {
+        goto err;
+    }
+
+    aimport->srcdb = srcdb; // strdup(nm2->z);
+    aimport->src_tablename = src_tablename;
+    aimport->dst_tablename = dst_tablename;
 
     arg->bimp = aimport;
     arg->type = BPFUNC_BULK_IMPORT;
@@ -1645,6 +1663,15 @@ void comdb2Import(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
 err:
     if (arg) {
         free_bpfunc_arg(arg);
+    }
+    if (srcdb) {
+        free(srcdb);
+    }
+    if (src_tablename) {
+        free(src_tablename);
+    }
+    if (dst_tablename) {
+        free(dst_tablename);
     }
 
     logmsg(LOGMSG_ERROR, "%s: Bulk import failed\n", __func__);

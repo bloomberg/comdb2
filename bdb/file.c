@@ -1404,6 +1404,10 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     u_int8_t fileid[21] = {0};
     char fid_str[41] = {0};
 
+    if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name)) {
+        return 0;
+    }
+
     print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
     if (!bdb_state->isopen) {
@@ -4223,6 +4227,11 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     DB_TXN *tmptid = NULL;
     DB_TXN *tid;
 
+    if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name)) {
+        *pbdberr = BDBERR_NOERROR;
+        return 0;
+    }
+
     /* This function sets (*ptid) to NULL on txn abort. Make sure it points to something. */
     if (ptid == NULL)
         ptid = &tmptid;
@@ -4361,8 +4370,7 @@ deadlock_again:
                         pagesize = llpagesize;
                 }
 
-                if ((gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name))
-                        || (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
+                if ((gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
                     char new[PATH_MAX];
                     print(bdb_state, "truncating ignored table %s\n", bdb_trans(tmpname, new));
                     rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
@@ -4573,8 +4581,7 @@ deadlock_again:
         else
             pagesize = bdb_state->attr->pagesizedta;
 
-        if ((gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name))
-                || (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
+        if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
             char new[PATH_MAX];
             print(bdb_state, "truncating ignored queue %s\n", bdb_trans(tmpname, new));
             rc = truncate(bdb_trans(tmpname, new), pagesize * 2);
@@ -4732,8 +4739,7 @@ deadlock_again:
                         pagesize);
             }
 
-            if ((gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name))
-                    || (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
+            if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
                 char new[PATH_MAX];
                 print(bdb_state, "truncating ignored queue %s\n", bdb_trans(tmpname, new));
                 rc = truncate(bdb_trans(tmpname, new), pagesize * 2);

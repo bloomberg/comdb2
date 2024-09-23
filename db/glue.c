@@ -154,6 +154,9 @@ extern int gbl_use_fastseed_for_comdb2_seqno;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 
+extern int gbl_import_mode;
+extern int bulk_import_tmpdb_should_ignore_table(const char *table);
+
 extern int get_physical_transaction(bdb_state_type *bdb_state,
                                     tran_type *logical_tran,
                                     tran_type **outtran, int force_commit);
@@ -4113,8 +4116,13 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     }
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
-        /* read ondisk header and compression information */
         struct dbtable *tbl = dbenv->dbs[ii];
+
+        if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(tbl->tablename)) {
+            continue;
+        }
+
+        /* read ondisk header and compression information */
         int compress, compress_blobs, datacopy_odh;
         int bthashsz;
         if (gbl_create_mode) {

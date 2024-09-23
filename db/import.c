@@ -51,6 +51,19 @@
 #define __import_logmsg(lvl, msg, ...) \
     logmsg(lvl, "[IMPORT] %s: " msg, __func__, ## __VA_ARGS__)
 
+static int value_on_off(const char *value) {
+    if (strcasecmp("on", value) == 0) {
+        return 1;
+    } else if (strcasecmp("off", value) == 0) {
+        return 0;
+    } else if (strcasecmp("no", value) == 0) {
+        return 0;
+    } else if (strcasecmp("yes", value) == 0) {
+        return 1;
+    }
+    return atoi(value);
+}
+
 extern char *comdb2_get_tmp_dir();
 extern int comdb2_get_tmp_dir_args(char *tmp_dir, ssize_t sz, const char *basedir, const char *envname, int nonames);
 extern void get_txndir_args(char *txndir, size_t sz_txndir, const char *dbdir, const char *envname, int nonames);
@@ -84,8 +97,9 @@ static int str_has_ending(const char * const s_start, const char * const e_start
     const char * e_last = e_start + e_len;
     const char * s_last = s_start + s_len;
 
+    // if last char is neq then elast < estart
     while ((*e_last-- == *s_last--) && (e_last >= e_start)) {}
-    return e_last < e_start;
+    return (*(e_last+1) == *(s_last+1));
 }
 
 int get_str_ending_from_list(const char *str, const char **list) {
@@ -234,16 +248,50 @@ err:
     return rc;
 }
 
+int bulk_import_write_import_db_lrl(char *tmp_db_dir, const char *srcdb) {
+    FILE *fp = NULL;
+    int rc = 0;
+
+    char fname[PATH_MAX];
+    int t_rc = snprintf(fname, sizeof(fname), "%s/import.lrl", tmp_db_dir);
+    if (t_rc < 0 || t_rc >= sizeof(fname)) {
+        rc = 1;
+        goto err;
+    }
+
+    fp = fopen(fname, "w");
+    if (!fp) {
+        __import_logmsg(LOGMSG_ERROR,
+               "Failed to open %s for writing with errno %s\n",
+               fname, strerror(errno));
+        rc = 1;
+        goto err;
+    }
+
+    fprintf(fp, "name import\ndir %s\nnonames\ndtastripe %d\n%s",
+            tmp_db_dir,
+            gbl_dtastripe,
+            gbl_blobstripe ? "blobstripe" : "noblobstripe");
+
+err:
+    if (fp) {
+        t_rc = fclose(fp);
+        rc = rc ? rc : t_rc;
+    }
+    return rc;
+}
+
 /*
  * Creates all directories and files needed to run the import db.
  *
  * p_tmp_db_dir: Will point to the path of the import db directory on success.
+ * TODO
  *
  * returns
  *      0 on success
  *      non-0 on failure
  */
-int bulk_import_setup_import_db(char **p_tmp_db_dir, const uint64_t import_id) {
+int bulk_import_setup_import_db(char **p_tmp_db_dir, const uint64_t import_id, const char *srcdb) {
     int dbdir_created = 0;
 
     char tmp_db_dir[PATH_MAX];
@@ -263,26 +311,9 @@ int bulk_import_setup_import_db(char **p_tmp_db_dir, const uint64_t import_id) {
     }
     dbdir_created = 1;
 
-    char fname[PATH_MAX];
-    rc = snprintf(fname, sizeof(fname), "%s/import.lrl", tmp_db_dir);
-    if (rc < 0 || rc >= sizeof(fname)) {
-        rc = 1;
-        goto err;
-    }
-
-    FILE * fp = fopen(fname, "w");
-    if (fp == NULL) {
-        __import_logmsg(LOGMSG_ERROR,
-               "Failed to open %s for writing with errno %s\n",
-               fname, strerror(errno));
-        rc = 1;
-        goto err;
-    }
-
-    fprintf(fp, "name import\ndir %s\nnonames on", tmp_db_dir);
-
-    rc = fclose(fp);
-    if (rc == EOF) {
+    rc = bulk_import_write_import_db_lrl(tmp_db_dir, srcdb);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to write lrl file for import db\n");
         goto err;
     }
 
@@ -435,6 +466,8 @@ void clear_bulk_import_data(ImportData *p_data) {
     if (p_data->blob_files) {
         free(p_data->blob_files);
     }
+
+    *p_data = (const ImportData){ 0 };
 }
 
 /**
@@ -547,6 +580,7 @@ static int bulk_import_data_load(const char *table_name, ImportData *p_data) {
     }
 
     /* get ipu/isc options from meta table */
+	// TODO: are these errors?
 
     if (get_db_inplace_updates(db, &p_data->ipu)) {
         __import_logmsg(
@@ -751,8 +785,9 @@ err:
  * @return 0 on success, !0 otherwise
  */
 static int
-bulk_import_data_validate(const ImportData *p_local_data,
-                          const ImportData *p_foreign_data) {
+bulk_import_data_validate(const char *dst_table_name,
+                          const int src_dtastripe,
+                          const int src_blobstripe) {
     /* lots of sanity checks so that hopefully we never swap in incompatible data
      * files */
 
@@ -764,8 +799,14 @@ bulk_import_data_validate(const ImportData *p_local_data,
     /* do not check data_dir for equality since it doesn't need to be the same
      * on all machines */
 
+    struct dbtable * const db = get_dbtable_by_name(dst_table_name);
+    if (!db) {
+        __import_logmsg(LOGMSG_ERROR,
+               "Could not find table %s\n", dst_table_name);
+        return -1;
+    }
+
     unsigned long long genid;
-    struct dbtable *db = get_dbtable_by_name(p_local_data->table_name);
     if (get_blobstripe_genid(db, &genid) == 0) {
         __import_logmsg(LOGMSG_ERROR,
                "Destination db has a blobstripe genid. Can't import.\n");
@@ -779,19 +820,70 @@ bulk_import_data_validate(const ImportData *p_local_data,
     }
 
     /* compare stripe options */
-    if (p_local_data->dtastripe != p_foreign_data->dtastripe ||
-        p_local_data->blobstripe != p_foreign_data->blobstripe) {
+    if (gbl_dtastripe != src_dtastripe ||
+        gbl_blobstripe != src_blobstripe) {
         __import_logmsg(LOGMSG_ERROR,
-               "stripe settings differ for table: %s dtastripe: "
-               "%d %d blobstripe: %d %d\n",
-               p_local_data->table_name, p_local_data->dtastripe,
-               p_foreign_data->dtastripe, p_local_data->blobstripe,
-               p_foreign_data->blobstripe);
+               "stripe settings differ between dst and src. dtastripe: "
+               "dst(%d) src(%d) blobstripe: dst(%d) src(%d)\n",
+               gbl_dtastripe, src_dtastripe, gbl_blobstripe,
+               src_blobstripe);
         return -1;
     }
 
     /* success */
     return 0;
+}
+
+static int bulk_import_perform_initial_validation(const char *src_db_name,
+                                                  const char *dst_table_name) {
+    cdb2_hndl_tp *hndl = NULL;
+    fdb_t *fdb = NULL;
+
+    int rc = create_fdb(src_db_name, &fdb);
+    if (rc) {
+        __import_logmsg(
+            LOGMSG_ERROR,
+            "Failed to create fdb with rc %d\n",
+            rc);
+        goto err;
+    }
+
+    rc = cdb2_open(&hndl, fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb), 0);
+    if (rc) {
+        __import_logmsg(
+            LOGMSG_ERROR,
+            "Failed to open a handle to src db with rc %d\n",
+            rc);
+        goto err;
+    }
+
+    rc = cdb2_run_statement(hndl, 
+            "select t1.value, t2.value from comdb2_tunables t1, comdb2_tunables t2 \
+            where t1.name='dtastripe' and t2.name='blobstripe'")
+        || (cdb2_next_record(hndl) != CDB2_OK);
+    if (rc) {
+        __import_logmsg(LOGMSG_ERROR,
+               "Failed to tunables from source db. errstr: %s\n",
+               cdb2_errstr(hndl));
+        goto err;
+    }
+
+    const int src_dtastripe = atoi((const char *)cdb2_column_value(hndl, 0));
+    const int src_blobstripe = value_on_off((const char *)cdb2_column_value(hndl, 1));
+
+    rc = bulk_import_data_validate(dst_table_name, src_dtastripe, src_blobstripe);
+    if (rc) {
+        __import_logmsg(LOGMSG_ERROR,
+                "Import data failed validation\n");
+        goto err;
+    }
+
+err:
+    if (hndl) {
+        const int t_rc = cdb2_close(hndl);
+        rc = rc ? rc : t_rc;
+    }
+    return rc;
 }
 
 /**
@@ -1167,7 +1259,7 @@ static int bulk_import_complete(ImportData *p_foreign_data,
     unsigned long long dst_data_genid;
     unsigned long long dst_index_genids[MAXINDEX];
     unsigned long long dst_blob_genids[MAXBLOBS];
-    ImportData local_data = IMPORT_DATA__INIT;
+    ImportData local_data = {0};
     const char *hosts[REPMAX];
     struct dbtable *db;
     char src_path[PATH_MAX];
@@ -1188,15 +1280,15 @@ static int bulk_import_complete(ImportData *p_foreign_data,
     }
     loaded_import_data = 1;
 
-    db = get_dbtable_by_name(local_data.table_name);
+    db = get_dbtable_by_name(dst_tablename);
     if (!db) {
         __import_logmsg(LOGMSG_ERROR, "no such table: %s\n",
-               p_foreign_data->table_name);
+               dst_tablename);
         rc = -1;
         goto err;
     }
 
-    rc = bulk_import_data_validate(&local_data, p_foreign_data);
+    rc = bulk_import_data_validate(dst_tablename, p_foreign_data->dtastripe, p_foreign_data->blobstripe);
     if (rc) {
         __import_logmsg(LOGMSG_ERROR, "Failed to validate import with rc %d\n",
                               rc);
@@ -1267,16 +1359,16 @@ static int bulk_import_complete(ImportData *p_foreign_data,
     loaded_import_data = 1;
 
     // Make sure that the destination table still exists.
-    db = get_dbtable_by_name(local_data.table_name);
+    db = get_dbtable_by_name(dst_tablename);
     if (!db) {
         __import_logmsg(LOGMSG_ERROR, "no such table: %s\n",
-               p_foreign_data->table_name);
+               dst_tablename);
         rc = -1;
         goto err;
     }
 
     // Need to redo validation: blobstripe genid could change live
-    rc = bulk_import_data_validate(&local_data, p_foreign_data);
+    rc = bulk_import_data_validate(dst_tablename, p_foreign_data->dtastripe, p_foreign_data->blobstripe);
     if (rc) {
         __import_logmsg(LOGMSG_ERROR, "Failed to validate import with rc %d\n",
                               rc);
@@ -1719,7 +1811,13 @@ int bulk_import_do_import(const char *srcdb, const char *src_tablename, const ch
     const uint64_t import_id = gbl_import_id++;
     pthread_mutex_unlock(&import_id_mutex);
 
-    int rc = bulk_import_setup_import_db(&tmp_db_dir, import_id);
+    int rc = bulk_import_perform_initial_validation(srcdb, dst_tablename);
+    if (rc) {
+        __import_logmsg(LOGMSG_ERROR, "Failed initial validation. Aborting import.\n");
+        goto err;
+    }
+
+    rc = bulk_import_setup_import_db(&tmp_db_dir, import_id, srcdb);
     if (rc) {
         __import_logmsg(LOGMSG_ERROR, "Failed to setup import db\n");
         goto err;
@@ -1732,16 +1830,19 @@ int bulk_import_do_import(const char *srcdb, const char *src_tablename, const ch
     }
 
     const char *my_tier = get_my_mach_class_str();
-    const int cmd_size = 1 + snprintf(NULL, 0, "%s --import --dir %s --tables %s --src %s --my-tier %s",
-                    exe, tmp_db_dir, src_tablename, srcdb, my_tier);
+    const int cmd_size = snprintf(NULL, 0,
+        "%s --import --lrl %s/import.lrl --dir %s --tables %s --src %s --my-tier %s",
+        exe, tmp_db_dir, tmp_db_dir, src_tablename, srcdb, my_tier)
+        + 1;
     command = malloc(cmd_size);
     if (command == NULL) {
         rc = ENOMEM;
         goto err;
     }
 
-    sprintf(command, "%s --import --dir %s --tables %s --src %s --my-tier %s",
-            exe, tmp_db_dir, src_tablename, srcdb, my_tier);
+    sprintf(command,
+        "%s --import --lrl %s/import.lrl --dir %s --tables %s --src %s --my-tier %s",
+         exe, tmp_db_dir, tmp_db_dir, src_tablename, srcdb, my_tier);
 
     rc = system(command);
     if (rc != 0) {
