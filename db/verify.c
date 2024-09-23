@@ -247,7 +247,7 @@ static int verify_blobsizes_callback(const dbtable *tbl, void *dta,
                 if (s->member[i].type == SERVER_VUTF8 ||
                     s->member[i].type == SERVER_BLOB2) {
                     if (blobsizes[blobix] <= s->member[i].len - 5)
-                        blobsizes[blobix] = -2;
+                        blobsizes[blobix] = OSQL_BLOB_FILLER_LENGTH;
                 }
             }
             offset[blobix] = s->member[i].offset;

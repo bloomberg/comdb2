@@ -1844,7 +1844,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 rc = osql_send_qblob(&osql->target, osql->rqid, osql->uuid, i,
-                                     seq, osql_nettype, NULL, -2);
+                                     seq, osql_nettype, NULL, OSQL_BLOB_FILLER_LENGTH);
                 osql->replicant_numops++;
                 DEBUG_PRINT_NUMOPS();
                 continue;

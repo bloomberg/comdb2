@@ -2101,6 +2101,9 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
 
         for (int i = 0; i != MAXBLOBS; ++i) {
+            /* skip empty blob tokens */
+            if (blobs[i].exists && blobs[i].length == OSQL_BLOB_FILLER_LENGTH)
+                continue;
             /* unodhfy in case we need to perform a type conversion (e.g., from blob to blob2) */
             rc = unodhfy_and_clone(iq->usedb, &blobs[i], &outblobs[i], i);
             if (rc != 0) {
@@ -2577,7 +2580,7 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs, size_t maxb
             }
 
             /* If this is an osql optimized blob, we get a free pass. */
-            if (0xfffffffe == (int)blobs[cblob].length) {
+            if (OSQL_BLOB_FILLER_LENGTH == blobs[cblob].length) {
                 inconsistent = 0;
             }
             /* if we found a schema earlier, and this blob is a vutf8 string,
@@ -2614,7 +2617,7 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs, size_t maxb
 static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
 {
     for (int i = 0; i < maxblobs; i++) {
-        if (blobs[i].exists && blobs[i].length != -2 &&
+        if (blobs[i].exists && blobs[i].length != OSQL_BLOB_FILLER_LENGTH &&
             blobs[i].length > MAXBLOBLENGTH) {
             reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                       "blob size (%zu) exceeds maximum (%d)", blobs[i].length,
