@@ -36,6 +36,7 @@
 #include <bdb_api.h>
 
 #include "comdb2.h"
+#include "sqlglue.h"
 #include "types.h"
 #include "tag.h"
 
@@ -72,6 +73,9 @@ double query_cost(struct sql_thread *thd);
 void run_internal_sql(char *sql);
 void start_internal_sql_clnt(struct sqlclntstate *clnt);
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql);
+int run_internal_sql_function(void *outbuf, struct field *dest, const char *sqlfn,
+                              struct schema *sc, blob_buffer_t *outblob, const char *tzname,
+                              struct convert_failure *fail_reason);
 void end_internal_sql_clnt(struct sqlclntstate *clnt);
 void reset_clnt_flags(struct sqlclntstate *);
 void thr_set_user(const char *label, intptr_t id);

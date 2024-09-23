@@ -1524,12 +1524,6 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                            "after \"begin\"\n");
                     return -1;
                 }
-                /*
-                   else if (!strncasecmp(str, "genid"))
-                   {
-
-                   }
-                 */
             } else {
                 logmsg(LOGMSG_ERROR, "Missing snapshot info after \"as of\"\n");
                 return -1;
@@ -7027,6 +7021,74 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
             logmsg(LOGMSG_ERROR, "%s: Error: '%s' \n", __func__, clnt->saved_errstr);
         rc = 1;
     }
+    return rc;
+}
+
+static inline void init_internal_sql_clnt(struct sqlclntstate *clnt, struct schema_mem *sm) 
+{
+    start_internal_sql_clnt(clnt);
+    
+    if (sm) {
+        clnt->verify_indexes = 1;
+        clnt->schema_mems = (void *)sm;
+    }
+}
+
+static inline void init_mem_info(struct mem_info *info, struct sqlclntstate *clnt, struct schema *sc,
+                                 blob_buffer_t *outblob, const char *tzname,
+                                 struct convert_failure *fail_reason) 
+{
+    if (!tzname || !tzname[0]) tzname = "America/New_York";
+    
+    info->s = sc;
+    info->m = ((struct schema_mem *)clnt->schema_mems)->mout;
+    info->tzname = tzname;
+    info->outblob = outblob;
+    info->maxblobs = MAXBLOBS;
+    info->fail_reason = fail_reason;
+    info->fldidx = -1;
+}
+
+int run_internal_sql_function(void *outbuf, struct field *dest, const char *sqlfn,
+                              struct schema *sc, blob_buffer_t *outblob, const char *tzname,
+                              struct convert_failure *fail_reason)
+{   
+    if (strlen(sqlfn) < 1) return -1;
+
+    int rc = 0;
+    struct sqlclntstate clnt = {0};
+    struct schema_mem sm = {0};
+    Mem mout = {0};
+    sm.mout = &mout;
+    
+    init_internal_sql_clnt(&clnt, &sm);
+    char *stmt = sqlite3_mprintf("select %s", sqlfn);
+    
+    if (run_internal_sql_clnt(&clnt, stmt)) {
+        rc = -1;
+        goto done;
+    }
+
+    struct mem_info info = {0};
+    struct field_conv_opts_tz convopts = {.flags = 0};
+    
+    init_mem_info(&info, &clnt, sc, outblob, tzname, fail_reason); 
+    info.convopts = &convopts;
+    
+    if (mem_to_ondisk(outbuf, dest, &info, NULL)) {
+        rc = -1;
+        goto done;
+    }
+
+done:
+    if (clnt.schema_mems) {
+        Mem *mout = ((struct schema_mem *)clnt.schema_mems)->mout;
+        if (mout && mout->zMalloc) free(mout->zMalloc);
+    }
+    
+    end_internal_sql_clnt(&clnt);
+    sqlite3_free(stmt);
+    
     return rc;
 }
 

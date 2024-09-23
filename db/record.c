@@ -428,7 +428,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (iq->debug)
             reqprintf(iq, "SET MASTER COLUMNS DEADLOCK");
         retrc = RC_INTERNAL_RETRY;
-        ERR("set master columns dedalock", 0);
+        ERR("set master columns deadlock", 0);
     } else if (rc == BDBERR_MAX_SEQUENCE) {
         reqerrstr(iq, ERR_INTERNAL, "Exhausted column sequence");
         *opfailcode = ERR_INTERNAL;
