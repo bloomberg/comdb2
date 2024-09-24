@@ -22,6 +22,7 @@ extern char *gbl_cdb2api_policy_override;
 extern int gbl_fdb_auth_enabled;
 
 struct fdb_push_connector {
+    enum ast_type type; /* what type of request we override */
     char *remotedb; /* name of the remote db; class matches stored fdb */
     enum mach_class class; /* what stage this db lives on */
     int class_override; /* class was explicit in the remdb name */
@@ -55,7 +56,8 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
     }
 }
 
-fdb_push_connector_t *_new_push(Parse *pParse, struct Db *pDb, int minver)
+fdb_push_connector_t *_new_push(Parse *pParse, struct Db *pDb,
+                                enum ast_type type, int minver)
 {
     fdb_push_connector_t *push = NULL;
 
@@ -76,6 +78,7 @@ fdb_push_connector_t *_new_push(Parse *pParse, struct Db *pDb, int minver)
     push->class = pDb->class;
     push->local = pDb->local;
     push->class_override = pDb->class_override;
+    push->type = type;
 
     return push;
 }
@@ -106,7 +109,8 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     if (clnt->intrans || clnt->in_client_trans)
         return -1;
 
-    fdb_push_connector_t *push = _new_push(pParse, pDb, FDB_VER_PROXY);
+    fdb_push_connector_t *push = _new_push(pParse, pDb, AST_TYPE_SELECT,
+                                           FDB_VER_PROXY);
     if (!push)
         return -1;
 
@@ -132,7 +136,7 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
  * Same as fdb_push_setup, but for remote writes
  *
  */
-int fdb_push_write_setup(Parse *pParse, Table *pTab)
+int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
 {
     GET_CLNT;
     struct Db *pDb = &pParse->db->aDb[pTab->iDb];
@@ -147,7 +151,7 @@ int fdb_push_write_setup(Parse *pParse, Table *pTab)
     if (clnt->disable_fdb_push)
         return -1;
 
-    fdb_push_connector_t *push = _new_push(pParse, pDb, FDB_VER_CDB2API);
+    fdb_push_connector_t *push = _new_push(pParse, pDb, type, FDB_VER_CDB2API);
     if (!push)
         return -1;
 
@@ -591,12 +595,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         } else if (clnt->effects.num_updated) {
             val = clnt->effects.num_updated;
         }
-        if (val > 0) {
-            rc = write_response(clnt, RESPONSE_ROW_REMTRAN, NULL, val);
-            if (rc) {
-                errstat_set_rcstrf(err, -1, "failed to write counter");
-                return -1;
-            }
+        rc = write_response(clnt, RESPONSE_ROW_REMTRAN, NULL, val);
+        if (rc) {
+            errstat_set_rcstrf(err, -1, "failed to write counter");
+            return -1;
         }
 
         /* write answer */

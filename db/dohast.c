@@ -1013,7 +1013,7 @@ int comdb2_check_push_remote_write(Parse *pParse)
         return 0;
 
     if (pTab->iDb > 1)
-        if (!fdb_push_write_setup(pParse, pTab))
+        if (!fdb_push_write_setup(pParse, anode->op, pTab))
             return 1;
     return 0;
 }

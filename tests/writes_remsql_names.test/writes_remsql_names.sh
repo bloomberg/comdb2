@@ -78,7 +78,6 @@ run_test()
    ${CDB2SQL_EXE} ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
    work_exp_output=${exp_output}.actual
-   echo "CONVERTING GEN ${work_exp_output}" 
    sed "s/ t / LOCAL_${a_remdbname}.${tblname} /g" ${exp_output}  > ${work_exp_output}
 
    # drop the 

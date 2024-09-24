@@ -77,7 +77,7 @@ int gbl_fdb_io_error_retries = 16;
 int gbl_fdb_io_error_retries_phase_1 = 6;
 int gbl_fdb_io_error_retries_phase_2_poll = 100;
 int gbl_fdb_auth_enabled = 1;
-int gbl_fdb_remsql_cdb2api = 0;
+int gbl_fdb_remsql_cdb2api = 1;
 int gbl_fdb_emulate_old = 0;
 
 struct fdb_tbl;
@@ -2593,8 +2593,11 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(sqlclntstate *clnt,
     fdb_cursor_if_t *cursor;
     int server_version = fdb_ver_encoded(fdb->server_version);
 
-    /* for now we only support cdb2api for standalone queries, if remote support it */
-    if (!trans && gbl_fdb_remsql_cdb2api &&
+    /* non-transactional queries go over cdb2api; 
+     * if there is a transaction running over cdb2api, use cdb2api also 
+     * for cursors
+     */
+    if ((!trans || trans->is_cdb2api) && gbl_fdb_remsql_cdb2api &&
             fdb->server_version >= FDB_VER_CDB2API)
         cursor = _cursor_open_remote_cdb2api(clnt, fdb, server_version, flags,
                                              version, rootpage, use_ssl);
@@ -5886,6 +5889,10 @@ int fdb_default_ver_set(int val)
         if (val < FDB_VER_CDB2API) {
             /* do not speak cdb2api if we set this too low */
             gbl_fdb_remsql_cdb2api = 0;
+            /* disable also push, otherwise this will break transactional
+             * queries
+             */
+            gbl_fdb_push_remote_write = 0;
         }
     }
     return 0;

@@ -1362,7 +1362,7 @@ int fdb_push_setup(Parse *pParse, struct dohsql_node *node);
  * Same as fdb_push_setup, but for remote writes
  *
  */
-int fdb_push_write_setup(Parse *pParse, Table *pTab);
+int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab);
 
 /**
  * Free remote push support
