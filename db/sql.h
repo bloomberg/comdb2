@@ -939,6 +939,7 @@ struct sqlclntstate {
     unsigned can_redirect_fdb: 1;
     unsigned force_fdb_push_redirect : 1; // this should only be set if can_redirect_fdb is true
     unsigned force_fdb_push_remote : 1;
+    unsigned return_long_column_names : 1; // if 0 then tunable decides
 
     char *sqlengine_state_file;
     int sqlengine_state_line;
