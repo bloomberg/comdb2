@@ -1702,7 +1702,7 @@ int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
 struct cursor_tran {
     uint32_t lockerid;
     uint32_t flags;
-    DB_LSN last_commit_lsn; /* Commit LSN prior to modsnap start point */
+    DB_LSN modsnap_start_lsn; /* Modsnap start point */
     DB_LSN last_checkpoint_lsn; /* Checkpoint LSN prior to modsnap start point */
     int id; /* debugging */
 };

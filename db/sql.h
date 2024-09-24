@@ -950,9 +950,9 @@ struct sqlclntstate {
     int64_t last_cost;
     int disable_fdb_push;
 
-    /* Commit LSN prior to modsnap start point */
-    uint32_t last_commit_lsn_file; 
-    uint32_t last_commit_lsn_offset;
+    /* Modsnap start point */
+    uint32_t modsnap_start_lsn_file; 
+    uint32_t modsnap_start_lsn_offset;
 
     /* Checkpoint LSN prior to modsnap start point */
     uint32_t last_checkpoint_lsn_file;
