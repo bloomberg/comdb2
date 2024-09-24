@@ -73,8 +73,9 @@
 #define FDB_VER_AUTH 6
 #define FDB_VER_CDB2API 7
 #define FDB_VER_WR_CDB2API 8
+#define FDB_VER_2PC_CDB2API 9
 
-#define FDB_VER FDB_VER_WR_CDB2API
+#define FDB_VER FDB_VER_2PC_CDB2API
 
 extern int gbl_fdb_default_ver;
 
@@ -474,6 +475,18 @@ cdb2_hndl_tp *fdb_push_connect(sqlclntstate *clnt, int *client_redir,
  *
  */
 void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran);
+
+/**
+ * Initialize a 2pc coordinator
+ *
+ */
+void fdb_init_disttxn(sqlclntstate *clnt);
+
+/**
+ * SET the options for a distributed 2pc transaction
+ *
+ */
+int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
 
 #endif
 

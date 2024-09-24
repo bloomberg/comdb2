@@ -4979,10 +4979,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
 
     rc = start_new_transaction(clnt, thd);
 
-    /* 2pc on tunable, only here for now */
-    extern int gbl_2pc;
-    clnt->use_2pc = gbl_2pc;
-
 done:
     if (rc == SQLITE_OK && pSchemaVersion) {
         sqlite3BtreeGetMeta(pBt, BTREE_SCHEMA_VERSION, (u32 *)pSchemaVersion);

@@ -545,6 +545,17 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         if (clnt->in_client_trans) {
             /* if not standalone, and this is the first reachout to this fdb, send begin */
             clnt->intrans = 1;
+
+            /* if this is 2pc, we need to send additional info to the participant */
+            if (clnt->use_2pc) {
+                fdb_init_disttxn(clnt);
+
+                rc = fdb_2pc_set(clnt, fdb, tran->fcon.hndl);
+                if (rc) {
+                    goto hndl_err;
+                }
+            }
+
             rc = cdb2_run_statement(tran->fcon.hndl, "begin");      
             while (rc == CDB2_OK) {
                 rc = cdb2_next_record(tran->fcon.hndl);
