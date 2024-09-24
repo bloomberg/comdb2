@@ -505,6 +505,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     fdb_t *fdb;
     int created;
     int rc;
+    int set_intrans = 0;
     
     if (!push)
         return -2;
@@ -537,20 +538,33 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
-        tran->fcon.hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
+        tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
         if (!tran->fcon.hndl) {
             rc = -2;
             goto free;
         }
         if (clnt->in_client_trans) {
             /* if not standalone, and this is the first reachout to this fdb, send begin */
-            clnt->intrans = 1;
+            if (!clnt->intrans) {
+                clnt->intrans = 1;
+                set_intrans = 1;
+            }
+
+            /* if this is 2pc, we need to send additional info to the participant */
+            if (clnt->use_2pc) {
+                fdb_init_disttxn(clnt);
+
+                rc = fdb_2pc_set(clnt, fdb, tran->fcon.hndl);
+                if (rc) {
+                    goto hndl_err;
+                }
+            }
+
             rc = cdb2_run_statement(tran->fcon.hndl, "begin");      
             while (rc == CDB2_OK) {
                 rc = cdb2_next_record(tran->fcon.hndl);
             }
             if (rc != CDB2_OK_DONE) {
-                hndl = tran->fcon.hndl;
                 goto hndl_err;
             }
         }
@@ -628,6 +642,17 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 
 hndl_err:
     errstr = cdb2_errstr(hndl);
+    extern const char *err_pre2pc;
+    if (errstr && !strncasecmp(errstr, err_pre2pc, strlen(err_pre2pc))) {
+        if (!created) {
+            /* instead of an assert */
+            logmsg(LOGMSG_ERROR, "%s remote db %s lost locks\n", __func__,
+                   push->remotedb);
+            abort();
+        }
+        rc = -2; /* lets try a non-2pc version  */
+        goto free;
+    }
     errstat_set_rcstrf(err, rc, "%s", errstr);
     rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
     if (rc) {
@@ -645,6 +670,15 @@ free_push:
         clnt->fdb_push = NULL;
         free(push->remotedb);
         free(push);
+        if (set_intrans) {
+            /* if this tried to short call to local sqlite3BtreeBeginTrans
+             * first time we try to push, and we set clnt->intrans,
+             * and we are gonna retry the legacy mode, need to reset
+             * that back so we do not skip calling sqlite3BtreeBeginTrans
+             */
+            clnt->intrans = 0;
+        }
+
     }
     return rc;
 }
