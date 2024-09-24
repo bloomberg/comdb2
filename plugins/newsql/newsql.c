@@ -227,8 +227,8 @@ static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
     if (newsql_has_high_availability(clnt)) {                                  \
         int file = 0, offset = 0;                                              \
         if (clnt->modsnap_in_progress) {                                       \
-            file = clnt->last_commit_lsn_file;                                 \
-            offset = clnt->last_commit_lsn_offset;                             \
+            file = clnt->modsnap_start_lsn_file;                                 \
+            offset = clnt->modsnap_start_lsn_offset;                             \
         } else if (fill_snapinfo(clnt, &file, &offset)) {                      \
             sql_response.error_code = (char)CDB2ERR_CHANGENODE;                \
         }                                                                      \

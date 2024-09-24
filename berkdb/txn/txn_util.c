@@ -368,7 +368,7 @@ int __txn_commit_map_init(dbenv)
 	}
 
 	ZERO_LSN(txmap->highest_checkpoint_lsn);
-	ZERO_LSN(txmap->highest_commit_lsn);
+	ZERO_LSN(txmap->modsnap_start_lsn);
 	txmap->smallest_logfile = -1;
 	txmap->highest_logfile = -1;
 	Pthread_mutex_init(&txmap->txmap_mutexp, NULL);
@@ -464,7 +464,7 @@ static void __txn_commit_map_delete_logfile_list(DB_ENV *dbenv, LOGFILE_TXN_LIST
 	} else if (i_am_smallest_logfile)
 	{
 		LOGFILE_TXN_LIST *successor = NULL;
-		while ((successor == NULL) && (++txmap->smallest_logfile <= txmap->highest_commit_lsn.file)) {
+		while ((successor == NULL) && (++txmap->smallest_logfile <= txmap->modsnap_start_lsn.file)) {
 			successor = hash_find(txmap->logfile_lists, &txmap->smallest_logfile);
 		}
 		assert(successor);
@@ -536,7 +536,7 @@ static int __txn_commit_map_remove_nolock_foreach_wrapper(void *obj, void *arg) 
  *
  *  *If this function deletes the transaction with the highest commit LSN, 
  * then it is the caller's responsibility to call 
- * `__txn_commit_map_set_highest_commit_lsn` with the next highest
+ * `__txn_commit_map_set_modsnap_start_lsn` with the next highest
  * commit LSN*
  *
  * PUBLIC: int __txn_commit_map_get_highest_checkpoint_lsn
@@ -581,16 +581,16 @@ int __txn_commit_map_get_highest_checkpoint_lsn(dbenv, highest_checkpoint_lsn, l
 }
 
 /*
- * __txn_commit_map_get_highest_commit_lsn --
+ * __txn_commit_map_get_modsnap_start_lsn --
  *  Get the highest commit lsn
  *  from the commit LSN map. If `lock` neq 0 then will acquire lock over data access.
  *
- * PUBLIC: int __txn_commit_map_get_highest_commit_lsn
+ * PUBLIC: int __txn_commit_map_get_modsnap_start_lsn
  * PUBLIC:     __P((DB_ENV *, DB_LSN *, int));
  */
-int __txn_commit_map_get_highest_commit_lsn(dbenv, highest_commit_lsn, lock)
+int __txn_commit_map_get_modsnap_start_lsn(dbenv, modsnap_start_lsn, lock)
 	DB_ENV *dbenv;
-	DB_LSN *highest_commit_lsn;
+	DB_LSN *modsnap_start_lsn;
 	int lock;
 {
 	DB_TXN_COMMIT_MAP *txmap;
@@ -599,7 +599,7 @@ int __txn_commit_map_get_highest_commit_lsn(dbenv, highest_commit_lsn, lock)
 
 	if (lock) { Pthread_mutex_lock(&txmap->txmap_mutexp); }
 
-	*highest_commit_lsn = txmap->highest_commit_lsn;
+	*modsnap_start_lsn = txmap->modsnap_start_lsn;
 
 	if (lock) { Pthread_mutex_unlock(&txmap->txmap_mutexp); }
 	return 0;
@@ -614,14 +614,14 @@ void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
 
 	if (should_lock) { Pthread_mutex_lock(&txmap->txmap_mutexp); }
 
-	logmsg(lvl, "Highest commit lsn file: %"PRIu32"; "
-					"Highest commit lsn offset: %"PRIu32"; "
+	logmsg(lvl, "Modsnap start lsn file: %"PRIu32"; "
+					"Modsnap start lsn offset: %"PRIu32"; "
 					"Highest checkpoint lsn file: %"PRIu32"; "
 					"Highest checkpoint lsn offset: %"PRIu32"; "
 					"Highest logfile: %"PRId64"; "
 					"Smallest logfile: %"PRId64"\n",
-					txmap->highest_commit_lsn.file,
-					txmap->highest_commit_lsn.offset,
+					txmap->modsnap_start_lsn.file,
+					txmap->modsnap_start_lsn.offset,
 					txmap->highest_checkpoint_lsn.file,
 					txmap->highest_checkpoint_lsn.offset,
 					txmap->highest_logfile,
@@ -637,7 +637,7 @@ void __txn_commit_map_print_info(DB_ENV *dbenv, loglvl lvl, int should_lock) {
  *
  *  *If this function deletes the transaction with the highest commit LSN, 
  * then it is the caller's responsibility to call 
- * `__txn_commit_map_set_highest_commit_lsn` with the next highest
+ * `__txn_commit_map_set_modsnap_start_lsn` with the next highest
  * commit LSN*
  *
  * PUBLIC: int __txn_commit_map_delete_logfile_txns
@@ -778,8 +778,8 @@ int __txn_commit_map_add_nolock(dbenv, utxnid, commit_lsn)
 		}
 	}
 
-	if (log_compare(&txmap->highest_commit_lsn, &commit_lsn) <= 0) {
-		txmap->highest_commit_lsn = commit_lsn;
+	if (log_compare(&txmap->modsnap_start_lsn, &commit_lsn) <= 0) {
+		txmap->modsnap_start_lsn = commit_lsn;
 		txmap->highest_logfile = commit_lsn.file;
 	}
 
@@ -824,20 +824,20 @@ int __txn_commit_map_add(dbenv, utxnid, commit_lsn)
 }
 
 /*
- * __txn_commit_map_set_highest_commit_lsn --
+ * __txn_commit_map_set_modsnap_start_lsn --
  *  Set the highest commit LSN.
  *
- * PUBLIC: int __txn_commit_map_set_highest_commit_lsn
+ * PUBLIC: int __txn_commit_map_set_modsnap_start_lsn
  * PUBLIC:     __P((DB_ENV *, DB_LSN));
  */
-void __txn_commit_map_set_highest_commit_lsn(dbenv, highest_commit_lsn)
+void __txn_commit_map_set_modsnap_start_lsn(dbenv, modsnap_start_lsn)
 	DB_ENV *dbenv;
-	DB_LSN highest_commit_lsn;
+	DB_LSN modsnap_start_lsn;
 {
 	DB_TXN_COMMIT_MAP * const txmap = dbenv->txmap;
 
 	Pthread_mutex_lock(&txmap->txmap_mutexp);
-	txmap->highest_commit_lsn = highest_commit_lsn;
+	txmap->modsnap_start_lsn = modsnap_start_lsn;
 	Pthread_mutex_unlock(&txmap->txmap_mutexp);
 }
 
