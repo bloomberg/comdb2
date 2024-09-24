@@ -38,3 +38,38 @@ local function main()
     db:emit(nil)
 end}$$
 exec procedure bad()
+
+create procedure col_by_index version 'good' {
+local function main()
+    db:column_name("first", 1)
+    db:column_name("second", 2)
+    db:column_name("third", 3)
+    local stmt = db:exec("select value as c1, value * 10.0 as c2, '' || value as c3 from generate_series(0, 9)")
+    local row = stmt:fetch()
+    while row do
+        local icount = 0
+        for _, _ in ipairs(row) do
+            icount = icount + 1
+        end
+        local pcount = 0
+        for _, _ in pairs(row) do
+            pcount = pcount + 1
+        end
+        if icount ~= 3 then
+            return -1, string.format("icount:%d, pcount:%d", icount, pcount)
+        end
+        if pcount ~= 3 then
+            return -1, string.format("icount:%d, pcount:%d", icount, pcount)
+        end
+        if row[1] % 3 == 0 then
+            db:emit(row[1], row[2], row[3])
+        elseif row[1] % 3 == 1 then
+            db:emit(row['c1'], row['c2'], row['c3'])
+        else
+            db:emit(row)
+        end
+        row = stmt:fetch()
+    end
+end
+}$$
+exec procedure col_by_index()

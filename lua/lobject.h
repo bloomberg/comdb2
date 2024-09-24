@@ -335,7 +335,6 @@ typedef struct Node {
   TKey i_key;
 } Node;
 
-
 typedef struct Table {
   CommonHeader;
   lu_byte flags;  /* 1<<p means tagmethod(p) is not present */ 
@@ -346,6 +345,7 @@ typedef struct Table {
   Node *lastfree;  /* any free position is before this position */
   GCObject *gclist;
   int sizearray;  /* size of `array' array */
+  struct dbstmt_t *dbstmt;
 } Table;
 
 

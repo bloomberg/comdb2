@@ -303,10 +303,19 @@ A `dbstmt` is a handle to an SQL statement. Use the `dbstmt` object to bind valu
 
 Description:
 
-This is a Lua "table" consisting of the result of the dbtable:fetch method.
-It corresponds directly to one "row" from the underlying relational table.  As a lua table,
-columns "a" "b" "c" in resultrow "r" would be accessed as "r.a" "r.b" "r.c"
-* A dbrow can be formed manually as a Lua table as such: {'column1='abc','column2='123'}
+This is a Lua "table" consisting of the result from `dbstmt:fetch` method. It
+corresponds directly to a "row" returned by running an SQL statement. The
+column-values can be accessed by column-number. The array indexing is 1-based, as
+is idiomatic in Lua. Resulting column-values can also be accessed by
+column-name, although this is somewhat unreliable as the column names returned
+by running an SQL statement are subject to change. Prefer to access column by
+index, or use `AS` clause when running SQL to get stable column-names.
+
+```
+local stmt = db:exec("select 1 as first, 2 as second")
+local row = stmt:fetch()
+db:emit(row[1], row['second'])
+```
 
 
 ### dbthread
