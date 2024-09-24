@@ -344,8 +344,14 @@ LUA_API int lua_sethook (lua_State *L, lua_Hook func, int mask, int count);
 LUA_API lua_Hook lua_gethook (lua_State *L);
 LUA_API int lua_gethookmask (lua_State *L);
 LUA_API int lua_gethookcount (lua_State *L);
-LUA_API void lua_setsp(lua_State *L, void *);
-LUA_API void *lua_getsp(lua_State *L);
+
+struct stored_proc;
+LUA_API void lua_setsp(lua_State *, struct stored_proc *);
+LUA_API struct stored_proc *lua_getsp(lua_State *);
+
+struct dbstmt_t;
+LUA_API struct dbstmt_t *get_sqlrow_stmt(lua_State *L);
+LUA_API void set_sqlrow_stmt(lua_State *L, struct dbstmt_t *);
 
 
 struct lua_Debug {

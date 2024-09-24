@@ -196,6 +196,7 @@ static int findindex (lua_State *L, Table *t, StkId key) {
 int luaH_next (lua_State *L, Table *t, StkId key) {
   int i = findindex(L, t, key);  /* find original element */
   for (i++; i < t->sizearray; i++) {  /* try first array part */
+    if (t->dbstmt) continue;
     if (!ttisnil(&t->array[i])) {  /* a non-nil value? */
       setnvalue(key, cast_num(i+1));
       setobj2s(L, key+1, &t->array[i]);
@@ -394,6 +395,7 @@ Table *luaH_new (lua_State *L, int narray, int nhash) {
   luaC_link(L, obj2gco(t), LUA_TTABLE);
   t->metatable = NULL;
   t->flags = cast_byte(~0);
+  t->dbstmt = NULL;
   /* temporary values (kept only if some malloc fails) */
   t->array = NULL;
   t->sizearray = 0;

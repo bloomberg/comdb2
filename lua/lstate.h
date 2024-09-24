@@ -124,7 +124,7 @@ struct lua_State {
   GCObject *gclist;
   struct lua_longjmp *errorJmp;  /* current error recover point */
   ptrdiff_t errfunc;  /* current error handling function (stack index) */
-  void *sp;  /* comdb2 modification */
+  struct stored_proc *sp;  /* comdb2 modification */
 };
 
 
