@@ -5456,7 +5456,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->num_retry = 0;
     clnt->early_retry = 0;
 
-    clnt->use_2pc = 0;
+    extern int gbl_2pc;
+    clnt->use_2pc = gbl_2pc;
     clnt->is_coordinator = 0;
     clnt->is_participant = 0;
     clear_participants(clnt);
@@ -5914,7 +5915,6 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
         } else if (c->lcl_tbl_name[0]) {
             strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }
-        fprintf(stderr, "RECORDING id %d %s finds %d\n", i, stats[i].table, stats[i].nfind);
         i++;
     }
     return 0;
