@@ -850,6 +850,9 @@ Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl
 ### SET SSL_MIN_TLS_VER
 Sets the mininum server TLS version. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
+### SET RETURN_LONG_COLUMN_NAMES;
+Toggle on or off. If on, can return column names longer than 31 characters without it being truncated (except if using fastsql). If off, will rely on tunable `return_long_column_names`.
+
 ## Common syntax rules
 
 ### qualified-table-name
