@@ -40,6 +40,7 @@ static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errsta
 */
 extern int bulk_import_do_import(const char *srcdb, const char *src_tablename,
                                  const char *dst_tablename);
+const char *bulk_import_get_err_str(const int rc);
 
 /********************      UTILITIES     ***********************/
 
@@ -608,8 +609,8 @@ static int exec_bulk_import(void *tran, bpfunc_t *func, struct errstat *err)
 {
     const int rc = bulk_import_do_import(func->arg->bimp->srcdb, 
         func->arg->bimp->src_tablename, func->arg->bimp->dst_tablename);
-    if (rc != 0) {
-        errstat_set_rcstrf(err, rc, "%s Failed bulk import", __func__);
+    if (rc) {
+        errstat_set_rcstrf(err, rc, bulk_import_get_err_str(rc));
     }
     return rc;
 }

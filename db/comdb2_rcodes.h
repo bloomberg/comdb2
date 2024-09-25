@@ -137,4 +137,26 @@ enum comdb2_schemachange_op {
     COMDB2_SCHEMACHANGE_OK = 11000,
 };
 
+enum comdb2_import_op {
+    COMDB2_IMPORT_RC_SUCCESS = 0,
+    COMDB2_IMPORT_RC_NO_DST_TBL = 12000,        /* Destination table doesn't exist */
+    COMDB2_IMPORT_RC_NO_SRC_TBL = 12001,        /* Source table doesn't exist */
+    COMDB2_IMPORT_RC_BLOBSTRIPE_GENID = 12002,  /* Destination table has a blobstripe genid */
+    COMDB2_IMPORT_RC_CONSTRAINTS = 12003,       /* Source table has constraints */
+    COMDB2_IMPORT_RC_REV_CONSTRAINTS = 12004,   /* Destination table has reverse constraints */
+    COMDB2_IMPORT_RC_STRIPE_MISMATCH = 12005,   /* Source and destination db have mismatched stripe settings */
+    COMDB2_IMPORT_RC_NO_SRC_CONN = 12006,       /* Can't establish a connection to the source db */
+    COMDB2_IMPORT_RC_BAD_SOURCE_CLASS = 12007,  /* Can't connect to provided source class */
+    COMDB2_IMPORT_RC_INTERNAL = 12008,          /* An internal error occurred */
+    COMDB2_IMPORT_RC_UNKNOWN = 12009,           /* An unknown error occurred */
+};
+
+enum comdb2_import_tmpdb_op { 
+    /* These need to be valid exit codes */ 
+    COMDB2_IMPORT_TMPDB_RC_SUCCESS = 0,
+    COMDB2_IMPORT_TMPDB_RC_CONSTRAINTS = 100,         /* Source table has constraints */
+    COMDB2_IMPORT_TMPDB_RC_NO_SRC_TBL = 101,          /* Source table doesn't exist */
+    COMDB2_IMPORT_TMPDB_RC_INTERNAL = 102,            /* An internal error occurred */
+};
+
 #endif

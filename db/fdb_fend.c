@@ -1279,28 +1279,26 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
 }
 
 int create_fdb(const char *fdb_name, fdb_t **fdb) {
-    int rc, local, lvl_override, created;
-    enum mach_class lvl;
-    
-    rc = local = lvl_override = created = lvl = 0;
-    *fdb = NULL;
+    int local, lvl_override;
+    local = lvl_override = 0;
 
-    lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
+    const enum mach_class lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
         logmsg(LOGMSG_ERROR, "%s: Could not find usable fdb class\n", __func__);
-        rc = 1;
-        goto err;
+        const int rc = (lvl == CLASS_UNKNOWN)
+                        ? FDB_ERR_CLASS_UNKNOWN
+                        : FDB_ERR_CLASS_DENIED;
+        return rc;
     }
 
+    int created;
     *fdb = new_fdb(fdb_name, &created, lvl, local, lvl_override);
     if (!fdb) {
         logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
-        rc = 1;
-        goto err;
+        return FDB_ERR_MALLOC;
     }
 
-err:
-    return rc;
+    return 0;
 }
 
 /**
