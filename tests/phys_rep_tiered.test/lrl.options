@@ -3,3 +3,8 @@ incoherent_slow_inactive_timeout 0
 revsql_fake_connect_failure 1
 abort_on_invalid_close 1
 revsql_debug 1
+physrep_debug 1
+tranlog_incoherent_timeout 10
+forbid_remote_admin 0
+ctrace_dbdir 1
+allow_lua_print 1

@@ -86,6 +86,8 @@ extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
+extern int gbl_force_incoherent;
+extern int gbl_force_incoherent_master;
 extern int gbl_commit_lsn_map;
 extern struct thdpool *gbl_verify_thdpool;
 
@@ -2148,6 +2150,22 @@ clipper_usage:
         gbl_who = toknum(tok, ltok);
         gbl_debug = gbl_sdebug = 0;
         logmsg(LOGMSG_USER, "Set who to %d\n", gbl_who);
+    } else if (tokcmp(tok, ltok, "physrep_force_registration") == 0) {
+        extern int gbl_physrep_force_registration;
+        logmsg(LOGMSG_USER, "physrep forcing registration, current-value is %d\n", gbl_physrep_force_registration);
+        gbl_physrep_force_registration = 1;
+    } else if (tokcmp(tok, ltok, "force_incoherent") == 0) {
+        logmsg(LOGMSG_USER, "Setting force_incoherent to 1\n");
+        gbl_force_incoherent = 1;
+    } else if (tokcmp(tok, ltok, "unforce_incoherent") == 0) {
+        logmsg(LOGMSG_USER, "Setting force_incoherent to 0\n");
+        gbl_force_incoherent = 0;
+    } else if (tokcmp(tok, ltok, "force_incoherent_master") == 0) {
+        logmsg(LOGMSG_USER, "Setting force_incoherent_master to 1\n");
+        gbl_force_incoherent_master = 1;
+    } else if (tokcmp(tok, ltok, "unforce_incoherent_master") == 0) {
+        logmsg(LOGMSG_USER, "Setting force_incoherent_master to 0\n");
+        gbl_force_incoherent_master = 0;
     } else if (tokcmp(tok, ltok, "physrep_fanout_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
