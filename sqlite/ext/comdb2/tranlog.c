@@ -25,6 +25,7 @@
 #include "dbinc_auto/txn_auto.h"
 #include "comdb2systbl.h"
 #include "parse_lsn.h"
+#include "epochlib.h"
 
 /* Column numbers */
 #define TRANLOG_COLUMN_START        0
@@ -126,12 +127,16 @@ extern pthread_cond_t gbl_logput_cond;
 extern int gbl_num_logput_listeners;
 extern pthread_mutex_t gbl_durable_lsn_lk;
 extern pthread_cond_t gbl_durable_lsn_cond;
+int gbl_tranlog_incoherent_timeout = 10;
+int gbl_tranlog_maxpoll = 60;
 extern int comdb2_sql_tick();
+extern int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
 /*
 ** Advance a tranlog cursor to the next log entry
 */
-static int tranlogNext(sqlite3_vtab_cursor *cur){
+static int tranlogNext(sqlite3_vtab_cursor *cur)
+{
   struct sql_thread *thd = NULL;
   tranlog_cursor *pCur = (tranlog_cursor*)cur;
   DB_LSN durable_lsn = {0};
@@ -219,13 +224,39 @@ static int tranlogNext(sqlite3_vtab_cursor *cur){
           return SQLITE_INTERNAL;
       }
 
+      int incoherent_start_time = 0;
+
       if (pCur->flags & TRANLOG_FLAGS_BLOCK &&
               !(pCur->flags & TRANLOG_FLAGS_DESCENDING)) {
+          int poll_start_time = comdb2_time_epoch();
           do {
               /* Tick up. Return an error if sql_tick() fails
                  (peer dropped connection, max query time reached, etc.) */
               if ((rc = comdb2_sql_tick()) != 0)
                   return rc;
+
+              if (gbl_tranlog_maxpoll > 0) {
+                  if (comdb2_time_epoch() - poll_start_time > gbl_tranlog_maxpoll) {
+                      logmsg(LOGMSG_DEBUG, "%s: returning after poll for %d seconds\n",
+                              __func__, gbl_tranlog_maxpoll);
+                      pCur->hitLast = 1;
+                      return SQLITE_OK;
+                  }
+              }
+              if (gbl_tranlog_incoherent_timeout > 0) {
+                  int coherent = bdb_am_i_coherent(bdb_state);
+                  if (coherent) {
+                      incoherent_start_time = 0;
+                  } else if (incoherent_start_time == 0) {
+                      incoherent_start_time = comdb2_time_epoch();
+                  } else if (comdb2_time_epoch() - incoherent_start_time >
+                          gbl_tranlog_incoherent_timeout) {
+                      logmsg(LOGMSG_DEBUG, "%s: incoherent for %d seconds\n",
+                              __func__, gbl_tranlog_incoherent_timeout);
+                      pCur->hitLast = 1;
+                      return SQLITE_OK;
+                  }
+              }
 
               if (db_is_exiting() || pCur->startAppRecGen != gbl_apprec_gen) {
                     pCur->hitLast = 1;

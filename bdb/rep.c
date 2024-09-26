@@ -4161,13 +4161,23 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 }
 
 int gbl_force_incoherent = 0;
+int gbl_force_incoherent_master = 0;
 int gbl_ignore_coherency = 0;
 
 static int bdb_am_i_coherent_int(bdb_state_type *bdb_state)
 {
-    /*master can't be incoherent*/
-    if (bdb_amimaster(bdb_state))
+    if (bdb_amimaster(bdb_state)) {
+        if (gbl_force_incoherent_master) {
+            static time_t lastpr = 0;
+            time_t now = time(NULL);
+            if (now - lastpr) {
+                logmsg(LOGMSG_WARN, "%s returning INCOHERENT on force_incoherent_master\n", __func__);
+                lastpr = now;
+            }
+            return 0;
+        }
         return 1;
+    }
 
     /* force_incoherent overrides ignore_coherency */
     if (gbl_force_incoherent) {
