@@ -6,7 +6,7 @@ source ${TESTSROOTDIR}/tools/runit_common.sh
 function test_comdb2_files_restricted_file() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2
+		local -r dbname=$1 dbdir=$2 tablename=$3
 		echo "restricted blahblah" | tee \
 			$dbdir/no_access >> \
 			$dbdir/no_access_world >> \
@@ -21,7 +21,7 @@ function test_comdb2_files_restricted_file() {
 
 		# When
 		fname=$(cdb2sql -tabs $dbname local \
-			"select filename from comdb2_files where filename like 'no_access%'")
+			"select filename from $tablename where filename like 'no_access%'")
 
 		# Then
 		query_rc=$?
@@ -36,7 +36,7 @@ function test_comdb2_files_restricted_file() {
 function test_comdb2_files_restricted_directory() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2
+		local -r dbname=$1 dbdir=$2 tablename=$3
 		mkdir $dbdir/no_access $dbdir/no_access_world $dbdir/no_access_group \
 			$dbdir/no_access_group_world
 
@@ -50,7 +50,7 @@ function test_comdb2_files_restricted_directory() {
 
 		# When
 		fname=$(cdb2sql -tabs $dbname local \
-			"select filename from comdb2_files where dir like 'no_access%'")
+			"select filename from $tablename where dir like 'no_access%'")
 
 		# Then
 		query_rc=$?
@@ -65,13 +65,14 @@ function test_comdb2_files_restricted_directory() {
 function test_comdb2_files_large_file() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2
+		local -r dbname=$1 dbdir=$2 tablename=$3
+
 		exp_size=$(( 24 * 1024*1024))
 		truncate -s $exp_size $dbdir/largefile
 		trap "rm $dbdir/largefile" EXIT
 
 		# When
-		res_size=$(cdb2sql -tabs $dbname local "select sum(size) from comdb2_files where filename like '%largefile%'")
+		res_size=$(cdb2sql -tabs $dbname local "select sum(size) from $tablename where filename like '%largefile%'")
 
 		# Then
 		query_rc=$?
@@ -86,12 +87,12 @@ function test_comdb2_files_large_file() {
 function test_comdb2_files_broken_symlink() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2
+		local -r dbname=$1 dbdir=$2 tablename=$3
 		ln -s idonutexist $dbdir/link
 		trap "rm $dbdir/link" EXIT
 
 		# When
-		cdb2sql $dbname local 'select count(*) from comdb2_files' > /dev/null
+		cdb2sql $dbname local "select count(*) from $tablename" > /dev/null
 
 		# Then
 		query_rc=$?
@@ -106,12 +107,12 @@ function test_comdb2_files_broken_symlink() {
 function test_comdb2_files_skips_file_on_excluded_list() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2 excluded_file="watchdog"
+		local -r dbname=$1 dbdir=$2 tablename=$3 excluded_file="watchdog"
 		echo "borkbork" > $dbdir/$excluded_file
 		trap "rm $dbdir/$excluded_file" EXIT
 
 		# When
-		num_files=$(cdb2sql -tabs $dbname local "select count(*) from comdb2_files where filename like '%$excluded_file%'")
+		num_files=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where filename like '%$excluded_file%'")
 
 		# Then
 		query_rc=$?
@@ -127,14 +128,14 @@ function test_comdb2_files_skips_file_on_excluded_list() {
 function test_comdb2_files_skips_dir_on_excluded_list() {
 	(
 		# Given
-		local dbname=$1 dbdir=$2 file="foo"
+		local -r dbname=$1 dbdir=$2 tablename=$3 file="foo"
 		for dir in tmp savs;
 		do
 			echo "restrictedBlahBlah" > $dbdir/$dir/$file
 		done
 
 		# When
-		num_files=$(cdb2sql -tabs $dbname local "select count(*) from comdb2_files where filename like '%$file%'")
+		num_files=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where filename like '%$file%'")
 
 		# Then
 		query_rc=$?
@@ -153,10 +154,22 @@ function runtest {
 
 	for testcase in $tests;
 	do
-		if ! $testcase $dbname $dbdir;
+		if ! $testcase $dbname $dbdir "comdb2_files";
 		then
 			failexit "$testcase"
 		fi
+
+		if [[ "$testcase" == "test_comdb2_files_large_file" ]];
+		then
+			echo "Passed $testcase"
+			continue
+		fi
+
+		if ! $testcase $dbname $dbdir "comdb2_filenames";
+		then
+			failexit "$testcase"
+		fi
+
 		echo "Passed $testcase"
 	done
 }

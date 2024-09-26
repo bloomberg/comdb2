@@ -20,6 +20,8 @@ add_library(sqlite
   ext/comdb2/crons.c
   ext/comdb2/ezsystables.c
   ext/comdb2/files.c
+  ext/comdb2/filenames.c
+  ext/comdb2/files_util.c
   ext/comdb2/fingerprints.c
   ext/comdb2/functions.c
   ext/comdb2/indexuse.c
