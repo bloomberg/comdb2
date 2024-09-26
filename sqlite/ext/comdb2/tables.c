@@ -169,6 +169,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_files", &systblFilesModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_filenames", &systblFilenamesModule, 0);
+  if (rc == SQLITE_OK)
     rc = systblTimepartInit(db);
   if (rc == SQLITE_OK)
     rc = systblCronInit(db);

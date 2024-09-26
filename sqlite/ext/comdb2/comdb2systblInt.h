@@ -51,6 +51,7 @@ extern const sqlite3_module systblLogicalOpsModule;
 extern const sqlite3_module systblSystabsModule;
 extern const sqlite3_module systblFdbInfoModule;
 extern const sqlite3_module systblFilesModule;
+extern const sqlite3_module systblFilenamesModule;
 extern sqlite3_module systblSchemaVersionsModule;
 extern sqlite3_module systblTablePermissionsModule;
 extern sqlite3_module systblSystabPermissionsModule;
