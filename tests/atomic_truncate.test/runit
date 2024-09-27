@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+TIER="default"
+
+query_replicant_in_loop() {
+	set +e
+
+	local prev_count=-1
+	while true;
+	do
+		local count
+		count=$(cdb2sql -tabs ${CDB2_OPTIONS} "${DBNAME}" "${TIER}" "select count(*) from t")
+		if (( $? ));
+		then
+			exit 0
+		elif (( prev_count != -1 && count != prev_count ));
+		then
+			echo "count mismatch count: "${count}". prev_count: "${prev_count}"."
+			exit 1
+		fi
+		prev_count=$count
+	done
+}
+
+main() {
+	set -e
+
+	local master
+	master=$(cdb2sql ${CDB2_OPTIONS} -tabs "${DBNAME}" "${TIER}" "select host from comdb2_cluster where is_master='Y'")
+	readonly master
+
+	local trunc_lsn
+	trunc_lsn=$(cdb2sql ${CDB2_OPTIONS} --host "${master}" "${DBNAME}" 'exec procedure sys.cmd.send("bdb cluster")' \
+		| grep MASTER | sed 's/.*lsn //g ; s/ .*//g')
+	readonly trunc_lsn
+
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" "${TIER}" "create table t(i int)"
+	for ((i=0; i<1000; ++i ));
+	do
+		cdb2sql ${CDB2_OPTIONS} "${DBNAME}" "${TIER}" "insert into t values("${i}")" &> /dev/null
+	done
+
+	cdb2sql ${CDB2_OPTIONS} --host "${master}" "${DBNAME}" "exec procedure sys.cmd.truncate_log(\"{"${trunc_lsn}"}\");" &
+	query_replicant_in_loop
+}
+
+main

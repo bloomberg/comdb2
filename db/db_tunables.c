@@ -89,6 +89,7 @@ extern int gbl_debug_sleep_coordinator_before_commit;
 extern int gbl_debug_sleep_on_set_read_only;
 extern int gbl_debug_wait_on_verify_off;
 extern int gbl_debug_disttxn_trace;
+extern int gbl_debug_sleep_during_truncate;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;

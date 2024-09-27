@@ -65,6 +65,7 @@ extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN*);
 #include <bdbglue.h>
 extern int gbl_is_physical_replicant;
 int gbl_apprec_gen;
+int gbl_debug_sleep_during_truncate = 0;
 
 #else
 
@@ -1367,6 +1368,9 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 
 	log_recovery_progress(1, -1);
 	dbenv->recovery_pass = DB_TXN_BACKWARD_ROLL;
+	if (trunclsn && gbl_debug_sleep_during_truncate) {
+		sleep(5);
+	}
 
 	/*
 	 * Pass #2.
