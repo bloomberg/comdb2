@@ -392,10 +392,6 @@ verify_correct_utxnids_in_map() {
 test_recover_to_lsn() {
 	trap 'error $LINENO' ERR
 
-	local host
-	host=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()")
-	readonly host
-
 	# Given
 
 		# Run some initial traffic 
@@ -409,7 +405,7 @@ test_recover_to_lsn() {
 	done
 
 	local utxnids_to_recover
-	utxnids_to_recover=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $host $dbnm \
+	utxnids_to_recover=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm \
 		'select distinct utxnid from comdb2_transaction_commit order by utxnid' \
 		| sed 's/ /\n/g')
 	readonly utxnids_to_recover
@@ -432,7 +428,7 @@ test_recover_to_lsn() {
 	pushlogs 3
 
 	local utxnids_to_be_deleted_during_recovery
-	utxnids_to_be_deleted_during_recovery=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $host $dbnm \
+	utxnids_to_be_deleted_during_recovery=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm \
 		"select distinct utxnid from comdb2_transaction_commit where commitlsnfile > $recovery_lsn_file or commitlsnfile = $recovery_lsn_file and commitlsnoffset > $recovery_lsn_offset order by utxnid" \
 		| sed 's/ /\n/g')
 	readonly utxnids_to_be_deleted_during_recovery
@@ -441,13 +437,12 @@ test_recover_to_lsn() {
 
 	cdb2sql ${CDB2_OPTIONS} --host $master $dbnm \
 		"exec procedure sys.cmd.truncate_log(\"{$recovery_lsn}\")"
-	sleep 5 # Wait for cluster to run recovery
 	
 	# Then
 
-	verify_txmap_has_expected_min_max_files 1 1 "$host"
-	verify_cached_modsnap_start_lsn_after_recovery "$host"
-	verify_correct_utxnids_in_map "$utxnids_to_recover" "$utxnids_to_be_deleted_during_recovery" "$host"
+	verify_txmap_has_expected_min_max_files 1 1 "$master"
+	verify_cached_modsnap_start_lsn_after_recovery "$master"
+	verify_correct_utxnids_in_map "$utxnids_to_recover" "$utxnids_to_be_deleted_during_recovery" "$master"
 }
 
 if [ "$TESTCASE" == "commit_lsn_map_delete_generated" ];
