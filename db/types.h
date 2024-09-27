@@ -1871,8 +1871,6 @@ int SERVER_DATETIMEUS_to_CLIENT_DATETIMEUS(
     blob_buffer_t *inblob, void *out, int outlen, int *outnull, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob);
 int NULL_to_SERVER(void *out, int outlen, int outtype);
-int convertible_types(int intype, int outtype);
-
 int SERVER_INTVYM_to_CLIENT_INTVYM(const void *in, int inlen,
                                    const struct field_conv_opts *inopts,
                                    blob_buffer_t *inblob, void *out, int outlen,
