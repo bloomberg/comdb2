@@ -1,5 +1,5 @@
 /*
- Copied and modified from 
+ Copied and modified from
  https://github.com/gwenn/sqlite-dialect/blob/d285e228514e4a70bb18bc3b0de9628f55ce9a43/src/main/java/org/hibernate/dialect/SQLiteDialect.java
  */
  /* Copyright 2015 Bloomberg Finance L.P.
@@ -9,7 +9,7 @@
    You may obtain a copy of the License at
 
    http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -28,151 +28,152 @@
 
 package org.hibernate.dialect;
 
-import java.sql.*;
-import java.util.*;
-
-import org.hibernate.JDBCException;
 import org.hibernate.LockOptions;
 import org.hibernate.ScrollMode;
-import org.hibernate.boot.Metadata;
-import org.hibernate.dialect.function.AbstractAnsiTrimEmulationFunction;
-import org.hibernate.dialect.function.NoArgSQLFunction;
-import org.hibernate.dialect.function.SQLFunction;
-import org.hibernate.dialect.function.SQLFunctionTemplate;
+import org.hibernate.boot.model.FunctionContributions;
+import org.hibernate.boot.model.TypeContributions;
+import org.hibernate.dialect.function.CommonFunctionFactory;
+import org.hibernate.dialect.function.CurrentFunction;
 import org.hibernate.dialect.function.StandardSQLFunction;
-import org.hibernate.dialect.function.VarArgsSQLFunction;
+import org.hibernate.dialect.identity.Comdb2IdentityColumnSupport;
 import org.hibernate.dialect.identity.IdentityColumnSupport;
-import org.hibernate.dialect.identity.IdentityColumnSupportImpl;
-import org.hibernate.dialect.pagination.AbstractLimitHandler;
+import org.hibernate.dialect.pagination.Comdb2LimitHandler;
 import org.hibernate.dialect.pagination.LimitHandler;
-import org.hibernate.dialect.pagination.LimitHelper;
-import org.hibernate.dialect.unique.DefaultUniqueDelegate;
+import org.hibernate.dialect.unique.Comdb2UniqueDelegate;
 import org.hibernate.dialect.unique.UniqueDelegate;
-import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
-import org.hibernate.engine.spi.RowSelection;
-import org.hibernate.exception.spi.SQLExceptionConversionDelegate;
-import org.hibernate.exception.spi.TemplatedViolatedConstraintNameExtracter;
-import org.hibernate.exception.spi.ViolatedConstraintNameExtracter;
-import org.hibernate.internal.util.JdbcExceptionHelper;
-import org.hibernate.internal.util.StringHelper;
-import org.hibernate.mapping.Column;
-import org.hibernate.mapping.ForeignKey;
-import org.hibernate.mapping.Table;
-import org.hibernate.mapping.UniqueKey;
+import org.hibernate.query.sqm.produce.function.FunctionParameterType;
+import org.hibernate.service.ServiceRegistry;
+import org.hibernate.type.BasicType;
+import org.hibernate.type.BasicTypeRegistry;
 import org.hibernate.type.StandardBasicTypes;
+import org.hibernate.type.descriptor.sql.internal.DdlTypeImpl;
+import org.hibernate.type.descriptor.sql.spi.DdlTypeRegistry;
+import org.hibernate.type.spi.TypeConfiguration;
+
+import java.sql.Types;
+import java.util.Map;
 
 /**
- * An SQL dialect for SQLite 3.
- */
+ * An SQL dialect for comdb2
+*/
 public class Comdb2Dialect extends Dialect {
 
-    public Comdb2Dialect() {
-        registerColumnType(Types.INTEGER, "int");
-        registerColumnType(Types.BIGINT, "longlong");
-        registerColumnType(Types.SMALLINT, "short");
-        registerColumnType(Types.TINYINT, "short");
-        registerColumnType(Types.BIT, "short");
-        registerColumnType(Types.FLOAT, "float");
-        registerColumnType(Types.REAL, "double");
-        registerColumnType(Types.DOUBLE, "double");
-        registerColumnType(Types.DECIMAL, "decimal");
-        registerColumnType(Types.CHAR, "char");
-        registerColumnType(Types.VARCHAR, "vutf8");
-        registerColumnType(Types.LONGVARCHAR, "vutf8");
-        registerColumnType(Types.DATE, "datetime");
-        registerColumnType(Types.TIME, "datetime");
-        registerColumnType(Types.TIMESTAMP, "datetimeus");
-        registerColumnType(Types.BINARY, "blob");
-        registerColumnType(Types.VARBINARY, "blob");
-        registerColumnType(Types.LONGVARBINARY, "blob");
-        registerColumnType(Types.BOOLEAN, "short");
+    private final UniqueDelegate uniqueDelegate = new Comdb2UniqueDelegate(this);;
 
-        registerFunction("concat", new VarArgsSQLFunction(StandardBasicTypes.STRING, "", "||", ""));
-        registerFunction("mod", new SQLFunctionTemplate(StandardBasicTypes.INTEGER, "?1 % ?2"));
-        registerFunction("quote", new StandardSQLFunction("quote", StandardBasicTypes.STRING));
-        registerFunction("random", new NoArgSQLFunction("random", StandardBasicTypes.INTEGER));
-        registerFunction("round", new StandardSQLFunction("round"));
-        registerFunction("substr", new StandardSQLFunction("substr", StandardBasicTypes.STRING));
-        registerFunction("trim", new AbstractAnsiTrimEmulationFunction() {
-            @Override
-            protected SQLFunction resolveBothSpaceTrimFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "trim(?1)");
-            }
 
-            @Override
-            protected SQLFunction resolveBothSpaceTrimFromFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "trim(?2)");
-            }
-
-            @Override
-            protected SQLFunction resolveLeadingSpaceTrimFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "ltrim(?1)");
-            }
-
-            @Override
-            protected SQLFunction resolveTrailingSpaceTrimFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "rtrim(?1)");
-            }
-
-            @Override
-            protected SQLFunction resolveBothTrimFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "trim(?1, ?2)");
-            }
-
-            @Override
-            protected SQLFunction resolveLeadingTrimFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "ltrim(?1, ?2)");
-            }
-
-            @Override
-            protected SQLFunction resolveTrailingTrimFunction() {
-                return new SQLFunctionTemplate(StandardBasicTypes.STRING, "rtrim(?1, ?2)");
-            }
-        });
+    @Override
+    protected void registerColumnTypes(TypeContributions typeContributions, ServiceRegistry serviceRegistry) {
+        super.registerColumnTypes(typeContributions, serviceRegistry);
+        final DdlTypeRegistry ddlTypeRegistry = typeContributions.getTypeConfiguration().getDdlTypeRegistry();
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.INTEGER, "int", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.BIGINT, "longlong", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.SMALLINT, "short", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.TINYINT, "short", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.BIT, "short", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.FLOAT, "float", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.REAL, "double", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.DOUBLE, "double", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.DECIMAL, "decimal", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.CHAR, "char", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.VARCHAR, "vutf8", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.LONGVARCHAR, "vutf8", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.DATE, "datetime", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.TIME, "datetime", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.TIMESTAMP, "datetimeus", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.BINARY, "blob", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.VARBINARY, "blob", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.LONGVARBINARY, "blob", this));
+        ddlTypeRegistry.addDescriptor(new DdlTypeImpl(Types.BOOLEAN, "short", this));
     }
 
-    // IDENTITY support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    private static IdentityColumnSupport IDENTITY_COLUMN_SUPPORT;
+    @Override
+    protected String columnType(int sqlTypeCode) {
+        switch (sqlTypeCode) {
+            case Types.INTEGER:
+            return "int";
+            case Types.BIGINT:
+            return "longlong";
+            case Types.SMALLINT:
+            case Types.TINYINT:
+            case Types.BIT:
+            case Types.BOOLEAN:
+            return "short";
+            case Types.FLOAT:
+            return "float";
+            case Types.REAL:
+            case Types.DOUBLE:
+            return "double";
+            case Types.DECIMAL:
+            return "decimal";
+            case Types.CHAR:
+            return "char";
+            case Types.VARCHAR:
+            case Types.LONGVARCHAR:
+            return "vutf8";
+            case Types.DATE:
+            case Types.TIME:
+            return "datetime";
+            case Types.TIMESTAMP:
+            return "datetimeus";
+            case Types.BINARY:
+            case Types.VARBINARY:
+            case Types.LONGVARBINARY:
+            return "blob";
+            default:
+            return super.columnType(sqlTypeCode);
+        }
+    }
+
+    @Override
+    public void initializeFunctionRegistry(FunctionContributions functionContributions) {
+        super.initializeFunctionRegistry(functionContributions);
+
+        TypeConfiguration typeConfiguration = functionContributions.getTypeConfiguration();
+        BasicTypeRegistry basicTypeRegistry = typeConfiguration.getBasicTypeRegistry();
+        BasicType<Integer> integerType = basicTypeRegistry.resolve(StandardBasicTypes.INTEGER);
+
+        functionContributions.getFunctionRegistry().register("quote",
+                new StandardSQLFunction("quote", StandardBasicTypes.STRING));
+        functionContributions.getFunctionRegistry().register("random",
+                new CurrentFunction("random", "random", integerType));
+
+        // some of the functions from the common library
+        CommonFunctionFactory functionFactory = new CommonFunctionFactory(functionContributions);
+        functionFactory.concat_pipeOperator();
+        functionFactory.mod_operator();
+        functionFactory.round();
+        functionFactory.substr();
+
+        // date & time
+        functionContributions.getFunctionRegistry()
+            .noArgsBuilder("now")
+            .setInvariantType(basicTypeRegistry.resolve(StandardBasicTypes.TIMESTAMP))
+            .setUseParenthesesWhenNoArgs(true)
+            .register();
+
+        // trim
+        functionFactory.trim2();  // covers both 'ltrim' and 'rtrim'
+        functionContributions.getFunctionRegistry()
+            .namedDescriptorBuilder("trim")
+            .setInvariantType(basicTypeRegistry.resolve(StandardBasicTypes.STRING))
+            .setArgumentCountBetween(1, 2)
+            .setParameterTypes(FunctionParameterType.STRING, FunctionParameterType.STRING)
+            .setArgumentListSignature("(STRING string[, STRING characters])")
+            .register();
+    }
 
     @Override
     public IdentityColumnSupport getIdentityColumnSupport() {
-        if (IDENTITY_COLUMN_SUPPORT != null) {
-            return IDENTITY_COLUMN_SUPPORT;
-        }
-        return IDENTITY_COLUMN_SUPPORT = new IdentityColumnSupportImpl();
+        return Comdb2IdentityColumnSupport.INSTANCE;
     }
-
-    // limit/offset support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    private static LimitHandler LIMIT_HANDLER;
 
     @Override
     public LimitHandler getLimitHandler() {
-        if (LIMIT_HANDLER != null) {
-            return LIMIT_HANDLER;
-        }
-        return LIMIT_HANDLER = new AbstractLimitHandler() {
-            @Override
-            public String processSql(String sql, RowSelection selection) {
-                final boolean hasOffset = LimitHelper.hasFirstRow(selection);
-                return sql + (hasOffset ? " limit ? offset ?" : " limit ?");
-            }
-
-            @Override
-            public boolean supportsLimit() {
-                return true;
-            }
-
-            @Override
-            public boolean bindLimitParametersInReverseOrder() {
-                return true;
-            }
-        };
+        return Comdb2LimitHandler.INSTANCE;
     }
 
-    // lock acquisition support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @Override
     public boolean supportsLockTimeouts() {
-        // may be http://sqlite.org/c3ref/db_mutex.html ?
         return false;
     }
 
@@ -191,7 +192,6 @@ public class Comdb2Dialect extends Dialect {
         return false;
     }
 
-    // current timestamp support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     @Override
     public boolean supportsCurrentTimestampSelection() {
         return true;
@@ -207,54 +207,27 @@ public class Comdb2Dialect extends Dialect {
         return "select current_timestamp";
     }
 
-    // union subclass support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @Override
-    public boolean supportsUnionAll() {
-        return true;
-    }
-
-    // DDL support ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    @Override
-    public boolean canCreateSchema() {
-        return true;
-    }
-
-    @Override
-    public boolean hasAlterTable() {
-        return true;
-    }
-
-    @Override
-    public boolean dropConstraints() {
-        return true;
-    }
-
     @Override
     public boolean qualifyIndexName() {
         return false;
     }
 
     @Override
-    public String getAddColumnString() {
-        return "add column";
-    }
-
-    @Override
     public String getAddForeignKeyConstraintString(String constraintName, String[] foreignKey, String referencedTable, String[] primaryKey, boolean referencesPrimaryKey) {
-        return new StringBuilder().append(" add constraint ")
-                .append(constraintName)
-                .append(" foreign key (")
-                .append(String.join(", ", foreignKey))
-                .append(") references ")
-                .append(referencedTable)
-                .append(" (")
-                .append(String.join(", ", primaryKey))
-                .append(')').toString();
+        return " add constraint " +
+                constraintName +
+                " foreign key (" +
+                String.join(", ", foreignKey) +
+                ") references " +
+                referencedTable +
+                " (" +
+                String.join(", ", primaryKey) +
+                ')';
     }
 
     @Override
     public String getDropForeignKeyString() {
-        //We cannot name a forign key, but we can name the index, and dropping the index drops the foreign key
+        //We cannot name a foreign key, but we can name the index, and dropping the index drops the foreign key
         return " drop foreign key ";
     }
 
@@ -273,21 +246,6 @@ public class Comdb2Dialect extends Dialect {
         return true;
     }
 
-    /* not case insensitive for unicode characters by default (ICU extension needed)
-	public boolean supportsCaseInsensitiveLike() {
-    return true;
-  }
-     */
-    @Override
-    public boolean doesReadCommittedCauseWritersToBlockReaders() {
-        return false;
-    }
-
-    @Override
-    public boolean doesRepeatableReadCauseReadersToBlockWriters() {
-        return false;
-    }
-
     @Override
     public boolean supportsTupleDistinctCounts() {
         return false;
@@ -298,46 +256,9 @@ public class Comdb2Dialect extends Dialect {
         return 1024;
     }
 
-    private static UniqueDelegate UNIQUE_DELEGATE;
-
     @Override
     public UniqueDelegate getUniqueDelegate() {
-        if (UNIQUE_DELEGATE != null) {
-            return UNIQUE_DELEGATE;
-        }
-        return UNIQUE_DELEGATE = new DefaultUniqueDelegate(this) {
-            @Override
-            public String getColumnDefinitionUniquenessFragment(Column column) {
-                return " unique";
-            }
-
-            @Override
-            public String getAlterTableToAddUniqueKeyCommand(UniqueKey uniqueKey, Metadata metadata) {
-                JdbcEnvironment jdbcEnvironment = metadata.getDatabase().getJdbcEnvironment();
-
-                String tableName = jdbcEnvironment.getQualifiedObjectNameFormatter().format(
-                        uniqueKey.getTable().getQualifiedTableName(), dialect
-                );
-
-                StringBuilder sb = new StringBuilder();
-
-                sb.append(dialect.getAlterTableString(tableName));
-                sb.append(" add unique index ");
-                sb.append(dialect.quote(uniqueKey.getName()));
-                sb.append(" (");
-
-                List<Column> columns = uniqueKey.getColumns();
-                for (int ii = 0, len = columns.size(); ii != len; ++ii) {
-                    sb.append(columns.get(ii).getName());
-                    if (ii != len - 1)
-                        sb.append(", ");
-                }
-
-                sb.append(" )");
-
-                return sb.toString();
-            }
-        };
+        return uniqueDelegate;
     }
 
     @Override
@@ -349,5 +270,4 @@ public class Comdb2Dialect extends Dialect {
     public ScrollMode defaultScrollMode() {
         return ScrollMode.FORWARD_ONLY;
     }
-
 }
