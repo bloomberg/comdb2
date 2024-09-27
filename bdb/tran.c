@@ -70,7 +70,7 @@ extern int gbl_debug_txn_sleep;
 extern int gbl_debug_disttxn_trace;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
 extern int __txn_commit_map_get_highest_checkpoint_lsn(DB_ENV *dbenv, DB_LSN *out_highest_checkpoint_lsn, int lock); 
-extern int __txn_commit_map_get_highest_commit_lsn(DB_ENV *dbenv, DB_LSN *out_last_commit_lsn, int lock); 
+extern int __txn_commit_map_get_modsnap_start_lsn(DB_ENV *dbenv, DB_LSN *out_modsnap_start_lsn, int lock); 
 
 #if 0
 int __lock_dump_region_lockerid __P((DB_ENV *, const char *, FILE *, u_int32_t lockerid));
@@ -2790,13 +2790,13 @@ void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration)
 int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
                         int is_ha_retry,
                         int snapshot_epoch,
-                        unsigned int *last_commit_lsn_file,
-                        unsigned int *last_commit_lsn_offset,
+                        unsigned int *modsnap_start_lsn_file,
+                        unsigned int *modsnap_start_lsn_offset,
                         unsigned int *last_checkpoint_lsn_file,
                         unsigned int *last_checkpoint_lsn_offset)
 {
     DB_ENV *dbenv;
-    DB_LSN last_commit_lsn;
+    DB_LSN modsnap_start_lsn;
     DB_LSN last_checkpoint_lsn;
     DB_TXN_COMMIT_MAP *txmap;
     int rc;
@@ -2806,40 +2806,40 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
     txmap = dbenv->txmap;
 
     if (is_ha_retry) {
-        last_commit_lsn.file = *last_commit_lsn_file;
-        last_commit_lsn.offset = *last_commit_lsn_offset;
+        modsnap_start_lsn.file = *modsnap_start_lsn_file;
+        modsnap_start_lsn.offset = *modsnap_start_lsn_offset;
 
-        bdb_checkpoint_list_get_ckplsn_before_lsn(last_commit_lsn, &last_checkpoint_lsn);
+        bdb_checkpoint_list_get_ckplsn_before_lsn(modsnap_start_lsn, &last_checkpoint_lsn);
     } else if (snapshot_epoch) {
         // This LSN is not necessarily a commit LSN but this is okay --
         // it can still serve as our start point.
-        bdb_get_lsn_context_from_timestamp(bdb_state, snapshot_epoch, &last_commit_lsn, 0, &rc); 
+        bdb_get_lsn_context_from_timestamp(bdb_state, snapshot_epoch, &modsnap_start_lsn, 0, &rc); 
         if (rc != 0) {
             return rc;
         }
 
-        bdb_checkpoint_list_get_ckplsn_before_lsn(last_commit_lsn, &last_checkpoint_lsn);
+        bdb_checkpoint_list_get_ckplsn_before_lsn(modsnap_start_lsn, &last_checkpoint_lsn);
     } else {
         Pthread_mutex_lock(&txmap->txmap_mutexp);
         if ((rc = __txn_commit_map_get_highest_checkpoint_lsn(dbenv, &last_checkpoint_lsn, 0)) != 0) {
             Pthread_mutex_unlock(&txmap->txmap_mutexp);
             return rc;
         }
-        if ((rc = __txn_commit_map_get_highest_commit_lsn(dbenv, &last_commit_lsn, 0)) != 0) {
+        if ((rc = __txn_commit_map_get_modsnap_start_lsn(dbenv, &modsnap_start_lsn, 0)) != 0) {
             Pthread_mutex_unlock(&txmap->txmap_mutexp);
             return rc;
         }
         Pthread_mutex_unlock(&txmap->txmap_mutexp);
     }
 
-    *last_commit_lsn_file = last_commit_lsn.file;
-    *last_commit_lsn_offset = last_commit_lsn.offset;
+    *modsnap_start_lsn_file = modsnap_start_lsn.file;
+    *modsnap_start_lsn_offset = modsnap_start_lsn.offset;
     *last_checkpoint_lsn_file = last_checkpoint_lsn.file;
     *last_checkpoint_lsn_offset = last_checkpoint_lsn.offset;
 
     logmsg(LOGMSG_DEBUG, "Starting a new modsnap transaction with last commit lsn "
             "%"PRIu32":%"PRIu32" and last checkpoint %"PRIu32":%"PRIu32"\n",
-            last_commit_lsn.file, last_commit_lsn.offset, last_checkpoint_lsn.file, last_checkpoint_lsn.offset);
+            modsnap_start_lsn.file, modsnap_start_lsn.offset, last_checkpoint_lsn.file, last_checkpoint_lsn.offset);
 
     return rc;
 }

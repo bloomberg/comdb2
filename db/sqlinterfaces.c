@@ -1739,10 +1739,10 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     assert(db->handle);
     if (clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
         if (clnt->is_hasql_retry) {
-            get_snapshot(clnt, (int *) &clnt->last_commit_lsn_file, (int *) &clnt->last_commit_lsn_offset);
+            get_snapshot(clnt, (int *) &clnt->modsnap_start_lsn_file, (int *) &clnt->modsnap_start_lsn_offset);
         }
         if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot,
-                    &clnt->last_commit_lsn_file, &clnt->last_commit_lsn_offset, 
+                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, 
                     &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
             logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
             rc = SQLITE_INTERNAL;

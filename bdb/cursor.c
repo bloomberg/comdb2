@@ -8721,7 +8721,7 @@ struct count_arg {
     /* the sql_thread struct from parent thread. sql_tick() needs it. */
     void *sqlthd;
     int is_snapcur; /* 1 if transaction is modsnap. Otherwise 0. */
-    DB_LSN last_commit_lsn; /* Commit LSN prior to modsnap start point */
+    DB_LSN modsnap_start_lsn; /* Modsnap start point */
     DB_LSN last_checkpoint_lsn; /* Checkpoint LSN prior to modsnap start point */
 };
 
@@ -8755,7 +8755,7 @@ static void *db_count(void *varg)
     }
     if (arg->is_snapcur) {
         dbc->flags |= DBC_SNAPSHOT; 
-        dbc->last_commit_lsn = arg->last_commit_lsn;
+        dbc->modsnap_start_lsn = arg->modsnap_start_lsn;
         dbc->last_checkpoint_lsn = arg->last_checkpoint_lsn;
     }
     int64_t count = 0;
@@ -8784,7 +8784,7 @@ static void *db_count(void *varg)
 }
 
 int gbl_parallel_count = 0;
-int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t last_commit_lsn_file, uint32_t last_commit_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset)
+int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_snapcur, uint32_t modsnap_start_lsn_file, uint32_t modsnap_start_lsn_offset, uint32_t last_checkpoint_lsn_file, uint32_t last_checkpoint_lsn_offset)
 {
     int64_t count = 0;
     int parallel_count;
@@ -8810,8 +8810,8 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt, int is_sna
     for (int i = 0; i < stripes; ++i) {
         args[i].db = db[i];
         args[i].is_snapcur = is_snapcur;
-        args[i].last_commit_lsn.file = last_commit_lsn_file;
-        args[i].last_commit_lsn.offset = last_commit_lsn_offset;
+        args[i].modsnap_start_lsn.file = modsnap_start_lsn_file;
+        args[i].modsnap_start_lsn.offset = modsnap_start_lsn_offset;
         args[i].last_checkpoint_lsn.file = last_checkpoint_lsn_file;
         args[i].last_checkpoint_lsn.offset = last_checkpoint_lsn_offset;
         if (parallel_count) {

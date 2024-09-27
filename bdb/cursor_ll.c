@@ -1669,7 +1669,7 @@ DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
     } else
         assert(dbc != NULL);
 
-    dbc->last_commit_lsn = curtran->last_commit_lsn;
+    dbc->modsnap_start_lsn = curtran->modsnap_start_lsn;
     dbc->last_checkpoint_lsn = curtran->last_checkpoint_lsn;
     return dbc;
 }

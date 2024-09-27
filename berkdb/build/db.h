@@ -2073,7 +2073,7 @@ struct __dbc {
 	char*	   pf; // Added by Fabio for prefaulting the index pages
 	db_pgno_t   lastpage; // pgno of last move
 
-	DB_LSN last_commit_lsn; /* Commit LSN prior to modsnap start point */
+	DB_LSN modsnap_start_lsn; /* Modsnap start point */
 	DB_LSN last_checkpoint_lsn; /* Checkpoint LSN prior to modsnap start point */
 };
 extern pthread_key_t DBG_FREE_CURSOR;
@@ -2859,8 +2859,7 @@ struct __utxnid {
 
 struct __logfile_txn_list {
 	u_int32_t file_num;
-	DB_LSN highest_commit_lsn;
-	LISTC_T(struct __utxnid) commit_utxnids;
+	hash_t *commit_utxnids;
 };
 
 struct __utxnid_track {
@@ -2870,8 +2869,9 @@ struct __utxnid_track {
 
 struct __txn_commit_map {
 	pthread_mutex_t txmap_mutexp;
+	int64_t highest_logfile;
 	int64_t smallest_logfile;
-	DB_LSN highest_commit_lsn;
+	DB_LSN modsnap_start_lsn;
 	DB_LSN highest_checkpoint_lsn;
 	hash_t *transactions;
 	hash_t *logfile_lists;

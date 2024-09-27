@@ -762,7 +762,7 @@ __db_c_idup(dbc_orig, dbcp, flags)
 
 	// Flag should be set before cursor is positioned.
 	F_SET(dbc_n, F_ISSET(dbc_orig, DBC_SNAPSHOT));
-	dbc_n->last_commit_lsn = dbc_orig->last_commit_lsn;
+	dbc_n->modsnap_start_lsn = dbc_orig->modsnap_start_lsn;
 	dbc_n->last_checkpoint_lsn = dbc_orig->last_checkpoint_lsn;
 
 	/* If the user wants the cursor positioned, do it here.  */

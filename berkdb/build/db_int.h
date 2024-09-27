@@ -545,7 +545,7 @@ extern pthread_key_t txn_key;
 
 extern int __mempv_fget(DB_MPOOLFILE *, DB *, db_pgno_t, DB_LSN, DB_LSN, void *, u_int32_t);
 
-#define PAGEGET(dbc, mpf, pgno, flags, page) (dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT)) ? __mempv_fget(mpf, dbc->dbp, *pgno, dbc->last_commit_lsn, dbc->last_checkpoint_lsn, page, flags) : __memp_fget(mpf, pgno, flags, page)
+#define PAGEGET(dbc, mpf, pgno, flags, page) (dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT)) ? __mempv_fget(mpf, dbc->dbp, *pgno, dbc->modsnap_start_lsn, dbc->last_checkpoint_lsn, page, flags) : __memp_fget(mpf, pgno, flags, page)
 
 #define PAGEPUT(dbc, mpf, page, flags) (dbc != NULL && F_ISSET(dbc, DBC_SNAPSHOT)) ? __mempv_fput(mpf, page, flags) : __memp_fput(mpf, page, flags)
 
