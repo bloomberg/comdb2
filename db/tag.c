@@ -2138,21 +2138,26 @@ static int ctag_to_stag_int(struct dbtable *table, const char *ctag,
                     return -1;
                 }
             } else {
-                /* if converting FROM a flipped index */
-                rc = SERVER_to_SERVER(
-                    to_field->in_default, to_field->in_default_len,
-                    to_field->in_default_type, NULL, /*convopts*/
-                    NULL,                            /*blob*/
-                    0, outbuf + to_field->offset, to_field->len, to_field->type,
-                    fflags, &outdtsz, NULL, /*convopts*/
-                    outblob                 /*blob*/
-                    );
+                if (to_field->in_default_type == SERVER_FUNCTION) {
+                    rc = run_internal_sql_function(outbuf, to_field, to_field->in_default, 
+                                                   to, outblob, tzname, fail_reason);
+                } else {
+                    rc = SERVER_to_SERVER(
+                        to_field->in_default, to_field->in_default_len,
+                        to_field->in_default_type, NULL, /*convopts*/
+                        NULL,                            /*blob*/
+                        0, outbuf + to_field->offset, to_field->len, to_field->type,
+                        fflags, &outdtsz, NULL, /*convopts*/
+                        outblob                 /*blob*/
+                        );
+                }
                 if (rc) {
                     if (fail_reason)
                         fail_reason->reason =
                             CONVERT_FAILED_INCOMPATIBLE_VALUES;
                     return -1;
                 }
+                /* if converting FROM a flipped index */
                 if (to_field->flags & INDEX_DESCEND)
                     xorbuf(((char *)outbuf) + to_field->offset + rec_srt_off,
                            to_field->len - rec_srt_off);
