@@ -31,6 +31,7 @@ unknown @ls sub-command foo
 (name='comdb2_cron_events')
 (name='comdb2_cron_schedulers')
 (name='comdb2_fdb_info')
+(name='comdb2_filenames')
 (name='comdb2_files')
 (name='comdb2_fingerprints')
 (name='comdb2_functions')
