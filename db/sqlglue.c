@@ -3582,6 +3582,36 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
 }
 
 /*
+ ** Reopen a database file.
+ ** Only used for remote db files.
+ ** zFilename is the name of the database file.
+ */
+int sqlite3BtreeReopen(
+    const char *zFilename, /* name of the file containing the btree database */
+    Btree *pBtree)       /* pointer to existing btree object written here */
+{
+    int rc = SQLITE_OK;
+
+    assert(zFilename);
+    assert(pBtree);
+
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "XXXXXXXXXXXXX ReOpening \"%s\"\n", zFilename);
+
+    pBtree->fdb = get_fdb(zFilename);
+    if (!pBtree->fdb) {
+        logmsg(LOGMSG_ERROR, "%s: fdb not available for %s ?\n", __func__,
+               zFilename);
+        rc = SQLITE_ERROR;
+    }
+
+    reqlog_logf(pBtree->reqlogger, REQL_TRACE,
+                "ReOpen(file %s, tree %d)     = %s\n",
+                zFilename, pBtree->btreeid, sqlite3ErrStr(rc));
+    return rc;
+}
+
+/*
  ** Open a database file.
  **
  ** zFilename is the name of the database file.  If zFilename is NULL

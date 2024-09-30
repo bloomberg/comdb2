@@ -72,8 +72,9 @@
 #define FDB_VER_PROXY 5
 #define FDB_VER_AUTH 6
 #define FDB_VER_CDB2API 7
+#define FDB_VER_WR_CDB2API 8
 
-#define FDB_VER FDB_VER_CDB2API
+#define FDB_VER FDB_VER_WR_CDB2API
 
 extern int gbl_fdb_default_ver;
 

@@ -2595,10 +2595,12 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(sqlclntstate *clnt,
 
     /* non-transactional queries go over cdb2api; 
      * if there is a transaction running over cdb2api, use cdb2api also 
-     * for cursors
+     * for cursors, if less then read committed
      */
-    if ((!trans || trans->is_cdb2api) && gbl_fdb_remsql_cdb2api &&
-            fdb->server_version >= FDB_VER_CDB2API)
+    if (gbl_fdb_remsql_cdb2api &&
+        ((!trans && fdb->server_version >= FDB_VER_CDB2API) ||
+         (trans && fdb->server_version >= FDB_VER_WR_CDB2API &&
+          clnt->dbtran.mode == TRANLEVEL_SOSQL)))
         cursor = _cursor_open_remote_cdb2api(clnt, fdb, server_version, flags,
                                              version, rootpage, use_ssl);
     else
@@ -4025,7 +4027,9 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
     tran = fdb_get_subtran(dtran, fdb);
 
     if (!tran) {
-        if (gbl_fdb_push_remote_write && fdb->server_version >= FDB_VER_CDB2API)
+        if (gbl_fdb_push_remote_write &&
+            fdb->server_version >= FDB_VER_WR_CDB2API &&
+            clnt->dbtran.mode == TRANLEVEL_SOSQL)
             tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);
         else
             tran = _dtran_get_subtran(clnt, fdb, use_ssl);
@@ -4626,12 +4630,21 @@ static void fdb_clear_sqlite_stats(void)
  */
 static void fdb_init(void)
 {
-    int rc = FDB_ERR_BUG;
+    logmsg(LOGMSG_ERROR, "Testing routine clearing fdb structure!\n");
 
-    if (rc) {
-        /* TODO: fatal? */
-        logmsg(LOGMSG_ERROR, "%s: init unimplemented\n", __func__);
-    }
+    Pthread_rwlock_wrlock(&fdbs.arr_lock);
+
+    /*
+     * we leak on purpose instead of adding extra synchronization
+     * with existing users
+     */
+    bzero(fdbs.arr, fdbs.nused * sizeof(fdbs.arr[0]));
+    fdbs.nused = 0;
+
+    logmsg(LOGMSG_INFO, "Replicant updating views counter=%d\n", gbl_views_gen);
+    ++gbl_views_gen;
+
+    pthread_rwlock_unlock(&fdbs.arr_lock);
 }
 
 static int __fdb_info_ent(void *obj, void *arg)
@@ -5892,6 +5905,8 @@ int fdb_default_ver_set(int val)
             /* disable also push, otherwise this will break transactional
              * queries
              */
+            gbl_fdb_push_remote_write = 0;
+        } else if (val < FDB_VER_WR_CDB2API) {
             gbl_fdb_push_remote_write = 0;
         }
     }
