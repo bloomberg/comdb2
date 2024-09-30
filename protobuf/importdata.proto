@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-import "blobfiles.proto";
+message BlobFiles {
+    repeated string files=1;
+}
 
 message ImportData {
     uint64 data_genid=1;
