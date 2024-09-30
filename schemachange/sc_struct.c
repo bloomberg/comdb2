@@ -431,7 +431,7 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
 
     if (s->newcsc2_len) {
         if (s->newcsc2_len != strlen((const char *)p_buf) + 1) {
-            s->newcsc2_len = -1;
+            s->newcsc2_len = 0;
             return NULL;
         }
 
@@ -615,7 +615,7 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
 
     if (s->newcsc2_len) {
         if (s->newcsc2_len != strlen((const char *)p_buf) + 1) {
-            s->newcsc2_len = -1;
+            s->newcsc2_len = 0;
             return NULL;
         }
 
@@ -831,7 +831,7 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
         }
     }
 
-    if (s->newcsc2 && s->newcsc2_len == -1) { // is set to -1 on error
+    if (s->newcsc2 && s->newcsc2_len == 0) { // is set to 0 on error
         logmsg(LOGMSG_ERROR, "unpack_schema_change_type: length of newcsc2 in "
                              "packed data doesn't match specified length\n");
         return -1;
