@@ -75,7 +75,6 @@ check
 
 $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
-#test 3 remsql
 header 3 "test against a too new version"
 let newver=ver+1
 $R_SQL "put tunable fdb_default_version $newver" >> $output 2>&1
@@ -86,6 +85,30 @@ check
 
 $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
+header 4 "test against cdb2api remsql but not remtran"
+$R_SQL "put tunable fdb_default_version 7" >> $output 2>&1
+
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+$R_SQL "select * from LOCAL_${a_dbname}.t order by id" >> $output 2>&1
+check
+
+$R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
+
+
+header 5 "test insert, delete, update current version"
+
+exit 1
+$S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(100,110)" >> $output 2>&1
+$R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(100,110)" >> $output 2>&1
+check
+
+$S_SQL "update LOCAL_${a_rdbname}.t(id) set id=id+1 where id>-100" >> $output 2>&1
+$R_SQL "update LOCAL_${a_dbname}.t(id) set id=id+1 where id>-100" >> $output 2>&1
+check
+
+$S_SQL "delete from LOCAL_${a_rdbname}.t(id) where id>-100" >> $output 2>&1
+$R_SQL "delete from LOCAL_${a_dbname}.t(id) where id>-100" >> $output 2>&1
+check
 
 
 #convert the table to actual dbname
