@@ -4769,8 +4769,18 @@ void comdb2AlterTableEnd(Parse *pParse)
         sc->force = 1;
     }
 
-    if (ctx->partition)
+    if (ctx->partition) {
         sc->partition = *ctx->partition;
+        if (sc->partition.type == PARTITION_ADD_TIMED) {
+            struct dbtable * tbl = get_dbtable_by_name(sc->tablename);
+            if (tbl && tbl->n_rev_constraints > 0) {
+
+                setError(pParse, SQLITE_MISUSE,
+                         "Cannot partition a constraint target table");
+                goto cleanup;
+            }
+        }
+    }
 
     /* prepare_csc2 can free the ctx, do not touch it afterwards ! */
     sc->newcsc2 = prepare_csc2(pParse, ctx);
