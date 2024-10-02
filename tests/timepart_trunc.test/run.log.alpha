@@ -1113,3 +1113,5 @@ Test check for partition new over old shards
 TEST 19
 Test block put retention
 [put time partition t17 retention 20] failed with rc -3 Cannot find partition
+TEST 20
+Test block alter of a constraint target table
