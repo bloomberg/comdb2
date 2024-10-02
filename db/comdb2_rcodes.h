@@ -139,16 +139,19 @@ enum comdb2_schemachange_op {
 
 enum comdb2_import_op {
     COMDB2_IMPORT_RC_SUCCESS = 0,
-    COMDB2_IMPORT_RC_NO_DST_TBL = 12000,        /* Destination table doesn't exist */
-    COMDB2_IMPORT_RC_NO_SRC_TBL = 12001,        /* Source table doesn't exist */
-    COMDB2_IMPORT_RC_BLOBSTRIPE_GENID = 12002,  /* Destination table has a blobstripe genid */
-    COMDB2_IMPORT_RC_CONSTRAINTS = 12003,       /* Source table has constraints */
-    COMDB2_IMPORT_RC_REV_CONSTRAINTS = 12004,   /* Destination table has reverse constraints */
-    COMDB2_IMPORT_RC_STRIPE_MISMATCH = 12005,   /* Source and destination db have mismatched stripe settings */
-    COMDB2_IMPORT_RC_NO_SRC_CONN = 12006,       /* Can't establish a connection to the source db */
-    COMDB2_IMPORT_RC_BAD_SOURCE_CLASS = 12007,  /* Can't connect to provided source class */
-    COMDB2_IMPORT_RC_INTERNAL = 12008,          /* An internal error occurred */
-    COMDB2_IMPORT_RC_UNKNOWN = 12009,           /* An unknown error occurred */
+    COMDB2_IMPORT_RC_NO_DST_TBL = 12000,          /* Destination table doesn't exist */
+    COMDB2_IMPORT_RC_NO_SRC_TBL = 12001,          /* Source table doesn't exist */
+    COMDB2_IMPORT_RC_BLOBSTRIPE_GENID = 12002,    /* Destination table has a blobstripe genid */
+    COMDB2_IMPORT_RC_CONSTRAINTS = 12003,         /* Source table has constraints */
+    COMDB2_IMPORT_RC_REV_CONSTRAINTS = 12004,     /* Destination table has reverse constraints */
+    COMDB2_IMPORT_RC_NO_ISC_OPTION = 12005,       /* Source table doesn't have ISC option */
+    COMDB2_IMPORT_RC_NO_IPU_OPTION = 12006,       /* Source table doesn't have IPU option */
+    COMDB2_IMPORT_RC_NO_ODH_OPTION = 12007,       /* Source table doesn't have ODH option */
+    COMDB2_IMPORT_RC_STRIPE_MISMATCH = 12008,     /* Source and destination db have mismatched stripe settings */
+    COMDB2_IMPORT_RC_NO_SRC_CONN = 12009,         /* Can't establish a connection to the source db */
+    COMDB2_IMPORT_RC_BAD_SOURCE_CLASS = 12010,    /* Can't connect to provided source class */
+    COMDB2_IMPORT_RC_INTERNAL = 12011,            /* An internal error occurred */
+    COMDB2_IMPORT_RC_UNKNOWN = 12012,             /* An unknown error occurred */
 };
 
 enum comdb2_import_tmpdb_op { 
@@ -156,7 +159,10 @@ enum comdb2_import_tmpdb_op {
     COMDB2_IMPORT_TMPDB_RC_SUCCESS = 0,
     COMDB2_IMPORT_TMPDB_RC_CONSTRAINTS = 100,         /* Source table has constraints */
     COMDB2_IMPORT_TMPDB_RC_NO_SRC_TBL = 101,          /* Source table doesn't exist */
-    COMDB2_IMPORT_TMPDB_RC_INTERNAL = 102,            /* An internal error occurred */
+    COMDB2_IMPORT_TMPDB_RC_NO_ISC_OPTION = 102,       /* Source table doesn't have ISC option */
+    COMDB2_IMPORT_TMPDB_RC_NO_IPU_OPTION = 103,       /* Source table doesn't have IPU option */
+    COMDB2_IMPORT_TMPDB_RC_NO_ODH_OPTION = 104,       /* Source table doesn't have ODH option */
+    COMDB2_IMPORT_TMPDB_RC_INTERNAL = 105,            /* An internal error occurred */
 };
 
 #endif

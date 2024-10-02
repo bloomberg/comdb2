@@ -466,12 +466,13 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     char tempname[64 /*hah*/];
     tran_type *t = NULL;
     int len, pgsz;
-    int rc = 0;
+
+    int rc = COMDB2_IMPORT_RC_SUCCESS;
 
     p_data->table_name = strdup(table_name);
     if (!p_data->table_name) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -483,7 +484,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     if (!(db = get_dbtable_by_name(table_name))) {
         __import_logmsg(LOGMSG_ERROR, "no such table: %s\n",
                table_name);
-        rc = -1;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -491,7 +492,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     p_data->data_dir = strdup(thedb->basedir);
     if (!p_data->data_dir) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -501,7 +502,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         __import_logmsg(LOGMSG_ERROR,
                "could not get schema for table: %s\n",
                table_name);
-        rc = -1;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -513,13 +514,14 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     p_data->checksums = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHECKSUMS);
 
     /* get odh options from the meta table */
-    if (get_db_odh(db, &p_data->odh) ||
+    if ((get_db_odh(db, &p_data->odh) ||
         (p_data->odh && (get_db_compress(db, &p_data->compress) ||
-                         get_db_compress_blobs(db, &p_data->compress_blobs)))) {
+                         get_db_compress_blobs(db, &p_data->compress_blobs))))
+        && gbl_import_mode) {
         __import_logmsg(LOGMSG_ERROR,
                "failed to fetch odh flags for table: %s\n",
                table_name);
-        rc = -1;
+        rc = COMDB2_IMPORT_TMPDB_RC_NO_ODH_OPTION;
         goto err;
     }
 
@@ -535,7 +537,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         __import_logmsg(LOGMSG_ERROR,
                "failed to fetch version number for %s's main data "
                "files\n", table_name);
-        rc = -1;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -562,31 +564,37 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     }
 
     /* get ipu/isc options from meta table */
-	// TODO: are these errors?
+    // Only an error if the source db doesn't have them
 
-    if (get_db_inplace_updates(db, &p_data->ipu)) {
+    if (get_db_inplace_updates(db, &p_data->ipu) && gbl_import_mode) {
         __import_logmsg(
             LOGMSG_ERROR,
             "Failed to get inplace update option for table %s\n",
             table_name);
+        rc = COMDB2_IMPORT_TMPDB_RC_NO_IPU_OPTION;
+        goto err;
     }
-    if (get_db_instant_schema_change(db, &p_data->isc)) {
+    if (get_db_instant_schema_change(db, &p_data->isc) && gbl_import_mode) {
         __import_logmsg(LOGMSG_ERROR,
                "Failed to get instant schema change option for "
                "table %s\n",
                table_name);
+        rc = COMDB2_IMPORT_TMPDB_RC_NO_ISC_OPTION;
+        goto err;
     }
-    if (get_db_datacopy_odh(db, &p_data->dc_odh)) {
+    if (get_db_datacopy_odh(db, &p_data->dc_odh) && gbl_import_mode) {
         __import_logmsg(LOGMSG_ERROR,
                "Failed to get datacopy odh option for table %s\n",
                table_name);
+        rc = COMDB2_IMPORT_TMPDB_RC_NO_ODH_OPTION;
+        goto err;
     }
 
     p_data->n_data_files = p_data->dtastripe;
     p_data->data_files = malloc(sizeof(char *) * p_data->n_data_files);
     if (!p_data->data_files) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -601,7 +609,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         p_data->data_files[i] = strdup(tempname);
         if (!p_data->data_files[i]) {
             __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-            rc = ENOMEM;
+            rc = COMDB2_IMPORT_RC_INTERNAL;
             goto err;
         }
     }
@@ -612,7 +620,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         __import_logmsg(LOGMSG_ERROR,
                "Could not find csc2 version for table %s\n",
                table_name);
-        rc = -1;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -620,7 +628,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     p_data->csc2 = malloc(sizeof(char *) * p_data->n_csc2);
     if (!p_data->csc2) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -639,7 +647,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         malloc(sizeof(unsigned long int) * p_data->n_index_genids);
     if (!p_data->index_genids) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -647,7 +655,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
     p_data->index_files = malloc(sizeof(char *) * p_data->n_index_files);
     if (!p_data->index_files) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -657,7 +665,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         malloc(sizeof(unsigned long int) * p_data->n_blob_genids);
     if (!p_data->blob_genids) {
         __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-        rc = ENOMEM;
+        rc = COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
@@ -672,7 +680,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
                    "failed to fetch version number for %s's "
                    "index: %d files\n",
                    table_name, i);
-            rc = -1;
+            rc = COMDB2_IMPORT_RC_INTERNAL;
             goto err;
         }
 
@@ -692,7 +700,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
         p_data->blob_files = malloc(sizeof(BlobFiles *) * p_data->n_blob_files);
         if (!p_data->blob_files) {
             __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-            rc = ENOMEM;
+            rc = COMDB2_IMPORT_RC_INTERNAL;
             goto err;
         }
 
@@ -700,7 +708,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
             p_data->blob_files[i] = malloc(sizeof(BlobFiles));
             if (!p_data->blob_files[i]) {
                 __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-                rc = ENOMEM;
+                rc = COMDB2_IMPORT_RC_INTERNAL;
                 goto err;
             }
 
@@ -710,7 +718,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
             b->files = malloc(sizeof(char *) * b->n_files);
             if (!b->files) {
                 __import_logmsg(LOGMSG_ERROR, "Could not allocate memory\n");
-                rc = ENOMEM;
+                rc = COMDB2_IMPORT_RC_INTERNAL;
                 goto err;
             }
         }
@@ -727,7 +735,7 @@ static enum comdb2_import_op bulk_import_data_load(const char *table_name, Impor
                    "failed to fetch version number for %s's "
                    "blob: %d files\n",
                    table_name, i);
-            rc = -1;
+            rc = COMDB2_IMPORT_RC_INTERNAL;
             goto err;
         }
 
@@ -763,7 +771,10 @@ err:
         curtran_puttran(t);
     }
 
-    rc = rc ? COMDB2_IMPORT_RC_INTERNAL : COMDB2_IMPORT_RC_SUCCESS;
+    if (rc) {
+        clear_bulk_import_data(p_data);
+    }
+
     return rc;
 }
 
@@ -1790,6 +1801,12 @@ const char *bulk_import_get_err_str(const int rc) {
             return "Source table has constraints";
         case COMDB2_IMPORT_RC_REV_CONSTRAINTS:
             return "Destination table has reverse constraints";
+        case COMDB2_IMPORT_RC_NO_ISC_OPTION:
+            return "Source table has no ISC option";
+        case COMDB2_IMPORT_RC_NO_IPU_OPTION:
+            return "Source table has no IPU option";
+        case COMDB2_IMPORT_RC_NO_ODH_OPTION:
+            return "Source table has no ODH option";
         case COMDB2_IMPORT_RC_STRIPE_MISMATCH:
             return "Stripe settings differ between source and destination db";
         case COMDB2_IMPORT_RC_NO_SRC_CONN:
@@ -1808,10 +1825,16 @@ static enum comdb2_import_op get_import_rcode_from_tmpdb_rcode(const int rc) {
     switch (rc) {
         case COMDB2_IMPORT_TMPDB_RC_SUCCESS:
             return COMDB2_IMPORT_RC_SUCCESS;
-        case COMDB2_IMPORT_TMPDB_RC_NO_SRC_TBL:
-            return COMDB2_IMPORT_RC_NO_SRC_TBL;
         case COMDB2_IMPORT_TMPDB_RC_CONSTRAINTS:
             return COMDB2_IMPORT_RC_CONSTRAINTS;
+        case COMDB2_IMPORT_TMPDB_RC_NO_ISC_OPTION:
+            return COMDB2_IMPORT_RC_NO_ISC_OPTION;
+        case COMDB2_IMPORT_TMPDB_RC_NO_IPU_OPTION:
+            return COMDB2_IMPORT_RC_NO_IPU_OPTION;
+        case COMDB2_IMPORT_TMPDB_RC_NO_ODH_OPTION:
+            return COMDB2_IMPORT_RC_NO_ODH_OPTION;
+        case COMDB2_IMPORT_TMPDB_RC_NO_SRC_TBL:
+            return COMDB2_IMPORT_RC_NO_SRC_TBL;
         case COMDB2_IMPORT_TMPDB_RC_INTERNAL:
             return COMDB2_IMPORT_RC_INTERNAL;
         default:
@@ -1950,7 +1973,7 @@ enum comdb2_import_tmpdb_op bulk_import_tmpdb_write_import_data(const char *impo
     rc = bulk_import_data_load(import_table, &import_data);
     if (rc != 0) {
         __import_logmsg(LOGMSG_FATAL, "Failed to load import data\n");
-        rc = COMDB2_IMPORT_TMPDB_RC_INTERNAL;
+        rc = (rc == COMDB2_IMPORT_RC_INTERNAL) ? COMDB2_IMPORT_TMPDB_RC_INTERNAL : rc;
         goto err;
     }
 
