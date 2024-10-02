@@ -1126,3 +1126,5 @@ TEST 18
 Test block alter
 TEST 19
 Test check for partition new over old shards
+TEST 20
+Test block alter of a constraint target table

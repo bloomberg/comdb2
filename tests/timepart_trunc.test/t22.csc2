@@ -1,0 +1,12 @@
+schema
+{
+    int a
+}
+keys
+{
+    "a" = a
+}
+constraints
+{
+    "a" -> <"t21":"a">
+}
