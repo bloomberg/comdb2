@@ -638,6 +638,27 @@ if (( $? == 0 )) ; then
    exit 1
 fi
 
+header 20 "Test block alter of a constraint target table"
+$cmd "create table t21 {`cat t21.csc2`}"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table tv21"
+   exit 1
+fi
+
+
+$cmd "create table t22 {`cat t22.csc2`}"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table tv22"
+   exit 1
+fi
+
+$cmd "alter table t21 partitioned by time period 'daily' retention 2 start '2024-01-01T'"
+if (( $? == 0 )) ; then
+   echo "FAILURE to block partitioning a constraint target table"
+   exit 1
+fi
+
+
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
