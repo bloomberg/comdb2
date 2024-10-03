@@ -81,7 +81,7 @@ Description:
 Executes the sql query.  The query stops at the first semicolon if present - this call cannot be used to execute multiple statements.  Anything past the 
 first semicolon is ignored.  To run further statements using the same handle, user code MUST call [cdb2_next_record](#cdb2_next_record) until it returns ```CDB2_OK_DONE```
 (or an error). Running another statement before all records are retrieved is not supported.  If the application doesn't need the entire result set, it's still recommended
-that it reads all the rows - see notes for [cdb2_close](#cdb2_close) for rationale.  It is not necessary to call [cdb2_next_record](#cdb2_next_record) for INSERT/UPDATE/DELETE statements.
+that it reads all the rows - see notes for [cdb2_close](#cdb2_close) for rationale.
 
 The type of the resulting columns is determined by the database.  For more control over return types, see [cdb2_run_statement_typed](#cdb2_run_statement_typed)
 
