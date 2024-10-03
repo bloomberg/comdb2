@@ -2358,6 +2358,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     clnt->sql = sql_query->sql_query;
     Pthread_mutex_unlock(&clnt->sql_lk);
     clnt->added_to_hist = 0;
+    int allow_incoherent = 0;
 
     free_original_normalized_sql(clnt);
 
@@ -2375,6 +2376,10 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
 
     if (clnt->tzname[0] == 0 && sql_query->tzname) {
         strncpy0(clnt->tzname, sql_query->tzname, sizeof(clnt->tzname));
+    }
+    for (size_t i = 0; i < sql_query->n_features; i++) {
+        if (sql_query->features[i] == CDB2_CLIENT_FEATURES__ALLOW_INCOHERENT)
+            allow_incoherent = 1;
     }
     if (sql_query->dbname && thedb->envname && strcasecmp(sql_query->dbname, thedb->envname)) {
         CDB2SQLQUERY__Cinfo *info = sql_query->client_info;
@@ -2437,7 +2442,7 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD64(gbl_nnewsql_ssl, 1);
 
     /* coherent  _or_ in middle of transaction */
-    if (!incoh_reject(clnt->admin, thedb->bdb_env) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
+    if ((!incoh_reject(clnt->admin, thedb->bdb_env) || allow_incoherent) || clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
         return NEWSQL_SUCCESS;
     }
     if (gbl_incoherent_clnt_wait > 0) {
