@@ -3272,6 +3272,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (hndl && (hndl->flags & CDB2_REQUIRE_FASTSQL) != 0) {
         features[n_features++] = CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL;
     }
+    if (hndl && (hndl->flags & CDB2_ALLOW_INCOHERENT) != 0) {
+        features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_INCOHERENT;
+    }
 
     if (n_features) {
         sqlquery.n_features = n_features;
