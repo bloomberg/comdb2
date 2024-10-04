@@ -1737,7 +1737,8 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
         if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot,
                     &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, 
-                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset)) {
+                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset,
+                    &clnt->init_trunc_gen)) {
             logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
             rc = SQLITE_INTERNAL;
             goto done;
@@ -5439,6 +5440,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->verify_indexes = 0;
     clnt->schema_mems = NULL;
     clnt->init_gen = 0;
+    clnt->init_trunc_gen = 0;
     for (int i = 0; i < clnt->ncontext; i++) {
         free(clnt->context[i]);
     }

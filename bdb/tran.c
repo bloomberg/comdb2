@@ -2793,7 +2793,8 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
                         unsigned int *modsnap_start_lsn_file,
                         unsigned int *modsnap_start_lsn_offset,
                         unsigned int *last_checkpoint_lsn_file,
-                        unsigned int *last_checkpoint_lsn_offset)
+                        unsigned int *last_checkpoint_lsn_offset,
+                        uint32_t *trunc_gen)
 {
     DB_ENV *dbenv;
     DB_LSN modsnap_start_lsn;
@@ -2836,6 +2837,7 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
     *modsnap_start_lsn_offset = modsnap_start_lsn.offset;
     *last_checkpoint_lsn_file = last_checkpoint_lsn.file;
     *last_checkpoint_lsn_offset = last_checkpoint_lsn.offset;
+    *trunc_gen = dbenv->trunc_gen;
 
     logmsg(LOGMSG_DEBUG, "Starting a new modsnap transaction with last commit lsn "
             "%"PRIu32":%"PRIu32" and last checkpoint %"PRIu32":%"PRIu32"\n",

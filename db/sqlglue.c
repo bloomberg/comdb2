@@ -4875,8 +4875,9 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
                 get_snapshot(clnt, (int *) &clnt->modsnap_start_lsn_file, (int *) &clnt->modsnap_start_lsn_offset);
             }
             if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot, 
-                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, &clnt->last_checkpoint_lsn_file, 
-                    &clnt->last_checkpoint_lsn_offset)) {
+                    &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset,
+                    &clnt->last_checkpoint_lsn_file, &clnt->last_checkpoint_lsn_offset,
+                    &clnt->init_trunc_gen)) {
                 logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
                 rc = SQLITE_INTERNAL;
                 goto done;
@@ -9674,6 +9675,19 @@ retry:
     }
     if (!curtran_out)
         return -1;
+
+    uint32_t trunc_gen = bdb_state->dbenv->trunc_gen;
+    if (clnt->dbtran.mode == TRANLEVEL_MODSNAP 
+        && (clnt->init_trunc_gen != trunc_gen)) {
+        bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
+        curtran_out = NULL;
+        clnt->gen_changed = 1;
+        logmsg(LOGMSG_DEBUG,
+               "td %p %s: failing because truncate generation has changed: "
+               "orig-gen=%u, cur-gen=%u\n",
+               (void *)pthread_self(), __func__, clnt->init_trunc_gen, trunc_gen);
+        return -1;
+    }
 
     /* If this is an hasql serialiable or snapshot session and durable-lsns are
      * enabled, then fail this call with a 'CHANGENODE' if the generation number

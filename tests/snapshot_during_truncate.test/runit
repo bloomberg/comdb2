@@ -3,17 +3,6 @@ bash -n "$0" | exit 1
 
 TIER="default"
 
-# Returns zero if all counts in the output are equal; nonzero otherwise
-verify_consistent_count_in_output() {
-	local -r results=$1
-
-	local num_distinct_counts
-	num_distinct_counts=$(echo "$results" | sed -nr 's/count.*=([0-9]+)/\1/p' | uniq | wc -l)
-	readonly num_distinct_counts
-
-	(( num_distinct_counts == 1 ))
-}
-
 insert_in_loop() {
 	while true;
 	do
@@ -24,6 +13,7 @@ insert_in_loop() {
 run_snapshot_query() {
 	local -r snapshot_sleep_seconds=$1 
 
+	set +e
 query_results=$(cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default - <<EOF
 set transaction snapshot
 begin
@@ -34,8 +24,17 @@ select count(*) from t
 commit
 EOF
 )
+	if (( $? == 0 ));
+	then
+		echo "Expected query to fail but got success"
+		exit 1
+	fi
 
-	if ! verify_consistent_count_in_output "${query_results}";
+	local num_distinct_counts
+	num_distinct_counts=$(echo "$results" | sed -nr 's/count.*=([0-9]+)/\1/p' | wc -l)
+	readonly num_distinct_counts
+
+	if (( num_distinct_counts != 0 ));
 	then
 		echo "Bad snapshot"
 		echo "${query_results}"

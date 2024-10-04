@@ -934,8 +934,6 @@ void log_recovery_progress(int stage, int progress)
 }
 
 
-
-
 /*
  * __db_apprec --
  *	Perform recovery.  If max_lsn is non-NULL, then we are trying
@@ -979,8 +977,10 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	hi_txn = TXN_MAXIMUM;
 	txninfo = NULL;
 
-	if (trunclsn)
+	if (trunclsn) {
 		(*trunclsn) = (*max_lsn);
+		dbenv->trunc_gen += 1;
+	}
 
 	pass = "initial";
 
