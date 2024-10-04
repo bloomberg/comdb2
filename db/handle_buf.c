@@ -144,19 +144,6 @@ static void thd_io_complete(void)
     UNLOCK(&lock);
 }
 
-
-#define LISTC_CLEAN(listp, lnk, dofree, type) { \
-    type *item, *tmp; \
-    /* free each item */ \
-    LISTC_FOR_EACH_SAFE(listp, item, tmp, lnk) { \
-        /* remove and potentially free item */ \
-        listc_rfl(listp, item); \
-        if (dofree) \
-            free(item); \
-    } \
-}
-
-
 void thd_cleanup()
 {
     int counter = 0;

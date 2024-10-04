@@ -1278,6 +1278,29 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
     return SQLITE_ERROR; /* speak sqlite */
 }
 
+int create_fdb(const char *fdb_name, fdb_t **fdb) {
+    int local, lvl_override;
+    local = lvl_override = 0;
+
+    const enum mach_class lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
+    if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
+        logmsg(LOGMSG_ERROR, "%s: Could not find usable fdb class\n", __func__);
+        const int rc = (lvl == CLASS_UNKNOWN)
+                        ? FDB_ERR_CLASS_UNKNOWN
+                        : FDB_ERR_CLASS_DENIED;
+        return rc;
+    }
+
+    int created;
+    *fdb = new_fdb(fdb_name, &created, lvl, local, lvl_override);
+    if (!fdb) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
+        return FDB_ERR_MALLOC;
+    }
+
+    return 0;
+}
+
 /**
  * Sqlite wrapper for adding a new database table
  *

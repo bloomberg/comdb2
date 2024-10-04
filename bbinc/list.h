@@ -103,6 +103,17 @@ extern void *listc_add_after(void *list, void *obj, void *afterobj);
 /* number of elements in list */
 extern int listc_size(void *list);
 
+#define LISTC_CLEAN(listp, lnk, dofree, type) { \
+    type *item, *tmp; \
+    /* free each item */ \
+    LISTC_FOR_EACH_SAFE(listp, item, tmp, lnk) { \
+        /* remove and potentially free item */ \
+        listc_rfl(listp, item); \
+        if (dofree) \
+            free(item); \
+    } \
+}
+
 #define LISTC_FOR_EACH(listp, currentp, linkv)                                 \
     for ((currentp) = ((listp)->top); (currentp) != 0;                         \
          (currentp) = ((currentp)->linkv.next))

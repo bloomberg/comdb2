@@ -34,7 +34,56 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include <limits.h>
 #endif
 
+#include "cdb2_constants.h"
+
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
+
+/* Either XXX.<tablename> or full path */
+static inline int nameboundary(char c)
+{
+	switch (c) {
+	case '/':
+	case '.':
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+int should_ignore_btree(const char *filename, int (*should_ignore_table)(const char *), int should_ignore_queues, int name_boundary_exists)
+{
+	char *start = (char *)&filename[0];
+	char *end = (char *)&filename[strlen(filename) - 1];
+
+	while (end > start && *end != '\0' && *end != '.') {
+		end--;
+	}
+	if (should_ignore_queues && !strcmp(end, ".queuedb")) {
+		return 1;
+	}
+	end -= 17;
+	if (end <= start) {
+		return 0;
+	}
+
+	if (!name_boundary_exists) {
+		char t[MAXTABLELEN + 1] = {0};
+		memcpy(t, start, (end - start));
+		return should_ignore_table(t);
+	}
+
+	char *fstart = end;
+	while (fstart > start && (end - fstart) <= MAXTABLELEN) {
+		if (nameboundary(*(fstart - 1))) {
+			char t[MAXTABLELEN + 1] = {0};
+			memcpy(t, fstart, (end - fstart));
+			return should_ignore_table(t);
+		}
+		fstart--;
+	}
+
+	return 0;
+}
 
 /*
  * __dbreg_add_dbentry --

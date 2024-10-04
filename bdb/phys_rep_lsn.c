@@ -20,6 +20,11 @@
 
 int matchable_log_type(int rectype);
 
+extern int should_ignore_btree(const char *filename,
+                               int (*should_ignore_table)(const char *),
+                               int should_ignore_queues,
+                               int name_boundary_exists);
+extern int gbl_import_mode;
 extern int gbl_physrep_debug;
 int gbl_physrep_exit_on_invalid_logstream = 0;
 int gbl_physrep_ignore_queues = 1;
@@ -448,42 +453,7 @@ int physrep_ignore_table_count()
     return count;
 }
 
-/* Either XXX.<tablename> or full path */
-static inline int nameboundry(char c)
-{
-    switch (c) {
-    case '/':
-    case '.':
-        return 1;
-    default:
-        return 0;
-    }
-}
-
 int physrep_ignore_btree(const char *filename)
 {
-    char *start = (char *)&filename[0];
-    char *end = (char *)&filename[strlen(filename) - 1];
-
-    while (end > start && *end != '\0' && *end != '.') {
-        end--;
-    }
-    if (gbl_physrep_ignore_queues && !strcmp(end, ".queuedb")) {
-        return 1;
-    }
-    end -= 17;
-    if (end <= start) {
-        return 0;
-    }
-
-    char *fstart = end;
-    while (fstart > start && (end - fstart) <= MAXTABLELEN) {
-        if (nameboundry(*(fstart - 1))) {
-            char t[MAXTABLELEN + 1] = {0};
-            memcpy(t, fstart, (end - fstart));
-            return physrep_ignore_table(t);
-        }
-        fstart--;
-    }
-    return 0;
+    return should_ignore_btree(filename, physrep_ignore_table, gbl_physrep_ignore_queues, 1);
 }

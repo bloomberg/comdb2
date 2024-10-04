@@ -220,6 +220,7 @@ extern int gbl_commit_delay_timeout;
 extern int gbl_commit_delay_copy_ms;
 extern int gbl_commit_lsn_map;
 extern int gbl_throttle_logput_trace;
+extern int gbl_file_copier;
 extern int gbl_fills_waitms;
 extern int gbl_finish_fill_threshold;
 extern int gbl_long_read_threshold;
@@ -1189,6 +1190,13 @@ static int test_log_file_update(void *context, void *value)
     free(*(char **)tunable->var);
     *(char **)tunable->var = strdup(newValue);
     Pthread_mutex_unlock(&gbl_test_log_file_mtx);
+    return 0;
+}
+
+static int file_copier_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    *(char **)tunable->var = intern((char *)value);
     return 0;
 }
 

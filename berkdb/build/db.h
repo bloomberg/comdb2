@@ -3262,6 +3262,8 @@ void __log_txn_lsn(DB_ENV *, DB_LSN *, u_int32_t *, u_int32_t *);
 int __recover_logfile_pglogs(DB_ENV *, void *);
 int normalize_rectype(u_int32_t* rectype);
 
+int bless_btree(char *input_file, char *output_file);
+
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
 struct string_ref;

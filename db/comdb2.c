@@ -143,8 +143,11 @@ void berk_memp_sync_alarm_ms(int);
 #include "sc_csc2.h"
 #include "reverse_conn.h"
 #include "alias.h"
+#include "importdata.pb-c.h"
+
 #define tokdup strndup
 
+char * gbl_file_copier = "scp";
 int gbl_thedb_stopped = 0;
 int gbl_sc_timeoutms = 1000 * 60;
 char gbl_dbname[MAX_DBNAME_LENGTH];
@@ -181,6 +184,9 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 extern int bdb_gbl_asof_modsnap_init(bdb_state_type *);
+extern int bulk_import_tmpdb_write_import_data(char *import_table);
+extern int bulk_import_tmpdb_pull_foreign_dbfiles(const char *fdb_name);
+extern void set_dbdir(char *dir);
 extern void bb_berkdb_reset_worst_lock_wait_time_us();
 extern int has_low_headroom(const char *path, int headroom, int debug);
 extern void *clean_exit_thd(void *unused);
@@ -309,6 +315,9 @@ char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
 int gbl_exit = 0;        /* exit requested.*/
 int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
+int gbl_import_mode = 0; /* turn on import mode */
+char *gbl_import_table; /* Import table */
+char *gbl_import_src; /* Import source */
 const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
                                         * external lrl file to create with
                                         * this db's settings and table defs */
@@ -1417,6 +1426,24 @@ char *comdb2_get_sav_dir(void)
     return path;
 }
 
+int comdb2_get_tmp_dir_name_args(char *tmp_dir_name, ssize_t sz, const char *envname, int nonames) {
+    const int rc = nonames
+        ? snprintf(tmp_dir_name, sz, "tmp")
+        : snprintf(tmp_dir_name, sz, "%s.tmpdbs", envname);
+    return rc < 0 || rc >= sz;
+}
+
+int comdb2_get_tmp_dir_args(char *tmp_dir_path, ssize_t sz, const char *basedir, const char *envname, int nonames) {
+    char tmp_dir_name[FILENAME_MAX];
+    int rc = comdb2_get_tmp_dir_name_args(tmp_dir_name, sizeof(tmp_dir_name), envname, nonames);
+    if (rc) {
+        return rc;
+    }
+
+    rc = snprintf(tmp_dir_path, sz, "%s/%s", basedir, tmp_dir_name);
+    return rc < 0 || rc >= sz;
+}
+
 /* gets called single threaded from init() during startup to initialize.
    subsequent calls are thread-safe. */
 char *comdb2_get_tmp_dir(void)
@@ -1440,10 +1467,9 @@ char *comdb2_get_tmp_dir(void)
             logmsg(LOGMSG_WARN, "copying full path\n");
         }
 
-        if (gbl_nonames)
-            snprintf(path, PATH_MAX, "%s/tmp", thedb->basedir);
-        else
-            snprintf(path, PATH_MAX, "%s/%s.tmpdbs", thedb->basedir, thedb->envname);
+        if (comdb2_get_tmp_dir_args(path, sizeof(path), thedb->basedir, thedb->envname, gbl_nonames)) {
+            abort();
+        }
 
         once = 1;
     }
@@ -3047,12 +3073,25 @@ int llmeta_open(void)
     return 0;
 }
 
+/* returns 0 on success */
+int get_txndir_name(char *txndir_name, ssize_t sz, const char *envname, int nonames) {
+    const int rc = nonames
+        ? snprintf(txndir_name, sz, "logs")
+        : snprintf(txndir_name, sz, "%s.txn", envname);
+    return rc < 0 || rc >= sz;
+}
+
+void get_txndir_args(char *txndir, size_t sz_txndir, const char *dbdir, const char *envname, int nonames)
+{
+    char txndir_name[FILENAME_MAX];
+    get_txndir_name(txndir_name, sizeof(txndir_name), envname, nonames);
+
+    snprintf(txndir, sz_txndir, "%s/%s", dbdir, txndir_name);
+}
+
 static void get_txndir(char *txndir, size_t sz_txndir)
 {
-    if (gbl_nonames)
-        snprintf(txndir, sz_txndir, "%s/logs", thedb->basedir);
-    else
-        snprintf(txndir, sz_txndir, "%s/%s.txn", thedb->basedir, gbl_dbname);
+    get_txndir_args(txndir, sz_txndir, thedb->basedir, gbl_dbname, gbl_nonames);
 }
 
 static void get_savdir(char *savdir, size_t sz_savdir)
@@ -3656,11 +3695,12 @@ static int init(int argc, char **argv)
         gbl_local_mode = 1; /*local mode, so no connect to network*/
     }
 
-    if (optind >= argc) {
+    if (!gbl_import_mode && optind >= argc) {
         fprintf(stderr, "Must provide DBNAME as first argument\n");
         exit(1);
     }
-    dbname = argv[optind++];
+
+    dbname = gbl_import_mode ? "import" : argv[optind++];
     int namelen = strlen(dbname);
     if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
         logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
@@ -3668,6 +3708,7 @@ static int init(int argc, char **argv)
         return -1;
     }
     strcpy(gbl_dbname, dbname);
+
     char tmpuri[1024];
     snprintf(tmpuri, sizeof(tmpuri), "%s@%s", gbl_dbname, gbl_myhostname);
     gbl_myuri = intern(tmpuri);
@@ -3688,6 +3729,17 @@ static int init(int argc, char **argv)
     Pthread_key_create(&comdb2_open_key, NULL);
     Pthread_key_create(&query_info_key, NULL);
     Pthread_key_create(&DBG_FREE_CURSOR, free);
+
+    if (gbl_import_mode) {
+        gbl_exit = 1;
+        gbl_fullrecovery = 1;
+
+        rc = bulk_import_tmpdb_pull_foreign_dbfiles(gbl_import_src);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to copy files from source db\n", __func__);
+            exit(rc);
+        }
+    }
 
     if (lrlname == NULL) {
         char *lrlenv = getenv("COMDB2_CONFIG");
@@ -4331,6 +4383,15 @@ static int init(int argc, char **argv)
         bdb_process_user_command(thedb->bdb_env, "repdbgy", 7, 0);
 
     clear_csc2_files();
+
+    if (gbl_import_mode)
+    {
+        rc = bulk_import_tmpdb_write_import_data(gbl_import_table);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "[IMPORT] %s: Failed to write import data rc %d\n", __func__, rc);
+            exit(rc);
+        }
+    }   
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");

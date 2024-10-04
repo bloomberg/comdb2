@@ -29,7 +29,6 @@
 #include <sbuf2.h>
 
 #include "comdb2.h"
-#include "sql.h"
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "comdb2uuid.h"
@@ -308,6 +307,8 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
 fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb);
 void fdb_sqlstats_put(fdb_t *fdb);
 
+int create_fdb(const char *fdb_name, fdb_t **fdb);
+
 /**
  * Get dbname, tablename, and so on
  *
@@ -329,7 +330,6 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
 fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
                                     char *ptid, int use_ssl);
 fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid);
-int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects);
 int fdb_trans_rollback(struct sqlclntstate *clnt);
 char *fdb_trans_id(fdb_tran_t *trans);
 
@@ -440,6 +440,10 @@ int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);
 
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
+
+#include "sql.h"
+
+int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects);
 
 #endif
 

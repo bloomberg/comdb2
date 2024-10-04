@@ -114,6 +114,7 @@ extern int gbl_keycompr;
 extern int gbl_early;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
+extern int gbl_import_mode;
 extern char *gbl_myhostname;
 extern struct interned_string *gbl_myhostname_interned;
 extern size_t gbl_blobmem_cap;
@@ -179,6 +180,9 @@ unsigned int sc_get_logical_redo_lwm();
 extern int __db_find_recovery_start_if_enabled(DB_ENV *dbenv, DB_LSN *lsn);
 extern void *master_lease_thread(void *arg);
 extern void *coherency_lease_thread(void *arg);
+
+extern int bulk_import_tmpdb_should_ignore_table(const char *table);
+extern int bulk_import_tmpdb_should_ignore_btree(const char *filename);
 
 LISTC_T(struct checkpoint_list) ckp_lst;
 static pthread_mutex_t ckp_lst_mtx;
@@ -1400,6 +1404,10 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     u_int8_t fileid[21] = {0};
     char fid_str[41] = {0};
 
+    if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name)) {
+        return 0;
+    }
+
     print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
     if (!bdb_state->isopen) {
@@ -2436,6 +2444,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     extern int gbl_is_physical_replicant;
     if (gbl_is_physical_replicant) {
         rc = dbenv->set_rep_ignore(dbenv, physrep_ignore_btree);
+    } else if (gbl_import_mode) {
+        rc = dbenv->set_rep_ignore(dbenv, bulk_import_tmpdb_should_ignore_btree);
     }
 
 #ifdef BDB_VERB_REPLICATION_DEFAULT
@@ -2978,7 +2988,9 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
         exit(1);
     }
 
-    start_udp_reader(bdb_state);
+    if (!gbl_import_mode) {
+        start_udp_reader(bdb_state);
+    }
 
     if (startasmaster) {
         logmsg(LOGMSG_INFO,
@@ -4215,6 +4227,11 @@ int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade, int create, 
     DB_TXN *tmptid = NULL;
     DB_TXN *tid;
 
+    if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(bdb_state->name)) {
+        *pbdberr = BDBERR_NOERROR;
+        return 0;
+    }
+
     /* This function sets (*ptid) to NULL on txn abort. Make sure it points to something. */
     if (ptid == NULL)
         ptid = &tmptid;
@@ -4353,7 +4370,7 @@ deadlock_again:
                         pagesize = llpagesize;
                 }
 
-                if (gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name)) {
+                if ((gbl_is_physical_replicant && physrep_ignore_table(bdb_state->name))) {
                     char new[PATH_MAX];
                     print(bdb_state, "truncating ignored table %s\n", bdb_trans(tmpname, new));
                     rc = truncate(bdb_trans(tmpname, new), pagesize * 2);

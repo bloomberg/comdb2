@@ -402,7 +402,6 @@ int files_util_filter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
     return SQLITE_OK;
 }
 
-
 int files_util_best_index(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo)
 {
     int i;                  /* Loop over constraints */
