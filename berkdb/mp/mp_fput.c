@@ -25,6 +25,7 @@ static const char revid[] = "$Id: mp_fput.c,v 11.48 2003/09/30 17:12:00 sue Exp 
 #include "comdb2_atomic.h"
 
 extern int gbl_enable_cache_internal_nodes;
+int gbl_memp_fput_abort_on_double_return = 0;
 
 static void __memp_reset_lru __P((DB_ENV *, REGINFO *));
 
@@ -81,7 +82,7 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	if (flags) {
 		if ((ret = __db_fchk(dbenv, "memp_fput", flags,
 		    DB_MPOOL_CLEAN | DB_MPOOL_DIRTY |DB_MPOOL_DISCARD |
-		    DB_MPOOL_NOCACHE | DB_MPOOL_PFPUT)) != 0)
+		    DB_MPOOL_NOCACHE | DB_MPOOL_PFPUT | DB_MPOOL_EVICT)) != 0)
 			 return (ret);
 		if ((ret = __db_fcchk(dbenv, "memp_fput",
 		    flags, DB_MPOOL_CLEAN, DB_MPOOL_DIRTY)) != 0)
@@ -172,6 +173,14 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	}
 	if (LF_ISSET(DB_MPOOL_DISCARD))
 		F_SET(bhp, BH_DISCARD);
+	if (LF_ISSET(DB_MPOOL_EVICT)) {
+		if (F_ISSET(bhp, BH_DIRTY) || F_ISSET(bhp, BH_DIRTY_CREATE) || F_ISSET(bhp, BH_LOCKED)) {
+			/* can't evict a dirty or locked page. clear my flag */
+			LF_CLR(DB_MPOOL_EVICT);
+		} else {
+			F_SET(bhp, BH_EVICT);
+		}
+	}
 
 	/*
 	 * Check for a reference count going to zero.  This can happen if the
@@ -180,6 +189,8 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	if (bhp->ref == 0) {
 		__db_err(dbenv, "%s: page %lu: unpinned page returned",
 		    __memp_fn(dbmfp), (u_long)bhp->pgno);
+		if (gbl_memp_fput_abort_on_double_return)
+			abort();
 		MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
 		return (EINVAL);
 	}
@@ -306,7 +317,13 @@ done:
 	if (F_ISSET(bhp, BH_LOCKED) && bhp->ref_sync != 0)
 		--bhp->ref_sync;
 
-	MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
+	/* There's no more references to this page. If the evict flag is on, free it. */
+	if (F_ISSET(bhp, BH_EVICT) && bhp->ref == 0 && bhp->ref_sync == 0 && !F_ISSET(bhp, BH_LOCKED)) {
+		/* __memp_bhfree() releases the hash mutex */
+		__memp_bhfree(dbmp, hp, bhp, 1);
+	} else {
+		MUTEX_UNLOCK(dbenv, &hp->hash_mutex);
+	}
 
 	/*
 	 * On every buffer put we update the buffer generation number and check

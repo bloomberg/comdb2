@@ -3691,4 +3691,22 @@ void csc2_allow_bools(void);
 void csc2_disallow_bools(void);
 int csc2_used_bools(void);
 
+extern int64_t gbl_pgmv_stat_ndeadlocks;
+extern int64_t gbl_pgmv_stat_nflsorts;
+extern int64_t gbl_pgmv_stat_novflreads;
+extern int64_t gbl_pgmv_stat_novflswapattempts;
+extern int64_t gbl_pgmv_stat_novflswaps;
+extern int64_t gbl_pgmv_stat_npgreads;
+extern int64_t gbl_pgmv_stat_npgskips;
+extern int64_t gbl_pgmv_stat_npgswapattempts;
+extern int64_t gbl_pgmv_stat_npgswaps;
+extern int64_t gbl_pgmv_stat_npgtruncates;
+extern int64_t gbl_pgmv_stat_nresizes;
+
+int rebuild_freelist(const char *);
+int pgswap(const char *);
+int pgswap_overflow(const char *);
+int evict_from_cache(const char *);
+void *pgmv_thr(void *);
+
 #endif /* !INCLUDED_COMDB2_H */

@@ -299,7 +299,7 @@ setup_db() {
             else
                 scp $SSH_OPT ${REP_ENV_VARS} $node:${REP_ENV_VARS}
                 # could also use connection sharing and close master ssh session in unsetup
-                ssh -n $SSH_OPT -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
+                ssh -n $SSH_OPT -tt $node "ulimit -c unlimited; ${CMD}" &> $LOGDIR/${DBNAME}.${node}.db &
                 # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
                 echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
             fi

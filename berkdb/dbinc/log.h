@@ -288,8 +288,8 @@ struct __db_commit {
 #define	CHECK_LSN(redo, cmp, lsn, prev, atlsn, fileid, pgno)					  \
 	if (DB_REDO(redo) && (cmp) < 0 && !IS_NOT_LOGGED_LSN(*(lsn))) {	              \
 		__db_err(dbenv,						                                      \
-	"Log sequence error at %lu:%lu : page LSN %lu:%lu; previous LSN %lu:%lu",	  \
-            (u_long)atlsn->file, (u_long)atlsn->offset,                           \
+	"Log sequence error at %lu:%lu : page(%u) LSN %lu:%lu; previous LSN %lu:%lu\n",	  \
+            (u_long)atlsn->file, (u_long)atlsn->offset, pgno,                          \
 		    (u_long)(lsn)->file, (u_long)(lsn)->offset,		                      \
 		    (u_long)(prev)->file, (u_long)(prev)->offset);	                      \
 		ret = EINVAL;						                                      \

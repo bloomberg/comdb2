@@ -260,3 +260,106 @@ ARG	pgno		db_pgno_t	lu
 ARG	vec_len		u_int32_t	lu
 ARG	ptype		u_int32_t	lu
 END
+
+/*
+ * rebuild_freelist --
+ *   Rebuilds freelist in the page order
+ *  meta_lsn:   the meta-data page's original lsn
+ *  meta_pgno:  the meta-data page number
+ *  meta_pgno:  the meta-data last page number
+ *  end_pgno:   freelist points to this page number if all pages in `fl' can be truncated
+ *  fl:         list of free pages to be rebuilt
+ *  fllsn:      lSN's of pages in `fl'
+ *  notch:      where in the freelist we will truncate
+ */
+BEGIN rebuild_freelist	70
+DB      fileid      int32_t     ld
+POINTER meta_lsn    DB_LSN *    lu
+ARG     meta_pgno   db_pgno_t   lu
+ARG     last_pgno   db_pgno_t   lu
+ARG     end_pgno    db_pgno_t   lu
+DBT     fl          DBT         s
+DBT     fllsn       DBT         s
+ARG     notch       db_pgno_t   lu
+END
+
+/*
+ * pg_swap --
+ *   Swaps a page with a lower-numbered free page
+ *  pgno:           page to be replaced
+ *  lsn:            LSN of the page to be replaced
+ *  hdr:            header on the page
+ *  data:           data on the page
+ *  next_pgno:      pgno of next page
+ *  next_pglsn:     page LSN of next page
+ *  prev_pgno:      pgno of previous page
+ *  prev_pglsn:     page LSN of previous page
+ *  parent_pgno:    pgno of parent page
+ *  parent_pglsn:   page LSN of parent page
+ *  pref_index:     page reference in parent page
+ *  new_pgno:       pgno of new page that replaces the old page
+ *  new_pglsn:      page LSN of new page
+ */
+BEGIN pg_swap	71
+DB      fileid       int32_t     ld
+ARG     pgno         db_pgno_t   lu
+POINTER lsn          DB_LSN *    lu
+DBT     hdr          DBT         s
+DBT     data         DBT         s
+ARG     next_pgno    db_pgno_t   lu
+POINTER next_pglsn   DB_LSN *    lu
+ARG     prev_pgno    db_pgno_t   lu
+POINTER prev_pglsn   DB_LSN *    lu
+ARG     parent_pgno  db_pgno_t   lu
+POINTER parent_pglsn DB_LSN *   lu
+ARG     pref_indx    db_indx_t   lu
+ARG     new_pgno     db_pgno_t   lu
+POINTER new_pglsn    DB_LSN *    lu
+END
+
+/*
+ * resize -- Resizes a file
+ *  meta_lsn:		meta page LSN
+ *  meta_pgno:		meta page number
+ *  oldlast:		original last page number
+ *  newlast:		new last page number
+ */
+BEGIN resize	72
+DB      fileid          int32_t     ld
+POINTER meta_lsn        DB_LSN *    lu
+ARG     meta_pgno       db_pgno_t   lu
+ARG     oldlast         db_pgno_t   lu
+ARG     newlast         db_pgno_t   lu
+END
+
+/*
+ * pg_swap_overflow --
+ *   Swaps an overflow page with a lower-numbered free page
+ *  pgno:           page to be replaced
+ *  lsn:            LSN of the page to be replaced
+ *  data:           page itself
+ *  next_pgno:      pgno of next page
+ *  next_pglsn:     page LSN of next page
+ *  prev_pgno:      pgno of previous page
+ *  prev_pglsn:     page LSN of previous page
+ *  main_pgno:		main page
+ *  main_pglsn:		LSN of main page
+ *  main_indx:		overflow record on main page
+ *  new_pgno:       pgno of new page that replaces the old page
+ *  new_pglsn:      page LSN of new page
+ */
+BEGIN pg_swap_overflow	73
+DB      fileid       int32_t     ld
+ARG     pgno         db_pgno_t   lu
+POINTER lsn          DB_LSN *    lu
+DBT     data         DBT         s
+ARG     next_pgno    db_pgno_t   lu
+POINTER next_pglsn   DB_LSN *    lu
+ARG     prev_pgno    db_pgno_t   lu
+POINTER prev_pglsn   DB_LSN *    lu
+ARG     main_pgno    db_pgno_t   lu
+POINTER main_pglsn   DB_LSN *    lu
+ARG     main_indx    db_indx_t   lu
+ARG     new_pgno     db_pgno_t   lu
+POINTER new_pglsn    DB_LSN *    lu
+END

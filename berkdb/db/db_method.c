@@ -278,6 +278,10 @@ __db_init(dbp, flags)
 	dbp->get_numpages = __db_get_numpages;
 	dbp->set_compression_flags = __db_set_compression_flags;
 	dbp->get_compression_flags = __db_get_compression_flags;
+	dbp->rebuild_freelist = __db_rebuild_freelist_pp;
+	dbp->pgswap = __db_pgswap_pp;
+	dbp->pgswap_overflow = __db_pgswap_overflow_pp;
+	dbp->evict_from_cache = __db_evict_from_cache_pp;
 
 	/* Access method specific. */
 	if ((ret = __bam_db_create(dbp)) != 0)
