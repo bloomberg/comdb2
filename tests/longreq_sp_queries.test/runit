@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+set -x
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+function setup_longreq
+{
+    for node in $CLUSTER ; do
+        cdb2sql ${CDB2_OPTIONS} --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('reql longreqfile <stdout>')"
+        cdb2sql ${CDB2_OPTIONS} --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
+        cdb2sql ${CDB2_OPTIONS} --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
+    done
+}
+
+function test_logic
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t values(1)"
+}
+
+function check_logs
+{
+    logfile=
+    found=0
+    sleep 20 # give time for .db file to flush
+    for node in $CLUSTER ; do
+        logfile="$TESTDIR/logs/$DBNAME.$node.db"
+        grep 'trigger->dormant' $logfile 
+        if [[ $? == 0 ]]; then
+            found=1
+            break
+        fi
+    done
+    [[ "$found" -ne "1" ]] && failexit "longrequest log not found"
+}
+
+function create_tables_sp_trigger
+{
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default -f ./tables.sql
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default -f ./dropsptrigger.sql
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default -f ./sp.sql
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default -f ./trigger.sql
+}
+
+function run_test
+{
+    create_tables_sp_trigger
+    setup_longreq
+    test_logic
+    check_logs
+}
+
+run_test
+echo "Success"
+exit 0
