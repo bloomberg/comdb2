@@ -46,6 +46,29 @@ function header
     echo "$2" >> $output
 }
 
+function runall
+{
+    cmd=$1
+    sql=$2
+
+    echo $cmd "$sql"
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            $cmd "$sql"
+            if (( $? != 0 )) ; then
+                echo "FAILURE $node '$sql'"
+                exit 1
+            fi
+        done
+    else
+        $cmd "$sql"
+        if (( $? != 0 )) ; then
+            echo "FAILURE '$sql'"
+            exit 1
+        fi
+    fi
+}
+
 #grab current version
 ver=`$R_SQLT "select value from comdb2_tunables where name='fdb_default_version'"`
 echo "Current fdb version $ver" >> $output 2>&1
@@ -54,6 +77,9 @@ echo "Current fdb version $ver" >> $output 2>&1
 $S_SQL "insert into t select * from generate_series(1, 3)" >> $output 2>&1
 $R_SQL "insert into t select * from generate_series(11, 13)" >> $output 2>&1
 
+#gonna test remsql, disable push
+$S_SQL "put tunable foreign_db_push_remote 0"
+$R_SQL "put tunable foreign_db_push_remote 0"
 
 header 1 "remsql run against same version"
 $S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
@@ -97,17 +123,19 @@ $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
 header 5 "test insert, delete, update current version"
 
+echo $S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)"
+echo $R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)"
 exit 1
-$S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(100,110)" >> $output 2>&1
-$R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(100,110)" >> $output 2>&1
+$S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
+$R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
 check
 
-$S_SQL "update LOCAL_${a_rdbname}.t(id) set id=id+1 where id>-100" >> $output 2>&1
-$R_SQL "update LOCAL_${a_dbname}.t(id) set id=id+1 where id>-100" >> $output 2>&1
+$S_SQL "update LOCAL_${a_rdbname}.t set id=id+1 where id>=101" >> $output 2>&1
+$R_SQL "update LOCAL_${a_dbname}.t set id=id+1 where id>=101" >> $output 2>&1
 check
 
-$S_SQL "delete from LOCAL_${a_rdbname}.t(id) where id>-100" >> $output 2>&1
-$R_SQL "delete from LOCAL_${a_dbname}.t(id) where id>-100" >> $output 2>&1
+$S_SQL "delete from LOCAL_${a_rdbname}.t where id>=101" >> $output 2>&1
+$R_SQL "delete from LOCAL_${a_dbname}.t where id>=101" >> $output 2>&1
 check
 
 
