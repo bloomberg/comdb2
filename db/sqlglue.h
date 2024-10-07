@@ -3,6 +3,7 @@
 
 #include <list.h>
 #include <stdint.h>
+#include <blob_buffer.h>
 
 struct Mem;
 struct sqlthdstate;
@@ -13,8 +14,7 @@ struct sqlite3;
 struct dbtable;
 struct dbenv;
 struct field;
-typedef struct bias_info bias_info;
-typedef struct blob_buffer blob_buffer_t;
+struct bias_info;
 
 struct schema_mem {
     struct schema *sc;
@@ -66,7 +66,6 @@ int resolve_sfuncs_for_db(struct dbenv* thedb);
 
 void start_stat4dump_thread(void);
 
-int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
-                  bias_info *bias_info);
+int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info, struct bias_info *bias_info);
 
 #endif
