@@ -3,15 +3,134 @@ bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
+# If rowids aren't unique then this could return the wrong count
+function test_comdb2_files_select_with_two_rowsets() {
+	(
+		set -e
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		local num_files_with_known_type
+		num_files_with_known_type=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where type!='unknown'")
+		readonly num_files_with_known_type
+
+		echo "bork" > $dbdir/find_me
+		trap "rm $dbdir/find_me" EXIT
+
+		# When
+		local num_files
+		num_files=$(cdb2sql -tabs $dbname local \
+			"select count(*) from comdb2_files where type!='unknown' or filename='find_me'")
+
+		# Then
+		(( num_files == num_files_with_known_type+1 ))
+	)
+}
+
+function test_comdb2_files_select_with_type_constraint() {
+	(
+		set -e
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+
+		# When
+		local types
+		types=$(cdb2sql -tabs $dbname local "select distinct(type) from $tablename where type='log'")
+
+		# Then
+		[[ "$types" == "log" ]]
+	)
+}
+
+function test_comdb2_files_select_with_like_and_eq_constraints() {
+	(
+		set -e
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/match $dbdir/woof_i_am_doge > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/match $dbdir/woof_i_am_doge" EXIT
+
+		local filenames
+		filenames=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename='%match%' or filename like 'woof%'")
+
+		# Then
+		! grep -oP 'please_match_me' <<< "$filenames" > /dev/null
+		! grep -oP 'match' <<< "$filenames" > /dev/null
+		grep -oP 'woof_i_am_doge' <<< "$filenames" > /dev/null
+	)
+}
+
+function test_comdb2_files_select_with_like_constraints() {
+	(
+		set -e
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/match $dbdir/woof > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/match $dbdir/woof" EXIT
+
+		local filenames
+		filenames=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename like '%match%'")
+
+		# Then
+		grep -oP 'please_match_me' <<< "$filenames" > /dev/null
+		grep -oP 'match' <<< "$filenames" > /dev/null
+		! grep -oP 'woof' <<< "$filenames" > /dev/null
+	)
+}
+
+function test_comdb2_files_select_with_multiple_eq_constraints() {
+	(
+		set -e
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/match_me_too $dbdir/dont_match_me > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/match_me_too $dbdir/dont_match_me" EXIT
+
+		# When
+		local filenames
+		filenames=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename in ('please_match_me', 'match_me_too')")
+		
+		# Then
+		grep -oP 'please_match_me' <<< "$filenames" > /dev/null
+		grep -oP 'match_me_too' <<< "$filenames" > /dev/null
+		! grep -oP 'dont_match_me' <<< "$filenames" > /dev/null
+	)
+}
+
+function test_comdb2_files_select_with_eq_constraint() {
+	(
+		set -e
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/dont_match_me > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/dont_match_me" EXIT
+
+		# When
+		local filename
+		filename=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename='please_match_me'")
+		
+		# Then
+		[[ "$filename" == "please_match_me" ]]
+	)
+}
+
 function test_comdb2_files_restricted_file() {
 	(
 		# Given
 		local -r dbname=$1 dbdir=$2 tablename=$3
-		echo "restricted blahblah" | tee \
-			$dbdir/no_access >> \
-			$dbdir/no_access_world >> \
-			$dbdir/no_access_group >> \
-			$dbdir/no_access_group_world
+		echo "restricted blahblah" | tee $dbdir/no_access \
+			$dbdir/no_access_world \
+			$dbdir/no_access_group \
+			$dbdir/no_access_group_world > /dev/null
 
 		chmod u-r,g-r,o-r $dbdir/no_access
 		chmod g-r $dbdir/no_access_world $dbdir/no_access_group_world
@@ -159,7 +278,8 @@ function runtest {
 			failexit "$testcase"
 		fi
 
-		if [[ "$testcase" == "test_comdb2_files_large_file" ]];
+		if [[ "$testcase" == "test_comdb2_files_large_file" 
+		|| "$testcase" == "test_comdb2_files_select_with_two_rowsets" ]];
 		then
 			echo "Passed $testcase"
 			continue

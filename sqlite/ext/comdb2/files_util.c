@@ -14,6 +14,9 @@
    limitations under the License.
  */
 
+#include <float.h>
+#include <math.h>
+
 #include "files_util.h"
 
 extern struct dbenv *thedb;
@@ -25,7 +28,33 @@ static const struct compareInfo globCaseInfo = {'%', '_', '[', 0};
 extern int patternCompare(const u8 *, const u8 *, const struct compareInfo *,
                           u32);
 
-static const char *print_file_type(int type)
+struct log_delete_state gbl_log_delete_state;
+int gbl_num_files_cursors = 0;
+pthread_mutex_t gbl_num_files_cursors_lock = PTHREAD_MUTEX_INITIALIZER;
+
+typedef struct constraint_value {
+    void *val;
+    constraint_type_t type;
+} constraint_value_t;
+
+typedef struct comdb2_files_constraints {
+    constraint_value_t *file_name_constraints;
+    int n_file_name_constraints;
+
+    constraint_value_t *file_type_constraints;
+    int n_file_type_constraints;
+
+    int chunk_size_constraint;
+} comdb2_files_constraints_t;
+
+static file_type_t str_to_file_type(const char *type) {
+    if (!strcmp(type, "berkdb")) { return FILES_TYPE_BERKDB; }
+    else if (!strcmp(type, "checkpoint")) { return FILES_TYPE_CHECKPOINT; }
+    else if (!strcmp(type, "log")) { return FILES_TYPE_LOGFILE; }
+    else { return FILES_TYPE_UNKNOWN; }
+}
+
+static const char *print_file_type(file_type_t type)
 {
     switch (type) {
     case FILES_TYPE_UNKNOWN: return "unknown";
@@ -121,9 +150,51 @@ static void set_chunk_size(db_file_t *f, size_t chunk_size)
     dbfile_set_chunk_size(f->info, chunk_size);
 }
 
+static int file_name_matches_constraint(const constraint_value_t * const constraints,
+                                        int n_constraints,
+                                        const char * const file_name) {
+    int is_match = 1;
 
+    for (int i=0; i<n_constraints && is_match; ++i) {
+        const constraint_value_t * const constraint = (constraints + i);
+        const char * c_val = (const char *) constraint->val;
+        const constraint_type_t c_type = constraint->type;
 
-static int read_dir(const char *dirname, db_file_t **files, int *count, char *file_pattern, size_t chunk_size)
+        if (c_type == FILES_FILE_NAME_EQ_FLAG) {
+            is_match = strcmp((const char *) c_val, file_name) == 0;
+        } else if (c_type == FILES_FILE_NAME_NEQ_FLAG) {
+            is_match = strcmp((const char *) c_val, file_name) != 0;
+        } else {
+            assert(c_type == FILES_FILE_NAME_LIKE_FLAG);
+            is_match = patternCompare((u8 *)c_val, (u8 *)file_name, &globCaseInfo, '[') == 0;
+        }
+    }
+
+    return is_match;
+}
+
+static int file_type_matches_constraint(const constraint_value_t * const constraints,
+                                        int n_constraints,
+                                        const file_type_t file_type) {
+    int is_match = 1;
+
+    for (int i=0; i<n_constraints && is_match; ++i) {
+        const constraint_value_t * const constraint = (constraints + i);
+        const file_type_t c_val = (const file_type_t) constraint->val;
+        const constraint_type_t c_type = constraint->type;
+
+        if (c_type == FILES_FILE_TYPE_EQ_FLAG) {
+            is_match = (file_type == c_val);
+        } else {
+            assert(c_type == FILES_FILE_TYPE_NEQ_FLAG);
+            is_match = (file_type != c_val);
+        }
+    }
+
+    return is_match;
+}
+
+static int read_dir(const char *dirname, db_file_t **files, int *count, const comdb2_files_constraints_t *constraints)
 {
     struct dirent buf;
     struct dirent *de;
@@ -172,18 +243,45 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
         }
 
         if (S_ISDIR(st.st_mode)) {
-            rc = read_dir(path, files, count, file_pattern, chunk_size);
+            rc = read_dir(path, files, count, constraints);
             if (rc != 0) {
                 break;
             }
             continue;
         }
 
-        if (file_pattern &&
-            (patternCompare((u8 *)file_pattern, (u8 *)de->d_name, &globCaseInfo,
-                            '[') != 0)) {
+        if (!file_name_matches_constraint(constraints->file_name_constraints,
+                                          constraints->n_file_name_constraints,
+                                          de->d_name)) {
             logmsg(LOGMSG_DEBUG, "%s:%d: ignoring %s\n", __func__, __LINE__,
-                   de->d_name);
+                de->d_name);
+            continue;
+        }
+
+        uint8_t is_data_file = 0;
+        uint8_t is_queue_file = 0;
+        uint8_t is_queuedb_file = 0;
+        char *table_name = alloca(MAXTABLELEN);
+
+        const int recognized_data_file = recognize_data_file(de->d_name, &is_data_file, &is_queue_file,
+                                 &is_queuedb_file, &table_name) == 1;
+
+        file_type_t type;
+        if (is_data_file == 1) {
+            type = FILES_TYPE_BERKDB;
+        } else if (strncmp(de->d_name, "log.", 4) == 0) {
+            type = FILES_TYPE_LOGFILE;
+        } else if (strncmp(de->d_name, "checkpoint", 10) == 0) {
+            type = FILES_TYPE_CHECKPOINT;
+        } else {
+            type = FILES_TYPE_UNKNOWN;
+        }
+
+        if (!file_type_matches_constraint(constraints->file_type_constraints,
+                                          constraints->n_file_type_constraints,
+                                          type)) {
+            logmsg(LOGMSG_DEBUG, "%s:%d: ignoring %s\n", __func__, __LINE__,
+                de->d_name);
             continue;
         }
 
@@ -207,13 +305,7 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
         f->current_chunk.offset = 0;
         f->info = NULL;
 
-        uint8_t is_data_file = 0;
-        uint8_t is_queue_file = 0;
-        uint8_t is_queuedb_file = 0;
-        char *table_name = alloca(MAXTABLELEN);
-
-        if ((recognize_data_file(f->name, &is_data_file, &is_queue_file,
-                                 &is_queuedb_file, &table_name)) == 1) {
+        if (recognized_data_file) {
             f->info = dbfile_init(NULL, path);
             if (!f->info) {
                 logmsg(LOGMSG_ERROR, "%s:%d: couldn't retrieve file info\n",
@@ -226,17 +318,9 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
             f->info->filename = os_strdup(path);
         }
 
-        if (is_data_file == 1) {
-            f->type = FILES_TYPE_BERKDB;
-        } else if (strncmp(f->name, "log.", 4) == 0) {
-            f->type = FILES_TYPE_LOGFILE;
-        } else if (strncmp(f->name, "checkpoint", 10) == 0) {
-            f->type = FILES_TYPE_CHECKPOINT;
-        } else {
-            f->type = FILES_TYPE_UNKNOWN;
-        }
+        f->type = type;
 
-        set_chunk_size(f, chunk_size);
+        set_chunk_size(f, constraints->chunk_size_constraint);
 
         // Remove the data directory prefix
         if (strcmp(dirname, thedb->basedir) == 0) {
@@ -250,13 +334,14 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, char *fi
 
     return rc;
 }
-static int get_files(void **data, size_t *npoints, char *file_pattern, size_t chunk_size)
+
+static int get_files(void **data, size_t *npoints, const comdb2_files_constraints_t *constraints)
 {
     db_file_t *files = NULL;
     int count = 0;
     int rc = 0;
 
-    rc = read_dir(thedb->basedir, &files, &count, file_pattern, chunk_size);
+    rc = read_dir(thedb->basedir, &files, &count, constraints);
     if (rc != 0) {
         *npoints = -1;
     } else {
@@ -266,7 +351,6 @@ static int get_files(void **data, size_t *npoints, char *file_pattern, size_t ch
 
     return rc;
 }
-
 
 int files_util_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
@@ -279,14 +363,22 @@ int files_util_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 
     *ppCursor = &pCur->base;
 
-    pCur->log_delete_state.filenum = 0;
-    log_delete_add_state(thedb, &(pCur->log_delete_state));
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-    logmsg(LOGMSG_INFO, "disabling log file deletion\n");
+    Pthread_mutex_lock(&gbl_num_files_cursors_lock);
+    if (gbl_num_files_cursors < 0) {
+        logmsg(LOGMSG_ERROR, "%s: Unexpected number of open cursors\n", __func__);
+        abort();
+    }
+    if (++gbl_num_files_cursors == 1) {
+        gbl_log_delete_state.filenum = 0;
+        log_delete_add_state(thedb, &gbl_log_delete_state);
+        log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+        logmsg(LOGMSG_INFO, "disabling log file deletion\n");
 
-    logdelete_lock(__func__, __LINE__);
-    backend_update_sync(thedb);
-    logdelete_unlock(__func__, __LINE__);
+        logdelete_lock(__func__, __LINE__);
+        backend_update_sync(thedb);
+        logdelete_unlock(__func__, __LINE__);
+    }
+    Pthread_mutex_unlock(&gbl_num_files_cursors_lock);
 
     return SQLITE_OK;
 }
@@ -295,10 +387,18 @@ int files_util_close(sqlite3_vtab_cursor *cur)
 {
     systbl_files_cursor *pCur = (systbl_files_cursor *)cur;
 
-    logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
-    log_delete_rem_state(thedb, &(pCur->log_delete_state));
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-    backend_update_sync(thedb);
+    Pthread_mutex_lock(&gbl_num_files_cursors_lock);
+    if (gbl_num_files_cursors <= 0) {
+        logmsg(LOGMSG_ERROR, "%s: Unexpected number of open cursors\n", __func__);
+        abort();
+    }
+    if (--gbl_num_files_cursors == 0) {
+        logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
+        log_delete_rem_state(thedb, &gbl_log_delete_state);
+        log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+        backend_update_sync(thedb);
+    }
+    Pthread_mutex_unlock(&gbl_num_files_cursors_lock);
 
     release_files(pCur->files, pCur->nfiles);
 
@@ -342,10 +442,21 @@ files_util_column(sqlite3_vtab_cursor *cur, /* The cursor */
     return SQLITE_OK;
 }
 
+extern unsigned int hash_default_strlen(const unsigned char *key,
+                                        int len);
 int files_util_rowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid)
 {
-    systbl_files_cursor *pCur = (systbl_files_cursor *)cur;
-    *pRowid = pCur->rowid;
+    const systbl_files_cursor * const pCur = (systbl_files_cursor *)cur;
+
+    const char * file_name = pCur->files[pCur->rowid].name;
+    const char * file_dir = pCur->files[pCur->rowid].dir;
+    char file_offset[50];
+    sprintf(file_offset, "%ld", pCur->files[pCur->rowid].current_chunk.offset);
+
+    char id_str[strlen(file_name) + strlen(file_dir) + strlen(file_offset) + 1];
+    snprintf(id_str, sizeof(id_str), "%s-%s-%s", file_name, file_dir, file_offset);
+
+    *pRowid = hash_default_strlen((unsigned char *) id_str, sizeof(id_str));
     return SQLITE_OK;
 }
 
@@ -370,83 +481,216 @@ static int file_cmp(const void *file1, const void *file2)
     return strcmp(f1->name, f2->name);
 }
 
+static int is_file_name_constraint(const constraint_type_t constraint_name) {
+    return (constraint_name == FILES_FILE_NAME_LIKE_FLAG
+            || constraint_name == FILES_FILE_NAME_EQ_FLAG
+            || constraint_name == FILES_FILE_NAME_NEQ_FLAG);
+}
+
+static int is_file_type_constraint(const constraint_type_t constraint_name) {
+    return (constraint_name == FILES_FILE_TYPE_EQ_FLAG
+            || constraint_name == FILES_FILE_TYPE_NEQ_FLAG);
+}
 
 int files_util_filter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
                        const char *idxStr, int argc, sqlite3_value **argv)
 {
+    logmsg(LOGMSG_DEBUG, "%s\n", __func__);
+
+    int rc = SQLITE_OK;
+
     systbl_files_cursor *pCur = (systbl_files_cursor *)pVtabCursor;
-    int i = 0;
+    const constraint_type_t * const constraint_names = (const constraint_type_t * const) idxStr;
+    comdb2_files_constraints_t constraint_info = {0};
 
-    if (idxNum & FILES_FILE_PATTERN_FLAG) {
-        pCur->file_pattern = (char *)sqlite3_value_text(argv[i++]);
-    } else {
-        pCur->file_pattern = 0;
+    for (int i=0; i<argc; ++i) {
+        const constraint_type_t constraint_name = constraint_names[i];
+        constraint_info.n_file_name_constraints += is_file_name_constraint(constraint_name);
+        constraint_info.n_file_type_constraints += is_file_type_constraint(constraint_name);
     }
 
-    if (idxNum & FILES_CHUNK_SIZE_FLAG) {
-        pCur->chunk_size = sqlite3_value_int64(argv[i++]);
-    } else {
-        pCur->chunk_size = 0;
+    if (constraint_info.n_file_name_constraints) {
+        constraint_info.file_name_constraints = calloc(1,
+            constraint_info.n_file_name_constraints * sizeof(constraint_value_t));
+        if (!constraint_info.file_name_constraints) { return ENOMEM; }
     }
 
-    if (get_files((void **)&pCur->files, &pCur->nfiles, pCur->file_pattern, pCur->chunk_size)) {
+    if (constraint_info.n_file_type_constraints) {
+        constraint_info.file_type_constraints = calloc(1,
+            constraint_info.n_file_type_constraints * sizeof(constraint_value_t));
+        if (!constraint_info.file_type_constraints) { return ENOMEM; }
+    }
+
+    int file_name_idx = 0;
+    int file_type_idx = 0;
+
+    for (int i=0; i<argc; ++i) {
+        const constraint_type_t constraint_name = constraint_names[i];
+
+        if (is_file_name_constraint(constraint_name)) {
+            logmsg(LOGMSG_DEBUG, "%s: Applying file name constraint\n", __func__);
+            constraint_info.file_name_constraints[file_name_idx++] = (const constraint_value_t) {
+                (char *)sqlite3_value_text(argv[i]),
+                constraint_name,
+            };
+        } else if (is_file_type_constraint(constraint_name)) {
+            logmsg(LOGMSG_DEBUG, "%s: Applying file type constraint\n", __func__);
+            constraint_info.file_type_constraints[file_type_idx++] = (const constraint_value_t) { 
+                (void *)str_to_file_type((char *)sqlite3_value_text(argv[i])),
+                constraint_name,
+            };
+        } else if (constraint_name == FILES_CHUNK_SIZE_EQ_FLAG) {
+            logmsg(LOGMSG_DEBUG, "%s: Applying chunk size constraint\n", __func__);
+            constraint_info.chunk_size_constraint = sqlite3_value_int64(argv[i]);
+        }
+    }
+
+    if (pCur->files) { release_files(pCur->files, pCur->nfiles); }
+    if (get_files((void **)&pCur->files, &pCur->nfiles, &constraint_info)) {
         logmsg(LOGMSG_ERROR, "%s:%d: Failed to get files following filter\n",
                __FILE__, __LINE__);
-        return SQLITE_ERROR;
+        rc = SQLITE_ERROR;
+        goto err;
     }
 
     pCur->rowid = 0;
 
     qsort(pCur->files, pCur->nfiles, sizeof(db_file_t), file_cmp);
     
+err:
+    if (constraint_info.file_name_constraints) { free(constraint_info.file_name_constraints); }
+    if (constraint_info.file_type_constraints) { free(constraint_info.file_type_constraints); }
+    return rc;
+}
+
+static void add_constraint(sqlite3_index_info * const pIdxInfo,
+                           const int constraint_ix,
+                           int * const argv_ix,
+                           const int omit) {
+    if (constraint_ix >= 0) {
+        pIdxInfo->aConstraintUsage[constraint_ix].argvIndex = ++(*argv_ix);
+        pIdxInfo->aConstraintUsage[constraint_ix].omit = omit;
+    }
+}
+
+// Very cursory cost estimate.
+static double estimate_cost(const constraint_type_t * const constraints, const int n_constraints) {
+    double cost_est = DBL_MAX;
+    for (int i=0; i<n_constraints; ++i) {
+        const constraint_type_t constraint = constraints[i];
+
+        if (constraint == FILES_FILE_NAME_EQ_FLAG) {
+            cost_est /= pow(10, 6);
+        }
+        if (constraint == FILES_FILE_NAME_LIKE_FLAG) {
+            cost_est /= pow(10, 5);
+        }
+        if (constraint == FILES_FILE_TYPE_EQ_FLAG) {
+            cost_est /= pow(10, 4);
+        }
+        if (constraint == FILES_FILE_TYPE_NEQ_FLAG) {
+            cost_est /= pow(10, 3);
+        }
+        if (constraint == FILES_FILE_NAME_NEQ_FLAG) {
+            cost_est /= pow(10, 2);
+        }
+    }
+    return cost_est;
+}
+
+static int parse_file_name_constraint(const struct sqlite3_index_constraint * const pConstraint, constraint_type_t * const constraint) {
+    if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_LIKE) {
+        *constraint = FILES_FILE_NAME_LIKE_FLAG;
+    } else if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ) {
+        *constraint = FILES_FILE_NAME_EQ_FLAG;
+    } else if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_NE) {
+        *constraint = FILES_FILE_NAME_NEQ_FLAG;
+    } else {
+        logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with 'like', '=', or '!='\n",
+               __FILE__, __LINE__, print_column_name(FILES_COLUMN_FILENAME));
+        return SQLITE_ERROR;
+    }
+
     return SQLITE_OK;
 }
 
+static int parse_file_type_constraint(const struct sqlite3_index_constraint * const pConstraint, constraint_type_t * const constraint) {
+    if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ) {
+        *constraint = FILES_FILE_TYPE_EQ_FLAG;
+    } else if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_NE) {
+        *constraint = FILES_FILE_TYPE_NEQ_FLAG;
+    } else {
+        logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with '=', or '!='\n",
+               __FILE__, __LINE__, print_column_name(FILES_COLUMN_TYPE));
+        return SQLITE_ERROR;
+    }
+
+    return SQLITE_OK;
+}
+
+static int parse_file_chunk_size_constraint(const struct sqlite3_index_constraint * const pConstraint, constraint_type_t * const constraint) {
+    if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ) {
+        *constraint = FILES_CHUNK_SIZE_EQ_FLAG;
+    } else {
+        logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with '=', or '!='\n",
+               __FILE__, __LINE__, print_column_name(FILES_COLUMN_CHUNK_SIZE));
+        return SQLITE_ERROR;
+    }
+
+    return SQLITE_OK;
+}
+
+static int parse_constraint(const struct sqlite3_index_constraint * const pConstraint,
+                            const int i, constraint_type_t * const constraints) {
+
+    if (pConstraint->iColumn == FILES_COLUMN_FILENAME 
+        && parse_file_name_constraint(pConstraint, constraints + i))
+    {
+        return SQLITE_ERROR;
+    } else if (pConstraint->iColumn == FILES_COLUMN_TYPE 
+        && parse_file_type_constraint(pConstraint, constraints + i))
+    {
+        return SQLITE_ERROR;
+    } else if (pConstraint->iColumn == FILES_COLUMN_CHUNK_SIZE 
+        && parse_file_chunk_size_constraint(pConstraint, constraints + i))
+    {
+        return SQLITE_ERROR;
+    }
+
+    return SQLITE_OK;
+}
 
 int files_util_best_index(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo)
 {
-    int i;                  /* Loop over constraints */
-    int idxNum = 0;         /* The query plan bitmask */
+    logmsg(LOGMSG_DEBUG, "%s\n", __func__);
+
     int nArg = 0;           /* Number of arguments that filesFilter() expects */
-    int filenameIdx = -1;
-    int chunkSizeIdx = -1;
+
+    constraint_type_t * constraints = NULL;
+    if (pIdxInfo->nConstraint > 0) {
+        constraints = sqlite3_malloc(sizeof(constraint_type_t)*pIdxInfo->nConstraint);
+        if (!constraints) { return ENOMEM; }
+        memset(constraints, 0, sizeof(constraint_type_t)*pIdxInfo->nConstraint);
+    }
 
     const struct sqlite3_index_constraint *pConstraint;
     pConstraint = pIdxInfo->aConstraint;
-    for (i = 0; i < pIdxInfo->nConstraint; i++, pConstraint++) {
+    for (int i = 0; i < pIdxInfo->nConstraint; i++, pConstraint++) {
         if (pConstraint->usable == 0) continue;
-        switch (pConstraint->iColumn) {
-        case FILES_COLUMN_FILENAME:
-            if (pConstraint->op != SQLITE_INDEX_CONSTRAINT_LIKE) {
-                logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with 'like'\n",
-                       __FILE__, __LINE__, print_column_name(FILES_COLUMN_FILENAME));
-                return SQLITE_ERROR;
-            }
-            idxNum |= FILES_FILE_PATTERN_FLAG;
-            filenameIdx = i;
-            break;
-        case FILES_COLUMN_CHUNK_SIZE:
-            if (pConstraint->op != SQLITE_INDEX_CONSTRAINT_EQ) {
-                logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with '='\n",
-                       __FILE__, __LINE__, print_column_name(FILES_COLUMN_CHUNK_SIZE));
-                return SQLITE_ERROR;
-            }
-            idxNum |= FILES_CHUNK_SIZE_FLAG;
-            chunkSizeIdx = i;
-            break;
+        if (parse_constraint(pConstraint, i, constraints)
+            != SQLITE_OK) {
+            return SQLITE_ERROR;
         }
+        if (constraints[i] != 0) { add_constraint(pIdxInfo, i, &nArg, 1 /* omit */); }
     }
 
-    if (filenameIdx >= 0) {
-        pIdxInfo->aConstraintUsage[filenameIdx].argvIndex = ++nArg;
-        pIdxInfo->aConstraintUsage[filenameIdx].omit = 1;
-    }
+    pIdxInfo->orderByConsumed = 0;
+    pIdxInfo->estimatedCost = estimate_cost(constraints, pIdxInfo->nConstraint);
+    pIdxInfo->idxStr = (char *) constraints;
+    pIdxInfo->needToFreeIdxStr = constraints != NULL;
 
-    if (chunkSizeIdx >= 0) {
-        pIdxInfo->aConstraintUsage[chunkSizeIdx].argvIndex = ++nArg;
-        pIdxInfo->aConstraintUsage[chunkSizeIdx].omit = 1;
-    }
+    logmsg(LOGMSG_DEBUG, "%s: Estimated cost for index with %d constraints is %f\n",
+        __func__, nArg, pIdxInfo->estimatedCost);
 
-    pIdxInfo->idxNum = idxNum;
     return SQLITE_OK;
 }
