@@ -102,6 +102,7 @@ extern int gbl_fdb_allow_cross_classes;
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_push_redirect_foreign;
 extern int gbl_fdb_push_remote;
+extern int gbl_fdb_push_remote_write;
 extern int gbl_fdb_remsql_cdb2api;
 extern int gbl_goslow;
 extern int gbl_heartbeat_send;
