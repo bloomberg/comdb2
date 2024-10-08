@@ -9664,6 +9664,26 @@ int osql_check_shadtbls(bdb_state_type *bdb_env, struct sqlclntstate *clnt,
                         char *file, int line);
 
 int gbl_random_get_curtran_failures;
+extern int gbl_test_curtran_change_code;
+
+static int should_fail_with_gen_change(const uint32_t curgen, const struct sqlclntstate * const clnt) {
+    const int tranlevel_is_modsnap = clnt->dbtran.mode == TRANLEVEL_MODSNAP;
+    const int tranlevel_is_snapserial = (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL);
+
+    if (!tranlevel_is_modsnap && !tranlevel_is_snapserial) { return 0; }
+
+    // We only want to fail tranlevel_snapisol/tranlevel_serializable if durable lsns are enabled.
+    // We want to fail tranlevel_modsnap even if durable lsns are disabled.
+    if (tranlevel_is_snapserial && !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) { return 0; }
+
+    if (!clnt->init_gen) { return 0; }
+
+    const int should_do_rand_failure = (gbl_test_curtran_change_code && (0 == (rand() % 1000)));
+    if (should_do_rand_failure) { return 1; }
+
+    const int gen_is_mismatched = (clnt->init_gen != curgen);
+    return gen_is_mismatched;
+}
 
 int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                       uint32_t flags)
@@ -9717,14 +9737,8 @@ retry:
      * that we are compensating for in our shadows can be rolled back by a new
      * master (which means that our shadow-tables will be incorrect).  */
 
-    extern int gbl_test_curtran_change_code;
     curgen = bdb_get_rep_gen(bdb_state);
-    if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-         clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
-        clnt->init_gen &&
-        ((clnt->init_gen != curgen) ||
-         (gbl_test_curtran_change_code && (0 == (rand() % 1000))))) {
+    if (should_fail_with_gen_change(curgen, clnt)) {
         bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;
         clnt->gen_changed = 1;
