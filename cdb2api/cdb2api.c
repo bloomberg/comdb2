@@ -3202,7 +3202,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
-    } else if (iam_identity && identity_cb) {
+    } else if (iam_identity && identity_cb && ((hndl->flags & CDB2_SQL_ROWS) == 0)) {
         id_blob = identity_cb->getIdentity();
         if (id_blob->data.data) {
             sqlquery.identity = id_blob;
