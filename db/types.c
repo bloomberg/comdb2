@@ -5193,6 +5193,7 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BINT(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
+    /* what if floating point value is NaN ?? */
     *outdtsz = 0;
     if (isnull) {
         set_null(out, outlen);
