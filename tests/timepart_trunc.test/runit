@@ -547,7 +547,7 @@ fi
 
 echo $cmd "ALTER TABLE t18 PARTITIONED BY TIME PERIOD 'daily' RETENTION 3 start '2024-01-01T'"
 $cmd "ALTER TABLE t18 PARTITIONED BY TIME PERIOD 'daily' RETENTION 3 start '2024-01-01T'"
-if (( $? == 0 )) ; then
+if (( $? != 0 )) ; then
    echo "FAILURE to block alter partition when tag writes are enabled"
    exit 1
 fi
