@@ -23,6 +23,9 @@ int check_for_upsert(struct ireq *iq, void *trans, blob_buffer_t *blobs, size_t 
                      int *ixfailnum, int *retrc, void *od_dta, size_t od_len, unsigned long long ins_keys,
                      int rec_flags);
 
+int check_index(struct ireq *iq, void *trans, int ixnum, blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
+                       int *ixfailnum, int *retrc, void *od_dta, size_t od_len, unsigned long long ins_keys);
+
 int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        size_t maxblobs, int *opfailcode, int *ixfailnum,
                        int *rrn, unsigned long long *genid,
