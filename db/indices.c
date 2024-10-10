@@ -168,7 +168,7 @@ void delete_defered_index_tbl()
  * @return 1 : yes/error
  *         0 : no
  */
-static int check_index(struct ireq *iq, void *trans, int ixnum, blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
+int check_index(struct ireq *iq, void *trans, int ixnum, blob_buffer_t *blobs, size_t maxblobs, int *opfailcode,
                        int *ixfailnum, int *retrc, void *od_dta, size_t od_len, unsigned long long ins_keys)
 {
     int ixkeylen;
