@@ -993,6 +993,8 @@ struct sqlclntstate {
     char *externalAuthUser;
 
     struct remsql_set remsql_set;
+    int fdb_push_remote; /* cache the global on each prepare */
+    int fdb_push_remote_write; /* cache the global on each prepare */
 
     // fdb 2pc
     int use_2pc;

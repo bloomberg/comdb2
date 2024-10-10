@@ -96,11 +96,11 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     struct Db *pDb = &pParse->db->aDb[node->remotedb];
 
     logmsg(LOGMSG_DEBUG,
-           "CALLING FDB PUSH RUN on query %s (gbl_fdb_push_remote=%d) (clnt force remote? %d) (clnt force redirect? "
+           "CALLING FDB PUSH RUN on query %s (fdb_push_remote=%d) (clnt force remote? %d) (clnt force redirect? "
            "%d) (clnt can redirect? %d)\n",
-           clnt->sql, gbl_fdb_push_remote, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
+           clnt->sql, clnt->fdb_push_remote, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
            clnt->can_redirect_fdb);
-    if (!gbl_fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
+    if (!clnt->fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
         return -1;
 
     if (clnt->disable_fdb_push)
@@ -143,9 +143,9 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
 
     assert(pTab->iDb > 1);
     logmsg(LOGMSG_DEBUG,
-           "%s query %s (gbl_fdb_push_remote_write=%d)\n",
-           __func__, clnt->sql, gbl_fdb_push_remote_write);
-    if (!gbl_fdb_push_remote_write)
+           "%s query %s (fdb_push_remote_write=%d)\n",
+           __func__, clnt->sql, clnt->fdb_push_remote_write);
+    if (!clnt->fdb_push_remote && !clnt->fdb_push_remote_write)
         return -1;
 
     if (clnt->disable_fdb_push)
@@ -525,6 +525,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
     if (!tran)
         return -1;
+    assert(tran->is_cdb2api);
 
     if (created) {
         /* get a connection */

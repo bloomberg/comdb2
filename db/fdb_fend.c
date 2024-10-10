@@ -2600,7 +2600,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(sqlclntstate *clnt,
     if (gbl_fdb_remsql_cdb2api &&
         ((!trans && fdb->server_version >= FDB_VER_CDB2API) ||
          (trans && fdb->server_version >= FDB_VER_WR_CDB2API &&
-          gbl_fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
+          clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
         cursor = _cursor_open_remote_cdb2api(clnt, fdb, server_version, flags,
                                              version, rootpage, use_ssl);
     else
@@ -4027,7 +4027,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
     tran = fdb_get_subtran(dtran, fdb);
 
     if (!tran) {
-        if (gbl_fdb_push_remote && gbl_fdb_push_remote_write &&
+        if (clnt->fdb_push_remote && clnt->fdb_push_remote_write &&
             fdb->server_version >= FDB_VER_WR_CDB2API &&
             clnt->dbtran.mode == TRANLEVEL_SOSQL)
             tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);

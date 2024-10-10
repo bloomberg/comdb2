@@ -3438,6 +3438,14 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
                                    int flags)
 {
     int rc;
+
+    /* the underlying code might check these variables multiple times
+     * and we do not wait a prepared system to race with a change
+     * in the peer global variables
+     */
+    clnt->fdb_push_remote = gbl_fdb_push_remote;
+    clnt->fdb_push_remote_write = gbl_fdb_push_remote_write;
+
     if ((rc = get_prepared_stmt(thd, clnt, rec, err, flags)) != 0) {
         return rc;
     }

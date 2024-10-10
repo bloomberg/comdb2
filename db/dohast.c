@@ -968,10 +968,6 @@ ast_node_t *_get_ast_node(Parse *pParse)
 
 int comdb2_check_push_remote(Parse *pParse)
 {
-    GET_CLNT;
-    if (!gbl_fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
-        return 0;
-
     if (has_parallel_sql(NULL) == 0)
         return 0;
 
@@ -996,9 +992,6 @@ int comdb2_check_push_remote(Parse *pParse)
 
 int comdb2_check_push_remote_write(Parse *pParse)
 {
-    if (!gbl_fdb_push_remote_write)
-        return 0;
-
     ast_node_t *anode = _get_ast_node(pParse);
     if (!anode)
         return 0;
