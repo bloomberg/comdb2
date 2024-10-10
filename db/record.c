@@ -471,6 +471,15 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             ERR("check_for_upsert rc %d", rc);
     }
 
+    if (rec_flags & OSQL_FORCE_VERIFY) {
+        int upsert_idx = rec_flags >> 8;
+        if (upsert_idx <= MAXINDEX) {
+            rc = check_index(iq, trans, upsert_idx, blobs, maxblobs, opfailcode, ixfailnum, &retrc, od_dta, od_len, ins_keys);
+            if (rc)
+                ERR("check_for_upsert rc %d", rc);
+        }
+    }
+
     if (is_event_from_sc(flags) && (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) &&
         (flags & RECFLAGS_KEEP_GENID))
         vgenid = *genid;

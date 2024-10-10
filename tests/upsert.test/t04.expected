@@ -1,3 +1,5 @@
+(TEST='1')
+done
 done
 done
 done
@@ -8,4 +10,15 @@ done
 done
 done
 (a=1, b=10)
+done
+(TEST='2')
+done
+(rows deleted=1)
+done
+done
+done
+(rows inserted=1)
+done
+done
+(a=1, b=2)
 done
