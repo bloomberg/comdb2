@@ -923,16 +923,26 @@ static void delete_replicant_host(DB_Connection *cnct)
     free(cnct);
 }
 
+int gbl_physrep_keepalive_v2 = 0;
+
 static int send_keepalive() {
     int rc = 0;
-    char cmd[400];
+    char cmd[600];
     LOG_INFO info;
 
     info = get_last_lsn(thedb->bdb_env);
 
-    rc = snprintf(cmd, sizeof(cmd),
-                  "exec procedure sys.physrep.keepalive('%s', '%s', %u, %u)",
-                  gbl_dbname, gbl_myhostname, info.file, info.offset);
+    if (gbl_physrep_keepalive_v2) {
+        LOG_INFO first_info;
+        first_info = get_first_lsn(thedb->bdb_env);
+        rc = snprintf(cmd, sizeof(cmd),
+                "exec procedure sys.physrep.keepalive_v2('%s', '%s', %u, %u, %u)",
+                gbl_dbname, gbl_myhostname, info.file, info.offset, first_info.file);
+    } else {
+        rc = snprintf(cmd, sizeof(cmd),
+                "exec procedure sys.physrep.keepalive('%s', '%s', %u, %u)",
+                gbl_dbname, gbl_myhostname, info.file, info.offset);
+    }
     if (rc < 0 || rc >= sizeof(cmd)) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
         return 1;
