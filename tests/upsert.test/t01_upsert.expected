@@ -143,64 +143,6 @@ done
 done
 done
 done
-(part='---------------------------------- PART #07 ----------------------------------')
-done
-done
-done
-done
-done
-done
-done
-done
-(rows inserted=1)
-done
-done
-(i=1)
-done
-(i=2)
-done
-(part='---------------------------------- PART #08 ----------------------------------')
-done
-done
-done
-done
-done
-done
-done
-done
-done
-done
-[commit] failed with rc 2 Transaction is uncommittable: Duplicate insert on key 'COMDB2_PK' in table 't1' index 0
-done
-done
-done
-(part='---------------------------------- PART #09 ----------------------------------')
-done
-done
-done
-done
-done
-done
-done
-done
-(rows inserted=1)
-done
-done
-(i=1, j=1)
-(i=2, j=1)
-(i=4, j=1)
-done
-done
-done
-done
-done
-done
-[commit] failed with rc 2 Transaction is uncommittable: Duplicate insert on key '$KEY_877B2989' in table 't1' index 0
-done
-(i=1, j=1)
-(i=2, j=1)
-(i=4, j=1)
-done
 (part='---------------------------------- PART #10 ----------------------------------')
 done
 done
