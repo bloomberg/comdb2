@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -e
+export SHELLOPTS
+source ./util.sh
+
+test_clnt_logdel_one_clnt() {
+	run_query 0 "ON" "OFF" "ON"
+}
+
+test_clnt_logdel_two_clnts() {
+	run_query 2 "ON" "OFF" "ON" &
+	pid=$!
+
+	until [[ "$(get_logdel_status)" == "OFF" ]];
+	do
+		sleep .1
+	done
+
+	run_query 0 "OFF" "OFF" "OFF"
+
+	wait "${pid}"
+}
+
+test_clnt_logdel_many_clnts() {
+	local -r n_clnts=10 max_sleep=10
+	local pids=()
+	local clnt
+
+	for (( clnt=0; clnt<n_clnts; clnt++ ));
+	do
+		run_query $(( ( RANDOM % max_sleep ) + 1 )) "" "OFF" "" &
+		pids[${clnt}]=$!
+	done
+
+	for pid in ${pids[@]};
+	do
+		wait "${pid}"
+	done
+	
+	[[ "$(get_logdel_status)" == "ON" ]]
+}
+
+test_clnt_logdel_multi_disable() {
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default - <<EOF
+		set logdelete off
+		select 1
+		set logdelete off
+		select 1
+EOF
+	[[ "$(get_logdel_status)" == "ON" ]]
+}
+
+test_clnt_logdel_clnt_crash() {
+	local -r timeout=$(( SECONDS + 5 ))
+
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default - <<EOF &
+		set logdelete off
+		select 1
+		select sleep(10)
+EOF
+	pid=$!
+
+	until [[ "$(get_logdel_status)" == "OFF" ]];
+	do
+		sleep .1
+		(( SECONDS < timeout ))
+	done
+
+	kill -9 "${pid}"
+
+	until [[ "$(get_logdel_status)" == "ON" ]];
+	do
+		sleep .1
+		(( SECONDS < timeout ))
+	done
+}
+
+main() {
+	local -r tests=$(compgen -A function | grep -oh "test_\w*")
+	for testcase in ${tests};
+	do
+		echo "Running "${testcase}""
+		"${testcase}"
+		echo "Passed "${testcase}""
+	done
+}
+
+main
