@@ -464,11 +464,17 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ERR("validate server record rc %d", rc);
     }
 
-    if ((rec_flags & OSQL_IGNORE_FAILURE) != 0) {
+    if (rec_flags & OSQL_IGNORE_FAILURE) {
         rc = check_for_upsert(iq, trans, blobs, maxblobs, opfailcode, ixfailnum, &retrc, od_dta, od_len, ins_keys,
                               rec_flags);
         if (rc)
             ERR("check_for_upsert rc %d", rc);
+    } else if (rec_flags & OSQL_FORCE_VERIFY) {
+        int upsert_idx = rec_flags >> 8;
+        if (upsert_idx <= MAXINDEX) {
+            rc = check_index(iq, trans, upsert_idx, blobs, maxblobs, opfailcode, ixfailnum, &retrc, od_dta, od_len, ins_keys);
+            if (rc) ERR("check_for_upsert rc %d", rc);
+        }
     }
 
     if (is_event_from_sc(flags) && (flags & RECFLAGS_ADD_FROM_SC_LOGICAL) &&
