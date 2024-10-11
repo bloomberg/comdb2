@@ -1030,6 +1030,8 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->origin = clnt->origin;
     conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);
+    conn->clnt->authdata = clnt->authdata;
+    conn->clnt->argv0 = clnt->argv0;
     memcpy(conn->clnt->tzname, clnt->tzname, sizeof(clnt->tzname));
     make_dohsql_plugin(conn->clnt);
     conn->clnt->plugin.state = conn;
@@ -1070,6 +1072,8 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     free(conn->params);
     free(clnt->sql);
     clnt->sql = NULL;
+    clnt->authdata = NULL;
+    clnt->argv0 = NULL;
     cleanup_clnt(clnt);
     free(clnt);
 }
