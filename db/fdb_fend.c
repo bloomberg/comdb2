@@ -4027,9 +4027,13 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
     tran = fdb_get_subtran(dtran, fdb);
 
     if (!tran) {
-        if (clnt->fdb_push_remote && clnt->fdb_push_remote_write &&
-            fdb->server_version >= FDB_VER_WR_CDB2API &&
-            clnt->dbtran.mode == TRANLEVEL_SOSQL)
+        /* we allow remtran over cdb2api if remote allows and either:
+         * 1) standalone write and push remote write is enabled
+         * 2) socksql txn and push remote read and writes are enabled
+         */
+        if (fdb->server_version >= FDB_VER_WR_CDB2API && clnt->fdb_push_remote_write &&
+            (/*1*/!clnt->in_client_trans ||
+            (/*2*/clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
             tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);
         else
             tran = _dtran_get_subtran(clnt, fdb, use_ssl);
@@ -4039,9 +4043,9 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
         listc_atl(&dtran->fdb_trans, tran);
 
         if (gbl_fdb_track) {
-            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
+            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\" cdb2api %d\n", __func__,
                    comdb2uuidstr((unsigned char *)tran->tid, us),
-                   fdb->dbname);
+                   fdb->dbname, tran->is_cdb2api);
         }
 
         if (created)
@@ -4049,9 +4053,9 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
     } else {
         if (gbl_fdb_track) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
+            logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\" cdb2api %d\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
-                       fdb->dbname);
+                       fdb->dbname, tran->is_cdb2api);
         }
         /* this is a bug, probably sharing the wrong fdb_tran after switching to 
          * a lower version protocol
@@ -5902,12 +5906,14 @@ int fdb_default_ver_set(int val)
         if (val < FDB_VER_CDB2API) {
             /* do not speak cdb2api if we set this too low */
             gbl_fdb_remsql_cdb2api = 0;
-            /* disable also push, otherwise this will break transactional
-             * queries
-             */
+            /* disable also push, otherwise this will break transactional queries */
             gbl_fdb_push_remote_write = 0;
         } else if (val < FDB_VER_WR_CDB2API) {
+            gbl_fdb_remsql_cdb2api = 1;
             gbl_fdb_push_remote_write = 0;
+        } else {
+            gbl_fdb_remsql_cdb2api = 1;
+            gbl_fdb_push_remote_write = 1;
         }
     }
     return 0;
