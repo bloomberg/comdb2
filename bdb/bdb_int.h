@@ -1215,9 +1215,9 @@ void bdb_maybe_uncompress_data(bdb_state_type *bdb_state, DBT *data,
 int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
                     uint8_t *ver, u_int32_t flags);
 int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
-                         void *(*fn_malloc)(int), void (*fn_free)(void *));
+                         void *(*fn_malloc)(size_t), void (*fn_free)(void *));
 int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
-                        u_int32_t flags, void *(*fn_malloc)(int), void (*fn_free)(void *));
+                        u_int32_t flags, void *(*fn_malloc)(size_t), void (*fn_free)(void *));
 int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
                    DBT *data, uint8_t *ver, u_int32_t flags);
 int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,

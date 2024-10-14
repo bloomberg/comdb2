@@ -1,0 +1,21 @@
+schema
+{
+    short           alltypes_short           null=yes
+    u_short         alltypes_ushort          null=yes
+    int             alltypes_int             null=yes
+    u_int           alltypes_uint            null=yes
+    longlong        alltypes_longlong        null=yes
+    float           alltypes_float           null=yes
+    double          alltypes_double          null=yes
+    byte            alltypes_byte[16]        null=yes
+    cstring         alltypes_cstring[16]     null=yes
+    datetime        alltypes_datetime        null=yes
+    datetimeus      alltypes_datetimeus      null=yes
+    intervalym      alltypes_intervalym      null=yes
+    intervalds      alltypes_intervalds      null=yes
+    intervaldsus    alltypes_intervaldsus    null=yes
+    decimal32       alltypes_decimal32       null=yes
+    decimal64       alltypes_decimal64       null=yes
+    decimal128      alltypes_decimal128      null=yes
+    longlong        c                        dbstore=nextsequence null=yes
+}

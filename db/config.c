@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#include <log_queue_trigger.h>
 
 #include "fdb_whitelist.h"
 #include "sqliteInt.h"
@@ -37,6 +38,7 @@
 #include "config.h"
 #include "phys_rep.h"
 #include "phys_rep_lsn.h"
+#include "log_trigger.h"
 #include "macc_glue.h"
 #include "disttxn.h"
 
@@ -800,6 +802,12 @@ static void enable_snapshot(struct dbenv *dbenv) {
         pfx##funcs[i] = NULL;                                                                                          \
     } while (0)
 
+static bdb_state_type *queuehndl(const char *name)
+{
+    struct dbtable *db = getqueuebyname(name);
+    return db ? db->handle : NULL;
+}
+
 static int read_lrl_option(struct dbenv *dbenv, char *line,
                            struct read_lrl_option_type *options, int len,
                            int *is_table)
@@ -1447,6 +1455,65 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
          * marked as READEARLY) */
         read_legacy_defaults(dbenv, options);
 
+    } else if (tokcmp(tok, ltok, "logtrigger") == 0) {
+        while ((tok = segtok(line, len, &st, &ltok)) != NULL && ltok > 0) {
+            char *table = tokdup(tok, ltok);
+            logmsg(LOGMSG_INFO, "log-trigger for %s\n", table);
+            log_trigger_add_table(table);
+        }
+    } else if (tokcmp(tok, ltok, "qdump") == 0) {
+        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "qdump <qname> <filename> <size>\n");
+            return -1;
+        }
+        char *queue = alloca(ltok + 1);
+        tokcpy(tok, ltok, queue);
+        char *bdbq = alloca(ltok + 4);
+        sprintf(bdbq, "__q%s", queue);
+
+        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected dump-queue filename\n");
+            return -1;
+        }
+        char *outfile = alloca(ltok + 1);
+        tokcpy(tok, ltok, outfile);
+
+        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "Expected max queue-size\n");
+            return -1;
+        }
+        int maxsz = toknum(tok, ltok);
+        logmsg(LOGMSG_USER, "Adding qdump-trigger for %s -> %s max-queue %d\n", bdbq, outfile, maxsz);
+        register_dump_qtrigger(bdbq, queuehndl, outfile, maxsz);
+
+#ifdef WITH_QKAFKA
+    } else if (tokcmp(tok, ltok, "qkafka") == 0) {
+        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "qkafka <qname> <topic> <maxsz>\n");
+            return -1;
+        }
+        char *queue = alloca(ltok + 1);
+        tokcpy(tok, ltok, queue);
+        char *bdbq = alloca(ltok + 4);
+        sprintf(bdbq, "__q%s", queue);
+
+        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "Expected kafka topic\n");
+            return -1;
+        }
+
+        char *topic = alloca(ltok + 1);
+        tokcpy(tok, ltok, topic);
+
+        if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
+            logmsg(LOGMSG_ERROR, "Expected max queue-size\n");
+            return -1;
+        }
+        int maxsz = toknum(tok, ltok);
+
+        logmsg(LOGMSG_USER, "Adding qkafka trigger for %s -> %s maxsz %d\n", bdbq, topic, maxsz);
+        register_queue_kafka(bdbq, topic, queuehndl, maxsz);
+#endif
     } else if (tokcmp(tok, ltok, "replicate_from") == 0) {
         /* 'replicate_from <dbname> <prod|beta|alpha|dev|host|@hst1,hst2,hst3..>' */
         tok = segtok(line, len, &st, &ltok);

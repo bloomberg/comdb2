@@ -990,7 +990,7 @@ function read_function_int() {
 			printf("\t\targp->%s = -1;\n", vars[i]) >> CFILE;
 			printf("\t\tbp += DB_FILE_ID_LEN;\n") >> CFILE;
 			printf("\t\tif (do_pgswp)\n") >> CFILE;
-			printf("\t\t\tret = __ufid_to_db(dbenv, argp->txnid, &dbp, argp->ufid_%s, NULL);\n", \
+			printf("\t\t\tret = __ufid_to_db(dbenv, argp->txnid, &dbp, argp->ufid_%s, NULL, NULL);\n", \
 				   vars[i]) >> CFILE;
 			printf("\t} else {\n") >> CFILE;
 			printf("\t\tLOGCOPY_32(&uinttmp, bp);\n") \

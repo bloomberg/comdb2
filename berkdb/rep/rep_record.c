@@ -2988,6 +2988,7 @@ static inline void repdb_dequeue(DBT *control_dbt, DBT *rec_dbt)
 
 __thread int disable_random_deadlocks = 0;
 __thread int physrep_out_of_order = 0;
+__thread DB_LSN commit_lsn = {0};
 
 /*
  * __rep_apply --
@@ -4047,6 +4048,7 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	rq = (struct __recovery_queue *)work;
 	rp = rq->processor;
 	dbenv = rq->processor->dbenv;
+	commit_lsn = rp->commit_lsn;
 
 	rr = listc_rtl(&rq->records);
 
@@ -4234,6 +4236,7 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	dbenv = rp->dbenv;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+	commit_lsn = rp->commit_lsn;
 
 	/*  rep_process_message adds to the inflight-txn list while holding the bdblock
 	 *  We are executing here, so the inflight-txn list-size is greater than 0
@@ -5132,6 +5135,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 				goto err;
 			}
 		}
+		commit_lsn = rctl->lsn;
 
 		/* Set the last-locked lsn */
 		// This can cause an early ack regardless of the value of gbl_early.
@@ -6428,7 +6432,7 @@ __rep_collect_txn_from_log(dbenv, lsnp, lc, had_serializable_records, rp)
 				DB *file_dbp;
 				u_int8_t ufid[DB_FILE_ID_LEN] = {0};
 				if ((int)ufid_for_recovery_record(dbenv, NULL, rectype, ufid, &data, utxnid_logged)) {
-					__ufid_to_db(dbenv, NULL, &file_dbp, ufid, NULL);
+					__ufid_to_db(dbenv, NULL, &file_dbp, ufid, NULL, NULL);
 				}
 			}
 			if (lc->nalloc < lc->nlsns + 1) {
