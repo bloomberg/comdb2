@@ -147,6 +147,10 @@ entries:
       url: /backups.html
       output: web
 
+    - title: Physical Replication
+      url: /physical_replication.html
+      output: web
+
     - title: Examining logs
       url: /logs.html
       output: web
