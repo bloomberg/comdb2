@@ -81,6 +81,28 @@ static int g_mutex_enabled = 1;
  * I suspect is not all that slow, as it is usually a fast system call). */
 static int ctrace_time_epoch(void) { return time(NULL); }
 
+static int __logmsg(loglvl lvl, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int ret = logmsgv(lvl, fmt, args);
+    va_end(args);
+    return ret;
+}
+
+static int __logmsgf(loglvl lvl, FILE *f, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int ret = logmsgvf(lvl, f, fmt, args);
+    va_end(args);
+    return ret;
+}
+
+/* Ensure that ctrace isn't redirected to itself. Otherwise it would self-block on g_mutex */
+#define logmsg __logmsg
+#define logmsgf __logmsgf
+
 #define CTRACE_TIMER_START(THRESHOLD)                                          \
     do {                                                                       \
         bbhrtime_t timer_start;                                                \
