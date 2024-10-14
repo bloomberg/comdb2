@@ -3525,10 +3525,14 @@ int bdb_min_truncate(bdb_state_type *bdb_state, int *file, int *offset,
 }
 
 /*
-  get a list of log files we can delete
-  (call DB_ENV->log_archive with no flags)
-  delete the ones that are older than
-  bdb_state->attr->logdeleteage
+  This function
+  1) Deletes log files that are globally eligible for
+  deletion.
+
+  and then
+
+  2) Replicates the lowest log file that is locally
+  eligible for deletion.
 */
 static void delete_log_files_int(bdb_state_type *bdb_state)
 {
@@ -3573,8 +3577,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         !has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0))
         return;
 
-    /* get the lowest filenum of anyone in our sanc list.  we cant delete
-       log files <= to that filenum */
+    /* get the lowest filenum of anyone in our sanc list. we cant delete
+       log files greater than that filenum */
     lowfilenum = get_lowfilenum_sanclist(bdb_state);
     if (bdb_state->attr->debug_log_deletion)
         logmsg(LOGMSG_USER, "lowfilenum %d\n", lowfilenum);
@@ -3933,7 +3937,7 @@ low_headroom:
             }
 
             if ((filenum <= lowfilenum && delete_adjacent) || is_low_headroom) {
-                /* delete this file if we got this far AND it's under the
+                /* delete this file if we got this far AND it's <= the
                  * replicated low number */
                 if (is_low_headroom) {
                     logmsg(LOGMSG_WARN, "LOW HEADROOM : delete_log_files: deleting "
