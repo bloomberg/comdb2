@@ -3187,11 +3187,15 @@ void backend_sync_stat(struct dbenv *dbenv)
     }
 }
 
-/*just update the sync config */
+/* just update the sync config */
+/* *This function acquires the log delete lock */
 void backend_update_sync(struct dbenv *dbenv)
 {
     if (dbenv->bdb_attr == 0)
         return; /*skip */
+
+    logdelete_lock(__func__, __LINE__);
+
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_SYNCTRANSACTIONS, dbenv->log_sync);
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGDELETEAGE,
                  dbenv->log_delete
@@ -3201,6 +3205,8 @@ void backend_update_sync(struct dbenv *dbenv)
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LOGDELETELOWFILENUM,
                  dbenv->log_delete_filenum);
     backend_sync_stat(dbenv);
+
+    logdelete_unlock(__func__, __LINE__);
 }
 
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,

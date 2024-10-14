@@ -54,9 +54,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     log_delete_add_state(thedb, &log_delete_state);
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
 
-    logdelete_lock(__func__, __LINE__);
     backend_update_sync(thedb);
-    logdelete_unlock(__func__, __LINE__);
 
     /* check for after commented out below as well
     int before_count = bdb_get_low_headroom_count(thedb->bdb_env);

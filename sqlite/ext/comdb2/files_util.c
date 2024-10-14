@@ -284,9 +284,7 @@ int files_util_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
     logmsg(LOGMSG_INFO, "disabling log file deletion\n");
 
-    logdelete_lock(__func__, __LINE__);
     backend_update_sync(thedb);
-    logdelete_unlock(__func__, __LINE__);
 
     return SQLITE_OK;
 }
@@ -298,6 +296,7 @@ int files_util_close(sqlite3_vtab_cursor *cur)
     logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
     log_delete_rem_state(thedb, &(pCur->log_delete_state));
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+
     backend_update_sync(thedb);
 
     release_files(pCur->files, pCur->nfiles);
