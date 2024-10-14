@@ -41,8 +41,14 @@ import org.hibernate.dialect.pagination.Comdb2LimitHandler;
 import org.hibernate.dialect.pagination.LimitHandler;
 import org.hibernate.dialect.unique.Comdb2UniqueDelegate;
 import org.hibernate.dialect.unique.UniqueDelegate;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.query.sqm.produce.function.FunctionParameterType;
 import org.hibernate.service.ServiceRegistry;
+import org.hibernate.sql.ast.SqlAstTranslator;
+import org.hibernate.sql.ast.SqlAstTranslatorFactory;
+import org.hibernate.sql.ast.spi.StandardSqlAstTranslatorFactory;
+import org.hibernate.sql.ast.tree.Statement;
+import org.hibernate.sql.exec.spi.JdbcOperation;
 import org.hibernate.type.BasicType;
 import org.hibernate.type.BasicTypeRegistry;
 import org.hibernate.type.StandardBasicTypes;
@@ -123,7 +129,16 @@ public class Comdb2Dialect extends Dialect {
             return super.columnType(sqlTypeCode);
         }
     }
-
+    @Override
+    public SqlAstTranslatorFactory getSqlAstTranslatorFactory() {
+        return new StandardSqlAstTranslatorFactory() {
+            @Override
+            protected <T extends JdbcOperation> SqlAstTranslator<T> buildTranslator(
+                    SessionFactoryImplementor sessionFactory, Statement statement) {
+                return new Comdb2SqlAstTranslator<>( sessionFactory, statement );
+            }
+        };
+    }
     @Override
     public void initializeFunctionRegistry(FunctionContributions functionContributions) {
         super.initializeFunctionRegistry(functionContributions);

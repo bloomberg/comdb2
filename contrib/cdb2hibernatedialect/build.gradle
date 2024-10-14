@@ -21,7 +21,7 @@ plugins {
 }
 
 group = "com.bloomberg.comdb2"
-version = "0.2.0-M1"
+version = "0.2.0-M2"
 
 java {
     toolchain {
