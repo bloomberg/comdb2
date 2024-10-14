@@ -1,0 +1,10 @@
+# Test that when multiple clients disable log delete, it is only enabled when all of the clients have tried to enable it.
+1 select value from comdb2_tunables where name='logdeletelowfilenum'
+1 set logdelete off
+1 select value from comdb2_tunables where name='logdeletelowfilenum'
+2 set logdelete off
+2 select value from comdb2_tunables where name='logdeletelowfilenum'
+2 set logdelete on
+2 select value from comdb2_tunables where name='logdeletelowfilenum'
+1 set logdelete on
+1 select value from comdb2_tunables where name='logdeletelowfilenum'

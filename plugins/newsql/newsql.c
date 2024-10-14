@@ -88,6 +88,66 @@ static int newsql_has_high_availability(struct sqlclntstate *);
 /*  --                                                                    */
 /*  Rivers                                                                */
 
+/*
+Log deletion is disabled when a client runs `set logdelete off`
+Multiple clients can disable log deletion at the same time.
+If log deletion has been disabled by one or more clients,
+it will be re-enabled when each of the clients that has disabled it either
+    1) re-enables it explicitly (by running `set logdelete on`)
+    2) ends its session (either naturally or via a crash)
+
+-- Morgan
+*/
+
+struct log_delete_state gbl_clnt_logdel_state;
+static int gbl_n_disabled_logdel_clnts = 0;
+pthread_mutex_t gbl_clnt_logdel_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void clnt_disable_logdel(struct sqlclntstate *clnt) {
+    if (clnt->disabled_logdel) { return; }
+
+    Pthread_mutex_lock(&gbl_clnt_logdel_mutex);
+
+    clnt->disabled_logdel = 1;
+    gbl_n_disabled_logdel_clnts += 1;
+
+    if (gbl_n_disabled_logdel_clnts <= 0) {
+        logmsg(LOGMSG_ERROR, "%s: Unexpected number of clients with logdel disabled\n", __func__);
+        abort();
+    } else if (gbl_n_disabled_logdel_clnts == 1) {
+        logmsg(LOGMSG_INFO, "%s: Disabling log file deletion\n", __func__);
+
+        gbl_clnt_logdel_state.filenum = 0;
+        log_delete_add_state(thedb, &gbl_clnt_logdel_state);
+        log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+
+        backend_update_sync(thedb);
+    }
+    Pthread_mutex_unlock(&gbl_clnt_logdel_mutex);
+}
+
+void clnt_try_enable_logdel(struct sqlclntstate *clnt) {
+    if (!clnt->disabled_logdel) { return; }
+
+    Pthread_mutex_lock(&gbl_clnt_logdel_mutex);
+
+    clnt->disabled_logdel = 0;
+    gbl_n_disabled_logdel_clnts -= 1;
+
+    if (gbl_n_disabled_logdel_clnts < 0) {
+        logmsg(LOGMSG_ERROR, "%s: Unexpected number of clients with logdel disabled\n", __func__);
+        abort();
+    } else if (gbl_n_disabled_logdel_clnts == 0) {
+        logmsg(LOGMSG_INFO, "%s: Re-enabling log file deletion\n", __func__);
+
+        log_delete_rem_state(thedb, &gbl_clnt_logdel_state);
+        log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+
+        backend_update_sync(thedb);
+    }
+    Pthread_mutex_unlock(&gbl_clnt_logdel_mutex);
+}
+
 static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -1648,6 +1708,14 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     DTTZ_TEXT_TO_PREC(sqlstr, clnt->dtprec, 0, return -1);
                 } else {
                     rc = ii + 1;
+                }
+            } else if (strncasecmp(sqlstr, "logdelete", 9) == 0) {
+                sqlstr += 9;
+                sqlstr = skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt_disable_logdel(clnt);
+                } else {
+                    clnt_try_enable_logdel(clnt);
                 }
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;

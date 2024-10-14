@@ -1,0 +1,5 @@
+# Test that if a client ends normally without enabling log deletion, log deletion is enabled.
+1 set logdelete off
+1 select value from comdb2_tunables where name='logdeletelowfilenum'
+1 DoNe
+2 select value from comdb2_tunables where name='logdeletelowfilenum'
