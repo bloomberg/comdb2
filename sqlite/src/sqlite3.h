@@ -1671,7 +1671,7 @@ SQLITE_API int sqlite3_db_config(sqlite3*, int op, ...);
 */
 typedef struct sqlite3_mem_methods sqlite3_mem_methods;
 struct sqlite3_mem_methods {
-  void *(*xMalloc)(int);         /* Memory allocation function */
+  void *(*xMalloc)(size_t);         /* Memory allocation function */
   void (*xFree)(void*);          /* Free a prior allocation */
   void *(*xRealloc)(void*,int);  /* Resize an allocation */
   int (*xSize)(void*);           /* Return the size of an allocation */

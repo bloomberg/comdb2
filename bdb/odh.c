@@ -479,9 +479,9 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
  *
  *    *freeptr!=NULL => *freeptr==odh->recptr
  */
-static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t fromlen, void *to, size_t tolen,
-                               struct odh *odh, int updateid, void **freeptr, int verify_updateid, int force_odh,
-                               void *(*fn_malloc)(int), void (*fn_free)(void *))
+int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t fromlen, void *to, size_t tolen,
+                        struct odh *odh, int updateid, void **freeptr, int verify_updateid, int force_odh,
+                        void *(*fn_malloc)(size_t), void (*fn_free)(void *))
 {
     void *mallocmem = NULL;
     const int ver_bytes = 2;
@@ -723,7 +723,7 @@ int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
  */
 
 static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data, int *updateid, uint8_t *ver, int flags,
-                                          int verify_updateid, void *(*fn_malloc)(int), void (*fn_free)(void *))
+                                          int verify_updateid, void *(*fn_malloc)(size_t), void (*fn_free)(void *))
 {
     int rc;
     struct odh odh = {0};
@@ -987,7 +987,7 @@ int bdb_cget(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
 }
 
 static int bdb_cget_unpack_int(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
-                               int verify_updateid, void *(*fn_malloc)(int), void (*fn_free)(void *))
+                               int verify_updateid, void *(*fn_malloc)(size_t), void (*fn_free)(void *))
 {
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
     unsigned long long *genptr = NULL;
@@ -1060,14 +1060,14 @@ int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
 
 /* The updateid-agnostic version of this code. */
 int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
-                         void *(*fn_malloc)(int), void (*fn_free)(void *))
+                         void *(*fn_malloc)(size_t), void (*fn_free)(void *))
 {
     return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 0, fn_malloc, fn_free);
 }
 
 /* as above, but for DB->get instead of DBC->c_get. */
 static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
-                              u_int32_t flags, int verify_updateid, void *(*fn_malloc)(int), void (*fn_free)(void *))
+                              u_int32_t flags, int verify_updateid, void *(*fn_malloc)(size_t), void (*fn_free)(void *))
 {
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
     unsigned long long *genptr = NULL;
@@ -1117,7 +1117,7 @@ int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
 }
 
 int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
-                        u_int32_t flags, void *(*fn_malloc)(int), void (*fn_free)(void *))
+                        u_int32_t flags, void *(*fn_malloc)(size_t), void (*fn_free)(void *))
 {
     return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0, fn_malloc, fn_free);
 }

@@ -1732,7 +1732,7 @@ retry:		dbp_created = 0;
 			__dbreg_id_to_db(dbenv, t, &dbp, elp->u.p.fileid, 0, NULL,
 			0);
 		} else {
-			ret = __ufid_to_db(dbenv, t, &dbp, elp->u.p.uid, NULL);
+			ret = __ufid_to_db(dbenv, t, &dbp, elp->u.p.uid, NULL, NULL);
 		}
 
 		DB_ASSERT(!F_ISSET((dbp), DB_AM_RECOVER));
