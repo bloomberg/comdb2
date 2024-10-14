@@ -271,36 +271,18 @@ static int get_files(void **data, size_t *npoints, char *file_pattern, size_t ch
 int files_util_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
     systbl_files_cursor *pCur;
-
     pCur = sqlite3_malloc(sizeof(*pCur));
     if (pCur == 0) return SQLITE_NOMEM;
-
     memset(pCur, 0, sizeof(*pCur));
 
     *ppCursor = &pCur->base;
-
-    pCur->log_delete_state.filenum = 0;
-    log_delete_add_state(thedb, &(pCur->log_delete_state));
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-    logmsg(LOGMSG_INFO, "disabling log file deletion\n");
-
-    backend_update_sync(thedb);
-
     return SQLITE_OK;
 }
 
 int files_util_close(sqlite3_vtab_cursor *cur)
 {
     systbl_files_cursor *pCur = (systbl_files_cursor *)cur;
-
-    logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
-    log_delete_rem_state(thedb, &(pCur->log_delete_state));
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-
-    backend_update_sync(thedb);
-
     release_files(pCur->files, pCur->nfiles);
-
     sqlite3_free(pCur);
     return SQLITE_OK;
 }

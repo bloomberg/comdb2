@@ -220,19 +220,18 @@ static int disconnect_cdb2h(cdb2_hndl_tp * cdb2h) {
     return rc;
 }
 
-/**
- * Disconnect all clients
- * Returns 0 on success
- */
+int clnt_disconnect_one(client_t * const client)
+{
+    return disconnect_cdb2h(client->db);
+}
+
 int clnt_disconnect_all(void)
 {
     client_t *client;
 
     LISTC_FOR_EACH(&clients, client, lnk) {
-        const int rc = disconnect_cdb2h(client->db);
-        if (rc) {
-            return rc;
-        }
+        const int rc = clnt_disconnect_one(client);
+        if (rc) { return rc; }
     }
 
     return 0;

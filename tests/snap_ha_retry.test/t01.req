@@ -4,6 +4,6 @@
 1 begin
 2 insert into t1 values(2)
 1 select * from t1
-bounce_connection
+disconnect
 1 select * from t1
 1 commit

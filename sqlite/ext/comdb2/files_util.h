@@ -82,7 +82,6 @@ typedef struct {
     size_t content_size;
     size_t chunk_size;
     char *file_pattern;
-    struct log_delete_state log_delete_state;
 } systbl_files_cursor;
 
 int files_util_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor);

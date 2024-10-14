@@ -117,7 +117,7 @@ int main( int argc, char **argv)
       if(line[0] == '\n' || line[0] == '#')
          continue;
 
-      if(strcmp(line, "bounce_connection\n") == 0) {
+      if(strcmp(line, "disconnect\n") == 0) {
          rc = clnt_disconnect_all();
          if (rc) {
             fprintf( stderr, "Error disconnecting clients\n");
@@ -147,6 +147,15 @@ int main( int argc, char **argv)
          rc = -1;
          break;
       } 
+
+      if (strcmp(query, "disconnect") == 0) {
+         rc = clnt_disconnect_one(clnt);
+         if (rc) {
+            fprintf(stderr, "Error disconnecting client\n");
+            break;
+         }
+         continue;
+      }
 
       if (strcmp(query, "DoNe") == 0) {
          clnt_close(clnt);  
