@@ -589,7 +589,7 @@ Closes dbstmt's underlying sql statement.
 ### dbstmt:rows_changed
 
 ```
-num = dbstmt:rows_changed
+num = dbstmt:rows_changed()
 ```
 
 Description:
