@@ -56,7 +56,7 @@ typedef struct DB_Connection {
 int gbl_physrep_debug = 0;
 int gbl_physrep_register_interval = 600; // force re-registration every 10 mins
 int gbl_physrep_reconnect_penalty = 0;
-int gbl_blocking_physrep = 1;
+int gbl_blocking_physrep = 0;
 int gbl_physrep_fanout = 8;
 int gbl_physrep_max_candidates = 6;
 int gbl_physrep_max_pending_replicants = 10;
