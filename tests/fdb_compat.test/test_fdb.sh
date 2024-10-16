@@ -104,9 +104,6 @@ header 5 "test insert, delete, update current version"
 $S_SQL "put tunable foreign_db_push_remote 1"
 $R_SQL "put tunable foreign_db_push_remote 1"
 
-#echo cdb2sql $a_dbname localhost "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)"
-#echo cdb2sql $a_rdbname localhost "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)"
-
 $S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
 $R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
 check
@@ -154,7 +151,7 @@ check
 $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
 header 8 "remtran test for client transactions"
-echo $S_SQL <<EOF
+$S_SQL <<EOF
 begin
 insert into LOCAL_${a_rdbname}.t values (100)
 commit
@@ -163,6 +160,7 @@ if [[ $? != 0 ]] ; then
     echo "Failed to run insert in a client txn"
     exit 1
 fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
 check
 
 $S_SQL <<EOF
@@ -174,6 +172,7 @@ if [[ $? != 0 ]] ; then
     echo "Failed to run update in a client txn"
     exit 1
 fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
 check
 
 $S_SQL <<EOF
@@ -185,7 +184,90 @@ if [[ $? != 0 ]] ; then
     echo "Failed to run delete in a client txn"
     exit 1
 fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
 check
+
+header 9 "remtran test for client transactions pre-cdb2api"
+$R_SQL "put tunable fdb_default_version 6" >> $output 2>&1
+
+$S_SQL <<EOF
+begin
+insert into LOCAL_${a_rdbname}.t values (200)
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run insert in a client txni precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$S_SQL <<EOF
+begin
+update LOCAL_${a_rdbname}.t set id=id+1 where id=200
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run update in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$S_SQL <<EOF
+begin
+delete from LOCAL_${a_rdbname}.t where id=201
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run delete in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
+
+header 10 "remtran test for client transactions newer than current"
+$R_SQL "put tunable fdb_default_version $newver" >> $output 2>&1
+
+$S_SQL <<EOF
+begin
+insert into LOCAL_${a_rdbname}.t values (300)
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run insert in a client txni precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$S_SQL <<EOF
+begin
+update LOCAL_${a_rdbname}.t set id=id+1 where id=300
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run update in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$S_SQL <<EOF
+begin
+delete from LOCAL_${a_rdbname}.t where id=301
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run delete in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_rdbname}/g" output.log > output.log.actual
