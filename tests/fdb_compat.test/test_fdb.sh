@@ -269,6 +269,51 @@ check
 
 $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 
+header 11 "remtran test for client transactions with select"
+$R_SQL "put tunable fdb_default_version 6" >> $output 2>&1
+
+$S_SQL <<EOF
+begin
+select * from LOCAL_${a_rdbname}.t order by id
+insert into LOCAL_${a_rdbname}.t values (400)
+select * from LOCAL_${a_rdbname}.t order by id
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run insert in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$S_SQL <<EOF
+begin
+select * from LOCAL_${a_rdbname}.t order by id
+update LOCAL_${a_rdbname}.t set id=id+1 where id=400
+select * from LOCAL_${a_rdbname}.t order by id
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run update in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
+$S_SQL <<EOF
+begin
+select * from LOCAL_${a_rdbname}.t order by id
+delete from LOCAL_${a_rdbname}.t where id=401
+select * from LOCAL_${a_rdbname}.t order by id
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run delete in a client txn precdb2api"
+    exit 1
+fi
+$S_SQL "select * from LOCAL_${a_rdbname}.t order by id" >> $output 2>&1
+check
+
 #convert the table to actual dbname
 sed "s/dorintdb/${a_rdbname}/g" output.log > output.log.actual
 
