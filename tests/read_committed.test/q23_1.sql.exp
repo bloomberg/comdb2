@@ -1,0 +1,10 @@
+[DROP TABLE IF EXISTS recom] rc 0
+[CREATE TABLE recom(a int primary key, b int)] rc 0
+[SET TRANSACTION READ COMMITTED] rc 0
+[BEGIN] rc 0
+[INSERT INTO recom values (1,2),(2,3),(3,4),(4,5),(5,6),(6,7),(7,8)] rc 0
+[UPDATE recom SET b=99 where b%2=0] rc 0
+[DELETE FROM recom where b=99] rc 0
+(count(*)=0)
+[SELECT count(*) FROM recom where b=99] rc 0
+[COMMIT] rc 0
