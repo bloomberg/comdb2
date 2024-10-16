@@ -1702,7 +1702,7 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
 {
     int rc;
     arr_elem_t *elem;
-
+    struct temp_cursor *opencur;
     if (!cur->valid) {
         rc = -1;
         goto done;
@@ -1722,6 +1722,13 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
                 sizeof(arr_elem_t) * (cur->tbl->num_mem_entries - cur->ind));
+        /* Move backward all open cursors to the right of deletion point
+         * by one position */
+        LISTC_FOR_EACH(&cur->tbl->cursors, opencur, lnk)
+        {
+            if (opencur->ind >= cur->ind)
+                --opencur->ind;
+        }
         rc = 0;
         goto done;
     }
