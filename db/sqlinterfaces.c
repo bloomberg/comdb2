@@ -4024,6 +4024,7 @@ retry_legacy_remote:
             else
                 rc = handle_fdb_push_write(clnt, &err);
             if (rc == -2) {
+                logmsg(LOGMSG_ERROR, "QUERY %s disable push\n", clnt->sql);
                 /* remote server does not support proxy, retry without */
                 clnt->disable_fdb_push = 1;
                 goto retry_legacy_remote;

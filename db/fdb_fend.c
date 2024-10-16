@@ -59,6 +59,7 @@
 #include "comdb2_query_preparer.h"
 #include "alias.h"
 #include "dohsql.h"
+#include "bdb_schemachange.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
@@ -2600,7 +2601,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(sqlclntstate *clnt,
     if (gbl_fdb_remsql_cdb2api &&
         ((!trans && fdb->server_version >= FDB_VER_CDB2API) ||
          (trans && fdb->server_version >= FDB_VER_WR_CDB2API &&
-          clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
+          !clnt->disable_fdb_push && clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
         cursor = _cursor_open_remote_cdb2api(clnt, fdb, server_version, flags,
                                              version, rootpage, use_ssl);
     else
@@ -4031,7 +4032,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
          * 1) standalone write and push remote write is enabled
          * 2) socksql txn and push remote read and writes are enabled
          */
-        if (fdb->server_version >= FDB_VER_WR_CDB2API && clnt->fdb_push_remote_write &&
+        if (fdb->server_version >= FDB_VER_WR_CDB2API && !clnt->disable_fdb_push && clnt->fdb_push_remote_write &&
             (/*1*/!clnt->in_client_trans ||
             (/*2*/clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
             tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);
@@ -4645,8 +4646,8 @@ static void fdb_init(void)
     bzero(fdbs.arr, fdbs.nused * sizeof(fdbs.arr[0]));
     fdbs.nused = 0;
 
-    logmsg(LOGMSG_INFO, "Replicant updating views counter=%d\n", gbl_views_gen);
-    ++gbl_views_gen;
+    logmsg(LOGMSG_INFO, "FDB testing reset dbopen_gen %d\n", bdb_get_dbopen_gen());
+    BDB_BUMP_DBOPEN_GEN(invalid, "fdb_init");
 
     pthread_rwlock_unlock(&fdbs.arr_lock);
 }
@@ -5913,8 +5914,21 @@ int fdb_default_ver_set(int val)
             gbl_fdb_push_remote_write = 0;
         } else {
             gbl_fdb_remsql_cdb2api = 1;
+            gbl_fdb_push_remote = 1;
             gbl_fdb_push_remote_write = 1;
         }
+    }
+    return 0;
+}
+
+int fdb_push_write_set(int val)
+{
+    if (val) {
+        /* enabling push write requires push read */
+        gbl_fdb_push_remote = 1;
+        gbl_fdb_push_remote_write = 1;
+    } else {
+        gbl_fdb_push_remote_write = 0;
     }
     return 0;
 }

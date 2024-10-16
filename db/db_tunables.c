@@ -1086,6 +1086,17 @@ static int fdb_default_ver_update(void *context, void *value)
     return 0;
 }
 
+static int fdb_push_write_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int*)value;
+    if (fdb_push_write_set(val))
+        return -1;
+    *(int*)tunable->var = val;
+    return 0;
+}
+
+
 
 /* Forward declaration */
 int ctrace_set_rollat(void *unused, void *value);

@@ -512,12 +512,18 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     clnt->had_errors = 0;
 
     fdb = get_fdb(push->remotedb);
-    if (!fdb)
-        return -2;
+    if (!fdb) {
+        logmsg(LOGMSG_ERROR, "FDB push missing fdb %s\n", push->remotedb);
+        rc = -2;
+        goto free_push;
+    }
 
     rc = fdb_check_class_match(fdb, push->local, push->class, push->class_override);
-    if (rc)
-        return -2;
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "FDB push class mismatch\n");
+        rc = -2;
+        goto free_push;
+    }
 
     /* fdb is the remote db we want, and it supports remote writes */
 
@@ -530,24 +536,24 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
-        hndl = tran->fcon.hndl = _hndl_open(clnt, NULL,
-                                           0 /* no sqlite rows for writes */, err);
-        if (!tran->fcon.hndl)
-            return -1;
+        tran->fcon.hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
+        if (!tran->fcon.hndl) {
+            rc = -2;
+            goto free;
+        }
         if (clnt->in_client_trans) {
             /* if not standalone, and this is the first reachout to this fdb, send begin */
             clnt->intrans = 1;
-            rc = cdb2_run_statement(hndl, "begin");      
+            rc = cdb2_run_statement(tran->fcon.hndl, "begin");      
             while (rc == CDB2_OK) {
-                rc = cdb2_next_record(hndl);
+                rc = cdb2_next_record(tran->fcon.hndl);
             }
             if (rc != CDB2_OK_DONE) {
                 goto hndl_err;
             }
         }
-    } else {
-        hndl = tran->fcon.hndl;
     }
+    hndl = tran->fcon.hndl;
 
     /* run the statement */
     rc = _run_statement(clnt, hndl, err);
@@ -579,7 +585,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         rc = write_response(clnt, RESPONSE_COLUMNS_FDB_PUSH, hndl, ncols);
         if (rc) {
             errstat_set_rcstrf(err, -1, "failed to write columns");
-            return -1;
+            rc = -1;
+            goto free;
         }
 
         clnt->effects.num_affected = effects.num_affected;
@@ -599,14 +606,16 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         rc = write_response(clnt, RESPONSE_ROW_REMTRAN, NULL, val);
         if (rc) {
             errstat_set_rcstrf(err, -1, "failed to write counter");
-            return -1;
+            rc = -1;
+            goto free;
         }
 
         /* write answer */
         rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
         if (rc) {
             errstat_set_rcstrf(err, -1, "failed to write last row");
-            return -1;
+            rc = -1;
+            goto free;
         }
         goto free;
     } else {
@@ -618,7 +627,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 hndl_err:
     const char *errstr = cdb2_errstr(hndl);
     errstat_set_rcstrf(err, rc, "%s", errstr);
-    //rc = write_response(clnt, RESPONSE_ERROR_PREPARE, (void*)errstr, rc);
     rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
     if (rc) {
         logmsg(LOGMSG_DEBUG, "Failed to write error to client");
@@ -626,6 +634,16 @@ hndl_err:
 free:
     /* remote the fdb_tran_t */
     fdb_free_tran(clnt, tran);
+free_push:
+    if (rc == -2) {
+        logmsg(LOGMSG_ERROR, "FDB push returning -2\n");
+        /* This will get retried as non-cdb2api, free fdb_push
+         * so that the postpone message works
+         */
+        clnt->fdb_push = NULL;
+        free(push->remotedb);
+        free(push);
+    }
     return rc;
 }
 

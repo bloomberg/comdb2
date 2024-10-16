@@ -124,12 +124,12 @@ $R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
 header 5 "test insert, delete, update current version"
 
 #gonna test remtran, it needs push code
-#$S_SQL "put tunable foreign_db_push_remote 1"
-#$R_SQL "put tunable foreign_db_push_remote 1"
+$S_SQL "put tunable foreign_db_push_remote 1"
+$R_SQL "put tunable foreign_db_push_remote 1"
 
-#echo $S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)"
-#echo $R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)"
-#exit 1
+#echo cdb2sql $a_dbname localhost "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)"
+#echo cdb2sql $a_rdbname localhost "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)"
+
 $S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
 $R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
 check

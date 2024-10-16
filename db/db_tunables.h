@@ -554,7 +554,7 @@ REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN, &gbl_fdb_push_
 REGISTER_TUNABLE("foreign_db_push_remote_write", NULL, TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_push_redirect",
                  "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_fdb_push_redirect_foreign, NOARG, NULL, NULL, NULL, NULL);
+                 &gbl_fdb_push_redirect_foreign, NOARG, NULL, NULL, fdb_push_write_update, NULL);
 REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN,
                  &gbl_fdb_resolve_local, READONLY | NOARG | READEARLY, NULL,
                  NULL, NULL, NULL);
