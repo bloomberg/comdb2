@@ -4359,9 +4359,12 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
         char *rest = NULL;
         char *set_tok = strtok_r(dup_sql, " ", &rest);
         if (set_tok) {
-            /* special case for spversion */
+            /* special case for spversion and temporal */
             if (strcasecmp(set_tok, "spversion") == 0) {
                 skip_len += 10;
+                set_tok = strtok_r(rest, " ", &rest);
+            } else if (set_tok && strcasecmp(set_tok, "temporal") == 0) {
+                skip_len += 9;
                 set_tok = strtok_r(rest, " ", &rest);
             /* special case for transaction chunk */
             } else if (strncasecmp(set_tok, "transaction", 11) == 0) {
