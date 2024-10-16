@@ -46,29 +46,6 @@ function header
     echo "$2" >> $output
 }
 
-function runall
-{
-    cmd=$1
-    sql=$2
-
-    echo $cmd "$sql"
-    if [[ -n "$CLUSTER" ]]; then
-        for node in $CLUSTER; do
-            $cmd "$sql"
-            if (( $? != 0 )) ; then
-                echo "FAILURE $node '$sql'"
-                exit 1
-            fi
-        done
-    else
-        $cmd "$sql"
-        if (( $? != 0 )) ; then
-            echo "FAILURE '$sql'"
-            exit 1
-        fi
-    fi
-}
-
 #grab current version
 ver=`$R_SQLT "select value from comdb2_tunables where name='fdb_default_version'"`
 echo "Current fdb version $ver" >> $output 2>&1
@@ -142,6 +119,73 @@ $S_SQL "delete from LOCAL_${a_rdbname}.t where id>=101" >> $output 2>&1
 $R_SQL "delete from LOCAL_${a_dbname}.t where id>=101" >> $output 2>&1
 check
 
+header 6 "remtran run against a pre cdb2api version"
+$R_SQL "put tunable fdb_default_version 6" >> $output 2>&1
+
+$S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
+$R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
+check
+
+$S_SQL "update LOCAL_${a_rdbname}.t set id=id+1 where id>=101" >> $output 2>&1
+$R_SQL "update LOCAL_${a_dbname}.t set id=id+1 where id>=101" >> $output 2>&1
+check
+
+$S_SQL "delete from LOCAL_${a_rdbname}.t where id>=101" >> $output 2>&1
+$R_SQL "delete from LOCAL_${a_dbname}.t where id>=101" >> $output 2>&1
+check
+
+$R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
+
+header 7 "remtran test against a too new version"
+$R_SQL "put tunable fdb_default_version $newver" >> $output 2>&1
+
+$S_SQL "insert into LOCAL_${a_rdbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
+$R_SQL "insert into LOCAL_${a_dbname}.t(id) select * from generate_series(101,110)" >> $output 2>&1
+check
+
+$S_SQL "update LOCAL_${a_rdbname}.t set id=id+1 where id>=101" >> $output 2>&1
+$R_SQL "update LOCAL_${a_dbname}.t set id=id+1 where id>=101" >> $output 2>&1
+check
+
+$S_SQL "delete from LOCAL_${a_rdbname}.t where id>=101" >> $output 2>&1
+$R_SQL "delete from LOCAL_${a_dbname}.t where id>=101" >> $output 2>&1
+check
+
+$R_SQL "put tunable fdb_default_version $ver" >> $output 2>&1
+
+header 8 "remtran test for client transactions"
+echo $S_SQL <<EOF
+begin
+insert into LOCAL_${a_rdbname}.t values (100)
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run insert in a client txn"
+    exit 1
+fi
+check
+
+$S_SQL <<EOF
+begin
+update LOCAL_${a_rdbname}.t set id=id+1 where id=100
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run update in a client txn"
+    exit 1
+fi
+check
+
+$S_SQL <<EOF
+begin
+delete from LOCAL_${a_rdbname}.t where id=101
+commit
+EOF
+if [[ $? != 0 ]] ; then
+    echo "Failed to run delete in a client txn"
+    exit 1
+fi
+check
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_rdbname}/g" output.log > output.log.actual
