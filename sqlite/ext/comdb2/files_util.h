@@ -44,16 +44,6 @@ enum {
     FILES_COLUMN_CHUNK_SIZE,
 };
 
-typedef enum constraint_type {
-    FILES_UNCONSTRAINED_FLAG = 0,
-    FILES_FILE_NAME_LIKE_FLAG = 1,
-    FILES_FILE_NAME_EQ_FLAG = 2,
-    FILES_FILE_NAME_NEQ_FLAG = 4,
-    FILES_FILE_TYPE_EQ_FLAG = 8,
-    FILES_FILE_TYPE_NEQ_FLAG = 16,
-    FILES_CHUNK_SIZE_EQ_FLAG = 32,
-} constraint_type_t;
-
 typedef enum file_type {
     FILES_TYPE_UNKNOWN,
     FILES_TYPE_CHECKPOINT,

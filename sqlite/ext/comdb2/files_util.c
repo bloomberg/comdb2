@@ -28,21 +28,6 @@ static const struct compareInfo globCaseInfo = {'%', '_', '[', 0};
 extern int patternCompare(const u8 *, const u8 *, const struct compareInfo *,
                           u32);
 
-typedef struct constraint_value {
-    void *val;
-    constraint_type_t type;
-} constraint_value_t;
-
-typedef struct comdb2_files_constraints {
-    constraint_value_t *file_name_constraints;
-    int n_file_name_constraints;
-
-    constraint_value_t *file_type_constraints;
-    int n_file_type_constraints;
-
-    int chunk_size_constraint;
-} comdb2_files_constraints_t;
-
 static file_type_t str_to_file_type(const char *type) {
     if (!strcmp(type, "berkdb")) { return FILES_TYPE_BERKDB; }
     else if (!strcmp(type, "checkpoint")) { return FILES_TYPE_CHECKPOINT; }
@@ -146,51 +131,78 @@ static void set_chunk_size(db_file_t *f, size_t chunk_size)
     dbfile_set_chunk_size(f->info, chunk_size);
 }
 
-static int file_name_matches_constraint(const constraint_value_t * const constraints,
-                                        int n_constraints,
+typedef struct index_constraint_value {
+    struct sqlite3_index_constraint sqlite_constraint;
+    void * value;
+} index_constraint_value_t;
+
+static int file_name_matches_constraints(const index_constraint_value_t * const constraints,
                                         const char * const file_name) {
     int is_match = 1;
 
-    for (int i=0; i<n_constraints && is_match; ++i) {
-        const constraint_value_t * const constraint = (constraints + i);
-        const char * c_val = (const char *) constraint->val;
-        const constraint_type_t c_type = constraint->type;
+    for (int i=0; constraints[i].value != NULL && is_match; ++i) {
+        if (constraints[i].sqlite_constraint.iColumn != FILES_COLUMN_FILENAME) {
+            continue;
+        }
 
-        if (c_type == FILES_FILE_NAME_EQ_FLAG) {
-            is_match = strcmp((const char *) c_val, file_name) == 0;
-        } else if (c_type == FILES_FILE_NAME_NEQ_FLAG) {
-            is_match = strcmp((const char *) c_val, file_name) != 0;
+        const int constraint_op = constraints[i].sqlite_constraint.op;
+        const char * constraint_val = (const char *) constraints[i].value;
+
+        if (constraint_op == SQLITE_INDEX_CONSTRAINT_EQ) {
+            is_match = strcmp((const char *) constraint_val, file_name) == 0;
+        } else if (constraint_op == SQLITE_INDEX_CONSTRAINT_NE) {
+            is_match = strcmp((const char *) constraint_val, file_name) != 0;
+        } else if (constraint_op == SQLITE_INDEX_CONSTRAINT_LIKE) {
+            is_match = patternCompare((u8 *)constraint_val, (u8 *)file_name, &globCaseInfo, '[') == 0;
         } else {
-            assert(c_type == FILES_FILE_NAME_LIKE_FLAG);
-            is_match = patternCompare((u8 *)c_val, (u8 *)file_name, &globCaseInfo, '[') == 0;
+            logmsg(LOGMSG_ERROR, "%s: Unexpected constraint operation %d\n", __func__, constraint_op);
+            abort();
         }
     }
 
     return is_match;
 }
 
-static int file_type_matches_constraint(const constraint_value_t * const constraints,
-                                        int n_constraints,
+static int file_type_matches_constraints(const index_constraint_value_t * const constraints,
                                         const file_type_t file_type) {
     int is_match = 1;
 
-    for (int i=0; i<n_constraints && is_match; ++i) {
-        const constraint_value_t * const constraint = (constraints + i);
-        const file_type_t c_val = (const file_type_t) constraint->val;
-        const constraint_type_t c_type = constraint->type;
+    for (int i=0; constraints[i].value != NULL && is_match; ++i) {
+        if (constraints[i].sqlite_constraint.iColumn != FILES_COLUMN_TYPE) {
+            continue;
+        }
 
-        if (c_type == FILES_FILE_TYPE_EQ_FLAG) {
-            is_match = (file_type == c_val);
+        const int constraint_op = constraints[i].sqlite_constraint.op;
+        const file_type_t constraint_val = (const file_type_t) constraints[i].value;
+
+        if (constraint_op == SQLITE_INDEX_CONSTRAINT_EQ) {
+            is_match = constraint_val == file_type;
+        } else if (constraint_op == SQLITE_INDEX_CONSTRAINT_NE) {
+            is_match = constraint_val != file_type;
         } else {
-            assert(c_type == FILES_FILE_TYPE_NEQ_FLAG);
-            is_match = (file_type != c_val);
+            logmsg(LOGMSG_ERROR, "%s: Unexpected constraint operation %d\n", __func__, constraint_op);
+            abort();
         }
     }
 
     return is_match;
 }
 
-static int read_dir(const char *dirname, db_file_t **files, int *count, const comdb2_files_constraints_t *constraints)
+/* Returns chunk size constraint or 0 if there is none */
+static int64_t get_chunk_size_constraint(const index_constraint_value_t * const constraints) {
+    for (int i=0; constraints[i].value != NULL; ++i) {
+        if (constraints[i].sqlite_constraint.iColumn != FILES_COLUMN_CHUNK_SIZE) {
+            continue;
+        }
+
+        return (int64_t) constraints[i].value;
+    }
+
+    return 0;
+}
+
+
+static int read_dir(const char *dirname, db_file_t **files, int *count, const index_constraint_value_t * const constraints)
 {
     struct dirent buf;
     struct dirent *de;
@@ -246,9 +258,7 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, const co
             continue;
         }
 
-        if (!file_name_matches_constraint(constraints->file_name_constraints,
-                                          constraints->n_file_name_constraints,
-                                          de->d_name)) {
+        if (!file_name_matches_constraints(constraints, de->d_name)) {
             logmsg(LOGMSG_DEBUG, "%s:%d: ignoring %s\n", __func__, __LINE__,
                 de->d_name);
             continue;
@@ -273,9 +283,7 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, const co
             type = FILES_TYPE_UNKNOWN;
         }
 
-        if (!file_type_matches_constraint(constraints->file_type_constraints,
-                                          constraints->n_file_type_constraints,
-                                          type)) {
+        if (!file_type_matches_constraints(constraints, type)) {
             logmsg(LOGMSG_DEBUG, "%s:%d: ignoring %s\n", __func__, __LINE__,
                 de->d_name);
             continue;
@@ -316,7 +324,8 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, const co
 
         f->type = type;
 
-        set_chunk_size(f, constraints->chunk_size_constraint);
+       
+        set_chunk_size(f, get_chunk_size_constraint(constraints));
 
         // Remove the data directory prefix
         if (strcmp(dirname, thedb->basedir) == 0) {
@@ -331,7 +340,7 @@ static int read_dir(const char *dirname, db_file_t **files, int *count, const co
     return rc;
 }
 
-static int get_files(void **data, size_t *npoints, const comdb2_files_constraints_t *constraints)
+static int get_files(void **data, size_t * npoints, const index_constraint_value_t * const constraints)
 {
     db_file_t *files = NULL;
     int count = 0;
@@ -442,216 +451,192 @@ static int file_cmp(const void *file1, const void *file2)
     return strcmp(f1->name, f2->name);
 }
 
-static int is_file_name_constraint(const constraint_type_t constraint_name) {
-    return (constraint_name == FILES_FILE_NAME_LIKE_FLAG
-            || constraint_name == FILES_FILE_NAME_EQ_FLAG
-            || constraint_name == FILES_FILE_NAME_NEQ_FLAG);
+static void * get_constraint_value(struct sqlite3_index_constraint constraint, sqlite3_value *value) {
+    if (constraint.iColumn == FILES_COLUMN_FILENAME) {
+        return (void *) sqlite3_value_text(value);
+    } else if (constraint.iColumn == FILES_COLUMN_TYPE) {
+        return (void *) str_to_file_type((const char *) sqlite3_value_text(value));
+    } else if (constraint.iColumn == FILES_COLUMN_CHUNK_SIZE) {
+        return (void *) sqlite3_value_int64(value);
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: Constraint column not expected\n", __func__);
+        abort();
+    }
 }
 
-static int is_file_type_constraint(const constraint_type_t constraint_name) {
-    return (constraint_name == FILES_FILE_TYPE_EQ_FLAG
-            || constraint_name == FILES_FILE_TYPE_NEQ_FLAG);
-}
+typedef struct accepted_index_constraint {
+    struct sqlite3_index_constraint sqlite_constraint;
+    int sqlite_ix; /* constraint's index in sqlite3_index_info.aConstraint */
+} accepted_index_constraint_t;
 
 int files_util_filter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
                        const char *idxStr, int argc, sqlite3_value **argv)
 {
-    logmsg(LOGMSG_DEBUG, "%s\n", __func__);
-
-    int rc = SQLITE_OK;
-
-    systbl_files_cursor *pCur = (systbl_files_cursor *)pVtabCursor;
-    const constraint_type_t * const constraint_names = (const constraint_type_t * const) idxStr;
-    comdb2_files_constraints_t constraint_info = {0};
+    const accepted_index_constraint_t * const accepted_constraints =
+        (const accepted_index_constraint_t * const) idxStr;
+    index_constraint_value_t constraint_values[sizeof(index_constraint_value_t)*argc];
 
     for (int i=0; i<argc; ++i) {
-        const constraint_type_t constraint_name = constraint_names[i];
-        constraint_info.n_file_name_constraints += is_file_name_constraint(constraint_name);
-        constraint_info.n_file_type_constraints += is_file_type_constraint(constraint_name);
+        const struct sqlite3_index_constraint sqlite_constraint = accepted_constraints[i].sqlite_constraint;
+
+        constraint_values[i].sqlite_constraint = sqlite_constraint;
+        constraint_values[i].value = get_constraint_value(sqlite_constraint, argv[i]);
     }
 
-    if (constraint_info.n_file_name_constraints) {
-        constraint_info.file_name_constraints = calloc(1,
-            constraint_info.n_file_name_constraints * sizeof(constraint_value_t));
-        if (!constraint_info.file_name_constraints) { return ENOMEM; }
-    }
-
-    if (constraint_info.n_file_type_constraints) {
-        constraint_info.file_type_constraints = calloc(1,
-            constraint_info.n_file_type_constraints * sizeof(constraint_value_t));
-        if (!constraint_info.file_type_constraints) { return ENOMEM; }
-    }
-
-    int file_name_idx = 0;
-    int file_type_idx = 0;
-
-    for (int i=0; i<argc; ++i) {
-        const constraint_type_t constraint_name = constraint_names[i];
-
-        if (is_file_name_constraint(constraint_name)) {
-            logmsg(LOGMSG_DEBUG, "%s: Applying file name constraint\n", __func__);
-            constraint_info.file_name_constraints[file_name_idx++] = (const constraint_value_t) {
-                (char *)sqlite3_value_text(argv[i]),
-                constraint_name,
-            };
-        } else if (is_file_type_constraint(constraint_name)) {
-            logmsg(LOGMSG_DEBUG, "%s: Applying file type constraint\n", __func__);
-            constraint_info.file_type_constraints[file_type_idx++] = (const constraint_value_t) { 
-                (void *)str_to_file_type((char *)sqlite3_value_text(argv[i])),
-                constraint_name,
-            };
-        } else if (constraint_name == FILES_CHUNK_SIZE_EQ_FLAG) {
-            logmsg(LOGMSG_DEBUG, "%s: Applying chunk size constraint\n", __func__);
-            constraint_info.chunk_size_constraint = sqlite3_value_int64(argv[i]);
-        }
-    }
-
+    systbl_files_cursor * const pCur = (systbl_files_cursor *)pVtabCursor;
     if (pCur->files) { release_files(pCur->files, pCur->nfiles); }
-    if (get_files((void **)&pCur->files, &pCur->nfiles, &constraint_info)) {
+
+    if (get_files((void **)&pCur->files, &pCur->nfiles, (const index_constraint_value_t *) constraint_values)) {
         logmsg(LOGMSG_ERROR, "%s:%d: Failed to get files following filter\n",
                __FILE__, __LINE__);
-        rc = SQLITE_ERROR;
-        goto err;
+        return SQLITE_ERROR;
     }
 
     pCur->rowid = 0;
-
     qsort(pCur->files, pCur->nfiles, sizeof(db_file_t), file_cmp);
-    
-err:
-    if (constraint_info.file_name_constraints) { free(constraint_info.file_name_constraints); }
-    if (constraint_info.file_type_constraints) { free(constraint_info.file_type_constraints); }
-    return rc;
-}
-
-static void add_constraint(sqlite3_index_info * const pIdxInfo,
-                           const int constraint_ix,
-                           int * const argv_ix,
-                           const int omit) {
-    if (constraint_ix >= 0) {
-        pIdxInfo->aConstraintUsage[constraint_ix].argvIndex = ++(*argv_ix);
-        pIdxInfo->aConstraintUsage[constraint_ix].omit = omit;
-    }
+    return SQLITE_OK;
 }
 
 // Very cursory cost estimate.
-static double estimate_cost(const constraint_type_t * const constraints, const int n_constraints) {
+static double estimate_cost(const accepted_index_constraint_t * const accepted_constraints) {
     double cost_est = DBL_MAX;
-    for (int i=0; i<n_constraints; ++i) {
-        const constraint_type_t constraint = constraints[i];
 
-        if (constraint == FILES_FILE_NAME_EQ_FLAG) {
+    for (int i=0; accepted_constraints[i].sqlite_ix != -1; ++i) {
+        const struct sqlite3_index_constraint constraint = accepted_constraints[i].sqlite_constraint;
+
+        if (constraint.iColumn == FILES_COLUMN_FILENAME
+            && constraint.op == SQLITE_INDEX_CONSTRAINT_EQ) {
             cost_est /= pow(10, 6);
-        }
-        if (constraint == FILES_FILE_NAME_LIKE_FLAG) {
+        } else if (constraint.iColumn == FILES_COLUMN_FILENAME
+            && constraint.op == SQLITE_INDEX_CONSTRAINT_LIKE) {
             cost_est /= pow(10, 5);
-        }
-        if (constraint == FILES_FILE_TYPE_EQ_FLAG) {
+        } else if (constraint.iColumn == FILES_COLUMN_TYPE
+            && constraint.op == SQLITE_INDEX_CONSTRAINT_EQ) {
             cost_est /= pow(10, 4);
-        }
-        if (constraint == FILES_FILE_TYPE_NEQ_FLAG) {
+        } else if (constraint.iColumn == FILES_COLUMN_TYPE
+            && constraint.op == SQLITE_INDEX_CONSTRAINT_NE) {
             cost_est /= pow(10, 3);
-        }
-        if (constraint == FILES_FILE_NAME_NEQ_FLAG) {
+        } else if (constraint.iColumn == FILES_COLUMN_FILENAME
+            && constraint.op == SQLITE_INDEX_CONSTRAINT_NE) {
             cost_est /= pow(10, 2);
         }
     }
     return cost_est;
 }
 
-static int parse_file_name_constraint(const struct sqlite3_index_constraint * const pConstraint, constraint_type_t * const constraint) {
-    if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_LIKE) {
-        *constraint = FILES_FILE_NAME_LIKE_FLAG;
-    } else if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ) {
-        *constraint = FILES_FILE_NAME_EQ_FLAG;
-    } else if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_NE) {
-        *constraint = FILES_FILE_NAME_NEQ_FLAG;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with 'like', '=', or '!='\n",
-               __FILE__, __LINE__, print_column_name(FILES_COLUMN_FILENAME));
-        return SQLITE_ERROR;
-    }
-
-    return SQLITE_OK;
+static int is_accepted_file_name_constraint(const struct sqlite3_index_constraint * const pConstraint) {
+    return (pConstraint->op == SQLITE_INDEX_CONSTRAINT_LIKE
+    || pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ
+    || pConstraint->op == SQLITE_INDEX_CONSTRAINT_NE);
 }
 
-static int parse_file_type_constraint(const struct sqlite3_index_constraint * const pConstraint, constraint_type_t * const constraint) {
-    if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ) {
-        *constraint = FILES_FILE_TYPE_EQ_FLAG;
-    } else if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_NE) {
-        *constraint = FILES_FILE_TYPE_NEQ_FLAG;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with '=', or '!='\n",
-               __FILE__, __LINE__, print_column_name(FILES_COLUMN_TYPE));
-        return SQLITE_ERROR;
-    }
-
-    return SQLITE_OK;
+static int is_accepted_file_type_constraint(const struct sqlite3_index_constraint * const pConstraint) {
+    return (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ
+        || pConstraint->op == SQLITE_INDEX_CONSTRAINT_NE);
 }
 
-static int parse_file_chunk_size_constraint(const struct sqlite3_index_constraint * const pConstraint, constraint_type_t * const constraint) {
-    if (pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ) {
-        *constraint = FILES_CHUNK_SIZE_EQ_FLAG;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s:%d: Column '%s' can only be constrained with '=', or '!='\n",
-               __FILE__, __LINE__, print_column_name(FILES_COLUMN_CHUNK_SIZE));
-        return SQLITE_ERROR;
-    }
-
-    return SQLITE_OK;
+static int is_accepted_chunk_size_constraint(const struct sqlite3_index_constraint * const pConstraint) {
+    return pConstraint->op == SQLITE_INDEX_CONSTRAINT_EQ;
 }
 
-static int parse_constraint(const struct sqlite3_index_constraint * const pConstraint,
-                            const int i, constraint_type_t * const constraints) {
+static int is_accepted_constraint(const struct sqlite3_index_constraint * const candidate_constraint) {
+    if (!candidate_constraint->usable) {
+        return 0; 
+    } else if (candidate_constraint->iColumn == FILES_COLUMN_FILENAME)
+    {
+        return is_accepted_file_name_constraint(candidate_constraint);
+    } else if (candidate_constraint->iColumn == FILES_COLUMN_TYPE)
+    {
+        return is_accepted_file_type_constraint(candidate_constraint);
+    } else if (candidate_constraint->iColumn == FILES_COLUMN_CHUNK_SIZE)
+    {
+        return is_accepted_chunk_size_constraint(candidate_constraint);
+    } else {
+        return 0;
+    }
+}
 
-    if (pConstraint->iColumn == FILES_COLUMN_FILENAME 
-        && parse_file_name_constraint(pConstraint, constraints + i))
-    {
-        return SQLITE_ERROR;
-    } else if (pConstraint->iColumn == FILES_COLUMN_TYPE 
-        && parse_file_type_constraint(pConstraint, constraints + i))
-    {
-        return SQLITE_ERROR;
-    } else if (pConstraint->iColumn == FILES_COLUMN_CHUNK_SIZE 
-        && parse_file_chunk_size_constraint(pConstraint, constraints + i))
-    {
-        return SQLITE_ERROR;
+/* 
+ * Parses sqlite's candidate constraints and returns a list including only those candidate
+ * constraints that we can provide an index over.
+ *
+ * For example, if xBestIndex is passed the following through `sqlite3_index_info.aConstraint`:
+ * [{col: 'filename', op: '='}; {col: 'content', op: '='}; {'col: 'type', op: '!='}]
+ *
+ * then this function will return:
+ * [
+ *      {constraint: {col: 'filename', op: '='}, sqlite_ix: 0},
+ *      {constraint: {'col: 'type', op: '!='}, sqlite_ix: 2}
+ * ]
+ */
+static accepted_index_constraint_t * get_accepted_constraints(sqlite3_index_info * const pIdxInfo) {
+    accepted_index_constraint_t * const accepted_constraints = sqlite3_malloc(
+        sizeof(accepted_index_constraint_t)*(pIdxInfo->nConstraint+1) /* Additional value used as sentinel */
+    );
+    if (!accepted_constraints) { return NULL; }
+
+    /* We will use .sqlite_ix == -1 to denote that we've reached the end of the populated portion of the array */
+    memset(accepted_constraints, -1, sizeof(accepted_index_constraint_t)*pIdxInfo->nConstraint);
+
+    int accepted_constraint_ix = 0;
+    for (int sqlite_ix = 0; sqlite_ix < pIdxInfo->nConstraint; sqlite_ix++) {
+        const struct sqlite3_index_constraint * const candidate_constraint = 
+            pIdxInfo->aConstraint + sqlite_ix;
+
+        if (is_accepted_constraint(candidate_constraint)) { 
+            accepted_constraints[accepted_constraint_ix].sqlite_constraint = *candidate_constraint;
+            accepted_constraints[accepted_constraint_ix].sqlite_ix = sqlite_ix;
+            accepted_constraint_ix++;
+        }
     }
 
-    return SQLITE_OK;
+    return accepted_constraints;
+}
+
+/*
+ * Populates `sqlite3_index_info`'s output variables.
+ *
+ * See sqlite3 virtual table docs for more information about these variables.
+ */
+static void populate_best_index_outputs(sqlite3_index_info * const pIdxInfo,
+        const accepted_index_constraint_t * const accepted_constraints,
+        const double estimated_cost) {
+
+    pIdxInfo->orderByConsumed = 0;
+    pIdxInfo->estimatedCost = estimated_cost;
+
+    // xFilter is passed an array of arguments. Each of these
+    // arguments is the value of a constraint.
+    // 
+    // xFilter needs a way to figure out which constraint each
+    // argument is associated with.
+    //
+    // We accomplish this by passing our list of accepted constraints
+    // to xFilter (via `sqlite3_index_info.idxStr`) such that the
+    // n-th constraint in our list of accepted constraints corresponds
+    // with the n-th xFilter argument
+    pIdxInfo->idxStr = (char *) accepted_constraints;
+    pIdxInfo->needToFreeIdxStr = 1;
+
+    int sqlite_ix;
+    for (int i=0; (sqlite_ix = accepted_constraints[i].sqlite_ix), sqlite_ix != -1; ++i) {
+        // Set argvIndex so that it matches the constraint's
+        // position in our list of accepted constraints.
+        pIdxInfo->aConstraintUsage[sqlite_ix].argvIndex = i+1; /* argvIndex is 1-based */
+        pIdxInfo->aConstraintUsage[sqlite_ix].omit = 1;
+    }
 }
 
 int files_util_best_index(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo)
 {
-    logmsg(LOGMSG_DEBUG, "%s\n", __func__);
+    if (pIdxInfo->nConstraint <= 0) { return SQLITE_OK; }
 
-    int nArg = 0;           /* Number of arguments that filesFilter() expects */
+    const accepted_index_constraint_t * const accepted_constraints = get_accepted_constraints(pIdxInfo);
+    const double estimated_cost = estimate_cost(accepted_constraints);
 
-    constraint_type_t * constraints = NULL;
-    if (pIdxInfo->nConstraint > 0) {
-        constraints = sqlite3_malloc(sizeof(constraint_type_t)*pIdxInfo->nConstraint);
-        if (!constraints) { return ENOMEM; }
-        memset(constraints, 0, sizeof(constraint_type_t)*pIdxInfo->nConstraint);
-    }
+    logmsg(LOGMSG_DEBUG,
+           "%s: Estimated cost for index is %f\n", __func__, pIdxInfo->estimatedCost);
 
-    const struct sqlite3_index_constraint *pConstraint;
-    pConstraint = pIdxInfo->aConstraint;
-    for (int i = 0; i < pIdxInfo->nConstraint; i++, pConstraint++) {
-        if (pConstraint->usable == 0) continue;
-        if (parse_constraint(pConstraint, i, constraints)
-            != SQLITE_OK) {
-            return SQLITE_ERROR;
-        }
-        if (constraints[i] != 0) { add_constraint(pIdxInfo, i, &nArg, 1 /* omit */); }
-    }
-
-    pIdxInfo->orderByConsumed = 0;
-    pIdxInfo->estimatedCost = estimate_cost(constraints, pIdxInfo->nConstraint);
-    pIdxInfo->idxStr = (char *) constraints;
-    pIdxInfo->needToFreeIdxStr = constraints != NULL;
-
-    logmsg(LOGMSG_DEBUG, "%s: Estimated cost for index with %d constraints is %f\n",
-        __func__, nArg, pIdxInfo->estimatedCost);
-
+    populate_best_index_outputs(pIdxInfo, accepted_constraints, estimated_cost);
     return SQLITE_OK;
 }
