@@ -54,6 +54,7 @@
 #include "osqlsqlnet.h"
 #include "schemachange.h"
 #include "db_access.h"
+#include "fdb_fend.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
