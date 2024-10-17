@@ -3166,7 +3166,7 @@ void backend_sync_stat(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "FULL CLUSTER CACHE COHERENCY\n");
         break;
     }
-    if (!dbenv->log_delete)
+    if (!dbenv->log_delete || (dbenv->log_delete_filenum == 0))
         logmsg(LOGMSG_USER, "LOG DELETE DISABLED\n");
     else if (dbenv->log_delete_filenum < 0)
         logmsg(LOGMSG_USER, "LOG DELETE ENABLED\n");

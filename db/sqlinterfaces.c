@@ -185,6 +185,8 @@ extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_sql_no_timeouts_on_release_locks;
 extern int get_snapshot(struct sqlclntstate *clnt, int *f, int *o);
 
+extern void clnt_try_enable_logdel(struct sqlclntstate *clnt);
+
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
@@ -5200,6 +5202,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
     close_sp(clnt);
     osql_clean_sqlclntstate(clnt);
+    clnt_try_enable_logdel(clnt);
     if (clnt->dbglog) {
         sbuf2close(clnt->dbglog);
         clnt->dbglog = NULL;
@@ -5320,6 +5323,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     }
 
     clnt->pPool = NULL; /* REDUNDANT? */
+
+    clnt_try_enable_logdel(clnt);
 
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);

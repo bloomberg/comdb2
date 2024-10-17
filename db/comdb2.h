@@ -860,7 +860,9 @@ struct dbenv {
      * log files if log deletion is on. */
     int log_delete_age;
     /* the log delete filenum is the highest log file number that may
-     * be removed.  set this to -1 if any log file may be removed. */
+     * be removed.  set this to -1 if any log file may be removed.
+     * Since log files follow 1-based indexing, setting this to 0
+     * disables log deletion */
     int log_delete_filenum;
     /* this is a linked list of log_delete_stat structs. If the list is
      * empty then log file deletion can proceed as normal. Otherwise we

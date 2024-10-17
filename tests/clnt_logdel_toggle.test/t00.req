@@ -1,0 +1,8 @@
+# Test that a single client can disable and enable log deletion
+select value from comdb2_tunables where name='logdeletelowfilenum'
+set logdelete off
+select 1
+select value from comdb2_tunables where name='logdeletelowfilenum'
+set logdelete on
+select 1
+select value from comdb2_tunables where name='logdeletelowfilenum'

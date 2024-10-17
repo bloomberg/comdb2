@@ -1,0 +1,5 @@
+# Test that if a client abruptly disconnects, log deletion is enabled.
+1 set logdelete off
+1 select value from comdb2_tunables where name='logdeletelowfilenum'
+1 disconnect
+2 select value from comdb2_tunables where name='logdeletelowfilenum'

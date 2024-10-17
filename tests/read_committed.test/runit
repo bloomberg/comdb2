@@ -28,11 +28,12 @@ tbl=t1
 function run_test 
 {
     for i in `ls *.sql`; do
-        cmd="cdb2sql -f ${i} ${CDB2_OPTIONS} $dbname default > ${i}.res"
+        cmd="cdb2sql -f ${i} ${CDB2_OPTIONS} $dbname default > ${i}.res 2>&1"
         echo $cmd
         eval $cmd
         if ! `diff ${i}.exp ${i}.res > /dev/null`; then
             echo "${i}.exp ${i}.res differ..."
+            diff ${i}.exp ${i}.res
             echo "Test FAILED"
             exit 1
         fi

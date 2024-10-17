@@ -1,0 +1,7 @@
+# Test that if the client runs `set logdelete off` multiple times, then only the first call takes effect.
+set logdelete off
+select value from comdb2_tunables where name='logdeletelowfilenum'
+set logdelete off
+select value from comdb2_tunables where name='logdeletelowfilenum'
+set logdelete on
+select value from comdb2_tunables where name='logdeletelowfilenum'
