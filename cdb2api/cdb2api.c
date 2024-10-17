@@ -3082,7 +3082,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
     sqlquery.mach_class = cdb2_default_cluster;
 
-    if (hndl->id_blob) {
+    if (hndl && hndl->id_blob) {
         sqlquery.identity = hndl->id_blob;
     } else if (iam_identity && identity_cb) {
         id_blob = identity_cb->getIdentity();
