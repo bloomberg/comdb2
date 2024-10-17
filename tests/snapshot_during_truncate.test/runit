@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+TIER="default"
+master=$(cdb2sql ${CDB2_OPTIONS} -tabs "${DBNAME}" "${TIER}" "select host from comdb2_cluster where is_master='Y'")
+readonly master
+
+set -e
+export SHELLOPTS
+
+error() {
+	err "Failed at line $1"
+	exit 1
+}
+
+insert_in_loop() {
+	while true;
+	do
+		cdb2sql ${CDB2_OPTIONS} "${DBNAME}" "${TIER}" "insert into t values(1)" &> /dev/null
+	done
+}
+
+test_snapshot_query() {
+	local -r snapshot_sleep_seconds=$1
+
+	set +e
+query_results=$(cdb2sql ${CDB2_OPTIONS} "${DBNAME}" default - 2>&1 <<EOF
+set transaction snapshot
+begin
+select count(*) from t
+select sleep(${snapshot_sleep_seconds})
+select count(*) from t
+commit
+EOF
+)
+	local -r query_rc=$?
+
+	set -e
+	trap 'error $LINENO' ERR
+
+	# Assert that the txn failed
+	(( query_rc != 0 )) 
+
+	local num_count_results
+	num_count_results=$(echo "$query_results" | sed -nr 's/count.*=([0-9]+)/\1/p' | wc -l)
+	readonly num_count_results
+
+	# Assert that we do not have any results for the second count stmt
+	(( num_count_results == 1));
+}
+
+main() {
+	trap 'error $LINENO' ERR
+
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" "${TIER}" "create table t(i int)"
+
+	# force a checkpoint
+	local -r flush_itrs=3
+	for (( i=0; i<flush_itrs; ++i ));
+	do
+		cdb2sql ${CDB2_OPTIONS} --host "${master}" "${DBNAME}" 'exec procedure sys.cmd.send("flush")'
+	done
+
+	local trunc_lsn
+	trunc_lsn=$(cdb2sql ${CDB2_OPTIONS} --host "${master}" "${DBNAME}" 'exec procedure sys.cmd.send("bdb cluster")' \
+		| grep MASTER | sed 's/.*lsn //g ; s/ .*//g')
+	readonly trunc_lsn
+
+	cdb2sql ${CDB2_OPTIONS} --host "${master}" "${DBNAME}" 'exec procedure sys.cmd.send("pushlogs 2")'
+	cdb2sql ${CDB2_OPTIONS} "${DBNAME}" "${TIER}" "insert into t values(1)"
+
+	local -r snapshot_sleep_seconds=5
+	test_snapshot_query "${snapshot_sleep_seconds}" &
+
+	local -r snapshot_pid=$!
+	trap "kill -9 $snapshot_pid" EXIT
+
+	sleep 1
+
+	cdb2sql ${CDB2_OPTIONS} --host "${master}" "${DBNAME}" "exec procedure sys.cmd.truncate_log(\"{"${trunc_lsn}"}\");" &
+
+	insert_in_loop &
+	local -r insert_pid=$!
+	trap "kill -9 $insert_pid" EXIT
+
+	wait "${snapshot_pid}"
+}
+
+main
