@@ -22,6 +22,17 @@ export NOSOURCE=0
 if [[ $DBNAME == *"nosourcegenerated"* ]]; then
     NOSOURCE=1
 fi
+export FIRSTFILE=0
+if [[ $DBNAME == *"firstfilegenerated"* ]]; then
+    FIRSTFILE=1
+fi
+
+# TESTFALLBACK includes 'firstfile'
+export TESTFALLBACK=0
+if [[ $DBNAME == *"testfallbackgenerated"* ]]; then
+    TESTFALLBACK=1
+    FIRSTFILE=1
+fi
 
 if [[ -z "$TEST_TIMEOUT" ]]; then
     export TEST_TIMEOUT=5m
@@ -129,7 +140,11 @@ function create_physrep_tables()
     local repl_metadb_name=$1
     local repl_metadb_host=$2
 
-    cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    if [[ "$FIRSTFILE" == "1" ]]; then
+        cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, firstfile INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    else
+        cdb2sql ${CDB2_OPTIONS} --host $repl_metadb_host $repl_metadb_name "CREATE TABLE comdb2_physreps(dbname CSTRING(60), host CSTRING(120), file INT, offset INT, last_keepalive DATETIME, state CSTRING(60), UNIQUE (dbname, host))"
+    fi
     if [ $? -ne 0 ]; then
         cleanFailExit "failed to create table on $repl_metadb_name@$repl_metadb_host"
     fi
@@ -472,6 +487,8 @@ logmsg level debug
 ctrace_dbdir 1
 allow_lua_print 1
 physrep_update_registry_interval 1
+physrep_keepalive_v2 1
+physrep_test_fallback ${TESTFALLBACK}
 END
 
         $COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid >> ${logFile} 2>&1
@@ -517,6 +534,8 @@ logmsg level debug
 ctrace_dbdir 1
 allow_lua_print 1
 physrep_update_registry_interval 1
+physrep_keepalive_v2 1
+physrep_test_fallback ${TESTFALLBACK}
 END
                 scp ${tmpdir}/${_dbname}.lrl ${node}:${_dbdir}/${_dbname}.lrl
                 ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
@@ -912,6 +931,55 @@ function compare_end_lsns()
     fi
 }
 
+function test_overlap
+{
+    parentlow=$1
+    parenthigh=$2
+    mylow=$3
+    myhigh=$4
+    expectedresult=$5
+
+    x=$(${CDB2SQL_EXE} -s --tabs ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('physrep_overlap_test $parentlow $parenthigh $mylow $myhigh')")
+    result=${x##*=}
+    if [[ $result -ne $expectedresult ]]; then
+        echo "Overlap test failed: parentlow $parentlow parenthigh $parenthigh mylow $mylow myhigh $myhigh expectedresult $expectedresult"
+        cleanFailExit "Overlap test failed"
+    fi
+}
+
+# Use message traps to verify overlap logic
+function match_overlap
+{
+    # {parentlow} {parenthigh} {mylow} {myhigh} expectedresult
+    test_overlap "{1:1}" "{100:100}" "{30:1}" "{100:99}" 1
+    test_overlap "{1:1}" "{30:100}" "{30:101}" "{100:99}" 0
+    test_overlap "{30:100}" "{40:100}" "{10:100}" "{29:100}" 0
+    test_overlap "{30:100}" "{40:100}" "{10:100}" "{30:101}" 1
+
+    # Now test with max-rollback
+    if [[ -n $CLUSTER ]]; then
+        for node in $CLUSTER; do
+            $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME --host $node "put tunable physrep_max_rollback 2"
+        done
+    else
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $DBNAME default "put tunable physrep_max_rollback 2"
+    fi
+
+    test_overlap "{1:1}" "{98:98}" "{30:1}" "{100:100}" 1
+    test_overlap "{1:1}" "{98:98}" "{30:1}" "{101:101}" 0
+    
+    return 0
+}
+
+# Sigstop the physical replicant, allow parent cluster to get ahead, then 
+# delete the parent cluster logs. Then search for 'No overlap:' trace in the
+# physical-replicant logs.  This demonstrates the 'fast-path' case.
+function phys_rep_nomatch
+{
+    # TODO
+    return 0
+}
+
 trap - INT EXIT
 
 # 1. Setup replication metadata cluster
@@ -973,6 +1041,8 @@ compare_end_lsns
 verify_fanout_myoverride ${REPL_META_DBNAME} ${REPL_META_HOST}
 incoherent_test
 clustered_revconn
+match_overlap
+phys_rep_nomatch
 cleanup
 
 exit 0
