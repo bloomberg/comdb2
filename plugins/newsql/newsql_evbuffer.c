@@ -514,7 +514,7 @@ static void timed_out_waiting_for_leader(struct sqlclntstate *clnt)
 static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop_result incoherent)
 {
     if (incoherent == NEWSQL_INCOHERENT) {
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
+        //logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
         newsql_cleanup(appdata);
         return;
     }

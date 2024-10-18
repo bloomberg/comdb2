@@ -731,6 +731,10 @@ struct sqlclntstate {
     unsigned long long sqltick, sqltick_last_seen;
 
     int using_case_insensitive_like;
+
+    /* recover deadlock variables */
+    int last_sql_tick;
+    int waiter_penalty;
     int deadlock_recovered;
 
     /* lua stored procedure */
