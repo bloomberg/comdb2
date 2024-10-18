@@ -30,7 +30,7 @@
 
 #include "comdb2.h"
 #include "sql.h"
-#include "sqliteInt.h"
+//#include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "comdb2uuid.h"
 #include "net_int.h"
@@ -72,8 +72,9 @@
 #define FDB_VER_PROXY 5
 #define FDB_VER_AUTH 6
 #define FDB_VER_CDB2API 7
+#define FDB_VER_WR_CDB2API 8
 
-#define FDB_VER FDB_VER_CDB2API
+#define FDB_VER FDB_VER_WR_CDB2API
 
 extern int gbl_fdb_default_ver;
 
@@ -148,6 +149,7 @@ enum fdb_errors {
 };
 
 extern int gbl_fdb_push_remote;
+extern int gbl_fdb_push_remote_write;
 extern int gbl_fdb_push_redirect_foreign;
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
@@ -175,7 +177,11 @@ struct fdb_tran {
     int errstrlen; /* length of err string, if any */
     char *errstr;  /* error string */
     fdb_t *fdb;    /* pointer to the foreign db */
-    SBUF2 *sb;     /* connection to this fdb */
+    int is_cdb2api;
+    union {
+        SBUF2 *sb;     /* connection to this fdb */
+        cdb2_hndl_tp *hndl; /* cdb2api connection, iff is_cdb2api == 1 */
+    } fcon;
 
     LINKC_T(
         struct fdb_tran) lnk; /* chain of subtransactions, part of the same
@@ -236,13 +242,14 @@ typedef struct fdb_cursor_if {
     int (*tbl_has_expridx)(BtCursor *pCur);
     char *(*dbname)(BtCursor *pCur);
 
-    int (*insert)(BtCursor *pCur, struct sqlclntstate *clnt, fdb_tran_t *trans,
+    int (*insert)(BtCursor *pCur, sqlclntstate *clnt, fdb_tran_t *trans,
                   unsigned long long genid, int datalen, char *data);
-    int (*delete)(BtCursor *pCur, struct sqlclntstate *clnt, fdb_tran_t *trans,
+    int (*delete)(BtCursor *pCur, sqlclntstate *clnt, fdb_tran_t *trans,
                   unsigned long long genid);
-    int (*update)(BtCursor *pCur, struct sqlclntstate *clnt, fdb_tran_t *trans,
+    int (*update)(BtCursor *pCur, sqlclntstate *clnt, fdb_tran_t *trans,
                   unsigned long long oldgenid, unsigned long long genid,
                   int datalen, char *data);
+    int (*create_tran)(sqlclntstate *clnt, fdb_t *fdb, int use_ssl);
 
     fdb_tbl_ent_t *(*table_entry)(BtCursor *pCur);
 
@@ -301,7 +308,7 @@ char *fdb_sqlexplain_get_field_name(Vdbe *v, int rootpage, int ixnum,
  * Create a connection to fdb
  *
  */
-fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
+fdb_cursor_if_t *fdb_cursor_open(sqlclntstate *clnt, BtCursor *pCur,
                                  int rootpage, fdb_tran_t *trans, int *ixnum,
                                  int need_ssl);
 
@@ -329,11 +336,11 @@ fdb_tbl_ent_t *fdb_table_entry_by_name(fdb_t *fdb, const char *name);
 int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage);
 
 /* transactional api */
-fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
-                                    char *ptid, int use_ssl);
-fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid);
-int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects);
-int fdb_trans_rollback(struct sqlclntstate *clnt);
+fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
+                                    int use_ssl, int *created);
+fdb_tran_t *fdb_trans_join(sqlclntstate *clnt, fdb_t *fdb);
+int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects);
+int fdb_trans_rollback(sqlclntstate *clnt);
 char *fdb_trans_id(fdb_tran_t *trans);
 
 char *fdb_get_alias(const char **p_tablename);
@@ -377,7 +384,7 @@ int fdb_table_version(unsigned long long version);
  * Clear sqlclntstate fdb_state object
  *
  */
-void fdb_clear_sqlclntstate(struct sqlclntstate *clnt);
+void fdb_clear_sqlclntstate(sqlclntstate *clnt);
 
 /**
  * Clear sqlite* schema for a certain remote table
@@ -395,7 +402,7 @@ void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
  * The lock prevents the flush racing against running remote access
  *
  */
-int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
+int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
                    fdb_tbl_ent_t **p_ent);
 
 /**
@@ -444,8 +451,29 @@ int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);
 extern int gbl_fdb_incoherence_percentage;
 extern int gbl_fdb_io_error_retries;
 
-int process_fdb_set_cdb2api(struct sqlclntstate *clnt, char *sqlstr,
+int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr,
                             char *err, int errlen);
+
+/**
+ * Check that fdb class matches a specific class
+ *
+ */
+int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
+                          int class_override);
+
+/**
+ * Connect to a remote cluster based of push connector information
+ * and additional configuration options
+ *
+ */
+cdb2_hndl_tp *fdb_push_connect(sqlclntstate *clnt, int *client_redir,
+                               struct errstat *err);
+
+/**
+ * Free resources for a specific fdb_tran
+ *
+ */
+void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran);
 
 #endif
 

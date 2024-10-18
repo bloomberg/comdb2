@@ -59,6 +59,7 @@
 #include "logmsg.h"
 #include "schemachange.h" /* sc_errf() */
 #include "dynschematypes.h"
+#include "fdb_fend.h"
 
 extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
