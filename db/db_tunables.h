@@ -2454,4 +2454,6 @@ REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc
                  TUNABLE_INTEGER, &gbl_sc_status_max_rows, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_process_pstack_time", "pstack the server if rep_process runs longer than time specified in secs (Default: 30s)",
                  TUNABLE_INTEGER, &gbl_rep_process_pstack_time, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("use_qrcv", "Have legacy queues use cdb2qrcv instead of bigsnd", TUNABLE_INTEGER, &gbl_use_qrcv,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

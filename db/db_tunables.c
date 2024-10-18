@@ -544,6 +544,7 @@ extern int gbl_altersc_latency_inc;
 extern int gbl_sc_history_max_rows;
 extern int gbl_sc_status_max_rows;
 extern int gbl_rep_process_pstack_time;
+extern int gbl_use_qrcv;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);
