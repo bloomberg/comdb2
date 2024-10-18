@@ -415,7 +415,8 @@ enum DB_METADATA {
     META_QUEUE_ODH = -14,
     META_QUEUE_COMPRESS = -15,
     META_QUEUE_PERSISTENT_SEQ = -16,
-    META_QUEUE_SEQ = -17
+    META_QUEUE_SEQ = -17,
+    META_START_TIME = -18
 };
 
 enum CONSTRAINT_FLAGS {
@@ -664,12 +665,21 @@ typedef struct dbtable {
     int64_t read_count; // counter for reads to this table
     int64_t index_used_count;   // counter for number of times a table index was used
 
+    /* temporal periods */
+    struct timespec tstart;
+    int is_history_table;
+    period_t periods[PERIOD_MAX];
+    struct db *history_db;
+    struct db *orig_db;
+    int overwrite_systime;
+
     /* Foreign key constraints */
     constraint_t *constraints;
     size_t n_constraints;
     /* Pointers to other table constraints that are directed at this table. */
     constraint_t **rev_constraints;
     size_t n_rev_constraints;
+    size_t n_rev_cascade_systime;
     size_t cap_rev_constraints;
     pthread_mutex_t rev_constraints_lk;
 
@@ -1476,6 +1486,9 @@ struct ireq {
     int comdbg_flags;
 
     int64_t timestamp;
+
+    /* temporal table */
+    struct timespec tstart;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -2230,12 +2243,17 @@ int ix_next_trans(struct ireq *iq, void *trans, int ixnum, void *key,
                   int keylen, void *last, int lastrrn,
                   unsigned long long lastgenid, void *fndkey, int *fndrrn,
                   unsigned long long *genid, void *fnddta, int *fndlen,
-                  int maxlen, unsigned long long context);
 
+                  int maxlen, unsigned long long context);
 int ix_prev(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
             int lastrrn, unsigned long long lastgenid, void *fndkey,
             int *fndrrn, unsigned long long *genid, void *fnddta, int *fndlen,
             int maxlen, unsigned long long context);
+int ix_prev_trans(struct ireq *iq, void *trans, int ixnum, void *key,
+                  int keylen, void *last, int lastrrn,
+                  unsigned long long lastgenid, void *fndkey, int *fndrrn,
+                  unsigned long long *genid, void *fnddta, int *fndlen,
+                  int maxlen, unsigned long long context);
 int ix_prev_nl_ser(struct ireq *iq, int ixnum, void *key, int keylen,
                    void *last, int lastrrn, unsigned long long lastgenid,
                    void *fndkey, int *fndrrn, unsigned long long *genid,
@@ -2497,6 +2515,9 @@ int get_db_bthash_tran(struct dbtable *, int *bthashsz, tran_type *);
 int put_db_instant_schema_change(struct dbtable *db, tran_type *tran, int isc);
 int get_db_instant_schema_change(struct dbtable *db, int *isc);
 int get_db_instant_schema_change_tran(struct dbtable *, int *isc, tran_type *tran);
+
+int put_db_start_time(struct db *db, tran_type *tran);
+int get_db_start_time(struct db *db, struct timespec *ts, tran_type *tran);
 
 int set_meta_odh_flags(struct dbtable *db, int odh, int compress, int compress_blobs,
                        int ipupates);
