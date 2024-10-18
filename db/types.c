@@ -840,7 +840,6 @@ TYPES_INLINE int validate_cstr(const char *s, int lim)
         len++;
     }
 
-#ifndef DEBUG_TYPES
     /* No \0 - that's bad.  For a while this code was broken and we were
      * returning 0 here and therefore allowing the string to go through.
      * We'll fix it, but on a tunable in case anyone is relying on the
@@ -858,9 +857,6 @@ TYPES_INLINE int validate_cstr(const char *s, int lim)
         }
     }
     return gbl_fix_validate_cstr;
-#else
-    return -1;
-#endif
 }
 
 TYPES_INLINE int validate_pstr(const char *s, int lim)
@@ -5197,7 +5193,114 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_BINT(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    DO_CLIENT_TO_SERVER(REAL, INT, BINT);
+    /* what if floating point value is NaN ?? */
+    *outdtsz = 0;
+    if (isnull) {
+        set_null(out, outlen);
+        return 0;
+    }
+
+    int from_flip = 0;
+    CHECK_FLIP(inopts, from_flip);
+
+    double from8;
+    switch (inlen) {
+    case 8:
+        memcpy(&from8, in, 8);
+        if (from_flip) from8 = flibc_dblflip(from8);
+        break;
+    case 4:
+        {
+        float from4;
+        memcpy(&from4, in, 4);
+        if (from_flip) from4 = flibc_floatflip(from4);
+        from8 = from4;
+        }
+        break;
+    default:
+        return -1;
+    }
+
+    uint8_t hdr = 0;
+    bset(&hdr, data_bit);
+    switch (outlen) {
+    case 9:
+        {
+        int64_t to8;
+        if (from8 > INT64_MAX) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = INT64_MAX;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        } else if (from8 < INT64_MIN) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                hdr = 0;
+                bset(&hdr, truncate_bit);
+                from8 = INT64_MIN;
+            } else {
+                return -1;
+            }
+        }
+        int8_to_int8b(from8, (int8b *) &to8);
+        to8 = flibc_htonll(to8);
+        set_data_int(out, &to8, outlen, hdr);
+        }
+        break;
+    case 5:
+        {
+        int32_t to4;
+        if (from8 > INT32_MAX) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = INT32_MAX;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        } else if (from8 < INT32_MIN) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = INT32_MIN;
+                hdr = 0;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        }
+        int4_to_int4b(from8, (int4b *) &to4);
+        to4 = flibc_htonll(to4);
+        set_data_int(out, &to4, outlen, hdr);
+        }
+        break;
+    case 3:
+        {
+        int16_t to2;
+        if (from8 > INT16_MAX) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = INT16_MAX;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        } else if (from8 < INT16_MIN) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = INT16_MIN;
+                hdr = 0;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        }
+        int2_to_int2b(from8, (int2b *) &to2);
+        to2 = flibc_htonll(to2);
+        set_data_int(out, &to2, outlen, hdr);
+        }
+        break;
+    default:
+        return -1;
+    }
+    *outdtsz = outlen;
+    return 0;
 }
 
 TYPES_INLINE int CLIENT_REAL_to_SERVER_UINT(
@@ -5205,7 +5308,113 @@ TYPES_INLINE int CLIENT_REAL_to_SERVER_UINT(
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
     const struct field_conv_opts *outopts, blob_buffer_t *outblob)
 {
-    DO_CLIENT_TO_SERVER(REAL, UINT, UINT);
+    *outdtsz = 0;
+    if (isnull) {
+        set_null(out, outlen);
+        return 0;
+    }
+
+    int from_flip = 0;
+    CHECK_FLIP(inopts, from_flip);
+
+    double from8;
+    switch (inlen) {
+    case 8:
+        memcpy(&from8, in, 8);
+        if (from_flip) from8 = flibc_dblflip(from8);
+        break;
+    case 4:
+        {
+        float from4;
+        memcpy(&from4, in, 4);
+        if (from_flip) from4 = flibc_floatflip(from4);
+        from8 = from4;
+        }
+        break;
+    default:
+        return -1;
+    }
+
+    uint8_t hdr = 0;
+    bset(&hdr, data_bit);
+    switch (outlen) {
+    case 9:
+        {
+        int64_t to8;
+        if (from8 > UINT64_MAX) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = UINT64_MAX;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        } else if (from8 < 0) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                hdr = 0;
+                bset(&hdr, truncate_bit);
+                from8 = 0;
+            } else {
+                return -1;
+            }
+        }
+        int8_to_int8b(from8, (int8b *) &to8);
+        to8 = flibc_htonll(to8);
+        set_data_int(out, &to8, outlen, hdr);
+        }
+        break;
+    case 5:
+        {
+        int32_t to4;
+        if (from8 > UINT32_MAX) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = UINT32_MAX;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        } else if (from8 < 0) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = 0;
+                hdr = 0;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        }
+        int4_to_int4b(from8, (int4b *) &to4);
+        to4 = flibc_htonll(to4);
+        set_data_int(out, &to4, outlen, hdr);
+        }
+        break;
+    case 3:
+        {
+        int16_t to2;
+        if (from8 > UINT16_MAX) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = UINT16_MAX;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        } else if (from8 < 0) {
+            if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
+                from8 = 0;
+                hdr = 0;
+                bset(&hdr, truncate_bit);
+            } else {
+                return -1;
+            }
+        }
+        int2_to_int2b(from8, (int2b *) &to2);
+        to2 = flibc_htonll(to2);
+        set_data_int(out, &to2, outlen, hdr);
+        }
+        break;
+    default:
+        return -1;
+    }
+    *outdtsz = outlen;
+    return 0;
 }
 
 TYPES_INLINE int CLIENT_UINT_to_SERVER_BINT(

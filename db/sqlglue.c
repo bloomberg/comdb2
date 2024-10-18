@@ -18,7 +18,9 @@
 #include "analyze.h"
 
 #ifndef DEBUG_TYPES
-#include "types.c"
+#  include "types.c"
+#else
+#  include <tohex.h>
 #endif
 
 /*
@@ -1132,7 +1134,6 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             // if string is longer than field
             // and find-by-truncate is enabled
             convopts->step = (f->flags & INDEX_DESCEND) ? 0 : 1;
-            bias_info->truncated = 1;
         }
         rc = CLIENT_to_SERVER(m->z, m->n, CLIENT_PSTR2, null,
                               (struct field_conv_opts *)convopts,
@@ -1366,7 +1367,6 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             /* if the SQLite BLOB is longer than the bytearray field
                and find-by-truncate is enabled. */
             convopts->step = (f->flags & INDEX_DESCEND) ? 0 : 1;
-            bias_info->truncated = 1;
         }
 
         rc =
@@ -6092,7 +6092,8 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         }
 
         /* hack for partial indexes and indexes on expressions */
-        if (bias == OP_IdxDelete && pCur->ixnum != -1) {
+        if (pCur->ixnum == -1) abort();
+        if (bias == OP_IdxDelete) {
             if (gbl_expressions_indexes && pCur->db->ix_expr) {
                 assert(clnt->idxDelete[pCur->ixnum] == NULL);
                 clnt->idxDelete[pCur->ixnum] = malloc(ondisk_len);
@@ -6168,17 +6169,14 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
 
         /* Note: this code is to close a hole where we look for a value that's
          * larger than anything in the db, find something smaller, then larger
-         * values
-         * get added before we try to find the next matching record. There's a
-         * corresponding problem in the 'go left' case if we try to find records
-         * smaller than the smallest value in the db, but there's no cheap way
-         * to
-         * figure out of the record is the first record in the db. Serializable
-         * papers over this with correct skip logic, but for now the left case
-         * isn't
-         * handled.
-         */
-        /* NOTE: last dup is returning EOF here :
+         * values get added before we try to find the next matching record.
+         * There's a corresponding problem in the 'go left' case if we try to
+         * find records smaller than the smallest value in the db, but there's
+         * no cheap way to figure out of the record is the first record in the
+         * db. Serializable papers over this with correct skip logic, but for
+         * now the left case isn't handled.
+         *
+         * NOTE: last dup is returning EOF here :
          * table contains 1, 2, 3; select * from table where id>0 !
          */
         if (rc == IX_PASTEOF && !(pIdxKey->default_rc < 0)) {
@@ -6225,18 +6223,9 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                 }
             }
 
-            if (likely(info.truncated == 0)) {
-                /* Comdb2 keys are memcmp'able. Lets put that to use.. */
-                int cmplen = ondisk_len < fndlen ? ondisk_len : fndlen;
-                *pRes = memcmp(pCur->fndkey, pCur->ondisk_key, cmplen);
-            } else {
-                /*
-                ** Strings were truncated for find
-                ** Compare found key with complete original search key
-                */
-                *pRes = sqlite3VdbeRecordCompare(pCur->keybuflen, pCur->keybuf,
-                                                 pIdxKey);
-            }
+            // ondisk key might have truncated values. check against original key
+            *pRes = sqlite3VdbeRecordCompare(pCur->keybuflen, pCur->keybuf, pIdxKey);
+
             if (*pRes == 0 && bias != OP_SeekGT) {
                 *pRes = pIdxKey->default_rc;
             }
