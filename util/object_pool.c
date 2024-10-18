@@ -29,13 +29,13 @@
 #include "object_pool.h"
 #include "logmsg.h"
 #include "sys_wrap.h"
+#include "math_util.h" /* min */
 
 #include <mem_util.h>
 #include <mem_override.h>
 
 // macros
 //#define OBJ_POOL_DEBUG
-#define min(x, y) ((x) < (y) ? (x) : (y))
 #define full(op) ((op)->nobjs == (op)->capacity)
 #define empty(op) ((op)->nobjs == 0)
 #define exhausted(op) ((op)->nactiveobjs == (op)->nobjs)
