@@ -79,8 +79,7 @@ static pthread_mutex_t taglock;
 
 hash_t *gbl_tag_hash;
 
-int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
-                    int strict);
+int compare_tag_int(struct schema *old, struct schema *new, FILE *out, int strict, sc_tag_change_subtype *);
 int compare_indexes(const char *table, FILE *out);
 static void freeschema_internals(struct schema *schema);
 
@@ -3865,7 +3864,7 @@ int compare_all_tags(const char *table, FILE *out)
                     rc = 1;
                     break;
                 }
-                rc = compare_tag_int(old, new, out, 1 /*strict comparison*/);
+                rc = compare_tag_int(old, new, out, 1 /*strict comparison*/, NULL);
                 if (rc != 0)
                     break;
             }
@@ -3915,7 +3914,7 @@ int compare_tag(const char *tblname, const char *tag, FILE *out)
         return -1;
     }
 
-    return compare_tag_int(old, new, out, 0 /*non-strict comparison*/);
+    return compare_tag_int(old, new, out, 0 /*non-strict comparison*/, NULL);
 }
 
 static int default_cmp(int oldlen, const void *oldptr, int newlen,
@@ -3944,13 +3943,13 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
  * SC_BAD_DBPAD: Byte array size changed and missing dbpad
  * SC_COLUMN_ADDED: If new column is added
  * SC_DBSTORE_CHANGE: Only change is dbstore of an existing field */
-int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
-                    int strict)
+int compare_tag_int(struct schema *old, struct schema *new, FILE *out, int strict, sc_tag_change_subtype *subtypep)
 {
     struct field *fnew = NULL, *fold;
     int rc = SC_NO_CHANGE;
     int change = SC_NO_CHANGE;
     int oidx, nidx;
+    sc_tag_change_subtype subtype = SC_TAG_CHANGE_UNKNOWN;
 
     /* Find changes to old fields */
     for (oidx = 0; oidx < old->nmembers; ++oidx) {
@@ -3969,12 +3968,14 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     snprintf(buf, sizeof(buf), "data type was %d, now %d",
                              fold->type, fnew->type);
                     change = SC_TAG_CHANGE;
+                    subtype = SC_TAG_CHANGE_TYPE_CHANGED;
                 } else if (!(fold->flags & NO_NULL) &&
                            (fnew->flags & NO_NULL)) {
                     snprintf(buf, sizeof(buf),
                              "field flags were 0x%x, now 0x%x", fold->flags,
                              fnew->flags);
                     change = SC_TAG_CHANGE;
+                    subtype = SC_TAG_CHANGE_NULLABILITY_CHANGED;
                 } else if (fnew->len != fold->len) {
                     snprintf(buf, sizeof(buf), "field size was %d, now %d",
                              fold->len, fnew->len);
@@ -3987,12 +3988,14 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                         return SC_BAD_DBPAD;
                     } else if (fnew->len < fold->len) {
                         change = SC_TAG_CHANGE;
+                        subtype = SC_TAG_CHANGE_LENGTH_DECREASED;
                     } else if (new->nmembers == old->nmembers) {
                         if ((fnew->type == SERVER_BLOB2) ||
                             (fnew->type == SERVER_VUTF8)) {
                             /* Blob size might have increased, and can not fit
                              * in dta file. */
                             change = SC_TAG_CHANGE;
+                            subtype = SC_TAG_CHANGE_BLOB_CHANGED;
                         } else {
                             change = SC_COLUMN_ADDED;
                         }
@@ -4052,6 +4055,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
         if (!found) {
             snprintf(buf, sizeof(buf), "field has been deleted");
             change = SC_TAG_CHANGE;
+            subtype = SC_TAG_CHANGE_COLUMN_DROPPED;
         }
 
         /* These kind of changes would require a rebuild if this were the
@@ -4137,6 +4141,8 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                        "tag %s field %d (named %s) has changed (%s)\n",
                        old->tag, oidx, fold->name, buf);
             }
+            if (subtypep != NULL)
+                *subtypep = subtype;
             return change;
         }
 
@@ -4176,6 +4182,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
             if (SERVER_VUTF8 == fnew->type &&
                 fnew->in_default_len > (fnew->len - 5)) {
                 rc = SC_TAG_CHANGE;
+                subtype = SC_TAG_CHANGE_VUTF8_DBSTORE;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s -- dbstore "
                                  "too large forcing rebuild)\n",
@@ -4217,8 +4224,12 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                         new->recsize, old->recsize);
             }
             rc = SC_TAG_CHANGE;
+            subtype = SC_TAG_CHANGE_RECSIZE;
         }
     }
+
+    if (subtypep != NULL)
+        *subtypep = subtype;
     return rc;
 }
 
@@ -5971,8 +5982,7 @@ void update_dbstore(dbtable *db)
         logmsg(LOGMSG_DEBUG, "%s set table '%s' schema version %d to %p\n",
                __func__, db->tablename, v, db->versmap[v]);
         db->vers_compat_ondisk[v] = 1;
-        if (SC_TAG_CHANGE ==
-            compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))
+        if (SC_TAG_CHANGE == compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/, NULL))
             db->vers_compat_ondisk[v] = 0;
 
         for (int i = 0; i < ver->nmembers; ++i) {
@@ -6730,4 +6740,21 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
 struct schema *get_schema(const struct dbtable *db, int ix)
 {
     return (ix == -1) ? db->schema : db->ixschema[ix];
+}
+
+const char *sc_tag_change_subtype_text(sc_tag_change_subtype subtype)
+{
+    static const char *texts[] = {[SC_TAG_CHANGE_UNKNOWN] = "subtype unknown",
+                                  [SC_TAG_CHANGE_TYPE_CHANGED] = "column type changed",
+                                  [SC_TAG_CHANGE_NULLABILITY_CHANGED] = "column nullability changed",
+                                  [SC_TAG_CHANGE_LENGTH_DECREASED] = "column size decreased",
+                                  [SC_TAG_CHANGE_BLOB_CHANGED] = "blob/vutf8 changed",
+                                  [SC_TAG_CHANGE_COLUMN_DROPPED] = "column dropped",
+                                  [SC_TAG_CHANGE_VUTF8_DBSTORE] = "new vutf8 with dbstore",
+                                  [SC_TAG_CHANGE_RECSIZE] = "recsize too small",
+                                  [SC_TAG_CHANGE_REBUILD] = "rebuild requested"};
+
+    if (subtype >= sizeof(texts) / sizeof(texts[0]))
+        subtype = SC_TAG_CHANGE_UNKNOWN;
+    return texts[subtype];
 }
