@@ -38,6 +38,7 @@
 #include "logmsg.h"
 #include "thread_stats.h"
 #include "dbinc/locker_info.h"
+#include "math_util.h" /* min */
 
 #include "cson.h"
 #include "comdb2_atomic.h"
@@ -64,7 +65,6 @@ static int64_t eventlog_count = 0;
 static int eventlog_debug_events = 0;
 
 static void eventlog_roll(void);
-#define min(x, y) ((x) < (y) ? (x) : (y))
 
 struct sqltrack {
     char fingerprint[FINGERPRINTSZ];
