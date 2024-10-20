@@ -1946,6 +1946,7 @@ void init_reverse_constraints(struct dbtable *db)
     db->rev_constraints = calloc(INITREVCONSTRAINTS, sizeof(constraint_t *));
     db->cap_rev_constraints = INITREVCONSTRAINTS;
     db->n_rev_constraints = 0;
+    db->n_rev_cascade_systime = 0;
 }
 
 int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt)
@@ -1957,6 +1958,9 @@ int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt)
         };
     }
     db->rev_constraints[db->n_rev_constraints++] = cnstrt;
+    if ((cnstrt->flags & (CT_UPD_CASCADE | CT_DEL_CASCADE)) != 0 &&
+        db->periods[PERIOD_SYSTEM].enable)
+        db->n_rev_cascade_systime++;
     return rc;
 }
 

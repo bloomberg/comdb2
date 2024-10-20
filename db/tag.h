@@ -52,6 +52,14 @@ struct field {
     int blob_index; /* index of this blob, -1 for non blobs */
 };
 
+enum pd_flags { PERIOD_SYSTEM = 0, PERIOD_BUSINESS = 1, PERIOD_MAX = 2 };
+
+typedef struct {
+    int enable;
+    int start;
+    int end;
+} period_t;
+
 #if defined STACK_TAG_SCHEMA
 #define MAX_TAG_STACK_FRAMES 64
 #endif
@@ -74,6 +82,7 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
+    period_t periods[PERIOD_MAX];
 #if defined STACK_TAG_SCHEMA
     int frames;
     void *buf[MAX_TAG_STACK_FRAMES];
@@ -112,7 +121,15 @@ enum {
                          reverse ondisk sort */
     ,
     NO_NULL = 2 /* do not allow nulls */
+    ,
+    SYSTEM_START = 4,
+    SYSTEM_END = 8,
+    BUSINESS_START = 16,
+    BUSINESS_END = 32
 };
+
+enum { MEMBER_PERIOD_MASK = (0x00000000 | SYSTEM_START | SYSTEM_END
+                             | BUSINESS_START | BUSINESS_END) };
 
 /* flags for schema conversion */
 enum {
@@ -199,6 +216,14 @@ enum {
 };
 
 #define DBPAD_OR_DBSTORE_ERR(e) ((e) == SC_BAD_NEW_FIELD || (e) == SC_BAD_DBPAD || (e) == SC_BAD_DBSTORE_FUNC_NOT_NULL)
+
+enum {
+    /* plan_convert */
+    SC_NO_CONVERT = 0,
+    SC_PLAN_CONVERT,
+    /* no overlap constraint verification */
+    SC_KEYVER_CONVERT
+};
 
 extern hash_t *gbl_tag_hash;
 extern char gbl_ondisk_ver[];
