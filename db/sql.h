@@ -213,6 +213,7 @@ typedef struct osqlstate {
 
     /* set to 1 if we have already called osql_sock_start in socksql mode */
     unsigned sock_started : 1;
+    struct timespec tstart; /* transaction start timespec */
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -993,6 +994,17 @@ struct sqlclntstate {
     LISTC_T(struct participant) participants;
 
     unsigned disabled_logdel : 1; /* 1 if this clnt disabled logdel using set stmt and has not tried to re-enable it */
+
+    /* temporal table */
+    struct timespec tstart;
+    struct {
+        char *pFrom;
+        char *pTo;
+        int iIncl;
+        int iAll;
+        int iBus;
+    } pTemporal[2];
+    void *pTemporalParser;
 };
 
 /* Query stats. */
