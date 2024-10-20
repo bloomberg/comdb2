@@ -217,12 +217,22 @@ extern int null_bit;
         set_data_int((to), (from), (sz), hdr);                                 \
     } while (0)
 
-#define stype_is_null(p) btst(p, null_bit)
+#define stype_is_null(p) (btst(p, null_bit_low) || btst(p, null_bit_high))
 
 #define set_null(p, len)                                                       \
     do {                                                                       \
         memset(p, 0, len);                                                     \
         bset(p, null_bit);                                                     \
+    } while (0)
+
+#define set_null_high(p, len)                                                  \
+    do {                                                                       \
+        bset(p, null_bit_high);                                                \
+    } while (0)
+
+#define set_null_low(p, len)                                                   \
+    do {                                                                       \
+        bset(p, null_bit_low);                                                 \
     } while (0)
 
 #define stype_is_resolve_master(p) btst(p, resolve_master_bit)
