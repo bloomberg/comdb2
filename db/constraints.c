@@ -40,6 +40,7 @@
 static char *get_temp_ct_dbname(long long *);
 static int is_update_op(int op);
 static int is_delete_op(int op);
+static int key_has_member(struct schema *key, const char *name);
 
 extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
@@ -420,6 +421,9 @@ int check_update_constraints(struct ireq *iq, void *trans,
         char rkey[MAXKEYLEN + 1];
         int rixnum = 0, rixlen = 0;
         char rondisk_tag[MAXTAGLEN];
+
+        if (cnstrt->flags & CT_NO_OVERLAP)
+            continue;
 
         for (j = 0; j < cnstrt->nrules; j++) {
             char ondisk_tag[MAXTAGLEN];
@@ -1692,6 +1696,169 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                     return ERR_CONVERT_IX;
                 }
 
+                if (ct->flags & CT_NO_OVERLAP) {
+                    for (ridx = 0; ridx < ct->nrules; ridx++) {
+                        char rkey[MAXKEYLEN]; /* range search key */
+                        int from_off, to_off, mlen;
+                        struct schema *lky = iq->usedb->ixschema[lixnum];
+                        int ixlen = iq->usedb->ix_keylen[lixnum];
+                        unsigned long long fgenid = 0LL;
+                        int cmp;
+                        int isnull;
+
+                        from_off = key_has_member(lky, ct->table[ridx]);
+                        mlen = lky->member[from_off].len;
+                        from_off = lky->member[from_off].offset;
+                        to_off = key_has_member(lky, ct->keynm[ridx]);
+                        to_off = lky->member[to_off].offset;
+                        isnull = stype_is_null(lkey + to_off);
+
+                        /* make sure from strictly less than to */
+                        cmp = memcmp(lkey + from_off, lkey + to_off, mlen);
+                        if (!isnull && cmp >= 0) {
+                            if (iq->debug) {
+                                reqprintf(iq, "VERKYCNSTRT CANT RESOLVE "
+                                              "CONSTRAINT NO_OVERLAP(%s : %s)",
+                                          ct->table[ridx], ct->keynm[ridx]);
+                                reqdumphex(iq, lkey, ixlen);
+                            }
+                            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
+                                      "verify key constraint cannot resolve "
+                                      "constraint no_overlap(%s : %s)",
+                                      ct->table[ridx], ct->keynm[ridx]);
+                            *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return ERR_BADREQ;
+                        }
+
+                        memcpy(rkey, lkey, MAXKEYLEN);
+                        memset(rkey + to_off, 0, mlen);
+
+                        rc = ix_find_by_key_tran(iq, rkey, ixlen, lixnum, key,
+                                                 &fndrrn, &fgenid, NULL, NULL,
+                                                 0, trans);
+                        if (rc == RC_INTERNAL_RETRY) {
+                            *errout = OP_FAILED_INTERNAL;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return rc;
+                        }
+
+                        /*
+                        ** OVERLAP CASE 1:
+                        **
+                        ** adding:    |========|
+                        ** found:     |----|
+                        ** or found:  |-----NULL
+                        */
+                        if (fgenid != genid) {
+                            if (iq->debug) {
+                                reqprintf(iq, "VERKYCNSTRT CANT RESOLVE "
+                                              "CONSTRAINT NO_OVERLAP(%s : %s)",
+                                          ct->table[ridx], ct->keynm[ridx]);
+                                reqdumphex(iq, lkey, ixlen);
+                            }
+                            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
+                                      "verify key constraint cannot resolve "
+                                      "constraint no_overlap(%s : %s)",
+                                      ct->table[ridx], ct->keynm[ridx]);
+                            *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return ERR_BADREQ;
+                        }
+
+                        rc = ix_next_trans(iq, trans, lixnum, lkey, ixlen, lkey,
+                                           addrrn, genid, key, &fndrrn, &fgenid,
+                                           NULL, NULL, 0, 0);
+                        if (rc == RC_INTERNAL_RETRY) {
+                            *errout = OP_FAILED_INTERNAL;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return rc;
+                        }
+
+                        cmp = memcmp(key + from_off, lkey + to_off, mlen);
+                        isnull = stype_is_null(lkey + to_off);
+                        memset(rkey + from_off, 0, mlen);
+                        memset(key + from_off, 0, mlen);
+                        memset(key + to_off, 0, mlen);
+
+                        /*
+                        ** OVERLAP CASE 2:
+                        **
+                        ** adding:    |========NULL (isnull)
+                        ** or adding: NULL=====|    (cmp < 0)
+                        ** or adding: |========|    (cmp < 0)
+                        ** found:       |----|
+                        ** or found:    |------|
+                        ** or found:    |---------|
+                        ** or found:    |-----------NULL
+                        */
+                        if (fgenid != genid && (isnull || cmp < 0) &&
+                            memcmp(rkey, key, ixlen) == 0) {
+                            if (iq->debug) {
+                                reqprintf(iq, "VERKYCNSTRT CANT RESOLVE "
+                                              "CONSTRAINT NO_OVERLAP(%s : %s)",
+                                          ct->table[ridx], ct->keynm[ridx]);
+                                reqdumphex(iq, lkey, ixlen);
+                            }
+                            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
+                                      "verify key constraint cannot resolve "
+                                      "constraint no_overlap(%s : %s)",
+                                      ct->table[ridx], ct->keynm[ridx]);
+                            *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return ERR_BADREQ;
+                        }
+
+                        rc = ix_prev_trans(iq, trans, lixnum, lkey, ixlen, lkey,
+                                           addrrn, genid, key, &fndrrn, &fgenid,
+                                           NULL, NULL, 0, 0);
+                        if (rc == RC_INTERNAL_RETRY) {
+                            *errout = OP_FAILED_INTERNAL;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return rc;
+                        }
+
+                        cmp = memcmp(key + to_off, lkey + from_off, mlen);
+                        isnull = stype_is_null(key + to_off);
+                        memset(key + from_off, 0, mlen);
+                        memset(key + to_off, 0, mlen);
+
+                        /*
+                        ** OVERLAP CASE 3:
+                        **
+                        ** adding:        |======|      (cmp > 0)
+                        ** found:       |----|
+                        ** or found:    |--------|
+                        ** or found:    |----------|
+                        ** or found:    |---------NULL  (isnull)
+                        */
+                        if (fgenid != genid && (isnull || cmp > 0) &&
+                            memcmp(rkey, key, ixlen) == 0) {
+                            if (iq->debug) {
+                                reqprintf(iq, "VERKYCNSTRT CANT RESOLVE "
+                                              "CONSTRAINT NO_OVERLAP(%s : %s)",
+                                          ct->table[ridx], ct->keynm[ridx]);
+                                reqdumphex(iq, lkey, ixlen);
+                            }
+                            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
+                                      "verify key constraint cannot resolve "
+                                      "constraint no_overlap(%s : %s)",
+                                      ct->table[ridx], ct->keynm[ridx]);
+                            *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+                            free_cached_delayed_indexes(iq);
+                            close_constraint_table_cursor(cur);
+                            return ERR_BADREQ;
+                        }
+                    }
+                    continue;
+                }
+
                 for (ridx = 0; ridx < ct->nrules; ridx++) {
                     struct dbtable *currdb = NULL;
                     int fixnum = 0;
@@ -1703,10 +1870,10 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
-                                      ftable->tablename);
+                                      ct->table[ridx]);
                         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                                   "verify key constraint bad table '%s'",
-                                  ftable->tablename);
+                                  ct->table[ridx]);
                         *errout = OP_FAILED_BAD_REQUEST;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
@@ -1885,7 +2052,11 @@ void dump_constraints(struct dbtable *table)
                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
                ((ct->flags & CT_DEL_SETNULL) == CT_DEL_SETNULL) ? 'T' : 'F', ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
-            logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j], ct->keynm[j]);
+            if (ct->flags & CT_NO_OVERLAP)
+                logmsg(LOGMSG_USER, "  -> NO OVERLAP FROM '%s' TO '%s'\n",
+                       ct->table[j], ct->keynm[j]);
+            else
+                logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j], ct->keynm[j]);
         }
     }
     logmsg(LOGMSG_USER, "\n");
@@ -2065,6 +2236,9 @@ int find_constraint(struct dbtable *db, constraint_t *ct)
         int j = 0;
         if (strcasecmp(ct->lclkeyname, db->constraints[i].lclkeyname))
             continue;
+        if (ct->flags == CT_NO_OVERLAP &&
+            db->constraints[i].flags != CT_NO_OVERLAP)
+            continue;
         if (db->constraints[i].nrules < ct->nrules)
             continue;
         for (j = 0; j < ct->nrules; j++) {
@@ -2127,8 +2301,14 @@ static inline struct dbtable *get_newer_db(struct dbtable *db,
 static void constraint_err(struct schema_change_type *s, struct dbtable *db,
                            constraint_t *ct, int rule, const char *err)
 {
-    sc_client_error(s, "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s", db->tablename,
-                    ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
+    //                                                1          2       3    4      5      6
+    sc_client_error(s, "constraint error for table \"%s\" key \"%s\" -> %s<\"%s\":\"%s\">: %s\n",
+                    db->tablename,         // 1
+                    ct->lclkeyname,        // 2
+                    (ct->flags & CT_NO_OVERLAP) ? "no_overlap" : "", // 3
+                    ct->table[rule],       // 4
+                    ct->keynm[rule],       // 5
+                    err);                  // 6
 }
 
 static inline int key_has_expressions_members(struct schema *key)
@@ -2139,6 +2319,16 @@ static inline int key_has_expressions_members(struct schema *key)
             return 1;
     }
     return 0;
+}
+
+static int key_has_member(struct schema *key, const char *name)
+{
+    int i;
+    for (i = 0; i < key->nmembers; i++) {
+        if (strcmp(key->member[i].name, name) == 0)
+            return i;
+    }
+    return -1;
 }
 
 /* Verify that the tables and keys referred to by this table's constraints all
@@ -2173,12 +2363,50 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
         if (!(fky = find_tag_schema(from_db, keytag))) {
             /* Referencing a nonexistent key */
             constraint_err(s, from_db, ct, 0, "foreign key not found");
+            if (from_db->iq)
+                reqerrstr(from_db->iq, ERR_SC, "foreign key not found");
             n_errors++;
         }
         if (from_db->ix_expr && key_has_expressions_members(fky) &&
             (ct->flags & CT_UPD_CASCADE)) {
             constraint_err(s, from_db, ct, 0, "cascading update on expression indexes is not allowed");
+            if (from_db->iq)
+                reqerrstr(from_db->iq, ERR_SC,
+                          "no update cascade on expression indexes");
             n_errors++;
+        }
+        if (ct->flags & CT_NO_OVERLAP) {
+            for (jj = 0; jj < ct->nrules; jj++) {
+                int ifrom, ito;
+                ifrom = key_has_member(fky, ct->table[jj]);
+                ito = key_has_member(fky, ct->keynm[jj]);
+                if (ifrom < 0) {
+                    constraint_err(s, from_db, ct, jj, "range start not found");
+                    if (from_db->iq)
+                        reqerrstr(from_db->iq, ERR_SC, "range start not found");
+                    n_errors++;
+                }
+                if (ito < 0) {
+                    constraint_err(s, from_db, ct, jj, "range end not found");
+                    if (from_db->iq)
+                        reqerrstr(from_db->iq, ERR_SC, "range end not found");
+                    n_errors++;
+                }
+                if (fky->member[ifrom].flags & INDEX_DESCEND ||
+                    fky->member[ito].flags & INDEX_DESCEND) {
+                    constraint_err(s, from_db, ct, jj, "range must be ASCEND");
+                    if (from_db->iq)
+                        reqerrstr(from_db->iq, ERR_SC, "range must be ASCEND");
+                    n_errors++;
+                }
+                if (fky->member[ifrom].len != fky->member[ito].len) {
+                    constraint_err(s, from_db, ct, jj, "range type mismatch");
+                    if (from_db->iq)
+                        reqerrstr(from_db->iq, ERR_SC, "range type mismatch");
+                    n_errors++;
+                }
+            }
+            continue;
         }
         for (jj = 0; jj < ct->nrules; jj++) {
             struct dbtable *rdb;
@@ -2196,6 +2424,8 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             if (!rdb) {
                 /* Referencing a non-existent table */
                 constraint_err(s, from_db, ct, jj, "parent table not found");
+                if (from_db->iq)
+                    reqerrstr(from_db->iq, ERR_SC, "foreign table not found");
                 n_errors++;
                 continue;
             } else {
@@ -2210,6 +2440,8 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 if (!(bky = find_tag_schema_by_name(ct->table[jj], keytag))) {
                     /* Referencing a nonexistent key */
                     constraint_err(s, from_db, ct, jj, "parent key not found");
+                    if (from_db->iq)
+                        reqerrstr(from_db->iq, ERR_SC, "foreign key not found");
                     n_errors++;
                 }
             } else {
@@ -2224,6 +2456,8 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             if (constraint_key_check(fky, bky)) {
                 /* Invalid constraint index */
                 constraint_err(s, from_db, ct, jj, "invalid number of columns");
+                if (from_db->iq)
+                    reqerrstr(from_db->iq, ERR_SC, "invalid number of columns");
                 n_errors++;
             }
         }
@@ -2246,12 +2480,19 @@ int populate_reverse_constraints(struct dbtable *db)
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
 
+        if (cnstrt->flags & CT_NO_OVERLAP)
+            continue;
+
         sc = find_tag_schema(db, cnstrt->lclkeyname);
         if (sc == NULL) {
             ++n_errors;
             logmsg(LOGMSG_ERROR,
                    "constraint error: key %s is not found in table %s\n",
                    cnstrt->lclkeyname, db->tablename);
+            if (db->iq)
+                reqerrstr(db->iq, ERR_SC,
+                          "constraint error: key %s is not found in table %s",
+                          cnstrt->lclkeyname, db->tablename);
         }
 
         for (jj = 0; jj < cnstrt->nrules; jj++) {
@@ -2267,6 +2508,11 @@ int populate_reverse_constraints(struct dbtable *db)
                 ++n_errors;
                 logmsg(LOGMSG_ERROR, "constraint error for key %s: table %s is not found\n",
                        cnstrt->lclkeyname, cnstrt->table[jj]);
+                if (db->iq)
+                    reqerrstr(
+                        db->iq, ERR_SC,
+                        "constraint error for key %s: table %s is not found",
+                        cnstrt->lclkeyname, cnstrt->table[jj]);
                 continue;
             }
 
@@ -2280,6 +2526,13 @@ int populate_reverse_constraints(struct dbtable *db)
                        "table %s\n",
                        cnstrt->lclkeyname, cnstrt->keynm[jj],
                        cnstrt->table[jj]);
+                if (db->iq)
+                    reqerrstr(
+                        db->iq, ERR_SC,
+                        "constraint error for key %s: key %s is not found in "
+                        "table %s",
+                        cnstrt->lclkeyname, cnstrt->keynm[jj],
+                        cnstrt->table[jj]);
                 continue;
             }
 
