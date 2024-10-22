@@ -460,12 +460,10 @@ int gbl_timer_warn_interval = 1500; //msec
 int gbl_timer_pstack_interval =  5 * 60; //sec
 extern struct timeval last_timer_pstack;
 static struct timeval last_timer_check;
-static struct event *check_timers_ev;
-static void check_timers(int dummyfd, short what, void *arg)
+void check_timers(void)
 {
     if (gbl_timer_warn_interval == 0) return;
 
-    check_base_thd();
     int ms, need_pstack = 0;
     struct timeval now, diff;
     gettimeofday(&now, NULL);
@@ -3219,11 +3217,6 @@ static void setup_bases(void)
     } else if (reader_policy == POLICY_SINGLE) {
         init_base(&single.rdthd, &single.rdbase, "read");
     }
-
-    gettimeofday(&last_timer_check, NULL);
-    check_timers_ev = event_new(base, -1, EV_PERSIST, check_timers, NULL);
-    struct timeval one = {1, 0};
-    event_add(check_timers_ev, &one);
 
     logmsg(LOGMSG_USER, "Libevent %s with backend method %s\n", event_get_version(), event_base_get_method(base));
 }
