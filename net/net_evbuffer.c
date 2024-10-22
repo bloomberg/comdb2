@@ -530,9 +530,7 @@ void check_timers(void)
 static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
-    char thdname[32];
     struct net_dispatch_info *n = arg;
-    snprintf(thdname, sizeof(thdname), "net_dispatch %s", n->who);
     comdb2_name_thread(n->who);
 
     current_base = n->base;
@@ -1641,6 +1639,10 @@ static int process_net_msgs(struct event_info *e, struct evbuffer *buf, void **m
 static void *rd_worker(void *data)
 {
     struct event_info *e = data;
+    char thdname[64];
+    snprintf(thdname, sizeof(thdname), "%s - %s", __func__, e->host);
+    comdb2_name_thread(thdname);
+
     netinfo_type *n = e->net_info->netinfo_ptr;
     if (n->start_thread_callback) {
         n->start_thread_callback(n->callback_data);
