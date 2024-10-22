@@ -639,6 +639,17 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
 
 hndl_err:
     errstr = cdb2_errstr(hndl);
+    extern const char *err_pre2pc;
+    if (errstr && !strncasecmp(errstr, err_pre2pc, strlen(err_pre2pc))) {
+        if (!created) {
+            /* instead of an assert */
+            logmsg(LOGMSG_ERROR, "%s remote db %s lost locks\n", __func__,
+                   push->remotedb);
+            abort();
+        }
+        rc = -2; /* lets try a non-2pc version  */
+        goto free;
+    }
     errstat_set_rcstrf(err, rc, "%s", errstr);
     rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
     if (rc) {

@@ -2288,7 +2288,7 @@ static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
 
                     char *coordinator_dbname = strdup(gbl_dbname);
                     char *coordinator_tier = gbl_machine_class ?
-                        gbl_machine_class : gbl_myhostname;
+                        strdup(gbl_machine_class) : strdup(gbl_myhostname);
                     char *dist_txnid = strdup(clnt->dist_txnid);
 
                     rc = fdb_send_2pc_begin(clnt, msg, trans, clnt->dbtran.mode,
@@ -5639,6 +5639,7 @@ static int _fdb_client_set_options(sqlclntstate *clnt,
 const char *err_precdb2api = "Invalid set command 'REMSQL";
 const char *err_cdb2apiold = "need protocol ";
 const char *err_tableschemaold = "need table schema ";
+const char *err_pre2pc = "Invalid set command 'REMTRAN";
 
 static int _fdb_run_sql(BtCursor *pCur, char *sql)
 {
