@@ -40,6 +40,8 @@
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
 
+#include "str_util.h" /* QUOTE */
+
 /*
 *******************************************************************************
 ** WARNING: If you add any internal configuration state to this file, please
@@ -71,9 +73,6 @@ static char *CDB2DBCONFIG_BUF = NULL;
 
 static char cdb2_default_cluster[64] = "";
 static char cdb2_comdb2dbname[32] = "";
-
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 
 #define API_DRIVER_NAME open_cdb2api
 static char api_driver_name[] = QUOTE(API_DRIVER_NAME);
