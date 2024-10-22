@@ -669,8 +669,8 @@ typedef struct dbtable {
     struct timespec tstart;
     int is_history_table;
     period_t periods[PERIOD_MAX];
-    struct db *history_db;
-    struct db *orig_db;
+    struct dbtable *history_db;
+    struct dbtable *orig_db;
     int overwrite_systime;
 
     /* Foreign key constraints */
@@ -2516,8 +2516,8 @@ int put_db_instant_schema_change(struct dbtable *db, tran_type *tran, int isc);
 int get_db_instant_schema_change(struct dbtable *db, int *isc);
 int get_db_instant_schema_change_tran(struct dbtable *, int *isc, tran_type *tran);
 
-int put_db_start_time(struct db *db, tran_type *tran);
-int get_db_start_time(struct db *db, struct timespec *ts, tran_type *tran);
+int put_db_start_time(struct dbtable *db, tran_type *tran);
+int get_db_start_time(struct dbtable *db, struct timespec *ts, tran_type *tran);
 
 int set_meta_odh_flags(struct dbtable *db, int odh, int compress, int compress_blobs,
                        int ipupates);
