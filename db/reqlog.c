@@ -1477,7 +1477,6 @@ inline void reqlog_set_sql(struct reqlogger *logger, struct string_ref *sr)
     put_ref(&logger->sql_ref);
     if (sr) {
         logger->sql_ref = get_ref(sr);
-        reqlog_logf(logger, REQL_INFO, "sql=%s", string_ref_cstr(logger->sql_ref));
     }
 }
 
@@ -2188,6 +2187,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     } else {
         long_request_thresh = long_request_ms;
     }
+
+    if (logger->sql_ref)
+        reqlog_logf(logger, REQL_INFO, "sql=%s", string_ref_cstr(logger->sql_ref));
 
     if (logger->durationus >= M2U(long_request_thresh)) {
         if (logger->clnt) {
