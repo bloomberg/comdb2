@@ -160,7 +160,7 @@ dump_log_event_counts(void)
 }
 
 
-static char *
+char *
 optostr(int op)
 {
 	switch (op) {
