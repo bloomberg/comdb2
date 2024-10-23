@@ -30,7 +30,6 @@
 
 #include "comdb2.h"
 #include "sql.h"
-//#include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "comdb2uuid.h"
 #include "net_int.h"

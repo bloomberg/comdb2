@@ -5883,7 +5883,6 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
         } else if (c->lcl_tbl_name[0]) {
             strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }
-        fprintf(stderr, "RECORDING id %d %s finds %d\n", i, stats[i].table, stats[i].nfind);
         i++;
     }
     return 0;

@@ -505,6 +505,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     fdb_t *fdb;
     int created;
     int rc;
+    int set_intrans = 0;
     
     if (!push)
         return -2;
@@ -544,7 +545,10 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
         }
         if (clnt->in_client_trans) {
             /* if not standalone, and this is the first reachout to this fdb, send begin */
-            clnt->intrans = 1;
+            if (!clnt->intrans) {
+                clnt->intrans = 1;
+                set_intrans = 1;
+            }
 
             /* if this is 2pc, we need to send additional info to the participant */
             if (clnt->use_2pc) {
@@ -667,6 +671,15 @@ free_push:
         clnt->fdb_push = NULL;
         free(push->remotedb);
         free(push);
+        if (set_intrans) {
+            /* if this tried to short call to local sqlite3BtreeBeginTrans
+             * first time we try to push, and we set clnt->intrans,
+             * and we are gonna retry the legacy mode, need to reset
+             * that back so we do not skip calling sqlite3BtreeBeginTrans
+             */
+            clnt->intrans = 0;
+        }
+
     }
     return rc;
 }
