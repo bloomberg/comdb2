@@ -297,7 +297,7 @@ static void make_socket_reusable(int fd)
     }
 }
 
-static void make_socket_nonblocking(int fd)
+void make_server_socket(int fd)
 {
     evutil_make_socket_nonblocking(fd);
     make_socket_nolinger(fd);
@@ -312,7 +312,7 @@ static int get_nonblocking_socket(void)
     if (fd == -1) {
         logmsgperror("get_nonblocking_socket socket");
     } else {
-        make_socket_nonblocking(fd);
+        make_server_socket(fd);
     }
     return fd;
 }
@@ -3026,7 +3026,7 @@ static void do_recvfd(int pmux_fd, short what, void *data)
     case -1: reopen_unix(pmux_fd, n); return;
     case -2: close_oldest_pending_connection(); return;
     }
-    make_socket_nonblocking(newfd);
+    make_server_socket(newfd);
     ssize_t rc = write(newfd, "0\n", 2);
     if (rc != 2) {
         logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
@@ -3216,7 +3216,7 @@ static void net_accept(netinfo_type *netinfo_ptr)
     if (fd == -1) {
         return;
     }
-    make_socket_nonblocking(fd);
+    make_server_socket(fd);
     n->listener = evconnlistener_new(base, accept_cb, n, LEV_OPT_CLOSE_ON_FREE,
                                      gbl_net_maxconn ? gbl_net_maxconn : SOMAXCONN, fd);
     evconnlistener_set_error_cb(n->listener, accept_error_cb);
@@ -3458,7 +3458,7 @@ static void add_event(int fd, event_callback_fn func, void *data)
 
 void add_tcp_event(int fd, event_callback_fn func, void *data)
 {
-    make_socket_nonblocking(fd);
+    make_server_socket(fd);
     add_event(fd, func, data);
 }
 

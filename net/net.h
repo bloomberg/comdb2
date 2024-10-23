@@ -391,8 +391,6 @@ void net_queue_stat_iterate(netinfo_type *, QSTATITERFP, struct net_get_records 
 void net_queue_stat_iterate_evbuffer(netinfo_type *, QSTATITERFP, struct net_get_records *);
 void net_userfunc_iterate(netinfo_type *netinfo_ptr, UFUNCITERFP *uf_iter, void *arg);
 
-int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure);
-
 void kill_subnet(const char *subnet);
 void net_clipper(const char *subnet, int onoff);
 void net_subnet_status();

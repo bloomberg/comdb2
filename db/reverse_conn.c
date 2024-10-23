@@ -31,6 +31,7 @@
 #include "reverse_conn.h"
 #include "phys_rep.h"
 #include "machclass.h"
+#include "net_appsock.h"
 
 #define revconn_logmsg(lvl, ...)                                               \
     do {                                                                       \
@@ -88,7 +89,6 @@ int send_reversesql_request(const char *dbname, const char *host,
     SBUF2 *sb;
     int new_fd;
     int rc = 0;
-    socklen_t len;
     int polltm;
     struct sockaddr_in cliaddr;
     struct pollfd pol;
@@ -106,6 +106,7 @@ int send_reversesql_request(const char *dbname, const char *host,
     }
 
     new_fd = sbuf2fileno(sb);
+    make_server_socket(new_fd);
 
     // NC: Most of the following code has been copied from net/net.c (accept_thread())
 
@@ -116,68 +117,6 @@ int send_reversesql_request(const char *dbname, const char *host,
         rc = 0;
         goto cleanup;
     }
-
-#if defined _SUN_SOURCE
-    wait_alive(new_fd);
-#endif
-
-#ifdef NODELAY
-    flag = 1;
-    len = sizeof(flag);
-    rc = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, len);
-    if (rc != 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't turn off nagel on new_fd %d, flag=%d: %d %s\n",
-                       __func__, new_fd, flag, errno, strerror(errno));
-        rc = -1;
-        goto cleanup;
-    }
-#endif
-
-    int on = 1;
-    len = sizeof(on);
-    rc = setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, len);
-    if (rc != 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't turn on keep alive on new fd %d: %d %s\n",
-                       __func__, new_fd, errno, strerror(errno));
-        rc = -1;
-        goto cleanup;
-    }
-
-#ifdef TCPBUFSZ
-    int tcpbfsz = (8 * 1024 * 1024);
-    len = sizeof(tcpbfsz);
-    rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
-    if (rc < 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't set tcp sndbuf size on listenfd %d: %d %s\n",
-                       __func__, new_fd, errno, strerror(errno));
-        rc = -1;
-        goto cleanup;
-    }
-
-    tcpbfsz = (8 * 1024 * 1024);
-    len = sizeof(tcpbfsz);
-    rc = setsockopt(new_fd, SOL_SOCKET, SO_RCVBUF, &tcpbfsz, len);
-    if (rc < 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't set tcp rcvbuf size on listenfd %d: %d %s\n",
-                       __func__, new_fd, errno, strerror(errno));
-        rc = -1;
-        goto cleanup;
-    }
-#endif
-
-#ifdef NOLINGER
-    struct linger linger_data;
-    linger_data.l_onoff = 0;
-    linger_data.l_linger = 1;
-    len = sizeof(linger_data);
-    if (setsockopt(new_fd, SOL_SOCKET, SO_LINGER, (char *)&linger_data,
-                   len) != 0) {
-        revconn_logmsg(LOGMSG_ERROR, "%s: Couldn't turn off linger on new_fd %d: %d %s\n",
-                       __func__, new_fd, errno, strerror(errno));
-        rc = -1;
-        goto cleanup;
-    }
-#endif
 
     char msg[120] = {0};
     snprintf(msg, sizeof(msg), "reversesql\n%s\n%s\n%s\n",
