@@ -17,7 +17,6 @@
 #ifndef __SQLINTERFACES_H__
 #define __SQLINTERFACES_H__
 
-#define SQLHERR_APPSOCK_LIMIT -110
 #define SQLHERR_WRONG_DB -111
 
 #include <stdlib.h>

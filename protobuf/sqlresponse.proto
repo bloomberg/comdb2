@@ -42,6 +42,7 @@ enum CDB2_ErrorCode {
 
     THREADPOOL_INTERNAL     = -20;  /* some error in threadpool code */
     READONLY                = -21;
+    APPSOCK_LIMIT           = -23;
 
     NOMASTER                = -101;
     NOTSERIAL               =  230;
@@ -55,7 +56,6 @@ enum CDB2_ErrorCode {
 
     QUERYLIMIT              = -107;
     MASTER_TIMEOUT          = -109;
-    APPSOCK_LIMIT           = -110;
     WRONG_DB                = -111;
 
     VERIFY_ERROR            = 2;
