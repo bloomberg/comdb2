@@ -5517,7 +5517,16 @@ add_blkseq:
                  (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
                 (IQ_HAS_SNAPINFO(iq) &&
                  IQ_SNAPINFO(iq)->replicant_is_able_to_retry)) {
-                /* do nothing */
+
+                /* This is actually unnecessary, as osql_blkseq_register_ireq serializes block-
+                 * processor requests with the same cnonce.  So the failing case, shown under
+                 * 'replay_effects' to return a verify-error under older versions of the code
+                 * short-circuits itself in the blkseq-find just after 'register_ireq'. It's
+                 * the reason 8.0 and above are not failing this test. */
+
+                rc = bdb_blkseq_find(thedb->bdb_env, parent_trans, bskey, bskeylen, &replay_data, &replay_len);
+                /* Coerce into a blkseq-dup if we find it */
+                rc = (rc == IX_FND ? IX_DUP : 0);
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int), &replay_data, &replay_len, 0);
