@@ -8,7 +8,7 @@ to masternode without waiting for commit. This test only exercises newsql querie
 NB: due to the high number of threads that dont close, the db will run out of appsock
 connections and client will see error:
 
-12:50:49> Error: cdb2_run_statement failed: -110 Exhausted appsock connections.
+12:50:49> Error: cdb2_run_statement failed: -23 Exhausted appsock connections.
 
 server will have these errors:
 
