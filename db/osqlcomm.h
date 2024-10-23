@@ -61,6 +61,14 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
                     char *tablename, int type, unsigned long long version);
 
 /**
+ * Send TIMESPEC op
+ * It handles remote/local connectivity
+ *
+ */
+int osql_send_timespec(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
+                       struct timespec *tstart, int type, SBUF2 *logsb);
+
+/**
  * Send INDEX op
  * It handles remote/local connectivity
  *
