@@ -66,7 +66,7 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_timespec(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                       struct timespec *tstart, int type, SBUF2 *logsb);
+                       struct timespec *tstart, int type);
 
 /**
  * Send INDEX op

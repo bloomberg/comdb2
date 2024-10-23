@@ -82,6 +82,7 @@ static int truncate_tablecursor(bdb_state_type *bdb_env,
 
 static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
                                        char *tablename, int tableversion);
+static int process_local_shadtbl_timespec(struct sqlclntstate *clnt);
 static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                      int *bdberr, int crt_nops);
 static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
@@ -1537,6 +1538,12 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
         if (rc)
             return -1;
 
+        if (tbl->db->periods[PERIOD_SYSTEM].enable) {
+            rc = process_local_shadtbl_timespec(clnt);
+            if (rc)
+                return -1;
+        }
+
         rc = process_local_shadtbl_skp(clnt, tbl, bdberr, *nops);
         if (rc == SQLITE_TOOBIG) {
             *nops += tbl->nops;
@@ -1660,6 +1667,19 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
     }
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
+    return rc;
+}
+
+static int process_local_shadtbl_timespec(struct sqlclntstate *clnt)
+{
+
+    osqlstate_t *osql = &clnt->osql;
+    int rc = 0;
+    int osql_nettype = tran2netrpl(clnt->dbtran.mode);
+
+    rc = osql_send_timespec(&osql->target, osql->rqid, osql->uuid, &(clnt->tstart),
+                            osql_nettype);
+
     return rc;
 }
 
@@ -2254,9 +2274,10 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
         } else if (pCur->db->ix_collattr[ix]) {
             datacopy = alloca(4 * pCur->db->ix_collattr[ix]);
 
-            rc = extract_decimal_quantum(pCur->db, ix, pCur->ondisk_buf, datacopy,
-                                       4 * pCur->db->ix_collattr[ix], 
-                                       &datacopylen);
+            rc = extract_decimal_quantum(
+                pCur->db, ix, pCur->ondisk_buf, datacopy,
+                4 * pCur->db->ix_collattr[ix], 
+                &datacopylen);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed to construct decimal index rc=%d\n",
                         __func__, rc);
