@@ -4229,7 +4229,7 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_timespec(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                       struct timespec *tstart, int type, SBUF2 *logsb)
+                       struct timespec *tstart, int type)
 {
     int msglen;
     int rc = 0;
@@ -4287,7 +4287,6 @@ int osql_send_timespec(osql_target_t *target, unsigned long long rqid, uuid_t uu
         logmsg(LOGMSG_DEBUG, 
             "[%llu %s] send OSQL_TIMESPEC tv_sec %ld, tv_nsec %ld\n",
             rqid, comdb2uuidstr(uuid, us), tstart->tv_sec, tstart->tv_nsec);
-        sbuf2flush(logsb);
     }
 
     rc = target->send(target, type, buf, msglen, 0, NULL, 0);
