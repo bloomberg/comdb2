@@ -29,7 +29,7 @@ Consider an application that updates a record.  This application is connected to
      1. Any writes to data/index btrees done by the master are written to the database log.
      1. Master commits the transaction locally.
 3. Master sends out log records up to the commit record to all replicants in parallel. 
-4. Replicants apply the log records locally and send an acknowledgment back to the master.
+4. Replicants apply the log records locally and send an acknowledgment back to the master. Once log records have been applied on a replicant, reads to that replicant will see the update. *Note that there can be a window within which the update is readable on one replicant but not on another.*
 5. Once the master receives acknowledgments from all nodes in the cluster, it replies to the original replicant that made the request for the transaction.
 6. Replicant passes the return code (or an error message) back to the application.
 
