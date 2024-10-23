@@ -1,0 +1,2 @@
+DROP PROCEDURE dormant '1'
+DROP LUA TRIGGER dormant
