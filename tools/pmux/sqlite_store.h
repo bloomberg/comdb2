@@ -12,8 +12,7 @@
 #include "pmux_store.h"
 #include "raii.h"
 
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
+#include "str_util.h" /* QUOTE */
 
 class sqlite_store : public pmux_store
 {

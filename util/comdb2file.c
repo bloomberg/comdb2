@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include "str_util.h" /* QUOTE */
 #include "util.h"
 #include "plhash.h"
 
@@ -153,9 +154,6 @@ char *comdb2_location_in_hash(char *type, char *fmt, ...)
         add_location(type, f);                                                 \
         free(f);                                                               \
     } while (0)
-
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 
 void init_file_locations(char *lrlname)
 {

@@ -24,6 +24,8 @@
 #include <unistd.h>
 #include <stdio.h>
 
+#include "str_util.h" /* QUOTE */
+
 const char *help_text[] = {
 "To serialise a db: comdb2ar [opts] c /bb/bin/mydb.lrl >output",
 "To serialise a db incrementally:",
@@ -80,9 +82,6 @@ void errexit(int code)
     std::cerr << "Error" << std::endl;
     std::exit(code);
 }
-
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
 
 int main(int argc, char *argv[])
 {
