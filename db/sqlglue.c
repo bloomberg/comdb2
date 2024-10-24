@@ -113,6 +113,8 @@ int gbl_delay_sql_lock_release_sec = 5;
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur, int *bdberr);
 
+static int temporal_business_time_check(struct dbtable  * db, uint8_t * od_dta);
+
 struct temp_cursor;
 struct temp_table;
 extern int gbl_partial_indexes;
@@ -1863,6 +1865,22 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     if (is_sqlite_stat(tablename)) {
         create_sqlite_stat_sqlmaster_record(tbl);
         return 0;
+    }
+
+    /* fix history_db pointer here for replicants */
+    if (tbl->periods[PERIOD_SYSTEM].enable && tbl->history_db == NULL) {
+        char tmpname[MAXTABLELEN];
+        struct dbtable *history_db = NULL;
+        snprintf(tmpname, sizeof(tmpname), "%s_history", tbl->tablename);
+        history_db = get_dbtable_by_name(tmpname);
+        if (history_db) {
+            tbl->history_db = history_db;
+            history_db->is_history_table = 1;
+            history_db->orig_db = tbl;
+            logmsg(LOGMSG_INFO,
+                   "'%s' is temporal table and history table is '%s'\n",
+                   tbl->tablename, history_db->tablename);
+        }
     }
 
     strbuf *sql = strbuf_new();
@@ -9118,6 +9136,15 @@ int sqlite3BtreeInsert(
                 rc = SQLITE_ERROR;
                 goto done;
             }
+
+            rc = temporal_business_time_check(pCur->db, pCur->ondisk_buf);
+            if (rc) {
+                sqlite3VdbeError(pCur->vdbe, "Invalid parameter: business "
+                                             "start time must be less than "
+                                             "business end time");
+                rc = SQLITE_ERROR;
+                goto done;
+            }
         }
 
         /* If it's a known invalid genid (see sqlite3BtreeNewRowid() for
@@ -13114,7 +13141,7 @@ int temporal_generate_history_data(struct ireq *iq, uint8_t *his_dta,
     return 0;
 }
 
-int temporal_business_time_check(struct dbtable *db, uint8_t *od_dta)
+static int temporal_business_time_check(struct dbtable *db, uint8_t *od_dta)
 {
     struct schema *sc = db->schema;
     struct field *fstart;
