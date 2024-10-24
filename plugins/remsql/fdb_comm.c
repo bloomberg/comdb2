@@ -17,6 +17,7 @@
 #include <gettimeofday_ms.h>
 
 #include "sql.h"
+#include "fdb_fend.h"
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
@@ -611,7 +612,7 @@ int fdb_recv_2pc_rc(fdb_msg_t *msg, fdb_tran_t *trans)
 {
     int rc;
 
-    rc = fdb_msg_read_message(trans->sb, msg, 0);
+    rc = fdb_msg_read_message(trans->fcon.sb, msg, 0);
     if (rc != FDB_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n", __func__, rc);
         trans->rc = FDB_ERR_READ_IO;
@@ -621,7 +622,7 @@ int fdb_recv_2pc_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     }
 
     if (gbl_fdb_track) {
-        fdb_msg_print_message(trans->sb, msg, "received 2pc-rc message");
+        fdb_msg_print_message(trans->fcon.sb, msg, "received 2pc-rc message");
     }
 
     msg->hd.type &= FD_MSG_TYPE;
@@ -659,7 +660,7 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
 {
     int rc;
 
-    rc = fdb_msg_read_message(trans->sb, msg, 0);
+    rc = fdb_msg_read_message(trans->fcon.sb, msg, 0);
     if (rc != FDB_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
                __func__, rc);
@@ -670,7 +671,7 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     }
 
     if (gbl_fdb_track) {
-        fdb_msg_print_message(trans->sb, msg, "received message");
+        fdb_msg_print_message(trans->fcon.sb, msg, "received message");
     }
 
     msg->hd.type &= FD_MSG_TYPE;
