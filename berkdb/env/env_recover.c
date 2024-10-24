@@ -56,7 +56,6 @@ static const char revid[] =
 #include "list.h"
 #include "logmsg.h"
 
-extern int __txn_commit_map_set_modsnap_start_lsn(DB_ENV *, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN*);
 
@@ -1480,8 +1479,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	if (ret != 0 && ret != DB_NOTFOUND)
 		goto err;
 	dbenv->recovery_pass = DB_TXN_NOT_IN_RECOVERY;
-
-	__txn_commit_map_set_modsnap_start_lsn(dbenv, stop_lsn);
 
 	/*
 	 * Process any pages that were on the limbo list and move them to
