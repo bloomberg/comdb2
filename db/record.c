@@ -66,6 +66,7 @@ static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs,
                             int maxblobs);
 
 void free_cached_idx(uint8_t * *cached_idx);
+int temporal_overwrite_systime(struct ireq *iq, uint8_t *rec, int use_tstart);
 
 /*
  * Add a record:
@@ -2454,6 +2455,35 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
 
         /* use ".NEW..ONDISK" to form keys */
         use_new_tag = 1;
+    }
+
+    if (iq->usedb->overwrite_systime) {
+        if (!use_new_tag) {
+            sc_old = malloc(iq->usedb->lrl);
+            if (!sc_old) {
+                logmsg(LOGMSG_ERROR, "%s:%d malloc failed\n", __func__,
+                       __LINE__);
+                retrc = ERR_INTERNAL;
+                goto err;
+            }
+            rc = stag_to_stag_buf(iq->usedb, ".ONDISK", old_dta,
+                                  ".NEW..ONDISK", sc_old, NULL);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to convert to new ondisk\n",
+                       __func__, __LINE__);
+                retrc = ERR_INTERNAL;
+                goto err;
+            }
+            use_new_tag = 1;
+        }
+        rc = temporal_overwrite_systime(iq, sc_old, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: temporal_overwrite_systime table %s failed\n", __func__,
+                   iq->usedb->tablename);
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
     }
 
     /* no plan:
