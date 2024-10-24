@@ -13,11 +13,15 @@ dbname=$1
 dgpid=0
 first=""
 cluster_count=0
+do_gcore=0
 NRUNS=100
 SLEEPAMOUNT=300
 KILL_WAIT_TIME=10
 SLEEP_BETWEEN_CHECKS=.5
 PIDs=""
+firstNode=""
+lastNode=""
+
 export NOSOURCE=0
 if [[ $DBNAME == *"nosourcegenerated"* ]]; then
     NOSOURCE=1
@@ -522,6 +526,7 @@ END
                 ssh ${node} "$COMDB2_EXE ${_dbname} --create --lrl ${_dbdir}/${_dbname}.lrl --pidfile ${_dbdir}/${_dbname}.pid" >> ${logFile} 2>&1 < /dev/null
                 firstNode=${node}
             else
+                lastNode=${node}
                 ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $firstNode:${_dbdir}/${_dbname}.lrl $_dbdir $_dbdir" >> ${logFile} 2>&1 < /dev/null
                 if [ ! $? -eq 0 ]; then
                     cleanFailExit "copycomdb2 failed"
@@ -860,6 +865,47 @@ function run_tests()
     done
 }
 
+function revconn_latency()
+{
+    typeset now=$(date +%s)
+    typeset end=$((now + 60))
+    typeset tnode=$1
+    typeset failed=0
+    typeset cored=0
+
+    TESTDIR=${TESTDIR:-${PWD}/test_${TESTID}}
+    TMPDIR=${TMPDIR:-${TESTDIR}/tmp}
+    PIDFILE=${TMPDIR}/${DBNAME}.${tnode}.pid
+    tpid=$(ssh $tnode "cat $PIDFILE" < /dev/null)
+
+    while [[ $now -lt $end && $failed == 0 ]]; do
+        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $tnode "select comdb2_host()" >/dev/null 2>&1 &
+        bpid=$!
+        count=0
+        while kill -0 $bpid 2>/dev/null ; do
+            let count=count+1
+            if [[ $do_gcore == 1 && $count -gt 3 && $cored == 0 ]]; then
+                echo "Reached time threshold, gcoring"
+                ssh $tnode "gcore -o /cores/core.comdb2 $tpid" < /dev/null
+                cored=1
+                failed=1
+            fi
+            sleep 0.100
+        done
+        wait $bpid
+
+        if [[ $count -gt 5 ]]; then
+            echo "Took more than 0.5 seconds to return, count is $count"
+            failed=1
+        fi
+        now=$(date +%s)
+    done
+
+    if [[ "$failed" == 1 ]]; then
+        cleanFailExit "revconn_latency took too long to return against $tnode"
+    fi
+}
+
 function cleanup_internal()
 {
     typeset sig=$1
@@ -966,6 +1012,8 @@ if [[ "$NOSOURCE" == "1" ]]; then
     restart_source_nodes
 fi
 
+revconn_latency $lastNode
+revconn_latency $firstNode
 generate_tests
 run_tests
 verify_blkseq
