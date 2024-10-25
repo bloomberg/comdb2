@@ -1920,6 +1920,13 @@ struct Column {
 #define COLFLAG_UNIQUE   0x0008    /* Column def contains "UNIQUE" or "PK" */
 #define COLFLAG_SORTERREF 0x0010   /* Use sorter-refs with this column */
 
+/* Allowed values for Column.colTime:
+*/
+#define COLTIME_SYSSTART 0x0001    /* System start */
+#define COLTIME_SYSEND   0x0002    /* System end */
+#define COLTIME_BUSSTART 0x0004    /* Business start */
+#define COLTIME_BUSEND   0x0008    /* Business end */
+
 /*
 ** A "Collating Sequence" is defined by an instance of the following
 ** structure. Conceptually, a collating sequence consists of a name and

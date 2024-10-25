@@ -4814,6 +4814,7 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
     }
 
     get_current_lsn(clnt);
+    clock_gettime(CLOCK_REALTIME, &(clnt->tstart));
 
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
@@ -11313,6 +11314,66 @@ int is_comdb2_index_blob(const char *dbname, int icol)
         }
     }
     return 0;
+}
+
+int is_comdb2_column_temporal(const char *tablename, const char *colname)
+{
+    struct dbtable *db = get_dbtable_by_name(tablename);
+    struct schema *schema;
+    if (db == NULL) 
+        return 0;
+    schema = db->schema;
+    if (db->periods[PERIOD_SYSTEM].enable) {
+        if (strcmp(schema->member[db->periods[PERIOD_SYSTEM].start].name,
+                   colname) == 0)
+            return COLTIME_SYSSTART;
+        if (strcmp(schema->member[db->periods[PERIOD_SYSTEM].end].name,
+                   colname) == 0)
+            return COLTIME_SYSEND;
+    }
+    if (db->periods[PERIOD_BUSINESS].enable) {
+        if (strcmp(schema->member[db->periods[PERIOD_BUSINESS].start].name,
+                   colname) == 0)
+            return COLTIME_BUSSTART;
+        if (strcmp(schema->member[db->periods[PERIOD_BUSINESS].end].name,
+                   colname) == 0)
+            return COLTIME_BUSEND;
+    }
+    if (db->is_history_table) {
+        db = db->orig_db;
+        schema = db->schema;
+        /* end time of history record is same as start time of new record */
+        if (strcmp(schema->member[db->periods[PERIOD_SYSTEM].end].name,
+                   colname) == 0)
+            return COLTIME_SYSSTART;
+    }
+    return 0;
+}
+
+/* return true if table is temporal (current or history) */
+int is_comdb2_temporal_table(const char *tbl, char **start, char **end, int pd)
+{
+    struct dbtable *db = get_dbtable_by_name(tbl);
+    struct schema *schema;
+    if (db == NULL) 
+        return 0;
+    assert(pd < PERIOD_MAX);
+    schema = db->schema;
+    if (db->periods[pd].enable) {
+        if (start) *start = schema->member[db->periods[pd].start].name;
+        if (end) *end = schema->member[db->periods[pd].end].name;
+        return 1;
+    }
+    return 0;
+}
+
+/* return true if table is a history table */
+int is_comdb2_history_table(const char *tablename)
+{
+    struct dbtable *db = get_dbtable_by_name(tablename);
+    if (db == NULL) 
+        return 0;
+    return db->is_history_table;
 }
 
 void comdb2SetWriteFlag(int wrflag)
