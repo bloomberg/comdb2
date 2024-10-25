@@ -5238,6 +5238,28 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->context = NULL;
         clnt->ncontext = 0;
     }
+
+    if (clnt->pTemporal[0].pFrom)
+        free(clnt->pTemporal[0].pFrom);
+    clnt->pTemporal[0].pFrom = NULL;
+    if (clnt->pTemporal[0].pTo)
+        free(clnt->pTemporal[0].pTo);
+    clnt->pTemporal[0].pTo = NULL;
+    clnt->pTemporal[0].iIncl = 0;
+    clnt->pTemporal[0].iAll = 0;
+    clnt->pTemporal[0].iBus = 0;
+    if (clnt->pTemporal[1].pFrom)
+        free(clnt->pTemporal[1].pFrom);
+    clnt->pTemporal[1].pFrom = NULL;
+    if (clnt->pTemporal[1].pTo)
+        free(clnt->pTemporal[1].pTo);
+    clnt->pTemporal[1].pTo = NULL;
+    clnt->pTemporal[1].iIncl = 0;
+    clnt->pTemporal[1].iAll = 0;
+    clnt->pTemporal[1].iBus = 0;
+
+    clnt->pTemporalParser = NULL;
+    
     if (clnt->selectv_arr) {
         currangearr_free(clnt->selectv_arr);
         clnt->selectv_arr = NULL;
@@ -5446,6 +5468,28 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     }
     clnt->context = NULL;
     clnt->ncontext = 0;
+
+    if (clnt->pTemporal[0].pFrom)
+        free(clnt->pTemporal[0].pFrom);
+    clnt->pTemporal[0].pFrom = NULL;
+    if (clnt->pTemporal[0].pTo)
+        free(clnt->pTemporal[0].pTo);
+    clnt->pTemporal[0].pTo = NULL;
+    clnt->pTemporal[0].iIncl = 0;
+    clnt->pTemporal[0].iAll = 0;
+    clnt->pTemporal[0].iBus = 0;
+    if (clnt->pTemporal[1].pFrom)
+        free(clnt->pTemporal[1].pFrom);
+    clnt->pTemporal[1].pFrom = NULL;
+    if (clnt->pTemporal[1].pTo)
+        free(clnt->pTemporal[1].pTo);
+    clnt->pTemporal[1].pTo = NULL;
+    clnt->pTemporal[1].iIncl = 0;
+    clnt->pTemporal[1].iAll = 0;
+    clnt->pTemporal[1].iBus = 0;
+
+    clnt->pTemporalParser = NULL;
+    
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
     set_sent_data_to_client(clnt, 0, __func__, __LINE__);
