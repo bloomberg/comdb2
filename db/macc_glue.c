@@ -394,7 +394,7 @@ static struct schema *_create_index_schema(const char *tag, int ix,
 
 char *indexes_expressions_unescape(char *expr);
 
-static int _set_schema_index_column(struct schema *sch, struct field *m,
+static int _set_schema_index_column(struct dbtable *tbl, struct schema *sch, struct field *m,
                                     int ix, int piece, int offset,
                                     struct errstat *err)
 {
@@ -486,6 +486,12 @@ static int _set_schema_index_column(struct schema *sch, struct field *m,
         }
         m->type = sch->member[m->idx].type;
         m->len = sch->member[m->idx].len;
+        if (tbl->periods[PERIOD_SYSTEM].enable) {
+            if (m->idx == tbl->periods[PERIOD_SYSTEM].start)
+                m->flags |= SYSTEM_START;
+            else if (m->idx == tbl->periods[PERIOD_SYSTEM].end)
+                m->flags |= SYSTEM_END;
+        }
 
         /* the dbstore default is still needed during schema change, so
          * populate that */
@@ -557,7 +563,7 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
 
         offset = 0;
         for (piece = 0; piece < s->nmembers; piece++) {
-            if ((rc = _set_schema_index_column(sch, &s->member[piece], ix, piece, offset, err)))
+            if ((rc = _set_schema_index_column(tbl, sch, &s->member[piece], ix, piece, offset, err)))
                 goto err;
             offset += s->member[piece].len;
 
@@ -999,6 +1005,60 @@ static struct field *_create_schema_column(struct field *fld, int idx,
     return fld;
 }
 
+static int set_up_temporal_columns(struct dbtable *db, struct schema *schema)
+{
+    int period;
+    int start;
+    int end;
+    int rc = 0;
+    for (period = 0; period < PERIOD_MAX; period++) {
+        start = -1;
+        end = -1;
+        rc = dyns_get_period(period, &start, &end);
+        if (rc != 0) {
+            return -1;
+        }
+        if (start >= 0 && end >= 0) {
+            if ((schema->member[start].flags & MEMBER_PERIOD_MASK) ||
+                (schema->member[end].flags & MEMBER_PERIOD_MASK)) {
+                if (db->iq)
+                    reqerrstr(db->iq, ERR_SC,
+                              "period time already in use.");
+                return -1;
+            }
+            if (schema->member[start].in_default ||
+                schema->member[start].out_default ||
+                schema->member[end].in_default ||
+                schema->member[end].out_default) {
+                if (db->iq)
+                    reqerrstr(
+                        db->iq, ERR_SC,
+                        "period time should not have default values.");
+                return -1;
+            }
+            if (schema->member[start].flags & NO_NULL ||
+                schema->member[end].flags & NO_NULL) {
+                if (db->iq)
+                    reqerrstr(db->iq, ERR_SC,
+                              "period time should be nullable.");
+                return -1;
+            }
+            schema->member[start].flags |=
+                (period == PERIOD_SYSTEM ? SYSTEM_START : BUSINESS_START);
+            schema->member[end].flags |=
+                (period == PERIOD_SYSTEM ? SYSTEM_END : BUSINESS_END);
+            schema->periods[period].enable = 1;
+            schema->periods[period].start = start;
+            schema->periods[period].end = end;
+            db->periods[period].enable = 1;
+            db->periods[period].start = start;
+            db->periods[period].end = end;
+        }
+    }
+
+    return 0;
+}
+
 /* have a cmacc parsed and sanity-checked csc schema.
    convert to sql statement, execute, save schema in db
    structure and sanity check again (sqlite schema must
@@ -1094,6 +1154,9 @@ static int add_cmacc_stmt(dbtable *tbl, int alt, int allow_ull,
         /* offset is only computed for adjusted ondisk schema */
         if (sch == sch_ondisk)
             sch->recsize = offset;
+        rc = set_up_temporal_columns(tbl, sch);
+        if (rc)
+            goto err;
     }
 
     /* add client schema for ondisk tag */
