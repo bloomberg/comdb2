@@ -1,10 +1,8 @@
-# Verify that we can't open a cursor after a generation change
-# during a snapshot transaction.
-# 
-# It doesn't matter what LSN we truncate to since any truncate
-# will change the generation.
+# Verify a snapshot txn does not fail to open a cursor
+# if we truncate to an lsn above its start lsn
 #
 2 set transaction snapshot isolation
 2 begin
-1 exec procedure sys.cmd.truncate_log('{3:1}')
+# `setup.sh` populates `trunc_lsn`
+1 exec procedure sys.cmd.truncate_log('{<trunc_lsn>}')
 2 select count(*) from t

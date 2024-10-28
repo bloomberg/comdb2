@@ -56,6 +56,8 @@ static const char revid[] =
 #include "list.h"
 #include "logmsg.h"
 
+extern void invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(DB_ENV *dbenv, DB_LSN cutoff_lsn);
+extern int __txn_commit_map_set_modsnap_start_lsn(DB_ENV *, DB_LSN);
 extern int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN*);
 
@@ -1606,6 +1608,8 @@ done:
 				goto err;
 
 			__log_vtruncate(dbenv, max_lsn, &region->last_ckp, trunclsn);
+
+			invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(dbenv, *trunclsn);
 
 			logmsg(LOGMSG_WARN, "TRUNCATED TO is %u:%u \n", trunclsn->file,
 				trunclsn->offset);

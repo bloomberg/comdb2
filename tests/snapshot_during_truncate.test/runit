@@ -2,22 +2,48 @@
 bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runstepper.sh
+source setup.sh
 
-readonly test_dir=$(dirname "$0")
+set -e
 
-readonly testcase="t00.req"
-readonly expected_output="t00.req.exp"
-readonly actual_output="t00.req.res"
+test_dir=$(dirname "$0")
+readonly test_dir
 
-runstepper ${DBNAME} ${testcase} ${actual_output} 1
+run_test() {
+	local -r test_name=$1
+	local -r test_input="${test_name}.req"
+	local -r expected_output="${test_name}.req.exp"
+	local -r actual_output="${test_name}.req.res"
 
-if diff ${expected_output} ${actual_output};
-then
-	echo "Test passed"
-	exit 0
-else
-	echo "Test failed"
-	echo "see diff: 'diff ${test_dir}/${expected_output} ${test_dir}/${actual_output}'"
-	exit 1
-fi
+	runstepper ${DBNAME} ${test_input} ${actual_output} 1
 
+	if diff ${expected_output} ${actual_output}
+	then
+		echo "Test ${test_name} passed"
+
+		return 0
+	else
+		echo "Test ${test_name} failed"
+		echo "see diff: 'diff ${test_dir}/${expected_output} ${test_dir}/${actual_output}'"
+
+		return 1
+	fi
+}
+
+main() {
+	local rc=0
+
+	for test_name in t00 t01;
+	do
+		setup_${test_name}
+
+		if ! run_test ${test_name};
+		then
+			rc=1
+		fi
+	done
+
+	return ${rc}
+}
+
+main

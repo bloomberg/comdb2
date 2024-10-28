@@ -1735,7 +1735,8 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             goto done;
         }
 
-        if (bdb_register_modsnap(db->handle, clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
+        if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
+                   clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
             logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
             rc = SQLITE_INTERNAL;
             goto done;

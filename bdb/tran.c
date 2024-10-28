@@ -2761,6 +2761,8 @@ int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state)
     pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
 
     LISTC_FOR_EACH(&dbenv->outstanding_modsnaps, outstanding_modsnap, lnk) {
+        if (!outstanding_modsnap->is_allowed_to_open_cursors) { continue; }
+
         min_file = itr++ == 0 || outstanding_modsnap->prior_checkpoint_lsn.file < min_file 
         ? outstanding_modsnap->prior_checkpoint_lsn.file : min_file;
     }
@@ -2769,6 +2771,12 @@ int bdb_get_lowest_modsnap_file(bdb_state_type *bdb_state)
 
     return min_file;
 }
+
+int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration)
+{
+    return ((MODSNAP_TXN *) registration)->is_allowed_to_open_cursors;
+}
+
 
 void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration)
 {
@@ -2786,21 +2794,24 @@ void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration)
 }
 
 int bdb_register_modsnap(bdb_state_type *bdb_state,
+                        unsigned int modsnap_start_lsn_file,
+                        unsigned int modsnap_start_lsn_offset,
                         unsigned int last_checkpoint_lsn_file,
                         unsigned int last_checkpoint_lsn_offset,
                         void ** registration)
 {
-    DB_ENV *dbenv;
-    int rc;
-
-    rc = 0;
-    dbenv = bdb_state->dbenv;
+    DB_ENV *dbenv = bdb_state->dbenv;
 
     MODSNAP_TXN *outstanding_modsnap = malloc(sizeof(MODSNAP_TXN));
     if (!outstanding_modsnap) {
-        rc = ENOMEM;
-        return rc;
+        return ENOMEM;
     }
+
+    outstanding_modsnap->is_allowed_to_open_cursors = 1;
+
+    outstanding_modsnap->modsnap_start_lsn.file = modsnap_start_lsn_file;
+    outstanding_modsnap->modsnap_start_lsn.offset = modsnap_start_lsn_offset;
+
     outstanding_modsnap->prior_checkpoint_lsn.file = last_checkpoint_lsn_file;
     outstanding_modsnap->prior_checkpoint_lsn.offset = last_checkpoint_lsn_offset;
 
@@ -2810,7 +2821,7 @@ int bdb_register_modsnap(bdb_state_type *bdb_state,
 
     * (void **)registration = (void *) outstanding_modsnap;
     
-    return rc;
+    return 0;
 }
 
 static int get_modsnap_start_lsn(bdb_state_type *bdb_state, int snapshot_epoch,

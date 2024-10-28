@@ -2136,3 +2136,16 @@ int __txn_commit_recovered(dbenv, dist_txnid)
 	lc_free(dbenv, NULL, &lc);
 	return 0;
 }
+
+void invalidate_modsnap_txns_starting_at_lsn_geq_cutoff_lsn(DB_ENV *dbenv, DB_LSN cutoff_lsn) {
+	MODSNAP_TXN *txn;
+
+	pthread_mutex_lock(&dbenv->outstanding_modsnap_lock);
+	LISTC_FOR_EACH(&dbenv->outstanding_modsnaps, txn, lnk) {
+		if (log_compare(&cutoff_lsn, &txn->modsnap_start_lsn) <= 0) {
+			txn->is_allowed_to_open_cursors = 0;
+		}
+	}
+	pthread_mutex_unlock(&dbenv->outstanding_modsnap_lock);
+}
+

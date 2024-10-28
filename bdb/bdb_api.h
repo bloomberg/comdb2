@@ -1418,6 +1418,8 @@ void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration);
  * Register a new modsnap transaction.
  *
  * bdb_state: Caller's bdb state.
+ * modsnap_start_lsn_file: File of the modsnap start lsn
+ * modsnap_start_lsn_offset: Offset of the modsnap start lsn
  * last_checkpoint_lsn_file: File of the checkpoint lsn preceding the modsnap start point.
  * last_checkpoint_lsn_offset: Offset of the checkpoint lsn preceding the modsnap start point.
  * registration: This gets set to point to a berkdb structure that holds registration state. 
@@ -1427,9 +1429,16 @@ void bdb_unregister_modsnap(bdb_state_type *bdb_state, void * registration);
  * Returns 0 on success and non-0 on failure.
  */
 int bdb_register_modsnap(bdb_state_type *bdb_state,
+                        unsigned int modsnap_start_lsn_file,
+                        unsigned int modsnap_start_lsn_offset,
                         unsigned int last_checkpoint_lsn_file,
                         unsigned int last_checkpoint_lsn_offset,
                         void ** registration);
+
+/* 
+ * Returns 1 if this registered modsnap txn is allowed to open cursors; 0 otherwise
+ */
+int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration);
 
 /* bdb_get_modsnap_start_state --
  * Get the start state for a new modsnap transaction. A modsnap transaction's start state includes 
