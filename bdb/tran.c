@@ -641,6 +641,7 @@ static tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
                                              int reptxn, uint32_t logical_lid,
                                              int *bdberr)
 {
+    unsigned long long * p_ltranid;
     tran_type *tran;
     int step;
     int ismaster;
@@ -695,7 +696,9 @@ static tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
     tran->parent_state = bdb_state;
 
     /* Put this tran in seqnum_info->key */
-    Pthread_setspecific(bdb_state->seqnum_info->key, tran);
+    p_ltranid = malloc(sizeof(unsigned long long));
+    *p_ltranid = logical_tranid;
+    Pthread_setspecific(bdb_state->seqnum_info->key, p_ltranid);
 
     tran->got_bdb_lock = got_bdb_lock;
 
@@ -1084,7 +1087,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
     tran->threadid = pthread_self();
 
     tran->usrptr = 0;
-    int setThdTran = 0; /* was tran saved into thread local data? */
 
     /* comdb2 coding style:  "if parent" means "i am a child" */
     if (parent) {
@@ -1100,10 +1102,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             1; /* set this by default for the parent trans */
         tran->master = 1;
 
-        Pthread_setspecific(bdb_state->seqnum_info->key, tran);
-        setThdTran = 1;
-
-        /*fprintf(stderr, "Pthread_setspecific %x to %x\n", bdb_state, tran);*/
         tran->startlsn.file = 0;
         tran->startlsn.offset = 1;
     }
@@ -1143,10 +1141,6 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, "begin transaction failed\n");
             *bdberr = BDBERR_DEADLOCK;
             myfree(tran);
-            if (setThdTran){
-                Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-                setThdTran = 0;
-            }
             return NULL;
         } else {
             if (!parent) {
@@ -1586,6 +1580,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
     int needed_to_abort = 0;
     int set_seqnum = 0;
     uint32_t generation = 0;
+    unsigned long long * p_ltranid;
     tran_type *physical_tran = NULL;
     DB_LSN lsn;
     DB_LSN old_lsn;
@@ -2124,7 +2119,11 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+        p_ltranid = pthread_getspecific(bdb_state->seqnum_info->key);
+        if (p_ltranid != NULL) {
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+            free(p_ltranid);
+        }
     }
 
     if (tran->trak)
@@ -2151,22 +2150,6 @@ cleanup:
     free(tran);
 
     return outrc;
-}
-
-int bdb_tran_rep_handle_dead(bdb_state_type *bdb_state)
-{
-    tran_type *tran;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    tran = pthread_getspecific(bdb_state->seqnum_info->key);
-    if (tran) {
-        logmsg(LOGMSG_WARN, "bdb_tran_rep_handle_dead: flagging txn %p\n", tran);
-        tran->rep_handle_dead = 1;
-        return 1;
-    }
-    return 0;
 }
 
 unsigned long long check_waiters_skip_count = 0;
@@ -2328,6 +2311,7 @@ int bdb_tran_abort_int_int(bdb_state_type *bdb_state, tran_type *tran,
 {
     int rc = 0;
     int outrc = 0;
+    unsigned long long *p_ltranid;
 
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
@@ -2427,7 +2411,11 @@ cleanup:
     /* if we are the master and we free tran we need to get rid of the stored
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
-        Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+        p_ltranid = pthread_getspecific(bdb_state->seqnum_info->key);
+        if (p_ltranid != NULL) {
+            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+            free(p_ltranid);
+        }
     }
 
     if (tran->trak)

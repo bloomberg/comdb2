@@ -73,7 +73,6 @@ static int bdb_prim_delkey_int(bdb_state_type *bdb_state, tran_type *tran,
 
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -136,7 +135,6 @@ static int bdb_prim_deallocdta_stripe_int(bdb_state_type *bdb_state,
     rc = ll_dta_del(bdb_state, tran, 2 /*rrn*/, genid, db, 0, dtafile, NULL);
     if (rc != 0) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
@@ -180,7 +178,6 @@ static int bdb_prim_deallocdta_n_int(bdb_state_type *bdb_state, tran_type *tran,
     rc = ll_dta_del(bdb_state, tran, rrn, genid, dbp, dtanum, dtafile, NULL);
     if (rc) {
         switch (rc) {
-        case DB_REP_HANDLE_DEAD:
         case DB_LOCK_DEADLOCK:
             *bdberr = BDBERR_DEADLOCK;
             break;
