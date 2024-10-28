@@ -461,7 +461,7 @@ static void do_dispatch_waiting_clients(int fd, short what, void *data)
 void dispatch_waiting_clients(void)
 {
     if (!dispatch_base) return;
-    event_base_once(dispatch_base, -1, EV_TIMEOUT, do_dispatch_waiting_clients, NULL, NULL);
+    evtimer_once(dispatch_base, do_dispatch_waiting_clients, NULL);
 }
 
 static int do_dispatch_sql(struct newsql_appdata_evbuffer *appdata)
@@ -1098,11 +1098,9 @@ static int allow_admin(int local)
     return (local || !gbl_forbid_remote_admin);
 }
 
-static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admin)
+static void newsql_setup_clnt_evbuffer(int fd, short what, void *data)
 {
-    if (!dispatch_base) {
-        dispatch_base = arg->base;
-    }
+    struct appsock_handler_arg *arg = data;
     int local = 0;
     if (arg->addr.sin_addr.s_addr == gbl_myaddr.s_addr) {
         local = 1;
@@ -1110,10 +1108,12 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
         local = 1;
     }
 
+    int admin = arg->admin;
     if (thedb->no_more_sql_connections || (gbl_server_admin_mode && !admin) || (admin && !allow_admin(local))) {
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         Close(arg->fd);
+        free(arg);
         return;
     }
 
@@ -1121,7 +1121,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     struct sqlclntstate *clnt = &appdata->clnt;
 
     reset_clnt(clnt, 1);
-    char *origin = get_hostname_by_fileno(arg->fd);
+    char *origin = arg->origin;
     clnt->origin = origin ? origin : intern("???");
     clnt->appdata = appdata;
     clnt->done_cb = newsql_done_cb;
@@ -1156,22 +1156,78 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     } else {
         rd_hdr(-1, 0, appdata);
     }
+    free(arg);
+}
+
+static pthread_t gethostname_thd;
+static pthread_cond_t gethostname_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t gethostname_lk = PTHREAD_MUTEX_INITIALIZER;
+static int gethostname_ctr = 0;
+static TAILQ_HEAD(, appsock_handler_arg) gethostname_list = TAILQ_HEAD_INITIALIZER(gethostname_list);
+
+static void *gethostname_fn(void *arg)
+{
+    int max_pending = 8;
+    struct timeval last_report;
+    gettimeofday(&last_report, NULL);
+    comdb2_name_thread("gethostname");
+    while (1) {
+        Pthread_mutex_lock(&gethostname_lk);
+        if (TAILQ_EMPTY(&gethostname_list)) {
+            Pthread_cond_wait(&gethostname_cond, &gethostname_lk);
+        }
+        struct appsock_handler_arg *arg = TAILQ_FIRST(&gethostname_list);
+        TAILQ_REMOVE(&gethostname_list, arg, entry);
+        int pending = --gethostname_ctr;
+        Pthread_mutex_unlock(&gethostname_lk);
+        arg->origin = get_hostname_by_fileno(arg->fd);
+        struct timeval now, diff;
+        gettimeofday(&now, NULL);
+        timersub(&now, &arg->start, &diff);
+        if (diff.tv_sec) {
+            printf("%s  took %lds:%ldms  pending:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, pending);
+        } else if (pending > max_pending) {
+            max_pending = pending;
+            printf("%s  pending:%d\n", __func__, pending);
+        } else if (pending > 8) {
+            timersub(&now, &last_report, &diff);
+            last_report = now;
+            if (diff.tv_sec > 10) {
+                printf("%s  pending:%d\n", __func__, pending);
+            }
+        }
+        evtimer_once(arg->base, newsql_setup_clnt_evbuffer, arg);
+    }
+}
+
+static void gethostname_enqueue(struct appsock_handler_arg *arg)
+{
+    gettimeofday(&arg->start, NULL);
+    Pthread_mutex_lock(&gethostname_lk);
+    TAILQ_INSERT_TAIL(&gethostname_list, arg, entry);
+    ++gethostname_ctr;
+    Pthread_cond_signal(&gethostname_cond); /* -> gethostname_fn */
+    Pthread_mutex_unlock(&gethostname_lk);
 }
 
 static void handle_newsql_request_evbuffer(int dummyfd, short what, void *data)
 {
-    newsql_setup_clnt_evbuffer(data, 0);
-    free(data);
+    struct appsock_handler_arg *arg = data;
+    arg->admin = 0;
+    gethostname_enqueue(arg);
 }
 
 static void handle_newsql_admin_request_evbuffer(int dummyfd, short what, void *data)
 {
-    newsql_setup_clnt_evbuffer(data, 1);
-    free(data);
+    struct appsock_handler_arg *arg = data;
+    arg->admin = 1;
+    gethostname_enqueue(arg);
 }
 
 static int newsql_init(void *arg)
 {
+    dispatch_base = get_dispatch_event_base();
+    Pthread_create(&gethostname_thd, NULL, gethostname_fn, NULL);
     add_appsock_handler("newsql\n", handle_newsql_request_evbuffer);
     add_appsock_handler("@newsql\n", handle_newsql_admin_request_evbuffer);
     return 0;
