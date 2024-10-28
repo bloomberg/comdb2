@@ -418,7 +418,6 @@ static void routefd(int serverfd, short what, void *arg)
 {
     connection *c = (connection *)(arg);
     int clientfd = c->fd;
-    make_socket_blocking(clientfd);
     debug_log("%s send fd:%d to fd:%d\n", __func__, clientfd, serverfd);
     iovec iov = {.iov_base = c->protocol, .iov_len = sizeof(c->protocol)};
     msghdr msg = {0};
@@ -438,8 +437,9 @@ static void routefd(int serverfd, short what, void *arg)
     *((int *)CMSG_DATA(cmsgptr)) = clientfd;
 #endif
     ssize_t rc = sendmsg(serverfd, &msg, 0);
-    // I wish protocol was to send 1 byte (not 4). Simplifies handing partial
-    // writes by eliminating them. For now, terminate connection to server.
+    if (rc == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        return;
+    }
     if (rc != sizeof(c->protocol)) {
         syslog(LOG_ERR, "%s:sendmsg fd:%d rc:%zd expected:%zu (%s)\n", __func__, serverfd, rc, sizeof(c->protocol),
                strerror(errno));
