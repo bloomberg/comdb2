@@ -158,6 +158,8 @@ static struct timeval fdb_tick;
 static pthread_t appsock_thd[NUM_APPSOCK_RD];
 static struct event_base *appsock_base[NUM_APPSOCK_RD];
 static struct timeval appsock_tick[NUM_APPSOCK_RD];
+static int appsock_counter = 0;
+static pthread_mutex_t appsock_counter_lk = PTHREAD_MUTEX_INITIALIZER;
 
 #define get_rd_policy()                                                        \
     ({                                                                         \
@@ -2680,9 +2682,10 @@ int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, in
     arg->is_readonly = is_readonly;
     arg->secure = secure;
 
-    static int appsock_counter = 0;
+    Pthread_mutex_lock(&appsock_counter_lk);
     arg->base = appsock_base[appsock_counter++];
     if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
+    Pthread_mutex_unlock(&appsock_counter_lk);
     evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
     return 0;
 }
