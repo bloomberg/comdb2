@@ -940,6 +940,9 @@ int sqlite3VdbeExec(
 #endif
 #ifdef SQLITE_DEBUG
   int nExtraDelete = 0;      /* Verifies FORDELETE and AUXDELETE flags */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  UNUSED_PARAMETER(nExtraDelete);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif
   int rc = SQLITE_OK;        /* Value to return */
   sqlite3 *db = p->db;       /* The database */
