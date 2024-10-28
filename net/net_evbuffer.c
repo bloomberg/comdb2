@@ -14,6 +14,10 @@
    limitations under the License.
 */
 
+#ifdef __sun
+#  define BSD_COMP /* for FIONREAD */
+#endif
+
 #include <alloca.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -22,9 +26,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef __sun
-#  define BSD_COMP /* for FIONREAD */
-#endif
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -42,10 +43,9 @@
 #include <event2/util.h>
 
 #include <bb_oscompat.h>
+#include <berkdb/dbinc/rep_types.h>
 #include <comdb2_atomic.h>
 #include <compat.h>
-#include <dbinc/queue.h>
-#include <dbinc/rep_types.h>
 #include <intern_strings.h>
 #include <sys_wrap.h>
 #include <logmsg.h>
@@ -3827,4 +3827,9 @@ int enable_fdb_heartbeats(fdb_hbeats_type  *hb)
 int disable_fdb_heartbeats_and_free(fdb_hbeats_type *hb)
 {
     return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats_and_free, hb, NULL);
+}
+
+struct event_base *get_dispatch_event_base(void)
+{
+    return appsock_base[0];
 }
