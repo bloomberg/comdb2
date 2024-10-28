@@ -84,31 +84,22 @@ enum {
 
 int gbl_revsql_force_rte = 1;
 
-int send_reversesql_request(const char *dbname, const char *host,
-                            const char *command) {
-    SBUF2 *sb;
-    int new_fd;
+int send_reversesql_request(const char *dbname, const char *host, const char *command)
+{
     int rc = 0;
-    int polltm;
-    struct sockaddr_in cliaddr;
-    struct pollfd pol;
-    char paddr[64];
 
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d Sending reversesql request to %s@%s\n", __func__, __LINE__, dbname, host);
     }
 
-    // Connect to the remote database
-    sb = connect_remote_db(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte);
+    SBUF2 *sb = connect_remote_db(NULL, dbname, NULL, (char *)host, 0, gbl_revsql_force_rte);
     if (!sb) {
         revconn_logmsg(LOGMSG_ERROR, "%s:%d Failed to connect to %s:%s\n", __func__, __LINE__, dbname, host);
         return 1;
     }
 
-    new_fd = sbuf2fileno(sb);
+    int new_fd = sbuf2fileno(sb);
     make_server_socket(new_fd);
-
-    // NC: Most of the following code has been copied from net/net.c (accept_thread())
 
     if (db_is_exiting()) {
         if (gbl_revsql_debug == 1) {
@@ -118,69 +109,21 @@ int send_reversesql_request(const char *dbname, const char *host,
         goto cleanup;
     }
 
-    char msg[120] = {0};
-    snprintf(msg, sizeof(msg), "reversesql\n%s\n%s\n%s\n",
-             gbl_dbname, gbl_myhostname, command);
-    (void)sbuf2write(msg, strlen(msg), sb);
-    sbuf2flush(sb);
+    char msg[512];
+    size_t len = snprintf(msg, sizeof(msg), "reversesql\n%s\n%s\n%s\n", gbl_dbname, gbl_myhostname, command);
+    if (sbuf2write(msg, len, sb) != len || sbuf2flush(sb) != len) {
+        revconn_logmsg(LOGMSG_USER, "%s:%d Failed to send reversesql request fd:%d len:%zu\n",
+                       __func__, __LINE__, new_fd, len);
+        rc = -1;
+        goto cleanup;
+    }
 
     if (gbl_revsql_debug == 1) {
         revconn_logmsg(LOGMSG_USER, "%s:%d Sent '%s' through fd:%d\n", __func__, __LINE__, msg, new_fd);
     }
 
-    /* reasonable default for poll */
-    polltm = 100;
-
-    /* setup poll */
-    pol.fd = new_fd;
-    pol.events = POLLIN;
-
-    /* poll */
-    rc = poll(&pol, 1, polltm);
-
-    /* drop connection on poll error */
-    if (rc < 0) {
-        findpeer(new_fd, paddr, sizeof(paddr));
-        revconn_logmsg(LOGMSG_ERROR, "%s: Error from poll: %s, peeraddr=%s\n", __func__, strerror(errno), paddr);
-        rc = -1;
-        goto cleanup;
-    }
-
-    /* drop connection on timeout */
-    else if (0 == rc) {
-        findpeer(new_fd, paddr, sizeof(paddr));
-        revconn_logmsg(LOGMSG_ERROR, "%s: Timeout reading from socket, peeraddr=%s\n", __func__, paddr);
-        rc = -1;
-        goto cleanup;
-    }
-
-    /* drop connection if i would block in read */
-    if ((pol.revents & POLLIN) == 0) {
-        findpeer(new_fd, paddr, sizeof(paddr));
-        revconn_logmsg(LOGMSG_ERROR, "%s: Cannot read without blocking, peeraddr=%s\n", __func__, paddr);
-        rc = -1;
-        goto cleanup;
-    }
-
-    cliaddr.sin_addr.s_addr = 0;
-
-    /* the above poll ensures that this will not block */
-    struct evbuffer *buf = evbuffer_new();
-    rc = evbuffer_read(buf, new_fd, -1);
-    if (rc <= 0) {
-        if (gbl_revsql_debug == 1) {
-            revconn_logmsg(LOGMSG_ERROR, "%s:%d Either remote host ignored the 'reversesql' request or an error has occurred (rc: %d)\n", __func__, __LINE__, rc);
-        }
-        evbuffer_free(buf);
-        sbuf2close(sb);
-        return 0;
-    }
-    sbuf2free(sb);
-    if (gbl_revsql_debug == 1) {
-        revconn_logmsg(LOGMSG_USER, "%s:%d Received 'newsql' request over 'reversesql' connection\n", __func__, __LINE__);
-    }
-    (void)do_appsock_evbuffer(buf, &cliaddr, new_fd, 1, 0);
-    return rc;
+    struct timeval timeout = {.tv_usec = 100 * 1000};
+    return event_base_once(get_main_event_base(), new_fd, EV_READ, do_revconn_evbuffer, NULL, &timeout);
 
 cleanup:
     sbuf2close(sb);
