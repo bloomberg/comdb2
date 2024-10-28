@@ -2855,6 +2855,8 @@ struct __db_env {
 
 struct __modsnap_txn
 {
+	int is_allowed_to_open_cursors;
+	DB_LSN modsnap_start_lsn;
 	DB_LSN prior_checkpoint_lsn;
 	LINKC_T(struct __modsnap_txn) lnk;
 };

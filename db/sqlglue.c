@@ -4882,7 +4882,8 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
                 goto done;
             }
 
-            if (bdb_register_modsnap(db->handle, clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
+            if (bdb_register_modsnap(db->handle, clnt->modsnap_start_lsn_file, clnt->modsnap_start_lsn_offset,
+                    clnt->last_checkpoint_lsn_file, clnt->last_checkpoint_lsn_offset, &clnt->modsnap_registration)) {
                 logmsg(LOGMSG_ERROR, "%s: Failed to register modsnap txn\n", __func__);
                 rc = SQLITE_INTERNAL;
                 goto done;
@@ -9666,15 +9667,11 @@ int osql_check_shadtbls(bdb_state_type *bdb_env, struct sqlclntstate *clnt,
 int gbl_random_get_curtran_failures;
 extern int gbl_test_curtran_change_code;
 
-static int should_fail_with_gen_change(const uint32_t curgen, const struct sqlclntstate * const clnt) {
-    const int tranlevel_is_modsnap = clnt->dbtran.mode == TRANLEVEL_MODSNAP;
+static int should_fail_due_to_gen_change(const uint32_t curgen, const struct sqlclntstate * const clnt) {
     const int tranlevel_is_snapserial = (clnt->dbtran.mode == TRANLEVEL_SNAPISOL || clnt->dbtran.mode == TRANLEVEL_SERIAL);
+    if (!tranlevel_is_snapserial) { return 0; }
 
-    if (!tranlevel_is_modsnap && !tranlevel_is_snapserial) { return 0; }
-
-    // We only want to fail tranlevel_snapisol/tranlevel_serializable if durable lsns are enabled.
-    // We want to fail tranlevel_modsnap even if durable lsns are disabled.
-    if (tranlevel_is_snapserial && !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) { return 0; }
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS)) { return 0; }
 
     if (!clnt->init_gen) { return 0; }
 
@@ -9738,7 +9735,7 @@ retry:
      * master (which means that our shadow-tables will be incorrect).  */
 
     curgen = bdb_get_rep_gen(bdb_state);
-    if (should_fail_with_gen_change(curgen, clnt)) {
+    if (should_fail_due_to_gen_change(curgen, clnt)) {
         bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
         curtran_out = NULL;
         clnt->gen_changed = 1;
@@ -9746,6 +9743,17 @@ retry:
                "td %p %s: failing because generation has changed: "
                "orig-gen=%u, cur-gen=%u\n",
                (void *)pthread_self(), __func__, clnt->init_gen, curgen);
+        return -1;
+    }
+    
+    const int tran_is_registered_modsnap = clnt->dbtran.mode == TRANLEVEL_MODSNAP
+        && clnt->modsnap_registration;
+    if (tran_is_registered_modsnap && !bdb_is_modsnap_txn_allowed_to_open_cursors(clnt->modsnap_registration)) {
+        bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
+        curtran_out = NULL;
+        logmsg(LOGMSG_DEBUG,
+               "td %p %s: failing because modsnap txn is no longer valid",
+               (void *)pthread_self(), __func__);
         return -1;
     }
 

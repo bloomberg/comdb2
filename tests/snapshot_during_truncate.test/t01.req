@@ -1,0 +1,11 @@
+# Verify that a snapshot txn fails if we truncate
+# to an lsn before its start lsn
+#
+# pushnext to make sure that the snapshot definitely starts
+# at an lsn above the truncate lsn
+2 exec procedure sys.cmd.send('pushnext')
+2 set transaction snapshot isolation
+2 begin
+# `setup.sh` populates `trunc_lsn`
+1 exec procedure sys.cmd.truncate_log('{<trunc_lsn>}')
+2 select count(*) from t
