@@ -29,8 +29,9 @@ struct appsock_handler_arg {
 int add_appsock_handler(const char *, event_callback_fn);
 int maxquerytime_cb(struct sqlclntstate *);
 void make_server_socket(int fd);
-int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure);
 struct event_base *get_dispatch_event_base(void);
+struct event_base *get_main_event_base(void);
+void do_revconn_evbuffer(int fd, short what, void *data);
 
 typedef void(*run_on_base_fn)(void *);
 void run_on_base(struct event_base *, run_on_base_fn, void *);

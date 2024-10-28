@@ -122,7 +122,7 @@ extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern int gbl_pmux_route_enabled;
 extern int gbl_ssl_allow_localhost;
-
+extern int gbl_revsql_debug;
 extern void pstack_self(void);
 
 static struct timeval one_sec = {1, 0};
@@ -2826,7 +2826,7 @@ static void rd_connect_msg_len(int fd, short what, void *data)
     }
 }
 
-int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure)
+static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure)
 {
     struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
@@ -3832,4 +3832,34 @@ int disable_fdb_heartbeats_and_free(fdb_hbeats_type *hb)
 struct event_base *get_dispatch_event_base(void)
 {
     return appsock_base[0];
+}
+
+struct event_base *get_main_event_base(void)
+{
+    return base;
+}
+
+void do_revconn_evbuffer(int fd, short what, void *data)
+{
+    check_base_thd();
+    if (what & EV_TIMEOUT) {
+        logmsg(LOGMSG_USER, "revconn: %s: Timeout reading from fd:%d\n", __func__, fd);
+        shutdown_close(fd);
+        return;
+    }
+    int rc;
+    struct evbuffer *buf = evbuffer_new();
+    if ((rc = evbuffer_read(buf, fd, -1)) <= 0) {
+        logmsg(LOGMSG_USER, "revconn: %s: Failed to read from fd:%d rc:%d\n", __func__, fd, rc);
+        evbuffer_free(buf);
+        shutdown_close(fd);
+        return;
+    }
+    if (gbl_revsql_debug) {
+        logmsg(LOGMSG_USER, "revconn: %s: Received 'newsql' request over 'reversesql' connection fd:%d\n", __func__, fd);
+    }
+    struct sockaddr_in addr;
+    socklen_t laddr = sizeof(addr);
+    getsockname(fd, (struct sockaddr *)&addr, &laddr);
+    do_appsock_evbuffer(buf, &addr, fd, 1, 0);
 }
