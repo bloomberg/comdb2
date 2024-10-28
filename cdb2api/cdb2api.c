@@ -5032,7 +5032,8 @@ read_record:
 
     if (hndl->firstresponse->foreign_db) {
         int foreign_flags = hndl->firstresponse->foreign_policy_flag;
-        foreign_flags |= (hndl->flags & CDB2_REQUIRE_FASTSQL);
+        foreign_flags |=
+            (hndl->flags & ~(CDB2_DIRECT_CPU | CDB2_RANDOM | CDB2_RANDOMROOM | CDB2_ROOM)); // don't look at room flags
         if (cdb2_open(&hndl->fdb_hndl, hndl->firstresponse->foreign_db, hndl->firstresponse->foreign_class, foreign_flags)) {
             cdb2_close(hndl->fdb_hndl);
             hndl->fdb_hndl = NULL;
