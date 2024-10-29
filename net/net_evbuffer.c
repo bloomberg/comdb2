@@ -3647,3 +3647,8 @@ void increase_net_buf(void)
 {
     run_on_base(base, do_increase_net_buf, NULL);
 }
+
+struct event_base *get_dispatch_base(void)
+{
+    return appsock_base[0];
+}
