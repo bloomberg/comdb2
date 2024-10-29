@@ -4,6 +4,8 @@
 #include <pthread.h>
 #include <event2/event.h>
 
+#include <berkdb/dbinc/queue.h>
+
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)
 
@@ -11,17 +13,24 @@ struct sqlclntstate;
 
 struct appsock_handler_arg {
     int fd;
+    int admin;
     int is_readonly;
     int secure; /* whether connection is routed from a secure pmux port */
     struct sockaddr_in addr;
     struct evbuffer *rd_buf;
     struct event_base *base;
+
+    /* gethostinfo */
+    struct timeval start;
+    char *origin;
+    TAILQ_ENTRY(appsock_handler_arg) entry;
 };
 
 int add_appsock_handler(const char *, event_callback_fn);
 int maxquerytime_cb(struct sqlclntstate *);
 void make_server_socket(int fd);
 int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure);
+struct event_base *get_dispatch_base(void);
 
 typedef void(*run_on_base_fn)(void *);
 void run_on_base(struct event_base *, run_on_base_fn, void *);
