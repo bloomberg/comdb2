@@ -327,7 +327,7 @@ __pgdump(DB_ENV *dbenv, int32_t fileid, uint8_t *ufid, db_pgno_t pgno)
 	if (fileid != -1)
 		ret = __dbreg_id_to_db(dbenv, NULL, &dbp, fileid, 0, NULL, 0);
 	else
-		ret = __ufid_to_db(dbenv, NULL, &dbp, ufid, NULL);
+		ret = __ufid_to_db(dbenv, NULL, &dbp, ufid, NULL, NULL);
 
 	if (ret) {
 		fprintf(stderr,

@@ -35,6 +35,9 @@ add_library(bdb
   llog_auto.c
   locks.c
   locktest.c
+  log_queue_dump.c
+  log_queue_trigger.c
+  log_trigger.c
   odh.c
   phys.c
   phys_rep_lsn.c

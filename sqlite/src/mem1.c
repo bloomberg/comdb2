@@ -125,7 +125,7 @@ static malloc_zone_t* _sqliteZone_;
 ** cases of nByte<=0 will be intercepted and dealt with by higher level
 ** routines.
 */
-static void *sqlite3MemMalloc(int nByte){
+static void *sqlite3MemMalloc(size_t nByte){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   extern unsigned gbl_blob_sz_thresh_bytes;
 #ifndef USE_SYS_ALLOC
