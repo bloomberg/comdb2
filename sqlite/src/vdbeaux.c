@@ -232,6 +232,9 @@ static int growOpArray(Vdbe *v, int nOp){
 static void test_addop_breakpoint(void){
   static int n = 0;
   n++;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  UNUSED_PARAMETER(n);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 #endif
 

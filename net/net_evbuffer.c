@@ -14,6 +14,10 @@
    limitations under the License.
 */
 
+#ifdef __sun
+#  define BSD_COMP /* for FIONREAD */
+#endif
+
 #include <alloca.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -22,9 +26,6 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef __sun
-#  define BSD_COMP /* for FIONREAD */
-#endif
 #include <sys/ioctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -42,10 +43,9 @@
 #include <event2/util.h>
 
 #include <bb_oscompat.h>
+#include <berkdb/dbinc/rep_types.h>
 #include <comdb2_atomic.h>
 #include <compat.h>
-#include <dbinc/queue.h>
-#include <dbinc/rep_types.h>
 #include <intern_strings.h>
 #include <sys_wrap.h>
 #include <logmsg.h>
@@ -122,7 +122,7 @@ extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern int gbl_pmux_route_enabled;
 extern int gbl_ssl_allow_localhost;
-
+extern int gbl_revsql_debug;
 extern void pstack_self(void);
 
 static struct timeval one_sec = {1, 0};
@@ -297,7 +297,7 @@ static void make_socket_reusable(int fd)
     }
 }
 
-static void make_socket_nonblocking(int fd)
+void make_server_socket(int fd)
 {
     evutil_make_socket_nonblocking(fd);
     make_socket_nolinger(fd);
@@ -312,7 +312,7 @@ static int get_nonblocking_socket(void)
     if (fd == -1) {
         logmsgperror("get_nonblocking_socket socket");
     } else {
-        make_socket_nonblocking(fd);
+        make_server_socket(fd);
     }
     return fd;
 }
@@ -472,11 +472,10 @@ int gbl_timer_warn_interval = 1500; //msec. To disable check, set to 0.
 int gbl_timer_pstack_interval =  5 * 60; //sec. To disable pstack, but keep monitoring, set to 0.
 extern struct timeval last_timer_pstack;
 static struct timeval last_timer_check;
-static struct event *check_timers_ev;
-static void check_timers(int dummyfd, short what, void *arg)
+void check_timers(void)
 {
     if (gbl_timer_warn_interval == 0) return;
-    check_base_thd();
+
     int ms, need_pstack = 0;
     struct timeval now, diff;
     gettimeofday(&now, NULL);
@@ -531,9 +530,7 @@ static void check_timers(int dummyfd, short what, void *arg)
 static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
-    char thdname[32];
     struct net_dispatch_info *n = arg;
-    snprintf(thdname, sizeof(thdname), "net_dispatch %s", n->who);
     comdb2_name_thread(n->who);
 
     current_base = n->base;
@@ -1642,6 +1639,10 @@ static int process_net_msgs(struct event_info *e, struct evbuffer *buf, void **m
 static void *rd_worker(void *data)
 {
     struct event_info *e = data;
+    char thdname[64];
+    snprintf(thdname, sizeof(thdname), "%s - %s", __func__, e->host);
+    comdb2_name_thread(thdname);
+
     netinfo_type *n = e->net_info->netinfo_ptr;
     if (n->start_thread_callback) {
         n->start_thread_callback(n->callback_data);
@@ -2825,7 +2826,7 @@ static void rd_connect_msg_len(int fd, short what, void *data)
     }
 }
 
-int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure)
+static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure)
 {
     struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
@@ -3026,7 +3027,7 @@ static void do_recvfd(int pmux_fd, short what, void *data)
     case -1: reopen_unix(pmux_fd, n); return;
     case -2: close_oldest_pending_connection(); return;
     }
-    make_socket_nonblocking(newfd);
+    make_server_socket(newfd);
     ssize_t rc = write(newfd, "0\n", 2);
     if (rc != 2) {
         logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
@@ -3216,7 +3217,7 @@ static void net_accept(netinfo_type *netinfo_ptr)
     if (fd == -1) {
         return;
     }
-    make_socket_nonblocking(fd);
+    make_server_socket(fd);
     n->listener = evconnlistener_new(base, accept_cb, n, LEV_OPT_CLOSE_ON_FREE,
                                      gbl_net_maxconn ? gbl_net_maxconn : SOMAXCONN, fd);
     evconnlistener_set_error_cb(n->listener, accept_error_cb);
@@ -3394,11 +3395,6 @@ static void setup_bases(void)
         init_base(&single.rdthd, &single.rdbase, "read");
     }
 
-    gettimeofday(&last_timer_check, NULL);
-    check_timers_ev = event_new(base, -1, EV_PERSIST, check_timers, NULL);
-    struct timeval one = {1, 0};
-    event_add(check_timers_ev, &one);
-
     logmsg(LOGMSG_USER, "Libevent %s with backend method %s\n", event_get_version(), event_base_get_method(base));
 }
 
@@ -3458,7 +3454,7 @@ static void add_event(int fd, event_callback_fn func, void *data)
 
 void add_tcp_event(int fd, event_callback_fn func, void *data)
 {
-    make_socket_nonblocking(fd);
+    make_server_socket(fd);
     add_event(fd, func, data);
 }
 
@@ -3831,4 +3827,39 @@ int enable_fdb_heartbeats(fdb_hbeats_type  *hb)
 int disable_fdb_heartbeats_and_free(fdb_hbeats_type *hb)
 {
     return event_base_once(fdb_base, -1, EV_TIMEOUT, do_disable_fdb_heartbeats_and_free, hb, NULL);
+}
+
+struct event_base *get_dispatch_event_base(void)
+{
+    return appsock_base[0];
+}
+
+struct event_base *get_main_event_base(void)
+{
+    return base;
+}
+
+void do_revconn_evbuffer(int fd, short what, void *data)
+{
+    check_base_thd();
+    if (what & EV_TIMEOUT) {
+        logmsg(LOGMSG_USER, "revconn: %s: Timeout reading from fd:%d\n", __func__, fd);
+        shutdown_close(fd);
+        return;
+    }
+    int rc;
+    struct evbuffer *buf = evbuffer_new();
+    if ((rc = evbuffer_read(buf, fd, -1)) <= 0) {
+        logmsg(LOGMSG_USER, "revconn: %s: Failed to read from fd:%d rc:%d\n", __func__, fd, rc);
+        evbuffer_free(buf);
+        shutdown_close(fd);
+        return;
+    }
+    if (gbl_revsql_debug) {
+        logmsg(LOGMSG_USER, "revconn: %s: Received 'newsql' request over 'reversesql' connection fd:%d\n", __func__, fd);
+    }
+    struct sockaddr_in addr;
+    socklen_t laddr = sizeof(addr);
+    getsockname(fd, (struct sockaddr *)&addr, &laddr);
+    do_appsock_evbuffer(buf, &addr, fd, 1, 0);
 }

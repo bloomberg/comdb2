@@ -400,7 +400,7 @@
 (name='hostile_takeover_retries', description='Attempt to take over mastership if the master machine is marked offline, and the current machine is online.', type='INTEGER', value='0', read_only='N')
 (name='hostname', description='', type='STRING', value='***', read_only='Y')
 (name='i_am_master', description='', type='BOOLEAN', value='***', read_only='N')
-(name='iam_usermetric_verbosity', description='IAM user metric verbosity [Default: 0 (off)]', type='INTEGER', value='0', read_only='N')
+(name='iam_usermetric_verbosity', description='IAM user metric verbosity [Default: 1 (low)]', type='INTEGER', value='1', read_only='N')
 (name='ignore_bad_table', description='Allow a database with a corrupt table to come up, without that table.', type='BOOLEAN', value='OFF', read_only='N')
 (name='ignore_datetime_cast_failures', description='ignore_datetime_cast_failures', type='BOOLEAN', value='OFF', read_only='N')
 (name='ignore_extra_blobs', description='ignore_extra_blobs', type='BOOLEAN', value='OFF', read_only='N')
