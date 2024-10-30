@@ -685,7 +685,7 @@ void sql_mem_shutdown_and_restore(void *arg, void **poldm)
     sql_mspace = *poldm; *poldm = NULL;
 }
 
-static void *sql_mem_malloc(int size)
+static void *sql_mem_malloc(size_t size)
 {
     if (unlikely(sql_mspace == NULL))
         sql_mem_init(NULL);

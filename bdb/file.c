@@ -108,6 +108,8 @@
 #include <phys_rep.h>
 #include <phys_rep_lsn.h>
 
+#include <log_trigger.h>
+
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
@@ -2466,6 +2468,8 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     if (gbl_is_physical_replicant) {
         rc = dbenv->set_rep_ignore(dbenv, physrep_ignore_btree);
     }
+
+    dbenv->set_log_trigger(dbenv, log_trigger_btree_trigger, log_trigger_callback);
 
 #ifdef BDB_VERB_REPLICATION_DEFAULT
     /* turn on verbose replication by default, so I can see what's happening

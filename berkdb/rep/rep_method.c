@@ -67,6 +67,7 @@ static int __rep_wrlock_recovery_blocked __P((DB_ENV *));
 static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_set_ignore __P((DB_ENV *, int (*func)(const char *filename)));
+static int __rep_set_log_trigger __P((DB_ENV *, void *(*is_log_trigger)(const char *filename), int (*log_trigger_cb)(void *trigger, const DB_LSN *lsn, const DB_LSN *commit_lsn, const char *filename, u_int32_t rectype, const void *log)));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 static int __rep_deadlocks __P((DB_ENV *, u_int64_t *));
@@ -131,6 +132,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->set_rep_request = __rep_set_request;
 		dbenv->set_rep_transport = __rep_set_rep_transport;
 		dbenv->set_rep_ignore = __rep_set_ignore;
+        dbenv->set_log_trigger = __rep_set_log_trigger;
 		dbenv->set_truncate_sc_callback = __rep_set_truncate_sc_callback;
 		dbenv->set_rep_truncate_callback = __rep_set_rep_truncate_callback;
 		dbenv->set_rep_recovery_cleanup = __rep_set_rep_recovery_cleanup;
@@ -1015,6 +1017,22 @@ __rep_set_truncate_sc_callback(dbenv, truncate_sc_callback)
 		return (EINVAL);
 	}
 	dbenv->truncate_sc_callback = truncate_sc_callback;
+	return (0);
+}
+
+/*
+ * __rep_set_log_trigger --
+ *  Set log-trigger functions
+ */
+static int
+__rep_set_log_trigger(dbenv, f_istrigger, f_callback)
+	DB_ENV *dbenv;
+	void *(*f_istrigger) __P((const char *));
+	int (*f_callback) __P((void *, const DB_LSN *, const DB_LSN *, const char *, u_int32_t op, const void *));
+{
+	PANIC_CHECK(dbenv);
+	dbenv->rep_is_log_trigger = f_istrigger;
+	dbenv->rep_log_trigger_cb = f_callback;
 	return (0);
 }
 

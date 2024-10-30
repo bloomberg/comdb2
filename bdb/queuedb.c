@@ -924,6 +924,64 @@ int bdb_queuedb_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr)
     return 0;
 }
 
+int bdb_queuedb_trigger_unpack(bdb_state_type *bdb_state, DBT *dbt_key, DBT *dbt_data, int *consumer, uint64_t *genid,
+                               struct bdb_queue_found **fnd, size_t *fnddtalen, size_t *fnddtaoff, long long *seq)
+{
+    uint8_t *p_buf, *p_buf_end;
+    struct queuedb_key fndk;
+    long long sequence = 0;
+    size_t data_offset;
+
+    p_buf = dbt_key->data;
+    p_buf_end = p_buf + dbt_key->size;
+    p_buf = queuedb_key_get(&fndk, p_buf, p_buf_end);
+
+    if (p_buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to decode key for %s\n", __func__, __LINE__, bdb_state->name);
+        return -1;
+    }
+
+    if (consumer)
+        *consumer = fndk.consumer;
+    if (genid)
+        *genid = fndk.genid;
+
+    p_buf = dbt_data->data;
+    p_buf_end = p_buf + dbt_data->size;
+
+    if (dbt_data->size < sizeof(struct bdb_queue_found)) {
+        logmsg(LOGMSG_ERROR, "%s:%d data size %u too small for %s\n", __func__, __LINE__, dbt_data->size,
+               bdb_state->name);
+        return -1;
+    }
+
+    if (bdb_state->ondisk_header) {
+        struct bdb_queue_found_seq qfnd_odh;
+        p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+        memcpy(dbt_data->data, &qfnd_odh, sizeof(qfnd_odh));
+        sequence = qfnd_odh.seq;
+        data_offset = qfnd_odh.data_offset;
+    } else {
+        struct bdb_queue_found qfnd;
+        p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
+        memcpy(dbt_data->data, &qfnd, sizeof(qfnd));
+        data_offset = qfnd.data_offset;
+    }
+
+    if (p_buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to decode data for %s\n", __func__, __LINE__, bdb_state->name);
+        return -1;
+    }
+    *fnd = dbt_data->data;
+    if (fnddtalen)
+        *fnddtalen = dbt_data->size - data_offset;
+    if (fnddtaoff)
+        *fnddtaoff = data_offset;
+    if (seq)
+        *seq = sequence;
+    return 0;
+}
+
 static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran, DB *db, int consumer,
                                const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnd,
                                size_t *fnddtalen, size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,

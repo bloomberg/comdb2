@@ -69,6 +69,12 @@ if(WITH_RDKAFKA)
   add_definitions(-DWITH_RDKAFKA)
 endif()
 
+option(WITH_QKAFKA "Turn ON to allow queue-adds published to Kafka" OFF)
+if(WITH_QKAFKA)
+  find_package(RdKafka REQUIRED)
+  add_definitions(-DWITH_QKAFKA)
+endif()
+
 endif(COMDB2_BBCMAKE)
 
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
