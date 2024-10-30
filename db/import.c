@@ -891,7 +891,7 @@ static enum comdb2_import_op bulk_import_perform_initial_validation(const char *
         __import_logmsg(LOGMSG_ERROR,
                "Failed to get tunables from source db.\nerrstr: %s\n",
                cdb2_errstr(hndl));
-        rc = CDB2ERR_CONNECT_ERROR ? COMDB2_IMPORT_RC_NO_SRC_CONN : COMDB2_IMPORT_RC_INTERNAL;
+        rc = (rc == CDB2ERR_CONNECT_ERROR) ? COMDB2_IMPORT_RC_NO_SRC_CONN : COMDB2_IMPORT_RC_INTERNAL;
         goto err;
     }
 
