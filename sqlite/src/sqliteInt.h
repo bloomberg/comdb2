@@ -1161,6 +1161,7 @@ typedef struct Cdb2TrigEvent Cdb2TrigEvent;
 typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
 typedef struct comdb2_ddl_context Cdb2DDL;
+typedef struct Temporal Temporal;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 
@@ -1910,6 +1911,9 @@ struct Column {
   char affinity;   /* One of the SQLITE_AFF_... values */
   u8 szEst;        /* Estimated size of value in this column. sizeof(INT)==1 */
   u8 colFlags;     /* Boolean properties.  See COLFLAG_ defines below */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  u8 colTime;      /* Boolean properties.  See COLTIME_ defines below */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /* Allowed values for Column.colFlags:
@@ -1920,12 +1924,14 @@ struct Column {
 #define COLFLAG_UNIQUE   0x0008    /* Column def contains "UNIQUE" or "PK" */
 #define COLFLAG_SORTERREF 0x0010   /* Use sorter-refs with this column */
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 /* Allowed values for Column.colTime:
 */
 #define COLTIME_SYSSTART 0x0001    /* System start */
 #define COLTIME_SYSEND   0x0002    /* System end */
 #define COLTIME_BUSSTART 0x0004    /* Business start */
 #define COLTIME_BUSEND   0x0008    /* Business end */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** A "Collating Sequence" is defined by an instance of the following
@@ -2133,6 +2139,8 @@ struct Table {
   int hasPartIdx;
   int hasExprIdx;
   int hasFuncIdx;      /* UNUSED: if the table has an index with uses a lua scalar func*/
+  int isHistory;
+  Trigger *pBusTimeTrigger;   /* Business Time trigger */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4422,6 +4430,11 @@ void sqlite3MaterializeView(Parse*, Table*, Expr*, ExprList*,Expr*,int);
   void sqlite3CodeRowTrigger(Parse*, Trigger *, int, ExprList*, int, Table *,
                             int, int, int);
   void sqlite3CodeRowTriggerDirect(Parse *, Trigger *, Table *, int, int, int);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  void sqlite3CodeBusTimeRowTrigger(Parse *, ExprList *, Table *, Expr *,
+                                    Expr *, int, int, int);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   void sqliteViewTriggers(Parse*, Table*, Expr*, int, ExprList*);
   void sqlite3DeleteTriggerStep(sqlite3*, TriggerStep*);
   TriggerStep *sqlite3TriggerSelectStep(sqlite3*,Select*,
@@ -5099,6 +5112,24 @@ int comdb2IsDryrun(Parse *);
 int comdb2SCIsDryRunnable(struct schema_change_type *);
 
 void comdb2WriteTransaction(Parse*);
+
+/*
+** An instance of this structure holds information about the
+** FOR TIME clause of a SELECT statement.
+*/
+struct Temporal {
+  struct {
+    Expr *pFrom;  /* The FROM expression.  NULL if ALL requested */
+    Expr *pTo;    /* The TO expression.  NULL if there is none */
+    int iIncl;
+    int iAll;
+    int iBus;
+  } a[2];
+};
+
+Temporal *sqlite3TemporalAdd(Parse*,Temporal*,Expr*,Expr*,int,int,int);
+Temporal *sqlite3TemporalDup(sqlite3*,Temporal*);
+void sqlite3TemporalDelete(sqlite3*,Temporal*);
 
 int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
 int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);

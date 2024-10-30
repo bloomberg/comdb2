@@ -471,6 +471,12 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
                  first_shard);
         goto error;
     }
+    if (db->periods[PERIOD_SYSTEM].enable) {
+        err->errval = VIEW_ERR_PARAM;
+        snprintf(err->errstr, sizeof(err->errstr), "Table %s is temporal",
+                 first_shard);
+        goto error;
+    }
 
     /* reverse constraints from the time partition to other table not supported */
     if (db->n_rev_constraints > 0) {
