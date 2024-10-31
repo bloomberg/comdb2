@@ -48,6 +48,10 @@ enum cdb2_request_type {
     CDB2_REQUEST_DBINFO = 3
 };
 
+/*
+For now cdb2_error codes should have same values as sqlresponse.proto error codes
+See sqlresponse.proto for more details
+*/
 enum cdb2_errors {
     CDB2_OK = 0,
     CDB2_OK_DONE = 1,
@@ -72,7 +76,7 @@ enum cdb2_errors {
 
     CDB2ERR_THREADPOOL_INTERNAL = -20, /* some error in threadpool code */
     CDB2ERR_ANALYZE_ALREADY_RUNNING = -22,
-    CDB2ERR_APPSOCK_LIMIT = -23,
+    // don't add -23 since this code is being used in sqlresponse.proto
 
     CDB2ERR_NOMASTER = -101,
     CDB2ERR_UNTAGGED_DATABASE = -102,

@@ -15,6 +15,12 @@ enum CDB2_ColumnType {
     INTERVALDSUS = 10;
 }
 
+/*
+For now cdb2_error codes should have same values as sqlresponse.proto error codes
+There are places in server where both cdb2_error codes and sqlresponse.proto error codes are being sent to client via newsql
+Ideally only sqlresponse.proto codes should be sent to client, and client should map proto codes to cdb2_error codes.
+But if both codes are the same (as it is currently), then everything will still run correctly
+*/
 enum CDB2_ErrorCode {
     OK                 =  0;
     DUP_OLD            =  1;
