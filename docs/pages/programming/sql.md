@@ -44,7 +44,8 @@ mode (set with ```SET TRANSACTION SNAPSHOT ISOLATION```). Note that enabling ```
 requires the ```enable_snapshot_isolation``` lrl tunable. Snapshots requested from before snapshot
 isolation was enabled will not work. A snapshot is only available if enough transaction logs are
 online to find commits before the specified time. The time provided must unquoted date in ISO 8601
-format or Unix time. If the provided timestamp is higher than the highest timestamp in the database's transaction log, then the database will run the snapshot transaction as of the highest timestamp in its log.
+format or Unix time. If the provided timestamp is higher than the highest timestamp in the database's 
+transaction log, then the database will run the snapshot transaction as of the highest timestamp in its log.
 
 **NOTE**: If any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application
 needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests. A
@@ -92,9 +93,10 @@ may be an AUTOINCREMENT for longlong fields), or with NULL if no default value i
 The second form of the ```INSERT``` statement takes its data from a ```SELECT``` statement. The number of columns in the 
 result of the SELECT must exactly match the number of columns in the table if no column list is specified, or it 
 must match the number of columns named in the column list. A new entry is made in the table for every row of the 
-```SELECT``` result. The ```SELECT``` may be simple or compound. Column names in the expressions of a ```DO UPDATE``` 
-refer to the original unchanged value of the column, before the attempted ```INSERT```. To use the value that 
-would have been inserted had the constraint not failed, add the special "excluded." table qualifier to the column name.
+```SELECT``` result. The ```SELECT``` may be simple or compound. Note that if followed by an ``ON CONFLICT``` clause,
+the ```SELECT``` statement **must** have a ```WHERE``` clause. Column names in the expressions of a ```DO UPDATE``` 
+refer to the original unchanged value of the column, before the attempted ```INSERT```. To use the value that would
+have been inserted had the constraint not failed, add the special "excluded." table qualifier to the column name.
 
 The third form of the ```INSERT``` statement is with ```DEFAULT VALUES```. This
 inserts a single new row in the named table populated with default values for
@@ -246,11 +248,10 @@ When three or more ```SELECT``` statements are connected into a compound stateme
 #### Foreign tables
 Tables specified in [table-or-subquery](#table-or-subquery) clause may refer to tables in other databases. The 
 syntax is simply ```database.tablename```.  Being able to locate the ```database``` requires setting up 
-[comdb2db](clients.html#comdb2db). For simple setups/testing the application can 
-specify ```LOCAL_database.tablename``` to refer to a table in a database that's running on the same machine as 
-the database receiving the query.  One can create an alias to a foreign table and refer to it as if
-it's in a local database, see the [```PUT ALIAS```](#put) statement.  This has the advantage of being able to move
-tables between databases without changing SQL statements used to query them.
+[comdb2db](clients.html#comdb2db). To refer to a table in a database that's running on the same machine
+as the database receiving the query, specify ```LOCAL_database.tablename```.  One can create an alias to a 
+foreign table and refer to it as if it's in a local database, see the [```PUT ALIAS```](#put) statement.
+This has the advantage of being able to move tables between databases without changing SQL statements used to query them.
 
 See also:
 
@@ -282,7 +283,8 @@ as new SQL functions with the
 [CREATE LUA FUNCTION](#create-lua-function) statement, or as triggers with ```CREATE LUA TRIGGER```/
 ```CREATE LUA CONSUMER``` statements.
 
-Procedures can be given versions.  Version names are to be supplied by the user.  Versioning allows a more
+All procedures have versions.  If a version is not provided by the user
+then the database will give the procedure a numeric version. Versioning allows a more
 compartmentalized development model.  For instance, users may have "beta" and "prod" versions of a procedure
 to be run from different deployment stages. The [SET SPVERSION](#set-spversion) statement can specify the
 version to use for the current connection.  The first version added for a new procedure automatically becomes a 
@@ -366,8 +368,7 @@ The table can be partitioned, if ```PARTITIONED BY``` option is present.  This
 semantic was added in version 8.0.  A partitioned table is a union of table shards
 that are accessed as a whole no different that a regular table.  Currently Comdb2
 supports a time-based retention and manual retention partitioning.
-For more details, see also:
-[ Table partitioning language and design](table_partition.html)
+For more details, see [ Table partitioning language and design](table_partition.html)
 
 See also:
 [Schema definition language (CSC2)](table_schema.html)
@@ -485,6 +486,12 @@ See also:
 
 [table-schema](table_schema.html)
 
+### CREATE TIME PARTITION
+
+![create-time-partition](images/create-time-part.gif)
+
+```CREATE TIME PARTITION``` defines the data retention policy for the given table. See [Time-based Table Partitioning](timepart.html).
+
 ### TRUNCATE
 
 ![TRUNCATE](images/truncate.gif)
@@ -577,6 +584,7 @@ The settings currently available to ```PUT``` are:
   * ```PASSWORD``` - sets a password for a given user.  ```PUT PASSWORD OFF``` disables the user.
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
+  * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; decreasing is possible at all times; increasing is only possible when shard numbers are in order
   * ```COUNTER``` - changes the counter "counter-name" value, either incrementing it or setting it; incrementing a counter without setting it first generate a zero valued counter; a counter with the same name as a logical partition serves as the logical clock for rolling out that partition.
 
 ## Operational commands
@@ -853,7 +861,7 @@ Sets path to the CRL. See [Client SSL Configuration Summary](ssl.html#client-ssl
 ### SET SSL_MIN_TLS_VER
 Sets the mininum server TLS version. See [Client SSL Configuration Summary](ssl.html#client-ssl-configuration-summary) for details.
 
-### SET RETURN_LONG_COLUMN_NAMES;
+### SET RETURN_LONG_COLUMN_NAMES
 Toggle on or off. If on, can return column names longer than 31 characters without it being truncated (except if using fastsql). If off, will rely on tunable `return_long_column_names`.
 
 ## Common syntax rules
@@ -1006,7 +1014,8 @@ count(X), count(*) | The count(X) function returns a count of the number of time
 group_concat(X [, Y]) | The group_concat() function returns a string which is the concatenation of all non-NULL values of X. If parameter Y is present then it is used as the separator between instances of X. A comma (",") is used as the separator if Y is omitted. The order of the concatenated elements is arbitrary.
 glob(X, Y) | The glob(X,Y) function is equivalent to the expression "Y GLOB X". Note that the X and Y arguments are reversed in the glob() function relative to the infix GLOB operator. If the sqlite3_create_function() interface is used to override the glob(X,Y) function with an alternative implementation then the GLOB operator will invoke the alternative implementation.
 like(X, Y [, Z]) | The like() function is used to implement the "Y LIKE X [ESCAPE Z]" expression. If the optional ESCAPE clause is present, then the like() function is invoked with three arguments. Otherwise, it is invoked with two arguments only. Note that the X and Y parameters are reversed in the like() function relative to the infix LIKE operator. The sqlite3_create_function() interface can be used to override the like() function and thereby change the operation of the LIKE operator. When overriding the like() function, it may be important to override both the two and three argument versions of the like() function. Otherwise, different code may be called to implement the LIKE operator depending on whether or not an ESCAPE clause was specified.
-comdb2_version | Returns a string corresponding to the current version of Comdb2.
+comdb2_semver | Returns a string corresponding to the current semantic version of Comdb2, e.g. '8.0.532'
+comdb2_version | Returns a string corresponding to the current version of Comdb2, e.g. 'R8 (R8.R20241011.6)'
 table_version | 
 partition_info | 
 comdb2_host | Returns the hostname on which this query is executing.
