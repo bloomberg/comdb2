@@ -303,6 +303,32 @@ function count_revconn()
     echo $count
 }
 
+function count_standalone_revconn()
+{
+    local dbname=$1
+    local node=$2
+    x=$(${CDB2SQL_EXE} ${CDB2_OPTIONS} --tabs --host $node $dbname "exec procedure sys.cmd.send('stat thr')" | grep "reversesql" | wc -l)
+    echo $x
+}
+
+function block_for_standalone_revconn()
+{
+    echo "== Blocking for standalone revconn =="
+    local dbname=$1
+    local node=$2
+    local blkcnt=$3
+    local count=0
+    local cnt=0
+    
+    cnt=$(count_standalone_revconn $dbname $node)
+    while [[ "$cnt" -ne $blkcnt ]]; do
+        let count=count+1
+        echo "Count-revconn is $cnt not $blkcnt for $dbname $node"
+        sleep 1
+        cnt=$(count_standalone_revconn $dbname $node)
+    done
+}
+
 function block_for_clustered_revconn()
 {
     echo "== Blocking for single clustered revconn =="
@@ -315,6 +341,54 @@ function block_for_clustered_revconn()
         sleep 1
         cnt=$(count_revconn)
     done
+
+    cnt=$(count_revconn)
+    if [[ "$cnt" -ne 1 ]]; then
+        cleanFailExit "Failed to have only 1 reverse-sql thread"
+    fi
+}
+
+function physrep_revconn_source()
+{
+    echo "== physrep revconn source =="
+
+    # Remove all physrep sources
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $REPL_META_DBNAME --host ${REPL_META_HOST} "delete from comdb2_physrep_sources where 1"
+
+    # Block until revcons are 0
+    for node in $CLUSTER ; do
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        block_for_standalone_revconn $dbname $node 0
+    done
+
+    # Add the clustered dbs physrep sources 
+    for node in $CLUSTER ; do
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${REPL_CLUS_DBNAME} ${node} ${dbname} ${node}
+    done
+
+    # Wait for all of these to have a reverse-conn thread
+    for node in $CLUSTER ; do
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        block_for_standalone_revconn $dbname $node 1
+    done
+
+    # Create table, add some records
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "create table t1(a int)"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "insert into t1 select * from generate_series(1, 1000)"
+
+    # Block until all the standalone reversconns have these records
+    for node in $CLUSTER ; do
+        dbname="${REPL_DBNAME_PREFIX}_${node}"
+        x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 2>/dev/null)
+        while [[ "$x" -ne "1000" ]]; do
+            sleep 1
+            x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 2>/dev/null)
+        done
+        echo "Db $dbname on node $node has caught up"
+    done
+
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "drop table t1"
 }
 
 function clustered_revconn()
@@ -326,7 +400,7 @@ function clustered_revconn()
         return
     fi
 
-    echo "Add clustered physrep to reverse-conns"
+    echo "Add all clustered physrep to reverse-conns"
     for node in $CLUSTER ; do
         for node2 in $CLUSTER ; do
             add_to_physrep_sources ${REPL_META_DBNAME} ${REPL_META_HOST} ${SOURCE_DBNAME} ${node} ${REPL_CLUS_DBNAME} ${node2}
@@ -349,8 +423,8 @@ function clustered_revconn()
         sleep 10
         block_for_clustered_revconn
 
-    let j=j+1
-done
+        let j=j+1
+    done
 }
 
 function incoherent_test()
@@ -1021,6 +1095,7 @@ compare_end_lsns
 verify_fanout_myoverride ${REPL_META_DBNAME} ${REPL_META_HOST}
 incoherent_test
 clustered_revconn
+physrep_revconn_source
 cleanup
 
 exit 0

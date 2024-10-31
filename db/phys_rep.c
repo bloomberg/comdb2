@@ -1230,6 +1230,9 @@ static void *physrep_worker(void *args)
 repl_loop:
     while (stop_physrep_worker == 0) {
         if (thedb->master != gbl_myhostname) {
+            if (repl_db_connected) {
+                close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
+            }
             if (gbl_physrep_debug)
                 physrep_logmsg(LOGMSG_USER, "I am not the LEADER node, skipping async-replication\n");
             goto sleep_and_retry;
@@ -1727,15 +1730,11 @@ int start_physrep_threads() {
     // If this is a 'physical replication' source, we would need to actively
     // try and connect to the replicants in the lower tier. (See db/reverse_conn.c)
     // This task is done by 'Reverse connections' manager thread.
-    if (gbl_physrep_source_dbname == NULL) {
-        if ((rc = start_reverse_connections_manager()) != 0) {
-            physrep_logmsg(LOGMSG_ERROR, "Couldn't start 'reverse connections' manager (rc: %d)\n" ,rc);
-            return -1;
-        }
-        physrep_logmsg(LOGMSG_USER, "'reverse connections' manager thread has started!\n");
-    } else {
-        physrep_logmsg(LOGMSG_USER, "This is not a replication source; not starting 'reverse connections' manager\n");
+    if ((rc = start_reverse_connections_manager()) != 0) {
+        physrep_logmsg(LOGMSG_ERROR, "Couldn't start 'reverse connections' manager (rc: %d)\n" ,rc);
+        return -1;
     }
+    physrep_logmsg(LOGMSG_USER, "'reverse connections' manager thread has started!\n");
 
     // Start physical replication worker
     if (gbl_physrep_source_dbname != NULL) {
