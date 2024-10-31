@@ -36,7 +36,7 @@
 #include "logical_cron.h"
 #include "sc_util.h"
 #include "bdb_int.h"
-
+#include "sqlanalyze.h"
 #define VIEWS_MAX_RETENTION 1000
 
 extern int gbl_is_physical_replicant;
@@ -158,6 +158,8 @@ int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
 
 int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
                          char *src, int acquire_schema_lk);
+
+void get_saved_scale(char *table, int *scale);
 
 char *timepart_describe(sched_if_t *_)
 {
@@ -3435,9 +3437,52 @@ done:
     return ret;
 }
 
+int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab) {
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int rc = 0;
+    int i = 0;
+    char tbl[MAXTABLELEN];
+    strncpy0(tbl, td->table, sizeof(tbl));
+    Pthread_rwlock_rdlock(&views_lk);
+
+    views = thedb->timepart_views;
+
+    view = _get_view(views, tbl);
+    if (!view) {
+        logmsg(LOGMSG_ERROR, "%s:%d could not find partition %s\n", __func__, __LINE__, tbl);
+        rc = VIEW_ERR_EXIST;
+        goto done;
+    }
+
+    get_saved_scale(td->table, &td->scale);
+    if (td->scale == 0) {
+        sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n",
+                    td->table);
+        logmsg(LOGMSG_INFO, "coverage for table '%s' is 0, skipping analyze\n", td->table);
+        goto done;
+    } else {
+        /* override llmeta so analyze thread doesn't try to fetch 
+         * coverage percent for individual shards*/
+        td->override_llmeta = 1;
+    }
+    for (i=0; i<view->nshards; i++) {
+        strncpy0(td->table, view->shards[i].tblname, sizeof(td->table));
+        rc = analyze_regular_table(td, clnt, zErrTab, nErrTab);
+        if (rc) {
+            goto done;
+        }
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    strncpy0(td->table,tbl, sizeof(td->table));
+    if (rc) 
+        logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n", __func__, __LINE__, view->shards[i].tblname, tbl, rc);
+    return rc;
+}
+
 #include "views_systable.c"
 
 #include "views_serial.c"
 
 #include "views_sqlite.c"
-
