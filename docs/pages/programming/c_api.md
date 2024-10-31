@@ -718,6 +718,7 @@ These return codes can be found in ```cdb2api.h```
 | -20  |```CDB2ERR_THREADPOOL_INTERNAL``` | <a id="CDB2ERR_THREADPOOL_INTERNAL"/>Some error in threadpool code. 
 | -21  |```CDB2ERR_READONLY``` | <a id="CDB2ERR_READONLY"/>Database is readonly (possible because a schema change operation is in progress). 
 | -22  |```CDB2ERR_ANALYZE_ALREADY_RUNNING``` | <a id="CDB2ERR_ANALYZE_ALREADY_RUNNING"/>Analyze is already running on some table. 
+| -23  |```CDB2ERR_APPSOCK_LIMIT``` | <a id="CDB2ERR_APPSOCK_LIMIT"/>Exhausted appsock connections.
 | -101 |```CDB2ERR_NOMASTER``` | <a id="CDB2ERR_NOMASTER"/>Database has no master node - try again later. 
 | -103 |```CDB2ERR_CONSTRAINTS``` | <a id="CDB2ERR_CONSTRAINTS"/>Some constraint violation. 
 | 203  |```CDB2ERR_DEADLOCK``` | <a id="CDB2ERR_DEADLOCK"/>Deadlock detected. 

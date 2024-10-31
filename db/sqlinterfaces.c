@@ -7198,7 +7198,7 @@ void clnt_plugin_reset(struct sqlclntstate *clnt)
 
 void exhausted_appsock_connections(struct sqlclntstate *clnt)
 {
-    write_response(clnt, RESPONSE_ERROR, "Exhausted appsock connections.", CDB2__ERROR_CODE__APPSOCK_LIMIT);
+    write_response(clnt, RESPONSE_ERROR, "Exhausted appsock connections.", CDB2ERR_APPSOCK_LIMIT);
     gbl_denied_appsock_connection_count++;
     static time_t last = 0;
     time_t now = time(NULL);

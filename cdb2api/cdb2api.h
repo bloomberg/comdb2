@@ -72,6 +72,7 @@ enum cdb2_errors {
 
     CDB2ERR_THREADPOOL_INTERNAL = -20, /* some error in threadpool code */
     CDB2ERR_ANALYZE_ALREADY_RUNNING = -22,
+    CDB2ERR_APPSOCK_LIMIT = -23,
 
     CDB2ERR_NOMASTER = -101,
     CDB2ERR_UNTAGGED_DATABASE = -102,
