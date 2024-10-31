@@ -358,6 +358,7 @@ enum {
     XRESPONSE(RESPONSE_EFFECTS)                                                \
     XRESPONSE(RESPONSE_ERROR)                                                  \
     XRESPONSE(RESPONSE_ERROR_ACCESS)                                           \
+    XRESPONSE(RESPONSE_ERROR_APPSOCK_LIMIT)                                    \
     XRESPONSE(RESPONSE_ERROR_BAD_STATE)                                        \
     XRESPONSE(RESPONSE_ERROR_PREPARE)                                          \
     XRESPONSE(RESPONSE_ERROR_PREPARE_RETRY)                                    \

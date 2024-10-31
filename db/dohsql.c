@@ -892,6 +892,8 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return inner_error(c, CDB2ERR_PREPARE_ERROR, (char *)a);
     case RESPONSE_ERROR_REJECT:
         return inner_error(c, CDB2ERR_REJECTED, (char *)a);
+    case RESPONSE_ERROR_APPSOCK_LIMIT:
+        return 0; /* shouldn't be possible */
     case RESPONSE_FLUSH:
         return 0 /*newsql_flush(c)*/;
     case RESPONSE_HEARTBEAT:
