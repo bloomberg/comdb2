@@ -428,9 +428,6 @@ static char *legacy_options[] = {
     "sqlsortermaxmmapsize 268435456",
     "unnatural_types 1",
     "wal_osync 1",
-    "init_with_queue_ondisk_header off",
-    "init_with_queue_compr off",
-    "init_with_queue_persistent_sequence off",
     "usenames",
     "setattr max_sql_idle_time 864000",
 };
