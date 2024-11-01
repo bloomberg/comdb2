@@ -1168,7 +1168,7 @@ static TAILQ_HEAD(, appsock_handler_arg) gethostname_list = TAILQ_HEAD_INITIALIZ
 static void *gethostname_fn(void *arg)
 {
     int max_pending = 8;
-    struct timeval last_report;
+    struct timeval start, last_report;
     gettimeofday(&last_report, NULL);
     comdb2_name_thread("gethostname");
     while (1) {
@@ -1180,19 +1180,27 @@ static void *gethostname_fn(void *arg)
         TAILQ_REMOVE(&gethostname_list, arg, entry);
         int pending = --gethostname_ctr;
         Pthread_mutex_unlock(&gethostname_lk);
+        gettimeofday(&start, NULL);
         arg->origin = get_hostname_by_fileno(arg->fd);
-        struct timeval now, diff;
+        struct timeval now, diff, q;
         gettimeofday(&now, NULL);
-        timersub(&now, &arg->start, &diff);
+        timersub(&now, &start, &diff);
+        timersub(&now, &arg->start, &q);
         if (diff.tv_sec) {
+            last_report = now;
             printf("%s  took %lds:%ldms  pending:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, pending);
+        } else if (q.tv_sec > 2) {
+            last_report = now;
+            printf("%s  took %lds:%ldms  queue:%lds:%ldms  pending:%d\n", __func__,
+                    diff.tv_sec, diff.tv_usec / 1000, q.tv_sec, q.tv_usec / 1000, pending);
         } else if (pending > max_pending) {
+            last_report = now;
             max_pending = pending;
             printf("%s  pending:%d\n", __func__, pending);
-        } else if (pending > 8) {
+        } else if (pending > 32) {
             timersub(&now, &last_report, &diff);
-            last_report = now;
             if (diff.tv_sec > 10) {
+                last_report = now;
                 printf("%s  pending:%d\n", __func__, pending);
             }
         }
