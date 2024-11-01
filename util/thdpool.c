@@ -1301,9 +1301,6 @@ void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*))
 }
 
 void comdb2_name_thread(const char *name) {
-#ifndef NDEBUG
-    return;
-#endif
 #ifdef __linux
     pthread_setname_np(pthread_self(), name);
 #elif defined __APPLE__
