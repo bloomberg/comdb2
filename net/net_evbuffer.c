@@ -1639,8 +1639,8 @@ static int process_net_msgs(struct event_info *e, struct evbuffer *buf, void **m
 static void *rd_worker(void *data)
 {
     struct event_info *e = data;
-    char thdname[64];
-    snprintf(thdname, sizeof(thdname), "%s - %s", __func__, e->host);
+    char thdname[16];
+    snprintf(thdname, sizeof(thdname), "rd:%s", e->host);
     comdb2_name_thread(thdname);
 
     netinfo_type *n = e->net_info->netinfo_ptr;
@@ -3373,7 +3373,9 @@ static void setup_bases(void)
     if (dedicated_appsock) {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
             gettimeofday(&appsock_tick[i], NULL);
-            init_base_priority(&appsock_thd[i], &appsock_base[i], "appsock", 2, &appsock_tick[i]);
+            char thdname[16];
+            snprintf(thdname, sizeof(thdname), "appsock:%d", i);
+            init_base_priority(&appsock_thd[i], &appsock_base[i], thdname, 2, &appsock_tick[i]);
         }
     } else {
         for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
