@@ -49,6 +49,11 @@ struct newsql_postponed_data {
     uint8_t *row;
 };
 
+typedef enum {
+    NEWSQL_PROTOCOL_ORIGINAL,
+    NEWSQL_PROTOCOL_COMPAT
+} newsql_protocol_ver;
+
 #define NEWSQL_APPDATA_COMMON                                                  \
     int (*ping_pong)(struct sqlclntstate *);                                   \
     int (*read)(struct sqlclntstate *, void *, int len, int nitems);           \

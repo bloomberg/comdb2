@@ -411,7 +411,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col,
         }
     } else if (stmt) {
         type = get_sqlite3_column_type(clnt, stmt, col, 0);
-        if ((check_protocol_version == 1 && appdata->protocol_version == 1 /* fastsql */) ||
+        if ((check_protocol_version && appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT /* fastsql */) ||
             type == SQLITE_NULL) {
             type = typestr_to_type(sqlite3_column_decltype(stmt, col));
         }
@@ -423,7 +423,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col,
 #define ADJUST_LONG_COL_NAME(clnt_return_long_column_names, appdata, n, l)                                             \
     do {                                                                                                               \
         if ((l > MAX_COL_NAME_LEN) && ((!clnt_return_long_column_names && gbl_return_long_column_names == 0) ||        \
-                                       (appdata->protocol_version == 1 /* fastsql */))) {                              \
+                                       (appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT /* fastsql */))) {         \
             l = MAX_COL_NAME_LEN + 1;                                                                                  \
             char *namebuf = alloca(l);                                                                                 \
             n = strncpy0(namebuf, n, l);                                                                               \
@@ -2134,6 +2134,7 @@ int is_commit_rollback(struct sqlclntstate *clnt)
 int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    appdata->protocol_version = NEWSQL_PROTOCOL_ORIGINAL;
     for (int ii = 0; ii < sql_query->n_features; ++ii) {
         switch(sql_query->features[ii]) {
         case CDB2_CLIENT_FEATURES__FLAT_COL_VALS:
@@ -2143,8 +2144,7 @@ int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
             clnt->request_fp = 1;
             break;
         case CDB2_CLIENT_FEATURES__REQUIRE_FASTSQL:
-            logmsg(LOGMSG_USER, "%s:%d cdb2api requested for 'fastsql' protocol\n", __func__, __LINE__);
-            appdata->protocol_version = 1; // FASTSQL's protocol version = 1
+            appdata->protocol_version = NEWSQL_PROTOCOL_COMPAT;
             break;
         case CDB2_CLIENT_FEATURES__CAN_REDIRECT_FDB:
             clnt->can_redirect_fdb = 1;
@@ -2256,6 +2256,9 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
     }
 
     ATOMIC_ADD64(gbl_nnewsql, 1);
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT)
+        ATOMIC_ADD64(gbl_nnewsql_compat, 1);
     if (clnt->plugin.has_ssl(clnt)) ATOMIC_ADD64(gbl_nnewsql_ssl, 1);
 
     /* coherent  _or_ in middle of transaction */
