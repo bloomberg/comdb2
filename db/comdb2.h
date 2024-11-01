@@ -1746,6 +1746,8 @@ extern int64_t gbl_nnewsql;
 extern int64_t gbl_nnewsql_ssl;
 extern long long gbl_nnewsql_steps;
 
+extern int64_t gbl_nnewsql_compat;
+
 /* Legacy request metrics */
 extern int64_t gbl_fastsql_execute_inline_params;
 extern int64_t gbl_fastsql_set_isolation_level;
