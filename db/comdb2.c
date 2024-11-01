@@ -379,6 +379,8 @@ uint32_t gbl_nnewsql;
 uint32_t gbl_nnewsql_ssl;
 long long gbl_nnewsql_steps;
 
+uint32_t gbl_nnewsql_compat;
+
 uint32_t gbl_masterrejects = 0;
 
 volatile uint32_t gbl_analyze_gen = 0;
