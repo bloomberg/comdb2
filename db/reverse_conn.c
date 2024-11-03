@@ -295,6 +295,10 @@ static int refresh_reverse_conn_hosts() {
             new_host->worker_state = REVERSE_CONN_WORKER_NEW;
             pthread_mutex_init(&new_host->mu, NULL);
 
+            if (gbl_revsql_debug == 1) {
+                revconn_logmsg(LOGMSG_USER, "%s:%d Adding %s/%s to revconn list\n", __func__, __LINE__, dbname, host);
+            }
+
             // Add to the list
             listc_abl(&new_reverse_conn_hosts, new_host);
         }
@@ -417,9 +421,6 @@ int start_reverse_connections_manager() {
         revconn_logmsg(LOGMSG_ERROR, "Reverse connections manager thread is already running!\n");
         return 0;
     }
-
-    // Only source nodes are allowed to service 'reversesql' requests
-    assert(gbl_is_physical_replicant == 0);
 
     // Start the 'reverse-connection' manager thread
     int rc = pthread_create(&reverse_conn_manager, NULL, reverse_connection_manager, NULL);
