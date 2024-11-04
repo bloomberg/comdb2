@@ -6330,11 +6330,8 @@ done:
 enum {
     /* LEGACY CODES */
     DB_ERR_BAD_REQUEST = 110,  /* 199 */
-    DB_ERR_BAD_COMM_BUF = 111, /* 998 */
     DB_ERR_BAD_COMM = 112,     /* 999 */
-    DB_ERR_NONKLESS = 114,     /* 212 */
     /* GENERAL BLOCK TRN RCODES */
-    DB_ERR_TRN_BUF_INVALID = 200,  /* 105 */
     DB_ERR_TRN_BUF_OVERFLOW = 201, /* 106 */
     DB_ERR_TRN_OPR_OVERFLOW = 202, /* 205 */
     DB_ERR_TRN_DB_FAIL = 204,      /* 220 */
@@ -6355,41 +6352,25 @@ int blockproc2sql_error(int rc, const char *func, int line)
     case 0:
         return CDB2_OK;
     /* error dispatched by the block processor */
-    case 102:
-        return CDB2ERR_NOMASTER;
-    case 105:
-        return DB_ERR_TRN_BUF_INVALID;
-    case 106:
-        return DB_ERR_TRN_BUF_OVERFLOW;
     case ERR_READONLY: //195
         return CDB2ERR_READONLY;
-    case 199:
+    case ERR_BADREQ:
         return DB_ERR_BAD_REQUEST;
-    case 208:
+    case ERR_TRAN_TOO_BIG:
         return DB_ERR_TRN_OPR_OVERFLOW;
-    case 212:
-        return DB_ERR_NONKLESS;
-    case 220:
+    case ERR_BLOCK_FAILED:
         return CDB2ERR_DEADLOCK;
-    case 222:
-        return CDB2__ERROR_CODE__DUP_OLD;
-    case 224:
-        return CDB2ERR_VERIFY_ERROR;
-    case 225:
-        return DB_ERR_TRN_DB_FAIL;
-    case 230:
+    case ERR_NOTSERIAL:
         return DB_ERR_TRN_NOT_SERIAL;
-    case 240:
+    case ERR_SC:
         return DB_ERR_TRN_SC;
-    case 301:
+    case ERR_CONVERT_DTA /* also matches ERR_CONVERT_IX */:
         return CDB2ERR_CONV_FAIL;
-    case 998:
-        return DB_ERR_BAD_COMM_BUF;
-    case 999:
+    case ERR_BAD_COMM:
         return DB_ERR_BAD_COMM;
-    case 2000:
+    case ERR_NO_AUXDB:
         return DB_ERR_TRN_DB_FAIL;
-    case 2001:
+    case ERR_SQL_PREP:
         return CDB2ERR_PREPARE_ERROR;
 
     /* hack for now; if somehow we get a 300/RC_INTERNAL_RETRY

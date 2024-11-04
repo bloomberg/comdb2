@@ -1093,7 +1093,7 @@ retry:
                                "returns xerr.errval=%d\n", osql->xerr.errval);
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == ERR_NOT_DURABLE ||
-                    osql->xerr.errval == 999) {
+                    osql->xerr.errval == ERR_BAD_COMM) {
                     if (bdb_attr_get(thedb->bdb_attr,
                                      BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
                         !in_client_trans(clnt) && osql->running_ddl) {

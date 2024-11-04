@@ -259,7 +259,7 @@ done:
         rc != ERR_RMTDB_NESTED && rc != ERR_NESTED && rc != ERR_NOMASTER && rc != ERR_READONLY && rc != ERR_VERIFY &&
         rc != RC_TRAN_CLIENT_RETRY && rc != RC_INTERNAL_FORWARD && rc != RC_INTERNAL_RETRY &&
         rc != ERR_TRAN_TOO_BIG && /* THIS IS SENT BY BLOCKSQL WHEN TOOBIG */
-        rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITTABLE_TXN && rc != ERR_DIST_ABORT &&
+        rc != ERR_BAD_COMM && rc != ERR_ACCESS && rc != ERR_UNCOMMITTABLE_TXN && rc != ERR_DIST_ABORT &&
         (rc != ERR_NOT_DURABLE || !iq->sorese)) {
         /* XXX CLIENT_RETRY DOESNT ACTUALLY CAUSE A RETRY USUALLY, just
            a bad rc to the client! */

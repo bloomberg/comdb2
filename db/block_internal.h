@@ -55,8 +55,7 @@ enum {
     OP_FAILED_CONVERSION = 301,
     OP_FAILED_BAD_REQUEST = 199,
     OP_FAILED_UNIQ = 2,
-    OP_FAILED_INTERNAL = 1000,
-    OP_FAILED_BDB = 2000 /* bdberr is added to this number */
+    OP_FAILED_INTERNAL = 1000
 };
 
 /* Debug cookie opcodes */

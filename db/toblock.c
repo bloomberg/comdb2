@@ -2693,9 +2693,9 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
                 return RC_TRAN_CLIENT_RETRY;
             }
             if (iq->opcode == OP_BLOCK || p_blkstate->numreq == 1) {
-                return 999; /* no dedicated code for proxy retry... */
+                return ERR_BAD_COMM;
             } else if (p_blkstate->longblock_single == 1) {
-                return 999; /* no dedicated code for proxy retry... */
+                return ERR_BAD_COMM;
             } else {
                 return RC_TRAN_CLIENT_RETRY;
             }
