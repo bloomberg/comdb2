@@ -6,7 +6,7 @@ set -e
 
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
-result=$(cdb2sql --tabs $dbnm --host $host "select case when count(*) > 0 then 'pass' else 'fail' end as result from comdb2_memstats where scope in ('appsockpool', 'appsock')")
+result=$(cdb2sql --tabs $dbnm --host $host "select case when count(*) > 0 then 'pass' else 'fail' end as result from comdb2_memstats where scope like 'appsock%'")
 if [[ "$result" == "pass" ]]; then
     exit 0
 else
