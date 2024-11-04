@@ -3202,7 +3202,7 @@ static void setup_bases(void)
                 gettimeofday(&appsock_tick[i], NULL);
                 char thdname[16];
                 snprintf(thdname, sizeof(thdname), "appsock:%d", i);
-                init_base_priority(&appsock_thd[i], &appsock_base[i], thdname, 2, &appsock_tick[i]);
+                init_base_priority(&appsock_thd[i], &appsock_base[i], strdup(thdname), 2, &appsock_tick[i]);
             }
         } else {
             for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
