@@ -486,12 +486,6 @@ See also:
 
 [table-schema](table_schema.html)
 
-### CREATE TIME PARTITION
-
-![create-time-partition](images/create-time-part.gif)
-
-```CREATE TIME PARTITION``` defines the data retention policy for the given table. See [Time-based Table Partitioning](timepart.html).
-
 ### TRUNCATE
 
 ![TRUNCATE](images/truncate.gif)
@@ -584,7 +578,6 @@ The settings currently available to ```PUT``` are:
   * ```PASSWORD``` - sets a password for a given user.  ```PUT PASSWORD OFF``` disables the user.
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
-  * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; decreasing is possible at all times; increasing is only possible when shard numbers are in order
   * ```COUNTER``` - changes the counter "counter-name" value, either incrementing it or setting it; incrementing a counter without setting it first generate a zero valued counter; a counter with the same name as a logical partition serves as the logical clock for rolling out that partition.
 
 ## Operational commands
