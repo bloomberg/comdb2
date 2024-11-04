@@ -2013,23 +2013,6 @@ int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file)
     return __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, file);
 }
 
-int truncate_commit_lsn_map(bdb_state_type *bdb_state, int file)
-{
-    int del_log;
-
-    del_log = file + 1;
-
-    if (bdb_state == NULL) {
-        return 0;
-    }
-
-    while (__txn_commit_map_delete_logfile_txns(bdb_state->dbenv, del_log) == 0) {
-        ++del_log;
-    }
-
-    return 0;
-}
-
 /* Remove pglogs & clear queues for anything larger than LSN.
  * Called while holding recoverlk in write mode. */
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset)

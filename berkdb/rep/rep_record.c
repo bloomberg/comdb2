@@ -3740,12 +3740,6 @@ gap_check:		max_lsn_dbtp = NULL;
 			goto err;
 		}
 
-		if (dbenv->txmap != NULL) {
-			Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
-			dbenv->txmap->highest_checkpoint_lsn = ckp_args->ckp_lsn; 
-			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
-		}
-
 		__os_free(dbenv, ckp_args);
 		if (gbl_flush_log_at_checkpoint)
 			__log_flush(dbenv, NULL);
@@ -5052,47 +5046,46 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 		if(td_stats)
 			x1 = bb_berkdb_fasttime();
 
-		if (!context) {
-			uint32_t flags =
-				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
-				LOCK_GET_LIST_PRINTLOCK : 0);
-			assert(gbl_rep_lock_time_ms == 0);
-			gbl_rep_lock_time_ms = comdb2_time_epochms();
-			ret =
-				__lock_get_list_context(dbenv, lockid, flags,
+		uint32_t flags =
+			LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
+			LOCK_GET_LIST_PRINTLOCK : 0);
+
+		assert(gbl_rep_lock_time_ms == 0);
+		gbl_rep_lock_time_ms = comdb2_time_epochms();
+
+		ret = context
+			? __lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
+				lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout)
+			: __lock_get_list_context(dbenv, lockid, flags,
 				DB_LOCK_WRITE, lock_dbt, &context, &(rctl->lsn),
 				&pglogs, &keycnt);
-			assert(gbl_rep_lock_time_ms != 0);
-			gbl_rep_lock_time_ms = 0;
-			if (ret != 0) {
-				line = __LINE__;
-				goto err;
-			}
 
-			if (ret == 0 && context) {
-				set_commit_context(context, commit_gen,
-					&(rctl->lsn), args, rectype);
-			}
-		} else {
-			uint32_t flags =
-				LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
-				LOCK_GET_LIST_PRINTLOCK : 0);
-			assert(gbl_rep_lock_time_ms == 0);
-			gbl_rep_lock_time_ms = comdb2_time_epochms();
-			ret =
-				__lock_get_list(dbenv, lockid, flags, DB_LOCK_WRITE,
-				lock_dbt, &(rctl->lsn), &pglogs, &keycnt, stdout);
-			assert(gbl_rep_lock_time_ms != 0);
-			gbl_rep_lock_time_ms = 0;
-			if (ret != 0) {
-				line = __LINE__;
-				goto err;
-			}
+		assert(gbl_rep_lock_time_ms != 0);
+		gbl_rep_lock_time_ms = 0;
 
-			if (ret == 0 && context) {
-				set_commit_context(context, commit_gen,
-					&(rctl->lsn), args, rectype);
-			}
+		if (ret != 0) {
+			line = __LINE__;
+			goto err;
+		}
+
+		// The LSN passed to `set_commit_context` becomes the new modsnap start lsn
+		//
+		// The following requirements apply for this to work:
+		//
+		// - Must set this before we early ack. If not:
+		//		1. txn A commits and the db early acks to the client
+		//		2. the same client starts a snapshot txn ('B')
+		//		3. txn B is given a start lsn that is less than txn A's commit lsn
+		//		4. txn B doesn't see txn A's updates
+		//
+		// - Must set this is set after acquiring locks. If not:
+		// 		1. `set_commit_context` is called for txn A
+		//		2. a new snapshot txn ('B') starts with txn A's commit lsn as its start lsn
+		//		3. txn B doesn't see txn A's updates because txn A hasn't acquired locks yet
+
+		if (context) {
+			set_commit_context(context, commit_gen,
+				&(rctl->lsn), args, rectype);
 		}
 
 		if (td_stats) {
@@ -5106,28 +5099,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 			goto err;
 		}
 
-		// Must add to commit lsn map after acquiring locks but before early acking.
-		//
-		// Why?
-		//
-		// 1) Must add to commit lsn map before early acking. If not:
-		//		DB early acks to the client ->
-		//		client starts snapshot txn. snapshot target lsn may be less than the lsn of 
-		//		the client's previous committed txn ->
-		//		snapshot rolls back the client's previous committed txn.
-		//
-		// * By adding to the commit lsn map before early acking, we ensure that snapshot 
-		// txns never roll back a txn that committed before it started from the client's perspective.
-		//
-		// 2) Must acquire locks before adding to the commit lsn map. If not:
-		// 		txn commit lsn is added to the map ->
-		//		new snapshot starts with this txn's commit lsn as its target lsn ->
-		//		if snapshot views a page before the other txn acquires a lock on it, it uses the old state;
-		//		otherwise, it blocks on the lock and uses the new state.
-		//
-		// * By adding to the commit lsn map after acquiring locks we ensure that a snapshot txn whose 
-		// target lsn is the commit lsn of an incompletely applied transaction sees all of its updates.
-		//
+
 		if (commit_lsn_map) {
 			if ((ret = __txn_commit_map_add(dbenv, 
 					utxnid, rctl->lsn)), ret != 0) {
