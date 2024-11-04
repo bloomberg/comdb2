@@ -253,14 +253,6 @@ get_clminfo() {
 	cdb2sql ${CDB2_OPTIONS} --host $1 $dbnm "exec procedure sys.cmd.send('bdb clminfo')"
 }
 
-extract_modsnap_start_lsn_offset_from_clminfo() {
-	grep -oP '(?<=Modsnap start lsn offset: )[0-9]+' <<<"$1"
-}
-
-extract_modsnap_start_lsn_file_from_clminfo() {
-	grep -oP '(?<=Modsnap start lsn file: )[0-9]+' <<<"$1"
-}
-
 extract_smallest_logfile_from_clminfo() {
 	grep -oP '(?<=Smallest logfile: )[-]?[0-9]+' <<<"$1"
 }
@@ -325,42 +317,6 @@ test_delete() {
 
 	# Verify that txmap handles request to delete non-existing file
 	verify_txmap_deletes_records 1 $node
-}
-
-verify_cached_modsnap_start_lsn_after_recovery() {
-	trap 'error $LINENO' ERR
-
-	local -r node=$1
-
-	local clminfo_after_recovery
-	clminfo_after_recovery=$(get_clminfo $node)
-	readonly clminfo_after_recovery
-
-	local cached_modsnap_start_lsn_file_after_recovery
-	cached_modsnap_start_lsn_file_after_recovery=$(extract_modsnap_start_lsn_file_from_clminfo "$clminfo_after_recovery")
-	readonly cached_modsnap_start_lsn_file_after_recovery
-
-	local cached_modsnap_start_lsn_offset_after_recovery
-	cached_modsnap_start_lsn_offset_after_recovery=$(extract_modsnap_start_lsn_offset_from_clminfo "$clminfo_after_recovery")
-	readonly cached_modsnap_start_lsn_offset_after_recovery
-
-	local modsnap_start_lsn_after_recovery
-	modsnap_start_lsn_after_recovery=$(cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm \
-		"select commitlsnfile, max(commitlsnoffset) from comdb2_transaction_commit \
-		where commitlsnfile in (select max(commitlsnfile) from comdb2_transaction_commit)")
-	readonly modsnap_start_lsn_after_recovery
-
-	local modsnap_start_lsn_file_after_recovery
-	modsnap_start_lsn_file_after_recovery=$(echo "$modsnap_start_lsn_after_recovery" | cut -f 1)
-	readonly modsnap_start_lsn_file_after_recovery
-
-	local modsnap_start_lsn_offset_after_recovery
-	modsnap_start_lsn_offset_after_recovery=$(echo "$modsnap_start_lsn_after_recovery" | cut -f 2)
-	readonly modsnap_start_lsn_offset_after_recovery
-
-	(( cached_modsnap_start_lsn_file_after_recovery <= modsnap_start_lsn_file_after_recovery ))
-	(( cached_modsnap_start_lsn_file_after_recovery < modsnap_start_lsn_file_after_recovery \
-	|| cached_modsnap_start_lsn_offset_after_recovery <= modsnap_start_lsn_offset_after_recovery ))
 }
 
 verify_correct_utxnids_in_map() {
@@ -441,7 +397,6 @@ test_recover_to_lsn() {
 	# Then
 
 	verify_txmap_has_expected_min_max_files 1 1 "$master"
-	verify_cached_modsnap_start_lsn_after_recovery "$master"
 	verify_correct_utxnids_in_map "$utxnids_to_recover" "$utxnids_to_be_deleted_during_recovery" "$master"
 }
 

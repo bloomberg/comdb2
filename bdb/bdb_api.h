@@ -1433,27 +1433,27 @@ int bdb_register_modsnap(bdb_state_type *bdb_state,
 
 /* bdb_get_modsnap_start_state --
  * Get the start state for a new modsnap transaction. A modsnap transaction's start state includes 
- * the the preceding commit lsn (its target lsn) and the preceding checkpoint lsn.
+ * its start lsn and the checkpoint lsn preceding its start lsn.
  *
  * bdb_state: Caller's bdb state.
  * is_ha_retry: 1 if transaction is a hasql retry. 0 otherwise.
  * snapshot_epoch: Snapshot epoch if a PIT snapshot or 0 if not a PIT snapshot.
- * last_commit_lsn_file: This gets set to the preceding commit lsn file.
- *                       If transaction is a hasql retry, 
+ * modsnap_start_lsn_file: If transaction is a hasql retry, 
  *                       then this should be set by the caller to the retry start lsn file.
- * last_commit_lsn_offset: This gets set to the preceding commit lsn offset.
- *                         If transaction is a hasql retry, 
- *                         then this should be set by the caller to the retry start lsn offset.
- * last_checkpoint_lsn_file: This gets set to the preceding checkpoint lsn file.
- * last_checkpoint_lsn_offset: This gets set to the preceding checkpoint lsn offset.
+ *                       Otherwise, this gets set to the modsnap start lsn file.
+ * modsnap_start_lsn_offset: If transaction is a hasql retry, 
+ *                         then this should be set by the caller to the retry start lsn offset;
+ *                         Otherwise, this gets set to the modsnap start lsn offset.
+ * last_checkpoint_lsn_file: This gets set to the checkpoint lsn file preceding the start lsn.
+ * last_checkpoint_lsn_offset: This gets set to the checkpoint lsn offset preceding the start lsn.
  *
  * Returns 0 on success and non-0 on failure.
  */
 int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
                         int is_hasql_retry,
                         int snapshot_epoch,
-                        unsigned int *last_commit_lsn_file,
-                        unsigned int *last_commit_lsn_offset,
+                        unsigned int *modsnap_start_lsn_file,
+                        unsigned int *modsnap_start_lsn_offset,
                         unsigned int *last_checkpoint_lsn_file,
                         unsigned int *last_checkpoint_lsn_offset);
 
@@ -2433,7 +2433,6 @@ int bdb_rep_deadlocks(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
 int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
 int delete_logfile_txns_commit_lsn_map(bdb_state_type *bdb_state, int file);
-int truncate_commit_lsn_map(bdb_state_type *bdb_state, int file);
 int truncate_asof_pglogs(bdb_state_type *bdb_state, int file, int offset);
 
 int bdb_set_logical_live_sc(bdb_state_type *bdb_state, int lock);

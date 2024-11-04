@@ -3089,12 +3089,6 @@ do_ckp:
 			return ret;
 		}
 
-		if (dbenv->txmap != NULL) {
-			Pthread_mutex_lock(&dbenv->txmap->txmap_mutexp);
-			dbenv->txmap->highest_checkpoint_lsn = ckp_lsn; 
-			Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
-		}
-
 		ret = __log_flush_pp(dbenv, NULL);
 		if (ret == 0)
 			__txn_updateckp(dbenv, &ckp_lsn);	/* this is the output lsn from txn_ckp_log */
