@@ -55,6 +55,8 @@ char appsock_unknown_old[] = "-1 #unknown command\n";
 char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
 int32_t active_appsock_conns = 0;
+int32_t pooled_appsock_conns = 0; /* number of connections owned by sockpool or local-cache */
+int32_t appsock_conns = 0;
 int64_t gbl_denied_appsock_connection_count = 0;
 
 pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -113,6 +115,7 @@ void appsock_quick_stat(void)
 {
     logmsg(LOGMSG_USER, "num appsock connections %llu\n", total_appsock_conns);
     logmsg(LOGMSG_USER, "num active appsock connections %d\n", active_appsock_conns);
+    logmsg(LOGMSG_USER, "num pooled appsock connections %d\n", pooled_appsock_conns);
     logmsg(LOGMSG_USER, "num appsock commands    %llu\n", total_toks);
 }
 
@@ -352,8 +355,8 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 
             logmsg(
                 LOGMSG_WARN,
-                "%s: Maximum appsock connection limit approaching (%d/%d).\n",
-                __func__, active_appsock_conns, max);
+                "%s: Maximum appsock connection limit approaching (%d/%d/%d).\n",
+                __func__, (active_appsock_conns - pooled_appsock_conns), active_appsock_conns, max);
             lastprint = now;
 
             if ((now - last_thread_dump_time) > 10) {
