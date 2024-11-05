@@ -6214,6 +6214,10 @@ static const char* connstate_str(enum connection_state s) {
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state) {
     clnt->state_start_time = comdb2_time_epochms();
     Pthread_mutex_lock(&clnt->state_lk);
+    if (clnt->state == CONNECTION_RESET && state != CONNECTION_RESET)
+        ATOMIC_ADD32(pooled_appsock_conns, -1);
+    else if (clnt->state != CONNECTION_RESET && state == CONNECTION_RESET)
+        ATOMIC_ADD32(pooled_appsock_conns, 1);
     clnt->state = state;
     Pthread_mutex_unlock(&clnt->state_lk);
 }

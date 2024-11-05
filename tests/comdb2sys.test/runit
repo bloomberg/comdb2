@@ -130,6 +130,7 @@ tests=(
 "./testindexusage"
 "./testtransactionstate"
 "./testtablemetrics"
+"./test_current_connections"
 )
 
 for t in ${tests[@]}; do

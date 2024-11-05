@@ -570,7 +570,8 @@ int refresh_metrics(void)
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;
     stats.sql_ssl_count = gbl_nnewsql_ssl;
-    stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) + active_appsock_conns;
+    stats.current_connections = net_get_num_current_non_appsock_accepts(thedb->handle_sibling) +
+                                (active_appsock_conns - pooled_appsock_conns);
 
     rc = bdb_get_lock_counters(thedb->bdb_env, &stats.deadlocks,
                                &stats.locks_aborted, &stats.lockwaits,
