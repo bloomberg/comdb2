@@ -916,6 +916,7 @@ struct sqlclntstate {
     time_t connect_time;
     time_t last_reset_time;
     int state_start_time;
+    int64_t netwaitus;
     enum connection_state state;
     pthread_mutex_t state_lk;
     /* The node doesn't change.  The pid does as connections get donated.  We
