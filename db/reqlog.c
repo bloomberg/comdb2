@@ -2046,6 +2046,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     if (!logger->in_request)
         goto out;
 
+    reqlog_logf(logger, REQL_INFO, "netwait=%dms", (int)logger->netwaitus / 1000);
+
     if (logger->sqlrows > 0) {
         reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
     }
@@ -3031,6 +3033,11 @@ inline void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n)
     size_t min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
     memset(logger->fingerprint, 0, min);
     logger->have_fingerprint = 1;
+}
+
+void reqlog_set_netwaitus(struct reqlogger *logger, int64_t timeus)
+{
+    logger->netwaitus = timeus;
 }
 
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,

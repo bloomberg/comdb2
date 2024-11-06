@@ -1266,7 +1266,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (rqid) {
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
-
+    reqlog_set_netwaitus(logger, clnt->netwaitus);
 
     unsigned char fingerprint[FINGERPRINTSZ];
     int have_fingerprint = 0;
@@ -1669,6 +1669,11 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
             clnt->in_client_trans = 0;
         }
     }
+}
+
+void clnt_increase_netwaitus(struct sqlclntstate *clnt, int this_many_us)
+{
+    clnt->netwaitus += this_many_us;
 }
 
 static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
@@ -5449,6 +5454,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->return_long_column_names = 0;
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
+    clnt->netwaitus = 0;
 
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);

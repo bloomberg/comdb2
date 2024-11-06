@@ -25,6 +25,7 @@
 
 #include <compile_time_assert.h>
 #include <locks_wrap.h>
+#include <epochlib.h>
 #include <logmsg.h>
 #include <net_appsock.h>
 #include <sqlwriter.h>
@@ -45,6 +46,7 @@ struct sqlwriter {
     pthread_t timer_thd;
     struct event_base *wr_base;
     time_t sent_at;
+    int64_t blocked_at;
     sql_pack_fn *pack;
     sql_pack_fn *pack_hb;
     unsigned bad : 1;
@@ -144,6 +146,31 @@ static int wr_evbuffer(struct sqlwriter *writer, int fd)
     return writer->wr_evbuffer_fn(writer, fd);
 }
 
+enum write_state {
+    WRITE_BLOCKED,
+    WRITE_SUCCEEDED,
+    WRITE_FAILED
+};
+
+static void update_writer_state(struct sqlwriter *writer, enum write_state state)
+{
+    int64_t elapsed = comdb2_time_epochus();
+
+    switch (state) {
+    case WRITE_SUCCEEDED:
+    case WRITE_FAILED:
+        if (writer->blocked_at > 0) {
+            clnt_increase_netwaitus(writer->clnt, elapsed - writer->blocked_at);
+            writer->blocked_at = 0;
+        }
+        break;
+    case WRITE_BLOCKED:
+        if (writer->blocked_at == 0)
+            writer->blocked_at = elapsed;
+        break;
+    }
+}
+
 /*
  * If a writer is packing a protobuf response (which may invoke sql_flush()
  * multiple times to write out partially serialized data), we don't give up
@@ -177,12 +204,18 @@ static void sql_flush_cb(int fd, short what, void *arg)
     while (evbuffer_get_length(writer->wr_buf)) {
         if ((n = wr_evbuffer(writer, fd)) <= 0) break;
         writer->sent_at = time(NULL);
+        update_writer_state(writer, WRITE_SUCCEEDED);
     }
     if (evbuffer_get_length(writer->wr_buf) == 0) {
         sql_disable_flush(writer);
-    } else if (n <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        writer->bad = 1;
-        event_del(writer->flush_ev);
+    } else if (n <= 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            update_writer_state(writer, WRITE_BLOCKED);
+        } else {
+            writer->bad = 1;
+            event_del(writer->flush_ev);
+            update_writer_state(writer, WRITE_FAILED);
+        }
     }
     UNLOCK_WR_LOCK_ONLY_IF_NOT_PACKING(writer);
 }
@@ -190,6 +223,7 @@ static void sql_flush_cb(int fd, short what, void *arg)
 static int sql_flush_int(struct sqlwriter *writer)
 {
     sql_enable_flush(writer);
+    update_writer_state(writer, WRITE_BLOCKED);
     event_base_dispatch(writer->wr_base);
     return (writer->wr_continue && !writer->bad) ? 0 : -1;
 }
@@ -364,6 +398,7 @@ static void sql_trickle_int(struct sqlwriter *writer, int fd)
         sql_disable_heartbeat(writer);
         return;
     }
+    update_writer_state(writer, WRITE_SUCCEEDED);
     writer->sent_at = time(NULL);
 }
 

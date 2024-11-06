@@ -71,4 +71,5 @@ int recover_deadlock_evbuffer(struct sqlclntstate *);
 void sql_enable_ssl(struct sqlwriter *, SSL *);
 void sql_disable_ssl(struct sqlwriter *);
 
+void clnt_increase_netwaitus(struct sqlclntstate *clnt, int this_many_us);
 #endif /* INCLUDED_SQLWRITER_H */
