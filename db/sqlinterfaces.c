@@ -5290,6 +5290,11 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->state_lk);
     Pthread_mutex_destroy(&clnt->sql_tick_lk);
     Pthread_mutex_destroy(&clnt->sql_lk);
+
+    if (clnt->modsnap_registration) {
+        bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
+        clnt->modsnap_registration = NULL;
+    }
 }
 
 int gbl_unexpected_last_type_warn = 1;

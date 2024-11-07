@@ -32,6 +32,38 @@ function count_archive
     cdb2sql --tabs ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("bdb log_archive")' | egrep 'log.00000' | wc -l
 }
 
+# Runs two snapshot transactions.
+#
+# One of them is killed
+# The other one finishes normally
+#
+# Since both transactions terminate, neither should hold up log deletion.
+function do_snapshot_setup
+{
+    # Create a transaction and kill it
+    cdb2sql ${CDB2_OPTIONS} ${dbnm} default - &> /dev/null <<EOF &
+set transaction snapshot isolation
+begin
+select 1
+select sleep(1000)
+commit
+EOF
+    local -r snapshot_query_to_kill=$!
+    sleep 1
+    kill -9 ${snapshot_query_to_kill}
+
+    # Create a transaction and let it exit normally
+    cdb2sql ${CDB2_OPTIONS} ${dbnm} default - &> /dev/null <<EOF
+set transaction snapshot isolation
+begin
+select 1
+commit
+EOF
+}
+
+if [[ "$TESTCASE" == "logdelete_snapshot_generated" ]]; then
+    do_snapshot_setup
+fi
 
 # Let the test
 while [[ "$seen_archives" -eq "0" && "$count" -lt "$seen_iter" ]]
