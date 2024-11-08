@@ -8,10 +8,12 @@ SET(SYSSP_LIST
      # line. If it is, you'll get a "bad procedure name" error.
      #-------------------------------|
      "sys.physrep.get_reverse_hosts   -> ${CURRENT_SOURCE_DIR}/lib/physrep_get_reverse_hosts.lua"
+     "sys.physrep.get_revhosts_v2     -> ${CURRENT_SOURCE_DIR}/lib/physrep_get_revhosts_v2.lua"
      "sys.physrep.keepalive           -> ${CURRENT_SOURCE_DIR}/lib/physrep_keepalive.lua"
      "sys.physrep.register_replicant  -> ${CURRENT_SOURCE_DIR}/lib/physrep_register_replicant.lua"
      "sys.physrep.reset_nodes         -> ${CURRENT_SOURCE_DIR}/lib/physrep_reset_nodes.lua"
      "sys.physrep.should_wait_for_con -> ${CURRENT_SOURCE_DIR}/lib/physrep_should_wait_for_con.lua"
+     "sys.physrep.shouldwait_v2       -> ${CURRENT_SOURCE_DIR}/lib/physrep_shouldwait_v2.lua"
      "sys.physrep.topology            -> ${CURRENT_SOURCE_DIR}/lib/physrep_topology.lua"
      "sys.physrep.update_registry     -> ${CURRENT_SOURCE_DIR}/lib/physrep_update_registry.lua"
    )

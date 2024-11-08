@@ -961,14 +961,20 @@ unsigned int physrep_min_filenum() {
     return physrep_min_logfile;
 }
 
+extern int gbl_reverse_hosts_v2;
+
 static int check_for_reverse_conn(cdb2_hndl_tp *hndl) {
     int rc;
     char cmd[400];
     int do_wait = 0;
 
-    rc = snprintf(cmd, sizeof(cmd),
-                  "exec procedure sys.physrep.should_wait_for_con('%s', '%s')",
-                  gbl_dbname, (gbl_machine_class) ? gbl_machine_class : gbl_myhostname);
+    if (!gbl_reverse_hosts_v2) {
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.should_wait_for_con('%s', '%s')", gbl_dbname,
+                      (gbl_machine_class) ? gbl_machine_class : gbl_myhostname);
+    } else {
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.shouldwait_v2('%s', '%s', '%s', '%s')", gbl_dbname,
+                      gbl_myhostname, get_my_mach_class_str(), get_my_mach_cluster());
+    }
 
     if (rc < 0 || rc >= sizeof(cmd)) {
         physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
@@ -1116,7 +1122,7 @@ static int update_min_logfile(void) {
     if (rc == CDB2_OK) {
         while ((rc = cdb2_next_record(repl_metadb)) == CDB2_OK) {
             int64_t *minfile = (int64_t *)cdb2_column_value(repl_metadb, 0);
-            physrep_min_logfile = (unsigned int) *minfile;
+            physrep_min_logfile = minfile ? (unsigned int)*minfile : 0;
         }
         if (rc == CDB2_OK_DONE)
             rc = 0;

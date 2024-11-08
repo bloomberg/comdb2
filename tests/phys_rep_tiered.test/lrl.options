@@ -8,3 +8,4 @@ tranlog_incoherent_timeout 10
 forbid_remote_admin 0
 ctrace_dbdir 1
 allow_lua_print 1
+reverse_hosts_v2 1
