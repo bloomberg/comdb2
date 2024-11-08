@@ -97,10 +97,18 @@ that to execute the (reverse) query to read logs from `comdb2_transaction_logs`.
 
 Now, the question is, how would the nodes in production know which node(s) in development
 to connect to? They get this information from `physrep_metadb's` `comdb2_physrep_sources`
-table. This table can be updated with all the source->target information, based on
-which a replicant (in development) waits for a connection (`sys.physrep.should_wait_for_con()`)
+table. This table can be updated with all the source->target information, based on which 
+a replicant (in development) waits for a connection (`sys.physrep.should_wait_for_con()`)
 and the source nodes (in production) can connect to the physrep nodes by getting a list
-from the same table (`sys.physrep.should_wait_for_con()`).
+from the same table (`sys.physrep.should_wait_for_con()`).  The `comdb2_physrep_sources`
+table allows the user to specify the source and target db's by either hostname, tier, or cluster.
+A database will attempt to establish a reverse connection with a target if it's source_dbname
+matches the source_dbname, and the source_host field matches the sources hostname, cluster-name,
+or tier.  When a source sees that a target is specified by tier, it will attempt to establish 
+a reverse-connection to all of the machines listed under comdb2db for that tier.  If a target
+is listed by cluster-name, the source will attempt to establish a reverse-connection to all of
+the hosts listed in that cluster, as represented by the bbcpu.lst.
+
 NOTE: In cross-tier replication, the replication metadata tables must be hosted by a
 separate database running in the a lower (development) tier.
 
@@ -152,7 +160,6 @@ CREATE TABLE comdb2_physrep_sources(dbname CSTRING(60),
 * physrep_i_am_metadb: Marks the node as 'physical replcation metadb'. (Default: off)
 * physrep_keepalive_freq_sec: Periodically send lsn to source node after this interval. (Default: 10)
 * physrep_max_candidates: Maximum number of candidates that should be returned to a new physical replicant during registration. (Default: `6`)
-* physrep_max_pending_replicants: There can be no more than this many physical replicants in pending state. (Default: `10`)
 * physrep_metadb_host: List of physical replication metadb cluster hosts.
 * physrep_metadb_name: Physical replication metadb cluster name.
 * physrep_reconnect_penalty: Physrep wait seconds before retry to the same node. (Default: `5`)

@@ -58,7 +58,24 @@ enum mach_class get_my_mach_class(void)
     return machine_my_class();
 }
 
-const char *get_my_mach_class_str()
+const char *get_my_mach_cluster(void)
+{
+    const char *mycluster;
+    return (machine_my_cluster(&mycluster) == 0) ? mycluster : NULL;
+}
+
+const char *get_mach_cluster(const char *host)
+{
+    const char *cluster;
+    return (machine_cluster(host, &cluster) == 0) ? cluster : NULL;
+}
+
+int get_cluster_machs(const char *cluster, int *count, const char ***machs)
+{
+    return machine_cluster_machs(cluster, count, machs);
+}
+
+const char *get_my_mach_class_str(void)
 {
     return mach_class_class2name(get_my_mach_class());
 }

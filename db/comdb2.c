@@ -140,6 +140,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <net_appsock.h>
 #include "sc_csc2.h"
 #include "reverse_conn.h"
+#include "machcache.h"
 
 #define tokdup strndup
 
@@ -3510,7 +3511,9 @@ static int init(int argc, char **argv)
 
     toblock_init();
 
-    if (mach_class_init()) {
+    class_machs_init();
+
+    if (mach_class_cluster_init()) {
         logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
         exit(1);
     }

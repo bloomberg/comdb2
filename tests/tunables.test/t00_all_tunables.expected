@@ -371,6 +371,7 @@
 (name='fstdump_thread_stacksz', description='Size of the fstdump thread stack.', type='INTEGER', value='262144', read_only='N')
 (name='fullrecovery', description='Attempt to run database recovery from the beginning of available logs. (Default : off)', type='BOOLEAN', value='OFF', read_only='Y')
 (name='gather_rowlocks_on_replicant', description='Replicant will gather rowlocks', type='BOOLEAN', value='ON', read_only='N')
+(name='gbl_class_machs_refresh', description='Requery-time for class-machine lookup.  (Default: 300s)', type='INTEGER', value='300', read_only='N')
 (name='gbl_exit_on_pthread_create_fail', description='If set, database will exit if thread pools aren't able to create threads. (Default: 1)', type='INTEGER', value='1', read_only='Y')
 (name='genid48_warn_threshold', description='Print a warning when there are only as few genids remaining.', type='INTEGER', value='500000000', read_only='N')
 (name='genid_comp_threshold', description='Try to compress rowids if the record data is smaller than this size.', type='INTEGER', value='60', read_only='N')

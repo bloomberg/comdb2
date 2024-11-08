@@ -36,6 +36,9 @@ enum mach_class {
 
 int mach_class_init(void);
 int mach_class_addclass(const char *name, int value);
+int mach_addcluster(const char *name, const char *cluster);
+int mach_cluster(const char *name, const char **cluster);
+int mach_cluster_machs(const char *cluster, int *count, const char ***machs);
 int mach_class_name2class(const char *name);
 const char *mach_class_class2name(int value);
 int mach_class_remap_fdb_tier(const char *name, const char *tier);
