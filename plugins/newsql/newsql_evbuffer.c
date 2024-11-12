@@ -446,7 +446,7 @@ static void dispatch_waiting_client(int fd, short what, void *data)
     timersub(&end, &d->start, &diff);
     logmsg(LOGMSG_USER, "%s: waited %lds.%ldms for election fd:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, appdata->fd);
     if (!bdb_try_am_i_coherent(thedb->bdb_env)) {
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
+        logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
         newsql_cleanup(appdata);
     } else if (dispatch_sql_query_no_wait(&appdata->clnt) != 0) {
         newsql_cleanup(appdata);
@@ -505,7 +505,7 @@ static void dispatch_sql(int fd, short what, void *data)
 static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop_result incoherent)
 {
     if (incoherent == NEWSQL_INCOHERENT) {
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
+        logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, dropping socket fd:%d\n", __func__, appdata->fd);
         newsql_cleanup(appdata);
         return;
     }
@@ -527,11 +527,11 @@ static void wait_for_leader(struct newsql_appdata_evbuffer *appdata, newsql_loop
     appdata->dispatch = d;
     if (incoherent == NEWSQL_NO_LEADER) {
         d->wait_time = gbl_incoherent_clnt_wait;
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, waiting %ds for election fd:%d\n",
+        logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, waiting %ds for election fd:%d\n",
                __func__, d->wait_time, appdata->fd);
     } else if (NEWSQL_NEW_LEADER) {
         d->wait_time = gbl_new_leader_duration;
-        logmsg(LOGMSG_USER, "%s: new query on incoherent node, waiting %ds for coherency lease fd:%d\n",
+        logmsg(LOGMSG_DEBUG, "%s: new query on incoherent node, waiting %ds for coherency lease fd:%d\n",
                __func__, d->wait_time, appdata->fd);
     } else {
         logmsg(LOGMSG_FATAL, "%s: unknown incoherent state:%d\n", __func__, incoherent);
