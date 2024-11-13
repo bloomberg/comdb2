@@ -46,6 +46,8 @@ void dyns_init_globals()
     macc_globals->opt_schematype = 2;
     macc_globals->nconstraints = -1;
     macc_globals->n_check_constraints = -1;
+    memset(macc_globals->periods, 0, sizeof(macc_globals->periods));
+    macc_globals->nperiods = 0;
 }
 
 void dyns_cleanup_globals()

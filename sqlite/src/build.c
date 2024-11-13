@@ -1386,6 +1386,7 @@ void sqlite3StartTable(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   pTable->hasPartIdx = 0;
   pTable->hasExprIdx = 0;
+  pTable->isHistory = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;

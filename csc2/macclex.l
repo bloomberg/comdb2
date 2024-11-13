@@ -258,6 +258,7 @@ nonclosingbrkt [^}]*
                                   } }
 <RECTYPE>default                { return T_DEFAULT; }
 <RECTYPE>ondisk                 { return T_ONDISK; }
+<INITIAL>periods                { return T_PERIODS; }
 <INITIAL>constraints            { BEGIN CONSTRAINTS; return T_CONSTRAINTS; }
 <INITIAL,CONSTRAINTS,RECTYPE>{where} { char *p = yytext;
                                 char *end= NULL;
@@ -303,6 +304,7 @@ nonclosingbrkt [^}]*
 <CONSTRAINTS>on                 { return T_CON_ON; }
 <CONSTRAINTS>update             { return T_CON_UPDATE; }
 <CONSTRAINTS>delete             { return T_CON_DELETE; }
+<CONSTRAINTS>"no_overlap"       { return T_CON_NOOVERLAP; }
 <CONSTRAINTS>set                { return T_SET; }
 <CONSTRAINTS>null               { return T_NULL; }
 <CONSTRAINTS>[\-:]              { return yytext[0];  }

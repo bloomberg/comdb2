@@ -3940,6 +3940,7 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
  *   3. NULL attribute removed from field
  *   4. field size reduced
  *   5. field deleted
+ *   6. enable system versioning
  * SC_BAD_NEW_FIELD: New field missing dbstore or null
  * SC_BAD_DBPAD: Byte array size changed and missing dbpad
  * SC_COLUMN_ADDED: If new column is added
@@ -3952,6 +3953,9 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     int change = SC_NO_CHANGE;
     int oidx, nidx;
 
+    if (!old->periods[PERIOD_SYSTEM].enable &&
+        new->periods[PERIOD_SYSTEM].enable)
+        return SC_TAG_CHANGE;
     /* Find changes to old fields */
     for (oidx = 0; oidx < old->nmembers; ++oidx) {
         char buf[256] = "";

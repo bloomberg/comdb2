@@ -83,6 +83,9 @@ int dyns_get_table_count(void);
 int dyns_get_table_tag_size(char *tabletag);
 int dyns_get_table_field_count(char *tabletag);
 
+/* period accessors */
+int dyns_get_period(int period, int *start, int *end);
+
 /* constraint accessors */
 int dyns_get_constraint_count(void);
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,

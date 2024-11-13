@@ -54,6 +54,8 @@
 %token T_CONSTRAINTS T_CASCADE T_SET T_NULL
 %token T_CON_ON  T_CON_UPDATE T_CON_DELETE T_RESTRICT
 %token T_CHECK
+%token T_CON_NOOVERLAP
+%token T_PERIODS
 
 %token T_RECNUMS T_PRIMARY T_DATAKEY T_UNIQNULLS
 %token T_YES T_NO
@@ -120,6 +122,7 @@ validstruct:    recstruct
             |    keystruct
             |   constantstruct
             |   constraintstruct
+            |   periodstruct
             ;
 
 
@@ -135,13 +138,15 @@ ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_cons
                 | /* %empty */
                 ;
 
-cnstrtstart:    string '-' T_GT { start_constraint_list($1); }
-                | varname '-' T_GT { start_constraint_list($1); }
+cnstrtstart:    string '-' T_GT { start_constraint_list($1, 0); }
+                | varname '-' T_GT { start_constraint_list($1, 0); }
+                | T_CON_NOOVERLAP string '-' T_GT { start_constraint_list($2, 1); }
+                | T_CON_NOOVERLAP varname '-' T_GT { start_constraint_list($2, 1); }
                 ;
 
 /* Named constraint (introduced in r7) */
 cnstrtnamedstart: string T_EQ string '-' T_GT {
-                      start_constraint_list($3);
+                      start_constraint_list($3, 0);
                       set_constraint_name($1, CT_FKEY);
                   }
 
@@ -400,6 +405,42 @@ comment:    T_COMMENT
     | /* %empty */ {$$=blankchar;}
         ;
 
+/* periodstruct: defines temporals
+**	ie.
+**	periods {
+**		SYSTEM(sys_start, sys_end)
+**		BUSINESS(bus_start, bus_end)
+**	}
+*/
+
+periodstruct:	periodstart '{' multipddef '}'
+        |
+		;
+
+periodstart:    T_PERIODS { start_periods_list(); }
+        ;
+
+
+multipddef:	pddef multipddef
+		|   pddef
+		;
+
+pddef:  varname '(' varname ',' varname ')' comment
+        {
+            reset_array();
+            reset_range();
+            key_piece_clear();
+
+            key_setdup();
+            key_piece_add($3, 0);
+            key_piece_add($5, 0);
+            key_add_tag($1,0,0);
+            key_piece_clear();
+
+            add_period($1,$3,$5);
+        }
+    ;
+
 /* keystruct: defines a key
 **    ie.
 **    keys {
@@ -415,16 +456,26 @@ multikeydef:    keydef multikeydef
         |        keydef
         ;
 
-keydef:        multikeyflags string '=' compoundkey where comment
+keydef:     multikeyflags string '=' compoundkey where comment
                             { 
                             key_add_tag($2,0,$5);
                             key_piece_clear(); 
                             }
-        |    multikeyflags string '(' typename ')' '=' compoundkey where comment
+		|	multikeyflags varname '=' compoundkey where comment
+							{	/* conditional key */
+							key_add_tag($2,0,$5);
+							key_piece_clear();
+							}
+        |   multikeyflags string '(' typename ')' '=' compoundkey where comment
                             {    /* conditional key */
                             key_add_tag($2,$4,$8); 
                             key_piece_clear(); 
                             }
+		|	multikeyflags varname '(' typename ')' '=' compoundkey where comment
+							{	/* conditional key */
+							key_add_tag($2,$4,$8);
+							key_piece_clear();
+							}
         ;
 
 
