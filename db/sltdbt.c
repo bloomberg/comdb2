@@ -221,7 +221,14 @@ retry:
             iq->usedb = iq->origdb;
 
             n_retries++;
-            deadlocksleepus = (rand() % gbl_maxwthreads * avg_toblock_us);
+            
+            /* avg_tolock_us is updated without a lock; make sure it stays in [0..25msec]
+             * re:177309919
+             */
+            int localwait = avg_toblock_us;
+            if (localwait < 0 || localwait > 25000)
+                localwait = 25000;
+            deadlocksleepus = (rand() % gbl_maxwthreads * localwait);
             /* usleep(0) will likely give up the CPU. Avoid it. */
             if (deadlocksleepus != 0)
                 usleep(deadlocksleepus);
