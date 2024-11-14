@@ -351,7 +351,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
-  THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
+  TESTDEFAULT THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
   VERSION WRITE DDL USERSCHEMA ZLIB
 %endif SQLITE_BUILDING_FOR_COMDB2
   .
@@ -2467,6 +2467,13 @@ analyze_sumthds(A) ::= SUMMARIZE INTEGER(X). {
     SET_ANALYZE_SUMTHREAD(A,tmp);
 }
 
+//////////////////////////////// TESTDEFAULT //////////////////////////////////
+//
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= TESTDEFAULT LP(A) expr(X) RP(Z). {
+                            {comdb2TestDefault(pParse,X,A.z+1,Z.z);}
+}
+%endif SQLITE_BUILDING_FOR_COMDB2
 //////////////////////////////// REBUILD TABLE ////////////////////////////////
 
 %type comdb2opt {int}

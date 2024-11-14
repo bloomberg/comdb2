@@ -192,6 +192,7 @@
 (candidate='TABLE')
 (candidate='TEMP')
 (candidate='TEMPORARY')
+(candidate='TESTDEFAULT')
 (candidate='THEN')
 (candidate='THREADS')
 (candidate='THRESHOLD')

@@ -400,6 +400,7 @@ static Keyword aKeywordTable[] = {
   { "SKIPSCAN",          "TK_SKIPSCAN",          ALWAYS           },
   { "START",             "TK_START",             ALWAYS           },
   { "SUMMARIZE",         "TK_SUMMARIZE",         ALWAYS           },
+  { "TESTDEFAULT",       "TK_TESTDEFAULT",       ALWAYS           },
   { "THREADS",           "TK_THREADS",           ALWAYS           },
   { "THRESHOLD",         "TK_THRESHOLD",         ALWAYS           },
   { "TIME",              "TK_TIME",              ALWAYS           },

@@ -3222,11 +3222,16 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                       struct sql_state *rec, struct errstat *err, int flags)
 {
-    curtran_assert_nolocks();
-    rdlock_schema_lk();
+    /* sc-thread holds schema-lk in verify_dbstore */
+    if (!clnt->verify_dbstore) {
+        curtran_assert_nolocks();
+        rdlock_schema_lk();
+    }
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags | PREPARE_RECREATE);
-    unlock_schema_lk();
+    if (!clnt->verify_dbstore) {
+        unlock_schema_lk();
+    }
     if (gbl_stable_rootpages_test) {
         static int skip = 0;
         if (!skip) {
@@ -4335,7 +4340,7 @@ check_version:
 
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
-        if (!got_views_lock) {
+        if (!got_views_lock && !clnt->verify_dbstore) {
             unlock_schema_lk();
 
             if (!clnt->dbtran.cursor_tran) {

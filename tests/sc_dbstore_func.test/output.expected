@@ -17,3 +17,10 @@
 1
 -- Verify records again after full rebuild --
 1
+-- This schema change should fail on invalid default value --
+[CREATE TABLE t1 { schema { cstring s[33] dbstore={bogus} } }] failed with rc 240 Error at line   0: INVALID DBSTORE FUNCTION FOR s
+
+-- The following schema change should succeed --
+-- This verifies that alter also fails on an invalid default value --
+[ALTER TABLE t1 { schema { cstring s[33] dbstore={bogus} } }] failed with rc 240 Error at line   0: INVALID DBSTORE FUNCTION FOR s
+
