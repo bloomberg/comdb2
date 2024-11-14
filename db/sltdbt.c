@@ -188,6 +188,10 @@ retry:
         avg_toblock_us += ((stopus - startus - avg_toblock_us) >> 4);
         if (avg_toblock_us > 25000)
             avg_toblock_us = 25000;
+        if (avg_toblock_us < 0) {
+            printf("huh??? startus %lld stopus %lld avg_toblock_us %d\n", (long long)startus, (long long)stopus, avg_toblock_us);
+            abort();
+        }
     } else if (rc == RC_INTERNAL_RETRY) {
         iq->retries++;
         if (++retries < gbl_maxretries) {
