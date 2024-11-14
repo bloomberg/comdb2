@@ -955,6 +955,8 @@ struct sqlclntstate {
 
     int lastresptype;
     char *externalAuthUser;
+
+    unsigned verify_dbstore : 1;
 };
 
 /* Query stats. */

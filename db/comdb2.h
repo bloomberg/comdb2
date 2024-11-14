@@ -3649,6 +3649,7 @@ void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 
 int backout_schema_changes(struct ireq *iq, tran_type *tran);
 int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
+int verify_dbstore_client_function(const char *dbstore);
 
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;
