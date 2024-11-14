@@ -12702,6 +12702,26 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     return rc;
 }
 
+static int run_verify_dbstore_function(char *sql)
+{
+    struct schema_mem sm = {0};
+
+    struct sqlclntstate clnt;
+    start_internal_sql_clnt(&clnt);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.sql = sql;
+    clnt.admin = gbl_force_writesql;
+    clnt.schema_mems = &sm;
+    clnt.verify_dbstore = 1;
+
+    int rc = dispatch_sql_query(&clnt);
+    rc = rc ? rc : clnt.had_errors;
+
+    end_internal_sql_clnt(&clnt);
+
+    return rc;
+}
+
 unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter)
@@ -13061,6 +13081,25 @@ struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
     hash_t *h = db->aDb[1].pBt[0].temp_tables;
     struct temptable *t = hash_find(h, &i);
     return *t;
+}
+
+/* Verify dbstore client function
+ * @return
+ *     0  : Success
+ *    -1  : Failed
+ */
+int verify_dbstore_client_function(const char *dbstore)
+{
+    int rc = 0;
+    strbuf *sql;
+
+    sql = strbuf_new();
+    strbuf_appendf(sql, "TESTDEFAULT (%s)", dbstore);
+
+    rc = run_verify_dbstore_function((char *)strbuf_buf(sql));
+
+    strbuf_free(sql);
+    return rc ? -1 : 0;
 }
 
 /* Verify all CHECK constraints against this record.

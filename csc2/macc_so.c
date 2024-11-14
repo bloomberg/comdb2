@@ -51,6 +51,7 @@ int compute_all_data(int tidx);
 int comdb2_iam_master();
 
 extern int gbl_ready;
+extern int gbl_create_mode;
 
 char *revision = "$Revision: 1.24 $";
 int unionflag = 0;
@@ -97,6 +98,7 @@ static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
 int gbl_legacy_schema = 0;
 int gbl_check_constraint_feature = 1;
 int gbl_default_function_feature = 1;
+int gbl_verify_default_function = 1;
 int gbl_on_del_set_null_feature = 1;
 int gbl_sequence_feature = 1;
 
@@ -1379,6 +1381,7 @@ void datakey_piece_add(char *buf) {
 }
 
 extern int is_valid_datetime(const char *str, const char *tz);
+extern void create_verify_dbstore_clientfunc(const char *str);
 
 void rec_c_add(int typ, int size, char *name, char *cmnt)
 {
@@ -1574,7 +1577,21 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 any_errors++;
                 return;
             }
-        } else
+        } else {
+            int verify_dbstore_client_function(const char *dbstore);
+            if (fopt->valtype == CLIENT_FUNCTION && fopt->opttype != FLDOPT_NULL && gbl_verify_default_function) {
+                if (gbl_ready) {
+                    if (verify_dbstore_client_function(fopt->value.strval) != 0) {
+                        csc2_error("Error at line %3d: INVALID DBSTORE FUNCTION FOR %s\n", current_line, name);
+                        csc2_syntax_error("Error at line %3d: INVALID DBSTORE FUNCTION FOR %s\n", current_line, name);
+                        any_errors++;
+                        return;
+                    }
+                } else if (gbl_create_mode) {
+                    create_verify_dbstore_clientfunc(fopt->value.strval);
+                }
+                /* Otherwise assume it was verified when it was created */
+            }
             switch (typ) {
             case T_LOGICAL:
             case T_UINTEGER2:
@@ -1706,6 +1723,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 any_errors++;
                 return;
             }
+        }
 
         for (j = 0; j < nfieldopt; j++) {
             if (j == i)

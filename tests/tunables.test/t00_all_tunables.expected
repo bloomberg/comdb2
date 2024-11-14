@@ -1057,6 +1057,7 @@
 (name='verbose_waiter_flag', description='Print trace setting the waiter flag in lock code', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_all_pools', description='verify objects are returned to the correct pools', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_dbreg', description='Periodically check if dbreg entries are correct', type='BOOLEAN', value='OFF', read_only='N')
+(name='verify_default_function', description='Verify default function at schema-change.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='verify_directio', description='Run expensive checks on directio calls', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_master_lease_trace', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='verify_pool_maxt', description='Max Number of verify threads in the thrd pool.', type='INTEGER', value='8', read_only='N')
