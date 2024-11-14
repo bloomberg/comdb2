@@ -175,6 +175,8 @@ REGISTER_TUNABLE("default_datetime_precision", NULL,
 */
 REGISTER_TUNABLE("default_function_feature", "Enables support for SQL function as default value in column definitions (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_default_function_feature, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verify_default_function", "Verify default function at schema-change.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_verify_default_function, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dir",
                  "Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)",
                  TUNABLE_STRING, &db->basedir, READONLY, NULL, NULL, NULL,

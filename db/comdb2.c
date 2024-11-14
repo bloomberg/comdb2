@@ -3392,6 +3392,30 @@ static int create_db(char *dbname, char *dir) {
    return 0;
 }
 
+static char **deferred_clientfuncs = NULL;
+static int deferred_clientfuncs_count = 0;
+
+void create_verify_dbstore_clientfunc(const char *dbstore)
+{
+    deferred_clientfuncs = realloc(deferred_clientfuncs, sizeof(char *) * (deferred_clientfuncs_count + 1));
+    deferred_clientfuncs[deferred_clientfuncs_count++] = strdup(dbstore);
+}
+
+static inline int verify_deferred_dbstore_clientfuncs(void)
+{
+    int rc = 0;
+    for (int i = 0; i < deferred_clientfuncs_count; i++) {
+        int vrc = verify_dbstore_client_function(deferred_clientfuncs[i]);
+        if (vrc) {
+            logmsg(LOGMSG_ERROR, "Failed to verify dbstore client function %s\n", deferred_clientfuncs[i]);
+            rc = -1;
+        }
+        free(deferred_clientfuncs[i]);
+    }
+    free(deferred_clientfuncs);
+    return rc;
+}
+
 static void setup_backup_logfiles_dir()
 {
     char *backupdir = comdb2_location_in_hash("backup_logfiles_dir", NULL);
@@ -4096,6 +4120,10 @@ static int init(int argc, char **argv)
     };
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
+    if (gbl_create_mode && verify_deferred_dbstore_clientfuncs() != 0) {
+        logmsg(LOGMSG_FATAL, "invalid client function for dbstore\n");
+        return -1;
+    }
     unlock_schema_lk();
 
     /* There could have been an in-process schema change.  Add those tables now

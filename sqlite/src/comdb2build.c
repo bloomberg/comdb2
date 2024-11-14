@@ -5153,6 +5153,21 @@ oom:
     return;
 }
 
+void comdb2TestDefault(
+    Parse *pParse,      /* Parsing context */
+    Expr *pExpr,        /* The parsed expression of the default value */
+    const char *zStart, /* Start of the default value text */
+    const char *zEnd    /* First character past end of defaut value text */
+)
+{
+    sqlite3 *db = pParse->db;
+    if( !sqlite3ExprIsConstantOrFunction(pExpr, db->init.busy) ){
+        sqlite3ErrorMsg(pParse, "default value is not constant");
+        return;
+    }
+    return;
+}
+
 void comdb2AddDefaultValue(
     Parse *pParse,      /* Parsing context */
     Expr *pExpr,        /* The parsed expression of the default value */
