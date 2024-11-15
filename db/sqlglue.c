@@ -4874,7 +4874,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
             if (clnt->is_hasql_retry) {
                 get_snapshot(clnt, (int *) &clnt->modsnap_start_lsn_file, (int *) &clnt->modsnap_start_lsn_offset);
             }
-            if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot, 
+            if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot, 
                     &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, &clnt->last_checkpoint_lsn_file, 
                     &clnt->last_checkpoint_lsn_offset)) {
                 logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
