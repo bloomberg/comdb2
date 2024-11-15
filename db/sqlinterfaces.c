@@ -149,6 +149,8 @@ extern int gbl_typessql;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
 
+extern int get_default_tranlevel();
+
 /* Once and for all:
 
    struct sqlthdstate:
@@ -1834,6 +1836,7 @@ char *sqlenginestate_tostr(int state)
 }
 
 int gbl_snapshot_serial_verify_retry = 1;
+int gbl_snapshot_lite = 0;
 
 inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
 {
@@ -1842,13 +1845,15 @@ inline int replicant_is_able_to_retry(struct sqlclntstate *clnt)
 
     if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
          clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-         clnt->dbtran.mode == TRANLEVEL_MODSNAP) &&
+         (clnt->dbtran.mode == TRANLEVEL_MODSNAP &&
+         !gbl_snapshot_lite)) &&
         !get_asof_snapshot(clnt) && gbl_snapshot_serial_verify_retry)
         return !clnt->sent_data_to_client;
 
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
            clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-           clnt->dbtran.mode != TRANLEVEL_MODSNAP;
+           (clnt->dbtran.mode != TRANLEVEL_MODSNAP ||
+           gbl_snapshot_lite);
 }
 
 static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
@@ -1866,7 +1871,8 @@ static inline int replicant_can_retry_rc(struct sqlclntstate *clnt, int rc)
     return (rc == CDB2ERR_VERIFY_ERROR) &&
            (clnt->dbtran.mode != TRANLEVEL_SNAPISOL) &&
            (clnt->dbtran.mode != TRANLEVEL_SERIAL) && 
-           (clnt->dbtran.mode != TRANLEVEL_MODSNAP);
+           (clnt->dbtran.mode != TRANLEVEL_MODSNAP ||
+           gbl_snapshot_lite);
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -7013,7 +7019,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, 1);
     plugin_set_callbacks(clnt, internal);
-    clnt->dbtran.mode = TRANLEVEL_SOSQL;
+    clnt->dbtran.mode = get_default_tranlevel();
     clr_high_availability(clnt);
 }
 
