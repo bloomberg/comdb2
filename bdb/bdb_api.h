@@ -1445,6 +1445,7 @@ int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration);
  * its start lsn and the checkpoint lsn preceding its start lsn.
  *
  * bdb_state: Caller's bdb state.
+ * bdb_attr: Caller's bdb attr.
  * is_ha_retry: 1 if transaction is a hasql retry. 0 otherwise.
  * snapshot_epoch: Snapshot epoch if a PIT snapshot or 0 if not a PIT snapshot.
  * modsnap_start_lsn_file: If transaction is a hasql retry, 
@@ -1459,6 +1460,7 @@ int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration);
  * Returns 0 on success and non-0 on failure.
  */
 int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
+                        bdb_attr_type *bdb_attr,
                         int is_hasql_retry,
                         int snapshot_epoch,
                         unsigned int *modsnap_start_lsn_file,
