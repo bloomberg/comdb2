@@ -1009,9 +1009,21 @@ static void *buf_get_schemachange_v2(struct schema_change_type *s,
     return p_buf;
 }
 
+static int buf_get_schemachange_version(void *p_buf, void *p_buf_end)
+{
+    int first = 0;
+
+    if (p_buf >= p_buf_end) return -1;
+    buf_get(&first, sizeof(first), p_buf, p_buf_end);
+
+    return (first > SC_INVALID && first < SC_LAST) ? 8 : 7;
+}
+
 void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                            void *p_buf_end)
 {
+    if (s->version == 0)
+        s->version = buf_get_schemachange_version(p_buf, p_buf_end);
     if (s->version == 7)
         return buf_get_schemachange_v1(s, p_buf, p_buf_end);
     return buf_get_schemachange_v2(s, p_buf, p_buf_end);
