@@ -237,6 +237,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         } else {
             t->query_plan_hash = NULL;
         }
+        t->alert_once_truncated_col = 1;
 
         char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
         util_tohex(fp, (char *)t->fingerprint, FINGERPRINTSZ);
@@ -310,6 +311,22 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         assert( t->zNormSql!=zNormSql );
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
+    }
+
+    if (clnt->adjusted_column_names && t->alert_once_truncated_col) {
+        t->alert_once_truncated_col = 0;
+        char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
+        util_tohex(fp, (char *)fingerprint, FINGERPRINTSZ);
+        strbuf *msg = strbuf_new();
+        strbuf_appendf(msg, "%s: truncated %d columns ", __func__, clnt->num_adjusted_column_name_length);
+        for (int i = 0; i < clnt->num_adjusted_column_name_length; i++) {
+            if (i > 0)
+                strbuf_append(msg, ", ");
+            strbuf_append(msg, clnt->adjusted_column_names[i]);
+        }
+        strbuf_appendf(msg, " for fp %s\n", fp);
+        logmsg(LOGMSG_WARN, "%s", strbuf_buf(msg));
+        strbuf_free(msg);
     }
 
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);

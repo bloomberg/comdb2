@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
+
+# check for log that column was truncated
+# should only occur once per fp
+function check_logs
+{
+    logfile="$TESTDIR/logs/$DBNAME.db"
+    sleep 20 # give time for .db file to flush
+    # should only get this log message once per fp
+    if [[ $CLUSTER ]]; then
+        for node in $CLUSTER ; do
+            logfile="$TESTDIR/logs/$DBNAME.$node.db"
+            numOccurrence=$(grep 'add_fingerprint: truncated 1 columns thequickbrownfoxjumpsoverthelaz for fp 42063275be5145b92b705863b8137935' $logfile | wc -l)
+            if [[ $numOccurrence > 0 ]]; then
+                break
+            fi
+        done
+    else
+        numOccurrence=$(grep 'add_fingerprint: truncated 1 columns thequickbrownfoxjumpsoverthelaz for fp 42063275be5145b92b705863b8137935' $logfile | wc -l)
+    fi
+    [[ $numOccurrence != 1 ]] && failexit "num occurrence of truncated columns log not equal to 1, got $numOccurrence"
+    echo "Found truncated columns log"
+}
 
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1 -r sql
 [ $? -eq 0 ] || exit 1
+check_logs
+echo "Success"
 exit 0
