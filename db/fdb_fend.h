@@ -454,6 +454,9 @@ extern int gbl_fdb_io_error_retries;
 int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr,
                             char *err, int errlen);
 
+int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr,
+                                char *err, int errlen);
+
 /**
  * Check that fdb class matches a specific class
  *

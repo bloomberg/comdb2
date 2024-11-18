@@ -5859,7 +5859,7 @@ version_retry:
 #define GET_INT(val) \
     do { \
         sqlstr = skipws(sqlstr); \
-        if (!sqlstr) { \
+        if (!sqlstr || !sqlstr[0]) { \
             snprintf(err, errlen, \
                      "missing setting value"); \
             return -1; \
@@ -5910,7 +5910,7 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
     } else if (strncasecmp(sqlstr, "table ", 6) == 0) {
         sqlstr += 5;
         sqlstr = skipws(sqlstr);
-        if (!sqlstr) {
+        if (!sqlstr[0]) {
             snprintf(err, errlen, "missing table name");
             return -1;
         }
@@ -5944,7 +5944,7 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
     } else if (strncasecmp(sqlstr, "cursor ", 7) == 0) {
         sqlstr += 6;
         sqlstr = skipws(sqlstr);
-        if (!sqlstr) {
+        if (!sqlstr[0]) {
             snprintf(err, errlen, "missing cursor uuid");
             return -1;
         }
@@ -5956,6 +5956,66 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
         snprintf(err, errlen, "unknown setting \"%s\"", sqlstr);
         return -1;
     }
+    return 0;
+}
+
+int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr, char *err,
+                                int errlen)
+{
+    if (sqlstr)
+        sqlstr = skipws(sqlstr);
+
+    if (!sqlstr) {
+        snprintf(err, errlen, "missing remsql setting");
+        return -1;
+    }
+
+    if (gbl_fdb_emulate_old) {
+        /* we want to emulate a pre-cdb2api failure to parse remsql SET
+         * options; just return error here, do not set err
+         */
+        return -1;
+    }
+
+    if (strncasecmp(sqlstr, "name ", 5) == 0) {
+        sqlstr += 5;
+        if (!sqlstr[0]) {
+            snprintf(err, errlen, "missing coordinator dbname");
+            return -1;
+        }
+        clnt->coordinator_dbname = strdup(sqlstr);
+    } else if (strncasecmp(sqlstr, "tier ", 5) == 0) {
+        sqlstr += 5;
+        if (!sqlstr[0]) {
+            snprintf(err, errlen, "missing coordinator tier");
+            return -1;
+        }
+        clnt->coordinator_tier= strdup(sqlstr);
+    } else if (strncasecmp(sqlstr, "txnid ", 6) == 0) {
+        sqlstr += 6;
+        if (!sqlstr[0]) {
+            snprintf(err, errlen, "missing dist txn id");
+            return -1;
+        }
+        clnt->dist_txnid = strdup(sqlstr);
+    } else if (strncasecmp(sqlstr, "tstamp ", 7) == 0) {
+        sqlstr += 7;
+        if (!sqlstr[0]) {
+            snprintf(err, errlen, "missing dist timestamp");
+            return -1;
+        }
+        clnt->dist_timestamp = atoll(sqlstr);
+    } else {
+        snprintf(err, errlen, "failed to parse 2pc option %s", sqlstr);
+        return -1;
+    }
+
+    if (clnt->coordinator_dbname && clnt->coordinator_tier && clnt->dist_txnid &&
+        clnt->dist_timestamp) {
+        clnt->use_2pc = 1;
+        clnt->is_participant = 1;
+    }
+
     return 0;
 }
 
