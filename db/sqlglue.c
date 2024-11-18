@@ -4683,7 +4683,7 @@ int get_snapshot(struct sqlclntstate *clnt, int *f, int *o)
     return clnt->plugin.get_snapshot(clnt, f, o);
 }
 
-int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
+int initialize_shadow_trans(struct sqlclntstate *clnt)
 {
     int rc = SQLITE_OK;
     struct ireq iq;
@@ -4801,7 +4801,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     return rc;
 }
 
-int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
+int start_new_transaction(struct sqlclntstate *clnt)
 {
     int rc;
 
@@ -4847,7 +4847,7 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
                pthread_self(), clnt->dbtran.mode, clnt->intrans);
     }
 #endif
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
+    if ((rc = initialize_shadow_trans(clnt)) != 0) {
         sql_debug_logf(clnt, __func__, __LINE__,
                        "initialize_shadow_tran returns %d\n", rc);
         return rc;
@@ -4990,7 +4990,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         clnt->dbtran.mode = TRANLEVEL_RECOM;
     }
 
-    rc = start_new_transaction(clnt, thd);
+    rc = start_new_transaction(clnt);
 
     /* 2pc on tunable, only here for now */
     extern int gbl_2pc;
@@ -8840,7 +8840,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             goto done;
         }
 
-        rc = start_new_transaction(clnt, thd);
+        rc = start_new_transaction(clnt);
 
         if (thd->bt) {
             LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)

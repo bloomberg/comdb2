@@ -889,7 +889,7 @@ static int dbconsumer_consume(Lua L)
         }
     }
     if (!clnt->intrans) {
-        if ((rc = start_new_transaction(clnt, clnt->thd->sqlthd)) != 0) {
+        if ((rc = start_new_transaction(clnt)) != 0) {
             luaL_error(L, "%s: start_new_transaction intrans:%d err:%s rc:%d\n",
                        __func__, clnt->intrans, err, rc);
         }
