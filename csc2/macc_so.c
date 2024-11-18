@@ -3143,10 +3143,8 @@ static int dyns_get_field_info_comn(char *tag, int fidx, char *name,
     if (type != NULL) {
         *type = field_type(tables[tidx].sym[fidx].type, use_server_types);
     }
-    if (name != NULL) {
-        bzero(name, namelen);
-        strncpy(name, tables[tidx].sym[fidx].nm, namelen);
-    }
+    if (name != NULL)
+        snprintf(name, namelen, "%s", tables[tidx].sym[fidx].nm);
     if (offset != NULL) {
         *offset = tables[tidx].sym[fidx].off;
     }
