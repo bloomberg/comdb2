@@ -7319,6 +7319,10 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
 
 void *exec_trigger(char *spname)
 {
+    char thdname[16];
+    snprintf(thdname, sizeof(thdname), "T:%s", spname);
+    comdb2_name_thread(thdname);
+
     char sql[128];
     snprintf(sql, sizeof(sql), "exec procedure %s()", spname);
 
