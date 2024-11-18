@@ -420,13 +420,18 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col,
 }
 
 #define MAX_COL_NAME_LEN 31
-#define ADJUST_LONG_COL_NAME(clnt_return_long_column_names, appdata, n, l)                                             \
+#define ADJUST_LONG_COL_NAME(clnt_return_long_column_names, appdata, n, l, num_adj, adj)                               \
     do {                                                                                                               \
         if ((l > MAX_COL_NAME_LEN) && ((!clnt_return_long_column_names && gbl_return_long_column_names == 0) ||        \
                                        (appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT /* fastsql */))) {         \
             l = MAX_COL_NAME_LEN + 1;                                                                                  \
             char *namebuf = alloca(l);                                                                                 \
             n = strncpy0(namebuf, n, l);                                                                               \
+            if (appdata->protocol_version != NEWSQL_PROTOCOL_COMPAT) { /* don't worry about fastsql */                 \
+                adj = realloc(adj, (num_adj + 1) * sizeof(char *));                                                    \
+                adj[num_adj] = strdup(n);                                                                              \
+                ++num_adj;                                                                                             \
+            }                                                                                                          \
         }                                                                                                              \
     } while (0)
 
@@ -437,12 +442,14 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     update_col_info(&appdata->col_info, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
+    free_client_adj_col_names(clnt);
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
         const char *name = sqlite3_column_name(stmt, i);
         size_t len = strlen(name) + 1;
-        ADJUST_LONG_COL_NAME(clnt->return_long_column_names, appdata, name, len);
+        ADJUST_LONG_COL_NAME(clnt->return_long_column_names, appdata, name, len, clnt->num_adjusted_column_name_length,
+                             clnt->adjusted_column_names);
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;
@@ -493,12 +500,14 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
     }
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
+    free_client_adj_col_names(clnt);
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
         const char *name = sp_column_name(arg, i);
         size_t len = strlen(name) + 1;
-        ADJUST_LONG_COL_NAME(clnt->return_long_column_names, appdata, name, len);
+        ADJUST_LONG_COL_NAME(clnt->return_long_column_names, appdata, name, len, clnt->num_adjusted_column_name_length,
+                             clnt->adjusted_column_names);
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;

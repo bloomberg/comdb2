@@ -3919,6 +3919,8 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt, stmt, outrc);
 
+    free_client_adj_col_names(clnt);
+
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
         (BDB_ATTR_GET(thedb->bdb_attr, PLANNER_WARN_ON_DISCREPANCY) == 1 ||
          BDB_ATTR_GET(thedb->bdb_attr, PLANNER_SHOW_SCANSTATS) == 1)) {
@@ -5197,6 +5199,18 @@ void free_client_info(struct sqlclntstate *clnt)
     }
 }
 
+void free_client_adj_col_names(struct sqlclntstate *clnt)
+{
+    if (!clnt->adjusted_column_names)
+        return;
+    for (int i = 0; i < clnt->num_adjusted_column_name_length; i++) {
+        free(clnt->adjusted_column_names[i]);
+    }
+    free(clnt->adjusted_column_names);
+    clnt->adjusted_column_names = NULL;
+    clnt->num_adjusted_column_name_length = 0;
+}
+
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
     if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
@@ -5279,6 +5293,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     clear_session_tbls(clnt);
     free(clnt->authdata);
     clnt->authdata = NULL;
+
+    free_client_adj_col_names(clnt);
 
     destroy_hash(clnt->ddl_tables, free_it);
     destroy_hash(clnt->dml_tables, free_it);
@@ -5470,6 +5486,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->force_fdb_push_remote = 0;
     clnt->typessql = 0;
     clnt->return_long_column_names = 0;
+    free_client_adj_col_names(clnt);
     free(clnt->prev_cost_string);
     clnt->prev_cost_string = NULL;
 
