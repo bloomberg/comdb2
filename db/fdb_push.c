@@ -538,7 +538,7 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
-        tran->fcon.hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
+        tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
         if (!tran->fcon.hndl) {
             rc = -2;
             goto free;
@@ -565,7 +565,6 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
                 rc = cdb2_next_record(tran->fcon.hndl);
             }
             if (rc != CDB2_OK_DONE) {
-                hndl = tran->fcon.hndl;
                 goto hndl_err;
             }
         }
