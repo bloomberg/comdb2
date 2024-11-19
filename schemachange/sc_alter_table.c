@@ -378,6 +378,18 @@ static int optionsChanged(struct schema_change_type *sc, struct scinfo *scinfo){
     return 0;
 }
 
+static void decrement_sc_yet_to_resume_counter()
+{
+    uint32_t oldval, newval, swapped;
+    oldval = ATOMIC_LOAD32(gbl_sc_resume_start);
+
+    /* keep performing compare-and-swap until it succeeds. also ensure that we do not go negative */
+    for (swapped = 0; oldval > 0 && !swapped; oldval = ATOMIC_LOAD32(gbl_sc_resume_start)) {
+        newval = oldval - 1;
+        swapped = CAS32(gbl_sc_resume_start, oldval, newval);
+    }
+}
+
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
@@ -527,6 +539,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         change_schemas_recover(s->tablename);
         if (local_lock)
             unlock_schema_lk();
+        decrement_sc_yet_to_resume_counter();
         return -1;
     }
 
@@ -579,6 +592,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "failed initilizing sc_genids\n");
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
+        decrement_sc_yet_to_resume_counter();
         return -1;
     }
 
@@ -600,8 +614,7 @@ convert_records:
                    __func__, __LINE__);
             sleep(5);
         }
-        if (gbl_sc_resume_start > 0)
-            ATOMIC_ADD32(gbl_sc_resume_start, -1);
+        decrement_sc_yet_to_resume_counter();
     }
     MEMORY_SYNC;
 
