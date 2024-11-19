@@ -3623,7 +3623,7 @@ int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
     /* send back the result now if this is not prepared
      * prepared txns won't wait */
-    if (!clnt->dist_txnid) {
+    if (!clnt->is_participant) {
         rc2 = fdb_send_rc(msg, tid, rc, errstrlen, errstr_if_any, sb);
         if (rc2) {
             logmsg(LOGMSG_ERROR, "%s: sending rc error rc=%d rc2=%d\n", __func__, rc, rc2);
@@ -3916,8 +3916,9 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
              * The msg buffer is reused for response, thus in some cases,
              * the type it initially stored, could change.
              * This check ensures that the change adheres with the design.
+             * NOTE: participant SKIPS sending an RC back!
              */
-            if (msg_type == FDB_MSG_TRAN_COMMIT && (msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_RC) {
+            if (!svc_cb_arg.clnt->is_participant && msg_type == FDB_MSG_TRAN_COMMIT && (msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_RC) {
                 abort();
             }
             break;
