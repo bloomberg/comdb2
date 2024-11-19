@@ -63,7 +63,8 @@ int gbl_sc_last_writer_time = 0;
 pthread_mutex_t gbl_sc_lock = PTHREAD_MUTEX_INITIALIZER;
 int gbl_sc_report_freq = 15; /* seconds between reports */
 int gbl_sc_abort = 0;
-uint32_t gbl_sc_resume_start = 0;
+/* number of schema changes that have yet to resume */
+volatile uint32_t gbl_sc_resume_start = 0;
 /* see sc_del_unused_files() and sc_del_unused_files_check_progress() */
 int sc_del_unused_files_start_ms = 0;
 int gbl_sc_del_unused_files_threshold_ms = 30000;
