@@ -1876,6 +1876,8 @@ REGISTER_TUNABLE("blocking_physrep",
                  "Physical replicant blocks on select. (Default: false)",
                  TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("tranlog_default_timeout", "Default timeout for tranlog queries.  (Default: 30)", TUNABLE_INTEGER,
+                 &gbl_tranlog_default_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_incoherent_timeout", "Timeout in seconds for incoherent tranlog. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_tranlog_incoherent_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_maxpoll", "Tranlog timeout in seconds for blocking poll. (Default: 60)", TUNABLE_INTEGER,
