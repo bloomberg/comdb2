@@ -1006,6 +1006,7 @@
 (name='track_replication_times', description='Track how long each replicant takes to ack all transactions.', type='BOOLEAN', value='ON', read_only='N')
 (name='track_replication_times_max_lsns', description='Track replication times for up to this many transactions.', type='INTEGER', value='50', read_only='N')
 (name='tracked_locklist_init', description='Initial allocation count for tracked locks', type='INTEGER', value='10', read_only='N')
+(name='tranlog_default_timeout', description='Default timeout for tranlog queries.  (Default: 30)', type='INTEGER', value='30', read_only='N')
 (name='tranlog_incoherent_timeout', description='Timeout in seconds for incoherent tranlog. (Default: 10)', type='INTEGER', value='10', read_only='N')
 (name='tranlog_maxpoll', description='Tranlog timeout in seconds for blocking poll. (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='transaction_grace_period', description='Time to wait for connections with pending transactions to go away on exit. (Default: 60)', type='INTEGER', value='60', read_only='N')
