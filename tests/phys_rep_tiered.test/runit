@@ -1055,6 +1055,32 @@ function run_tests()
     done
 }
 
+function tranlog_timeout()
+{
+    typeset begin
+    typeset end
+    echo "== tranlog timeout test"
+
+    # Set timeout for 5 seconds - this should succeed if total time is between 5 and 7 seconds
+    echo "Testing timeout of 5 seconds"
+    begin=$(date +%s)
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "select * from comdb2_transaction_logs(NULL, NULL, 1, 5)" > /dev/null
+    end=$(date +%s)
+    total=$(( end - begin ))
+    if [[ $total -lt 5 || $total -gt 7 ]]; then
+        cleanFailExit "tranlog timeout test failed, total time $total wanted 5"
+    fi
+
+    echo "Testing default timeout - should be 30 seconds"
+    begin=$(date +%s)
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default "select * from comdb2_transaction_logs(NULL, NULL, 1)" > /dev/null
+    end=$(date +%s)
+    total=$(( end - begin ))
+    if [[ $total -lt 29 || $total -gt 35 ]]; then
+        cleanFailExit "tranlog timeout test failed, total time $total wanted 30"
+    fi
+}
+
 function revconn_latency()
 {
     typeset now=$(date +%s)
@@ -1202,6 +1228,7 @@ if [[ "$NOSOURCE" == "1" ]]; then
     restart_source_nodes
 fi
 
+tranlog_timeout
 revconn_latency $lastNode
 revconn_latency $firstNode
 generate_tests

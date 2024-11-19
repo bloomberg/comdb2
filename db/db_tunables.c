@@ -432,6 +432,7 @@ extern int gbl_debug_invalid_genid;
 
 /* Tranlog */
 extern int gbl_tranlog_incoherent_timeout;
+extern int gbl_tranlog_default_timeout;
 extern int gbl_tranlog_maxpoll;
 
 /* Physical replication */

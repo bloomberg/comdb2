@@ -31,19 +31,21 @@
 #define TRANLOG_COLUMN_START        0
 #define TRANLOG_COLUMN_STOP         1
 #define TRANLOG_COLUMN_FLAGS        2
-#define TRANLOG_COLUMN_LSN          3
-#define TRANLOG_COLUMN_RECTYPE      4
-#define TRANLOG_COLUMN_GENERATION   5
-#define TRANLOG_COLUMN_TIMESTAMP    6
-#define TRANLOG_COLUMN_LOG          7
-#define TRANLOG_COLUMN_TXNID        8
-#define TRANLOG_COLUMN_UTXNID       9
-#define TRANLOG_COLUMN_MAXUTXNID    10
-#define TRANLOG_COLUMN_CHILDUTXNID  11
-#define TRANLOG_COLUMN_LSN_FILE     12 /* Useful for sorting records by LSN */
-#define TRANLOG_COLUMN_LSN_OFFSET   13
+#define TRANLOG_COLUMN_TIMEOUT      3
+#define TRANLOG_COLUMN_LSN          4
+#define TRANLOG_COLUMN_RECTYPE      5
+#define TRANLOG_COLUMN_GENERATION   6
+#define TRANLOG_COLUMN_TIMESTAMP    7
+#define TRANLOG_COLUMN_LOG          8
+#define TRANLOG_COLUMN_TXNID        9
+#define TRANLOG_COLUMN_UTXNID       10
+#define TRANLOG_COLUMN_MAXUTXNID    11
+#define TRANLOG_COLUMN_CHILDUTXNID  12
+#define TRANLOG_COLUMN_LSN_FILE     13 /* Useful for sorting records by LSN */
+#define TRANLOG_COLUMN_LSN_OFFSET   14
 
 extern int gbl_apprec_gen;
+int gbl_tranlog_default_timeout = 30;
 
 /* Modeled after generate_series */
 typedef struct tranlog_cursor tranlog_cursor;
@@ -62,6 +64,8 @@ struct tranlog_cursor {
   int notDurable;
   int openCursor;
   int startAppRecGen;
+  int starttime;
+  int timeout;
   DB_LOGC *logc;             /* Log Cursor */
   DBT data;
 };
@@ -77,7 +81,7 @@ static int tranlogConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
+     "CREATE TABLE x(minlsn hidden,maxlsn hidden,flags hidden,timeout hidden,lsn,rectype integer,generation integer,timestamp integer,payload,txnid integer,utxnid integer,maxutxnid hidden, childutxnid hidden, lsnfile hidden, lsnoffset hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -98,6 +102,8 @@ static int tranlogOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
   pCur->startAppRecGen = gbl_apprec_gen;
+  pCur->timeout = gbl_tranlog_default_timeout;
+  pCur->starttime = comdb2_time_epoch();
   *ppCursor = &pCur->base;
   return SQLITE_OK;
 }
@@ -145,6 +151,11 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
 
   if (pCur->notDurable || pCur->hitLast)
       return SQLITE_OK;
+
+  if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
+      pCur->hitLast = 1;
+      return SQLITE_OK;
+  }
 
   if (!pCur->openCursor) {
       if ((rc = bdb_state->dbenv->log_cursor(bdb_state->dbenv, &pCur->logc, 0))
@@ -205,6 +216,11 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
               break;
           }
 
+          if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
+              pCur->hitLast = 1;
+              return SQLITE_OK;
+          }
+
           /* Wait on a condition variable */
           clock_gettime(CLOCK_REALTIME, &ts);
           ts.tv_nsec += (200 * 1000000);
@@ -234,6 +250,11 @@ static int tranlogNext(sqlite3_vtab_cursor *cur)
                  (peer dropped connection, max query time reached, etc.) */
               if ((rc = comdb2_sql_tick()) != 0)
                   return rc;
+
+              if (pCur->timeout > 0 && (comdb2_time_epoch() - pCur->starttime) > pCur->timeout) {
+                  pCur->hitLast = 1;
+                  return SQLITE_OK;
+              }
 
               if (gbl_tranlog_maxpoll > 0) {
                   if (comdb2_time_epoch() - poll_start_time > gbl_tranlog_maxpoll) {
@@ -548,6 +569,9 @@ static int tranlogColumn(
     case TRANLOG_COLUMN_FLAGS:
         sqlite3_result_int64(ctx, pCur->flags);
         break;
+    case TRANLOG_COLUMN_TIMEOUT:
+        sqlite3_result_int64(ctx, pCur->timeout);
+        break;
     case TRANLOG_COLUMN_LSN:
         if (!pCur->curLsnStr) {
             pCur->curLsnStr = sqlite3_malloc(32);
@@ -724,6 +748,11 @@ static int tranlogFilter(
     int64_t flags = sqlite3_value_int64(argv[i++]);
     pCur->flags = flags;
   }
+  pCur->timeout = gbl_tranlog_default_timeout;
+  if( idxNum & 8 ){
+    int64_t timeout = sqlite3_value_int64(argv[i++]);
+    pCur->timeout = timeout;
+  }
   pCur->iRowid = 1;
   return SQLITE_OK;
 }
@@ -737,6 +766,7 @@ static int tranlogBestIndex(
   int startIdx = -1;     /* Index of the start= constraint, or -1 if none */
   int stopIdx = -1;      /* Index of the stop= constraint, or -1 if none */
   int flagsIdx = -1;     /* Index of the block= constraint, block waiting if set */
+  int timeoutIdx = -1;
   int nArg = 0;          /* Number of arguments that seriesFilter() expects */
 
   const struct sqlite3_index_constraint *pConstraint;
@@ -757,6 +787,10 @@ static int tranlogBestIndex(
         flagsIdx = i;
         idxNum |= 4;
         break;
+      case TRANLOG_COLUMN_TIMEOUT:
+        timeoutIdx = i;
+        idxNum |= 8;
+        break;
     }
   }
   if( startIdx>=0 ){
@@ -770,6 +804,10 @@ static int tranlogBestIndex(
   if( flagsIdx>=0 ){
     pIdxInfo->aConstraintUsage[flagsIdx].argvIndex = ++nArg;
     pIdxInfo->aConstraintUsage[flagsIdx].omit = 1;
+  }
+  if( timeoutIdx>=0 ){
+    pIdxInfo->aConstraintUsage[timeoutIdx].argvIndex = ++nArg;
+    pIdxInfo->aConstraintUsage[timeoutIdx].omit = 1;
   }
   if( (idxNum & 3)==3 ){
     /* Both start= and stop= boundaries are available.  This is the 
