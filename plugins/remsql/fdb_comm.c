@@ -40,7 +40,7 @@ extern int gbl_fdb_auth_enabled;
 
 static int fdb_auth_enabled()
 {
-    return (gbl_fdb_auth_enabled && gbl_uses_externalauth);
+    return gbl_fdb_auth_enabled;
 }
 
 /* matches fdb_svc_callback_t callbacks */
@@ -399,6 +399,8 @@ int fdb_send_open(struct sqlclntstate *clnt, fdb_msg_t *msg, char *cid, fdb_tran
     msg->co.srcnamelen = strlen(gbl_myuri) + 1;
     msg->co.srcname = gbl_myuri;
     msg->co.ssl = 0; /*TODO: do I need this? */
+
+    clnt->authdata = get_authdata(clnt);
 
     if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->co.authdtalen, &msg->co.authdta);
@@ -2900,6 +2902,8 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg,
     msg->tr.lvl = lvl;
     msg->tr.flags = flags;
     msg->tr.seq = 0; /* the beginnings: there was a zero */
+
+    clnt->authdata = get_authdata(clnt);
 
     if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->tr.authdtalen, &msg->tr.authdta);
