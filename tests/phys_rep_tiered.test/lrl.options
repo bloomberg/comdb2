@@ -9,3 +9,4 @@ forbid_remote_admin 0
 ctrace_dbdir 1
 allow_lua_print 1
 reverse_hosts_v2 1
+physrep_keepalive_v2 1
