@@ -357,7 +357,7 @@
 (name='force_old_cursors', description='Replicant will use old cursors', type='BOOLEAN', value='OFF', read_only='N')
 (name='force_writesql', description='Force admin mode to for write sql.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='foreign_db_allow_cross_class', description='', type='BOOLEAN', value='OFF', read_only='Y')
-(name='foreign_db_auth_enabled', description='Redirect extern auth data to remote server. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
+(name='foreign_db_auth_enabled', description='Redirect extern auth data to remote server. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='foreign_db_push_redirect', description='Redirect fdb query to run via client instead of on server. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_push_remote', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='foreign_db_resolve_local', description='', type='BOOLEAN', value='OFF', read_only='Y')

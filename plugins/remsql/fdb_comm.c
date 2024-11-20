@@ -40,7 +40,7 @@ extern int gbl_fdb_auth_enabled;
 
 static int fdb_auth_enabled()
 {
-    return (gbl_fdb_auth_enabled && gbl_uses_externalauth);
+    return gbl_fdb_auth_enabled;
 }
 
 /* matches fdb_svc_callback_t callbacks */
