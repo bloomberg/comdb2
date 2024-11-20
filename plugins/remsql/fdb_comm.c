@@ -41,7 +41,7 @@ extern int gbl_fdb_auth_enabled;
 
 static int fdb_auth_enabled()
 {
-    return (gbl_fdb_auth_enabled && gbl_uses_externalauth);
+    return gbl_fdb_auth_enabled;
 }
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
