@@ -120,6 +120,7 @@ CREATE TABLE comdb2_physreps(dbname CSTRING(60),
                              host CSTRING(120),
                              file INT,
                              offset INT,
+                             firstfile INT,
                              last_keepalive DATETIME,
                              state CSTRING(60),
                              UNIQUE (dbname, host))
