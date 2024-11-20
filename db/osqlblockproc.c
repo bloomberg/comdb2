@@ -1355,7 +1355,7 @@ int bplog_schemachange_wait(struct ireq *iq, int rc)
                 int bdberr = 0;
                 live_sc_off(sc->db);
                 while (sc->logical_livesc) {
-                    usleep(200);
+                    Usleep(200);
                 }
                 if (sc->db->sc_live_logical) {
                     bdb_clear_logical_live_sc(sc->db->handle, 1);

@@ -424,7 +424,7 @@ void delay_if_sc_resuming(struct ireq *iq)
                    diff);
             printerr = 1; // avoid spew
         }
-        usleep(10000); // 10ms
+        Usleep(10000); // 10ms
     }
 }
 

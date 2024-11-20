@@ -686,7 +686,7 @@ errout:
         }
 
         while (s->logical_livesc) {
-            usleep(200);
+            Usleep(200);
         }
 
         if (db->sc_live_logical) {
@@ -853,7 +853,7 @@ convert_records:
         }
 
         while (s->logical_livesc) {
-            usleep(200);
+            Usleep(200);
         }
 
         if (db->sc_live_logical) {
@@ -921,7 +921,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* wait for logical redo thread to stop */
     while (s->logical_livesc) {
-        usleep(200);
+        Usleep(200);
     }
 
     db->sc_to = newdb;

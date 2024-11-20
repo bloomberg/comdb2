@@ -472,7 +472,7 @@ static void usleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]
   while( remain > 0 ){
     us = ( remain > 1000000 ) ? 1000000 : remain;
     remain -= us;
-    usleep(us);
+    Usleep(us);
     if( comdb2_sql_tick() )
       break;
   }

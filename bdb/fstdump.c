@@ -1204,7 +1204,7 @@ static int close_retry(DBC *dbcp, fstdump_t *common)
         if (rc != DB_LOCK_DEADLOCK)
             break;
         if (++retries > deadlock_sleep_start)
-            usleep(deadlock_sleep_amt);
+            Usleep(deadlock_sleep_amt);
     }
     if (retries == gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "ERROR - TOO MUCH CONTENTION (dbcp->c_close)\n");
@@ -1240,7 +1240,7 @@ static int get_retry(DBC *dbcp, fstdump_t *common, DBT *key, DBT *data,
             break;
 
         if (++retries > deadlock_sleep_start)
-            usleep(deadlock_sleep_amt);
+            Usleep(deadlock_sleep_amt);
     }
     if (retries == gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "ERROR - TOO MUCH CONTENTION (dbcp->c_get)\n");
@@ -1287,7 +1287,7 @@ static int open_retry(DBC **dbcp, fstdump_per_thread_t *fstdump,
             break;
 
         if (++retries > deadlock_sleep_start)
-            usleep(deadlock_sleep_amt);
+            Usleep(deadlock_sleep_amt);
     }
     if (retries == gbl_maxretries) {
         logmsg(LOGMSG_ERROR, "ERROR - TOO MUCH CONTENTION (dbp->cursor)\n");

@@ -4501,7 +4501,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
             if (d_ms) {
                 logmsg(LOGMSG_DEBUG,
                        "Sleeping for DELAY_AFTER_SAVEOP_DONE (%dms)\n", d_ms);
-                usleep(1000 * d_ms);
+                Usleep(1000 * d_ms);
             }
 
             if (!(iq->p_buf_in = packedreq_sql_get(
