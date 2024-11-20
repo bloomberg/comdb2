@@ -282,7 +282,7 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
         return -1;
     }
 
-    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
+    if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
         cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
 
     rc = cdb2_run_statement(hndl, clnt->sql);
