@@ -2172,7 +2172,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "physrep_fanout_override") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_FATAL, "physrep_fanout_override requires dbname & fanout value\n");
+            logmsg(LOGMSG_ERROR, "physrep_fanout_override requires dbname & fanout value\n");
             return -1;
         }
         char *dbname = alloca(ltok + 1);
@@ -2180,13 +2180,53 @@ clipper_usage:
 
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_FATAL, "physrep_fanout_override requires dbname & fanout value\n");
+            logmsg(LOGMSG_ERROR, "physrep_fanout_override requires dbname & fanout value\n");
             return -1;
         }
         int fanout = toknum(tok, ltok);
         physrep_fanout_override(dbname, fanout);
     } else if (tokcmp(tok, ltok, "physrep_fanout_dump") == 0) {
         physrep_fanout_dump();
+    } else if (tokcmp(tok, ltok, "physrep_overlap_test") == 0) {
+
+        /* Parent-low */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "physrep_overlap_test requires plow phigh mylow myhigh\n");
+            return -1;
+        }
+        char *plow = alloca(ltok + 1);
+        tokcpy(tok, ltok, plow);
+
+        /* Parent-high */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "physrep_overlap_test requires plow phigh mylow myhigh\n");
+            return -1;
+        }
+        char *phigh = alloca(ltok + 1);
+        tokcpy(tok, ltok, phigh);
+
+        /* My-low */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "physrep_overlap_test requires plow phigh mylow myhigh\n");
+            return -1;
+        }
+        char *mylow = alloca(ltok + 1);
+        tokcpy(tok, ltok, mylow);
+
+        /* My-high */
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "physrep_overlap_test requires plow phigh mylow myhigh\n");
+            return -1;
+        }
+        char *myhigh = alloca(ltok + 1);
+        tokcpy(tok, ltok, myhigh);
+
+        void have_overlap_check(const char *inplow, const char *inphigh, const char *inmylow, const char *inmyhigh);
+        have_overlap_check(plow, phigh, mylow, myhigh);
     } else if (tokcmp(tok, ltok, "leaktxn") == 0) {
         bdb_trans_leak(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "unleaktxn") == 0) {

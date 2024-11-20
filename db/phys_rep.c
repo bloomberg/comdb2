@@ -924,24 +924,49 @@ static void delete_replicant_host(DB_Connection *cnct)
     free(cnct);
 }
 
-static int send_keepalive() {
-    int rc = 0;
-    char cmd[400];
+int gbl_physrep_keepalive_v2 = 0;
+
+static int send_keepalive(void)
+{
+    int rc = 0, use_v2 = 0;
+    char cmd[600];
     LOG_INFO info;
-
-    info = get_last_lsn(thedb->bdb_env);
-
-    rc = snprintf(cmd, sizeof(cmd),
-                  "exec procedure sys.physrep.keepalive('%s', '%s', %u, %u)",
-                  gbl_dbname, gbl_myhostname, info.file, info.offset);
-    if (rc < 0 || rc >= sizeof(cmd)) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
 
     cdb2_hndl_tp *repl_metadb;
     if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
         return rc;
+    }
+
+    /* TODO: remove after v2 enabled & new-schema is everywhere */
+    if (gbl_physrep_keepalive_v2) {
+        rc = snprintf(
+            cmd, sizeof(cmd),
+            "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'");
+        rc = cdb2_run_statement(repl_metadb, cmd);
+        if (rc != CDB2_OK) {
+            physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute cmd %s (rc: %d)\n", __func__, __LINE__, cmd, rc);
+            cdb2_close(repl_metadb);
+            return rc;
+        }
+        if (cdb2_next_record(repl_metadb) == CDB2_OK) {
+            int64_t val = *(int64_t *)cdb2_column_value(repl_metadb, 0);
+            use_v2 = (val != 0) ? 1 : 0;
+        }
+    }
+
+    info = get_last_lsn(thedb->bdb_env);
+    if (use_v2) {
+        LOG_INFO first_info;
+        first_info = get_first_lsn(thedb->bdb_env);
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.keepalive_v2('%s', '%s', %u, %u, %u)", gbl_dbname,
+                      gbl_myhostname, info.file, info.offset, first_info.file);
+    } else {
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.keepalive('%s', '%s', %u, %u)", gbl_dbname,
+                      gbl_myhostname, info.file, info.offset);
+    }
+    if (rc < 0 || rc >= sizeof(cmd)) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
     }
 
     if (gbl_physrep_debug)
