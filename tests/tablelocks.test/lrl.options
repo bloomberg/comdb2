@@ -1,1 +1,2 @@
 table t1 t1.csc2
+sql_recover_time 65000 #Allow query to block replication for 65 seconds, so table-locks after recovery can be tested.
