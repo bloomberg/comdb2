@@ -54,6 +54,7 @@
 #include "osqlsqlnet.h"
 #include "schemachange.h"
 #include "db_access.h"
+#include "fdb_fend.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -390,6 +391,10 @@ static int osql_wait(struct sqlclntstate *clnt)
     int timeout;
     osqlstate_t *osql = &clnt->osql;
     errstat_t dummy = {0};
+
+    /* if this is a 2pc participant, we don't need to wait here */
+    if (clnt->is_participant)
+        return 0;
 
     /* If an error is set (e.g., selectv error from range check), latch it. */
     errstat_t *err = (osql->xerr.errval == 0) ? &osql->xerr : &dummy;

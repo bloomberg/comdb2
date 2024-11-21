@@ -20,6 +20,7 @@
 #include "ast.h"
 #include "dohsql.h"
 #include "sql.h"
+#include "fdb_fend.h"
 
 int gbl_dohast_disable = 0;
 int gbl_dohast_verbose = 0;
@@ -947,36 +948,66 @@ int comdb2_check_parallel(Parse *pParse)
     return 0;
 }
 
-int comdb2_check_push_remote(Parse *pParse)
+ast_node_t *_get_ast_node(Parse *pParse)
 {
     if (comdb2IsPrepareOnly(pParse))
-        return 0;
+        return NULL;
+
+    if (pParse->explain)
+        return NULL;
 
     ast_t *ast = pParse->ast;
-    dohsql_node_t *node;
-
-    GET_CLNT;
-    if (!gbl_fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
-        return 0;
 
     if (ast && ast->unsupported)
-        return 0;
+        return NULL;
+    if (!ast->stack[0].obj)
+        return NULL;
+
+    return ast->stack;
+}
+
+int comdb2_check_push_remote(Parse *pParse)
+{
     if (has_parallel_sql(NULL) == 0)
         return 0;
-    if (ast->nused > 1)
-        return 0;
-    if (!ast->stack[0].obj)
-        return 0;
 
-    node = (dohsql_node_t *)ast->stack[0].obj;
-
-    if (node->type != AST_TYPE_SELECT)
+    ast_node_t * anode = _get_ast_node(pParse);
+    if (!anode)
         return 0;
 
-    if (!pParse->explain)
-        if (node->remotedb > 1)
-            if (!fdb_push_run(pParse, node))
-                return 1;
+    if (anode->op != AST_TYPE_SELECT)
+        return 0;
+
+    if (pParse->ast->nused > 1)
+        return 0;
+
+    dohsql_node_t *node = (dohsql_node_t*)anode->obj;
+
+    if (node->remotedb > 1)
+        if (!fdb_push_setup(pParse, node))
+            return 1;
+
+    return 0;
+}
+
+int comdb2_check_push_remote_write(Parse *pParse)
+{
+    ast_node_t *anode = _get_ast_node(pParse);
+    if (!anode)
+        return 0;
+
+    if (anode->op != AST_TYPE_INSERT && 
+        anode->op != AST_TYPE_DELETE &&
+        anode->op != AST_TYPE_UPDATE)
+        return 0;
+
+    Table *pTab = (Table*)anode->obj;
+    if (!pTab)
+        return 0;
+
+    if (pTab->iDb > 1)
+        if (!fdb_push_write_setup(pParse, anode->op, pTab))
+            return 1;
     return 0;
 }
 
