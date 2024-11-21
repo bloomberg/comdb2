@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec $TESTSBUILDDIR/reco-ddlk-sql $DBNAME
