@@ -17,6 +17,7 @@
 (tablename='comdb2_constraints', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_cron_events', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_cron_schedulers', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_dbinfo', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_fdb_info', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_filenames', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_files', username='mohit', READ='Y', WRITE='Y', DDL='Y')
