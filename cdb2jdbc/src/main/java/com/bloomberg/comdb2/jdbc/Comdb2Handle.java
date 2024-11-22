@@ -65,7 +65,8 @@ public class Comdb2Handle extends AbstractConnection {
     boolean hasUserTcpSz;
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
-    boolean pmuxrte = false;
+    boolean hasAllowPmuxRoute;
+    boolean pmuxrte = true;
     boolean verifyretry = true;
     boolean stmteffects = true;
     int soTimeout = 5000;
@@ -96,7 +97,8 @@ public class Comdb2Handle extends AbstractConnection {
     private boolean ack = false;
     private boolean skipDrain = false;
     private boolean clearAckOnClose = true;
-    private boolean useIdentity = false;
+    boolean hasUseIdentity;
+    boolean useIdentity = true;
 
     private boolean isRead;
     private String lastSql;
