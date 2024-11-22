@@ -270,6 +270,7 @@ public class Comdb2Connection implements Connection {
     }
 
     public void setAllowPmuxRoute(boolean rte) {
+        hndl.hasAllowPmuxRoute = true;
         hndl.setAllowPmuxRoute(rte);
     }
 
@@ -296,6 +297,7 @@ public class Comdb2Connection implements Connection {
     }
 
     public void setUseIdentity(boolean useIdentity) {
+        hndl.hasUseIdentity = true;
         hndl.setUseIdentity(useIdentity);
     }
 
