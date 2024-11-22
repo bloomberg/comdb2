@@ -18,6 +18,7 @@ add_library(sqlite
   ext/comdb2/connections.c 
   ext/comdb2/constraints.c
   ext/comdb2/crons.c
+  ext/comdb2/dbinfo.c
   ext/comdb2/ezsystables.c
   ext/comdb2/files.c
   ext/comdb2/filenames.c

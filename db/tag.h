@@ -346,6 +346,17 @@ struct dbrecord {
     struct schema *schema;
 };
 
+struct dbinfo_systable_entry {
+    char *table_name;
+    int64_t lux;
+    int64_t lrl;
+    int64_t ix;
+    int64_t keylen;
+};
+int collect_systable_dbinfo(void **data, int *npoints);
+void release_systable_dbinfo(void *data, int npoints);
+
+
 /* if tag is NULL, assume .ONDISK_new */
 struct dbrecord *allocate_db_record(struct dbtable *table, const char *tag);
 int stag_ondisk_to_ix(const struct dbtable *db, int ixnum, const char *inbuf, char *outbuf);
