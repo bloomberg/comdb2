@@ -52,6 +52,31 @@ public class DatabaseDiscovery {
 
     private static final Map<String, TimeAndHosts> comdb2lcldb = new ConcurrentHashMap<>();
 
+    private static boolean value_on_off(String val) {
+        if (val == null)
+            return false;
+
+        if (val.equalsIgnoreCase("on"))
+            return true;
+        if (val.equalsIgnoreCase("true"))
+            return true;
+        if (val.equalsIgnoreCase("yes"))
+            return true;
+        if (val.equalsIgnoreCase("1"))
+            return true;
+
+        if (val.equalsIgnoreCase("off"))
+            return false;
+        if (val.equalsIgnoreCase("false"))
+            return false;
+        if (val.equalsIgnoreCase("no"))
+            return false;
+        if (val.equalsIgnoreCase("0"))
+            return true;
+
+        return false;
+    }
+
     /**
      * Reads information from comdb2db cfg file. Returns true if the minimal
      * necessary information has been gathered. Otherwise, returns false.
@@ -84,6 +109,10 @@ public class DatabaseDiscovery {
                         hndl.myDbHosts.add(tokens[i]);
                         hndl.myDbPorts.add(hndl.overriddenPort);
                     }
+                } else if (tokens[0].equalsIgnoreCase("comdb2_feature")) {
+                    if (tokens[1].equalsIgnoreCase("iam_identity_v6")
+                            && !hndl.hasUseIdentity)
+                        hndl.useIdentity = value_on_off(tokens[2]);
                 } else if (tokens[0].equalsIgnoreCase("comdb2_config")) {
 
                     if (tokens[1].equalsIgnoreCase("default_type")
@@ -128,7 +157,11 @@ public class DatabaseDiscovery {
                     }
                     else if (tokens[1].equalsIgnoreCase("stack_at_open")
                             && !hndl.hasSendStack) {
-                        hndl.sendStack = tokens[2].equalsIgnoreCase("true");
+                        hndl.sendStack = value_on_off(tokens[2]);
+                    }
+                    else if (tokens[1].equalsIgnoreCase("allow_pmux_route")
+                            && !hndl.hasAllowPmuxRoute) {
+                        hndl.pmuxrte = value_on_off(tokens[2]);
                     }
                 } else if (tokens[0].equalsIgnoreCase(hndl.comdb2dbName)) {
                     /**
