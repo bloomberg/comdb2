@@ -35,8 +35,8 @@ int physrep_list_ignored_tables(void);
 LOG_INFO get_last_lsn(struct bdb_state_tag *);
 LOG_INFO get_first_lsn(struct bdb_state_tag *);
 uint32_t get_next_offset(struct __db_env *, LOG_INFO log_info);
-int apply_log(struct __db_env *, unsigned int file, unsigned int offset,
-              int64_t rectype, void *blob, int blob_len);
+int apply_log(struct bdb_state_tag *, unsigned int file, unsigned int offset, int64_t rectype, void *blob,
+              int blob_len);
 int truncate_log_lock(struct bdb_state_tag *, unsigned int file,
                       unsigned int offset, uint32_t flags);
 int find_log_timestamp(struct bdb_state_tag *, time_t time, unsigned int *file,

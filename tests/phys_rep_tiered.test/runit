@@ -1205,6 +1205,35 @@ function test_overlap
     fi
 }
 
+# Simple test to verify that skip-recovery ran against physical replicants
+# Disabled for now- this does not work yet .. 
+function verify_skip_recovery
+{
+    for node in $CLUSTER ; do
+        logFile=$TESTDIR/logs/${REPL_DBNAME_PREFIX}_${node}.log
+        x=$(egrep "skip-recovery truncate" $logFile | wc -l)
+        if [[ "$x" == "0" ]]; then
+            cleanFailExit "skip-recovery not found in $logFile"
+        fi
+        logFile=$TESTDIR/logs/${REPL_CLUS_DBNAME}.${node}.log
+        x=$(egrep "skip-recovery truncate" $logFile | wc -l)
+        if [[ "$x" == "0" ]]; then
+            cleanFailExit "skip-recovery not found in $logFile"
+        fi
+    done
+}
+
+# Verify the reverse-connection / register_interval fix
+# When broken, the first REPL node would re-register 200+ times
+function verify_revconn_fix
+{
+    logFile=$TESTDIR/logs/${REPL_DBNAME_PREFIX}_${firstNode}.log
+    x=$(egrep "Reverse connected" $logFile | wc -l)
+    if [[ "$x" -gt 80 ]]; then
+        cleanFailExit "Reverse connection loop in $logFile"
+    fi
+}
+
 # Use message traps to verify overlap logic
 function match_overlap
 {
@@ -1227,6 +1256,19 @@ function match_overlap
     test_overlap "{1:1}" "{98:98}" "{30:1}" "{101:101}" 0
     
     return 0
+}
+
+# Verify that we are showing generation in comdb2-transaction-logs
+function verify_generation
+{
+    x=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select count(*) from comdb2_transaction_logs where generation is not null") 
+    if [[ $? != 0 ]]; then
+        cleanFailExit "Failed reading comdb2-transactions-logs"
+    fi
+
+    if [[ $x == 0 ]]; then
+        cleanFailExit "Generation not shown in comdb2_transaction_logs"
+    fi
 }
 
 # Call register-replicant directly- look at the list of machines returned .. 
@@ -1415,15 +1457,20 @@ function testcase_preamble
 
 function run_tests
 {
+    testcase="verify_generation"
+    testcase_preamble $testcase
+    verify_generation
+    testcase_finish $testcase
+
     testcase="phys_rep_nomatch"
     testcase_preamble $testcase
     phys_rep_nomatch ${REPL_META_DBNAME} ${REPL_META_HOST}
-    testcase_finsh $testcase
+    testcase_finish $testcase
 
     testcase="tranlog_timeout"
     testcase_preamble $testcase
     tranlog_timeout ${REPL_META_DBNAME} ${REPL_META_HOST}
-    testcase_finsh $testcase
+    testcase_finish $testcase
 
     testcase="revconn_latency $lastNode"
     testcase_preamble $testcase
@@ -1475,6 +1522,17 @@ function run_tests
     testcase="match_overlap"
     testcase_preamble $testcase
     match_overlap
+    testcase_finish $testcase
+
+    # TODO: skip-recovery seems to cause corruption for physreps- disable for now
+    #testcase="verify_skip_recovery"
+    #testcase_preamble $testcase
+    #verify_skip_recovery
+    #testcase_finish $testcase
+
+    testcase="verify_revconn_fix"
+    testcase_preamble $testcase
+    verify_revconn_fix
     testcase_finish $testcase
 }
 
