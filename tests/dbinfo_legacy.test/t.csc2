@@ -1,0 +1,14 @@
+tag ondisk {
+   int a
+   int b
+   int c
+}
+tag default {
+   int a
+   int b
+}
+keys {
+   "a" = a
+   "b" = a + b
+   "c" = c
+}

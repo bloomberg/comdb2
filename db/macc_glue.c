@@ -533,6 +533,9 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
     }
 
     for (ix = 0; ix < sch->nix; ix++) {
+next_index:
+        if (ix >= sch->nix)
+            break;
         sch->ix[ix] = s = _create_index_schema(sch->tag, ix, err);
         if (!s) {
             rc = -1;
@@ -557,8 +560,17 @@ static int create_keys_schemas(dbtable *tbl, struct schema *sch, int alt,
 
         offset = 0;
         for (piece = 0; piece < s->nmembers; piece++) {
-            if ((rc = _set_schema_index_column(sch, &s->member[piece], ix, piece, offset, err)))
-                goto err;
+            if ((rc = _set_schema_index_column(sch, &s->member[piece], ix, piece, offset, err))) {
+                // If it's a default schema, keys may reference fields in the ondisk schema that don't
+                // exist in default.  We should skip those keys but don't abort the process for
+                // the whole table.
+                if (is_ondisk)
+                    goto err;
+                else {
+                    ix++;
+                    goto next_index;
+                }
+            }
             offset += s->member[piece].len;
 
             /* we could check here if there are decimals in the index, and mark

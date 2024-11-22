@@ -6732,3 +6732,43 @@ struct schema *get_schema(const struct dbtable *db, int ix)
 {
     return (ix == -1) ? db->schema : db->ixschema[ix];
 }
+
+int collect_systable_dbinfo(void **data, int *npoints) {
+    struct dbinfo_systable_entry *ent;
+    *npoints = 0;
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        if (thedb->dbs[i]->dbnum != 0)
+            *npoints += (thedb->dbs[i]->nix);
+    }
+    *data = NULL;
+    if (npoints == 0)
+        return 0;
+    ent = malloc(*npoints * sizeof(struct dbinfo_systable_entry));
+    *data = ent;
+    int entnum = 0;
+    for (int tblnum = 0; tblnum < thedb->num_dbs; tblnum++) {
+        if (thedb->dbs[tblnum]->dbnum == 0)
+            continue;
+        struct dbinfo_systable_entry *e;
+        for (int ix = 0; ix < thedb->dbs[tblnum]->nix; ix++) {
+            e = &ent[entnum++];
+            e->table_name = strdup(thedb->dbs[tblnum]->tablename);
+            e->lrl = getdefaultdatsize(thedb->dbs[tblnum]);
+            e->lux = tblnum;
+            e->ix = ix;
+            e->keylen = getdefaultkeysize(thedb->dbs[tblnum], ix);
+        }
+    }
+
+    return 0;
+}
+
+void release_systable_dbinfo(void *data, int npoints) {
+    if (data == NULL || npoints == 0)
+        return;
+    struct dbinfo_systable_entry *ent = (struct dbinfo_systable_entry*) data;
+    for (int i = 0; i < npoints; i++) {
+        free(ent[i].table_name);
+    }
+    free(ent);
+}
