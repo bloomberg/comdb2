@@ -8420,9 +8420,8 @@ __rep_verify_match(dbenv, rp, savetime, online)
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
 
-	/* Masters must run full recovery */
 	int i_am_master = F_ISSET(rep, REP_F_MASTER);
-	if (gbl_rep_skip_recovery && !i_am_master && log_compare(&dbenv->prev_commit_lsn, &rp->lsn) <= 0) {
+	if (gbl_rep_skip_recovery && !i_am_master && dbenv->prev_commit_lsn.file > 0 && log_compare(&dbenv->prev_commit_lsn, &rp->lsn) <= 0) {
 		DB_TXNREGION *region;
 		region = ((DB_TXNMGR *)dbenv->tx_handle)->reginfo.primary;
 		dbenv->wrlock_recovery_lock(dbenv, __func__, __LINE__);
@@ -8479,7 +8478,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 
 		/* Recovery cleanup */
 		if (dbenv->rep_recovery_cleanup)
-			dbenv->rep_recovery_cleanup(dbenv, &trunclsn, i_am_master /* 0 */);
+			dbenv->rep_recovery_cleanup(dbenv, &trunclsn, i_am_master);
 
 		dbenv->unlock_recovery_lock(dbenv, __func__, __LINE__);
 
@@ -8497,6 +8496,7 @@ __rep_verify_match(dbenv, rp, savetime, online)
 			logmsg(LOGMSG_WARN, "skip-recovery cannot skip, prev-commit=[%d:%d] trunc-lsn=[%d:%d]\n",
 				dbenv->prev_commit_lsn.file, dbenv->prev_commit_lsn.offset, rp->lsn.file, rp->lsn.offset);
 		}
+		ZERO_LSN(dbenv->prev_commit_lsn);
 		if ((ret = __rep_dorecovery(dbenv, &rp->lsn, &trunclsn, online,
 						&undid_schema_change)) != 0) {
 			Pthread_mutex_unlock(&apply_lk);

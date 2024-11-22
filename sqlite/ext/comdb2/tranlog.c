@@ -588,6 +588,8 @@ static int tranlogColumn(
         if (pCur->data.data)
             LOGCOPY_32(&rectype, pCur->data.data); 
 
+        normalize_rectype(&rectype);
+
         if (rectype == DB___txn_regop_gen){
             generation = get_generation_from_regop_gen_record(pCur->data.data);
         }

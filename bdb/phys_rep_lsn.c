@@ -250,9 +250,13 @@ uint32_t get_next_offset(DB_ENV *dbenv, LOG_INFO log_info)
     return log_info.offset + log_info.size + dbenv->get_log_header_size(dbenv);
 }
 
-int apply_log(DB_ENV *dbenv, unsigned int file, unsigned int offset, int64_t rectype, void *blob, int blob_len)
+int apply_log(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, int64_t rectype, void *blob,
+              int blob_len)
 {
-    return dbenv->apply_log(dbenv, file, offset, rectype, blob, blob_len);
+    BDB_READLOCK("apply_log");
+    int rc = bdb_state->dbenv->apply_log(bdb_state->dbenv, file, offset, rectype, blob, blob_len);
+    BDB_RELLOCK();
+    return rc;
 }
 
 int truncate_log_lock(bdb_state_type *bdb_state, unsigned int file, unsigned int offset, uint32_t flags)
@@ -506,7 +510,8 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db, LOG_INFO star
                             physrep_logmsg(LOGMSG_FATAL, "Require elect-highest-committed-gen on source- exiting\n");
                             exit(1);
                         }
-                        physrep_logmsg(LOGMSG_ERROR, "Require elect-highest-committed-gen source\n");
+                        physrep_logmsg(LOGMSG_ERROR, "Require elect-highest-committed-gen source {%d:%d}\n", info.file,
+                                       info.offset);
                     } else {
                         info.gen = *gen;
                     }
@@ -564,7 +569,7 @@ int physrep_bdb_wait_for_seqnum(bdb_state_type *bdb_state, DB_LSN *lsn, void *da
         return 0;
     }
 
-    seqnum_type seqnum;
+    seqnum_type seqnum = {0};
     seqnum.lsn.file = lsn->file;
     seqnum.lsn.offset = lsn->offset;
     // seqnum.issue_time = ?
