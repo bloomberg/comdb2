@@ -2658,6 +2658,8 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                thd->dbopen_gen, bdb_get_dbopen_gen(), thd->analyze_gen, \
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
+int gbl_always_reload_analyze = 0;
+
 // Call with schema_lk held and in_sqlite_init == 1
 static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
 {
@@ -2675,7 +2677,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
         TRK;
         return SQLITE_SCHEMA;
     }
-    if (thd->analyze_gen != cached_analyze_gen) {
+    if ((thd->analyze_gen != cached_analyze_gen) || gbl_always_reload_analyze) {
         int ret;
         TRK;
         stmt_cache_reset(thd->stmt_cache);

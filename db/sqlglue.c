@@ -13093,6 +13093,13 @@ int verify_dbstore_client_function(const char *dbstore)
     int rc = 0;
     strbuf *sql;
 
+    /* This deadlocks in replication.  On the master, this is called
+     * from do_schema_change_tran_thd (prior to finalize).  This thread
+     * calls do_alter_table with tran set to NULL, so no self-deadlock. */
+    if (!bdb_iam_master(thedb->bdb_env) || gbl_is_physical_replicant) {
+        return 0;
+    }
+
     sql = strbuf_new();
     strbuf_appendf(sql, "TESTDEFAULT (%s)", dbstore);
 

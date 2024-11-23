@@ -1329,6 +1329,7 @@ static const uint8_t *llmeta_tablename_alias_data_get(
     return p_buf;
 }
 
+int gbl_llmeta_pagesize = 0;
 /* opens the low level meta table, if this is not called, any calls to
  * bdb_get_file_version* will return successfully but with a 0 version_number
  * any calls to bdb_new_file_version will fail */
@@ -1343,8 +1344,8 @@ int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
         return 0;
     }
 
-    llmeta_bdb_state = bdb_open_more_lite(
-            name, dir, 0, LLMETA_IXLEN, 0, parent_bdb_handle, NULL, 0, bdberr);
+    llmeta_bdb_state =
+        bdb_open_more_lite(name, dir, 0, LLMETA_IXLEN, gbl_llmeta_pagesize, parent_bdb_handle, NULL, 0, bdberr);
 
     BDB_RELLOCK();
 

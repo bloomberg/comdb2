@@ -71,6 +71,8 @@ REGISTER_TUNABLE("analyze_tbl_threads",
                  "generating index statistics. (Default: 5)",
                  TUNABLE_INTEGER, &analyze_max_table_threads, READONLY, NULL,
                  NULL, analyze_set_max_table_threads, NULL);
+REGISTER_TUNABLE("always_reload_analyze", "Reload analyze data on every query. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_always_reload_analyze, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("archive_on_init",
                  "Archive files with database extensions in the database directory "
                  "at the time of init. (Default: ON)",
@@ -943,11 +945,8 @@ REGISTER_TUNABLE("page_latches",
                  TUNABLE_BOOLEAN, &gbl_page_latches, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("pageordertablescan", "Perform table scans in page order and not row order. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_page_order_table_scan, NOARG, NULL, NULL, page_order_table_scan_update, NULL);
-/*
-REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
-                 &placeholder, DEPRECATED_TUNABLE|READONLY, NULL, NULL, NULL,
-                 NULL);
-*/
+REGISTER_TUNABLE("llmeta_pagesize", "Init-option for llmeta and metadb pagesizes.  (Default: 4096)", TUNABLE_INTEGER,
+                 &gbl_llmeta_pagesize, READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("parallel_recovery", NULL, TUNABLE_INTEGER,
                  &gbl_parallel_recovery_threads, READONLY, NULL, NULL, NULL,
                  NULL);
