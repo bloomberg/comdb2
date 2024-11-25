@@ -452,7 +452,7 @@ snap_impl_enum gbl_snap_impl = SNAP_IMPL_MODSNAP;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
-int gbl_commit_lsn_map = 1;
+int gbl_test_commit_lsn_map = 0;
 
 /* how many times we retry osql for verify */
 int gbl_osql_verify_retries_max = 499;

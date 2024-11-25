@@ -1,2 +1,3 @@
 utxnid_log on
+test_commit_lsn_map 1
 berkattr commit_map_debug 1
