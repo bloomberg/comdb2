@@ -136,7 +136,6 @@
 (name='collect_before_locking', description='Collect a transaction from the log before acquiring locks.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='commit_delay_on_copy_ms', description='Set automatic delay-ms for commit-delay on copy.  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='commit_delay_timeout_seconds', description='Set timeout for commit-delay on copy.  (Default: 10)', type='INTEGER', value='10', read_only='N')
-(name='commit_lsn_map', description='Maintain a map of transaction commit LSNs. (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='commit_map_debug', description='Produce debug output in commit lsn map', type='BOOLEAN', value='OFF', read_only='N')
 (name='commitdelay', description='Add a delay after every commit. This is occasionally useful to throttle the transaction rate.', type='INTEGER', value='0', read_only='N')
 (name='commitdelaybehindthresh', description='Call for election again and ask the master to delay commits if we are further than this far behind on startup.', type='INTEGER', value='1048576', read_only='N')

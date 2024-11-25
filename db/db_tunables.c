@@ -220,7 +220,7 @@ extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
 extern int gbl_commit_delay_timeout;
 extern int gbl_commit_delay_copy_ms;
-extern int gbl_commit_lsn_map;
+extern int gbl_test_commit_lsn_map;
 extern int gbl_throttle_logput_trace;
 extern int gbl_fills_waitms;
 extern int gbl_finish_fill_threshold;
@@ -1097,9 +1097,17 @@ static int fdb_default_ver_update(void *context, void *value)
 /* Forward declaration */
 int ctrace_set_rollat(void *unused, void *value);
 
+/*
+ * The map is enabled if all of its dependencies are enabled and
+ * any enabled feature depends on it.
+ */
 int get_commit_lsn_map_switch_value()
 {
-    return gbl_utxnid_log && gbl_commit_lsn_map;
+    const int dependencies_are_enabled = gbl_utxnid_log;
+    const int enabled_dependent_exists = 
+        gbl_test_commit_lsn_map || gbl_use_modsnap_for_snapshot;
+    
+    return dependencies_are_enabled && enabled_dependent_exists;
 }
 
 /* Return the value for sql_tranlevel_default. */
