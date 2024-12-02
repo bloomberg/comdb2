@@ -12,13 +12,27 @@
 #include "dbinc/hmac.h"
 #include "dbinc_auto/hmac_ext.h"
 
-#define PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, pglsn) (log_compare(&highest_checkpoint_lsn, &pglsn) > 0 || IS_NOT_LOGGED_LSN(pglsn) || (pglsn.file < smallest_logfile))
+#define PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, pglsn) \
+		(log_compare(&highest_checkpoint_lsn, &pglsn) > 0 || IS_NOT_LOGGED_LSN(pglsn) || (pglsn.file < smallest_logfile))
+
+#define __mempv_debug_format(id, msg, ...) \
+		"%s -- [ID %llu] " msg, __func__, id, ## __VA_ARGS__
+
+#define __mempv_logmsg(lvl, id, msg, ...) \
+		logmsg(lvl, __mempv_debug_format(id, msg, ## __VA_ARGS__))
+
+extern char *optostr(int op);
 
 extern int __txn_commit_map_get(DB_ENV *, u_int64_t, DB_LSN *);
 
 extern int __mempv_cache_init(DB_ENV *, MEMPV_CACHE *cache);
 extern int __mempv_cache_get(DB *dbp, MEMPV_CACHE *cache, u_int8_t file_id[DB_FILE_ID_LEN], db_pgno_t pgno, DB_LSN target_lsn, BH *bhp);
 extern int __mempv_cache_put(DB *dbp, MEMPV_CACHE *cache, u_int8_t file_id[DB_FILE_ID_LEN], db_pgno_t pgno, BH *bhp, DB_LSN target_lsn);
+
+typedef int (*recovery_func_t)(DB_ENV*, DBT*, DB_LSN*, db_recops, PAGE *);
+
+static long long unsigned int gbl_caller_id = 0;
+pthread_mutex_t caller_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * __mempv_init --
@@ -63,11 +77,11 @@ void __mempv_destroy(dbenv)
 	dbenv->mempv = NULL;
 }
 
-static int __mempv_read_log_record(DB_ENV *dbenv, void *data, int (**apply)(DB_ENV*, DBT*, DB_LSN*, db_recops, PAGE *), u_int64_t *utxnid, db_pgno_t pgno) {
-	int ret, utxnid_logged, mempv_debug;
+static int __mempv_read_log_record(void *data, recovery_func_t *apply, u_int64_t *utxnid,
+		db_pgno_t pgno, u_int32_t *p_rectype, long long unsigned int caller_id) {
+	int ret, utxnid_logged;
 	u_int32_t rectype;
 
-	mempv_debug = dbenv->attr.mempv_debug;
 	ret = 0;
 
 	LOGCOPY_32(&rectype, data);
@@ -80,96 +94,57 @@ static int __mempv_read_log_record(DB_ENV *dbenv, void *data, int (**apply)(DB_E
 		rectype -= 1000; // For logs with ufid
 	}
 
+	*p_rectype = rectype;
+
 	data += sizeof(u_int32_t) + sizeof(u_int32_t) + sizeof(DB_LSN);
 	LOGCOPY_64(utxnid, data);
 
 	switch (rectype) {
 		case DB___db_addrem:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is addrem \n");
-			}
 			*apply = __db_addrem_snap_recover;
 			break;
 		case DB___db_big:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is db big \n");
-			}
 			*apply = __db_big_snap_recover;
 			break;
 		case DB___db_ovref:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is ovref \n");
-			}
 			*apply = __db_ovref_snap_recover;
 			break;
 		case DB___db_relink:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is relink \n");
-			}
 			*apply = __db_relink_snap_recover;
 			break;
 		case DB___db_pg_alloc:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is pg alloc \n");
-			}
 			*apply = __db_pg_alloc_snap_recover;
 			break;
 		case DB___bam_split:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam split\n");
-			}
 		   *apply = __bam_split_snap_recover;
 		   break;
 		case DB___bam_rsplit:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam rsplit\n");
-			}
 		   *apply = __bam_rsplit_snap_recover;
 		   break;
 		case DB___bam_repl:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam repl\n");
-			}
 		   *apply = __bam_repl_snap_recover;
 		   break;
 		case DB___bam_adj:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam adj\n");
-			}
 		   *apply = __bam_adj_snap_recover;
 		   break;
 		case DB___bam_cadjust:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam cadj\n");
-			}
 		   *apply = __bam_cadjust_snap_recover;
 		   break;
 		case DB___bam_cdel: 
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam cdel\n");
-			}
 		   *apply = __bam_cdel_snap_recover;
 		   break;
 		case DB___bam_prefix:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is bam prefix\n");
-			}
 		   *apply = __bam_prefix_snap_recover;
 		   break;
 		case DB___db_pg_freedata:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is pg freedata\n");
-			}
 		   *apply = __db_pg_freedata_snap_recover;
 		   break;
 		case DB___db_pg_free:
-			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "Op type of log record is pg free\n");
-			}
 		   *apply = __db_pg_free_snap_recover;
 		   break;
 		default:
-			logmsg(LOGMSG_ERROR, "Op type of log record is unrecognized %d\n", rectype);
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Op of log record is unrecognized %d\n", rectype);
 			ret = 1;
 			break;
 	}
@@ -206,18 +181,18 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 	void *ret_page;
 	u_int32_t flags;
 {
-	int (*apply)(DB_ENV*, DBT*, DB_LSN*, db_recops, PAGE *);
-	int add_to_cache, found, ret, cache_hit, cache_miss, mempv_debug;
+	recovery_func_t apply;
+	int add_to_cache, found, ret, mempv_debug;
 	u_int64_t utxnid;
 	int64_t smallest_logfile;
 	DB_LOGC *logc;
 	PAGE *page, *page_image;
-	DB_LSN cur_page_lsn, commit_lsn;
+	DB_LSN commit_lsn;
 	DB_ENV *dbenv;
 	BH *bhp;
 	void *data_t;
 
-	ret = found = add_to_cache = cache_hit = cache_miss = 0;
+	ret = found = add_to_cache = 0;
 	logc = NULL;
 	page = page_image = NULL;
 	bhp = NULL;
@@ -231,16 +206,28 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 	smallest_logfile = dbenv->txmap->smallest_logfile;
 	Pthread_mutex_unlock(&dbenv->txmap->txmap_mutexp);
 
+	Pthread_mutex_lock(&caller_id_mutex);
+	const long long unsigned int caller_id = ++gbl_caller_id;
+	Pthread_mutex_unlock(&caller_id_mutex);
+
 	if ((ret = __memp_fget(mpf, &pgno, flags, &page)) != 0) {
 		logmsg(LOGMSG_ERROR, "%s: Failed to get initial page version\n", __func__);
 		goto err;
 	}
 
-	cur_page_lsn = LSN(page);
+	const DB_LSN initial_lsn = LSN(page);
+	if (mempv_debug) {
+		__mempv_logmsg(LOGMSG_USER, caller_id,
+		"Page #%"PRIu32": initial LSN {%"PRIu32":%"PRIu32"} target LSN {%"PRIu32":%"PRIu32"} checkpoint LSN {%"PRIu32":%"PRIu32"}\n",
+		pgno, initial_lsn.file, initial_lsn.offset, target_lsn.file, target_lsn.offset, highest_checkpoint_lsn.file,
+		highest_checkpoint_lsn.offset);
+	}
 
-	if (PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, cur_page_lsn)) {
+	if (PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, initial_lsn)) {
 		if (mempv_debug) {
-			logmsg(LOGMSG_USER, "%s: Original page has unlogged LSN or an LSN before the last checkpoint\n", __func__);
+			__mempv_logmsg(LOGMSG_USER, caller_id,
+				"Page's LSN (%"PRIu32":%"PRIu32") indicates that it is at the right version\n",
+				initial_lsn.file, initial_lsn.offset);
 		}
 		found = 1;
 		page_image = page;
@@ -250,94 +237,103 @@ int __mempv_fget(mpf, dbp, pgno, target_lsn, highest_checkpoint_lsn, ret_page, f
 		page_image = (PAGE *) (((u_int8_t *) bhp) + SSZA(BH, buf) );
 
 		if (!page_image) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to allocate page image\n", __func__);
+			__mempv_logmsg(LOGMSG_ERROR, caller_id, "Failed to allocate page image\n");
 			ret = ENOMEM;
 			goto err;
 		}
 
 		if (!__mempv_cache_get(dbp, &dbenv->mempv->cache, mpf->fileid, pgno, target_lsn, bhp)) {
 			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "%s: Found in cache\n", __func__);
+				__mempv_logmsg(LOGMSG_USER, caller_id, "Found target version in cache with LSN %"PRIu32":%"PRIu32"\n",
+					LSN(page_image).file, LSN(page_image).offset);
 			}
-			cache_hit = 1;
 			found = 1;
 
 			if ((ret = __memp_fput(mpf, page, 0)) != 0) {
-				logmsg(LOGMSG_ERROR, "%s: Failed to return initial page version\n", __func__);
+				__mempv_logmsg(LOGMSG_ERROR, caller_id,
+					"Failed to return initial page version to base memory pool\n");
 				goto err;
 			}
 		} else {
-			cache_miss = 1;
-
 			memcpy(bhp, ((char*)page) - offsetof(BH, buf), offsetof(BH, buf) + dbp->pgsize);
 			bhp->is_copy = 1; 
 
 			if ((ret = __memp_fput(mpf, page, 0)) != 0) {
-				logmsg(LOGMSG_ERROR, "%s: Failed to return initial page version\n", __func__);
+				__mempv_logmsg(LOGMSG_ERROR, caller_id,
+					"Failed to return initial page version to base memory pool\n");
 				goto err;
 			}
 
 			if ((ret = __log_cursor(dbenv, &logc)) != 0) {
-				logmsg(LOGMSG_ERROR, "%s: Failed to create log cursor\n", __func__);
+				__mempv_logmsg(LOGMSG_ERROR, caller_id, "Failed to create log cursor\n");
 				goto err;
 			}
 		}
-
 	}
 
+	DB_LSN current_lsn = initial_lsn;
 	while (!found) 
 	{
-		if (mempv_debug) {
-			logmsg(LOGMSG_USER, "%s: Rolling back page %"PRIu32" with initial LSN %"PRIu32":%"PRIu32" to prior LSN %"PRIu32":%"PRIu32"."
-				   "Highest asof checkpoint %"PRIu32":%"PRIu32"\n", 
-				__func__, PGNO(page_image), LSN(page_image).file, LSN(page_image).offset, target_lsn.file, target_lsn.offset,
-				highest_checkpoint_lsn.file, highest_checkpoint_lsn.offset
-			);
-		}
-
-		if (PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, cur_page_lsn)) {
+		if (PAGE_VERSION_IS_GUARANTEED_TARGET(highest_checkpoint_lsn, smallest_logfile, target_lsn, current_lsn)) {
 			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "%s: Page has unlogged LSN or an LSN before the last checkpoint\n", __func__);
+				__mempv_logmsg(LOGMSG_USER, caller_id,
+					"Page's LSN (%"PRIu32":%"PRIu32") indicates that it is at the right version\n",
+					current_lsn.file, current_lsn.offset);
 			}
 			add_to_cache = 1;
 			found = 1;
 			break;
 		}
 
-		if (IS_ZERO_LSN(cur_page_lsn)) {
-			logmsg(LOGMSG_ERROR, "%s: Got to page with zero LSN\n", __func__);
+		if (IS_ZERO_LSN(current_lsn)) {
+			__mempv_logmsg(LOGMSG_ERROR, caller_id, "Page has zero LSN\n");
 			ret = 1;
 			goto err;
 		}
 		
-		ret = __log_c_get(logc, &cur_page_lsn, &dbt, DB_SET);
+		ret = __log_c_get(logc, &current_lsn, &dbt, DB_SET);
 		if (ret || (dbt.size < sizeof(int))) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to get log cursor\n", __func__);
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Failed to get log cursor at LSN %"PRIu32":%"PRIu32"\n",
+				current_lsn.file, current_lsn.offset);
+			ret = ret ? ret : 1;
 			goto err;
 		}
 
-		if ((ret = __mempv_read_log_record(dbenv, data_t != NULL ? data_t : dbt.data, &apply, &utxnid, PGNO(page_image))) != 0) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to read log record\n", __func__);
+		u_int32_t rectype;
+		if ((ret = __mempv_read_log_record(data_t != NULL ? data_t : dbt.data, &apply,
+				&utxnid, PGNO(page_image), &rectype, caller_id)) != 0) {
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Failed to read log record at LSN %"PRIu32":%"PRIu32"\n", current_lsn.file, current_lsn.offset);
 			goto err;
 		}
 
 		 // If the transaction that wrote this page committed before us, return this page.
 		if (!__txn_commit_map_get(dbenv, utxnid, &commit_lsn) && (log_compare(&commit_lsn, &target_lsn) <= 0)) {
 			if (mempv_debug) {
-				logmsg(LOGMSG_USER, "%s: %u Found the right page version\n", __func__, PGNO(page_image));
+				__mempv_logmsg(LOGMSG_USER, caller_id,
+					"Commit LSN %"PRIu32":%"PRIu32" of last updater (utxnid %"PRIu64") "
+					"indicates that this page is the right version\n",
+					commit_lsn.file, commit_lsn.offset, utxnid);
 			}
 			add_to_cache = 1;
 			found = 1;
 			break;
 		}
 
+		if (mempv_debug) {
+			__mempv_logmsg(LOGMSG_USER, caller_id, "Rolling back '%s' operation recorded at %"PRIu32":%"PRIu32"\n",
+				optostr(rectype), current_lsn.file, current_lsn.offset);
+		}
 
-		if((ret = apply(dbenv, &dbt, &cur_page_lsn, DB_TXN_ABORT, page_image)) != 0) {
-			logmsg(LOGMSG_ERROR, "%s: Failed to undo log record\n", __func__);
+		if((ret = apply(dbenv, &dbt, &current_lsn, DB_TXN_ABORT, page_image)) != 0) {
+			__mempv_logmsg(LOGMSG_ERROR, caller_id,
+				"Failed to roll back operation record at %"PRIu32":%"PRIu32"\n",
+				current_lsn.file, current_lsn.offset);
 			goto err;
 		}
 
-		cur_page_lsn = LSN(page_image);
+		current_lsn = LSN(page_image);
 	}
 
 found_page:
