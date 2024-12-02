@@ -2454,6 +2454,8 @@ REGISTER_TUNABLE("multitable_ddl",
                  "Enables single schema change object ddl implementation (default: off)",
                  TUNABLE_BOOLEAN, &gbl_multitable_ddl, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("test_resolve_hostname_failure", "Tunable to test hostname resolution failure",
+                TUNABLE_INTEGER, &gbl_test_resolve_hostname_failure, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_history_max_rows", "Max number of rows returned in comdb2_sc_history (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_sc_history_max_rows, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc_status (Default: 1000)",
