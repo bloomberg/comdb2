@@ -506,7 +506,7 @@ REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN,
                  &gbl_fdb_push_remote, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_push_redirect", "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_fdb_push_redirect_foreign, NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("foreign_db_auth_enabled", "Redirect extern auth data to remote server. (Default: on)",
+REGISTER_TUNABLE("foreign_db_auth_enabled", "Redirect extern auth data to remote server. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_fdb_auth_enabled, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fullrecovery", "Attempt to run database "
                                  "recovery from the beginning of "

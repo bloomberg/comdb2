@@ -70,7 +70,7 @@ int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
 int gbl_fdb_io_error_retries_phase_1 = 6;
 int gbl_fdb_io_error_retries_phase_2_poll = 100;
-int gbl_fdb_auth_enabled = 1;
+int gbl_fdb_auth_enabled = 0;
 
 struct fdb_tbl;
 struct fdb;
