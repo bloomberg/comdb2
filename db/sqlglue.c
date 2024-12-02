@@ -12941,13 +12941,25 @@ int verify_dbstore_client_function(const char *dbstore)
     int rc = 0;
     strbuf *sql;
 
+    /* This deadlocks in replication.  On the master, this is called
+     * from do_schema_change_tran_thd (prior to finalize).  This thread
+     * calls do_alter_table with tran set to NULL, no self-deadlock. */
+    if (!bdb_iam_master(thedb->bdb_env) || gbl_is_physical_replicant) {
+        return 0;
+    }
+
     sql = strbuf_new();
     strbuf_appendf(sql, "TESTDEFAULT (%s)", dbstore);
 
-    rc = run_verify_dbstore_function((char *)strbuf_buf(sql));
+    struct errstat err = {0};
+    run_sql_return_ll((char *)strbuf_buf(sql), &err);
+    if (err.errval != 0) {
+        logmsg(LOGMSG_ERROR, "error verifying dbstore expression (%s): %s\n", dbstore, err.errstr);
+        rc = -1;
+    }
 
     strbuf_free(sql);
-    return rc ? -1 : 0;
+    return rc;
 }
 
 /* Verify all CHECK constraints against this record.

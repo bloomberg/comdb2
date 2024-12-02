@@ -1,0 +1,3 @@
+name testdb
+dir /home/ubuntu/comdb2/tests/sc_dbstore_func.test/testdb
+
