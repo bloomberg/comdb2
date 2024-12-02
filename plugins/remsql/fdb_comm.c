@@ -3298,6 +3298,8 @@ int fdb_send_2pc_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *tr
     msg->tv.coordinator_tier = coordinator_tier;
     msg->tv.timestamp = timestamp;
 
+    clnt->authdata = get_authdata(clnt);
+
     if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->tv.authdtalen, &msg->tv.authdta);
         if (rc) {
@@ -3340,6 +3342,8 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans,
     msg->tr.lvl = lvl;
     msg->tr.flags = flags;
     msg->tr.seq = 0; /* the beginnings: there was a zero */
+
+    clnt->authdata = get_authdata(clnt);
 
     if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->tr.authdtalen, &msg->tr.authdta);

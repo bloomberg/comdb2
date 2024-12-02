@@ -71,10 +71,10 @@ static int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    clnt->authdata = get_authdata(clnt);
     if ((gbl_uses_externalauth || gbl_uses_externalauth_connect) &&
             (externalComdb2AuthenticateUserMakeRequest || debug_switch_ignore_null_auth_func()) &&
             !clnt->admin && !clnt->current_user.bypass_auth) {
+        clnt->authdata = get_authdata(clnt);
         if (!clnt->authdata && clnt->secure && !gbl_allow_anon_id_for_spmux)
             return reject_anon_id(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
