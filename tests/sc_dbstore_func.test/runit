@@ -3,7 +3,7 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
-cat << EOF | cdb2sql ${CDB2_OPTIONS} -tabs -s $dbnm default - >output.actual 2>&1
+cat << EOF | timeout -s 9 60s cdb2sql ${CDB2_OPTIONS} -tabs -s $dbnm default - >output.actual 2>&1
 SELECT "- Testing dbstore now() -"
 CREATE TABLE t1 { tag ondisk { int i } }\$\$
 INSERT INTO t1 VALUES (1)
@@ -39,6 +39,25 @@ ALTER TABLE t1 { schema { cstring s[33] dbstore={bogus} } }\$\$
 EOF
 
 diff output.actual output.expected
+
+function verify_all_replicants()
+{
+    if [[ -z "$CLUSTER" ]]; then
+        return 0
+    fi
+
+    for node in $CLUSTER ; do
+        x=$(timeout -s 9 10s cdb2sql ${CDB2_OPTIONS} -tabs -s ${DBNAME} --host $node "select 1")
+        if [[ $? -ne 0 || "$x" != "1" ]]; then
+            echo "Failed to connect to $node"
+            exit 1
+        fi
+    done
+}
+
+# Alter again, and verify that we do not hang on replicants
+timeout -s 9 20s cdb2sql ${CDB2_OPTIONS} -tabs $dbnm default "ALTER TABLE t1 { `cat t1_hang.csc2` }"
+verify_all_replicants
 
 # Make sure we can create a new db which specifies a client-function dbstore, 
 # but that we fail to create a new db which has an invalid dbstore function.
