@@ -1188,10 +1188,10 @@ static void *gethostname_fn(void *arg)
         timersub(&now, &arg->start, &q);
         if (diff.tv_sec) {
             last_report = now;
-            printf("%s  took %lds:%ldms  pending:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, pending);
+            printf("%s  took %lds:%dms  pending:%d\n", __func__, diff.tv_sec, diff.tv_usec / 1000, pending);
         } else if (q.tv_sec > 2) {
             last_report = now;
-            printf("%s  took %lds:%ldms  queue:%lds:%ldms  pending:%d\n", __func__,
+            printf("%s  took %lds:%dms  queue:%lds:%dms  pending:%d\n", __func__,
                     diff.tv_sec, diff.tv_usec / 1000, q.tv_sec, q.tv_usec / 1000, pending);
         } else if (pending > max_pending) {
             last_report = now;

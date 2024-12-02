@@ -281,7 +281,7 @@ static void dump_qtrigger(bdb_state_type *bdb_state, const DB_LSN *commit_lsn, c
     fprintf(f, "Processing record for %s\n", filename);
     fprintf(f, "Commit-lsn: %u:%u\n", commit_lsn->file, commit_lsn->offset);
     fprintf(f, "Consumer: %d\n", consumer);
-    fprintf(f, "Genid: %lu\n", genid);
+    fprintf(f, "Genid: %llu\n", genid);
     fprintf(f, "Seq: %lld\n", seq);
     fprintf(f, "Datalen): %ld\n", fnddtalen);
     fprintf(f, "Qf-genid: %llu\n", fnd->genid);
