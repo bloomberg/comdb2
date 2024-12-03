@@ -1,6 +1,10 @@
+delete from t
+delete from t2
+delete from t3
+delete from t4
 insert into t(a,b) values (1, 100)
 insert into t(a,b) values (2, 200)
 insert into t(a,b) values (3, 300)
 # inner join
-select a from (select a1.a from t as a1, t as a2 on a1.a=a2.a union all select a1.a from t as a1, t as a2 on a1.a=a2.a) order by a
+select t2.a as t2a, t1.a as t1a from t as t1, t as t2 union all select t2.a as t2a, t1.a as t1a from t as t1, t as t2 order by 1,2
 delete from t
