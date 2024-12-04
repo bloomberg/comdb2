@@ -249,6 +249,10 @@ REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'",
 REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_rowlocks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("stack_at_page_read", "Stores stack-id for every page-read.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_page_read, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_page_write", "Stores stack-id for every page-write.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_page_write, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("stack_at_lock_get", "Stores stack-id for every lock-get.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_stack_at_lock_get, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("stack_at_lock_handle", "Stores stack-id for every lock-handle.  (Default: off)", TUNABLE_BOOLEAN,
@@ -1865,16 +1869,12 @@ REGISTER_TUNABLE("instrument_dblist",
                  TUNABLE_BOOLEAN, &gbl_instrument_dblist,
                  READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("match_on_ckp",
-                 "Allow rep_verify_match on ckp records.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("match_on_ckp", "Allow rep_verify_match on ckp records.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 /* physical replication */
-REGISTER_TUNABLE("blocking_physrep",
-                 "Physical replicant blocks on select. (Default: false)",
-                 TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
-                 NULL);
+REGISTER_TUNABLE("blocking_physrep", "Physical replicant blocks on select. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_blocking_physrep, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_default_timeout", "Default timeout for tranlog queries.  (Default: 30)", TUNABLE_INTEGER,
                  &gbl_tranlog_default_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_incoherent_timeout", "Timeout in seconds for incoherent tranlog. (Default: 10)",
@@ -1927,12 +1927,10 @@ REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb clu
 REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster name.",
                  TUNABLE_STRING, &gbl_physrep_metadb_name, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("physrep_reconnect_penalty",
-                 "Physrep wait seconds before retry to the same node. (Default: 5)",
-                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("physrep_register_interval", "Interval for physical replicant re-registration. (Default: 600)",
-                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_reconnect_penalty", "Physrep wait seconds before retry to the same node. (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_reconnect_interval", "Reconnect interval for physical replicants (Default: 600)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_shuffle_host_list",
                  "Shuffle the host list returned by register_replicant() "
                  "before connecting to the hosts. (Default: OFF)",
