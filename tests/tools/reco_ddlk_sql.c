@@ -1,6 +1,6 @@
 #include <inttypes.h>
 #include <pthread.h>
-#include <stdint.h>
+//#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -23,7 +23,7 @@ static int check_no_incoherent(cdb2_hndl_tp *db)
     cdb2_next_record(db); db = NULL;
     int rc = cdb2_run_statement(master, "SELECT count(*) from comdb2_cluster where coherent_state != 'coherent'");
     if (rc != 0) {
-        fprintf(stderr, "%s cdb2_run_statement rc:%d -- %s\n", __func__, rc, cdb2_errstr(master));
+        fprintf(stderr, "%s cdb2_run_statement rc:%d => %s\n", __func__, rc, cdb2_errstr(master));
         exit(1);
     }
     int64_t count = *(int64_t *)cdb2_column_value(master, 0);
@@ -34,14 +34,12 @@ static int check_no_incoherent(cdb2_hndl_tp *db)
 
 static void *updater(void *data)
 {
-    intptr_t id = (intptr_t)data;
-    uint64_t num_updated = 0;
-    cdb2_hndl_tp *db;
+    int id = (intptr_t)data;
     cdb2_effects_tp effects;
-    int rc;
+    int rc, num_updated = 0, retries = 0, a = id * (rows / THDS);
+    printf("%s id:%d seed:%d\n", __func__, id, a);
+    cdb2_hndl_tp *db;
     cdb2_open(&db, dbname, "default", 0);
-    int a = id * (rows / THDS);
-    printf("%s id:%"PRIdPTR" seed:%d\n", __func__, id, a);
     while (num_updated < 100000) {
         if (++a > rows) a = 0;
         char upd[1024];
@@ -66,7 +64,10 @@ again:  rc = cdb2_run_statement(db, "begin");
         }
 
         rc = cdb2_run_statement(db, "commit");
-        if (rc == CDB2ERR_VERIFY_ERROR) goto again;
+        if (rc == CDB2ERR_VERIFY_ERROR) {
+            ++retries;
+            goto again;
+        }
         if (rc != 0) {
             fprintf(stderr, "%s cdb2_run_statement 'commit' rc:%d -- %s\n", __func__, rc, cdb2_errstr(db));
             exit(1);
@@ -77,7 +78,7 @@ again:  rc = cdb2_run_statement(db, "begin");
     }
     rc = check_no_incoherent(db);
     cdb2_close(db);
-    printf("%s thd:%"PRIdPTR" num_updated:%"PRIu64" incoherent:%d\n", __func__, id, num_updated, rc);
+    printf("%s  thd:%d  num_updated:%d  retries:%d  incoherent:%d\n", __func__, id, num_updated, retries, rc);
     return NULL;
 }
 
@@ -142,28 +143,14 @@ static void *updaters(void *data)
     return NULL;
 }
 
-int main(int argc,char *argv[])
+static void *reader(void *data)
 {
-    pid_t pid = getpid();
-    srandom(pid);
-
     int rc;
-    dbname = argv[1];
-
     cdb2_hndl_tp *db;
     cdb2_open(&db, dbname, "default", 0);
 
-    //setup(db);
-    //insert(db);
-
-    pthread_t t;
-    pthread_create(&t, NULL, updaters, NULL);
-
-    pthread_t r;
-    pthread_create(&s, NULL, sel
     int counter = 0;
-    struct timeval first, start, now, diff;
-    gettimeofday(&first, NULL);
+    struct timeval start, now, diff;
     cdb2_run_statement(db, "SELECT a, b, x, y from t, u where t.a = u.x order by 1");
     gettimeofday(&start, NULL);
     while ((rc = cdb2_next_record(db)) == CDB2_OK) {
@@ -184,13 +171,41 @@ int main(int argc,char *argv[])
         fprintf(stderr, "%s: cdb2_next_record rc:%d -- %s\n", __func__, rc, cdb2_errstr(db));
         exit(1);
     }
-    timersub(&now, &first, &diff);
-    printf("SELECT counter:%d time:%ldsec\n", counter, diff.tv_sec);
+    return NULL;
+}
+
+int main(int argc,char *argv[])
+{
+    void *ret;
+    pid_t pid = getpid();
+    srandom(pid);
+
+    int rc;
+    dbname = argv[1];
+
+    cdb2_hndl_tp *db;
+    cdb2_open(&db, dbname, "default", 0);
+
+    //setup(db);
+    //insert(db);
+
+    pthread_t t;
+    pthread_create(&t, NULL, updaters, NULL);
+
+    struct timeval a, b, c;
+    gettimeofday(&a, NULL);
+
+    pthread_t r;
+    pthread_create(&r, NULL, reader, NULL);
+    pthread_join(r, &ret);
+
+    gettimeofday(&b, NULL);
+    timersub(&b, &a, &c);
+    printf("reader took:%ldsec\n", c.tv_sec);
 
     rc = check_no_incoherent(db);
     cdb2_close(db);
 
-    void *ret;
     pthread_join(t, &ret);
     return rc;
 }
