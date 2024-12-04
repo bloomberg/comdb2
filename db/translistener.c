@@ -1441,6 +1441,7 @@ int gather_triggers(struct gather_triggers_arg *arg)
         switch (dbqueue_consumer_type(qdb->consumers[0])) {
         case CONSUMER_TYPE_LUA: e.type = "trigger"; break;
         case CONSUMER_TYPE_DYNLUA: e.type = "consumer"; break;
+        case CONSUMER_TYPE_FSTSND: e.type = "legacy"; break;
         default: continue;
         }
         e.seq = bdb_queuedb_has_seq(qdb->handle) ? "Y" : "N";
