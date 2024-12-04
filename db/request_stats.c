@@ -21,6 +21,8 @@
 #include <string.h>
 #include <strings.h>
 #include <stddef.h>
+#include <comdb2_atomic.h>
+#include <stackutil.h>
 
 #include "request_stats.h"
 
@@ -29,10 +31,17 @@ static int enabled = 1;
 
 extern void __berkdb_register_read_callback(void (*callback)(int bytes));
 extern void __berkdb_register_write_callback(void (*callback)(int bytes));
+extern void __berkdb_register_failed_read_callback(void (*callback)(int bytes));
+extern void __berkdb_register_failed_write_callback(void (*callback)(int bytes));
 extern void __berkdb_register_memp_callback(void (*callback)(void));
 extern void __berkdb_register_fsync_callback(void (*callback)(int fd));
 
 static void user_request_done(void *st) { free(st); }
+
+static struct global_stats global = {0};
+
+int gbl_stack_at_page_read = 0;
+int gbl_stack_at_page_write = 0;
 
 void user_request_begin(enum request_type type, int flags)
 {
@@ -67,6 +76,42 @@ void user_request_fsync_callback(int fd)
     if (st) {
         st->nfsyncs++;
     }
+
+    ATOMIC_ADD64(global.fsyncs, 1);
+}
+
+void user_request_failed_read_callback(int bytes)
+{
+    struct per_request_stats *st;
+
+    if (!enabled)
+        return;
+
+    st = pthread_getspecific(key);
+    if (st) {
+        st->failed_nreads++;
+        st->failed_readbytes += bytes;
+    }
+
+    ATOMIC_ADD64(global.failed_page_reads, 1);
+    ATOMIC_ADD64(global.failed_page_bytes_read, bytes);
+}
+
+void user_request_failed_write_callback(int bytes)
+{
+    struct per_request_stats *st;
+
+    if (!enabled)
+        return;
+
+    st = pthread_getspecific(key);
+    if (st) {
+        st->failed_nwrites++;
+        st->failed_writebytes += bytes;
+    }
+
+    ATOMIC_ADD64(global.failed_page_writes, 1);
+    ATOMIC_ADD64(global.failed_page_bytes_written, bytes);
 }
 
 void user_request_read_callback(int bytes)
@@ -80,6 +125,13 @@ void user_request_read_callback(int bytes)
     if (st) {
         st->nreads++;
         st->readbytes += bytes;
+    }
+
+    ATOMIC_ADD64(global.page_reads, 1);
+    ATOMIC_ADD64(global.page_bytes_read, bytes);
+
+    if (gbl_stack_at_page_read) {
+        stackutil_get_stack_id("page_read");
     }
 }
 
@@ -95,6 +147,13 @@ void user_request_write_callback(int bytes)
         st->nwrites++;
         st->writebytes += bytes;
     }
+
+    ATOMIC_ADD64(global.page_writes, 1);
+    ATOMIC_ADD64(global.page_bytes_written, bytes);
+
+    if (gbl_stack_at_page_write) {
+        stackutil_get_stack_id("page_write");
+    }
 }
 
 void user_request_memp_callback(void)
@@ -107,6 +166,22 @@ void user_request_memp_callback(void)
     st = pthread_getspecific(key);
     if (st)
         st->mempgets++;
+
+    ATOMIC_ADD64(global.mempgets, 1);
+}
+
+void global_request_stats(struct global_stats *stats)
+{
+    stats->page_reads = ATOMIC_LOAD64(global.page_reads);
+    stats->page_writes = ATOMIC_LOAD64(global.page_writes);
+    stats->failed_page_reads = ATOMIC_LOAD64(global.failed_page_reads);
+    stats->failed_page_writes = ATOMIC_LOAD64(global.failed_page_writes);
+    stats->fsyncs = ATOMIC_LOAD64(global.fsyncs);
+    stats->mempgets = ATOMIC_LOAD64(global.mempgets);
+    stats->page_bytes_read = ATOMIC_LOAD64(global.page_bytes_read);
+    stats->page_bytes_written = ATOMIC_LOAD64(global.page_bytes_written);
+    stats->failed_page_bytes_read = ATOMIC_LOAD64(global.failed_page_bytes_read);
+    stats->failed_page_bytes_written = ATOMIC_LOAD64(global.failed_page_bytes_written);
 }
 
 void user_request_init(void)
@@ -114,7 +189,9 @@ void user_request_init(void)
     Pthread_key_create(&key, user_request_done);
 
     __berkdb_register_read_callback(user_request_read_callback);
+    __berkdb_register_failed_read_callback(user_request_failed_read_callback);
     __berkdb_register_write_callback(user_request_write_callback);
+    __berkdb_register_failed_write_callback(user_request_failed_write_callback);
     __berkdb_register_memp_callback(user_request_memp_callback);
     __berkdb_register_fsync_callback(user_request_fsync_callback);
 }

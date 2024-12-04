@@ -11,6 +11,8 @@ static long long *__berkdb_num_read_ios = 0;
 static long long *__berkdb_num_write_ios = 0;
 static void (*read_callback) (int bytes) = 0;
 static void (*write_callback) (int bytes) = 0;
+static void (*failed_read_callback) (int bytes) = 0;
+static void (*failed_write_callback) (int bytes) = 0;
 
 int __slow_read_ns = 0;
 int __slow_write_ns = 0;
@@ -540,6 +542,10 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	if (*niop == (size_t) pagesize)
 		return (0);
 	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd fd:%d name:%s\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop, fhp->fd, fhp->name);
+    if (op == DB_IO_READ && failed_read_callback)
+        failed_read_callback(pagesize);
+    if (op == DB_IO_WRITE && failed_write_callback)
+        failed_write_callback(pagesize);
     // try to do a seek + read/write
 slow:
 #endif
@@ -1014,6 +1020,10 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 	if (*niop == (size_t)(pagesize * nobufs))
 		return (0);
 	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize * nobufs, *niop);
+    if (op == DB_IO_READ && failed_read_callback)
+        failed_read_callback(pagesize);
+    if (op == DB_IO_WRITE && failed_write_callback)
+        failed_write_callback(pagesize);
     // iov - we failed to write the pages as a unit, fall through and try them individually
 slow:
 #endif
@@ -1295,6 +1305,18 @@ void
 __berkdb_register_read_callback(void (*callback) (int bytes))
 {
 	read_callback = callback;
+}
+
+void
+__berkdb_register_failed_read_callback(void (*callback) (int bytes))
+{
+    failed_read_callback = callback;
+}
+
+void
+__berkdb_register_failed_write_callback(void (*callback) (int bytes))
+{
+    failed_write_callback = callback;
 }
 
 void
