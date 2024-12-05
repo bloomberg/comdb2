@@ -3711,4 +3711,6 @@ static inline char *skipws(char *str)
     return str;
 }
 
+void get_disable_skipscan_all();
+
 #endif /* !INCLUDED_COMDB2_H */
