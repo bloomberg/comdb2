@@ -2594,6 +2594,13 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     extern volatile int analyze_running_flag;
     if (analyze_running_flag)
         return 0;
+
+    /* a change in disableskipscan comes on replicant as a sc_analyze scdone log
+     * read here the llmeta entries for that tunable (instead of deep down in
+     * sqlite3AnalysisLoad)
+     */
+    get_disable_skipscan_all();
+
     int rc, got_curtran;
     rc = got_curtran = 0;
     if (!clnt->dbtran.cursor_tran) {

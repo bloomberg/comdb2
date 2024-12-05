@@ -3673,4 +3673,6 @@ void csc2_allow_bools(void);
 void csc2_disallow_bools(void);
 int csc2_used_bools(void);
 
+void get_disable_skipscan_all();
+
 #endif /* !INCLUDED_COMDB2_H */
