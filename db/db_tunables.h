@@ -1641,6 +1641,10 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("disable_legacy_queues",
+                 "Disable legacy queues and route messages through comdb2 queue buddy. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_disable_legacy_queues, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("queuedb_timeout_sec",
                  "Unassign Lua consumer/trigger if no heartbeat received for this time",
                  TUNABLE_INTEGER, &gbl_queuedb_timeout_sec, 0, NULL, NULL, NULL, NULL);

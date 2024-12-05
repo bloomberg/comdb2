@@ -3281,6 +3281,7 @@ extern int gbl_new_snapisol_logging;
 extern int gbl_new_snapisol_asof;
 extern int gbl_update_shadows_interval;
 extern int gbl_lowpri_snapisol_sessions;
+extern int gbl_disable_legacy_queues;
 
 /* stats */
 /* non-sql request service times (last minute, last hour, since start) */
