@@ -1069,6 +1069,48 @@ function run_generated_tests()
     done
 }
 
+function tranlog_blocklsn()
+{
+    echo "== tranlog blocklsn test"
+    local master=$(getmaster)
+    local currentlsn=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 0x4) limit 1")
+    local lsn=$(echo $currentlsn | tr -d {})
+    local file=${lsn%:*}
+    local offset=${lsn#*:}
+    local waitfile=$(( file + 1 ))
+    local waitlsn="{$waitfile:$offset}"
+
+    echo "Current lsn is $currentlsn, blocking until $waitlsn"
+    $CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME default "select * from comdb2_transaction_logs('${currentlsn}', NULL, 0x1, 0, '${waitlsn}')" > /dev/null &
+    bpid=$!
+
+    echo "Sleeping for 10"
+    sleep 10
+
+    if kill -0 $bpid 2>/dev/null ; then
+        echo "Blocking transaction still blocking"
+    else
+        kill -9 $bpid
+        cleanFailExit "Blocking transaction returned "
+    fi
+
+    echo "Pushing transaction log forward 3 logs"
+    $CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME --host $master "exec procedure sys.cmd.send('pushlogs 3')"
+    
+    local exited=0
+
+    while [[ "$exited" -eq 0 ]]; do
+        sleep 1
+        if kill -0 $bpid 2>/dev/null ; then
+            echo "Blocking transaction still blocking"
+            currentlsn=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $DBNAME default "select lsn from comdb2_transaction_logs(NULL, NULL, 0x4) limit 1")
+            echo "Current lsn is $currentlsn, blocking until $waitlsn"
+        else
+            exited=1
+        fi
+    done
+}
+
 function tranlog_timeout()
 {
     typeset begin
@@ -1468,7 +1510,12 @@ function run_tests
 
     testcase="tranlog_timeout"
     testcase_preamble $testcase
-    tranlog_timeout ${REPL_META_DBNAME} ${REPL_META_HOST}
+    tranlog_timeout
+    testcase_finish $testcase
+
+    testcase="tranlog_blocklsn"
+    testcase_preamble $testcase
+    tranlog_blocklsn
     testcase_finish $testcase
 
     testcase="revconn_latency $lastNode"
