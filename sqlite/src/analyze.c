@@ -1574,6 +1574,11 @@ static void analyzeOneTable(
       }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       addrNext = sqlite3VdbeCurrentAddr(v);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( sqlite3_gbl_tunables.analyze_empty_tables ){
+        sqlite3VdbeJumpHere(v, addrRewind);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(v, regStat4, STAT_GET_ROWID, regSampleRowid);
       addrIsNull = sqlite3VdbeAddOp1(v, OP_IsNull, regSampleRowid);
@@ -1605,11 +1610,6 @@ static void analyzeOneTable(
       sqlite3VdbeAddOp3(v, OP_Insert, iStatCur+1, regTemp, regNewRowid);
       sqlite3VdbeAddOp2(v, OP_Goto, 1, addrNext); /* P1==1 for end-of-loop */
       sqlite3VdbeJumpHere(v, addrIsNull);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3_gbl_tunables.analyze_empty_tables ){
-        sqlite3VdbeJumpHere(v, addrRewind);
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #endif /* SQLITE_ENABLE_STAT3_OR_STAT4 */
 
