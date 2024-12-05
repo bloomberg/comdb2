@@ -534,6 +534,7 @@ int gbl_update_shadows_interval = 0;
 int gbl_lowpri_snapisol_sessions = 0;
 int gbl_support_sock_luxref = 1;
 int gbl_allow_user_schema;
+int gbl_disable_legacy_queues = 1;
 
 struct quantize *q_min;
 struct quantize *q_hour;
