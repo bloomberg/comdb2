@@ -5601,6 +5601,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    /* read disableskipscan here */
+    get_disable_skipscan_all();
+
     /*
       Place a freeze on tunables' registration. This is done to
       avoid multiple re-registration during the creation of temp
