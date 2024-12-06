@@ -39,7 +39,8 @@
 #include "str0.h"
 #include "sc_util.h"
 #include "debug_switches.h"
-
+#include "views.h"
+#include "sqlanalyze.h"
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
 static int analyze_thread_memory = 1048576;
@@ -106,30 +107,8 @@ enum {
     TABLE_SKIPPED = 5
 };
 
-/* index-descriptor */
-typedef struct index_descriptor {
-    pthread_t thread_id;
-    int comp_state;
-    sampled_idx_t *s_ix;
-    struct dbtable *tbl;
-    int ix;
-    int sampling_pct;
-} index_descriptor_t;
 
-/* table-descriptor */
-typedef struct table_descriptor {
-    pthread_t thread_id;
-    int table_state;
-    char table[MAXTABLELEN];
-    SBUF2 *sb;
-    int scale;
-    int override_llmeta;
-    index_descriptor_t index[MAXINDEX];
-    struct user current_user;
-    void *appdata;
-    void *get_authdata;
-} table_descriptor_t;
-
+int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab);
 /* loadStat4 (analyze.c) will ignore all stat entries
  * which have "tbl like 'cdb2.%' */
 int backout_stats_frm_tbl(struct sqlclntstate *clnt, const char *table,
@@ -369,16 +348,15 @@ static int wait_for_index(index_descriptor_t *ix_des)
 }
 
 /* sample all indicies in this table */
-static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
+static int sample_indices(table_descriptor_t *td, struct sqlclntstate *client, 
                            struct dbtable *tbl, int sampling_pct, SBUF2 *sb)
 {
     int i;
     int err = 0;
-    char *table;
     index_descriptor_t *ix_des;
 
     /* find table to backout */
-    table = tbl->tablename;
+    char *table = tbl->tablename;
 
     /* allocate cmp_idx */
     client->sampled_idx_tbl = calloc(tbl->nix, sizeof(sampled_idx_t));
@@ -422,7 +400,7 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
 }
 
 /* clean up */
-static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable *tbl)
+static int cleanup_sampled_indicies(struct sqlclntstate *client)
 {
     int i;
 
@@ -637,7 +615,7 @@ static void get_sampling_threshold(char *table, long long *sampling_thresh)
 /* get coverage value saved in llmeta for table
  * if value is not saved in llmeta, will not modify scale
  */
-static void get_saved_scale(char *table, int *scale)
+void get_saved_scale(char *table, int *scale)
 {
     int bdberr = 0;
     int coveragevalue = 0;
@@ -702,11 +680,136 @@ int update_sav(sqlite3 *sqldb, struct sqlclntstate *client, SBUF2 *sb,
     sqlite3_free(sql); sql = NULL;
     return 0;
 }
+static int analyze_rename_table_for_backup_stats(char *table, struct sqlclntstate *clnt, 
+                                            char *zErrTab){
+    char *sql = NULL;
+    sql = sqlite3_mprintf(
+             "delete from sqlite_stat1 where tbl='cdb2.%q.sav'", table);
+    assert(sql != NULL);
+    int rc = run_internal_sql_clnt(clnt, sql);
+    if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+    sqlite3_free(sql); sql = NULL;
+
+    if (rc)
+        goto error;
+
+    sql = sqlite3_mprintf(
+             "update sqlite_stat1 set tbl='cdb2.%q.sav' where tbl='%q'",
+             table, table);
+    assert(sql != NULL);
+    rc = run_internal_sql_clnt(clnt, sql);
+    if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+    sqlite3_free(sql); sql = NULL;
+
+    if (rc)
+        goto error;
+
+    if (get_dbtable_by_name("sqlite_stat2")) {
+        sql = sqlite3_mprintf(
+                 "delete from sqlite_stat2 where tbl='cdb2.%q.sav'", table);
+        assert(sql != NULL);
+        rc = run_internal_sql_clnt(clnt, sql);
+        if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+        sqlite3_free(sql); sql = NULL;
+
+        if (rc)
+            goto error;
+
+        sql = sqlite3_mprintf(
+                 "update sqlite_stat2 set tbl='cdb2.%q.sav' where tbl='%q'",
+                 table, table);
+        assert(sql != NULL);
+        rc = run_internal_sql_clnt(clnt, sql);
+        if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+        sqlite3_free(sql); sql = NULL;
+
+        if (rc)
+            goto error;
+    }
+
+    if (get_dbtable_by_name("sqlite_stat4")) {
+        sql = sqlite3_mprintf(
+                 "delete from sqlite_stat4 where tbl='cdb2.%q.sav'", table);
+        assert(sql != NULL);
+        rc = run_internal_sql_clnt(clnt, sql);
+        if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+        sqlite3_free(sql); sql = NULL;
+
+        if (rc)
+            goto error;
+
+        sql = sqlite3_mprintf(
+                 "update sqlite_stat4 set tbl='cdb2.%q.sav' where tbl='%q'",
+                 table, table);
+        assert(sql != NULL);
+        rc = run_internal_sql_clnt(clnt, sql);
+        if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+        sqlite3_free(sql); sql = NULL;
+
+        if (rc)
+            goto error;
+    }
+error:
+    return rc;
+}
+
+int analyze_regular_table(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab) {
+    int rc = 0;
+    int sampled_table = 0;
+    struct dbtable *table = get_dbtable_by_name(td->table);
+    rc = analyze_rename_table_for_backup_stats(td->table, clnt, zErrTab);
+
+    if (rc) 
+        goto err;
+
+    /* grab the size of the table */
+    int64_t totsiz = calc_table_size(table, 1);
+
+    if (sampled_tables_enabled)
+        get_sampling_threshold(td->table, &sampling_threshold);
+
+    /* sample if enabled */
+    if (sampled_tables_enabled) {
+        if (totsiz <= sampling_threshold) {
+            td->scale = 100;
+        }
+        logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", td->table, td->scale);
+        sampled_table = 1;
+        rc = sample_indices(td, clnt, table, td->scale, td->sb);
+        if (rc) {
+            logmsg(LOGMSG_USER, "Setting zErrTab\n");
+            snprintf(zErrTab, nErrTab, "Sampling table '%s'", td->table);
+            goto err;
+        }
+    }
+
+    clnt->is_analyze = 1;
+
+    /* run analyze as sql query */
+    char *sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
+    assert(sql != NULL);
+    rc = run_internal_sql_clnt(clnt, sql);
+    if (rc) strncpy(zErrTab, sql, strlen(zErrTab));
+    sqlite3_free(sql); sql = NULL;
+
+    clnt->is_analyze = 0;
+    if (rc)
+        goto err;
+
+    if (debug_switch_test_delay_analyze_commit())
+        sleep(10);
+err:
+    if (sampled_table) {
+        cleanup_sampled_indicies(clnt);
+    }
+    return rc;
+}
 
 static int analyze_table_int(table_descriptor_t *td,
                              struct thr_handle *thr_self)
 {
-    char zErrTab[256] = {0};
+    char *zErrTab = (char *)malloc(256 * sizeof(char));
+    size_t nErrTab = 256;
 
 #ifdef DEBUG
     printf("analyze_table_int() table '%s': scale %d\n", td->table, td->scale);
@@ -714,7 +817,8 @@ static int analyze_table_int(table_descriptor_t *td,
 
     /* make sure we can find this table */
     struct dbtable *tbl = get_dbtable_by_name(td->table);
-    if (!tbl) {
+    int isPartition = timepart_is_partition(td->table);
+    if (!tbl && !isPartition) {
         sbuf2printf(td->sb, "?Cannot find table '%s'\n", td->table);
         return -1;
     }
@@ -732,7 +836,6 @@ static int analyze_table_int(table_descriptor_t *td,
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.osql_max_trans = 0; // allow large transactions
-    int sampled_table = 0;
 
     clnt.current_user        = td->current_user;
     if (td->appdata != NULL)
@@ -744,114 +847,20 @@ static int analyze_table_int(table_descriptor_t *td,
 
     int rc = run_internal_sql_clnt(&clnt, "BEGIN");
     if (rc) {
-        snprintf(zErrTab, sizeof(zErrTab), "BEGIN");
+        snprintf(zErrTab, nErrTab, "BEGIN");
         goto cleanup;
     }
 
-    char *sql = NULL;
-    sql = sqlite3_mprintf(
-             "delete from sqlite_stat1 where tbl='cdb2.%q.sav'", td->table);
-    assert(sql != NULL);
-    rc = run_internal_sql_clnt(&clnt, sql);
-    if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-    sqlite3_free(sql); sql = NULL;
+    if (isPartition) { /* partitioned table */
+        rc = analyze_partition(td, &clnt, zErrTab, nErrTab);
+    } else { /* regular table */
+        rc = analyze_regular_table(td, &clnt, zErrTab, nErrTab);
 
-    if (rc)
+    } /* regular table */
+
+    if (rc) {
         goto error;
-
-    sql = sqlite3_mprintf(
-             "update sqlite_stat1 set tbl='cdb2.%q.sav' where tbl='%q'",
-             td->table, td->table);
-    assert(sql != NULL);
-    rc = run_internal_sql_clnt(&clnt, sql);
-    if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-    sqlite3_free(sql); sql = NULL;
-
-    if (rc)
-        goto error;
-
-    if (get_dbtable_by_name("sqlite_stat2")) {
-        sql = sqlite3_mprintf(
-                 "delete from sqlite_stat2 where tbl='cdb2.%q.sav'", td->table);
-        assert(sql != NULL);
-        rc = run_internal_sql_clnt(&clnt, sql);
-        if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-        sqlite3_free(sql); sql = NULL;
-
-        if (rc)
-            goto error;
-
-        sql = sqlite3_mprintf(
-                 "update sqlite_stat2 set tbl='cdb2.%q.sav' where tbl='%q'",
-                 td->table, td->table);
-        assert(sql != NULL);
-        rc = run_internal_sql_clnt(&clnt, sql);
-        if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-        sqlite3_free(sql); sql = NULL;
-
-        if (rc)
-            goto error;
     }
-
-    if (get_dbtable_by_name("sqlite_stat4")) {
-        sql = sqlite3_mprintf(
-                 "delete from sqlite_stat4 where tbl='cdb2.%q.sav'", td->table);
-        assert(sql != NULL);
-        rc = run_internal_sql_clnt(&clnt, sql);
-        if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-        sqlite3_free(sql); sql = NULL;
-
-        if (rc)
-            goto error;
-
-        sql = sqlite3_mprintf(
-                 "update sqlite_stat4 set tbl='cdb2.%q.sav' where tbl='%q'",
-                 td->table, td->table);
-        assert(sql != NULL);
-        rc = run_internal_sql_clnt(&clnt, sql);
-        if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-        sqlite3_free(sql); sql = NULL;
-
-        if (rc)
-            goto error;
-    }
-
-    /* grab the size of the table */
-    int64_t totsiz = calc_table_size(tbl, 1);
-
-    if (sampled_tables_enabled)
-        get_sampling_threshold(td->table, &sampling_threshold);
-
-    /* sample if enabled */
-    if (sampled_tables_enabled) {
-        if (totsiz <= sampling_threshold) {
-            td->scale = 100;
-        }
-        logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", td->table, td->scale);
-        sampled_table = 1;
-        rc = sample_indicies(td, &clnt, tbl, td->scale, td->sb);
-        if (rc) {
-            snprintf(zErrTab, sizeof(zErrTab), "Sampling table '%s'", td->table);
-            goto error;
-        }
-    }
-
-    clnt.is_analyze = 1;
-
-    /* run analyze as sql query */
-    sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
-    assert(sql != NULL);
-    rc = run_internal_sql_clnt(&clnt, sql);
-    if (rc) strncpy(zErrTab, sql, sizeof(zErrTab));
-    sqlite3_free(sql); sql = NULL;
-
-    clnt.is_analyze = 0;
-    if (rc)
-        goto error;
-
-    if (debug_switch_test_delay_analyze_commit())
-        sleep(10);
-
     rc = run_internal_sql_clnt(&clnt, "COMMIT /* from analyzesqlite main.... */");
     if (rc) {
         /*
@@ -859,7 +868,7 @@ static int analyze_table_int(table_descriptor_t *td,
         ** if COMMIT or ROLLBACK fails.
         */
         osql_unregister_sqlthr(&clnt);
-        snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+        snprintf(zErrTab, nErrTab, "COMMIT");
     }
 
 cleanup:
@@ -871,11 +880,11 @@ cleanup:
         logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
-    if (sampled_table) {
-        cleanup_sampled_indicies(&clnt, tbl);
-    }
 
     end_internal_sql_clnt(&clnt);
+    if (zErrTab) {
+        free(zErrTab);
+    }
 
     return rc;
 
@@ -1103,12 +1112,12 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
     td.sb = sb;
     td.scale = scale;
     td.override_llmeta = override_llmeta;
-    struct dbtable *dbtable = get_dbtable_by_name(table);
+    /*struct dbtable *dbtable = get_dbtable_by_name(table);
     if (dbtable && dbtable->sqlaliasname)
         strncpy0(td.table, dbtable->sqlaliasname,
                 sizeof(td.table));
-    else
-        strncpy0(td.table, table, sizeof(td.table));
+    else*/
+    strncpy0(td.table, table, sizeof(td.table));
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = (thd) ? thd->clnt : NULL;
@@ -1187,11 +1196,11 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
-        if (thedb->dbs[i]->sqlaliasname)
+        /*if (thedb->dbs[i]->sqlaliasname)
             strncpy0(td[idx].table, thedb->dbs[i]->sqlaliasname,
                      sizeof(td[idx].table));
-        else
-            strncpy0(td[idx].table, thedb->dbs[i]->tablename,
+        else*/
+        strncpy0(td[idx].table, thedb->dbs[i]->tablename,
                      sizeof(td[idx].table));
 
         if (clnt) {
