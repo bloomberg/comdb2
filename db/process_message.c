@@ -66,6 +66,7 @@ extern int __berkdb_read_alarm_ms;
 #include "reverse_conn.h"
 #include "phys_rep.h"
 #include "disttxn.h"
+#include "fdb_fend.h"
 #include "rtcpu.h"
 #include "machcache.h"
 

@@ -3695,6 +3695,8 @@ extern int gbl_server_admin_mode;
 void csc2_free_all(void);
 
 int fdb_default_ver_set(int val);
+int fdb_push_write_set(int val);
+int fdb_push_set(int val);
 
 /* hack to temporary allow bools on production stage */
 void csc2_allow_bools(void);

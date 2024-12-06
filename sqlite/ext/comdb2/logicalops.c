@@ -33,6 +33,7 @@
 #include <bdb/bdb_int.h>
 #include "llog_ext.h"
 #include "comdb2systbl.h"
+#include "sqliteInt.h"
 
 /* Allocate maximum for unpacking */
 #define PACKED_MEMORY_SIZE (MAXBLOBLENGTH + 7)
