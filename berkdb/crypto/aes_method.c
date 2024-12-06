@@ -9,11 +9,6 @@
  * astubble@rice.edu.
  */
 
-/* AES_* and SHA1_* functions are made deprecated as of OpenSSL 3.0.
-   Disable compiler warning for the entire file as it's not very likely
-   that we'll ever modify this file. */
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 #include "db_config.h"
 
 #ifndef lint
@@ -28,6 +23,7 @@ static const char revid[] = "$Id: aes_method.c,v 1.18 2003/04/28 19:59:19 bostic
 #include "db_int.h"
 #include "dbinc/crypto.h"
 #include "dbinc/hmac.h"
+#include <openssl/evp.h>
 
 static int __aes_derivekeys __P((DB_ENV *, DB_CIPHER *, u_int8_t *, size_t));
 
@@ -83,8 +79,15 @@ __aes_close(dbenv, data)
 	DB_ENV *dbenv;
 	void *data;
 {
-	__os_free(dbenv, data);
-	return (0);
+  AES_CIPHER *aes = (AES_CIPHER *)data;
+
+  // free the EVP openssl contexts
+  if (aes) {
+    EVP_CIPHER_CTX_free(aes->encrypt_ctx);
+    EVP_CIPHER_CTX_free(aes->decrypt_ctx);
+    __os_free(dbenv, aes);
+  }
+  return (0);
 }
 
 /*
@@ -103,11 +106,23 @@ __aes_decrypt(dbenv, aes_data, iv, cipher, cipher_len)
 	size_t cipher_len;
 {
 	AES_CIPHER *aes = (AES_CIPHER *)aes_data;
+	int outlen, tmplen ;
+	
 	if (aes == NULL || iv == NULL || cipher == NULL)
 		return (EINVAL);
+	
 	if ((cipher_len % DB_AES_CHUNK) != 0)
 		return (EINVAL);
-	AES_cbc_encrypt(cipher, cipher, cipher_len, &aes->decrypt_key, iv, AES_DECRYPT);
+
+	if (!EVP_DecryptInit_ex(aes->decrypt_ctx, NULL, NULL, NULL, iv))
+	  return (EINVAL);
+	
+	if (!EVP_DecryptUpdate(aes->decrypt_ctx, cipher, &outlen, cipher, cipher_len))
+	  return (EINVAL);
+	
+	if (!EVP_DecryptFinal_ex(aes->decrypt_ctx, cipher + outlen, &tmplen))
+	  return (EINVAL);
+	
 	return (0);
 }
 
@@ -127,7 +142,7 @@ __aes_encrypt(dbenv, aes_data, iv, data, data_len)
 	size_t data_len;
 {
 	AES_CIPHER *aes;
-	int ret;
+	int ret, outlen, tmplen;
 
 	aes = (AES_CIPHER *)aes_data;
 	if (aes == NULL || data == NULL)
@@ -144,7 +159,16 @@ __aes_encrypt(dbenv, aes_data, iv, data, data_len)
 	if ((ret = __db_generate_iv(dbenv, (uint32_t*)orig)) != 0)
 		return (ret);
 	memcpy(copy, orig, DB_IV_BYTES);
-	AES_cbc_encrypt(data, data, data_len, &aes->encrypt_key, copy, AES_ENCRYPT);
+
+	if (!EVP_EncryptInit_ex(aes->encrypt_ctx, NULL, NULL, NULL, copy))
+	  return (EINVAL);
+	
+	if (!EVP_EncryptUpdate(aes->encrypt_ctx, data, &outlen, data, data_len))
+	  return (EINVAL);
+	
+	if (!EVP_EncryptFinal_ex(aes->encrypt_ctx, data + outlen, &tmplen))
+	  return (EINVAL);
+
 	memcpy(iv, orig, DB_IV_BYTES);
 	return (0);
 }
@@ -174,17 +198,40 @@ __aes_derivekeys(dbenv, db_cipher, passwd, plen)
 	if (passwd == NULL) return (EINVAL);
 	AES_CIPHER *aes = (AES_CIPHER *)db_cipher->data;
 
-	SHA_CTX ctx;
-	SHA1_Init(&ctx);
-	SHA1_Update(&ctx, passwd, plen);
-	SHA1_Update(&ctx, (u_int8_t *)DB_ENC_MAGIC, strlen(DB_ENC_MAGIC));
-	SHA1_Update(&ctx, passwd, plen);
-	uint8_t temp[DB_MAC_KEY];
-	SHA1_Final(temp, &ctx);
+	// Create contexts
+	aes->encrypt_ctx = EVP_CIPHER_CTX_new();
+	aes->decrypt_ctx = EVP_CIPHER_CTX_new();
+	
+	if (!aes->encrypt_ctx || !aes->decrypt_ctx)
+	  return (EINVAL);
 
-	if (AES_set_encrypt_key(temp, DB_AES_KEYLEN, &aes->encrypt_key) < 0)
-		return (EINVAL);
-	if (AES_set_decrypt_key(temp, DB_AES_KEYLEN, &aes->decrypt_key) < 0)
-		return (EINVAL);
+	// Use Openssl EVP API for SHA1 operations
+	EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
+	uint8_t key[DB_MAC_KEY];
+	unsigned int key_len;
+	
+	if (!md_ctx)
+	  return (EINVAL);
+	
+	// Initialize EVP digest context with SHA1
+	if (!EVP_DigestInit_ex(md_ctx, EVP_sha1(), NULL) ||
+	    !EVP_DigestUpdate(md_ctx, passwd, plen) ||
+	    !EVP_DigestUpdate(md_ctx, (u_int8_t *)DB_ENC_MAGIC, strlen(DB_ENC_MAGIC)) ||
+	    !EVP_DigestUpdate(md_ctx, passwd, plen) ||
+	    !EVP_DigestFinal_ex(md_ctx, key, &key_len))
+	  {
+	    EVP_MD_CTX_free(md_ctx);
+	    return (EINVAL);
+	  }
+	
+	EVP_MD_CTX_free(md_ctx);
+
+	// Initialize EVP cipher contexts
+	if (!EVP_EncryptInit_ex(aes->encrypt_ctx, EVP_aes_256_cbc(), NULL, key, NULL))
+	  return (EINVAL);
+	
+	if (!EVP_DecryptInit_ex(aes->decrypt_ctx, EVP_aes_256_cbc(), NULL, key, NULL))
+	  return (EINVAL);
+
 	return (0);
 }
