@@ -128,6 +128,11 @@ rc2=$?
 
 ./testtransactionstate $a_dbn
 rc3=$?
+
+./test_current_connections $a_dbn
+rc4=$?
+
+[[ $rc4 -ne 0 ]] && rc3=$rc4
 [[ $rc3 -ne 0 ]] && rc2=$rc3 
 [[ $rc2 -ne 0 ]] && rc=$rc2
 
