@@ -499,7 +499,7 @@ retry_after_fdb_creation:
   /* if we did not find the table and we don't have a database name
   ** check to see if this is an actual alias
   */
-  if( !zDatabase && !db->init.busy && !skipAlias){
+  if( !zDatabase && !db->init.busy && !skipAlias && strncasecmp(zName, "comdb2", 6)){
     /* NOTE: zDatabase is NOT null if we already looked up a foreign
     ** db and retried, so this code doesn't run twice
     ** NOTE2: we can skip this if we are initializing an engine
