@@ -1224,7 +1224,7 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 				while (pollcnt++ < latch_max_poll &&
 				    ((ret = pthread_mutex_trylock(&latch->
 						lock)) != 0))
-					usleep(latch_poll_us);
+					Usleep(latch_poll_us);
 			}
 
 			if (ret) {

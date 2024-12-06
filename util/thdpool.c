@@ -294,7 +294,7 @@ int thdpool_destroy(struct thdpool **pool_p, int coopWaitUs)
         unsigned int elapsedUs = 0;
         thdpool_stop(pool);
         while (ATOMIC_LOAD32(pool->nactthd) > 0) {
-            usleep(waitUs);
+            Usleep(waitUs);
             elapsedUs += waitUs;
             if ((coopWaitUs > 0) && (elapsedUs >= (unsigned int)coopWaitUs)) {
                 logmsg(LOGMSG_ERROR,
