@@ -246,6 +246,8 @@ int comdb2SystblInit(
     rc = systblTableMetricsInit(db);
   if (rc == SQLITE_OK)
     rc = systblApiHistoryInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblDbInfoInit(db);
 #endif
   return rc;
 }
