@@ -462,7 +462,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
 
     lrl = bdb_state->queue_item_sz - sizeof(struct bdb_queue_header);
 
-    /* Work out how many fragemnts we need. */
+    /* Work out how many fragments we need. */
     numfragments = (dtalen + (lrl - 1)) / lrl;
 
     fragment = malloc(bdb_state->queue_item_sz);
@@ -1413,7 +1413,7 @@ lookagain:
                     /* The previous recno was in range for the queue but
                      * has been deleted.  The old code just sent us back to
                      * the start of the queue.  This was expensive if the
-                     * queue is very long due to some uncomsumed items at
+                     * queue is very long due to some unconsumed items at
                      * the head.  Now instead we can scan forwards,
                      * incrementing recno until we hit something we can
                      * read (or we hit the end of the queue). */
@@ -1714,7 +1714,7 @@ lookagain:
     return 0;
 }
 
-/* get the first item uncomsumed by this consumer number, AFTER the passed in
+/* get the first item unconsumed by this consumer number, AFTER the passed in
  * key (pass in a zero key to get the first unconsumed item).  the caller is
  * responsible for freeing *fnddta. */
 int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,

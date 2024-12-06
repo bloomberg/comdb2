@@ -472,7 +472,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     if (sc->kind != SC_DEL_TRIGGER && (rc = check_option_queue_coherency(sc, db)))
         goto done;
 
-    /* For addding, there's no queue and no consumer/procedure, etc., so create
+    /* For adding, there's no queue and no consumer/procedure, etc., so create
      * those first. For other methods, we need to manage the existing consumer
      * first. */
     if (sc->kind == SC_ADD_TRIGGER) {
