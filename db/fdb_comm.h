@@ -20,6 +20,7 @@
 #include <sbuf2.h>
 #include "comdb2.h"
 #include "sql.h"
+#include "fdb_fend.h"
 
 enum {
     /* all previous versions 0-4 are legacy and reserved */

@@ -1,4 +1,5 @@
 /*
+ *  return newsql_row_remtran(c, a, i);
    Copyright 2017, 2023 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -825,6 +826,50 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     return newsql_response(clnt, &r, !clnt->rowbuffer);
 }
 
+static int newsql_row_remtran(struct sqlclntstate *clnt, const char *name,
+                              int val)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    update_col_info(&appdata->col_info, 1);
+    assert(1 == appdata->col_info.count);
+
+    int flip = endianness_mismatch(clnt);
+
+    /* nested column values */
+    CDB2SQLRESPONSE__Column cols[1];
+    CDB2SQLRESPONSE__Column *value[1];
+
+    /* flat column values */
+    ProtobufCBinaryData bd[1];
+    protobuf_c_boolean isnulls[1];
+
+    memset(&bd, 0, sizeof(ProtobufCBinaryData));
+    memset(&isnulls, 0, sizeof(protobuf_c_boolean));
+
+    if (!clnt->flat_col_vals)
+        value[0] = &cols[0];
+    cdb2__sqlresponse__column__init(&cols[0]);
+    int64_t i64 = val;
+    newsql_integer(cols, 0, i64, flip);
+    if (clnt->flat_col_vals)
+        bd[0] = cols[0].value;
+
+    CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
+    r.response_type = RESPONSE_TYPE__COLUMN_VALUES;
+    if (clnt->flat_col_vals) {
+        r.has_flat_col_vals = 1;
+        r.flat_col_vals = 1;
+        r.n_values = r.n_isnulls = 1;
+        r.values = bd;
+        r.isnulls = isnulls;
+    } else {
+        r.n_value = 1;
+        r.value = value;
+    }
+
+    return newsql_response(clnt, &r, !clnt->rowbuffer);
+}
+
 static int newsql_row_last(struct sqlclntstate *clnt)
 {
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
@@ -1009,7 +1054,7 @@ static int newsql_row_sqlite(struct sqlclntstate *clnt,
     r.has_sqlite_row = 1;
 
     bzero(&res, sizeof(res));
-    fdb_sqlite_row(arg->stmt, &res);
+    fdb_sqlite_row(clnt, arg->stmt, &res);
 
     r.sqlite_row.data = (uint8_t *)res.z;
     r.sqlite_row.len = res.n;
@@ -1078,6 +1123,8 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_ERROR_PREPARE_RETRY:
     case RESPONSE_QUERY_STATS:
         return 0;
+    case RESPONSE_ROW_REMTRAN:
+        return newsql_row_remtran(c, a, i);
     default:
         abort();
     }
