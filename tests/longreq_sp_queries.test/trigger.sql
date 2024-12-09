@@ -1,0 +1,1 @@
+CREATE LUA TRIGGER dormant on (TABLE t for INSERT);
