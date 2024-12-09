@@ -1456,24 +1456,22 @@ static char * generate_select_files_query(cdb2_hndl_tp *hndl, str_list *btree_fi
     char *query_prefix = "select filename, content, dir from comdb2_files where "
                          "type!='berkdb' or (type='berkdb' and filename in (";
     char *query_suffix = ")) order by filename, offset";
-    char *query = malloc(strlen(query_prefix) + strlen(query_suffix) + (listc_size(btree_files_to_fetch)*2));
+    char *query = malloc(strlen(query_prefix) + strlen(query_suffix) + (listc_size(btree_files_to_fetch)*(PATH_MAX+3)));
     if (!query) { return NULL; }
     char *p = query;
     *query = '\0';
 
     p = strcat_and_get_end(p, query_prefix);
 
-    int idx=1;
     str_list_elt *btree_file_elt;
     LISTC_FOR_EACH(btree_files_to_fetch, btree_file_elt, lnk) {
-        strcat_and_get_end(p, "?");
+        strcat_and_get_end(p, "'");
+        strcat_and_get_end(p, btree_file_elt->str);
+        strcat_and_get_end(p, "'");
         if (btree_file_elt->lnk.next) { strcat_and_get_end(p, ","); }
-
-        cdb2_bind_index(hndl, idx++, CDB2_CSTRING, btree_file_elt->str, strlen(btree_file_elt->str));
     }
 
     strcat_and_get_end(p, query_suffix);
-
     return query;
 }
 
