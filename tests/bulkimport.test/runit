@@ -17,11 +17,11 @@ function test_flip_flop_import() {
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" && \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" && \
 		query_dst_db "insert into $dst_tbl default values" && \
-		query_src_db "import $dst_tbl from LOCAL_$DST_DBNAME to $src_tbl" && \
+		query_src_db "replace table $src_tbl with LOCAL_$DST_DBNAME.$dst_tbl" && \
 		query_src_db "insert into $src_tbl default values" && \
-		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" && \
 		> /dev/null
 
 		# Then
@@ -47,9 +47,9 @@ function test_import_many_tables_over_table() {
 			query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		query_dst_db "import $src_tbl_1 from LOCAL_$SRC_DBNAME to $dst_tbl" && \
-		query_dst_db "import $src_tbl_2 from LOCAL_$SRC_DBNAME to $dst_tbl" && \
-		query_dst_db "import $src_tbl_3 from LOCAL_$SRC_DBNAME to $dst_tbl" \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_1" && \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_2" && \
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_3" \
 		> /dev/null
 
 		# Then
@@ -66,7 +66,7 @@ function test_multiple_imports_at_once() {
 
 		# When
 		for i in $(seq $n_simultaneous_imports); do
-			query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" >/dev/null &
+			query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
 			pids[${i}]=$!
 		done
 
@@ -88,10 +88,10 @@ function test_mutual_simultaneous_import() {
 
 		# When
 		for i in $(seq 1 2 $n_mutual_imports); do
-			query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" >/dev/null &
+			query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null &
 			pids[${i}]=$!
 
-			query_src_db "import $dst_tbl from LOCAL_$DST_DBNAME to $src_tbl" >/dev/null &
+			query_src_db "replace table $src_tbl with LOCAL_$DST_DBNAME.$dst_tbl" >/dev/null &
 			pids[$((i+1))]=$!
 		done
 
@@ -131,7 +131,7 @@ function test_heavy_traffic_import() {
 		query_src_db "insert into save_$src_tbl select * from $src_tbl"
 
 		# When
-		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" > /dev/null
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
 
 		# Then
 		rc=$?
@@ -163,7 +163,7 @@ function test_import_when_dst_table_has_rev_constraints() {
 			query_dst_db 'drop table $dst_tbl_1';" EXIT
 
 		# When
-		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl_1"
+		query_dst_db "replace table $dst_tbl_1 with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
 
 		# Then
 		(( $? != 0 ))
@@ -182,7 +182,7 @@ function test_import_table_with_fk_constraints() {
 			query_dst_db 'drop table $dst_tbl';" EXIT
 
 		# When
-		query_dst_db "import $src_tbl_2 from LOCAL_$SRC_DBNAME to $dst_tbl"
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl_2" >/dev/null
 
 		# Then
 		(( $? != 0 ))
@@ -201,10 +201,10 @@ function test_multiple_imports_in_transaction() {
 			query_dst_db 'drop table $dst_tbl_2'" EXIT
 
 		# When
-query_dst_db - <<EOF
+query_dst_db - >/dev/null <<EOF
 begin
-import $src_tbl_1 from LOCAL_$SRC_DBNAME to $dst_tbl_1
-import $src_tbl_2 from LOCAL_$SRC_DBNAME to $dst_tbl_2
+replace table $dst_tbl_1 with LOCAL_$SRC_DBNAME.$src_tbl_1
+replace table $dst_tbl_2 with LOCAL_$SRC_DBNAME.$src_tbl_2
 commit
 EOF
 		# Then
@@ -220,7 +220,7 @@ function run_basic_test() {
 		trap "query_src_db 'drop table $src_tbl'; query_dst_db 'drop table $dst_tbl'" EXIT
 
 		# When
-		query_dst_db "import $src_tbl from LOCAL_$SRC_DBNAME to $dst_tbl" > /dev/null
+		query_dst_db "replace table $dst_tbl with LOCAL_$SRC_DBNAME.$src_tbl" >/dev/null
 
 		# Then
 		rc=$?
