@@ -191,6 +191,28 @@ int bdb_berkdb_rowlocks_get_skip_stat(struct bdb_berkdb *berkdb,
                                       u_int64_t *skipcount);
 int bdb_berkdb_rowlocks_defer_update_shadows(struct bdb_berkdb *berkdb);
 
+/* Set appropriate cursor flags. */
+u_int32_t get_cursor_flags(const bdb_cursor_impl_t * const cur, const uint8_t cursor_is_pausible)
+{
+    u_int32_t curflags = 0;
+
+    if (cur->pageorder) {
+        curflags |= DB_PAGE_ORDER;
+        if (cur->discardpages)
+            curflags |= DB_DISCARD_PAGES;
+    }
+
+    if (cursor_is_pausible) {
+        curflags |= DB_PAUSIBLE;
+    }
+
+    if (cur->use_snapcur) {
+        curflags |= DB_CUR_SNAPSHOT;
+    }
+
+    return curflags;
+}
+
 /* factory method */
 bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
                               int maxkey, int *bdberr)
@@ -204,7 +226,6 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
     int rc = 0;
     int lwmrc = 0;
     int cmp;
-    u_int32_t curflags = 0;
 
     *bdberr = 0;
 
@@ -296,16 +317,8 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
         berkdb->u.rl.id = berkdb_counter++;
 
         /* Set appropriate cursor flags. */
-        if (cur->pageorder) {
-            curflags |= DB_PAGE_ORDER;
+        const u_int32_t curflags = get_cursor_flags(cur, /* cursor_is_pausible */ 0);
 
-            if (cur->discardpages)
-                curflags |= DB_DISCARD_PAGES;
-        }
-
-        if (cur->use_snapcur) {
-            curflags |= DB_CUR_SNAPSHOT;
-        }
         dbc =
             get_cursor_for_cursortran_flags(cur->curtran, db, curflags, bdberr);
 
@@ -364,15 +377,8 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
             db = cur->state->dbp_ix[cur->idx];
         }
 
-        /* Set appropriate cursor flags. */
-        if (cur->pageorder) {
-            curflags |= DB_PAGE_ORDER;
-            if (cur->discardpages)
-                curflags |= DB_DISCARD_PAGES;
-        }
-
         /* Rowlocks cursors must be pausible */
-        curflags |= DB_PAUSIBLE;
+        const u_int32_t curflags = get_cursor_flags(cur, /* cursor_is_pausible */ 1);
 
         dbc =
             get_cursor_for_cursortran_flags(cur->curtran, db, curflags, bdberr);
@@ -1602,7 +1608,6 @@ static int bdb_berkdb_lock(bdb_berkdb_t *pberkdb, cursor_tran_t *curtran,
     bdb_realdb_tag_t *bt = &berkdb->u.rl;
     int rc = 0;
     int lid = bdb_get_lid_from_cursortran(berkdb->cur->curtran);
-    u_int32_t curflags = 0;
     DB *db;
 
     if (berkdb->type != BERKDB_REAL) {
@@ -1632,11 +1637,7 @@ static int bdb_berkdb_lock(bdb_berkdb_t *pberkdb, cursor_tran_t *curtran,
         db = berkdb->cur->state->dbp_ix[berkdb->cur->idx];
 
     /* These are set once when the cursor opens. */
-    if (berkdb->cur->pageorder)
-        curflags |= DB_PAGE_ORDER;
-
-    if (berkdb->cur->discardpages)
-        curflags |= DB_DISCARD_PAGES;
+    const u_int32_t curflags = get_cursor_flags(berkdb->cur, /* cursor_is_pausible */ 0);
 
     bt->dbc = get_cursor_for_cursortran_flags(berkdb->cur->curtran, db,
                                               curflags, bdberr);
