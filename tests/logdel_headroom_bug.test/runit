@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+set -e
+
+DBNAME=$1
+tier="default"
+
+push_logs_to_second_logfile() {
+	cdb2sql ${CDB2_OPTIONS} $DBNAME $tier "exec procedure sys.cmd.send('pushnext')"
+	for (( i=0; i<3; ++i ));
+	do
+		cdb2sql ${CDB2_OPTIONS} $DBNAME $tier "exec procedure sys.cmd.send('flush')"
+		sleep 1
+	done
+}
+
+get_num_archivable_logs() {
+	cdb2sql ${CDB2_OPTIONS} $DBNAME $tier "exec procedure sys.cmd.send('bdb log_archive')" | wc -l
+}
+
+delete_first_logfile() {
+	# first delete command should result in node updating its local low file number.
+	# second delete command should result in the actual deletion.
+
+	cdb2sql ${CDB2_OPTIONS} $DBNAME $tier "exec procedure sys.cmd.send('deletelogs')"
+	cdb2sql ${CDB2_OPTIONS} $DBNAME $tier "exec procedure sys.cmd.send('deletelogs')"
+}
+
+main() {
+	push_logs_to_second_logfile
+
+	local num_archivable_logs
+	num_archivable_logs=$(get_num_archivable_logs)
+	if (( num_archivable_logs != 1 ));
+	then
+		echo "ERROR: Expected to have an archivable log after pushing to next logfile"
+		return 1
+	fi
+
+	delete_first_logfile
+
+	num_archivable_logs=$(get_num_archivable_logs)
+	if (( num_archivable_logs != 0 ));
+	then
+		echo "ERROR: Expected to have no archivable logs after log deletion"
+		return 1
+	fi
+
+	return 0
+}
+
+main
+
