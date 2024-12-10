@@ -51,6 +51,7 @@ extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
 extern int gbl_test_badwrite_intvl;
+extern int gbl_test_logdel_with_low_headroom;
 extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
