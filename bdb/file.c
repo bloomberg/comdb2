@@ -130,6 +130,7 @@ struct timeval last_timer_pstack;
 extern int is_db_roomsync();
 extern int get_schema_change_in_progress(const char *func, int line);
 
+int gbl_test_logdel_with_low_headroom = 0;
 int gbl_debug_children_lock = 0;
 int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
@@ -3743,7 +3744,7 @@ low_headroom:
             bdb_state->attr->log_delete_low_headroom_breaktime) {
         logmsg(LOGMSG_WARN, "low_headroom, but tried %d times and giving up\n",
                bdb_state->attr->log_delete_low_headroom_breaktime);
-        return;
+        goto send_local_lowfilenum;
     }
 
     delete_adjacent = 1;
@@ -4045,7 +4046,8 @@ low_headroom:
             }
         }
 
-        if (has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0)) {
+        if (has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0)
+            || gbl_test_logdel_with_low_headroom) {
             low_headroom_count++;
             is_low_headroom = 1;
             free(list);
@@ -4055,6 +4057,8 @@ low_headroom:
 
         free(list);
     }
+
+send_local_lowfilenum:
     if (list == NULL || send_filenum == 0) {
         DB_LOGC *logc;
         DBT logrec;
