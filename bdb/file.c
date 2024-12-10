@@ -3714,7 +3714,7 @@ low_headroom:
             bdb_state->attr->log_delete_low_headroom_breaktime) {
         logmsg(LOGMSG_WARN, "low_headroom, but tried %d times and giving up\n",
                bdb_state->attr->log_delete_low_headroom_breaktime);
-        return;
+        goto send_local_lowfilenum;
     }
 
     delete_adjacent = 1;
@@ -4043,6 +4043,8 @@ low_headroom:
 
         free(list);
     }
+
+send_local_lowfilenum:
     if (list == NULL || send_filenum == 0) {
         DB_LOGC *logc;
         DBT logrec;
