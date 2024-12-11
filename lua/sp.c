@@ -7164,6 +7164,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         rdlock_schema_lk();
         if (getqueuebyname(qname)) {
             consumer = 1;
+            clnt->current_user.bypass_auth = 1;
             sp->can_consume = 1;
         }
         unlock_schema_lk();
