@@ -7176,6 +7176,9 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
+    if (trigger || consumer)
+        clnt->current_user.bypass_auth = 1;
+
     if (gbl_is_physical_replicant && consumer) {
         rc = -3;
         (*err) = strdup("Cannot execute consumer on physical-replicant");
@@ -7327,7 +7330,6 @@ void *exec_trigger(char *spname)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
-    clnt.current_user.bypass_auth = 1;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd = {0};
