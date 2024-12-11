@@ -23,4 +23,6 @@ if [[ $rc -ne 0 ]]; then
     echo "Failed transaction state test"
 fi
 
+wait
+cdb2sql ${CDB2_OPTIONS} $a_dbn --host $master 'put tunable debug.txn_sleep = 0'
 exit $rc
