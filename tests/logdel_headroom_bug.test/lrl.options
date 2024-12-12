@@ -1,0 +1,5 @@
+setattr min_keep_logs 0
+setattr min_keep_logs_age 0
+setattr logdeleteage 0
+setattr debug_log_deletion 1
+test_logdel_with_low_headroom 1
