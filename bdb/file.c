@@ -2392,7 +2392,6 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 
 extern int gbl_commit_delay_trace;
 int gbl_skip_catchup_logic = 0;
-int gbl_debug_downgrade_cluster_at_open = 0;
 
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
@@ -3004,10 +3003,6 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
         print(bdb_state, "dbenv_open: started rep as MASTER\n");
     } else /* we start as a client */
     {
-        if (gbl_debug_downgrade_cluster_at_open) {
-            logmsg(LOGMSG_USER, "%s testcase sleep for 1 on downgrade_cluster_at_open\n", __func__);
-            sleep(1);
-        }
         /*fprintf(stderr, "dbenv_open: starting rep as client\n");*/
         logmsg(LOGMSG_USER,
                "%s line %d calling rep_start as client with egen 0\n", __func__,

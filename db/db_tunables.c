@@ -239,7 +239,6 @@ extern int gbl_force_incoherent;
 extern int gbl_force_incoherent_master;
 extern int gbl_ignore_coherency;
 extern int gbl_skip_catchup_logic;
-extern int gbl_debug_downgrade_cluster_at_open;
 extern int gbl_forbid_incoherent_writes;
 extern int gbl_durable_set_trace;
 extern int gbl_set_seqnum_trace;
