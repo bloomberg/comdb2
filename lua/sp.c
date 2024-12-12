@@ -77,6 +77,8 @@
 #include <carray.h>
 #include <trigger_main.h>
 
+#include "fdb_fend.h"
+
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
