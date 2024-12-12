@@ -21,6 +21,8 @@
 
 #include <build/db.h>
 
+u_int32_t get_cursor_flags(const bdb_cursor_impl_t * const cur, const uint8_t cursor_is_pausible);
+
 enum berkdb_t {
     BERKDB_UNK = 0,
     BERKDB_REAL = 1,         /* persistent */

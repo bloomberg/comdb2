@@ -2920,7 +2920,7 @@ enum {
 
 struct sql_thread *start_sql_thread(void);
 struct sqlclntstate;
-int initialize_shadow_trans(struct sqlclntstate *, struct sql_thread *thd);
+int initialize_shadow_trans(struct sqlclntstate *);
 void get_current_lsn(struct sqlclntstate *clnt);
 void done_sql_thread(void);
 int sql_debug_logf(struct sqlclntstate *clnt, const char *func, int line,
@@ -3692,6 +3692,9 @@ extern int gbl_throttle_txn_chunks_msec;
 extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_fail_client_write_lock;
 extern int gbl_server_admin_mode;
+
+extern int gbl_epoch_time;
+extern int gbl_watchdog_disable_at_start;
 
 void csc2_free_all(void);
 
