@@ -1241,6 +1241,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         *lk = NULL;
         luabb_error(lua, sp, sqlite3ErrStr(rc));
     }
+    reqlog_end_request(sp->thd->logger, rc, __func__, __LINE__);
 out:
     if (sql) strbuf_free(sql);
     return -1;
@@ -2213,7 +2214,7 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
     /* Reset logger. This clears table names (see reqlog_add_table) and
        print events (see reqlog_logv_int) in the logger. */
     reqlog_reset_logger(sp->thd->logger);
-
+    reqlog_set_origin(sp->thd->logger, "%s", sp->clnt->origin);
 retry:
     memset(&err, 0, sizeof(struct errstat));
     if (sp->initial) {
@@ -2226,6 +2227,7 @@ retry:
         sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags & ~PREPARE_RECREATE);
     }
     sp->initial = 0;
+    reqlog_set_sql(sp->thd->logger, create_string_ref(sql));
     if ((sp->rc == SQLITE_PERM) && (maxRetries != 0) &&
             ((maxRetries == -1) || (nRetry++ < maxRetries))) {
         int sleepms = ATOMIC_LOAD32(gbl_lua_prepare_retry_sleep);
@@ -2310,6 +2312,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
         restore_thd_cost_and_reset(sp->thd, pVdbe);
     }
 }
+
 
 static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
 {
@@ -2484,6 +2487,7 @@ static int dbtable_insert(Lua lua)
     }
     lua_end_step(sp->clnt, sp, stmt);
     if (rc == SQLITE_DONE) rc = 0;
+    reqlog_end_request(sp->thd->logger, rc, __func__, __LINE__);
 out:if (rc) {
         const char *errstr = NULL;
         sqlite3 *sqldb = getdb(sp);
@@ -2545,6 +2549,7 @@ static int dbtable_copyfrom(Lua lua)
     }
     lua_end_step(sp->clnt, sp, stmt);
 
+    reqlog_end_request(sp->thd->logger, rc, __func__, __LINE__);
     sqlite3_finalize(stmt);
 
     lua_pushinteger(lua, 0); /* Success return code. */
@@ -3087,6 +3092,7 @@ static void drop_temp_tables(SP sp)
             expire = 1;
             logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
         }
+        reqlog_end_request(sp->thd->logger, rc, __func__, __LINE__);
     }
     clnt->skip_peer_chk = 0;
     if (expire) {
@@ -3763,13 +3769,13 @@ static int db_exec(Lua lua)
         sp->rc = lua_check_errors(sp->clnt, sqldb, stmt, &err);
         sp->error = strdup(err);
     }
-
     if (sp->rc) {
         lua_pushnil(lua);
         lua_pushinteger(lua, sp->rc);
     } else {
         lua_pushinteger(lua, 0); /* Success return code */
     }
+    reqlog_end_request(sp->thd->logger, rc, __func__, __LINE__);
     return 2;
 }
 
@@ -6766,6 +6772,7 @@ static void clone_temp_tables(SP sp)
         sqlite3_stmt *stmt;
         lua_prepare_sql_with_temp_ddl(sp, strbuf_buf(sql), &stmt);
         clone_temp_table(stmt, &tmp->tbl);
+        reqlog_end_request(sp->thd->logger, 0, __func__, __LINE__);
         sqlite3_finalize(stmt);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
@@ -7320,13 +7327,15 @@ void *exec_trigger(char *spname)
     char sql[128];
     snprintf(sql, sizeof(sql), "exec procedure %s()", spname);
 
+    char origin[128];
+    snprintf(origin, sizeof(origin), "trigger->%s", spname);
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
+    clnt.origin = origin;
     clnt.dbtran.trans_has_sp = 1;
     clnt.current_user.bypass_auth = 1;
-
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd = {0};
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
