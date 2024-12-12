@@ -179,6 +179,14 @@ enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                              struct sql_thread *thd);
 
+static void initialize_curtran_for_modsnap(cursor_tran_t * const curtran, const struct sqlclntstate * const clnt)
+{
+    curtran->modsnap_start_lsn.file = clnt->modsnap_start_lsn_file;
+    curtran->modsnap_start_lsn.offset = clnt->modsnap_start_lsn_offset;
+    curtran->last_checkpoint_lsn.file = clnt->last_checkpoint_lsn_file;
+    curtran->last_checkpoint_lsn.offset = clnt->last_checkpoint_lsn_offset;
+}
+
 CurRange *currange_new()
 {
     CurRange *rc = (CurRange *)malloc(sizeof(CurRange));
@@ -4926,7 +4934,12 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         goto done;
     }
 
-    if ((clnt->dbtran.mode <= TRANLEVEL_RECOM || clnt->dbtran.mode == TRANLEVEL_MODSNAP) && wrflag == 0) { // read-only
+    // TODO: Don't open shadows for read-only modsnap txns.
+    // In order to make this optimization work, we still need to latch
+    // the initial versions of tables and use these latched versions to 
+    // fail on schema changes. This is currently handled in the shadow code
+    // but can be refactored out.
+    if ((clnt->dbtran.mode <= TRANLEVEL_RECOM) && wrflag == 0) { // read-only
         if (clnt->has_recording == 0 ||                        // not selectv
             clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
             rc = SQLITE_OK;
@@ -8262,10 +8275,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     }
     cur->tableversion = cur->db->tableversion;
 
-    clnt->dbtran.cursor_tran->modsnap_start_lsn.file = clnt->modsnap_start_lsn_file;
-    clnt->dbtran.cursor_tran->modsnap_start_lsn.offset = clnt->modsnap_start_lsn_offset;
-    clnt->dbtran.cursor_tran->last_checkpoint_lsn.file = clnt->last_checkpoint_lsn_file;
-    clnt->dbtran.cursor_tran->last_checkpoint_lsn.offset = clnt->last_checkpoint_lsn_offset;
+    initialize_curtran_for_modsnap(clnt->dbtran.cursor_tran, clnt);
 
     /* initialize the shadow, if any  */
     cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
@@ -9757,6 +9767,8 @@ retry:
         return -1;
     }
 
+    initialize_curtran_for_modsnap(curtran_out, clnt);
+
     if (!clnt->init_gen)
         clnt->init_gen = curgen;
 
@@ -10069,8 +10081,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         } else {
             rc = SQLITE_SCHEMA;
         }
-    } else
+    } else {
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+    }
 
     if (rc) {
         char *err;
