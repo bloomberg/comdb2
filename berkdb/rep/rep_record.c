@@ -424,20 +424,20 @@ int gbl_match_on_ckp = 1;
 /*
  * matchable_log_type --
  *
- * PUBLIC: int matchable_log_type __P((int));
+ * PUBLIC: int matchable_log_type __P((DB_ENV *, int));
  */
 int
-matchable_log_type(int rectype)
+matchable_log_type(DB_ENV *dbenv, int rectype)
 {
 	extern int gbl_only_match_commit_records;
 	int ret;
 	if (gbl_only_match_commit_records) {
-		ret = (rectype == DB___txn_regop ||
-			rectype == DB___txn_regop_gen ||
-			rectype == DB___txn_dist_commit ||
-			rectype == DB___txn_dist_abort ||
-			rectype == DB___txn_regop_rowlocks ||
-			(gbl_match_on_ckp && rectype == DB___txn_ckp));
+		ret = ((!dbenv->attr.elect_highest_committed_gen && rectype == DB___txn_regop) ||
+				rectype == DB___txn_regop_gen ||
+				rectype == DB___txn_dist_commit ||
+				rectype == DB___txn_dist_abort ||
+				rectype == DB___txn_regop_rowlocks ||
+				(gbl_match_on_ckp && rectype == DB___txn_ckp));
 	} else {
 		switch (rectype) {
 		case DB___txn_recycle:
@@ -1036,7 +1036,7 @@ __rep_verify_will_recover(dbenv, control, rec)
 	LOGCOPY_32(&rectype, mylog.data);
 	normalize_rectype(&rectype);
 
-	if ((will_recover == 1 && !matchable_log_type(rectype)) &&
+	if ((will_recover == 1 && !matchable_log_type(dbenv, rectype)) &&
 			((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0)){
 		will_recover = 0;
 	}
@@ -2046,14 +2046,14 @@ more:
 		/*
 		 * Skip over any records recovery can write.
 		 */
-		if ((match == 0 || !matchable_log_type(rectype)) &&
+		if ((match == 0 || !matchable_log_type(dbenv, rectype)) &&
 			(ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0) {
 			match = 0;
 
 			if (gbl_berkdb_verify_skip_skipables) {
 				LOGCOPY_32(&rectype, mylog.data);
 				normalize_rectype(&rectype);
-				while (!matchable_log_type(rectype) && (ret =
+				while (!matchable_log_type(dbenv, rectype) && (ret =
 					__log_c_get(logc, &lsn, &mylog,
 						DB_PREV)) == 0) {
 					LOGCOPY_32(&rectype, mylog.data);
