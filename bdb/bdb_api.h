@@ -1359,8 +1359,6 @@ int bdb_fetch_last_key_tran(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rowlock(bdb_state_type *bdb_state, tran_type *tran,
                 unsigned long long genid, int exclusive, int *bdberr);
 
-int bdb_get_low_headroom_count(bdb_state_type *bdb_state);
-
 enum { BDB_LOCK_READ, BDB_LOCK_WRITE };
 
 int bdb_get_locker(bdb_state_type *bdb_state, unsigned int *lid);
