@@ -48,7 +48,7 @@ extern int gbl_new_leader_duration;
 extern SSL_CTX *gbl_ssl_ctx;
 extern ssl_mode gbl_client_ssl_mode;
 
-struct timeval idle_evbuffer_time = {.tv_sec = 30 * 60}; /* 30mins */
+struct timeval idle_evbuffer_time = {.tv_sec = 60 * 60}; /* 60mins */
 
 struct ping_pong {
     int status;
