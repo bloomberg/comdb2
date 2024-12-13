@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+DB=$1
+default=default
+cdb2sql=cdb2sql
+set -e
+
+hostflags=
+
+if [[ -n "$CLUSTER" ]]; then
+    read -ra nodes <<< "$CLUSTER"
+    hostflags="--host ${nodes[0]}"
+fi
+
+
+sql='SELECT SLEEP(2)'
+for i in $(seq 1 10); do
+    $cdb2sql ${CDB2_OPTIONS} $hostflags $DB $default "$sql" &
+done
+
+wait
+
+n=`$cdb2sql --tabs ${CDB2_OPTIONS} $hostflags $DB $default "SELECT value FROM comdb2_metrics WHERE name='current_connections'"`
+if [[ $n -ne 1 ]]; then
+    echo current_connections $n >&2
+    exit 1
+fi
+
+echo $(basename $0) success
+exit 0

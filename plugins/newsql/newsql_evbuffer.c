@@ -114,6 +114,8 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
 {
     struct newsql_appdata_evbuffer *appdata = arg;
     struct sqlclntstate *clnt = &appdata->clnt;
+    if (clnt->state == CONNECTION_RESET)
+        ATOMIC_ADD32(pooled_appsock_conns, -1);
     int fd = appdata->fd;
     rem_sql_evbuffer(clnt);
     rem_appsock_connection_evbuffer(clnt);
