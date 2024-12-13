@@ -3301,6 +3301,16 @@ int sqlite3VdbeReset(Vdbe *p){
   sqlite3 *db;
   db = p->db;
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( p->crtPartitionLocks>0 ){
+    /* engine has terminated without collecting all system tables that needed a views lock
+     * unlock it here
+     */
+    extern void views_unlock(void);
+    views_unlock();
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   /* If the VM did not run to completion or if it encountered an
   ** error, then it might not have been halted properly.  So halt
   ** it now.

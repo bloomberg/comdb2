@@ -8052,6 +8052,7 @@ case OP_VOpen: {
       /* release the view lock, if any */
       extern void views_unlock(void);
       views_unlock();
+      p->crtPartitionLocks = 0;
     }
     goto abort_due_to_error;
   }
