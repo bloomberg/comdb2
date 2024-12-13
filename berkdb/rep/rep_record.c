@@ -420,7 +420,7 @@ int normalize_rectype(u_int32_t *rectype) {
 	}
 }
 
-int gbl_match_on_ckp = 1;
+int gbl_match_on_ckp = 0;
 /*
  * matchable_log_type --
  *
