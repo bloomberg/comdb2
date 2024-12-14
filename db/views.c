@@ -3472,8 +3472,8 @@ int part_newformat(const char *tptname)
     return ret;
 }
 
-
-int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab) {
+int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab)
+{
     timepart_views_t *views;
     timepart_view_t *view;
     int rc = 0;
@@ -3493,16 +3493,15 @@ int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *z
 
     get_saved_scale(td->table, &td->scale);
     if (td->scale == 0) {
-        sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n",
-                    td->table);
+        sbuf2printf(td->sb, "?Coverage for table '%s' is 0, skipping analyze\n", td->table);
         logmsg(LOGMSG_INFO, "coverage for table '%s' is 0, skipping analyze\n", td->table);
         goto done;
     } else {
-        /* override llmeta so analyze thread doesn't try to fetch 
+        /* override llmeta so analyze thread doesn't try to fetch
          * coverage percent for individual shards*/
         td->override_llmeta = 1;
     }
-    for (i=0; i<view->nshards; i++) {
+    for (i = 0; i < view->nshards; i++) {
         strncpy0(td->table, view->shards[i].tblname, sizeof(td->table));
         rc = analyze_regular_table(td, clnt, zErrTab, nErrTab);
         if (rc) {
@@ -3511,9 +3510,10 @@ int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *z
     }
 done:
     Pthread_rwlock_unlock(&views_lk);
-    strncpy0(td->table,tbl, sizeof(td->table));
-    if (rc) 
-        logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n", __func__, __LINE__, view->shards[i].tblname, tbl, rc);
+    strncpy0(td->table, tbl, sizeof(td->table));
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n", __func__, __LINE__,
+               view->shards[i].tblname, tbl, rc);
     return rc;
 }
 

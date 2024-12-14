@@ -176,6 +176,7 @@
 (name='debug_all_prepare_leak', description='Prepare and leak all transactions. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_bdb_lock_stack', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_deadlock_replicant_percent', description='Percent of replicant events getting deadlocks', type='INTEGER', value='0', read_only='N')
+(name='debug_election', description='Enable extended election trace.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_enospc_chance', description='DEBUG %% random ENOSPC on writes', type='INTEGER', value='0', read_only='N')
 (name='debug_log_deletion', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='debug_mpalloc_size', description='Alarm on suspicious allocation requests', type='BOOLEAN', value='OFF', read_only='N')
