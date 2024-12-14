@@ -57,6 +57,8 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
+extern int gbl_debug_election;
+
 int set_commit_context(unsigned long long context, uint32_t *generation,
 		void *plsn, void *args, unsigned int rectype);
 
@@ -464,6 +466,8 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		if (argp->generation > rep->gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+		} else if (gbl_debug_election) {
+			logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->generation);
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
@@ -791,7 +795,9 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		rep->committed_lsn = *lsnp;
 		if (argp->generation > rep->gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
-			__rep_set_gen(dbenv, __func__, __LINE__, rep->gen);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+		} else if (gbl_debug_election) {
+			logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->generation);
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
@@ -858,8 +864,8 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			if (NULL == lt) 
 			{
 				if((ret = __txn_create_ltrans(dbenv, argp->ltranid, 
-							      &lt, lsnp, &argp->begin_lsn, 
-							      &argp->last_commit_lsn)) != 0)
+								  &lt, lsnp, &argp->begin_lsn, 
+								  &argp->last_commit_lsn)) != 0)
 					goto err;
 			}
 
@@ -868,13 +874,13 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
 			{
 				if (NULL == dbenv->txn_logical_commit || 
-				    (ret = dbenv->txn_logical_commit(dbenv, dbenv->app_private, 
-								     lt->ltranid, lsnp)) != 0)
+					(ret = dbenv->txn_logical_commit(dbenv, dbenv->app_private, 
+									 lt->ltranid, lsnp)) != 0)
 				{
 					logmsg(LOGMSG_ERROR, "%s: txn_logical_commit error, %d\n", __func__, ret);
 					goto err;
 				}
-                
+				
 				__txn_deallocate_ltrans(dbenv, lt);
 			}
 		}
@@ -1067,10 +1073,17 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 	}
 
 	if (op == DB_TXN_FORWARD_ROLL) {
-		/* Record the max generation number that we've seen. */
 		if (REP_ON(dbenv)) {
 			db_rep = dbenv->rep_handle;
 			rep = db_rep->region;
+
+			if (argp->rep_gen > rep->gen) {
+				__rep_set_gen(dbenv, __func__, __LINE__, argp->rep_gen);
+				__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+			} else if (gbl_debug_election) {
+				logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->rep_gen);
+			}
+
 			if (argp->rep_gen > rep->recover_gen)
 				rep->recover_gen = argp->rep_gen;
 		}
