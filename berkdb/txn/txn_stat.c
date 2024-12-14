@@ -173,7 +173,7 @@ __txn_stat(dbenv, statp, flags)
 	if (!ret) {
 		LOGCOPY_32(&type, dbt.data);
 		normalize_rectype(&type);
-		if (type == DB___txn_ckp) {
+		if (type == DB___txn_ckp || type == DB___txn_ckp_recovery) {
 			ret = __txn_ckp_read(dbenv, dbt.data, &ckp);
 			if (ret == 0) {
 				stats->st_ckp_lsn = ckp->ckp_lsn;

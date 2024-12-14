@@ -207,6 +207,7 @@ struct txn_properties;
 #define	DB_TXN_NOT_DURABLE    0x0000200	/* Do not log changes. */
 #define	DB_USE_ENVIRON	      0x0000400	/* Use the environment. */
 #define	DB_USE_ENVIRON_ROOT   0x0000800	/* Use the environment if root. */
+#define DB_RECOVERY_CKP       0x0001000 /* Do recovery checkpoint */
 
 /*
  * Common flags --

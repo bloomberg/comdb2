@@ -233,7 +233,7 @@ __txn_findlastckp(dbenv, lsnp)
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
 		normalize_rectype(&rectype);
-		if (rectype == DB___txn_ckp) {
+		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
 			*lsnp = lsn;
 			break;
 		}
