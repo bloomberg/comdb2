@@ -1,3 +1,4 @@
 nowatch
 logmsg level info
 berkattr elect_highest_committed_gen 1
+debug_election 1

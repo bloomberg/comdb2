@@ -1049,6 +1049,13 @@ REGISTER_TUNABLE("rep_process_txn_trace",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_skip_recovery", "Skip recovery if truncate won't unwind a transaction.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_rep_skip_recovery, 0, NULL, NULL, NULL, NULL);
+/* 'retrieve_gen_from_ckp' / 'recovery_ckp' disabled under legacy_defaults until db moves */
+REGISTER_TUNABLE("retrieve_gen_from_ckp", "Retrieve generation from ckp records.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_retrieve_gen_from_ckp, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("recovery_ckp", "Emit a non-matchable ckp during recovery.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_recovery_ckp, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("reproduce_ckp_bug", "Allow full-recovery ckp-gen to exceed cluster generation.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_reproduce_ckp_bug, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reqldiffstat", NULL, TUNABLE_INTEGER, &diffstat_thresh, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("reqltruncate", NULL, TUNABLE_INTEGER, &reqltruncate, READONLY,
                  NULL, NULL, NULL, NULL);
@@ -1770,15 +1777,12 @@ REGISTER_TUNABLE("disable_tpsc_tblvers",
                  TUNABLE_BOOLEAN, &gbl_disable_tpsc_tblvers, NOARG, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("abort_irregular_set_durable_lsn",
-                 "Abort incorrect calls to set_durable_lsn. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("abort_irregular_set_durable_lsn", "Abort incorrect calls to set_durable_lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_irregular_set_durable_lsn, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL,
+                 NULL);
 
-REGISTER_TUNABLE("instrument_dblist",
-                 "Extended dblist-trace in berkley.  (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_instrument_dblist,
-                 READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("instrument_dblist", "Extended dblist-trace in berkley.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_instrument_dblist, READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("match_on_ckp", "Allow rep_verify_match on ckp records.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
