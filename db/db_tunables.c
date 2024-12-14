@@ -280,7 +280,7 @@ extern int gbl_random_sql_work_delayed;
 extern int gbl_random_sql_work_rejected;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
-extern int gbl_match_on_ckp;
+extern int gbl_debug_election;
 extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_logdelete_lock_trace;
 extern int gbl_flush_log_at_checkpoint;
