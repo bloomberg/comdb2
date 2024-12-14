@@ -124,7 +124,7 @@ __checkpoint_get_recovery_lsn(DB_ENV *dbenv, DB_LSN *lsnout)
 
 	LOGCOPY_32(&type, dbt.data);
 	normalize_rectype(&type);
-	if (type != DB___txn_ckp) {
+	if (type != DB___txn_ckp && type != DB___txn_ckp_recovery) {
 		logmsg(LOGMSG_ERROR, "checkpoint record unexpeted type %d\n", type);
 		goto err;
 	}
@@ -774,7 +774,7 @@ int __dbenv_build_mintruncate_list(dbenv)
 			Pthread_mutex_unlock(&dbenv->mintruncate_lk);
 		}
 
-		if (type == DB___txn_ckp) {
+		if (type == DB___txn_ckp || type == DB___txn_ckp_recovery) {
 			if ((ret = __txn_ckp_read(dbenv, rec.data, &ckp_args)) != 0)
 				abort();
 
@@ -1526,7 +1526,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 			logmsg(LOGMSG_ERROR, "memp_sync returned %d\n", ret);
 			goto err;
 		}
-	} else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
+	} else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE|DB_RECOVERY_CKP)) != 0)
 		goto err;
 
 
@@ -1836,7 +1836,7 @@ __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV * dbenv,
 		if (data.size >= sizeof(u_int32_t)) {
 			LOGCOPY_32(&type, data.data);
 			normalize_rectype(&type);
-			if (type == DB___txn_ckp) {
+			if (type == DB___txn_ckp || type == DB___txn_ckp_recovery) {
 				if (log_compare(&lsn, max_lsn) < 0) {
 					*foundlsn = lsn;
 					free(data.data);
@@ -1959,7 +1959,7 @@ __log_earliest(dbenv, logc, lowtime, lowlsn)
 		ret == 0; ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
-		if (rectype != DB___txn_ckp)
+		if (rectype != DB___txn_ckp && rectype != DB___txn_ckp_recovery)
 			continue;
 		if ((ret = __txn_ckp_read(dbenv, data.data, &ckpargs)) == 0) {
 			cmp = log_compare(&ckpargs->ckp_lsn, &first_lsn);
@@ -2137,6 +2137,7 @@ __scan_logfiles_for_asof_modsnap(dbenv)
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
 		switch (rectype) {
+        case DB___txn_ckp_recovery:
 		case DB___txn_ckp:
 			if ((ret =
 				__txn_ckp_read(dbenv, data.data,
@@ -2307,6 +2308,7 @@ __recover_logfile_pglogs(dbenv, fileid_tbl)
 		LOGCOPY_32(&rectype, data.data);
 		normalize_rectype(&rectype);
 		switch (rectype) {
+		case DB___txn_ckp_recovery:
 		case DB___txn_ckp:
 			if ((ret =
 				__txn_ckp_read(dbenv, data.data,
@@ -2662,7 +2664,7 @@ __env_find_verify_recover_start(dbenv, lsnp)
 	do {
 		LOGCOPY_32(&rectype, rec.data);
 		normalize_rectype(&rectype);
-	} while ((!matchable_log_type(rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
+	} while ((!matchable_log_type(dbenv, rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
 			 (ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
 
 	if (ret != 0)

@@ -29,15 +29,34 @@ function full_recover_node
 
     export LOGDIR=$TESTDIR/logs
     export REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    export CLUSTER_GENERATION=""
+    export RECOVERY_GENERATION=""
 
     # Run full-recovery
     if [ $node == `hostname` ] ; then
     	PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --fullrecovery"
         $COMDB2_EXE ${DBNAME} ${PARAMS}
+        RECOVERY_GENERATION=$($COMDB2_EXE --tool cdb2_printlog -h $DBDIR/logs -l 10-100| egrep "generation|rep_gen" | tail -1 | awk '{print $2}')
     else
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --fullrecovery"
         CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS}"
         ssh -n -o StrictHostKeyChecking=no -tt $node "${CMD}" < /dev/null
+        ssh -n -o StrictHostKeyChecking=no -tt $node "$COMDB2_EXE --tool cdb2_printlog -h $DBDIR/logs -l 10-100" < /dev/null 2>/dev/null > printlog.txt
+        export RECOVERY_GENERATION=`egrep "generation|rep_gen" printlog.txt | tail -1 | awk '{print $2}' | tr -d '\r'`
+    fi
+
+    # Retrieve cluster-generation
+    CLUSTER_GENERATION=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(generation) from comdb2_transaction_logs")
+
+    # For all 'failure' cases, the recovered node generation will be higher than the clusters
+    if [[ "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
+        if [[ "$RECOVERY_GENERATION" -lt "$CLUSTER_GENERATION" ]]; then
+            failexit "Recovered generation is $RECOVERY_GENERATION, not higher than $CLUSTER_GENERATION"
+        fi
+    else
+        if [[ "$RECOVERY_GENERATION" -gt "$CLUSTER_GENERATION" ]]; then
+            failexit "Recovered generation is $RECOVERY_GENERATION, not less than or equal to $CLUSTER_GENERATION"
+        fi
     fi
 
     # While it is down, insert another record .. 
@@ -45,6 +64,7 @@ function full_recover_node
     # records here and they would disappear .. inserting 1 record allows the same test to continue 
     # to fail when elect-highest-committed-gen is disabled
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 (a) values(1)"
+    CLUSTER_GENERATION=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(generation) from comdb2_transaction_logs")
 
     # Verify that the count has replicated (it should but make really, really sure)
     for n in $CLUSTER ; do
@@ -76,7 +96,7 @@ function full_recover_node
     # The original bug in elect-highest-committed-gen doesn't require a downgrade here
     # The old version of election requires a downgrade .. 
     # Downgrade on 'disable' or 'enableddowngrade' (which has elect-highest-committed-gen enabled)
-    if [[ "$DBNAME" == *"enableddowngrade"* || "$DBNAME" == *"disable"* ]]; then
+    if [[ "$DBNAME" == *"enableddowngrade"* || "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
         echo "Downgrading $master"
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1 &
     fi
@@ -95,9 +115,6 @@ function full_recover_node
             sleep 1
         fi
     done
-
-
-
 }
 
 function run_test
@@ -122,7 +139,7 @@ function run_test
     master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select host from comdb2_cluster where is_master='Y' limit 1")
 
     # Just repeat until the fully recovered node becomes the master
-    if [[ "$DBNAME" == *"disable"* ]]; then
+    if [[ "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
         while [[ "$master" != "$fullrecovery" ]]; do
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate table t1"
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select * from generate_series(1, 1000)"
@@ -147,13 +164,13 @@ function run_test
         # 'FAILURE' is 'SUCCESS' for the disable testcase .. it is attempting to show the failure that
         # occurs if elect-highest-committed-gen is disabled
         echo "We got a count of $count, not $target_records"
-        if [[ "$DBNAME" != *"disable"* ]]; then
+        if [[ "$DBNAME" != *"disable"* && "$DBNAME" != *"ckpbug"* ]]; then
             kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
             failexit "Count is not $target_records"
         else
             echo "Successfully reproduced bug"
         fi
-    elif [[ "$DBNAME" == *"disable"* ]]; then
+    elif [[ "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
         echo "FAILURE: disable test failed to reproduce bug"
         kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
         failexit "Count is correct even though committed-gen is disabled"
