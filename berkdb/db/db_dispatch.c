@@ -105,57 +105,56 @@ dump_log_event_counts(void)
 {
 	int events[] = {
 		DB___bam_split, DB___bam_rsplit, DB___bam_adj, DB___bam_cadjust,
-		    DB___bam_cdel,
+			DB___bam_cdel,
 		DB___bam_repl, DB___bam_root, DB___bam_curadj, DB___bam_rcuradj,
-		    DB___crdel_metasub,
+			DB___crdel_metasub,
 		DB___db_addrem, DB___db_big, DB___db_ovref, DB___db_relink,
-		    DB___db_debug,
+			DB___db_debug,
 		DB___db_noop, DB___db_pg_alloc, DB___db_pg_free, DB___db_cksum,
-		    DB___db_pg_freedata,
+			DB___db_pg_freedata,
 		DB___db_pg_prepare, DB___db_pg_new, DB___dbreg_register,
-		    DB___fop_create,
+			DB___fop_create,
 		DB___fop_remove, DB___fop_write, DB___fop_rename,
-		    DB___fop_file_remove, DB___ham_insdel,
+			DB___fop_file_remove, DB___ham_insdel,
 		DB___ham_newpage, DB___ham_splitdata, DB___ham_replace,
-		    DB___ham_copypage,
+			DB___ham_copypage,
 		DB___ham_metagroup, DB___ham_groupalloc, DB___ham_curadj,
-		    DB___ham_chgpg, DB___qam_incfirst,
+			DB___ham_chgpg, DB___qam_incfirst,
 		DB___qam_mvptr, DB___qam_del, DB___qam_add, DB___qam_delext,
-		    DB___txn_regop, DB___txn_dist_prepare, DB___txn_dist_abort,
+			DB___txn_regop, DB___txn_dist_prepare, DB___txn_dist_abort,
 		DB___txn_regop_gen, DB___txn_regop_rowlocks, DB___txn_dist_commit,
-            DB___txn_ckp, DB___txn_child, DB___txn_xa_regop,
-		DB___txn_recycle
+			DB___txn_ckp, DB___txn_ckp_recovery, DB___txn_child,
+		DB___txn_xa_regop, DB___txn_recycle
 	};
 	char *event_names[] = {
 		"DB___bam_split", "DB___bam_rsplit", "DB___bam_adj",
-		    "DB___bam_cadjust", "DB___bam_cdel",
+			"DB___bam_cadjust", "DB___bam_cdel",
 		"DB___bam_repl", "DB___bam_root", "DB___bam_curadj",
-		    "DB___bam_rcuradj", "DB___crdel_metasub",
+			"DB___bam_rcuradj", "DB___crdel_metasub",
 		"DB___db_addrem", "DB___db_big", "DB___db_ovref",
-		    "DB___db_relink", "DB___db_debug",
+			"DB___db_relink", "DB___db_debug",
 		"DB___db_noop", "DB___db_pg_alloc", "DB___db_pg_free",
-		    "DB___db_cksum", "DB___db_pg_freedata",
+			"DB___db_cksum", "DB___db_pg_freedata",
 		"DB___db_pg_prepare", "DB___db_pg_new", "DB___dbreg_register",
-		    "DB___fop_create",
+			"DB___fop_create",
 		"DB___fop_remove", "DB___fop_write", "DB___fop_rename",
-		    "DB___fop_file_remove", "DB___ham_insdel",
+			"DB___fop_file_remove", "DB___ham_insdel",
 		"DB___ham_newpage", "DB___ham_splitdata", "DB___ham_replace",
-		    "DB___ham_copypage",
+			"DB___ham_copypage",
 		"DB___ham_metagroup", "DB___ham_groupalloc", "DB___ham_curadj",
-		    "DB___ham_chgpg", "DB___qam_incfirst",
-		"DB___qam_mvptr", "DB___qam_del", "DB___qam_add",
-		    "DB___qam_delext", "DB___txn_regop",
-            "DB___txn_dist_prepare", "DB___txn_dist_abort",
+			"DB___ham_chgpg", "DB___qam_incfirst",
+		"DB___qam_mvptr", "DB___qam_del", "DB___qam_add", "DB___qam_delext",
+			"DB___txn_regop", "DB___txn_dist_prepare", "DB___txn_dist_abort",
 		"DB___txn_regop_gen", "DB___txn_regop_rowlocks", "DB___txn_dist_commit",
-            "DB___txn_ckp", "DB___txn_child", "DB___txn_xa_regop",
-		"DB___txn_recycle"
+			"DB___txn_ckp", "DB___txn_ckp_recovery", "DB___txn_child",
+		"DB___txn_xa_regop", "DB___txn_recycle"
 	};
 	int i;
 
 	for (i = 0; i < sizeof(events) / sizeof(events[0]); i++) {
 		if (log_event_counts[events[i]])
 			logmsg(LOGMSG_USER, "%-20s %d\n", event_names[i],
-			    log_event_counts[events[i]]);
+				log_event_counts[events[i]]);
 	}
 }
 
@@ -262,6 +261,8 @@ optostr(int op)
 		return "DB___txn_dist_prepare";
 	case DB___txn_ckp:
 		return "DB___txn_ckp";
+	case DB___txn_ckp_recovery:
+		return "DB___txn_ckp_recovery";
 	case DB___txn_child:
 		return "DB___txn_child";
 	case DB___txn_xa_regop:
@@ -386,6 +387,7 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 	case DB___txn_dist_abort:
 	case DB___txn_regop_rowlocks:
 	case DB___txn_ckp:
+	case DB___txn_ckp_recovery:
 	case DB___txn_child:
 	case DB___txn_xa_regop:
 	case DB___txn_recycle:
@@ -469,7 +471,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 	
 	if (normalize_rectype(&rectype) && (redo == DB_TXN_OPENFILES)) {
 		LOGCOPY_64(&utxnid, &((char*)db->data)[4 + 4 + 8]);
-		if (rectype == DB___txn_ckp) {
+		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
 			LOGCOPY_64(&maxutxnid, &((char*)db->data)[4 + 4 + 8 + 8 + 8 + 8 + 4 + 4]);
 		}
 		Pthread_mutex_lock(&dbenv->utxnid_lock);
@@ -559,8 +561,10 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		/* FALLTHROUGH */
 	case DB_TXN_POPENFILES:
 		if (rectype == DB___dbreg_register ||
-		    rectype == DB___txn_child ||
-		    rectype == DB___txn_ckp || rectype == DB___txn_recycle)
+			rectype == DB___txn_child ||
+			rectype == DB___txn_ckp ||
+			rectype == DB___txn_ckp_recovery ||
+			rectype == DB___txn_recycle)
 			return (dtab[rectype] (dbenv, db, lsnp, redo, info));
 		break;
 	case DB_TXN_BACKWARD_ROLL:
@@ -583,6 +587,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		case DB___txn_regop_rowlocks:
 		case DB___txn_recycle:
 		case DB___txn_ckp:
+		case DB___txn_ckp_recovery:
 		case DB___db_noop:
 		case DB___fop_file_remove:
 		case DB___txn_child:
@@ -647,6 +652,7 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		switch (rectype) {
 		case DB___txn_recycle:
 		case DB___txn_ckp:
+		case DB___txn_ckp_recovery:
 		case DB___db_noop:
 			make_call = 1;
 			break;
