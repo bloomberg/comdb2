@@ -18,7 +18,7 @@
         logmsg(lvl, "physrep: " __VA_ARGS__);                                  \
     } while (0)
 
-int matchable_log_type(int rectype);
+int matchable_log_type(DB_ENV *dbenv, int rectype);
 
 extern int gbl_physrep_debug;
 int gbl_physrep_exit_on_invalid_logstream = 0;
@@ -126,7 +126,7 @@ int find_log_timestamp(bdb_state_type *bdb_state, time_t time,
             LOGCOPY_32(&rectype, logrec.data);
             normalize_rectype(&rectype);
 
-        } while (!matchable_log_type(rectype));
+        } while (!matchable_log_type(bdb_state->dbenv, rectype));
 
         my_time = get_timestamp_from_matchable_record(logrec.data);
         if (gbl_physrep_debug) {
@@ -194,7 +194,7 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
         LOGCOPY_32(&rectype, logrec->data);
         normalize_rectype(&rectype);
 
-        if (matchable_log_type(rectype) && in_parent_range(&match_lsn, parent_highest, parent_lowest)) {
+        if (matchable_log_type(logc->dbenv, rectype) && in_parent_range(&match_lsn, parent_highest, parent_lowest)) {
             if (gbl_physrep_debug) {
                 physrep_logmsg(LOGMSG_USER, "%s: Initial rec {%u:%u} is matchable\n",
                                __func__, info->file, info->offset);
@@ -228,7 +228,8 @@ static int get_next_matchable(DB_LOGC *logc, LOG_INFO *info, int check_current, 
 
         LOGCOPY_32(&rectype, logrec->data);
         normalize_rectype(&rectype);
-        matchable = (matchable_log_type(rectype) && in_parent_range(&match_lsn, parent_highest, parent_lowest));
+        matchable =
+            (matchable_log_type(logc->dbenv, rectype) && in_parent_range(&match_lsn, parent_highest, parent_lowest));
     } while (!matchable);
 
     info->file = match_lsn.file;
@@ -565,7 +566,7 @@ int physrep_bdb_wait_for_seqnum(bdb_state_type *bdb_state, DB_LSN *lsn, void *da
 
     LOGCOPY_32(&rectype, data);
     normalize_rectype(&rectype);
-    if (!matchable_log_type(rectype)) {
+    if (!matchable_log_type(bdb_state->dbenv, rectype)) {
         return 0;
     }
 
