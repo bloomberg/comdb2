@@ -248,19 +248,12 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
 
 
 struct fdb_distributed_tran;
-typedef struct fdb_distributed_tran fdb_distributed_tran_t;
 struct fdb_tbl_ent;
-typedef struct fdb_tbl_ent fdb_tbl_ent_t;
 struct fdb_access;
-typedef struct fdb_access fdb_access_t;
 struct fdb_affinity;
-typedef struct fdb_affinity fdb_affinity_t;
 struct fdb;
-typedef struct fdb fdb_t;
 struct Table;
-typedef struct Table Table;
 struct Parse;
-typedef struct Parse Parse;
 
 typedef struct {
     enum transaction_level mode; /* TRANLEVEL_SOSQL, TRANLEVEL_RECOM, ... */
@@ -271,12 +264,11 @@ typedef struct {
         shadow_tran; /* used to keep local changes to btree, uncommitted yet */
     tran_type *logical_tran; /* used by rowlocks ? */
 
-    fdb_distributed_tran_t *
-        dtran; /* remote transactions, contain each remote cluster tran */
+    struct fdb_distributed_tran * dtran; /* remote transactions, contain each remote cluster tran */
     int rollbacked; /* mark this to catch out-of-order errors */
 
     sqlite3_stmt *pStmt; /* if sql is in progress, points at the engine */
-    fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
+    struct fdb_tbl_ent **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
                                         remote tables */
     int nLockedRemTables; /* number of pointers in lockedRemTablesRootp */
     int trans_has_sp;     /* running a stored procedure */
@@ -303,14 +295,14 @@ typedef struct sqlclntstate_fdb {
                   ?*/
     char *trim_key;  /* key used in prefiltering for find ops (sqlite_packed) */
     int trim_keylen; /* lenght of the trim key */
-    fdb_access_t *access; /* access control */
+    struct fdb_access *access; /* access control */
     int version;          /* version of the remote-cached object */
     char *dbname;  /* if err is set, this indicate which fdb is responsible, if
                       any */
     char *tblname; /* if err is set, this indicate which tablename is
                       responsible */
     int code_release;    /* code release in the remote requester */
-    fdb_affinity_t *aff; /* location affinity information */
+    struct fdb_affinity *aff; /* location affinity information */
     struct errstat
         xerr; /* error in fdb component, used to override sqlite and osql.xerr
                  errors */
@@ -1063,7 +1055,7 @@ struct Btree {
     void (*free_schema)(void *);
 
     char *zFilename;
-    fdb_t *fdb;
+    struct fdb *fdb;
 };
 
 enum { CFIRST = 0, CNEXT = 1, CPREV = 2, CLAST = 3, NORETRY = 256 };
@@ -1370,13 +1362,13 @@ int fdb_add_remote_time(BtCursor *pCur, unsigned long long start,
  * refers to a remote table
  *
  */
-int fdb_push_setup(Parse *pParse, struct dohsql_node *node);
+int fdb_push_setup(struct Parse *pParse, struct dohsql_node *node);
 
 /**
  * Same as fdb_push_setup, but for remote writes
  *
  */
-int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab);
+int fdb_push_write_setup(struct Parse *pParse, enum ast_type type, struct Table *pTab);
 
 /**
  * Free remote push support
