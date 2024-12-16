@@ -257,10 +257,6 @@ struct fdb_affinity;
 typedef struct fdb_affinity fdb_affinity_t;
 struct fdb;
 typedef struct fdb fdb_t;
-struct Table;
-typedef struct Table Table;
-struct Parse;
-typedef struct Parse Parse;
 
 typedef struct {
     enum transaction_level mode; /* TRANLEVEL_SOSQL, TRANLEVEL_RECOM, ... */
