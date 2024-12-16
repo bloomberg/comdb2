@@ -1,0 +1,11 @@
+1 set transaction snapshot isolation
+2 set transaction snapshot isolation
+1 drop table if exists z
+1 create table z(i decimal128)
+1 insert into z values(1)
+1 begin
+1 select * from z
+2 alter table z add column j integer
+2 insert into z values(1, 1)
+1 select * from z
+1 commit
