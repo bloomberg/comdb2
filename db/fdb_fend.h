@@ -155,13 +155,9 @@ extern int gbl_fdb_push_redirect_foreign;
 #define fdb_is_error(n) ((n) < FDB_NOERR)
 #define fdb_node_invalid(n) (fdb_is_error((n)))
 
-typedef struct fdb_tbl_ent fdb_tbl_ent_t;
 typedef struct fdb_tbl fdb_tbl_t;
-typedef struct fdb fdb_t;
 typedef struct fdb_cache fdb_cache_t;
 typedef struct fdb_cursor fdb_cursor_t;
-typedef struct fdb_access fdb_access_t;
-typedef struct fdb_affinity fdb_affinity_t;
 
 typedef struct fdb_sqlstat_cache fdb_sqlstat_cache_t;
 typedef struct fdb_sqlstat_table fdb_sqlstat_table_t;
@@ -216,7 +212,6 @@ struct fdb_distributed_tran {
     int remoted; /* set to 1 if this is the remote part of a transaction */
     LISTC_T(fdb_tran_t) fdb_trans; /* list of subtransactions */
 };
-typedef struct fdb_distributed_tran fdb_distributed_tran_t;
 
 typedef struct fdb_cursor_if {
     fdb_cursor_t *impl;
