@@ -7194,6 +7194,9 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (IS_SYS(spname)) init_sys_funcs(L);
 
+    if (trigger || consumer)
+        clnt->current_user.bypass_auth = 1;
+
     if (gbl_is_physical_replicant && consumer) {
         rc = -3;
         (*err) = strdup("Cannot execute consumer on physical-replicant");
