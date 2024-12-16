@@ -7201,6 +7201,8 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     else {
         rc = push_args_and_run_sp(clnt, end_ptr, err);
     }
+    if (trigger || consumer)
+        clnt->current_user.bypass_auth = 1;
 
     if (trigger) {
         return rc;
@@ -7345,7 +7347,6 @@ void *exec_trigger(char *spname)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
-    clnt.current_user.bypass_auth = 1;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd = {0};
