@@ -5938,7 +5938,7 @@ int fdb_push_set(int val)
     if (val) {
         gbl_fdb_push_remote = 1;
     } else {
-        gbl_fdb_push_remote_write = 0;
+        gbl_fdb_push_remote = 0;
         /* disabling push disables also push write */
         gbl_fdb_push_remote_write = 0;
     }
