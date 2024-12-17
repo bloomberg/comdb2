@@ -2662,7 +2662,7 @@ __env_find_verify_recover_start(dbenv, lsnp)
 	do {
 		LOGCOPY_32(&rectype, rec.data);
 		normalize_rectype(&rectype);
-	} while ((!matchable_log_type(dbenv, rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
+	} while ((!matchable_log_type(rectype) || log_compare(lsnp, &s_lsn) >= 0) &&
 			 (ret = __log_c_get(logc, lsnp, &rec, DB_PREV)) == 0);
 
 	if (ret != 0)
