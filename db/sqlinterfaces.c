@@ -2931,7 +2931,11 @@ static void _prepare_error(struct sqlthdstate *thd,
     }
     reqlog_logf(thd->logger, REQL_TRACE, "sqlite3_prepare failed %d: %s\n", rc,
                 errstr);
-    errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
+
+    const int err_code = rc == SQLITE_MISSING_SEMI
+        ? RESPONSE_ERROR_INCOMPLETE : ERR_PREPARE;
+
+    errstat_set_rcstrf(err, err_code, "%s", errstr);
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
     }
@@ -3156,6 +3160,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     if (prepareOnly || sqlite3_is_prepare_only(clnt))
         sqlPrepFlags |= SQLITE_PREPARE_ONLY;
+
+    if (clnt->multiline) {
+        sqlPrepFlags |= SQLITE_PREPARE_REQUIRE_SEMI;
+    }
 
     if (!gbl_allow_pragma)
         flags |= PREPARE_DENY_PRAGMA;
@@ -4082,6 +4090,8 @@ retry_legacy_remote:
             if (irc == ERR_PREPARE) {
                 write_response(clnt, RESPONSE_ERROR_PREPARE, err.errstr, 0);
                 handle_sqlite_error(thd, clnt, &rec, rc);
+            } else if (irc == RESPONSE_ERROR_INCOMPLETE) {
+                write_response(clnt, RESPONSE_ERROR_INCOMPLETE, err.errstr, 0);
             } else if (irc == ERR_PREPARE_RETRY) {
                 write_response(clnt, RESPONSE_ERROR_PREPARE_RETRY, err.errstr, 0);
                 rc = 0;
@@ -6401,6 +6411,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     case SQLITE_NO_TEMPTABLES:
     case SQLITE_NO_TABLESCANS:
     case SQLITE_ANALYZE_ALREADY_RUNNING:
+    case SQLITE_PREPARE_REQUIRE_SEMI:
         *errstr = sqlite3_errmsg(sqldb);
         break;
 
@@ -6574,6 +6585,8 @@ int sqlserver2sqlclient_error(int rc)
         return CDB2ERR_PREPARE_ERROR;
     case SQLITE_ANALYZE_ALREADY_RUNNING:
         return CDB2ERR_ANALYZE_ALREADY_RUNNING;
+    case SQLITE_MISSING_SEMI:
+        return RESPONSE_ERROR_INCOMPLETE;
     default:
         return CDB2ERR_UNKNOWN;
     }

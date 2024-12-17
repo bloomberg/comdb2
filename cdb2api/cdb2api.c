@@ -34,6 +34,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <math.h> // ceil
+#include <limits.h> // int_max
 
 #include "cdb2api.h"
 
@@ -2936,6 +2938,8 @@ static int cdb2_convert_error_code(int rc)
         return CDB2ERR_DUPLICATE;
     case CDB2__ERROR_CODE__PREPARE_ERROR_OLD:
         return CDB2ERR_PREPARE_ERROR;
+    case CDB2__ERROR_CODE__INCOMPLETE:
+        return CDB2ERR_INCOMPLETE;
     default:
         return rc;
     }
@@ -7311,20 +7315,18 @@ char *cdb2_string_escape(cdb2_hndl_tp *hndl, const char *src)
 }
 
 int cdb2_get_property(cdb2_hndl_tp *hndl, const char *key, char **value) {
-    if (hndl == NULL)
+    if (hndl == NULL) {
         return CDB2ERR_NOSTATEMENT;
-    *value = NULL;
-    if (strcmp(key, "sql:tail") == 0) {
-        if (hndl->firstresponse == NULL)
-            return CDB2ERR_NOSTATEMENT;
-        if (!hndl->firstresponse->has_sql_tail_offset) {
-            return CDB2ERR_OLD_SERVER;
-        }
-        char *str = malloc(20);
-        sprintf(str, "%d", hndl->firstresponse->sql_tail_offset);
-        *value = str;
+    } else if (strcmp(key, "sql:tail") != 0) {
+        return CDB2ERR_UNKNOWN_PROPERTY;
+    } else if (hndl->firstresponse == NULL) {
+        return CDB2ERR_NOSTATEMENT;
+    } else if (!hndl->firstresponse->has_sql_tail_offset) {
+        return CDB2ERR_OLD_SERVER;
+    } else {
+        *value = malloc(ceil(log10(INT_MAX))+1);
+        if (!value) { return ENOMEM; }
+        sprintf(*value, "%d", hndl->firstresponse->sql_tail_offset);
         return 0;
     }
-    else
-        return CDB2ERR_UNKNOWN_PROPERTY;
 }

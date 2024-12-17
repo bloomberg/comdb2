@@ -1,18 +1,18 @@
-// package com.bloomberg.cdb2;
+//package com.bloomberg.cdb2;
 syntax = "proto2";
 
 option java_package = "com.bloomberg.comdb2.jdbc";
 
 enum CDB2_ColumnType {
-  INTEGER = 1;
-  REAL = 2;
-  CSTRING = 3;
-  BLOB = 4;
-  DATETIME = 6;
-  INTERVALYM = 7;
-  INTERVALDS = 8;
-  DATETIMEUS = 9;
-  INTERVALDSUS = 10;
+    INTEGER      = 1;
+    REAL         = 2;
+    CSTRING      = 3;
+    BLOB         = 4;
+    DATETIME     = 6;
+    INTERVALYM   = 7;
+    INTERVALDS   = 8;
+    DATETIMEUS   = 9;
+    INTERVALDSUS = 10;
 }
 
 /*
@@ -22,61 +22,63 @@ Ideally only sqlresponse.proto codes should be sent to client, and client should
 But if both codes are the same (as it is currently), then everything will still run correctly
 */
 enum CDB2_ErrorCode {
-  OK = 0;
-  DUP_OLD = 1;
-  CONNECT_ERROR = -1;
-  NOTCONNECTED = -2;
+    OK                 =  0;
+    DUP_OLD            =  1;
+    CONNECT_ERROR      = -1;
+    NOTCONNECTED       = -2;
 
-  PREPARE_ERROR = -3;
-  PREPARE_ERROR_OLD = 1003;
+    PREPARE_ERROR      = -3;
+    PREPARE_ERROR_OLD  = 1003;
 
-  IO_ERROR = -4;
-  INTERNAL = -5;
-  NOSTATEMENT = -6;
-  BADCOLUMN = -7;
-  BADSTATE = -8;
-  ASYNCERR = -9;
-  OK_ASYNC = -10;
+    IO_ERROR           = -4;
+    INTERNAL           = -5;
+    NOSTATEMENT        = -6;
+    BADCOLUMN          = -7;
+    BADSTATE           = -8;
+    ASYNCERR           = -9;
+    OK_ASYNC              = -10;
 
-  INVALID_ID = -12;
-  RECORD_OUT_OF_RANGE = -13;
+    INVALID_ID              = -12;
+    RECORD_OUT_OF_RANGE     = -13;
 
-  REJECTED = -15;
-  STOPPED = -16;
-  BADREQ = -17;
-  DBCREATE_FAILED = -18;
+    REJECTED                = -15;
+    STOPPED                 = -16;
+    BADREQ                  = -17;
+    DBCREATE_FAILED         = -18;
 
-  THREADPOOL_INTERNAL = -20; /* some error in threadpool code */
-  READONLY = -21;
+    THREADPOOL_INTERNAL     = -20;  /* some error in threadpool code */
+    READONLY                = -21;
+    APPSOCK_LIMIT           = -23;
 
-  NOMASTER = -101;
-  NOTSERIAL = 230;
-  SCHEMACHANGE = 240;
-  UNTAGGED_DATABASE = -102;
-  CONSTRAINTS = -103;
-  DEADLOCK = 203;
+    NOMASTER                = -101;
+    NOTSERIAL               =  230;
+    SCHEMACHANGE            =  240;
+    UNTAGGED_DATABASE       = -102;
+    CONSTRAINTS             = -103;
+    DEADLOCK                =  203;
 
-  TRAN_IO_ERROR = -105;
-  ACCESS = -106;
+    TRAN_IO_ERROR           = -105;
+    ACCESS                  = -106;
 
     QUERYLIMIT              = -107;
     MASTER_TIMEOUT          = -109;
     WRONG_DB                = -111;
 
-  VERIFY_ERROR = 2;
-  FKEY_VIOLATION = 3;
-  NULL_CONSTRAINT = 4;
+    VERIFY_ERROR            = 2;
+    FKEY_VIOLATION          = 3;
+    NULL_CONSTRAINT         = 4;
 
-  CONV_FAIL = 113;
-  NONKLESS = 114;
-  MALLOC = 115;
-  NOTSUPPORTED = 116;
+    CONV_FAIL               = 113;
+    NONKLESS                = 114;
+    MALLOC                  = 115;
+    NOTSUPPORTED            = 116;
 
-  TRAN_TOO_BIG = 202;
-  DUPLICATE = 299;
-  TZNAME_FAIL = 401;
-  CHANGENODE = 402;
-  UNKNOWN = 300;
+    TRAN_TOO_BIG            = 202;
+    DUPLICATE               = 299;
+    TZNAME_FAIL             = 401;
+    CHANGENODE              = 402;
+    INCOMPLETE              = 452;
+    UNKNOWN                 = 300;
 }
 
 enum ResponseHeader {
@@ -94,7 +96,7 @@ enum ResponseHeader {
 }
 
 enum ResponseType {
-  COLUMN_NAMES = 1;
+  COLUMN_NAMES  = 1;
   COLUMN_VALUES = 2;
   LAST_ROW      = 3;
   COMDB2_INFO   = 4; // For info about features, or snapshot file/offset etc
@@ -105,89 +107,85 @@ enum ResponseType {
 }
 
 enum CDB2SyncMode {
-  SYNC = 1;
-  ASYNC = 2;
-  SYNC_ROOM = 3;
-  SYNC_N = 4;
-  SYNC_SOURCE = 5;
-  SYNC_UNKNOWN = 6;
+    SYNC         = 1;
+    ASYNC        = 2;
+    SYNC_ROOM    = 3;
+    SYNC_N       = 4;
+    SYNC_SOURCE  = 5;
+    SYNC_UNKNOWN = 6;
 }
 
 enum CDB2ServerFeatures {
-  SKIP_INTRANS_RESULTS = 1;
+    SKIP_INTRANS_RESULTS = 1;
 }
 
 message CDB2_DBINFORESPONSE {
-  message nodeinfo {
-    required string name = 1;
-    required int32 number = 2;
-    required int32 incoherent = 3;
-    optional int32 room = 4;
-    optional int32 port = 5;
-  }
-  required nodeinfo master = 1;
-  repeated nodeinfo nodes =
-      2; // These are replicants, we need to parse through these only.
-  optional bool require_ssl = 3;
-  optional CDB2SyncMode sync_mode = 4;
+    message nodeinfo {
+        required string  name = 1;
+        required int32   number = 2;
+        required int32   incoherent = 3;
+        optional int32   room = 4;
+        optional int32   port = 5;
+    }
+    required nodeinfo master = 1;
+    repeated nodeinfo nodes  = 2;     // These are replicants, we need to parse through these only.
+    optional bool require_ssl = 3;
+    optional CDB2SyncMode sync_mode = 4;
 }
 
-message CDB2_DISTTXNRESPONSE { required int32 rcode = 1; }
+message CDB2_DISTTXNRESPONSE {
+    required int32 rcode = 1;
+}
 
 message CDB2_EFFECTS {
-  required int32 num_affected = 1;
-  required int32 num_selected = 2;
-  required int32 num_updated = 3;
-  required int32 num_deleted = 4;
-  required int32 num_inserted = 5;
+    required int32 num_affected = 1;
+    required int32 num_selected = 2;
+    required int32 num_updated  = 3;
+    required int32 num_deleted  = 4;
+    required int32 num_inserted = 5;
 }
 
 message CDB2_SQLRESPONSE {
-  required ResponseType response_type = 1; // enum ReponseType
-  message column {
-    optional CDB2_ColumnType type = 1;
-    required bytes value = 2;
-    optional bool isnull = 3 [ default = false ];
-  }
-  repeated column value = 2;
-  optional CDB2_DBINFORESPONSE dbinforesponse = 3;
-  required CDB2_ErrorCode error_code = 4;
-  optional string error_string = 5;
-  optional CDB2_EFFECTS effects = 6;
-  message snapshotinfo {
-    required int32 file = 1;
-    required int32 offset = 2;
-  }
-  optional snapshotinfo snapshot_info = 7;
-  optional uint64 row_id = 8; // in case of retry, this will be used to identify
-                              // the rows which need to be discarded
-  repeated CDB2ServerFeatures features =
-      9; // This can tell client about features enabled in comdb2
-  optional string info_string = 10;
+    required ResponseType response_type=1; // enum ReponseType
+    message column {
+        optional CDB2_ColumnType type = 1;
+        required bytes value = 2;
+        optional bool isnull = 3 [default = false];  
+    }
+    repeated column value=2;
+    optional CDB2_DBINFORESPONSE dbinforesponse =3;
+    required CDB2_ErrorCode error_code = 4;
+    optional string error_string = 5;
+    optional CDB2_EFFECTS effects = 6; 
+    message snapshotinfo {
+        required int32 file = 1;
+        required int32 offset = 2;
+    }
+    optional snapshotinfo snapshot_info=7;
+    optional uint64 row_id   = 8; // in case of retry, this will be used to identify the rows which need to be discarded
+    repeated CDB2ServerFeatures  features = 9; // This can tell client about features enabled in comdb2
+    optional string info_string = 10;
 
-  /* True if return row data directly under CDB2_SQLRESPONSE, instead of using a
-     nested `CDB2_SQLRESPONSE.column' message. A nested message is more
-     readable, but comes with an overhead: protobuf_c_message_pack_to_buffer()
-     must first pack a nested message into main memory to get its serialized
-     size, and encode the size in the message header. This means that for each
-     column value that is being serialized, we end up using memory 2x of its
-     size. We can avoid the overhead by collapsing the nested
-     CDB2_SQLRESPONSE.column message into its parent message. */
-  optional bool flat_col_vals = 11;
-  repeated bytes values = 12;
-  repeated bool isnulls = 13;
+    /* True if return row data directly under CDB2_SQLRESPONSE, instead of using a nested `CDB2_SQLRESPONSE.column'
+       message. A nested message is more readable, but comes with an overhead: protobuf_c_message_pack_to_buffer() must
+       first pack a nested message into main memory to get its serialized size, and encode the size in the message header.
+       This means that for each column value that is being serialized, we end up using memory 2x of its size.
+       We can avoid the overhead by collapsing the nested CDB2_SQLRESPONSE.column message into its parent message. */
+    optional bool flat_col_vals = 11;
+    repeated bytes values = 12;
+    repeated bool isnulls = 13;
 
-  /* query fingerprint */
-  optional bytes fp = 14;
+    /* query fingerprint */
+    optional bytes fp = 14;
 
-  /* sqlite row */
-  optional bytes sqlite_row = 15;
+    /* sqlite row */
+    optional bytes sqlite_row = 15;
 
-  /* query that should be run on foreign db */
-  optional string foreign_db = 16;
-  optional string foreign_class = 17;
-  optional int32 foreign_policy_flag = 18;
+    /* query that should be run on foreign db */
+    optional string foreign_db = 16;
+    optional string foreign_class = 17;
+    optional int32 foreign_policy_flag = 18;
 
-  optional CDB2_DISTTXNRESPONSE disttxnresponse = 19;
-  optional int32 sql_tail_offset = 20;
+    optional CDB2_DISTTXNRESPONSE disttxnresponse = 19;
+    optional int32 sql_tail_offset = 20;
 }
