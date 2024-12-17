@@ -8,6 +8,7 @@
 
 extern int gbl_physrep_debug;
 extern struct dbenv *thedb;
+extern int gbl_match_on_ckp;
 
 LOG_INFO find_match_lsn(void *bdb_state, cdb2_hndl_tp *repl_db,
                         LOG_INFO start_info);
