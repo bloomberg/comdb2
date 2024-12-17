@@ -635,6 +635,7 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   assert( pParse->pVList==0 );
   pParse->pParentParse = db->pParse;
   db->pParse = pParse;
+  int need_to_check_for_semi = pParse->prepFlags & SQLITE_PREPARE_REQUIRE_SEMI;
   while( 1 ){
     n = sqlite3GetToken((u8*)zSql, &tokenType);
     mxSqlLen -= n;
@@ -661,9 +662,9 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
       }
       if( zSql[0]==0 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-        if ((pParse->prepFlags & SQLITE_PREPARE_REQUIRE_SEMI) && lastTokenParsed != TK_SEMI) {
-            pParse->rc = SQLITE_MISSING_SEMI;
-            break;
+        if (need_to_check_for_semi && lastTokenParsed != TK_SEMI) {
+          pParse->rc = SQLITE_MISSING_SEMI;
+          break;
         }
 #endif
         /* Upon reaching the end of input, call the parser two more times
@@ -687,10 +688,14 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
         assert( n==6 );
         tokenType = analyzeFilterKeyword((const u8*)&zSql[6], lastTokenParsed);
 #endif /* SQLITE_OMIT_WINDOWFUNC */
-      }else{
+      } else if (need_to_check_for_semi && !sqlite3_complete(pParse->zTail)) {
+        pParse->rc = SQLITE_MISSING_SEMI;
+        break;
+      } else {
         sqlite3ErrorMsg(pParse, "unrecognized token: \"%.*s\"", n, zSql);
         break;
       }
+      need_to_check_for_semi = 0;
     }
     pParse->sLastToken.z = zSql;
     pParse->sLastToken.n = n;

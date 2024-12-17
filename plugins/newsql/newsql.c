@@ -1133,6 +1133,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_ERROR_BAD_STATE: return newsql_error(c, a, CDB2__ERROR_CODE__BADSTATE);
     case RESPONSE_ERROR_PREPARE: return newsql_error(c, a, CDB2__ERROR_CODE__PREPARE_ERROR);
     case RESPONSE_ERROR_REJECT: return newsql_error(c, a, CDB2__ERROR_CODE__REJECTED);
+    case RESPONSE_ERROR_INCOMPLETE: return newsql_error(c, a, CDB2__ERROR_CODE__INCOMPLETE);
     case RESPONSE_REDIRECT_FOREIGN: return newsql_redirect_foreign(c, a, i);
     case RESPONSE_FLUSH: return c->plugin.flush(c);
     case RESPONSE_HEARTBEAT: return newsql_heartbeat(c);
@@ -2117,6 +2118,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     clnt->return_long_column_names = 0;
                 } else {
                     clnt->return_long_column_names = 1;
+                }
             } else if (strncasecmp(sqlstr, "multiline", 9) == 0) {
                 sqlstr += 10;
                 sqlstr = skipws(sqlstr);
