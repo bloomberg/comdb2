@@ -190,7 +190,7 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
             }
         } while (rc == IX_FNDMORE || rc == IX_FND);
 
-        if (rc == IX_FND/* || rc == IX_PASTEOF*/) {
+        if (rc == IX_FND || rc == IX_EMPTY) {
             rc = 0;
             /* success, get out of here */
             break;
