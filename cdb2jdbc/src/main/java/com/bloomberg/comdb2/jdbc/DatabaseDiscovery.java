@@ -272,7 +272,7 @@ public class DatabaseDiscovery {
 
         try {
             if (dbInfoResp == null) {
-                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+                io = new SockIO(host, hndl.pmuxrte ? hndl.portMuxPort : port, hndl.pmuxrte ? dbName : null,
                                 hndl.dbinfoTimeout, hndl.connectTimeout);
 
                 io.write("newsql\n");
@@ -386,7 +386,7 @@ public class DatabaseDiscovery {
         SockIO io = null;
 
         try {
-            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+            io = new SockIO(host, hndl.pmuxrte ? hndl.portMuxPort : port, hndl.pmuxrte ? hndl.comdb2dbName : null,
                             hndl.comdb2dbTimeout, hndl.connectTimeout);
 
             io.write("newsql\n");
@@ -485,13 +485,16 @@ public class DatabaseDiscovery {
         if (debug) { 
             System.out.println("Starting getDbHosts"); 
         }
+
         if (refresh) {
             /* Clear node info of both the database and comdb2db */
             hndl.comdb2dbHosts.clear();
-            hndl.myDbHosts.clear();
-            hndl.myDbPorts.clear();
-            /* Invalidate db host cache as well. */
-            comdb2lcldb.remove(hndl.myDbName + "/" + hndl.myDbCluster);
+            if (!hndl.isDirectCpu) {
+                hndl.myDbHosts.clear();
+                hndl.myDbPorts.clear();
+                /* Invalidate db host cache as well. */
+                comdb2lcldb.remove(hndl.myDbName + "/" + hndl.myDbCluster);
+            }
         }
 
         if (hndl.myDbCluster.equalsIgnoreCase("local")) {
@@ -569,9 +572,11 @@ public class DatabaseDiscovery {
                     atLeastOneValid = true;
                 else {
                     try {
-                        int dbport = getPortMux(hndl.myDbHosts.get(i),
-                                hndl.portMuxPort, hndl.soTimeout, hndl.connectTimeout,
-                                "comdb2", "replication", hndl.myDbName);
+                        int dbport = hndl.portMuxPort;
+                        if (!hndl.pmuxrte)
+                            dbport = getPortMux(hndl.myDbHosts.get(i),
+                                    hndl.portMuxPort, hndl.soTimeout, hndl.connectTimeout,
+                                    "comdb2", "replication", hndl.myDbName);
                         if (dbport != -1) {
                             atLeastOneValid = true;
                             hndl.myDbPorts.set(i, dbport);
@@ -611,9 +616,11 @@ public class DatabaseDiscovery {
 			String connerr = "";
             for (String comdb2dbHost : hndl.comdb2dbHosts) {
                 try {
-                    comdb2dbPort = getPortMux(comdb2dbHost, hndl.portMuxPort,
-                            hndl.soTimeout, hndl.connectTimeout,
-                            "comdb2", "replication", hndl.comdb2dbName);
+                    comdb2dbPort = hndl.portMuxPort;
+                    if (!hndl.pmuxrte)
+                        comdb2dbPort = getPortMux(comdb2dbHost, hndl.portMuxPort,
+                                hndl.soTimeout, hndl.connectTimeout,
+                                "comdb2", "replication", hndl.comdb2dbName);
 
                     if (comdb2dbPort < 0) {
                         connerr = "Received invalid port from pmux.";
@@ -707,7 +714,7 @@ public class DatabaseDiscovery {
             hndl.myDbPorts.clear();
             for (int i = 0; i != hndl.myDbHosts.size(); ++i)
                 hndl.myDbPorts.add(hndl.portMuxPort);
-            return;
+            /* proceed to find master */
         }
 
         /* We have a list of machines where the database runs.
