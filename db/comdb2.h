@@ -363,7 +363,8 @@ enum RCODES {
     ERR_SQL_PREP = 2001,    /* block sql error in sqlite3_prepare */
     ERR_LIMIT = 2002,       /* sql request exceeds max cost */
     ERR_NOT_DURABLE = 2003, /* commit didn't make it to a majority */
-    ERR_RECOVER_DEADLOCK = 2004
+    ERR_RECOVER_DEADLOCK = 2004,
+    ERR_BAD_COMM = 2005
 };
 
 #define IS_BAD_IX_FND_RCODE(rc)                                                \
