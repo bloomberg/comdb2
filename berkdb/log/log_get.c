@@ -322,6 +322,7 @@ __log_c_get_pp(logc, alsn, dbt, flags)
 	switch (flags) {
 	case DB_CURRENT:
 	case DB_FIRST:
+	case DB_FIRST_FILE:
 	case DB_LAST:
 	case DB_NEXT:
 	case DB_PREV:
@@ -404,9 +405,10 @@ __log_c_get_timed(logc, alsn, dbt, flags)
 		return (ret);
 	}
 	if (alsn->offset == 0 && (flags == DB_FIRST ||
-	    flags == DB_NEXT || flags == DB_LAST || flags == DB_PREV)) {
+		flags == DB_NEXT || flags == DB_LAST || flags == DB_PREV || flags == DB_FIRST_FILE)) {
 		switch (flags) {
 		case DB_FIRST:
+		case DB_FIRST_FILE:
 			flags = DB_NEXT;
 			break;
 		case DB_LAST:
@@ -489,6 +491,10 @@ __log_c_get_int(logc, alsn, dbt, flags)
 
 	nlsn = logc->c_lsn;
 	switch (flags) {
+	case DB_FIRST_FILE:
+		nlsn.file = alsn->file;
+		nlsn.offset = 0;
+		break;
 	case DB_NEXT:				/* Next log record. */
 		if (!IS_ZERO_LSN(nlsn)) {
 			/* Increment the cursor by the cursor record size. */
