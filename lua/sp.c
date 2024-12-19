@@ -86,7 +86,6 @@ extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
 extern int gbl_notimeouts;
-extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_lua_prepare_max_retries;
@@ -889,7 +888,7 @@ static int dbconsumer_consume(Lua L)
         }
     }
     if (!clnt->intrans) {
-        if ((rc = start_new_transaction(clnt, clnt->thd->sqlthd)) != 0) {
+        if ((rc = start_new_transaction(clnt)) != 0) {
             luaL_error(L, "%s: start_new_transaction intrans:%d err:%s rc:%d\n",
                        __func__, clnt->intrans, err, rc);
         }
@@ -7322,6 +7321,10 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
 
 void *exec_trigger(char *spname)
 {
+    char thdname[16];
+    snprintf(thdname, sizeof(thdname), "T:%s", spname);
+    comdb2_name_thread(thdname);
+
     char sql[128];
     snprintf(sql, sizeof(sql), "exec procedure %s()", spname);
 

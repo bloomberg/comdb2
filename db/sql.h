@@ -747,7 +747,13 @@ struct sqlclntstate {
     unsigned long long sqltick, sqltick_last_seen;
 
     int using_case_insensitive_like;
+
+    /* recover deadlock variables */
+    int last_sql_tick;
+    int waiter_penalty;
     int deadlock_recovered;
+    int deadlock_checked;
+    int sql_tick_count;
 
     /* lua stored procedure */
     struct stored_proc *sp;
@@ -1609,7 +1615,7 @@ int fdb_access_control_create(struct sqlclntstate *, char *str);
 int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
-int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
+int start_new_transaction(struct sqlclntstate *);
 int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
 
 struct sql_col_info {

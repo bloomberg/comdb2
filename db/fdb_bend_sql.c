@@ -357,7 +357,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
                 __func__, us);
     }
 
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
+    if ((rc = initialize_shadow_trans(clnt)) != 0)
         return rc;
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->osql.sock_started)

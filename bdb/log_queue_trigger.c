@@ -361,7 +361,7 @@ void *log_queue_consumer(void *arg)
         if (comdb2_time_epoch() - txn->qtime > 0) {
             file->longq_cnt++;
             if (comdb2_time_epoch() - file->lastpr) {
-                logmsg(LOGMSG_ERROR, "%s long-queue %d, cnt=%lu\n", __func__, comdb2_time_epoch() - txn->qtime,
+                logmsg(LOGMSG_ERROR, "%s long-queue %d, cnt=%"PRIu64"\n", __func__, comdb2_time_epoch() - txn->qtime,
                        file->longq_cnt);
                 file->lastpr = comdb2_time_epoch();
             }
