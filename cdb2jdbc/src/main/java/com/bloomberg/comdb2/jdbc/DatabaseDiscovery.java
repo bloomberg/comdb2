@@ -52,6 +52,31 @@ public class DatabaseDiscovery {
 
     private static final Map<String, TimeAndHosts> comdb2lcldb = new ConcurrentHashMap<>();
 
+    private static boolean value_on_off(String val) {
+        if (val == null)
+            return false;
+
+        if (val.equalsIgnoreCase("on"))
+            return true;
+        if (val.equalsIgnoreCase("true"))
+            return true;
+        if (val.equalsIgnoreCase("yes"))
+            return true;
+        if (val.equalsIgnoreCase("1"))
+            return true;
+
+        if (val.equalsIgnoreCase("off"))
+            return false;
+        if (val.equalsIgnoreCase("false"))
+            return false;
+        if (val.equalsIgnoreCase("no"))
+            return false;
+        if (val.equalsIgnoreCase("0"))
+            return true;
+
+        return false;
+    }
+
     /**
      * Reads information from comdb2db cfg file. Returns true if the minimal
      * necessary information has been gathered. Otherwise, returns false.
@@ -84,6 +109,10 @@ public class DatabaseDiscovery {
                         hndl.myDbHosts.add(tokens[i]);
                         hndl.myDbPorts.add(hndl.overriddenPort);
                     }
+                } else if (tokens[0].equalsIgnoreCase("comdb2_feature")) {
+                    if (tokens[1].equalsIgnoreCase("iam_identity_v6")
+                            && !hndl.hasUseIdentity)
+                        hndl.useIdentity = value_on_off(tokens[2]);
                 } else if (tokens[0].equalsIgnoreCase("comdb2_config")) {
 
                     if (tokens[1].equalsIgnoreCase("default_type")
@@ -128,7 +157,11 @@ public class DatabaseDiscovery {
                     }
                     else if (tokens[1].equalsIgnoreCase("stack_at_open")
                             && !hndl.hasSendStack) {
-                        hndl.sendStack = tokens[2].equalsIgnoreCase("true");
+                        hndl.sendStack = value_on_off(tokens[2]);
+                    }
+                    else if (tokens[1].equalsIgnoreCase("allow_pmux_route")
+                            && !hndl.hasAllowPmuxRoute) {
+                        hndl.pmuxrte = value_on_off(tokens[2]);
                     }
                 } else if (tokens[0].equalsIgnoreCase(hndl.comdb2dbName)) {
                     /**
@@ -239,7 +272,7 @@ public class DatabaseDiscovery {
 
         try {
             if (dbInfoResp == null) {
-                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+                io = new SockIO(host, hndl.pmuxrte ? hndl.overriddenPort : port, hndl.pmuxrte ? dbName : null,
                                 hndl.dbinfoTimeout, hndl.connectTimeout);
 
                 io.write("newsql\n");
@@ -353,7 +386,7 @@ public class DatabaseDiscovery {
         SockIO io = null;
 
         try {
-            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null,
+            io = new SockIO(host, hndl.pmuxrte ? hndl.overriddenPort : port, hndl.pmuxrte ? hndl.comdb2dbName : null,
                             hndl.comdb2dbTimeout, hndl.connectTimeout);
 
             io.write("newsql\n");
@@ -452,13 +485,16 @@ public class DatabaseDiscovery {
         if (debug) { 
             System.out.println("Starting getDbHosts"); 
         }
+
         if (refresh) {
             /* Clear node info of both the database and comdb2db */
             hndl.comdb2dbHosts.clear();
-            hndl.myDbHosts.clear();
-            hndl.myDbPorts.clear();
-            /* Invalidate db host cache as well. */
-            comdb2lcldb.remove(hndl.myDbName + "/" + hndl.myDbCluster);
+            if (!hndl.isDirectCpu) {
+                hndl.myDbHosts.clear();
+                hndl.myDbPorts.clear();
+                /* Invalidate db host cache as well. */
+                comdb2lcldb.remove(hndl.myDbName + "/" + hndl.myDbCluster);
+            }
         }
 
         if (hndl.myDbCluster.equalsIgnoreCase("local")) {
@@ -536,9 +572,11 @@ public class DatabaseDiscovery {
                     atLeastOneValid = true;
                 else {
                     try {
-                        int dbport = getPortMux(hndl.myDbHosts.get(i),
-                                hndl.portMuxPort, hndl.soTimeout, hndl.connectTimeout,
-                                "comdb2", "replication", hndl.myDbName);
+                        int dbport = hndl.overriddenPort;
+                        if (!hndl.pmuxrte)
+                            dbport = getPortMux(hndl.myDbHosts.get(i),
+                                    hndl.portMuxPort, hndl.soTimeout, hndl.connectTimeout,
+                                    "comdb2", "replication", hndl.myDbName);
                         if (dbport != -1) {
                             atLeastOneValid = true;
                             hndl.myDbPorts.set(i, dbport);
@@ -578,9 +616,11 @@ public class DatabaseDiscovery {
 			String connerr = "";
             for (String comdb2dbHost : hndl.comdb2dbHosts) {
                 try {
-                    comdb2dbPort = getPortMux(comdb2dbHost, hndl.portMuxPort,
-                            hndl.soTimeout, hndl.connectTimeout,
-                            "comdb2", "replication", hndl.comdb2dbName);
+                    comdb2dbPort = hndl.overriddenPort;
+                    if (!hndl.pmuxrte)
+                        comdb2dbPort = getPortMux(comdb2dbHost, hndl.portMuxPort,
+                                hndl.soTimeout, hndl.connectTimeout,
+                                "comdb2", "replication", hndl.comdb2dbName);
 
                     if (comdb2dbPort < 0) {
                         connerr = "Received invalid port from pmux.";
@@ -674,7 +714,7 @@ public class DatabaseDiscovery {
             hndl.myDbPorts.clear();
             for (int i = 0; i != hndl.myDbHosts.size(); ++i)
                 hndl.myDbPorts.add(hndl.portMuxPort);
-            return;
+            /* proceed to find master */
         }
 
         /* We have a list of machines where the database runs.
