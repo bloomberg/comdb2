@@ -97,15 +97,22 @@ public class DatabaseDiscovery {
 
                 String[] tokens = line.split(":\\s*|=\\s*|,\\s*|\\s+");
 
-                if (tokens.length < 3)
+                if (tokens.length < 2)
                     continue;
 
                 if (tokens[0].equalsIgnoreCase(hndl.myDbName)) {
                     /**
                      * Gets dunumber and hosts of the actual database.
                      */
-                    hndl.myDbNum = Integer.parseInt(tokens[1]);
-                    for (int i = 2; i < tokens.length; ++i) {
+                    int i = 1;
+                    try {
+                        /* db number is only optional */
+                        hndl.myDbNum = Integer.parseInt(tokens[i]);
+                        ++i;
+                    } catch (NumberFormatException e) {
+                        hndl.myDbNum = -1;
+                    }
+                    for (; i < tokens.length; ++i) {
                         hndl.myDbHosts.add(tokens[i]);
                         hndl.myDbPorts.add(hndl.overriddenPort);
                     }
