@@ -322,6 +322,7 @@ __log_c_get_pp(logc, alsn, dbt, flags)
 	switch (flags) {
 	case DB_CURRENT:
 	case DB_FIRST:
+	case DB_FIRST_FILE:
 	case DB_LAST:
 	case DB_NEXT:
 	case DB_PREV:
@@ -404,9 +405,10 @@ __log_c_get_timed(logc, alsn, dbt, flags)
 		return (ret);
 	}
 	if (alsn->offset == 0 && (flags == DB_FIRST ||
-	    flags == DB_NEXT || flags == DB_LAST || flags == DB_PREV)) {
+		flags == DB_NEXT || flags == DB_LAST || flags == DB_PREV || flags == DB_FIRST_FILE)) {
 		switch (flags) {
 		case DB_FIRST:
+		case DB_FIRST_FILE:
 			flags = DB_NEXT;
 			break;
 		case DB_LAST:
@@ -497,6 +499,7 @@ __log_c_get_int(logc, alsn, dbt, flags)
 		}
 		flags = DB_FIRST;
 		/* FALLTHROUGH */
+	case DB_FIRST_FILE:
 	case DB_FIRST:				/* First log record. */
 		/* Find the first log file. */
 		if ((ret = __log_find(dblp, 1, &cnt, &status)) != 0)
@@ -536,6 +539,10 @@ __log_c_get_int(logc, alsn, dbt, flags)
 			break;
 		}
 		nlsn.offset = 0;
+		if (flags == DB_FIRST_FILE) {
+			nlsn.file = alsn->file;
+			flags = DB_FIRST;
+		}
 		break;
 	case DB_CURRENT:			/* Current log record. */
 		break;

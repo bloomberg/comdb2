@@ -87,6 +87,7 @@ static struct option long_options[] = {
     {"version", no_argument, NULL, 'v'},
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
+    {"tool", required_argument, NULL, 't'},
     {NULL, 0, NULL, 0}};
 
 static const char *help_text =
@@ -204,6 +205,8 @@ static void read_cmd_line_tunables(struct dbenv *dbenv)
     cmd_line_tunables = NULL;
 }
 
+void exec_tool(int argc, char *argv[]);
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
@@ -245,6 +248,11 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
         case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
+        case 15: /* tool */ 
+            exec_tool(argc - (optind - 1), &argv[optind - 1]);
+            logmsg(LOGMSG_WARN, "Invalid tool option, %s\n", optarg);
+            exit(1);
+            break;
         }
     }
     return 0;
@@ -432,6 +440,8 @@ static char *legacy_options[] = {
     "wal_osync 1",
     "usenames",
     "setattr max_sql_idle_time 864000",
+    "retrieve_gen_from_ckp 0",
+    "recovery_ckp 0",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

@@ -44,6 +44,7 @@ void bdb_set_rep_handle_dead(struct bdb_state_tag *);
 int bdb_num_connected_nodes(struct bdb_state_tag *);
 #endif
 
+extern int gbl_debug_election;
 int gbl_verbose_master_req = 0;
 int gbl_trace_repmore_reqs = 0;
 
@@ -222,8 +223,8 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 		memcpy(&rectype, dbtp->data, sizeof(rectype));
 		normalize_rectype(&rectype);
 		if (rectype == DB___txn_regop || rectype == DB___txn_regop_gen
-			|| rectype == DB___txn_ckp || rectype == DB___txn_dist_commit || 
-			rectype == DB___txn_regop_rowlocks)
+			|| rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery ||
+			rectype == DB___txn_dist_commit || rectype == DB___txn_regop_rowlocks)
 			F_SET(&cntrl, DB_LOG_PERM);
 	}
 
@@ -407,7 +408,8 @@ __rep_set_gen(dbenv, func, line, gen)
 	egen = rep->egen;
 	if (rep->egen <= gen)
 		egen = gen + 1;
-	logmsg(LOGMSG_DEBUG, "%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
+	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			"%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
 			func, line, rep->gen, gen, rep->egen, egen);
 	rep->gen = gen;
 	rep->egen = egen;
@@ -446,13 +448,13 @@ __rep_set_egen(dbenv, func, line, egen)
 	REP *rep;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	logmsg(LOGMSG_DEBUG, "%s line %d setting rep->egen from %d to %d\n",
+	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG, "%s line %d setting rep->egen from %d to %d\n",
 			func, line, rep->egen, egen);
 	rep->egen = egen;
 }
 
 /*
- * __rep_set_loh_gen --
+ * __rep_set_log_gen --
  *  Called as a utility function to see places where an instance's
  * replication log generation can be changed.
  *
@@ -470,7 +472,7 @@ __rep_set_log_gen(dbenv, func, line, log_gen)
 	REP *rep;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	logmsg(LOGMSG_DEBUG, "%s line %d setting rep->log_gen from %d to %d\n",
+	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG, "%s line %d setting rep->log_gen from %d to %d\n",
 			func, line, rep->log_gen, log_gen);
 	rep->log_gen = log_gen;
 }

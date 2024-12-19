@@ -1350,6 +1350,7 @@ typedef enum {
 #define	DB_WRITELOCK		36	/* cursor() (internal) */
 #define DB_PREV_VALUE		37	/* prev record without moving cursor */
 #define DB_NEXT_VALUE		38	/* next record without moving cursor */
+#define DB_FIRST_FILE		39  /* first log-record in file */  
 
 /* This has to change when the max opcode hits 255. */
 #define	DB_OPFLAGS_MASK	0x000000ff	/* Mask for operations flags. */

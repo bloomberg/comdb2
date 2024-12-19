@@ -327,7 +327,7 @@ __log_get_last_ckp(DB_ENV *dbenv, DB_LSN *lsn)
 
 		LOGCOPY_32(&rectype, dbt.data);
 		normalize_rectype(&rectype);
-		if (rectype == DB___txn_ckp) {
+		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery) {
 			/* found it */
 			(void)__log_c_close(logc);
 			return 0;
@@ -415,7 +415,7 @@ __log_recover(dblp)
 			continue;
 		LOGCOPY_32(&rectype, dbt.data);
 		normalize_rectype(&rectype);
-		if (rectype == DB___txn_ckp)
+		if (rectype == DB___txn_ckp || rectype == DB___txn_ckp_recovery)
 			/*
 			 * If we happen to run into a checkpoint, cache its
 			 * LSN so that the transaction system doesn't have
