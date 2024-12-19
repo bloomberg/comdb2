@@ -179,7 +179,7 @@ static void *generator_thd(void *voidarg)
             sleep(1);
         } else {
             dest->send_seqn++;
-            usleep(gbl_usleep);
+            Usleep(gbl_usleep);
         }
     }
 
