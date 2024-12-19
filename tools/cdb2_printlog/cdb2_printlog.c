@@ -64,19 +64,6 @@ extern pthread_key_t comdb2_open_key;
 
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
-static char *orig_dir;
-#define PRINTLOG_RANGE_DIR "printlog_range"
-void remove_tempdir()
-{
-	if (orig_dir && chdir(orig_dir) == 0) {
-		free(orig_dir);
-		int lrc = system("rm -rf " PRINTLOG_RANGE_DIR);
-        if (lrc) {
-            printf("ERROR: %s:%d system() returns rc = %d\n",__FILE__,__LINE__, lrc);
-        }
-	}
-}
-
 int tool_cdb2_printlog_main(argc, argv)
 	int argc;
 	char *argv[];
@@ -88,6 +75,8 @@ int tool_cdb2_printlog_main(argc, argv)
 	int first = 1;
 	unsigned int start_file = 0;
 	unsigned int start_offset = 0;
+	unsigned int end_file = 0;
+	unsigned int end_offset = 0;
 	char *p;
 	DB *dbp;
 	DBC *dbc;
@@ -124,6 +113,7 @@ int tool_cdb2_printlog_main(argc, argv)
 	while ((ch = getopt(argc, argv, "h:s:gNP:rVl:")) != EOF)
 		switch (ch) {
 		case 'h':
+			chdir(optarg);
 			home = optarg;
 			break;
 		case 'N':
@@ -167,35 +157,14 @@ int tool_cdb2_printlog_main(argc, argv)
 			return (EXIT_SUCCESS);
 		case 'l': {
 			/* Printing only a few of the logs. */
-			int start, end;
 			char *p;
 			if ((p = strchr(optarg, '-')) != NULL) {
 				*p = '\0';
-				start = atoi(optarg);
-				end = atoi(&p[1]);
+				start_file = atoi(optarg);
+				end_file = atoi(&p[1]) + 1;
 			} else {
-				start = end = atoi(optarg);
-			}
-			if (mkdir(PRINTLOG_RANGE_DIR, S_IRWXU) != 0) {
-				fprintf(stderr, "mkdir " PRINTLOG_RANGE_DIR " failed -- %s\n", strerror(errno));
-				exit(1);
-			}
-			orig_dir = getcwd(NULL, 0);
-			atexit(remove_tempdir);
-			if (chdir(PRINTLOG_RANGE_DIR) != 0) {
-				fprintf(stderr, "chdir failed errno:%d %s\n", errno, strerror(errno));
-				exit(1);
-			}
-
-			/* Copy logfiles into this directory. */
-			for (int i = start; i <= end; i++) {
-				char fl[PATH_MAX];
-				snprintf(fl, sizeof(fl), "../" LFNAME, i);
-				if (symlink(fl, fl + 3) != 0) {
-					fprintf(stderr, "symlink %s %s failed errno:%d -- %s\n",
-					    fl, fl + 3, errno, strerror(errno));
-					exit(1);
-				}
+				start_file = atoi(optarg);
+				end_file = start_file + 1;
 			}
 			break;
 		}
@@ -319,6 +288,8 @@ int tool_cdb2_printlog_main(argc, argv)
 
 	memset(&data, 0, sizeof(data));
 	memset(&keydbt, 0, sizeof(keydbt));
+	key.file = 1;
+	key.offset = 0;
 	for (;;) {
 		if (repflag) {
 			ret = dbc->c_get(dbc,
@@ -328,7 +299,7 @@ int tool_cdb2_printlog_main(argc, argv)
 		} else if (first && start_file) {
 			key.file = start_file;
 			key.offset = start_offset;
-			ret = logc->get(logc, &key, &data, DB_SET);
+			ret = logc->get(logc, &key, &data, !start_offset ? DB_FIRST_FILE : DB_SET);
 		} else {
 			ret = logc->get(logc,
 			    &key, &data, rflag ? DB_PREV : DB_NEXT);
@@ -339,6 +310,12 @@ int tool_cdb2_printlog_main(argc, argv)
 			dbenv->err(dbenv,
 			    ret, repflag ? "DB_LOGC->get" : "DBC->get");
 			goto shutdown;
+		}
+
+		if (end_file) {
+			if (key.file > end_file || (key.file == end_file && key.offset >= end_offset)) {
+				break;
+			}
 		}
 
 		ret = __db_dispatch(dbenv,
