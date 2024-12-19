@@ -1671,13 +1671,14 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc, int on
             goto err;
 
         if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                                  ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)) {
+                                  ERROR_ON_TBL_NOT_FOUND, 0, 0, NULL) && (tablename && !timepart_is_partition(tablename))) {
             free(tablename);
             goto err;
         }
-        else
+        else {
             comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze,
                                 (vdbeFuncArgFree) &free);
+        }
     }
 
     return;
@@ -1727,7 +1728,8 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
     if (!ancov_f->tablename) goto err;
 
     if (chkAndCopyTableTokens(pParse, ancov_f->tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)
+            && (ancov_f->tablename && !timepart_is_partition(ancov_f->tablename)))
         goto clean_arg;
 
     ancov_f->newvalue = newscale;
@@ -2528,7 +2530,8 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     char *tablename = (char*) malloc (MAXTABLELEN);
 
     if (chkAndCopyTableTokens(pParse, tablename, nm, lnm,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL) && 
+            (tablename && !timepart_is_partition(tablename)))
         free(tablename);
     else
         comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage,
