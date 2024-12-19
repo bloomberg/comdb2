@@ -291,6 +291,11 @@ int tool_cdb2_printlog_main(argc, argv)
 	key.file = 1;
 	key.offset = 0;
 	for (;;) {
+		if (end_file) {
+			if (key.file > end_file || (key.file == end_file && key.offset >= end_offset)) {
+				break;
+			}
+		}
 		if (repflag) {
 			ret = dbc->c_get(dbc,
 			    &keydbt, &data, rflag ? DB_PREV : DB_NEXT);
