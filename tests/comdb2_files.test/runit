@@ -3,8 +3,238 @@ bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
+function test_comdb2_files_select_where_type_eq() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+
+		# When
+		local num_types
+		num_types=$(cdb2sql -tabs $dbname local \
+			"select count(distinct type) from $tablename where type='berkdb'")
+		readonly num_types
+
+		# Then
+		(( num_types == 1 ))
+	)
+}
+
+function test_comdb2_files_select_where_type_ne() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+
+		local num_types
+		num_types=$(cdb2sql -tabs $dbname local "select count(distinct type) from $tablename")
+		readonly num_types
+
+		# When
+		local num_types_without_excluded
+		num_types_without_excluded=$(cdb2sql -tabs $dbname local \
+			"select count(distinct type) from $tablename where type!='berkdb'")
+		readonly num_types_without_excluded
+
+		# Then
+		(( num_types_without_excluded+1 == num_types ))
+	)
+}
+
+function test_comdb2_files_select_where_filename_eq() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/dont_match_me > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/dont_match_me" EXIT
+
+		# When
+		local filename
+		filename=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename='please_match_me'")
+		
+		# Then
+		[[ "$filename" == "please_match_me" ]]
+	)
+}
+
+
+function test_comdb2_files_select_where_filename_ne() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "please don't find me" > $dbdir/excluded_file
+		trap "rm $dbdir/excluded_file" EXIT
+
+		local num_records
+		num_records=$(cdb2sql -tabs $dbname local "select count(*) from $tablename")
+		readonly num_records
+
+		# When
+		local num_records_without_excluded
+		num_records_without_excluded=$(cdb2sql -tabs $dbname local \
+			"select count(*) from $tablename where filename!='excluded_file'")
+		readonly num_records_without_excluded
+
+		# Then
+		(( num_records_without_excluded+1 == num_records ))
+	)
+}
+
+function test_comdb2_files_select_where_filename_like() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/match $dbdir/woof > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/match $dbdir/woof" EXIT
+
+		local filenames
+		filenames=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename like '%match%'")
+		readonly filenames
+
+		# Then
+		grep -oP 'please_match_me' <<< "$filenames" > /dev/null
+		grep -oP 'match' <<< "$filenames" > /dev/null
+		! grep -oP 'woof' <<< "$filenames" > /dev/null
+	)
+}
+
+function test_comdb2_files_select_where_unioned_filename_constraints() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		echo "bork" | tee $dbdir/please_match_me $dbdir/match_me_too $dbdir/dont_match_me > /dev/null
+		trap "rm $dbdir/please_match_me $dbdir/match_me_too $dbdir/dont_match_me" EXIT
+
+		# When
+		local filenames
+		filenames=$(cdb2sql -tabs $dbname local \
+			"select filename from $tablename where filename in ('please_match_me', 'match_me_too')")
+		
+		# Then
+		grep -oP 'please_match_me' <<< "$filenames" > /dev/null
+		grep -oP 'match_me_too' <<< "$filenames" > /dev/null
+		! grep -oP 'dont_match_me' <<< "$filenames" > /dev/null
+	)
+}
+
+function test_comdb2_files_select_where_unioned_type_constraints() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+
+		# When
+		local num_types
+		num_types=$(cdb2sql -tabs $dbname local \
+			"select count(distinct type) from $tablename where type in ('berkdb', 'unknown')")
+		readonly num_types
+
+		# Then
+		(( num_types == 2 ))
+	)
+}
+
+function test_comdb2_files_select_where_unioned_filename_and_type_constraints() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+		local num_files_with_known_type
+		num_files_with_known_type=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where type!='unknown'")
+		readonly num_files_with_known_type
+
+		echo "you found me!" > $dbdir/find_me
+		trap "rm $dbdir/find_me" EXIT
+
+		# When
+		local num_files
+		num_files=$(cdb2sql -tabs $dbname local \
+			"select count(*) from $tablename where type!='unknown' or filename='find_me'")
+		readonly num_files
+
+		# Then
+		(( num_files == num_files_with_known_type+1 ))
+	)
+}
+
+function test_comdb2_files_select_where_intersected_filename_constraints() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3 expected_file="boglogfile"
+		echo "frog" > $dbdir/$expected_file
+		trap "rm $dbdir/$expected_file" EXIT
+
+		# When
+		local matched_file
+		matched_file=$(cdb2sql -tabs $dbname local "select filename from $tablename where filename like '%log%' and filename like '%bog%'")
+		readonly matched_file
+
+		# Then
+		[[ "$matched_file" == "$expected_file" ]] 
+	)
+}
+
+function test_comdb2_files_select_where_intersected_type_constraints() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3
+
+		local num_types
+		num_types=$(cdb2sql -tabs $dbname local "select count(distinct type) from $tablename")
+		readonly num_types
+
+		# When
+		local num_types_without_excluded
+		num_types_without_excluded=$(cdb2sql -tabs $dbname local \
+			"select count(distinct type) from $tablename where type!='berkdb' and type!='unknown'")
+		readonly num_types_without_excluded
+
+		# Then
+		(( num_types_without_excluded+2 == num_types ))
+	)
+}
+
+function test_comdb2_files_select_where_intersected_filename_and_type_constraints() {
+	(
+		trap 'error ${LINENO}' ERR
+
+		# Given
+		local -r dbname=$1 dbdir=$2 tablename=$3 expected_file="bogfile"
+		echo "frog" > $dbdir/$expected_file
+		trap "rm $dbdir/$expected_file" EXIT
+
+		# When
+		local matched_file
+		matched_file=$(cdb2sql -tabs $dbname local "select filename from $tablename where filename like '%og%' and type='unknown'")
+		readonly matched_file
+
+		# Then
+		[[ "$matched_file" == "$expected_file" ]] 
+	)
+}
+
 function test_comdb2_files_restricted_file() {
 	(
+		trap 'error ${LINENO}' ERR
+
 		# Given
 		local -r dbname=$1 dbdir=$2 tablename=$3
 		echo "restricted blahblah" | tee \
@@ -24,18 +254,15 @@ function test_comdb2_files_restricted_file() {
 			"select filename from $tablename where filename like 'no_access%'")
 
 		# Then
-		query_rc=$?
-		if [[ ( $query_rc -eq 0 ) && ("$fname" -eq "no_access_world") ]]; then
-			return 0
-		else
-			return 1
-		fi
+		[[ ("$fname" -eq "no_access_world") ]]
 	)
 }
 
 function test_comdb2_files_restricted_directory() {
 	(
 		# Given
+		trap 'error ${LINENO}' ERR
+
 		local -r dbname=$1 dbdir=$2 tablename=$3
 		mkdir $dbdir/no_access $dbdir/no_access_world $dbdir/no_access_group \
 			$dbdir/no_access_group_world
@@ -53,17 +280,14 @@ function test_comdb2_files_restricted_directory() {
 			"select filename from $tablename where dir like 'no_access%'")
 
 		# Then
-		query_rc=$?
-		if [[ ( $query_rc -eq 0 ) && ("$fname" -eq "no_access_world") ]]; then
-			return 0
-		else
-			return 1
-		fi
+		[[ ("$fname" -eq "no_access_world") ]]
 	)
 }
 
 function test_comdb2_files_large_file() {
 	(
+		trap 'error ${LINENO}' ERR
+
 		# Given
 		local -r dbname=$1 dbdir=$2 tablename=$3
 
@@ -75,37 +299,28 @@ function test_comdb2_files_large_file() {
 		res_size=$(cdb2sql -tabs $dbname local "select sum(size) from $tablename where filename like '%largefile%'")
 
 		# Then
-		query_rc=$?
-		if (( query_rc == 0 && res_size == exp_size )); then 
-			return 0
-		else 
-			return 1
-		fi
+		(( res_size == exp_size ))
 	)
 }
 
 function test_comdb2_files_broken_symlink() {
 	(
+		trap 'error ${LINENO}' ERR
+
 		# Given
 		local -r dbname=$1 dbdir=$2 tablename=$3
 		ln -s idonutexist $dbdir/link
 		trap "rm $dbdir/link" EXIT
 
-		# When
-		cdb2sql $dbname local "select count(*) from $tablename" > /dev/null
-
-		# Then
-		query_rc=$?
-		if (( query_rc != 0 )); then
-			return 0
-		else
-			return 1
-		fi
+		# When / Then
+		! cdb2sql $dbname local "select count(*) from $tablename" > /dev/null
 	)
 }
 
 function test_comdb2_files_skips_file_on_excluded_list() {
 	(
+		trap 'error ${LINENO}' ERR
+
 		# Given
 		local -r dbname=$1 dbdir=$2 tablename=$3 excluded_file="watchdog"
 		echo "borkbork" > $dbdir/$excluded_file
@@ -115,18 +330,14 @@ function test_comdb2_files_skips_file_on_excluded_list() {
 		num_files=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where filename like '%$excluded_file%'")
 
 		# Then
-		query_rc=$?
-		if (( query_rc == 0 && num_files == 0 ));
-		then
-			return 0
-		else
-			return 1
-		fi
+		(( num_files == 0 ));
 	)
 }
 
 function test_comdb2_files_skips_dir_on_excluded_list() {
 	(
+		trap 'error ${LINENO}' ERR
+
 		# Given
 		local -r dbname=$1 dbdir=$2 tablename=$3 file="foo"
 		for dir in tmp savs;
@@ -138,13 +349,7 @@ function test_comdb2_files_skips_dir_on_excluded_list() {
 		num_files=$(cdb2sql -tabs $dbname local "select count(*) from $tablename where filename like '%$file%'")
 
 		# Then
-		query_rc=$?
-		if (( query_rc == 0 && num_files == 0 ));
-		then
-			return 0
-		else
-			return 1
-		fi
+		(( num_files == 0 ));
 	)
 }
 
@@ -154,10 +359,7 @@ function runtest {
 
 	for testcase in $tests;
 	do
-		if ! $testcase $dbname $dbdir "comdb2_files";
-		then
-			failexit "$testcase"
-		fi
+		$testcase $dbname $dbdir "comdb2_files";
 
 		if [[ "$testcase" == "test_comdb2_files_large_file" ]];
 		then
@@ -165,16 +367,14 @@ function runtest {
 			continue
 		fi
 
-		if ! $testcase $dbname $dbdir "comdb2_filenames";
-		then
-			failexit "$testcase"
-		fi
-
+		$testcase $dbname $dbdir "comdb2_filenames";
 		echo "Passed $testcase"
 	done
 }
 
 function main() {
+	set -e
+
 	local dbname=$1
 	if [ -z "$CLUSTER" ];
 	then
