@@ -3583,7 +3583,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     char **file;
     struct stat sb;
     char logname[1024];
-    int low_headroom_count = 0;
     int lowfilenum;                 /* the lowest log file across the cluster */
     int local_lowfilenum = INT_MAX; /* the lowest log file of this node */
     int lwm_lowfilenum = -1;
@@ -3596,7 +3595,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     int lognum;
     DB_LSN snapylsn = {0};
     DB_LSN recovery_lsn;
-    int is_low_headroom = 0;
     int send_filenum = 0;
     int filenum;
     int delete_adjacent;
@@ -3616,8 +3614,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     /* dont delete log files during backups or hot copies */
     time_t now = time(NULL);
     if (((bdb_state->attr->logdeleteage == LOGDELETEAGE_NEVER) ||
-         (bdb_state->attr->logdeleteage > now)) &&
-        !has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0))
+         (bdb_state->attr->logdeleteage > now)))
         return;
 
     /* get the lowest filenum of anyone in our sanc list.  we cant delete
@@ -3737,15 +3734,6 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
     }
 
-low_headroom:
-    if (bdb_state->attr->log_delete_low_headroom_breaktime &&
-        low_headroom_count >
-            bdb_state->attr->log_delete_low_headroom_breaktime) {
-        logmsg(LOGMSG_WARN, "low_headroom, but tried %d times and giving up\n",
-               bdb_state->attr->log_delete_low_headroom_breaktime);
-        return;
-    }
-
     delete_adjacent = 1;
     /* ask berk for a list of files that it thinks we can delete */
     rc = bdb_state->dbenv->log_archive(bdb_state->dbenv, &list, 0);
@@ -3801,8 +3789,6 @@ low_headroom:
             if (snapylsn.file == lowfilenum)
                 ctrace("Snapylsn is %d:%d\n", snapylsn.file, snapylsn.offset);
         }
-
-        is_low_headroom = 0;
 
         for (file = list, lognum = 0; *file != NULL && lognum < numlogs;
              ++file, ++lognum) {
@@ -3952,18 +3938,11 @@ low_headroom:
                 __txn_commit_map_delete_logfile_txns(bdb_state->dbenv, filenum);
             }
 
-            if ((filenum <= lowfilenum && delete_adjacent) || is_low_headroom) {
-                /* delete this file if we got this far AND it's under the
+            if (filenum <= lowfilenum && delete_adjacent) {
+                /* delete this file if we got this far AND it's <= the
                  * replicated low number */
-                if (is_low_headroom) {
-                    logmsg(LOGMSG_WARN, "LOW HEADROOM : delete_log_files: deleting "
-                                    "logfile: %s\n",
-                            logname);
-                }
-
-                print(bdb_state, "%sdelete_log_files: deleting logfile: %s "
-                                 "filenum %d lowfilenum was %d\n",
-                      (is_low_headroom) ? "LOW HEADROOM : " : "", logname,
+                print(bdb_state, "delete_log_files: deleting logfile: %s "
+                                 "filenum %d lowfilenum was %d\n",logname,
                       filenum, lowfilenum);
                 print(bdb_state, "filenums: %s\n", filenums_str);
                 if (gbl_rowlocks)
@@ -4021,40 +4000,22 @@ low_headroom:
                  * loop, so don't actually delete so we don't create log holes.
                  */
                 if (bdb_state->attr->debug_log_deletion) {
-                   logmsg(LOGMSG_DEBUG, "not deleting %d, lowfilenum %d adj %d low %d\n",
-                           filenum, lowfilenum, delete_adjacent,
-                           is_low_headroom);
+                   logmsg(LOGMSG_DEBUG, "not deleting %d, lowfilenum %d adj %d\n",
+                           filenum, lowfilenum, delete_adjacent);
                 }
                 if (ctrace_info)
-                    ctrace("not deleting %d, lowfilenum %d adj %d low %d\n",
-                           filenum, lowfilenum, delete_adjacent,
-                           is_low_headroom);
+                    ctrace("not deleting %d, lowfilenum %d adj %d\n",
+                           filenum, lowfilenum, delete_adjacent);
                 delete_adjacent = 0;
             }
 
             if (gbl_new_snapisol_asof) {
                 Pthread_mutex_unlock(&bdb_gbl_recoverable_lsn_mutex);
             }
-
-            if (is_low_headroom && 
-                    !has_low_headroom(bdb_state->txndir,
-                        bdb_state->attr->lowdiskthreshold, 0)) {
-                is_low_headroom = 0;
-            } else {
-                low_headroom_count++;
-            }
         }
-
-        if (has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0)) {
-            low_headroom_count++;
-            is_low_headroom = 1;
-            free(list);
-            /* try again */
-            goto low_headroom;
-        }
-
         free(list);
     }
+
     if (list == NULL || send_filenum == 0) {
         DB_LOGC *logc;
         DBT logrec;
@@ -4099,13 +4060,6 @@ low_headroom:
         logmsg(LOGMSG_WARN, "sending filenum %d\n", send_filenum);
     if (ctrace_info)
         ctrace("sending filenum %d\n", send_filenum);
-}
-
-int bdb_get_low_headroom_count(bdb_state_type *bdb_state)
-{
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-    return bdb_state->low_headroom_count;
 }
 
 static pthread_mutex_t logdelete_lk = PTHREAD_MUTEX_INITIALIZER;
