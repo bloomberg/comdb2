@@ -5601,6 +5601,25 @@ static void hash_no_op_callback(hash_t *const restrict hash, plhash_event_t even
 void hostinfo_init(void);
 void clienthost_init(void);
 
+int tool_index(const char *tool)
+{
+    for (int i = 0; tool_callbacks[i].tool; i++) {
+        if (strcmp(tool_callbacks[i].tool, tool) == 0)
+            return i;
+    }
+    return -1;
+}
+
+void exec_tool(int argc, char *argv[])
+{
+    int tidx = tool_index(argv[0]);
+    if (tidx >= 0) {
+        optind = 1;
+        int rc = tool_callbacks[tidx].main_func(argc, argv);
+        exit(rc);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -5638,9 +5657,9 @@ int main(int argc, char **argv)
 
     init_peer_hash();
 
-    for (int i = 0; tool_callbacks[i].tool; i++) {
-       if (strcmp(tool_callbacks[i].tool, exe) == 0)
-          return tool_callbacks[i].main_func(argc, argv);
+    int tidx = tool_index(exe);
+    if (tidx >= 0) {
+        return tool_callbacks[tidx].main_func(argc, argv);
     }
 
     /* Initialize the tunables. */
