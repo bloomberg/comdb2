@@ -142,7 +142,7 @@ void *memp_trickle_thread(void *arg)
 
         if (db_is_exiting())
             break;
-        usleep(time);
+        Usleep(time);
     }
 
     bdb_thread_event(bdb_state, 0);
