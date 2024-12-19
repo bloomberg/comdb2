@@ -64,6 +64,7 @@ static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 static int pre_read_option(char *, int);
 static int read_lrl_option(struct dbenv *, char *, struct read_lrl_option_type *, int, int *);
 
+// clang-format off
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
     {"repopnewlrl", required_argument, NULL, 0},
@@ -80,7 +81,9 @@ static struct option long_options[] = {
     {"version", no_argument, NULL, 'v'},
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {"admin-mode", no_argument, &gbl_server_admin_mode, 1},
+    {"tool", required_argument, NULL, 't'},
     {NULL, 0, NULL, 0}};
+// clang-format on
 
 static const char *help_text =
     "Usage: comdb2 [OPTION]... NAME\n"
@@ -197,12 +200,15 @@ static void read_cmd_line_tunables(struct dbenv *dbenv)
     cmd_line_tunables = NULL;
 }
 
+void exec_tool(int argc, char *argv[]);
+
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
     int c;
     int options_idx;
 
+    // clang-format off
     while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) != -1) {
         if (c == 'h') print_usage_and_exit(0);
         if (c == 'v') print_version_and_exit();
@@ -238,8 +244,14 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
         case 5: /* pidfile */ write_pidfile(optarg); break;
         case 10: /* dir */ set_dbdir(optarg); break;
         case 11: /* tunable */ add_cmd_line_tunable(optarg); break;
+        case 15: /* tool */
+            exec_tool(argc - (optind - 1), &argv[optind - 1]);
+            logmsg(LOGMSG_WARN, "Invalid tool option, %s\n", optarg);
+            exit(1);
+            break;
         }
     }
+    // clang-format on
     return 0;
 }
 
