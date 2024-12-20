@@ -525,14 +525,15 @@ __txn_regop_read_context(argp)
 }
 
 /*
- * PUBLIC: int __txn_ckp_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
+ * PUBLIC: int __txn_ckp_log __P((DB_ENV *, DB_TXN *, rectype, DB_LSN *,
  * PUBLIC:	 u_int32_t, DB_LSN *, DB_LSN *, int32_t, u_int32_t));
  */
 int
-__txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
+__txn_ckp_log(dbenv, txnid, rectype, ret_lsnp, flags,
     ckp_lsn, last_ckp, timestamp, rep_gen, max_utxnid)
 	DB_ENV *dbenv;
 	DB_TXN *txnid;
+	u_int32_t rectype;
 	DB_LSN *ret_lsnp;
 	u_int32_t flags;
 	DB_LSN * ckp_lsn;
@@ -544,7 +545,7 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	DBT logrec;
 	DB_TXNLOGREC *lr;
 	DB_LSN *lsnp, null_lsn;
-	u_int32_t uinttmp, rectype, txn_num;
+	u_int32_t uinttmp, txn_num;
 	u_int64_t uint64tmp, txn_unum;
 	u_int npad;
 	u_int8_t *bp;
@@ -561,7 +562,6 @@ __txn_ckp_log(dbenv, txnid, ret_lsnp, flags,
 	fprintf(stderr,"__txn_ckp_log: begin\n");
 #endif
 
-	rectype = DB___txn_ckp;
 	if (utxnid_log) {
 		rectype += 2000;
 	}
@@ -837,7 +837,7 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	LOGCOPY_TOLSN(&argp->prev_lsn, bp);
 	bp += sizeof(DB_LSN);
 
-	if (argp->type == DB___txn_ckp + 2000) {
+	if (argp->type == DB___txn_ckp + 2000 || argp->type == DB___txn_ckp_recovery + 2000) {
 		LOGCOPY_64(&argp->txnid->utxnid, bp);
 		bp += sizeof(argp->txnid->utxnid);
 	} else {
@@ -858,7 +858,7 @@ __txn_ckp_read_int(dbenv, recbuf, do_pgswp, argpp)
 	argp->rep_gen = (u_int32_t)uinttmp;
 	bp += sizeof(uinttmp);
 
-	if (argp->type == DB___txn_ckp + 2000) {
+	if (argp->type == DB___txn_ckp + 2000 || argp->type == DB___txn_ckp_recovery + 2000) {
 		LOGCOPY_64(&argp->max_utxnid, bp);
 		bp += sizeof(argp->max_utxnid);
 	} else {
@@ -889,16 +889,20 @@ __txn_ckp_print(dbenv, dbtp, lsnp, notused2, notused3)
 
 	if ((ret = __txn_ckp_read_int(dbenv, dbtp->data, 0, &argp)) != 0)
 		return (ret);
+	int type = argp->type;
+	if (type > 2000)
+		type -= 2000;
 	(void)printf(
-	    "[%lu][%lu]__txn_ckp%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
-	    (u_long)lsnp->file,
-	    (u_long)lsnp->offset,
-	    (argp->type & DB_debug_FLAG) ? "_debug" : "",
-	    (u_long)argp->type,
-	    (u_long)argp->txnid->txnid,
-	    (u_long)argp->prev_lsn.file,
-	    (u_long)argp->prev_lsn.offset,
-	    argp->txnid->utxnid);
+		"[%lu][%lu]%s%s: rec: %lu txnid %lx prevlsn [%lu][%lu] utxnid \%"PRIx64"\n",
+		(u_long)lsnp->file,
+		(u_long)lsnp->offset,
+		(type == DB___txn_ckp_recovery) ? "__txn_ckp_recovery" : "__txn_ckp",
+		(argp->type & DB_debug_FLAG) ? "_debug" : "",
+		(u_long)argp->type,
+		(u_long)argp->txnid->txnid,
+		(u_long)argp->prev_lsn.file,
+		(u_long)argp->prev_lsn.offset,
+		argp->txnid->utxnid);
 	(void)printf("\tckp_lsn: [%lu][%lu]\n",
 		(u_long)argp->ckp_lsn.file, (u_long)argp->ckp_lsn.offset);
 	fflush(stdout);
@@ -4493,6 +4497,9 @@ __txn_init_print(dbenv, dtabp, dtabsizep)
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_abort_print, DB___txn_dist_abort)) != 0)
 		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_ckp_print, DB___txn_ckp_recovery)) != 0)
+		return (ret);
 
 	return (0);
 }
@@ -4539,6 +4546,9 @@ __txn_init_getpgnos(dbenv, dtabp, dtabsizep)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_commit_getpgnos, DB___txn_dist_commit)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_ckp_getpgnos, DB___txn_ckp_recovery)) != 0)
 		return (ret);
 
 	return (0);
@@ -4589,6 +4599,9 @@ __txn_init_getallpgnos(dbenv, dtabp, dtabsizep)
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_commit_getallpgnos, DB___txn_dist_commit)) != 0)
 		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_ckp_getallpgnos, DB___txn_ckp_recovery)) != 0)
+		return (ret);
 
 	return (0);
 }
@@ -4635,6 +4648,9 @@ __txn_init_recover(dbenv, dtabp, dtabsizep)
 		return (ret);
 	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
 		__txn_dist_abort_recover, DB___txn_dist_abort)) != 0)
+		return (ret);
+	if ((ret = __db_add_recovery(dbenv, dtabp, dtabsizep,
+		__txn_ckp_recover, DB___txn_ckp_recovery)) != 0)
 		return (ret);
 	return (0);
 }
