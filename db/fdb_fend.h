@@ -30,7 +30,6 @@
 
 #include "comdb2.h"
 #include "sql.h"
-//#include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "comdb2uuid.h"
 #include "net_int.h"
@@ -73,8 +72,9 @@
 #define FDB_VER_AUTH 6
 #define FDB_VER_CDB2API 7
 #define FDB_VER_WR_CDB2API 8
+#define FDB_VER_2PC_CDB2API 9
 
-#define FDB_VER FDB_VER_WR_CDB2API
+#define FDB_VER FDB_VER_2PC_CDB2API
 
 extern int gbl_fdb_default_ver;
 
@@ -449,6 +449,9 @@ extern int gbl_fdb_io_error_retries;
 int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr,
                             char *err, int errlen);
 
+int process_fdb_set_cdb2api_2pc(sqlclntstate *clnt, char *sqlstr,
+                                char *err, int errlen);
+
 /**
  * Check that fdb class matches a specific class
  *
@@ -469,6 +472,18 @@ cdb2_hndl_tp *fdb_push_connect(sqlclntstate *clnt, int *client_redir,
  *
  */
 void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran);
+
+/**
+ * Initialize a 2pc coordinator
+ *
+ */
+void fdb_init_disttxn(sqlclntstate *clnt);
+
+/**
+ * SET the options for a distributed 2pc transaction
+ *
+ */
+int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
 
 #endif
 
