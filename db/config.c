@@ -444,6 +444,8 @@ static char *legacy_options[] = {
     "wal_osync 1",
     "usenames",
     "setattr max_sql_idle_time 864000",
+    "retrieve_gen_from_ckp 0",
+    "recovery_ckp 0",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
