@@ -5,7 +5,24 @@ disabled.  We believe that there are cases under the original algorithm where
 full-recovery can push the end of the transaction-log beyond that of the
 cluster, which may again incorrectly bias it towards winning an election.
 
-There are 3 different versions of this test:
+Original design of elect-highest-committed-gen did not consider the effects (or
+include any tests) for full-recovery.  The phy-rep/lcl-rep combination databases
+demonstrated that a fully-recovered db can coerce the cluster into unwinding
+committed data.  This was because full-recovery called 'open_dbs'
+transactionally, which produced a regop_gen record which can be higher than the
+cluster's gen, which allowed it to incorrectly win an election.  A similar
+problem exists for checkpoint records: the issue in that case was that
+fullrecovery can produce a checkpoint record which could also produced by the
+cluster master- meaning that replicants can match against records which were not
+produced by the cluster master for that generation. 
+
+In order to work correctly with elect-highest-committed-gen, full-recovery must
+not emit any matchable records, and it must not increment the generation.  The
+database instead will issue 'txn_regop' records, and 'tkn_ckp_recover' records
+rather than 'txn_regop_gen' / 'txn_ckp'.  Neither txn_regop nor txn_ckp_recover
+records are used for voting or matching.
+
+Versions of this test:
 
 The default (no-testopts) version has elect-highest-committed-gen enabled, and
 demonstrated the original bug.  It shows how full-recovery writes a regop-gen
@@ -26,4 +43,9 @@ elect-highest-committed-gen will not allow the fully-recovered node to win the
 election despite the fact that it's LSN is larger.  Rather, the election allows
 a node which has the highest written generation to win the election.  So data
 which has replicated to a majority is not lost.  This is the correct behavior.
+
+The 'ckpbug' version of this test shows that even if fullrecovery emits non-
+matchable regop records, the same issue can happen if we allow checkpoint
+records to be considered for voting (committed-gen), and the checkpoint is
+written at a higher generation than the cluster's generation.
 

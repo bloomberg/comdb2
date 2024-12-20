@@ -9,6 +9,161 @@ export debug=1
 . ${TESTSROOTDIR}/tools/ddl.sh
 . ${TESTSROOTDIR}/tools/runit_common.sh
 
+# Create-time will be generation 2
+# txn_regop_gen (with generation) records               : rectype 2016
+# a checkpoint (create-time)                            : rectype 2011
+#
+# Copy-time will be generation 2 / different rectypes
+# some number of txn_regop (no generation) records      : rectype 2010
+# a recovery-checkpoint                                 : rectype 2020
+#
+# Run-time will be generation 3
+# some number of txn_regop_gen records                  : rectype 2016
+# a ckp-record                                          : rectype 2011
+#
+function verify_create_recovery_records
+{
+    export done_create=0
+    export done_copy=0
+
+    typeset create_commit=0
+    typeset create_chkpnt=0
+    typeset create_generation=-1
+
+    typeset copy_commit=0
+    typeset copy_chkpnt=0
+    typeset copy_generation=-1
+
+    typeset run_commit=0
+    typeset run_chkpnt=0
+    typeset run_generation=-1
+
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select lsn, rectype, generation from comdb2_transaction_logs where rectype = 2016 or rectype = 2011 or rectype = 2010 or rectype = 2020" | while read lsn rectype generation ; do
+
+        # Create phase - expect 2016 and 2011
+        if [[ "$done_create" == 0 ]]; then
+
+            if [[ "$rectype" != "2016" && "$rectype" != "2011" ]]; then
+
+                if [[ "$create_commit" == 0 || "$create_chkpnt" == 0 ]]; then
+
+                    echo "Found invalid create-phase rectype $rectype at lsn $lsn"
+                    failexit "Invalid rectype in create"
+
+                else
+
+                    echo "Finished create-phase generation $create_generation"
+                    echo "Counted $create_commit commits and $create_chkpnt checkpoints"
+                    export done_create=1
+
+                    if [[ "$rectype" == "2010" ]]; then
+                        let copy_commit=copy_commit+1
+                    fi
+
+                    if [[ "$rectype" == "2020" ]]; then
+                        let copy_chkpnt=copy_chkpnt+1
+                    fi
+                fi
+
+            else
+
+                if [[ "$rectype" == "2016" ]]; then
+                    let create_commit=create_commit+1
+                fi
+
+                if [[ "$rectype" == "2011" ]]; then
+                    let create_chkpnt=create_chkpnt+1
+                fi
+
+                if [[ "$generation" != "NULL" ]]; then
+
+                    if [[ "$create_generation" == -1 ]]; then
+                        create_generation=$generation
+                    fi
+
+                    if [[ "$create_generation" != "$generation" ]]; then
+                        echo "Generation mismatch $create_generation != $generation"
+                        failexit "Generation mismatch"
+                    fi
+                fi
+            fi
+
+        # Copy phase - expect 2010 and 2020
+        elif [[ "$done_copy" == 0 ]]; then
+
+            if [[ "$rectype" != "2010" && "$rectype" != "2020" ]]; then
+                if [[ "$copy_commit" == 0 || "$copy_chkpnt" == 0 ]]; then
+                    echo "Found invalid copy-phase rectype $rectype at lsn $lsn"
+                    failexit "Invalid rectype in copy"
+                else
+                    echo "Finished copy generation $copy_generation"
+                    echo "Counted $copy_commit commits and $copy_chkpnt checkpoints"
+
+                    export done_copy=1
+                    if [[ "$rectype" == "2016" ]]; then
+                        let run_commit=run_commit+1
+                    fi
+
+                    if [[ "$rectype" == "2011" ]]; then
+                        let run_chkpnt=run_chkpnt+1
+                    fi
+                fi
+
+            else
+
+                if [[ "$rectype" == "2010" ]]; then
+                    let copy_commit=copy_commit+1
+                fi
+                if [[ "$rectype" == "2020" ]]; then
+                    let copy_chkpnt=copy_chkpnt+1
+                fi
+
+                if [[ "$generation" != "NULL" ]]; then
+
+                    if [[ "$copy_generation" == -1 ]]; then
+                        copy_generation=$generation
+                    fi
+
+                    if [[ "$copy_generation" != "$generation" ]]; then
+                        echo "Generation mismatch $copy_generation != $generation"
+                        failexit "Generation mismatch"
+                    fi
+
+                    if [[ "$copy_generation" != "$create_generation" ]]; then
+                        echo "Generation mismatch $copy_generation != $create_generation"
+                        failexit "Generation mismatch"
+                    fi
+                fi
+            fi
+        else
+        # Run phase - expect 2016 and 2011 again
+            if [[ "$rectype" == "2010" || "$rectype" == "2020" ]]; then
+                echo "Invalid rectype $rectype for run phase"
+                failexit "Invalid rectype in run phase"
+            fi
+            if [[ "$rectype" == "2016" ]]; then
+                let run_commit=run_commit+1
+            fi
+            if [[ "$rectype" == "2011" ]]; then
+                let run_chkpnt=run_chkpnt+1
+            fi
+            if [[ "$generation" != "NULL" ]]; then
+                if [[ "$run_generation" == -1 ]]; then
+                    run_generation=$generation
+                fi
+
+                if [[ "$run_generation" -gt "$generation" ]]; then
+                    echo "Generation grew backwards run-gen=$run_generation new-gen=$generation"
+                    failexit "Backwards generation"
+                fi
+                run_generation=$generation
+            fi
+        fi
+    done
+
+    echo "Record-types and generations are correct"
+}
+
 function create_lots_of_btrees
 {
     j=0
@@ -29,15 +184,34 @@ function full_recover_node
 
     export LOGDIR=$TESTDIR/logs
     export REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    export CLUSTER_GENERATION=""
+    export RECOVERY_GENERATION=""
 
     # Run full-recovery
     if [ $node == `hostname` ] ; then
     	PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --fullrecovery"
         $COMDB2_EXE ${DBNAME} ${PARAMS}
+        RECOVERY_GENERATION=$($COMDB2_EXE --tool cdb2_printlog -h $DBDIR/logs -l 10-100| egrep "generation|rep_gen" | tail -1 | awk '{print $2}')
     else
         PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --fullrecovery"
         CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS}"
         ssh -n -o StrictHostKeyChecking=no -tt $node "${CMD}" < /dev/null
+        ssh -n -o StrictHostKeyChecking=no -tt $node "$COMDB2_EXE --tool cdb2_printlog -h $DBDIR/logs -l 10-100" < /dev/null 2>/dev/null > printlog.txt
+        export RECOVERY_GENERATION=`egrep "generation|rep_gen" printlog.txt | tail -1 | awk '{print $2}' | tr -d '\r'`
+    fi
+
+    # Retrieve cluster-generation
+    CLUSTER_GENERATION=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(generation) from comdb2_transaction_logs")
+
+    # For all 'failure' cases, the recovered node generation will be higher than the clusters
+    if [[ "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
+        if [[ "$RECOVERY_GENERATION" -le "$CLUSTER_GENERATION" ]]; then
+            failexit "Recovered generation is $RECOVERY_GENERATION, not higher than $CLUSTER_GENERATION"
+        fi
+    else
+        if [[ "$RECOVERY_GENERATION" -gt "$CLUSTER_GENERATION" ]]; then
+            failexit "Recovered generation is $RECOVERY_GENERATION, not less than or equal to $CLUSTER_GENERATION"
+        fi
     fi
 
     # While it is down, insert another record .. 
@@ -45,6 +219,7 @@ function full_recover_node
     # records here and they would disappear .. inserting 1 record allows the same test to continue 
     # to fail when elect-highest-committed-gen is disabled
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 (a) values(1)"
+    CLUSTER_GENERATION=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select max(generation) from comdb2_transaction_logs")
 
     # Verify that the count has replicated (it should but make really, really sure)
     for n in $CLUSTER ; do
@@ -70,13 +245,13 @@ function full_recover_node
         ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db </dev/null & 
         echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         tail -f $LOGDIR/${DBNAME}.${node}.db | egrep -m 1 "downgrade_cluster_at_open"
-        sleep 1
+        sleep 0.8
     fi
 
     # The original bug in elect-highest-committed-gen doesn't require a downgrade here
     # The old version of election requires a downgrade .. 
     # Downgrade on 'disable' or 'enableddowngrade' (which has elect-highest-committed-gen enabled)
-    if [[ "$DBNAME" == *"enableddowngrade"* || "$DBNAME" == *"disable"* ]]; then
+    if [[ "$DBNAME" == *"enableddowngrade"* || "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
         echo "Downgrading $master"
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "exec procedure sys.cmd.send('downgrade')" >/dev/null 2>&1 &
     fi
@@ -95,9 +270,6 @@ function full_recover_node
             sleep 1
         fi
     done
-
-
-
 }
 
 function run_test
@@ -117,12 +289,12 @@ function run_test
     master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select host from comdb2_cluster where is_master='Y' limit 1")
     node=$fullrecovery
 
-    # Get master again .. if this was the 'disabled' test, the master should be the full-recovered node
     full_recover_node $fullrecovery
+    # Get master again .. if this was the 'disabled' test, the master should be the full-recovered node
     master=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select host from comdb2_cluster where is_master='Y' limit 1")
 
     # Just repeat until the fully recovered node becomes the master
-    if [[ "$DBNAME" == *"disable"* ]]; then
+    if [[ "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
         while [[ "$master" != "$fullrecovery" ]]; do
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate table t1"
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1 select * from generate_series(1, 1000)"
@@ -147,13 +319,13 @@ function run_test
         # 'FAILURE' is 'SUCCESS' for the disable testcase .. it is attempting to show the failure that
         # occurs if elect-highest-committed-gen is disabled
         echo "We got a count of $count, not $target_records"
-        if [[ "$DBNAME" != *"disable"* ]]; then
+        if [[ "$DBNAME" != *"disable"* && "$DBNAME" != *"ckpbug"* ]]; then
             kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
             failexit "Count is not $target_records"
         else
             echo "Successfully reproduced bug"
         fi
-    elif [[ "$DBNAME" == *"disable"* ]]; then
+    elif [[ "$DBNAME" == *"disable"* || "$DBNAME" == *"ckpbug"* ]]; then
         echo "FAILURE: disable test failed to reproduce bug"
         kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
         failexit "Count is correct even though committed-gen is disabled"
@@ -170,6 +342,9 @@ function run_test
 
 # This tests both with committed-gen enabled and disabled 
 # When committed_gen is disabled, run-test should fail.
+if [[ "$DBNAME" != *"rollout"* ]]; then
+    verify_create_recovery_records
+fi
 
 create_lots_of_btrees
 run_test
