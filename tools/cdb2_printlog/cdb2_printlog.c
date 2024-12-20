@@ -114,7 +114,12 @@ int tool_cdb2_printlog_main(argc, argv)
 	while ((ch = getopt(argc, argv, "h:s:gNP:rVl:")) != EOF)
 		switch (ch) {
 		case 'h':
-			chdir(optarg);
+			ret = chdir(optarg);
+			if (ret) {
+				fprintf(stderr, "%s chdir(%s) errno:%d (%s)\n", __func__,
+						optarg, errno, strerror(errno));
+				exit(1);
+			}
 			home = optarg;
 			break;
 		case 'N':
