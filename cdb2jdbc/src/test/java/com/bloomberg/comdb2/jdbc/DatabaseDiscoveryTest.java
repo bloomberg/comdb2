@@ -40,8 +40,13 @@ public class DatabaseDiscoveryTest {
 
             String db = System.getProperty("cdb2jdbc.test.database");
             String cluster = System.getProperty("cdb2jdbc.test.cluster");
-            Connection conn = DriverManager.getConnection(
-                    String.format("jdbc:comdb2://%s/%s?portmuxport=8888", cluster, db));
+            /* This line would succeed, because the driver would use the pmuxport for single-port */
+            Connection conn1 = DriverManager.getConnection(
+                    String.format("jdbc:comdb2://%s/%s?portmuxport=8888&allow_pmux_route=1", cluster, db));
+            conn1.close();
+            /* This line would fail, because the driver would attempt to query port 8888 for db port */
+            Connection conn2 = DriverManager.getConnection(
+                    String.format("jdbc:comdb2://%s/%s?portmuxport=8888&allow_pmux_route=0", cluster, db));
             Assert.assertTrue("Should not reach here", false);
         } catch (SQLException sqle) {
             Assert.assertTrue("Should see correct error message.",
@@ -69,20 +74,27 @@ public class DatabaseDiscoveryTest {
 
     @Test
     public void testComdb2dbNodeDown() throws IOException, SQLException {
+        LogManager.getLogManager().reset();
+        String fname = "/tmp/comdb2db.jdbc.mvn.test.cfg." + System.currentTimeMillis();
+        String cluster = System.getProperty("cdb2jdbc.test.cluster");
+        BufferedWriter writer = new BufferedWriter(new FileWriter(fname));
+        writer.write("does_not_exist 0 ");
+        writer.write(cluster);
+        writer.close();
+        System.setProperty("comdb2db.cfg", fname);
         try {
-            LogManager.getLogManager().reset();
-            String fname = "/tmp/comdb2db.jdbc.mvn.test.cfg." + System.currentTimeMillis();
-            String cluster = System.getProperty("cdb2jdbc.test.cluster");
-            BufferedWriter writer = new BufferedWriter(new FileWriter(fname));
-            writer.write("does_not_exist 0 ");
-            writer.write(cluster);
-            writer.close();
-            System.setProperty("comdb2db.cfg", fname);
-            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/db?comdb2dbname=does_not_exist");
+            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/db?comdb2dbname=does_not_exist&allow_pmux_route=0");
             Assert.assertTrue("Should not reach here", false);
         } catch (SQLException sqle) {
             Assert.assertTrue("Should see correct error message.",
                     sqle.getMessage().contains("Received invalid port from pmux"));
+        }
+        try {
+            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/db?comdb2dbname=does_not_exist&allow_pmux_route=1");
+            Assert.assertTrue("Should not reach here", false);
+        } catch (SQLException sqle) {
+            Assert.assertTrue("Should see correct error message.",
+                    sqle.getMessage().contains("A network I/O error occurred"));
         }
     }
 
@@ -128,23 +140,31 @@ public class DatabaseDiscoveryTest {
 
     @Test
     public void testDbDown() throws IOException, SQLException {
+        LogManager.getLogManager().reset();
+
+        String cluster = System.getProperty("cdb2jdbc.test.cluster");
+        String fname = "/tmp/comdb2db.jdbc.mvn.test.cfg." + System.currentTimeMillis();
+        BufferedWriter writer = new BufferedWriter(new FileWriter(fname));
+        writer.write("does_not_exist");
+        writer.write(" 0 ");
+        writer.write(cluster);
+        writer.close();
+        System.setProperty("comdb2db.cfg", fname);
+
         try {
-            LogManager.getLogManager().reset();
-
-            String cluster = System.getProperty("cdb2jdbc.test.cluster");
-            String fname = "/tmp/comdb2db.jdbc.mvn.test.cfg." + System.currentTimeMillis();
-            BufferedWriter writer = new BufferedWriter(new FileWriter(fname));
-            writer.write("does_not_exist");
-            writer.write(" 0 ");
-            writer.write(cluster);
-            writer.close();
-            System.setProperty("comdb2db.cfg", fname);
-
-            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/does_not_exist?max_retries=1");
+            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/does_not_exist?max_retries=1&allow_pmux_route=0");
             Assert.assertTrue("Should not reach here", false);
         } catch (SQLException sqle) {
             Assert.assertTrue("Should see correct error message.",
                     sqle.getMessage().contains("Received invalid port from pmux."));
+        }
+
+        try {
+            Connection conn = DriverManager.getConnection("jdbc:comdb2://dev/does_not_exist?max_retries=1&allow_pmux_route=1");
+            Assert.assertTrue("Should not reach here", false);
+        } catch (SQLException sqle) {
+            Assert.assertTrue("Should see correct error message.",
+                    sqle.getMessage().contains("A network I/O error occurred"));
         }
     }
 

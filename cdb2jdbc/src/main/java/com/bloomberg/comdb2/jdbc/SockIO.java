@@ -154,7 +154,10 @@ public class SockIO implements IO {
                 /* Errors are handled by the catch block below. */
                 out.write(rtepacket.getBytes());
                 out.flush();
-                readLine(32);
+                /* empty string: success */
+                String ret = readLine(32);
+                if (!ret.equals("0"))
+                    throw new IOException("could not route connection");
             }
         } catch (IOException e) {
             opened = false;
