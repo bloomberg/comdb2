@@ -383,6 +383,7 @@ void clear_deferred_options(void)
     }
 }
 
+// clang-format off
 static char *legacy_options[] = {
     "allow_negative_column_size",
     "berkattr elect_highest_committed_gen 0",
@@ -442,8 +443,12 @@ static char *legacy_options[] = {
     "usenames",
     "setattr max_sql_idle_time 864000",
     "utxnid_log off",
-    "commit_lsn_map off"
+    "commit_lsn_map off",
+    "retrieve_gen_from_ckp 0",
+    "recovery_ckp 0"
 };
+// clang-format on
+
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)
 {
