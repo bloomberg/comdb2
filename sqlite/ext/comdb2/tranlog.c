@@ -439,14 +439,21 @@ static u_int64_t get_timestamp_from_regop_rowlocks_record(char *data)
 
 static u_int32_t get_generation_from_regop_rowlocks_record(char *data)
 {
-    u_int32_t generation;
+    u_int32_t generation = 0;
+    off_t loff;
+    u_int32_t lflags;
     u_int32_t rectype;
     LOGCOPY_32(&rectype, data); 
     if ((rectype < 10000 && rectype > 2000) || rectype > 12000) {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+        loff = 4 + 4 + 8 + 8 + 4 + 8 + 8 + 8 + 8 + 8;
     } else {
-        LOGCOPY_32( &generation, &data[4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8 + 4] );
+        loff = 4 + 4 + 8 + 4 + 8 + 8 + 8 + 8 + 8;
     }
+    LOGCOPY_32( &lflags, &data[loff] );
+    if (lflags & DB_TXN_LOGICAL_GEN) {
+        LOGCOPY_32(&generation, &data[loff + 4]);
+    }
+
     return generation;
 }
 
