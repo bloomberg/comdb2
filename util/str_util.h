@@ -20,5 +20,7 @@
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
+int str_has_ending(const char * const str, const char * const ending);
+
 #endif
 
