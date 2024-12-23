@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+export debug=1
+
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1(a int)"
+
+g=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select generation from comdb2_transaction_logs where rectype=2015")
+
+if [[ "$DBNAME" == *"usegen"* ]]; then
+    if [[ "$g" == "NULL" ]]; then
+        echo "Committed-gen database should have non-NULL for generation"
+        exit 1
+    fi
+else
+    if [[ "$g" != "NULL" ]]; then
+        echo "No-gen database should have NULL for generation in regop_rowlocks record"
+        exit 1
+    fi
+fi
+
+echo "Success"
