@@ -675,6 +675,7 @@ defer_subclause_opt(A) ::= defer_subclause(A).
 // The following is a non-standard extension that allows us to declare the
 // default behavior when there is a constraint conflict.
 //
+
 %type onconf {int}
 %type orconf {int}
 %type resolvetype {int}
@@ -1131,7 +1132,7 @@ limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
 /////////////////////////// The DELETE statement /////////////////////////////
 //
 %ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
+cmd ::= maybe_with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W) 
         orderby_opt(O) limit_opt(L). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
 #ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -1142,7 +1143,7 @@ cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W)
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
+cmd ::= maybe_with DELETE FROM xfullname(X) indexed_opt(I) where_opt(W). {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3DeleteFrom(pParse,X,W,0,0);
 }
@@ -1158,10 +1159,10 @@ where_opt(A) ::= WHERE expr(X).       {A = X;}
 //
 %ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= maybe_with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= maybe_with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
@@ -1177,10 +1178,10 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 %ifndef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= maybe_with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif !SQLITE_BUILDING_FOR_COMDB2
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+cmd ::= maybe_with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
@@ -1214,7 +1215,18 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 }
 
 ////////////////////////// The INSERT command /////////////////////////////////
-//
+
+cmd ::= insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
+        upsert(U). {
+  sqlite3Insert(pParse, X, S, F, R, U);
+}
+
+cmd ::= insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
+{
+  sqlite3Insert(pParse, X, 0, F, R, 0);
+}
+
+%ifndef SQLITE_OMIT_CTE
 cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) select(S)
         upsert(U). {
   sqlite3Insert(pParse, X, S, F, R, U);
@@ -1223,6 +1235,7 @@ cmd ::= with insert_cmd(R) INTO xfullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3Insert(pParse, X, 0, F, R, 0);
 }
+%endif
 
 %type upsert {Upsert*}
 
@@ -1242,7 +1255,7 @@ upsert(A) ::= ON CONFLICT DO NOTHING.
 
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
-insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
+insert_cmd(A) ::= REPLACE. {A=OE_Replace;}
 
 %type idlist_opt {IdList*}
 %destructor idlist_opt {sqlite3IdListDelete(pParse->db, $$);}
@@ -2156,10 +2169,11 @@ anylist ::= anylist ANY.
 %type wqlist {With*}
 %destructor wqlist {sqlite3WithDelete(pParse->db, $$);}
 
-with ::= .
+maybe_with ::= .
 %ifndef SQLITE_OMIT_CTE
 with ::= WITH wqlist(W).              { sqlite3WithPush(pParse, W, 1); }
 with ::= WITH RECURSIVE wqlist(W).    { sqlite3WithPush(pParse, W, 1); }
+maybe_with ::= with.
 
 wqlist(A) ::= nm(X) eidlist_opt(Y) AS LP select(Z) RP. {
   A = sqlite3WithAdd(pParse, 0, &X, Y, Z); /*A-overwrites-X*/
@@ -2365,6 +2379,14 @@ scaction(A) ::= ABORT. { A = SC_ACTION_ABORT; }
 
 scctrl ::= SCHEMACHANGE scaction(A) nm(T) dbnm(X). {
     comdb2SchemachangeControl(pParse,A,&T,&X);
+}
+
+////////////////////// IMPORT //////////////////////////////////////////////////
+
+cmd ::= REPLACE TABLE nm(A) WITH nm(B) DOT nm(C).
+{
+    comdb2WriteTransaction(pParse);
+    comdb2Replace(pParse, &A, &B, &C);
 }
 
 /////////////////////////////////// GRANT /////////////////////////////////////

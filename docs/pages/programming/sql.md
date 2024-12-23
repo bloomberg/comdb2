@@ -532,6 +532,25 @@ attempt to INSERT, UPDATE or DELETE on a view would fail. One may think of views
 as READ-ONLY tables. A list of views can be obtained by querying ```comdb2_views```
 system table.
 
+### REPLACE TABLE
+
+![REPLACE TABLE](images/replace-table.gif)
+
+The ```REPLACE TABLE``` statement can be used to replace a table with another table.
+
+Below is a list of requirements that must be satisfied to use this statement:
+- The source and destination databases have the same datastripe and blobstripe settings.
+- There is no network firewall preventing the destination database from communicating 
+with the source database.
+- The source table does not have any foreign key constraints.
+- The destination table does not have any reverse foreign key constraints.
+- `morestripe blobstripe` has not been run on the destination database.
+- The source and destination tables do not have an inplace schema change, inplace update, 
+or on disk header option.
+
+If any of these requirements are not satisfied, then the replacement will fail with 
+an error message that describes which requirement was violated.
+
 ## Access control
 
 ### GRANT and REVOKE

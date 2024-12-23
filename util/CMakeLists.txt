@@ -47,6 +47,7 @@ set(src
   str0.c
   strbuf.c
   string_ref.c
+  str_util.c
   switches.c
   tcputil.c
   thdpool.c
@@ -56,6 +57,7 @@ set(src
   time_epoch.c
   tohex.c
   utilmisc.c
+  version_util.c
   walkback.c
 )
 if(COMDB2_LEGACY_DEFAULTS)

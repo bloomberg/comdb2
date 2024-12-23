@@ -28,6 +28,7 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "comdb2_atomic.h"
 #include "alias.h"
+#include "importdata.pb-c.h"
 
 #define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
 
@@ -1627,6 +1628,66 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
     logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
            nm->z, nm2->n +lnm2->n, nm2->z);
+}
+
+/********************* IMPORT ****************************************************/
+
+void comdb2Replace(Parse* pParse, Token *nm, Token *nm2, Token *nm3)
+{
+    char * srcdb = NULL;
+    char * src_tablename = NULL;
+    char * const dst_tablename = (char *)malloc(MAXTABLELEN);
+
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
+
+    BpfuncBulkImport *aimport = (BpfuncBulkImport*) malloc(sizeof(BpfuncBulkImport));
+    if (!aimport) goto err;
+    bpfunc_bulk_import__init(aimport);
+
+    if (chkAndCopyTableTokens(pParse, dst_tablename, nm, 0,
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)) {
+        goto err;
+    }
+
+    if (create_string_from_token(v, pParse, &srcdb, nm2)) {
+        goto err;
+    }
+
+    if (create_string_from_token(v, pParse, &src_tablename, nm3)) {
+        goto err;
+    }
+
+    aimport->srcdb = srcdb;
+    aimport->src_tablename = src_tablename;
+    aimport->dst_tablename = dst_tablename;
+
+    arg->bimp = aimport;
+    arg->type = BPFUNC_BULK_IMPORT;
+
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
+
+    return;
+err:
+    if (arg) {
+        free_bpfunc_arg(arg);
+    }
+    if (srcdb) {
+        free(srcdb);
+    }
+    if (src_tablename) {
+        free(src_tablename);
+    }
+    if (dst_tablename) {
+        free(dst_tablename);
+    }
+
+    logmsg(LOGMSG_ERROR, "%s: Bulk import failed\n", __func__);
+    return;
 }
 
 /********************* ANALYZE ***************************************************/
