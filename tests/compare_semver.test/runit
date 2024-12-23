@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+set -e
+
+echo "run executable that tests the semver comparison utility"
+${TESTSBUILDDIR}/test_compare_semver

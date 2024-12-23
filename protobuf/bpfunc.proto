@@ -6,6 +6,12 @@ enum alias_op {
     DROP   = 1;
 }
 
+message bpfunc_bulk_import {
+    required string srcdb = 1;
+    required string src_tablename = 2;
+    required string dst_tablename = 3;
+}
+
 message bpfunc_create_timepart {
   required string tablename = 1;
   required string partition_name = 2;
@@ -91,5 +97,6 @@ message bpfunc_arg {
     optional  bpfunc_rowlocks_enable rl_enable = 11;
     optional  bpfunc_genid48_enable gn_enable = 12;
     optional  bpfunc_delete_from_sc_history tblseed = 13;
+    optional  bpfunc_bulk_import bimp = 14;
 }
 

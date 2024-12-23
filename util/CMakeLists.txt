@@ -56,6 +56,7 @@ set(src
   time_epoch.c
   tohex.c
   utilmisc.c
+  version_util.c
   walkback.c
 )
 if(COMDB2_LEGACY_DEFAULTS)
