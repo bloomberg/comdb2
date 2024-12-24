@@ -5991,13 +5991,10 @@ static int _process_partitioned_table_merge(struct ireq *iq)
          */
         sc->nothrevent = 1; /* we need do_alter_table to run first */
         sc->finalize = 0;
-        enum comdb2_partition_type tt = sc->partition.type;
-        sc->partition.type = PARTITION_NONE;
 
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
 
         rc = start_schema_change_tran(iq, NULL);
-        sc->partition.type = tt;
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
         if (rc != SC_COMMIT_PENDING) {

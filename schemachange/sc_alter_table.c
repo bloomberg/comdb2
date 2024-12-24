@@ -404,7 +404,17 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     struct scinfo scinfo;
     struct errstat err = {0};
 
-    if (s->partition.type == PARTITION_MERGE)
+    db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+
+    /* note for a partition merge, if we reuse the first shard (i.e. it is aliased),
+     * we need to alter it here instead of running do_merge_table
+     */
+    if (s->partition.type == PARTITION_MERGE && !db->sqlaliasname)
         return do_merge_table(iq, s, tran);
 
 #ifdef DEBUG_SC
@@ -413,12 +423,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     gbl_use_plan = 1;
     gbl_sc_last_writer_time = 0;
-
-    db = get_dbtable_by_name(s->tablename);
-    if (db == NULL) {
-        sc_errf(s, "Table not found:%s\n", s->tablename);
-        return SC_TABLE_DOESNOT_EXIST;
-    }
 
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
