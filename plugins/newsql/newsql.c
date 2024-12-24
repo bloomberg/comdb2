@@ -2170,9 +2170,6 @@ newsql_loop_result newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_quer
         if (sql_query->client_info->stack) {
             clnt->stack = strdup(sql_query->client_info->stack);
         }
-        if (sql_query->identity) {
-            clnt->externalAuthUser = sql_query->identity->principal;
-        }
     }
     if (clnt->rawnodestats == NULL) {
         clnt->rawnodestats =
@@ -2263,9 +2260,12 @@ static void *newsql_get_authdata(struct sqlclntstate *clnt)
     if (appdata) {
         CDB2SQLQUERY *sql_query = appdata->sqlquery;
         if (sql_query && sql_query->identity) {
+            clnt->externalAuthUser = sql_query->identity->principal;
             if (externalMakeNewsqlAuthData) {
                 return externalMakeNewsqlAuthData(clnt->authdata, sql_query->identity);
             }
+        } else {
+            clnt->externalAuthUser = NULL;
         }
     }
     if (clnt->authdata) {
