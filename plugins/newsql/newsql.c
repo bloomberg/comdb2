@@ -246,20 +246,37 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     return rcode;
 }
 
+/* The legacy API query effects start with all -1 */
+static struct query_effects compat_initial_effects = {
+    .num_affected = -1,
+    .num_selected = -1,
+    .num_updated = -1,
+    .num_deleted = -1,
+    .num_inserted = -1
+};
+
 static struct query_effects *newsql_get_query_effects(struct sqlclntstate *clnt)
 {
-    if (clnt->dbtran.nchunks == 0)
-        return &clnt->effects;
-    if (clnt->dbtran.crtchunksize > 0)
-        return &clnt->log_effects;
-    clnt->chunk_effects.num_selected = clnt->log_effects.num_selected;
-    return &clnt->chunk_effects;
+    struct query_effects *ret;
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (clnt->dbtran.nchunks == 0) {
+        if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE && appdata->protocol_version == NEWSQL_PROTOCOL_COMPAT)
+            return &compat_initial_effects;
+        ret = &clnt->effects;
+    } else if (clnt->dbtran.crtchunksize > 0) {
+        ret = &clnt->log_effects;
+    } else {
+        clnt->chunk_effects.num_selected = clnt->log_effects.num_selected;
+        ret = &clnt->chunk_effects;
+    }
+
+    ret->num_affected = ret->num_updated + ret->num_deleted + ret->num_inserted;
+    return ret;
 }
 
 #define _has_effects(clnt, sql_response)                                       \
     CDB2EFFECTS effects = CDB2__EFFECTS__INIT;                                 \
     struct query_effects *ep = newsql_get_query_effects(clnt);                 \
-    ep->num_affected = ep->num_updated + ep->num_deleted + ep->num_inserted;   \
     effects.num_affected = ep->num_affected;                                   \
     effects.num_selected = ep->num_selected;                                   \
     effects.num_updated = ep->num_updated;                                     \
@@ -2409,7 +2426,6 @@ void newsql_effects(CDB2SQLRESPONSE *r, CDB2EFFECTS *e, struct sqlclntstate *cln
     }
     set_sent_data_to_client(clnt, 1, __func__, __LINE__);
     struct query_effects *effects = newsql_get_query_effects(clnt);
-    effects->num_affected = effects->num_updated + effects->num_deleted + effects->num_inserted;
     e->num_affected = effects->num_affected;
     e->num_selected = effects->num_selected;
     e->num_updated = effects->num_updated;
