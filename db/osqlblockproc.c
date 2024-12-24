@@ -1367,8 +1367,9 @@ void *bplog_commit_timepart_resuming_sc(void *p)
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
-            sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
-                           __LINE__);
+            if (sc->set_running)
+                sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
+                               __LINE__);
             free_schema_change_type(sc);
             error = 1;
         }
