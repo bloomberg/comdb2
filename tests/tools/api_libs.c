@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <cdb2api.h>
 
