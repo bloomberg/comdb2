@@ -8,8 +8,8 @@ source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 export comdb2ar=${COMDB2AR_EXE}
 export FIGLET=$(which figlet)
-export META_DBNAME=metadb
-export PHYSREP=physrep
+export META_DBNAME=metadb${TESTID}
+export PHYSREP=physrep${TESTID}
 export PIDLIST=""
 export FIRSTNODE=""
 export FIGLET=$(which figlet)
@@ -52,12 +52,12 @@ function cleanup_internal()
 
     if [[ -n "$CLUSTER" ]]; then
         for node in $CLUSTER; do
-            pid=$(ssh $node "cat ${METADIR}/${META_DBNAME}.pid" < /dev/null)
-            ssh $node "kill -$sig $$pid" < /dev/null
+            pid=$(ssh -n -o StrictHostKeyChecking=no -tt $node "cat ${METADIR}/${META_DBNAME}.pid" < /dev/null)
+            ssh -n -o StrictHostKeyChecking=no -tt $node "kill -$sig $$pid" < /dev/null
         done
 
-        pid=$(ssh $FIRSTNODE "cat ${DBDIR}/${PHYSREP}/${PHYSREP}.pid" < /dev/null)
-        ssh $FIRSTNODE "kill -$sig $$pid" < /dev/null
+        pid=$(ssh -n -o StrictHostKeyChecking=no -tt $FIRSTNODE "cat ${DBDIR}/${PHYSREP}/${PHYSREP}.pid" < /dev/null)
+        ssh -n -o StrictHostKeyChecking=no -tt $FIRSTNODE "kill -$sig $$pid" < /dev/null
     else
         node=$(hostname)
         kill -$sig $(cat ${METADIR}/${META_DBNAME}.pid)
@@ -255,8 +255,8 @@ function fix_lrl_and_restart_source_nodes
 
     else
         for node in $CLUSTER; do
-            ssh ${node} "echo physrep_metadb ${META_DBNAME} $FIRSTNODE >> ${DBDIR}/${DBNAME}.lrl" < /dev/null
-            ssh ${node} "echo physrep_debug 1 >> ${DBDIR}/${DBNAME}.lrl" < /dev/null
+            ssh -n -o StrictHostKeyChecking=no -tt ${node} "echo physrep_metadb ${META_DBNAME} $FIRSTNODE >> ${DBDIR}/${DBNAME}.lrl" < /dev/null
+            ssh -n -o StrictHostKeyChecking=no -tt ${node} "echo physrep_debug 1 >> ${DBDIR}/${DBNAME}.lrl" < /dev/null
             echo "physrep_metadb ${META_DBNAME} $FIRSTNODE" >> ${DBDIR}/${DBNAME}.lrl
             echo "physrep_debug 1" >> ${DBDIR}/${DBNAME}.lrl
             kill_restart_node $node 10 &
@@ -309,7 +309,7 @@ END
         FIRSTNODE=""
         for node in $CLUSTER; do
             logfile=$TESTDIR/logs/${META_DBNAME}.${node}.log
-            ssh ${node} "mkdir -p $METADIR" < /dev/null
+            ssh -n -o StrictHostKeyChecking=no -tt ${node} "mkdir -p $METADIR" < /dev/null
 
             if [[ -z "$FIRSTNODE" ]]; then
                 FIRSTNODE=$node
@@ -331,10 +331,11 @@ physrep_update_registry_interval 1
 physrep_keepalive_v2 1
 END
                 scp $METADIR/${META_DBNAME}.lrl ${node}:$METADIR/${META_DBNAME}.lrl
-                ssh ${node} "$COMDB2_EXE ${META_DBNAME} --create --lrl ${METADIR}/${META_DBNAME}.lrl --pidfile ${METADIR}/${META_DBNAME}.pid >> $logfile 2>&1" < /dev/null
+                ssh -n -o StrictHostKeyChecking=no -tt ${node} "$COMDB2_EXE ${META_DBNAME} --create --lrl ${METADIR}/${META_DBNAME}.lrl --pidfile ${METADIR}/${META_DBNAME}.pid >> $logfile 2>&1" < /dev/null
             else
-                ssh $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $FIRSTNODE:${METADIR}/${META_DBNAME}.lrl $METADIR/" >> $logfile 2>&1 < /dev/null
+                ssh -n -o StrictHostKeyChecking=no -tt $node "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} $FIRSTNODE:${METADIR}/${META_DBNAME}.lrl $METADIR $METADIR" >> $logfile 2>&1 < /dev/null
                 if [[ ! $? -eq 0 ]]; then
+                    cat $logfile
                     cleanfailexit "copycomdb2 failed for $node"
                 fi
             fi
@@ -342,7 +343,7 @@ END
 
         for node in $CLUSTER; do
             logfile=$TESTDIR/logs/${META_DBNAME}.${node}.log
-            ssh ${node} "$COMDB2_EXE ${META_DBNAME} --lrl ${METADIR}/${META_DBNAME}.lrl --pidfile ${METADIR}/${META_DBNAME}.pid" >> $logfile 2>&1 < /dev/null &
+            ssh -n -o StrictHostKeyChecking=no -tt ${node} "$COMDB2_EXE ${META_DBNAME} --lrl ${METADIR}/${META_DBNAME}.lrl --pidfile ${METADIR}/${META_DBNAME}.pid" >> $logfile 2>&1 < /dev/null &
             PIDLIST="${PIDLIST} $!"
         done
 
@@ -379,12 +380,12 @@ function setup_standalone_physrep()
     else
         node=$FIRSTNODE
         logfile=$TESTDIR/logs/${PHYSREP}.$FIRSTNODE.log
-        ssh ${node} "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${PHYSREP} -y @${FIRSTNODE} ${FIRSTNODE}:${DBDIR}/${DBNAME}.lrl $PHYSDIR $PHYSDIR" >> $logfile 2>&1 < /dev/null
+        ssh -n -o StrictHostKeyChecking=no -tt ${node} "${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H ${PHYSREP} -y @${FIRSTNODE} ${FIRSTNODE}:${DBDIR}/${DBNAME}.lrl $PHYSDIR $PHYSDIR" >> $logfile 2>&1 < /dev/null
         if [[ $? -ne 0 ]]; then
             cleanfailexit "failed creating physrep for $node"
         fi
 
-        ssh ${node} "$COMDB2_EXE ${PHYSREP} --lrl $PHYSDIR/${PHYSREP}.lrl --pidfile $PHYSDIR/${PHYSREP}.pid" >> $logfile 2>&1 < /dev/null &
+        ssh -n -o StrictHostKeyChecking=no -tt ${node} "$COMDB2_EXE ${PHYSREP} --lrl $PHYSDIR/${PHYSREP}.lrl --pidfile $PHYSDIR/${PHYSREP}.pid" >> $logfile 2>&1 < /dev/null &
         PIDLIST="${PIDLIST} $!"
         out=""
         while [[ "$out" != "1" ]]; do
