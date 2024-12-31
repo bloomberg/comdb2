@@ -23,7 +23,6 @@
 #define INCLUDED_CDB2API_H
 
 #include <stdio.h>
-#include <stdlib.h>
 
 #if defined __cplusplus
 extern "C" {
