@@ -3,11 +3,13 @@
    Run 3 times and return the shortest runtime measured in microseconds.
 */
 
-#include <cdb2api.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <limits.h>
+
+#include <cdb2api.h>
 
 int main(int argc, char **argv)
 {
