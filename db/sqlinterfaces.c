@@ -2901,9 +2901,9 @@ static void _prepare_error(struct sqlthdstate *thd,
         return;
     }
 
-    if(rc == ERR_SQL_PREPARE && !rec->stmt)
+    if (rc == ERR_SQL_PREPARE && !rec->stmt) {
         errstr = "no statement";
-    if(rc == SQLITE_SCHEMA && rec->stmt && clnt->remsql_set.is_remsql) {
+    } else if (rc == SQLITE_SCHEMA && rec->stmt && clnt->remsql_set.is_remsql) {
         errstr = clnt->remsql_set.xerr.errstr;
     } else if (clnt->fdb_state.xerr.errval) {
         errstr = clnt->fdb_state.xerr.errstr;
