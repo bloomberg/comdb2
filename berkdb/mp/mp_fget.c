@@ -1052,7 +1052,7 @@ __memp_send_sparse_page_thread(_)
                     pgno, &dbt, gbl_pg_compact_thresh) == 0) {
 			send_pg_compact_req(bdb_state, fileid, dbt.size, dbt.data);
 			if (gbl_pg_compact_latency_ms > 0)
-				usleep(gbl_pg_compact_latency_ms * 1000LL);
+				Usleep(gbl_pg_compact_latency_ms * 1000LL);
 		}
 		__os_free(dbenv, dbt.data);
 	}
