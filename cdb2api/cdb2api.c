@@ -7097,6 +7097,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
     void *rc;
     int state;
     char *fp;
+    const char *dbtype = (hndl == NULL) ? NULL : hndl->type;
 
     /* Fast return if no arguments need to be passed to the callback. */
     if (e->argc == 0)
@@ -7150,6 +7151,9 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         case CDB2_FINGERPRINT:
             fp = va_arg(ap, char *);
             break;
+        case CDB2_DBTYPE:
+            dbtype = va_arg(ap, char *);
+            break;
         default:
             (void)va_arg(ap, void *);
             break;
@@ -7177,6 +7181,10 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             break;
         case CDB2_FINGERPRINT:
             argv[i] = (void *)fp;
+            break;
+        case CDB2_DBTYPE:
+            argv[i] = (void *)dbtype;
+            break;
         default:
             break;
         }
