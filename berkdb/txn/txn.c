@@ -96,6 +96,10 @@ void ctrace(char *format, ...);
 int __txn_commit_map_add(DB_ENV *, u_int64_t, DB_LSN);
 
 extern int gbl_is_physical_replicant;
+extern int gbl_fullrecovery;
+extern int gbl_recovery_gen;
+extern int gbl_reproduce_ckp_bug;
+int gbl_recovery_ckp = 1;
 extern int gbl_commit_lsn_map;
 
 #define BDB_WRITELOCK(idstr)	bdb_get_writelock(bdb_state, (idstr), __func__, __LINE__)
@@ -2942,8 +2946,19 @@ do_ckp:
 			return (0);
 		}
 
-		if (REP_ON(dbenv))
+		if (REP_ON(dbenv)) {
 			__rep_get_gen(dbenv, &gen);
+			if (gbl_fullrecovery && gen > gbl_recovery_gen) {
+				if (gbl_reproduce_ckp_bug) {
+					logmsg(LOGMSG_USER, "Reproducing ckp-bug by writing larger-generation ckp: %d vs %d\n", gbl_recovery_gen, gen);
+
+				} else {
+					logmsg(LOGMSG_FATAL, "txn_checkpoint: writing larger gen-checkpoint in full-recovery mode, recovery_gen=%u, gen=%u\n",
+							gbl_recovery_gen, gen);
+					abort();
+				}
+			}
+		}
 
 		/* Get the fq-lock now to preserve our locking order */
 		dblp = dbenv->lg_handle;
@@ -2996,8 +3011,10 @@ do_ckp:
 		max_utxnid = dbenv->next_utxnid;
 		Pthread_mutex_unlock(&dbenv->utxnid_lock);
 
+		u_int32_t rectype = ((gbl_fullrecovery || LF_ISSET(DB_RECOVERY_CKP)) &&
+			gbl_recovery_ckp) ? DB___txn_ckp_recovery : DB___txn_ckp;
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
-			(ret = __txn_ckp_log(dbenv, NULL, &ckp_lsn,
+			(ret = __txn_ckp_log(dbenv, NULL, rectype, &ckp_lsn,
 				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
 				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
 				gen, max_utxnid)) != 0) {
