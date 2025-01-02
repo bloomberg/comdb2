@@ -38,6 +38,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <algorithm> // find_if_not; min
 
 #include "cdb2api.h"
 #include "cdb2_constants.h"
@@ -110,6 +111,7 @@ static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 static int connect_to_master = 0;
 static int cdb2_master = 0;
+int multiline = 0;
 
 static int now_ms(void)
 {
@@ -179,6 +181,7 @@ static const char *usage_text =
     " -f, --file FL       Read queries from the specified file FL\n"
     " -h, --help          Help on usage \n"
     " -n, --host HOST     Host to connect to and run query.\n"
+    " -l, --multiline     Use ';'-delimited multiline statements\n"
     " -p, --precision #   Set precision for floation point outputs\n"
     " -s, --script        Script mode (less verbose output)\n"
     "     --showeffects   Show the effects of query at the end\n"
@@ -243,6 +246,42 @@ const char *char_atglyph_words[] = {
     "time",
     NULL, // must be terminated by NULL
 };
+
+static int is_comment_or_empty_line(const char * sql)
+{
+    while (isspace(*sql)) {
+        sql++;
+    }
+
+    return (sql[0] == '#' || sql[0] == '\0' ||
+        (sql[0] == '-' && sql[1] == '-'));
+}
+
+static void remove_trailing_spaces(char * const sql)
+{
+    int len = strlen(sql);
+    while (len > 0 && isspace(sql[len - 1])) {
+        len--;
+    }
+    sql[len] = '\0';
+}
+
+static void remove_trailing_semicolons(char * const sql)
+{
+    int len = strlen(sql);
+    while (len > 0 && sql[len - 1] == ';') {
+        len--;
+    }
+
+    sql[len] = '\0';
+}
+
+static void remove_leading_spaces(char ** const p_sql)
+{
+    while (isspace(**p_sql)) {
+        (*p_sql)++;
+    }
+}
 
 static char *char_atglyph_generator(const char *text, const int state)
 {
@@ -544,7 +583,7 @@ static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
     return true;
 }
 
-static char *read_line()
+static char *read_line(const char *prompt)
 {
     static char *line = NULL;
 
@@ -554,7 +593,7 @@ static char *read_line()
             line = NULL;
         }
         if ((line = readline(prompt)) != NULL && line[0] != 0 &&
-            !skip_history(line))
+            !skip_history(line) && !multiline)
             add_history(line);
         return line;
     }
@@ -772,7 +811,7 @@ void *get_val(const char **sqlstr, int type, int *vallen)
     return NULL;
 }
 
-static int run_statement(const char *sql, int ntypes, int *types,
+static int run_statement_int(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time);
 
 #ifndef ENABLE_COSTS
@@ -804,21 +843,21 @@ int list_tables()
 {
     int start_time_ms, run_time_ms;
     const char *sql = "SELECT tablename FROM comdb2_tables order by tablename";
-    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+    return run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
 }
 
 int list_systables()
 {
     int start_time_ms, run_time_ms;
     const char *sql = "SELECT name FROM comdb2_systables order by name";
-    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+    return run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
 }
 
 int list_views()
 {
     int start_time_ms, run_time_ms;
     const char *sql = "SELECT name FROM comdb2_views order by name";
-    return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+    return run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
 }
 
 static int process_escape(const char *cmdstr)
@@ -911,7 +950,7 @@ static int process_escape(const char *cmdstr)
             char sql[1024];
             snprintf(sql, sizeof(sql) - 1, "EXEC PROCEDURE sys.cmd.send('%s')",
                      tok);
-            run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
         } else {
             fprintf(stderr, "need command to @send\n");
             return -1;
@@ -939,7 +978,7 @@ static int process_escape(const char *cmdstr)
                      "varinlinesize, defaultvalue, dbload, isnullable FROM "
                      "comdb2_columns WHERE tablename = '%s'",
                      tok);
-            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            rc = run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
             if (rc != 0) {
                 return rc;
             }
@@ -950,7 +989,7 @@ static int process_escape(const char *cmdstr)
                      "select keyname, isunique, isdatacopy, isrecnum, "
                      "condition, ispartialdatacopy from comdb2_keys where tablename = '%s'",
                      tok);
-            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            rc = run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
             if (rc != 0) {
                 return rc;
             }
@@ -961,7 +1000,7 @@ static int process_escape(const char *cmdstr)
                      "select * from comdb2_constraints where tablename = '%s' "
                      "OR foreigntablename = '%s'",
                      tok, tok);
-            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            rc = run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
             if (rc != 0) {
                 return rc;
             }
@@ -972,7 +1011,7 @@ static int process_escape(const char *cmdstr)
                      "SELECT csc2 FROM sqlite_master WHERE "
                      "name = '%s' and type = 'table'",
                      tok);
-            rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
+            rc = run_statement_int(sql, 0, NULL, &start_time_ms, &run_time_ms);
             if (rc != 0) {
                 return rc;
             }
@@ -1465,7 +1504,7 @@ int process_bind(const char *sql)
     return rc;
 }
 
-static int run_statement(const char *sql, int ntypes, int *types,
+static int run_statement_int(const char *sql, int ntypes, int *types,
                          int *start_time, int *run_time)
 {
     int rc;
@@ -1589,8 +1628,29 @@ static int run_statement(const char *sql, int ntypes, int *types,
         cdb2_clearbindings(cdb2h);
     }
 
+    if (rc == CDB2ERR_INCOMPLETE) {
+        assert(multiline);
+        return rc;
+    }
+
     if (rc != CDB2_OK) {
         const char *err = cdb2_errstr(cdb2h);
+        if (multiline) {
+            char *tailstr;
+            int tailoff;
+            int prc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
+            if (prc == 0) {
+                tailoff = atoi(tailstr);
+                free(tailstr);
+
+                // Cut off trailing newline for readability
+                const int num_chars_to_print = std::min(tailoff, (int) strlen(sql)-1);
+
+                fprintf(stderr, "[%.*s] failed with rc %d %s\n", num_chars_to_print, 
+                    sql, rc, err ? err : "");
+                return rc;
+            }
+        }
         /* cdb2tcm mode needs to pass this info through stdout */
         fprintf(stderr, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
         return rc;
@@ -1699,43 +1759,21 @@ static int run_statement(const char *sql, int ntypes, int *types,
     return 0;
 }
 
-static void process_line(char *sql, int ntypes, int *types,
-                         int *start_time, int *run_time)
+static int run_raw_statement(const char * const sql, int ntypes, int *types,
+                            int *start_time, int *run_time)
 {
-    char *sqlstr = sql;
-    int rc;
-    int len;
-
     verbose_print("processing line sql '%.30s...'\n", sql);
-    /* Trim whitespace and then ignore comments and empty lines. */
-    while (isspace(*sqlstr))
-        sqlstr++;
-
-    if (sqlstr[0] == '#' || sqlstr[0] == '\0' ||
-        (sqlstr[0] == '-' && sqlstr[1] == '-'))
-        return;
-
-    /* Lame hack - strip trailing ; so that we can understand the
-     * sql generated by our own gensql mode.  Note that the sql
-     * parser in comdb2 is ok with semicolons - it stops after the
-     * first one it encounters. */
-    len = strlen(sqlstr);
-    while (len > 0 && isspace(sqlstr[len - 1]))
-        len--;
-    while (len > 0 && sqlstr[len - 1] == ';')
-        len--;
-    sqlstr[len] = '\0';
 
     int start_time_ms, run_time_ms;
     gbl_in_stmt = 1;
-    rc = run_statement(sqlstr, ntypes, types, &start_time_ms, &run_time_ms);
+    const int rc = run_statement_int(sql, ntypes, types, &start_time_ms, &run_time_ms);
     gbl_in_stmt = 0;
     gbl_sent_cancel_cnonce = 0;
 
-    if (rc != 0) {
+    if (rc != 0 && rc != CDB2ERR_INCOMPLETE) {
         error++;
-    } else if ((!scriptmode) && !(printmode & DISP_NONE)) {
-        printf("[%s] rc %d\n", sqlstr, rc);
+    } else if (!multiline && (!scriptmode) && !(printmode & DISP_NONE)) {
+        printf("[%s] rc %d\n", sql, rc);
         if (time_mode) {
             printf("  prep time  %d ms\n", start_time_ms);
             printf("  run time   %d ms\n", run_time_ms);
@@ -1753,9 +1791,28 @@ static void process_line(char *sql, int ntypes, int *types,
         int saved_printmode = printmode;
         printmode = DISP_TABS | DISP_STDERR;
         const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
-        run_statement(costSql, ntypes, types, &start_time_ms, &run_time_ms);
+        run_statement_int(costSql, ntypes, types, &start_time_ms, &run_time_ms);
         printmode = saved_printmode;
     }
+    return rc;
+}
+
+/* Trim whitespace at the start of the line and whitespace+semicolons at the end of the line. */
+static void pre_process_statement(char ** p_sql)
+{
+    remove_leading_spaces(p_sql);
+    remove_trailing_spaces(*p_sql);
+    remove_trailing_semicolons(*p_sql);
+}
+
+static int preprocess_and_run_statement(char *sql, int ntypes, int *types,
+                         int *start_time, int *run_time)
+{
+    if (is_comment_or_empty_line(sql)) { return 0; }
+
+    char *pre_processed_sql = sql;
+    pre_process_statement(&pre_processed_sql);
+    return run_raw_statement(pre_processed_sql, ntypes, types, start_time, run_time);
 }
 
 struct winsize win_size;
@@ -1789,7 +1846,7 @@ static int do_repeat(char *sql)
     for (int i = 1; i <= repeat; i++) {
         start_time_ms = 0;
         run_time_ms = 0;
-        process_line(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        preprocess_and_run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
         start_time_ms_tot += start_time_ms;
         run_time_ms_tot += run_time_ms;
 
@@ -1869,7 +1926,7 @@ static int *process_typed_statement_args(int ntypes, char **args)
     return types;
 }
 
-static int is_multi_line(const char *sql)
+static int is_multi_line_ddl(const char *sql)
 {
     if (sql == NULL)
         return 0;
@@ -1893,7 +1950,7 @@ static int is_multi_line(const char *sql)
     return 0;
 }
 
-static char *get_multi_line_statement(char *line)
+static char *get_multi_line_ddl_statement(char *line)
 {
     char *stmt = NULL;
     int slen = 0;
@@ -1922,7 +1979,7 @@ static char *get_multi_line_statement(char *line)
         }
         nl = (char *) "\n";
         n = 1;
-    } while ((line = read_line()) != NULL);
+    } while ((line = read_line("...> ")) != NULL);
     prompt = main_prompt;
     return stmt;
 }
@@ -2001,6 +2058,223 @@ static void int_handler(int signum)
     send_cancel_cnonce(cdb2_cnonce(cdb2h));
 }
 
+class InputProcessor {
+public:
+    InputProcessor() {}
+    virtual void process_input() = 0;
+
+    InputProcessor(const InputProcessor&) = delete;
+    InputProcessor(InputProcessor&&) = delete;
+    InputProcessor& operator=(const InputProcessor&) = delete;
+    InputProcessor& operator=(InputProcessor&&) = delete;
+
+};
+
+// Processes all statements as delimited blocks.
+// TODO: Put in its own file
+class BlockInputProcessor : public InputProcessor
+{
+public:
+    BlockInputProcessor() : _sql(Sql()), _processed_incomplete_stmt(false)
+    {
+        run_raw_statement("set multiline on", 0, NULL, 0, 0);
+    }
+
+    void process_input()
+    {
+        const char * prompt = main_prompt;
+        for(const char * line; (line = read_line(prompt)) != NULL;) {
+            process_line(line);
+            prompt = _processed_incomplete_stmt
+                ? "...> "
+                : main_prompt;
+        }
+        handle_trailing_sql();
+    }
+
+private:
+
+    // The Sql class provides access and mutation over a sql string.
+    // This class's implementation maintains the invariant that the sql string
+    // is free of leading whitespace and leading comments.
+    //
+    // Mutation Interface:
+    // The caller can
+    // 
+    // 1) Append lines using `append_line` if `can_append_line` returns `true`.
+    // 2) Trim the last statement that the server parsed
+    //    using `trim_lhs_stmt`.
+    // 3) Clear sql with `clear`
+    //
+    // Access Interface:
+    // The caller can
+    //
+    // 1) Determine if the sql is ';' delimited with `is_delimited`
+    // 2) Determine if the sql is empty with `empty`
+    // 3) Get a C string representing the current value of the sql string using `c_str`
+    class Sql {
+    public:
+        Sql() : _sql_str(std::string("")) {}
+
+        bool can_append_line(const char * const line)
+        {
+            return !_sql_str.empty() || !is_comment_or_empty_line(line);
+        }
+
+        // Caller must validate input with `can_append_line`
+        void append_line(const char * const line)
+        {
+            assert(this->can_append_line(line));
+
+            _sql_str.append(line);
+            _sql_str.append("\n");
+
+            this->trim_junk();
+        }
+
+        int trim_lhs_stmt()
+        {
+            char *tailstr;
+            const int rc = cdb2_get_property(cdb2h, "sql:tail", &tailstr);
+            if (rc) { return 1; }
+
+            const int tailoff = atoi(tailstr);
+            free(tailstr);
+            _sql_str.erase(0, tailoff);
+
+            this->trim_junk();
+
+            return 0;
+        }
+
+        bool is_delimited()
+        {
+            return _sql_str.find(_delim) != std::string::npos;
+        }
+
+        bool empty()
+        {
+            return _sql_str.empty();
+        }
+
+        void clear()
+        {
+            _sql_str.clear();
+        }
+
+        // Returns C string representation of sql.
+        // A program shall not alter any of the characters in this sequence.
+        //
+        // The pointer returned may be invalidated by further calls
+        // to other member functions that modify the object.
+        const char * c_str()
+        {
+            return _sql_str.c_str();
+        }
+
+    private:
+        std::string _sql_str;
+        static const char _delim = ';';
+
+        void trim_junk()
+        {
+            if (is_comment_or_empty_line(_sql_str.c_str())) {
+                _sql_str.clear();
+            } else {
+                this->trim_lhs_whitespace();
+            }
+        }
+
+        void trim_lhs_whitespace()
+        {
+            const std::string::iterator first_non_whitespace_char = std::find_if_not(
+                _sql_str.begin(), _sql_str.end(), ::isspace);
+
+            _sql_str.erase(_sql_str.begin(), first_non_whitespace_char);
+        }
+    };
+
+    Sql _sql;
+    bool _processed_incomplete_stmt;
+
+    void process_line(const char * const line)
+    {
+        if (_sql.can_append_line(line)) {
+            _sql.append_line(line);
+        } else {
+            // No new sql -- so nothing to do.
+            return;
+        }
+
+        while (_sql.is_delimited()) {
+            verbose_print("Processing %s\n", _sql.c_str());
+            int rc = run_raw_statement(_sql.c_str(), 0, NULL, 0, 0);
+            if (rc) { 
+                if (rc != CDB2ERR_INCOMPLETE ) { _sql.clear(); }
+                break;
+            }
+
+            rc = _sql.trim_lhs_stmt();
+            if (rc) { break; }
+        }
+
+        _processed_incomplete_stmt = !_sql.empty();
+    }
+
+    void handle_trailing_sql()
+    {
+        if (!_sql.empty()) {
+            // Cut off trailing newline for readability
+            const int num_chars_to_print = strlen(_sql.c_str())-1;
+            fprintf(stderr, "[%.*s] failed: Not a complete statement\n",
+                num_chars_to_print, _sql.c_str());
+        }
+    }
+};
+
+// Processes ddl statements as '$$' delimited blocks
+// and all other statements as single lines.
+class DdlBlockInputProcessor : public InputProcessor {
+public:
+    DdlBlockInputProcessor() {}
+
+    void process_input()
+    {
+        int should_quit = 0;
+        for(char * line;
+                !should_quit && (line = read_line(main_prompt)) != NULL;) {
+            should_quit = process_line(line);
+        }
+    }
+
+private:
+    // returns 1 if we should quit; 0 otherwise
+    int process_line(char * line)
+    {
+        if (strncmp(line, "quit", 4) == 0) {
+            return 1;
+        }
+
+        // TODO: refactor these functions into class
+        int multi = 0;
+        if ((multi = is_multi_line_ddl(line)) != 0) {
+            line = get_multi_line_ddl_statement(line);
+        }
+
+        if (repeat > 1) {
+            do_repeat(line);
+        } else {
+            preprocess_and_run_statement(line, 0, NULL, 0, 0);
+        }
+
+        if (multi) {
+            free(line);
+        }
+
+        return 0;
+    }
+};
+
 int main(int argc, char *argv[])
 {
     static char *filename = NULL;
@@ -2046,9 +2320,10 @@ int main(int argc, char *argv[])
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
         {"connect-to-master", no_argument, NULL, 'm'},
+        {"multiline", no_argument, NULL, 'l'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mM", long_options, &opt_indx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:mMl", long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
             break;
@@ -2094,6 +2369,9 @@ int main(int argc, char *argv[])
             break;
         case 'm':
             connect_to_master = 1;
+            break;
+        case 'l':
+            multiline = 1;
             break;
         case 'M':
             cdb2_master = 1;
@@ -2165,11 +2443,11 @@ int main(int argc, char *argv[])
         types = process_typed_statement_args(ntypes, &argv[optind]);
     if (sql && *sql != '-') {
         scriptmode = 1;
-        process_line(sql, ntypes, types, 0, 0);
+        preprocess_and_run_statement(sql, ntypes, types, 0, 0);
         if (cdb2h) {
             cdb2_close(cdb2h);
         }
-        verbose_print("process_line error=%d\n", error);
+        verbose_print("preprocess_and_run_statement error=%d\n", error);
 
         if (report_costs != NULL)
             (*report_costs)();
@@ -2199,21 +2477,13 @@ int main(int argc, char *argv[])
         sact.sa_handler = int_handler;
         sigaction(SIGINT, &sact, NULL);
     }
-    char *line;
-    int multi;
-    while ((line = read_line()) != NULL) {
-        if (strncmp(line, "quit", 4) == 0)
-            break;
-        if ((multi = is_multi_line(line)) != 0)
-            line = get_multi_line_statement(line);
-        if (repeat > 1) {
-            do_repeat(line);
-        } else {
-            process_line(line, 0, NULL, 0, 0);
-        }
-        if (multi)
-            free(line);
-    }
+
+    InputProcessor * processor = multiline
+        ? (InputProcessor *) new BlockInputProcessor()
+        : (InputProcessor *) new DdlBlockInputProcessor();
+    processor->process_input();
+    delete processor;
+
     if (istty)
         save_readline_history();
 
