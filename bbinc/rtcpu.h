@@ -17,11 +17,11 @@
 #ifndef INCLUDED_RTCPU_H
 #define INCLUDED_RTCPU_H
 
-void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void), int (*c)(const char *), int (*d)(void),
+void register_rtcpu_callbacks(int (*a)(const char *, int *), int (*b)(void), int (*c)(const char *), int (*d)(void),
                               int (*e)(const char *), int (*f)(const char *), int (*g)(const char *, const char **),
                               int (*h)(const char **), int (*i)(const char *, int *, const char ***),
                               int (*j)(const char *, const char *));
-int machine_is_up(const char *host);
+int machine_is_up(const char *host, int *isdrtest);
 int machine_class(const char *host);
 int machine_my_class(void);
 int machine_dc(const char *host);

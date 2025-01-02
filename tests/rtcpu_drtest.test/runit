@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+[[ -z "$CLUSTER" ]] && failexit "This test requires a CLUSTER"
+
+export MASTER=$(get_master)
+
+# Create a table 
+$CDB2SQL_EXE $DBNAME $CDB2_OPTIONS default "create table t1(a int)"
+
+# Mark all nodes as offline (pretend we are dr-testing them)
+for node in $CLUSTER ; do
+    if [[ "$node" != $MASTER ]]; then
+        # Tell every other node that this node is offline
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $n "exec procedure sys.cmd.send(\"fakedr add $node\")"
+        done
+    fi
+done
+
+# Make sure we can insert records 
+j=0
+while [[ $j -lt 10 ]]; do
+    $CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "insert into t1 select * from generate_series(1, 1000)"
+    let j=j+1
+done
+
+# Verify that the master has the other nodes listed as 'incoherent_wait'
+$CDB2SQL_EXE $DBNAME $CDB2_OPTIONS --host $MASTER "select * from comdb2_cluster"
+cnt=$($CDB2SQL_EXE --tabs $DBNAME $CDB2_OPTIONS --host $MASTER "select count(*) from comdb2_cluster where is_master='N' and coherent_state='coherent'")
+
+[[ "$cnt" == 0 ]] || failexit "Expected all non-master nodes to be INCOHERENT_WAIT"
+
+# Mark all nodes as online again for test cleanup
+for node in $CLUSTER ; do
+    if [[ "$node" != $MASTER ]]; then
+        # Tell every other node that this node is offline
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE --admin $DBNAME $CDB2_OPTIONS --host $n "exec procedure sys.cmd.send(\"fakedr del $node\")"
+        done
+    fi
+done
+
+echo "Success!"

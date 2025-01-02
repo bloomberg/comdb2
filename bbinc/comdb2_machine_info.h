@@ -18,7 +18,7 @@
 #define __INCLUDED_MACHINE_INFO_H
 
 struct comdb2_machine_info {
-    int (*machine_is_up)(const char *host);
+    int (*machine_is_up)(const char *host, int *drtest);
     int (*machine_status_init)(void);
     int (*machine_class)(const char *host);
     int (*machine_my_class)(void);
