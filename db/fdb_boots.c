@@ -178,7 +178,7 @@ static char *_get_node_initial(int nnodes, char **nodes, int *lcl,
     *lcl_nnodes = 0;
     *rescpu_nnodes = 0;
     for (i = 0; i < nnodes; i++) {
-        if (!machine_is_up(nodes[i])) {
+        if (!machine_is_up(nodes[i], NULL)) {
             continue;
         }
 
@@ -255,7 +255,7 @@ static char *_get_node_next(int nnodes, char **nodes, int *lcl, char *arg,
                 break;
 
             /* ignore rtcpu */
-            if (!machine_is_up(nodes[i])) {
+            if (!machine_is_up(nodes[i], NULL)) {
                 continue;
             }
 
@@ -548,7 +548,7 @@ int fdb_get_rescpu_nodes(fdb_location_t *loc, int *locals)
 
     rescpued = 0;
     for (i = 0; i < loc->nnodes; i++) {
-        if (machine_is_up(loc->nodes[i])) {
+        if (machine_is_up(loc->nodes[i], NULL)) {
             rescpued++;
 
             if (loc->lcl[i] && locals)

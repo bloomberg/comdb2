@@ -2563,24 +2563,22 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     /* new LSN from node: we may need to make the node coherent */
     Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
     struct hostinfo *m = retrieve_hostinfo(bdb_state->repinfo->master_host_interned);
+    int nodeup = 0, is_drtest = 0;
 
     if (change_coherency) {
         if (h->coherent_state == STATE_INCOHERENT ||
             h->coherent_state == STATE_INCOHERENT_WAIT) {
-            if (bdb_state->callback->nodeup_rtn) {
-                if ((bdb_state->callback->nodeup_rtn(bdb_state, host))) {
+            if (bdb_state->callback->nodeup_drtest_rtn) {
+                if ((nodeup = bdb_state->callback->nodeup_drtest_rtn(bdb_state, host, &is_drtest)) || is_drtest != 0) {
                     rc = bdb_wait_for_seqnum_from_node_nowait_int(
                         bdb_state, &m->seqnum, hostinterned);
                     if (rc == 0) {
                         /* prevent a node from becoming coherent for at least
                          * downgrade_penalty seconds after an event that would
                          * delay commits (the last downgrade) */
-                        if (downgrade_penalty &&
-                            (gettimeofday_ms() - h->last_downgrade_time) <=
-                                downgrade_penalty) {
-                            set_coherent_state(bdb_state, hostinterned,
-                                               STATE_INCOHERENT_WAIT, __func__,
-                                               __LINE__);
+                        if ((!nodeup && is_drtest) ||
+                            (downgrade_penalty && (gettimeofday_ms() - h->last_downgrade_time) <= downgrade_penalty)) {
+                            set_coherent_state(bdb_state, hostinterned, STATE_INCOHERENT_WAIT, __func__, __LINE__);
                         } else {
                             /* dont send here under lock */
                             set_coherent_state(bdb_state, hostinterned, STATE_COHERENT,
@@ -2870,8 +2868,9 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     if (fakeincoherent) {
         node_is_rtcpu = 1;
     }
-    if (bdb_state->callback->nodeup_rtn)
-        if (!(bdb_state->callback->nodeup_rtn(bdb_state, host->str)))
+    int is_drtest = 0;
+    if (bdb_state->callback->nodeup_drtest_rtn)
+        if (!(bdb_state->callback->nodeup_drtest_rtn(bdb_state, host->str, &is_drtest)))
             node_is_rtcpu = 1;
 
     /* dont wait if it's in a skipped state */
@@ -2892,21 +2891,26 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
         if (h->coherent_state == STATE_COHERENT ||
             h->coherent_state == STATE_INCOHERENT_WAIT) {
-            if (h->coherent_state == STATE_COHERENT)
+
+            int newstate = is_drtest ? STATE_INCOHERENT_WAIT : STATE_INCOHERENT;
+            if (h->coherent_state == STATE_COHERENT) {
                 defer_commits(bdb_state, host->str, __func__);
-            h->last_downgrade_time = gettimeofday_ms();
-            set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
-                               __LINE__);
-            bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
+            }
+            if (h->coherent_state != newstate) {
+                h->last_downgrade_time = gettimeofday_ms();
+                set_coherent_state(bdb_state, host, newstate, __func__, __LINE__);
+                bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
+            }
         }
 
         Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
-        if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
-                   PARM_LSN(seqnum->lsn), host->str);
+        if (!is_drtest) {
+            if (bdb_state->attr->wait_for_seqnum_trace) {
+                logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n", PARM_LSN(seqnum->lsn), host->str);
+            }
+            return -2;
         }
-        return -2;
     }
 
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));

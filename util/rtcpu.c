@@ -34,8 +34,9 @@
 #include "machclass.h"
 #include "logmsg.h"
 #include "sys_wrap.h"
+#include <plhash.h>
 
-static int machine_is_up_default(const char *host);
+static int machine_is_up_default(const char *host, int *isdrtest);
 static int machine_status_init(void);
 static int machine_class_default(const char *host);
 static int machine_my_class_default(void);
@@ -46,7 +47,7 @@ static int machine_my_cluster_default(const char **cluster);
 static int machine_cluster_machs_default(const char *cluster, int *count, const char ***machs);
 static int machine_add_cluster_default(const char *host, const char *cluster);
 
-static int (*machine_is_up_cb)(const char *host) = machine_is_up_default;
+static int (*machine_is_up_cb)(const char *host, int *drtest) = machine_is_up_default;
 static int (*machine_status_init_cb)(void) = machine_status_init;
 static int (*machine_class_cb)(const char *host) = machine_class_default;
 static int (*machine_my_class_cb)(void) = machine_my_class_default;
@@ -71,7 +72,7 @@ static void init_once(void)
     pthread_once(&once, do_once);
 }
 
-void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void), int (*c)(const char *), int (*d)(void),
+void register_rtcpu_callbacks(int (*a)(const char *, int *), int (*b)(void), int (*c)(const char *), int (*d)(void),
                               int (*e)(const char *), int (*f)(const char *), int (*g)(const char *, const char **),
                               int (*h)(const char **), int (*i)(const char *, int *, const char ***),
                               int (*j)(const char *, const char *))
@@ -94,14 +95,14 @@ void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void), int (*c)(c
     machine_add_cluster_cb = j;
 }
 
-int machine_is_up(const char *host)
+int machine_is_up(const char *host, int *drtest)
 {
     init_once();
 
     if (!isinterned(host))
         abort();
 
-    return machine_is_up_cb(host);
+    return machine_is_up_cb(host, drtest);
 }
 
 int machine_class(const char *host)
@@ -144,9 +145,74 @@ int machine_num(const char *host)
     return machine_num_cb(host);
 }
 
-static int machine_is_up_default(const char *host)
+static hash_t *fake_drtest_hash = NULL;
+static pthread_mutex_t fake_drtest_lk = PTHREAD_MUTEX_INITIALIZER;
+
+void add_fake_drtest(const char *host)
 {
-    return 1;
+    Pthread_mutex_lock(&fake_drtest_lk);
+    if (!fake_drtest_hash) {
+        fake_drtest_hash = hash_init_str(0);
+    }
+    hash_add(fake_drtest_hash, strdup(host));
+    Pthread_mutex_unlock(&fake_drtest_lk);
+}
+
+void del_fake_drtest(const char *host)
+{
+    Pthread_mutex_lock(&fake_drtest_lk);
+    char *h;
+    if (fake_drtest_hash && (h = hash_find(fake_drtest_hash, host))) {
+        hash_del(fake_drtest_hash, h);
+    }
+    Pthread_mutex_unlock(&fake_drtest_lk);
+}
+
+static int print_fake_drtest_hash(void *obj, void *arg)
+{
+    logmsg(LOGMSG_USER, "%s\n", (char *)obj);
+    return 0;
+}
+
+void dump_fake_drtest(void)
+{
+    if (!fake_drtest_hash) {
+        logmsg(LOGMSG_USER, "No fake drtest hosts\n");
+        return;
+    }
+    Pthread_mutex_lock(&fake_drtest_lk);
+    if (fake_drtest_hash) {
+        hash_for(fake_drtest_hash, print_fake_drtest_hash, NULL);
+    }
+    Pthread_mutex_unlock(&fake_drtest_lk);
+}
+
+static int is_fake_drtest(const char *host)
+{
+    int rc = 0;
+    if (!fake_drtest_hash) {
+        return 0;
+    }
+    Pthread_mutex_lock(&fake_drtest_lk);
+    if (fake_drtest_hash && hash_find(fake_drtest_hash, host) != NULL) {
+        rc = 1;
+    }
+    Pthread_mutex_unlock(&fake_drtest_lk);
+    return rc;
+}
+
+static int machine_is_up_default(const char *host, int *drtest)
+{
+    int is_fake = is_fake_drtest(host);
+
+    if (is_fake) {
+        logmsg(LOGMSG_WARN, "%s fakedr returning machine-down for host: %s\n", __func__, host);
+    }
+
+    if (drtest) {
+        *drtest = is_fake;
+    }
+    return is_fake ? 0 : 1;
 }
 
 static int machine_status_init(void)
