@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include <cdb2api.h>
@@ -41,6 +43,24 @@ static void *my_hostname_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void
     /* If there's no hostname, abort */
     if (argv[0] == NULL || ((char *)argv[0])[0] == '\0')
         abort();
+    return NULL;
+}
+
+static char *resolved_dbtype = NULL;
+static void *my_dbtype_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
+{
+    char *got = (char *)argv[0];
+    if (strcasecmp(got, "default") != 0) {
+        free(resolved_dbtype);
+        resolved_dbtype = strdup(got);
+    }
+
+    if (strcasecmp(got, "default") == 0)
+        puts("DBTYPE is unresolved");
+    else if (strcasecmp(got, "local") == 0 || strcasecmp(got, "testsuite") == 0)
+        puts("DBTYPE is resolved");
+    else
+        printf("DBTYPE is %s\n", got);
     return NULL;
 }
 
@@ -143,7 +163,7 @@ static int TEST_modify_rc_event(const char *db, const char *tier)
     cdb2_event *e;
     cdb2_hndl_tp *hndl = NULL;
 
-    e = cdb2_register_event(NULL, CDB2_BEFORE_PMUX, CDB2_OVERWRITE_RETURN_VALUE, my_overwrite_rc_hook, NULL, 0, NULL);
+    e = cdb2_register_event(NULL, CDB2_BEFORE_SEND_QUERY, CDB2_OVERWRITE_RETURN_VALUE, my_overwrite_rc_hook, NULL, 0, NULL);
     cdb2_open(&hndl, db, tier, 0);
     rc = cdb2_run_statement(hndl, "SELECT 1");
     if (rc == 0)
@@ -226,6 +246,30 @@ static int TEST_run_stmt_next_record_events(const char *db, const char *tier)
     return 0;
 }
 
+static int TEST_dbtype_arg(const char *db, const char *tier)
+{
+    cdb2_hndl_tp *h;
+    cdb2_event *e1, *e2;
+
+    e1 = cdb2_register_event(NULL, CDB2_BEFORE_DISCOVERY, 0, my_dbtype_hook, NULL, 1, CDB2_DBTYPE);
+    e2 = cdb2_register_event(NULL, CDB2_AT_OPEN, 0, my_dbtype_hook, NULL, 1, CDB2_DBTYPE);
+
+    /* default */
+    cdb2_open(&h, db, tier, 0);
+    cdb2_close(h);
+    /* actual */
+    cdb2_open(&h, db, resolved_dbtype, 0);
+    cdb2_close(h);
+    /* direct-cpu */
+    cdb2_open(&h, db, "example.com", CDB2_DIRECT_CPU);
+    cdb2_close(h);
+
+    cdb2_unregister_event(NULL, e1);
+    cdb2_unregister_event(NULL, e2);
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     char *conf = getenv("CDB2_CONFIG");
@@ -273,6 +317,11 @@ int main(int argc, char **argv)
 
     puts("====== RUN STATEMENT/NEXT RECORD ======");
     rc = TEST_run_stmt_next_record_events(db, tier);
+    if (rc != 0)
+        return rc;
+
+    puts("====== VERIFYING DBTYPE ARG ======");
+    rc = TEST_dbtype_arg(db, tier);
     if (rc != 0)
         return rc;
 
