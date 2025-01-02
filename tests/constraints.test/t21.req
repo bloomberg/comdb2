@@ -1,0 +1,16 @@
+-- add constraint with table create and then satisfy it with table create in a transaction.
+drop table if exists foo
+drop table if exists bar
+begin
+create table foo { schema { int a } keys { "a" = a } constraints { "a" -> "bar":"a" on delete cascade } }$$
+create table bar { schema { int a } keys { "a" = a } }$$
+commit
+insert into foo values(1)
+select 'shouldnt see me' from foo
+insert into bar values(1)
+insert into foo values(1)
+select 'should see me' from foo
+select 'should see me' from bar
+delete from bar where 1
+select 'shouldnt see me' from foo
+select 'shouldnt see me' from bar

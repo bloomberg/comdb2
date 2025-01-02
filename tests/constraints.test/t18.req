@@ -1,0 +1,7 @@
+-- add unsatisfied constraint with table create in txn (target table exists but doesn't have the right key)
+drop table if exists t
+drop table if exists q
+begin
+create table t { schema { int a } keys { "a" = a } constraints { "a" -> "q":"a" on delete cascade } }$$
+create table q { schema { int a } keys { "wrong_name" = a } }$$
+commit
