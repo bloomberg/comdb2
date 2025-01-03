@@ -389,7 +389,7 @@ static void *readers(void *data)
         for (intptr_t i = 0; i < sizeof(thds) / sizeof(thds[0]); ++i) pthread_join(thds[i], NULL);
         gettimeofday(&finish, NULL);
         timersub(&finish, &start, &elapsed);
-        Printf("%s  count:%d  time:%ldsec\n", __func__, count, elapsed.tv_sec);
+        Printf("%s  iteration:%d  time:%ldsec\n", __func__, count, elapsed.tv_sec);
     } while (!done);
     Printf("%s finished\n", __func__);
     return NULL;
@@ -410,18 +410,18 @@ static void test_stmt(const char *sql, int upd, int del)
             Printf("%s: cdb2_get_effects unexpected num_updated:%d (wanted:%d)\n", sql, effects.num_updated, upd);
             exit(1);
         }
-        if (elapsed.tv_sec > 1) {
-            Printf("%s: update took:%ldsec\n", sql, elapsed.tv_sec);
-        }
+        //if (elapsed.tv_sec > 1) {
+            Printf("%s: update took:%ldsec num_updated:%d\n", sql, elapsed.tv_sec, effects.num_updated);
+        //}
     }
     if (del) {
         if (effects.num_deleted != del) {
             Printf("%s: cdb2_get_effects unexpected num_deleted:%d (wanted:%d)\n", sql, effects.num_deleted, del);
             exit(1);
         }
-        if (elapsed.tv_sec > 1) {
-            Printf("%s: delete took:%ldsec\n", sql, elapsed.tv_sec);
-        }
+        //if (elapsed.tv_sec > 1) {
+            Printf("%s: delete took:%ldsec num_deleted:%d\n", sql, elapsed.tv_sec, effects.num_deleted);
+        //}
     }
     cdb2_close(db);
     int inco = num_incoherent();
@@ -455,9 +455,9 @@ static void update(void)
         }
         gettimeofday(&finish, NULL);
         timersub(&finish, &start, &elapsed);
-        Printf("%s counter:%d  time:%ldsec\n", __func__, counter, elapsed.tv_sec);
+        Printf("%s  iteration:%d  elapsed-time:%ldsec\n", __func__, counter, elapsed.tv_sec);
     } while (elapsed.tv_sec < 60);
-    Printf("%s finished  counter:%d  time:%ldsec\n", __func__, counter, elapsed.tv_sec);
+    Printf("%s finished  iterations:%d  total-elapsed-time:%ldsec\n", __func__, counter, elapsed.tv_sec);
 }
 static void delete(void)
 {
