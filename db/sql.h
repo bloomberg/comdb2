@@ -1095,17 +1095,15 @@ struct BtCursor {
     /* various buffers: */
     uint8_t writeTransaction; /* save tran type during cursor open */
     void *ondisk_buf;         /* ondisk data */
-    void *ondisk_key; /* ondisk key. this is effectively also the pointer into
-                         the index */
+    void *ondisk_key; /* ondisk key. this is effectively also the pointer into the index */
     blob_buffer_t ondisk_blobs[MAXBLOBS]; /* ondisk blobs */
 
     void *lastkey; /* last key: swap with ondisk_key for subsequent lookups */
     void *fndkey;  /* this key is actually found */
 
-    int eof;   /* we reached the end of an index, but the current entry still
-                  contains valid data */
-    int empty; /* there are no entries in the db - no results to return for any
-                  query */
+    unsigned eof : 1;   /* we reached the end of an index, but the current entry still contains valid data */
+    unsigned empty : 1; /* there are no entries in the db - no results to return for any query */
+    unsigned used_ondisk_blobs : 1;
     LINKC_T(BtCursor) lnk;
 
     /* these are sqlite format buffers */
@@ -1116,8 +1114,6 @@ struct BtCursor {
 
     int dtabuf_alloc;
     int keybuf_alloc;
-    int ondisk_dtabuf_alloc;
-    int ondisk_keybuf_alloc;
 
     struct session_tbl *session_tbl;
     int tblnum;

@@ -3186,6 +3186,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         if (rec->stmt) {
+            void sqlite3_stmt_set_clnt(sqlite3_stmt *, struct sqlclntstate *);
+            sqlite3_stmt_set_clnt(rec->stmt, clnt);
             stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks,
                                   thd->authState.hasVTables, thd->authState.flags);
             thd->authState.numVTableLocks = 0;
@@ -5591,8 +5593,8 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock)) {
         flags = RECOVER_DEADLOCK_FORCE_FAIL;
     }
-    logmsg(LOGMSG_USER, "%s  have-waiters:%d  lock-desired:%d  count:%d\n",
-            __func__, have_waiters, lock_desired, clnt->deadlock_recovered);
+    logmsg(LOGMSG_USER, "%s  have-waiters:%d  lock-desired:%d  recovered:%d checked:%d\n",
+            __func__, have_waiters, lock_desired, clnt->deadlock_recovered, clnt->deadlock_checked);
     return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, 10, __func__, __LINE__, flags);
 }
 

@@ -440,15 +440,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
             bloboffs[blobn] = 0;
             blobptrs[blobn] = dbt_data.data;
         } else if (rc == DB_NOTFOUND) {
-            /* this could mean that there isn't meant to be any data for this
-             * blob (a NULL field), or it could mean that someone
-             * deleted/updated
-             * the record while we were reading it.  at this low level we just
-             * don't know.  higher levels should retry if there is meant to be
-             * data here. */
-            blobsizes[blobn] = 0;
-            bloboffs[blobn] = 0;
-            blobptrs[blobn] = NULL;
+            return IX_NOTFND;
         } else {
         errout:
             bdb_get_error(bdb_state, NULL, rc, BDBERR_FETCH_DTA, bdberr,

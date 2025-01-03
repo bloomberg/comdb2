@@ -272,12 +272,12 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
                    int running, const char *host, time_t time,
                    const char *func, int line)
 {
-    sc_table_t *sctbl = NULL;
-//#ifdef DEBUG_SC
-    printf("%s: table %s : %d from %s:%d\n", __func__, table, running, func,
-           line);
+    printf("%s: table %s : %d from %s:%d\n", __func__, table, running, func, line);
+#   ifdef DEBUG_SC
     comdb2_linux_cheap_stack_trace();
-//#endif
+#   endif
+
+    sc_table_t *sctbl = NULL;
     int rc = 0;
 
     assert(running >= 0);

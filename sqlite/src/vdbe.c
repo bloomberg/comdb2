@@ -1756,6 +1756,12 @@ case OP_IntCopy: {            /* out2 */
 ** the result row.
 */
 case OP_ResultRow: {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  //printf("%s OP_ResultRow calling recover_deadlock_evbuffer\n", __func__);
+  if( p->clnt && recover_deadlock_evbuffer(p->clnt)!=0 ){
+    goto abort_due_to_error;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   Mem *pMem;
   int i;
   assert( p->nResColumn==pOp->p2 );
@@ -6402,6 +6408,12 @@ next_tail:
 ** into the sorter P1.  Data for the entry is nil.
 */
 case OP_SorterInsert:       /* in2 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  printf("%s OP_SorterInsert calling recover_deadlock_evbuffer\n", __func__);
+  if( p->clnt && recover_deadlock_evbuffer(p->clnt)!=0 ){
+    goto abort_due_to_error;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 case OP_IdxInsert: {        /* in2 */
   VdbeCursor *pC;
   BtreePayload x;

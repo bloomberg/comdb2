@@ -585,8 +585,7 @@ struct bdb_cursor_impl_tag {
 
     /* read committed/snapshot/serializable mode support */
     tmpcursor_t *skip; /* skip list; don't touch this, use bdb_osql please */
-    char
-        *lastkey; /* set after a row is consumed from real data (see merging) */
+    char *lastkey; /* set after a row is consumed from real data (see merging) */
     int lastkeylen;
     int laststripe;
     int lastpage;

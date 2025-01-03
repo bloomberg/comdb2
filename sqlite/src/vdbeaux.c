@@ -3223,6 +3223,9 @@ int sqlite3VdbeHalt(Vdbe *p){
 ** in p->rc.  This routine sets that result back to SQLITE_OK.
 */
 void sqlite3VdbeResetStepResult(Vdbe *p){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  p->clnt = NULL;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   p->rc = SQLITE_OK;
 }
 

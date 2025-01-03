@@ -2424,3 +2424,12 @@ void sqlite3_stmt_scanstatus_reset(sqlite3_stmt *pStmt){
   memset(p->anExec, 0, p->nOp * sizeof(i64));
 }
 #endif /* SQLITE_ENABLE_STMT_SCANSTATUS */
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+void sqlite3_stmt_set_clnt(sqlite3_stmt *pStmt, struct sqlclntstate *clnt)
+{
+  if( !pStmt ) return;
+  Vdbe *pVdbe = (Vdbe *)pStmt;
+  pVdbe->clnt = clnt;
+}
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
