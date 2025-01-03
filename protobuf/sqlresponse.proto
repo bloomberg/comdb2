@@ -91,6 +91,7 @@ enum ResponseHeader {
    SQL_RESPONSE_SSL         = 1010; // SSL header + empty payload to trigger
                                     // client SSL
    DISTTXN_RESPONSE         = 1011;
+   SQL_RESPONSE_RAW         = 1012;
 }
 
 enum ResponseType {
@@ -101,6 +102,7 @@ enum ResponseType {
   SP_TRACE      = 5;
   SP_DEBUG      = 6;
   SQL_ROW       = 7;
+  RAW_DATA      = 8;
 }
 
 enum CDB2SyncMode {

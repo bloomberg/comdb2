@@ -1350,8 +1350,6 @@ int bdb_fetch_last_key_tran(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_rowlock(bdb_state_type *bdb_state, tran_type *tran,
                 unsigned long long genid, int exclusive, int *bdberr);
 
-int bdb_get_low_headroom_count(bdb_state_type *bdb_state);
-
 enum { BDB_LOCK_READ, BDB_LOCK_WRITE };
 
 int bdb_get_locker(bdb_state_type *bdb_state, unsigned int *lid);
@@ -1445,6 +1443,7 @@ int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration);
  * its start lsn and the checkpoint lsn preceding its start lsn.
  *
  * bdb_state: Caller's bdb state.
+ * bdb_attr: Caller's bdb attr.
  * is_ha_retry: 1 if transaction is a hasql retry. 0 otherwise.
  * snapshot_epoch: Snapshot epoch if a PIT snapshot or 0 if not a PIT snapshot.
  * modsnap_start_lsn_file: If transaction is a hasql retry, 
@@ -1459,6 +1458,7 @@ int bdb_is_modsnap_txn_allowed_to_open_cursors(void * registration);
  * Returns 0 on success and non-0 on failure.
  */
 int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
+                        bdb_attr_type *bdb_attr,
                         int is_hasql_retry,
                         int snapshot_epoch,
                         unsigned int *modsnap_start_lsn_file,

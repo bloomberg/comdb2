@@ -179,6 +179,14 @@ enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
 static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                              struct sql_thread *thd);
 
+static void initialize_curtran_for_modsnap(cursor_tran_t * const curtran, const struct sqlclntstate * const clnt)
+{
+    curtran->modsnap_start_lsn.file = clnt->modsnap_start_lsn_file;
+    curtran->modsnap_start_lsn.offset = clnt->modsnap_start_lsn_offset;
+    curtran->last_checkpoint_lsn.file = clnt->last_checkpoint_lsn_file;
+    curtran->last_checkpoint_lsn.offset = clnt->last_checkpoint_lsn_offset;
+}
+
 CurRange *currange_new()
 {
     CurRange *rc = (CurRange *)malloc(sizeof(CurRange));
@@ -3582,6 +3590,36 @@ int sqlite3BtreeSetSafetyLevel(Btree *pBt, int level, int fullsync)
 }
 
 /*
+ ** Reopen a database file.
+ ** Only used for remote db files.
+ ** zFilename is the name of the database file.
+ */
+int sqlite3BtreeReopen(
+    const char *zFilename, /* name of the file containing the btree database */
+    Btree *pBtree)       /* pointer to existing btree object written here */
+{
+    int rc = SQLITE_OK;
+
+    assert(zFilename);
+    assert(pBtree);
+
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "XXXXXXXXXXXXX ReOpening \"%s\"\n", zFilename);
+
+    pBtree->fdb = get_fdb(zFilename);
+    if (!pBtree->fdb) {
+        logmsg(LOGMSG_ERROR, "%s: fdb not available for %s ?\n", __func__,
+               zFilename);
+        rc = SQLITE_ERROR;
+    }
+
+    reqlog_logf(pBtree->reqlogger, REQL_TRACE,
+                "ReOpen(file %s, tree %d)     = %s\n",
+                zFilename, pBtree->btreeid, sqlite3ErrStr(rc));
+    return rc;
+}
+
+/*
  ** Open a database file.
  **
  ** zFilename is the name of the database file.  If zFilename is NULL
@@ -3977,9 +4015,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         } else {
             /* make sure we have a distributed transaction and use that to
              * update remote */
-            uuid_t tid;
-            fdb_tran_t *trans = fdb_trans_begin_or_join(
-                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
+            fdb_tran_t *trans = fdb_trans_join(clnt, pCur->bt->fdb);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -4647,7 +4683,7 @@ int get_snapshot(struct sqlclntstate *clnt, int *f, int *o)
     return clnt->plugin.get_snapshot(clnt, f, o);
 }
 
-int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
+int initialize_shadow_trans(struct sqlclntstate *clnt)
 {
     int rc = SQLITE_OK;
     struct ireq iq;
@@ -4765,7 +4801,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     return rc;
 }
 
-int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
+int start_new_transaction(struct sqlclntstate *clnt)
 {
     int rc;
 
@@ -4811,7 +4847,7 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
                pthread_self(), clnt->dbtran.mode, clnt->intrans);
     }
 #endif
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0) {
+    if ((rc = initialize_shadow_trans(clnt)) != 0) {
         sql_debug_logf(clnt, __func__, __LINE__,
                        "initialize_shadow_tran returns %d\n", rc);
         return rc;
@@ -4874,7 +4910,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
             if (clnt->is_hasql_retry) {
                 get_snapshot(clnt, (int *) &clnt->modsnap_start_lsn_file, (int *) &clnt->modsnap_start_lsn_offset);
             }
-            if (bdb_get_modsnap_start_state(db->handle, clnt->is_hasql_retry, clnt->snapshot, 
+            if (bdb_get_modsnap_start_state(db->handle, thedb->bdb_attr, clnt->is_hasql_retry, clnt->snapshot, 
                     &clnt->modsnap_start_lsn_file, &clnt->modsnap_start_lsn_offset, &clnt->last_checkpoint_lsn_file, 
                     &clnt->last_checkpoint_lsn_offset)) {
                 logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap txn start state\n", __func__);
@@ -4926,7 +4962,12 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         goto done;
     }
 
-    if ((clnt->dbtran.mode <= TRANLEVEL_RECOM || clnt->dbtran.mode == TRANLEVEL_MODSNAP) && wrflag == 0) { // read-only
+    // TODO: Don't open shadows for read-only modsnap txns.
+    // In order to make this optimization work, we still need to latch
+    // the initial versions of tables and use these latched versions to 
+    // fail on schema changes. This is currently handled in the shadow code
+    // but can be refactored out.
+    if ((clnt->dbtran.mode <= TRANLEVEL_RECOM) && wrflag == 0) { // read-only
         if (clnt->has_recording == 0 ||                        // not selectv
             clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
             rc = SQLITE_OK;
@@ -4949,7 +4990,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         clnt->dbtran.mode = TRANLEVEL_RECOM;
     }
 
-    rc = start_new_transaction(clnt, thd);
+    rc = start_new_transaction(clnt);
 
     /* 2pc on tunable, only here for now */
     extern int gbl_2pc;
@@ -8139,9 +8180,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
 {
     extern int gbl_ssl_allow_remsql;
     struct sqlclntstate *clnt = thd->clnt;
-    fdb_tran_t *trans;
+    fdb_tran_t *trans = NULL;
     fdb_t *fdb;
-    uuid_t tid;
 
     assert(pBt != 0);
 
@@ -8175,14 +8215,15 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (!clnt->isselect /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans =
-                fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0 /* TODO */);
+            trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
+            if (!trans) {
+                logmsg(LOGMSG_ERROR, "%s: failed to create fdb_tran\n",
+                       __func__);
+                return -1;
+            }
         } else {
-            trans = fdb_trans_join(clnt, fdb, (char *)tid);
+            trans = fdb_trans_join(clnt, fdb);
         }
-    } else {
-        *(unsigned long long *)tid = 0ULL;
-        trans = NULL;
     }
 
     if (trans)
@@ -8204,8 +8245,8 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
                "%s Created cursor cid=%s with tid=%s rootp=%d "
                "db:tbl=\"%s:%s\"\n",
                __func__, (pStr) ? comdb2uuidstr(pStr, cus) : "UNK",
-               comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
-               cur->fdbc->name(cur));
+               trans ? comdb2uuidstr(*(uuid_t*)trans->tid, tus) : "<nontran>" ,
+               iTable, pBt->zFilename, cur->fdbc->name(cur));
     }
 
     if (trans)
@@ -8262,10 +8303,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     }
     cur->tableversion = cur->db->tableversion;
 
-    clnt->dbtran.cursor_tran->modsnap_start_lsn.file = clnt->modsnap_start_lsn_file;
-    clnt->dbtran.cursor_tran->modsnap_start_lsn.offset = clnt->modsnap_start_lsn_offset;
-    clnt->dbtran.cursor_tran->last_checkpoint_lsn.file = clnt->last_checkpoint_lsn_file;
-    clnt->dbtran.cursor_tran->last_checkpoint_lsn.offset = clnt->last_checkpoint_lsn_offset;
+    initialize_curtran_for_modsnap(clnt->dbtran.cursor_tran, clnt);
 
     /* initialize the shadow, if any  */
     cur->shadtbl = osql_get_shadow_bydb(thd->clnt, cur->db);
@@ -8716,7 +8754,6 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
     int bdberr = 0;
     fdb_t *fdb = NULL;
     fdb_tran_t *trans = NULL;
-    uuid_t tid;
     int need_ssl = 0;
 
     uint8_t **pIdxInsert = NULL, **pIdxDelete = NULL;
@@ -8792,7 +8829,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
                                 SQLENG_PRE_STRT_STATE);
         if (pCur->cursor_class == CURSORCLASS_REMOTE) {
             /* restart a remote transaction, and open a new remote cursor */
-            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid, 0);
+            trans = fdb_trans_begin_or_join(clnt, fdb, 0, NULL);
             pCur->fdbc = fdb_cursor_open(clnt, pCur, pCur->rootpage, trans, &pCur->ixnum, need_ssl);
         }
         rc = handle_sql_begin(clnt->thd, clnt, TRANS_CLNTCOMM_CHUNK);
@@ -8803,7 +8840,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             goto done;
         }
 
-        rc = start_new_transaction(clnt, thd);
+        rc = start_new_transaction(clnt);
 
         if (thd->bt) {
             LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
@@ -9181,9 +9218,7 @@ int sqlite3BtreeInsert(
         } else {
             /* make sure we have a distributed transaction and use that to
              * update remote */
-            uuid_t tid;
-            fdb_tran_t *trans = fdb_trans_begin_or_join(
-                clnt, pCur->bt->fdb, (char *)tid, 0 /*TODO*/);
+            fdb_tran_t *trans = fdb_trans_join(clnt, pCur->bt->fdb);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -9757,6 +9792,8 @@ retry:
         return -1;
     }
 
+    initialize_curtran_for_modsnap(curtran_out, clnt);
+
     if (!clnt->init_gen)
         clnt->init_gen = curgen;
 
@@ -10069,8 +10106,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         } else {
             rc = SQLITE_SCHEMA;
         }
-    } else
+    } else {
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
+    }
 
     if (rc) {
         char *err;
@@ -13093,13 +13131,25 @@ int verify_dbstore_client_function(const char *dbstore)
     int rc = 0;
     strbuf *sql;
 
+    /* This deadlocks in replication.  On the master, this is called
+     * from do_schema_change_tran_thd (prior to finalize).  This thread
+     * calls do_alter_table with tran set to NULL, so no self-deadlock. */
+    if (!bdb_iam_master(thedb->bdb_env) || gbl_is_physical_replicant) {
+        return 0;
+    }
+
     sql = strbuf_new();
     strbuf_appendf(sql, "TESTDEFAULT (%s)", dbstore);
 
-    rc = run_verify_dbstore_function((char *)strbuf_buf(sql));
+    struct errstat err = {0};
+    run_sql_return_ll((char *)strbuf_buf(sql), &err);
+    if (err.errval != 0) {
+        logmsg(LOGMSG_ERROR, "error verifying dbstore expression (%s): %s\n", dbstore, err.errstr);
+        rc = -1;
+    }
 
     strbuf_free(sql);
-    return rc ? -1 : 0;
+    return rc;
 }
 
 /* Verify all CHECK constraints against this record.
@@ -13305,4 +13355,54 @@ int comdb2_is_field_indexable(const char *table_name, int fld_idx) {
         }
     }
     return 1;
+
+}
+
+static void legacy_sndbak(struct ireq *iq, int rc, int len) {
+    struct buf_lock_t *p_slock = iq->request_data;
+    p_slock->len = len - 8;
+    p_slock->rc = rc;
+    signal_buflock(p_slock);
+}
+
+static void legacy_iq_setup(struct ireq *iq, void *setup_data) {
+    struct sqlclntstate *clnt = (struct sqlclntstate*) setup_data;
+    iq->ipc_sndbak = legacy_sndbak;
+    iq->has_ssl = clnt->plugin.has_ssl(clnt);
+    get_client_origin(iq->corigin, sizeof(iq->corigin), clnt);
+}
+
+extern pthread_mutex_t buf_lock;
+extern pool_t *p_slocks; /* pool of socket locks*/
+int do_comdb2_legacy(void *payload, int payloadlen, struct sqlclntstate *clnt, int luxref, int flags, int *outlen, int *rcode) {
+    int rc;
+
+    struct buf_lock_t *p_slock = NULL;
+    Pthread_mutex_lock(&buf_lock);
+    p_slock = pool_getablk(p_slocks);
+    Pthread_mutex_unlock(&buf_lock);
+
+    Pthread_mutex_init(&(p_slock->req_lock), 0);
+    Pthread_cond_init(&(p_slock->wait_cond), NULL);
+    p_slock->bigbuf = (uint8_t*) payload;
+    p_slock->sb = NULL;
+    p_slock->reply_state = REPLY_STATE_NA;
+
+    int state;
+    Pthread_mutex_lock(&p_slock->req_lock);
+    rc = handle_buf_main2(thedb, NULL, payload, payload + 1024*64, 0, clnt->origin, clnt->last_pid, clnt->argv0, NULL, REQ_SQLLEGACY, p_slock, luxref, 0, NULL, 0, flags, legacy_iq_setup, clnt, 1, clnt->authdata);
+    do {
+        state = p_slock->reply_state;
+        if (state == REPLY_STATE_NA) {
+            Pthread_cond_wait(&p_slock->wait_cond, &p_slock->req_lock); 
+            state = p_slock->reply_state;
+       }
+        else {
+            Pthread_mutex_unlock(&p_slock->req_lock);
+        }
+    } while (state == REPLY_STATE_NA);
+
+    *outlen = p_slock->len;
+    *rcode = p_slock->rc;
+    return rc;
 }

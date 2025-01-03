@@ -654,7 +654,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
 
     rc = handle_buf_main(thedb, NULL, p_buf, p_buf_end, debug,
                          (char *)psess->target.host, 0, NULL, psess,
-                         REQ_OFFLOAD, NULL, 0, 0);
+                         REQ_OFFLOAD, NULL, 0, 0, NULL);
 
     if (rc) {
         signal_replicant_error(&psess->target, psess->rqid, psess->uuid,

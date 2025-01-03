@@ -98,6 +98,7 @@ void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 void reqlog_set_nwrites(struct reqlogger *logger, int nwrites, int cascaded_nwrites);
 void reqlog_set_api_type(struct reqlogger *logger, const char *api_type);
+void reqlog_set_netwaitus(struct reqlogger *logger, int64_t timeus);
 
 void reqlog_long_running_clnt(struct sqlclntstate *);
 void reqlog_long_running_sql_statements(void);

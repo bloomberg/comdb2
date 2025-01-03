@@ -210,7 +210,6 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
     bdb_cursor_impl_t *cur;
     bdb_state_type *bdb_state;
     int rc;
-    u_int32_t curflags = 0;
     DBT dbtkey = {0};
     DBT dbtdta = {0};
     int bdberr;
@@ -235,15 +234,8 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
 
     /* Set pageorder options. */
     if (r->pagelock_cursor == NULL) {
-        if (cur->pageorder) {
-            curflags |= DB_PAGE_ORDER;
-
-            if (cur->discardpages)
-                curflags |= DB_DISCARD_PAGES;
-        }
-
         /* All of these cursors must be pausible */
-        curflags |= DB_PAUSIBLE;
+        const u_int32_t curflags = get_cursor_flags(cur, /* cursor_is_pausible */ 1);
 
         r->pagelock_cursor = get_cursor_for_cursortran_flags(
             berkdb->impl->cur->curtran, db, curflags, &bdberr);
@@ -323,7 +315,6 @@ static inline int get_row_lock_minmaxlk(bdb_berkdb_t *berkdb,
 static inline int open_pagelock_cursor(bdb_berkdb_t *berkdb)
 {
     bdb_rowlocks_tag_t *r;
-    u_int32_t curflags = 0;
     bdb_cursor_impl_t *cur;
     int bdberr = 0;
     DB *db = NULL;
@@ -341,17 +332,8 @@ static inline int open_pagelock_cursor(bdb_berkdb_t *berkdb)
     db = (BDBC_DT == cur->type) ? cur->state->dbp_data[0][cur->idx]
                                 : cur->state->dbp_ix[cur->idx];
 
-    /* Set pageorder options. */
-    if (cur->pageorder) {
-        curflags |= DB_PAGE_ORDER;
-
-        /* Set discard pages options */
-        if (cur->discardpages)
-            curflags |= DB_DISCARD_PAGES;
-    }
-
     /* All of these cursors must be pausible */
-    curflags |= DB_PAUSIBLE;
+    const u_int32_t curflags = get_cursor_flags(cur, /* cursor_is_pausible */ 1);
 
     /* Get a cursor */
     r->pagelock_cursor = get_cursor_for_cursortran_flags(

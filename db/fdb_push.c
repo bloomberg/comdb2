@@ -16,11 +16,13 @@
 
 #include "sql.h"
 #include "dohsql.h"
+#include "fdb_fend.h"
 
 extern char *gbl_cdb2api_policy_override;
 extern int gbl_fdb_auth_enabled;
 
 struct fdb_push_connector {
+    enum ast_type type; /* what type of request we override */
     char *remotedb; /* name of the remote db; class matches stored fdb */
     enum mach_class class; /* what stage this db lives on */
     int class_override; /* class was explicit in the remdb name */
@@ -33,7 +35,7 @@ struct fdb_push_connector {
     struct param_data *params; /* bound parameters */
 };
 
-static void _master_clnt_set(struct sqlclntstate *clnt);
+static void _master_clnt_set(sqlclntstate *clnt);
 static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
                                 const char *tzname, struct errstat *err,
                                 cdb2_client_datetime_t *dts);
@@ -54,24 +56,51 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
     }
 }
 
+fdb_push_connector_t *_new_push(Parse *pParse, struct Db *pDb,
+                                enum ast_type type, int minver)
+{
+    fdb_push_connector_t *push = NULL;
+
+    if (pDb->version < minver)
+        return NULL;
+
+    push = calloc(1, sizeof(fdb_push_connector_t));
+    if (!push) {
+        logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
+        return NULL;
+    }
+    push->remotedb = strdup(pDb->zDbSName);
+    if (!push->remotedb) {
+        logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
+        free(push);
+        return NULL;
+    }
+    push->class = pDb->class;
+    push->local = pDb->local;
+    push->class_override = pDb->class_override;
+    push->type = type;
+
+    return push;
+}
+
+
 /**
  * Remote query push support
  * Save in clnt information that this is a standalone select that
  * refers to a remote table
  *
  */
-int fdb_push_run(Parse *pParse, dohsql_node_t *node)
+int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
 {
     GET_CLNT;
-    fdb_push_connector_t *push = NULL;
     struct Db *pDb = &pParse->db->aDb[node->remotedb];
 
     logmsg(LOGMSG_DEBUG,
-           "CALLING FDB PUSH RUN on query %s (gbl_fdb_push_remote=%d) (clnt force remote? %d) (clnt force redirect? "
+           "CALLING FDB PUSH RUN on query %s (fdb_push_remote=%d) (clnt force remote? %d) (clnt force redirect? "
            "%d) (clnt can redirect? %d)\n",
-           clnt->sql, gbl_fdb_push_remote, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
+           clnt->sql, clnt->fdb_push_remote, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
            clnt->can_redirect_fdb);
-    if (!gbl_fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
+    if (!clnt->fdb_push_remote && !clnt->force_fdb_push_remote && !clnt->force_fdb_push_redirect)
         return -1;
 
     if (clnt->disable_fdb_push)
@@ -80,23 +109,10 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
     if (clnt->intrans || clnt->in_client_trans)
         return -1;
 
-    if (pDb->version < FDB_VER_PROXY)
+    fdb_push_connector_t *push = _new_push(pParse, pDb, AST_TYPE_SELECT,
+                                           FDB_VER_PROXY);
+    if (!push)
         return -1;
-
-    push = calloc(1, sizeof(fdb_push_connector_t));
-    if (!push) {
-        logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
-        return -1;
-    }
-    push->remotedb = strdup(pDb->zDbSName);
-    if (!push->remotedb) {
-        logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
-        free(push);
-        return -1;
-    }
-    push->class =  pDb->class;
-    push->local = pDb->local;
-    push->class_override = pDb->class_override;
 
     push->ncols = node->ncols;
 
@@ -110,6 +126,34 @@ int fdb_push_run(Parse *pParse, dohsql_node_t *node)
     }
 
     _master_clnt_set(clnt);
+
+    clnt->fdb_push = push;
+
+    return 0;
+}
+
+/**
+ * Same as fdb_push_setup, but for remote writes
+ *
+ */
+int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
+{
+    GET_CLNT;
+    struct Db *pDb = &pParse->db->aDb[pTab->iDb];
+
+    assert(pTab->iDb > 1);
+    logmsg(LOGMSG_DEBUG,
+           "%s query %s (fdb_push_remote_write=%d)\n",
+           __func__, clnt->sql, clnt->fdb_push_remote_write);
+    if (!clnt->fdb_push_remote || !clnt->fdb_push_remote_write)
+        return -1;
+
+    if (clnt->disable_fdb_push)
+        return -1;
+
+    fdb_push_connector_t *push = _new_push(pParse, pDb, type, FDB_VER_CDB2API);
+    if (!push)
+        return -1;
 
     clnt->fdb_push = push;
 
@@ -136,14 +180,14 @@ void fdb_push_free(fdb_push_connector_t **pp)
 }
 
 /* override sqlite engine */
-static int fdb_push_column_count(struct sqlclntstate *clnt, sqlite3_stmt *_)
+static int fdb_push_column_count(sqlclntstate *clnt, sqlite3_stmt *_)
 {
     return clnt->fdb_push->ncols;
 }
 
 /* Typecasting may reallocate zMalloc. So do it while holding master_mem_mtx. */
 #define FUNC_COLUMN_TYPE(ret, type, err_ret)                                   \
-    static ret fdb_push_column_##type(struct sqlclntstate *clnt,               \
+    static ret fdb_push_column_##type(sqlclntstate *clnt,                      \
                                       sqlite3_stmt *stmt, int iCol)            \
     {                                                                          \
         fdb_push_connector_t *p = clnt->fdb_push;                              \
@@ -167,7 +211,7 @@ FUNC_COLUMN_TYPE(const unsigned char *, text, NULL)
 FUNC_COLUMN_TYPE(const void *, blob, NULL)
 FUNC_COLUMN_TYPE(const dttz_t *, datetime, NULL)
 
-static const intv_t *fdb_push_column_interval(struct sqlclntstate *clnt,
+static const intv_t *fdb_push_column_interval(sqlclntstate *clnt,
                                               sqlite3_stmt *stmt, int iCol,
                                               int type)
 {
@@ -184,12 +228,12 @@ static const intv_t *fdb_push_column_interval(struct sqlclntstate *clnt,
     return rv;
 }
 
-static char *_get_tzname(struct sqlclntstate *clnt, sqlite3_stmt *_)
+static char *_get_tzname(sqlclntstate *clnt, sqlite3_stmt *_)
 {
     return clnt->tzname;
 }
 
-static void _master_clnt_set(struct sqlclntstate *clnt)
+static void _master_clnt_set(sqlclntstate *clnt)
 {
     clnt->backup = clnt->plugin;
     clnt->adapter_backup = clnt->adapter;
@@ -207,9 +251,128 @@ static void _master_clnt_set(struct sqlclntstate *clnt)
     clnt->plugin.tzname = _get_tzname;
 }
 
-static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl);
+static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl);
 
 void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
+
+static int _is_client_redirect(sqlclntstate *clnt, const char *class,
+                               int cdb2api_policy_flag)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+
+    if ((gbl_fdb_push_redirect_foreign || clnt->force_fdb_push_redirect) && clnt->can_redirect_fdb &&
+        !clnt->force_fdb_push_remote) {
+        logmsg(LOGMSG_DEBUG,
+               "%s on query %s (redirect tunable on %d) (clnt force remote? %d)"
+               " (clnt force redirect? %d)\n",
+               __func__, clnt->sql, gbl_fdb_push_redirect_foreign,
+               clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect);
+        // tell cdb2api to run query directly on foreign db
+        // send back db, tier, flag
+        // NOTE: Cost will not work for this
+        if (push->local) { // this is local to server, not client. Return hostname to client
+            cdb2api_policy_flag |= CDB2_DIRECT_CPU;
+            class = gbl_myhostname;
+        }
+        const char *foreign_db[2];
+        foreign_db[0] = push->remotedb;
+        foreign_db[1] = class;
+        write_response(clnt, RESPONSE_REDIRECT_FOREIGN, foreign_db, cdb2api_policy_flag);
+        clnt_plugin_reset(clnt);
+        return 1;
+    }
+    return 0;
+}
+
+static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
+                                    int flags, struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+    cdb2_hndl_tp *hndl = NULL;
+    int rc;
+
+    logmsg(LOGMSG_DEBUG,
+           "%s query %s (redirect tunable on? %d) (clnt force remote? %d) "
+           "(clnt force redirect? %d) (clnt can redirect? %d)\n",
+           __func__, clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote,
+           clnt->force_fdb_push_redirect, clnt->can_redirect_fdb);
+
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf)
+        cdb2_set_comdb2db_config(conf);
+
+    rc = cdb2_open(&hndl, push->remotedb, class, flags);
+    if (rc) {
+        errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
+        return NULL;
+    }
+
+    rc = forward_set_commands(clnt, hndl, err);
+    if (rc) {
+        return NULL;
+    }
+
+    if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
+        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
+
+    return hndl;
+}
+
+/**
+ * Connect to a remote cluster based of push connector information
+ * and additional configuration options
+ *
+ */
+static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
+                                int flags, struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+
+    const char *class = "default";
+    if (push->local)
+        class = "local";
+    else if (push->class_override) {
+        class = mach_class_class2name(push->class);
+        assert(class);
+    }
+
+    int cdb2api_policy_flag = push->local ? 0 :
+        convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
+
+    if (client_redir) {
+        /* bounce through client standalone queries, if so config-ed */
+        if(!clnt->in_client_trans && _is_client_redirect(clnt, class, cdb2api_policy_flag)) {
+            *client_redir = 1;
+            return NULL;
+        } else {
+            *client_redir = 0;
+        }
+    }
+
+    return _hndl_open_int(clnt, class, flags | cdb2api_policy_flag, err);
+}
+
+static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl,
+                          struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+    int rc;
+
+    cdb2_client_datetime_t *dts = calloc(push->nparams, sizeof(*dts));
+    if (!dts)
+        return -1;
+
+    rc = set_bound_parameters(push, hndl, clnt->tzname, err, dts);
+    if (rc) {
+        free(dts);
+        return -1;
+    }
+
+    rc = cdb2_run_statement(hndl, clnt->sql);
+    free(dts);
+
+    return rc;
+}
 
 /**
  * Proxy receiving sqlite rows from remote and forwarding them to
@@ -219,76 +382,22 @@ void *(*externalComdb2getAuthIdBlob)(void *ID) = NULL;
  *          -1 if unrecoverable error
  *          -2 if remote is too old (7.0 or older)
  */
-int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err)
+int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
     cdb2_hndl_tp *hndl = NULL;
     uint64_t row_id = 0;
     int first_row = 1;
-    int rc, irc;
+    int rc = 0, irc;
+    int client_redir;
 
-    const char *class = "default";
-    int cdb2api_policy_flag = push->local ? 0 : convert_policy_override_string_to_cdb2api_flag(gbl_cdb2api_policy_override);
-    if (push->local)
-        class = "local";
-    else if (push->class_override) {
-        class = mach_class_class2name(push->class);
-        assert(class);
-    }
-
-    if ((gbl_fdb_push_redirect_foreign || clnt->force_fdb_push_redirect) && clnt->can_redirect_fdb &&
-        !clnt->force_fdb_push_remote) {
-        logmsg(LOGMSG_DEBUG,
-               "CALLING FDB PUSH REDIRECT on query %s (redirect tunable on %d) (clnt force remote? %d) (clnt force "
-               "redirect? %d)\n",
-               clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect);
-        // tell cdb2api to run query directly on foreign db
-        // send back db, tier, flag
-        // NOTE: Cost will not work for this
-        if (push->local) { // this is local to server, not client. Return hostname to client
-            cdb2api_policy_flag |= CDB2_DIRECT_CPU;
-            class = gbl_myhostname;
-        }
-        rc = 0;
-        const char *foreign_db[2];
-        foreign_db[0] = push->remotedb;
-        foreign_db[1] = class;
-        write_response(clnt, RESPONSE_REDIRECT_FOREIGN, foreign_db, cdb2api_policy_flag);
+    hndl = _hndl_open(clnt,  &client_redir, CDB2_SQL_ROWS, err);
+    if (client_redir)
         goto reset;
-    }
-    logmsg(LOGMSG_DEBUG,
-           "CALLING FDB PUSH on query %s (redirect tunable on? %d) (clnt force remote? %d) (clnt force redirect? %d) "
-           "(clnt can redirect? %d)\n",
-           clnt->sql, gbl_fdb_push_redirect_foreign, clnt->force_fdb_push_remote, clnt->force_fdb_push_redirect,
-           clnt->can_redirect_fdb);
+    if (!hndl)
+        return -1; /* TODO: do we need reset here? */
 
-    char *conf = getenv("CDB2_CONFIG");
-    if (conf)
-        cdb2_set_comdb2db_config(conf);
-
-    rc = cdb2_open(&hndl, push->remotedb, class, CDB2_SQL_ROWS | cdb2api_policy_flag);
-    if (rc) {
-        errstat_set_rcstrf(err, rc, "Failed to open db %s local", push->remotedb);
-        return -1;
-    }
-
-    rc = forward_set_commands(clnt, hndl, err);
-    if (rc) {
-        return -1;
-    }
-
-    cdb2_client_datetime_t *dts = calloc(push->nparams, sizeof(*dts));
-    rc = set_bound_parameters(push, hndl, clnt->tzname, err, dts);
-    if (rc) {
-        free(dts);
-        return -1;
-    }
-
-    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
-        cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
-
-    rc = cdb2_run_statement(hndl, clnt->sql);
-    free(dts);
+    rc = _run_statement(clnt, hndl, err);
     if (rc) {
         const char *errstr = cdb2_errstr(hndl);
         if (errstr &&
@@ -384,7 +493,163 @@ reset:
     return rc;
 }
 
-static int _get_remote_cost(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl)
+/**
+ * Same as handle_fdb_push, but for writes
+ *
+ */
+int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
+{
+    fdb_push_connector_t *push = clnt->fdb_push;
+    const char *errstr = NULL;
+    cdb2_hndl_tp *hndl;
+    fdb_t *fdb;
+    int created;
+    int rc;
+    
+    if (!push)
+        return -2;
+
+    /* this was handled back here through an "error"; clear it */
+    clnt->had_errors = 0;
+
+    fdb = get_fdb(push->remotedb);
+    if (!fdb) {
+        logmsg(LOGMSG_ERROR, "FDB push missing fdb %s\n", push->remotedb);
+        rc = -2;
+        goto free_push;
+    }
+
+    rc = fdb_check_class_match(fdb, push->local, push->class, push->class_override);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "FDB push class mismatch\n");
+        rc = -2;
+        goto free_push;
+    }
+
+    /* fdb is the remote db we want, and it supports remote writes */
+
+    /* begin/join the transaction */
+    fdb_tran_t *tran = fdb_trans_begin_or_join(clnt, fdb, 0/*TODO*/, &created);
+    if (!tran)
+        return -1;
+    assert(tran->is_cdb2api);
+
+    if (created) {
+        /* get a connection */
+        tran->is_cdb2api = 1;
+        tran->fcon.hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
+        if (!tran->fcon.hndl) {
+            rc = -2;
+            goto free;
+        }
+        if (clnt->in_client_trans) {
+            /* if not standalone, and this is the first reachout to this fdb, send begin */
+            clnt->intrans = 1;
+            rc = cdb2_run_statement(tran->fcon.hndl, "begin");      
+            while (rc == CDB2_OK) {
+                rc = cdb2_next_record(tran->fcon.hndl);
+            }
+            if (rc != CDB2_OK_DONE) {
+                hndl = tran->fcon.hndl;
+                goto hndl_err;
+            }
+        }
+    }
+    hndl = tran->fcon.hndl;
+
+    /* run the statement */
+    rc = _run_statement(clnt, hndl, err);
+    if (rc != CDB2_OK) {
+        goto hndl_err;
+    }
+
+    /* drain the socket */
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK);
+
+    if (rc != CDB2_OK_DONE) {
+        goto hndl_err;
+    }
+
+    cdb2_effects_tp effects;
+
+
+    if (!clnt->in_client_trans) {
+        if ((rc = cdb2_get_effects(hndl, &effects))) {
+            goto hndl_err;
+        }
+    }
+
+    int ncols = cdb2_numcolumns(hndl);
+
+    /* if this is standalone, send answers to client */
+    if (!clnt->in_client_trans) {
+        /* write columns info */
+        rc = write_response(clnt, RESPONSE_COLUMNS_FDB_PUSH, hndl, ncols);
+        if (rc) {
+            errstat_set_rcstrf(err, -1, "failed to write columns");
+            rc = -1;
+            goto free;
+        }
+
+        clnt->effects.num_affected = effects.num_affected;
+        clnt->effects.num_selected = effects.num_selected;
+        clnt->effects.num_updated = effects.num_updated;
+        clnt->effects.num_deleted = effects.num_deleted;
+        clnt->effects.num_inserted = effects.num_inserted;
+
+        int val = 0;
+        if (clnt->effects.num_inserted > 0) {
+            val = clnt->effects.num_inserted;
+        } else if (clnt->effects.num_deleted) {
+            val = clnt->effects.num_deleted;
+        } else if (clnt->effects.num_updated) {
+            val = clnt->effects.num_updated;
+        }
+        rc = write_response(clnt, RESPONSE_ROW_REMTRAN, NULL, val);
+        if (rc) {
+            errstat_set_rcstrf(err, -1, "failed to write counter");
+            rc = -1;
+            goto free;
+        }
+
+        /* write answer */
+        rc = write_response(clnt, RESPONSE_ROW_LAST, NULL, 0);
+        if (rc) {
+            errstat_set_rcstrf(err, -1, "failed to write last row");
+            rc = -1;
+            goto free;
+        }
+        goto free;
+    } else {
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
+    }
+
+    return 0;
+
+hndl_err:
+    errstr = cdb2_errstr(hndl);
+    errstat_set_rcstrf(err, rc, "%s", errstr);
+    rc = write_response(clnt, RESPONSE_ERROR, (void*)errstr, rc);
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "Failed to write error to client");
+    }
+free:
+    /* remote the fdb_tran_t */
+    fdb_free_tran(clnt, tran);
+free_push:
+    if (rc == -2) {
+        logmsg(LOGMSG_ERROR, "FDB push returning -2\n");
+        /* This will get retried as non-cdb2api, free fdb_push
+         * so that the postpone message works
+         */
+        clnt->fdb_push = NULL;
+        free(push->remotedb);
+        free(push);
+    }
+    return rc;
+}
+
+static int _get_remote_cost(sqlclntstate *clnt, cdb2_hndl_tp *hndl)
 {
     int rc;
 
@@ -605,4 +870,11 @@ static int set_bound_parameters(fdb_push_connector_t *push, cdb2_hndl_tp *hndl,
     }
 
     return 0;
+}
+
+void fdb_disable_push(void)
+{
+    GET_CLNT;
+
+    clnt->disable_fdb_push = 1;
 }

@@ -246,6 +246,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     char *tmp_str;
     int rc;
     int tm;
+    int locked = 0;
 
     if (view->period == VIEW_PARTITION_MANUAL) {
         if ((rc = logical_cron_init(view->name, err)) != 0) {
@@ -265,6 +266,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     published = 1;
 
     Pthread_rwlock_wrlock(&views_lk);
+    locked = 1;
 
     /* create initial rollout */
     tm = _view_get_next_rollout(view->period, view->retention, view->starttime,
@@ -347,7 +349,9 @@ done:
             }
         }
     }
-    Pthread_rwlock_unlock(&views_lk);
+    if (locked) {
+        Pthread_rwlock_unlock(&views_lk);
+    }
 
     return rc;
 }
@@ -1033,7 +1037,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
-            return FDB_ERR_GENERIC;
+            return VIEW_ERR_GENERIC;
         }
     }
 
@@ -1049,10 +1053,10 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
         if (tmp_str) {
             free(tmp_str);
         }
-        return FDB_ERR_GENERIC;
+        return VIEW_ERR_GENERIC;
     }
 
-    return FDB_NOERR;
+    return VIEW_NOERR;
 }
 
 /**

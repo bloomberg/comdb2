@@ -65,7 +65,8 @@ public class Comdb2Handle extends AbstractConnection {
     boolean hasUserTcpSz;
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
-    boolean pmuxrte = false;
+    boolean hasAllowPmuxRoute;
+    boolean pmuxrte = true;
     boolean verifyretry = true;
     boolean stmteffects = true;
     int soTimeout = 5000;
@@ -96,7 +97,8 @@ public class Comdb2Handle extends AbstractConnection {
     private boolean ack = false;
     private boolean skipDrain = false;
     private boolean clearAckOnClose = true;
-    private boolean useIdentity = false;
+    boolean hasUseIdentity;
+    boolean useIdentity = true;
 
     private boolean isRead;
     private String lastSql;
@@ -349,6 +351,8 @@ public class Comdb2Handle extends AbstractConnection {
 
     void addHosts(List<String> hosts) {
         myDbHosts.addAll(hosts);
+        /* This should be considered direct-cpu (ie no discovery) */
+        isDirectCpu = true;
     }
 
     void addPorts(List<Integer> ports) {
@@ -1984,7 +1988,8 @@ readloop:
            we're not on it, connect to it. */
         if (prefIdx != -1 && dbHostIdx != prefIdx) {
             io = new SockIO(myDbHosts.get(prefIdx),
-                    myDbPorts.get(prefIdx), tcpbufsz, pmuxrte ? myDbName : null,
+                    pmuxrte ? portMuxPort : myDbPorts.get(prefIdx),
+                    tcpbufsz, pmuxrte ? myDbName : null,
                     soTimeout, connectTimeout);
             if (io.open()) {
                 try {
@@ -2021,7 +2026,7 @@ readloop:
                         || try_node == dbHostConnected)
                     continue;
 
-                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node),
+                io = new SockIO(myDbHosts.get(try_node), pmuxrte ? portMuxPort : myDbPorts.get(try_node),
                                 tcpbufsz, pmuxrte ? myDbName : null,
                                 soTimeout, connectTimeout);
                 if (io.open()) {
@@ -2064,7 +2069,7 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx),
+            io = new SockIO(myDbHosts.get(dbHostIdx), pmuxrte ? portMuxPort : myDbPorts.get(dbHostIdx),
                             tcpbufsz, pmuxrte ? myDbName : null,
                             soTimeout, connectTimeout);
             if (io.open()) {
@@ -2095,7 +2100,7 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx),
+            io = new SockIO(myDbHosts.get(dbHostIdx), pmuxrte ? portMuxPort : myDbPorts.get(dbHostIdx),
                             tcpbufsz, pmuxrte ? myDbName : null, 
                             soTimeout, connectTimeout);
             if (io.open()) {
@@ -2124,7 +2129,7 @@ readloop:
          */
         if (masterIndexInMyDbHosts >= 0) {
             io = new SockIO(myDbHosts.get(masterIndexInMyDbHosts),
-                            myDbPorts.get(masterIndexInMyDbHosts),
+                            pmuxrte ? portMuxPort : myDbPorts.get(masterIndexInMyDbHosts),
                             tcpbufsz, pmuxrte ? myDbName : null,
                             soTimeout, connectTimeout);
             if (io.open()) {
@@ -2153,7 +2158,9 @@ readloop:
         if (!isDirectCpu && refresh_dbinfo_if_failed) {
             try {
                 DatabaseDiscovery.getDbHosts(this, true);
-                reopen(false);
+                /* reset random policy */
+                dbHostIdx = -1;
+                return reopen(false);
             } catch (NoDbHostFoundException e) {
                 logger.log(Level.SEVERE, "Failed to refresh dbinfo", e);
             }

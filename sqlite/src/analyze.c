@@ -145,7 +145,6 @@
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <logmsg.h>
 int is_comdb2_index_disableskipscan(const char *);
-void get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #if defined(SQLITE_ENABLE_STAT4)
@@ -2442,10 +2441,6 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   assert( iDb>=0 && iDb<db->nDb );
   assert( db->aDb[iDb].pBt!=0 );
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* AZ: put disabler loader here */
-  get_disable_skipscan_all();
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
   for(i=sqliteHashFirst(&pSchema->tblHash); i; i=sqliteHashNext(i)){

@@ -71,4 +71,5 @@ void sql_disable_ssl(struct sqlwriter *);
 typedef void(sql_dispatch_timeout_fn)(struct sqlclntstate *);
 void sql_wait_for_leader(struct sqlwriter *, sql_dispatch_timeout_fn *);
 
+void clnt_increase_netwaitus(struct sqlclntstate *clnt, int this_many_us);
 #endif /* INCLUDED_SQLWRITER_H */

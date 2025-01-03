@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <cdb2api.h>
 
 typedef void (lib_cb)(void);

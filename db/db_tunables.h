@@ -71,6 +71,8 @@ REGISTER_TUNABLE("analyze_tbl_threads",
                  "generating index statistics. (Default: 5)",
                  TUNABLE_INTEGER, &analyze_max_table_threads, READONLY, NULL,
                  NULL, analyze_set_max_table_threads, NULL);
+REGISTER_TUNABLE("always_reload_analyze", "Reload analyze data on every query. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_always_reload_analyze, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("archive_on_init",
                  "Archive files with database extensions in the database directory "
                  "at the time of init. (Default: ON)",
@@ -315,6 +317,10 @@ REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'", TU
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN, &gbl_disable_rowlocks, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("stack_at_page_read", "Stores stack-id for every page-read.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_page_read, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("stack_at_page_write", "Stores stack-id for every page-write.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_stack_at_page_write, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("stack_at_lock_get", "Stores stack-id for every lock-get.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_stack_at_lock_get, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("stack_at_lock_handle", "Stores stack-id for every lock-handle.  (Default: off)", TUNABLE_BOOLEAN,
@@ -552,7 +558,10 @@ REGISTER_TUNABLE("foreign_db_allow_cross_class", NULL, TUNABLE_BOOLEAN, &gbl_fdb
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN, &gbl_fdb_resolve_local,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("foreign_db_push_remote", NULL, TUNABLE_BOOLEAN, &gbl_fdb_push_remote, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_db_push_remote", "Fdb proxy more for reads (OFF turns off writes as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote, NOARG, NULL, NULL, 
+                 fdb_push_update, NULL);
+REGISTER_TUNABLE("foreign_db_push_remote_writes", "Fdb proxy mode for writes (ON turns on reads as well). (Default: on)", TUNABLE_BOOLEAN, &gbl_fdb_push_remote_write, NOARG, NULL, NULL,
+                 fdb_push_write_update, NULL);
 REGISTER_TUNABLE("foreign_db_push_redirect",
                  "Redirect fdb query to run via client instead of on server. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_fdb_push_redirect_foreign, NOARG, NULL, NULL, NULL, NULL);
@@ -943,11 +952,8 @@ REGISTER_TUNABLE("page_latches",
                  TUNABLE_BOOLEAN, &gbl_page_latches, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("pageordertablescan", "Perform table scans in page order and not row order. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_page_order_table_scan, NOARG, NULL, NULL, page_order_table_scan_update, NULL);
-/*
-REGISTER_TUNABLE("pagesize", NULL, TUNABLE_INTEGER,
-                 &placeholder, DEPRECATED_TUNABLE|READONLY, NULL, NULL, NULL,
-                 NULL);
-*/
+REGISTER_TUNABLE("llmeta_pagesize", "Init-option for llmeta and metadb pagesizes.  (Default: 4096)", TUNABLE_INTEGER,
+                 &gbl_llmeta_pagesize, READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("parallel_recovery", NULL, TUNABLE_INTEGER,
                  &gbl_parallel_recovery_threads, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -1528,9 +1534,9 @@ REGISTER_TUNABLE("commit_delay_on_copy_ms",
 REGISTER_TUNABLE("commit_delay_trace", "Verbose commit-delays.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_commit_delay_trace,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("commit_lsn_map", "Maintain a map of transaction commit LSNs. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_commit_lsn_map,
-                 NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_commit_lsn_map", "Maintain a map of transaction commit LSNs. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_test_commit_lsn_map,
+                 NOARG | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("incoherent_slow_inactive_timeout", "Periodically reset slow-nodes to incoherent.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_incoherent_slow_inactive_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("set_coherent_state_trace", "Verbose coherency trace.  (Default: off)", TUNABLE_BOOLEAN,
@@ -1641,6 +1647,10 @@ REGISTER_TUNABLE("handle_buf_latency_ms",
                  "(Default: 0)",
                  TUNABLE_INTEGER, &gbl_handle_buf_add_latency_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("disable_legacy_queues",
+                 "Disable legacy queues and route messages through comdb2 queue buddy. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_disable_legacy_queues, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("queuedb_timeout_sec",
                  "Unassign Lua consumer/trigger if no heartbeat received for this time",
@@ -1770,16 +1780,14 @@ REGISTER_TUNABLE("instrument_dblist",
                  TUNABLE_BOOLEAN, &gbl_instrument_dblist,
                  READONLY | EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("match_on_ckp",
-                 "Allow rep_verify_match on ckp records.  (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("match_on_ckp", "Allow rep_verify_match on ckp records.  (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 /* physical replication */
-REGISTER_TUNABLE("blocking_physrep",
-                 "Physical replicant blocks on select. (Default: false)",
-                 TUNABLE_BOOLEAN, &gbl_blocking_physrep, 0, NULL, NULL, NULL,
-                 NULL);
+REGISTER_TUNABLE("blocking_physrep", "Physical replicant blocks on select. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_blocking_physrep, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("tranlog_default_timeout", "Default timeout for tranlog queries.  (Default: 30)", TUNABLE_INTEGER,
+                 &gbl_tranlog_default_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_incoherent_timeout", "Timeout in seconds for incoherent tranlog. (Default: 10)",
                  TUNABLE_INTEGER, &gbl_tranlog_incoherent_timeout, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("tranlog_maxpoll", "Tranlog timeout in seconds for blocking poll. (Default: 60)", TUNABLE_INTEGER,
@@ -1807,10 +1815,11 @@ REGISTER_TUNABLE("physrep_revconn_check_interval", "Physrep recheck revconn inte
                  &gbl_physrep_revconn_check_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_i_am_metadb", "I am physical replication metadb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_i_am_metadb, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_keepalive_v2", "Use version 2 of keepalive which includes first lsn. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_keepalive_v2, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_keepalive_freq_sec",
-                 "Periodically send lsn to source node after this interval. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_keepalive_freq_sec, 0, NULL,
-                 NULL, NULL, NULL);
+                 "Periodically send lsn to source node after this interval. (Default: 10)", TUNABLE_INTEGER,
+                 &gbl_physrep_keepalive_freq_sec, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_max_candidates",
                  "Maximum number of candidates that should be returned to a "
                  "new physical replicant during registration. (Default: 6)",
@@ -1819,20 +1828,16 @@ REGISTER_TUNABLE("physrep_max_candidates",
 REGISTER_TUNABLE("physrep_max_pending_replicants",
                  "There can be no more than this many physical replicants in "
                  "pending state. (Default: 10)",
-                 TUNABLE_INTEGER, &gbl_physrep_max_pending_replicants, 0, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb cluster hosts.",
-                 TUNABLE_STRING, &gbl_physrep_metadb_host, READONLY, NULL, NULL, NULL,
-                 NULL);
+                 TUNABLE_INTEGER, &gbl_physrep_max_pending_replicants, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_metadb_host", "List of physical replication metadb cluster hosts.", TUNABLE_STRING,
+                 &gbl_physrep_metadb_host, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_metadb_name", "Physical replication metadb cluster name.",
                  TUNABLE_STRING, &gbl_physrep_metadb_name, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("physrep_reconnect_penalty",
-                 "Physrep wait seconds before retry to the same node. (Default: 5)",
-                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("physrep_register_interval", "Interval for physical replicant re-registration. (Default: 600)",
-                 TUNABLE_INTEGER, &gbl_physrep_register_interval, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_reconnect_penalty", "Physrep wait seconds before retry to the same node. (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_penalty, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_reconnect_interval", "Reconnect interval for physical replicants (Default: 600)",
+                 TUNABLE_INTEGER, &gbl_physrep_reconnect_interval, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_shuffle_host_list",
                  "Shuffle the host list returned by register_replicant() "
                  "before connecting to the hosts. (Default: OFF)",
@@ -1847,6 +1852,8 @@ REGISTER_TUNABLE("physrep_source_host", "List of physical replication source clu
                  &gbl_physrep_source_host, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("physrep_ignore_queues", "Don't replicate queues.", TUNABLE_BOOLEAN, &gbl_physrep_ignore_queues,
                  READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("physrep_max_rollback", "Maximum logs physrep can rollback. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_physrep_max_rollback, 0, NULL, NULL, NULL, NULL);
 
 /* reversql-sql */
 REGISTER_TUNABLE("revsql_allow_command_execution",

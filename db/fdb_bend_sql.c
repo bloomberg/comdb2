@@ -44,7 +44,7 @@ extern int gbl_fdb_track;
 extern int blockproc2sql_error(int rc, const char *func, int line);
 
 
-int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
+int fdb_appsock_work(const char *cid, sqlclntstate *clnt, int version,
                      enum run_sql_flags flags, char *sql, int sqllen,
                      char *trim_key, int trim_keylen, SBUF2 *sb)
 {
@@ -72,11 +72,11 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
   *
   */
 int fdb_svc_cursor_open_sql(char *tid, char *cid, int code_release, int version,
-                            int flags, struct sqlclntstate **pclnt)
+                            int flags, sqlclntstate **pclnt)
 {
-    struct sqlclntstate *clnt = NULL;
+    sqlclntstate *clnt = NULL;
     /* we need to create a private clnt state */
-    clnt = (struct sqlclntstate *)calloc(1, sizeof(struct sqlclntstate));
+    clnt = (sqlclntstate *)calloc(1, sizeof(sqlclntstate));
     if (!clnt) {
         return -1;
     }
@@ -117,8 +117,7 @@ int fdb_svc_sql_row(SBUF2 *sb, char *cid, char *row, int rowlen, int ret)
  * masks every index as covered index
  *
  */
-int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                         UnpackedRecord *upr)
+int fdb_svc_alter_schema(sqlclntstate *clnt, sqlite3_stmt *stmt, UnpackedRecord *upr)
 {
     int rootpage;
     int ixnum;
@@ -284,7 +283,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     return 0;
 }
 
-void init_sqlclntstate(struct sqlclntstate *clnt, char *tid)
+void init_sqlclntstate(sqlclntstate *clnt, char *tid)
 {
     start_internal_sql_clnt(clnt);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
@@ -301,9 +300,9 @@ void init_sqlclntstate(struct sqlclntstate *clnt, char *tid)
  */
 int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int seq, struct sql_thread *thd,
                         char *dist_txnid, char *coordinator_dbname, char *coordinator_tier, int64_t timestamp,
-                        struct sqlclntstate **pclnt)
+                        sqlclntstate **pclnt)
 {
-    struct sqlclntstate *clnt = NULL;
+    sqlclntstate *clnt = NULL;
     int rc = 0;
 
     *pclnt = NULL;
@@ -320,7 +319,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
         return -1;
     }
 
-    *pclnt = clnt = calloc(1, sizeof(struct sqlclntstate));
+    *pclnt = clnt = calloc(1, sizeof(sqlclntstate));
     if (!clnt) {
         return -1;
     }
@@ -358,7 +357,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
                 __func__, us);
     }
 
-    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
+    if ((rc = initialize_shadow_trans(clnt)) != 0)
         return rc;
 
     if (clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->osql.sock_started)
@@ -372,7 +371,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags, int se
  *
  */
 int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
-                         struct sqlclntstate *clnt, int seq)
+                         sqlclntstate *clnt, int seq)
 {
     int rc = 0, irc = 0;
     int bdberr = 0;
@@ -475,7 +474,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
  *
  */
 int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
-                           struct sqlclntstate *clnt, int seq)
+                           sqlclntstate *clnt, int seq)
 {
     int rc;
     uuidstr_t us;
@@ -538,7 +537,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 }
 
 static struct sql_thread *
-_fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
+_fdb_svc_cursor_start(BtCursor *pCur, sqlclntstate *clnt, char *tblname,
                       int rootpage, unsigned long long genid,
                       int need_bdbcursor, int *standalone)
 {
@@ -638,7 +637,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
     return thd;
 }
 
-static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
+static int _fdb_svc_cursor_end(BtCursor *pCur, sqlclntstate *clnt,
                                int standalone)
 {
     int bdberr = 0;
@@ -737,7 +736,7 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *
  * Insert a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
+int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
                           int rootpage, int version, unsigned long long genid,
                           char *data, int datalen, int seq)
 {
@@ -819,7 +818,7 @@ done:
  * Delete a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
+int fdb_svc_cursor_delete(sqlclntstate *clnt, char *tblname,
                           int rootpage, int version, unsigned long long genid,
                           int seq)
 {
@@ -866,7 +865,7 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
  * Update a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
+int fdb_svc_cursor_update(sqlclntstate *clnt, char *tblname,
                           int rootpage, int version,
                           unsigned long long oldgenid, unsigned long long genid,
                           char *data, int datalen, int seq)
@@ -958,9 +957,9 @@ done:
  * Return the sqlclntstate storing the shared transaction, if any
  *
  */
-struct sqlclntstate *fdb_svc_trans_get(char *tid)
+sqlclntstate *fdb_svc_trans_get(char *tid)
 {
-    struct sqlclntstate *clnt;
+    sqlclntstate *clnt;
     int rc = 0;
 
     int deadline = 0;
@@ -1001,7 +1000,7 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid)
  * Pack an sqlite result to be send to a remote db
  *
  */
-void fdb_sqlite_row(sqlite3_stmt *stmt, Mem *res)
+void fdb_sqlite_row(sqlclntstate *clnt, sqlite3_stmt *stmt, Mem *res)
 {
     UnpackedRecord upr;
     int nField;
@@ -1011,6 +1010,13 @@ void fdb_sqlite_row(sqlite3_stmt *stmt, Mem *res)
     assert(upr.aMem);
     upr.nField = nField;
 
+    /* special treatment for sqlite_master */
+    if (clnt->remsql_set.is_schema) {
+        int rc = fdb_svc_alter_schema(clnt, stmt, &upr);
+        if (rc) {
+            /* break; Ignore for now, this will run less optimized */
+        }
+    }
     bzero(res, sizeof(*res));
     sqlite3VdbeRecordPack(&upr, res);
 }

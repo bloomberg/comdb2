@@ -1,7 +1,9 @@
+#include <stdlib.h>
 #include <stdio.h>
+#include <arpa/inet.h>
+
 #include <cdb2api.h>
 #include <sqlite3.h>
-#include <arpa/inet.h>
 
 void usage(FILE *f, char *argv0) {
     fprintf(stderr, "Usage: %s <dbname> <tblname>\n", argv0);

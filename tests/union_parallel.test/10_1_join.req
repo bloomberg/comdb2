@@ -24,16 +24,11 @@ insert into t4(h,i,j) values (15, 15000, "him1500")
 insert into t4(h,i,j) values (16, 16000, "him1600")
 # inner join
 #explain distribution select t.a, t.b, t2.c from t, t2 where t.a > 100 union all select t3.e, t3.f, t4.h from t3, t4  where t3.f == t4.i
-select t.a, t.b, t2.c from t, t2 where t.a = t2.c union all select t3.e, t3.f, t4.h from t3, t4  where t3.e == t4.h order by a
-select t.a, t.b, t2.c from t inner join t2 where t.a = t2.c union all select t3.e, t3.f, t4.h from t3 inner join t4  where t3.e == t4.h order by a
-select t.a, t.b, t2.c from t cross join t2 where t.a = t2.c union all select t3.e, t3.f, t4.h from t3 cross join t4  where t3.e == t4.h order by a
-select t.a, t.b, t2.c from t natural inner join t2 where t.a=1 union all select t3.e, t3.f, t4.h from t3 natural cross join t4 where t3.e = 4 order by a
-select t.a, t.b, t2.c from t left outer join t2 on t.a = t2.c union all select t3.e, t3.f, t4.h from t3 left join t4 on t3.e == t4.h order by a
+select t.a, t.b, t2.c from t, t2 where t.a = t2.c union all select t3.e, t3.f, t4.h from t3, t4  where t3.e == t4.h order by a,b,c
+select t.a, t.b, t2.c from t inner join t2 where t.a = t2.c union all select t3.e, t3.f, t4.h from t3 inner join t4  where t3.e == t4.h order by a,b,c
+select t.a, t.b, t2.c from t cross join t2 where t.a = t2.c union all select t3.e, t3.f, t4.h from t3 cross join t4  where t3.e == t4.h order by a,b,c
+select t.a, t.b, t2.c from t natural inner join t2 where t.a=1 union all select t3.e, t3.f, t4.h from t3 natural cross join t4 where t3.e = 4 order by a,b,c
+select t.a, t.b, t2.c from t left outer join t2 on t.a = t2.c union all select t3.e, t3.f, t4.h from t3 left join t4 on t3.e == t4.h order by a,b,c
 #explain distribution select count(*) from t, t2 where t.a > 0 union all select count(t3.e) from t3, t4  where t3.e == t4.h
 select count(*) from t, t2 where t.a > 0 union all select count(t3.e) from t3, t4  where t3.e == t4.h
 select 1 from t left join (select a from t) union all  select 1 from t left join (select a from t) limit 2
-select t.a from t left join (select a from t) tt where tt.a = t.a union all select 1 from t left join (select a from t) limit 2
-delete from t
-delete from t2
-delete from t3
-delete from t4

@@ -58,6 +58,8 @@ extern int gbl_decom;
 extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_logging;
 extern int gbl_stack_at_lock_get;
+extern int gbl_stack_at_page_read;
+extern int gbl_stack_at_page_write;
 extern int gbl_stack_at_lock_handle;
 extern int gbl_stack_at_write_lock;
 extern int gbl_stack_at_lock_gen_increment;
@@ -102,10 +104,12 @@ extern int gbl_fdb_allow_cross_classes;
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_push_redirect_foreign;
 extern int gbl_fdb_push_remote;
+extern int gbl_fdb_push_remote_write;
 extern int gbl_fdb_remsql_cdb2api;
 extern int gbl_goslow;
 extern int gbl_heartbeat_send;
 extern int gbl_keycompr;
+extern int gbl_llmeta_pagesize;
 extern int gbl_largepages;
 extern int gbl_loghist;
 extern int gbl_loghist_verbose;
@@ -171,6 +175,7 @@ extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
+extern int gbl_always_reload_analyze;
 extern int gbl_block_set_commit_genid_trace;
 extern int gbl_random_prepare_commit;
 extern int gbl_all_prepare_commit;
@@ -220,7 +225,7 @@ extern int gbl_catchup_window_trace;
 extern int gbl_early_ack_trace;
 extern int gbl_commit_delay_timeout;
 extern int gbl_commit_delay_copy_ms;
-extern int gbl_commit_lsn_map;
+extern int gbl_test_commit_lsn_map;
 extern int gbl_throttle_logput_trace;
 extern int gbl_fills_waitms;
 extern int gbl_finish_fill_threshold;
@@ -460,6 +465,7 @@ extern int gbl_debug_invalid_genid;
 
 /* Tranlog */
 extern int gbl_tranlog_incoherent_timeout;
+extern int gbl_tranlog_default_timeout;
 extern int gbl_tranlog_maxpoll;
 
 /* Physical replication */
@@ -473,13 +479,15 @@ extern int gbl_physrep_hung_replicant_threshold;
 extern int gbl_physrep_revconn_check_interval;
 extern int gbl_physrep_update_registry_interval;
 extern int gbl_physrep_i_am_metadb;
+extern int gbl_physrep_keepalive_v2;
 extern int gbl_physrep_keepalive_freq_sec;
 extern int gbl_physrep_max_candidates;
 extern int gbl_physrep_max_pending_replicants;
 extern int gbl_physrep_reconnect_penalty;
-extern int gbl_physrep_register_interval;
+extern int gbl_physrep_reconnect_interval;
 extern int gbl_physrep_shuffle_host_list;
 extern int gbl_physrep_ignore_queues;
+extern int gbl_physrep_max_rollback;
 
 /* source-name / host is from lrl */
 extern char *gbl_physrep_source_dbname;
@@ -1090,13 +1098,40 @@ static int fdb_default_ver_update(void *context, void *value)
     return 0;
 }
 
+static int fdb_push_write_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int*)value;
+    if (fdb_push_write_set(val))
+        return -1;
+    *(int*)tunable->var = val;
+    return 0;
+}
+
+static int fdb_push_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    int val = *(int*)value;
+    if (fdb_push_set(val))
+        return -1;
+    *(int*)tunable->var = val;
+    return 0;
+}
 
 /* Forward declaration */
 int ctrace_set_rollat(void *unused, void *value);
 
+/*
+ * The map is enabled if all of its dependencies are enabled and
+ * any enabled feature depends on it.
+ */
 int get_commit_lsn_map_switch_value()
 {
-    return gbl_utxnid_log && gbl_commit_lsn_map;
+    const int dependencies_are_enabled = gbl_utxnid_log;
+    const int enabled_dependent_exists = 
+        gbl_test_commit_lsn_map || gbl_use_modsnap_for_snapshot;
+    
+    return dependencies_are_enabled && enabled_dependent_exists;
 }
 
 /* Return the value for sql_tranlevel_default. */

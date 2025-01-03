@@ -2824,10 +2824,11 @@ int bdb_register_modsnap(bdb_state_type *bdb_state,
     return 0;
 }
 
-static int get_modsnap_start_lsn(bdb_state_type *bdb_state, int snapshot_epoch,
+static int get_modsnap_start_lsn(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr, int snapshot_epoch,
     unsigned int *p_modsnap_start_lsn_file, unsigned int *p_modsnap_start_lsn_offset)
 {
     const int is_pit_snapshot = snapshot_epoch != 0;
+    const int durable_lsns_are_enabled = bdb_attr_get(bdb_attr, BDB_ATTR_DURABLE_LSNS);
 
     if (is_pit_snapshot)
     {
@@ -2844,8 +2845,17 @@ static int get_modsnap_start_lsn(bdb_state_type *bdb_state, int snapshot_epoch,
 
         *p_modsnap_start_lsn_file = modsnap_start_lsn.file;
         *p_modsnap_start_lsn_offset = modsnap_start_lsn.offset;
-    } else
-    {
+    } else if (durable_lsns_are_enabled) {
+        uint32_t durable_gen;
+        const int rc = request_durable_lsn_from_master(
+            bdb_state, p_modsnap_start_lsn_file, p_modsnap_start_lsn_offset, &durable_gen);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to get durable LSN from master with rc %d\n",
+                __func__, rc);
+            return rc;
+        }
+    } else {
         (void)bdb_get_current_lsn(bdb_state, p_modsnap_start_lsn_file, p_modsnap_start_lsn_offset);
     }
 
@@ -2853,6 +2863,7 @@ static int get_modsnap_start_lsn(bdb_state_type *bdb_state, int snapshot_epoch,
 }
 
 int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
+                        bdb_attr_type *bdb_attr,
                         int is_ha_retry,
                         int snapshot_epoch,
                         unsigned int *modsnap_start_lsn_file,
@@ -2862,7 +2873,7 @@ int bdb_get_modsnap_start_state(bdb_state_type *bdb_state,
 {
     // If this is a ha-sql retry, then the retry snapshot is provided as input.
     if (!is_ha_retry) {
-        const int rc = get_modsnap_start_lsn(bdb_state, snapshot_epoch,
+        const int rc = get_modsnap_start_lsn(bdb_state, bdb_attr, snapshot_epoch,
             modsnap_start_lsn_file, modsnap_start_lsn_offset);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: Failed to get modsnap start LSN\n", __func__);

@@ -58,6 +58,8 @@
 #include "ssl_bend.h"
 #include "comdb2_query_preparer.h"
 #include "alias.h"
+#include "dohsql.h"
+#include "bdb_schemachange.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
@@ -68,14 +70,15 @@ int gbl_fdb_default_ver = FDB_VER;
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
 int gbl_test_io_errors = 0;
-int gbl_fdb_push_remote = 0;
+int gbl_fdb_push_remote = 1;
+int gbl_fdb_push_remote_write = 1;
 int gbl_fdb_push_redirect_foreign = 0;
 int gbl_fdb_incoherence_percentage = 0;
 int gbl_fdb_io_error_retries = 16;
 int gbl_fdb_io_error_retries_phase_1 = 6;
 int gbl_fdb_io_error_retries_phase_2_poll = 100;
 int gbl_fdb_auth_enabled = 1;
-int gbl_fdb_remsql_cdb2api = 0;
+int gbl_fdb_remsql_cdb2api = 1;
 int gbl_fdb_emulate_old = 0;
 
 struct fdb_tbl;
@@ -277,12 +280,12 @@ static int fdb_cursor_find_sql_cdb2api(BtCursor *pCur, Mem *key, int nfields,
                                        int bias);
 
 /* REMSQL WRITE frontend */
-static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
+static int fdb_cursor_insert(BtCursor *pCur, sqlclntstate *clnt,
                              fdb_tran_t *trans, unsigned long long genid,
                              int datalen, char *data);
-static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
+static int fdb_cursor_delete(BtCursor *pCur, sqlclntstate *clnt,
                              fdb_tran_t *trans, unsigned long long genid);
-static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
+static int fdb_cursor_update(BtCursor *pCur, sqlclntstate *clnt,
                              fdb_tran_t *trans, unsigned long long oldgenid,
                              unsigned long long genid, int datalen, char *data);
 
@@ -299,13 +302,13 @@ static int __lock_wrlock_exclusive(char *dbname);
    which
    case it will move to another one; error will not impact other concurrent
    clnt-s */
-static char *_fdb_get_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
+static char *_fdb_get_affinity_node(sqlclntstate *clnt, const fdb_t *fdb,
                                     int *was_bad);
-static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
+static int _fdb_set_affinity_node(sqlclntstate *clnt, const fdb_t *fdb,
                                   char *host, int status);
-void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt);
+void _fdb_clear_clnt_node_affinities(sqlclntstate *clnt);
 
-static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
+static int _get_protocol_flags(sqlclntstate *clnt, fdb_t *fdb,
                                int *flags);
 static int _validate_existing_table(fdb_t *fdb, int cls, int local);
 
@@ -970,7 +973,7 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     init_cursor(cur, NULL, (Btree *)(cur + 1));
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
-    struct sqlclntstate *clnt = cur->clnt;
+    sqlclntstate *clnt = cur->clnt;
     cur->rootpage = 1;
 
 run:
@@ -1117,7 +1120,7 @@ run:
 
     if (rc == IX_FND ||
         /* cdb2api does not know which row is the last */
-        (rc == IX_EMPTY && *found_ent))
+        (rc == IX_EMPTY /* && *found_ent -- capture also missing table */))
         rc = FDB_NOERR;
 
 close:
@@ -1284,7 +1287,7 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
                                    const char *prefix)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
+    sqlclntstate *clnt = thd->clnt;
 
     logmsg(LOGMSG_WARN, "Error rc %d \"%s\" for db \"%s\"\n", errcode, prefix,
            dbname);
@@ -2171,7 +2174,7 @@ static char *fdb_generate_dist_txnid()
  * 5) If still don't have a connection, return error, otherwise return FDB_NOERR
  *
  */
-static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
+static int _fdb_send_open_retries(sqlclntstate *clnt, fdb_t *fdb,
                                   fdb_cursor_t *fdbc, int source_rootpage,
                                   fdb_tran_t *trans, int flags, int version,
                                   fdb_msg_t *msg, int use_ssl)
@@ -2247,7 +2250,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         if (fdbc) {
             psb = &fdbc->fcon.sock.sb;
         } else {
-            psb = &trans->sb;
+            psb = &trans->fcon.sb;
         }
 
         if ((rc = _fdb_remote_reconnect(fdb, psb, host, (fdbc)?1:0)) == FDB_NOERR) {
@@ -2279,9 +2282,9 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                     char *coordinator_tier = gbl_machine_class ? strdup(gbl_machine_class) : strdup(gbl_myhostname);
                     char *dist_txnid = strdup(clnt->dist_txnid);
                     rc = fdb_send_2pc_begin(clnt, msg, trans, clnt->dbtran.mode, tran_flags, dist_txnid,
-                                            coordinator_dbname, coordinator_tier, clnt->dist_timestamp, trans->sb);
+                                            coordinator_dbname, coordinator_tier, clnt->dist_timestamp, trans->fcon.sb);
                 } else {
-                    rc = fdb_send_begin(clnt, msg, trans, clnt->dbtran.mode, tran_flags, trans->sb);
+                    rc = fdb_send_begin(clnt, msg, trans, clnt->dbtran.mode, tran_flags, trans->fcon.sb);
                 }
                 if (rc == FDB_NOERR) {
                     trans->host = host;
@@ -2424,7 +2427,7 @@ static void _cursor_set_common(fdb_cursor_if_t *fdbc_if, char *tid, int flags,
     fdbc->intf = fdbc_if;
 }
 
-static fdb_cursor_if_t *_cursor_open_remote_cdb2api(struct sqlclntstate *clnt,
+static fdb_cursor_if_t *_cursor_open_remote_cdb2api(sqlclntstate *clnt,
                                                     fdb_t *fdb, int server_version,
                                                     int flags, int version,
                                                     int rootpage, int use_ssl)
@@ -2486,7 +2489,7 @@ static fdb_cursor_if_t *_cursor_open_remote_cdb2api(struct sqlclntstate *clnt,
         goto error;
     }
 
-    if (rootpage) {
+    if (rootpage == 1) {
         rc = cdb2_run_statement(fdbc->fcon.api.hndl, "SET REMSQL_SCHEMA 1");
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: %s:%s failed to set remsql_scheam rc %d\n",
@@ -2504,7 +2507,7 @@ error:
     goto done;
 }
 
-static fdb_cursor_if_t *_cursor_open_remote(struct sqlclntstate *clnt,
+static fdb_cursor_if_t *_cursor_open_remote(sqlclntstate *clnt,
                                             fdb_t *fdb, int server_version,
                                             fdb_tran_t *trans, int flags,
                                             int version, int rootpage,
@@ -2583,7 +2586,7 @@ done:
     return fdbc_if;
 }
 
-static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
+static fdb_cursor_if_t *_fdb_cursor_open_remote(sqlclntstate *clnt,
                                                 fdb_t *fdb, fdb_tran_t *trans,
                                                 int flags, int version,
                                                 int rootpage, int use_ssl)
@@ -2591,9 +2594,14 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdb_cursor_if_t *cursor;
     int server_version = fdb_ver_encoded(fdb->server_version);
 
-    /* for now we only support cdb2api for standalone queries, if remote support it */
-    if (!trans && gbl_fdb_remsql_cdb2api &&
-            fdb->server_version >= FDB_VER_CDB2API)
+    /* non-transactional queries go over cdb2api; 
+     * if there is a transaction running over cdb2api, use cdb2api also 
+     * for cursors, if less then read committed
+     */
+    if (gbl_fdb_remsql_cdb2api &&
+        ((!trans && fdb->server_version >= FDB_VER_CDB2API) ||
+         (trans && trans->is_cdb2api && fdb->server_version >= FDB_VER_WR_CDB2API &&
+          !clnt->disable_fdb_push && clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
         cursor = _cursor_open_remote_cdb2api(clnt, fdb, server_version, flags,
                                              version, rootpage, use_ssl);
     else
@@ -2615,7 +2623,7 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
  * NOTE: populates clnt->fdb_state error fields, if any error
  *
  */
-fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
+fdb_cursor_if_t *fdb_cursor_open(sqlclntstate *clnt, BtCursor *pCur,
                                  int rootpage, fdb_tran_t *trans, int *ixnum,
                                  int use_ssl)
 {
@@ -3048,7 +3056,7 @@ static void *fdb_cursor_get_hint(BtCursor *pCur)
 static int fdb_cursor_reopen(BtCursor *pCur)
 {
     struct sql_thread *thd;
-    struct sqlclntstate *clnt;
+    sqlclntstate *clnt;
     int rc;
     fdb_tran_t *tran;
     int need_ssl = 0;
@@ -3521,7 +3529,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 {
     int rc = 0;
     struct sql_thread *thd;
-    struct sqlclntstate *clnt;
+    sqlclntstate *clnt;
     int interval = bdb_attr_get(thedb->bdb_attr,
                                 BDB_ATTR_FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC);
     if (!interval)
@@ -3699,7 +3707,11 @@ const char *fdb_dbname_name(fdb_t *fdb) { return fdb->dbname; }
 const char *fdb_dbname_class_routing(fdb_t *fdb)
 {
     if (fdb->local)
+        /*
         return "LOCAL";
+        */
+        /* need to match tier setting from disttxn.c */
+        return gbl_machine_class ? gbl_machine_class : gbl_myhostname;
     return mach_class_class2name(fdb->class);
 }
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent)
@@ -3731,7 +3743,7 @@ static inline char *_get_tblname(fdb_cursor_t *fdbc)
                : NULL;
 }
 
-static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
+static int fdb_cursor_insert(BtCursor *pCur, sqlclntstate *clnt,
                              fdb_tran_t *trans, unsigned long long genid,
                              int datalen, char *data)
 {
@@ -3761,7 +3773,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
                                 (char *)clnt->idxInsert[ixnum] + sizeof(int),
-                                trans->seq, trans->sb);
+                                trans->seq, trans->fcon.sb);
             if (rc)
                 return rc;
         }
@@ -3773,7 +3785,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->ins_keys
             : -1ULL,
-        datalen, data, trans->seq, trans->sb);
+        datalen, data, trans->seq, trans->fcon.sb);
 
     trans->seq++;
     trans->nwrites++;
@@ -3781,7 +3793,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
     return rc;
 }
 
-static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
+static int fdb_cursor_delete(BtCursor *pCur, sqlclntstate *clnt,
                              fdb_tran_t *trans, unsigned long long genid)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
@@ -3810,7 +3822,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, genid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
                                 (char *)clnt->idxDelete[ixnum] + sizeof(int),
-                                trans->seq, trans->sb);
+                                trans->seq, trans->fcon.sb);
             if (rc)
                 return rc;
         }
@@ -3822,7 +3834,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->del_keys
             : -1ULL,
-        trans->seq, trans->sb);
+        trans->seq, trans->fcon.sb);
 
     trans->seq++;
     trans->nwrites++;
@@ -3836,7 +3848,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
     return rc;
 }
 
-static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
+static int fdb_cursor_update(BtCursor *pCur, sqlclntstate *clnt,
                              fdb_tran_t *trans, unsigned long long oldgenid,
                              unsigned long long genid, int datalen, char *data)
 {
@@ -3865,7 +3877,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, oldgenid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
                                 (char *)clnt->idxDelete[ixnum] + sizeof(int),
-                                trans->seq, trans->sb);
+                                trans->seq, trans->fcon.sb);
             if (rc)
                 return rc;
 
@@ -3877,7 +3889,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
                                 (char *)clnt->idxInsert[ixnum] + sizeof(int),
-                                trans->seq, trans->sb);
+                                trans->seq, trans->fcon.sb);
             if (rc)
                 return rc;
         }
@@ -3892,7 +3904,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->del_keys
             : -1ULL,
-        datalen, data, trans->seq, trans->sb);
+        datalen, data, trans->seq, trans->fcon.sb);
 
     trans->seq++;
     trans->nwrites++;
@@ -3906,7 +3918,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
     return rc;
 }
 
-static fdb_distributed_tran_t *fdb_trans_create_dtran(struct sqlclntstate *clnt)
+static fdb_distributed_tran_t *fdb_trans_create_dtran(sqlclntstate *clnt)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
 
@@ -3933,78 +3945,134 @@ static fdb_distributed_tran_t *fdb_trans_create_dtran(struct sqlclntstate *clnt)
     return dtran;
 }
 
-static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
-                                               fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb, int use_ssl)
+static fdb_tran_t *_dtran_get_subtran_common(sqlclntstate *clnt, fdb_t *fdb)
 {
     fdb_tran_t *tran;
-    fdb_msg_t *msg;
-    int rc = 0;
+
+    tran = (fdb_tran_t *)calloc(1, sizeof(*tran));
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s: malloc 2\n", __func__);
+        return NULL;
+    }
+    memcpy(tran->magic, "FDBT", 4);
+    tran->tid = (char *)tran->tiduuid;
+    comdb2uuid((unsigned char *)tran->tid);
+
+    tran->fdb = fdb;
+
+    return tran;
+}
+
+static fdb_tran_t *_dtran_get_subtran(sqlclntstate *clnt, fdb_t *fdb, int use_ssl)
+{
+    fdb_tran_t *tran;
+    int rc;
+
+    tran = _dtran_get_subtran_common(clnt, fdb);
+    if (!tran)
+        return NULL;
+
+    fdb_msg_t *msg = (fdb_msg_t *)calloc(1, fdb_msg_size());
+    if (!msg) {
+        logmsg(LOGMSG_ERROR, "%s malloc\n", __func__);
+        free(tran);
+        return NULL;
+    }
+
+    /* NOTE: expect x_retries to fill in clnt error fields, if any */
+    rc = _fdb_send_open_retries(clnt, fdb, NULL /* tran_begin */,
+                                -1 /*unused*/, tran, 0 /*flags*/,
+                                0 /*TODO: version */, msg, use_ssl);
+    if (rc != FDB_NOERR || !tran->fcon.sb) {
+        logmsg(LOGMSG_ERROR, "%s unable to connect to %s %s\n", __func__,
+               fdb->dbname, tran->host);
+        free(tran);
+        free(msg);
+        return NULL;
+    }
+    free(msg);
+
+    /* need hbeats */
+    Pthread_mutex_init(&tran->hbeats.sb_mtx, NULL);
+    sbuf2setuserptr(tran->fcon.sb, tran);
+    tran->hbeats.tran = tran;
+    enable_fdb_heartbeats(&tran->hbeats);
+
+    tran->seq++;
+
+    return tran;
+}
+
+static fdb_tran_t *_dtran_get_subtran_cdb2api(sqlclntstate *clnt, fdb_t *fdb,
+                                              int use_ssl)
+{
+    fdb_tran_t *tran;
+
+    tran = _dtran_get_subtran_common(clnt, fdb);
+    if (!tran)
+        return NULL;
+
+    tran->is_cdb2api = 1;
+    
+    return tran;
+}
+
+static fdb_tran_t *fdb_trans_dtran_get_subtran(sqlclntstate *clnt,
+                                               fdb_distributed_tran_t *dtran,
+                                               fdb_t *fdb, int use_ssl,
+                                               int *created)
+{
+    fdb_tran_t *tran;
     uuidstr_t us;
 
     tran = fdb_get_subtran(dtran, fdb);
 
     if (!tran) {
-        msg = (fdb_msg_t *)calloc(1, fdb_msg_size());
-        if (!msg) {
-            logmsg(LOGMSG_ERROR, "%s malloc\n", __func__);
+        /* we allow remtran over cdb2api if remote allows and either:
+         * 1) standalone write and push remote write is enabled
+         * 2) socksql txn and push remote read and writes are enabled
+         */
+        if (fdb->server_version >= FDB_VER_WR_CDB2API && !clnt->disable_fdb_push && clnt->fdb_push_remote_write &&
+            (/*1*/!clnt->in_client_trans ||
+            (/*2*/clnt->fdb_push_remote && clnt->dbtran.mode == TRANLEVEL_SOSQL)))
+            tran = _dtran_get_subtran_cdb2api(clnt, fdb, use_ssl);
+        else
+            tran = _dtran_get_subtran(clnt, fdb, use_ssl);
+        if (!tran)
             return NULL;
-        }
-
-        tran = (fdb_tran_t *)calloc(1, sizeof(*tran));
-        if (!tran) {
-            logmsg(LOGMSG_ERROR, "%s: malloc 2\n", __func__);
-            free(msg);
-            return NULL;
-        }
-        memcpy(tran->magic, "FDBT", 4);
-        tran->tid = (char *)tran->tiduuid;
-        comdb2uuid((unsigned char *)tran->tid);
-
-        tran->fdb = fdb;
-
-        /* NOTE: expect x_retries to fill in clnt error fields, if any */
-        rc = _fdb_send_open_retries(clnt, fdb, NULL /* tran_begin */,
-                                    -1 /*unused*/, tran, 0 /*flags*/,
-                                    0 /*TODO: version */, msg, use_ssl);
-        if (rc != FDB_NOERR || !tran->sb) {
-            logmsg(LOGMSG_ERROR, "%s unable to connect to %s %s\n", __func__,
-                    fdb->dbname, tran->host);
-            free(tran);
-            free(msg);
-            return NULL;
-        }
-
-        /* need hbeats */
-        Pthread_mutex_init(&tran->hbeats.sb_mtx, NULL);
-        sbuf2setuserptr(tran->sb, tran);
-        tran->hbeats.tran = tran;
-        enable_fdb_heartbeats(&tran->hbeats);
-
-        tran->seq++;
 
         listc_atl(&dtran->fdb_trans, tran);
-        free(msg);
 
         if (gbl_fdb_track) {
-            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
+            logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\" cdb2api %d\n", __func__,
                    comdb2uuidstr((unsigned char *)tran->tid, us),
-                   fdb->dbname);
+                   fdb->dbname, tran->is_cdb2api);
         }
+
+        if (created)
+            *created = 1;
     } else {
         if (gbl_fdb_track) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
+            logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\" cdb2api %d\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
-                       fdb->dbname);
+                       fdb->dbname, tran->is_cdb2api);
         }
+        /* this is a bug, probably sharing the wrong fdb_tran after switching to 
+         * a lower version protocol
+         */
+        if (clnt->disable_fdb_push && tran->is_cdb2api)
+            abort();
+
+        if (created)
+            *created = 0;
     }
 
     return tran;
 }
 
-fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
-                                    char *ptid, int use_ssl)
+fdb_tran_t *fdb_trans_begin_or_join(sqlclntstate *clnt, fdb_t *fdb,
+                                    int use_ssl, int *created)
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
@@ -4020,26 +4088,20 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl);
-    if (tran) {
-        comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
-    }
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, created);
 
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     return tran;
 }
 
-fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
+fdb_tran_t *fdb_trans_join(sqlclntstate *clnt, fdb_t *fdb)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran = NULL;
 
     if (dtran) {
         tran = fdb_get_subtran(dtran, fdb);
-        if (tran) {
-            comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
-        }
     }
 
     return tran;
@@ -4051,21 +4113,59 @@ static void _free_fdb_tran(fdb_distributed_tran_t *dtran, fdb_tran_t *tran)
 
     listc_rfl(&dtran->fdb_trans, tran);
 
-    if (tran->errstr)
-        free(tran->errstr);
-    if (tran->dedup_tbl != NULL) {
-        /* tempcursors are automatically closed in bdb_temp_table_close. */
-        if ((rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr)))
-            logmsg(LOGMSG_ERROR,
-                   "%s: error closing temptable, rc %d, bdberr %d\n",
-                   __func__, rc, bdberr);
+    free(tran->errstr);
+
+    if (tran->is_cdb2api) {
+        rc = cdb2_close(tran->fcon.hndl);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to close handle rc %d\n",
+                   rc);
+        }
+        free(tran);
+    } else {
+        if (tran->dedup_tbl != NULL) {
+            /* tempcursors are automatically closed in bdb_temp_table_close. */
+            if ((rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr)))
+                logmsg(LOGMSG_ERROR,
+                       "%s: error closing temptable, rc %d, bdberr %d\n",
+                       __func__, rc, bdberr);
+        }
+        disable_fdb_heartbeats_and_free(&tran->hbeats);
     }
-    disable_fdb_heartbeats_and_free(&tran->hbeats);
+}
+
+/**
+ * Free resources for a specific fdb_tran
+ *
+ */
+void fdb_free_tran(sqlclntstate *clnt, fdb_tran_t *tran)
+{
+    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+    uuidstr_t us;
+
+    if (!dtran) {
+        logmsg(LOGMSG_ERROR, "%s no dtran\n", __func__);
+        return;
+    }
+
+    if (gbl_fdb_track)
+        logmsg(LOGMSG_USER, "%s Destroyed tid=%s db=\"%s\"\n", __func__,
+               comdb2uuidstr((unsigned char *)tran->tid, us),
+               tran->fdb->dbname);
+
+    _free_fdb_tran(dtran, tran);
+
+    if (dtran->fdb_trans.count == 0) {
+        if (gbl_fdb_track)
+            logmsg(LOGMSG_USER, "%s Destroyed D-tran %p\n", __func__, dtran);
+        free(dtran);
+        clnt->dbtran.dtran = 0;
+    }
 }
 
 extern char gbl_dbname[];
 
-int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
+int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
@@ -4108,8 +4208,24 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
         if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
             continue;
 
-        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->sb);
-        if (clnt->use_2pc && !rc) {
+        if (tran->is_cdb2api) {
+            rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+        } else {
+            rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to commit %s rc %d\n",
+                   __func__, tran->fdb->dbname, rc);
+
+            /* pass the error to clnt */
+            bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
+            errstat_set_rc(&clnt->osql.xerr, rc);
+            if (tran->errstr) // TODO: this can be non-null even when no error
+                errstat_set_str(&clnt->osql.xerr, tran->errstr);
+            clnt->osql.error_is_remote = 1;
+        }
+
+        if (clnt->use_2pc) {
             const char *tier = fdb_dbname_class_routing(tran->fdb);
             if ((rc = add_participant(clnt, tran->fdb->dbname, tier)) != 0) {
                 tran->errstr = strdup("multiple participants with same dbname");
@@ -4121,10 +4237,13 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
                    tran->fdb->dbname, rc);
     }
 
-    if (!clnt->dist_txnid) {
+    if (!rc && !clnt->dist_txnid) {
         LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
         {
             if (sideeffects == TRANS_CLNTCOMM_CHUNK && tran->nwrites == 0)
+                continue;
+
+            if (tran->is_cdb2api)
                 continue;
 
             rc = fdb_recv_rc(msg, tran);
@@ -4142,13 +4261,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
     }
 
     /* store distributed rc in clnt */
-    if (rc) {
-        bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
-        errstat_set_rc(&clnt->osql.xerr, rc);
-        if (tran->errstr) // TODO: this can be non-null even when no error
-            errstat_set_str(&clnt->osql.xerr, tran->errstr);
-        clnt->osql.error_is_remote = 1;
-    } else {
+    if (!rc) {
         errstat_set_rc(&clnt->osql.xerr, 0);
         errstat_set_str(&clnt->osql.xerr, NULL);
     }
@@ -4179,7 +4292,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt, enum trans_clntcomm sideeffects)
     return rc;
 }
 
-int fdb_trans_rollback(struct sqlclntstate *clnt)
+int fdb_trans_rollback(sqlclntstate *clnt)
 {
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
@@ -4210,7 +4323,16 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->sb);
+        if (tran->is_cdb2api) {
+            rc = cdb2_run_statement(tran->fcon.hndl, "rollback");
+        } else {
+            rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
+        }
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to rollback %s rc %d\n",
+                   __func__, tran->fdb->dbname, rc);
+        }
 
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n",
@@ -4301,7 +4423,7 @@ void fdb_sanity_check(void)
 int fdb_cursor_access(BtCursor *pCur, int how)
 {
     struct sql_thread *thd;
-    struct sqlclntstate *clnt;
+    sqlclntstate *clnt;
     int rc;
     const char *dbname;
     const char *tblname;
@@ -4513,12 +4635,21 @@ static void fdb_clear_sqlite_stats(void)
  */
 static void fdb_init(void)
 {
-    int rc = FDB_ERR_BUG;
+    logmsg(LOGMSG_ERROR, "Testing routine clearing fdb structure!\n");
 
-    if (rc) {
-        /* TODO: fatal? */
-        logmsg(LOGMSG_ERROR, "%s: init unimplemented\n", __func__);
-    }
+    Pthread_rwlock_wrlock(&fdbs.arr_lock);
+
+    /*
+     * we leak on purpose instead of adding extra synchronization
+     * with existing users
+     */
+    bzero(fdbs.arr, fdbs.nused * sizeof(fdbs.arr[0]));
+    fdbs.nused = 0;
+
+    logmsg(LOGMSG_INFO, "FDB testing reset dbopen_gen %d\n", bdb_get_dbopen_gen());
+    BDB_BUMP_DBOPEN_GEN(invalid, "fdb_init");
+
+    pthread_rwlock_unlock(&fdbs.arr_lock);
 }
 
 static int __fdb_info_ent(void *obj, void *arg)
@@ -4780,7 +4911,7 @@ int fdb_table_version(unsigned long long version)
  * Clear sqlclntstate fdb_state object
  *
  */
-void fdb_clear_sqlclntstate(struct sqlclntstate *clnt)
+void fdb_clear_sqlclntstate(sqlclntstate *clnt)
 {
     _fdb_clear_clnt_node_affinities(clnt);
 
@@ -4841,7 +4972,7 @@ int fdb_table_exists(int rootpage)
  * The lock prevents the flush racing against running remote access
  *
  */
-int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
+int fdb_lock_table(sqlite3_stmt *pStmt, sqlclntstate *clnt, Table *tab,
                    fdb_tbl_ent_t **p_ent)
 {
     fdb_tbl_ent_t *ent;
@@ -4927,7 +5058,7 @@ int fdb_heartbeats(fdb_hbeats_type *hbeats)
     fdb_msg_t *msg = alloca(fdb_msg_size());
     fdb_tran_t *tran = hbeats->tran;
     bzero(msg, fdb_msg_size());
-    int rc = fdb_send_heartbeat(msg, tran->tid, tran->sb);
+    int rc = fdb_send_heartbeat(msg, tran->tid, tran->fcon.sb);
     if (gbl_fdb_track) {
         uuidstr_t us;
         comdb2uuidstr((unsigned char *)tran->tid, us);
@@ -4943,8 +5074,8 @@ int fdb_heartbeats(fdb_hbeats_type *hbeats)
  */
 void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats)
 {
-    if (hbeats->tran->sb) {
-        sbuf2close(hbeats->tran->sb);
+    if (hbeats->tran->fcon.sb) {
+        sbuf2close(hbeats->tran->fcon.sb);
     }
     Pthread_mutex_destroy(&hbeats->sb_mtx);
     free(hbeats->tran);
@@ -4952,7 +5083,7 @@ void fdb_heartbeat_free_tran(fdb_hbeats_type *hbeats)
 
 /* check if the mentioned fdb has a preferred node, and get the status of last
  * op */
-static char *_fdb_get_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
+static char *_fdb_get_affinity_node(sqlclntstate *clnt, const fdb_t *fdb,
                                     int *was_bad)
 {
     sqlclntstate_fdb_t *fdb_state = &clnt->fdb_state;
@@ -4986,7 +5117,7 @@ static char *_fdb_get_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
 }
 
 /* save the last successful node for this fdb */
-static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
+static int _fdb_set_affinity_node(sqlclntstate *clnt, const fdb_t *fdb,
                                   char *host, int status)
 {
     sqlclntstate_fdb_t *fdb_state = &clnt->fdb_state;
@@ -5040,7 +5171,7 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
  * Free the cached fdb node affinities
  *
  */
-void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt)
+void _fdb_clear_clnt_node_affinities(sqlclntstate *clnt)
 {
     if (clnt->fdb_state.fdb_ids) {
         for (int i = 0; i < clnt->fdb_state.n_fdb_affinities; i++)
@@ -5063,7 +5194,7 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt)
  * Convert the protocol version in an appropriate cursor open flag
  *
  */
-static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
+static int _get_protocol_flags(sqlclntstate *clnt, fdb_t *fdb,
                                int *flags)
 {
     if (fdb->server_version < FDB_VER_SSL) {
@@ -5421,7 +5552,7 @@ static int _fdb_cdb2api_send_set(fdb_cursor_t *fdbc)
         } \
     } while (0);
 
-static int _fdb_client_set_options(struct sqlclntstate *clnt,
+static int _fdb_client_set_options(sqlclntstate *clnt,
                                    cdb2_hndl_tp *hndl)
 {
     char str[256];
@@ -5681,8 +5812,8 @@ version_retry:
         } \
     } while (0);
 
-int process_fdb_set_cdb2api(struct sqlclntstate *clnt, char *sqlstr,
-                            char *err, int errlen)
+int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
+                            int errlen)
 {
     int tmp;
 
@@ -5776,6 +5907,62 @@ int fdb_default_ver_set(int val)
         if (val < FDB_VER_CDB2API) {
             /* do not speak cdb2api if we set this too low */
             gbl_fdb_remsql_cdb2api = 0;
+            /* disable also push, otherwise this will break transactional queries */
+            gbl_fdb_push_remote_write = 0;
+        } else if (val < FDB_VER_WR_CDB2API) {
+            gbl_fdb_remsql_cdb2api = 1;
+            gbl_fdb_push_remote_write = 0;
+        } else {
+            gbl_fdb_remsql_cdb2api = 1;
+            gbl_fdb_push_remote = 1;
+            gbl_fdb_push_remote_write = 1;
+        }
+    }
+    return 0;
+}
+
+int fdb_push_write_set(int val)
+{
+    if (val) {
+        /* enabling push write requires push read */
+        gbl_fdb_push_remote = 1;
+        gbl_fdb_push_remote_write = 1;
+    } else {
+        gbl_fdb_push_remote_write = 0;
+    }
+    return 0;
+}
+
+int fdb_push_set(int val)
+{
+    if (val) {
+        gbl_fdb_push_remote = 1;
+    } else {
+        gbl_fdb_push_remote = 0;
+        /* disabling push disables also push write */
+        gbl_fdb_push_remote_write = 0;
+    }
+    return 0;
+}
+
+/**
+ * Check that fdb class matches a specific class
+ *
+ */
+int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
+                          int class_override)
+{
+    if (fdb->local != local) {
+        logmsg(LOGMSG_ERROR, "%s: fdb %s different local %d %d\n", __func__,
+               fdb->dbname, fdb->local, local);
+        return -1;
+    }
+    if (!fdb->local) {
+        if (class != fdb->class) {
+            logmsg(LOGMSG_ERROR, "%s: fdb %s different class %s%d %d\n",
+                   __func__, fdb->dbname, class_override ? "override " : "",
+                   fdb->class, class);
+            return -1;
         }
     }
     return 0;

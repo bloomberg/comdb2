@@ -862,6 +862,31 @@ done:
     return rc;
 }
 
+static int sp_trigger_skip(struct stored_proc *sp)
+{
+    int rc = 0;
+    const char *prefix = "__q__m";   // identifier for migrated queues
+    size_t prefix_len = strlen(prefix);
+    const char *qname = sp->qname;
+    size_t qname_len = strlen(qname);
+    struct dbtable *qdb = getqueuebyname(qname);
+
+    if (qdb->dbtype == DBTYPE_QUEUE) {
+        char *migrated_qname = malloc(prefix_len + qname_len + 1);
+        migrated_qname[0] = '\0';
+        strcat(migrated_qname, prefix);
+        strcat(migrated_qname, qname);
+        struct dbtable *migrated_qdb = getqueuebyname(migrated_qname);
+        free(migrated_qname);
+        if (gbl_disable_legacy_queues && migrated_qdb) rc = 1;
+    } else if (qdb->dbtype == DBTYPE_QUEUEDB && qname_len > prefix_len) {
+        struct dbtable *legacy_qdb = getqueuebyname(qname + prefix_len);
+        if (!gbl_disable_legacy_queues && legacy_qdb) rc = 1;
+    }
+
+    return rc;
+}
+
 int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
                                 int event, struct javasp_rec *oldrec,
                                 struct javasp_rec *newrec, const char *tblname)
@@ -878,6 +903,8 @@ int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
        off the table structure */
     LISTC_FOR_EACH(&stored_procs, p, lnk)
     {
+        if (sp_trigger_skip(p)) continue;
+
         LISTC_FOR_EACH(&p->tables, t, lnk)
         {
             if (strcasecmp(t->name, tblname) == 0 && (t->flags & event)) {
@@ -1441,6 +1468,7 @@ int gather_triggers(struct gather_triggers_arg *arg)
         switch (dbqueue_consumer_type(qdb->consumers[0])) {
         case CONSUMER_TYPE_LUA: e.type = "trigger"; break;
         case CONSUMER_TYPE_DYNLUA: e.type = "consumer"; break;
+        case CONSUMER_TYPE_FSTSND: e.type = "legacy"; break;
         default: continue;
         }
         e.seq = bdb_queuedb_has_seq(qdb->handle) ? "Y" : "N";

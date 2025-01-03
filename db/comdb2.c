@@ -452,7 +452,7 @@ snap_impl_enum gbl_snap_impl = SNAP_IMPL_MODSNAP;
 int gbl_use_appsock_as_sqlthread = 0;
 int gbl_rep_process_txn_time = 0;
 int gbl_utxnid_log = 1;
-int gbl_commit_lsn_map = 1;
+int gbl_test_commit_lsn_map = 0;
 
 /* how many times we retry osql for verify */
 int gbl_osql_verify_retries_max = 499;
@@ -534,6 +534,7 @@ int gbl_update_shadows_interval = 0;
 int gbl_lowpri_snapisol_sessions = 0;
 int gbl_support_sock_luxref = 1;
 int gbl_allow_user_schema;
+int gbl_disable_legacy_queues = 1;
 
 struct quantize *q_min;
 struct quantize *q_hour;
@@ -985,7 +986,7 @@ void showdbenv(struct dbenv *dbenv)
     for (jj = 0; jj < dbenv->num_dbs; jj++) {
         usedb = dbenv->dbs[jj]; /*de-stink*/
         logmsg(LOGMSG_USER,
-               "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
+               "table '%s' comdbg compat dbnum %d\n   dir '%s' lrlfile '%s' "
                "nconns %zu  nrevconns %zu\n",
                usedb->tablename, usedb->dbnum, dbenv->basedir, (usedb->lrlfname) ? usedb->lrlfname : "NULL",
                usedb->n_constraints, usedb->n_rev_constraints);
@@ -4399,7 +4400,7 @@ static int init(int argc, char **argv)
 
 char *getorigin(struct ireq *iq)
 {
-    if (iq->is_fake || iq->corigin[0] == 0)
+    if (!iq->is_fake && iq->corigin[0] == 0)
         return "INTERNAL";
 
     /* is_fromsocket case in init_ireq should set corigin, and
@@ -5600,6 +5601,25 @@ static void hash_no_op_callback(hash_t *const restrict hash, plhash_event_t even
 void hostinfo_init(void);
 void clienthost_init(void);
 
+int tool_index(const char *tool)
+{
+    for (int i = 0; tool_callbacks[i].tool; i++) {
+        if (strcmp(tool_callbacks[i].tool, tool) == 0)
+            return i;
+    }
+    return -1;
+}
+
+void exec_tool(int argc, char *argv[])
+{
+    int tidx = tool_index(argv[0]);
+    if (tidx >= 0) {
+        optind = 1;
+        int rc = tool_callbacks[tidx].main_func(argc, argv);
+        exit(rc);
+    }
+}
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -5637,9 +5657,9 @@ int main(int argc, char **argv)
 
     init_peer_hash();
 
-    for (int i = 0; tool_callbacks[i].tool; i++) {
-       if (strcmp(tool_callbacks[i].tool, exe) == 0)
-          return tool_callbacks[i].main_func(argc, argv);
+    int tidx = tool_index(exe);
+    if (tidx >= 0) {
+        return tool_callbacks[tidx].main_func(argc, argv);
     }
 
     /* Initialize the tunables. */
@@ -5724,6 +5744,9 @@ int main(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "failed to start\n");
         exit(1);
     }
+
+    /* read disableskipscan here */
+    get_disable_skipscan_all();
 
     /*
       Place a freeze on tunables' registration. This is done to

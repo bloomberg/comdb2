@@ -16,10 +16,15 @@ for required in $vars; do
     fi
 done
 
+opt=
+if [[ ! -z $2 ]]; then
+    opt=$2
+fi
+
 #run tests
 echo "Starting tests"
-echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
-./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
+echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR $opt
+./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR $opt
 result=$?
 
 if (( $result != 0 )) ; then

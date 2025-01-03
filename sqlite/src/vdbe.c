@@ -8047,7 +8047,15 @@ case OP_VOpen: {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int comdb2_check_vtab_access(sqlite3*, sqlite3_module*);
   rc = comdb2_check_vtab_access(db, (sqlite3_module*)pModule);
-  if( rc ) goto abort_due_to_error;
+  if( rc ){
+    if (p->crtPartitionLocks>0) {
+      /* release the view lock, if any */
+      extern void views_unlock(void);
+      views_unlock();
+      p->crtPartitionLocks = 0;
+    }
+    goto abort_due_to_error;
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = pModule->xOpen(pVtab, &pVCur);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -8895,6 +8903,7 @@ abort_due_to_error:
    && rc!=SQLITE_SCHEMA_REMOTE
    && rc!=SQLITE_SCHEMA_DOHSQL
    && rc!=SQLITE_SCHEMA_PUSH_REMOTE
+   && rc!=SQLITE_SCHEMA_PUSH_REMOTE_WRITE
   ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = SQLITE_ERROR;

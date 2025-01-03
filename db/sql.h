@@ -33,10 +33,11 @@
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
 #include "comdb2_ruleset.h"
-#include "fdb_fend.h"
 #include <sp.h>
 #include "sql_stmt_cache.h"
 #include "db_access.h"
+#include "sqliteInt.h"
+#include "ast.h"
 
 /* Modern transaction modes, more or less */
 enum transaction_level {
@@ -88,6 +89,7 @@ struct fingerprint_track {
     hash_t *query_plan_hash;   /* Query plans associated with fingerprint + cost stats */
     int alert_once_query_plan; /* Alert only once if there is a better query plan for a query. Init to 1 */
     int alert_once_query_plan_max; /* Alert (once) if hit max number of plans for associated query. Init to 1 */
+    int alert_once_truncated_col;  /* Alert once if we truncated some col in the query. Init to 1 */
 };
 
 struct sql_authorizer_state {
@@ -244,6 +246,18 @@ enum trans_clntcomm {
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate);
 
+
+struct fdb_distributed_tran;
+typedef struct fdb_distributed_tran fdb_distributed_tran_t;
+struct fdb_tbl_ent;
+typedef struct fdb_tbl_ent fdb_tbl_ent_t;
+struct fdb_access;
+typedef struct fdb_access fdb_access_t;
+struct fdb_affinity;
+typedef struct fdb_affinity fdb_affinity_t;
+struct fdb;
+typedef struct fdb fdb_t;
+
 typedef struct {
     enum transaction_level mode; /* TRANLEVEL_SOSQL, TRANLEVEL_RECOM, ... */
 
@@ -372,7 +386,9 @@ enum {
     XRESPONSE(RESPONSE_ROW_LAST_DUMMY)                                         \
     XRESPONSE(RESPONSE_ROW_LUA)                                                \
     XRESPONSE(RESPONSE_ROW_STR)                                                \
-    XRESPONSE(RESPONSE_TRACE)
+    XRESPONSE(RESPONSE_TRACE)                                                  \
+    XRESPONSE(RESPONSE_ROW_REMTRAN)                                            \
+    XRESPONSE(RESPONSE_RAW_PAYLOAD)
 
 #define XRESPONSE(x) x,
 enum WriteResponsesEnum { RESPONSE_TYPES };
@@ -926,6 +942,7 @@ struct sqlclntstate {
     time_t connect_time;
     time_t last_reset_time;
     int state_start_time;
+    int64_t netwaitus;
     enum connection_state state;
     pthread_mutex_t state_lk;
     /* The node doesn't change.  The pid does as connections get donated.  We
@@ -950,6 +967,8 @@ struct sqlclntstate {
     unsigned force_fdb_push_redirect : 1; // this should only be set if can_redirect_fdb is true
     unsigned force_fdb_push_remote : 1;
     unsigned return_long_column_names : 1; // if 0 then tunable decides
+    unsigned num_adjusted_column_name_length; // does not consider fastsql
+    char **adjusted_column_names;
     unsigned in_local_cache : 1;
 
     char *sqlengine_state_file;
@@ -978,6 +997,8 @@ struct sqlclntstate {
     char *externalAuthUser;
 
     struct remsql_set remsql_set;
+    int fdb_push_remote; /* cache the global on each prepare */
+    int fdb_push_remote_write; /* cache the global on each prepare */
 
     // fdb 2pc
     int use_2pc;
@@ -996,6 +1017,7 @@ struct sqlclntstate {
     unsigned disabled_logdel : 1; /* 1 if this clnt disabled logdel using set stmt and has not tried to re-enable it */
     unsigned verify_dbstore : 1;
 };
+typedef struct sqlclntstate sqlclntstate;
 
 /* Query stats. */
 struct query_path_component {
@@ -1107,7 +1129,7 @@ struct BtCursor {
     /* special case for master table: the table is fake,
        just keep track of which entry we are pointing to */
     int tblpos;
-    fdb_tbl_ent_t *crt_sqlite_master_row;
+    struct fdb_tbl_ent *crt_sqlite_master_row;
 
     /* special case for a temp table: pointer to a temp table handle */
     struct temptable *tmptable;
@@ -1172,7 +1194,7 @@ struct BtCursor {
     unsigned long long last_cached_genid;
 
     /* remotes */
-    fdb_cursor_if_t *fdbc;
+    struct fdb_cursor_if *fdbc;
 
     /* cursor access range */
     CurRange *range;
@@ -1314,6 +1336,7 @@ int sqlite3_close_serial(sqlite3 **);
 void reset_clnt(struct sqlclntstate *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
 void free_client_info(struct sqlclntstate *);
+void free_client_adj_col_names(struct sqlclntstate *);
 void reset_query_effects(struct sqlclntstate *);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
@@ -1344,7 +1367,13 @@ int fdb_add_remote_time(BtCursor *pCur, unsigned long long start,
  * refers to a remote table
  *
  */
-int fdb_push_run(Parse *pParse, struct dohsql_node *node);
+int fdb_push_setup(Parse *pParse, struct dohsql_node *node);
+
+/**
+ * Same as fdb_push_setup, but for remote writes
+ *
+ */
+int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab);
 
 /**
  * Free remote push support
@@ -1355,7 +1384,7 @@ void fdb_push_free(fdb_push_connector_t **fdb_push);
  * Pack an sqlite result to be send to a remote db
  *
  */
-void fdb_sqlite_row(sqlite3_stmt *stmt, Mem *res);
+void fdb_sqlite_row(sqlclntstate *clnt, sqlite3_stmt *stmt, Mem *res);
 
 /**
  * Free a packed sqlite row after being used
@@ -1368,6 +1397,11 @@ void fdb_sqlite_row_free(Mem *res);
  *
  */
 int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err);
+/**
+ * Same as handle_fdb_push, but for writes
+ *
+ */
+int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err);
 
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
@@ -1482,7 +1516,7 @@ int clear_fingerprints(int *plans_count);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, struct string_ref *, const char *, int64_t, int64_t,
-                     int64_t, int64_t, struct reqlogger *, unsigned char *fingerprint_out, int is_lua);
+                     int64_t, int64_t, struct reqlogger *, unsigned char *, int);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1551,6 +1585,16 @@ struct query_count {
     int64_t last_timems;
 };
 
+struct fixed_row_source {
+    void *data;
+    int ncolumns;
+    int rownum;
+    int *types;
+    char **names;
+    int (*fixed_values_callback)(struct sqlclntstate *, struct fixed_row_source *src, int rownum, int colnum, void **value, int *len);
+};
+
+
 void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  unsigned char *fingerprint, int cost,
                                  int rows, int timems);
@@ -1576,7 +1620,7 @@ int fdb_access_control_create(struct sqlclntstate *, char *str);
 int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
-int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
+int start_new_transaction(struct sqlclntstate *);
 int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
 
 struct sql_col_info {

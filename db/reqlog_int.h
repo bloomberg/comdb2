@@ -116,6 +116,7 @@ struct reqlogger {
     char id[41];
     int have_id;
     evtype_t event_type;
+    int64_t netwaitus;
 
     int ntables;
     int alloctables;

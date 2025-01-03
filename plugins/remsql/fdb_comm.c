@@ -17,6 +17,7 @@
 #include <gettimeofday_ms.h>
 
 #include "sql.h"
+#include "fdb_fend.h"
 #include "fdb_comm.h"
 #include "fdb_bend.h"
 #include "fdb_bend_sql.h"
@@ -41,7 +42,7 @@ extern int gbl_fdb_auth_enabled;
 
 static int fdb_auth_enabled()
 {
-    return (gbl_fdb_auth_enabled && gbl_uses_externalauth);
+    return gbl_fdb_auth_enabled;
 }
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -611,7 +612,7 @@ int fdb_recv_2pc_rc(fdb_msg_t *msg, fdb_tran_t *trans)
 {
     int rc;
 
-    rc = fdb_msg_read_message(trans->sb, msg, 0);
+    rc = fdb_msg_read_message(trans->fcon.sb, msg, 0);
     if (rc != FDB_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n", __func__, rc);
         trans->rc = FDB_ERR_READ_IO;
@@ -621,7 +622,7 @@ int fdb_recv_2pc_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     }
 
     if (gbl_fdb_track) {
-        fdb_msg_print_message(trans->sb, msg, "received 2pc-rc message");
+        fdb_msg_print_message(trans->fcon.sb, msg, "received 2pc-rc message");
     }
 
     msg->hd.type &= FD_MSG_TYPE;
@@ -659,7 +660,7 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
 {
     int rc;
 
-    rc = fdb_msg_read_message(trans->sb, msg, 0);
+    rc = fdb_msg_read_message(trans->fcon.sb, msg, 0);
     if (rc != FDB_NOERR) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
                __func__, rc);
@@ -670,7 +671,7 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     }
 
     if (gbl_fdb_track) {
-        fdb_msg_print_message(trans->sb, msg, "received message");
+        fdb_msg_print_message(trans->fcon.sb, msg, "received message");
     }
 
     msg->hd.type &= FD_MSG_TYPE;
@@ -3298,6 +3299,8 @@ int fdb_send_2pc_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *tr
     msg->tv.coordinator_tier = coordinator_tier;
     msg->tv.timestamp = timestamp;
 
+    clnt->authdata = get_authdata(clnt);
+
     if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->tv.authdtalen, &msg->tv.authdta);
         if (rc) {
@@ -3340,6 +3343,8 @@ int fdb_send_begin(struct sqlclntstate *clnt, fdb_msg_t *msg, fdb_tran_t *trans,
     msg->tr.lvl = lvl;
     msg->tr.flags = flags;
     msg->tr.seq = 0; /* the beginnings: there was a zero */
+
+    clnt->authdata = get_authdata(clnt);
 
     if (clnt->authdata && fdb_auth_enabled() && externalComdb2SerializeIdentity) {
         rc = externalComdb2SerializeIdentity(clnt->authdata, &msg->tr.authdtalen, &msg->tr.authdta);
@@ -3623,7 +3628,7 @@ int fdb_bend_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
     /* send back the result now if this is not prepared
      * prepared txns won't wait */
-    if (!clnt->dist_txnid) {
+    if (!clnt->is_participant) {
         rc2 = fdb_send_rc(msg, tid, rc, errstrlen, errstr_if_any, sb);
         if (rc2) {
             logmsg(LOGMSG_ERROR, "%s: sending rc error rc=%d rc2=%d\n", __func__, rc, rc2);
@@ -3916,8 +3921,9 @@ int handle_rem2pc_request(comdb2_appsock_arg_t *arg)
              * The msg buffer is reused for response, thus in some cases,
              * the type it initially stored, could change.
              * This check ensures that the change adheres with the design.
+             * NOTE: participant SKIPS sending an RC back!
              */
-            if (msg_type == FDB_MSG_TRAN_COMMIT && (msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_RC) {
+            if (!svc_cb_arg.clnt->is_participant && msg_type == FDB_MSG_TRAN_COMMIT && (msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_RC) {
                 abort();
             }
             break;

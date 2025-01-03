@@ -1000,10 +1000,10 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int numtails, void **tails, int *taillens, int nodrop,
                         int inorder, int trace)
 {
-        int f = 0;
-        if (nodelay) f |= NET_SEND_NODELAY;
-        if (nodrop) f |= NET_SEND_NODROP;
-        return net_send_evbuffer(netinfo_ptr, host, usertype, data, datalen, numtails, tails, taillens, f);
+    int f = 0;
+    if (nodelay) f |= NET_SEND_NODELAY;
+    if (nodrop) f |= NET_SEND_NODROP;
+    return net_send_evbuffer(netinfo_ptr, host, usertype, data, datalen, numtails, tails, taillens, f);
 }
 
 int net_send_authcheck_all(netinfo_type *netinfo_ptr)

@@ -587,10 +587,14 @@ static struct host_info *host_info_new(char *host)
     h->host_interned = intern_ptr(host);
     h->host = h->host_interned->str;
     if (reader_policy == POLICY_PER_HOST) {
-        init_base(&h->per_host.rdthd, &h->per_host.rdbase, h->host);
+        char thdname[16];
+        snprintf(thdname, sizeof(thdname), "R:%s", h->host);
+        init_base(&h->per_host.rdthd, &h->per_host.rdbase, strdup(thdname));
     }
     if (writer_policy == POLICY_PER_HOST) {
-        init_base(&h->per_host.wrthd, &h->per_host.wrbase, h->host);
+        char thdname[16];
+        snprintf(thdname, sizeof(thdname), "W:%s", h->host);
+        init_base(&h->per_host.wrthd, &h->per_host.wrbase, strdup(thdname));
     }
     LIST_INIT(&h->event_list);
     LIST_INSERT_HEAD(&host_list, h, entry);
@@ -637,10 +641,14 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     // See increase_net_buf()
     n->rd_max = n->wr_max = MB(8);
     if (reader_policy == POLICY_PER_NET) {
-        init_base(&n->per_net.rdthd, &n->per_net.rdbase, n->service);
+        char thdname[16];
+        snprintf(thdname, sizeof(thdname), "R:%s", n->service);
+        init_base(&n->per_net.rdthd, &n->per_net.rdbase, strdup(thdname));
     }
     if (writer_policy == POLICY_PER_NET) {
-        init_base(&n->per_net.wrthd, &n->per_net.wrbase, n->service);
+        char thdname[16];
+        snprintf(thdname, sizeof(thdname), "W:%s", n->service);
+        init_base(&n->per_net.wrthd, &n->per_net.wrbase, strdup(thdname));
     }
     LIST_INIT(&n->event_list);
     LIST_INSERT_HEAD(&net_list, n, entry);
@@ -740,10 +748,16 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     hash_add(event_hash, entry);
     Pthread_mutex_unlock(&event_hash_lk);
     if (reader_policy == POLICY_PER_EVENT) {
-        init_base(&e->per_event.rdthd, &e->per_event.rdbase, entry->key);
+        char thdname[16];
+        int x = snprintf(thdname, sizeof(thdname), "R:%s", entry->key);
+        (void)x;
+        init_base(&e->per_event.rdthd, &e->per_event.rdbase, strdup(thdname));
     }
     if (writer_policy == POLICY_PER_EVENT) {
-        init_base(&e->per_event.wrthd, &e->per_event.wrbase, entry->key);
+        char thdname[16];
+        int x = snprintf(thdname, sizeof(thdname), "W:%s", entry->key);
+        (void)x;
+        init_base(&e->per_event.wrthd, &e->per_event.wrbase, strdup(thdname));
     }
     /* set up rd_worker */
     Pthread_mutex_init(&e->rd_lk, NULL);

@@ -55,7 +55,7 @@ typedef struct DB_Connection {
     } while (0)
 
 int gbl_physrep_debug = 0;
-int gbl_physrep_register_interval = 600; // force re-registration every 10 mins
+int gbl_physrep_reconnect_interval = 600; // force re-registration every 10 mins
 int gbl_physrep_reconnect_penalty = 0;
 int gbl_blocking_physrep = 0;
 int gbl_physrep_fanout = 8;
@@ -102,6 +102,7 @@ static size_t repl_dbs_sz;
 reverse_conn_handle_tp *rev_conn_hndl = NULL;
 
 static int last_register;
+static int repl_db_connect_time;
 
 static int add_replicant_host(char *hostname, char *dbname);
 static void dump_replicant_hosts(void);
@@ -190,6 +191,8 @@ static void set_repl_db_connected(char *dbname, char *host)
     gbl_physrep_repl_name = dbname;
     gbl_physrep_repl_host = host;
     repl_db_connected = 1;
+    repl_db_connect_time = comdb2_time_epoch();
+    physrep_logmsg(LOGMSG_USER, "Physical replicant is now replicating from %s@%s\n", dbname, host);
 }
 
 static void set_repl_db_disconnected()
@@ -634,8 +637,7 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
     if (stop_physrep_worker == 0) {
         /* check if we need to call new file flag */
         if (prev_info.file < file) {
-            rc = apply_log(thedb->bdb_env->dbenv, prev_info.file,
-                           get_next_offset(thedb->bdb_env->dbenv, prev_info),
+            rc = apply_log(thedb->bdb_env, prev_info.file, get_next_offset(thedb->bdb_env->dbenv, prev_info),
                            REP_NEWFILE, NULL, 0);
             if (rc != 0) {
                 physrep_logmsg(LOGMSG_FATAL, "%s:%d: Something went wrong with applying the logs (rc: %d)\n",
@@ -644,8 +646,7 @@ static LOG_INFO handle_record(cdb2_hndl_tp *repl_db, LOG_INFO prev_info)
             }
         }
 
-        rc = apply_log(thedb->bdb_env->dbenv, file, offset, REP_LOG, blob,
-                       blob_len);
+        rc = apply_log(thedb->bdb_env, file, offset, REP_LOG, blob, blob_len);
 
         if (is_commit((u_int32_t)*rectype)) {
             if (gbl_physrep_debug) {
@@ -923,24 +924,49 @@ static void delete_replicant_host(DB_Connection *cnct)
     free(cnct);
 }
 
-static int send_keepalive() {
-    int rc = 0;
-    char cmd[400];
+int gbl_physrep_keepalive_v2 = 0;
+
+static int send_keepalive(void)
+{
+    int rc = 0, use_v2 = 0;
+    char cmd[600];
     LOG_INFO info;
-
-    info = get_last_lsn(thedb->bdb_env);
-
-    rc = snprintf(cmd, sizeof(cmd),
-                  "exec procedure sys.physrep.keepalive('%s', '%s', %u, %u)",
-                  gbl_dbname, gbl_myhostname, info.file, info.offset);
-    if (rc < 0 || rc >= sizeof(cmd)) {
-        physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
-        return 1;
-    }
 
     cdb2_hndl_tp *repl_metadb;
     if ((rc = physrep_get_metadb_or_local_hndl(&repl_metadb)) != 0) {
         return rc;
+    }
+
+    /* TODO: remove after v2 enabled & new-schema is everywhere */
+    if (gbl_physrep_keepalive_v2) {
+        rc = snprintf(
+            cmd, sizeof(cmd),
+            "select count(*) from comdb2_columns where tablename='comdb2_physreps' and columnname='firstfile'");
+        rc = cdb2_run_statement(repl_metadb, cmd);
+        if (rc != CDB2_OK) {
+            physrep_logmsg(LOGMSG_ERROR, "%s:%d Failed to execute cmd %s (rc: %d)\n", __func__, __LINE__, cmd, rc);
+            cdb2_close(repl_metadb);
+            return rc;
+        }
+        if (cdb2_next_record(repl_metadb) == CDB2_OK) {
+            int64_t val = *(int64_t *)cdb2_column_value(repl_metadb, 0);
+            use_v2 = (val != 0) ? 1 : 0;
+        }
+    }
+
+    info = get_last_lsn(thedb->bdb_env);
+    if (use_v2) {
+        LOG_INFO first_info;
+        first_info = get_first_lsn(thedb->bdb_env);
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.keepalive_v2('%s', '%s', %u, %u, %u)", gbl_dbname,
+                      gbl_myhostname, info.file, info.offset, first_info.file);
+    } else {
+        rc = snprintf(cmd, sizeof(cmd), "exec procedure sys.physrep.keepalive('%s', '%s', %u, %u)", gbl_dbname,
+                      gbl_myhostname, info.file, info.offset);
+    }
+    if (rc < 0 || rc >= sizeof(cmd)) {
+        physrep_logmsg(LOGMSG_ERROR, "%s:%d: Buffer is not long enough!\n", __func__, __LINE__);
+        return 1;
     }
 
     if (gbl_physrep_debug)
@@ -1245,7 +1271,7 @@ repl_loop:
         }
 
         if (repl_db_connected &&
-            (force_registration() || (((now = time(NULL)) - last_register) > gbl_physrep_register_interval))) {
+            (force_registration() || (((now = time(NULL)) - repl_db_connect_time) > gbl_physrep_reconnect_interval))) {
             close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
             if (gbl_physrep_debug) {
                 physrep_logmsg(LOGMSG_USER, "%s:%d: Forcing re-registration\n", __func__, __LINE__);
@@ -1368,9 +1394,6 @@ repl_loop:
             cdb2_close(repl_metadb);
         }
 
-        physrep_logmsg(LOGMSG_USER, "Physical replicant is now replicating from %s@%s\n",
-                       repl_db_cnct->dbname, repl_db_cnct->hostname);
-
         if (do_truncate && repl_db) {
             info = get_last_lsn(thedb->bdb_env);
             prev_info = handle_truncation(repl_db, info);
@@ -1452,6 +1475,12 @@ repl_loop:
                 if (gbl_physrep_debug) {
                     logmsg(LOGMSG_USER, "Checking reverse connection status\n");
                 }
+                goto repl_loop;
+            }
+
+            /* Check reconnect */
+            if (force_registration() || ((now = time(NULL)) - repl_db_connect_time) > gbl_physrep_reconnect_interval) {
+                close_repl_connection(repl_db_cnct, repl_db, __func__, __LINE__);
                 goto repl_loop;
             }
 

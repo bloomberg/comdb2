@@ -1,4 +1,5 @@
 #include <typessql.h>
+#include "fdb_fend.h"
 
 int gbl_typessql = 0;
 int gbl_typessql_records_max = 1000;

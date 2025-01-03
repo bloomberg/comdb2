@@ -328,7 +328,8 @@ error:
 static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
                                      struct temp_table *tbl, int *bdberr)
 {
-    int rc = 0, ii;
+    int rc = 0;
+    unsigned long long ii;
     DBT dbt_key, dbt_data;
     struct temp_cursor *cur;
     arr_elem_t *elem;
@@ -1395,7 +1396,8 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
 {
     if (tbl == NULL)
         return 0;
-    int rc = 0, ii = 0;
+    int rc = 0;
+    unsigned long long int ii = 0;
     arr_elem_t *elem;
 
     switch (tbl->temp_table_type) {
@@ -1561,7 +1563,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                int *bdberr)
 {
     DB_MPOOL_STAT *tmp;
-    int rc, ii;
+    int rc;
+    unsigned long long ii;
     arr_elem_t *elem;
 
     rc = 0;

@@ -48,6 +48,9 @@ cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select comdb2_hostname()"
 
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events detailed on')"
 
+# This command will hopefully slow down IO enough so that server will block on writing
+cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select zeroblob(134217728) from generate_series(1, 5)" | less >/dev/null
+
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select 1"`
 assertres $res 1
 
@@ -92,6 +95,14 @@ function getmembers {
 
 SAVIFS=$IFS
 IFS=$'\n'
+echo verifying that netwait is logged for a slow reader
+for line in $(jq -rc 'if (.type == "sql") and (.sql == "select zeroblob(134217728) from generate_series(1, 5)") then . else empty end' < $logflunziped); do
+    exists=`jq -r '.perf | if has("netwaitus") then 1 else 0 end' <<< $line`
+    if [ "$exists" == 0 ] ; then
+        failexit 'output is different from expected'
+    fi
+done
+
 echo check all .*sql entries for fingerprint
 echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
 for line in $(jq -rc 'if (.type == "sql") and (.sql == "select 1") then . else empty end' < $logflunziped); do

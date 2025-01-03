@@ -236,6 +236,7 @@
 (candidate='comdb2_constraints')
 (candidate='comdb2_cron_events')
 (candidate='comdb2_cron_schedulers')
+(candidate='comdb2_dbinfo')
 (candidate='comdb2_fdb_info')
 (candidate='comdb2_filenames')
 (candidate='comdb2_files')
