@@ -53,7 +53,7 @@ RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake -DWITH_TCL=1 -DINCLUDE_DEBUG_ONLY_SYSTABLES=1 .. && \
+    cmake -DWITH_TCL=1 -DCOMDB2_TEST=1 .. && \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \

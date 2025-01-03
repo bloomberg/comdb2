@@ -293,6 +293,8 @@ enum OPENFLAGS { /* NOTE: For "uint32_t flags" arg to "bdb_open_*()". */
 int bdb_compr2algo(const char *a);
 const char *bdb_algo2compr(int a);
 
+int bdb_bless_btree(char *input_file, char *output_file);
+
 /* retrieve the user pointer associated with a bdb_handle */
 void *bdb_get_usr_ptr(bdb_state_type *bdb_handle);
 

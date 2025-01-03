@@ -50,6 +50,7 @@ int __txn_commit_map_init(DB_ENV *);
 int __txn_commit_map_destroy(DB_ENV *);
 
 extern int gbl_file_permissions;
+extern int gbl_import_mode;
 
 /*
  * db_version --
@@ -895,7 +896,7 @@ __dbenv_close(dbenv, rep_check)
 	    (t_ret = __rep_preclose(dbenv, 1)) != 0 && ret == 0)
 		ret = t_ret;
 
-	if (dbenv->db_ref != 0) {
+	if (!gbl_import_mode && dbenv->db_ref != 0) {
 		__db_err(dbenv,
 		    "Database handles open during environment close");
 		if (ret == 0)

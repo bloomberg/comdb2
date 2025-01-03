@@ -866,4 +866,10 @@ stack
       {line DROP INDEX {opt {line IF EXISTS } } }
       {line index-name {opt {line ON table-name } } }
   }
+
+  replace-table {
+      stack
+      {line REPLACE TABLE table-name WITH qualified-table-name}
+  }
+
 }
