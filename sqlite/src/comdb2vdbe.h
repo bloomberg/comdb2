@@ -54,4 +54,6 @@ void free_rstMsg(struct rstMsg* rec);
 int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDb,
                      char *tablename, size_t len);
 
+struct sqlclntstate;
+int recover_deadlock_evbuffer(struct sqlclntstate *);
 #endif // COMDB2VDBE_H

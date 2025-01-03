@@ -148,6 +148,7 @@ extern int gbl_alternate_normalize;
 extern int gbl_typessql;
 extern int gbl_modsnap_asof;
 extern int gbl_use_modsnap_for_snapshot;
+extern int gbl_sql_waiter_penalty;
 
 /* Once and for all:
 
@@ -3185,6 +3186,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         if (rec->stmt) {
+            void sqlite3_stmt_set_clnt(sqlite3_stmt *, struct sqlclntstate *);
+            sqlite3_stmt_set_clnt(rec->stmt, clnt);
             stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks,
                                   thd->authState.hasVTables, thd->authState.flags);
             thd->authState.numVTableLocks = 0;
@@ -3796,10 +3799,11 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rowcount = 0;
     int postponed_write = 0;
     sqlite3_stmt *stmt = rec->stmt;
+    Vdbe *v = (Vdbe *)stmt;
 
     run_stmt_setup(clnt, stmt);
     if ((gbl_typessql || clnt->typessql) && clnt->isselect && !dohsql_is_parallel_shard() && !clnt->fdb_push &&
-        !((Vdbe *)stmt)->hasVTables && !((Vdbe *)stmt)->hasScalarFunc)
+        !v->hasVTables && !v->hasScalarFunc)
         typessql_initialize(clnt, stmt);
 
     /* this is a regular sql query, add it to history */
@@ -3867,8 +3871,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) ||
-            ((Vdbe *)stmt)->explain) {
+        if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) || v->explain) {
             postponed_write = 0;
             ++row_id;
             rc = send_row(clnt, stmt, row_id, 0, err);
@@ -4298,6 +4301,9 @@ static int check_done_func(void *obj)
  */
 static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
+    clnt->last_sql_tick = gbl_epoch_time;
+    clnt->waiter_penalty = 0;
+
     int outrc = 0;
     int rc;
 
@@ -5575,18 +5581,21 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
     if (!gbl_sql_release_locks_on_slow_reader) {
         return 0;
     }
-    bdb_state_type *env = thedb->bdb_env;
-    if (!bdb_curtran_has_waiters(env, clnt->dbtran.cursor_tran) && !bdb_lock_desired(env)) {
+    ++clnt->deadlock_checked;
+    int lock_desired = 0;
+    int have_waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran);
+    if (have_waiters > 0) {
+        clnt->waiter_penalty = gbl_sql_waiter_penalty;
+    } else if ((lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0) {
         return 0;
     }
     int flags = 0;
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock)) {
         flags = RECOVER_DEADLOCK_FORCE_FAIL;
     }
-    if (!recover_deadlock_flags(env, clnt, NULL, 0, __func__, __LINE__, flags)) {
-        return -1;
-    }
-    return 0;
+    logmsg(LOGMSG_USER, "%s  have-waiters:%d  lock-desired:%d  recovered:%d checked:%d\n",
+            __func__, have_waiters, lock_desired, clnt->deadlock_recovered, clnt->deadlock_checked);
+    return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, 10, __func__, __LINE__, flags);
 }
 
 static int recover_deadlock_sbuf(struct sqlclntstate *clnt)
