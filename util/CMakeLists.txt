@@ -47,6 +47,7 @@ set(src
   str0.c
   strbuf.c
   string_ref.c
+  str_util.c
   switches.c
   tcputil.c
   thdpool.c

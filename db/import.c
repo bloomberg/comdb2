@@ -48,6 +48,7 @@
 #include "sc_global.h"
 #include "str0.h"
 #include "version_util.h"
+#include "str_util.h"
 
 #define BULK_IMPORT_MIN_SUPPORTED_VERSION "8.1.0"
 
@@ -90,20 +91,6 @@ pthread_mutex_t import_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Constants */
 #define FILENAMELEN 100
-
-/* inputs can't be null and ending can't be emptystring */
-static int str_has_ending(const char * const s_start, const char * const e_start) {
-    const ssize_t s_len = strlen(s_start);
-    const ssize_t e_len = strlen(e_start);
-    if (e_len > s_len) { return 0; }
-
-    const char * e_last = e_start + e_len;
-    const char * s_last = s_start + s_len;
-
-    // if last char is neq then elast < estart
-    while ((*e_last-- == *s_last--) && (e_last >= e_start)) {}
-    return (*(e_last+1) == *(s_last+1));
-}
 
 int get_str_ending_from_list(const char *str, const char **list) {
     const char * ending;
