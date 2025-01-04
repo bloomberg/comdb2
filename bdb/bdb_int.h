@@ -695,6 +695,7 @@ struct bdb_callback_tag {
     NODEDOWNFP nodedown_rtn;
     SERIALCHECK serialcheck_rtn;
     SYNCMODE syncmode_rtn;
+    NODEUP_DRTEST nodeup_drtest_rtn;
 };
 
 struct waiting_for_lsn {
