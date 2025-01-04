@@ -6523,7 +6523,7 @@ char *net_get_osql_node(netinfo_type *netinfo_ptr)
             continue;
 
         /* is rtcpu-ed? */
-        if (machine_is_up(ptr->host) != 1)
+        if (machine_is_up(ptr->host, NULL) != 1)
             continue;
 
         if (nnodes >= REPMAX)

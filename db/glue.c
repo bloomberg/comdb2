@@ -3048,6 +3048,15 @@ int serial_check_callback(char *tbname, int idxnum, void *key, int keylen,
 
 int getroom_callback(void *dummy, const char *host) { return machine_dc(host); }
 
+static int nodeup_drtest_callback(void *bdb_handle, const char *host, int *is_drtest)
+{
+    extern char *tcmtest_routecpu_down_node;
+    if (host == tcmtest_routecpu_down_node) {
+        return 0;
+    }
+    return machine_is_up(host, is_drtest);
+}
+
 /* callback to report whether node is up or down through rtcpu */
 static int nodeup_callback(void *bdb_handle, const char *host)
 {
@@ -3060,7 +3069,7 @@ int is_node_up(const char *host)
     if (host == tcmtest_routecpu_down_node) {
         return 0;
     }
-    return machine_is_up(host);
+    return machine_is_up(host, NULL);
 }
 
 /* callback to set dynamically configurable election settings */
@@ -3641,8 +3650,8 @@ int open_bdb_env(struct dbenv *dbenv)
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_WHOISMASTER,
                      new_master_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_NODEUP, nodeup_callback);
-    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_GETROOM,
-                     getroom_callback);
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_NODEUP_DRTEST, nodeup_drtest_callback);
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_GETROOM, getroom_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_APPSOCK,
                      appsock_callback);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_ADMIN_APPSOCK,

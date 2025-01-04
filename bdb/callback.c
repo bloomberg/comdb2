@@ -107,6 +107,10 @@ void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
         bdb_callback->syncmode_rtn = (SYNCMODE)callback_rtn;
         break;
 
+    case BDB_CALLBACK_NODEUP_DRTEST:
+        bdb_callback->nodeup_drtest_rtn = (NODEUP_DRTEST)callback_rtn;
+        break;
+
     default:
         break;
     }
