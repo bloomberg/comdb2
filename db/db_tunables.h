@@ -1787,8 +1787,6 @@ REGISTER_TUNABLE("instrument_dblist", "Extended dblist-trace in berkley.  (Defau
 REGISTER_TUNABLE("match_on_ckp", "Allow rep_verify_match on ckp records.  (Default: on)", TUNABLE_BOOLEAN,
                  &gbl_match_on_ckp, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("debug_election", "Enable extended election trace.  (Default: off)", TUNABLE_BOOLEAN,
-                 &gbl_debug_election, 0, NULL, NULL, NULL, NULL);
 /* physical replication */
 REGISTER_TUNABLE("blocking_physrep", "Physical replicant blocks on select. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_blocking_physrep, 0, NULL, NULL, NULL, NULL);

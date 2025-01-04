@@ -40,7 +40,6 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 #include <sys_wrap.h>
 #include <assert.h>
 extern int gbl_fullrecovery;
-extern int gbl_debug_election;
 int gbl_reproduce_ckp_bug = 0;
 
 int gbl_rep_method_max_sleep_cnt = 0;
@@ -345,7 +344,7 @@ __rep_start(dbenv, dbt, gen, flags)
 						__rep_set_gen(dbenv, __func__, __LINE__, 
 								rep->recover_gen + 1);
 					}
-				} else if (gbl_debug_election) {
+				} else {
 					logmsg(LOGMSG_USER, "%s line %d keeping gen %d for full recovery\n", __func__, __LINE__, rep->gen);
 				}
 				/*
@@ -362,7 +361,7 @@ __rep_start(dbenv, dbt, gen, flags)
 						logmsg(LOGMSG_DEBUG, "%s line %d setting gen to rep->egen "
 								"%d\n", __func__, __LINE__, rep->egen);
 						__rep_set_gen(dbenv, __func__, __LINE__, rep->egen);
-					} else if (gbl_debug_election) {
+					} else {
 						logmsg(LOGMSG_USER, "%s line %d keeping gen %d for full recovery\n", __func__, __LINE__, rep->gen);
 					}
 				}
@@ -1300,7 +1299,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	 */
 	if (in_progress) {
 		*eidp = dbenv->rep_eid;
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d returning %d master %s egen is %d\n",
 				__func__, __LINE__, ret, *eidp, *newgen);
 		return (0);
@@ -1309,7 +1308,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 	fprintf(stderr, "%s:%d broadcasting REP_MASTER_REQ\n",
 		__FILE__, __LINE__);
 #endif
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
 			"%s start sending master req\n", __func__);
 	send_master_req(dbenv, __func__, __LINE__);
 	ret = __rep_wait(dbenv, timeout / 4, eidp, newgen, 0, REP_F_EPHASE1);
@@ -1321,7 +1320,7 @@ __rep_elect(dbenv, nsites, priority, timeout, newgen, already_master, eidp)
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv, "Found master %d", *eidp);
 #endif
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d returning %d master %s egen is %d\n",
 					__func__, __LINE__, ret, *eidp, *newgen);
 			return (0);
@@ -1351,7 +1350,7 @@ restart:
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 
 	/* WAITSTART pushes us past point of no-return */
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
 			"%s line %d setting PHASE1 clearing TALLY\n", __func__, __LINE__);
 	F_SET(rep, REP_F_EPHASE1 | REP_F_WAITSTART | REP_F_NOARCHIVE);
 	F_CLR(rep, REP_F_TALLY);
@@ -1373,7 +1372,7 @@ restart:
 	/* Tally our own vote */
 	if (__rep_tally(dbenv, rep, rep->eid, &rep->sites, rep->egen,
 		rep->tally_off, __func__, __LINE__) != 0) {
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d rep-tally failed, lockdone\n", __func__, __LINE__);
 		goto lockdone;
 	}
@@ -1390,13 +1389,13 @@ restart:
 	egen = rep->egen;
 	committed_gen = rep->committed_gen;
 	send_vote2 = (rep->sites >= rep->nsites && rep->w_priority != 0);
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
 			"%s line %d send_vote2 is %d, rep->sites is %d, rep->nsites is %d\n",
 			__func__, __LINE__, send_vote2, rep->sites, rep->nsites);
 
 	/* If we have all vote1, change to PHASE2 immediately */
 	if (send_vote2) {
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG, "%s line %d clearing PHASE1 setting PHASE2\n", __func__, __LINE__);
+		logmsg(LOGMSG_USER, "%s line %d clearing PHASE1 setting PHASE2\n", __func__, __LINE__);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
 		if (rep->winner == rep->eid) {
@@ -1409,13 +1408,13 @@ restart:
 	Pthread_mutex_unlock(&rep_candidate_lock);
 
 	if (use_committed_gen) {
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 			"%s line %d broadcasting REP_GEN_VOTE1 to all with committed-gen=%d gen=%d egen=%d\n",
 			__func__, __LINE__, committed_gen, rep->gen, egen);
 		__rep_send_gen_vote(dbenv, &lsn, nsites, priority, tiebreaker,
 			egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
 	} else {
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 			"%s line %d broadcasting REP_VOTE1 to all (committed-gen=0) gen=%d egen=%d\n",
 			__func__, __LINE__, rep->gen, egen);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
@@ -1435,17 +1434,17 @@ restart:
 #endif
 				/* This increments our election gen */
 				__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
-				logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+				logmsg(LOGMSG_USER,
 						"%s line %d returning %d master %s egen is %d\n",
 						__func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
 			}
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d going to phase2 because nomaster\n", __func__, __LINE__);
 			goto phase2;
 		case DB_ELECTION_GENCHG:
 		case DB_TIMEOUT:
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d ret is %d break\n", __func__, __LINE__, ret);
 			break;
 		default:
@@ -1471,7 +1470,7 @@ restart:
 			__db_err(dbenv, "Egen changed from %lu to %lu",
 				(u_long)egen, (u_long)rep->egen);
 #endif
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d rep egen changed from %d to %d, restarting\n", 
 			__func__, __LINE__, egen, rep->egen);
 		goto restart;
@@ -1482,7 +1481,7 @@ restart:
 	if (rep->sites > rep->nsites / 2) {
 
 		/* We think we've seen enough to cast a vote. */
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d have seen enough votes for vote2\n", __func__, __LINE__);
 		send_vote = rep->winner;
 		/*
@@ -1499,7 +1498,7 @@ restart:
 					"Counted my vote %d", rep->votes);
 #endif
 		}
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d setting PHASE2 clearing PHASE1\n", __func__, __LINE__);
 		F_SET(rep, REP_F_EPHASE2);
 		F_CLR(rep, REP_F_EPHASE1);
@@ -1514,7 +1513,7 @@ restart:
 				"Not enough votes to elect: received %d of %d",
 				rep->sites, rep->nsites);
 #endif
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d not enough vote1s, failing\n", __func__, __LINE__);
 		ret = DB_REP_UNAVAIL;
 		goto err;
@@ -1524,7 +1523,7 @@ restart:
 		 * We have seen enough vote1's.  Now we need to wait
 		 * for all the vote2's.
 		 */
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d have seen enough votes to cast vote2!\n", __func__, __LINE__);
 		if (send_vote != rep->eid) {
 #ifdef DIAGNOSTIC
@@ -1533,14 +1532,14 @@ restart:
 				__db_err(dbenv, "Sending vote");
 #endif
 			if (use_committed_gen) {
-				logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+				logmsg(LOGMSG_USER,
 						"%s line %d sending REP_GEN_VOTE2 to %s "
 						"with committed-gen=%d gen=%d egen=%d\n", __func__, __LINE__,
 						send_vote, committed_gen, rep->gen, egen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, send_vote, REP_GEN_VOTE2);
 			} else {
-				logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+				logmsg(LOGMSG_USER,
 						"%s line %d sending REP_VOTE2 to %s "
 						"(committed-gen=0) gen=%d egen=%d\n", __func__, __LINE__,
 						send_vote, rep->gen, egen);
@@ -1560,7 +1559,7 @@ phase2:
 			case 0:
 				/* Increment our election gen */
 				__rep_elect_done(dbenv, rep, 0, __func__, __LINE__);
-				logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+				logmsg(LOGMSG_USER,
 						"%s line %d returning %d master %s egen is %d\n",
 						__func__, __LINE__, ret, *eidp, *newgen);
 				return (0);
@@ -1581,7 +1580,7 @@ phase2:
 		if (send_vote == rep->eid && done) {
 			if (nsites == 1)
 				__rep_elect_master(dbenv, rep, eidp);
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d elected master %s current-egen "
 					"%d\n", __func__, __LINE__, rep->eid, rep->egen);
 			ret = 0;
@@ -1600,7 +1599,7 @@ lockdone:
 	 * from elect_init where we were unable to grow_sites.  In
 	 * that case we do not want to discard all known election info.
 	 */
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
             "%s line %d ret is %d\n", __func__, __LINE__, ret);
 	assert(ret == 0 || ret == DB_REP_UNAVAIL);
 	if (ret == 0 || ret == DB_REP_UNAVAIL) {
@@ -1611,7 +1610,7 @@ lockdone:
 
 	Pthread_mutex_unlock(&rep_candidate_lock);
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
 			"%s line %d returning %d master %s egen is %d\n",
 			__func__, __LINE__, ret, *eidp, *newgen);
 	return (ret);
@@ -1644,7 +1643,7 @@ __rep_elect_init(dbenv, lsnp, nsites, priority, beginp, otally)
 
 	/* If we are already a master; simply broadcast that fact and return. */
 	if (F_ISSET(rep, REP_F_MASTER)) {
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d sending REP_NEWMASTER\n", 
 				__func__, __LINE__);
 		(void)__rep_send_message(dbenv,
@@ -1670,7 +1669,7 @@ __rep_elect_init(dbenv, lsnp, nsites, priority, beginp, otally)
 		DB_ENV_TEST_RECOVERY(dbenv, DB_TEST_ELECTINIT, ret, NULL);
 		rep->nsites = nsites;
 		rep->priority = priority;
-		logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+		logmsg(LOGMSG_USER,
 				"%s line %d setting master_id to %s\n", __func__, __LINE__, db_eid_invalid);
 		rep->master_id = db_eid_invalid;
 	}
@@ -1692,7 +1691,7 @@ __rep_elect_master(dbenv, rep, eidp)
 	REP *rep;
 	char **eidp;
 {
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
 			"%s line %d setting master_id to %s\n", __func__, __LINE__, rep->eid);
 	rep->master_id = rep->eid;
 	F_SET(rep, REP_F_MASTERELECT);
@@ -1753,7 +1752,7 @@ __rep_wait(dbenv, timeout, eidp, outegen, inegen, flags)
 		Pthread_mutex_lock(&gbl_rep_egen_lk);
 		rc = pthread_cond_timedwait(&gbl_rep_egen_cd, &gbl_rep_egen_lk, &tm);
 		if (rc && rc != ETIMEDOUT) 
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_ERROR,
+			logmsg(LOGMSG_USER,
 					"Err rc=%d from pthread_cond_timedwait\n", rc);
 
 		*outegen = rep->egen;

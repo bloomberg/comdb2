@@ -89,7 +89,6 @@ int gbl_warn_queue_latency_threshold = 500;
 int gbl_inmem_repdb_maxlog = 10000;
 int64_t gbl_inmem_repdb_memory = 0;
 int64_t gbl_apply_queue_memory = 0;
-int gbl_debug_election = 0;
 
 /* Finish a fill if we are within 1.5 logfiles */
 int gbl_finish_fill_threshold = 60000000;
@@ -339,7 +338,7 @@ static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line)
 	__rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,
 			NULL, NULL, 0, NULL);
 
-	logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+	logmsg(LOGMSG_USER,
 			"%s line %d sending DUPMASTER\n", func, line);
 }
 
@@ -541,10 +540,8 @@ int send_rep_all_req(DB_ENV *dbenv, char *master_eid, DB_LSN *lsn, int flags,
 		return send_rep_all_req_dedup(dbenv, master_eid, lsn, flags, func, line);
 	}
 	if (gbl_dedup_rep_all_reqs && rep_qstat_has_allreq()) {
-		if (gbl_verbose_fills || gbl_debug_election) {
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
-				"BLOCKING rep_all_req from %s line %d\n", func, line);
-		}
+		logmsg(LOGMSG_USER,
+			"BLOCKING rep_all_req from %s line %d\n", func, line);
 		return 0;
 	}
 	int rc = __rep_send_message(dbenv, master_eid, REP_ALL_REQ, lsn, NULL, flags, NULL);
@@ -1246,7 +1243,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 
 		static u_int32_t lastpr = 0;
 		u_int32_t now;
-		if ((gbl_debug_election || gbl_rep_badgen_trace) && ((now = time(NULL)) - lastpr)) {
+		if (((now = time(NULL)) - lastpr)) {
 			logmsg(LOGMSG_USER, "Ignoring rp->gen %u from %s mygen is %u, "
 				"rectype=%u cnt %u\n", rp->gen, *eidp, gen, rp->rectype, 
 				rep->stat.st_msgs_badgen);
@@ -1264,7 +1261,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 		 */
 			static u_int32_t lastpr = 0;
 			u_int32_t now;
-			if ((gbl_rep_badgen_trace || gbl_debug_election) && ((now = time(NULL)) - lastpr)) {
+			if (((now = time(NULL)) - lastpr)) {
 				logmsg(LOGMSG_USER, "rp->gen %u from %s is larger than "
 					"mygen %u, rectype=%u\n", rp->gen, *eidp, gen, rp->rectype);
 				lastpr = now;
@@ -1295,7 +1292,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, n
 				__db_err(dbenv, "Updating gen from %lu to %lu",
 					(u_long)gen, (u_long)rp->gen);
 #endif
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d setting rep->gen to %d for rectype "
 					"%d\n", __func__, __LINE__, rp->gen, rp->rectype);
 			__rep_set_gen(dbenv, __func__, __LINE__, rp->gen);
@@ -2251,7 +2248,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			R_LOCK(dbenv, &dblp->reginfo);
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d sending REP_NEWMASTER\n", 
 					__func__, __LINE__);
 			(void)__rep_send_message(dbenv,
@@ -2269,7 +2266,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vi->nsites;
 			vi_priority = vi->priority;
 			vi_tiebreaker = vi->tiebreaker;
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d processing REP_VOTE1 from %s gen %d egen %d my-egen is %d "
 					"(Setting write-gen to 0)\n", 
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
@@ -2282,7 +2279,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vig->nsites;
 			vi_priority = vig->priority;
 			vi_tiebreaker = vig->tiebreaker;
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d processed REP_GEN_VOTE1 from %s gen %d egen %d my-egen is %d "
 					"(Setting write-gen to %d)\n",
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen, vig->last_write_gen);
@@ -2297,14 +2294,14 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 * start over by tallying it.
 		 */
 		if (vi_egen < rep->egen) {
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d ignoring %s from %s: it's egen is %d my-egen is %d\n",
 					__func__, __LINE__, rp->rectype == REP_VOTE1 ? "REP_VOTE1" : "REP_GEN_VOTE1",
 					*eidp, vi_egen, rep->egen);
 			goto errunlock;
 		}
 		if (vi_egen > rep->egen) {
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d reseting election for %s from %s: it's egen is %d my-egen is %d\n",
 					__func__, __LINE__, rp->rectype == REP_VOTE1 ? "REP_VOTE1" : "REP_GEN_VOTE1",
 					*eidp, vi_egen, rep->egen);
@@ -2423,7 +2420,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #endif
 			egen = rep->egen;
 			committed_gen = rep->committed_gen;
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d Setting PHASE2 clearing PHASE1\n", __func__, __LINE__);
 			F_SET(rep, REP_F_EPHASE2);
 			F_CLR(rep, REP_F_EPHASE1);
@@ -2437,7 +2434,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 
 			/* Vote for someone else. */
 			if (dbenv->attr.elect_highest_committed_gen) {
-				logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+				logmsg(LOGMSG_USER,
 						"%s line %d sending REP_GEN_VOTE2 to %s "
 						"with committed-gen=%d gen=%d egen=%d\n",
 						__func__, __LINE__, master, committed_gen, rep->gen,
@@ -2445,7 +2442,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
 					committed_gen, master, REP_GEN_VOTE2);
 			} else {
-				logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+				logmsg(LOGMSG_USER,
 						"%s line %d sending REP_VOTE2 to %s "
 						"(committed-gen=0) gen=%d egen=%d\n",
 						__func__, __LINE__, master, rep->gen, egen);
@@ -2484,7 +2481,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vi->nsites;
 			vi_priority = vi->priority;
 			vi_tiebreaker = vi->tiebreaker;
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d processing REP_VOTE2 from %s gen %d egen %d my-egen is %d\n", 
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		} else {
@@ -2496,13 +2493,13 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vig->nsites;
 			vi_priority = vig->priority;
 			vi_tiebreaker = vig->tiebreaker;
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d processing REP_GEN_VOTE2 from %s gen %d egen %d my-egen is %d\n", 
 					__func__, __LINE__, *eidp, rp->gen, vi_egen, rep->egen);
 		}
 
 		if (!IN_ELECTION_TALLY(rep) && vi_egen > rep->egen) {
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d not in election and vote2-egen %d "
 					"> rep->egen (%d): returning HOLDELECTION\n", __func__, 
 					__LINE__, vi_egen, rep->egen);
@@ -2546,7 +2543,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			__db_err(dbenv, "Counted vote %d", rep->votes);
 #endif
 		if (done) {
-			logmsg(gbl_debug_election ? LOGMSG_USER : LOGMSG_DEBUG,
+			logmsg(LOGMSG_USER,
 					"%s line %d elected master %s for egen %d\n",
 					__func__, __LINE__, rep->eid, vi_egen);
 			__rep_elect_master(dbenv, rep, eidp);

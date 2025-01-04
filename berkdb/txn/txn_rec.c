@@ -57,7 +57,6 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
-extern int gbl_debug_election;
 extern int gbl_recovery_ckp;
 int gbl_retrieve_gen_from_ckp = 1;
 int gbl_recovery_gen = 0;
@@ -476,7 +475,7 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
 			gbl_recovery_gen = rep->gen;
-		} else if (gbl_debug_election) {
+		} else {
 			logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->generation);
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -807,7 +806,7 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
 			gbl_recovery_gen = rep->gen;
-		} else if (gbl_debug_election) {
+		} else {
 			logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->generation);
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -1102,7 +1101,7 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 					__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
 					gbl_recovery_gen = rep->gen;
 				}
-			} else if (gbl_debug_election) {
+			} else {
 				logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->rep_gen);
 			}
 
