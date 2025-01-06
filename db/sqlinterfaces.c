@@ -5538,7 +5538,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         bdb_unregister_modsnap(thedb->bdb_env, clnt->modsnap_registration);
         clnt->modsnap_registration = NULL;
     }
-    clnt->remsql_set.is_remsql = 0;
+    bzero(&clnt->remsql_set, sizeof(clnt->remsql_set));
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
