@@ -701,7 +701,7 @@ int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,
         return index_rc;
     }
 
-    /* no table should point to the index which changed */
+    printf("%s\n", __func__);
     if (index_rc && fk_source_change(newdb, out, s)) {
         return SC_BAD_INDEX_CHANGE;
     }
@@ -1178,10 +1178,9 @@ int compare_constraints(const char *table, struct dbtable *newdb)
     return 0;
 }
 
-int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
-                                     int copyof)
+static void restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
+                                      struct ireq *iq, int copyof)
 {
-    int i = 0;
     /* lets deal with pointers...all tables pointing to me must be entered into
      * my 'reverse' */
     if (copyof) {
@@ -1191,7 +1190,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
     }
     /* additionally, for each table i'm pointing to in old db, must get its
      * reverse constraint array updated to get all reverse ct *'s removed */
-    for (i = 0; i < thedb->num_dbs; i++) {
+    for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         if (!strcasecmp(rdb->tablename, newdb->tablename)) {
             rdb = newdb;
@@ -1206,36 +1205,22 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
             }
         }
         Pthread_mutex_unlock(&rdb->rev_constraints_lk);
-        for (int j = 0; j < newdb->n_constraints; j++) {
-            for (int k = 0; k < newdb->constraints[j].nrules; k++) {
-                int ridx = 0;
-                int dupadd = 0;
-
-                if (strcasecmp(newdb->constraints[j].table[k], rdb->tablename))
-                    continue;
-                for (ridx = 0; ridx < rdb->n_rev_constraints; ridx++) {
-                    if (rdb->rev_constraints[ridx] == &newdb->constraints[j]) {
-                        dupadd = 1;
-                        break;
-                    }
-                }
-                if (dupadd) continue;
-                add_reverse_constraint(rdb, &newdb->constraints[j]);
-            }
-        }
     }
 
-    return 0;
+    populate_reverse_constraints(iq, newdb, /*track errors*/ 0);
+    // try_to_populate_missing_reverse_constraints(iq);
 }
 
-int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
+void restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb,
+                                 struct ireq *iq)
 {
-    return restore_constraint_pointers_main(db, newdb, 1);
+    restore_constraint_pointers_main(db, newdb, iq, 1);
 }
 
-int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
+void backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
-    return restore_constraint_pointers_main(db, newdb, 0);
+    // TODO
+    restore_constraint_pointers_main(db, newdb, NULL /* TODO */, 0);
 }
 
 /* did keys change which are also constraint sources? */
@@ -1247,10 +1232,11 @@ int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type
         struct schema *index = newdb->ixschema[i];
         int offset = get_offset_of_keyname(index->csctag);
         char *key = index->csctag + offset;
-        if (has_index_changed(olddb, key, 1, 0, NULL, 1))
-            if (compatible_constraint_source(olddb, newdb, index, key, out,
-                                             s) != 0)
-                return 1;
+		printf("checking index changed\n");
+        if (has_index_changed(olddb, key, 1, 0, NULL, 1)
+            && (compatible_constraint_source(olddb, newdb, index, key, out,
+                                             s) != 0))
+            return 1;
     }
     return 0;
 }
@@ -1363,6 +1349,7 @@ int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
     for (i = 0; i < s1->nmembers; ++i) {
         struct field *f1 = &s1->member[i];
         struct field *f2 = &s2->member[i];
+		printf("comparing keys %d vs %d\n", f1->type, f2->type);
         if (f1->type != f2->type) return 1;
         if (strcmp(f1->name, f2->name) != 0) return 1;
         if (f1->flags != f2->flags) return 1;
@@ -1375,6 +1362,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                                  struct schema *newsc, const char *key,
                                  FILE *out, struct schema_change_type *s)
 {
+	printf("checking %s\n", __func__);
     const char *dbname = newdb->tablename;
     int i, j, k;
     for (i = 0; i < thedb->num_dbs; ++i) {
@@ -1386,6 +1374,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
             for (k = 0; k < ct->nrules; ++k) {
                 if (strcmp(dbname, ct->table[k]) == 0 &&
                     strcasecmp(key, ct->keynm[k]) == 0) {
+                    printf("checking compat change for %s\n", olddb->tablename);
                     if (compat_chg(olddb, newsc, key) == 0) continue;
                     char *info = ">%s:%s -> %s:%s\n";
                     if (s && s->dryrun) {

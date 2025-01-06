@@ -74,6 +74,73 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
     return SC_OK;
 }
 
+static int process_constraints_for_new_table_scdone_on_master(struct dbtable * const newdb,
+                                                              struct ireq * const iq,
+                                                              struct schema_change_type *s)
+{
+    int rc = verify_constraints_exist(iq, newdb, NULL, NULL, s);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
+        return -1;
+    }
+
+    rc = populate_reverse_constraints(iq, newdb, /* track_errors */ 1);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+ * This function tries to populate missing reverse constraints for all tables.
+ *
+ * To support adding a constraint before it is satisfied in a transaction,
+ * we try to add any missing reverse constraints on every 
+ * scdone step and suppress any errors that occur in these attempts.
+ * Error suppression is acceptable since we check these conditions on master,
+ * so checking again during replication is redundant.
+ *
+ * The following is an example of a transaction that adds a constraint before
+ * it is satisfied along with an explanation of how this constraint
+ * is added during replication:
+ *
+ * begin
+ * create table t { schema { int a } keys { "a" = a }
+ *     constraints { "a" -> "q":"a" on delete cascade } }$$
+ * create table q { schema { int a } keys { "a" = a } }$$
+ * commit
+ *
+ * This transaction will have two scdone steps, one for the creation of t
+ * and another for the creation of q.
+ *
+ * During t's scdone step, we will add t's constraint on q, and we will try to 
+ * add a corresponding reverse constraint on q. This will fail, since q doesn't
+ * yet exist, and we will suppress the error.
+ *
+ * During q's scdone step, we will try to add q's missing reverse constraint.
+ * This time we will succeed since q exists.
+ */
+static void process_constraints_for_new_table_scdone_on_replicant()
+{
+    try_to_populate_missing_reverse_constraints(NULL);
+}
+
+static int process_constraints_for_new_table_scdone(struct dbtable * const newdb,
+                                                    struct ireq * const iq,
+                                                    struct schema_change_type *s)
+{
+    const int i_am_master = newdb->dbenv->master == gbl_myhostname;
+    if (i_am_master && (iq == NULL || iq->tranddl <= 1)) {
+        return process_constraints_for_new_table_scdone_on_master(newdb, iq, s);
+    } else if (!i_am_master) {
+        process_constraints_for_new_table_scdone_on_replicant();
+    }
+
+    return 0;
+}
+
 /* Add a new table.  Assume new table has no db number.
  * If csc2 is provided then a filename is chosen, the lrl updated and
  * the file written with the csc2. */
@@ -110,15 +177,9 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
 
-    if ((iq == NULL || iq->tranddl <= 1) && s && verify_constraints_exist(iq, newdb, NULL, NULL, s) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
-        rc = -1;
-        goto err;
-    }
-
-    if ((iq == NULL || iq->tranddl <= 1) &&
-        populate_reverse_constraints(iq, newdb)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
+    rc = process_constraints_for_new_table_scdone(newdb, iq, s);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to process constraints for new table\n", __func__);
         rc = -1;
         goto err;
     }
@@ -252,7 +313,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "error verifying constraints\n");
         return -1;
     }
-    if (iq && iq->tranddl > 1 && populate_reverse_constraints(iq, db)) {
+    if (iq && iq->tranddl > 1
+        && populate_reverse_constraints(iq, db, /* track_errors */ 1)) {
         sc_errf(s, "error populating reverse constraints\n");
         return -1;
     }

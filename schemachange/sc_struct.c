@@ -1080,7 +1080,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
 
     set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
-    restore_constraint_pointers(db, newdb);
+    restore_constraint_pointers(db, newdb, NULL);
 
     /* create new csc2 file and modify lrl to reflect that (takes
      * llmeta into account and does the right thing ) */
