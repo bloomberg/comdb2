@@ -4209,7 +4209,13 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             continue;
 
         if (tran->is_cdb2api) {
-            rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+            if (tran->nwrites) {
+                /* handle is only created upon first remote write to this fdb */
+                assert(tran->fcon.hndl);
+                rc = cdb2_run_statement(tran->fcon.hndl, "commit");
+            } else {
+                rc = 0;
+            }
         } else {
             rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
         }
@@ -4324,7 +4330,13 @@ int fdb_trans_rollback(sqlclntstate *clnt)
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
         if (tran->is_cdb2api) {
-            rc = cdb2_run_statement(tran->fcon.hndl, "rollback");
+            if (tran->nwrites) {
+                /* handle is only created upon first remote write to this fdb */
+                assert(tran->fcon.hndl);
+                rc = cdb2_run_statement(tran->fcon.hndl, "rollback");
+            } else {
+                rc = 0;
+            }
         } else {
             rc = fdb_send_rollback(msg, tran, clnt->dbtran.mode, tran->fcon.sb);
         }
@@ -5866,8 +5878,8 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
             return -1;
         }
 
+        bzero(clnt->remsql_set.tablename, sizeof(clnt->remsql_set.tablename));
         memcpy(clnt->remsql_set.tablename, sqlstr, tbllen-1);
-        clnt->remsql_set.tablename[sizeof(clnt->remsql_set.tablename) - 1] = '\0';
 
         sqlstr =  ptr;
         if (sqlstr[0] != ' ') {

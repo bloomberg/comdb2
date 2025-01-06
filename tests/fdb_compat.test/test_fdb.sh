@@ -51,8 +51,11 @@ ver=`$R_SQLT "select value from comdb2_tunables where name='fdb_default_version'
 echo "Current fdb version $ver" >> $output 2>&1
 
 # populate table on remote
+$S_SQL "insert into t select * from generate_series(11, 13)" >> $output 2>&1
+$R_SQL "insert into t select * from LOCAL_${a_dbname}.t" >> $output 2>&1
+$R_SQL "exec procedure sys.cmd.send('fdb init')"
+$S_SQL "delete from t" >> $output 2>&1
 $S_SQL "insert into t select * from generate_series(1, 3)" >> $output 2>&1
-$R_SQL "insert into t select * from generate_series(11, 13)" >> $output 2>&1
 
 #gonna test remsql, disable push
 $S_SQL "put tunable foreign_db_push_remote 0"
