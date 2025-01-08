@@ -90,11 +90,10 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
     case COMDB2_PLUGIN_APPSOCK: {
         comdb2_appsock_t *appsock;
         appsock = (comdb2_appsock_t *)new_plugin->data;
-
-        /*
-          Check whether a similar appsock handler has already been
-          added to the hash.
-        */
+        if (!appsock->appsock_handler) {
+            logmsg(LOGMSG_WARN, "%s: no appsock-handler for:'%s'\n", __func__, appsock->name);
+            return 0;
+        }
         if (hash_find_readonly(gbl_appsock_hash, &appsock->name)) {
             logmsg(LOGMSG_FATAL, "duplicate appsock handler found\n");
             return 1;

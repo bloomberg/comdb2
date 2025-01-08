@@ -194,7 +194,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
             sbuf2printf(sb, appsock_unknown);
             sbuf2flush(sb);
             num_bad_toks++;
-            continue;
+            break;
         }
 
         total_toks++;
