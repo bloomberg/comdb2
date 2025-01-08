@@ -6796,7 +6796,6 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     struct field *f;
     int rc;
     int bdberr;
-    int nretries = 0;
     struct sql_thread *thd = pCur->thd;
     struct schema *pd = NULL;
 
@@ -6818,7 +6817,6 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
         thd->cost += pCur->blob_cost;
     }
 
-again:
     memcpy(&blobs, &pCur->blob_descriptor, sizeof(blobs));
 
     if (is_genid_synthetic(pCur->genid)) {
@@ -6835,25 +6833,7 @@ again:
     }
 
     if (rc) {
-        if (bdberr == BDBERR_DEADLOCK) {
-            nretries++;
-            if ((rc = recover_deadlock(thedb->bdb_env, pCur->clnt, NULL, 0)) != 0) {
-                if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery, rc %d\n",
-                           __func__, (void *)pthread_self(), rc);
-                if (rc < 0)
-                    return SQLITE_BUSY;
-                else
-                    return rc;
-            }
-            if (nretries >= gbl_maxretries) {
-                logmsg(LOGMSG_ERROR, "too much contention fetching "
-                                     "tbl %s blob %s tried %d times\n",
-                       pCur->db->tablename, f->name, nretries);
-                return SQLITE_DEADLOCK;
-            }
-            goto again;
-        }
+        logmsg(LOGMSG_ERROR, "%s error  genid:%llx blob-index:%d\n", __func__, pCur->genid, f->blob_index);
         return SQLITE_DEADLOCK;
     }
 
@@ -6862,25 +6842,11 @@ again:
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
 
-    if (check_one_blob_consistency(&iq, iq.usedb, ".ONDISK", &blobs,
-                                   dta, f->blob_index, 0, pd)) {
+    if (check_one_blob_consistency(&iq, iq.usedb, ".ONDISK", &blobs, dta, f->blob_index, 0, pd)) {
         free_blob_status_data(&blobs);
-        nretries++;
-        if (nretries >= gbl_maxblobretries) {
-            logmsg(LOGMSG_ERROR, "inconsistent blob genid %llx, blob index %d\n",
-                    pCur->genid, f->blob_index);
-            return SQLITE_CORRUPT;
-        }
-        goto again;
+        logmsg(LOGMSG_ERROR, "%s inconsistent blob  genid:%llx, blob-index:%d\n", __func__, pCur->genid, f->blob_index);
+        return SQLITE_CORRUPT;
     }
-
-#if 0 
-   int patch = 0;
-   if (is_genid_synthetic(pCur->genid)) 
-   {
-      patch = blobnum-1;
-   }
-#endif
 
     if (blobs.blobptrs[0] == NULL) {
         m->z = NULL;
