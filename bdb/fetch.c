@@ -240,9 +240,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                     free(dbt_data_t.data);
 
                 if ((rc2 = dbcp_t->c_close(dbcp_t)) != 0) {
-                    logmsg(LOGMSG_ERROR, "bdb_fetch_blobs_by_rrn_and_genid_int_int:"
-                           "error closing a temporary cursor %d\n",
-                           rc2);
+                    logmsg(LOGMSG_ERROR, "%s: error closing a temporary cursor %d\n", __func__, rc2);
                 }
                 dbcp_t = NULL;
 
@@ -369,9 +367,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                                           args->fn_free);
 
                 if ((rc2 = dbcp->c_close(dbcp)) != 0) {
-                    logmsg(LOGMSG_ERROR, "bdb_fetch_blobs_by_rrn_and_genid_int_int:"
-                           "error closing a temporary cursor %d\n",
-                           rc2);
+                    logmsg(LOGMSG_ERROR, "%s: error closing a temporary cursor %d\n", __func__, rc2);
                 }
 
                 if (rc == DB_LOCK_DEADLOCK)
@@ -451,8 +447,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
             blobptrs[blobn] = NULL;
         } else {
         errout:
-            bdb_get_error(bdb_state, NULL, rc, BDBERR_FETCH_DTA, bdberr,
-                          "bdb_fetch_blobs_by_rrn_and_genid_int_int");
+            bdb_get_error(bdb_state, NULL, rc, BDBERR_FETCH_DTA, bdberr, __func__);
             outrc = -1;
             bloberr = 1;
             break;
