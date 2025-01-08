@@ -1961,4 +1961,3 @@ const char *tunable_error(comdb2_tunable_err code)
     }
     return "????";
 }
-
