@@ -58,6 +58,7 @@ function inserter
             let count=count+1
         fi
     done
+    sleep 5
     checkdata $1
 }
 
@@ -79,11 +80,21 @@ function bouncemaster
     $ssh $node ${DEBUG_PREFIX} ${CMD} >> $TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
 }
 
+function unsettunables
+{
+    sleep 5
+    for node in $CLUSTER ; do
+        $CDB2SQL_EXE --admin $DBNAME --host $node 'PUT TUNABLE replicant_latency 0' &
+        $CDB2SQL_EXE --admin $DBNAME --host $node 'PUT TUNABLE all_incoherent 0' &
+    done
+}
+
 function settunables
 {
     sleep 5
     for node in $CLUSTER ; do
-        $ssh $node "$CDB2SQL_EXE --admin $DBNAME --host $node 'PUT TUNABLE replicant_latency 1'" &
+        $CDB2SQL_EXE --admin $DBNAME --host $node 'PUT TUNABLE replicant_latency 1' &
+        $CDB2SQL_EXE --admin $DBNAME --host $node 'PUT TUNABLE all_incoherent 1' &
     done
 }
 
@@ -91,7 +102,6 @@ function setup
 {
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE IF EXISTS t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE t1(t int,a int)"
-    #sleep 7
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE INDEX ix1 ON t1(t,a)"
 }
 
@@ -141,6 +151,9 @@ function run_test
         echo "BOUNCE COUNT $i"
         bouncemaster
     done
+    unsettunables
+    unsettunables
+    unsettunables
     touch $stopfile
     waitforinserters $threads
     if [[ "$keepalive" != "1" ]] ; then 
