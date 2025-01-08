@@ -4304,19 +4304,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle, stru
                             blob->data = malloc(blob->length);
 
                         if (!blob->data) {
-                            logmsg(LOGMSG_ERROR, "BLOCK2_QBLOB: malloc "
-                                                 "failed %zu\n",
-                                   blob->length);
-                            reqerrstr(iq, COMDB2_BLOB_RC_ALLOC,
-                                      "malloc failed");
+                            logmsg(LOGMSG_ERROR, "BLOCK2_QBLOB: malloc failed %d\n", blob->length);
+                            reqerrstr(iq, COMDB2_BLOB_RC_ALLOC, "malloc failed");
                             rc = ERR_INTERNAL;
                             GOTOBACKOUT;
                         }
                     }
                     blob->exists = 1;
-                    reqlog_logf(iq->reqlogger, REQL_INFO, "%u byte "
-                                                          "blob",
-                                (unsigned)blob->length);
+                    reqlog_logf(iq->reqlogger, REQL_INFO, "%d byte blob", blob->length);
                 } else if (qblob.length != blob->length) {
                     reqerrstr(iq, COMDB2_BLOB_RC_RCV_BAD_LENGTH,
                               "bad fragment for blob %d gives length %u "
