@@ -6519,6 +6519,11 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         return 0;
     struct sqlclntstate *clnt = thd->clnt;
 
+    if (pCur->used_ondisk_blobs) {
+        for (int i = 0; i < MAXBLOBS; ++i) {
+            if (pCur->ondisk_blobs[i].capacity) free(pCur->ondisk_blobs[i].data);
+        }
+    }
     if (pCur->range) {
         if (pCur->range->idxnum == -1 && pCur->range->islocked == 0) {
             currange_free(pCur->range);
@@ -6688,8 +6693,6 @@ skip:
         Pthread_mutex_unlock(&thd->lk);
     }
 
-/* We don't allocate BtCursor anymore */
-/* free(pCur); */
 done:
     reqlog_logf(pCur->reqlogger, REQL_TRACE, "CloseCursor(pCur %d)      = %s\n",
                 cursorid, sqlite3ErrStr(rc));
@@ -6794,13 +6797,27 @@ unsigned long long get_rowid(BtCursor *pCur)
 static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
                                       int fnum, Mem *m, void *dta)
 {
+    int skip_cache = 0;
+    struct field *f = &sc->member[fnum];
+    int blobnum = f->blob_index + 1;
+    blob_buffer_t *blob = &pCur->ondisk_blobs[f->blob_index];
+
+    pCur->nblobs++;
+    struct sql_thread *thd = pCur->thd;
+    if (thd) thd->cost += pCur->blob_cost;
+
+    if (blob->genid && blob->genid == pCur->genid) {
+        m->szMalloc = m->n = blob->n;
+        m->zMalloc = m->z = malloc(blob->length);
+        memcpy(m->z, blob->data, blob->length);
+        m->flags = blob->flags;
+        return 0;
+    }
+
     struct ireq iq;
     blob_status_t blobs;
-    int blobnum;
-    struct field *f;
     int rc;
     int bdberr;
-    struct sql_thread *thd = pCur->thd;
     struct schema *pd = NULL;
 
     if (sc->flags & SCHEMA_PARTIALDATACOPY_ACTUAL) {
@@ -6808,22 +6825,14 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     }
 
     if (!pCur->have_blob_descriptor) {
-        gather_blob_data_byname(pCur->db, ".ONDISK",
-                                &pCur->blob_descriptor, pd);
+        gather_blob_data_byname(pCur->db, ".ONDISK", &pCur->blob_descriptor, pd);
         pCur->have_blob_descriptor = 1;
-    }
-
-    f = &sc->member[fnum];
-    blobnum = f->blob_index + 1;
-
-    pCur->nblobs++;
-    if (thd) {
-        thd->cost += pCur->blob_cost;
     }
 
     memcpy(&blobs, &pCur->blob_descriptor, sizeof(blobs));
 
     if (is_genid_synthetic(pCur->genid)) {
+        skip_cache = 1;
         rc = osql_fetch_shadblobs_by_genid(pCur, &blobnum, &blobs, &bdberr);
     } else {
         bdb_fetch_args_t args = {0};
@@ -6841,8 +6850,6 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
         return SQLITE_DEADLOCK;
     }
 
-    /* Happens more frequently in index mode, but can happen in cursor mode
-     * after a deadlock (because we close all our cursors) */
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
 
@@ -6853,6 +6860,7 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     }
 
     if (blobs.blobptrs[0] == NULL) {
+        skip_cache = 1;
         m->z = NULL;
         m->flags = MEM_Null;
     } else {
@@ -6868,6 +6876,22 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
             m->flags = MEM_Blob;
     }
 
+    if (skip_cache) {
+        blob->genid = 0;
+        return 0;
+    }
+    int length = blobs.bloblens[0];
+    if (blob->capacity < length) {
+        free(blob->data);
+        blob->data = malloc(length);
+        blob->capacity = length;
+    }
+    blob->n = m->n;
+    blob->length = length;
+    blob->flags = m->flags;
+    blob->genid = pCur->genid;
+    memcpy(blob->data, m->z, length);
+    pCur->used_ondisk_blobs = 1;
     return 0;
 }
 
@@ -7303,7 +7327,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "get_data_int: unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "%s: unhandled type %d query:%s\n", __func__, f->type, pCur->clnt->sql);
         break;
     }
 
@@ -7382,7 +7406,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
                key_size + sizeof(int));
         return SQLITE_INTERNAL;
     }
-    cur->ondisk_keybuf_alloc = key_size;
     sz = schema_var_size(cur->sc);
     cur->keybuf = malloc(sz);
     if (!cur->keybuf) {
@@ -8305,7 +8328,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     cur->tblnum = cur->db->dbs_idx;
     cur->session_tbl = get_session_tbl(clnt, cur->db->tablename);
 
-    cur->ondisk_dtabuf_alloc = getdatsize(cur->db);
     if (cur->writeTransaction) {
         cur->ondisk_buf = calloc(1, getdatsize(cur->db));
         if (!cur->ondisk_buf) {
@@ -8332,7 +8354,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         free(cur->ondisk_buf);
         return SQLITE_INTERNAL;
     }
-    cur->ondisk_keybuf_alloc = key_size;
     if (cur->writeTransaction) {
         cur->fndkey = malloc(key_size + sizeof(int));
         if (!cur->fndkey) {

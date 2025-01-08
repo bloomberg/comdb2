@@ -260,15 +260,11 @@ typedef struct fdb fdb_t;
 
 typedef struct {
     enum transaction_level mode; /* TRANLEVEL_SOSQL, TRANLEVEL_RECOM, ... */
-
-    struct cursor_tran *
-        cursor_tran; /* id used to open cursors sharing same deadlock identity*/
-    tran_type *
-        shadow_tran; /* used to keep local changes to btree, uncommitted yet */
+    struct cursor_tran *cursor_tran; /* id used to open cursors sharing same deadlock identity*/
+    tran_type *shadow_tran; /* used to keep local changes to btree, uncommitted yet */
     tran_type *logical_tran; /* used by rowlocks ? */
 
-    fdb_distributed_tran_t *
-        dtran; /* remote transactions, contain each remote cluster tran */
+    fdb_distributed_tran_t *dtran; /* remote transactions, contain each remote cluster tran */
     int rollbacked; /* mark this to catch out-of-order errors */
 
     sqlite3_stmt *pStmt; /* if sql is in progress, points at the engine */
@@ -1090,17 +1086,15 @@ struct BtCursor {
     /* various buffers: */
     uint8_t writeTransaction; /* save tran type during cursor open */
     void *ondisk_buf;         /* ondisk data */
-    void *ondisk_key; /* ondisk key. this is effectively also the pointer into
-                         the index */
+    void *ondisk_key; /* ondisk key. this is effectively also the pointer into the index */
     blob_buffer_t ondisk_blobs[MAXBLOBS]; /* ondisk blobs */
 
     void *lastkey; /* last key: swap with ondisk_key for subsequent lookups */
     void *fndkey;  /* this key is actually found */
 
-    int eof;   /* we reached the end of an index, but the current entry still
-                  contains valid data */
-    int empty; /* there are no entries in the db - no results to return for any
-                  query */
+    unsigned eof : 1;   /* we reached the end of an index, but the current entry still contains valid data */
+    unsigned empty : 1; /* there are no entries in the db - no results to return for any query */
+    unsigned used_ondisk_blobs : 1;
     LINKC_T(BtCursor) lnk;
 
     /* these are sqlite format buffers */
@@ -1111,8 +1105,6 @@ struct BtCursor {
 
     int dtabuf_alloc;
     int keybuf_alloc;
-    int ondisk_dtabuf_alloc;
-    int ondisk_keybuf_alloc;
 
     struct session_tbl *session_tbl;
     int tblnum;

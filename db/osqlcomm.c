@@ -7705,7 +7705,6 @@ done_delete:
             blobs[dt.id].exists = 1;
             blobs[dt.id].data = NULL;
             blobs[dt.id].collected = 1;
-            blobs[dt.id].javasp_bytearray = NULL;
         } else {
             if (odhready)
                 blobs[dt.id].odhind = (dt.id | OSQL_BLOB_ODH_BIT);
@@ -7730,7 +7729,6 @@ done_delete:
                 blobs[dt.id].data = NULL;
                 blobs[dt.id].length = 0;
                 blobs[dt.id].collected = 1;
-                blobs[dt.id].javasp_bytearray = NULL;
             }
         }
         EVENTLOG_DEBUG(
