@@ -616,6 +616,7 @@ static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
 void *clean_exit_thd(void *unused)
 {
     comdb2_name_thread(__func__);
+    thrman_register(THRTYPE_CLEANEXIT);
     if (!gbl_ready)
         return NULL;
 
@@ -628,7 +629,6 @@ void *clean_exit_thd(void *unused)
     Pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-    thrman_register(THRTYPE_CLEANEXIT);
     thread_started("clean_exit");
 
     clean_exit();
