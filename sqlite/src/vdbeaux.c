@@ -3308,6 +3308,11 @@ int sqlite3VdbeReset(Vdbe *p){
      */
     extern void views_unlock(void);
     views_unlock();
+    /* any statement that is not cached (like an explain query), will call
+     * sqlite3VdbeReset twice, first time when we check sqlite rc code,
+     * and second when we finalize the stmt, since we do not cache it
+     */
+    p->crtPartitionLocks = 0;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
