@@ -746,6 +746,7 @@ struct sqlclntstate {
 
     int using_case_insensitive_like;
     int deadlock_recovered;
+    struct timeval last_sql_recover_time;
 
     /* lua stored procedure */
     struct stored_proc *sp;

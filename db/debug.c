@@ -29,6 +29,7 @@
 #include "time_accounting.h"
 #include "intern_strings.h"
 
+extern int gbl_debug_recover_deadlock_evbuffer;
 /* print a description of each tcm test */
 static void tcmtest_printlist()
 {
@@ -96,6 +97,9 @@ void debug_trap(char *line, int lline)
         }
     } else if (tokcmp(tok, ltok, "timings") == 0) {
         print_all_time_accounting();
+    } else if (tokcmp(tok, ltok, "recover_deadlock_evbuffer") == 0) {
+        printf("%s recover_deadlock_evbuffer\n", __func__);
+        gbl_debug_recover_deadlock_evbuffer = 1;
     } else if (tokcmp(tok, ltok, "help") == 0) {
         logmsg(LOGMSG_USER, "tcmtest <test>       - enable a cdb2tcm test\n");
         logmsg(LOGMSG_USER, "tcmtest list         - list cdb2tcm tests\n");

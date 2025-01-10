@@ -107,6 +107,7 @@
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
 #include <translistener.h>
+#include <sqlwriter.h>
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -598,8 +599,7 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
     if ((rc = clnt->recover_deadlock_rcode)) {
         assert(bdb_lockref() == 0);
         handle_failed_recover_deadlock(clnt, rc);
-        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
-                __func__);
+        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n", __func__);
     }
     return rc < 0 ? SQLITE_BUSY : rc;
 }
@@ -618,8 +618,6 @@ static int is_sqlite_db_init(BtCursor *pCur)
 
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
 {
-    extern int gbl_epoch_time;
-    extern int gbl_watchdog_disable_at_start;
     if (gbl_watchdog_disable_at_start)
         return 0;
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
@@ -632,6 +630,7 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
     }
     return 0;
 }
+
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
@@ -689,8 +688,6 @@ static int sql_tick(struct sql_thread *thd, int no_recover_deadlock)
                     goto done;
 
                 logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-
-                clnt->deadlock_recovered++;
             }
         }
     }
@@ -4093,7 +4090,6 @@ done:
 int sqlite3BtreeFirst(BtCursor *pCur, int *pRes)
 {
     int rc;
-
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = thd->clnt;
     CurRangeArr **append_to;
@@ -9700,8 +9696,7 @@ static int should_fail_due_to_gen_change(const uint32_t curgen, const struct sql
     return gen_is_mismatched;
 }
 
-int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                      uint32_t flags)
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt, uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
     int retries = 0;
@@ -9729,7 +9724,7 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     }
 
     if (clnt->gen_changed) {
-        logmsg(LOGMSG_DEBUG, "td %p %s line %d calling get_curtran on gen_changed\n", (void *)pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "td %p %s line %d calling get_curtran on gen_changed\n", (void *)pthread_self(), __func__,
                __LINE__);
     }
 
@@ -9742,8 +9737,9 @@ retry:
             goto retry;
         logmsg(LOGMSG_ERROR, "%s: too much contention\n", __func__);
     }
-    if (!curtran_out)
+    if (!curtran_out) {
         return -1;
+    }
 
     /* If this is an hasql serialiable or snapshot session and durable-lsns are
      * enabled, then fail this call with a 'CHANGENODE' if the generation number
@@ -9835,12 +9831,10 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 
     if (!clnt->dbtran.cursor_tran) {
         /* this should be visible */
-        logmsg(LOGMSG_ERROR, "%s called without curtran\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s called without curtran clnt:%p\n", __func__, clnt);
         return 0;
     }
-
-    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
-                            &bdberr);
+    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_DEBUG, "%s: %p rc %d bdberror %d\n", __func__, (void *)pthread_self(), rc, bdberr);
@@ -9996,6 +9990,8 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         return clnt->recover_deadlock_rcode;
     }
 
+    clnt->deadlock_recovered++;
+
     /*
      * BIG NOTE: if there is no cursor tran, do not get one here!
      *
@@ -10041,7 +10037,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             return -300;
         }
     }
-
     if (unlikely(gbl_sql_random_release_interval)) {
         logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);
         sleep(10);

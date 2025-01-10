@@ -45,6 +45,7 @@
 
 #include <sbuf2.h>
 #include <bdb_api.h>
+#include <bdb_int.h>
 
 #include "comdb2.h"
 #include "types.h"
@@ -111,6 +112,7 @@
 #include "osqlsqlsocket.h"
 #include <net_appsock.h>
 #include <typessql.h>
+#include <sqlwriter.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -198,6 +200,8 @@ int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 
 comdb2_query_preparer_t *query_preparer_plugin;
+int gbl_sql_recover_time = 10;
+int gbl_debug_recover_deadlock_evbuffer = 0;
 
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
@@ -205,14 +209,10 @@ void sql_reset_sqlthread(struct sql_thread *thd);
 int blockproc2sql_error(int rc, const char *func, int line);
 static int test_no_btcursors(struct sqlthdstate *thd);
 static void sql_thread_describe(void *obj, FILE *out);
-static char *get_query_cost_as_string(struct sql_thread *thd,
-                                      struct sqlclntstate *clnt);
-
+static char *get_query_cost_as_string(struct sql_thread *, struct sqlclntstate *);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
-
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p);
-static int execute_sql_query_offload(struct sqlthdstate *,
-                                     struct sqlclntstate *);
+static int execute_sql_query_offload(struct sqlthdstate *, struct sqlclntstate *);
 static int record_query_cost(struct sql_thread *, struct sqlclntstate *);
 
 static int sql_debug_logf_int(struct sqlclntstate *clnt, const char *func,
@@ -376,6 +376,20 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 #ifdef DEBUG
     logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
 #endif
+    if (gbl_sql_recover_time && R == RESPONSE_ROW) {
+        /* TODO: Also do this for OP_SorterInsert */
+        struct timeval now, diff;
+        gettimeofday(&now, NULL);
+        timersub(&now, &clnt->last_sql_recover_time, &diff);
+        int64_t ms = diff.tv_sec * 1000 - diff.tv_usec / 1000;
+        if (ms >= gbl_sql_recover_time) {
+            clnt->last_sql_recover_time = now;
+            if (recover_deadlock_evbuffer(clnt) != 0) {
+                logmsg(LOGMSG_ERROR, "%s recover_deadlock failed sql:%32s\n", __func__, clnt->sql);
+                return -1;
+            }
+        }
+    }
     return clnt->plugin.write_response(clnt, R, D, I); /* newsql_write_response */
 }
 
@@ -3669,6 +3683,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         clnt->has_recording = v->recording;
     }
     clnt->nsteps = 0;
+    gettimeofday(&clnt->last_sql_recover_time, NULL);
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
 
@@ -3796,10 +3811,11 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rowcount = 0;
     int postponed_write = 0;
     sqlite3_stmt *stmt = rec->stmt;
+    Vdbe *v = (Vdbe *)stmt;
 
     run_stmt_setup(clnt, stmt);
     if ((gbl_typessql || clnt->typessql) && clnt->isselect && !dohsql_is_parallel_shard() && !clnt->fdb_push &&
-        !((Vdbe *)stmt)->hasVTables && !((Vdbe *)stmt)->hasScalarFunc)
+        !v->hasVTables && !v->hasScalarFunc)
         typessql_initialize(clnt, stmt);
 
     /* this is a regular sql query, add it to history */
@@ -3867,8 +3883,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
 
         /* return row, if needed */
-        if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) ||
-            ((Vdbe *)stmt)->explain) {
+        if ((clnt->isselect && clnt->osql.replay != OSQL_RETRY_DO) || v->explain) {
             postponed_write = 0;
             ++row_id;
             rc = send_row(clnt, stmt, row_id, 0, err);
@@ -5576,18 +5591,26 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
     if (!gbl_sql_release_locks_on_slow_reader) {
         return 0;
     }
-    bdb_state_type *env = thedb->bdb_env;
-    if (!bdb_curtran_has_waiters(env, clnt->dbtran.cursor_tran) && !bdb_lock_desired(env)) {
+    int waiters = -1, lock_desired = -1;
+    if ((waiters = bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) == 0
+        && (lock_desired = bdb_lock_desired(thedb->bdb_env)) == 0
+    ){
         return 0;
     }
     int flags = 0;
     if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock)) {
         flags = RECOVER_DEADLOCK_FORCE_FAIL;
     }
-    if (!recover_deadlock_flags(env, clnt, NULL, 0, __func__, __LINE__, flags)) {
-        return -1;
+    int ms = (clnt->deadlock_recovered + 1) * 10;
+    if (ms > 100) ms = 100;
+    if (gbl_debug_recover_deadlock_evbuffer) {
+        if (waiters) printf("%s waiters:%d clnt:%s count:%d delay:%d\n", __func__, waiters, clnt->sql, clnt->deadlock_recovered, ms);
+        else printf("%s lock-desired:%d clnt:%s count:%d delay:%d\n", __func__, lock_desired, clnt->sql, clnt->deadlock_recovered, ms);
+    } else {
+        if (waiters) printf("%s waiters:%d delay:%d\n", __func__, waiters, ms);
+        else printf("%s lock-desired:%d delay:%d\n", __func__, lock_desired, ms);
     }
-    return 0;
+    return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, ms, __func__, __LINE__, flags);
 }
 
 static int recover_deadlock_sbuf(struct sqlclntstate *clnt)
