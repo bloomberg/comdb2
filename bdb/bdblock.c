@@ -663,8 +663,7 @@ int bdb_lockref(void)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     if (lk == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: bdb lock not inited in this thread\n",
-               __func__);
+        logmsg(LOGMSG_FATAL, "%s: bdb lock not inited in this thread\n", __func__);
         abort();
     }
     return lk->lockref;

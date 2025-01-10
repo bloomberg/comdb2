@@ -239,7 +239,11 @@ retry:
             void abort_disttxn(struct ireq * iq, int rc, int outrc);
             abort_disttxn(iq, rc, rc);
         }
-        logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
+        if (iq->sorese && iq->sorese->sql) {
+            logmsg(LOGMSG_WARN, "toblock too much contention count=%d sql=%.32s\n", retries, iq->sorese->sql);
+        } else {
+            logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
+        }
         thd_dump();
     }
 

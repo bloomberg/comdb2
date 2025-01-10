@@ -89,7 +89,6 @@ extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
 extern int gbl_notimeouts;
-extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_lua_prepare_max_retries;

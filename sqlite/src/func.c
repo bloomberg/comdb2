@@ -449,9 +449,8 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   int i;
   for(i = 0; i < n; i++) {
     sleep(1);
-    int rc = comdb2_sql_tick();
-    if( rc ) {
-      sqlite3_result_error_code(context, rc);
+    if( comdb2_sql_tick() ){
+      sqlite3_result_error_code(context, SQLITE_ERROR);
       return;
     }
   }
@@ -473,8 +472,10 @@ static void usleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]
     us = ( remain > 1000000 ) ? 1000000 : remain;
     remain -= us;
     usleep(us);
-    if( comdb2_sql_tick() )
-      break;
+    if( us == 1000000 && comdb2_sql_tick() ){
+      sqlite3_result_error_code(context, SQLITE_ERROR);
+      return;
+    }
   }
   sqlite3_result_int(context, (total - remain));
 }
