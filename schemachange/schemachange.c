@@ -960,7 +960,8 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
 
-    if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
+    if (verify_constraints_to_and_from_dbtable(newdb,
+        /* is_updated */ 1, s) != 0) {
         backout_schemas(newdb->tablename);
         abort();
     }
