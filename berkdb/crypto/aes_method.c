@@ -116,6 +116,8 @@ __aes_decrypt(dbenv, aes_data, iv, cipher, cipher_len)
 
 	if (!EVP_DecryptInit_ex(aes->decrypt_ctx, NULL, NULL, NULL, iv))
 	  return (EINVAL);
+
+	EVP_CIPHER_CTX_set_padding(aes->decrypt_ctx, 0);
 	
 	if (!EVP_DecryptUpdate(aes->decrypt_ctx, cipher, &outlen, cipher, cipher_len))
 	  return (EINVAL);
@@ -162,6 +164,8 @@ __aes_encrypt(dbenv, aes_data, iv, data, data_len)
 
 	if (!EVP_EncryptInit_ex(aes->encrypt_ctx, NULL, NULL, NULL, copy))
 	  return (EINVAL);
+
+	EVP_CIPHER_CTX_set_padding(aes->encrypt_ctx, 0);
 	
 	if (!EVP_EncryptUpdate(aes->encrypt_ctx, data, &outlen, data, data_len))
 	  return (EINVAL);
@@ -205,7 +209,7 @@ __aes_derivekeys(dbenv, db_cipher, passwd, plen)
 	if (!aes->encrypt_ctx || !aes->decrypt_ctx)
 	  return (EINVAL);
 
-	// Use Openssl EVP API for SHA1 operations
+	// Use Openssl EVP API for SHA operations
 	EVP_MD_CTX *md_ctx = EVP_MD_CTX_new();
 	uint8_t key[DB_MAC_KEY];
 	unsigned int key_len;
@@ -213,8 +217,8 @@ __aes_derivekeys(dbenv, db_cipher, passwd, plen)
 	if (!md_ctx)
 	  return (EINVAL);
 	
-	// Initialize EVP digest context with SHA1
-	if (!EVP_DigestInit_ex(md_ctx, EVP_sha1(), NULL) ||
+	// Initialize EVP digest context with SHA256
+	if (!EVP_DigestInit_ex(md_ctx, EVP_sha256(), NULL) ||
 	    !EVP_DigestUpdate(md_ctx, passwd, plen) ||
 	    !EVP_DigestUpdate(md_ctx, (u_int8_t *)DB_ENC_MAGIC, strlen(DB_ENC_MAGIC)) ||
 	    !EVP_DigestUpdate(md_ctx, passwd, plen) ||
@@ -226,7 +230,9 @@ __aes_derivekeys(dbenv, db_cipher, passwd, plen)
 	
 	EVP_MD_CTX_free(md_ctx);
 
-	// Initialize EVP cipher contexts
+	// Initialize EVP cipher contexts, which sets the default key
+	// for the context
+	
 	if (!EVP_EncryptInit_ex(aes->encrypt_ctx, EVP_aes_256_cbc(), NULL, key, NULL))
 	  return (EINVAL);
 	
