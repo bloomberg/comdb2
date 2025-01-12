@@ -4171,7 +4171,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
     int rc = 0;
-
+    uuidstr_t tus;
     if (!dtran)
         return 0;
 
@@ -4239,7 +4239,7 @@ int fdb_trans_commit(sqlclntstate *clnt, enum trans_clntcomm sideeffects)
             }
         }
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n", __func__, *(unsigned long long *)tran->tid,
+            logmsg(LOGMSG_USER, "%s Send Commit tid=%s db=\"%s\" rc=%d\n", __func__, comdb2uuidstr((unsigned char *)tran->tid, tus),
                    tran->fdb->dbname, rc);
     }
 

@@ -524,7 +524,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     }
 
     if (gbl_fdb_track) {
-        logmsg(LOGMSG_USER, "%p commiting tid=%s\n", (void *)pthread_self(),
+        logmsg(LOGMSG_USER, "%p rolling back tid=%s\n", (void *)pthread_self(),
                us);
     }
 
@@ -783,7 +783,7 @@ int fdb_svc_cursor_insert(sqlclntstate *clnt, char *tblname,
         convert_failure_reason_str(&clnt->fail_reason, db->tablename,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
-
+        logmsg(LOGMSG_ERROR, "%s:%d sqlite_to_ondisk failed. rc: %d, err: %s\n", __func__, __LINE__, rc, errs);
         rc = -1;
         free(row);
         goto done;
