@@ -91,7 +91,6 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         comdb2_appsock_t *appsock;
         appsock = (comdb2_appsock_t *)new_plugin->data;
         if (!appsock->appsock_handler) {
-            logmsg(LOGMSG_WARN, "%s: no appsock-handler for:'%s'\n", __func__, appsock->name);
             return 0;
         }
         if (hash_find_readonly(gbl_appsock_hash, &appsock->name)) {
