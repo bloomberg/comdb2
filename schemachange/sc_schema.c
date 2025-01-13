@@ -701,7 +701,6 @@ int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,
         return index_rc;
     }
 
-    printf("%s\n", __func__);
     if (index_rc && fk_source_change(newdb, out, s)) {
         return SC_BAD_INDEX_CHANGE;
     }
@@ -1344,12 +1343,25 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
 int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
 {
     struct schema *s1 = find_tag_schema(olddb, ixname);
+    if (!s1) { 
+        // This occurs on the replicant if the client
+        // satisfies a constraint with a table alter
+        // after they add the constraint in the same
+        // transaction
+        //
+        // In the scdone step for the alter that
+        // satisfies the constraint, we will see
+        // that the altered key has a reverse constraint
+        // (added in the first scdone, which added the constraint)
+        // and we will end up in this code to check that it is
+        // compatible.
+        return 0;
+    }
     if (s1->nmembers != s2->nmembers) return 1;
     int i;
     for (i = 0; i < s1->nmembers; ++i) {
         struct field *f1 = &s1->member[i];
         struct field *f2 = &s2->member[i];
-		printf("comparing keys %d vs %d\n", f1->type, f2->type);
         if (f1->type != f2->type) return 1;
         if (strcmp(f1->name, f2->name) != 0) return 1;
         if (f1->flags != f2->flags) return 1;
@@ -1362,7 +1374,6 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                                  struct schema *newsc, const char *key,
                                  FILE *out, struct schema_change_type *s)
 {
-	printf("checking %s\n", __func__);
     const char *dbname = newdb->tablename;
     int i, j, k;
     for (i = 0; i < thedb->num_dbs; ++i) {
@@ -1374,7 +1385,6 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
             for (k = 0; k < ct->nrules; ++k) {
                 if (strcmp(dbname, ct->table[k]) == 0 &&
                     strcasecmp(key, ct->keynm[k]) == 0) {
-                    printf("checking compat change for %s\n", olddb->tablename);
                     if (compat_chg(olddb, newsc, key) == 0) continue;
                     char *info = ">%s:%s -> %s:%s\n";
                     if (s && s->dryrun) {
