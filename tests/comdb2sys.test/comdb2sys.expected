@@ -350,9 +350,9 @@
 (name='sqlenginepool')
 (name='udppfaultpool')
 [SELECT name FROM comdb2_threadpools ORDER BY name] rc 0
-(COUNT(*)=1=1)
+(COUNT(*)=1=0)
 [SELECT COUNT(*)=1 FROM comdb2_plugins WHERE name = 'newsql'] rc 0
-(COUNT(*)=1=1)
+(COUNT(*)=1=0)
 [SELECT COUNT(*)=1 FROM comdb2_appsock_handlers WHERE name = 'newsql'] rc 0
 (COUNT(*)=1=1)
 [SELECT COUNT(*)=1 FROM comdb2_opcode_handlers WHERE name = 'blockop'] rc 0
