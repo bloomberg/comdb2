@@ -1,5 +1,4 @@
 -- add constraint with table alter and then satisfy it with table create in a transaction.
--- BUGGY -- cascade doesn't get registered somehow
 drop table if exists foo
 drop table if exists bar
 create table foo(i int)$$
