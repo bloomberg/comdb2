@@ -2153,6 +2153,18 @@ static struct schema_change_type * get_schema_change_for_table_by_name(const cha
     return NULL;
 }
 
+static struct schema * get_sckey(const char * const table_name,
+                                      const char * const key_name,
+                                      int placeholder_name) {
+    if (placeholder_name) {
+        char key_tag[MAXTAGLEN];
+        snprintf(key_tag, sizeof(key_tag), ".NEW.%s", key_name);
+        return find_tag_schema_by_name(table_name, key_tag);
+    } else {
+        return find_tag_schema_by_name(table_name, key_name);
+    }
+}
+
 /* Verify that the tables and keys referred to by this table's constraints all
  * exist & have the correct column count.  If they don't it's a bit of a show
  * stopper.
@@ -2163,7 +2175,6 @@ int verify_constraints_exist(struct ireq *iq,
                              struct schema_change_type *s)
 {
     int ii, jj;
-    char keytag[MAXTAGLEN];
     struct schema *bky, *fky;
     int n_errors = 0;
 
@@ -2177,13 +2188,13 @@ int verify_constraints_exist(struct ireq *iq,
 
     for (ii = 0; ii < from_db->n_constraints; ii++) {
         constraint_t *ct = &from_db->constraints[ii];
+        
+        int placeholder = from_db == new_db;
+        fky = get_sckey(from_db->tablename,
+                                               ct->lclkeyname,
+                                               placeholder);
 
-        if (from_db == new_db) {
-            snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->lclkeyname);
-        } else {
-            snprintf(keytag, sizeof(keytag), "%s", ct->lclkeyname);
-        }
-        if (!(fky = find_tag_schema(from_db, keytag))) {
+        if (!fky) {
             /* Referencing a nonexistent key */
             constraint_err(s, from_db, ct, 0, "foreign key not found");
             n_errors++;
@@ -2229,21 +2240,13 @@ int verify_constraints_exist(struct ireq *iq,
                 continue;
             }
 
-            if (rdb == new_db
-                || (rdb_sc && rdb == rdb_sc->db && rdb_sc->kind != SC_ADDTABLE)) {
-                snprintf(keytag, sizeof(keytag), ".NEW.%s", ct->keynm[jj]);
-                if (!(bky = find_tag_schema_by_name(ct->table[jj], keytag))) {
-                    /* Referencing a nonexistent key */
-                    constraint_err(s, from_db, ct, jj, "parent key not found");
-                    n_errors++;
-                }
-            } else {
-                snprintf(keytag, sizeof(keytag), "%s", ct->keynm[jj]);
-                if (!(bky = find_tag_schema(rdb, keytag))) {
-                    /* Referencing a nonexistent key */
-                    constraint_err(s, from_db, ct, jj, "parent key not found");
-                    n_errors++;
-                }
+            const int placeholder = rdb == new_db
+                || (rdb_sc && rdb == rdb_sc->db && rdb_sc->kind != SC_ADDTABLE);
+            bky = get_sckey(ct->table[jj], ct->keynm[jj], placeholder);
+            if (!bky) {
+                /* Referencing a nonexistent key */
+                constraint_err(s, from_db, ct, jj, "parent key not found");
+                n_errors++;
             }
 
             if (constraint_key_check(fky, bky)) {
@@ -2282,7 +2285,6 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
 
         for (int jj = 0; jj < cnstrt->nrules; jj++) {
             struct dbtable *cttbl = NULL;
-            struct schema *sckey = NULL;
             int dupadd = 0;
 
             struct schema_change_type *cttbl_sc = iq && iq->sc
@@ -2304,14 +2306,10 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
                 continue;
             }
 
-            if (cttbl_sc && cttbl == cttbl_sc->db && cttbl_sc->kind != SC_ADDTABLE) {
-                char keytag[MAXTAGLEN];
-                snprintf(keytag, sizeof(keytag), ".NEW.%s", cnstrt->keynm[jj]);
-                sckey = find_tag_schema_by_name(cnstrt->table[jj], keytag);
-            } else if (cttbl == db)
-                sckey = find_tag_schema_by_name(cnstrt->table[jj], cnstrt->keynm[jj]);
-            else
-                sckey = find_tag_schema(cttbl, cnstrt->keynm[jj]);
+            int placeholder = cttbl_sc && cttbl == cttbl_sc->db && cttbl_sc->kind != SC_ADDTABLE;
+            const struct schema * const sckey = get_sckey(cnstrt->table[jj],
+                                                   cnstrt->keynm[jj],
+                                                   placeholder);
             if (sckey == NULL) {
                 if (track_errors) {
                     ++n_errors;
