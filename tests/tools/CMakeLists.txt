@@ -123,6 +123,9 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
 
   add_exe(cdb2api_unit cdb2api_unit.c)
   target_link_libraries(cdb2api_unit cdb2api_shared ${common-deps})
+
+  add_exe(test_get_comdb2db_hosts test_get_comdb2db_hosts.c)
+  target_link_libraries(test_get_comdb2db_hosts cdb2api_shared ${common-deps})
 endif()
 
 add_custom_target(test-tools DEPENDS ${test-tools})
