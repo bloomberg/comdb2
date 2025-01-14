@@ -2267,26 +2267,23 @@ int verify_constraints_exist(struct ireq *iq,
 int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
                                               int track_errors)
 {
-    track_errors = 1;
-    int ii, n_errors = 0;
+    int n_errors = 0;
 
-    for (ii = 0; ii < db->n_constraints; ii++) {
-        int jj = 0;
+    for (size_t ii = 0; ii < db->n_constraints; ii++) {
         constraint_t *cnstrt = &db->constraints[ii];
-        struct schema *sc = NULL;
 
-        sc = find_tag_schema(db, cnstrt->lclkeyname);
-        if (sc == NULL && track_errors) {
+        if (track_errors
+            && (find_tag_schema(db, cnstrt->lclkeyname) == NULL)) {
             ++n_errors;
             logmsg(LOGMSG_ERROR,
-                   "constraint error: key %s is not found in table %s\n",
-                   cnstrt->lclkeyname, db->tablename);
+                "constraint error: key %s is not found in table %s\n",
+                cnstrt->lclkeyname, db->tablename);
         }
 
-        for (jj = 0; jj < cnstrt->nrules; jj++) {
+        for (int jj = 0; jj < cnstrt->nrules; jj++) {
             struct dbtable *cttbl = NULL;
             struct schema *sckey = NULL;
-            int rcidx = 0, dupadd = 0;
+            int dupadd = 0;
 
             struct schema_change_type *cttbl_sc = iq && iq->sc
                 ? get_schema_change_for_table_by_name(cnstrt->table[jj], iq->sc)
@@ -2326,7 +2323,7 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
                 continue;
             }
 
-            for (rcidx = 0; rcidx < cttbl->n_rev_constraints; rcidx++) {
+            for (size_t rcidx = 0; rcidx < cttbl->n_rev_constraints; rcidx++) {
                 if (cttbl->rev_constraints[rcidx] == cnstrt) {
                     dupadd = 1;
                     break;
