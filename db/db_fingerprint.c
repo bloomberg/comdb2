@@ -208,7 +208,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct strin
     char *params = NULL;
     int calc_query_plan = gbl_query_plans && !is_lua;
     if (calc_query_plan) {
-        query_plan_ref = form_query_plan(clnt->query_stats);
+        query_plan_ref = form_query_plan(stmt);
         calc_fingerprint(query_plan_ref ? string_ref_cstr(query_plan_ref) : NULL, &temp, plan_fingerprint);
         if (gbl_sample_queries && param_count(clnt) > 0) {
             // only get params string if we need it

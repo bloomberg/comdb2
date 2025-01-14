@@ -1532,7 +1532,7 @@ struct query_plan_item {
 };
 int free_query_plan_hash(hash_t *query_plan_hash);
 int clear_query_plans();
-struct string_ref *form_query_plan(const struct client_query_stats *query_stats);
+struct string_ref *form_query_plan(sqlite3_stmt *stmt);
 void add_query_plan(int64_t cost, int64_t nrows, struct fingerprint_track *t, struct string_ref *zSql_ref,
                     struct string_ref *query_plan_ref, unsigned char *plan_fingerprint, char *params);
 
