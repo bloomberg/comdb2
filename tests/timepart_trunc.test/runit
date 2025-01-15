@@ -531,7 +531,7 @@ echo $cmd "alter table teststatsize partitioned by time period 'daily' retention
 $cmd "alter table teststatsize partitioned by time period 'daily' retention 3 start '20240101T'" >> $OUT 2>&1
 
 echo $cmd "exec procedure sys.cmd.send('stat size')"
-$cmd "exec procedure sys.cmd.send('stat size')" | egrep -v "GRAND|FILESYSTEM|log files|temp files" >> $OUT 2>&1
+$cmd "exec procedure sys.cmd.send('stat size')" | sed 's/[[:digit:]]\+%//' | egrep -v "GRAND|FILESYSTEM|log files|temp files" >> $OUT 2>&1
 
 header 17 "Test REBUILD partition"
 echo $cmd "create table t18(a int) partitioned by time period 'daily' retention 2 start '20240101T'"
