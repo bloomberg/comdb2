@@ -2154,9 +2154,9 @@ static struct schema_change_type * get_schema_change_for_table_by_name(const cha
 }
 
 static struct schema * get_sckey(const char * const table_name,
-                                      const char * const key_name,
-                                      int placeholder_name) {
-    if (placeholder_name) {
+                                 const char * const key_name,
+                                 int has_new_btree) {
+    if (has_new_btree) {
         char key_tag[MAXTAGLEN];
         snprintf(key_tag, sizeof(key_tag), ".NEW.%s", key_name);
         return find_tag_schema_by_name(table_name, key_tag);
@@ -2189,11 +2189,8 @@ int verify_constraints_exist(struct ireq *iq,
     for (ii = 0; ii < from_db->n_constraints; ii++) {
         constraint_t *ct = &from_db->constraints[ii];
         
-        int placeholder = from_db == new_db;
-        fky = get_sckey(from_db->tablename,
-                                               ct->lclkeyname,
-                                               placeholder);
-
+        const int from_db_has_new_btree = from_db == new_db;
+        fky = get_sckey(from_db->tablename, ct->lclkeyname, from_db_has_new_btree);
         if (!fky) {
             /* Referencing a nonexistent key */
             constraint_err(s, from_db, ct, 0, "foreign key not found");
@@ -2205,15 +2202,14 @@ int verify_constraints_exist(struct ireq *iq,
             n_errors++;
         }
         for (jj = 0; jj < ct->nrules; jj++) {
-            struct dbtable *rdb;
-
             /* If we have a target table (to_db) only look at rules pointing
              * to that table. */
             if (to_db && strcasecmp(ct->table[jj], to_db->tablename) != 0)
                 continue;
 
+
             // see if the constraint target table is also being schema changed.
-            struct schema_change_type *rdb_sc = iq && iq->sc
+            struct schema_change_type *target_db_sc = iq && iq->sc
                 ? get_schema_change_for_table_by_name(ct->table[jj], iq->sc)
                 : NULL;
 
@@ -2222,27 +2218,28 @@ int verify_constraints_exist(struct ireq *iq,
             // table's state before the schema change). In this case `get_dbtable_by_name`
             // will return the old dbtable and `get_dbtable_from_schema_change_by_name` will
             // return the new one.
-            rdb = rdb_sc && rdb_sc->db ? rdb_sc->db : get_dbtable_by_name(ct->table[jj]);
+            struct dbtable * target_db = target_db_sc && target_db_sc->db ? target_db_sc->db : get_dbtable_by_name(ct->table[jj]);
 
-            if (rdb) {
-                rdb = get_newer_db(rdb, new_db); // if target was schema changed, get newer
+            if (target_db) {
+                target_db = get_newer_db(target_db, new_db); // if target was schema changed, get newer
             } else if (strcasecmp(ct->table[jj], from_db->tablename) == 0) {
-                rdb = from_db; // if target == src
+                target_db = from_db; // if target == src
             }
-            if (!rdb) {
+            if (!target_db) {
                 /* Referencing a non-existent table */
                 constraint_err(s, from_db, ct, jj, "parent table not found");
                 n_errors++;
                 continue;
-            } else if (rdb->timepartition_name) {
+            } else if (target_db->timepartition_name) {
                 constraint_err(s, from_db, ct, jj, "A foreign key cannot refer to a time partition");
                 n_errors++;
                 continue;
             }
 
-            const int placeholder = rdb == new_db
-                || (rdb_sc && rdb == rdb_sc->db && rdb_sc->kind != SC_ADDTABLE);
-            bky = get_sckey(ct->table[jj], ct->keynm[jj], placeholder);
+            const int target_db_is_from_sc = target_db_sc && target_db == target_db_sc->db;
+            const int target_db_has_new_btree = target_db == new_db 
+                || (target_db_is_from_sc && target_db_sc->kind != SC_ADDTABLE);
+            bky = get_sckey(ct->table[jj], ct->keynm[jj], target_db_has_new_btree);
             if (!bky) {
                 /* Referencing a nonexistent key */
                 constraint_err(s, from_db, ct, jj, "parent key not found");
@@ -2306,10 +2303,10 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
                 continue;
             }
 
-            int placeholder = cttbl_sc && cttbl == cttbl_sc->db && cttbl_sc->kind != SC_ADDTABLE;
-            const struct schema * const sckey = get_sckey(cnstrt->table[jj],
-                                                   cnstrt->keynm[jj],
-                                                   placeholder);
+            const int cttbl_is_from_sc = cttbl_sc && cttbl == cttbl_sc->db;
+            const int cttbl_has_new_btree = cttbl_is_from_sc && cttbl_sc->kind != SC_ADDTABLE;
+            const struct schema * const sckey = get_sckey(cnstrt->table[jj], cnstrt->keynm[jj],
+                                                          cttbl_has_new_btree);
             if (sckey == NULL) {
                 if (track_errors) {
                     ++n_errors;
