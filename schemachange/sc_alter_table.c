@@ -1040,7 +1040,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     free_db_and_replace(db, newdb);
     fix_constraint_pointers(db, newdb);
-    try_to_populate_missing_reverse_constraints(NULL); // TODO: Don't suppress errors
 
     /* do we have a piggybacked rename */
     if (!strncasecmp(s->tablename, s->newtable, strlen(s->tablename))) {
