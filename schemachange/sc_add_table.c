@@ -74,7 +74,7 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
     return SC_OK;
 }
 
-static int process_constraints_for_new_table_scdone_on_master(struct dbtable * const newdb,
+static int process_constraints_for_new_table_on_master(struct dbtable * const newdb,
                                                               struct ireq * const iq,
                                                               struct schema_change_type *s)
 {
@@ -122,20 +122,20 @@ static int process_constraints_for_new_table_scdone_on_master(struct dbtable * c
  * During q's scdone step, we will try to add q's missing reverse constraint.
  * This time we will succeed since q exists.
  */
-static void process_constraints_for_new_table_scdone_on_replicant()
+static void process_constraints_for_new_table_on_replicant()
 {
     try_to_populate_missing_reverse_constraints(NULL);
 }
 
-static int process_constraints_for_new_table_scdone(struct dbtable * const newdb,
+static int process_constraints_for_new_table(struct dbtable * const newdb,
                                                     struct ireq * const iq,
                                                     struct schema_change_type *s)
 {
     const int i_am_master = newdb->dbenv->master == gbl_myhostname;
     if (i_am_master && (iq == NULL || iq->tranddl <= 1)) {
-        return process_constraints_for_new_table_scdone_on_master(newdb, iq, s);
+        return process_constraints_for_new_table_on_master(newdb, iq, s);
     } else if (!i_am_master) {
-        process_constraints_for_new_table_scdone_on_replicant();
+        process_constraints_for_new_table_on_replicant();
     }
 
     return 0;
@@ -177,7 +177,7 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
 
-    rc = process_constraints_for_new_table_scdone(newdb, iq, s);
+    rc = process_constraints_for_new_table(newdb, iq, s);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to process constraints for new table\n", __func__);
         rc = -1;
