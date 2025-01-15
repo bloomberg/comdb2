@@ -649,6 +649,7 @@ struct remsql_set {
     int is_schema;
     char tablename[MAXTABLELEN];
     uuid_t uuid;
+    char *srcdbname;
     struct errstat xerr;
 };
 

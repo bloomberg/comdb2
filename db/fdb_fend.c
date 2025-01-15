@@ -61,6 +61,8 @@
 #include "dohsql.h"
 #include "bdb_schemachange.h"
 
+#include "fdb_whitelist.h"
+
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
 extern int gbl_partial_indexes;
@@ -5537,6 +5539,15 @@ static int _fdb_cdb2api_send_set(fdb_cursor_t *fdbc)
         return FDB_ERR_GENERIC;
     }
 
+    snprintf(str, sizeof(str), "SET REMSQL_SRCDBNAME %s", thedb->envname);
+
+    rc = cdb2_run_statement(hndl, str);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to set source dbname rc %d\n",
+               __func__, rc);
+        return FDB_ERR_GENERIC;
+    }
+
     return FDB_NOERR;
 }
 
@@ -5813,7 +5824,7 @@ version_retry:
 #define GET_INT(val) \
     do { \
         sqlstr = skipws(sqlstr); \
-        if (!sqlstr) { \
+        if (!*sqlstr) { \
             snprintf(err, errlen, \
                      "missing setting value"); \
             return -1; \
@@ -5821,8 +5832,43 @@ version_retry:
         if (((val) = atoi(sqlstr)) < 0) { \
             snprintf(err, errlen, \
                      "invalid setting value %s", sqlstr); \
+            return -1; \
         } \
     } while (0);
+
+#define GET_CSTR(str, name, dstr, dstrl) \
+    do { \
+        char *ptr = (str); \
+        while (*ptr && ptr[0] != ' ') \
+            ptr++; \
+        int len = ptr - (str) + 1; \
+        if (len > (dstrl)) { \
+            snprintf(err, errlen, "%s too long \"%s\"", (name), (str)); \
+            return -1; \
+        } \
+        \
+        bzero((dstr), (dstrl)); \
+        memcpy((dstr), (str), len-1); \
+        \
+        (str) = ptr;\
+    } while (0);
+
+#define GET_PCSTR(str, name, dstr) \
+    do { \
+        char *ptr = (str); \
+        while (*ptr && ptr[0] != ' ') \
+            ptr++; \
+        int len = ptr - (str) + 1; \
+        (dstr) = calloc(1, len); \
+        if (!(dstr)) { \
+            snprintf(err, errlen, "err malloc"); \
+            return -1; \
+        } \
+        memcpy((dstr), (str), len-1); \
+        \
+        (str) = ptr;\
+    } while (0);
+
 
 int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
                             int errlen)
@@ -5864,24 +5910,13 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
     } else if (strncasecmp(sqlstr, "table ", 6) == 0) {
         sqlstr += 5;
         sqlstr = skipws(sqlstr);
-        if (!sqlstr) {
+        if (!*sqlstr) {
             snprintf(err, errlen, "missing table name");
             return -1;
         }
-        char *ptr = sqlstr;
-        while (*ptr && ptr[0] != ' ')
-            ptr++;
-        int tbllen = ptr - sqlstr + 1;
-        if (tbllen > sizeof(clnt->remsql_set.tablename)) {
-            snprintf(err, errlen, "table name too long \"%s\"",
-                     sqlstr);
-            return -1;
-        }
 
-        bzero(clnt->remsql_set.tablename, sizeof(clnt->remsql_set.tablename));
-        memcpy(clnt->remsql_set.tablename, sqlstr, tbllen-1);
+        GET_CSTR(sqlstr, "tablename", clnt->remsql_set.tablename, sizeof(clnt->remsql_set.tablename));
 
-        sqlstr =  ptr;
         if (sqlstr[0] != ' ') {
             snprintf(err, errlen, "missing table version");
             return -1;
@@ -5898,12 +5933,26 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr, char *err,
     } else if (strncasecmp(sqlstr, "cursor ", 7) == 0) {
         sqlstr += 6;
         sqlstr = skipws(sqlstr);
-        if (!sqlstr) {
+        if (!*sqlstr) {
             snprintf(err, errlen, "missing cursor uuid");
             return -1;
         }
         if (uuid_parse(sqlstr, clnt->remsql_set.uuid)) {
             snprintf(err, errlen, "failed to parse uuid");
+            return -1;
+        }
+    } else if (strncasecmp(sqlstr, "srcdbname ", 10) == 0) {
+        sqlstr += 9;
+        sqlstr = skipws(sqlstr);
+        if (!*sqlstr) {
+            snprintf(err, errlen, "missing src dbname");
+            return -1;
+        }
+
+        GET_PCSTR(sqlstr, "srcdbname", clnt->remsql_set.srcdbname);
+
+        if (!fdb_is_dbname_in_whitelist(clnt->remsql_set.srcdbname)) {
+            snprintf(err, errlen, "Access Error: db not allowed to connect");
             return -1;
         }
     } else {
