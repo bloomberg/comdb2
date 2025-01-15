@@ -1231,7 +1231,6 @@ int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type
         struct schema *index = newdb->ixschema[i];
         int offset = get_offset_of_keyname(index->csctag);
         char *key = index->csctag + offset;
-		printf("checking index changed\n");
         if (has_index_changed(olddb, key, 1, 0, NULL, 1)
             && (compatible_constraint_source(olddb, newdb, index, key, out,
                                              s) != 0))

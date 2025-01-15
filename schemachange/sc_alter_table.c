@@ -407,11 +407,9 @@ static int process_constraints_for_table_alter_scdone(struct dbtable * const new
                                                     struct schema_change_type *s)
 {
     const int i_am_master = newdb->dbenv->master == gbl_myhostname;
-    if (i_am_master && (iq == NULL || iq->tranddl <= 1)) {
-        return process_constraints_for_table_alter_scdone_on_master(newdb, iq, s);
-    } else {
-        return 0;
-    }
+    return ((i_am_master && (iq == NULL || iq->tranddl <= 1))
+        ? process_constraints_for_table_alter_scdone_on_master(newdb, iq, s)
+        : 0);
 }
 
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
@@ -920,7 +918,6 @@ static int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
-    printf("%s\n", __func__);
     int rc, bdberr;
     struct dbtable *db = s->db;
     struct dbtable *newdb = s->newdb;
