@@ -5466,7 +5466,8 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->num_retry = 0;
     clnt->early_retry = 0;
 
-    clnt->use_2pc = 0;
+    extern int gbl_2pc;
+    clnt->use_2pc = gbl_2pc;
     clnt->is_coordinator = 0;
     clnt->is_participant = 0;
     clear_participants(clnt);

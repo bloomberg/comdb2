@@ -2092,6 +2092,12 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 if (process_fdb_set_cdb2api(clnt, sqlstr, err, sizeof(err))) {
                     rc = ii + 1;
                 }
+            } else if (strncasecmp(sqlstr, "remtran_", 8) == 0) {
+                sqlstr += 8;
+
+                if (process_fdb_set_cdb2api_2pc(clnt, sqlstr, err, sizeof(err))) {
+                    rc = ii + 1;
+                }
             } else if (strncasecmp(sqlstr, "typessql", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);

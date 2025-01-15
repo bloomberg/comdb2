@@ -350,7 +350,7 @@
 (name='externalauth_connect', description='Check for externalauth only once on connect', type='BOOLEAN', value='OFF', read_only='N')
 (name='externalauth_warn', description='Warn instead of returning error in case of missing authdata', type='BOOLEAN', value='OFF', read_only='N')
 (name='fake_sc_replication_timeout', description='Fake a replication timeout on finalize schemachange. ', type='BOOLEAN', value='OFF', read_only='N')
-(name='fdb_default_version', description='Override the default fdb version', type='INTEGER', value='8', read_only='N')
+(name='fdb_default_version', description='Override the default fdb version', type='INTEGER', value='9', read_only='N')
 (name='fdb_io_error_retries', description='Number of retries for io error remsql', type='INTEGER', value='16', read_only='N')
 (name='fdb_io_error_retries_phase_1', description='Number of immediate retries; capped by fdb_io_error_retries', type='INTEGER', value='6', read_only='N')
 (name='fdb_io_error_retries_phase_2_poll', description='Poll initial value for slow retries in phase 2; doubled for each retry', type='INTEGER', value='100', read_only='N')
