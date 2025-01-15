@@ -494,8 +494,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
-    const int i_am_master = newdb->dbenv->master == gbl_myhostname;
-    if (i_am_master && (iq == NULL || iq->tranddl <= 1) &&
+    if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(iq, NULL, newdb, newdb, s) != 0) {
         if (local_lock)
             unlock_schema_lk();
