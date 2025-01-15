@@ -1097,13 +1097,14 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     if (rc)
         logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__, __LINE__,
                rc, bdberr);
+    
     db->handle = old_bdb_handle;
-
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
 
     commit_schemas(table);
     update_dbstore(db);
+    try_to_populate_missing_reverse_constraints(NULL);
 
     free(new_bdb_handle);
     return 0;

@@ -1953,6 +1953,7 @@ void init_reverse_constraints(struct dbtable *db)
 
 int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt)
 {
+	printf("adding reverse constraint on %s\n", db->tablename);
     int rc = 0;
     if (db->n_rev_constraints >= db->cap_rev_constraints) {
         if ((rc = resize_reverse_constraints(db, 2 * db->cap_rev_constraints)) != 0) {

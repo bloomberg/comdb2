@@ -389,32 +389,10 @@ static void decrement_sc_yet_to_resume_counter()
     }
 }
 
-static int process_constraints_for_table_alter_scdone_on_master(struct dbtable * const newdb,
-                                                              struct ireq * const iq,
-                                                              struct schema_change_type *s)
-{
-    int rc = verify_constraints_exist(iq, NULL, newdb, newdb, s);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
-        return -1;
-    }
-
-    return 0;
-}
-
-static int process_constraints_for_table_alter_scdone(struct dbtable * const newdb,
-                                                    struct ireq * const iq,
-                                                    struct schema_change_type *s)
-{
-    const int i_am_master = newdb->dbenv->master == gbl_myhostname;
-    return ((i_am_master && (iq == NULL || iq->tranddl <= 1))
-        ? process_constraints_for_table_alter_scdone_on_master(newdb, iq, s)
-        : 0);
-}
-
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
+	printf("\n\n%s\n\n", __func__);
     struct dbtable *db;
     int rc;
     int bdberr = 0;
@@ -516,8 +494,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
-    rc = process_constraints_for_table_alter_scdone(newdb, iq, s);
-    if (rc) {
+    const int i_am_master = newdb->dbenv->master == gbl_myhostname;
+    if (i_am_master && (iq == NULL || iq->tranddl <= 1) &&
+        verify_constraints_exist(iq, NULL, newdb, newdb, s) != 0) {
         if (local_lock)
             unlock_schema_lk();
         backout(newdb);
@@ -918,6 +897,7 @@ static int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
+	printf("\n\n%s\n\n", __func__);
     int rc, bdberr;
     struct dbtable *db = s->db;
     struct dbtable *newdb = s->newdb;

@@ -1196,8 +1196,7 @@ static void restore_constraint_pointers_main(struct dbtable *db, struct dbtable 
         }
         Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
-            constraint_t *ct = NULL;
-            ct = rdb->rev_constraints[j];
+            const constraint_t * const ct = rdb->rev_constraints[j];
             if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
                 delete_reverse_constraint(rdb, j);
                 j--;
@@ -1207,7 +1206,6 @@ static void restore_constraint_pointers_main(struct dbtable *db, struct dbtable 
     }
 
     populate_reverse_constraints(iq, newdb, /*track errors*/ 0);
-    // try_to_populate_missing_reverse_constraints(iq);
 }
 
 void restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb,
@@ -1339,21 +1337,21 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
 }
 
 /* compatible change if type unchanged but get larger in size */
-int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
+int change_to_ct_src_key_is_compatible(struct dbtable *olddb, struct schema *s2, const char *ixname)
 {
     struct schema *s1 = find_tag_schema(olddb, ixname);
     if (!s1) { 
-        // This occurs on the replicant if the client
-        // satisfies a constraint with a table alter
-        // after they add the constraint in the same
-        // transaction
-        //
-        // In the scdone step for the alter that
-        // satisfies the constraint, we will see
-        // that the altered key has a reverse constraint
-        // (added in the first scdone, which added the constraint)
-        // and we will end up in this code to check that it is
-        // compatible.
+        /*
+         * If we are here, then the index exists in the new
+         * schema but not in the old schema.
+         * 
+         * If there's a constraint on this index,
+         * then it must have been added in the same transaction
+         * in which this schema was changed.
+         * 
+         * We can return that the change is compatible because
+         * we're not changing the parent index of an existing fk constraint.
+         */
         return 0;
     }
     if (s1->nmembers != s2->nmembers) return 1;
@@ -1384,7 +1382,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
             for (k = 0; k < ct->nrules; ++k) {
                 if (strcmp(dbname, ct->table[k]) == 0 &&
                     strcasecmp(key, ct->keynm[k]) == 0) {
-                    if (compat_chg(olddb, newsc, key) == 0) continue;
+                    if (change_to_ct_src_key_is_compatible(olddb, newsc, key) == 0) continue;
                     char *info = ">%s:%s -> %s:%s\n";
                     if (s && s->dryrun) {
                         sbuf2printf(s->sb, info, db->tablename, ct->lclkeyname,
