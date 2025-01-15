@@ -3803,7 +3803,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 {
     int rc;
     int r;
-    char *master;
+    char *master, *newmaster = NULL;
     uint32_t gen, egen;
     DB_LSN permlsn;
     uint32_t generation, commit_generation;
@@ -3859,6 +3859,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     rm.starttime = time1;
     rm.type = rectype;
     add_rep_mon(&rm);
+    uint32_t newgen = 0;
 
     bdb_state->repinfo->repstats.rep_process_message++;
 
@@ -3906,13 +3907,15 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     } else {
         r = bdb_state->dbenv->rep_process_message(bdb_state->dbenv, control, rec,
                                                   &host, &permlsn,
-                                                  &commit_generation, online);
+                                                  &commit_generation, &newgen, &newmaster, online);
     }
 
     if (got_vote2lock) {
         if (bdb_get_rep_master(bdb_state, &master, &gen, &egen) != 0) {
             abort();
         }
+        master = newmaster;
+        egen = newgen;
         Pthread_mutex_unlock(&vote2_lock);
     }
 

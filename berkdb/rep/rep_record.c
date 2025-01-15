@@ -1079,16 +1079,18 @@ done:
  *	(respectively).
  *
  * PUBLIC: int __rep_process_message __P((DB_ENV *, DBT *, DBT *, char**,
- * PUBLIC:	 DB_LSN *, uint32_t *,int));
+ * PUBLIC:	 DB_LSN *, uint32_t *,uint32_t *, char **, int));
  */
 
 int
-__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
+__rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, newgen, newmaster, online)
 	DB_ENV *dbenv;
 	DBT *control, *rec;
 	char **eidp;
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
+	uint32_t *newgen;
+	char **newmaster;
 	int online;
 {
 	int fromline = 0;
@@ -1291,6 +1293,8 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen, online)
 		if (rp->rectype == REP_VOTE1 || rp->rectype == REP_VOTE2 ||
 			rp->rectype == REP_GEN_VOTE1 ||
 			rp->rectype == REP_GEN_VOTE2) {
+			if (newgen) *newgen = 0;
+			if (newmaster) *newmaster = NULL;
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
@@ -2537,9 +2541,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			__db_err(dbenv, "Counted vote %d", rep->votes);
 #endif
 		if (done) {
-			logmsg(LOGMSG_DEBUG, "%s line %d elected master %s for egen %d\n",
+			logmsg(LOGMSG_USER, "%s line %d elected master %s for egen %d\n",
 					__func__, __LINE__, rep->eid, vi_egen);
 			__rep_elect_master(dbenv, rep, eidp);
+			if (newgen) *newgen = vi_egen;
+			if (newmaster) *newmaster = *eidp;
 			ret = (rep->votes > rep->nsites / 2 + 1) ? DB_HAS_MAJORITY : DB_REP_NEWMASTER;
 			goto errunlock;
 		} else {
