@@ -1,5 +1,4 @@
 -- add constraint with table create and then satisfy it with table alter in a transaction.
--- BUGGY -- reverse constraints will not exist on replicant. after master swing we won't get cascading deletes
 drop table if exists foo
 drop table if exists bar
 create table foo { schema { int a } keys { "donut" = a } }$$
