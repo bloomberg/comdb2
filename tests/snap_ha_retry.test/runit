@@ -43,7 +43,7 @@ for testreq in `ls t*.req` ; do
     else
         cmd="${TESTSBUILDDIR}/hatest -showeffects -f $testreq ${CDB2_OPTIONS} $dbname default"
         echo $cmd "> $testname.output"
-        $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/" > $testname.output
+        $cmd 2>&1 > $testname.output
     fi
 
     cmd="diff $testname.$expected $testname.output"

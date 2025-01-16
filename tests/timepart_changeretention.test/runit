@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Time partition testcase for comdb2
 ################################################################################
 
-set -x
 
 # args
 # <dbname>
@@ -107,7 +107,7 @@ VIEW1="tv1"
 RELATIVE_TM=60
 
 echo "Creating partition starting now" >> $OUT
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
+starttime=$(get_timestamp 60)
 echo $starttime
 create_partition $starttime
 
@@ -120,7 +120,7 @@ delete_partition
 VIEW1="tv2"
 
 echo "Creating partition starting one day ahead" >> $OUT
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-24*3600+60)'`
+starttime=$(get_timestamp '-24*3600+60')
 echo $starttime
 create_partition $starttime
 
@@ -133,7 +133,7 @@ delete_partition
 VIEW1="tv3"
 
 echo "Creating partition starting two days ahead" >> $OUT
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-2*24*3600+60)'`
+starttime=$(get_timestamp '-2*24*3600+60')
 echo $starttime
 create_partition $starttime
 
@@ -146,7 +146,7 @@ delete_partition
 VIEW1="tv4"
 
 echo "Creating partition starting three days ahead" >> $OUT
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-3*24*3600+60)'`
+starttime=$(get_timestamp '-3*24*3600+60')
 echo $starttime
 create_partition $starttime
 
@@ -159,7 +159,7 @@ delete_partition
 VIEW1="tv5"
 
 echo "Creating partition starting four days ahead" >> $OUT
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-4*24*3600+60)'`
+starttime=$(get_timestamp '-4*24*3600+60')
 echo $starttime
 create_partition $starttime
 

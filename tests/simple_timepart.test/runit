@@ -66,7 +66,7 @@ timepart_stats
 # create the partition
 #echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '`date +\"%Y-%m-%dT%H%M%S America/New_York\" --date \"now 1 minutes\"`'" 
 #cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '`date +\"%Y-%m-%dT%H%M%S America/New_York\" --date \"now 1 minutes\"`'" >> $OUT
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
+starttime=$(get_timestamp 60)
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '${starttime}'" 
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'test2min' RETENTION 2 START '${starttime}'" >> $OUT
 if (( $? != 0 )) ; then
@@ -223,28 +223,28 @@ assertcnt tbl2 $CNT
 assertcnt tbl3 $CNT
 assertcnt tbl4 $CNT
 
-adayago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(24*3600 + 3600))'`
+adayago=$(get_timestamp '-(24*3600 + 3600)')
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl1 as tbl1v1 PERIOD 'DAILY' RETENTION 3 START '${adayago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1
 fi
 
-aweekago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(7*24*3600 + 3600))'`
+aweekago=$(get_timestamp '-(7*24*3600 + 3600)')
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl2 as tbl2v1 PERIOD 'WEEKLY' RETENTION 3 START '${aweekago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1
 fi
 
-amonthago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(27*24*3600))'`
+amonthago=$(get_timestamp '-(27*24*3600)')
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl3 as tbl3v1 PERIOD 'MONTHLY' RETENTION 3 START '${amonthago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1
 fi
 
-ayearago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(364*24*3600 +3600))'`
+ayearago=$(get_timestamp '-(364*24*3600 +3600)')
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl4 as tbl4v1 PERIOD 'YEARLY' RETENTION 3 START '${ayearago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"

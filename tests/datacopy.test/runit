@@ -37,7 +37,7 @@ i=0
 while [[ $i -lt 100 ]]; do
     set -e
 	cdb2sql -s ${CDB2_OPTIONS} $DB default "delete from sqlite_stat4 where 1" > /dev/null
-	cat sqlite_stat4.sql | perl -MList::Util=shuffle -e 'print shuffle(<STDIN>);' | cdb2sql -s ${CDB2_OPTIONS} $DB default - > /dev/null
+	cat sqlite_stat4.sql | shuf | cdb2sql -s ${CDB2_OPTIONS} $DB default - > /dev/null
     cdb2sql -tabs ${CDB2_OPTIONS} $DB default 'exec procedure sys.cmd.send("stat4dump")' > sqlite_stat4.output.$i
     diff sqlite_stat4.output.$i sqlite_stat4.expected
     if [[ $? -ne 0 ]] ; then

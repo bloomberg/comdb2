@@ -384,7 +384,7 @@ function get_partition_start_time
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_partition_start_time"
-    perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'
+    get_timestamp 60
 }
 
 function get_time_partitions_rep

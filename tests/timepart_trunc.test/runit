@@ -72,7 +72,7 @@ VT="t"
 # TEST 1
 # create new partition in past, make sure start is in the future
 header 1 "create new partition in past, make sure start is in the future"
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60-24*3600)'`
+starttime=$(get_timestamp '60-24*3600')
 echo $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
 if (( $? != 0 )) ; then
@@ -93,7 +93,7 @@ fi
 # TEST 2.
 # create dup partition
 header 2 "create dup partition"
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
+starttime=$(get_timestamp 60)
 echo $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
 if (( $? == 0 )) ; then
@@ -152,7 +152,7 @@ if (( $? != 0 )) ; then
    echo "FAILURE create table t3"
    exit 1
 fi
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-2*24*3600-60)'`
+starttime=$(get_timestamp '-2*24*3600-60')
 echo $cmd "CREATE TIME PARTITION ON t3 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TIME PARTITION ON t3 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? != 0 )) ; then
@@ -175,7 +175,7 @@ if (( $? != 0 )) ; then
    echo "FAILURE create table t4"
    exit 1
 fi
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-2*24*3600-60)'`
+starttime=$(get_timestamp '-2*24*3600-60')
 echo $cmd "CREATE TIME PARTITION ON t4 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TIME PARTITION ON t4 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? == 0 )) ; then
@@ -212,7 +212,7 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+15)'`
+starttime=$(get_timestamp 15)
 echo $cmd "ALTER TABLE t5 ADD COLUMN e int, PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "ALTER TABLE t5 ADD COLUMN e int, PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? != 0 )) ; then
@@ -273,7 +273,7 @@ timepart_stats 0
 # 11.
 # Create and drop a partitioned table
 header 11 "Create and drop a partitioned table"
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+20)'`
+starttime=$(get_timestamp 20)
 echo $cmd "CREATE TABLE t6 (a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE t6 (a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? != 0 )) ; then
@@ -309,7 +309,7 @@ fi
 
 timepart_stats 0
 
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+120)'`
+starttime=$(get_timetamp 120)
 echo $cmd "CREATE TABLE t5 (a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE t5 (a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? != 0 )) ; then
@@ -605,7 +605,7 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-3*24*3600-60)'`
+starttime=$(get_timestamp '-3*24*3600-60')
 echo $cmd "CREATE TIME PARTITION ON t20 as tv20 PERIOD 'daily' RETENTION 2 START '${starttime}'"
 $cmd "CREATE TIME PARTITION ON t20 as tv20 PERIOD 'daily' RETENTION 2 START '${starttime}'"
 if (( $? != 0 )) ; then
