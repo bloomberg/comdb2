@@ -2248,7 +2248,7 @@ static int verify_constraint(constraint_t * const ct,
         const int constraint_rule_is_eligible_for_verification = !target_db
             || strcasecmp(ct->table[jj], target_db->tablename) == 0;
         if (constraint_rule_is_eligible_for_verification) {
-            n_errors += verify_constraint_rule(ct, jj, source_db, target_db, fky, s);
+            n_errors += verify_constraint_rule(ct, jj, source_db, target_db_is_updated ? target_db : NULL, fky, s);
         }
     }
 
