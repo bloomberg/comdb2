@@ -292,7 +292,7 @@ verify_physical_at_finish() {
     fi
 }
 
-call_setup_int() {
+call_setup() {
     [[ $COMDB2_UNITTEST == 1 ]] && return
 
     if [[ $SETUP_WARN ]]; then
@@ -334,22 +334,6 @@ call_setup_int() {
         testdb_end_testcase 1
         exit 1
     elif [[ $ret != "setup successful" ]] ; then
-        return 1
-    fi
-    return 0
-}
-
-call_setup() {
-    call_setup_int
-    local ret=$?
-    if [[ ret -ne 0 ]]; then
-        echo "!$TESTCASE: retrying setup (rc=$ret)"
-        echo "!$TESTCASE: retrying setup (rc=$ret)" >> ${TEST_LOG}
-        call_unsetup
-        call_setup_int
-        ret=$?
-    fi
-    if [[ ret -ne 0 ]]; then
         echo "!$TESTCASE: setup failed (rc=$ret)" >> ${TEST_LOG}
         echo "!$TESTCASE: setup failed (rc=$ret) see ${TESTDIR}/logs/${DBNAME}.setup"
         testdb_end_testcase 1
