@@ -392,7 +392,6 @@ static void decrement_sc_yet_to_resume_counter()
 int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
-	printf("\n\n%s\n\n", __func__);
     struct dbtable *db;
     int rc;
     int bdberr = 0;
@@ -896,7 +895,6 @@ static int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
-	printf("\n\n%s\n\n", __func__);
     int rc, bdberr;
     struct dbtable *db = s->db;
     struct dbtable *newdb = s->newdb;
