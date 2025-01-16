@@ -127,12 +127,11 @@ static void process_constraints_for_new_table_on_replicant()
 }
 
 static int process_constraints_for_new_table(struct dbtable * const newdb,
-                                             struct ireq * const iq,
-                                             struct schema_change_type *s)
+                                             struct ireq * const iq)
 {
     const int i_am_master = newdb->dbenv->master == gbl_myhostname;
     if (i_am_master && (iq == NULL || iq->tranddl <= 1)) {
-        return process_constraints_for_new_table_on_master(newdb, s);
+        return process_constraints_for_new_table_on_master(newdb, iq ? iq->sc : NULL);
     } else if (!i_am_master) {
         process_constraints_for_new_table_on_replicant();
     }
@@ -176,7 +175,7 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
 
-    rc = process_constraints_for_new_table(newdb, iq, s);
+    rc = process_constraints_for_new_table(newdb, iq);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to process constraints for new table\n", __func__);
         rc = -1;
