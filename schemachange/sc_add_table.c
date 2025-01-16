@@ -75,16 +75,15 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
 }
 
 static int process_constraints_for_new_table_on_master(struct dbtable * const newdb,
-                                                              struct ireq * const iq,
-                                                              struct schema_change_type *s)
+                                                       struct schema_change_type *s)
 {
-    int rc = verify_constraints_exist(iq, newdb, NULL, NULL, s);
+    int rc = verify_constraints_exist(newdb, NULL, NULL, s);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
         return -1;
     }
 
-    rc = populate_reverse_constraints(iq, newdb, /* track_errors */ 1);
+    rc = populate_reverse_constraints(newdb, /* track_errors */ 1, s);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
         return -1;
@@ -128,12 +127,12 @@ static void process_constraints_for_new_table_on_replicant()
 }
 
 static int process_constraints_for_new_table(struct dbtable * const newdb,
-                                                    struct ireq * const iq,
-                                                    struct schema_change_type *s)
+                                             struct ireq * const iq,
+                                             struct schema_change_type *s)
 {
     const int i_am_master = newdb->dbenv->master == gbl_myhostname;
     if (i_am_master && (iq == NULL || iq->tranddl <= 1)) {
-        return process_constraints_for_new_table_on_master(newdb, iq, s);
+        return process_constraints_for_new_table_on_master(newdb, s);
     } else if (!i_am_master) {
         process_constraints_for_new_table_on_replicant();
     }
@@ -309,12 +308,12 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "failed to lock comdb2_tables (%s:%d)\n", __func__, __LINE__);
         return -1;
     }
-    if (iq && iq->tranddl > 1 && verify_constraints_exist(iq, db, NULL, NULL, s) != 0) {
+    if (iq && iq->tranddl > 1 && verify_constraints_exist(db, NULL, NULL, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
         return -1;
     }
     if (iq && iq->tranddl > 1
-        && populate_reverse_constraints(iq, db, /* track_errors */ 1)) {
+        && populate_reverse_constraints(db, /* track_errors */ 1, s)) {
         sc_errf(s, "error populating reverse constraints\n");
         return -1;
     }

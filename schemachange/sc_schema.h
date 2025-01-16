@@ -67,7 +67,7 @@ void set_odh_options(struct dbtable *db);
 int compare_constraints(const char *table, struct dbtable *newdb);
 
 void restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb,
-                                 struct ireq *iq);
+                                 struct schema_change_type *sc);
 
 void backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 

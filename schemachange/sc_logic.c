@@ -1664,7 +1664,7 @@ int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable 
         sbuf2printf(s->sb, ">Forcing blob file rebuild\n");
     }
 
-    if (verify_constraints_exist(s->iq, NULL, newdb, newdb, s)) {
+    if (verify_constraints_exist(NULL, newdb, newdb, s)) {
         return -1;
     }
 

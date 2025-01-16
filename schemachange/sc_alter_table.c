@@ -495,7 +495,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
-        verify_constraints_exist(iq, NULL, newdb, newdb, s) != 0) {
+        verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         if (local_lock)
             unlock_schema_lk();
         backout(newdb);
@@ -922,7 +922,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (iq && iq->tranddl > 1 &&
-        verify_constraints_exist(iq, NULL, newdb, newdb, s) != 0) {
+        verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
         BACKOUT;
     }
@@ -962,7 +962,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     /* No insert transactions should happen after this
        so lock the table. */
-    restore_constraint_pointers(db, newdb, iq);
+    restore_constraint_pointers(db, newdb, s);
 
     /* from this point on failures should goto either backout if recoverable
      * or failure if unrecoverable */

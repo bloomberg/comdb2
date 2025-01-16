@@ -2169,8 +2169,7 @@ static struct schema * get_sckey(const char * const table_name,
  * exist & have the correct column count.  If they don't it's a bit of a show
  * stopper.
  * */
-int verify_constraints_exist(struct ireq *iq,
-                             struct dbtable *from_db, struct dbtable *to_db,
+int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                              struct dbtable *new_db,
                              struct schema_change_type *s)
 {
@@ -2181,7 +2180,7 @@ int verify_constraints_exist(struct ireq *iq,
     if (!from_db) {
         for (ii = 0; ii < thedb->num_dbs; ii++) {
             from_db = get_newer_db(thedb->dbs[ii], new_db);
-            n_errors += verify_constraints_exist(iq, from_db, from_db == to_db ? NULL : to_db, new_db, s);
+            n_errors += verify_constraints_exist(from_db, from_db == to_db ? NULL : to_db, new_db, s);
         }
         return n_errors;
     }
@@ -2209,16 +2208,15 @@ int verify_constraints_exist(struct ireq *iq,
 
 
             // see if the constraint target table is also being schema changed.
-            struct schema_change_type *target_db_sc = iq && iq->sc
-                ? get_schema_change_for_table_by_name(ct->table[jj], iq->sc)
-                : NULL;
+            struct schema_change_type *target_db_sc =
+                get_schema_change_for_table_by_name(ct->table[jj], s);
 
             // If the constraint target table is being schema changed, then we want the new
             // dbtable (from our schema change) instead of the old one (which represents the
             // table's state before the schema change). In this case `get_dbtable_by_name`
             // will return the old dbtable and `get_dbtable_from_schema_change_by_name` will
             // return the new one.
-            struct dbtable * target_db = target_db_sc && target_db_sc->db ? target_db_sc->db : get_dbtable_by_name(ct->table[jj]);
+            struct dbtable * target_db = target_db_sc ? target_db_sc->db : get_dbtable_by_name(ct->table[jj]);
 
             if (target_db) {
                 target_db = get_newer_db(target_db, new_db); // if target was schema changed, get newer
@@ -2257,15 +2255,20 @@ int verify_constraints_exist(struct ireq *iq,
     return n_errors;
 }
 
-/* creates a reverse constraint in the referenced table for each of the db's
- * constraint rules, if the referenced table already has the constraint a
- * duplicate is not added
- * this func also does a lot of verifications.
- * If `track_errors` is nonzero then this func
- * returns the number of errors encountered and logs a message
- * describing each error. */
-int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
-                                              int track_errors)
+/* 
+ * Creates a reverse constraint in the referenced table for each of the database's
+ * constraint rules. If the referenced table already has the constraint, a duplicate 
+ * is not added. 
+ *
+ * This function also performs several verifications.
+ *
+ * If `track_errors` is nonzero, the function returns the number of errors encountered
+ * and logs a message describing each error; otherwise, it returns zero and does not
+ * log on error.
+ */
+int populate_reverse_constraints(struct dbtable *db,
+                                 int track_errors,
+                                 struct schema_change_type *sc)
 {
     int n_errors = 0;
 
@@ -2284,11 +2287,10 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
             struct dbtable *cttbl = NULL;
             int dupadd = 0;
 
-            struct schema_change_type *cttbl_sc = iq && iq->sc
-                ? get_schema_change_for_table_by_name(cnstrt->table[jj], iq->sc)
-                : NULL;
+            struct schema_change_type * const cttbl_sc =
+                get_schema_change_for_table_by_name(cnstrt->table[jj], sc);
 
-            cttbl = cttbl_sc && cttbl_sc->db ? cttbl_sc->db : get_dbtable_by_name(cnstrt->table[jj]);
+            cttbl = cttbl_sc ? cttbl_sc->db : get_dbtable_by_name(cnstrt->table[jj]);
 
             if (cttbl == NULL &&
                 strcasecmp(cnstrt->table[jj], db->tablename) == 0)
@@ -2303,7 +2305,7 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
                 continue;
             }
 
-            const int cttbl_is_from_sc = cttbl_sc && cttbl == cttbl_sc->db;
+            const int cttbl_is_from_sc = cttbl_sc && cttbl_sc->db == cttbl;
             const int cttbl_has_new_btree = cttbl_is_from_sc && cttbl_sc->kind != SC_ADDTABLE;
             const struct schema * const sckey = get_sckey(cnstrt->table[jj], cnstrt->keynm[jj],
                                                           cttbl_has_new_btree);
@@ -2334,10 +2336,10 @@ int populate_reverse_constraints(struct ireq *iq, struct dbtable *db,
     return n_errors;
 }
 
-void try_to_populate_missing_reverse_constraints(struct ireq *iq)
+void try_to_populate_missing_reverse_constraints()
 {
     for (int i=0; i<thedb->num_dbs; ++i) {
-        (void) populate_reverse_constraints(NULL, thedb->dbs[i], /* track_errors */ 0);
+        (void) populate_reverse_constraints(thedb->dbs[i], /* track_errors */ 0, NULL);
     }
 }
 

@@ -1177,18 +1177,22 @@ int compare_constraints(const char *table, struct dbtable *newdb)
     return 0;
 }
 
+/*
+ * Removes all reverse constraints associated with `db`'s constraints
+ * and adds all reverse constraints associated with `newdb`'s constraints
+ *
+ * If `copyof` non-zero, then adds all of `db`'s reverse constraints to `newdb`.
+ */
 static void restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
-                                      struct ireq *iq, int copyof)
+                                             int copyof, struct schema_change_type *sc)
 {
-    /* lets deal with pointers...all tables pointing to me must be entered into
-     * my 'reverse' */
     if (copyof) {
         for (int i = 0; i < db->n_rev_constraints; i++) {
             add_reverse_constraint(newdb, db->rev_constraints[i]);
         }
     }
-    /* additionally, for each table i'm pointing to in old db, must get its
-     * reverse constraint array updated to get all reverse ct *'s removed */
+
+    // remove reverse constraints associated with `db`'s constraints
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         if (!strcasecmp(rdb->tablename, newdb->tablename)) {
@@ -1205,19 +1209,19 @@ static void restore_constraint_pointers_main(struct dbtable *db, struct dbtable 
         Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
 
-    populate_reverse_constraints(iq, newdb, /*track errors*/ 0);
+    // add reverse constraints associated with `newdb`'s constraints
+    populate_reverse_constraints(newdb, /*track errors*/ 0, sc);
 }
 
 void restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb,
-                                 struct ireq *iq)
+                                 struct schema_change_type *sc)
 {
-    restore_constraint_pointers_main(db, newdb, iq, 1);
+    restore_constraint_pointers_main(db, newdb, 1, sc);
 }
 
 void backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
-    // TODO
-    restore_constraint_pointers_main(db, newdb, NULL /* TODO */, 0);
+    restore_constraint_pointers_main(db, newdb, 0, NULL);
 }
 
 /* did keys change which are also constraint sources? */
