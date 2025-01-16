@@ -379,9 +379,15 @@ trap - INT EXIT
 setup
 run_test
 
-if [[ $PHYSREP_PID -ne -1 ]]; then
+# Tear down physrep
+r=0
+while [[ "$r" == 0 ]]; do
+    echo "Exiting physrep"
+    ${CDB2SQL_EXE} $DESTDB --host localhost "exec procedure sys.cmd.send('exit')"
+    r=$?
     kill -9 $PHYSREP_PID
-fi
+    sleep 1
+done
 
 if [[ -f "$stopfile" ]]; then
     echo "Testcase failed"
