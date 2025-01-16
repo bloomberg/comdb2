@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Time partition testcase for comdb2
 ################################################################################
@@ -77,7 +78,7 @@ function timepart_stats2
 timepart_stats $dbname
 
 # create the partition
-starttime1=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-60*60*(24*4+1))'`
+starttime1=$(get_timestamp '-60*60*(24*4+1)')
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t1 as ${VIEW1} PERIOD 'daily' RETENTION 3 START '${starttime1}'" 
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t1 as ${VIEW1} PERIOD 'daily' RETENTION 3 START '${starttime1}'" >> $OUT
 if (( $? != 0 )) ; then
@@ -85,7 +86,7 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 sleep 10
-starttime2=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-60*60*(24*2+1))'`
+starttime2=$(get_timestamp '-60*60*(24*2+1)')
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t2 as ${VIEW2} PERIOD 'daily' RETENTION 3 START '${starttime2}'" 
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t2 as ${VIEW2} PERIOD 'daily' RETENTION 3 START '${starttime2}'" >> $OUT
 if (( $? != 0 )) ; then

@@ -41,8 +41,7 @@ for transtest in `ls t*.trans` ; do
     output=$testname.output
 
     runstepper $dbname $transtest $output
-    cat ${testname}.output | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/; s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/; s/genid=\w+/genid=xxxx/;" > tmp
-    mv tmp  ${testname}.output
+    sed -i 's/genid=[[:alnum:]]\+/genid=xxxx/' $output
 
     verify $testname
 done
@@ -66,11 +65,7 @@ for showeffectsfile in $showeffectsfiles; do
 
     cmd="cdb2sql ${CDB2_OPTIONS} $script_mode --showeffects -f $showeffectsfile $dbname default "
     echo $cmd "> $testname.output"
-    $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
-                          s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/;
-                          s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;
-                          s/rrn ([0-9]+) genid 0x([a-zA-Z0-9]+)/rrn xx genid xx/;"\
-                          > $testname.output
+    $cmd 2>&1 > $testname.output
     verify $testname
 done
 

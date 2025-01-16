@@ -75,15 +75,8 @@ for sqlfile in $sqlfiles; do
 
     cmd="cdb2sql ${CDB2_OPTIONS} $script_mode -f $sqlfile $dbname default "
     echo $cmd "> $testname.output"
-    eval $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
-                          s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/;
-                          s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;
-                          s/rrn ([0-9]+) genid 0x([a-zA-Z0-9]+)/rrn xx genid xx/;"\
-                          > $testname.output
-
-    cmd="diff $testname.$exp_extn $testname.output"
-    $cmd > /dev/null
-
+    eval $cmd 2>&1 | sed 's/rrn 2 genid 0x[[:alnum:]]\+/rrn xx genid xx/' > $testname.output
+    diff $testname.$exp_extn $testname.output > /dev/null
     if [[  $? -eq 0 ]]; then
         echo "passed $testname"
     else

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
-
+source ${TESTSROOTDIR}/tools/runit_common.sh
 for test_file in `ls *timepart*.sql`; do
-    TIMEPART_STARTTIME=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC";\
-                        print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+2)'`
+    TIMEPART_STARTTIME=$(get_timestamp 2)
     cat ${test_file} | sed "s/{{STARTTIME}}/${TIMEPART_STARTTIME}/" > ${test_file}.new
     mv ${test_file}.new ${test_file}
 done

@@ -38,7 +38,7 @@ for testreq in `ls t*.req` ; do
 
     cmd="cdb2sql -f $testreq ${CDB2_OPTIONS} $dbname default"
     echo $cmd "> $testname.output"
-    stdbuf --output=0 $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/" > $testname.output
+    stdbuf --output=0 $cmd > $testname.output 2>&1
     cmd="diff $testname.expected $testname.output"
     $cmd > /dev/null
     if [[  $? -eq 0 ]]; then

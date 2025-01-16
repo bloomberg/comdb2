@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Time partition testcase for comdb2
 ################################################################################
-
-set -x
 
 # args
 # <dbname>
@@ -19,13 +18,11 @@ touch $OUT
 
 function get_master
 {
-    set -x
     echo `cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 }
 
 function timepart_stats
 {
-    set -x
     m=$(get_master)
     echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name, version from comdb2_timepartitions " >> $OUT
     cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, period, retention, nshards, shard0name, version from comdb2_timepartitions " >> $OUT
@@ -55,7 +52,7 @@ master=$(get_master)
 timepart_stats
 
 # create the partition in the past, 3 days ago
-starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(3*24*3600)+10)'`
+starttime=$(get_timestamp '-(3*24*3600)+10')
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON t as ${VIEW1} PERIOD 'daily' RETENTION 2 START '${starttime}'" >> $OUT
 if (( $? != 0 )) ; then
