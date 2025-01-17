@@ -9,6 +9,163 @@ export debug=1
 . ${TESTSROOTDIR}/tools/ddl.sh
 . ${TESTSROOTDIR}/tools/runit_common.sh
 
+# Create-time will be generation 2
+# txn_regop_gen (with generation) records               : rectype 2016
+# a checkpoint (create-time)                            : rectype 2011
+#
+# Copy-time will be generation 2 / different rectypes
+# some number of txn_regop (no generation) records      : rectype 2010
+# a recovery-checkpoint                                 : rectype 2020
+#
+# Run-time will be generation 3
+# some number of txn_regop_gen records                  : rectype 2016
+# a ckp-record                                          : rectype 2011
+#
+function verify_create_recovery_records
+{
+    export done_create=0
+    export done_copy=0
+
+    typeset create_commit=0
+    typeset create_chkpnt=0
+    typeset create_generation=-1
+
+    typeset copy_commit=0
+    typeset copy_chkpnt=0
+    typeset copy_generation=-1
+
+    typeset run_commit=0
+    typeset run_chkpnt=0
+    typeset run_generation=-1
+
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "select lsn, rectype, generation from comdb2_transaction_logs where rectype = 2016 or rectype = 2011 or rectype = 2010 or rectype = 2020" | while read lsn rectype generation ; do
+
+        # Create phase - expect 2016 and 2011
+        if [[ "$done_create" == 0 ]]; then
+
+            if [[ "$rectype" != "2016" && "$rectype" != "2011" ]]; then
+
+                if [[ "$create_commit" == 0 || "$create_chkpnt" == 0 ]]; then
+
+                    echo "Found invalid create-phase rectype $rectype at lsn $lsn"
+                    failexit "Invalid rectype in create"
+
+                else
+
+                    echo "Finished create-phase generation $create_generation"
+                    echo "Counted $create_commit commits and $create_chkpnt checkpoints"
+                    export done_create=1
+
+                    if [[ "$rectype" == "2010" ]]; then
+                        let copy_commit=copy_commit+1
+                    fi
+
+                    if [[ "$rectype" == "2020" ]]; then
+                        let copy_chkpnt=copy_chkpnt+1
+                    fi
+                fi
+
+            else
+
+                if [[ "$rectype" == "2016" ]]; then
+                    let create_commit=create_commit+1
+                fi
+
+                if [[ "$rectype" == "2011" ]]; then
+                    let create_chkpnt=create_chkpnt+1
+                fi
+
+                if [[ "$generation" != "NULL" ]]; then
+
+                    if [[ "$create_generation" == -1 ]]; then
+                        create_generation=$generation
+                    fi
+
+                    if [[ "$create_generation" != "$generation" ]]; then
+                        echo "Generation mismatch $create_generation != $generation"
+                        failexit "Generation mismatch"
+                    fi
+                fi
+            fi
+
+        # Copy phase - expect 2010 and 2020
+        elif [[ "$done_copy" == 0 ]]; then
+
+            if [[ "$rectype" != "2010" && "$rectype" != "2020" ]]; then
+                if [[ "$copy_commit" == 0 || "$copy_chkpnt" == 0 ]]; then
+                    echo "Found invalid copy-phase rectype $rectype at lsn $lsn"
+                    failexit "Invalid rectype in copy"
+                else
+                    echo "Finished copy generation $copy_generation"
+                    echo "Counted $copy_commit commits and $copy_chkpnt checkpoints"
+
+                    export done_copy=1
+                    if [[ "$rectype" == "2016" ]]; then
+                        let run_commit=run_commit+1
+                    fi
+
+                    if [[ "$rectype" == "2011" ]]; then
+                        let run_chkpnt=run_chkpnt+1
+                    fi
+                fi
+
+            else
+
+                if [[ "$rectype" == "2010" ]]; then
+                    let copy_commit=copy_commit+1
+                fi
+                if [[ "$rectype" == "2020" ]]; then
+                    let copy_chkpnt=copy_chkpnt+1
+                fi
+
+                if [[ "$generation" != "NULL" ]]; then
+
+                    if [[ "$copy_generation" == -1 ]]; then
+                        copy_generation=$generation
+                    fi
+
+                    if [[ "$copy_generation" != "$generation" ]]; then
+                        echo "Generation mismatch $copy_generation != $generation"
+                        failexit "Generation mismatch"
+                    fi
+
+                    if [[ "$copy_generation" != "$create_generation" ]]; then
+                        echo "Generation mismatch $copy_generation != $create_generation"
+                        failexit "Generation mismatch"
+                    fi
+                fi
+            fi
+        else
+        # Run phase - expect 2016 and 2011 again
+            if [[ "$rectype" == "2010" || "$rectype" == "2020" ]]; then
+                echo "Invalid rectype $rectype for run phase"
+                failexit "Invalid rectype in run phase"
+            fi
+            if [[ "$rectype" == "2016" ]]; then
+                let run_commit=run_commit+1
+            fi
+            if [[ "$rectype" == "2011" ]]; then
+                let run_chkpnt=run_chkpnt+1
+            fi
+            if [[ "$generation" != "NULL" ]]; then
+                if [[ "$run_generation" == -1 ]]; then
+                    run_generation=$generation
+                fi
+                if [[ "$run_generation" != "$generation" ]]; then
+                    echo "Generation mismatch $run_generation != $generation"
+                    failexit "Generation mismatch"
+                fi
+                if [[ "$run_generation" -le "$copy_generation" ]]; then
+                    echo "Generation mismatch $run_generation <= $copy_generation"
+                    failexit "Generation mismatch"
+                fi
+            fi
+        fi
+    done
+
+    echo "Record-types and generations are correct"
+}
+
 function create_lots_of_btrees
 {
     j=0
@@ -187,6 +344,9 @@ function run_test
 
 # This tests both with committed-gen enabled and disabled 
 # When committed_gen is disabled, run-test should fail.
+if [[ "$DBNAME" != *"rollout"* ]]; then
+    verify_create_recovery_records
+fi
 
 create_lots_of_btrees
 run_test
