@@ -667,10 +667,9 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
         if (need_to_check_for_semi && lastTokenParsed != TK_SEMI) {
           pParse->rc = SQLITE_MISSING_SEMI;
           break;
-        } else if (lastTokenParsed == 0) {
-#else
-        if (lastTokenParsed == 0) {
+        } else
 #endif
+        if (lastTokenParsed == 0) {
           break;
         } else {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
