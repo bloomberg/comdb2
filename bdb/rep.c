@@ -3972,7 +3972,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, D
         poll(NULL, 0, (bdb_state->attr->repsleep));
 
     if (bdb_state->attr->rep_debug_delay > 0)
-        usleep(bdb_state->attr->rep_debug_delay * 1000);
+        Usleep(bdb_state->attr->rep_debug_delay * 1000);
 
     rem_rep_mon(&rm);
     time2 = comdb2_time_epoch();

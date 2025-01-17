@@ -61,6 +61,19 @@
         rc;                                                                                                            \
     })
 
+#define Usleep(usec)                                                                                                   \
+    ({                                                                                                                 \
+        int rc;                                                                                                        \
+        if ((unsigned int)(usec) <= 1000000) {                                                                         \
+            rc = usleep((usec));                                                                                       \
+        } else {                                                                                                       \
+            logmsg(LOGMSG_ERROR, "usleep argument out of range: %u, capping the value at 1000000\n",                   \
+                   (unsigned int)(usec));                                                                              \
+            rc = usleep(1000000);                                                                                      \
+        }                                                                                                              \
+        rc;                                                                                                            \
+    })
+
 #define Pthread_attr_destroy(...) WRAP_SYSFUNC(pthread_attr_destroy, __VA_ARGS__)
 #define Pthread_attr_init(...) WRAP_SYSFUNC(pthread_attr_init, __VA_ARGS__)
 #define Pthread_attr_setdetachstate(...) WRAP_SYSFUNC(pthread_attr_setdetachstate, __VA_ARGS__)

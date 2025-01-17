@@ -4096,7 +4096,7 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
     if (d_ms) {
         logmsg(LOGMSG_DEBUG, "Sleeping for DELAY_AFTER_SAVEOP_USEDB (%dms)\n",
                d_ms);
-        usleep(1000 * d_ms);
+        Usleep(1000 * d_ms);
     }
 
     return rc;

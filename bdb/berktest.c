@@ -12,6 +12,7 @@
 #include <gettimeofday_ms.h>
 #include <errno.h>
 #include <logmsg.h>
+#include <sys_wrap.h>
 
 static DB_ENV *dbenv = NULL;
 static u_int32_t commit_delay_ms = 2;
@@ -218,7 +219,7 @@ static void run_test(berktable_t *tables, int tablecount, int txnsize,
         }
 
         if (commit_delay_ms) {
-            usleep(commit_delay_ms * 1000);
+            Usleep(commit_delay_ms * 1000);
         }
     }
 
