@@ -702,7 +702,7 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
         // is nested within an illegal token -- ex: select ';
         pParse->rc = SQLITE_MISSING_SEMI;
         break;
-#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+#endif
       } else {
         sqlite3ErrorMsg(pParse, "unrecognized token: \"%.*s\"", n, zSql);
         break;
