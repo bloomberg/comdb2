@@ -46,6 +46,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
 int do_drop_table(struct ireq *iq, struct schema_change_type *s,
                   tran_type *tran)
 {
+    printf("%s\n", __func__);
     struct dbtable *db;
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {

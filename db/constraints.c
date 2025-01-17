@@ -2236,7 +2236,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
 
             const int target_db_is_from_sc = target_db_sc && target_db == target_db_sc->db;
             const int target_db_has_new_btree = target_db == new_db 
-                || (target_db_is_from_sc && target_db_sc->kind != SC_ADDTABLE);
+                || (target_db_is_from_sc && target_db_sc->force_rebuild /*schema_change_requires_rebuild(target_db_sc->kind)*/);
             bky = get_sckey(ct->table[jj], ct->keynm[jj], target_db_has_new_btree);
             if (!bky) {
                 /* Referencing a nonexistent key */
@@ -2306,7 +2306,7 @@ int populate_reverse_constraints(struct dbtable *db,
             }
 
             const int cttbl_is_from_sc = cttbl_sc && cttbl_sc->db == cttbl;
-            const int cttbl_has_new_btree = cttbl_is_from_sc && cttbl_sc->kind != SC_ADDTABLE;
+            const int cttbl_has_new_btree = cttbl_is_from_sc && cttbl_sc->force_rebuild /*schema_change_requires_rebuild(cttbl_sc->kind)*/;
             const struct schema * const sckey = get_sckey(cnstrt->table[jj], cnstrt->keynm[jj],
                                                           cttbl_has_new_btree);
             if (sckey == NULL) {
