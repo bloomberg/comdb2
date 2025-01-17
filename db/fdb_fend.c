@@ -600,6 +600,11 @@ static void destroy_fdb(fdb_t *fdb)
     Pthread_rwlock_unlock(&fdbs.arr_lock);
 }
 
+int is_local(const fdb_t *fdb)
+{
+    return fdb->local;
+}
+
 /**************  TABLE OPERATIONS ***************/
 
 /**
@@ -5344,7 +5349,8 @@ done:
 int fdb_get_server_semver(const fdb_t * const fdb, const char ** version)
 {
     cdb2_hndl_tp * hndl = NULL;
-    int rc = cdb2_open(&hndl, fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb), 0);
+
+    int rc = cdb2_open(&hndl, fdb_dbname_name(fdb), is_local(fdb) ? "local" : fdb_dbname_class_routing(fdb), 0);
     if (rc) {
         return FDB_ERR_GENERIC;
     }

@@ -467,6 +467,9 @@ int process_fdb_set_cdb2api(sqlclntstate *clnt, char *sqlstr,
 int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
                           int class_override);
 
+/* Check if fdb is local to this db */
+int is_local(const fdb_t *fdb);
+
 /**
  * Connect to a remote cluster based of push connector information
  * and additional configuration options

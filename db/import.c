@@ -920,7 +920,7 @@ static enum comdb2_import_op bulk_import_perform_initial_validation(const char *
     }
 #endif
 
-    rc = cdb2_open(&hndl, fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb), 0);
+    rc = cdb2_open(&hndl, fdb_dbname_name(fdb), is_local(fdb) ? "local" : fdb_dbname_class_routing(fdb), 0);
     if (rc) {
         __import_logmsg(
             LOGMSG_ERROR,
@@ -1746,7 +1746,7 @@ enum comdb2_import_tmpdb_op bulk_import_tmpdb_pull_foreign_dbfiles(const char *f
         goto err;
     }
 
-    rc = cdb2_open(&hndl, fdb_dbname_name(fdb), fdb_dbname_class_routing(fdb), 0);
+    rc = cdb2_open(&hndl, fdb_dbname_name(fdb), is_local(fdb) ? "local" : fdb_dbname_class_routing(fdb), 0);
     if (rc) {
         __import_logmsg(
             LOGMSG_ERROR,

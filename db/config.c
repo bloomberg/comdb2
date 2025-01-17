@@ -263,9 +263,9 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             logmsg(LOGMSG_WARN, "Invalid tool option, %s\n", optarg);
             exit(1);
             break;
-        case 16: /* tables */ gbl_import_table = optarg; break;
-        case 17: /* src */ gbl_import_src = optarg; break;
-        case 18: /* tier */ gbl_machine_class = optarg; break;
+        case 17: /* tables */ gbl_import_table = optarg; break;
+        case 18: /* src */ gbl_import_src = optarg; break;
+        case 19: /* tier */ gbl_machine_class = optarg; break;
         }
     }
     // clang-format on
