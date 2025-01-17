@@ -429,14 +429,12 @@ static int fdb_fetch_blob_into_sqlite_mem(svc_cursor_t *cur, struct schema *sc,
 {
     logmsg(LOGMSG_DEBUG, "%s\n", __func__);
 
-    struct sql_thread *thd = NULL;
     struct field *f;
     int blobnum;
     blob_status_t blobs;
     int bdberr;
 
     int rc;
-    int nretries = 0;
 
     bdb_state_type *state;
 
@@ -445,7 +443,6 @@ static int fdb_fetch_blob_into_sqlite_mem(svc_cursor_t *cur, struct schema *sc,
 
     state = thedb->dbs[cur->tblnum]->handle;
 
-again:
     if (is_genid_synthetic(genid)) {
         abort(); /*TODO: support snapisol */
         /*
@@ -459,27 +456,7 @@ again:
     }
 
     if (rc) {
-        if (bdberr == BDBERR_DEADLOCK) {
-            nretries++;
-
-            if (NULL == thd) {
-                thd = pthread_getspecific(query_info_key);
-            }
-
-            if (recover_deadlock_simple(thedb->bdb_env)) {
-                if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n", __func__, (void *)pthread_self());
-                return SQLITE_DEADLOCK;
-            }
-
-            if (nretries >= gbl_maxretries) {
-                logmsg(LOGMSG_ERROR, "too much contention fetching "
-                                     "tbl %s blob %s tried %d times\n",
-                       thedb->dbs[cur->tblnum]->tablename, f->name, nretries);
-                return SQLITE_DEADLOCK;
-            }
-            goto again;
-        }
+        logmsg(LOGMSG_ERROR, "%s error  genid:%llx blob-index:%d\n", __func__, genid, f->blob_index);
         return SQLITE_DEADLOCK;
     }
 

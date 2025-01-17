@@ -107,6 +107,7 @@
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
 #include <translistener.h>
+#include <sqlwriter.h>
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -598,8 +599,7 @@ static inline int check_recover_deadlock(struct sqlclntstate *clnt)
     if ((rc = clnt->recover_deadlock_rcode)) {
         assert(bdb_lockref() == 0);
         handle_failed_recover_deadlock(clnt, rc);
-        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n",
-                __func__);
+        logmsg(LOGMSG_ERROR, "%s: failing on recover_deadlock error\n", __func__);
     }
     return rc < 0 ? SQLITE_BUSY : rc;
 }
@@ -618,8 +618,6 @@ static int is_sqlite_db_init(BtCursor *pCur)
 
 int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
 {
-    extern int gbl_epoch_time;
-    extern int gbl_watchdog_disable_at_start;
     if (gbl_watchdog_disable_at_start)
         return 0;
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
@@ -632,6 +630,7 @@ int check_sql_client_disconnect(struct sqlclntstate *clnt, char *file, int line)
     }
     return 0;
 }
+
 /*
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
@@ -4093,7 +4092,6 @@ done:
 int sqlite3BtreeFirst(BtCursor *pCur, int *pRes)
 {
     int rc;
-
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = thd->clnt;
     CurRangeArr **append_to;
@@ -4256,7 +4254,7 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
     }
 
     int rc = pCur->cursor_move(pCur, pRes, CPREV);
-    if( *pRes==1 ) rc = SQLITE_DONE;
+    if (rc == 0 && *pRes == 1) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -6519,6 +6517,11 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         return 0;
     struct sqlclntstate *clnt = thd->clnt;
 
+    if (pCur->used_ondisk_blobs) {
+        for (int i = 0; i < MAXBLOBS; ++i) {
+            if (pCur->ondisk_blobs[i].capacity) free(pCur->ondisk_blobs[i].data);
+        }
+    }
     if (pCur->range) {
         if (pCur->range->idxnum == -1 && pCur->range->islocked == 0) {
             currange_free(pCur->range);
@@ -6688,8 +6691,6 @@ skip:
         Pthread_mutex_unlock(&thd->lk);
     }
 
-/* We don't allocate BtCursor anymore */
-/* free(pCur); */
 done:
     reqlog_logf(pCur->reqlogger, REQL_TRACE, "CloseCursor(pCur %d)      = %s\n",
                 cursorid, sqlite3ErrStr(rc));
@@ -6794,14 +6795,27 @@ unsigned long long get_rowid(BtCursor *pCur)
 static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
                                       int fnum, Mem *m, void *dta)
 {
+    int skip_cache = 0;
+    struct field *f = &sc->member[fnum];
+    int blobnum = f->blob_index + 1;
+    blob_buffer_t *blob = &pCur->ondisk_blobs[f->blob_index];
+
+    pCur->nblobs++;
+    struct sql_thread *thd = pCur->thd;
+    if (thd) thd->cost += pCur->blob_cost;
+
+    if (blob->genid && blob->genid == pCur->genid) {
+        m->szMalloc = m->n = blob->n;
+        m->zMalloc = m->z = malloc(blob->length);
+        memcpy(m->z, blob->data, blob->length);
+        m->flags = blob->flags;
+        return 0;
+    }
+
     struct ireq iq;
     blob_status_t blobs;
-    int blobnum;
-    struct field *f;
     int rc;
     int bdberr;
-    int nretries = 0;
-    struct sql_thread *thd = pCur->thd;
     struct schema *pd = NULL;
 
     if (sc->flags & SCHEMA_PARTIALDATACOPY_ACTUAL) {
@@ -6809,23 +6823,14 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     }
 
     if (!pCur->have_blob_descriptor) {
-        gather_blob_data_byname(pCur->db, ".ONDISK",
-                                &pCur->blob_descriptor, pd);
+        gather_blob_data_byname(pCur->db, ".ONDISK", &pCur->blob_descriptor, pd);
         pCur->have_blob_descriptor = 1;
     }
 
-    f = &sc->member[fnum];
-    blobnum = f->blob_index + 1;
-
-    pCur->nblobs++;
-    if (thd) {
-        thd->cost += pCur->blob_cost;
-    }
-
-again:
     memcpy(&blobs, &pCur->blob_descriptor, sizeof(blobs));
 
     if (is_genid_synthetic(pCur->genid)) {
+        skip_cache = 1;
         rc = osql_fetch_shadblobs_by_genid(pCur, &blobnum, &blobs, &bdberr);
     } else {
         bdb_fetch_args_t args = {0};
@@ -6839,54 +6844,21 @@ again:
     }
 
     if (rc) {
-        if (bdberr == BDBERR_DEADLOCK) {
-            nretries++;
-            if ((rc = recover_deadlock(thedb->bdb_env, pCur->clnt, NULL, 0)) != 0) {
-                if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery, rc %d\n",
-                           __func__, (void *)pthread_self(), rc);
-                if (rc < 0)
-                    return SQLITE_BUSY;
-                else
-                    return rc;
-            }
-            if (nretries >= gbl_maxretries) {
-                logmsg(LOGMSG_ERROR, "too much contention fetching "
-                                     "tbl %s blob %s tried %d times\n",
-                       pCur->db->tablename, f->name, nretries);
-                return SQLITE_DEADLOCK;
-            }
-            goto again;
-        }
+        logmsg(LOGMSG_ERROR, "%s error  genid:%llx blob-index:%d\n", __func__, pCur->genid, f->blob_index);
         return SQLITE_DEADLOCK;
     }
 
-    /* Happens more frequently in index mode, but can happen in cursor mode
-     * after a deadlock (because we close all our cursors) */
     init_fake_ireq(thedb, &iq);
     iq.usedb = pCur->db;
 
-    if (check_one_blob_consistency(&iq, iq.usedb, ".ONDISK", &blobs,
-                                   dta, f->blob_index, 0, pd)) {
+    if (check_one_blob_consistency(&iq, iq.usedb, ".ONDISK", &blobs, dta, f->blob_index, 0, pd)) {
         free_blob_status_data(&blobs);
-        nretries++;
-        if (nretries >= gbl_maxblobretries) {
-            logmsg(LOGMSG_ERROR, "inconsistent blob genid %llx, blob index %d\n",
-                    pCur->genid, f->blob_index);
-            return SQLITE_CORRUPT;
-        }
-        goto again;
+        logmsg(LOGMSG_ERROR, "%s inconsistent blob  genid:%llx, blob-index:%d\n", __func__, pCur->genid, f->blob_index);
+        return SQLITE_CORRUPT;
     }
 
-#if 0 
-   int patch = 0;
-   if (is_genid_synthetic(pCur->genid)) 
-   {
-      patch = blobnum-1;
-   }
-#endif
-
     if (blobs.blobptrs[0] == NULL) {
+        skip_cache = 1;
         m->z = NULL;
         m->flags = MEM_Null;
     } else {
@@ -6902,6 +6874,22 @@ again:
             m->flags = MEM_Blob;
     }
 
+    if (skip_cache) {
+        blob->genid = 0;
+        return 0;
+    }
+    int length = blobs.bloblens[0];
+    if (blob->capacity < length) {
+        free(blob->data);
+        blob->data = malloc(length);
+        blob->capacity = length;
+    }
+    blob->n = m->n;
+    blob->length = length;
+    blob->flags = m->flags;
+    blob->genid = pCur->genid;
+    memcpy(blob->data, m->z, length);
+    pCur->used_ondisk_blobs = 1;
     return 0;
 }
 
@@ -7337,7 +7325,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "get_data_int: unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "%s: unhandled type %d query:%s\n", __func__, f->type, pCur->clnt->sql);
         break;
     }
 
@@ -7416,7 +7404,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
                key_size + sizeof(int));
         return SQLITE_INTERNAL;
     }
-    cur->ondisk_keybuf_alloc = key_size;
     sz = schema_var_size(cur->sc);
     cur->keybuf = malloc(sz);
     if (!cur->keybuf) {
@@ -8339,7 +8326,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     cur->tblnum = cur->db->dbs_idx;
     cur->session_tbl = get_session_tbl(clnt, cur->db->tablename);
 
-    cur->ondisk_dtabuf_alloc = getdatsize(cur->db);
     if (cur->writeTransaction) {
         cur->ondisk_buf = calloc(1, getdatsize(cur->db));
         if (!cur->ondisk_buf) {
@@ -8366,7 +8352,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         free(cur->ondisk_buf);
         return SQLITE_INTERNAL;
     }
-    cur->ondisk_keybuf_alloc = key_size;
     if (cur->writeTransaction) {
         cur->fndkey = malloc(key_size + sizeof(int));
         if (!cur->fndkey) {
@@ -9296,7 +9281,7 @@ int sqlite3BtreeNext(BtCursor *pCur, int flags)
     }
 
     int rc = pCur->cursor_move(pCur, pRes, CNEXT);
-    if( *pRes==1 ) rc = SQLITE_DONE;
+    if (rc == 0 && *pRes == 1) rc = SQLITE_DONE;
 
     if (pCur->range && pCur->db && !pCur->range->islocked) {
         if (pCur->ixnum == -1) {
@@ -9717,8 +9702,7 @@ static int should_fail_due_to_gen_change(const uint32_t curgen, const struct sql
     return gen_is_mismatched;
 }
 
-int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
-                      uint32_t flags)
+int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt, uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
     int retries = 0;
@@ -9746,7 +9730,7 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     }
 
     if (clnt->gen_changed) {
-        logmsg(LOGMSG_DEBUG, "td %p %s line %d calling get_curtran on gen_changed\n", (void *)pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "td %p %s line %d calling get_curtran on gen_changed\n", (void *)pthread_self(), __func__,
                __LINE__);
     }
 
@@ -9759,8 +9743,9 @@ retry:
             goto retry;
         logmsg(LOGMSG_ERROR, "%s: too much contention\n", __func__);
     }
-    if (!curtran_out)
+    if (!curtran_out) {
         return -1;
+    }
 
     /* If this is an hasql serialiable or snapshot session and durable-lsns are
      * enabled, then fail this call with a 'CHANGENODE' if the generation number
@@ -9852,12 +9837,10 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 
     if (!clnt->dbtran.cursor_tran) {
         /* this should be visible */
-        logmsg(LOGMSG_ERROR, "%s called without curtran\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s called without curtran clnt:%p\n", __func__, clnt);
         return 0;
     }
-
-    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
-                            &bdberr);
+    rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_DEBUG, "%s: %p rc %d bdberror %d\n", __func__, (void *)pthread_self(), rc, bdberr);
@@ -10058,7 +10041,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
             return -300;
         }
     }
-
     if (unlikely(gbl_sql_random_release_interval)) {
         logmsg(LOGMSG_INFO, "%s: sleeping 10s\n", __func__);
         sleep(10);
