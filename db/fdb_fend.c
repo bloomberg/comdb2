@@ -2432,6 +2432,8 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
 
     fdbc->intf = fdbc_if;
 
+    clnt->authdata = get_authdata(clnt);
+
     if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata && gbl_fdb_auth_enabled) {
         flags = flags | FDB_MSG_CURSOR_OPEN_FLG_AUTH;
     }
