@@ -23,6 +23,9 @@ struct master_entry {
 
 /*********** GLOBAL SQLITE MASTER ********************************************/
 
+extern int gbl_import_mode;
+extern int bulk_import_tmpdb_should_ignore_table(const char *tablename);
+
 /* array */
 static master_entry_t *sqlmaster;
 static int sqlmaster_nentries;
@@ -337,6 +340,10 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
     extern int gbl_is_physical_replicant;
     if (gbl_is_physical_replicant && physrep_ignore_table(tblname))
         return NULL;
+
+    if (gbl_import_mode && bulk_import_tmpdb_should_ignore_table(tblname)) {
+        return NULL;
+    }
 
     if (ixnum)
         *ixnum = thd->rootpages[idx].ixnum;

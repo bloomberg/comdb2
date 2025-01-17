@@ -600,6 +600,11 @@ static void destroy_fdb(fdb_t *fdb)
     Pthread_rwlock_unlock(&fdbs.arr_lock);
 }
 
+int is_local(const fdb_t *fdb)
+{
+    return fdb->local;
+}
+
 /**************  TABLE OPERATIONS ***************/
 
 /**
@@ -1305,6 +1310,29 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
     }
 
     return SQLITE_ERROR; /* speak sqlite */
+}
+
+int create_fdb(const char *fdb_name, fdb_t **fdb) {
+    int local, lvl_override;
+    local = lvl_override = 0;
+
+    const enum mach_class lvl = get_fdb_class(&fdb_name, &local, &lvl_override);
+    if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
+        logmsg(LOGMSG_ERROR, "%s: Could not find usable fdb class\n", __func__);
+        const int rc = (lvl == CLASS_UNKNOWN)
+                        ? FDB_ERR_CLASS_UNKNOWN
+                        : FDB_ERR_CLASS_DENIED;
+        return rc;
+    }
+
+    int created;
+    *fdb = new_fdb(fdb_name, &created, lvl, local, lvl_override);
+    if (!fdb) {
+        logmsg(LOGMSG_ERROR, "%s: Failed to create new fdb\n", __func__);
+        return FDB_ERR_MALLOC;
+    }
+
+    return 0;
 }
 
 /**
@@ -3705,8 +3733,8 @@ const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
  * Get dbname, tablename, and so on
  *
  */
-const char *fdb_dbname_name(fdb_t *fdb) { return fdb->dbname; }
-const char *fdb_dbname_class_routing(fdb_t *fdb)
+const char *fdb_dbname_name(const fdb_t * const fdb) { return fdb->dbname; }
+const char *fdb_dbname_class_routing(const fdb_t * const fdb)
 {
     if (fdb->local)
         /*
@@ -5314,6 +5342,40 @@ int fdb_get_remote_version(const char *dbname, const char *table,
 done:
     cdb2_close(db);
     sqlite3_free(sql);
+
+    return rc;
+}
+
+int fdb_get_server_semver(const fdb_t * const fdb, const char ** version)
+{
+    cdb2_hndl_tp * hndl = NULL;
+
+    int rc = cdb2_open(&hndl, fdb_dbname_name(fdb), is_local(fdb) ? "local" : fdb_dbname_class_routing(fdb), 0);
+    if (rc) {
+        return FDB_ERR_GENERIC;
+    }
+
+    rc = cdb2_run_statement(hndl, "select comdb2_semver()");
+    if (rc) {
+        rc = (rc == CDB2ERR_CONNECT_ERROR) ? FDB_ERR_CONNECT : FDB_ERR_GENERIC;
+        goto done;
+    }
+
+    rc = cdb2_next_record(hndl); 
+    if (rc != CDB2_OK) {
+        rc = (rc == CDB2ERR_CONNECT_ERROR) ? FDB_ERR_CONNECT : FDB_ERR_GENERIC;
+        goto done;
+    }
+
+    assert(cdb2_column_type(hndl, 0) == CDB2_CSTRING);
+    *version = strdup((const char *)cdb2_column_value(hndl, 0));
+    if (!(*version)) {
+        rc = ENOMEM;
+        goto done;
+    }
+
+done:
+    cdb2_close(hndl);
 
     return rc;
 }
