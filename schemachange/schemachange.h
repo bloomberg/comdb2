@@ -123,6 +123,8 @@ enum schema_change_kind {
     SC_LAST /* End marker */
 };
 
+int schema_change_requires_rebuild(const enum schema_change_kind kind);
+
 #define IS_SC_DBTYPE_TAGGED_TABLE(s) ((s)->kind > SC_DROP_VIEW)
 #define IS_FASTINIT(s)                                                         \
     (((s)->kind == SC_DROP_VIEW) || ((s)->kind == SC_TRUNCATETABLE))

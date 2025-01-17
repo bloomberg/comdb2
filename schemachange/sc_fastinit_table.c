@@ -53,6 +53,7 @@ int fix_broken_max_rec_sz(int lrl)
 
 int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
+    printf("%s\n", __func__);
     struct dbtable *db;
     struct dbtable *newdb;
     int rc = 0;

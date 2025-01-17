@@ -42,6 +42,75 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
 
 extern int gbl_test_sc_resume_race;
 
+int schema_change_requires_rebuild(const enum schema_change_kind kind) {
+    switch (kind) {
+        case SC_INVALID:
+            return 0;
+        case SC_LEGACY_QUEUE:
+            return 0;
+        case SC_LEGACY_MORESTRIPE:
+            return 0;
+        case SC_ADD_QDB_FILE:
+            return 0;
+        case SC_DEL_QDB_FILE:
+            return 0;
+        case SC_ADD_VIEW:
+            return 0;
+        case SC_DROP_VIEW:
+            return 0;
+        case SC_ADDSP:
+            return 0;
+        case SC_DELSP:
+            return 0;
+        case SC_DEFAULTSP:
+            return 0;
+        case SC_SHOWSP:
+            return 0;
+        case SC_ADD_TRIGGER:
+            return 0;
+        case SC_DEL_TRIGGER:
+            return 0;
+        case SC_ADD_SFUNC:
+            return 0;
+        case SC_DEL_SFUNC:
+            return 0;
+        case SC_ADD_AFUNC:
+            return 0;
+        case SC_DEL_AFUNC:
+            return 0;
+        case SC_FULLUPRECS:
+            return 0;
+        case SC_PARTIALUPRECS:
+            return 0;
+        case SC_DROPTABLE:
+            return 0;
+        case SC_TRUNCATETABLE:
+            return 0;
+        case SC_ADDTABLE:
+            return 0;
+        case SC_RENAMETABLE:
+            return 0;
+        case SC_ALIASTABLE:
+            return 0;
+        case SC_ALTERTABLE:
+            return 1;
+        case SC_ALTERTABLE_PENDING:
+            return 0;
+        case SC_REBUILDTABLE:
+            return 1;
+        case SC_ALTERTABLE_INDEX:
+            return 0;
+        case SC_DROPTABLE_INDEX:
+            return 0;
+        case SC_REBUILDTABLE_INDEX:
+            return 0;
+        case SC_LAST:
+            return 0;
+        default:
+            abort();
+    }
+}
+
 /* If this is successful, it increments */
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {

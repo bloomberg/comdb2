@@ -795,9 +795,6 @@ void dump_all_constraints(struct dbenv *env);
 void dump_constraints(struct dbtable *table);
 void dump_rev_constraints(struct dbtable *table);
 
-int restore_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
-int backout_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
-
 int do_twophase_commit(struct ireq *iq, tranid_t id, block_state_t *blkstate,
                        int initial_state, fstblkseq_t *seqnum);
 

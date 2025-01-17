@@ -1,0 +1,5 @@
+-- add unsatisfied constraint with table create in txn
+drop table if exists t
+begin
+create table t { schema { int a } keys { "a" = a } constraints { "a" -> "donut":"a" on delete cascade } }$$
+commit

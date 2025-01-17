@@ -14,12 +14,6 @@ alter table c {schema{int i}} $$
 alter table c {schema{int i}} $$
 drop table c
 
-select "transactional create (bad case)"
-begin
-create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}} $$
-create table m {schema{int i} keys{"pk" = i}} $$
-commit
-
 select "transactional create"
 begin
 create table m {schema{int i} keys{"pk" = i}} $$

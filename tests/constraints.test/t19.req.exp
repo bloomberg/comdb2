@@ -1,0 +1,21 @@
+[drop table if exists foo] rc 0
+[drop table if exists bar] rc 0
+[create table foo { schema { int a } keys { "donut" = a } }] rc 0
+[begin] rc 0
+[create table bar { schema { int a } keys { "a" = a } constraints { "a" -> "foo":"a" on delete cascade } }] rc 0
+[alter table foo { schema { int a } keys { "a" = a } }] rc 0
+[commit] rc 0
+[insert into bar values(1)] failed with rc 3 Transaction violates foreign key constraint bar(a) -> foo(a): key value does not exist in parent table
+[select 'shouldnt see me' from bar] rc 0
+(rows inserted=1)
+[insert into foo values(1)] rc 0
+(rows inserted=1)
+[insert into bar values(1)] rc 0
+('should see me'='should see me')
+[select 'should see me' from bar] rc 0
+('should see me'='should see me')
+[select 'should see me' from foo] rc 0
+(rows deleted=1)
+[delete from foo where 1] rc 0
+[select 'shouldnt see me' from bar] rc 0
+[select 'shouldnt see me' from foo] rc 0

@@ -338,8 +338,7 @@ static int osql_process_selectv(blocksql_tran_t *tran,
  * Once all finished ok, we apply all the changes
  */
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
-                      struct block_err *err)
-{
+                      struct block_err *err) {
     blocksql_tran_t *tran = iq->sorese->tran;
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;

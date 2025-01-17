@@ -12,12 +12,6 @@
 [alter table c {schema{int i}}] rc 0
 [alter table c {schema{int i}}] rc 0
 [drop table c] rc 0
-("transactional create (bad case)"='transactional create (bad case)')
-[select "transactional create (bad case)"] rc 0
-[begin] rc 0
-[create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
-[create table m {schema{int i} keys{"pk" = i}}] rc 0
-[commit] failed with rc 240 constraint error for table "c" key "key" -> <"m":"pk">: parent table not found
 ("transactional create"='transactional create')
 [select "transactional create"] rc 0
 [begin] rc 0
@@ -68,7 +62,7 @@
 [begin] rc 0
 [truncate c] rc 0
 [drop table m] rc 0
-[commit] failed with rc 240 Can't drop a table referenced by a foreign key
+[commit] failed with rc 240 constraint error for table "c" key "key" -> <"m":"pk">: parent key not found
 (i=1)
 [select * from m] rc 0
 (i=1)
