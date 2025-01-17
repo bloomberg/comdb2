@@ -635,6 +635,9 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
   assert( pParse->pVList==0 );
   pParse->pParentParse = db->pParse;
   db->pParse = pParse;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int need_to_check_for_semi = pParse->prepFlags & SQLITE_PREPARE_REQUIRE_SEMI;
+#endif
   while( 1 ){
     n = sqlite3GetToken((u8*)zSql, &tokenType);
     mxSqlLen -= n;
@@ -660,16 +663,27 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
         continue;
       }
       if( zSql[0]==0 ){
-        /* Upon reaching the end of input, call the parser two more times
-        ** with tokens TK_SEMI and 0, in that order. */
-        if( lastTokenParsed==TK_SEMI ){
-          tokenType = 0;
-        }else if( lastTokenParsed==0 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        if (need_to_check_for_semi && lastTokenParsed != TK_SEMI) {
+          pParse->rc = SQLITE_MISSING_SEMI;
           break;
-        }else{
-          tokenType = TK_SEMI;
+        } else
+#endif
+        if (lastTokenParsed == 0) {
+          break;
+        } else {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          need_to_check_for_semi = 0;
+#endif
+          /* 
+           * Upon reaching the end of input, call the parser two more times
+           * with tokens TK_SEMI and 0, in that order.
+           * (if we're running with SQLITE_PREPARE_REQUIRE_SEMI,
+           * then the client is expected to provide the semicolon).
+           */
+          tokenType = lastTokenParsed==TK_SEMI ? 0 : TK_SEMI;
+          n = 0;
         }
-        n = 0;
 #ifndef SQLITE_OMIT_WINDOWFUNC
       }else if( tokenType==TK_WINDOW ){
         assert( n==6 );
@@ -681,7 +695,14 @@ int sqlite3RunParser(Parse *pParse, const char *zSql, char **pzErrMsg){
         assert( n==6 );
         tokenType = analyzeFilterKeyword((const u8*)&zSql[6], lastTokenParsed);
 #endif /* SQLITE_OMIT_WINDOWFUNC */
-      }else{
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      } else if (need_to_check_for_semi && !sqlite3_complete(pParse->zTail)) {
+        // This check is needed for a case in which a trailing semicolon
+        // is nested within an illegal token -- ex: select ';
+        pParse->rc = SQLITE_MISSING_SEMI;
+        break;
+#endif
+      } else {
         sqlite3ErrorMsg(pParse, "unrecognized token: \"%.*s\"", n, zSql);
         break;
       }
