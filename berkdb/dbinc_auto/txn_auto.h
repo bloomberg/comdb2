@@ -124,4 +124,17 @@ typedef struct __txn_dist_commit_args {
 	u_int64_t	timestamp;
 	DBT	dist_txnid;
 } __txn_dist_commit_args;
+
+#define DB___txn_ckp_recovery	20
+typedef struct __txn_ckp_recovery_args {
+	u_int32_t type;
+	DB_TXN *txnid;
+	DB_LSN prev_lsn;
+	DB_LSN	ckp_lsn;
+	DB_LSN	last_ckp;
+	int32_t	timestamp;
+	u_int32_t	rep_gen;
+	u_int64_t	max_utxnid;
+} __txn_ckp_recovery_args;
+
 #endif
