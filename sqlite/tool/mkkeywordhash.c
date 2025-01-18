@@ -377,6 +377,7 @@ static Keyword aKeywordTable[] = {
   { "OFF",               "TK_OFF",               ALWAYS           },
   { "PAGEORDER",         "TK_PAGEORDER",         ALWAYS           },
   { "PARTITIONED",       "TK_PARTITIONED",       ALWAYS           },
+  { "PARTITIONS",        "TK_PARTITIONS",        ALWAYS           },
   { "PASSWORD",          "TK_PASSWORD",          ALWAYS           },
   { "PAUSE",             "TK_PAUSE",             ALWAYS           },
   { "PERIOD",            "TK_PERIOD",            ALWAYS           },

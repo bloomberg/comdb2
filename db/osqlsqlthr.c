@@ -1811,13 +1811,14 @@ int osql_schemachange_logic(struct schema_change_type *sc,
 
     osql->running_ddl = 1;
 
+    logmsg(LOGMSG_USER, "%s:%d REACHED HERE \n", __func__, __LINE__);
     if (gbl_reject_mixed_ddl_dml && clnt->dml_tables) {
         hash_info(clnt->dml_tables, NULL, NULL, NULL, NULL, &count, NULL, NULL);
         if (count > 0) {
             return SQLITE_DDL_MISUSE;
         }
     }
-
+    logmsg(LOGMSG_USER, "%s:%d REACHED HERE \n", __func__, __LINE__);
     if (clnt->dml_tables &&
         hash_find_readonly(clnt->dml_tables, sc->tablename)) {
         return SQLITE_DDL_MISUSE;
@@ -1834,11 +1835,16 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
         if (usedb && !get_dbtable_by_name(sc->tablename)) {
             unsigned long long version;
+            hash_view_t *view = NULL;
+            hash_get_inmem_view(sc->tablename, &view);
             char *first_shardname =
                 timepart_shard_name(sc->tablename, 0, 1, &version);
             if (first_shardname) {
                 sc->usedbtablevers = version;
                 free(first_shardname);
+            } else if (view) {
+                /* use underlying placeholder table to get version */
+                sc->usedbtablevers = comdb2_table_version(hash_view_get_tablename(view));
             } else /* user view */
                 usedb = 0;
         }
@@ -1849,6 +1855,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         comdb2uuidcpy(sc->uuid, osql->uuid);
 
         do {
+            logmsg(LOGMSG_USER, "SENDING sc->tablename : %s, usedbtablevers: %d\n", sc->tablename, sc->usedbtablevers);
             rc = osql_send_schemachange(&osql->target, osql->rqid,
                                         thd->clnt->osql.uuid, sc,
                                         NET_OSQL_SOCK_RPL);

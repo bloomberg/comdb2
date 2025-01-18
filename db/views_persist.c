@@ -8,7 +8,7 @@
 
 #define LLMETA_PARAM_NAME "timepart_views"
 #define LLMETA_TABLE_NAME "sys_views"
-
+#define LLMETA_HASH_VIEWS_TABLE "hash_views"
 /**
  *  Write a CSON representation overriding the current llmeta
  *
@@ -129,6 +129,66 @@ char *views_read_all_views(void)
 
     rc =
         bdb_get_table_csonparameters(NULL, LLMETA_TABLE_NAME, &blob, &blob_len);
+    if (rc) {
+        return NULL;
+    }
+
+    return blob;
+}
+
+/**
+ * Read a view CSON representation from llmeta
+ *
+ */
+int hash_views_read_view(void *tran, const char *name, char **pstr)
+{
+    int rc;
+
+    *pstr = NULL;
+
+    rc = bdb_get_table_parameter_tran(LLMETA_HASH_VIEWS_TABLE, name, pstr, tran);
+    if (rc == 1) {
+        return VIEW_ERR_EXIST;
+    } else if (rc) {
+        return VIEW_ERR_LLMETA;
+    }
+
+    return VIEW_NOERR;
+}
+/**
+ *  Write a CSON representation of a view of hash based shard partitions
+ *  The view is internally saved as a parameter "viewname" for the table
+ *  "hash_views".
+ */
+int hash_views_write_view(void *tran, const char *viewname, const char *str, int override)
+{
+    int rc;
+
+    if (str) {
+        char *oldstr = NULL;
+        rc = hash_views_read_view(tran, viewname, &oldstr);
+        if (rc == VIEW_NOERR) {
+            logmsg(LOGMSG_ERROR, "View \"%s\" already exists, old string \"%s\"\n", viewname, oldstr);
+            free(oldstr);
+            return VIEW_ERR_EXIST;
+        }
+        rc = bdb_set_table_parameter(tran, LLMETA_HASH_VIEWS_TABLE, viewname, str);
+    } else {
+        /* this is a delete */
+        rc = bdb_clear_table_parameter(tran, LLMETA_HASH_VIEWS_TABLE, viewname);
+    }
+    rc = (rc) ? VIEW_ERR_LLMETA : VIEW_NOERR;
+
+    return rc;
+}
+
+char *hash_views_read_all_views(void)
+{
+    char *blob = NULL;
+    int blob_len = 0;
+    int rc;
+
+    rc = bdb_get_table_csonparameters(NULL, LLMETA_HASH_VIEWS_TABLE, &blob, &blob_len);
     if (rc) {
         return NULL;
     }

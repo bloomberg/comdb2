@@ -523,7 +523,6 @@ int gbl_old_column_names = 1;
 int gbl_enable_sq_flattening_optimization = 1;
 int gbl_mask_internal_tunables = 1;
 int gbl_allow_readonly_runtime_mod = 0;
-
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
 int gbl_file_permissions = 0660;
@@ -557,6 +556,7 @@ extern int gbl_altersc_latency_inc;
 extern int gbl_sc_history_max_rows;
 extern int gbl_sc_status_max_rows;
 extern int gbl_rep_process_pstack_time;
+extern int gbl_create_remote_tables;
 
 extern void set_snapshot_impl(snap_impl_enum impl);
 extern const char *snap_impl_str(snap_impl_enum impl);

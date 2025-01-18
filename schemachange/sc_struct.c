@@ -118,6 +118,7 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     switch (p->type) {
     case PARTITION_NONE:
     case PARTITION_REMOVE:
+    case PARTITION_REMOVE_COL_HASH:
         return sizeof(p->type);
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL:
@@ -126,6 +127,18 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_MERGE:
         return sizeof(p->type) + sizeof(p->u.mergetable.tablename) +
                sizeof(p->u.mergetable.version);
+	case PARTITION_ADD_COL_HASH:
+        size_t shardNamesSize = 0;
+        size_t columnNamesSize = 0;
+        for (int i = 0; i < p->u.hash.num_partitions; i++) {
+            shardNamesSize += sizeof(p->u.hash.partitions[i]);
+        }
+
+        for (int i = 0; i < p->u.hash.num_columns; i++) {
+            columnNamesSize += sizeof(p->u.hash.columns[i]);
+        }
+        return sizeof(p->type) + sizeof(p->u.hash.viewname) + sizeof(p->u.hash.num_partitions) + 
+            sizeof(p->u.hash.num_columns) + shardNamesSize + columnNamesSize;
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
         abort();
@@ -310,6 +323,20 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
                         sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
         p_buf = buf_put(&s->partition.u.mergetable.version,
                         sizeof(s->partition.u.mergetable.version), p_buf, p_buf_end);
+        break;
+    }
+	case PARTITION_ADD_COL_HASH: {
+        p_buf = buf_no_net_put(s->partition.u.hash.viewname, sizeof(s->partition.u.hash.viewname), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.hash.num_columns, sizeof(s->partition.u.hash.num_columns), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.hash.num_columns; i++) {
+            p_buf =
+                buf_no_net_put(s->partition.u.hash.columns[i], sizeof(s->partition.u.hash.columns[i]), p_buf, p_buf_end);
+        }
+        p_buf = buf_put(&s->partition.u.hash.num_partitions, sizeof(s->partition.u.hash.num_partitions), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.hash.num_partitions; i++) {
+            p_buf =
+                buf_no_net_put(s->partition.u.hash.partitions[i], sizeof(s->partition.u.hash.partitions[i]), p_buf, p_buf_end);
+        }
         break;
     }
     }
@@ -733,6 +760,23 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
         p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version,
                                    sizeof(s->partition.u.mergetable.version), p_buf,
                                    p_buf_end);
+        break;
+    }
+    case PARTITION_ADD_COL_HASH: {
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.viewname, sizeof(s->partition.u.hash.viewname), p_buf,
+                                          p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.hash.num_columns, sizeof(s->partition.u.hash.num_columns), p_buf,
+                                   p_buf_end);
+        for (int i = 0; i < s->partition.u.hash.num_columns; i++) {
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.columns[i], sizeof(s->partition.u.hash.columns[i]),
+                                              p_buf, p_buf_end);
+        }
+        p_buf =
+            (uint8_t *)buf_get(&s->partition.u.hash.num_partitions, sizeof(s->partition.u.hash.num_partitions), p_buf, p_buf_end);
+        for (int i = 0; i < s->partition.u.hash.num_partitions; i++) {
+            p_buf = (uint8_t *)buf_no_net_get(s->partition.u.hash.partitions[i], sizeof(s->partition.u.hash.partitions[i]), p_buf,
+                                              p_buf_end);
+        }
         break;
     }
     }
