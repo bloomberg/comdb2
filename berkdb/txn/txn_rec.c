@@ -57,6 +57,10 @@ static const char revid[] = "$Id: txn_rec.c,v 11.54 2003/10/31 23:26:11 ubell Ex
 
 #define	IS_XA_TXN(R) (R->xid.size != 0)
 
+extern int gbl_recovery_ckp;
+int gbl_retrieve_gen_from_ckp = 1;
+int gbl_recovery_gen = 0;
+
 int set_commit_context(unsigned long long context, uint32_t *generation,
 		void *plsn, void *args, unsigned int rectype);
 
@@ -201,8 +205,11 @@ __txn_dist_commit_recover(dbenv, dbtp, lsnp, op, info)
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		rep->committed_gen = argp->generation;
 		rep->committed_lsn = *lsnp;
-		if (argp->generation > rep->gen)
+		if (argp->generation > rep->gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+			gbl_recovery_gen = rep->gen;
+		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 #if defined (DEBUG_PREPARE)
 		logmsg(LOGMSG_USER, "%s op %d removed %s from txnlist\n",
@@ -371,8 +378,11 @@ __txn_dist_prepare_recover(dbenv, dbtp, lsnp, op, info)
 					(argp->generation == rep->committed_gen && log_compare(lsnp, &rep->committed_lsn) > 0)) {
 					rep->committed_gen = argp->generation;
 					rep->committed_lsn = *lsnp;
-					if (argp->generation > rep->gen)
+					if (argp->generation > rep->gen) {
 						__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
+						__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+						gbl_recovery_gen = rep->gen;
+					}
 				}
 
 				MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -464,6 +474,9 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 		if (argp->generation > rep->gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
 			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+			gbl_recovery_gen = rep->gen;
+		} else {
+			logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->generation);
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	} else if ((dbenv->tx_timestamp != 0 &&
@@ -791,7 +804,10 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 		rep->committed_lsn = *lsnp;
 		if (argp->generation > rep->gen) {
 			__rep_set_gen(dbenv, __func__, __LINE__, argp->generation);
-			__rep_set_gen(dbenv, __func__, __LINE__, rep->gen);
+			__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+			gbl_recovery_gen = rep->gen;
+		} else {
+			logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->generation);
 		}
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 	}
@@ -858,8 +874,8 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			if (NULL == lt) 
 			{
 				if((ret = __txn_create_ltrans(dbenv, argp->ltranid, 
-							      &lt, lsnp, &argp->begin_lsn, 
-							      &argp->last_commit_lsn)) != 0)
+								  &lt, lsnp, &argp->begin_lsn, 
+								  &argp->last_commit_lsn)) != 0)
 					goto err;
 			}
 
@@ -868,13 +884,13 @@ __txn_regop_rowlocks_recover(dbenv, dbtp, lsnp, op, info)
 			if (argp->lflags & DB_TXN_LOGICAL_BEGIN)
 			{
 				if (NULL == dbenv->txn_logical_commit || 
-				    (ret = dbenv->txn_logical_commit(dbenv, dbenv->app_private, 
-								     lt->ltranid, lsnp)) != 0)
+					(ret = dbenv->txn_logical_commit(dbenv, dbenv->app_private, 
+									 lt->ltranid, lsnp)) != 0)
 				{
 					logmsg(LOGMSG_ERROR, "%s: txn_logical_commit error, %d\n", __func__, ret);
 					goto err;
 				}
-                
+				
 				__txn_deallocate_ltrans(dbenv, lt);
 			}
 		}
@@ -1067,10 +1083,28 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 	}
 
 	if (op == DB_TXN_FORWARD_ROLL) {
-		/* Record the max generation number that we've seen. */
 		if (REP_ON(dbenv)) {
 			db_rep = dbenv->rep_handle;
 			rep = db_rep->region;
+
+			/* It is okay to use txn_ckp for voting after recovery-gen is enabled */
+			if (gbl_retrieve_gen_from_ckp && gbl_recovery_ckp && argp->type == DB___txn_ckp) {
+				rep->committed_gen = argp->rep_gen;
+				rep->committed_lsn = *lsnp;
+			}
+
+			if (argp->rep_gen > rep->gen) {
+			/* Tunable because without txn_ckp_recovery, a normal ckp can cause
+			 * a fresh full-recovered database to become master incorrectly */
+				if (gbl_retrieve_gen_from_ckp) {
+					__rep_set_gen(dbenv, __func__, __LINE__, argp->rep_gen);
+					__rep_set_log_gen(dbenv, __func__, __LINE__, rep->gen);
+					gbl_recovery_gen = rep->gen;
+				}
+			} else {
+				logmsg(LOGMSG_USER, "%s line %d: rep->gen is %u, not setting to %u\n", __func__, __LINE__, rep->gen, argp->rep_gen);
+			}
+
 			if (argp->rep_gen > rep->recover_gen)
 				rep->recover_gen = argp->rep_gen;
 		}
