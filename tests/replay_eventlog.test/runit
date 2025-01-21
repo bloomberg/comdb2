@@ -224,6 +224,7 @@ done
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table t1  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table carray1 (a int, b double, c cstring(32), d longlong, e blob)"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table carray2 (a int, b double, c cstring(32), d longlong, e blob)"
 
 # following is an error because t2 does not exist, resulting in a 
 # fingerprint of 00000 so will not ba replayed
@@ -267,6 +268,7 @@ ${TESTSBUILDDIR}/carray_insert ${DBNAME}
 
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > orig.txt
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from carray1 order by 1" >> orig.txt
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from carray2 order by 1" >> orig.txt
 
 logflunziped=events.unzipped
 if [[ -z "$CLUSTER" ]]; then
@@ -323,6 +325,7 @@ fi
 
 cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from t1 order by alltypes_u_short" > replayed.txt
 cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from carray1 order by 1" >> replayed.txt
+cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from carray2 order by 1" >> replayed.txt
 
 success=1
 

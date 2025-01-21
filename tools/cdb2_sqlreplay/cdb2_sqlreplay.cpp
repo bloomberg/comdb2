@@ -304,7 +304,14 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, std::vector<uint8_t *>
                 return false;
             }
             blobs_vect.push_back((uint8_t *)varaddr);
-            if ((ret = cdb2_bind_array(cdb2h, name, cdb2_type, varaddr, count, length)) != 0) {
+            if (name[0] == '?') {
+                int idx = atoi(name + 1);
+                if ((ret = cdb2_bind_array_index(cdb2h, idx, cdb2_type, varaddr, count, length)) != 0) {
+                    std::cerr << "cdb2_bind_array_index failed for parameter index:" << idx
+                              << " type:" << type << " count:" << count << " ret:" << ret << std::endl;
+                    return false;
+                }
+            } else if ((ret = cdb2_bind_array(cdb2h, name, cdb2_type, varaddr, count, length)) != 0) {
                 std::cerr << "cdb2_bind_array failed for parameter name:" << name
                           << " type:" << type << " count:" << count << " ret:" << ret << std::endl;
                 return false;

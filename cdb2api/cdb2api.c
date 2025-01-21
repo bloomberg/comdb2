@@ -5514,17 +5514,10 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
 }
 
 
-/* cdb2_bind_array -- bind c array to a parameter name
- * name is the variable name we used in the sql
- * type is the type of elements to bind ex. CDB2_INTEGER
- * varaddr is the array address
- * count is the number of items in the array we will bind
- * typelen is the size of the elements for integer-arrays sizeof(int32_t or int64_t)
- */
-int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
+static int cdb2_bind_array_helper(cdb2_hndl_tp *hndl, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen, const char *func)
 {
     if (count <= 0 || count > CDB2_MAX_BIND_ARRAY) {
-        sprintf(hndl->errstr, "%s: bad array length:%zd (max:%d)", __func__, count, CDB2_MAX_BIND_ARRAY);
+        sprintf(hndl->errstr, "%s: bad array length:%zd (max:%d)", func, count, CDB2_MAX_BIND_ARRAY);
         return -1;
     }
 
@@ -5584,16 +5577,11 @@ int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, con
     CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
     cdb2__sqlquery__bindvalue__init(bindval);
     bindval->type = type;
-    bindval->varname = (char *)name;
     bindval->carray = carray;
 
     hndl->n_bindvars++;
     hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) * hndl->n_bindvars);
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
-    if (log_calls)
-        fprintf(stderr, "%p> cdb2_bind_array(%p, \"%s\", %zu, %s, %p, %zu) = 0\n",
-                (void *)pthread_self(), hndl, name, count,
-                cdb2_type_str(type), varaddr, typelen);
 
     return 0;
 
@@ -5601,6 +5589,53 @@ notsupported:
     free(carray);
     sprintf(hndl->errstr, "%s: bind array type not supported", __func__);
     return -1;
+}
+
+/* cdb2_bind_array -- bind c array to a parameter name
+ * name is the variable name we used in the sql
+ * type is the type of elements to bind ex. CDB2_INTEGER
+ * varaddr is the array address
+ * count is the number of items in the array we will bind
+ * typelen is the size of the elements for integer-arrays sizeof(int32_t or int64_t)
+ */
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
+{
+    int rc = 0;
+    rc = cdb2_bind_array_helper(hndl, type, varaddr, count, typelen, __func__);
+    if (rc)
+        return rc;
+
+    CDB2SQLQUERY__Bindvalue *bindval = hndl->bindvars[hndl->n_bindvars - 1];
+    bindval->varname = (char *)name;
+    if (log_calls)
+        fprintf(stderr, "%p> %s(%p, \"%s\", %zu, %s, %p, %zu) = 0\n",
+                (void *)pthread_self(), __func__, hndl, name, count,
+                cdb2_type_str(type), varaddr, typelen);
+
+    return rc;    
+}
+
+int cdb2_bind_array_index(cdb2_hndl_tp *hndl, int index, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
+{
+    int rc = 0;
+    if (index <= 0) {
+        sprintf(hndl->errstr, "%s: bind array index starts at value 1", __func__);
+        return -1;
+    }
+    rc = cdb2_bind_array_helper(hndl, type, varaddr, count, typelen, __func__);
+    if (rc)
+        return rc;
+
+    CDB2SQLQUERY__Bindvalue *bindval = hndl->bindvars[hndl->n_bindvars - 1];
+    bindval->varname = NULL;
+    bindval->has_index = 1;
+    bindval->index = index;
+    if (log_calls)
+        fprintf(stderr, "%p> %s(%p, %d, %zu, %s, %p, %zu) = 0\n",
+                (void *)pthread_self(), __func__, hndl, index, count,
+                cdb2_type_str(type), varaddr, typelen);
+
+    return rc;
 }
 
 int cdb2_clearbindings(cdb2_hndl_tp *hndl)
