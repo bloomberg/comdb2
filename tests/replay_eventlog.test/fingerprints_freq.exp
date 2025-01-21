@@ -9,6 +9,8 @@
     110 57baf721618dee0c3a0d21df32d4a5b3 insert into t1(alltypes_
     200 66442322591d17e49d307d91fd1c9db6 update t1 set alltypes_s
       1 675711719ff4adb4273c869b82c6a9db select csc2 from sqlite_
+      1 6b24619bf5b1d9451ca93b596a7f25bb create table carray2 (a 
+      1 71b3096abbf0ee777a855d028ab18341 select count(*) cnt from
       1 786a016d5d737d34389e6bc6d35f2d50 select * from carray1 or
    1000 7b3aa6d46d54b8a092b8c3e74a1fc7d0 insert into t1(  alltype
     100 8b048737cee209884c0eb5b86f9815f7 insert into t1(alltypes_
@@ -19,6 +21,8 @@
     500 aefd75efcaf1d7e65205373fc5a09b89 update t1 set alltypes_s
       1 b5cfea50b21a7a6db8eb7f28ee128c27 select count(*) cnt from
       1 d31abc248f09fd1099a22a5c6f0e895e create table carray1 (a 
+      1 d4f6f8c186c47ce52cfce1d1322fb241 select * from carray2 or
+      1 de7d90bac2eda4575455da3149ac0fe1 with a as (select rowid,
     110 e4510162feae7bd9a746c798ad56027d insert into t1(alltypes_
      10 f2c85b80eb883ee3c1eb184a8bca4e4d update t1 set alltypes_u
       1 f49bb0b4877aac4df9adb8d4e097e140 select * from t1 order b

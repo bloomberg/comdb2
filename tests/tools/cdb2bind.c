@@ -5,6 +5,11 @@
 
 const char *db;
 
+struct blob {
+    size_t len;
+    void *data;
+};
+
 /* ========================== Helper functions  =========================== */
 
 /* Open a handle */
@@ -341,6 +346,21 @@ void test_bind_array()
         }
 
         cdb2_clearbindings(hndl);
+
+        cdb2_bind_array_index(hndl, 1, CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select * from carray(?) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %"PRId64"\n", *vala);
+        }
+
+        cdb2_clearbindings(hndl);
     }
     {   // bind int64 array
         int N = 2048;
@@ -350,6 +370,21 @@ void test_bind_array()
         }
         cdb2_bind_array(hndl, "mylongintarr", CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
         test_exec(hndl, "select * from carray(@mylongintarr) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%"PRId64"\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %"PRId64"\n", *vala);
+        }
+
+        cdb2_clearbindings(hndl);
+
+        cdb2_bind_array_index(hndl, 1, CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select * from carray(?) ");
         for (int i = 0; i < N; i++) {
             test_next_record(hndl);
             int64_t *vala = cdb2_column_value(hndl, 0);
@@ -384,6 +419,21 @@ void test_bind_array()
         }
 
         cdb2_clearbindings(hndl);
+
+        cdb2_bind_array_index(hndl, 1, CDB2_REAL, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select * from carray(?) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            double *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%lf expected:%lf\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %lf\n", *vala);
+        }
+
+        cdb2_clearbindings(hndl);
     }
     {   // bind char* array
         int N = 2048;
@@ -394,6 +444,21 @@ void test_bind_array()
         }
         cdb2_bind_array(hndl, "mytxtarr", CDB2_CSTRING, (const void *)values, N, 0);
         test_exec(hndl, "select * from carray(@mytxtarr) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            char *vala = cdb2_column_value(hndl, 0);
+            if (strcmp(vala, values[i]) != 0) {
+                fprintf(stderr, "%s:%d:error got:%s expected:%s\n", __func__, __LINE__, vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %s\n", vala);
+        }
+
+        cdb2_clearbindings(hndl);
+
+        cdb2_bind_array_index(hndl, 1, CDB2_CSTRING, (const void *)values, N, 0);
+        test_exec(hndl, "select * from carray(?) ");
         for (int i = 0; i < N; i++) {
             test_next_record(hndl);
             char *vala = cdb2_column_value(hndl, 0);
@@ -450,6 +515,27 @@ void test_bind_array2()
         }
 
         cdb2_clearbindings(hndl);
+
+        cdb2_bind_array_index(hndl, 1, CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select a,b from t2 where a in carray(?) order by a");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            char *valb = cdb2_column_value(hndl, 1);
+            if (*valb != ('0'+values[i]%10)) {
+                fprintf(stderr, "%s:%d:error got:'%c' expected:'%d'\n", __func__, __LINE__, *valb, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 06 RESP %"PRId64" %c\n", *vala, *valb);
+        }
+
+        cdb2_clearbindings(hndl);
     }
 
     {  // use bind to insert 
@@ -475,6 +561,22 @@ void test_bind_array2()
                 exit(1);
             }
         }
+
+        test_exec(hndl, "truncate t3");
+        cdb2_bind_array_index(hndl, 1, CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "insert into t3 select * from carray(?)");
+        cdb2_clearbindings(hndl);
+
+        // verify insert succeeded
+        test_exec(hndl, "select a from t3 order by a");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+        }
     }
     /* Close the handle */
     test_close(hndl);
@@ -485,10 +587,7 @@ static void test_bind_blob_array()
     cdb2_hndl_tp *hndl = NULL;
     test_open(&hndl, db);
     const int N = INT16_MAX;
-    struct {
-        size_t len;
-        void *data;
-    } blobs[N];
+    struct blob blobs[N];
     uint8_t db[N];
     memset(db, 0xdb, sizeof(db));
     for (int i = 0, j = N - 1; i < N; ++i, --j) {
@@ -499,6 +598,32 @@ static void test_bind_blob_array()
     cdb2_bind_array(hndl, "blobs", CDB2_BLOB, blobs, N, 0);
     test_exec(hndl, "select * from carray(@blobs)");
     int rc , i = -1, j = N;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        ++i;
+        --j;
+        if (cdb2_column_type(hndl, 0) != CDB2_BLOB) {
+            fprintf(stderr, "row:%d bad cdb2_column_type:%d expected:%d\n", i, cdb2_column_type(hndl, i), CDB2_BLOB);
+            abort();
+        }
+        if (cdb2_column_size(hndl, 0) != j) {
+            fprintf(stderr, "row:%d bad cdb2_column_size:%d expected:%d\n", i, cdb2_column_size(hndl, i), i);
+            abort();
+        }
+        if (memcmp(db, cdb2_column_value(hndl, 0), j) != 0) {
+            fprintf(stderr, "row:%d bad cdb2_column_value of size:%d\n", i, i);
+            abort();
+        }
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+
+    cdb2_bind_array_index(hndl, 1, CDB2_BLOB, blobs, N, 0);
+    test_exec(hndl, "select * from carray(?)");
+    i = -1;
+    j = N;
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
         ++i;
         --j;
@@ -578,12 +703,9 @@ static void test_pass_array_to_sp()
     int64_t i64s[N];
     double ds[N];
     char *ss[N];
-    struct {
-        size_t len;
-        void *data;
-    } bs[N];
-    uint8_t blob[N];
-    memset(blob, 0xdb, sizeof(blob));
+    struct blob bs[N];
+    uint8_t blobVal[N];
+    memset(blobVal, 0xdb, sizeof(blobVal));
     for (int i = 0; i < N; ++i) {
         i32s[i] = i;
         i64s[i] = i * 10;
@@ -591,7 +713,7 @@ static void test_pass_array_to_sp()
         char s[64]; sprintf(s, "%" PRId64 "", i64s[i] * 100);
         ss[i] = strdup(s);
         bs[i].len = i;
-        bs[i].data = blob;
+        bs[i].data = blobVal;
     }
     cdb2_bind_array(hndl, "i32s", CDB2_INTEGER, i32s, N, sizeof(i32s[0]));
     cdb2_bind_array(hndl, "i64s", CDB2_INTEGER, i64s, N, sizeof(i64s[0]));
@@ -666,6 +788,8 @@ static void test_pass_array_to_sp()
     }
     cdb2_clearbindings(hndl);
     test_close(hndl);
+    // doesn't seem possible to pass bound params into sp by index,
+    // so don't need to test cdb2_bind_array_index here
 }
 
 static void create_procedure_sp_carray(void)
@@ -706,14 +830,58 @@ end}";
     test_close(hndl);
 }
 
-static void test_bind_array_in_sp(void)
+static void create_procedure_sp_carray_index(void)
 {
-    create_procedure_sp_carray();
+    int rc;
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+    char *sp_carray = "\
+create procedure sp_carray_index version 'test' {             \
+local function main()                                       \n\
+    local numbers = {0,1,2,3,4};                            \n\
+    local integers = {}                                     \n\
+    for i = 5, 10 do                                        \n\
+        table.insert(integers, db:cast(i, 'int'))           \n\
+    end                                                     \n\
+    local strings = {'hello', 'world'}                      \n\
+    local blobs = {x'436f6d64623200', x'35393200'}          \n\
+                                                            \n\
+    db:column_type('text', 1)                               \n\
+    local stmt = db:prepare('select * from carray(?)')      \n\
+                                                            \n\
+    stmt:bind(1, numbers)                                   \n\
+    stmt:emit()                                             \n\
+                                                            \n\
+    stmt:bind(1, integers)                                  \n\
+    stmt:emit()                                             \n\
+                                                            \n\
+    stmt:bind(1, strings)                                   \n\
+    stmt:emit()                                             \n\
+                                                            \n\
+    stmt:bind(1, blobs)                                     \n\
+    stmt:emit()                                             \n\
+end}";
+    if ((rc = cdb2_run_statement(hndl, sp_carray)) != 0) {
+        fprintf(stderr, "cdb2_run_statement failed rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    test_close(hndl);
+}
+
+static void test_bind_array_in_sp(int index)
+{
+    if (index)
+        create_procedure_sp_carray_index();
+    else
+        create_procedure_sp_carray();
 
     cdb2_hndl_tp *hndl = NULL;
     test_open(&hndl, db);
 
-    test_exec(hndl, "exec procedure sp_carray()");
+    if (index)
+        test_exec(hndl, "exec procedure sp_carray_index()");
+    else
+        test_exec(hndl, "exec procedure sp_carray()");
     char *exp[] = {
         "0.0", "1.0", "2.0", "3.0", "4.0", //array of doubles
         "5","6","7","8","9", "10",         //array of integers
@@ -760,10 +928,46 @@ static void test_bind_array_and_integer()
     }
     cdb2_clearbindings(hndl);
 
+    cdb2_bind_array_index(hndl, 2, CDB2_INTEGER, ids, sizeof(ids) / sizeof(ids[0]), sizeof(ids[0]));
+    cdb2_bind_index(hndl, 1, CDB2_INTEGER, &val, sizeof(val));
+    test_exec(hndl, "select ? union select * from carray(?) order by 1");
+    cnt = 1;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        int64_t ret = *(int64_t *)cdb2_column_value(hndl, 0);
+        if (ret != cnt) {
+            fprintf(stderr, "%s:%d unexpcted return:%"PRId64" vs expected:%d\n", __func__, __LINE__, ret, cnt);
+            abort();
+        }
+        ++cnt;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+
     // bind the integer first
     cdb2_bind_param(hndl, "val", CDB2_INTEGER, &val, sizeof(val));
     cdb2_bind_array(hndl, "ids", CDB2_INTEGER, ids, sizeof(ids) / sizeof(ids[0]), sizeof(ids[0]));
     test_exec(hndl, "select @val union select * from carray(@ids) order by 1");
+    cnt = 1;
+    while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
+        int64_t ret = *(int64_t *)cdb2_column_value(hndl, 0);
+        if (ret != cnt) {
+            fprintf(stderr, "%s:%d unexpcted return:%"PRId64" vs expected:%d\n", __func__, __LINE__, ret, cnt);
+            abort();
+        }
+        ++cnt;
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "cdb2_next_record rc:%d err:%s\n", rc, cdb2_errstr(hndl));
+        abort();
+    }
+    cdb2_clearbindings(hndl);
+
+    cdb2_bind_index(hndl, 1, CDB2_INTEGER, &val, sizeof(val));
+    cdb2_bind_array_index(hndl, 2, CDB2_INTEGER, ids, sizeof(ids) / sizeof(ids[0]), sizeof(ids[0]));
+    test_exec(hndl, "select ? union select * from carray(?) order by 1");
     cnt = 1;
     while ((rc = cdb2_next_record(hndl)) == CDB2_OK) {
         int64_t ret = *(int64_t *)cdb2_column_value(hndl, 0);
@@ -794,7 +998,8 @@ int main(int argc, char *argv[])
     test_bind_array2();
     test_bind_blob_array();
     test_pass_array_to_sp();
-    test_bind_array_in_sp();
+    test_bind_array_in_sp(0);
+    test_bind_array_in_sp(1);
     test_bind_array_and_integer();
 
     return 0;

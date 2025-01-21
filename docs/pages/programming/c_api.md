@@ -442,6 +442,35 @@ Parameters:
 |*typelen*| input | The length of the data type of the array which is being passed in | This should be the sizeof(valueaddr's original type), so 4 if it's a int32, 8 for int64... |
 
 
+### cdb2_bind_array_index
+```
+int cdb2_bind_array_index(cdb2_hndl_tp *hndl, int index, cdb2_coltype type, const void *varaddr, size_t count, size_t typelen)
+
+```
+
+Description:
+
+This routine is used to bind arrays by index in sql statement. The index starts from 1, and increases for every new parameter in the statement. This version of cdb2_bind_* is faster than cdb2_bind_array.
+
+For example:
+
+```c
+int arr[10] = {1,2,3,4...};
+cdb2_bind_array_index(hndl, 1, CDB2_INTEGER, arr, 10, sizeof(int));
+cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)");
+```
+
+Parameters:
+
+|Name|Type|Description|Notes|
+|---|---|---|--|
+|*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
+| *index* | input | The index of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement) |
+|*type*| input | The type of replaceable param | |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement), and for numeric types must be signed. |
+|*count*| input | The count of items in the array | |
+|*typelen*| input | The length of the data type of the array which is being passed in | This should be the sizeof(valueaddr's original type), so 4 if it's a int32, 8 for int64... |
+
 ### cdb2_get_effects
 ```
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
