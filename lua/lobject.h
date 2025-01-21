@@ -345,7 +345,7 @@ typedef struct Table {
   Node *lastfree;  /* any free position is before this position */
   GCObject *gclist;
   int sizearray;  /* size of `array' array */
-  struct dbstmt_t *dbstmt;
+  int from_sql;
 } Table;
 
 
