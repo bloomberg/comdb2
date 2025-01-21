@@ -1443,11 +1443,39 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
     return rc;
 }
 
+static void set_sqlrow_stmt(Lua L)
+{
+    /*
+    **  stack:
+    **    1. row (lua table)
+    **    2. stmt
+    **  tag stmt to row by:
+    **    newtbl = {}
+    **    newtbl.__metatable = stmt
+    **    setmetatable(row, newtbl)
+    */
+    lua_newtable(L);
+    lua_pushvalue(L, -3);
+    lua_setfield(L, -2, "__metatable");
+    lua_setmetatable(L, -2);
+    luabb_set_sqlrow(L);
+}
+
+static dbstmt_t *get_sqlrow_stmt(Lua L)
+{
+    dbstmt_t *stmt = NULL;
+    if (lua_getmetatable(L, -1) == 0) return NULL;
+    lua_getfield(L, -1, "__metatable");
+    if (luabb_type(L, -1) == DBTYPES_DBSTMT) stmt = lua_touserdata(L, -1);
+    lua_pop(L, 2);
+    return stmt;
+}
+
 static int stmt_sql_step(Lua L, dbstmt_t *dbstmt)
 {
     int rc;
     if ((rc = lua_sql_step(L, dbstmt->stmt)) == SQLITE_ROW) {
-        set_sqlrow_stmt(L, dbstmt);
+        set_sqlrow_stmt(L);
     }
     return rc;
 }
@@ -2401,9 +2429,9 @@ static int luatable_emit(Lua L)
 {
     int cols;
     SP sp = getsp(L);
+    dbstmt_t *dbstmt;
     sqlite3_stmt *stmt = NULL;
-    dbstmt_t *dbstmt = get_sqlrow_stmt(L);
-    if (dbstmt) {
+    if ((dbstmt = get_sqlrow_stmt(L)) != NULL && dbstmt->stmt) {
         stmt = dbstmt->stmt;
         cols = column_count(NULL, stmt);
     } else if (sp->parent->ntypes) {

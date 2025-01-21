@@ -1788,3 +1788,13 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 ($0='{"control":"\u0007"}')
 ($0='DEADBEEF')
 ($0='incompatible values from SQL string of length 13 to bint4 field 'i' for table 't'')
+(version='sptest')
+(emit0=1)
+(emit0=1)
+(emit0=1)
+(emit0=1)
+(version='sptest')
+[EXEC PROCEDURE emit1()] failed with rc -3 [db:emit(tmp)...]:8: attempt to emit row without defining columns
+(version='sptest')
+(emit2=1)
+(emit2=1)

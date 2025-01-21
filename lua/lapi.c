@@ -1105,22 +1105,11 @@ LUA_API struct stored_proc *lua_getsp(lua_State *L) {
 }
 
 
-LUA_API void set_sqlrow_stmt(lua_State *L, struct dbstmt_t *dbstmt) {
+LUA_API void luabb_set_sqlrow(lua_State *L) {
   lua_lock(L);
   int top = lua_gettop(L);
   TValue *obj = index2adr(L, top);
   Table *h = hvalue(obj);
-  h->dbstmt = dbstmt;
+  h->from_sql = 1;
   lua_unlock(L);
-}
-
-
-LUA_API struct dbstmt_t *get_sqlrow_stmt(lua_State *L) {
-  lua_lock(L);
-  int top = lua_gettop(L);
-  TValue *obj = index2adr(L, top);
-  Table *h = hvalue(obj);
-  struct dbstmt_t *dbstmt = h->dbstmt;
-  lua_unlock(L);
-  return dbstmt;
 }

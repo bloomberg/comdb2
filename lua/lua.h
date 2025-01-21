@@ -348,11 +348,7 @@ LUA_API int lua_gethookcount (lua_State *L);
 struct stored_proc;
 LUA_API void lua_setsp(lua_State *, struct stored_proc *);
 LUA_API struct stored_proc *lua_getsp(lua_State *);
-
-struct dbstmt_t;
-LUA_API struct dbstmt_t *get_sqlrow_stmt(lua_State *L);
-LUA_API void set_sqlrow_stmt(lua_State *L, struct dbstmt_t *);
-
+LUA_API void luabb_set_sqlrow(lua_State *L);
 
 struct lua_Debug {
   int event;

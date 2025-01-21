@@ -1412,3 +1412,65 @@ local function main()
 end}$$
 EOF
 cdb2sql $SP_OPTIONS "exec procedure dbtable_insert()"
+
+cdb2sql $SP_OPTIONS - <<'EOF'
+CREATE PROCEDURE emit0 VERSION 'sptest' {
+local function get_pairs_count(row)
+    --dbrow column can be retrieved by names as well as index. We don't want
+    --double counting, and so pairs(dbrow) should skip keys returned by
+    --ipairs(dbrow)
+    local cnt = 0
+    for _, _ in pairs(row) do
+        cnt = cnt + 1
+    end
+    return cnt
+end
+local function main()
+    local stmt = db:exec("select 1 as emit0")
+    local row = stmt:fetch()
+    while row do
+        local tmp = row
+        db:emit(tmp)
+        db:emit({emit0 = get_pairs_count(tmp)})
+        row = stmt:fetch()
+        db:emit(tmp)
+        db:emit({emit0 = get_pairs_count(tmp)})
+    end
+end
+}$$
+EXEC PROCEDURE emit0()
+EOF
+
+cdb2sql $SP_OPTIONS - <<'EOF'
+CREATE PROCEDURE emit1 VERSION 'sptest' {
+local function main()
+    local stmt = db:exec("select 1 as emit1")
+    local row = stmt:fetch()
+    while row do
+        local tmp = row
+        row = stmt:fetch()
+        db:emit(tmp)
+    end
+end
+}$$
+EXEC PROCEDURE emit1()
+EOF
+
+cdb2sql $SP_OPTIONS - <<'EOF'
+CREATE PROCEDURE emit2 VERSION 'sptest' {
+local function test()
+    local stmt = db:exec("select 1 as emit2")
+    local row = stmt:fetch()
+    db:emit(row)
+    stmt:fetch()
+    stmt:close()
+    stmt = nil
+    collectgarbage("collect")
+    return row
+end
+local function main()
+    db:emit(test())
+end
+}$$
+EXEC PROCEDURE emit2()
+EOF
