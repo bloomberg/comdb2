@@ -2483,12 +2483,12 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
 
     /* open file */
     file = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    free(fname);
     if (file == -1) {
-        logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open %s for writing\n",
-                fname);
+        logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open %s for writing\n", fname);
+        free(fname);
         return -1;
     }
+    free(fname);
     sbfile = sbuf2open(file, 0);
     if (!sbfile) {
         logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to open sbuf2\n");
@@ -3451,16 +3451,15 @@ static void setup_backup_logfiles_dir()
     char *loc = strstr(backupdir, "%dbname");
     if (loc) {
         int dbnamelen = strlen(thedb->envname);
-        int diff = dbnamelen - sizeof("%dbname");
-        if (diff > 0) {
-            int newlen = (loc - backupdir) + dbnamelen + 1;
+        if ((dbnamelen - sizeof("%dbname")) > 0) {
+            int diff = loc - backupdir;
+            int newlen = diff + dbnamelen + 1;
             char *newd = realloc(backupdir, newlen);
             if (!newd) {
-                logmsg(LOGMSG_ERROR, "%s: Cannot realloc backupdir newlen %d\n",
-                       __func__, newlen);
+                logmsg(LOGMSG_ERROR, "%s: Cannot realloc backupdir newlen %d\n", __func__, newlen);
                 goto cleanup;
             }
-            loc = newd + (loc - backupdir);
+            loc = newd + diff;
             backupdir = newd;
         }
         strcpy(loc, thedb->envname);
