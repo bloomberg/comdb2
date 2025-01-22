@@ -6917,6 +6917,8 @@ static int internal_peer_check(struct sqlclntstate *a)
 }
 void *internal_get_authdata(struct sqlclntstate *a)
 {
+    if (a->authdata)
+        return a->authdata;
     return NULL;
 }
 static int internal_local_check(struct sqlclntstate *a)
