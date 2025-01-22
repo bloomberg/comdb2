@@ -46,6 +46,7 @@ int bdb_num_connected_nodes(struct bdb_state_tag *);
 
 int gbl_verbose_master_req = 0;
 int gbl_trace_repmore_reqs = 0;
+extern int gbl_create_mode;
 
 /*
  * rep_util.c:
@@ -407,9 +408,11 @@ __rep_set_gen(dbenv, func, line, gen)
 	egen = rep->egen;
 	if (rep->egen <= gen)
 		egen = gen + 1;
-	logmsg(LOGMSG_USER,
-			"%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
-			func, line, rep->gen, gen, rep->egen, egen);
+	if (!gbl_create_mode) {
+		logmsg(LOGMSG_USER,
+				"%s line %d setting rep->gen from %d to %d, egen from %d to %d\n",
+				func, line, rep->gen, gen, rep->egen, egen);
+	}
 	rep->gen = gen;
 	rep->egen = egen;
 }
@@ -447,8 +450,10 @@ __rep_set_egen(dbenv, func, line, egen)
 	REP *rep;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	logmsg(LOGMSG_USER, "%s line %d setting rep->egen from %d to %d\n",
-			func, line, rep->egen, egen);
+	if (!gbl_create_mode) {
+		logmsg(LOGMSG_USER, "%s line %d setting rep->egen from %d to %d\n",
+				func, line, rep->egen, egen);
+	}
 	rep->egen = egen;
 }
 
@@ -471,8 +476,10 @@ __rep_set_log_gen(dbenv, func, line, log_gen)
 	REP *rep;
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
-	logmsg(LOGMSG_USER, "%s line %d setting rep->log_gen from %d to %d\n",
-			func, line, rep->log_gen, log_gen);
+	if (!gbl_create_mode) {
+		logmsg(LOGMSG_USER, "%s line %d setting rep->log_gen from %d to %d\n",
+				func, line, rep->log_gen, log_gen);
+	}
 	rep->log_gen = log_gen;
 }
 /*
