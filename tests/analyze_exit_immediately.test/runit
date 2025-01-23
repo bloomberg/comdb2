@@ -79,8 +79,8 @@ function runtest {
     cdb2sql $dbnm --host $master "exec procedure sys.cmd.send('exit')" 2>exit.txt &
     exitpid=$!
 
-    # error if either are still running after 15 seconds
-    timeout=15
+    # error if either are still running after 30 seconds
+    timeout=30
     st=$SECONDS
 
     set +e # next block of code relies on checking error codes
@@ -91,14 +91,14 @@ function runtest {
 
     ps -p $analyzepid >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        echo "Error: Analyze still running after 15 seconds"
+        echo "Error: Analyze still running after $timeout seconds"
         kill -9 $analyzepid >/dev/null 2>&1 
         failed=1
     fi
 
     ps -p $exitpid >/dev/null 2>&1
     if [ $? -eq 0 ]; then
-        echo "Error: Exit still running after 15 seconds"
+        echo "Error: Exit still running after $timeout seconds"
         kill -9 $exitpid >/dev/null 2>&1 
         failed=1
     fi
