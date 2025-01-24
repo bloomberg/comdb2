@@ -36,6 +36,8 @@
 #include <sys/poll.h>
 #include "debug_switches.h"
 #include "alias.h"
+#include "sc_version.h"
+
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
 extern int get_csc2_version_tran(const char *table, tran_type *tran);
@@ -118,7 +120,7 @@ typedef enum {
                                   data = no data
                                   does db use authentication? */
     ,
-    LLMETA_ACCESSCONTROL_TABLExNODE = 19  /* XXX Deprecated */
+    LLMETA_ACCESSCONTROL_TABLExNODE = 19 /* XXX Deprecated */
 
     ,
     LLMETA_SQLITE_STAT1_PREV_DONT_USE = 20 /* store previous sqlite-stat1 records- dont use this. */
@@ -176,7 +178,8 @@ typedef enum {
     LLMETA_LUA_SFUNC_FLAG = 54,
     LLMETA_NEWSC_REDO_GENID = 55, /* 55 + TABLENAME + GENID -> MAX-LSN */
     LLMETA_SCHEMACHANGE_STATUS_V2 = 56,
-    LLMETA_SCHEMACHANGE_LIST = 57, /* list of all sc-s in a uuid txh */
+    LLMETA_SCHEMACHANGE_STATUS_VERSIONED = 57,
+    LLMETA_SCHEMACHANGE_LIST = 58, /* list of all sc-s in a uuid txh */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -11336,30 +11339,42 @@ int bdb_del_view(tran_type *t, const char *view_name)
   coincide with the first 4 bytes of the rqid (fastseed) stored as the first
   member in old (7.0's) LLMETA_SCHEMACHANGE_STATUS payload.
 */
-static int buf_get_schemachange_key_type(void *p_buf, void *p_buf_end)
+static int buf_get_schemachange_key_type(void *p_buf, void *p_buf_end, int *version)
 {
     int first = 0;
 
-    if (p_buf >= p_buf_end) return -1;
+    if (p_buf >= p_buf_end)
+        return -1;
 
-    buf_get(&first, sizeof(first), p_buf, p_buf_end);
+    p_buf = (void *)buf_get(&first, sizeof(first), p_buf, p_buf_end);
 
+    if (first == SC_VERSIONED) {
+        buf_get(version, sizeof(int), p_buf, p_buf_end);
+        return LLMETA_SCHEMACHANGE_STATUS_VERSIONED;
+    }
     if (first > SC_INVALID && first < SC_LAST) {
         return LLMETA_SCHEMACHANGE_STATUS_V2;
     }
     return LLMETA_SCHEMACHANGE_STATUS;
 }
 
-void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
-                           void *p_buf_end)
+void *buf_get_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
 {
-    int sc_key_type = buf_get_schemachange_key_type(p_buf, p_buf_end);
+    int version = 0;
+    int sc_key_type = buf_get_schemachange_key_type(p_buf, p_buf_end, &version);
 
     switch (sc_key_type) {
+    case LLMETA_SCHEMACHANGE_STATUS_VERSIONED:
+        if (version < SC_MIN_VERSION || version > SC_VERSION) {
+            logmsg(LOGMSG_ERROR, "%s: unknown sc-version %d\n", __func__, version);
+            return NULL;
+        }
+        p_buf = p_buf + sizeof(int) + sizeof(int);
+        return buf_get_schemachange_versioned(s, (void *)p_buf, (void *)p_buf_end, version);
     case LLMETA_SCHEMACHANGE_STATUS:
         return buf_get_schemachange_v1(s, (void *)p_buf, (void *)p_buf_end);
     case LLMETA_SCHEMACHANGE_STATUS_V2:
-        return buf_get_schemachange_v2(s, (void *)p_buf, (void *)p_buf_end);
+        return buf_get_schemachange_versioned(s, (void *)p_buf, (void *)p_buf_end, 2);
     default:
         break;
     }

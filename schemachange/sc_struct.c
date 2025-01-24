@@ -16,6 +16,7 @@
 
 #include "schemachange.h"
 #include "sc_struct.h"
+#include "sc_version.h"
 #include "logmsg.h"
 #include "sc_csc2.h"
 #include "sc_schema.h"
@@ -132,7 +133,10 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     }
 }
 
-size_t schemachange_packed_size(struct schema_change_type *s)
+int gbl_sc_current_version = SC_VERSION;
+int gbl_sc_versioned = 1;
+
+size_t schemachange_packed_size(struct schema_change_type *s, int sc_version)
 {
     s->tablename_len = strlen(s->tablename) + 1;
     s->fname_len = strlen(s->fname) + 1;
@@ -161,6 +165,14 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->usedbtablevers) + sizeof(s->qdb_file_ver) +
         _partition_packed_size(&s->partition);
 
+    if (gbl_sc_versioned) {
+        s->packed_len += 8;
+
+        if (sc_version > 2) {
+            s->packed_len += sizeof(s->version_test);
+        }
+    }
+
     return s->packed_len;
 }
 
@@ -184,10 +196,25 @@ static void *buf_put_dests(struct schema_change_type *s, void *p_buf,
     return p_buf;
 }
 
-void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end, int version)
 {
+    int versioned = gbl_sc_versioned;
+    if (p_buf >= p_buf_end)
+        return NULL;
 
-    if (p_buf >= p_buf_end) return NULL;
+    if (versioned) {
+        if (version < SC_MIN_VERSION || version > SC_VERSION) {
+            logmsg(LOGMSG_ERROR, "%s: invalid version, %d\n", __func__, version);
+            return NULL;
+        }
+        int neg1 = -1;
+        p_buf = buf_put(&neg1, sizeof(neg1), p_buf, p_buf_end);
+        p_buf = buf_put(&version, sizeof(version), p_buf, p_buf_end);
+    }
+
+    if (versioned && version > 2) {
+        p_buf = buf_put(&s->version_test, sizeof(s->version_test), p_buf, p_buf_end);
+    }
 
     p_buf = buf_put(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
 
@@ -315,6 +342,50 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_bu
     }
 
     return p_buf;
+}
+
+int sc_version_test(void)
+{
+    int fail_count = 0;
+
+    for (int i = SC_MIN_VERSION - 1; i <= SC_VERSION + 1; i++) {
+        struct schema_change_type *s = new_schemachange_type();
+        s->version_test = i;
+        int packed_len = schemachange_packed_size(s, i);
+        uint8_t *buf = malloc(packed_len);
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = buf + packed_len;
+        p_buf = buf_put_schemachange(s, p_buf, p_buf_end, i);
+        if (!p_buf) {
+            if (i >= SC_MIN_VERSION && i <= SC_VERSION) {
+                logmsg(LOGMSG_ERROR, "Failed to pack version %d\n", i);
+                fail_count++;
+            }
+        } else {
+            struct schema_change_type unpacked = {0};
+            p_buf = buf;
+            p_buf = buf_get_schemachange(&unpacked, p_buf, p_buf_end);
+            if (i == 2) {
+                if (unpacked.version_test != -1) {
+                    logmsg(LOGMSG_ERROR, "Failed to unpack version %d\n", i);
+                    fail_count++;
+                }
+            }
+            if (i == 3) {
+                if (unpacked.version_test != 3) {
+                    logmsg(LOGMSG_ERROR, "Failed to unpack version %d\n", i);
+                    fail_count++;
+                }
+            }
+        }
+        free(buf);
+        free(s);
+    }
+    if (fail_count) {
+        logmsg(LOGMSG_ERROR, "%s: failed %d tests\n", __func__, fail_count);
+    }
+
+    return fail_count ? -1 : 0;
 }
 
 static const void *buf_get_dests(struct schema_change_type *s,
@@ -557,11 +628,18 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
     return p_buf;
 }
 
-void *buf_get_schemachange_v2(struct schema_change_type *s,
-                              void *p_buf, void *p_buf_end)
+void *buf_get_schemachange_versioned(struct schema_change_type *s, void *p_buf, void *p_buf_end, int version)
 {
 
-    if (p_buf >= p_buf_end) return NULL;
+    if (p_buf >= p_buf_end)
+        return NULL;
+
+    /* version_test is just for testing - I will remove when I use it */
+    if (version > 2) {
+        buf_get(&s->version_test, sizeof(s->version_test), p_buf, p_buf_end);
+    } else {
+        s->version_test = -1;
+    }
 
     p_buf = (uint8_t *)buf_get(&s->kind, sizeof(s->kind), p_buf, p_buf_end);
 
@@ -752,8 +830,9 @@ int pack_schema_change_type(struct schema_change_type *s, void **packed,
                             size_t *packed_len)
 {
 
+    int sc_version = gbl_sc_current_version;
     /* compute the length of our buffer */
-    *packed_len = schemachange_packed_size(s);
+    *packed_len = schemachange_packed_size(s, sc_version);
 
     /* grab memory for our buffer */
     *packed = malloc(*packed_len);
@@ -770,7 +849,7 @@ int pack_schema_change_type(struct schema_change_type *s, void **packed,
     uint8_t *p_buf_end = (p_buf + *packed_len);
 
     /* pack all the data */
-    p_buf = buf_put_schemachange(s, p_buf, p_buf_end);
+    p_buf = buf_put_schemachange(s, p_buf, p_buf_end, sc_version);
 
     if (p_buf != (uint8_t *)((char *)(*packed)) + *packed_len) {
         logmsg(LOGMSG_ERROR,
@@ -1198,8 +1277,9 @@ int schema_change_headers(struct schema_change_type *s)
 struct schema_change_type *
 clone_schemachange_type(struct schema_change_type *sc)
 {
+    int sc_version = gbl_sc_current_version;
     struct schema_change_type *newsc;
-    size_t sc_len = schemachange_packed_size(sc);
+    size_t sc_len = schemachange_packed_size(sc, sc_version);
     uint8_t *p_buf, *p_buf_end, *buf;
 
     p_buf = buf = calloc(1, sc_len);
@@ -1208,7 +1288,7 @@ clone_schemachange_type(struct schema_change_type *sc)
 
     p_buf_end = p_buf + sc_len;
 
-    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end, sc_version);
     if (!p_buf) {
         free(buf);
         return NULL;

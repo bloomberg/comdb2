@@ -806,19 +806,22 @@ static uint8_t *osqlcomm_schemachange_type_get(struct schema_change_type *sc,
     return tmp_buf;
 }
 
+extern int gbl_sc_current_version;
+
 static uint8_t *
 osqlcomm_schemachange_rpl_type_put(osql_rpl_t *hd,
                                    struct schema_change_type *sc,
                                    uint8_t *p_buf, uint8_t *p_buf_end)
 {
-    size_t sc_len = schemachange_packed_size(sc);
+    int sc_version = gbl_sc_current_version;
+    size_t sc_len = schemachange_packed_size(sc, sc_version);
 
     if (p_buf_end < p_buf ||
         OSQLCOMM_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = osqlcomm_rpl_type_put(hd, p_buf, p_buf_end);
-    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end, sc_version);
 
     return p_buf;
 }
@@ -828,14 +831,15 @@ osqlcomm_schemachange_uuid_rpl_type_put(osql_uuid_rpl_t *hd,
                                         struct schema_change_type *sc,
                                         uint8_t *p_buf, uint8_t *p_buf_end)
 {
-    size_t sc_len = schemachange_packed_size(sc);
+    int sc_version = gbl_sc_current_version;
+    size_t sc_len = schemachange_packed_size(sc, sc_version);
 
     if (p_buf_end < p_buf ||
         OSQLCOMM_UUID_RPL_TYPE_LEN + sc_len > (p_buf_end - p_buf))
         return NULL;
 
     p_buf = osqlcomm_uuid_rpl_type_put(hd, p_buf, p_buf_end);
-    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end, sc_version);
 
     return p_buf;
 }
@@ -8391,8 +8395,6 @@ netinfo_type *osql_get_netinfo(void)
 int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
                            uuid_t uuid, struct schema_change_type *sc, int type)
 {
-
-    schemachange_packed_size(sc);
     size_t osql_rpl_size =
         ((rqid == OSQL_RQID_USE_UUID) ? OSQLCOMM_UUID_RPL_TYPE_LEN
                                       : OSQLCOMM_RPL_TYPE_LEN) +
