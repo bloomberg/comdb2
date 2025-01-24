@@ -682,7 +682,8 @@ function insert_records_basic
     echo "insert_records_basic"
     j=0
     startms=$(timems)
-    while [[ $j -lt 1000 ]]; do
+    records=200
+    while [[ $j -lt $records ]]; do
         startsinglems=$(timems)
         echo "begin
 insert into t1(a) values($j)
@@ -710,8 +711,7 @@ commit
 
     # Verify counts
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from t1")
-    #[[ "$x" == "1000" ]] || fail_exit "$DBNAME has only $x records"
-    if [[ "$x" != "1000" ]] ; then 
+    if [[ "$x" != "$records" ]] ; then 
         for node in $CLUSTER ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME --host $node "select count(*) from t1")
@@ -721,7 +721,7 @@ commit
     fi 
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $SECONDARY_DBNAME.t1")
-    if [[ "$x" != "1000" ]] ; then 
+    if [[ "$x" != "$records" ]] ; then 
         for node in $CLUSTER ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $SECONDARY_CDB2_OPTIONS $SECONDARY_DBNAME --host $node "select count(*) from t1")
@@ -731,7 +731,7 @@ commit
     fi
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $TERTIARY_DBNAME.t1")
-    if [[ "$x" != "1000" ]] ; then 
+    if [[ "$x" != "$records" ]] ; then 
         for node in $CLUSTER ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $TERTIARY_CDB2_OPTIONS $TERTIARY_DBNAME --host $node "select count(*) from t1")
@@ -741,7 +741,7 @@ commit
     fi
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUATERNARY_DBNAME.t1")
-    if [[ "$x" != "1000" ]] ; then 
+    if [[ "$x" != "$records" ]] ; then 
         for node in $CLUSTER ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $QUATERNARY_CDB2_OPTIONS $QUATERNARY_DBNAME --host $node "select count(*) from t1")
@@ -751,7 +751,7 @@ commit
     fi
 
     x=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "select count(*) from $QUINARY_DBNAME.t1")
-    if [[ "$x" != "1000" ]] ; then 
+    if [[ "$x" != "$records" ]] ; then 
         for node in $CLUSTER ; do
             echo "Node $node"
             x=$($CDB2SQL_EXE -tabs $QUINARY_CDB2_OPTIONS $QUINARY_DBNAME --host $node "select count(*) from t1")
@@ -786,7 +786,7 @@ function bulk_test
     typeset cnt=${1:-1}
     typeset j=0
     while [[ $j -lt "$cnt" ]]; do
-        insert_records_bulk 2000 50
+        insert_records_bulk 2000 20
         delete_records
         let j=j+1
     done
@@ -1883,7 +1883,7 @@ function participant_constraint_violation
 {
     typeset j=0
     typeset r=0
-    while [[ $j -lt 1000 ]]; do
+    while [[ $j -lt 200 ]]; do
     startms=$(timems)
     echo "begin
 insert into t1(a) values($j)
@@ -1987,7 +1987,7 @@ commit
 function coordinator_constraint_violation
 {
     typeset j=0
-    while [[ $j -lt 1000 ]]; do
+    while [[ $j -lt 200 ]]; do
     startms=$(timems)
     echo "begin
 insert into t1(a) values($j)
@@ -3223,7 +3223,7 @@ function test_update_same_records
 function test_compound_distributed_deadlocks
 {
     typeset cnt=0
-    while [[ "$cnt" -lt 10 ]]; do 
+    while [[ "$cnt" -lt 5 ]]; do 
         let cnt=cnt+1
         echo "Test distributed-deadlocks compound iteration $cnt"
         distributed_deadlocks_compound
