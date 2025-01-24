@@ -20,6 +20,9 @@
 #include "sc_csc2.h"
 #include "sc_schema.h"
 #include "macc_glue.h"
+#include "schemachange.pb-c.h"
+#include "str0.h"
+#include "sc_version.h"
 
 /************ SCHEMACHANGE TO BUF UTILITY FUNCTIONS
  * *****************************/
@@ -181,6 +184,245 @@ static void *buf_put_dests(struct schema_change_type *s, void *p_buf,
         }
     }
 
+    return p_buf;
+}
+
+int gbl_sc_protobuf = 1;
+int gbl_sc_current_version = SC_VERSION;
+
+int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, size_t *sz)
+{
+    int32_t sc_version = gbl_sc_current_version;
+    CDB2Schemachange sc = CDB2__SCHEMACHANGE__INIT;
+
+    s->tablename_len = strlen(s->tablename) + 1;
+    s->fname_len = strlen(s->fname) + 1;
+    s->aname_len = strlen(s->aname) + 1;
+    s->spname_len = strlen(s->spname) + 1;
+    s->newcsc2_len = (s->newcsc2) ? strlen(s->newcsc2) + 1 : 0;
+    s->sc_version = sc.version = sc_version;
+
+    sc.kind = s->kind;
+    sc.rqid = s->rqid;
+    sc.uuid.data = s->uuid;
+    sc.uuid.len = sizeof(s->uuid);
+    sc.tablename = s->tablename;
+    sc.fname = s->fname;
+    sc.aname = s->aname;
+    sc.avgitemsz = s->avgitemsz;
+    sc.newdtastripe = s->newdtastripe;
+    sc.blobstripe = s->blobstripe;
+    sc.live = s->live;
+    sc.newcsc2.data = (uint8_t *)s->newcsc2;
+    sc.newcsc2.len = s->newcsc2_len;
+    sc.scanmode = s->scanmode;
+    sc.force_rebuild = s->force_rebuild;
+    sc.force_dta_rebuild = s->force_dta_rebuild;
+    sc.force_blob_rebuild = s->force_blob_rebuild;
+    sc.force = s->force;
+    sc.headers = s->headers;
+    sc.header_change = s->header_change;
+    sc.compress = s->compress;
+    sc.compress_blobs = s->compress_blobs;
+    sc.persistent_seq = s->persistent_seq;
+    sc.ip_updates = s->ip_updates;
+    sc.instant_sc = s->instant_sc;
+    sc.preempted = s->preempted;
+    sc.use_plan = s->use_plan;
+    sc.commit_sleep = s->commit_sleep;
+    sc.convert_sleep = s->convert_sleep;
+    sc.same_schema = s->same_schema;
+    sc.dbnum = s->dbnum;
+    sc.flg = s->flg;
+    sc.rebuild_index = s->rebuild_index;
+    sc.index_to_rebuild = s->index_to_rebuild;
+    sc.source_node = s->source_node;
+
+    sc.dests = malloc(sizeof(char *) * s->dests.count);
+    if (!sc.dests) {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
+        return -1;
+    }
+    struct dest *d;
+    int i;
+
+    for (i = 0, d = s->dests.top; d; d = d->lnk.next, i++) {
+        sc.dests[i] = d->dest;
+    }
+    sc.n_dests = s->dests.count;
+    sc.spname = s->spname;
+    sc.lua_func_flags = s->lua_func_flags;
+    sc.newtable = s->newtable;
+    sc.usedtablevers = s->usedbtablevers;
+    sc.qdb_file_ver = s->qdb_file_ver;
+    sc.partition_type = s->partition.type;
+    switch (s->partition.type) {
+    case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_MANUAL: {
+        sc.has_tpperiod = 1;
+        sc.has_tpretention = 1;
+        sc.has_tpstart = 1;
+        sc.tpperiod = s->partition.u.tpt.period;
+        sc.tpretention = s->partition.u.tpt.retention;
+        sc.tpstart = s->partition.u.tpt.start;
+        break;
+    }
+    case PARTITION_MERGE: {
+        sc.has_tpmergeversion = 1;
+        sc.tpmergetable = s->partition.u.mergetable.tablename;
+        sc.tpmergeversion = s->partition.u.mergetable.version;
+    }
+    }
+    /* if (sc_version > 3) {
+     *    sc.has_optional = 1;
+     *    sc.optional = 123;
+     * }
+     */
+
+    size_t psize = cdb2__schemachange__get_packed_size(&sc);
+    if (psize == 0) {
+        logmsg(LOGMSG_ERROR, "%s: packed size is invalid\n", __func__);
+        free(sc.dests);
+        return -1;
+    }
+
+    s->packed_len = *sz = (psize + sizeof(uint32_t) + sizeof(uint32_t));
+    unsigned char *buf = malloc(*sz);
+    if (!buf) {
+        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
+        free(sc.dests);
+        return -1;
+    }
+    int32_t *ibuf = (int32_t *)buf;
+
+    /* -1 (word 0) -> protobuf, word 1 -> size */
+    ibuf[0] = htonl(-1);
+    ibuf[1] = htonl(psize);
+    cdb2__schemachange__pack(&sc, (unsigned char *)&ibuf[2]);
+    *packed_sc = buf;
+    free(sc.dests);
+    return 0;
+}
+
+int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc, size_t *plen)
+{
+    int32_t *ibuf = (int32_t *)packed_sc;
+    if (ntohl(ibuf[0]) != -1) {
+        logmsg(LOGMSG_ERROR, "%s: invalid packed_sc\n", __func__);
+        return -1;
+    }
+    size_t len = ntohl(ibuf[1]);
+    *plen = len + sizeof(uint32_t) + sizeof(uint32_t);
+    CDB2Schemachange *sc = cdb2__schemachange__unpack(NULL, len, (const unsigned char *)&ibuf[2]);
+    if (!sc) {
+        logmsg(LOGMSG_ERROR, "%s: error unpacking sc\n", __func__);
+        return -1;
+    }
+
+    if (sc->version < SC_MIN_VERSION || sc->version > SC_VERSION) {
+        logmsg(LOGMSG_ERROR, "%s: invalid version %d: SC_MIN_VERSION=%d SC_VERSION=%d\n", __func__, sc->version,
+               SC_MIN_VERSION, SC_VERSION);
+        cdb2__schemachange__free_unpacked(sc, NULL);
+        return -1;
+    }
+
+    s->sc_version = sc->version;
+    s->kind = sc->kind;
+    s->rqid = sc->rqid;
+    if (sc->uuid.len > 0) {
+        memcpy(s->uuid, sc->uuid.data, sizeof(s->uuid));
+    } else {
+        bzero(s->uuid, sizeof(s->uuid));
+    }
+    strncpy0(s->tablename, sc->tablename, sizeof(s->tablename));
+    s->tablename_len = strlen(s->tablename) + 1;
+    strncpy0(s->fname, sc->fname, sizeof(s->fname));
+    s->fname_len = strlen(s->fname) + 1;
+    strncpy0(s->aname, sc->aname, sizeof(s->aname));
+    s->aname_len = strlen(s->aname) + 1;
+    s->avgitemsz = sc->avgitemsz;
+    s->newdtastripe = sc->newdtastripe;
+    s->blobstripe = sc->blobstripe;
+    s->live = sc->live;
+    if (sc->newcsc2.len) {
+        s->newcsc2_len = sc->newcsc2.len;
+        s->newcsc2 = malloc(s->newcsc2_len);
+        memcpy(s->newcsc2, sc->newcsc2.data, s->newcsc2_len);
+    } else {
+        s->newcsc2_len = 0;
+        s->newcsc2 = NULL;
+    }
+    s->scanmode = sc->scanmode;
+    s->force_rebuild = sc->force_rebuild;
+    s->force_dta_rebuild = sc->force_dta_rebuild;
+    s->force_blob_rebuild = sc->force_blob_rebuild;
+    s->force = sc->force;
+    s->headers = sc->headers;
+    s->header_change = sc->header_change;
+    s->compress = sc->compress;
+    s->compress_blobs = sc->compress_blobs;
+    s->persistent_seq = sc->persistent_seq;
+    s->ip_updates = sc->ip_updates;
+    s->instant_sc = sc->instant_sc;
+    s->preempted = sc->preempted;
+    s->use_plan = sc->use_plan;
+    s->commit_sleep = sc->commit_sleep;
+    s->convert_sleep = sc->convert_sleep;
+    s->same_schema = sc->same_schema;
+    s->dbnum = sc->dbnum;
+    s->flg = sc->flg;
+    s->rebuild_index = sc->rebuild_index;
+    s->index_to_rebuild = sc->index_to_rebuild;
+    strncpy(s->source_node, sc->source_node, sizeof(s->source_node));
+    listc_init(&s->dests, offsetof(struct dest, lnk));
+
+    for (int i = 0; i < sc->n_dests; i++) {
+        struct dest *d = malloc(sizeof(struct dest));
+        // dest:method:xyz -- drop 'dest:' pfx
+        char pfx[] = "dest:";
+        char *p = strncmp(sc->dests[i], pfx, strlen(pfx)) == 0 ? sc->dests[i] + strlen(pfx) : sc->dests[i];
+        d->dest = strdup(p);
+        listc_abl(&s->dests, d);
+    }
+
+    strncpy(s->spname, sc->spname, sizeof(s->spname));
+    s->spname[sizeof(s->spname) - 1] = '\0';
+    s->spname_len = strlen(s->spname) + 1;
+    s->lua_func_flags = sc->lua_func_flags;
+    strncpy(s->newtable, sc->newtable, sizeof(s->newtable));
+    s->newtable[sizeof(s->newtable) - 1] = '\0';
+    s->usedbtablevers = sc->usedtablevers;
+    s->qdb_file_ver = sc->qdb_file_ver;
+    s->partition.type = sc->partition_type;
+    switch (sc->partition_type) {
+    case PARTITION_ADD_TIMED:
+    case PARTITION_ADD_MANUAL: {
+        s->partition.u.tpt.period = sc->tpperiod;
+        s->partition.u.tpt.retention = sc->tpretention;
+        s->partition.u.tpt.start = sc->tpstart;
+        break;
+    }
+    case PARTITION_MERGE: {
+        strncpy(s->partition.u.mergetable.tablename, sc->tpmergetable, sizeof(s->partition.u.mergetable.tablename));
+        s->partition.u.mergetable.tablename[sizeof(s->partition.u.mergetable.tablename) - 1] = '\0';
+        s->partition.u.mergetable.version = sc->tpmergeversion;
+    }
+    }
+
+    return 0;
+}
+
+void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, void *p_buf_end)
+{
+    size_t plen = 0;
+    int rc = unpack_schema_change_protobuf(s, p_buf, &plen);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: failed to unpack schema change, rc=%d\n", __func__, rc);
+        return NULL;
+    }
+    p_buf += plen;
+    if (p_buf >= p_buf_end)
+        return NULL;
     return p_buf;
 }
 
@@ -554,6 +796,8 @@ void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
     else if (defaultsp)
         s->kind = SC_DEFAULTSP;
 
+    s->sc_version = 1;
+
     return p_buf;
 }
 
@@ -715,30 +959,215 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
     switch (s->partition.type) {
     case PARTITION_ADD_TIMED:
     case PARTITION_ADD_MANUAL: {
-        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.period,
-                                   sizeof(s->partition.u.tpt.period), p_buf,
-                                   p_buf_end);
-        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.retention,
-                                   sizeof(s->partition.u.tpt.retention), p_buf,
-                                   p_buf_end);
-        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.start,
-                                   sizeof(s->partition.u.tpt.start), p_buf,
-                                   p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.period, sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
+        p_buf =
+            (uint8_t *)buf_get(&s->partition.u.tpt.retention, sizeof(s->partition.u.tpt.retention), p_buf, p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.start, sizeof(s->partition.u.tpt.start), p_buf, p_buf_end);
         break;
     }
     case PARTITION_MERGE: {
         p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mergetable.tablename,
-                                          sizeof(s->partition.u.mergetable.tablename),
-                                          p_buf, p_buf_end);
-        p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version,
-                                   sizeof(s->partition.u.mergetable.version), p_buf,
+                                          sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version, sizeof(s->partition.u.mergetable.version), p_buf,
                                    p_buf_end);
         break;
     }
     }
 
+    s->sc_version = 2;
+
     return p_buf;
 }
+
+#ifdef DEBUG_PROTOBUF_SC
+void compare_scs(struct schema_change_type *s1, struct schema_change_type *s2)
+{
+    int diff_cnt = 0;
+    if (s1->kind != s2->kind) {
+        logmsg(LOGMSG_ERROR, "kind %d != %d\n", s1->kind, s2->kind);
+        diff_cnt++;
+    }
+    if (s1->rqid != s2->rqid) {
+        logmsg(LOGMSG_ERROR, "rqid %lld != %lld\n", s1->rqid, s2->rqid);
+        diff_cnt++;
+    }
+    if (memcmp(&s1->uuid, &s2->uuid, sizeof(uuid_t)) != 0) {
+        logmsg(LOGMSG_ERROR, "uuid mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->tablename_len != s2->tablename_len) {
+        logmsg(LOGMSG_ERROR, "tablename_len %ld != %ld\n", s1->tablename_len, s2->tablename_len);
+        diff_cnt++;
+    }
+    if (memcmp(s1->tablename, s2->tablename, s1->tablename_len) != 0) {
+        logmsg(LOGMSG_ERROR, "tablename mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->fname_len != s2->fname_len) {
+        logmsg(LOGMSG_ERROR, "fname_len %ld != %ld\n", s1->fname_len, s2->fname_len);
+        diff_cnt++;
+    }
+    if (memcmp(s1->fname, s2->fname, s1->fname_len) != 0) {
+        logmsg(LOGMSG_ERROR, "fname mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->aname_len != s2->aname_len) {
+        logmsg(LOGMSG_ERROR, "aname_len %ld != %ld\n", s1->aname_len, s2->aname_len);
+        diff_cnt++;
+    }
+    if (memcmp(s1->aname, s2->aname, s1->aname_len) != 0) {
+        logmsg(LOGMSG_ERROR, "aname mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->avgitemsz != s2->avgitemsz) {
+        logmsg(LOGMSG_ERROR, "avgitemsz %d != %d\n", s1->avgitemsz, s2->avgitemsz);
+        diff_cnt++;
+    }
+    if (s1->newdtastripe != s2->newdtastripe) {
+        logmsg(LOGMSG_ERROR, "newdtastripe %d != %d\n", s1->newdtastripe, s2->newdtastripe);
+        diff_cnt++;
+    }
+    if (s1->blobstripe != s2->blobstripe) {
+        logmsg(LOGMSG_ERROR, "blobstripe %d != %d\n", s1->blobstripe, s2->blobstripe);
+        diff_cnt++;
+    }
+    if (s1->live != s2->live) {
+        logmsg(LOGMSG_ERROR, "live %d != %d\n", s1->live, s2->live);
+        diff_cnt++;
+    }
+    if (s1->newcsc2_len != s2->newcsc2_len) {
+        logmsg(LOGMSG_ERROR, "newcsc2_len %ld != %ld\n", s1->newcsc2_len, s2->newcsc2_len);
+        diff_cnt++;
+    }
+    if (memcmp(s1->newcsc2, s2->newcsc2, s1->newcsc2_len) != 0) {
+        logmsg(LOGMSG_ERROR, "newcsc2 mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->scanmode != s2->scanmode) {
+        logmsg(LOGMSG_ERROR, "scanmode %d != %d\n", s1->scanmode, s2->scanmode);
+        diff_cnt++;
+    }
+    if (s1->delay_commit != s2->delay_commit) {
+        logmsg(LOGMSG_ERROR, "delay_commit %d != %d\n", s1->delay_commit, s2->delay_commit);
+        diff_cnt++;
+    }
+    if (s1->force_rebuild != s2->force_rebuild) {
+        logmsg(LOGMSG_ERROR, "force_rebuild %d != %d\n", s1->force_rebuild, s2->force_rebuild);
+        diff_cnt++;
+    }
+    if (s1->force_dta_rebuild != s2->force_dta_rebuild) {
+        logmsg(LOGMSG_ERROR, "force_dta_rebuild %d != %d\n", s1->force_dta_rebuild, s2->force_dta_rebuild);
+        diff_cnt++;
+    }
+    if (s1->force_blob_rebuild != s2->force_blob_rebuild) {
+        logmsg(LOGMSG_ERROR, "force_blob_rebuild %d != %d\n", s1->force_blob_rebuild, s2->force_blob_rebuild);
+        diff_cnt++;
+    }
+    if (s1->force != s2->force) {
+        logmsg(LOGMSG_ERROR, "force %d != %d\n", s1->force, s2->force);
+        diff_cnt++;
+    }
+    if (s1->headers != s2->headers) {
+        logmsg(LOGMSG_ERROR, "headers %d != %d\n", s1->headers, s2->headers);
+        diff_cnt++;
+    }
+    if (s1->header_change != s2->header_change) {
+        logmsg(LOGMSG_ERROR, "header_change %d != %d\n", s1->header_change, s2->header_change);
+        diff_cnt++;
+    }
+    if (s1->compress != s2->compress) {
+        logmsg(LOGMSG_ERROR, "compress %d != %d\n", s1->compress, s2->compress);
+        diff_cnt++;
+    }
+    if (s1->compress_blobs != s2->compress_blobs) {
+        logmsg(LOGMSG_ERROR, "compress_blobs %d != %d\n", s1->compress_blobs, s2->compress_blobs);
+        diff_cnt++;
+    }
+    if (s1->persistent_seq != s2->persistent_seq) {
+        logmsg(LOGMSG_ERROR, "persistent_seq %d != %d\n", s1->persistent_seq, s2->persistent_seq);
+        diff_cnt++;
+    }
+    if (s1->ip_updates != s2->ip_updates) {
+        logmsg(LOGMSG_ERROR, "ip_updates %d != %d\n", s1->ip_updates, s2->ip_updates);
+        diff_cnt++;
+    }
+    if (s1->instant_sc != s2->instant_sc) {
+        logmsg(LOGMSG_ERROR, "instant_sc %d != %d\n", s1->instant_sc, s2->instant_sc);
+        diff_cnt++;
+    }
+    if (s1->preempted != s2->preempted) {
+        logmsg(LOGMSG_ERROR, "preempted %d != %d\n", s1->preempted, s2->preempted);
+        diff_cnt++;
+    }
+    if (s1->use_plan != s2->use_plan) {
+        logmsg(LOGMSG_ERROR, "use_plan %d != %d\n", s1->use_plan, s2->use_plan);
+        diff_cnt++;
+    }
+    if (s1->commit_sleep != s2->commit_sleep) {
+        logmsg(LOGMSG_ERROR, "commit_sleep %d != %d\n", s1->commit_sleep, s2->commit_sleep);
+        diff_cnt++;
+    }
+    if (s1->convert_sleep != s2->convert_sleep) {
+        logmsg(LOGMSG_ERROR, "convert_sleep %d != %d\n", s1->convert_sleep, s2->convert_sleep);
+        diff_cnt++;
+    }
+    if (s1->same_schema != s2->same_schema) {
+        logmsg(LOGMSG_ERROR, "same_schema %d != %d\n", s1->same_schema, s2->same_schema);
+        diff_cnt++;
+    }
+    if (s1->dbnum != s2->dbnum) {
+        logmsg(LOGMSG_ERROR, "dbnum %d != %d\n", s1->dbnum, s2->dbnum);
+        diff_cnt++;
+    }
+    if (s1->flg != s2->flg) {
+        logmsg(LOGMSG_ERROR, "flg %d != %d\n", s1->flg, s2->flg);
+        diff_cnt++;
+    }
+    if (s1->rebuild_index != s2->rebuild_index) {
+        logmsg(LOGMSG_ERROR, "rebuild_index %d != %d\n", s1->rebuild_index, s2->rebuild_index);
+        diff_cnt++;
+    }
+    if (s1->index_to_rebuild != s2->index_to_rebuild) {
+        logmsg(LOGMSG_ERROR, "index_to_rebuild %d != %d\n", s1->index_to_rebuild, s2->index_to_rebuild);
+        diff_cnt++;
+    }
+    if (s1->dests.count != s2->dests.count) {
+        logmsg(LOGMSG_ERROR, "dests.count %d != %d\n", s1->dests.count, s2->dests.count);
+        diff_cnt++;
+    }
+    if (s1->spname_len != s2->spname_len) {
+        logmsg(LOGMSG_ERROR, "spname_len %ld != %ld\n", s1->spname_len, s2->spname_len);
+        diff_cnt++;
+    }
+    if (memcmp(s1->spname, s2->spname, s1->spname_len) != 0) {
+        logmsg(LOGMSG_ERROR, "spname mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->lua_func_flags != s2->lua_func_flags) {
+        logmsg(LOGMSG_ERROR, "lua_func_flags %d != %d\n", s1->lua_func_flags, s2->lua_func_flags);
+        diff_cnt++;
+    }
+    if (memcmp(s1->newtable, s2->newtable, sizeof(s1->newtable)) != 0) {
+        logmsg(LOGMSG_ERROR, "newtable mismatch\n");
+        diff_cnt++;
+    }
+    if (s1->usedbtablevers != s2->usedbtablevers) {
+        logmsg(LOGMSG_ERROR, "usedbtablevers %d != %d\n", s1->usedbtablevers, s2->usedbtablevers);
+        diff_cnt++;
+    }
+    if (s1->qdb_file_ver != s2->qdb_file_ver) {
+        logmsg(LOGMSG_ERROR, "qdb_file_ver %lld != %lld\n", s1->qdb_file_ver, s2->qdb_file_ver);
+        diff_cnt++;
+    }
+    if (s1->partition.type != s2->partition.type) {
+        logmsg(LOGMSG_ERROR, "partition.type %d != %d\n", s1->partition.type, s2->partition.type);
+        diff_cnt++;
+    }
+    if (diff_cnt > 0) {
+        logmsg(LOGMSG_ERROR, "schema_change_type mismatch - %d differences\n", diff_cnt);
+    }
+}
+#endif
 
 /*********************************************************************************/
 
@@ -748,9 +1177,27 @@ void *buf_get_schemachange_v2(struct schema_change_type *s,
  * Returns 0 if successful or <0 if failed.
  * packed is set to a pointer to the packed data and is owned by callee if this
  * function succeeds */
-int pack_schema_change_type(struct schema_change_type *s, void **packed,
-                            size_t *packed_len)
+int pack_schema_change_type(struct schema_change_type *s, void **packed, size_t *packed_len)
 {
+
+    int is_protobuf = gbl_sc_protobuf;
+
+    if (is_protobuf) {
+        int rc = pack_schema_change_protobuf(s, packed, packed_len);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "pack_schema_change_type: failed to pack schema change, rc %d\n", rc);
+            *packed_len = 0;
+        }
+#ifdef DEBUG_PROTOBUF_SC
+        else {
+            size_t len = *packed_len;
+            struct schema_change_type ck = {0};
+            unpack_schema_change_protobuf(&ck, *packed, &len);
+            compare_scs(s, &ck);
+        }
+#endif
+        return rc;
+    }
 
     /* compute the length of our buffer */
     *packed_len = schemachange_packed_size(s);
@@ -769,13 +1216,10 @@ int pack_schema_change_type(struct schema_change_type *s, void **packed,
     /* get the end */
     uint8_t *p_buf_end = (p_buf + *packed_len);
 
-    /* pack all the data */
     p_buf = buf_put_schemachange(s, p_buf, p_buf_end);
-
     if (p_buf != (uint8_t *)((char *)(*packed)) + *packed_len) {
-        logmsg(LOGMSG_ERROR,
-               "pack_schema_change_type: size of data written did not"
-               " equal precomputed size, this should not happen\n");
+        logmsg(LOGMSG_ERROR, "pack_schema_change_type: size of data written did not"
+                             " equal precomputed size, this should not happen\n");
         free(*packed);
         *packed = NULL;
         *packed_len = 0;
@@ -969,49 +1413,56 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
     }
 }
 
-void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable *db,
-                                   struct scinfo *scinfo, tran_type *tran)
+void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable *db, struct scinfo *scinfo,
+                                   tran_type *tran)
 {
     int rc;
 
     /* Get properties from meta */
     rc = get_db_odh_tran(db, &scinfo->olddb_odh, tran);
-    if (rc) scinfo->olddb_odh = 0;
+    if (rc)
+        scinfo->olddb_odh = 0;
 
     rc = get_db_compress_tran(db, &scinfo->olddb_compress, tran);
-    if (rc) scinfo->olddb_compress = 0;
+    if (rc)
+        scinfo->olddb_compress = 0;
 
     rc = get_db_compress_blobs_tran(db, &scinfo->olddb_compress_blobs, tran);
-    if (rc) scinfo->olddb_compress_blobs = 0;
+    if (rc)
+        scinfo->olddb_compress_blobs = 0;
 
     rc = get_db_inplace_updates_tran(db, &scinfo->olddb_inplace_updates, tran);
-    if (rc) scinfo->olddb_inplace_updates = 0;
+    if (rc)
+        scinfo->olddb_inplace_updates = 0;
 
     rc = get_db_instant_schema_change_tran(db, &scinfo->olddb_instant_sc, tran);
-    if (rc) scinfo->olddb_instant_sc = 0;
+    if (rc)
+        scinfo->olddb_instant_sc = 0;
 
     /* Set schema_change_type properties */
-    if (s->headers == -1) s->headers = db->odh;
+    if (s->headers == -1)
+        s->headers = db->odh;
 
-    if (s->compress == -1) s->compress = scinfo->olddb_compress;
+    if (s->compress == -1)
+        s->compress = scinfo->olddb_compress;
 
     if (s->compress_blobs == -1)
         s->compress_blobs = scinfo->olddb_compress_blobs;
 
-    if (s->ip_updates == -1) s->ip_updates = scinfo->olddb_inplace_updates;
+    if (s->ip_updates == -1)
+        s->ip_updates = scinfo->olddb_inplace_updates;
 
-    if (s->instant_sc == -1) s->instant_sc = scinfo->olddb_instant_sc;
+    if (s->instant_sc == -1)
+        s->instant_sc = scinfo->olddb_instant_sc;
 }
 
-void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
-                              struct scinfo *scinfo)
+void set_schemachange_options(struct schema_change_type *s, struct dbtable *db, struct scinfo *scinfo)
 {
     set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
 /* helper function to reload csc2 schema */
-static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
-                              const char *csc2, char *table)
+static int reload_csc2_schema(struct dbtable *db, tran_type *tran, const char *csc2, char *table)
 {
     int bdberr;
     void *old_bdb_handle, *new_bdb_handle;
@@ -1020,8 +1471,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     int rc;
 
     struct errstat err = {0};
-    newdb = create_new_dbtable(thedb, table, (char *)csc2, db->dbnum, 1, 1, 0,
-                               &err);
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, db->dbnum, 1, 1, 0, &err);
 
     if (newdb == NULL) {
         /* shouldn't happen */
@@ -1195,23 +1645,31 @@ int schema_change_headers(struct schema_change_type *s)
     return s->header_change;
 }
 
-struct schema_change_type *
-clone_schemachange_type(struct schema_change_type *sc)
+struct schema_change_type *clone_schemachange_type(struct schema_change_type *sc)
 {
+    int is_protobuf = gbl_sc_protobuf, rc;
     struct schema_change_type *newsc;
-    size_t sc_len = schemachange_packed_size(sc);
-    uint8_t *p_buf, *p_buf_end, *buf;
+    size_t sc_len = 0;
+    uint8_t *p_buf = NULL, *p_buf_end = NULL, *buf = NULL;
 
-    p_buf = buf = calloc(1, sc_len);
-    if (!p_buf)
-        return NULL;
+    if (is_protobuf) {
+        rc = pack_schema_change_protobuf(sc, (void **)&buf, &sc_len);
+        if (rc != 0) {
+            return NULL;
+        }
+    } else {
+        sc_len = schemachange_packed_size(sc);
+        p_buf = buf = calloc(1, sc_len);
+        if (!p_buf)
+            return NULL;
 
-    p_buf_end = p_buf + sc_len;
+        p_buf_end = p_buf + sc_len;
 
-    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
-    if (!p_buf) {
-        free(buf);
-        return NULL;
+        p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+        if (!p_buf) {
+            free(buf);
+            return NULL;
+        }
     }
 
     newsc = new_schemachange_type();
@@ -1220,8 +1678,24 @@ clone_schemachange_type(struct schema_change_type *sc)
         return NULL;
     }
 
-    p_buf = buf;
-    p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
+    if (is_protobuf) {
+        size_t plen;
+        rc = unpack_schema_change_protobuf(newsc, buf, &plen);
+        if (rc != 0) {
+            free_schema_change_type(newsc);
+            free(buf);
+            return NULL;
+        }
+        p_buf = p_buf_end = buf + plen;
+    } else {
+        p_buf = buf;
+        p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
+        if (!p_buf) {
+            free_schema_change_type(newsc);
+            free(buf);
+            return NULL;
+        }
+    }
 
     newsc->nothrevent = sc->nothrevent;
     newsc->pagesize = sc->pagesize;

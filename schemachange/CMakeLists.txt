@@ -17,11 +17,17 @@ add_library(schemachange
   sc_util.c
   sc_view.c
   schemachange.c
+  ${PROJECT_BINARY_DIR}/protobuf/schemachange.pb-c.c
 )
 
 set(module schemachange)
 set(MODULE SCHEMACHANGE)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_schemachange.h @ONLY)
+
+set_source_files_properties(
+    ${PROJECT_BINARY_DIR}/protobuf/schemachange.pb-c.c
+    PROPERTIES GENERATED TRUE
+)
 
 include_directories(
   ${PROJECT_SOURCE_DIR}
@@ -48,8 +54,9 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/build/berkdb
   ${PROJECT_SOURCE_DIR}/build/bdb
   ${PROJECT_SOURCE_DIR}/berkdb
-  ${OPENSSL_INCLUDE_DIR}
+  ${PROJECT_BINARY_DIR}/protobuf
   ${PROTOBUF-C_INCLUDE_DIR}
+  ${OPENSSL_INCLUDE_DIR}
 )
 add_dependencies(schemachange mem proto bdb)
 if (COMDB2_BBCMAKE)
