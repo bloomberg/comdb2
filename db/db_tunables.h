@@ -16,6 +16,9 @@
 
 #ifndef _DB_TUNABLES_H
 #define _DB_TUNABLES_H
+
+#include <sc_version.h>
+#define STR(x) #x
 /*
   We need this guard to avoid accidental inclusion of this file
   at multiple places.
@@ -2385,6 +2388,10 @@ REGISTER_TUNABLE("wal_osync", "Open WAL files using the O_SYNC flag (Default: of
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_headroom", "Percentage threshold for low headroom calculation. (Default: 10)", TUNABLE_DOUBLE,
                  &gbl_sc_headroom, INTERNAL | SIGNED, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_protobuf", "Enable protobuf schema change object (Default: on)", TUNABLE_BOOLEAN, &gbl_sc_protobuf,
+                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sc_current_version", "Current schema-change version (Default: " STR(SC_VERSION) ")", TUNABLE_INTEGER,
+                 &gbl_sc_current_version, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdb_incoherence_percentage", "Generate random incoherent errors in remsql", TUNABLE_INTEGER,
                  &gbl_fdb_incoherence_percentage, INTERNAL, NULL, percent_verify, NULL, NULL);
 REGISTER_TUNABLE("fdb_socket_timeout_ms", "Timeout ms for fdb communications.  (Default: 10000)", TUNABLE_INTEGER,

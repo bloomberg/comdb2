@@ -90,6 +90,7 @@ struct timepart_view;
 
 /* in sync with do_schema_change_if */
 enum schema_change_kind {
+    SC_PROTOBUF = -1,
     SC_INVALID = 0,
     SC_LEGACY_QUEUE = 1,
     SC_LEGACY_MORESTRIPE = 2,
@@ -289,6 +290,7 @@ struct schema_change_type {
 
     int (*publish)(tran_type *, struct schema_change_type *);
     void (*unpublish)(struct schema_change_type *);
+    uint32_t sc_version;
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
@@ -423,12 +425,15 @@ void cleanup_strptr(char **schemabuf);
 
 void free_schema_change_type(struct schema_change_type *s);
 
-void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
-                           void *p_buf_end);
-void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
-                           void *p_buf_end);
-void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf,
-                              void *p_buf_end);
+int pack_schema_change_protobuf(struct schema_change_type *s, void **packed_sc, size_t *packed_len);
+int unpack_schema_change_protobuf(struct schema_change_type *s, void *packed_sc, size_t *plen);
+
+void *buf_put_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end);
+void *buf_get_schemachange(struct schema_change_type *s, void *p_buf, void *p_buf_end);
+
+void *buf_put_schemachange_protobuf(struct schema_change_type *s, void *p_buf, void *p_buf_end);
+void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, void *p_buf_end);
+void *buf_get_schemachange_v1(struct schema_change_type *s, void *p_buf, void *p_buf_end);
 void *buf_get_schemachange_v2(struct schema_change_type *s, void *p_buf,
                               void *p_buf_end);
 /* This belong into sc_util.h */
