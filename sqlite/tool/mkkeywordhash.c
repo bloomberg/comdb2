@@ -647,7 +647,7 @@ int main(int argc, char **argv){
   printf("};\n");
 
   printf("/* aKWHash[i] is the hash value for the i-th keyword */\n");
-  printf("static const unsigned char aKWHash[%d] = {\n", bestSize);
+  printf("static const unsigned short aKWHash[%d] = {\n", bestSize);
   for(i=j=0; i<bestSize; i++){
     if( j==0 ) printf("  ");
     printf(" %3d,", aKWHash[i]);
@@ -662,7 +662,7 @@ int main(int argc, char **argv){
   printf("/* aKWNext[] forms the hash collision chain.  If aKWHash[i]==0\n");
   printf("** then the i-th keyword has no more hash collisions.  Otherwise,\n");
   printf("** the next keyword with the same hash is aKWHash[i]-1. */\n");
-  printf("static const unsigned char aKWNext[%d] = {\n", nKeyword);
+  printf("static const unsigned short aKWNext[%d] = {\n", nKeyword);
   for(i=j=0; i<nKeyword; i++){
     if( j==0 ) printf("  ");
     printf(" %3d,", aKeywordTable[i].iNext);
@@ -702,7 +702,7 @@ int main(int argc, char **argv){
   printf("%s};\n", j==0 ? "" : "\n");
 
   printf("/* aKWCode[i] is the parser symbol code for the i-th keyword */\n");
-  printf("static const unsigned char aKWCode[%d] = {\n", nKeyword);
+  printf("static const unsigned short aKWCode[%d] = {\n", nKeyword);
   for(i=j=0; i<nKeyword; i++){
     char *zToken = aKeywordTable[i].zTokenType;
     if( j==0 ) printf("  ");
