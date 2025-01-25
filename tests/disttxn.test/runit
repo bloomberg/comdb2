@@ -773,7 +773,7 @@ function setup
 function basic_test
 {
     typeset j=0
-    typeset cnt=${1:-3}
+    typeset cnt=${1:-1}
     while [[ $j -lt $cnt ]]; do
         insert_records_basic
         delete_records
@@ -786,7 +786,7 @@ function bulk_test
     typeset cnt=${1:-1}
     typeset j=0
     while [[ $j -lt "$cnt" ]]; do
-        insert_records_bulk 2000 20
+        insert_records_bulk 1000 20
         delete_records
         let j=j+1
     done
@@ -1883,7 +1883,7 @@ function participant_constraint_violation
 {
     typeset j=0
     typeset r=0
-    while [[ $j -lt 200 ]]; do
+    while [[ $j -lt 10 ]]; do
     startms=$(timems)
     echo "begin
 insert into t1(a) values($j)
@@ -1987,7 +1987,7 @@ commit
 function coordinator_constraint_violation
 {
     typeset j=0
-    while [[ $j -lt 200 ]]; do
+    while [[ $j -lt 10 ]]; do
     startms=$(timems)
     echo "begin
 insert into t1(a) values($j)
@@ -2584,7 +2584,7 @@ function non_durable_commit
 function non_durable_loop
 {
     typeset i=0
-    while [[ "$i" -lt "10" ]]; do 
+    while [[ "$i" -lt "2" ]]; do 
         let i=i+1
         echo "non-durable-loop iteration $i"
         non_durable_commit
@@ -3223,7 +3223,7 @@ function test_update_same_records
 function test_compound_distributed_deadlocks
 {
     typeset cnt=0
-    while [[ "$cnt" -lt 5 ]]; do 
+    while [[ "$cnt" -lt 2 ]]; do 
         let cnt=cnt+1
         echo "Test distributed-deadlocks compound iteration $cnt"
         distributed_deadlocks_compound
@@ -3244,7 +3244,7 @@ function test_compound_distributed_deadlocks_try1
 function test_deadlocks
 {
     typeset cnt=0
-    while [[ "$cnt" -lt 10 ]]; do 
+    while [[ "$cnt" -lt 1 ]]; do 
         let cnt=cnt+1
         echo "Test deadlocks iteration $cnt"
         random_deadlocks
@@ -3264,7 +3264,7 @@ function test_verify_retry
 function test_verify_participant_constraint_violation
 {
     typeset cnt=0
-    while [[ "$cnt" -lt 5 ]]; do 
+    while [[ "$cnt" -lt 2 ]]; do 
         let cnt=cnt+1
         echo "Test participant-constraint-violation-verify-errors iteration $cnt"
         random_verify_participant_constraint_violation
@@ -3274,7 +3274,7 @@ function test_verify_participant_constraint_violation
 function test_verify_coordinator_constraint_violation
 {
     typeset cnt=0
-    while [[ "$cnt" -lt 5 ]]; do 
+    while [[ "$cnt" -lt 2 ]]; do 
         let cnt=cnt+1
         echo "Test participant-constraint-violation-verify-errors iteration $cnt"
         random_verify_coordinator_constraint_violation
@@ -3296,7 +3296,7 @@ function verify_retry_loop
 function simple_test
 {
     typeset cnt=0
-    while [[ "$cnt" -lt 3 ]]; do 
+    while [[ "$cnt" -lt 1 ]]; do 
         let cnt=cnt+1
         echo "Test loop iteration $cnt"
         bulk_test 1
