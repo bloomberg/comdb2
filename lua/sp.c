@@ -7254,22 +7254,12 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if ((rc = get_spname(clnt, spname, &end_ptr, err)) != 0)
         return rc;
 
-    struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (strncmp(spname, "comdb2_legacy_", 14) == 0)
         return exec_comdb2_legacy(thd, clnt, err, end_ptr);
 
     if (strcmp(spname, "debug") == 0) {
         debug_sp(clnt);
         return 0;
-    }
-
-    // Use () to differentiate between tablename and spname
-    snprintf(spfunc, sizeof(spfunc), "%s()", spname);
-
-    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
-        (*err) = strdup("Read access denied for the stored procedure");
-        return SQLITE_ACCESS;
     }
 
     if ((rc = setup_sp_int(spname, thd, clnt, trigger, &new_vm, err)) != 0) return rc;
@@ -7304,6 +7294,16 @@ static int exec_procedure_int(struct sqlthdstate *thd,
 
     if (trigger || consumer)
         clnt->current_user.bypass_auth = 1;
+
+    struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
+
+    // Use () to differentiate between tablename and spname
+    snprintf(spfunc, sizeof(spfunc), "%s()", spname);
+
+    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
+        (*err) = strdup("Read access denied for the stored procedure");
+        return SQLITE_ACCESS;
+    }
 
     if (gbl_is_physical_replicant && consumer) {
         rc = -3;
