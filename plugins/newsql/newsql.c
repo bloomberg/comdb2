@@ -1665,6 +1665,29 @@ int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
         return 1;
 }
 
+int partition_extract_dbnames(char *sql, char **dbnames, const char *fc)
+{
+    char *strt= skipws(sql);
+    char *crt = strt;
+    int i = 0;
+    do {
+        while (crt[0] != ' ' && crt[0] != '\0') crt++;
+
+        int len = crt - strt + 1;
+
+        dbnames[i] = malloc(len);
+        if (!dbnames[i])
+            return -1;
+
+        snprintf(dbnames[i], len, "%s", strt);
+
+        strt = skipws(crt);
+        crt = strt;
+    } while (++i < 4);
+
+    return 0;
+}
+
 int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -2085,10 +2108,23 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 } else {
                     rc = ii + 1;
                 }
+            } else if (strncasecmp(sqlstr, "PARTITION NAME ", 15) == 0) {
+                if (snprintf(clnt->remsql_set.tablename, sizeof(clnt->remsql_set.tablename), "%s", &sqlstr[15])
+                    >= sizeof(clnt->remsql_set.tablename)) {
+                    snprintf(err, sizeof(err), "partition name too long");
+                    rc = ii + 1;
+                }
+                clnt->remsql_set.is_remsql = IS_REMCREATE;
+            } else if (strncasecmp(sqlstr, "PARTITION DBS ", 14) == 0) {
+                rc = partition_extract_dbnames(&sqlstr[14], clnt->remsql_set.dbnames, __func__);
+                if (rc) {
+                    snprintf(err, sizeof(err), "failed to extract dbnames");
+                    rc = ii + 1;
+                }
             } else if (strncasecmp(sqlstr, "remsql_", 7) == 0) {
                 sqlstr += 7;
 
-                clnt->remsql_set.is_remsql = 1;
+                clnt->remsql_set.is_remsql = IS_REMSQL;
                 if (process_fdb_set_cdb2api(clnt, sqlstr, err, sizeof(err))) {
                     rc = ii + 1;
                 }

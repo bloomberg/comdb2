@@ -1804,9 +1804,9 @@ int osql_dbq_consume_logic(struct sqlclntstate *clnt, const char *spname,
 * Returns SQLITE_OK if successful.
 *
 */
-int osql_schemachange_logic(struct schema_change_type *sc,
-                            struct sql_thread *thd, int usedb)
+int osql_schemachange_logic(struct schema_change_type *sc, int usedb)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &clnt->osql;
     int restarted;
@@ -1826,6 +1826,23 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         hash_find_readonly(clnt->dml_tables, sc->tablename)) {
         return SQLITE_DDL_MISUSE;
     }
+
+    if (clnt->remsql_set.is_remsql == IS_REMCREATE) {
+        /* this is a distributed create for a partition, creating individual shard here, info passed from
+         * SET OPTIONS through clnt struct
+         */
+        /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        sc->partition.type = PARTITION_ADD_TESTGENSHARD;
+        snprintf(sc->partition.u.testgenshard.tablename, sizeof(sc->partition.u.testgenshard.tablename),
+                 "%s", clnt->remsql_set.tablename);
+        sc->partition.u.testgenshard.dbnames = malloc(sizeof(char*) * 4);
+        int i;
+        for (i = 0; i < 4; i++) {
+            sc->partition.u.testgenshard.dbnames[i] = strdup(clnt->remsql_set.dbnames[i]);
+        }
+        /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    }
+
     if (clnt->ddl_tables) {
         if (hash_find_readonly(clnt->ddl_tables, sc->tablename)) {
             return SQLITE_DDL_MISUSE;

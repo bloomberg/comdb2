@@ -62,6 +62,7 @@
 #include "bdb_schemachange.h"
 
 #include "fdb_whitelist.h"
+#include "schemachange.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
@@ -313,6 +314,11 @@ void _fdb_clear_clnt_node_affinities(sqlclntstate *clnt);
 static int _get_protocol_flags(sqlclntstate *clnt, fdb_t *fdb,
                                int *flags);
 static int _validate_existing_table(fdb_t *fdb, int cls, int local);
+
+int fdb_get_remote_version(const char *dbname, const char *table,
+                           enum mach_class class, int local,
+                           unsigned long long *version,
+                           struct errstat *err);
 
 /**************  FDB OPERATIONS ***************/
 
@@ -657,6 +663,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
     unsigned long long remote_version;
     fdb_tbl_t *table;
     int rc = FDB_NOERR;
+    struct errstat err = {0};
 
     *status = TABLE_MISSING;
 
@@ -673,7 +680,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
             if (comdb2_get_verify_remote_schemas()) {
                 /* this is a retry for an already */
                 rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class,
-                                            fdb->loc == NULL, &remote_version);
+                                            fdb->loc == NULL, &remote_version, &err);
                 if (rc == FDB_NOERR) {
                     if (table->version != remote_version) {
                         logmsg(LOGMSG_WARN, "Remote table %s.%s new version is "
@@ -688,6 +695,8 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
                         *version = table->version;
                     }
                 } else {
+                    logmsg(LOGMSG_ERROR, "Lookup table %s failed \"%s\"\n",
+                           table_name, err.errstr);
                     return FDB_ERR_GENERIC;
                 }
             } else {
@@ -2441,6 +2450,31 @@ static void _cursor_set_common(fdb_cursor_if_t *fdbc_if, char *tid, int flags,
     fdbc->intf = fdbc_if;
 }
 
+cdb2_hndl_tp* fdb_connect(const char *dbname, enum mach_class inclass, int local,
+                          const char **outclass, int flags)
+{
+    cdb2_hndl_tp *hndl = NULL;
+    int rc;
+
+    if (local)
+        *outclass = "local";
+    else
+        *outclass = mach_class_class2name(inclass);
+
+    if (gbl_foreign_metadb_config) {
+        cdb2_set_comdb2db_info(gbl_foreign_metadb_config);
+    }
+
+    rc = cdb2_open(&hndl, dbname, *outclass, flags);
+    if (rc || !hndl) {
+        logmsg(LOGMSG_ERROR, "%s: failed to open remote db %s:%s rc %d\n",
+               __func__, dbname, *outclass, rc);
+        return NULL;
+    }
+
+    return hndl;
+}
+
 static fdb_cursor_if_t *_cursor_open_remote_cdb2api(sqlclntstate *clnt,
                                                     fdb_t *fdb, int server_version,
                                                     int flags, int version,
@@ -2477,17 +2511,11 @@ static fdb_cursor_if_t *_cursor_open_remote_cdb2api(sqlclntstate *clnt,
 
     _cursor_set_common(fdbc_if, NULL, flags, use_ssl);
 
-    if (fdb->local)
-        class = "local";
-    else
-        class = mach_class_class2name(fdb->class);
 
-    rc = cdb2_open(&fdbc->fcon.api.hndl, fdb->dbname, class, CDB2_SQL_ROWS);
-    if (rc || !fdbc->fcon.api.hndl) {
-        logmsg(LOGMSG_ERROR, "%s: failed to open remote db %s:%s rc %d\n",
-               __func__, fdb->dbname, class, rc);
+    fdbc->fcon.api.hndl = fdb_connect(fdb->dbname, fdb->class, fdb->local, &class,
+                                      CDB2_SQL_ROWS);
+    if (!fdbc->fcon.api.hndl)
         goto error;
-    }
 
     /* SET parameters for remsql */
     /* NOTE: a remote server that does not support yet cdb2api protocol
@@ -5318,32 +5346,20 @@ int fdb_cursor_need_ssl(fdb_cursor_if_t *cur)
  */
 int fdb_get_remote_version(const char *dbname, const char *table,
                            enum mach_class class, int local,
-                           unsigned long long *version)
+                           unsigned long long *version,
+                           struct errstat *err)
 {
     char *sql = NULL;
     cdb2_hndl_tp *db;
     int rc;
     const char *location;
-    int flags;
-
-    if (local) {
-        location = "localhost";
-        flags = CDB2_DIRECT_CPU;
-    } else {
-        location = mach_class_class2name(class);
-        flags = 0;
-    }
-
-    if (gbl_foreign_metadb_config) {
-        cdb2_set_comdb2db_info(gbl_foreign_metadb_config);
-    }
 
     sql = sqlite3_mprintf("select table_version('%q')", table);
     if (sql == NULL)
         return FDB_ERR_MALLOC;
 
-    rc = cdb2_open(&db, dbname, location, flags);
-    if (rc) {
+    db = fdb_connect(dbname, class, local, &location, 0);
+    if (!db) {
         sqlite3_free(sql);
         return FDB_ERR_GENERIC;
     }
@@ -5361,12 +5377,19 @@ int fdb_get_remote_version(const char *dbname, const char *table,
             *version = *(unsigned long long *)cdb2_column_value(db, 0);
             rc = FDB_NOERR;
             break;
-        default:
+        case CDB2_CSTRING:
+            errstat_set_rcstrf(err, rc = FDB_ERR_FDB_TBL_NOTFOUND, "table not found");
+            break;
+        default: {
+            const char *errstr = cdb2_errstr(db);
+            errstat_set_rcstrf(err, rc, errstr ? errstr : "no err string");
             rc = FDB_ERR_GENERIC;
             break;
         }
-    } else
+        }
+    } else {
         rc = FDB_ERR_GENERIC;
+    }
 
 done:
     cdb2_close(db);
@@ -6147,3 +6170,244 @@ int fdb_check_class_match(fdb_t *fdb, int local, enum mach_class class,
     }
     return 0;
 }
+
+static fdb_push_connector_t *fdb_push_connector_create(const char *dbname,
+                                                       const char *tblname,
+                                                       enum mach_class class,
+                                                       int local, int override,
+                                                       enum ast_type type)
+{
+    int created = 0;
+    unsigned long long remote_version;
+    struct errstat err = {0};
+
+    /* remote fdb */
+    fdb_t *fdb = new_fdb(dbname, &created, class, local, override);
+    if (!fdb)
+        return NULL;
+
+    int rc = fdb_get_remote_version(fdb->dbname, tblname, fdb->class, local, &remote_version, &err);
+    switch (rc) {
+        case FDB_NOERR:
+            logmsg(LOGMSG_ERROR, "Table %s already exists, ver %llu\n", tblname, remote_version);
+            if (type == AST_TYPE_CREATE)
+                return NULL;
+            /* for drop, this is not error */
+        case FDB_ERR_FDB_TBL_NOTFOUND:
+            break; /* good */
+        default:
+            logmsg(LOGMSG_ERROR, "Lookup table %s failed rd %d err %d \"%s\"\n",
+                   tblname, rc, err.errval, err.errstr);
+            return NULL;
+    }
+
+    fdb_push_connector_t * push = fdb_push_create(dbname, class, override, local, type);
+    return push;
+}
+
+
+static int _running_dist_ddl(struct schema_change_type *sc, char **errmsg, int nshards,
+                             char **dbnames, char **shardnames, char **tiers,
+                             char **sqls, enum ast_type type) 
+{
+    struct errstat err = {0};
+    int i;
+    fdb_push_connector_t **pushes;
+    int rc;
+
+    sqlclntstate *clnt = get_sql_clnt();
+    if(!clnt) {
+        logmsg(LOGMSG_ERROR, "%s Clnt not found, bug, aborting!\n", __func__);
+        abort();
+    }
+
+    *errmsg = "";
+
+    pushes = (fdb_push_connector_t**)alloca(nshards * sizeof(fdb_push_connector_t*));
+    bzero(pushes, nshards * sizeof(fdb_push_connector_t*));
+
+    /* create create sql statements */
+    for(i = 0; i < nshards; i++) {
+        if (strncasecmp(thedb->envname, dbnames[i], strlen(thedb->envname))) {
+            int local = (strncasecmp(tiers[i], "local", 6) == 0) ||
+                        (strncasecmp(tiers[i], gbl_myhostname, strlen(gbl_myhostname)) + 1);
+            pushes[i] = fdb_push_connector_create(dbnames[i], type == AST_TYPE_CREATE ?
+                                                  shardnames[i] : sc->partition.u.testgenshard.tablename,
+                                                  get_mach_class(tiers[i]), local, 1,
+                                                  type);
+            if (!pushes[i]) {
+                logmsg(LOGMSG_ERROR, "%s malloc shard push %d\n", __func__, i);
+                goto setup_error;
+            }
+        }
+    }
+
+    /* "begin" */
+    clnt->in_client_trans = 1;
+    rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to start dtransaction rc %d\n", rc);
+        goto setup_error;
+    }
+
+    const char *str[2];
+    int strl[2];
+    char *extra_set[2];
+
+    str[0] = "SET PARTITION NAME ";
+    strl[0] = strlen(str[0]) + strlen(sc->tablename) + 1;
+    str[1] = "SET PARTITION DBS ";
+    strl[1] = strlen(str[1]) + 1;
+    for (i = 0; i < nshards; i++)
+        strl[1] += strlen(dbnames[i]) + 1;
+
+    extra_set[0] = alloca(strl[0]);
+    extra_set[1] = alloca(strl[1]);
+
+    snprintf(extra_set[0], strl[0], "%s%s", str[0], sc->tablename);
+    int pos = snprintf(extra_set[1], strl[1], "%s", str[1]);
+    for (i = 0; i < nshards; i++)
+        pos += snprintf(&extra_set[1][pos], strl[1] - pos, "%s ", dbnames[i]);
+
+    /* start the transaction */
+    for(i = 0; i < nshards; i++) {
+        clnt->fdb_push = pushes[i];
+        char *sql = clnt->sql;
+        clnt->sql = sqls[i];
+        do {
+            if (!pushes[i]) {
+                /* this server */
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+                snprintf(sc->partition.u.testgenshard.tablename, sizeof(sc->tablename), "%s", sc->tablename);
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+                snprintf(sc->tablename, sizeof(sc->tablename), "%s", shardnames[i]);
+                rc = osql_schemachange_logic(sc, 0);
+            } else {
+                /* remote */
+                rc = handle_fdb_push_write(clnt, &err, 2, (const char **)&extra_set);
+            }
+        } while (0);
+        clnt->sql = sql;
+        clnt->fdb_push = NULL;
+        if (rc) {
+            if (!pushes[i])
+                logmsg(LOGMSG_ERROR, "Failed to start txn locally rc %d\n", rc);
+            else
+                logmsg(LOGMSG_ERROR, "Failed run create ddl %s rc %d err %s\n",
+                       dbnames[i], rc, err.errstr);
+            goto abort;
+        }  else if (pushes[i]) {
+            /* need to mark the create as a remote write */
+            fdb_t *fdb = get_fdb(dbnames[i]);
+            fdb_tran_t * tran = fdb_get_subtran(clnt->dbtran.dtran, fdb);
+            tran->nwrites += 1;
+        }
+    }
+
+    /* commit the transaction */
+    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ, TRANS_CLNTCOMM_NORMAL);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Failed to commit ddl transaction rc %d\n", __func__, rc);
+        *errmsg = "failed to commit";
+        goto setup_error;
+    }
+
+    return 0;
+
+abort:
+    if (!*errmsg) /* not empty string */
+        *errmsg = "transaction aborted";
+    rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s failed to rollback rc %d\n", __func__, rc);
+    }
+setup_error:
+    if (!*errmsg) /* not empty string */
+        *errmsg = "malloc error shard push";
+    for (i = 0; i < nshards; i++) {
+        if (pushes[i]) {
+            fdb_push_free(&pushes[i]);
+        }
+    }
+    return -1;
+}
+
+/**
+ * Run a distributed schema change to create a test generic sharding
+ */
+int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
+                              char **dbnames, char **shardnames, char **tiers)
+{
+    char **sqls = (char**)alloca(nshards * sizeof(char*));
+    int i;
+
+    /* sc will be replicated for each shard, set the type here to testgenshard SHARD creation */
+    assert(sc->partition.type == PARTITION_ADD_TESTGENSHARD_COORD);
+    sc->partition.type = PARTITION_ADD_TESTGENSHARD;
+
+    bzero(sqls, nshards * sizeof(char*));
+    /* create create sql statements */
+    for(i = 0; i < nshards; i++) {
+        int len = sc->newcsc2_len + strlen(shardnames[i]) + 64;
+        sqls[i] = malloc(len);
+        if (!sqls[i]) {
+            logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
+            goto setup_error;
+        }
+        /* snprintf(sqls[i], len, "create table %s_%s.\'%s\' {%s}", tiers[i], dbnames[i], shardnames[i], sc->newcsc2); */
+        snprintf(sqls[i], len, "create table \'%s\' {%s}", shardnames[i], sc->newcsc2);
+    }
+
+    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, tiers, sqls, AST_TYPE_CREATE);
+
+setup_error:
+    for (i = 0; i < nshards && sqls[i]; i++) {
+        free(sqls[i]);
+    }
+    return -1;
+}
+
+/**
+ * Run a distributed schema change to remove a test generic sharding
+ */
+int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
+                              char **dbnames, char **shardnames, char **tiers)
+{
+    char **sqls = (char**)alloca(nshards * sizeof(char*));
+    int i;
+
+    /* sc will be replicated for each shard, set the type here to testgenshard SHARD creation */
+    assert(sc->partition.type == PARTITION_REM_TESTGENSHARD_COORD);
+    sc->partition.type = PARTITION_REM_TESTGENSHARD;
+
+    bzero(sqls, nshards * sizeof(char*));
+    /* create create sql statements */
+    for(i = 0; i < nshards; i++) {
+        /* NOTE: since we use an sqlalias at this point, use the partition name not the shard name
+         * int len = strlen(shardnames[i]) + 64;
+         */
+        int len = strlen(sc->partition.u.testgenshard.tablename) + 64;
+
+        sqls[i] = malloc(len);
+        if (!sqls[i]) {
+            logmsg(LOGMSG_ERROR, "%s malloc shard %d\n", __func__, i);
+            goto setup_error;
+        }
+        snprintf(sqls[i], len, "drop table \'%s\'", sc->partition.u.testgenshard.tablename);
+    }
+
+    dbtable *tbl = get_dbtable_by_name(sc->tablename);
+    assert(tbl);
+
+    /* this is not passed through syntax, it is retrieved from dbtable object */
+    dbnames = tbl->dbnames;
+
+    return _running_dist_ddl(sc, errmsg, nshards, dbnames, shardnames, tiers, sqls, AST_TYPE_DROP);
+
+setup_error:
+    for (i = 0; i < nshards && sqls[i]; i++) {
+        free(sqls[i]);
+    }
+    return -1;
+}
+

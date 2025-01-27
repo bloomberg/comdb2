@@ -4373,6 +4373,9 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
                     set_tok = set_tok2;
                     set_tok2 = NULL;
                 }
+            } else if (strncasecmp(set_tok, "partition", 9) == 0) {
+                skip_len += 10;
+                set_tok = strtok_r(rest, " ", &rest);
             }
         }
         if (!set_tok) {

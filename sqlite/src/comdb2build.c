@@ -1,4 +1,4 @@
-#include <stdio.h>
+
 #include "sqliteInt.h"
 #include <vdbeInt.h>
 #include "comdb2build.h"
@@ -579,11 +579,31 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     return f->rc;
 }
 
+
 static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
-    f->rc = osql_schemachange_logic(s, thd, usedb);
+
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    char **dbnames = s->partition.u.testgenshard.dbnames;
+    #define NSHARDS 4
+    int nshards = NSHARDS;
+    char *shardnames[NSHARDS] = {"$0_t", "$1_t", "$2_t", "$3_t"};
+    char *tiers[NSHARDS] = {"LOCAL", "LOCAL", "LOCAL", "LOCAL"};
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+
+    /* if this is a generic sharding scheme, pass this to upper layer */
+    if (s->partition.type == PARTITION_ADD_TESTGENSHARD_COORD) {
+        /* running on coordinator replicant */
+        f->rc = osql_test_create_genshard(s, &f->errorMsg, nshards, dbnames, shardnames, tiers);
+        return f->rc;
+    } else if (s->partition.type == PARTITION_REM_TESTGENSHARD_COORD) {
+        /* dbnames are NULL here, not passed though syntax */
+        f->rc = osql_test_remove_genshard(s, &f->errorMsg, nshards, dbnames, shardnames, tiers);
+        return f->rc;
+    }
+
+    f->rc = osql_schemachange_logic(s, usedb);
     if (f->rc == SQLITE_DDL_MISUSE)
         f->errorMsg = "Transactional DDL Error: Overlapping Tables";
     else if (f->rc)
@@ -878,6 +898,26 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
 
     if (partition_first_shard)
         sc->partition.type = PARTITION_REMOVE;
+    else {
+        /* Check if this is a distributed drop */
+        struct dbtable *tbl = get_dbtable_by_name(sc->tablename);
+
+        if (tbl && tbl->sqlaliasname && tbl->dbnames[0]) {
+            /* dropping a generic partition */
+            /* NOTE: there are two was to get here:
+             * - initial drop table that is actually a partition (coordinator)
+             * - subsequent individual shard (participant)
+             *   The only way to check which case is by looking a clnt structure;
+             *   a participant receives a SET PARTITION NAME from coordinator
+             */
+            struct sql_thread *thd = pthread_getspecific(query_info_key);
+            assert(thd && thd->clnt);
+            sc->partition.type = thd->clnt->remsql_set.is_remsql == IS_REMCREATE ?
+                PARTITION_REM_TESTGENSHARD : PARTITION_REM_TESTGENSHARD_COORD ;
+            snprintf(sc->partition.u.testgenshard.tablename,
+                     sizeof(sc->partition.u.testgenshard.tablename), "%s", tbl->sqlaliasname);
+        }
+    }
 
     tran_type *tran = curtran_gettran();
     int rc = get_csc2_file_tran(partition_first_shard ? partition_first_shard :
@@ -3232,7 +3272,19 @@ static void free_ddl_context(Parse *pParse)
     ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0)
         return;
-
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    /* NOTE: dbnames are only set here if we failed to pass them properly
+     * to a schema change; the type should be xxx_COORD
+     */
+    if (ctx->partition && ctx->partition->type == PARTITION_ADD_TESTGENSHARD_COORD &&
+        ctx->partition->u.testgenshard.dbnames) {
+        int i;
+        for(i=0; i<4; i++) {
+            free(ctx->partition->u.testgenshard.dbnames[i]);
+        }
+        free(ctx->partition->u.testgenshard.dbnames);
+    }
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
     free(ctx->partition_first_shardname);
     free(ctx->partition);
     
@@ -5047,8 +5099,15 @@ void comdb2CreateTableEnd(
 
     fillTableOption(sc, comdb2Opts);
 
-    if (ctx->partition)
+    if (ctx->partition) {
         sc->partition = *ctx->partition;
+        /* pass the allocated dbnames to sc */
+        /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        if (ctx->partition->type == PARTITION_ADD_TESTGENSHARD_COORD) {
+            ctx->partition->u.testgenshard.dbnames =  NULL;
+        /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        }
+    }
 
     /* prepare_csc2 can free the ctx, do not touch it afterwards ! */
     sc->newcsc2 = prepare_csc2(pParse, ctx);
@@ -7638,6 +7697,38 @@ void comdb2CreateManualPartition(Parse *pParse, Token *retention, Token *start)
     }
     partition->u.tpt.start = tmp;
 }
+
+/**
+ * Create a test generic sharding partition for server testing purposes
+ *
+ */
+void comdb2CreateTestGenShard(Parse* pParse, IdList *dbs)
+{
+    struct comdb2_partition *partition;
+
+    partition = _get_partition(pParse, 0);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_TESTGENSHARD_COORD;
+
+    if (dbs->nId != 4) {
+        setError(pParse, SQLITE_ABORT, "Need 4 dbs for shards");
+        return;
+    }
+
+    partition->u.testgenshard.dbnames = calloc(dbs->nId, sizeof(char*));
+    if (!partition->u.testgenshard.dbnames) {
+        setError(pParse, SQLITE_ABORT, "OOM partition dbnames");
+        return;
+    }
+
+    int i;
+    for (i = 0; i < dbs->nId; i++) {
+        partition->u.testgenshard.dbnames[i] = strdup(dbs->a[i].zName);
+    }
+}
+
 
 /*
  * Mark the partition for merging, with or without a table to be merged in

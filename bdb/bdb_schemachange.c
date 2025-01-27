@@ -134,14 +134,14 @@ void bdb_bump_dbopen_gen(scdone_t type, const char *message,
 }
 
 static int bdb_scdone_int(bdb_state_type *bdb_state, DB_TXN *txnid,
-                          const char table[], const char *newtable,
+                          const char *table, const char *strarg,
                           int fastinit)
 {
     int rc;
-    char *db_newtable = NULL;
+    char *db_strarg= NULL;
 
-    if (newtable && newtable[0])
-        db_newtable = strdup(newtable);
+    if (strarg && strarg[0])
+        db_strarg = strdup(strarg);
 
     if (bdb_state == NULL)
         return 0;
@@ -161,7 +161,7 @@ static int bdb_scdone_int(bdb_state_type *bdb_state, DB_TXN *txnid,
 
     /* TODO fail gracefully now that inline? */
     /* reload the changed table (if necesary) and update the schemas in memory*/
-    if ((rc = bdb_state->callback->scdone_rtn(bdb_state, table, db_newtable,
+    if ((rc = bdb_state->callback->scdone_rtn(bdb_state, table, db_strarg,
                                               fastinit))) {
         if (rc == BDBERR_DEADLOCK)
             rc = DB_LOCK_DEADLOCK;
@@ -177,7 +177,7 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
 {
     int rc = 0;
     const char *table = (const char *)scdoneop->table.data;
-    const char *newtable = NULL;
+    const char *strarg = NULL;
 
     uint32_t type;
     assert(sizeof(type) == scdoneop->fastinit.size);
@@ -189,9 +189,9 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
                                         TABLENAME_LOCKED_WRITE));
     }
 
-    if (sctype == rename_table || sctype == alias_table) {
-        assert(strlen(table) + 1 < scdoneop->table.size);
-        newtable = &table[strlen(table) + 1];
+    if (sctype == rename_table || sctype == alias_table ||
+        (sctype == add && (strlen(table) + 1 < scdoneop->table.size))) {
+        strarg = &table[strlen(table) + 1];
     }
 
     switch (op) {
@@ -206,7 +206,7 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     /* make a copy of the row that's being deleted. */
     case DB_TXN_APPLY:
         rc = bdb_scdone_int(dbenv->app_private, scdoneop->txnid, table,
-                            newtable, sctype);
+                            strarg, sctype);
         break;
 
     case DB_TXN_SNAPISOL:

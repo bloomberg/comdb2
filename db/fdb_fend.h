@@ -430,14 +430,6 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
 /* return if ssl is needed */
 int fdb_cursor_need_ssl(fdb_cursor_if_t *cur);
 
-/**
- * Retrieve the schema of a remote table
- *
- */
-int fdb_get_remote_version(const char *dbname, const char *table,
-                           enum mach_class class, int local,
-                           unsigned long long *version);
-
 int fdb_table_exists(int rootpage);
 
 int fdb_set_genid_deleted(fdb_tran_t *, unsigned long long);
@@ -484,6 +476,13 @@ void fdb_init_disttxn(sqlclntstate *clnt);
  *
  */
 int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl);
+
+/**
+ *  Create a fdb push connector
+ *
+ */
+fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class, int override, int local,
+                                      enum ast_type type);
 
 #endif
 

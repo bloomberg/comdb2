@@ -783,7 +783,22 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
         exit(1);
     }
 
+    if (arg) {
+        int partition_extract_dbnames(char *, char **, const char *);
+        rc = partition_extract_dbnames(arg, db->dbnames, __func__);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failure to extract dbnames rc %d\n", __func__, rc);
+            exit(1);
+        }
+    }
+
     add_dbtable_to_thedb_dbs(db);
+
+    /* this is used by testgenshard, creating a partition name alias for the actual shard */
+    char *sqlalias = NULL;
+    rc = bdb_get_table_sqlalias_tran(db->tablename, tran, &sqlalias);
+    if (sqlalias)
+        hash_sqlalias_db(db, sqlalias);
 
     _master_recs(tran, tablename, type);
 

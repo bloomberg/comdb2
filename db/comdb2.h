@@ -789,6 +789,11 @@ typedef struct dbtable {
 
     /* name of the timepartition, if this is a shard */
     const char *timepartition_name;
+
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */    
+    /* testgenshard stub */
+    char *dbnames[4];
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */    
 } dbtable;
 
 struct dbview {

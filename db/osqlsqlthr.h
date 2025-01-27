@@ -181,8 +181,7 @@ int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 * Returns SQLITE_OK if successful.
 *
 */
-int osql_schemachange_logic(struct schema_change_type *, struct sql_thread *,
-                            int usedb);
+int osql_schemachange_logic(struct schema_change_type *, int usedb);
 
 /**
  *

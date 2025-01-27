@@ -6155,11 +6155,22 @@ void freedb_int(dbtable *db, dbtable *replace)
     int dbs_idx;
     char *sqlaliasname = db->sqlaliasname;
     const char *timepartition_name = db->timepartition_name;
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    char *dbnames[4];
+    for (i = 0; i < 4; i++)
+        dbnames[i] = db->dbnames[i];
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
 
     dbs_idx = db->dbs_idx;
 
-    if (!replace) 
+    if (!replace) {
         free(sqlaliasname);
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        for (i = 0; i < 4; i++) {
+            free(dbnames[i]);
+        }
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    }
     free(db->lrlfname);
     free(db->tablename);
     /* who frees schema/ixschema? */
@@ -6228,6 +6239,10 @@ void freedb_int(dbtable *db, dbtable *replace)
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
         db->timepartition_name = timepartition_name;
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        for (i = 0; i < 4; i++)
+            db->dbnames[i] = dbnames[i];
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
     }
 }
 
@@ -6242,7 +6257,7 @@ void freedb(dbtable *db)
 }
 
 static struct schema *create_version_schema(char *csc2, int version,
-                                            struct dbenv *dbenv)
+        struct dbenv *dbenv)
 {
     struct schema *ver_schema = NULL;
     dbtable *ver_db;
