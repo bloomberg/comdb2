@@ -7152,16 +7152,6 @@ static int exec_procedure_int(struct sqlthdstate *thd,
         return 0;
     }
 
-    struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
-    // Use () to differentiate between tablename and spname
-    snprintf(spfunc, sizeof(spfunc), "%s()", spname);
-
-    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
-        (*err) = strdup("Read access denied for the stored procedure");
-        return SQLITE_ACCESS;
-    }
-
     if ((rc = setup_sp_int(spname, thd, clnt, trigger, &new_vm, err)) != 0) return rc;
 
     SP sp = clnt->sp;
@@ -7197,6 +7187,16 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     if (trigger || consumer)
         clnt->current_user.bypass_auth = 1;
 
+    struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
+
+    // Use () to differentiate between tablename and spname
+    snprintf(spfunc, sizeof(spfunc), "%s()", spname);
+
+    if (access_control_check_sql_read(NULL, sqlthd, spfunc)) {
+        (*err) = strdup("Read access denied for the stored procedure");
+        return SQLITE_ACCESS;
+    }
+
     if (gbl_is_physical_replicant && consumer) {
         rc = -3;
         (*err) = strdup("Cannot execute consumer on physical-replicant");
@@ -7204,8 +7204,6 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     else {
         rc = push_args_and_run_sp(clnt, end_ptr, err);
     }
-    if (trigger || consumer)
-        clnt->current_user.bypass_auth = 1;
 
     if (trigger) {
         return rc;
