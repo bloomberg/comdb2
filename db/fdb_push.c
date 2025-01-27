@@ -312,7 +312,8 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
         return NULL;
     }
 
-    if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob)
+    if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob &&
+         ((clnt->authdata = get_authdata(clnt)) != NULL))
         cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
 
     return hndl;

@@ -2618,8 +2618,8 @@ static fdb_cursor_if_t *_cursor_open_remote(sqlclntstate *clnt,
 
     _cursor_set_common(fdbc_if, tid, flags, use_ssl);
 
-    if (fdb->server_version >= FDB_VER_AUTH && clnt->authdata &&
-            gbl_fdb_auth_enabled) {
+    if (fdb->server_version >= FDB_VER_AUTH && gbl_fdb_auth_enabled &&
+        ((clnt->authdata = get_authdata(clnt)) != NULL)) {
         flags = flags | FDB_MSG_CURSOR_OPEN_FLG_AUTH;
     }
 
@@ -5652,7 +5652,8 @@ static int _fdb_client_set_options(sqlclntstate *clnt,
     }
 
     extern void *(*externalComdb2getAuthIdBlob)(void *ID);
-    if (gbl_uses_externalauth && gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob) {
+    if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob &&
+        ((clnt->authdata = get_authdata(clnt)) != NULL)) {
         cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
     }
 
