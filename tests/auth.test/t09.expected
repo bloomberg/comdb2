@@ -193,6 +193,7 @@
 (candidate='TEMP')
 (candidate='TEMPORARY')
 (candidate='TESTDEFAULT')
+(candidate='TESTGENSHARD')
 (candidate='THEN')
 (candidate='THREADS')
 (candidate='THRESHOLD')

@@ -315,6 +315,22 @@ int llog_scdone_rename_wrapper(bdb_state_type *bdb_state,
             mashup = alloca(oldlen + newlen);
             memcpy(mashup, s->tablename, oldlen); /* old */
             memcpy(mashup + oldlen, dst, newlen); /* new */
+        } else if (s->done_type == add && s->partition.type == PARTITION_ADD_TESTGENSHARD) {
+            int i;
+            int lens[4];
+            for (i = 0; i < 4; i++) {
+                lens[i] = strlen(s->partition.u.testgenshard.dbnames[i]);
+                newlen += lens[i] + 1;
+            }
+            mashup = alloca(oldlen + newlen);
+            memcpy(mashup, s->tablename, oldlen);
+            /* space separated dbnames following a cstring tablename */
+            int crt = oldlen;
+            for (i = 0; i < 4; i++) {
+                memcpy(&mashup[crt], s->partition.u.testgenshard.dbnames[i], lens[i]);
+                mashup[crt + lens[i]] = ' ';
+                crt += lens[i] + 1;
+            }
         }
     }
     if (!tran)

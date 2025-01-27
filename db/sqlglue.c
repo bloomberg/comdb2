@@ -7942,7 +7942,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
                 return SQLITE_SCHEMA;
             }
         /* remsql over cdb2api */
-        } else if (clnt->remsql_set.is_remsql) {
+        } else if (clnt->remsql_set.is_remsql  == IS_REMSQL) {
             /* sqlite register same table multiple times depending on query
              * so this assertion is wrong; only true if we dedup
             assert(nTables == 1);

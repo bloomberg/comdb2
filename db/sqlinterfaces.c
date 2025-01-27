@@ -4066,7 +4066,7 @@ retry_legacy_remote:
             if (rc == SQLITE_SCHEMA_PUSH_REMOTE)
                 rc = handle_fdb_push(clnt, &err);
             else
-                rc = handle_fdb_push_write(clnt, &err);
+                rc = handle_fdb_push_write(clnt, &err, 0, NULL);
             if (rc == -2) {
                 logmsg(LOGMSG_ERROR, "QUERY %s disable push\n", clnt->sql);
                 /* remote server does not support proxy, retry without */
@@ -4322,7 +4322,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int rc;
 
 #ifdef DEBUG
-    logmsg(LOGMSG_DEBUG, "execute_sql_query: '%.30s'\n", clnt->sql);
+    logmsg(LOGMSG_DEBUG, "execute_sql_query: '%.100s'\n", clnt->sql);
 #endif
 
     /* access control */

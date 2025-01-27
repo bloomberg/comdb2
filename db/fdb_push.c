@@ -56,28 +56,29 @@ static int convert_policy_override_string_to_cdb2api_flag(char *policy) {
     }
 }
 
-fdb_push_connector_t *_new_push(Parse *pParse, struct Db *pDb,
-                                enum ast_type type, int minver)
+/**
+ * Create a fdb push connector
+ *
+ */
+fdb_push_connector_t* fdb_push_create(const char *dbname, enum mach_class class, int override, int local,
+                                      enum ast_type type)
 {
     fdb_push_connector_t *push = NULL;
-
-    if (pDb->version < minver)
-        return NULL;
 
     push = calloc(1, sizeof(fdb_push_connector_t));
     if (!push) {
         logmsg(LOGMSG_ERROR, "Failed to allocate fdb_push\n");
         return NULL;
     }
-    push->remotedb = strdup(pDb->zDbSName);
+    push->remotedb = strdup(dbname);
     if (!push->remotedb) {
         logmsg(LOGMSG_ERROR, "Failed to allocate remotedb name\n");
         free(push);
         return NULL;
     }
-    push->class = pDb->class;
-    push->local = pDb->local;
-    push->class_override = pDb->class_override;
+    push->class = class;
+    push->local = local;
+    push->class_override = override;
     push->type = type;
 
     return push;
@@ -109,8 +110,11 @@ int fdb_push_setup(Parse *pParse, dohsql_node_t *node)
     if (clnt->intrans || clnt->in_client_trans)
         return -1;
 
-    fdb_push_connector_t *push = _new_push(pParse, pDb, AST_TYPE_SELECT,
-                                           FDB_VER_PROXY);
+    if (pDb->version < FDB_VER_PROXY)
+        return -1;
+
+    fdb_push_connector_t* push= fdb_push_create(pDb->zDbSName, pDb->class, pDb->class_override,
+                                                     pDb->local, AST_TYPE_SELECT);
     if (!push)
         return -1;
 
@@ -151,7 +155,11 @@ int fdb_push_write_setup(Parse *pParse, enum ast_type type, Table *pTab)
     if (clnt->disable_fdb_push)
         return -1;
 
-    fdb_push_connector_t *push = _new_push(pParse, pDb, type, FDB_VER_CDB2API);
+    if (pDb->version < FDB_VER_CDB2API)
+        return -1;
+
+    fdb_push_connector_t *push = fdb_push_create(pDb->zDbSName, pDb->class, pDb->class_override,
+                           pDb->local, type);
     if (!push)
         return -1;
 
@@ -284,8 +292,25 @@ static int _is_client_redirect(sqlclntstate *clnt, const char *class,
     return 0;
 }
 
+static int forward_extra_set_commands(cdb2_hndl_tp *hndl, int n_sets, const char **sets,
+                                      struct errstat *err)
+{
+    int rc, i;
+
+    for (i = 0; i < n_sets; i++) {
+        rc = cdb2_run_statement(hndl, sets[i]);
+        if (rc != CDB2_OK) {
+            errstat_set_rcstrf(err, -1, "Failed to run \"%s\"", sets[i]);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
-                                    int flags, struct errstat *err)
+                                    int flags, struct errstat *err,
+                                    int n_sets, const char **sets)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
     cdb2_hndl_tp *hndl = NULL;
@@ -312,6 +337,10 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
         return NULL;
     }
 
+    rc = forward_extra_set_commands(hndl, n_sets, sets, err);
+    if (rc)
+        return NULL;
+
     if (gbl_fdb_auth_enabled && externalComdb2getAuthIdBlob &&
          ((clnt->authdata = get_authdata(clnt)) != NULL))
         cdb2_setIdentityBlob(hndl, externalComdb2getAuthIdBlob(clnt->authdata));
@@ -325,7 +354,8 @@ static cdb2_hndl_tp *_hndl_open_int(sqlclntstate *clnt, const char *class,
  *
  */
 static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
-                                int flags, struct errstat *err)
+                                int flags, struct errstat *err,
+                                int n_sets, const char **sets)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
 
@@ -350,7 +380,7 @@ static cdb2_hndl_tp *_hndl_open(sqlclntstate *clnt, int *client_redir,
         }
     }
 
-    return _hndl_open_int(clnt, class, flags | cdb2api_policy_flag, err);
+    return _hndl_open_int(clnt, class, flags | cdb2api_policy_flag, err, n_sets, sets);
 }
 
 static int _run_statement(sqlclntstate *clnt, cdb2_hndl_tp *hndl,
@@ -392,7 +422,7 @@ int handle_fdb_push(sqlclntstate *clnt, struct errstat *err)
     int rc = 0, irc;
     int client_redir;
 
-    hndl = _hndl_open(clnt,  &client_redir, CDB2_SQL_ROWS, err);
+    hndl = _hndl_open(clnt,  &client_redir, CDB2_SQL_ROWS, err, 0, NULL);
     if (client_redir)
         goto reset;
     if (!hndl)
@@ -498,7 +528,8 @@ reset:
  * Same as handle_fdb_push, but for writes
  *
  */
-int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
+int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err,
+                          int n_extra_sets, const char **sets)
 {
     fdb_push_connector_t *push = clnt->fdb_push;
     const char *errstr = NULL;
@@ -539,7 +570,8 @@ int handle_fdb_push_write(sqlclntstate *clnt, struct errstat *err)
     if (created) {
         /* get a connection */
         tran->is_cdb2api = 1;
-        tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err);
+        tran->fcon.hndl = hndl = _hndl_open(clnt, NULL, 0 /* no sqlite rows for writes */, err,
+                                            n_extra_sets, sets);
         if (!tran->fcon.hndl) {
             rc = -2;
             goto free;

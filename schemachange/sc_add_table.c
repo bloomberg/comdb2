@@ -367,6 +367,23 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
             sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
             return SC_INTERNAL_ERROR;
         }
+    } else if (s->partition.type == PARTITION_ADD_TESTGENSHARD) {
+        /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+        /* NOTE: for the purpose of this test stub, we create an sql alias; the actual
+         * sharding will have a view created here 
+         */
+        hash_sqlalias_db(db, s->partition.u.testgenshard.tablename);
+        rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
+        if (rc) {
+            hash_sqlalias_db(db, NULL);
+            logmsg(LOGMSG_ERROR, "Failed to alias testgenshard table");
+            return -1;
+        }
+        int i;
+        for (i = 0; i < 4; i++) {
+            db->dbnames[i] = strdup(s->partition.u.testgenshard.dbnames[i]);
+        }
+        /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
     }
 
     sc_printf(s, "Schema change ok\n");

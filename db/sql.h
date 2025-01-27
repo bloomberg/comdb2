@@ -641,8 +641,14 @@ struct user {
     uint8_t bypass_auth;
 };
 
+enum remsql_type {
+    NO_REMSQL = 0,
+    IS_REMSQL = 1,
+    IS_REMCREATE = 2
+};
+
 struct remsql_set {
-    int is_remsql;
+    enum remsql_type is_remsql;
     int server_version;
     int table_version;
     int is_schema;
@@ -650,6 +656,9 @@ struct remsql_set {
     uuid_t uuid;
     char *srcdbname;
     struct errstat xerr;
+    /* THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
+    char *dbnames[4];
+    /* END: THIS SECTION IS A STUB; TO BE REPLACED BY ACTUAL PARTITION SCHEMA */
 };
 
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
@@ -1404,7 +1413,8 @@ int handle_fdb_push(struct sqlclntstate *clnt, struct errstat *err);
  * Same as handle_fdb_push, but for writes
  *
  */
-int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err);
+int handle_fdb_push_write(struct sqlclntstate *clnt, struct errstat *err,
+                          int n_extra_sets, const char **sets);
 
 int sqlite3LockStmtTables(sqlite3_stmt *pStmt);
 int sqlite3UnlockStmtTablesRemotes(struct sqlclntstate *clnt);
@@ -1663,6 +1673,11 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
                          struct errstat *err);
 
 void wait_for_transactions(void);
+
+int osql_test_create_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
+                              char **dbnames, char **shardnames, char **tiers);
+int osql_test_remove_genshard(struct schema_change_type *sc, char **errmsg, int nshards,
+                              char **dbnames, char **shardnames, char **tiers);
 
 struct sp_tmptbl {
     pthread_mutex_t lk;

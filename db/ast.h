@@ -27,7 +27,9 @@ enum ast_type {
     AST_TYPE_UNION = 3,
     AST_TYPE_IN = 4,
     AST_TYPE_DELETE = 5,
-    AST_TYPE_UPDATE = 6
+    AST_TYPE_UPDATE = 6,
+    AST_TYPE_CREATE = 7,
+    AST_TYPE_DROP = 8
 };
 
 struct Vdbe;

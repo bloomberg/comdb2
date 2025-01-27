@@ -6783,7 +6783,9 @@ int osql_process_schemachange(struct schema_change_type *sc, uuid_t uuid)
     int is_partition = timepart_is_partition(sc->tablename);
 
     if (!is_partition) {
-        if (sc->partition.type == PARTITION_NONE) {
+        if ((sc->partition.type == PARTITION_NONE) ||
+            (sc->partition.type == PARTITION_ADD_TESTGENSHARD) ||
+            (sc->partition.type == PARTITION_REM_TESTGENSHARD)) {
             rc = _process_single_table_sc(iq);
         } else if (sc->partition.type == PARTITION_MERGE) {
             rc = _process_single_table_sc_merge(iq);

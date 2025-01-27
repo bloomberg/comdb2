@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Remote cursor moves testcase for comdb2
+################################################################################
+
+
+# we rely on the following global variables to be set
+echo "main db vars"
+vars="TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR CDB2_OPTIONS CDB2_CONFIG SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_CONFIG SECONDARY_CDB2_OPTIONS TERTIARY_DBNAME TERTIARY_DBDIR TERTIARY_CDB2_CONFIG TERTIARY_CDB2_OPTIONS QUATERNARY_DBNAME QUATERNARY_DBDIR QUATERNARY_CDB2_CONFIG QUATERNARY_CDB2_OPTIONS"
+for required in $vars; do
+    q=${!required}
+    echo "$required=$q" 
+    if [[ -z "$q" ]]; then
+        echo "$required not set" >&2
+        exit 1
+    fi
+done
+
+S0_SQLT="cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default"
+S0_SQL="cdb2sql ${CDB2_OPTIONS} ${DBNAME} default"
+S1_SQLT="cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} ${SECONDARY_DBNAME} default"
+S1_SQL="cdb2sql ${SECONDARY_CDB2_OPTIONS} ${SECONDARY_DBNAME} default"
+S2_SQLT="cdb2sql --tabs ${TERTIARY_CDB2_OPTIONS} ${TERTIARY_DBNAME} default"
+S2_SQL="cdb2sql ${TERTIARY_CDB2_OPTIONS} ${TERTIARY_DBNAME} default"
+S3_SQLT="cdb2sql --tabs ${QUATERNARY_CDB2_OPTIONS} ${QUATERNARY_DBNAME} default"
+S3_SQL="cdb2sql ${QUATERNARY_CDB2_OPTIONS} ${QUATERNARY_DBNAME} default"
+
+OUT=log.txt
+
+rm ${OUT}
+
+function check()
+{
+    shouldbe=$1
+
+    set -x 
+    $S0_SQLT "select * from comdb2_tables order by 1" >> $OUT
+    if (( $? != 0 )); then
+        echo "FAILURE to select from shard 0"
+        exit 1
+    fi
+    $S1_SQLT "select * from comdb2_tables order by 1" >> $OUT
+    if (( $? != 0 )); then
+        echo "FAILURE to select from shard 0"
+        exit 1
+    fi
+    $S2_SQLT "select * from comdb2_tables order by 1" >> $OUT
+    if (( $? != 0 )); then
+        echo "FAILURE to select from shard 0"
+        exit 1
+    fi
+    $S3_SQLT "select * from comdb2_tables order by 1" >> $OUT
+    if (( $? != 0 )); then
+        echo "FAILURE to select from shard 0"
+        exit 1
+    fi
+
+    if (( $shouldbe == 1 )) ; then
+        $S0_SQLT "select * from t2" >> $OUT
+        if (( $? != 0 )); then
+            echo "FAILURE to select from t2"
+            exit 1
+        fi
+        $S1_SQLT "select * from t2" >> $OUT
+        if (( $? != 0 )); then
+            echo "FAILURE to select from t2"
+            exit 1
+        fi
+        $S2_SQLT "select * from t2" >> $OUT
+        if (( $? != 0 )); then
+            echo "FAILURE to select from t2"
+            exit 1
+        fi
+        $S3_SQLT "select * from t2" >> $OUT
+        if (( $? != 0 )); then
+            echo "FAILURE to select from t2"
+            exit 1
+        fi
+    fi
+}
+
+#run tests
+echo "Starting tests"
+
+check 0
+
+echo $S0_SQL "create table t2 (a int) partitioned by testgenshard(${DBNAME}, ${SECONDARY_DBNAME}, ${TERTIARY_DBNAME}, ${QUATERNARY_DBNAME})" 
+$S0_SQL "create table t2 (a int) partitioned by testgenshard(${DBNAME}, ${SECONDARY_DBNAME}, ${TERTIARY_DBNAME}, ${QUATERNARY_DBNAME})" >> $OUT
+if (( $? != 0 )) ; then
+    echo "FAILURE to create partition"
+    exit 1
+fi
+
+check 1
+
+echo $S0_SQL "drop table t2"
+$S0_SQL "drop table t2"
+if (( $? != 0 )) ; then
+    echo "FAILURE to drop partition"
+    exit 1
+fi
+
+check 0
+
+testcase_output=$(cat $OUT)
+expected_output=$(cat ${OUT}.exp)
+
+# verify 
+if [[ "$testcase_output" != "$expected_output" ]]; then
+
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testcase}) has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/{${OUT}.exp,${OUT}}"
+    echo " "
+    diff ${OUT}.exp ${OUT}
+    echo " "
+    exit 1
+
+fi  
+
+echo "SUCCESS"

@@ -401,6 +401,7 @@ static Keyword aKeywordTable[] = {
   { "START",             "TK_START",             ALWAYS           },
   { "SUMMARIZE",         "TK_SUMMARIZE",         ALWAYS           },
   { "TESTDEFAULT",       "TK_TESTDEFAULT",       ALWAYS           },
+  { "TESTGENSHARD",      "TK_TESTGENSHARD",      ALWAYS           },
   { "THREADS",           "TK_THREADS",           ALWAYS           },
   { "THRESHOLD",         "TK_THRESHOLD",         ALWAYS           },
   { "TIME",              "TK_TIME",              ALWAYS           },
