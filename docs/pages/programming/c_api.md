@@ -457,7 +457,7 @@ For example:
 ```c
 int arr[10] = {1,2,3,4...};
 cdb2_bind_array_index(hndl, 1, CDB2_INTEGER, arr, 10, sizeof(int));
-cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(@arr)");
+cdb2_run_statement(db, "SELECT * FROM a WHERE i IN CARRAY(?)");
 ```
 
 Parameters:
