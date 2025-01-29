@@ -93,7 +93,7 @@ may be an AUTOINCREMENT for longlong fields), or with NULL if no default value i
 The second form of the ```INSERT``` statement takes its data from a ```SELECT``` statement. The number of columns in the 
 result of the SELECT must exactly match the number of columns in the table if no column list is specified, or it 
 must match the number of columns named in the column list. A new entry is made in the table for every row of the 
-```SELECT``` result. The ```SELECT``` may be simple or compound. Note that if followed by an ``ON CONFLICT``` clause,
+```SELECT``` result. The ```SELECT``` may be simple or compound. Note that if followed by an ```ON CONFLICT``` clause,
 the ```SELECT``` statement **must** have a ```WHERE``` clause. Column names in the expressions of a ```DO UPDATE``` 
 refer to the original unchanged value of the column, before the attempted ```INSERT```. To use the value that would
 have been inserted had the constraint not failed, add the special "excluded." table qualifier to the column name.
