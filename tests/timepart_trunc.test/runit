@@ -309,7 +309,7 @@ fi
 
 timepart_stats 0
 
-starttime=$(get_timetamp 120)
+starttime=$(get_timestamp 120)
 echo $cmd "CREATE TABLE t5 (a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE t5 (a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? != 0 )) ; then
