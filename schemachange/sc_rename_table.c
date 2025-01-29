@@ -83,14 +83,15 @@ int finalize_alias_table(struct ireq *iq, struct schema_change_type *s,
 int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    struct dbtable *db = s->db;
-    char *newname = strdup(s->newtable);
-    int rc = 0;
-    int bdberr = 0;
-    char *oldname = NULL;
-
     assert(s->kind == SC_RENAMETABLE);
 
+    struct dbtable *db = s->db;
+    if (db->n_rev_constraints > 0) {
+        sc_client_error(s, "Cannot rename a table referenced by a foreign key");
+        return -1;
+    }
+
+    char *newname = strdup(s->newtable);
     if (!newname) {
         sc_errf(s, "strdup error\n");
         return -1;
@@ -103,7 +104,8 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     s->already_finalized = 1;
 
     /* renamed table schema gets bumped */
-    rc = table_version_upsert(db, tran, &bdberr);
+    int bdberr = 0;
+    int rc = table_version_upsert(db, tran, &bdberr);
     if (rc) {
         sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
         goto tran_error;
@@ -133,7 +135,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* fragile, handle with care */
-    oldname = db->tablename;
+    char *oldname = db->tablename;
     rc = rename_db(db, newname);
     if (rc) {
         /* crash the schema change, next master will hopefully have more memory
