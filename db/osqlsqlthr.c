@@ -892,7 +892,7 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         retries++;
         /* if we're shaking really badly, back off */
         if (retries > 1)
-            usleep(retries * 10000); // sleep for a multiple of 10ms
+            Usleep(retries * 10000); // sleep for a multiple of 10ms
 
         sentops = 0;
 
@@ -1759,7 +1759,7 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
             rc = osql_send_recordgenid(&osql->target, osql->rqid, osql->uuid,
                                        genid, nettype);
             if (gbl_master_swing_sock_restart_sleep) {
-                usleep(gbl_master_swing_sock_restart_sleep * 1000);
+                Usleep(gbl_master_swing_sock_restart_sleep * 1000);
             }
         }
         RESTART_SOCKSQL;

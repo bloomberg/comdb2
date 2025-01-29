@@ -2937,7 +2937,7 @@ do_ckp:
 		ckp_lsn = prepared;
 	}
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
-		usleep(gbl_ckp_sleep_before_sync * 1000LL);
+		Usleep(gbl_ckp_sleep_before_sync * 1000LL);
 
 	ckp_lsn_sav = ckp_lsn;
 	/* If flag is DB_FORCE, don't run perfect checkpoints. */

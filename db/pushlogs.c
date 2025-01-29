@@ -149,7 +149,7 @@ static void *pushlogs_thread(void *voidarg)
 
         /* throttle this */
         if (delayms)
-            usleep(delayms * 1000);
+            Usleep(delayms * 1000);
     }
 
     if (nwrites > 0) {

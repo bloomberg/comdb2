@@ -2900,7 +2900,7 @@ int net_init(netinfo_type *netinfo_ptr)
         const char *hostlist[REPMAX];
         int retry = 100;
         while (--retry >= 0 && (rc = net_get_all_nodes_connected(netinfo_ptr, hostlist)) < (num - 1)) {
-            usleep(10 * 1000); //10ms
+            Usleep(10 * 1000); //10ms
         }
         gettimeofday(&b, NULL);
         timersub(&b, &a, &c);

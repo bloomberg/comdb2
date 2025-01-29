@@ -193,7 +193,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             if (iq->debug)
                 reqprintf(iq, "Sleeping for DELAY_WRITES_IN_RECORD_C (%dms)",
                           d_ms);
-            int lrc = usleep(1000 * d_ms);
+            int lrc = Usleep(1000 * d_ms);
             if (lrc)
                 reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
         }
@@ -884,7 +884,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (d_ms) {
         if (iq->debug)
             reqprintf(iq, "Sleeping for %d ms", d_ms);
-        usleep(1000 * d_ms);
+        Usleep(1000 * d_ms);
     }
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
@@ -1715,7 +1715,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (d_ms) {
         if (iq->debug)
             reqprintf(iq, "Sleeping for %d ms", d_ms);
-        usleep(1000 * d_ms);
+        Usleep(1000 * d_ms);
     }
 
     if (!is_event_from_sc(flags)) {

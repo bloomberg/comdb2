@@ -398,7 +398,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
     if (delay != 0)
         poll(NULL, 0, delay * 5);
     else if (BDB_ATTR_GET(thedb->bdb_attr, SC_FORCE_DELAY))
-        usleep(gbl_sc_usleep);
+        Usleep(gbl_sc_usleep);
 
     /* if sanc list is not ok, snooze for 100 ms */
     if (!net_sanctioned_list_ok(data->from->dbenv->handle_sibling))
@@ -648,12 +648,12 @@ static int convert_record(struct convert_record_data *data)
     }
     if (tbl_had_writes(data)) {
         /* NB: if we return here, writes could block SC forever, so lets not */
-        usleep(gbl_sc_usleep);
+        Usleep(gbl_sc_usleep);
     }
 
     /* if master queue latency increased, slow down*/
     if (gbl_altersc_latency && gbl_altersc_delay_usec > 0)
-        usleep(gbl_altersc_delay_usec);
+        Usleep(gbl_altersc_delay_usec);
 
     if (data->trans == NULL) {
         /* Schema-change writes are always page-lock, not rowlock */
@@ -1240,7 +1240,7 @@ static void *convert_records_thd(struct convert_record_data *data)
             use_rebuild_thr(&data->cmembers->thrcount,
                             &data->cmembers->maxthreads)) {
             /* num thread at max, sleep few microsec then try again */
-            usleep(bdb_attr_get(data->from->dbenv->bdb_attr,
+            Usleep(bdb_attr_get(data->from->dbenv->bdb_attr,
                                 BDB_ATTR_SC_NO_REBUILD_THR_SLEEP));
             continue;
         }
@@ -1846,7 +1846,7 @@ static int upgrade_records(struct convert_record_data *data)
 
         /* snooze for a bit if writes have been coming in */
         if (gbl_sc_last_writer_time >= comdb2_time_epoch() - 5)
-            usleep(gbl_sc_usleep);
+            Usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 

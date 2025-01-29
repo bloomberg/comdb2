@@ -231,7 +231,7 @@ retry:
             deadlocksleepus = (rand() % gbl_maxwthreads * localwait);
             /* usleep(0) will likely give up the CPU. Avoid it. */
             if (deadlocksleepus != 0)
-                usleep(deadlocksleepus);
+                Usleep(deadlocksleepus);
             goto retry;
         }
 
