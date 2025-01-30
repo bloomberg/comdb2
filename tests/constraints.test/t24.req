@@ -1,0 +1,7 @@
+-- Document that you can't change the parent key in a foreign key constraint
+-- Although this isn't currently supported, we could add support for it in the future
+drop table if exists foo
+drop table if exists bar
+create table bar {schema{int i int j} keys{"pk" = i+j}} $$
+create table foo {schema{int i int j} keys{dup "key" = i+j} constraints{"key" -> "bar":"pk" on delete cascade }} $$
+alter table bar {schema{int i} keys{"pk" = i}} $$

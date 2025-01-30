@@ -1,0 +1,4 @@
+[drop table if exists t] rc 0
+[begin] rc 0
+[create table t { schema { int a } keys { "a" = a } constraints { "a" -> "donut":"a" on delete cascade } }] rc 0
+[commit] failed with rc 240 constraint error for table "t" key "a" -> <"donut":"a">: parent table not found

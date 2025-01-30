@@ -27,11 +27,9 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob);
 int delete_temp_table(struct ireq *iq, struct dbtable *newdb);
 
 int verify_new_temp_sc_db(struct dbtable *p_db, struct dbtable *p_newdb, tran_type *tran);
-/****** This function is inside constraints.c and it was used by schemachange.c,
- * before it was declared extern in the c files I am putting the definition here
- * to move a step towards a proper header file. */
 int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
-                             struct dbtable *new_db, struct schema_change_type *s);
+                             struct dbtable *new_db,
+                             struct schema_change_type *sc);
 
 int do_schema_change_tran(sc_arg_t *);
 int do_schema_change_tran_thd(sc_arg_t *);

@@ -785,6 +785,8 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
 
     add_dbtable_to_thedb_dbs(db);
 
+    try_to_populate_missing_reverse_constraints();
+
     _master_recs(tran, tablename, type);
 
     free(table_copy);

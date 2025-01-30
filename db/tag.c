@@ -46,7 +46,6 @@
 #include "tag.h"
 #include "types.h"
 #include "comdb2.h"
-#include "block_internal.h"
 #include "prefault.h"
 
 #include "sql.h"
@@ -60,6 +59,7 @@
 #include "schemachange.h" /* sc_errf() */
 #include "dynschematypes.h"
 #include "fdb_fend.h"
+#include "sc_schema.h"
 
 extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
@@ -6380,7 +6380,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
 
     set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
-    restore_constraint_pointers(db, newdb);
+    restore_constraint_pointers(db, newdb, NULL);
     free_db_and_replace(db, newdb);
 
     bdb_close_only(old_bdb_handle, &bdberr);
