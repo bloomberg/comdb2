@@ -5441,8 +5441,7 @@ void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
     return NULL;
 }
 
-int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
-                    const void *varaddr, int length)
+static void cdb2_bind_param_helper(cdb2_hndl_tp *hndl, int type, const void *varaddr, int length)
 {
     hndl->n_bindvars++;
     hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) *
@@ -5450,7 +5449,6 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
     CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
     cdb2__sqlquery__bindvalue__init(bindval);
     bindval->type = type;
-    bindval->varname = (char *)varname;
     bindval->value.data = (void *)varaddr;
     bindval->value.len = length;
     if (length == 0) {
@@ -5469,6 +5467,14 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
         }
     }
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
+}
+
+int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
+                    const void *varaddr, int length)
+{
+    cdb2_bind_param_helper(hndl, type, varaddr, length);
+    CDB2SQLQUERY__Bindvalue *bindval = hndl->bindvars[hndl->n_bindvars - 1];
+    bindval->varname = (char *)varname;
     if (log_calls)
         fprintf(stderr, "%p> cdb2_bind_param(%p, \"%s\", %s, %p, %d) = 0\n",
                 (void *)pthread_self(), hndl, varname, cdb2_type_str(type),
@@ -5488,28 +5494,11 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
         sprintf(hndl->errstr, "%s: bind index starts at value 1", __func__);
         return -1;
     }
-    hndl->n_bindvars++;
-    hndl->bindvars = realloc(hndl->bindvars, sizeof(CDB2SQLQUERY__Bindvalue *) *
-                                                 hndl->n_bindvars);
-    CDB2SQLQUERY__Bindvalue *bindval = malloc(sizeof(CDB2SQLQUERY__Bindvalue));
-    cdb2__sqlquery__bindvalue__init(bindval);
-    bindval->type = type;
+    cdb2_bind_param_helper(hndl, type, varaddr, length);
+    CDB2SQLQUERY__Bindvalue *bindval = hndl->bindvars[hndl->n_bindvars - 1];
     bindval->varname = NULL;
-    bindval->value.data = (void *)varaddr;
-    bindval->value.len = length;
     bindval->has_index = 1;
     bindval->index = index;
-    if (length == 0) {
-        /* See comments in cdb2_bind_param(). */
-        bindval->has_isnull = 1;
-        bindval->isnull = (varaddr == NULL);
-        if (type == CDB2_CSTRING && !bindval->isnull) {
-            bindval->value.data = (unsigned char *)"";
-            bindval->value.len = 1;
-        }
-    }
-    hndl->bindvars[hndl->n_bindvars - 1] = bindval;
-
     return 0;
 }
 
