@@ -1691,6 +1691,8 @@ char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen
     char *type = CLIENT_TYPE_TO_STR(p.type);
     if (p.null || p.type == COMDB2_NULL_TYPE) {
         snprintf(value, sizeof(value), "null");
+    } else if (p.arraylen) {
+        snprintf(value, sizeof(value), "carray of length %d", p.arraylen);
     } else {
         switch (p.type) {
             case CLIENT_UINT:
