@@ -1,0 +1,10 @@
+[BEGIN] rc 0
+[INSERT INTO names VALUES("nick", 0, "")] rc 0
+[INSERT INTO names VALUES("nick", 1, "nicholas")] rc 0
+[INSERT INTO names VALUES("nick", 2, "nicholas the 2nd")] rc 0
+[INSERT INTO names VALUES("nick", 3, "nicholas the 3rd & final")] rc 0
+[COMMIT] rc 0
+(name='nick', id=0, desc='')
+(name='nick', id=1, desc='nicholas')
+(name='nick', id=2, desc='nicholas the 2nd')
+(out='Verify succeeded.')

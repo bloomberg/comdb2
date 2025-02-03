@@ -1137,7 +1137,7 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             // if string is longer than field
             // and find-by-truncate is enabled
             convopts->step = (f->flags & INDEX_DESCEND) ? 0 : 1;
-            bias_info->truncated = 1;
+            if (bias_info) bias_info->truncated = 1;
         }
         rc = CLIENT_to_SERVER(m->z, m->n, CLIENT_PSTR2, null,
                               (struct field_conv_opts *)convopts,
@@ -1371,7 +1371,7 @@ int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             /* if the SQLite BLOB is longer than the bytearray field
                and find-by-truncate is enabled. */
             convopts->step = (f->flags & INDEX_DESCEND) ? 0 : 1;
-            bias_info->truncated = 1;
+            if (bias_info) bias_info->truncated = 1;
         }
 
         rc =
