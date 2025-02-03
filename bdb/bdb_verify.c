@@ -469,22 +469,22 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                 goto err;
             }
 
-            int keylen;
-            rc = par->formkey_callback(par->db_table, databuf, blob_buf, ix,
-                                       expected_keybuf, &keylen);
-            if (rc) {
-                par->verify_status = 1;
-                locprint(par, "!%016llx ix %d formkey rc %d", genid_flipped, ix,
-                         rc);
-                ckey->c_close(ckey);
-                ckey = NULL;
-                rc = 0;
-                goto next_record; /* ? */
+            int keylen = 0;
+            if (has_keys & (1ULL << ix)) {
+                rc = par->formkey_callback(par->db_table, databuf, blob_buf, ix,
+                                        expected_keybuf, &keylen);
+                if (rc) {
+                    par->verify_status = 1;
+                    locprint(par, "!%016llx ix %d formkey rc %d", genid_flipped, ix,
+                            rc);
+                    ckey->c_close(ckey);
+                    ckey = NULL;
+                    rc = 0;
+                    goto next_record;
+                }
             }
 
             /* set up key */
-
-            // AZ why not eliminate expected_keybuf totally, write directly data
             memcpy(dbt_key.data, expected_keybuf, keylen);
             dbt_key.size = keylen;
             if (bdb_keycontainsgenid(bdb_state, ix)) {

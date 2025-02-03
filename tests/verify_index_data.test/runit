@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+DBNAME=$1
+TESTNAME="verify_index_data"
+TBLNAME="names"
+SQL="$TESTNAME.sql"
+OUTPUT="$TESTNAME.out"
+EXPECTED="$TESTNAME.expected"
+
+rm -f $OUTPUT
+
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "drop table if exists $TBLNAME"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table $TBLNAME {$(cat $TBLNAME.csc2)}"
+cdb2sql ${CDB2_OPTIONS} -f $SQL $DBNAME default > $OUTPUT
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select * from $TBLNAME where id < 3" >> $OUTPUT
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.verify('$TBLNAME')" >> $OUTPUT
+diff $OUTPUT $EXPECTED > /dev/null
+rc=$?
+if [[ $rc -ne 0 ]]; then
+    echo "Failed $TESTNAME test"
+    echo diff $(pwd)/$OUTPUT $(pwd)/$EXPECTED
+fi
+
+exit $rc
