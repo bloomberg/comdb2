@@ -5604,11 +5604,11 @@ int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
     int ms = (clnt->deadlock_recovered + 1) * 10;
     if (ms > 100) ms = 100;
     if (gbl_debug_recover_deadlock_evbuffer) {
-        if (waiters) printf("%s waiters:%d clnt:%s count:%d delay:%d\n", __func__, waiters, clnt->sql, clnt->deadlock_recovered, ms);
-        else printf("%s lock-desired:%d clnt:%s count:%d delay:%d\n", __func__, lock_desired, clnt->sql, clnt->deadlock_recovered, ms);
+        if (waiters) logmsg(LOGMSG_USER, "%s waiters:%d clnt:%s count:%d delay:%d\n", __func__, waiters, clnt->sql, clnt->deadlock_recovered, ms);
+        else logmsg(LOGMSG_USER, "%s lock-desired:%d clnt:%s count:%d delay:%d\n", __func__, lock_desired, clnt->sql, clnt->deadlock_recovered, ms);
     } else {
-        if (waiters) printf("%s waiters:%d delay:%d\n", __func__, waiters, ms);
-        else printf("%s lock-desired:%d delay:%d\n", __func__, lock_desired, ms);
+        if (waiters) logmsg(LOGMSG_USER, "%s waiters:%d delay:%d\n", __func__, waiters, ms);
+        else logmsg(LOGMSG_USER, "%s lock-desired:%d delay:%d\n", __func__, lock_desired, ms);
     }
     return recover_deadlock_flags(thedb->bdb_env, clnt, NULL, ms, __func__, __LINE__, flags);
 }
