@@ -2275,6 +2275,19 @@ static inline int db_get_alias(void *tran, dbtable *tbl)
     return 0;
 }
 
+static void init_static_table(struct dbenv *dbenv)
+{
+    /* Initialize static table once */
+    if (dbenv->static_table.dbs_idx != 0)
+        return;
+    /* Initialize static table once */
+    logmsg(LOGMSG_INFO, "%s initializing static table '%s'\n", __func__, COMDB2_STATIC_TABLE);
+    dbenv->static_table.dbs_idx = -1;
+    dbenv->static_table.tablename = COMDB2_STATIC_TABLE;
+    dbenv->static_table.dbenv = dbenv;
+    dbenv->static_table.dbtype = DBTYPE_TAGGED_TABLE;
+    dbenv->static_table.handle = dbenv->bdb_env;
+}
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
@@ -2297,17 +2310,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
     /* set generic settings, likely already set when env was opened, but make
      * sure */
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
-
-    /* Initialize static table once */
-    if (dbenv->static_table.dbs_idx == 0) {
-        logmsg(LOGMSG_INFO, "%s initializing static table '%s'\n", __func__,
-               COMDB2_STATIC_TABLE);
-        dbenv->static_table.dbs_idx = -1;
-        dbenv->static_table.tablename = COMDB2_STATIC_TABLE;
-        dbenv->static_table.dbenv = dbenv;
-        dbenv->static_table.dbtype = DBTYPE_TAGGED_TABLE;
-        dbenv->static_table.handle = dbenv->bdb_env;
-    }
+    init_static_table(dbenv);
 
     /* make room for dbs */
     dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(dbtable *));
@@ -4220,6 +4223,8 @@ static int init(int argc, char **argv)
 
     if (gbl_create_mode) {
         create_service_file(lrlname);
+        if (!gbl_init_single_meta)
+            init_static_table(thedb);
     }
 
     /* open db engine */
