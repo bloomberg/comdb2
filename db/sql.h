@@ -275,6 +275,9 @@ typedef struct {
     int maxchunksize;     /* multi-transaction bulk mode */
     int crtchunksize;     /* how many rows are processed already */
     int nchunks;          /* number of chunks. 0 for a non-chunked transaction. */
+
+    /* cache the versions of dta files to catch schema changes and fastinits */
+    table_version_cache *table_version_cache;
 } dbtran_type;
 typedef dbtran_type trans_t;
 
