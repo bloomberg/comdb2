@@ -121,7 +121,6 @@ static berktable_t *create_tables(int *tablecount)
     table->datasize = 8;
     if ((rc = create_and_open(table)) != 0) {
         close_tables(tables, count);
-        free(tables);
         return NULL;
     }
 
@@ -135,7 +134,6 @@ static berktable_t *create_tables(int *tablecount)
     table->datasize = 12;
     if ((rc = create_and_open(table)) != 0) {
         close_tables(tables, count);
-        free(tables);
         return NULL;
     }
 
