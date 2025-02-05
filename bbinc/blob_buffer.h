@@ -27,21 +27,15 @@
  * An array of these also supplements */
 typedef struct blob_buffer {
     int exists; /* to differentiate 0 length from null */
-
-    /* blob cache */
-    uint64_t genid;
+    int length;
     char *data;
-    int n; /* SQLite 'n' */
-    int flags; /* SQLite MEM_FLAGS */
-    int length; /* capacity used (might be different from 'n' above) */
-    int capacity; /* allocated */
 
     /* collected has a double life.  on the user side, it is used to
      * track how much blob we've collected from the transaction data.
      * on the server side, it should be non-zero even for a null blob
      * so we know that it's been through the type system (helps us tell
      * which blobs to update on updates) */
-    size_t collected;
+    int collected;
 
     /* The index of the blob.
        An ODH'd blob has OSQL_BLOB_ODH_BIT set,
