@@ -807,6 +807,7 @@ static void host_connected_info_free(struct host_connected_info *info)
 struct accept_info {
     int fd;
     int secure; /* whether connection is routed from a secure pmux port */
+    int badrte;
     struct evbuffer *buf;
     int to_len;
     char *to_host;
@@ -843,7 +844,8 @@ static int close_oldest_pending_connection(void)
     return 0;
 }
 
-static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure)
+static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd, int secure,
+                                           int badrte)
 {
     check_base_thd();
     if (pending_connections > max_pending_connections) {
@@ -855,6 +857,7 @@ static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct soc
     a->ss = *addr;
     a->fd = fd;
     a->secure = secure;
+    a->badrte = badrte;
     a->ev = event_new(base, fd, EV_READ, do_read, a);
     event_add(a->ev, NULL);
     TAILQ_INSERT_TAIL(&accept_list, a, entry);
@@ -2844,7 +2847,8 @@ static void rd_connect_msg_len(int fd, short what, void *data)
     }
 }
 
-static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure)
+static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int fd, int is_readonly, int secure,
+                               int *pbadrte)
 {
     struct appsock_info *info = NULL;
     struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
@@ -2861,6 +2865,15 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
             return 1;
         }
 
+        if (strcmp(key, "rte ") == 0) {
+            evbuffer_read(buf, fd, -1);
+            evbuffer_free(buf);
+            ssize_t rc = write(fd, "0\n", 2);
+            if (rc == 2 && pbadrte)
+                *pbadrte = 1;
+            return 1;
+        }
+
         info = get_appsock_info(key);
     }
 
@@ -2873,6 +2886,7 @@ static int do_appsock_evbuffer(struct evbuffer *buf, struct sockaddr_in *ss, int
     arg->rd_buf = buf;
     arg->is_readonly = is_readonly;
     arg->secure = secure;
+    arg->badrte = *pbadrte;
 
     static int appsock_counter = 0;
     arg->base = appsock_base[appsock_counter++];
@@ -2903,6 +2917,7 @@ static void do_read(int fd, short what, void *data)
     netinfo_type *netinfo_ptr = a->netinfo_ptr;
     struct sockaddr_in ss = a->ss;
     int secure = a->secure;
+    int badrte = a->badrte;
     a->fd = -1;
     accept_info_free(a);
     a = NULL;
@@ -2911,8 +2926,12 @@ static void do_read(int fd, short what, void *data)
         shutdown_close(fd);
         return;
     }
-    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure)) == 0) return;
-    handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
+    if ((do_appsock_evbuffer(buf, &ss, fd, 0, secure, &badrte)) == 0)
+        return;
+    if (badrte)
+        accept_info_new(netinfo_ptr, &ss, fd, secure, 1);
+    else
+        handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -2922,7 +2941,7 @@ static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 0);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 0, 0);
 }
 
 static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, struct sockaddr *addr, int len,
@@ -2932,7 +2951,7 @@ static void accept_secure(struct evconnlistener *listener, evutil_socket_t fd, s
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd, 1, 0);
 }
 
 static void accept_error_cb(struct evconnlistener *listener, void *data)
@@ -3881,5 +3900,5 @@ void do_revconn_evbuffer(int fd, short what, void *data)
     struct sockaddr_in addr;
     socklen_t laddr = sizeof(addr);
     getsockname(fd, (struct sockaddr *)&addr, &laddr);
-    do_appsock_evbuffer(buf, &addr, fd, 1, 0);
+    do_appsock_evbuffer(buf, &addr, fd, 1, 0, NULL);
 }
