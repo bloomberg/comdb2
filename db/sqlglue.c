@@ -6511,10 +6511,12 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         return 0;
     struct sqlclntstate *clnt = thd->clnt;
 
-    if (pCur->used_ondisk_blobs) {
+    if (pCur->rd_blob_buffers) {
         for (int i = 0; i < MAXBLOBS; ++i) {
-            if (pCur->ondisk_blobs[i].capacity) free(pCur->ondisk_blobs[i].data);
+            if (pCur->rd_blob_buffers[i].capacity) free(pCur->rd_blob_buffers[i].z);
         }
+        free(pCur->rd_blob_buffers);
+        pCur->rd_blob_buffers = NULL;
     }
     if (pCur->range) {
         if (pCur->range->idxnum == -1 && pCur->range->islocked == 0) {
@@ -6792,18 +6794,22 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     int skip_cache = 0;
     struct field *f = &sc->member[fnum];
     int blobnum = f->blob_index + 1;
-    blob_buffer_t *blob = &pCur->ondisk_blobs[f->blob_index];
+    struct rd_blob_buffer *blob = NULL;
 
     pCur->nblobs++;
     struct sql_thread *thd = pCur->thd;
     if (thd) thd->cost += pCur->blob_cost;
 
-    if (blob->genid && blob->genid == pCur->genid) {
-        m->szMalloc = m->n = blob->n;
-        m->zMalloc = m->z = malloc(blob->length);
-        memcpy(m->z, blob->data, blob->length);
-        m->flags = blob->flags;
-        return 0;
+    if (pCur->rd_blob_buffers) {
+        blob = &pCur->rd_blob_buffers[f->blob_index];
+        if (blob->genid == pCur->genid) {
+            m->n = blob->n;
+            m->szMalloc = blob->length;
+            m->zMalloc = m->z = sqlite3GlobalConfig.m.xMalloc(blob->length);
+            memcpy(m->z, blob->z, blob->length);
+            m->flags = blob->flags;
+            return 0;
+        }
     }
 
     struct ireq iq;
@@ -6869,21 +6875,23 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     }
 
     if (skip_cache) {
-        blob->genid = 0;
         return 0;
+    }
+    if (!blob) {
+        pCur->rd_blob_buffers = calloc(MAXBLOBS, sizeof(struct rd_blob_buffer));
+        blob = &pCur->rd_blob_buffers[f->blob_index];
     }
     int length = blobs.bloblens[0];
     if (blob->capacity < length) {
-        free(blob->data);
-        blob->data = malloc(length);
+        free(blob->z);
+        blob->z = malloc(length);
         blob->capacity = length;
     }
     blob->n = m->n;
     blob->length = length;
     blob->flags = m->flags;
     blob->genid = pCur->genid;
-    memcpy(blob->data, m->z, length);
-    pCur->used_ondisk_blobs = 1;
+    memcpy(blob->z, m->z, length);
     return 0;
 }
 
@@ -8924,7 +8932,7 @@ int sqlite3BtreeInsert(
     /* If pData is NULL, ondisk_buf and ondisk_blobs contain comdb2 row data
        and are ready to be inserted as is. */
     if (pData == NULL) {
-        pblobs = pCur->ondisk_blobs;
+        pblobs = pCur->wr_blob_buffers;
     } else {
         pblobs = alloca(sizeof(blob_buffer_t) * MAXBLOBS);
         memset(pblobs, 0, sizeof(blob_buffer_t) * MAXBLOBS);
@@ -9507,7 +9515,7 @@ int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized
     info.tzname = thd->clnt->tzname;
     info.nblobs = &nblobs;
     info.convopts = &convopts;
-    info.outblob = pCur->ondisk_blobs;
+    info.outblob = pCur->wr_blob_buffers;
     info.maxblobs = MAXBLOBS;
 
     memset(info.outblob, 0, sizeof(blob_buffer_t) * MAXBLOBS);
