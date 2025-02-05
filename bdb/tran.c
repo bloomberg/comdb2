@@ -993,10 +993,6 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
                 tran, tran->tranclass, tran->logical_tran,
                 tran->logical_tran->tranclass);
 
-    if (tran->table_version_cache)
-        free(tran->table_version_cache);
-    tran->table_version_cache = NULL;
-
     free(tran);
     return rc;
 }
@@ -1038,9 +1034,6 @@ static int bdb_tran_abort_phys_int(bdb_state_type *bdb_state, tran_type *tran,
     if (reset_rowlist)
         tran_reset_rowlist(tran->logical_tran);
 
-    if (tran->table_version_cache)
-        free(tran->table_version_cache);
-    tran->table_version_cache = NULL;
     free(tran);
     return rc;
 }
@@ -1185,7 +1178,6 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
                                      int offset, int is_ha_retry)
 {
     tran_type *tran;
-    int rc = 0;
 
 #if 0
    SINCE SHADOW TRANSACTIONS (READ COMMITTED/SNAPSHOT/SERIALIZABLE)
@@ -1229,37 +1221,24 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     tran->asof_ref_lsn.file = 0;
     tran->asof_ref_lsn.offset = 1;
     tran->asof_hashtbl = NULL;
+    tran->trak = trak;
 
-    if (tran) {
-        tran->trak = trak;
+    if (tran->tranclass == TRANCLASS_SNAPISOL ||
+        tran->tranclass == TRANCLASS_SERIALIZABLE) {
+        /* register transaction so we start receiving log undos */
+        tran->osql =
+            bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
+                                  file, offset, is_ha_retry);
+        if (!tran->osql) {
+            if (*bdberr != BDBERR_NOT_DURABLE)
+                logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
 
-        if (tran->tranclass == TRANCLASS_SNAPISOL ||
-            tran->tranclass == TRANCLASS_SERIALIZABLE ||
-            tran->tranclass == TRANCLASS_MODSNAP) {
-            rc = bdb_osql_cache_table_versions(bdb_state, tran, trak, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "%s failed to cache table versions rc=%d bdberr=%d\n",
-                       __func__, rc, *bdberr);
-            }
-
-            /* register transaction so we start receiving log undos */
-            if (tran->tranclass != TRANCLASS_MODSNAP) {
-                tran->osql =
-                    bdb_osql_trn_register(bdb_state, tran, trak, bdberr, epoch,
-                                          file, offset, is_ha_retry);
-                if (!tran->osql) {
-                    if (*bdberr != BDBERR_NOT_DURABLE)
-                        logmsg(LOGMSG_ERROR, "%s %d\n", __func__, *bdberr);
-
-                    myfree(tran);
-                    return NULL;
-                }
-
-                listc_init(&tran->open_cursors,
-                           offsetof(struct bdb_cursor_ifn, lnk));
-           }
+            myfree(tran);
+            return NULL;
         }
+
+        listc_init(&tran->open_cursors,
+                   offsetof(struct bdb_cursor_ifn, lnk));
     }
 
     return tran;
@@ -2129,10 +2108,6 @@ cleanup:
         logmsg(LOGMSG_USER, "TRK_TRAN: committed %p (type=%d)\n", tran,
                 tran->tranclass);
 
-    if (tran->table_version_cache)
-        free(tran->table_version_cache);
-    tran->table_version_cache = NULL;
-
     pool_free(tran->rc_pool);
     myfree(tran->rc_list);
     myfree(tran->rc_locks);
@@ -2431,10 +2406,6 @@ cleanup:
     if (tran->trak)
         logmsg(LOGMSG_USER, "TRK_TRAN: aborted %p (type=%d)\n", tran,
                 tran->tranclass);
-
-    if (tran->table_version_cache)
-        free(tran->table_version_cache);
-    tran->table_version_cache = NULL;
 
     if (tran->pglogs_queue_hash) {
         hash_for(tran->pglogs_queue_hash, free_pglogs_queue_cursors, NULL);

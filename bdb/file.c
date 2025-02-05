@@ -8562,9 +8562,27 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
+void bdb_free_table_version_cache(table_version_cache *cache)
+{
+    if (cache->entries) {
+        free(cache->entries);
+    }
+    free(cache);
+}
+
+int bdb_init_table_version_cache(table_version_cache **cache)
+{
+    *cache = calloc(1, sizeof(table_version_cache));
+    if (!(*cache)) {
+        return ENOMEM;
+    }
+
+    return 0;
+}
+
 /* Refactor to not access berkley while holding children lock */
-int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
-                                  int trak, int *bdberr)
+int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, table_version_cache *cache,
+                                  int *bdberr)
 {
     int i = 0;
     int retry;
@@ -8579,54 +8597,56 @@ retry:
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    if (tran->table_version_cache) {
-        tran->table_version_cache_sz = 0;
-        free(tran->table_version_cache);
-        tran->table_version_cache = NULL;
+    if (cache->entries) {
+        cache->sz = 0;
+        free(cache->entries);
+        cache->entries = NULL;
     }
 
     bdb_lock_children_lock(bdb_state);
-    tran->table_version_cache_sz = tablecount = bdb_state->numchildren;
+    cache->sz = tablecount = bdb_state->numchildren;
     tablenames = (char **)calloc(sizeof(char *), tablecount);
-    tran->table_version_cache =
+
+    cache->entries =
         (unsigned long long *)calloc(tablecount, sizeof(unsigned long long));
+    if (!cache->entries) {
+        bdb_unlock_children_lock(bdb_state);
 
-    for (int i = 0; i < tablecount; i++) {
-        if (bdb_state->children[i]) {
-            tablenames[i] = strdup(bdb_state->children[i]->name);
-            tran->table_version_cache[i] = bdb_state->children[i]->version_num;
-        }
-    }
-
-    bdb_unlock_children_lock(bdb_state);
-
-    if (!tran->table_version_cache) {
-        logmsg(LOGMSG_ERROR, "%s: failed to allocated %zu bytes\n", __func__,
-               sizeof(unsigned long long) * tran->table_version_cache_sz);
+        logmsg(LOGMSG_ERROR, "%s: failed to allocate %zu bytes\n", __func__,
+               sizeof(unsigned long long) * cache->sz);
         *bdberr = BDBERR_MALLOC;
         rc = -1;
         goto done;
     }
 
-    for (i = 0; i < tran->table_version_cache_sz; i++) {
+    for (int i = 0; i < tablecount; i++) {
+        if (bdb_state->children[i]) {
+            tablenames[i] = strdup(bdb_state->children[i]->name);
+            cache->entries[i] = bdb_state->children[i]->version_num;
+        }
+    }
+
+    bdb_unlock_children_lock(bdb_state);
+
+    for (i = 0; i < cache->sz; i++) {
         if (tablenames[i] == NULL)
             continue;
-        if (tran->table_version_cache[i] == 0) {
+        if (cache->entries[i] == 0) {
             /* read it */
             rc = bdb_get_file_version_data_by_name(
-                NULL, tablenames[i], 0, &tran->table_version_cache[i], bdberr);
+                NULL, tablenames[i], 0, &cache->entries[i], bdberr);
             if (rc) {
                 if (*bdberr == BDBERR_FETCH_DTA) {
                     rc = 0;
                     *bdberr = BDBERR_NOERROR;
-                    tran->table_version_cache[i] = -1;
+                    cache->entries[i] = -1;
                 } else {
                     logmsg(LOGMSG_ERROR, "%s: failed to read file version number "
                                     "rc=%d bdberr=%d\n",
                             __func__, rc, *bdberr);
-                    free(tran->table_version_cache);
-                    tran->table_version_cache = NULL;
-                    tran->table_version_cache_sz = 0;
+                    free(cache->entries);
+                    cache->entries = NULL;
+                    cache->sz = 0;
                     goto done;
                 }
             } else {
@@ -8650,7 +8670,7 @@ retry:
         } else if (bdb_state->children[i] &&
                    bdb_state->children[i]->version_num > 0 &&
                    bdb_state->children[i]->version_num !=
-                       tran->table_version_cache[i]) {
+                       cache->entries[i]) {
             retry = 1;
         }
     }
@@ -8658,7 +8678,7 @@ retry:
         for (int i = 0; i < tablecount; i++) {
             if (bdb_state->children[i])
                 bdb_state->children[i]->version_num =
-                    tran->table_version_cache[i];
+                    cache->entries[i];
         }
     }
     bdb_unlock_children_lock(bdb_state);
@@ -8677,8 +8697,7 @@ done:
     return rc;
 }
 
-int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
-                                 int trak, int *bdberr)
+int bdb_osql_check_table_version(bdb_state_type *bdb_state, table_version_cache *cache)
 {
     int i = 0;
     bdb_state_type *parent;
@@ -8697,11 +8716,11 @@ int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
 
     bdb_unlock_children_lock(bdb_state);
 
-    if ((i >= 0) && (i < tran->table_version_cache_sz) &&
-        (tran->table_version_cache[i] != 0) &&
-        (tran->table_version_cache[i] == bdb_state->version_num)) {
+    if ((i >= 0) && (i < cache->sz) &&
+        (cache->entries[i] != 0) &&
+        (cache->entries[i] == bdb_state->version_num)) {
         /*printf("OK %s [%d] %llx vs %llx\n", bdb_state->name, i,
-         * tran->table_version_cache[i], bdb_state->version_num);*/
+         * cache->entries[i], bdb_state->version_num);*/
         return 0;
     } else {
         logmsg(LOGMSG_ERROR, "FAILED table \"%s\" changed, index=%d\n", bdb_state->name, i);

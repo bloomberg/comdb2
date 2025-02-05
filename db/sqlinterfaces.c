@@ -2254,6 +2254,11 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
 
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
     return rc;
 }
 

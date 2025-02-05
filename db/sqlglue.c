@@ -4859,6 +4859,49 @@ int start_new_transaction(struct sqlclntstate *clnt)
     return 0;
 }
 
+static int cache_table_versions(struct sqlclntstate *clnt)
+{
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
+    int rc = bdb_init_table_version_cache(&clnt->dbtran.table_version_cache);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s failed initialize table verison cache rc=%d\n",
+               __func__, rc);
+        return rc;
+    }
+
+    int bdberr;
+    rc = bdb_osql_cache_table_versions(thedb->bdb_env,
+        clnt->dbtran.table_version_cache, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s failed to cache table versions rc=%d bdberr=%d\n",
+               __func__, rc, bdberr);
+        return rc;
+    }
+
+    return 0;
+}
+
+static int must_start_new_transaction(const struct sqlclntstate *clnt, int is_writer)
+{
+    if (is_writer) { return 1; }
+
+    const int tran_mode_must_open_shadows =
+        clnt->dbtran.mode > TRANLEVEL_RECOM && clnt->dbtran.mode != TRANLEVEL_MODSNAP;
+    if (tran_mode_must_open_shadows) { return 1; }
+
+    const int is_selectv = clnt->has_recording;
+    const int is_singular_request = clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS;
+    if (is_selectv && !is_singular_request) { return 1; }
+
+    return 0;
+}
+
 /*
  ** Attempt to start a new transaction. A write-transaction
  ** is started if the second argument is nonzero, otherwise a read-
@@ -4958,17 +5001,20 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         goto done;
     }
 
-    // TODO: Don't open shadows for read-only modsnap txns.
-    // In order to make this optimization work, we still need to latch
-    // the initial versions of tables and use these latched versions to 
-    // fail on schema changes. This is currently handled in the shadow code
-    // but can be refactored out.
-    if ((clnt->dbtran.mode <= TRANLEVEL_RECOM) && wrflag == 0) { // read-only
-        if (clnt->has_recording == 0 ||                        // not selectv
-            clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
-            rc = SQLITE_OK;
+    if (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
+        clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+        clnt->dbtran.mode == TRANLEVEL_MODSNAP) {
+        rc = cache_table_versions(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to cache table versions\n", __func__);
+            rc = SQLITE_ERROR;
             goto done;
         }
+    }
+
+    if (!must_start_new_transaction(clnt, wrflag)) {
+        rc = SQLITE_OK;
+        goto done;
     }
 
     /* UPSERT: If we were asked to perform some action on conflict
@@ -5239,6 +5285,11 @@ int sqlite3BtreeCommit(Btree *pBt)
         clnt->selectv_arr = NULL;
     }
 
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
+    }
+
     reset_clnt_flags(clnt);
 
 done:
@@ -5355,6 +5406,11 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
     if (clnt->selectv_arr) {
         currangearr_free(clnt->selectv_arr);
         clnt->selectv_arr = NULL;
+    }
+
+    if (clnt->dbtran.table_version_cache) {
+        bdb_free_table_version_cache(clnt->dbtran.table_version_cache);
+        clnt->dbtran.table_version_cache = NULL;
     }
 
     reset_clnt_flags(clnt);
@@ -7945,19 +8001,15 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
 
         /* in snapshot and stronger isolations, check cached table versions */
-        if (clnt->dbtran.shadow_tran &&
-            (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-             clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-             clnt->dbtran.mode == TRANLEVEL_MODSNAP)) {
+        if (clnt->dbtran.table_version_cache &&
+            (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
+            clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
+            clnt->dbtran.mode == TRANLEVEL_MODSNAP)) {
             /* make sure btrees have not changed since the transaction started
              */
-            int bdberr = 0;
-            rc = bdb_osql_check_table_version(
-                db->handle, clnt->dbtran.shadow_tran, 0, &bdberr);
+            rc = bdb_osql_check_table_version(db->handle, clnt->dbtran.table_version_cache);
             if (rc != 0) {
-                /* fprintf(stderr, "bdb_osql_check_table_version failed rc=%d
-                   bdberr=%d\n",
-                   rc, bdberr);*/
+                /* fprintf(stderr, "bdb_osql_check_table_version failed rc=%d\n", rc);*/
                 sqlite3_mutex_enter(sqlite3_db_mutex(p->db));
                 sqlite3VdbeError(p, "table \"%s\" was schema changed",
                                  db->tablename);
