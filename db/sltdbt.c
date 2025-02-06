@@ -414,8 +414,9 @@ int handle_ireq(struct ireq *iq)
     reqlog_pushprefixf(iq->reqlogger, "%s:REQ %s ", getorigin(iq),
                        req2a(iq->opcode));
 
-    iq->rawnodestats =
-        get_raw_node_stats(NULL, NULL, iq->frommach, sbuf2fileno(iq->sb), 0 /* tag does not support ssl */);
+    if (!iq->sorese) /* don't count osql */
+        iq->rawnodestats =
+            get_raw_node_stats(NULL, NULL, iq->frommach, sbuf2fileno(iq->sb), 0 /* tag does not support ssl */);
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles && IQ_HAS_SNAPINFO(iq))
