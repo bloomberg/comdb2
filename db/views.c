@@ -42,6 +42,7 @@
 extern int gbl_is_physical_replicant;
 int gbl_partitioned_table_enabled = 1;
 int gbl_merge_table_enabled = 1;
+int gbl_debug_sleep_on_partition_analyze = 0;
 
 struct timepart_shard {
     char *tblname; /* name of the table covering the shard, can be an alias */
@@ -3476,11 +3477,13 @@ int part_newformat(const char *tptname)
 int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *zErrTab, size_t nErrTab) {
     timepart_views_t *views;
     timepart_view_t *view;
+    timepart_shard_t *copy_of_shards = NULL;
     int rc = 0;
     int i = 0;
     char tbl[MAXTABLELEN];
     strncpy0(tbl, td->table, sizeof(tbl));
     Pthread_rwlock_rdlock(&views_lk);
+    int have_views_lock = 1;
 
     views = thedb->timepart_views;
 
@@ -3489,6 +3492,23 @@ int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *z
         logmsg(LOGMSG_ERROR, "%s:%d could not find partition %s\n", __func__, __LINE__, tbl);
         rc = VIEW_ERR_EXIST;
         goto done;
+    }
+
+    const int nshards = view->nshards;
+    copy_of_shards = malloc(sizeof(timepart_shard_t)*nshards);
+    if (!copy_of_shards) {
+        logmsg(LOGMSG_ERROR, "%s:%d Out of memory\n", __func__, __LINE__);
+        rc = ENOMEM;
+        goto done;
+    }
+
+    memcpy(copy_of_shards, view->shards, sizeof(timepart_shard_t)*nshards);
+
+    Pthread_rwlock_unlock(&views_lk);
+    have_views_lock = 0;
+
+    if (gbl_debug_sleep_on_partition_analyze) {
+        sleep(gbl_debug_sleep_on_partition_analyze);
     }
 
     get_saved_scale(td->table, &td->scale);
@@ -3502,15 +3522,20 @@ int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *z
          * coverage percent for individual shards*/
         td->override_llmeta = 1;
     }
-    for (i=0; i<view->nshards; i++) {
-        strncpy0(td->table, view->shards[i].tblname, sizeof(td->table));
+    for (i=0; i<nshards; i++) {
+        strncpy0(td->table, copy_of_shards[i].tblname, sizeof(td->table));
         rc = analyze_regular_table(td, clnt, zErrTab, nErrTab);
         if (rc) {
             goto done;
         }
     }
 done:
-    Pthread_rwlock_unlock(&views_lk);
+    if (have_views_lock) {
+        Pthread_rwlock_unlock(&views_lk);
+    }
+    if (copy_of_shards) {
+        free(copy_of_shards);
+    }
     strncpy0(td->table,tbl, sizeof(td->table));
     if (rc) 
         logmsg(LOGMSG_ERROR, "%s:%d analyze failed for shard %s of partition %s. rc : %d\n", __func__, __LINE__, view->shards[i].tblname, tbl, rc);
