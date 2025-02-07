@@ -3480,6 +3480,7 @@ int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *z
     int i = 0;
     char tbl[MAXTABLELEN];
     strncpy0(tbl, td->table, sizeof(tbl));
+    rdlock_schema_lk();
     Pthread_rwlock_rdlock(&views_lk);
 
     views = thedb->timepart_views;
@@ -3510,6 +3511,7 @@ int analyze_partition(table_descriptor_t *td, struct sqlclntstate *clnt, char *z
         }
     }
 done:
+    unlock_schema_lk();
     Pthread_rwlock_unlock(&views_lk);
     strncpy0(td->table,tbl, sizeof(td->table));
     if (rc) 
