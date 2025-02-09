@@ -1,7 +1,7 @@
 Verify correct osql cleanup under rollbacks and clients not closing db connections.
 
 When a client calls rollback (or disconnects), we remove them from the osql hash
-immediately (or after connetion closes), so there should be no items in the hash
+immediately (or after connection closes), so there should be no items in the hash
 after all clients have disconnected. Note that replicant sends osql schedule immediately
 to masternode without waiting for commit. This test only exercises newsql queries.
 
