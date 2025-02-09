@@ -5262,7 +5262,8 @@ static void init_dbconsumer_funcs(Lua L)
 
 static void *lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 {
-    return comdb2_realloc(ud, ptr, nsize);
+    /* ensure that realloc(ptr, NULL, 0) does nothing for lua. see lua/lmem.c */
+    return (ptr == NULL && nsize == 0) ? NULL : comdb2_realloc(ud, ptr, nsize);
 }
 
 static int create_sp_int(SP sp, char **err)
