@@ -283,6 +283,9 @@ as new SQL functions with the
 [CREATE LUA FUNCTION](#create-lua-function) statement, or as triggers with ```CREATE LUA TRIGGER```/
 ```CREATE LUA CONSUMER``` statements.
 
+The maximum procedure name length is 31 chars 
+**unless the procedure will be used by a trigger or a consumer, in which case the limit is 28 chars**.
+
 All procedures have versions.  If a version is not provided by the user
 then the database will give the procedure a numeric version. Versioning allows a more
 compartmentalized development model.  For instance, users may have "beta" and "prod" versions of a procedure

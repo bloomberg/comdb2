@@ -1231,7 +1231,9 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
-        setError(pParse, SQLITE_MISUSE, "Procedure name is too long");
+        char *errMsg = comdb2_asprintf("procedure name must not exceed %d characters", sizeof(spname)-1);
+        setError(pParse, SQLITE_MISUSE, errMsg);
+        free(errMsg);
         return;
     }
 
@@ -1249,7 +1251,9 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     }
     if (ver) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
-            setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
+            char *errMsg = comdb2_asprintf("procedure version must not exceed %d characters", sizeof(sp_version)-1);
+            setError(pParse, SQLITE_MISUSE, errMsg);
+            free(errMsg);
             goto cleanup;
         }
         strcpy(sc->fname, sp_version);
@@ -1290,7 +1294,9 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
     Vdbe *v = sqlite3GetVdbe(pParse);
 
     if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
-        setError(pParse, SQLITE_MISUSE, "Procedure name is too long");
+        char *errMsg = comdb2_asprintf("procedure name must not exceed %d characters", sizeof(spname)-1);
+        setError(pParse, SQLITE_MISUSE, errMsg);
+        free(errMsg);
         return;
     }
 
@@ -1299,7 +1305,9 @@ void comdb2DefaultProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 
     if (str) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
-            setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
+            char *errMsg = comdb2_asprintf("procedure version must not exceed %d characters", sizeof(sp_version)-1);
+            setError(pParse, SQLITE_MISUSE, errMsg);
+            free(errMsg);
             goto cleanup;
         }
         strcpy(sc->fname, sp_version);
@@ -1342,7 +1350,9 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
     Vdbe *v = sqlite3GetVdbe(pParse);
 
     if (comdb2TokenToStr(nm, spname, sizeof(spname))) {
-        setError(pParse, SQLITE_MISUSE, "Procedure name is too long");
+        char *errMsg = comdb2_asprintf("procedure name must not exceed %d characters", sizeof(spname)-1);
+        setError(pParse, SQLITE_MISUSE, errMsg);
+        free(errMsg);
         return;
     }
 
@@ -1368,7 +1378,9 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
 
     if (str) {
         if (comdb2TokenToStr(ver, sp_version, sizeof(sp_version))) {
-            setError(pParse, SQLITE_MISUSE, "Procedure version is too long");
+            char *errMsg = comdb2_asprintf("procedure version must not exceed %d characters", sizeof(sp_version)-1);
+            setError(pParse, SQLITE_MISUSE, errMsg);
+            free(errMsg);
             goto cleanup;
         }
         strcpy(sc->fname, sp_version);

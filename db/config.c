@@ -1505,7 +1505,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         char *queue = alloca(ltok + 1);
         tokcpy(tok, ltok, queue);
         char *bdbq = alloca(ltok + 4);
-        sprintf(bdbq, "__q%s", queue);
+        sprintf(bdbq, "%s%s", Q_TAG, queue);
 
         if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok == 0) {
             logmsg(LOGMSG_ERROR, "Expected dump-queue filename\n");
@@ -1531,7 +1531,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         char *queue = alloca(ltok + 1);
         tokcpy(tok, ltok, queue);
         char *bdbq = alloca(ltok + 4);
-        sprintf(bdbq, "__q%s", queue);
+        sprintf(bdbq, "%s%s", Q_TAG, queue);
 
         if ((tok = segtok(line, len, &st, &ltok)) == NULL || ltok <= 0) {
             logmsg(LOGMSG_ERROR, "Expected kafka topic\n");
