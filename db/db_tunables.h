@@ -2499,4 +2499,6 @@ REGISTER_TUNABLE("sc_status_max_rows", "Max number of rows returned in comdb2_sc
 REGISTER_TUNABLE("rep_process_pstack_time", "pstack the server if rep_process runs longer than time specified in secs (Default: 30s)",
                  TUNABLE_INTEGER, &gbl_rep_process_pstack_time, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_recover_time", "Number of msec before checking if SQL has waiters. 0 will disable. (Default: 10ms)", TUNABLE_INTEGER, &gbl_sql_recover_time, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("queue_use_dedicated_writers", "Whether queue-consumes are processed in dedicated writers. (Default: on)", TUNABLE_BOOLEAN, &gbl_queue_use_dedicated_writers, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("queue_max_dedicated_writers", "Max number of dedicated queue-consume writers. (Default: on)", TUNABLE_INTEGER, &gbl_queue_max_dedicated_writers, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

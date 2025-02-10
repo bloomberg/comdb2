@@ -3680,7 +3680,7 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
 }
 
 int gbl_disable_cnonce_blkseq;
-
+static void qconsume_check(osql_sess_t *sess, int type);
 /**
  * If "rpl" is a done packet, set xerr to error if any and return 1
  * If "rpl" is a recognizable packet, returns the length of the data type is
@@ -3737,6 +3737,7 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
             sess->is_delayed = 1;
         break;
     }
+    qconsume_check(sess, type);
     return rc;
 }
 
@@ -6228,6 +6229,22 @@ static inline int is_write_request(int type)
     default:
         return 0;
     }
+}
+
+static void qconsume_check(osql_sess_t *sess, int type)
+{
+    const char *tblname;
+    if (sess == NULL || !is_write_request(type) || sess->is_qconsume_only == 0)
+        return;
+
+    tblname = osql_last_usedb_tablename(sess);
+
+    if (type == OSQL_DBQ_CONSUME)
+        sess->is_qconsume_only = 1;
+    else if ((type == OSQL_DELREC || type == OSQL_DELETE) && tblname != NULL && is_tablename_queue(tblname))
+        sess->is_qconsume_only = 1;
+    else
+        sess->is_qconsume_only = 0;
 }
 
 void free_cached_idx(uint8_t **cached_idx);

@@ -63,6 +63,7 @@ struct thd {
     pthread_t tid;
     arch_tid archtid;
     struct thdpool *pool;
+    void *thddata;
 
     /* Work item that we need to do. */
     struct workitem work;
@@ -342,6 +343,18 @@ void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
         LISTC_FOR_EACH(&pool->queue, item, linkv)
         {
             (foreach_fn)(pool, item, user);
+        }
+    }
+    UNLOCK(&pool->mutex);
+}
+
+void thdpool_for_each_thd(struct thdpool *pool, thdpool_for_each_thd_fn for_each_thd_fn, void *user)
+{
+    LOCK(&pool->mutex)
+    {
+        struct thd *thd;
+        LISTC_FOR_EACH(&pool->thdlist, thd, thdlist_linkv) {
+            (for_each_thd_fn)(pool, thd->tid, thd->on_freelist, thd->thddata, user);
         }
     }
     UNLOCK(&pool->mutex);
@@ -704,6 +717,7 @@ static void *thdpool_thd(void *voidarg)
         thddata = alloca(pool->per_thread_data_sz);
         assert(thddata != NULL);
         memset(thddata, 0, pool->per_thread_data_sz);
+        thd->thddata = thddata;
     }
 
     init_fn = pool->init_fn;

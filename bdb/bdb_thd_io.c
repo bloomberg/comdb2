@@ -156,29 +156,6 @@ static ssize_t bdb_write(int fd, const void *buf, size_t nbytes)
     return rc;
 }
 
-void bdb_set_io_control(void (*start)(), void (*cmplt)())
-{
-    logmsg(LOGMSG_DEBUG, "IO CONTROL disabled\n");
-    if (1)
-        return;
-#if 0   
-   io_start=start;
-   io_cmplt=cmplt;
-   
-   if 
-     (
-      db_env_set_func_read(bdb_read) ||
-      db_env_set_func_fsync(bdb_fsync) ||
-      db_env_set_func_write(bdb_write)
-      )
-   {
-      printf("**FAILED db_env_set_func_pread RC\n");
-      abort();
-   }
-   printf("SET UP THD IO CONTROL\n");
-#endif
-}
-
 void bdb_get_iostats(int *n_reads, int *l_reads, int *n_writes, int *l_writes)
 {
     *n_reads = norm_reads;

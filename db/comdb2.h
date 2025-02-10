@@ -1292,6 +1292,7 @@ struct osql_sess {
     pthread_mutex_t participant_lk;
     int is_done;
     int is_sanctioned; /* set by fdb from coordinator-master */
+    int is_qconsume_only;
 };
 typedef struct osql_sess osql_sess_t;
 
@@ -1834,6 +1835,9 @@ extern int gbl_appsock_pooling;
 extern struct thdpool *gbl_appsock_thdpool;
 extern struct thdpool *gbl_osqlpfault_thdpool;
 extern struct thdpool *gbl_udppfault_thdpool;
+extern struct thdpool *gbl_handle_buf_write_thdpool;
+extern struct thdpool *gbl_handle_buf_read_thdpool;
+extern struct thdpool *gbl_handle_buf_queue_thdpool;
 
 extern int gbl_consumer_rtcpu_check;
 extern int gbl_node1rtcpuable;

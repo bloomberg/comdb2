@@ -68,7 +68,8 @@ typedef void (*thdpool_thddque_fn)(struct thdpool *pool, struct workitem *item,
 typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item,
                                    void *user);
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
-
+typedef void (*thdpool_for_each_thd_fn)(struct thdpool *pool, pthread_t tid, int idle, void *thddata, void *user);
+void thdpool_for_each_thd(struct thdpool *pool, thdpool_for_each_thd_fn, void *user);
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
 int thdpool_destroy(struct thdpool **pool_p, int coopWaitUs);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);
