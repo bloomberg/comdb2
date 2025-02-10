@@ -3820,7 +3820,7 @@ static int osql_net_type_to_net_uuid_type(int type)
 int is_tablename_queue(const char *name)
 {
     /* See also, __db_open @ /berkdb/db/db_open.c for register_qdb */
-    return strncmp(name, "__q", 3) == 0;
+    return strncmp(name, Q_TAG, 3) == 0;
 }
 
 int osql_send_prepare(osql_target_t *target, unsigned long long rqid, uuid_t uuid, const char *dist_txnid,

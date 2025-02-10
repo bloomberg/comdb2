@@ -865,7 +865,7 @@ done:
 static int sp_trigger_skip(struct stored_proc *sp)
 {
     int rc = 0;
-    const char *prefix = "__q__m";   // identifier for migrated queues
+    const char *prefix = Q_TAG "__m";   // identifier for migrated queues
     size_t prefix_len = strlen(prefix);
     const char *qname = sp->qname;
     size_t qname_len = strlen(qname);
@@ -1461,7 +1461,7 @@ int gather_triggers(struct gather_triggers_arg *arg)
     struct stored_proc *sp;
     LISTC_FOR_EACH(&stored_procs, sp, lnk) {
         e.name = sp->name;
-        if (strncmp(e.name, "__q", 3) == 0) e.name += 3;
+        if (strncmp(e.name, Q_TAG, 3) == 0) e.name += 3;
         struct dbtable *qdb = getqueuebyname(sp->name);
         if (!qdb) continue;
         if (qdb->consumers[0] == NULL) continue;

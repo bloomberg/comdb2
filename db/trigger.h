@@ -82,11 +82,12 @@ void trigger_reg_to_cpu(trigger_reg_t *);
 #define trigger_reg_sz(sp_name)                                                \
     sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_myhostname) + 1
 
+#define Q_TAG "__q"
 #define Q4SP(var, spname)                                                      \
-    char var[sizeof("__q") + strlen(spname)];                                  \
-    sprintf(var, "__q%s", spname);
+    char var[sizeof(Q_TAG) + strlen(spname)];                                  \
+    sprintf(var, "%s%s", Q_TAG, spname);
 
-#define SP4Q(q) ((q) + (sizeof("__q") - 1))
+#define SP4Q(q) ((q) + (sizeof(Q_TAG) - 1))
 
 struct lua_State;
 void force_unregister(struct lua_State *, trigger_reg_t *);

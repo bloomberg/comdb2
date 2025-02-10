@@ -21,6 +21,7 @@ struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 
+#define MAX_SPNAME_FOR_TRIGGER MAX_SPNAME-strlen(Q_TAG) // includes null terminator
 #define COMDB2_DEFAULT_CONSUMER 2
 
 static int comdb2LocateSP(Parse *p, char *sp)
@@ -160,10 +161,10 @@ void comdb2CreateTrigger(Parse *parse, int consumer, int seq, Token *proc, Cdb2T
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-    char spname[MAX_SPNAME];
+    char spname[MAX_SPNAME_FOR_TRIGGER];
 
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
-        sqlite3ErrorMsg(parse, "procedure name is too long");
+        sqlite3ErrorMsg(parse, "procedure name must not exceed %d characters", sizeof(spname)-1);
         return;
     }
 
@@ -262,10 +263,10 @@ void comdb2DropTrigger(Parse *parse, int consumer, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-    char spname[MAX_SPNAME];
+    char spname[MAX_SPNAME_FOR_TRIGGER];
 
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
-        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        sqlite3ErrorMsg(parse, "procedure name must not exceed %d characters", sizeof(spname)-1);
         return;
     }
 
@@ -285,7 +286,7 @@ void comdb2DropTrigger(Parse *parse, int consumer, Token *proc)
 
 #define comdb2CreateFunc(p, proc, pfx, PFX, type, flags)                            \
     do {                                                                            \
-        char spname[MAX_SPNAME];                                                    \
+        char spname[MAX_SPNAME_FOR_TRIGGER];                                        \
         struct schema_change_type *sc = new_schemachange_type();                    \
         sc->kind = SC_ADD_##PFX##FUNC;                                              \
         if (comdb2IsDryrun(p)) {                                                    \
@@ -299,7 +300,8 @@ void comdb2DropTrigger(Parse *parse, int consumer, Token *proc)
             }                                                                       \
         }                                                                           \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                       \
-            sqlite3ErrorMsg(p, "procedure name is too long");                       \
+            sqlite3ErrorMsg(parse,                                                  \
+            "procedure name must not exceed %d characters", sizeof(spname)-1);      \
             return;                                                                 \
         }                                                                           \
         if (!comdb2LocateSP(p, spname)) {                                           \
@@ -360,9 +362,10 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 
 #define comdb2DropFunc(p, proc, pfx, PFX, type)                                     \
     do {                                                                            \
-        char spname[MAX_SPNAME];                                                    \
+        char spname[MAX_SPNAME_FOR_TRIGGER];                                        \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                       \
-            sqlite3ErrorMsg(p, "procedure name is too long");                       \
+            sqlite3ErrorMsg(parse,                                                  \
+            "procedure name must not exceed %d characters", sizeof(spname)-1);      \
             return;                                                                 \
         }                                                                           \
         if (find_lua_##pfx##func(spname) == 0) {                                    \
@@ -404,9 +407,9 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-    char spname[MAX_SPNAME];
+    char spname[MAX_SPNAME_FOR_TRIGGER];
     if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
-        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        sqlite3ErrorMsg(parse, "procedure name must not exceed %d characters", sizeof(spname)-1);
         return;
     }
 
