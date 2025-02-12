@@ -1520,6 +1520,9 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
  */
 int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
 
+tran_type *get_read_only_tran();
+int put_read_only_tran(tran_type * const tran);
+
 /**
  * Bdb transaction objects with curtran lockid
  */
