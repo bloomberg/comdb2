@@ -421,8 +421,11 @@ void *buf_get_schemachange_protobuf(struct schema_change_type *s, void *p_buf, v
         return NULL;
     }
     p_buf += plen;
-    if (p_buf >= p_buf_end)
+    if (p_buf > p_buf_end) {
+        logmsg(LOGMSG_ERROR, "%s: advanced %ld bytes past end of buffer\n",
+            __func__, (uintptr_t) p_buf - (uintptr_t) p_buf_end);
         return NULL;
+    }
     return p_buf;
 }
 
