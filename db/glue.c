@@ -5572,7 +5572,7 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blobs)
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
 {
     int ii;
     uint64_t size_without_blobs = 0;
@@ -5603,11 +5603,6 @@ uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blob
         return size_without_blobs;
     else
         return db->totalsize;
-}
-
-uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
-{
-    return calc_table_size_tran(NULL, db, skip_blobs);
 }
 
 void compr_print_stats()

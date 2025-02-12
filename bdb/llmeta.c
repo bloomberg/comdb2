@@ -7489,7 +7489,7 @@ int bdb_get_analyzethreshold_table(tran_type *input_trans, const char *tbl_name,
 
 retry:
     /* try to fetch the schema change data */
-    rc = bdb_lite_exact_fetch(llmeta_bdb_state, key, &tmpval, sizeof(tmpval),
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, input_trans, key, &tmpval, sizeof(tmpval),
                               &fndlen, bdberr);
 
     /* tmpval may need to get flipped */

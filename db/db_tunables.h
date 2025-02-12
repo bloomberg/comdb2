@@ -2360,6 +2360,10 @@ REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_test_io_errors, INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+
+REGISTER_TUNABLE("debug_sleep_on_analyze", "Sleep for 'n' seconds after releasing views lock in partition analyze (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_debug_sleep_on_analyze, INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 

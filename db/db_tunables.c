@@ -186,6 +186,7 @@ extern int gbl_incoherent_logput_window;
 extern int gbl_dump_net_queue_on_partial_write;
 extern int gbl_dump_full_net_queue;
 extern int gbl_debug_partial_write;
+extern int gbl_debug_sleep_on_analyze;
 extern int gbl_debug_sleep_on_verify;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;

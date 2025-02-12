@@ -441,12 +441,12 @@ static int64_t refresh_diskspace(struct dbenv *dbenv, tran_type *tran)
     for(ndb = 0; ndb < dbenv->num_dbs; ndb++)
     {
         db = dbenv->dbs[ndb];
-        total += calc_table_size_tran(tran, db, 0);
+        total += calc_table_size(db, 0);
     }
     for(ndb = 0; ndb < dbenv->num_qdbs; ndb++)
     {
         db = dbenv->qdbs[ndb];
-        total += calc_table_size_tran(tran, db, 0);
+        total += calc_table_size(db, 0);
     }
     total += bdb_logs_size(dbenv->bdb_env, &num_logs);
 
