@@ -316,6 +316,10 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 	case DB___db_pg_freedata:
 	case DB___db_pg_prepare:
 	case DB___db_pg_new:
+	case DB___db_rebuild_freelist:
+	case DB___db_pg_swap:
+	case DB___db_resize:
+	case DB___db_pg_swap_overflow:
 	case DB___ham_splitdata:
 	case DB___ham_replace:
 	case DB___ham_copypage:
@@ -409,7 +413,7 @@ ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
 		 * bigger transactions except rowlocks.
 		 */
 		if (rectype < 10000) {
-			logmsg(LOGMSG_FATAL, "got rectype %d, don't know how to handle it",
+			logmsg(LOGMSG_FATAL, "got rectype %d, don't know how to handle it\n",
 			    rectype);
 			abort();
 		}

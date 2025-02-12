@@ -1,0 +1,12 @@
+dtastripe 1
+blobstripe 1
+setattr MASTER_REJECT_REQUESTS 0
+logmsg level info
+pgmv.thr 1
+pgmv.thr_run_interval_ms 1000
+pgmv.verbose 1
+pgmv.unsafe_db_resize 1
+pgmv.only_process_pages_in_bufferpool 0
+pgcomp_dbg_stdout 1
+pagesizeblob 4096
+memp_fput_abort_on_double_return 1

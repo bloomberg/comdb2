@@ -119,6 +119,18 @@ struct comdb2_metrics_store {
     int64_t failed_page_bytes_read;
     int64_t failed_page_bytes_written;
 
+    int64_t pgmv_ndeadlocks;
+    int64_t pgmv_nflsorts;
+    int64_t pgmv_novflreads;
+    int64_t pgmv_novflswapattempts;
+    int64_t pgmv_novflswaps;
+    int64_t pgmv_npgreads;
+    int64_t pgmv_npgskips;
+    int64_t pgmv_npgswapattempts;
+    int64_t pgmv_npgswaps;
+    int64_t pgmv_npgtruncates;
+    int64_t pgmv_nresizes;
+
     /* Legacy request metrics */
     int64_t fastsql_execute_inline_params;
     int64_t fastsql_set_isolation_level;
@@ -194,6 +206,28 @@ comdb2_metric gbl_metrics[] = {
      &stats.memory_ulimit, NULL},
     {"memory_usage", "Address space size", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST, &stats.memory_usage,
      NULL},
+    {"pgmv_ndeadlocks", "Number of deadlocks", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_ndeadlocks, NULL},
+    {"pgmv_nflsorts", "Number of freelist sorts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_nflsorts, NULL},
+    {"pgmv_novflreads", "Number of overflow page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_novflreads, NULL},
+    {"pgmv_novflswapattempts", "Number of overflow page swap attempts", STATISTIC_INTEGER,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pgmv_novflswapattempts, NULL},
+    {"pgmv_novflswaps", "Number of overflow page swaps", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_novflswaps, NULL},
+    {"pgmv_npgreads", "Number of page reads", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_npgreads, NULL},
+    {"pgmv_npgskips", "Number of pages skipped", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_npgskips, NULL},
+    {"pgmv_npgswapattempts", "Number of page swap attempts", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_npgswapattempts, NULL},
+    {"pgmv_npgswaps", "Number of overflow page swaps", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_npgswaps, NULL},
+    {"pgmv_npgtruncates", "Number of pages truncated", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_npgtruncates, NULL},
+    {"pgmv_nresizes", "Number of file resizes", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.pgmv_nresizes, NULL},
     {"preads", "Number of pread()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.preads, NULL},
     {"pwrites", "Number of pwrite()'s", STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.pwrites, NULL},
     {"queue_depth", "Request queue depth", STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, &stats.queue_depth,
@@ -714,6 +748,19 @@ int refresh_metrics(void)
     stats.nsslpartialhandshakes = gbl_ssl_num_partial_handshakes;
     stats.auth_allowed = gbl_num_auth_allowed;
     stats.auth_denied = gbl_num_auth_denied;
+
+    stats.pgmv_ndeadlocks = gbl_pgmv_stat_ndeadlocks;
+    stats.pgmv_nflsorts = gbl_pgmv_stat_nflsorts;
+    stats.pgmv_novflreads = gbl_pgmv_stat_novflreads;
+    stats.pgmv_novflswapattempts = gbl_pgmv_stat_novflswapattempts;
+    stats.pgmv_novflswaps = gbl_pgmv_stat_novflswaps;
+    stats.pgmv_npgreads = gbl_pgmv_stat_npgreads;
+    stats.pgmv_npgskips = gbl_pgmv_stat_npgskips;
+    stats.pgmv_npgswapattempts = gbl_pgmv_stat_npgswapattempts;
+    stats.pgmv_npgswaps = gbl_pgmv_stat_npgswaps;
+    stats.pgmv_npgtruncates = gbl_pgmv_stat_npgtruncates;
+    stats.pgmv_nresizes = gbl_pgmv_stat_nresizes;
+
     curtran_puttran(trans);
 
     update_fastsql_metrics();

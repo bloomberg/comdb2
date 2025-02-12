@@ -9017,3 +9017,110 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
     op.data = &endianized;
     return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
 }
+
+typedef int (*pgmv_rtn)(DB *, DB_TXN *);
+static int call_berkdb_pgmv_rtn(bdb_state_type *bdb_state, pgmv_rtn rtn, const char *bdb_lock_str, int blobonly)
+{
+    int rc = -1;
+
+    int dta, stripe;
+    int ix;
+    DB_ENV *dbenv;
+    DB_TXN *txn;
+    DB *dbp;
+
+    BDB_READLOCK(bdb_lock_str);
+
+    if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost)
+        goto out;
+
+    dbenv = bdb_state->dbenv;
+    rc = dbenv->txn_begin_low_priority(dbenv, NULL, &txn, 0);
+    if (rc != 0)
+        goto out;
+
+    /* Process data and blob */
+    for (dta = 0; rc == 0 && dta < MAXDTAFILES; ++dta) {
+        if (blobonly && dta == 0)
+            continue;
+        for (stripe = 0; rc == 0 && stripe < MAXDTASTRIPE; ++stripe) {
+            if ((dbp = bdb_state->dbp_data[dta][stripe]) != NULL) {
+                rc = rtn(dbp, txn);
+                if (rc != 0) {
+                    logmsg(LOGMSG_ERROR, "pgmv failed rc %d\n", rc);
+                }
+            }
+        }
+    }
+
+    /* Process indexes */
+    for (ix = 0; !blobonly && rc == 0 && ix < MAXINDEX; ++ix) {
+        if ((dbp = bdb_state->dbp_ix[ix]) != NULL) {
+            rc = rtn(dbp, txn);
+        }
+    }
+
+    if (rc == 0)
+        rc = txn->commit(txn, 0);
+    else
+        txn->abort(txn);
+
+out:
+    BDB_RELLOCK();
+    return rc;
+}
+
+/* check pages even if they are still referenced in the log */
+extern int gbl_pgmv_unsafe_db_resize;
+int bdb_rebuild_freelist(bdb_state_type *bdb_state)
+{
+    int rc = 0, bdberr = BDBERR_NOERROR;
+    if (gbl_pgmv_unsafe_db_resize) {
+        BDB_READLOCK(__func__);
+        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+            logmsg(LOGMSG_WARN, "%s: unsafe_db_resize is enabled! full-recovery may not work!\n", __func__);
+            logmsg(LOGMSG_WARN, "%s: flushing bufferpool!\n", __func__);
+            rc = bdb_flush(bdb_state, &bdberr);
+            if (rc != 0 || bdberr != BDBERR_NOERROR) {
+                logmsg(LOGMSG_WARN, "%s: bdb_flush failed rc %d bdberr %d\n", __func__, rc, bdberr);
+                return rc;
+            }
+        }
+        BDB_RELLOCK();
+    }
+
+    pgmv_rtn rtn = bdb_state->dbp_data[0][0]->rebuild_freelist;
+    rc = call_berkdb_pgmv_rtn(bdb_state, rtn, __func__, 0);
+
+    if (rc == 0 && gbl_pgmv_unsafe_db_resize) {
+        logmsg(LOGMSG_WARN, "%s: unsafe_db_resize is enabled! flush again to push recovery point further\n", __func__);
+        rc = bdb_flush(bdb_state, &bdberr);
+        if (rc != 0 || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_WARN, "%s: bdb_flush failed rc %d bdberr %d\n", __func__, rc, bdberr);
+            return rc;
+        }
+    }
+
+    return rc;
+}
+
+int bdb_pgswap(bdb_state_type *bdb_state)
+{
+    pgmv_rtn rtn = bdb_state->dbp_data[0][0]->pgswap;
+    return call_berkdb_pgmv_rtn(bdb_state, rtn, __func__, 0);
+}
+
+extern int gbl_pgmv_handle_overflow;
+int bdb_pgswap_overflow(bdb_state_type *bdb_state)
+{
+    if (!gbl_pgmv_handle_overflow)
+        return 0;
+    pgmv_rtn rtn = bdb_state->dbp_data[0][0]->pgswap_overflow;
+    return call_berkdb_pgmv_rtn(bdb_state, rtn, __func__, 1);
+}
+
+int bdb_evict_from_cache(bdb_state_type *bdb_state)
+{
+    pgmv_rtn rtn = bdb_state->dbp_data[0][0]->evict_from_cache;
+    return call_berkdb_pgmv_rtn(bdb_state, rtn, __func__, 0);
+}

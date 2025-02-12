@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -e
+
+dbnm=$1
+dbdir=${DBDIR}
+bindir=`dirname $COMDB2_EXE`
+total=2500
+delrange=25
+ndels=200
+
+if [ "$tier" = "" ]; then
+    tier='default'
+fi
+
+echo "DBNAME is $dbnm"
+echo "DBDIR is $dbdir"
+echo "BIN DIR is $bindir"
+echo "tier is $tier"
+
+mynode=`hostname`
+myfnode=`hostname -f`
+leader=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier "select host from comdb2_cluster where is_master='Y'"`
+
+echo "I AM $mynode"
+echo "LEADER is $leader"
+
+echo '------ Test 1.1 - deleting random overflow pages ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t11
+CREATE TABLE t11 (b blob)\$\$
+INSERT INTO t11 SELECT randomblob(16*1024) FROM generate_series(1, $total)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+szbefore=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t11'"`
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')" 
+
+# Stop if we have deleted 1500 blobs
+rm -f delete.log
+while true; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm $tier "DELETE FROM t11 LIMIT $RANDOM%($delrange) OFFSET $RANDOM%($total)" >>delete.log
+    cnt=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier "SELECT COUNT(*) FROM t11"`
+    if [ $cnt -le 1000 ]; then
+        break;
+    fi
+done
+
+echo 'done deleting'
+
+# Flush to disk
+cdb2sql $dbnm --host $leader - <<EOF
+EXEC PROCEDURE sys.cmd.send('evict_from_cache t11')
+SELECT COUNT(*) FROM t11
+EXEC PROCEDURE sys.cmd.send('flush')
+EOF
+
+# Check if we can get the size of the table down by half, using a reasonable amount number of resizes
+nresizes=0
+nr_prev=0
+while [ $nresizes -lt 20 ]; do
+    cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+    cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+    sleep 10
+    nresizes=`cdb2sql --tabs $dbnm --host $leader "SELECT \"value\" fROM comdb2_metrics WHERE name = 'pgmv_nresizes'"`
+    echo num resizes $nresizes
+
+    szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t11'"`
+    echo "size before: $szbefore; size after: $szafter"
+    success=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier "SELECT $szbefore/$szafter >= 2"`
+
+    nr=`cdb2sql --tabs $dbnm --host $leader "SELECT \"value\" fROM comdb2_metrics WHERE name = 'pgmv_npgreads'"`
+    echo "number pg reads this iteration ${nr} last iteration ${nr_prev}"
+    nr_prev=$nr
+
+    if [ $success = "1" ]; then
+        break;
+    fi
+done
+
+# Pause the background pgmv thread. Testsuite needs to verify btree and we want to avoid intermidiate writes.
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('pgmv.thr_pause 1')"
+# give the pgmv thread enough time to finish its work
+sleep 10
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t11'"`
+echo "size before: $szbefore; size after: $szafter"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm $tier "SELECT $szbefore/$szafter.0 AS ratio"
+success=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier "SELECT $szbefore/$szafter >= 2"`
+
+if [ $success != "1" ]; then
+    echo "expected less than half of original table size" >&2
+    exit 1
+fi
