@@ -767,7 +767,7 @@ typedef struct table_version_cache
 {
     int sz;
     unsigned long long *entries;
-} table_version_cache;
+} table_version_cache_t;
 
 struct hostinfo
 {

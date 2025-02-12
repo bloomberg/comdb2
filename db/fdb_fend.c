@@ -2555,7 +2555,7 @@ int fdb_2pc_set(sqlclntstate *clnt, fdb_t *fdb, cdb2_hndl_tp *hndl)
         return -1;
     }
 
-    snprintf(str, sizeof(str), "SET REMTRAN_TSTAMP %lu", clnt->dist_timestamp);
+    snprintf(str, sizeof(str), "SET REMTRAN_TSTAMP %"PRId64"", clnt->dist_timestamp);
     rc = cdb2_run_statement(hndl, str);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: %s:%s failed to set remtran_tstamp rc %d\n",
