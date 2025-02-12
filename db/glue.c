@@ -6340,3 +6340,89 @@ int sync_state_to_protobuf(int sync) {
 static int syncmode_callback(bdb_state_type *bdb_state) {
     return sync_state_to_protobuf(thedb->rep_sync);
 }
+
+typedef int (*bdb_pgmv_rtn)(bdb_state_type *);
+
+static int call_bdb_pgmv_rtn(const char *table, bdb_pgmv_rtn rtn)
+{
+    int ret;
+    dbtable *db;
+
+    if (table == NULL)
+            return -1;
+
+    db = get_dbtable_by_name(table);
+    if (db == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: table \"%s\" not found", __func__, table);
+            ret = -1;
+    } else {
+            ret = rtn(get_bdb_handle(db, AUXDB_NONE));
+    }
+    return ret;
+}
+
+int rebuild_freelist(const char *table)
+{
+    return call_bdb_pgmv_rtn(table, bdb_rebuild_freelist);
+}
+
+int pgswap(const char *table)
+{
+    return call_bdb_pgmv_rtn(table, bdb_pgswap);
+}
+
+int pgswap_overflow(const char *table)
+{
+    return call_bdb_pgmv_rtn(table, bdb_pgswap_overflow);
+}
+
+int evict_from_cache(const char *table)
+{
+    return call_bdb_pgmv_rtn(table, bdb_evict_from_cache);
+}
+
+/* number of milliseconds that we poll for each pgmv iteration */
+int gbl_pgmv_thr_run_interval_ms = 1000;
+/* number of milliseconds that we poll for each overflow pgmv iteration */
+int gbl_pgmv_thr_overflow_run_interval_ms = 10000;
+int gbl_pgmv_thr_pause = 0;
+void *pgmv_thr(void *unused)
+{
+    int i;
+    struct dbtable *table;
+    const char *name;
+    int remaining;
+
+    thrman_register(THRTYPE_PGMV);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    remaining = gbl_pgmv_thr_overflow_run_interval_ms;
+
+    while (!db_is_exiting()) {
+        if (gbl_pgmv_thr_pause) {
+            poll(NULL, 0, gbl_pgmv_thr_run_interval_ms);
+            continue;
+        }
+
+        rdlock_schema_lk();
+        for (i = 0; i != thedb->num_dbs; ++i) {
+            table = thedb->dbs[i];
+            name = table->tablename;
+            /* skip internal tables */
+            if (table->dbtype != DBTYPE_TAGGED_TABLE || strncasecmp(name, "sqlite_", strlen("sqlite_")) == 0 ||
+                    strncasecmp(name, "comdb2_", strlen("comdb2_")) == 0) {
+                continue;
+            }
+            rebuild_freelist(name);
+            pgswap(name);
+            if (remaining <= 0) {
+                pgswap_overflow(name);
+                remaining = gbl_pgmv_thr_overflow_run_interval_ms;
+            }
+        }
+        unlock_schema_lk();
+        poll(NULL, 0, gbl_pgmv_thr_run_interval_ms);
+        remaining -= gbl_pgmv_thr_run_interval_ms;
+    }
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    return NULL;
+}

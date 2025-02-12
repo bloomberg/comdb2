@@ -1,0 +1,15 @@
+dtastripe 1
+blobstripe 1
+setattr MASTER_REJECT_REQUESTS 0
+logmsg level info
+pgmv.thr 1
+pgmv.thr_run_interval_ms 1000
+pgmv.thr_overflow_run_interval_ms 1000
+pgmv.verbose 1
+pgmv.unsafe_db_resize 1
+pgmv.only_process_pages_in_bufferpool 0
+pgcomp_dbg_stdout 1
+pagesizeblob 4096
+pgmv.max_num_pages_swapped_per_txn 1024
+memp_fput_abort_on_double_return 1
+setattr PRIVATE_BLKSEQ_MAXAGE 5

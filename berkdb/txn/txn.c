@@ -279,6 +279,20 @@ __txn_begin_with_prop_pp(dbenv, parent, txnpp, flags, prop)
 	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, prop);
 }
 
+/*
+ *
+ * PUBLIC: int __txn_begin_low_priority_pp __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, struct txn_properties *));
+ */
+int
+__txn_begin_low_priority_pp(dbenv, parent, txnpp, flags)
+	DB_ENV *dbenv;
+	DB_TXN *parent, **txnpp;
+	u_int32_t flags;
+{
+	struct txn_properties p = {.flags = DB_LOCK_ID_LOWPRI};
+	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, &p);
+}
+
 int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
 	pthread_mutex_t * mutexp);
 int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,

@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+
+set -e
+
+dbnm=$1
+dbdir=${DBDIR}
+bindir=`dirname $COMDB2_EXE`
+total=25000
+delrange=50
+ndels=2000
+
+if [ "$tier" = "" ]; then
+    tier='default'
+fi
+
+echo "DBNAME is $dbnm"
+echo "DBDIR is $dbdir"
+echo "BIN DIR is $bindir"
+echo "tier is $tier"
+
+mynode=`hostname`
+myfnode=`hostname -f`
+leader=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier "select host from comdb2_cluster where is_master='Y'"`
+
+echo "I AM $mynode"
+echo "LEADER is $leader"
+
+echo '------ Test 1.1 - Deleting all data ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t11
+CREATE TABLE t11 (i INTEGER)\$\$
+INSERT INTO t11 SELECT value FROM generate_series(1, $total)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+echo 'check stat size before ---'
+szbefore=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t11'"`
+
+cdb2sql $dbnm --host $leader - <<EOF
+SELECT name, "value" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'
+EXEC PROCEDURE sys.cmd.send('stat size')
+DELETE FROM t11
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT '--- sleeping 5 seconds to let flush do work ---' as info
+SELECT sleep(5)
+EOF
+
+nrows=`cdb2sql --tabs $dbnm --host $leader "SELECT COUNT(*) FROM t11"`
+echo "# rows remaining $nrows"
+sleep 10 # Allow the background thread to do work
+
+cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t11'"`
+echo "size before: $szbefore; size after: $szafter"
+if [ "$szafter" != 8192 ]; then
+    echo "expected only 8192 bytes for 2 pages (meta and root), instead got $szafter bytes" >&2
+    exit 1
+fi
+
+echo '------ Test 1.2 - Deleting all data and indexes ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t12
+CREATE TABLE t12 (i INTEGER)\$\$
+CREATE INDEX t12i ON t12(i)
+INSERT INTO t12 SELECT value FROM generate_series(1, $total)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+echo 'check stat size before ---'
+szbefore=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t12'"`
+
+cdb2sql $dbnm --host $leader - <<EOF
+SELECT name, "value" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'
+EXEC PROCEDURE sys.cmd.send('stat size')
+DELETE FROM t12
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT '--- sleeping 5 seconds to let flush do work ---' as info
+SELECT sleep(5)
+EOF
+
+nrows=`cdb2sql --tabs $dbnm --host $leader "SELECT COUNT(*) FROM t12"`
+echo "# rows remaining $nrows"
+sleep 10 # Allow the background thread to do work
+
+cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t12'"`
+echo "size before: $szbefore; size after: $szafter"
+if [ "$szafter" != 16384 ]; then
+    echo "expected only 16384 bytes for 4 pages (meta and root), instead got $szafter bytes" >&2
+    exit 1
+fi
+
+echo '------ Test 1.3 - Deleting all blobs (no overflow) ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t13
+CREATE TABLE t13 (b blob)\$\$
+INSERT INTO t13 SELECT randomblob(16) FROM generate_series(1, $total)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+echo 'check stat size before ---'
+szbefore=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm $tier "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t13'"`
+
+cdb2sql $dbnm --host $leader - <<EOF
+SELECT name, "value" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'
+EXEC PROCEDURE sys.cmd.send('stat size')
+DELETE FROM t13
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT '--- sleeping 5 seconds to let flush do work ---' as info
+SELECT sleep(5)
+EOF
+
+nrows=`cdb2sql --tabs $dbnm --host $leader "SELECT COUNT(*) FROM t13"`
+echo "# rows remaining $nrows"
+sleep 10 # Allow the background thread to do work
+
+cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t13'"`
+echo "size before: $szbefore; size after: $szafter"
+if [ "$szafter" != 16384 ]; then
+    echo "expected only 139264 bytes for 2 data pages and 2 blob pages, instead got $szafter bytes" >&2
+    exit 1
+fi
+
+echo '------ Test 2.1 - Deleting random rows to leave holes in a data btree ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t21
+CREATE TABLE t21 (i INTEGER)\$\$
+INSERT INTO t21 SELECT value FROM generate_series(1, $total)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+szbefore=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t21'"`
+
+for i in `seq 1 $ndels`; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm $tier "DELETE FROM t21 LIMIT $RANDOM%$delrange OFFSET $RANDOM%$total" >/dev/null
+done
+
+echo 'done deleting'
+
+cdb2sql $dbnm --host $leader - <<EOF
+EXEC PROCEDURE sys.cmd.send('evict_from_cache t21')
+SELECT COUNT(*) FROM t21
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT '--- sleeping 5 seconds to let flush do work ---' as info
+SELECT sleep(5)
+EOF
+
+cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t21'"`
+echo "size before: $szbefore; size after: $szafter"
+if [ $szafter -ge $szbefore ]; then
+    echo "expected reduced table size" >&2
+    exit 1
+fi
+
+echo '------ Test 2.2 - Deleting random rows to leave holes in data and index btrees ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t22
+CREATE TABLE t22 (i INTEGER)\$\$
+INSERT INTO t22 SELECT value FROM generate_series(1, $total)
+CREATE INDEX t22i ON t22(i)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+szbefore=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t22'"`
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+for i in `seq 1 $ndels`; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm $tier "DELETE FROM t22 LIMIT $RANDOM%$delrange OFFSET $RANDOM%$total" >/dev/null
+done
+
+echo 'done deleting'
+
+cdb2sql $dbnm --host $leader - <<EOF
+EXEC PROCEDURE sys.cmd.send('evict_from_cache t22')
+SELECT COUNT(*) FROM t22
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT '--- sleeping 5 seconds to let flush do work ---' as info
+SELECT sleep(5)
+EOF
+
+cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t22'"`
+echo "size before: $szbefore; size after: $szafter"
+if [ $szafter -ge $szbefore ]; then
+    echo "expected reduced table size" >&2
+    exit 1
+fi
+
+echo '------ Test 2.3 - Deleting random rows to leave holes in blob btrees ------'
+cdb2sql $dbnm --host $leader - <<EOF
+DROP TABLE IF EXISTS t23
+CREATE TABLE t23 (b blob)\$\$
+INSERT INTO t23 SELECT randomblob(16) FROM generate_series(1, $total)
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT sleep(5)
+EOF
+
+szbefore=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t23'"`
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')" 
+
+for i in `seq 1 $ndels`; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm $tier "DELETE FROM t23 LIMIT $RANDOM%$delrange OFFSET $RANDOM%$total" >/dev/null
+done
+
+echo 'done deleting'
+
+cdb2sql $dbnm --host $leader - <<EOF
+EXEC PROCEDURE sys.cmd.send('evict_from_cache t23')
+SELECT COUNT(*) FROM t23
+EXEC PROCEDURE sys.cmd.send('flush')
+SELECT '--- sleeping 10 seconds to let flush do work ---' as info
+SELECT sleep(10)
+EOF
+
+cdb2sql $dbnm --host $leader "SELECT name, \"value\" FROM comdb2_metrics WHERE name LIKE 'pgmv_%'"
+cdb2sql $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('stat size')"
+
+szafter=`cdb2sql --tabs $dbnm --host $leader "SELECT bytes FROM comdb2_tablesizes WHERE tablename='t23'"`
+echo "size before: $szbefore; size after: $szafter"
+if [ $szafter -ge $szbefore ]; then
+    echo "expected reduced table size" >&2
+    exit 1
+fi
+
+# Pause the background pgmv thread. Testsuite needs to verify btree and we want to avoid intermidiate writes.
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $leader "EXEC PROCEDURE sys.cmd.send('pgmv.thr_pause 1')"
+# give the pgmv thread enough time to finish its work
+sleep 10

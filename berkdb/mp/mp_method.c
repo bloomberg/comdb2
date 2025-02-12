@@ -515,3 +515,33 @@ __memp_get_refcnt(dbenv, fileid, refp)
 
 	return (0);
 }
+
+/*
+ * __memp_resize
+ *	resize this file in buffer pool
+ *
+ * PUBLIC: int __memp_resize __P((DB_MPOOLFILE *, db_pgno_t));
+ */
+int
+__memp_resize(dbmfp, pgno)
+	DB_MPOOLFILE *dbmfp;
+	db_pgno_t pgno;
+{
+	DB_ENV *dbenv;
+	DB_MPOOL *dbmp;
+	MPOOLFILE *mfp;
+	int ret;
+	size_t pagesize;
+
+	dbenv = dbmfp->dbenv;
+	dbmp = dbenv->mp_handle;
+	mfp = dbmfp->mfp;
+	pagesize = mfp->stat.st_pagesize;
+
+	R_LOCK(dbenv, dbmp->reginfo);
+	mfp->last_pgno = pgno;
+	ret = __os_truncate(dbenv, dbmfp->fhp, pagesize * (pgno + 1));
+	R_UNLOCK(dbenv, dbmp->reginfo);
+
+	return (ret);
+}
