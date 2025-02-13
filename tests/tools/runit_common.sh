@@ -89,3 +89,20 @@ get_timestamp()
     fi
     date --date=@$now -u '+%Y-%m-%dT%H%M%S %Z'
 }
+
+
+retry_in_loop()
+{
+    local -r max_tries=$1
+    local -r time_to_sleep_between_itrs=$2
+    # $3 is the function to try
+
+    for i in $(seq 1 ${max_tries}); do
+        if eval $3; then
+            return 0
+        fi
+        sleep ${time_to_sleep_between_itrs}
+    done
+
+    return 1
+}

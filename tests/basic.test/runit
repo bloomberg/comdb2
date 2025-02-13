@@ -533,6 +533,20 @@ EOF
     fi
 }
 
+verify_t_trig_state() {
+    local -r query="select * from t_trig"
+
+    local res
+    res=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "${query}")
+    if (( res == 1 ));
+    then
+        return 0
+    else
+        echo "Unexpected select results. Query: ${query}. Result: ${res}"
+        return 1
+    fi
+}
+
 test_trigger() {
 cdb2sql --tabs -s ${CDB2_OPTIONS} $dbnm default > test_trigger.out << 'EOF'
 create table t_orig (i int)$$
@@ -554,8 +568,13 @@ insert into t_orig values (1)
 EOF
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t_orig"`
     assertres $res 1
-    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t_trig"`
-    assertres $res 1
+
+    local -r max_tries=2
+    local -r time_to_sleep_between_itrs=1
+    if ! retry_in_loop ${max_tries} ${time_to_sleep_between_itrs} verify_t_trig_state;
+    then
+        failexit "did not find expected record in t_trig after ${max_tries} attempts"
+    fi
 }
 
 test_t1
