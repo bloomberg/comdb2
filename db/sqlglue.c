@@ -5454,13 +5454,13 @@ int sqlite3BtreeGetAutoVacuum(Btree *pBt)
 
 /*
 ** Temp tables were not designed to be shareable.
-** Use this lock for synchoronizing access to shared
-** temp table between Lua threads.
+** Use this object for synchoronizing access to shared
+** temp table between stored-procedure threads.
 */
-static __thread pthread_mutex_t *tmptbl_lk = NULL;
-void comdb2_set_tmptbl_lk(pthread_mutex_t *lk)
+static __thread struct sp_tmptbl *sp_tmptbl = NULL;
+void set_tmptbl(struct sp_tmptbl *tmptbl)
 {
-    tmptbl_lk = lk;
+    sp_tmptbl = tmptbl;
 }
 
 /*
@@ -5505,13 +5505,13 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
     }
     pNewTbl->owner = pBt;
     pNewTbl->flags = flags;
-    pNewTbl->lk = tmptbl_lk;
+    pNewTbl->sp_tmptbl = sp_tmptbl;
     pNewTbl->rootpage = ++pBt->num_temp_tables;
     if (pBt->is_hashtable) {
         pNewTbl->tbl = bdb_temp_hashtable_create(thedb->bdb_env, &bdberr);
         if (pNewTbl->tbl != NULL) ATOMIC_ADD32(gbl_sql_temptable_count, 1);
     } else if (tmptbl_clone) {
-        pNewTbl->lk = tmptbl_clone->lk;
+        pNewTbl->sp_tmptbl = tmptbl_clone->sp_tmptbl;
         pNewTbl->tbl = tmptbl_clone->tbl;
         pNewTbl->owner = tmptbl_clone->owner;
     } else {
@@ -7538,9 +7538,9 @@ static int tmptbl_cursor_count(BtCursor *btcursor, i64 *count)
 
 static int lk_tmptbl_cursor_move(BtCursor *btcursor, int *pRes, int how)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     int rc = tmptbl_cursor_move(btcursor, pRes, how);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
 
@@ -7548,9 +7548,9 @@ static int lk_tmptbl_cursor_del(bdb_state_type *bdb_state,
                                 struct temp_cursor *cur, int *bdberr,
                                 BtCursor *btcursor)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     int rc = tmptbl_cursor_del(bdb_state, cur, bdberr, btcursor);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
 
@@ -7559,19 +7559,19 @@ static int lk_tmptbl_cursor_put(bdb_state_type *bdb_state,
                                 void *data, int dtalen, void *unpacked,
                                 int *bdberr, BtCursor *btcursor)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     int rc = tmptbl_cursor_put(bdb_state, tbl, key, keylen, data, dtalen,
                                unpacked, bdberr, btcursor);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
 
 static int lk_tmptbl_cursor_close(bdb_state_type *bdb_state, BtCursor *btcursor,
                                   int *bdberr)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     int rc = tmptbl_cursor_close(bdb_state, btcursor, bdberr);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
 
@@ -7580,27 +7580,27 @@ static int lk_tmptbl_cursor_find(bdb_state_type *bdb_state,
                                  int keylen, void *unpacked, int *bdberr,
                                  BtCursor *btcursor)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     int rc = tmptbl_cursor_find(bdb_state, cur, key, keylen, unpacked, bdberr,
                                 btcursor);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
 
 static unsigned long long lk_tmptbl_cursor_rowid(struct temp_table *tbl,
                                                  BtCursor *btcursor)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     unsigned long long rowid = tmptbl_cursor_rowid(tbl, btcursor);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rowid;
 }
 
 static int lk_tmptbl_cursor_count(BtCursor *btcursor, i64 *count)
 {
-    Pthread_mutex_lock(btcursor->tmptable->lk);
+    Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
     int rc = tmptbl_cursor_count(btcursor, count);
-    Pthread_mutex_unlock(btcursor->tmptable->lk);
+    Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rc;
 }
 
@@ -7633,8 +7633,8 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     assert(src->tbl);
     cur->tmptable->tbl = src->tbl;
-    if (src->lk) {
-        cur->tmptable->lk = src->lk;
+    if (src->sp_tmptbl) {
+        cur->tmptable->sp_tmptbl= src->sp_tmptbl;
         cur->cursor_move = lk_tmptbl_cursor_move;
         cur->cursor_del = lk_tmptbl_cursor_del;
         cur->cursor_put = lk_tmptbl_cursor_put;
@@ -7652,13 +7652,11 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
         cur->cursor_count = tmptbl_cursor_count;
     }
 
-    if (cur->tmptable->lk)
-        Pthread_mutex_lock(cur->tmptable->lk);
+    if (cur->tmptable->sp_tmptbl) Pthread_mutex_lock(&cur->tmptable->sp_tmptbl->lk);
     cur->tmptable->cursor = bdb_temp_table_cursor(
         thedb->bdb_env, cur->tmptable->tbl, pArg, &bdberr);
     bdb_temp_table_set_cmp_func(cur->tmptable->tbl, (tmptbl_cmp)xCmp);
-    if (cur->tmptable->lk)
-        Pthread_mutex_unlock(cur->tmptable->lk);
+    if (cur->tmptable->sp_tmptbl) Pthread_mutex_unlock(&cur->tmptable->sp_tmptbl->lk);
 
     if (cur->tmptable->cursor == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_cursor failed: %d\n",
