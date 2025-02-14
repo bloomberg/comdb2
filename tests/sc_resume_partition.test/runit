@@ -5,15 +5,18 @@ source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 set -ex
 
-[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
-
 dbnm=$1
 
 restart_cluster() {
 	set +e
-	for node in ${CLUSTER} ; do
-		kill_restart_node ${node} &
-	done
+	if [ -z $CLUSTER ];
+	then
+		kill_restart_node $1 &
+	else
+		for node in ${CLUSTER} ; do
+			kill_restart_node ${node} &
+		done
+	fi
 	set -e
 
 	sleep 2
@@ -23,20 +26,27 @@ restart_cluster() {
 
 test_partition_merge_resume() {
 	# Given
+	local -r num_shards=$1
 	local starttime
 	starttime=$(get_timestamp 120)
 	local master
 	master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
 
 	cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "create table t(a int) partitioned by time period 'daily' retention 2 start '${starttime}'"
-	cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values (1)"
+	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "create table t(a int) partitioned by time period 'daily' retention ${num_shards} start '${starttime}'"
+
+	for i in $(seq 0 1 $((num_shards-1)));
+	do
+		local shard
+		shard=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select shardname from comdb2_timepartshards limit 1 offset ${i}")
+		cdb2sql ${CDB2_OPTIONS} ${dbnm} default "insert into '${shard}' values(1)"
+	done
 
 	# When
 	COMDB2_CONFIG_MIN_RETRIES=1 cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
-	waitpid=$!
+	local -r waitpid=$!
 	sleep 1
-	restart_cluster &> /dev/null
+	restart_cluster $master &> /dev/null
 
 	# Then
 	if wait ${waitpid};
@@ -47,9 +57,17 @@ test_partition_merge_resume() {
 
 	local timepart
 	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select * from comdb2_timepartitions where name='t'")
-	if [[ -z ${timepart} ]];
+	if [[ -n ${timepart} ]];
 	then
-		echo "FAIL: Could not find expected time partition"
+		echo "FAIL: Found time partition that should not exist"
+		return 1
+	fi
+
+	local num_records
+	num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select count(*) from t")
+	if (( num_records != num_shards ));
+	then
+		echo "FAIL: Unexpected number of records after partition merge"
 		return 1
 	fi
 
@@ -57,4 +75,9 @@ test_partition_merge_resume() {
 	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "drop table t"
 }
 
-test_partition_merge_resume
+main() {
+	local -r num_shards=5
+	test_partition_merge_resume ${num_shards}
+}
+
+main
