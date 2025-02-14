@@ -7591,7 +7591,7 @@ static unsigned long long lk_tmptbl_cursor_rowid(struct temp_table *tbl,
                                                  BtCursor *btcursor)
 {
     Pthread_mutex_lock(&btcursor->tmptable->sp_tmptbl->lk);
-    unsigned long long rowid = tmptbl_cursor_rowid(tbl, btcursor);
+    unsigned long long rowid = ++btcursor->tmptable->sp_tmptbl->rowid;
     Pthread_mutex_unlock(&btcursor->tmptable->sp_tmptbl->lk);
     return rowid;
 }
