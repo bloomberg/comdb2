@@ -77,3 +77,12 @@ do_verify()
         failexit "verify $tbl had errors"
     fi
 }
+
+get_timestamp()
+{
+    local now=$(date +%s)
+    if [[ $# -gt 0 ]]; then
+        now=$(( $now + ($@) ))
+    fi
+    date --date=@$now -u '+%Y-%m-%dT%H%M%S %Z'
+}
