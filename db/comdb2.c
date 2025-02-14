@@ -228,6 +228,8 @@ int gbl_uses_externalauth = 0;
 int gbl_uses_externalauth_connect = 0;
 int gbl_externalauth_warn = 0;
 int gbl_identity_cache_max = 500;
+int gbl_authorization_cache_max = 2000;
+int gbl_authorization_cache_ageout = 600;
 int gbl_iam_verbosity = 0;
 int gbl_upd_key;
 unsigned long long gbl_sqltick;

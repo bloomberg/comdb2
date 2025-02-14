@@ -2456,7 +2456,13 @@ REGISTER_TUNABLE("sqlite_use_temptable_for_rowset",
                  TUNABLE_BOOLEAN, &gbl_sqlite_use_temptable_for_rowset, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("max_identity_cache", "Max cache size of externalauth identities (Default: 500)",
-                 TUNABLE_INTEGER, &gbl_identity_cache_max, 0, NULL, NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_identity_cache_max, READONLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("max_authorization_cache", "Max cache size of authorized identities (Default: 2000)",
+                 TUNABLE_INTEGER, &gbl_authorization_cache_max, READONLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("authorization_cache_ageout", "Max age of authorization cache (Default: 600 seconds)",
+                 TUNABLE_INTEGER, &gbl_authorization_cache_ageout, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("iam_usermetric_verbosity", "IAM user metric verbosity [Default: 0 (off)]", TUNABLE_INTEGER,
                  &gbl_iam_verbosity, 0, NULL, NULL, NULL, NULL);
