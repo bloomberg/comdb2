@@ -24,6 +24,10 @@
   at multiple places.
 */
 
+REGISTER_TUNABLE("partitioned_table_merge_resume", "Toggle the ability to resume "
+                 "partitioned table collapse SCs (default OFF)", TUNABLE_BOOLEAN,
+                 &gbl_enable_partitioned_table_merge_resume, 0, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("abort_on_in_use_rqid", NULL, TUNABLE_BOOLEAN,
                  &gbl_abort_on_clear_inuse_rqid, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);

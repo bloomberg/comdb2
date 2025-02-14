@@ -775,13 +775,6 @@ static int do_merge_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    /* set sc_genids, 0 them if we are starting a new schema change, or
-     * restore them to their previous values if we are resuming */
-    if (init_sc_genids(newdb, s)) {
-        sc_client_error(s, "Failed to initialize sc_genids");
-        return -1;
-    }
-
     Pthread_rwlock_wrlock(&db->sc_live_lk);
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
@@ -794,6 +787,9 @@ convert_records:
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
+    if (s->resume && IS_ALTERTABLE(s)) {
+        decrement_sc_yet_to_resume_counter();
+    }
     MEMORY_SYNC;
 
     if (get_stopsc(__func__, __LINE__)) {
@@ -813,8 +809,10 @@ convert_records:
     struct schema *tag = find_tag_schema(newdb, ".NEW..ONDISK");
     if (!tag) {
         struct errstat err = {0};
+        Pthread_mutex_lock(&csc2_subsystem_mtx);
         rc =
             populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
                    newdb->csc2_schema);
@@ -825,9 +823,12 @@ convert_records:
 
     add_ongoing_alter(s);
 
+    unsigned long long sc_genids[MAXDTASTRIPE];
+    memset(sc_genids, 0, MAXDTASTRIPE);
+
     /* skip converting records for fastinit and planned schema change
      * that doesn't require rebuilding anything. */
-    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    rc = convert_all_records(db, newdb, sc_genids, s);
     if (rc == 1) rc = 0;
 
     remove_ongoing_alter(s);
