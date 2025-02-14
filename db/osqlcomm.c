@@ -73,6 +73,7 @@ extern int g_osql_ready;
 extern int gbl_goslow;
 extern int gbl_partial_indexes;
 
+int gbl_enable_partitioned_table_merge_resume = 1;
 int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
 int gbl_toblock_random_verify_error;
@@ -6312,6 +6313,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     alter_sc->force_rebuild = 1; /* we are moving rows here */
     /* alter only in parallel mode for live */
     alter_sc->scanmode = SCAN_PARALLEL;
+    alter_sc->resume = sc->resume;
     /* link the sc */
     iq->sc = alter_sc;
 
@@ -6328,7 +6330,7 @@ static int start_schema_change_tran_wrapper_merge(const char *tblname,
     /* link the alter */
     iq->sc->sc_next = iq->sc_pending;
     iq->sc_pending = iq->sc;
-    iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+    if (alter_sc->nothrevent) { iq->sc->newdb = NULL; /* lose ownership, otherwise double free */ }
 
     if (arg->lockless) {
         *pview = timepart_reaquire_view(arg->part_name);
@@ -6407,15 +6409,16 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     struct dbtable *first_shard = get_dbtable_by_name(first_shard_name);
     free(first_shard_name);
 
-    /* we need to move data */
-    sc->force_rebuild = 1;
+    const int latched_nothrevent = sc->nothrevent;
+
+    sc->force_rebuild = 1; /* we need to move data */
+    sc->nothrevent = 1; /* we need do_add_table / do_alter_table to run first */
+    sc->finalize = 0;
 
     if (!first_shard->sqlaliasname) {
         /*
          * create a table with the same name as the partition
          */
-        sc->nothrevent = 1; /* we need do_add_table to run first */
-        sc->finalize = 0;   /* make sure */
         sc->kind = SC_ADDTABLE;
 
         rc = start_schema_change_tran(iq, NULL);
@@ -6430,10 +6433,17 @@ static int _process_partitioned_table_merge(struct ireq *iq)
         iq->sc_pending = iq->sc;
     } else {
         /*
-         * use the fast shard as the destination, after first altering it
+         * use the first shard as the destination, after first altering it
          */
-        sc->nothrevent = 1; /* we need do_alter_table to run first */
-        sc->finalize = 0;
+        if (gbl_enable_partitioned_table_merge_resume) {
+            sc->partition.type = PARTITION_NONE;
+        } else {
+            assert(sc->partition.type == PARTITION_MERGE);
+            // If partitioned table merge resumes are disabled,
+            // then we keep the type equal to PARTITION_MERGE.
+            // There is code later on that blocks the resume if
+            // the type is PARTITION_MERGE.
+        }
 
         strncpy(sc->tablename, first_shard->tablename, sizeof(sc->tablename));
 
@@ -6456,6 +6466,7 @@ static int _process_partitioned_table_merge(struct ireq *iq)
     /* at this point we have created the future btree, launch an alter
      * for each of the shards of the partition
      */
+    sc->nothrevent = latched_nothrevent;
     arg.s = sc;
     arg.s->iq = iq;
     arg.part_name = strdup(sc->tablename);  /*sc->tablename gets rewritten*/
