@@ -1,60 +1,100 @@
 #!/usr/bin/env bash
 
+set -ex
+dbnm=$1
+tier="local"
+CDB2SQL_EXE="cdb2sql"
+DBNAME=$dbnm
+
 source ${TESTSROOTDIR}/tools/runit_common.sh
 source ${TESTSROOTDIR}/tools/cluster_utils.sh
+source util.sh
 
-set -ex
+declare -r CRASH=1
+declare -r DOWNGRADE=2
 
-[ -z "${CLUSTER}" ] && { echo "Test requires a cluster"; exit 0; }
+declare -r CREATE=10
+declare -r ALTER=11
 
-dbnm=$1
-
-restart_cluster() {
-	set +e
-	for node in ${CLUSTER} ; do
-		kill_restart_node ${node} &
-	done
-	set -e
-
-	sleep 2
-
-	wait_for_cluster
-}
-
-test_partition_merge_resume() {
+test_driver() {
 	# Given
-	local starttime
-	starttime=$(get_timestamp 120)
-	local master
-	master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
+	(
+		local -r num_shards=$1 num_records_per_shard=$2 resume_trigger=$3 op_for_creating_partition=$4
 
-	cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "create table t(a int) partitioned by time period 'daily' retention 2 start '${starttime}'"
-	cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t values (1)"
+		local master
+		master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm ${tier} 'SELECT host FROM comdb2_cluster WHERE is_master="Y"'`
 
-	# When
-	COMDB2_CONFIG_MIN_RETRIES=1 cdb2sql ${CDB2_OPTIONS} ${dbnm} default "alter table t partitioned by none" &
-	waitpid=$!
-	sleep 1
-	restart_cluster &> /dev/null
+		local -r tbl_name="t"
+		setup_table ${tbl_name} ${num_shards} ${num_records_per_shard} ${op_for_creating_partition}
 
-	# Then
-	if wait ${waitpid};
-	then
-		echo "FAIL: Merge succeeded before cluster bounced. Test is buggy."
-		return 1
-	fi
+		trap "cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} 'drop table ${tbl_name}'" EXIT
 
-	local timepart
-	timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} default "select * from comdb2_timepartitions where name='t'")
-	if [[ -z ${timepart} ]];
-	then
-		echo "FAIL: Could not find expected time partition"
-		return 1
-	fi
+	#	cdb2sql $dbnm --host $master "EXEC PROCEDURE sys.cmd.send('convert_record_sleep 1')"
 
-	# Cleanup
-	cdb2sql ${CDB2_OPTIONS} ${dbnm} default "drop table t"
+		# When
+		COMDB2_CONFIG_MIN_RETRIES=0 \
+		COMDB2_CONFIG_MAX_RETRIES=0 \
+		cdb2sql ${CDB2_OPTIONS} ${dbnm} ${tier} "alter table ${tbl_name} partitioned by none" &
+		local -r waitpid=$!
+
+		sleep 5
+
+		if (( resume_trigger == CRASH )); then
+			restart_cluster ${master}
+		elif (( resume_trigger == DOWNGRADE )); then
+			downgrade ${master}
+		else
+			echo "FAIL: expected resume_trigger to be one of: KILL, DOWNGRADE"
+			return 1
+		fi
+
+		# Then
+		if wait ${waitpid};
+		then
+			echo "FAIL: Merge succeeded before master swing. Test is buggy."
+			return 1
+		fi
+
+		wait_for_outstanding_scs &> /dev/null
+
+		local timepart
+		timepart=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select * from comdb2_timepartitions where name='${tbl_name}'")
+		if [[ -n ${timepart} ]];
+		then
+			echo "FAIL: Found time partition that should not exist"
+			return 1
+		fi
+
+		local num_records
+		num_records=$(cdb2sql --tabs ${CDB2_OPTIONS} ${dbnm} ${tier} "select count(*) from ${tbl_name}")
+		if (( num_records != num_shards*num_records_per_shard ));
+		then
+			echo "FAIL: Unexpected number of records after partition merge"
+			return 1
+		fi
+	)
 }
 
-test_partition_merge_resume
+main() {
+	local -r num_shards=5
+	for num_records_per_shard in 1 10000;
+	do
+		for resume_trigger in ${CRASH} ${DOWNGRADE};
+		do
+			for op_for_creating_partition in ${CREATE} ${ALTER};
+			do
+				echo "------------------------"
+				echo "Testing resume of a partitioned table triggered by a ${resume_trigger} "
+				echo "Partitioned table was created using ${op_for_creating_partition} and contains ${num_records_per_shard} "
+				echo "records in each of ${num_shards} shards"
+				if test_driver ${num_shards} ${num_records_per_shard} ${resume_trigger} ${op_for_creating_partition}; then
+					echo "Passed test --------------"
+				else
+					echo "Failed test --------------"
+				fi
+			done
+		done
+	done
+}
+
+main
