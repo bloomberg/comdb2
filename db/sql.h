@@ -1663,6 +1663,7 @@ void wait_for_transactions(void);
 
 struct sp_tmptbl {
     pthread_mutex_t lk;
+    uint64_t rowid;
 };
 void set_tmptbl(struct sp_tmptbl *);
 
