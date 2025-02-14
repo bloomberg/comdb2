@@ -83,5 +83,6 @@ sc_async_constraints.test
 sigstopcluster.test
 weighted_standing_queue.test -- failing in rhel8 + podman
 prepare.test
+sc_resume_partition.test -- Pending PR #4936
 
 # vim: set sw=4 ts=4 et:
