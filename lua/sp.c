@@ -106,7 +106,7 @@ struct tmptbl_info_t {
     struct temptable tbl;
     char *sql;
     char name[MAXTABLELEN * 2]; // namespace.name
-    pthread_mutex_t *lk;
+    struct sp_tmptbl *sp_tmptbl;
     LIST_ENTRY(tmptbl_info_t) entries;
 };
 
@@ -1025,8 +1025,8 @@ static void *lua_mem_init()
 static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 {
     if (sp->parent == sp) {
-        Pthread_mutex_destroy(tbl->lk);
-        free(tbl->lk);
+        Pthread_mutex_destroy(&tbl->sp_tmptbl->lk);
+        free(tbl->sp_tmptbl);
     }
     free(tbl->sql);
     free(tbl);
@@ -1171,7 +1171,7 @@ static int lua_prepare_sql_with_temp_ddl(SP, const char *sql, sqlite3_stmt **);
 ** 1: Lua str (tmptbl name)
 ** 2: Lua tbl (tmptbl schema)
 */
-static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
+static struct sp_tmptbl *create_temp_table(Lua lua, const char **name)
 {
     int rc = -1;
     strbuf *sql = NULL;
@@ -1223,31 +1223,28 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         goto out;
     }
 
-    *lk = malloc(sizeof(pthread_mutex_t));
-    Pthread_mutex_init(*lk, NULL);
-    comdb2_set_tmptbl_lk(*lk);
+    struct sp_tmptbl *tmptbl = calloc(1, sizeof(struct sp_tmptbl));
+    Pthread_mutex_init(&tmptbl->lk, NULL);
+    set_tmptbl(tmptbl);
     lua_begin_step(sp->clnt, sp, stmt);
     while ((rc = sqlite3_maybe_step(sp->clnt, stmt)) == SQLITE_ROW) {
         lua_another_step(sp->clnt, stmt, rc);
     }
     lua_end_step(sp->clnt, sp, stmt);
-    comdb2_set_tmptbl_lk(NULL);
+    set_tmptbl(NULL);
     sqlite3_finalize(stmt);
 
     if (rc == SQLITE_DONE) {
-        return 0;
+        return tmptbl;
     } else {
-        logmsg(LOGMSG_ERROR, "%s: FAILED ddl={%s}, rc=%d\n",
-                __func__, ddl, rc);
-
-        Pthread_mutex_destroy(*lk);
-        free(*lk);
-        *lk = NULL;
+        logmsg(LOGMSG_ERROR, "%s: FAILED ddl={%s}, rc=%d\n", __func__, ddl, rc);
+        Pthread_mutex_destroy(&tmptbl->lk);
+        free(tmptbl);
         luabb_error(lua, sp, sqlite3ErrStr(rc));
     }
 out:
     if (sql) strbuf_free(sql);
-    return -1;
+    return NULL;
 }
 
 static int comdb2_table(Lua lua)
@@ -1295,13 +1292,11 @@ static int new_temp_table(Lua lua)
         return luabb_error(lua, NULL, "bad argument to 'table'");
 
     const char *name;
-    pthread_mutex_t *lk;
-
     SP sp = getsp(lua);
     sp->clnt->skip_peer_chk = 1;
-    int rc = create_temp_table(lua, &lk, &name);
+    struct sp_tmptbl *sp_tmptbl = create_temp_table(lua, &name);
     sp->clnt->skip_peer_chk = 0;
-    if (rc  == 0) {
+    if (sp_tmptbl) {
         // success - create dbtable
         dbtable_t *table;
         new_lua_t(table, dbtable_t, DBTYPES_DBTABLE);
@@ -1311,7 +1306,7 @@ static int new_temp_table(Lua lua)
 
         // add to list of tmp tbls
         tmptbl_info_t *tmp = malloc(sizeof(tmptbl_info_t));
-        tmp->lk = lk;
+        tmp->sp_tmptbl = sp_tmptbl;
         tmp->sql = NULL;
         strcpy(tmp->name, name);
         LIST_INSERT_HEAD(&sp->tmptbls, tmp, entries);
@@ -2863,7 +2858,7 @@ int mycallback(void *arg_, int cols, char **text, char **name)
         if (strcmp(text[0], n2) == 0) {
             tmptbl_info_t *tmp2 = malloc(sizeof(tmptbl_info_t));
             strcpy(tmp2->name, tmp1->name);
-            tmp2->lk = tmp1->lk;
+            tmp2->sp_tmptbl = tmp1->sp_tmptbl;
             tmp2->tbl = get_tbl_by_rootpg(getdb(sp1), atoi(text[1]));
             tmp2->sql = strdup(text[2]);
             LIST_INSERT_HEAD(&sp2->tmptbls, tmp2, entries);

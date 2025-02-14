@@ -1038,7 +1038,7 @@ struct temptable {
     struct temp_table *tbl;
     int flags;
     Btree *owner;
-    pthread_mutex_t *lk;
+    struct sp_tmptbl *sp_tmptbl;
 };
 
 struct Btree {
@@ -1409,7 +1409,6 @@ void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt);
 int release_locks_on_emit_row(struct sqlclntstate *clnt);
 
 void clearClientSideRow(struct sqlclntstate *clnt);
-void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
 void clone_temp_table(sqlite3_stmt *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
@@ -1661,5 +1660,10 @@ int forward_set_commands(struct sqlclntstate *clnt, cdb2_hndl_tp *hndl,
                          struct errstat *err);
 
 void wait_for_transactions(void);
+
+struct sp_tmptbl {
+    pthread_mutex_t lk;
+};
+void set_tmptbl(struct sp_tmptbl *);
 
 #endif /* _SQL_H_ */
