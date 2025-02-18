@@ -1370,10 +1370,11 @@ repl_loop:
                     physrep_logmsg(level, "%s:%d Failed to register against cluster, attempt %d\n",
                                    __func__, __LINE__, notfound);
 
-                    sleep(1);
-                    while ((rc = get_metadb_hndl(&repl_metadb)) != 0) {
+                    do {
+                        cdb2_close(repl_metadb);
+                        repl_metadb = NULL;
                         sleep(1);
-                    }
+                    } while ((rc = get_metadb_hndl(&repl_metadb)) != 0);
                 }
 
                 repl_db_cnct = find_new_repl_db(repl_metadb, &repl_db);
