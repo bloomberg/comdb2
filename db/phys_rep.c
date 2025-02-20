@@ -77,6 +77,7 @@ unsigned int physrep_min_logfile;
 unsigned int gbl_deferred_phys_update;
 
 char *gbl_physrep_source_dbname;
+int gbl_physrep_source_dbnum;
 char *gbl_physrep_source_host;
 char *gbl_physrep_metadb_name;
 char *gbl_physrep_metadb_host;
